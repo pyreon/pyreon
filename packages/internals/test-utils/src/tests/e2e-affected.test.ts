@@ -1,8 +1,4 @@
-import {
-  forcesFullRun,
-  selectSuites,
-  SUITES,
-} from '../../../../../scripts/e2e-affected'
+import { forcesFullRun, selectSuites, SUITES } from '../../../../../scripts/e2e-affected'
 
 /**
  * Tests for the e2e suite selector (`scripts/e2e-affected.ts`).
@@ -27,9 +23,7 @@ import {
 
 describe('selectSuites', () => {
   it('all=true → every suite (push:main / merge_group never narrows)', () => {
-    expect(selectSuites(['examples/playground/x.ts'], { all: true })).toEqual(
-      SUITES,
-    )
+    expect(selectSuites(['examples/playground/x.ts'], { all: true })).toEqual(SUITES)
     // all wins even over an otherwise-empty / null change set
     expect(selectSuites([], { all: true })).toEqual(SUITES)
     expect(selectSuites(null, { all: true })).toEqual(SUITES)
@@ -63,9 +57,7 @@ describe('selectSuites', () => {
     ]) {
       expect(forcesFullRun(broad)).toBe(true)
       // even mixed with an otherwise-narrow change, the broad file wins
-      expect(
-        selectSuites([broad, 'examples/playground/only.ts']),
-      ).toEqual(SUITES)
+      expect(selectSuites([broad, 'examples/playground/only.ts'])).toEqual(SUITES)
     }
   })
 
@@ -94,19 +86,11 @@ describe('selectSuites', () => {
   })
 
   it('ssr-showcase example change → the ssr/i18n/hmr family (its real blast radius)', () => {
-    const names = selectSuites([
-      'examples/ssr-showcase/src/routes/about.tsx',
-    ]).map((s) => s.name)
+    const names = selectSuites(['examples/ssr-showcase/src/routes/about.tsx']).map((s) => s.name)
     // core (playground+ssr-showcase+fundamentals), ssg-subpath, ssg-i18n,
     // ssg-i18n-prefix, zero-hmr all boot ssr-showcase.
     expect(names).toEqual(
-      expect.arrayContaining([
-        'core',
-        'ssg-subpath',
-        'ssg-i18n',
-        'ssg-i18n-prefix',
-        'zero-hmr',
-      ]),
+      expect.arrayContaining(['core', 'ssg-subpath', 'ssg-i18n', 'ssg-i18n-prefix', 'zero-hmr']),
     )
     // ...but NOT the unrelated ones.
     expect(names).not.toContain('compat')
@@ -114,18 +98,14 @@ describe('selectSuites', () => {
   })
 
   it('docs-only change set → no suites', () => {
-    expect(
-      selectSuites(['docs/docs/zero.md', 'README.md', 'CLAUDE.md']),
-    ).toEqual([])
+    expect(selectSuites(['docs/docs/zero.md', 'README.md', 'CLAUDE.md'])).toEqual([])
   })
 
   it('every suite is uniquely named and maps to a test:e2e* script', () => {
     const names = SUITES.map((s) => s.name)
     expect(new Set(names).size).toBe(names.length)
     for (const s of SUITES) {
-      expect(s.script === 'test:e2e' || s.script.startsWith('test:e2e:')).toBe(
-        true,
-      )
+      expect(s.script === 'test:e2e' || s.script.startsWith('test:e2e:')).toBe(true)
       expect(s.triggers.length).toBeGreaterThan(0)
     }
   })

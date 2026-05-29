@@ -162,7 +162,10 @@ describe('Phase P2.1 — <Layer> emit (z-stack overlay)', () => {
   })
 
   it('Swift: <Layer padding={4} background="surface" radius="md"> → modifier chain', () => {
-    const out = tx(`<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`, 'swift')
+    const out = tx(
+      `<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`,
+      'swift',
+    )
     expect(out).toContain('.padding(16)')
     expect(out).toMatch(/\.background\(Color\(red: 1, green: 1, blue: 1\)\)/)
     expect(out).toContain('.cornerRadius(8)')
@@ -186,7 +189,10 @@ describe('Phase P2.1 — <Layer> emit (z-stack overlay)', () => {
   })
 
   it('Kotlin: <Layer padding={4} background="surface" radius="md"> → modifier chain', () => {
-    const out = tx(`<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`, 'kotlin')
+    const out = tx(
+      `<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`,
+      'kotlin',
+    )
     expect(out).toContain('Modifier.padding(16.dp)')
     expect(out).toContain('.clip(RoundedCornerShape(8.dp))')
   })
@@ -270,9 +276,15 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
   })
 
   it('Kotlin: level maps to the Material3 typography role', () => {
-    expect(tx(`<Heading level={2}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.headlineMedium')
-    expect(tx(`<Heading level={3}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.headlineSmall')
-    expect(tx(`<Heading level={6}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.titleSmall')
+    expect(tx(`<Heading level={2}>x</Heading>`, 'kotlin')).toContain(
+      'MaterialTheme.typography.headlineMedium',
+    )
+    expect(tx(`<Heading level={3}>x</Heading>`, 'kotlin')).toContain(
+      'MaterialTheme.typography.headlineSmall',
+    )
+    expect(tx(`<Heading level={6}>x</Heading>`, 'kotlin')).toContain(
+      'MaterialTheme.typography.titleSmall',
+    )
   })
 
   it('Kotlin: <Heading color="primary"> → color = arg', () => {
@@ -305,7 +317,9 @@ describe('Phase P2.1 — <Icon> emit (SF Symbols)', () => {
   it('Kotlin: size → Modifier.size; color → tint', () => {
     expect(tx(`<Icon name="x" size="sm" />`, 'kotlin')).toContain('modifier = Modifier.size(16.dp)')
     expect(tx(`<Icon name="x" size="lg" />`, 'kotlin')).toContain('modifier = Modifier.size(24.dp)')
-    expect(tx(`<Icon name="x" color="danger" />`, 'kotlin')).toMatch(/tint = Color\(0xFF[0-9A-F]{6}\)/)
+    expect(tx(`<Icon name="x" color="danger" />`, 'kotlin')).toMatch(
+      /tint = Color\(0xFF[0-9A-F]{6}\)/,
+    )
   })
 })
 
@@ -362,7 +376,9 @@ describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
 
   it('Kotlin: <Modal open={signal} onClose={fn}> → if (signal) { Dialog(onDismissRequest = {...}) { ... } }', () => {
     const out = tx(`<Modal open={done} onClose={fn}><Text>body</Text></Modal>`, 'kotlin')
-    expect(out).toMatch(/if \(done\) \{[\s\S]+Dialog\(onDismissRequest = \{ fn\(\) \}\) \{[\s\S]+Text\(text = "body"\)/)
+    expect(out).toMatch(
+      /if \(done\) \{[\s\S]+Dialog\(onDismissRequest = \{ fn\(\) \}\) \{[\s\S]+Text\(text = "body"\)/,
+    )
   })
 
   it('Kotlin: <Modal open={props.open} onClose={onToggle}> → if (open) { Dialog(onDismissRequest = { onToggle() }) }', () => {
@@ -464,7 +480,9 @@ describe('Phase B — <Button onPress> (canonical event name)', () => {
 
   it('Kotlin: <Button onPress={fn}>Save</Button> → Button(onClick = { fn() }) { Text("Save") }', () => {
     const out = tx(`<Button onPress={fn}>Save</Button>`, 'kotlin')
-    expect(out).toMatch(/Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\(JSON\.stringify\("Save"\)\)|Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\("Save"\)/)
+    expect(out).toMatch(
+      /Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\(JSON\.stringify\("Save"\)\)|Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\("Save"\)/,
+    )
   })
 
   it('Kotlin: <Button onClick={fn}> (legacy) also works', () => {
@@ -480,10 +498,7 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
   })
 
   it('Swift: <Toggle disabled> → .disabled(true) modifier', () => {
-    const out = tx(
-      `<Toggle value={done} onChange={(b) => done.set(b)} disabled />`,
-      'swift',
-    )
+    const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} disabled />`, 'swift')
     expect(out).toContain('Toggle("", isOn: $done)')
     expect(out).toContain('.disabled(true)')
   })
@@ -497,10 +512,7 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
   })
 
   it('Kotlin: <Toggle disabled> → enabled = false', () => {
-    const out = tx(
-      `<Toggle value={done} onChange={(b) => done.set(b)} disabled />`,
-      'kotlin',
-    )
+    const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} disabled />`, 'kotlin')
     expect(out).toContain('Switch(checked = done')
     expect(out).toContain('enabled = false')
   })
@@ -582,19 +594,13 @@ describe('Phase C3 — router primitive emit (<Link> + <RouterProvider> + <Route
   })
 
   it('Swift: <RouterProvider router={r}><RouterView /></RouterProvider> → nested', () => {
-    const out = tx(
-      `<RouterProvider router={router}><RouterView /></RouterProvider>`,
-      'swift',
-    )
+    const out = tx(`<RouterProvider router={router}><RouterView /></RouterProvider>`, 'swift')
     expect(out).toContain('RouterProvider(router: router)')
     expect(out).toContain('RouterView()')
   })
 
   it('Kotlin: <RouterProvider router={r}><RouterView /></RouterProvider> → nested', () => {
-    const out = tx(
-      `<RouterProvider router={router}><RouterView /></RouterProvider>`,
-      'kotlin',
-    )
+    const out = tx(`<RouterProvider router={router}><RouterView /></RouterProvider>`, 'kotlin')
     expect(out).toContain('RouterProvider(router)')
     expect(out).toContain('RouterView()')
   })
@@ -651,7 +657,9 @@ describe('Phase C4 — createRouter / useNavigate / useParams call interception'
       'swift',
     )
     expect(out).toContain('@Environment(\\.pyreonRouter) private var pyreonRouter')
-    expect(out).toContain('private var navigate: (String) -> Void { useNavigate(router: pyreonRouter) }')
+    expect(out).toContain(
+      'private var navigate: (String) -> Void { useNavigate(router: pyreonRouter) }',
+    )
     // Call site emits with parens (function-typed binding).
     expect(out).toContain('navigate("/x")')
   })
@@ -675,19 +683,15 @@ describe('Phase C4 — createRouter / useNavigate / useParams call interception'
     // for computed dict subscripts needs the parser to recognize
     // `params["id"]` as a subscript, not a field access). This test
     // covers the declaration emit + @Environment injection only.
-    const out = txRouter(
-      `const params = useParams(); return <Text>{params}</Text>`,
-      'swift',
-    )
+    const out = txRouter(`const params = useParams(); return <Text>{params}</Text>`, 'swift')
     expect(out).toContain('@Environment(\\.pyreonRouter) private var pyreonRouter')
-    expect(out).toContain('private var params: [String: String] { useParams(router: pyreonRouter) }')
+    expect(out).toContain(
+      'private var params: [String: String] { useParams(router: pyreonRouter) }',
+    )
   })
 
   it('Kotlin: const params = useParams() → val params = useParams()', () => {
-    const out = txRouter(
-      `const params = useParams(); return <Text>{params}</Text>`,
-      'kotlin',
-    )
+    const out = txRouter(`const params = useParams(); return <Text>{params}</Text>`, 'kotlin')
     expect(out).toContain('val params = useParams()')
     expect(out).not.toContain('useParams(router')
   })
@@ -806,11 +810,7 @@ describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', ()
     `)
     const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
     expect(routerDecl?.routes).toHaveLength(3)
-    expect(routerDecl?.routes?.map((r) => r.path)).toEqual([
-      '/',
-      '/users/:id',
-      '/settings',
-    ])
+    expect(routerDecl?.routes?.map((r) => r.path)).toEqual(['/', '/users/:id', '/settings'])
   })
 
   it('bails (routes undefined) when arg is missing — back-compat with C4 scaffold', async () => {
@@ -1144,10 +1144,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
   it('R1.1 — bare RouterView outside routed RouterProvider stays bare', () => {
     // R1.1 is scoped to routes-bearing RouterProviders; bare RouterView
     // calls (no surrounding RouterProvider with routes) emit unchanged.
-    const out = txRouter(
-      `return <RouterView />`,
-      'swift',
-    )
+    const out = txRouter(`return <RouterView />`, 'swift')
     expect(out).toContain('RouterView()')
     expect(out).not.toMatch(/RouterView\(\) [^\n]+ HomePage/)
   })
@@ -1201,7 +1198,9 @@ describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () =
     expect(out).toContain('currentPath == "/" -> HomePage()')
     // Pattern routes through the runtime helper (same shape as Swift).
     expect(out).toContain('PyreonRouter.matchPath(currentPath, "/users/:id") != null ->')
-    expect(out).toContain('val params = PyreonRouter.matchPath(currentPath, "/users/:id") ?: emptyMap()')
+    expect(out).toContain(
+      'val params = PyreonRouter.matchPath(currentPath, "/users/:id") ?: emptyMap()',
+    )
     expect(out).toContain('UserPage(params = params)')
   })
 
@@ -1842,7 +1841,9 @@ describe.skipIf(skipKotlincCondition)(
       )
       const result = validateKotlin(out)
       if (!result.ok) {
-        throw new Error(`align variants failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
+        throw new Error(
+          `align variants failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
       }
       expect(result.ok).toBe(true)
       // Confirm all 3 variants resolved to their Alignment enum branches.

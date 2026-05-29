@@ -26,9 +26,11 @@ Short answer: **yes, and Pyreon's architecture is unusually well-suited for it**
 ## Four serious options (and one disqualified)
 
 ### 0. WebView shell (DISQUALIFIED)
+
 Capacitor / Cordova / Tauri-mobile model. Pyreon runs in a WebView, OS APIs accessed via JS plugins. This is not "truly native" — UI is HTML/CSS rendered in a `WKWebView`/`WebView`/`WebView2`. **The user's goal explicitly rules this out.** Listed only for completeness.
 
 ### A. Bridge model with platform widgets (the React Native shape)
+
 - JS engine on device (JSC on iOS, Hermes/V8 on Android)
 - Native side owns UI tree (real `UIView` / `View` hierarchies, real platform widgets)
 - Bridge between JS and native UI thread carries instructions ("create a view of type X with these properties", "update view Y's property Z")
@@ -40,6 +42,7 @@ Capacitor / Cordova / Tauri-mobile model. Pyreon runs in a WebView, OS APIs acce
 **Cons:** The bridge is a real cost. JS thread and UI thread are separate; every UI update crosses the boundary. React Native has spent the last 5 years (Fabric, JSI, TurboModules) trying to eliminate that cost. Pyreon-native would inherit the same constraints.
 
 ### B. Compile to native source (SwiftUI / Compose emit)
+
 - Pyreon compiler grows a new target: `--target swiftui` / `--target compose`
 - Pyreon components → SwiftUI views; signals → SwiftUI `@State` / Combine publishers; lifecycle hooks → SwiftUI view modifiers
 - Output is Swift / Kotlin source compiled into the app binary
@@ -50,6 +53,7 @@ Capacitor / Cordova / Tauri-mobile model. Pyreon runs in a WebView, OS APIs acce
 **Cons:** Cannot dynamically update the app — only static behavior. Massive compiler work — essentially rewriting Pyreon's reactive graph in Swift/Kotlin (the source-level emit only generates the structure; the runtime semantics need a Swift/Kotlin equivalent of `signal`/`computed`/`effect`). **Loses the unified-codebase story** — apps using this path can't share runtime code with the web target; only component source survives. Apple's `@State`/`@Observable` and Kotlin's `StateFlow`/`MutableState` are already close enough that we're producing redundant code.
 
 ### C. Hybrid — bridge model + per-platform native widgets + signal-aware bridge protocol (the Pyreon angle)
+
 - Same shape as Option A, but the bridge protocol is **signal-aware** rather than VDOM-diff-based
 - Pyreon's reactivity already emits individual property changes (`signal.set(x)` → "this one property on this one node changed"), not VDOM diffs
 - Bridge sends granular property-update messages, NOT serialized VNode trees
@@ -60,6 +64,7 @@ Capacitor / Cordova / Tauri-mobile model. Pyreon runs in a WebView, OS APIs acce
 **Cons:** Still ships a JS engine. Still has a bridge (even if cheaper). Same app-store / dynamic-code constraints as React Native.
 
 ### D. Skia / custom rendering (Flutter shape)
+
 - Pyreon-native ships its own pixel renderer (Skia, Metal, Vulkan)
 - Doesn't use platform widgets at all — draws everything from scratch
 - Cross-platform identical rendering by definition
@@ -88,19 +93,19 @@ Option B (compile to SwiftUI source) is an interesting future evolution but shou
 
 ## What's already in place (the survey from the Explore agent)
 
-| Layer | Coupling today | Work to slot in native |
-|---|---|---|
-| `@pyreon/core` | Fully abstract — VNode is platform-neutral, lifecycle is platform-neutral | Zero |
-| `@pyreon/reactivity` | Pure JS, no DOM | Zero |
-| `@pyreon/compiler` | Emits `_tpl(htmlString, bindFn)` — the HTML is DOM-coupled; the bind shape is generic | Modest: either add `--target native` emitting native template descriptors, or have the bind callback use generic element APIs |
-| `@pyreon/runtime-dom` | DOM-coupled by design (parallel implementation) | N/A — `@pyreon/runtime-native` is a new sibling |
-| `@pyreon/runtime-server` | String output (parallel implementation) | N/A — proves the renderer pattern |
-| `@pyreon/styler` | DOM-coupled at sheet-injection layer; design abstract | Moderate refactor: abstract the sheet-injection interface |
-| `@pyreon/rocketstyle` | Consumes styler output, no DOM contact | Zero |
-| `@pyreon/unistyle` | Tokens + breakpoints, no DOM | Zero |
-| `@pyreon/router` | `window.location`, `history`, `popstate` | High — separate native nav layer; not a blocker if MVP skips routing |
+| Layer                    | Coupling today                                                                        | Work to slot in native                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/core`           | Fully abstract — VNode is platform-neutral, lifecycle is platform-neutral             | Zero                                                                                                                          |
+| `@pyreon/reactivity`     | Pure JS, no DOM                                                                       | Zero                                                                                                                          |
+| `@pyreon/compiler`       | Emits `_tpl(htmlString, bindFn)` — the HTML is DOM-coupled; the bind shape is generic | Modest: either add `--target native` emitting native template descriptors, or have the bind callback use generic element APIs |
+| `@pyreon/runtime-dom`    | DOM-coupled by design (parallel implementation)                                       | N/A — `@pyreon/runtime-native` is a new sibling                                                                               |
+| `@pyreon/runtime-server` | String output (parallel implementation)                                               | N/A — proves the renderer pattern                                                                                             |
+| `@pyreon/styler`         | DOM-coupled at sheet-injection layer; design abstract                                 | Moderate refactor: abstract the sheet-injection interface                                                                     |
+| `@pyreon/rocketstyle`    | Consumes styler output, no DOM contact                                                | Zero                                                                                                                          |
+| `@pyreon/unistyle`       | Tokens + breakpoints, no DOM                                                          | Zero                                                                                                                          |
+| `@pyreon/router`         | `window.location`, `history`, `popstate`                                              | High — separate native nav layer; not a blocker if MVP skips routing                                                          |
 
-The renderer pattern (DOM + Server in parallel today) is the load-bearing architectural choice that makes native viable. **`@pyreon/runtime-native` slots into the existing pattern; it does not require redesigning anything Pyreon-side.** The hard work is on the *native* side of the bridge.
+The renderer pattern (DOM + Server in parallel today) is the load-bearing architectural choice that makes native viable. **`@pyreon/runtime-native` slots into the existing pattern; it does not require redesigning anything Pyreon-side.** The hard work is on the _native_ side of the bridge.
 
 ---
 
@@ -109,40 +114,49 @@ The renderer pattern (DOM + Server in parallel today) is the load-bearing archit
 Things that will take time regardless of approach:
 
 ### 1. Platform widget bindings (high effort, ongoing)
+
 UIKit + AppKit + AndroidView + Compose each have hundreds of widgets. RN-core covers ~20 of them; `react-native-community` packages cover the rest. Pyreon-native would face the same surface: `Image`, `ScrollView`, `TextInput`, `Switch`, `Picker`, `WebView` (embed), `Camera`, `MapView`, etc. This is the **bulk of the work** in a native framework and never finishes — Apple ships new UIKit widgets every WWDC.
 
 **Mitigation**: Start with 10 essential widgets (`View`, `Text`, `Image`, `ScrollView`, `TextInput`, `Button`, `List`, `Touchable`, `StatusBar`, `KeyboardAvoidingView`) — covers ~80% of typical mobile app needs. Add as demand surfaces.
 
 ### 2. Layout engine integration
+
 Web's CSS-box-model + Flexbox doesn't map 1:1 to iOS Auto Layout or Android ConstraintLayout. The pragmatic answer is Yoga (Facebook's flexbox-on-native, MIT-licensed, used by React Native, Litho, Fabric).
 
 **Action**: Embed Yoga in `runtime-native`. Pyreon styles → Yoga layout descriptors → native view frame application.
 
 ### 3. App Store dynamic-code constraints
-Apple Rule 4.7 allows shipping JS engines and dynamically-loaded JS *if* the JS doesn't "change the primary purpose of the app, provide a store-like interface, or include the ability to download executable code beyond what is bundled at submission." Practical meaning: Pyreon-native CAN ship a JS runtime + Pyreon code; over-the-air JS bundle updates work like Code Push (RN/CodePush approach). This is the same constraint RN apps live with — solved territory.
+
+Apple Rule 4.7 allows shipping JS engines and dynamically-loaded JS _if_ the JS doesn't "change the primary purpose of the app, provide a store-like interface, or include the ability to download executable code beyond what is bundled at submission." Practical meaning: Pyreon-native CAN ship a JS runtime + Pyreon code; over-the-air JS bundle updates work like Code Push (RN/CodePush approach). This is the same constraint RN apps live with — solved territory.
 
 ### 4. JS engine choice
+
 - **iOS**: Must use JavaScriptCore (Apple disallows embedding alternative JS engines for non-WebKit purposes; this is why RN uses JSC and Hermes; Hermes works on iOS as of recent versions).
 - **Android**: Hermes (RN's choice, faster cold start, smaller binary), V8 (Chrome's, larger ecosystem), JavaScriptCore (works but uncommon on Android).
 
 **Action**: Mirror RN's choice — Hermes on both platforms when feasible (faster cold start, smaller binary, the "JS-native UI" niche RN has shown to be viable).
 
 ### 5. Hot reload + Fast Refresh
+
 RN's Fast Refresh (signal-component state preservation across reload) took years to mature. Pyreon already has signal-preserving HMR via the Vite plugin (`__hmr_signal` registry). The native equivalent needs:
+
 - Native-side view-state preservation (UIView's text input state, scroll position, etc.)
 - JS reload + signal-restoration without losing native UI handles
 
 **Pyreon's HMR signal-preserving infrastructure** already solves the JS half. The native half is new work but well-studied (RN's implementation is the reference).
 
 ### 6. Router
+
 Web routing model (URL → component tree) doesn't map cleanly to native nav (UINavigationController push/pop stacks, Android FragmentManager). `@pyreon/router` is unusable as-is on native.
 
 **Action**: Build a thin `@pyreon/router-native` that maps Pyreon's route DSL to native nav events. Don't reuse the web router. Skip in MVP — first apps can use platform-native nav directly through bindings.
 
 ### 7. Build / packaging / signing
+
 Xcode + Android Studio + Fastlane + Gradle + provisioning profiles + Play Store + App Store Connect. This is the boring-but-mandatory infrastructure. RN's `react-native` CLI handles it; Pyreon would need an equivalent (`@pyreon/native-cli`?).
 
 ### 8. Performance ceiling
+
 Even with the signal-aware bridge advantage, JS-driven UI is slower than compiled SwiftUI/Compose. Realistic ceiling: **match React Native's perf, beat it on first-paint and animation jank, fall short of native by 20-50% on heavy workloads**. That's the honest envelope. "Indistinguishable from native" is not on the table for any JS-on-native approach.
 
 ---
@@ -150,11 +164,13 @@ Even with the signal-aware bridge advantage, JS-driven UI is slower than compile
 ## Staged MVP path (8-16 weeks elapsed for a credible demo)
 
 ### Phase 0 (1 week) — feasibility spike
+
 - Bind one signal to one `UIView.backgroundColor`. Pyreon runs in JSC on a simulator; signal change → bridge message → property update.
 - Goal: prove the protocol design works end-to-end. No real app yet.
 - Deliverable: counter app on iOS simulator.
 
 ### Phase 1 (3-4 weeks) — minimum viable renderer
+
 - `@pyreon/runtime-native` skeleton with `mount(vnode, rootView)`, `mountChild`, `applyProps`.
 - 5 native widgets: `View`, `Text`, `Image`, `Button`, `ScrollView`.
 - Yoga layout engine wired up.
@@ -162,17 +178,20 @@ Even with the signal-aware bridge advantage, JS-driven UI is slower than compile
 - Deliverable: a non-trivial list-rendering app (TodoMVC) on iOS simulator.
 
 ### Phase 2 (4-6 weeks) — Android parity + remaining widgets
+
 - Mirror Phase 1 on Android (Hermes runtime + JNI bridge to Android Views).
 - Add 5 more widgets: `TextInput`, `Switch`, `Touchable`, `List` (UICollectionView / RecyclerView with `_tpl`-cell-reuse), `StatusBar`.
 - Deliverable: TodoMVC on both platforms, same Pyreon source.
 
 ### Phase 3 (2-4 weeks) — styling + theming
+
 - Refactor `@pyreon/styler` to abstract the sheet-injection layer.
 - Native sheet adapter: iOS UIAppearance / Android Material Theme.
 - `@pyreon/rocketstyle` + `@pyreon/unistyle` work unchanged.
 - Deliverable: themed app, dark mode switch via existing Pyreon mode system.
 
 ### Phase 4 (ongoing) — widget surface + ecosystem
+
 - Add bindings as needed: camera, push notifications, maps, biometrics, etc.
 - This phase **never finishes** — it's the long-tail cost of any native framework.
 
@@ -184,7 +203,7 @@ Even with the signal-aware bridge advantage, JS-driven UI is slower than compile
 
 The honest pitch if this ships:
 
-> *Pyreon-native: write once, render to web, server (SSR), AND iOS/Android native widgets. Signal-based reactivity means the bridge is fundamentally cheaper than React Native's — every UI update is a single property message, never a serialized diff. Hot reload preserves both component state and native UI state. 10-100× smaller bridge payloads, same widget fidelity.*
+> _Pyreon-native: write once, render to web, server (SSR), AND iOS/Android native widgets. Signal-based reactivity means the bridge is fundamentally cheaper than React Native's — every UI update is a single property message, never a serialized diff. Hot reload preserves both component state and native UI state. 10-100× smaller bridge payloads, same widget fidelity._
 
 What this is NOT:
 
@@ -202,14 +221,14 @@ What it IS:
 
 ## Risk register
 
-| Risk | Likelihood | Mitigation |
-|---|---|---|
-| Widget binding surface never finishes | Certain | Same as RN — ship 10 essentials, grow ecosystem; don't try to be complete |
-| App Store rejection over dynamic JS | Low | RN apps ship daily; Apple's Rule 4.7 is well-trodden |
-| Performance falls short of fully-native | Certain | Be honest; position against RN, not SwiftUI |
-| JS engine choice hurts cold start | Medium | Use Hermes (RN's pick); has 6+ years of optimization for this exact use case |
-| Maintenance burden — Apple/Google ship widget updates yearly | High | Open-source community maintenance OR commercial sponsor; both work, RN survives on the latter |
-| Pyreon's compiler-to-native source path (Option B) emerges as a better fit later | Possible | Option C doesn't preclude Option B — could ship as a second target |
+| Risk                                                                             | Likelihood | Mitigation                                                                                    |
+| -------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| Widget binding surface never finishes                                            | Certain    | Same as RN — ship 10 essentials, grow ecosystem; don't try to be complete                     |
+| App Store rejection over dynamic JS                                              | Low        | RN apps ship daily; Apple's Rule 4.7 is well-trodden                                          |
+| Performance falls short of fully-native                                          | Certain    | Be honest; position against RN, not SwiftUI                                                   |
+| JS engine choice hurts cold start                                                | Medium     | Use Hermes (RN's pick); has 6+ years of optimization for this exact use case                  |
+| Maintenance burden — Apple/Google ship widget updates yearly                     | High       | Open-source community maintenance OR commercial sponsor; both work, RN survives on the latter |
+| Pyreon's compiler-to-native source path (Option B) emerges as a better fit later | Possible   | Option C doesn't preclude Option B — could ship as a second target                            |
 
 ---
 

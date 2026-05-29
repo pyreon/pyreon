@@ -44,10 +44,8 @@ describe('mountKeyedList: inline keyed array as direct For child under batched s
     // Should always work — no frag-then-move pressure on the captured parent.
     const items = signal<{ id: number }[]>([{ id: 0 }])
     const { container, unmount } = mountInBrowser(
-      h(
-        'div',
-        { id: 'root' },
-        () => items().map((v) => h('span', { key: v.id, 'data-id': String(v.id) }, String(v.id))),
+      h('div', { id: 'root' }, () =>
+        items().map((v) => h('span', { key: v.id, 'data-id': String(v.id) }, String(v.id))),
       ),
     )
     await flush()
@@ -100,15 +98,12 @@ describe('mountKeyedList: inline keyed array as direct For child under batched s
       // children returns a FUNCTION (not a VNode). That function returns
       // a keyed array — mountChild's function branch routes it to
       // mountKeyedList with frag as parent.
-      children: ((rowIdx: number) =>
-        () =>
-          (itemSignals[rowIdx] as ReturnType<typeof signal<{ id: number }[]>>)().map((v) =>
-            h('span', { key: v.id, 'data-rowitem': `${rowIdx}-${v.id}` }, String(v.id)),
-          )) as unknown as (item: number) => VNode,
+      children: ((rowIdx: number) => () =>
+        (itemSignals[rowIdx] as ReturnType<typeof signal<{ id: number }[]>>)().map((v) =>
+          h('span', { key: v.id, 'data-rowitem': `${rowIdx}-${v.id}` }, String(v.id)),
+        )) as unknown as (item: number) => VNode,
     }
-    const { container, unmount } = mountInBrowser(
-      h('div', { id: 'root' }, For(forProps)),
-    )
+    const { container, unmount } = mountInBrowser(h('div', { id: 'root' }, For(forProps)))
     await flush()
     try {
       // Sanity: one item per row at mount, 10 total.

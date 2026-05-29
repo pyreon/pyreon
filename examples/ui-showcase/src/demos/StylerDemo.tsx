@@ -82,35 +82,61 @@ export function StylerDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Styler — CSS-in-JS</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Styler — CSS-in-JS
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        `@pyreon/styler` provides tagged template literals for styled components, css fragments, and keyframes.
+        `@pyreon/styler` provides tagged template literals for styled components, css fragments, and
+        keyframes.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">styled() — Tagged template</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        styled() — Tagged template
+      </Title>
       <Card style="margin-bottom: 24px">
-        <strong>Static styled component.</strong> Padding, background, border all defined in the template.
+        <strong>Static styled component.</strong> Padding, background, border all defined in the
+        template.
       </Card>
 
-      <Title size="h3" style="margin-bottom: 12px">Dynamic props (transient $-prefixed)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Dynamic props (transient $-prefixed)
+      </Title>
       <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-        <Button state="primary" onClick={() => color.set('#0070f3')}>Blue</Button>
-        <Button state="primary" onClick={() => color.set('#10b981')}>Green</Button>
-        <Button state="danger" onClick={() => color.set('#ef4444')}>Red</Button>
+        <Button state="primary" onClick={() => color.set('#0070f3')}>
+          Blue
+        </Button>
+        <Button state="primary" onClick={() => color.set('#10b981')}>
+          Green
+        </Button>
+        <Button state="danger" onClick={() => color.set('#ef4444')}>
+          Red
+        </Button>
       </div>
-      <Box $color={color()} style="margin-bottom: 24px">background: ${'$'}color</Box>
+      <Box $color={color()} style="margin-bottom: 24px">
+        background: ${'$'}color
+      </Box>
 
-      <Title size="h3" style="margin-bottom: 12px">Nested selectors</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Nested selectors
+      </Title>
       <Menu style="margin-bottom: 24px">
         <a href="#">Dashboard</a>
         <a href="#">Projects</a>
         <a href="#">Settings</a>
       </Menu>
 
-      <Title size="h3" style="margin-bottom: 12px">Reusable css fragments</Title>
-      <Input type="text" placeholder="Focus me — uses focusRing fragment" style="margin-bottom: 24px; width: 300px;" />
+      <Title size="h3" style="margin-bottom: 12px">
+        Reusable css fragments
+      </Title>
+      <Input
+        type="text"
+        placeholder="Focus me — uses focusRing fragment"
+        style="margin-bottom: 24px; width: 300px;"
+      />
 
-      <Title size="h3" style="margin-bottom: 12px">keyframes()</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        keyframes()
+      </Title>
       <Spinner />
     </div>
   )

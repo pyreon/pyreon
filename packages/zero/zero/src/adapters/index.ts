@@ -34,10 +34,10 @@ export function resolveAdapter(config: ZeroConfig): Adapter {
   // templates emit `adapter: vercelAdapter()` — detect by duck-typing
   // the two required Adapter fields (`name: string` + `build: function`).
   if (
-    typeof value === 'object'
-    && value !== null
-    && typeof (value as Adapter).name === 'string'
-    && typeof (value as Adapter).build === 'function'
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Adapter).name === 'string' &&
+    typeof (value as Adapter).build === 'function'
   ) {
     return value as Adapter
   }
@@ -56,6 +56,8 @@ export function resolveAdapter(config: ZeroConfig): Adapter {
     case 'netlify':
       return netlifyAdapter()
     default:
-      throw new Error(`[Pyreon] Unknown adapter: "${String(value)}". Use "node", "bun", "static", "vercel", "cloudflare", or "netlify".`)
+      throw new Error(
+        `[Pyreon] Unknown adapter: "${String(value)}". Use "node", "bun", "static", "vercel", "cloudflare", or "netlify".`,
+      )
   }
 }

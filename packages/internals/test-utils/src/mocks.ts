@@ -5,10 +5,7 @@ import { config } from '@pyreon/ui-core'
  * to bypass real CSS resolution in tests that only need a stable styled
  * component identity, not the rendered output.
  */
-export const mockCss = (
-  _strings: TemplateStringsArray,
-  ..._args: unknown[]
-): string => ''
+export const mockCss = (_strings: TemplateStringsArray, ..._args: unknown[]): string => ''
 
 /**
  * Pass-through styled tagged template — returns the component unchanged.
@@ -16,10 +13,8 @@ export const mockCss = (
  * upstream HOCs (rocketstyle, attrs) without depending on styler's runtime.
  */
 export const mockStyled = <TComponent>(component: TComponent) => {
-  const taggedTemplate = (
-    _strings: TemplateStringsArray,
-    ..._args: unknown[]
-  ): TComponent => component
+  const taggedTemplate = (_strings: TemplateStringsArray, ..._args: unknown[]): TComponent =>
+    component
   return taggedTemplate
 }
 
@@ -47,9 +42,7 @@ export interface TestConfigOverrides {
  * afterAll(() => cleanup())
  * ```
  */
-export function initTestConfig(
-  overrides?: Partial<TestConfigOverrides>,
-): () => void {
+export function initTestConfig(overrides?: Partial<TestConfigOverrides>): () => void {
   const originalStyled = config.styled
   const originalCss = config.css
 
@@ -65,4 +58,3 @@ export function initTestConfig(
     config.css = originalCss
   }
 }
-

@@ -22,17 +22,13 @@ describe('SSR → real-browser round-trip — For-key marker XSS', () => {
     // Build what PRE-fix SSR would have emitted: the raw attacker key
     // interpolated directly into the comment.
     const attackKey = `--><script>window.__preFixFired = true</script><!--`
-    const preFixHtml =
-      `<!--pyreon-for--><!--k:${attackKey}--><li>item</li><!--/pyreon-for-->`
+    const preFixHtml = `<!--pyreon-for--><!--k:${attackKey}--><li>item</li><!--/pyreon-for-->`
 
     const container = document.createElement('div')
     // innerHTML does not execute <script> per HTML5 spec — so use
     // document.write-free manual parsing via DOMParser, then adopt.
     // This mirrors what a streaming renderer would produce.
-    const parsed = new DOMParser().parseFromString(
-      `<body>${preFixHtml}</body>`,
-      'text/html',
-    )
+    const parsed = new DOMParser().parseFromString(`<body>${preFixHtml}</body>`, 'text/html')
     // Move the parsed body's children into our container; re-insert
     // script tags via createElement so they execute in the real page.
     for (const node of Array.from(parsed.body.childNodes)) {
@@ -62,14 +58,10 @@ describe('SSR → real-browser round-trip — For-key marker XSS', () => {
     // encodeURIComponent then all `-` → `%2D`.
     const attackKey = `--><script>window.__postFixFired = true</script><!--`
     const encoded = encodeURIComponent(attackKey).replace(/-/g, '%2D')
-    const postFixHtml =
-      `<!--pyreon-for--><!--k:${encoded}--><li>item</li><!--/pyreon-for-->`
+    const postFixHtml = `<!--pyreon-for--><!--k:${encoded}--><li>item</li><!--/pyreon-for-->`
 
     const container = document.createElement('div')
-    const parsed = new DOMParser().parseFromString(
-      `<body>${postFixHtml}</body>`,
-      'text/html',
-    )
+    const parsed = new DOMParser().parseFromString(`<body>${postFixHtml}</body>`, 'text/html')
     for (const node of Array.from(parsed.body.childNodes)) {
       if (node.nodeType === 1 && (node as Element).tagName === 'SCRIPT') {
         const s = document.createElement('script')

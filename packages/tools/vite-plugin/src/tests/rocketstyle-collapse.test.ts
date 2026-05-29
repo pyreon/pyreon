@@ -36,9 +36,7 @@ describe('deriveCollapse (pure extraction)', () => {
     const dark = '<button class="C D" data-x="1"><span class="inner">Save</span></button>'
     const r = deriveCollapse(light, dark, ['.A{}', '.C{}'])
     expect(r).not.toBeNull()
-    expect(r?.templateHtml).toBe(
-      '<button data-x="1"><span class="inner">Save</span></button>',
-    )
+    expect(r?.templateHtml).toBe('<button data-x="1"><span class="inner">Save</span></button>')
     expect(r?.lightClass).toBe('A B')
     expect(r?.darkClass).toBe('C D')
     expect(r?.key).toMatch(/^[0-9a-z]+$/)
@@ -55,11 +53,9 @@ describe('deriveCollapse (pure extraction)', () => {
   })
 
   it('light===dark class is valid (mode-invariant component) — NOT a bail', () => {
-    const r = deriveCollapse(
-      '<button class="same">x</button>',
-      '<button class="same">x</button>',
-      ['.same{}'],
-    )
+    const r = deriveCollapse('<button class="same">x</button>', '<button class="same">x</button>', [
+      '.same{}',
+    ])
     expect(r).not.toBeNull()
     expect(r?.lightClass).toBe('same')
     expect(r?.darkClass).toBe('same')
@@ -202,9 +198,8 @@ describe('end-to-end pipeline — real Button through resolver → scanner → c
   })
 
   it('the emitted _rsCollapse embeds the REAL SSR-resolved class + template byte-for-byte', async () => {
-    const { transformJSX, scanCollapsibleSites, rocketstyleCollapseKey } = await import(
-      '@pyreon/compiler'
-    )
+    const { transformJSX, scanCollapsibleSites, rocketstyleCollapseKey } =
+      await import('@pyreon/compiler')
     const src = `
 import { Button } from '@pyreon/ui-components'
 export const Save = () => <Button state="primary" size="medium">Save</Button>`
@@ -213,9 +208,7 @@ export const Save = () => <Button state="primary" size="medium">Save</Button>`
     const sites = scanCollapsibleSites(src, 'Save.tsx', new Set(['@pyreon/ui-components']))
     expect(sites).toHaveLength(1)
     const site = sites[0]!
-    expect(site.key).toBe(
-      rocketstyleCollapseKey(site.componentName, site.props, site.childrenText),
-    )
+    expect(site.key).toBe(rocketstyleCollapseKey(site.componentName, site.props, site.childrenText))
 
     // 2. resolver SSR-renders the REAL component (light + dark)
     const resolved = await resolver.resolve({
@@ -354,17 +347,9 @@ export const Save = () => <Button state="primary" size="medium">Save</Button>`
     return { warn: () => {}, resolve: async () => null }
   }
   function callConfig(p: ReturnType<typeof pyreon>, root: string) {
-    ;(p.config as unknown as (u: unknown, e: unknown) => unknown)(
-      { root },
-      { command: 'build' },
-    )
+    ;(p.config as unknown as (u: unknown, e: unknown) => unknown)({ root }, { command: 'build' })
   }
-  function callTransform(
-    p: ReturnType<typeof pyreon>,
-    code: string,
-    id: string,
-    ssr: boolean,
-  ) {
+  function callTransform(p: ReturnType<typeof pyreon>, code: string, id: string, ssr: boolean) {
     return (
       p.transform as unknown as (
         this: unknown,

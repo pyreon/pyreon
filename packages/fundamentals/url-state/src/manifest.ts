@@ -81,7 +81,7 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b`,
       kind: 'function',
       signature: '(router: UrlRouter) => void',
       summary:
-        'Configure useUrlState to use a @pyreon/router instance for URL updates instead of raw `history.replaceState`. When set, URL changes go through the router\'s navigation system, ensuring route guards, middleware, and scroll management integrate correctly.',
+        "Configure useUrlState to use a @pyreon/router instance for URL updates instead of raw `history.replaceState`. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly.",
       example: `import { useRouter } from '@pyreon/router'
 import { setUrlRouter } from '@pyreon/url-state'
 

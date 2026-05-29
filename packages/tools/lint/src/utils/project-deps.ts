@@ -54,10 +54,7 @@ function readDeclaredDeps(manifestPath: string): Set<string> {
   if (cached) return cached
   const names = new Set<string>()
   try {
-    const pkg = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<
-      string,
-      unknown
-    >
+    const pkg = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>
     for (const field of [
       'dependencies',
       'devDependencies',
@@ -90,10 +87,7 @@ function readDeclaredDeps(manifestPath: string): Set<string> {
  * manifest is found (conservative: a rule that can't prove the dep
  * stays silent rather than false-firing).
  */
-export function isProjectDependency(
-  filePath: string,
-  pkgName: string,
-): boolean {
+export function isProjectDependency(filePath: string, pkgName: string): boolean {
   const manifest = findNearestManifest(dirname(resolve(filePath)))
   if (!manifest) return false
   return readDeclaredDeps(manifest).has(pkgName)

@@ -185,7 +185,11 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         const loaderData = serializeLoaderData(router as never)
         const scripts = buildScriptsFast(clientEntryTag, loaderData)
         const headWithStyles = styleTag ? `${styleTag}\n${head}` : head
-        const fullHtml = processCompiledTemplate(compiled, { head: headWithStyles, app: appHtml, scripts })
+        const fullHtml = processCompiledTemplate(compiled, {
+          head: headWithStyles,
+          app: appHtml,
+          scripts,
+        })
 
         // M1.2 — Status 404 when the matched chain resolved via the
         // `notFoundComponent` fallback (PR L5). The router's
@@ -252,10 +256,8 @@ async function renderStreamResponse(
   const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number } = {}
   if (signal !== undefined) streamOptions.signal = signal
   if (suspenseTimeoutMs !== undefined) streamOptions.suspenseTimeoutMs = suspenseTimeoutMs
-  const appStream
-    = Object.keys(streamOptions).length > 0
-      ? renderToStream(app, streamOptions)
-      : renderToStream(app)
+  const appStream =
+    Object.keys(streamOptions).length > 0 ? renderToStream(app, streamOptions) : renderToStream(app)
   const reader = appStream.getReader()
 
   const stream = new ReadableStream<Uint8Array>({

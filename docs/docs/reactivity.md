@@ -53,7 +53,7 @@ const count = signal(0)
 
 const app = document.getElementById('app')
 const btn = h('button', { onClick: () => count.update(n => n + 1) },
-  () => 'Count: ' + count()
+() => 'Count: ' + count()
 )
 mount(btn, app)
 </Playground>
@@ -216,9 +216,9 @@ const fullName = computed(() => firstName() + ' ' + lastName())
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', {}, () => 'Full name: ' + fullName()),
-  h('button', { onClick: () => firstName.set('Bob') }, 'Change to Bob'),
-  h('button', { onClick: () => lastName.set('Jones'), style: { marginLeft: '8px' } }, 'Change to Jones'),
+h('div', {}, () => 'Full name: ' + fullName()),
+h('button', { onClick: () => firstName.set('Bob') }, 'Change to Bob'),
+h('button', { onClick: () => lastName.set('Jones'), style: { marginLeft: '8px' } }, 'Change to Jones'),
 )
 mount(ui, app)
 </Playground>
@@ -340,13 +340,13 @@ const count = signal(0)
 const log = signal('')
 
 effect(() => {
-  log.update(prev => prev + 'Count is: ' + count() + '\n')
+log.update(prev => prev + 'Count is: ' + count() + '\n')
 })
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('button', { onClick: () => count.update(n => n + 1) }, 'Increment'),
-  h('pre', { class: 'output' }, () => log()),
+h('button', { onClick: () => count.update(n => n + 1) }, 'Increment'),
+h('pre', { class: 'output' }, () => log()),
 )
 mount(ui, app)
 </Playground>
@@ -1164,8 +1164,8 @@ The `@pyreon/compiler` auto-promotes the canonical JSX shapes to `.subscribe` �
 // Author writes the natural shape:
 <For each={rows} by={(r) => r.id}>
   {(row) => (
-    <tr class={() => isSelected(row.id) ? 'selected' : ''}>
-      <td>{() => isSelected(row.id) ? '✓' : ''}</td>
+    <tr class={() => (isSelected(row.id) ? 'selected' : '')}>
+      <td>{() => (isSelected(row.id) ? '✓' : '')}</td>
       ...
     </tr>
   )}

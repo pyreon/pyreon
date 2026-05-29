@@ -123,23 +123,23 @@ const password = signal('')
 const errors = signal({})
 
 const validate = () => {
-  const e = {}
-  if (!email()) e.email = 'Required'
-  else if (!email().includes('@')) e.email = 'Invalid email'
-  if (!password()) e.password = 'Required'
-  else if (password().length < 8) e.password = 'Min 8 characters'
-  errors.set(e)
-  return Object.keys(e).length === 0
+const e = {}
+if (!email()) e.email = 'Required'
+else if (!email().includes('@')) e.email = 'Invalid email'
+if (!password()) e.password = 'Required'
+else if (password().length < 8) e.password = 'Min 8 characters'
+errors.set(e)
+return Object.keys(e).length === 0
 }
 
 const app = document.getElementById('app')
 const field = (name, sig, type) => h('div', { style: { marginBottom: '4px' } },
-  h('input', { placeholder: name, type: type || 'text', value: sig, onInput: (e) => sig.set(e.target.value), style: { padding: '6px', width: '200px' } }),
-  h('span', { style: { color: 'red', fontSize: '12px', marginLeft: '8px' } }, () => errors()[name] || ''),
+h('input', { placeholder: name, type: type || 'text', value: sig, onInput: (e) => sig.set(e.target.value), style: { padding: '6px', width: '200px' } }),
+h('span', { style: { color: 'red', fontSize: '12px', marginLeft: '8px' } }, () => errors()[name] || ''),
 )
 const ui = h('div', {},
-  field('email', email), field('password', password, 'password'),
-  h('button', { onClick: () => { if (validate()) alert('Valid!') }, style: { marginTop: '4px' } }, 'Validate'),
+field('email', email), field('password', password, 'password'),
+h('button', { onClick: () => { if (validate()) alert('Valid!') }, style: { marginTop: '4px' } }, 'Validate'),
 )
 mount(ui, app)
 </Playground>

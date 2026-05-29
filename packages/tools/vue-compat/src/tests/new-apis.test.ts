@@ -38,12 +38,7 @@ import {
   watchPostEffect,
   watchSyncEffect,
 } from '../index'
-import {
-  beginRender,
-  endRender,
-  jsx,
-  type RenderContext,
-} from '../jsx-runtime'
+import { beginRender, endRender, jsx, type RenderContext } from '../jsx-runtime'
 
 // ─── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -407,12 +402,9 @@ describe('watch() with array source', () => {
     const count = ref(0)
     const calls: unknown[][] = []
 
-    const stop = watch(
-      [() => count.value, () => count.value * 2],
-      (newVals) => {
-        calls.push(newVals as unknown[])
-      },
-    )
+    const stop = watch([() => count.value, () => count.value * 2], (newVals) => {
+      calls.push(newVals as unknown[])
+    })
 
     count.value = 5
     expect(calls[calls.length - 1]).toEqual([5, 10])
@@ -734,8 +726,16 @@ describe('createApp().use()', () => {
 
   it('chains multiple plugins', () => {
     const installed: string[] = []
-    const plugin1 = { install() { installed.push('p1') } }
-    const plugin2 = { install() { installed.push('p2') } }
+    const plugin1 = {
+      install() {
+        installed.push('p1')
+      },
+    }
+    const plugin2 = {
+      install() {
+        installed.push('p2')
+      },
+    }
 
     const Comp = () => h('div', null, 'app')
     createApp(Comp).use(plugin1).use(plugin2)
@@ -772,12 +772,14 @@ describe('createApp().provide()', () => {
 
   it('chains provide and use', () => {
     let installed = false
-    const plugin = { install() { installed = true } }
+    const plugin = {
+      install() {
+        installed = true
+      },
+    }
     const Comp = () => h('div', null, 'app')
 
-    createApp(Comp)
-      .provide('key', 'value')
-      .use(plugin)
+    createApp(Comp).provide('key', 'value').use(plugin)
 
     expect(installed).toBe(true)
   })
@@ -813,10 +815,14 @@ describe('inject() with factory default', () => {
   it('calls factory when treatDefaultAsFactory is true', () => {
     let factoryCalls = 0
     const key = Symbol('factory-test')
-    const result = inject(key, () => {
-      factoryCalls++
-      return 'from-factory'
-    }, true)
+    const result = inject(
+      key,
+      () => {
+        factoryCalls++
+        return 'from-factory'
+      },
+      true,
+    )
     expect(result).toBe('from-factory')
     expect(factoryCalls).toBe(1)
   })
@@ -838,10 +844,14 @@ describe('inject() with factory default', () => {
     const Provider = (() => {
       provide(key, 'provided')
       const Child = (() => {
-        injectedValue = inject(key, () => {
-          factoryCalls++
-          return 'from-factory'
-        }, true)
+        injectedValue = inject(
+          key,
+          () => {
+            factoryCalls++
+            return 'from-factory'
+          },
+          true,
+        )
         return h('span', null, 'child')
       }) as ComponentFn
       return h(Child, null)
@@ -982,7 +992,9 @@ describe('template ref with Vue ref', () => {
 
   it('callback ref still works unchanged', async () => {
     const { jsx: jsxFn } = await import('../jsx-runtime')
-    const cbRef = (el: Element | null) => { void el }
+    const cbRef = (el: Element | null) => {
+      void el
+    }
 
     const vnode = jsxFn('div', { ref: cbRef, children: 'hello' })
 
@@ -1008,9 +1020,13 @@ describe('watch() flush option', () => {
     const count = ref(0)
     const values: number[] = []
 
-    const stop = watch(count, (v) => {
-      values.push(v)
-    }, { flush: 'post' })
+    const stop = watch(
+      count,
+      (v) => {
+        values.push(v)
+      },
+      { flush: 'post' },
+    )
 
     count.value = 1
     expect(values).toContain(1)
@@ -1398,13 +1414,16 @@ describe('TransitionGroup', () => {
   it('renders a keyed list', () => {
     const el = container()
     const items = [{ id: 1 }, { id: 2 }, { id: 3 }]
-    const vnode = h(TransitionGroup as ComponentFn, {
-      tag: 'ul',
-      name: 'list',
-      items: () => items,
-      keyFn: (it: { id: number }) => it.id,
-      render: (it: { id: number }) => h('li', { class: 'item' }, String(it.id)),
-    } as Record<string, unknown>)
+    const vnode = h(
+      TransitionGroup as ComponentFn,
+      {
+        tag: 'ul',
+        name: 'list',
+        items: () => items,
+        keyFn: (it: { id: number }) => it.id,
+        render: (it: { id: number }) => h('li', { class: 'item' }, String(it.id)),
+      } as Record<string, unknown>,
+    )
     const unmount = mount(vnode, el)
     const lis = el.querySelectorAll('li.item')
     expect(lis.length).toBe(3)
@@ -1526,10 +1545,7 @@ describe('getCurrentInstance()', () => {
       return jsx('div', { children: 'c' })
     }
     const el = container()
-    const unmount = mount(
-      jsx(Comp, { onSave: (...a: unknown[]) => calls.push(a) }),
-      el,
-    )
+    const unmount = mount(jsx(Comp, { onSave: (...a: unknown[]) => calls.push(a) }), el)
     // emit is called from the render body, which the compat wrapper may run
     // more than once — assert the handler was invoked with the right args
     // (not an exact call count, which is render-cadence coupled).
@@ -1548,10 +1564,7 @@ describe('getCurrentInstance()', () => {
       },
     })
     const el = container()
-    const unmount = mount(
-      jsx(Comp as never, { id: 'declared', role: 'dialog' }),
-      el,
-    )
+    const unmount = mount(jsx(Comp as never, { id: 'declared', role: 'dialog' }), el)
     expect('id' in attrs).toBe(false)
     expect(attrs.role).toBe('dialog')
     unmount()

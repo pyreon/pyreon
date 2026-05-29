@@ -3,6 +3,7 @@
 **Status**: Companion to [`native-platforms.md`](./native-platforms.md) (PMTC strategic direction, merged in #764) and PR #794 (compiler skeleton — 7 isolated fixtures × 2 emitters with snapshot tests). This doc validates the PMTC structural-mapping table from the plan AGAINST a real (canonical) TodoMVC implementation, identifying every spot where the mapping breaks down, needs special handling, or requires a Pyreon-side abstraction the plan hasn't named yet.
 
 **Why TodoMVC**: it's the canonical "non-trivial but not contrived" app. Exercises 8 distinct Pyreon constructs that the 7 fixture tests don't combine:
+
 - Multi-field form input + keyboard submit
 - Array mutation idioms (`signal<T[]>` with append/remove/update)
 - Per-item state (toggle done, edit)
@@ -54,13 +55,13 @@ export function TodoApp() {
 
   const visible = computed(() => {
     const xs = todos()
-    if (filter() === 'active') return xs.filter(t => !t.done)
-    if (filter() === 'completed') return xs.filter(t => t.done)
+    if (filter() === 'active') return xs.filter((t) => !t.done)
+    if (filter() === 'completed') return xs.filter((t) => t.done)
     return xs
   })
 
-  const remaining = computed(() => todos().filter(t => !t.done).length)
-  const hasCompleted = computed(() => todos().some(t => t.done))
+  const remaining = computed(() => todos().filter((t) => !t.done).length)
+  const hasCompleted = computed(() => todos().some((t) => t.done))
 
   const addTodo = () => {
     const text = draft().trim()
@@ -70,15 +71,15 @@ export function TodoApp() {
   }
 
   const toggle = (id: number) => {
-    todos.set(todos().map(t => t.id === id ? { ...t, done: !t.done } : t))
+    todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
   }
 
   const remove = (id: number) => {
-    todos.set(todos().filter(t => t.id !== id))
+    todos.set(todos().filter((t) => t.id !== id))
   }
 
   const clearCompleted = () => {
-    todos.set(todos().filter(t => !t.done))
+    todos.set(todos().filter((t) => !t.done))
   }
 
   return (
@@ -91,13 +92,7 @@ export function TodoApp() {
       />
 
       <For each={visible} by={(t) => t.id}>
-        {(t) => (
-          <TodoRow
-            todo={t}
-            onToggle={() => toggle(t.id)}
-            onRemove={() => remove(t.id)}
-          />
-        )}
+        {(t) => <TodoRow todo={t} onToggle={() => toggle(t.id)} onRemove={() => remove(t.id)} />}
       </For>
 
       <HStack>
@@ -113,11 +108,7 @@ export function TodoApp() {
   )
 }
 
-function TodoRow(props: {
-  todo: Todo
-  onToggle: () => void
-  onRemove: () => void
-}) {
+function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void }) {
   return (
     <HStack state={props.todo.done ? 'completed' : 'active'}>
       <Checkbox checked={props.todo.done} onChange={props.onToggle} />
@@ -236,11 +227,11 @@ val todos by dataStore.data.map { it[todosKey] ?: emptyList() }.collectAsState(i
 
 The PMTC plan named this pattern (`@pyreon/camera` example with `@pyreon/camera-ios` / `@pyreon/camera-android` per-platform implementations). For `@pyreon/storage` the equivalent split is:
 
-| Package | Implementation |
-|---|---|
-| `@pyreon/storage` | Defines the `useStorage<T>(key, defaultValue)` interface + the web (`localStorage`) implementation |
-| `@pyreon/storage-ios` | Swift package providing `PyreonStorage.useStorage(key:default:)` backed by `@AppStorage` or `UserDefaults` |
-| `@pyreon/storage-android` | Kotlin module providing `PyreonStorage.useStorage(key, default)` backed by `DataStore` |
+| Package                   | Implementation                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `@pyreon/storage`         | Defines the `useStorage<T>(key, defaultValue)` interface + the web (`localStorage`) implementation         |
+| `@pyreon/storage-ios`     | Swift package providing `PyreonStorage.useStorage(key:default:)` backed by `@AppStorage` or `UserDefaults` |
+| `@pyreon/storage-android` | Kotlin module providing `PyreonStorage.useStorage(key, default)` backed by `DataStore`                     |
 
 The compiler detects the `useStorage` import at compile time and substitutes the per-platform binding in emit output. User code never references platform storage APIs directly.
 
@@ -362,6 +353,7 @@ Compose's keyboard handling is more verbose — needs both `keyboardOptions` (de
 This is the first place where **the source idiom (`onKeyDown` with `e.key === 'Enter'`) has no clean platform equivalent**. Web exposes keyboard events directly; SwiftUI/Compose abstract them behind submit/IME actions.
 
 Other keyboard cases follow the same shape:
+
 - `e.key === 'Escape'` → SwiftUI `.onExitCommand` / Compose dismiss handler (more complex)
 - `e.key === 'Tab'` → SwiftUI handles natively / Compose `Modifier.focusable() + focusOrder`
 - Arrow keys for keyboard navigation in lists → platform-specific patterns
@@ -394,11 +386,11 @@ const addTodo = () => {
 }
 
 const remove = (id: number) => {
-  todos.set(todos().filter(t => t.id !== id))
+  todos.set(todos().filter((t) => t.id !== id))
 }
 
 const clearCompleted = () => {
-  todos.set(todos().filter(t => !t.done))
+  todos.set(todos().filter((t) => !t.done))
 }
 ```
 
@@ -507,6 +499,7 @@ The PMTC plan's structural mapping table doesn't address this explicitly — it 
 Recommendation: **option B for both platforms**, with a fallback to option A when the source spread is structurally complex (e.g. `todos.set([...prefix, ...todos(), ...suffix])` — multiple concatenation sources).
 
 This requires:
+
 1. Detect `<signal>.set([...<signal>(), <value>])` as "append" → emit `.append(value)` / `.add(value)`
 2. Detect `<signal>.set(<signal>().filter(<predicate>))` as "remove matching" → emit `.removeAll(<predicate>)` / `.removeAll(<predicate>)`
 3. Detect `<signal>.set(<signal>().map(<transform>))` as "transform-in-place" — emit per-element mutation if `transform` is `t => t.id === id ? { ...t, field: value } : t` shape (the per-item update idiom — section 6)
@@ -524,7 +517,7 @@ This requires:
 
 ```tsx
 const toggle = (id: number) => {
-  todos.set(todos().map(t => t.id === id ? { ...t, done: !t.done } : t))
+  todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
 }
 ```
 
@@ -556,6 +549,7 @@ Same option-A vs option-B trade-off as section 5. The PMTC plan doesn't address 
 Idiomatic Swift uses `.toggle()` for `Bool` properties — a tiny but real platform convention. Idiomatic Kotlin uses `.copy()` for data class field updates (data classes are immutable; `copy()` returns a new instance).
 
 For the compiler to emit the idiomatic shape, it needs to recognize:
+
 - `map(t => t.id === ID ? { ...t, FIELD: !t.FIELD } : t)` → `[index].FIELD.toggle()` (Swift) / `[index] = it.copy(FIELD = !it.FIELD)` (Kotlin)
 - `map(t => t.id === ID ? { ...t, FIELD: VALUE } : t)` → `[index].FIELD = VALUE` (Swift) / `[index] = it.copy(FIELD = VALUE)` (Kotlin)
 
@@ -611,6 +605,7 @@ if (filter == Filter.completed) { ... }
 ### Mapping notes
 
 This is the **first place a string-literal union type produces meaningfully better code on native targets**. On web Pyreon emits string comparisons (`filter() === 'completed'`). On iOS/Android, native enums provide:
+
 - Compile-time exhaustiveness in `switch` / `when` statements
 - Better IDE autocomplete
 - No risk of typos at use sites
@@ -697,7 +692,7 @@ LazyColumn {
 
 The Swift emit collapses the `computed(...)` to a Swift `private var visible: [Todo] { ... }` (a computed property). The body re-computes on every access, but SwiftUI's diffing only re-renders rows whose identity changed (thanks to `id: \.id`).
 
-The Kotlin emit uses `derivedStateOf` — Compose's official "compute from observed state" primitive. Re-composes only when the computed value's *result* changes (per Compose's structural-equality check).
+The Kotlin emit uses `derivedStateOf` — Compose's official "compute from observed state" primitive. Re-composes only when the computed value's _result_ changes (per Compose's structural-equality check).
 
 Note: PR #794 fixture #05 (multi-signal + computed) already emits the `private var X: Int { ... }` Swift pattern and the `val X by remember { derivedStateOf { ... } }` Kotlin pattern. **TodoMVC's computed-list shape is structurally the same** — just returns `[Todo]` instead of `Int`. ✅ No new compiler work needed.
 
@@ -714,11 +709,7 @@ None for the structural mapping. ✅ The enum-vs-string question (section 7) doe
 ### Pyreon source
 
 ```tsx
-function TodoRow(props: {
-  todo: Todo
-  onToggle: () => void
-  onRemove: () => void
-}) {
+function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void }) {
   return (
     <HStack state={props.todo.done ? 'completed' : 'active'}>
       <Checkbox checked={props.todo.done} onChange={props.onToggle} />
@@ -804,6 +795,7 @@ fun Modifier.pyreonHStackStyle(state: HStackState): Modifier = this
 The **conditional dimension expression** (`state={props.todo.done ? 'completed' : 'active'}`) is where breakage #7 in the TL;DR fires.
 
 The naive emit would put the ternary inside the `.modifier(...)` call:
+
 ```swift
 .modifier(HStackStyle(state: props.todo.done ? .completed : .active))
 ```
@@ -917,8 +909,8 @@ None significant. ✅
 ### Pyreon source
 
 ```tsx
-const remaining = computed(() => todos().filter(t => !t.done).length)
-const hasCompleted = computed(() => todos().some(t => t.done))
+const remaining = computed(() => todos().filter((t) => !t.done).length)
+const hasCompleted = computed(() => todos().some((t) => t.done))
 ```
 
 ### Expected Swift emit
@@ -941,16 +933,16 @@ Same as PR #794 fixture #05. The Swift emit is a computed property; the Kotlin e
 
 The `.some()` → `.contains` / `.any { ... }` is an idiomatic translation the compiler should handle:
 
-| Pyreon (JS) method | Swift | Kotlin |
-|---|---|---|
-| `.filter(p)` | `.filter(p)` | `.filter(p)` |
-| `.map(f)` | `.map(f)` | `.map(f)` |
-| `.find(p)` | `.first(where: p)` | `.firstOrNull(p)` |
-| `.some(p)` | `.contains(where: p)` | `.any(p)` |
-| `.every(p)` | `.allSatisfy(p)` | `.all(p)` |
+| Pyreon (JS) method          | Swift                 | Kotlin                 |
+| --------------------------- | --------------------- | ---------------------- |
+| `.filter(p)`                | `.filter(p)`          | `.filter(p)`           |
+| `.map(f)`                   | `.map(f)`             | `.map(f)`              |
+| `.find(p)`                  | `.first(where: p)`    | `.firstOrNull(p)`      |
+| `.some(p)`                  | `.contains(where: p)` | `.any(p)`              |
+| `.every(p)`                 | `.allSatisfy(p)`      | `.all(p)`              |
 | `.length` / `.length === 0` | `.count` / `.isEmpty` | `.size` / `.isEmpty()` |
-| `.reduce(f, init)` | `.reduce(init, f)` | `.fold(init, f)` |
-| `.includes(x)` | `.contains(x)` | `.contains(x)` |
+| `.reduce(f, init)`          | `.reduce(init, f)`    | `.fold(init, f)`       |
+| `.includes(x)`              | `.contains(x)`        | `.contains(x)`         |
 
 ### Compiler change required
 
@@ -1001,10 +993,10 @@ Pyreon source uses JS-immutable idioms:
 todos.set([...todos(), newTodo])
 
 // Remove
-todos.set(todos().filter(t => t.id !== id))
+todos.set(todos().filter((t) => t.id !== id))
 
 // Replace-one (partial update — closed by G4 #846)
-todos.set(todos().map(t => t.id === id ? { ...t, done: !t.done } : t))
+todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
 ```
 
 These have two valid native emits:
@@ -1080,16 +1072,16 @@ All four mutation functions emit Option A. No compiler change needed beyond what
 
 Mapped to the Phase 0/1 roadmap PR numbers and the in-compiler closure PRs landed 2026-05-19 to 2026-05-21:
 
-| # | Change | Where it lands | Status |
-|---|---|---|---|
-| 1 | TextField two-way binding emission (Swift `$` Binding) | [#842](https://github.com/pyreon/pyreon/pull/842) | ✓ CLOSED |
-| 2 | Keyboard event handling (`onKeyDown` Enter → `.onSubmit` / `keyboardActions`) | [#844](https://github.com/pyreon/pyreon/pull/844) | ✓ CLOSED |
-| 3 | Array mutation idioms (faithful spread vs idiomatic mutation) — design decision | This doc (G3 deliberation above) | ✓ DECIDED (Option A immutable-spread) |
-| 4 | Object-in-array partial updates (`.map(t => t.id === id ? {...t, F: V} : t)`) | [#846](https://github.com/pyreon/pyreon/pull/846) (cascade-merged via #844) | ✓ CLOSED |
-| 5 | `@pyreon/storage` `useStorage<T>` → Swift `@AppStorage` / Kotlin `rememberSaveable` | [#849](https://github.com/pyreon/pyreon/pull/849) | ✓ CLOSED (in-compiler scope; Phase 2 needs Codable bridge for non-RawRepresentable types) |
-| 6 | String-literal union → native enum | [#835](https://github.com/pyreon/pyreon/pull/835) | ✓ CLOSED |
-| 7 | Conditional dimension expression hoisting on rocketstyle | Phase 3 (rocketstyle conditional dimension emit) | ⏸ DEFERRED |
-| 8 | URL hash / router cross-platform sync | Phase 3 (`@pyreon/router-ios` / `@pyreon/router-android` packages) | ⏸ DEFERRED |
+| #   | Change                                                                              | Where it lands                                                              | Status                                                                                    |
+| --- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 1   | TextField two-way binding emission (Swift `$` Binding)                              | [#842](https://github.com/pyreon/pyreon/pull/842)                           | ✓ CLOSED                                                                                  |
+| 2   | Keyboard event handling (`onKeyDown` Enter → `.onSubmit` / `keyboardActions`)       | [#844](https://github.com/pyreon/pyreon/pull/844)                           | ✓ CLOSED                                                                                  |
+| 3   | Array mutation idioms (faithful spread vs idiomatic mutation) — design decision     | This doc (G3 deliberation above)                                            | ✓ DECIDED (Option A immutable-spread)                                                     |
+| 4   | Object-in-array partial updates (`.map(t => t.id === id ? {...t, F: V} : t)`)       | [#846](https://github.com/pyreon/pyreon/pull/846) (cascade-merged via #844) | ✓ CLOSED                                                                                  |
+| 5   | `@pyreon/storage` `useStorage<T>` → Swift `@AppStorage` / Kotlin `rememberSaveable` | [#849](https://github.com/pyreon/pyreon/pull/849)                           | ✓ CLOSED (in-compiler scope; Phase 2 needs Codable bridge for non-RawRepresentable types) |
+| 6   | String-literal union → native enum                                                  | [#835](https://github.com/pyreon/pyreon/pull/835)                           | ✓ CLOSED                                                                                  |
+| 7   | Conditional dimension expression hoisting on rocketstyle                            | Phase 3 (rocketstyle conditional dimension emit)                            | ⏸ DEFERRED                                                                                |
+| 8   | URL hash / router cross-platform sync                                               | Phase 3 (`@pyreon/router-ios` / `@pyreon/router-android` packages)          | ⏸ DEFERRED                                                                                |
 
 **6 of 8 gaps CLOSED** (G1 / G2 / G3 / G4 / G5 / G6). Two (G7 rocketstyle conditional, G8 router URL-hash) remain Phase 3 work — they require either deeper rocketstyle emit refactoring or new cross-platform abstraction packages outside the compiler core.
 

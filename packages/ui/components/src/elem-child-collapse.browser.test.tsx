@@ -113,7 +113,11 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
     const provRoot = document.createElement('div')
     document.body.appendChild(provRoot)
     const provDispose = mount(
-      h(PyreonUI, { theme, mode: 'light' as const }, h('div', { id: 'host' })) as unknown as VNodeChild,
+      h(
+        PyreonUI,
+        { theme, mode: 'light' as const },
+        h('div', { id: 'host' }),
+      ) as unknown as VNodeChild,
       provRoot,
     )
     await flush()
@@ -122,7 +126,11 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
     perfHarness.reset()
     const b0 = perfHarness.snapshot()
     const baseDispose = mount(
-      h(Button, { state: 'primary', size: 'large' }, h('span', { class: 'ico' }, 'Save')) as unknown as VNodeChild,
+      h(
+        Button,
+        { state: 'primary', size: 'large' },
+        h('span', { class: 'ico' }, 'Save'),
+      ) as unknown as VNodeChild,
       host,
     )
     await flush()
@@ -174,7 +182,11 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
     const provRoot = document.createElement('div')
     document.body.appendChild(provRoot)
     const provDispose = mount(
-      h(PyreonUI, { theme, mode: 'light' as const }, h('div', { id: 'host' })) as unknown as VNodeChild,
+      h(
+        PyreonUI,
+        { theme, mode: 'light' as const },
+        h('div', { id: 'host' }),
+      ) as unknown as VNodeChild,
       provRoot,
     )
     await flush()
@@ -184,7 +196,11 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
       const t0 = performance.now()
       const ds = Array.from({ length: N }, () =>
         mount(
-          h(Button, { state: 'primary', size: 'large' }, h('span', { class: 'ico' }, 'Save')) as unknown as VNodeChild,
+          h(
+            Button,
+            { state: 'primary', size: 'large' },
+            h('span', { class: 'ico' }, 'Save'),
+          ) as unknown as VNodeChild,
           host,
         ),
       )
@@ -203,9 +219,12 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
       const t0 = performance.now()
       const ds = Array.from({ length: N }, () =>
         mount(
-          _rsCollapse(templateHtml, resolvedClass, resolvedClass, () => false) as unknown as Parameters<
-            typeof mount
-          >[0],
+          _rsCollapse(
+            templateHtml,
+            resolvedClass,
+            resolvedClass,
+            () => false,
+          ) as unknown as Parameters<typeof mount>[0],
           colRoot,
         ),
       )

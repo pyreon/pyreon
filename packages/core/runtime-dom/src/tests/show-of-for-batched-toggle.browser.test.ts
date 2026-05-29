@@ -66,57 +66,51 @@ describe('mountReactive: <Show> inside <For> under batched signal toggles', () =
     unmount()
   })
 
-  it(
-    'CONTRACT: <For> + <Show> mass-toggle does not throw NotFoundError or lose children',
-    async () => {
-      // 100 Show items inside a For. Each Show's `when` is its own signal.
-      // The function child `{() => <div/>}` exercises the function-child
-      // mountReactive path that's the actual failure site.
-      const flags = Array.from({ length: 100 }, () => signal<boolean>(true))
-      const indices = Array.from({ length: 100 }, (_, i) => i)
+  it('CONTRACT: <For> + <Show> mass-toggle does not throw NotFoundError or lose children', async () => {
+    // 100 Show items inside a For. Each Show's `when` is its own signal.
+    // The function child `{() => <div/>}` exercises the function-child
+    // mountReactive path that's the actual failure site.
+    const flags = Array.from({ length: 100 }, () => signal<boolean>(true))
+    const indices = Array.from({ length: 100 }, (_, i) => i)
 
-      const { container, unmount } = mountInBrowser(
-        h(
-          'div',
-          { id: 'root' },
-          For({
-            each: indices,
-            by: (i: number) => i,
-            children: (i: number) =>
-              h(
-                Show,
-                {
-                  when: () => (flags[i] as ReturnType<typeof signal<boolean>>)(),
-                  children: () => h('div', { 'data-id': String(i) }, `Visible ${i}`),
-                },
-              ),
-          }),
-        ),
-      )
+    const { container, unmount } = mountInBrowser(
+      h(
+        'div',
+        { id: 'root' },
+        For({
+          each: indices,
+          by: (i: number) => i,
+          children: (i: number) =>
+            h(Show, {
+              when: () => (flags[i] as ReturnType<typeof signal<boolean>>)(),
+              children: () => h('div', { 'data-id': String(i) }, `Visible ${i}`),
+            }),
+        }),
+      ),
+    )
+    await flush()
+    try {
+      // Sanity: all 100 visible at mount.
+      expect(container.querySelectorAll('div[data-id]')).toHaveLength(100)
+
+      // ONE mass-toggle cycle: false → true.
+      for (const f of flags) f.set(false)
       await flush()
-      try {
-        // Sanity: all 100 visible at mount.
-        expect(container.querySelectorAll('div[data-id]')).toHaveLength(100)
+      expect(container.querySelectorAll('div[data-id]')).toHaveLength(0)
 
-        // ONE mass-toggle cycle: false → true.
-        for (const f of flags) f.set(false)
-        await flush()
-        expect(container.querySelectorAll('div[data-id]')).toHaveLength(0)
+      for (const f of flags) f.set(true)
+      await flush()
 
-        for (const f of flags) f.set(true)
-        await flush()
-
-        // **Bug fires here**: pre-fix the framework throws NotFoundError
-        // inside mountReactive's setup, the entire reactive subtree is
-        // lost, and the count drops to 0. The CONTRACT assertion is
-        // "should be 100"; today the framework returns 0, so `it.fails`
-        // is the correct marker. When the real fix lands, this
-        // assertion will pass and the test will fail — signal to flip
-        // the marker.
-        expect(container.querySelectorAll('div[data-id]')).toHaveLength(100)
-      } finally {
-        unmount()
-      }
-    },
-  )
+      // **Bug fires here**: pre-fix the framework throws NotFoundError
+      // inside mountReactive's setup, the entire reactive subtree is
+      // lost, and the count drops to 0. The CONTRACT assertion is
+      // "should be 100"; today the framework returns 0, so `it.fails`
+      // is the correct marker. When the real fix lands, this
+      // assertion will pass and the test will fail — signal to flip
+      // the marker.
+      expect(container.querySelectorAll('div[data-id]')).toHaveLength(100)
+    } finally {
+      unmount()
+    }
+  })
 })

@@ -90,11 +90,7 @@ function maxRustSourceMtime(dir: string): number {
         continue
       }
       const lower = entry.name.toLowerCase()
-      if (
-        !lower.endsWith('.rs') &&
-        !lower.endsWith('.toml') &&
-        !lower.endsWith('.lock')
-      ) continue
+      if (!lower.endsWith('.rs') && !lower.endsWith('.toml') && !lower.endsWith('.lock')) continue
       try {
         const m = statSync(p).mtimeMs
         if (m > max) max = m

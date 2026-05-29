@@ -211,9 +211,9 @@ export function expandRoutesForLocales(
   for (const locale of locales) validateLocale(locale)
   validateLocale(defaultLocale)
   if (
-    strategy === 'prefix-except-default'
-    && locales.length === 1
-    && locales[0] === defaultLocale
+    strategy === 'prefix-except-default' &&
+    locales.length === 1 &&
+    locales[0] === defaultLocale
   ) {
     return routes
   }
@@ -247,11 +247,7 @@ export function expandRoutesForLocales(
       // Under `prefix` strategy this skip does NOT apply: there is no
       // unprefixed default to inherit from, so every locale needs its
       // own root layout (`/en/_layout`, `/de/_layout`, …).
-      if (
-        strategy === 'prefix-except-default'
-        && route.isLayout
-        && route.urlPath === '/'
-      ) {
+      if (strategy === 'prefix-except-default' && route.isLayout && route.urlPath === '/') {
         continue
       }
 
@@ -356,12 +352,7 @@ export function createLocaleContext(
     defaultLocale: config.defaultLocale,
 
     localePath(targetPath: string, targetLocale?: string) {
-      return buildLocalePath(
-        targetPath,
-        targetLocale ?? locale,
-        config.defaultLocale,
-        strategy,
-      )
+      return buildLocalePath(targetPath, targetLocale ?? locale, config.defaultLocale, strategy)
     },
 
     alternates() {
@@ -425,11 +416,7 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
           return next()
         }
 
-        const { locale } = extractLocaleFromPath(
-          url,
-          config.locales,
-          config.defaultLocale,
-        )
+        const { locale } = extractLocaleFromPath(url, config.locales, config.defaultLocale)
 
         // Redirect root to detected locale
         if (detectEnabled && url === '/') {
@@ -440,9 +427,10 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
             config.locales,
             config.defaultLocale,
           )
-          const preferred = preferredFromCookie && config.locales.includes(preferredFromCookie)
-            ? preferredFromCookie
-            : preferredFromHeader
+          const preferred =
+            preferredFromCookie && config.locales.includes(preferredFromCookie)
+              ? preferredFromCookie
+              : preferredFromHeader
 
           if (strategy === 'prefix' || preferred !== config.defaultLocale) {
             res.writeHead(302, { Location: `/${preferred}/` })
@@ -506,10 +494,7 @@ export function useLocale(): string {
  * <button onClick={() => setLocale('de')}>Deutsch</button>
  * ```
  */
-export function setLocale(
-  locale: string,
-  config: I18nRoutingConfig,
-): void {
+export function setLocale(locale: string, config: I18nRoutingConfig): void {
   localeSignal.set(locale)
 
   // Persist to cookie

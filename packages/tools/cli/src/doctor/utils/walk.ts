@@ -15,15 +15,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 const SOURCE_EXTENSIONS = new Set(['.tsx', '.jsx', '.ts', '.js'])
-const IGNORE_DIRS = new Set([
-  'node_modules',
-  'dist',
-  'lib',
-  '.pyreon',
-  '.git',
-  '.next',
-  'build',
-])
+const IGNORE_DIRS = new Set(['node_modules', 'dist', 'lib', '.pyreon', '.git', '.next', 'build'])
 
 const shouldSkipDirEntry = (entry: fs.Dirent): boolean => {
   if (!entry.isDirectory()) return false
@@ -44,15 +36,11 @@ const walk = (dir: string, results: string[]): void => {
     const fullPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
       walk(fullPath, results)
-    } else if (
-      entry.isFile() &&
-      SOURCE_EXTENSIONS.has(path.extname(entry.name))
-    ) {
+    } else if (entry.isFile() && SOURCE_EXTENSIONS.has(path.extname(entry.name))) {
       results.push(fullPath)
     }
   }
 }
-
 
 // ─── Objective first-party scope ─────────────────────────────────────────────
 //
@@ -97,9 +85,7 @@ export const isFirstPartySourceFile = (filePath: string): boolean => {
  *  flagging `useState`/`className`/etc. there is a definitional false
  *  positive (the package exists precisely to expose those names). */
 export const isCompatPackageFile = (filePath: string): boolean =>
-  /(^|\/)packages\/[^/]+\/[a-z]+-compat\/src\//.test(
-    filePath.replace(/\\/g, '/'),
-  )
+  /(^|\/)packages\/[^/]+\/[a-z]+-compat\/src\//.test(filePath.replace(/\\/g, '/'))
 
 /**
  * Collect ONLY first-party published-package source files under `cwd`

@@ -8,15 +8,13 @@ import { Image, Section, SectionHeader } from '../base'
 import { element, text } from '../core'
 import { timelineItems } from '../../content'
 
-const List = element
-  .attrs({ tag: 'ol', direction: 'rows', gap: 24 })
-  .theme((t) => ({
-    listStyle: 'none',
-    padding: t.space.reset,
-    margin: t.space.reset,
-    maxWidth: 900,
-    width: { xs: '90%', lg: '100%' },
-  }))
+const List = element.attrs({ tag: 'ol', direction: 'rows', gap: 24 }).theme((t) => ({
+  listStyle: 'none',
+  padding: t.space.reset,
+  margin: t.space.reset,
+  maxWidth: 900,
+  width: { xs: '90%', lg: '100%' },
+}))
 
 const Item = element
   .attrs({ tag: 'li', direction: 'inline', alignY: 'center', gap: 24 })
@@ -35,20 +33,16 @@ const Item = element
     },
   }))
 
-const ItemBody = element
-  .attrs({ direction: 'rows', alignX: 'left' })
-  .theme(() => ({
-    flex: 1,
-  }))
+const ItemBody = element.attrs({ direction: 'rows', alignX: 'left' }).theme(() => ({
+  flex: 1,
+}))
 
-const ItemTitle = element
-  .attrs({ tag: 'h3' })
-  .theme((t) => ({
-    fontFamily: t.fontFamily.base,
-    fontSize: t.fontSize.medium,
-    fontWeight: 600,
-    margin: t.space.reset,
-  }))
+const ItemTitle = element.attrs({ tag: 'h3' }).theme((t) => ({
+  fontFamily: t.fontFamily.base,
+  fontSize: t.fontSize.medium,
+  fontWeight: 600,
+  margin: t.space.reset,
+}))
 
 const ItemSubtitle = text.theme((t) => ({
   fontSize: t.fontSize.base,
@@ -71,9 +65,8 @@ const ItemDescription = text.theme((t) => ({
 const TimelineList = () => (
   <Section id="timeline-list">
     <SectionHeader title="Timeline">
-      A vertical timeline with mixed-content cards. Each row flips from
-      stacked (xs) to side-by-side (md+) — tests the responsive
-      flexDirection swap.
+      A vertical timeline with mixed-content cards. Each row flips from stacked (xs) to side-by-side
+      (md+) — tests the responsive flexDirection swap.
     </SectionHeader>
     <List>
       {timelineItems.map((item) => (

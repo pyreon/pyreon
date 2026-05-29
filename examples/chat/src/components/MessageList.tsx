@@ -79,33 +79,38 @@ export default function MessageList(props: MessageListProps) {
         style={() => `height: ${v.totalSize()}px; position: relative;`}
       >
         {() =>
-          (v.virtualItems() as Array<{ index: number; key: string | number; start: number; size: number }>).map(
-            (vi) => {
-              const m = props.messages[vi.index]
-              if (!m) return null
-              return (
-                <article
-                  class={`message ${m.own ? 'message-own' : ''} ${m.pending ? 'message-pending' : ''}`}
-                  data-message-id={m.id}
-                  data-testid={`message-${m.id}`}
-                  style={`position:absolute;top:0;left:0;right:0;transform:translateY(${vi.start}px);min-height:${vi.size}px;`}
-                >
-                  <div class="message-meta">
-                    <span class="message-author" style={`color:${m.authorColor}`}>
-                      {m.author}
-                    </span>
-                    <time class="message-time">
-                      {new Date(m.createdAt).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </time>
-                  </div>
-                  <p class="message-body">{m.body}</p>
-                </article>
-              )
-            },
-          )
+          (
+            v.virtualItems() as Array<{
+              index: number
+              key: string | number
+              start: number
+              size: number
+            }>
+          ).map((vi) => {
+            const m = props.messages[vi.index]
+            if (!m) return null
+            return (
+              <article
+                class={`message ${m.own ? 'message-own' : ''} ${m.pending ? 'message-pending' : ''}`}
+                data-message-id={m.id}
+                data-testid={`message-${m.id}`}
+                style={`position:absolute;top:0;left:0;right:0;transform:translateY(${vi.start}px);min-height:${vi.size}px;`}
+              >
+                <div class="message-meta">
+                  <span class="message-author" style={`color:${m.authorColor}`}>
+                    {m.author}
+                  </span>
+                  <time class="message-time">
+                    {new Date(m.createdAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </time>
+                </div>
+                <p class="message-body">{m.body}</p>
+              </article>
+            )
+          })
         }
       </div>
     </div>

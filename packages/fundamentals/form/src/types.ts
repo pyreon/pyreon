@@ -162,7 +162,9 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
    * (from @pyreon/validation) which preserves type information for compile-time
    * field name validation.
    */
-  schema?: SchemaValidateFn<TValues> | { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues> }
+  schema?:
+    | SchemaValidateFn<TValues>
+    | { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues> }
   /** When to validate: 'blur' (default), 'change', or 'submit'. */
   validateOn?: 'blur' | 'change' | 'submit'
   /** Debounce delay in ms for validators (useful for async validators). */

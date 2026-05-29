@@ -7,7 +7,9 @@ import coreManifest from '../manifest'
 
 describe('gen-docs — core snapshot', () => {
   it('renders @pyreon/core to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(coreManifest)).toMatchInlineSnapshot(`"- @pyreon/core — VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId. Pyreon components are plain functions that execute a single time. Reactivity comes from reading signals inside reactive scopes (JSX expression thunks, \`effect()\`, \`computed()\`), not from re-running the component function. \`if (!cond()) return null\` at the top level runs once and is static — use \`return (() => { if (!cond()) return null; return <div /> })\` for reactive conditional rendering."`)
+    expect(renderLlmsTxtLine(coreManifest)).toMatchInlineSnapshot(
+      `"- @pyreon/core — VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId. Pyreon components are plain functions that execute a single time. Reactivity comes from reading signals inside reactive scopes (JSX expression thunks, \`effect()\`, \`computed()\`), not from re-running the component function. \`if (!cond()) return null\` at the top level runs once and is static — use \`return (() => { if (!cond()) return null; return <div /> })\` for reactive conditional rendering."`,
+    )
   })
 
   it('renders @pyreon/core to its expected llms-full.txt section — full body snapshot', () => {

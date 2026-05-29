@@ -22,7 +22,7 @@ import { s } from '@pyreon/validate'
 // New: declarative case + whitespace transforms — applied before any
 // further checks, so `.trim().min(3)` works the way it reads.
 const handle = s.string().trim().toLowerCase().min(3)
-handle.parse('  Alice  ')   // → { ok: true, value: 'alice' }
+handle.parse('  Alice  ') // → { ok: true, value: 'alice' }
 ```
 
 Internally these are `{ kind: 'transform', fn }` ops with the same

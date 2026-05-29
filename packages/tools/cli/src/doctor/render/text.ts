@@ -10,24 +10,8 @@
  * Colors degrade gracefully — see `ansi.ts:colorEnabled`.
  */
 
-import type {
-  CategoryScore,
-  DoctorReport,
-  Finding,
-  Grade,
-  Severity,
-} from '../types'
-import {
-  bold,
-  cyan,
-  dim,
-  fileUrl,
-  gray,
-  green,
-  hyperlink,
-  red,
-  yellow,
-} from './ansi'
+import type { CategoryScore, DoctorReport, Finding, Grade, Severity } from '../types'
+import { bold, cyan, dim, fileUrl, gray, green, hyperlink, red, yellow } from './ansi'
 import { isAdvisoryCategory } from '../score'
 
 const BAR_WIDTH = 12
@@ -168,11 +152,7 @@ const renderFindings = (report: DoctorReport, topN: number): string => {
   }
 
   if (remaining > 0) {
-    lines.push(
-      dim(
-        `  …and ${remaining} more. Run with ${bold('--json')} for the full list.`,
-      ),
-    )
+    lines.push(dim(`  …and ${remaining} more. Run with ${bold('--json')} for the full list.`))
     lines.push('')
   }
 
@@ -210,10 +190,7 @@ export interface TextRenderOptions {
   topN?: number | undefined
 }
 
-export const renderText = (
-  report: DoctorReport,
-  opts: TextRenderOptions = {},
-): string => {
+export const renderText = (report: DoctorReport, opts: TextRenderOptions = {}): string => {
   const topN = opts.topN ?? 10
   const sections = [
     renderBanner(report),

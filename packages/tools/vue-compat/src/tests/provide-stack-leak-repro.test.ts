@@ -69,7 +69,10 @@ describe('vue-compat — provide/popContext is identity-safe (#725/#729 class)',
     }
 
     for (let i = 0; i < 100; i++) {
-      const unmount = createApp(Root).provide('A', i).provide('B', i + 1000).mount(container)
+      const unmount = createApp(Root)
+        .provide('A', i)
+        .provide('B', i + 1000)
+        .mount(container)
       unmount()
     }
 

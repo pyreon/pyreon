@@ -140,7 +140,7 @@ const feed = useInfiniteQuery(() => ({
       signature:
         '<TData, TError, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
       summary:
-        'Subscribe to a query with fine-grained reactive signals. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack\'s `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.',
+        "Subscribe to a query with fine-grained reactive signals. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack's `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.",
       example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
@@ -202,7 +202,7 @@ const user = useQuery(() => ({
         'Subscribe to multiple queries in parallel. Returns a `Signal<QueryObserverResult[]>` — one entry per input query. Options is a function so the query list can depend on signals (e.g. derive one query per item in a reactive array). Each inner query independently tracks its own `data` / `error` / `isFetching` — the outer signal fires when ANY inner query updates.',
       mistakes: [
         'Expecting per-query fine-grained signals — `useQueries` returns a single combined signal, not individual `UseQueryResult` objects. For independent per-query tracking, call `useQuery` N times',
-        'Passing a static array instead of a function — loses reactive query-list tracking; if the list of IDs changes (e.g. `userIds()` is a signal), the queries won\'t re-evaluate. Always wrap: `useQueries(() => ids().map(...))`',
+        "Passing a static array instead of a function — loses reactive query-list tracking; if the list of IDs changes (e.g. `userIds()` is a signal), the queries won't re-evaluate. Always wrap: `useQueries(() => ids().map(...))`",
       ],
       example: `const results = useQueries(() =>
   userIds().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
@@ -227,7 +227,7 @@ const user = useQuery(() => ({
 // sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
 // sub.send(data), sub.close(), sub.reconnect()`,
       mistakes: [
-        '`onMessage` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you\'ll trigger N refetches per second',
+        "`onMessage` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you'll trigger N refetches per second",
         'Storing data in a parallel signal instead of using `queryClient.setQueryData` inside `onMessage` — defeats the QueryClient cache; use `setQueryData` to push updates into the same cache that `useQuery` reads',
         'Forgetting `enabled: false` on unmount-sensitive connections — the WebSocket stays open unless `enabled` is a signal that tracks component lifecycle or a reactive condition',
       ],
@@ -240,7 +240,7 @@ const user = useQuery(() => ({
       summary:
         'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation.',
       mistakes: [
-        'Passing `queryKey` (TanStack v4 pattern) instead of using `onMessage` for cache integration — Pyreon\'s `useSSE` does NOT auto-update query cache; use `queryClient.setQueryData` or `invalidateQueries` inside `onMessage`',
+        "Passing `queryKey` (TanStack v4 pattern) instead of using `onMessage` for cache integration — Pyreon's `useSSE` does NOT auto-update query cache; use `queryClient.setQueryData` or `invalidateQueries` inside `onMessage`",
         'Omitting `parse` and expecting typed data — without `parse`, `data()` is `string` (raw event payload); pass `parse: JSON.parse` for auto-deserialization',
       ],
       example: `const sse = useSSE({
@@ -331,7 +331,8 @@ const user = useQuery(() => ({
       name: 'useIsMutating',
       kind: 'hook',
       signature: '(filters?: MutationFilters) => Signal<number>',
-      summary: 'Global reactive count of currently-running mutations (optionally filtered by `MutationFilters`). Same pattern as `useIsFetching` but for the mutation pipeline. Returns `Signal<number>` — zero when no mutations are in flight.',
+      summary:
+        'Global reactive count of currently-running mutations (optionally filtered by `MutationFilters`). Same pattern as `useIsFetching` but for the mutation pipeline. Returns `Signal<number>` — zero when no mutations are in flight.',
       example: `const mutating = useIsMutating()
 // <Banner visible={() => mutating() > 0}>Saving…</Banner>`,
       seeAlso: ['useIsFetching'],
@@ -356,7 +357,7 @@ const user = useQuery(() => ({
       kind: 'hook',
       signature: '() => { reset: () => void }',
       summary:
-        'Imperative access to the nearest `QueryErrorResetBoundary`. Returns `{ reset }` — call `reset()` to clear errored queries in the subtree. Useful when an error fallback has its own retry button outside the render-prop form of `QueryErrorResetBoundary`, e.g. inside a standalone `ErrorBoundary` fallback component that isn\'t a direct child of the boundary.',
+        "Imperative access to the nearest `QueryErrorResetBoundary`. Returns `{ reset }` — call `reset()` to clear errored queries in the subtree. Useful when an error fallback has its own retry button outside the render-prop form of `QueryErrorResetBoundary`, e.g. inside a standalone `ErrorBoundary` fallback component that isn't a direct child of the boundary.",
       example: `const { reset } = useQueryErrorResetBoundary()
 // Inside an ErrorBoundary fallback:
 <button onClick={() => { reset(); retry() }}>Try again</button>`,

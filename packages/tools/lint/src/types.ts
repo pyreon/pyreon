@@ -159,12 +159,7 @@ export interface LintConfigFile {
   exclude?: string[] | undefined
 }
 
-export type PresetName =
-  | 'recommended'
-  | 'strict'
-  | 'app'
-  | 'lib'
-  | 'best-practices'
+export type PresetName = 'recommended' | 'strict' | 'app' | 'lib' | 'best-practices'
 
 // ── Results ─────────────────────────────────────────────────────────────────
 

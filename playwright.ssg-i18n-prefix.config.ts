@@ -40,9 +40,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  */
 export default definePlaywrightConfig({
   timeout: 60_000,
-  projects: [
-    { name: 'ssg-i18n-prefix', testMatch: /ssg-i18n-prefix\.spec\.ts$/, port: 5200 },
-  ],
+  projects: [{ name: 'ssg-i18n-prefix', testMatch: /ssg-i18n-prefix\.spec\.ts$/, port: 5200 }],
   webServer: [
     {
       // Build the `prefix`-strategy i18n dist, then serve via the

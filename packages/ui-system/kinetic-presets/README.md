@@ -38,46 +38,46 @@ import { fadeUp, scaleIn, bounceIn } from '@pyreon/kinetic-presets'
 
 // Map access
 import { presets } from '@pyreon/kinetic-presets'
-const name = userChoice  // 'fadeUp' | 'scaleIn' | ...
+const name = userChoice // 'fadeUp' | 'scaleIn' | ...
 kinetic('div').preset(presets[name])
 ```
 
 ### Categories
 
-| Category | Presets |
-|---|---|
-| **Fades** (14) | `fade`, `fadeUp`, `fadeDown`, `fadeLeft`, `fadeRight`, `fadeUpBig`, `fadeDownBig`, `fadeLeftBig`, `fadeRightBig`, `fadeScale`, `fadeUpLeft`, `fadeUpRight`, `fadeDownLeft`, `fadeDownRight` |
-| **Slides** (8) | `slideUp`, `slideDown`, `slideLeft`, `slideRight`, `slideUpBig`, `slideDownBig`, `slideLeftBig`, `slideRightBig` |
-| **Scales** (8) | `scaleIn`, `scaleOut`, `scaleUp`, `scaleDown`, `scaleInUp`, `scaleInDown`, `scaleInLeft`, `scaleInRight` |
-| **Zooms** (10) | `zoomIn`, `zoomOut`, `zoomInUp`, `zoomInDown`, `zoomInLeft`, `zoomInRight`, `zoomOutUp`, `zoomOutDown`, `zoomOutLeft`, `zoomOutRight` |
-| **Flips** (6) | `flipX`, `flipY`, `flipXReverse`, `flipYReverse`, `flipDiagonal`, `flipDiagonalReverse` |
-| **Rotations** (8) | `rotateIn`, `rotateInReverse`, `rotateInUp`, `rotateInDown`, `spinIn`, `spinInReverse`, `scaleRotateIn`, `newspaperIn` |
-| **Bounce / Spring / Pop** (10) | `bounceIn`, `bounceInUp`, `bounceInDown`, `bounceInLeft`, `bounceInRight`, `springIn`, `popIn`, `rubberIn`, `squishX`, `squishY` |
-| **Blur** (6) | `blurIn`, `blurInUp`, `blurInDown`, `blurInLeft`, `blurInRight`, `blurScale` |
-| **Puff** (2) | `puffIn`, `puffOut` |
-| **Clip path** (8) | `clipTop`, `clipBottom`, `clipLeft`, `clipRight`, `clipCircle`, `clipCenter`, `clipDiamond`, `clipCorner` |
-| **Perspective** (4) | `perspectiveUp`, `perspectiveDown`, `perspectiveLeft`, `perspectiveRight` |
-| **Tilt** (4) | `tiltInUp`, `tiltInDown`, `tiltInLeft`, `tiltInRight` |
-| **Swing** (4) | `swingInTop`, `swingInBottom`, `swingInLeft`, `swingInRight` |
-| **Slit** (2) | `slitHorizontal`, `slitVertical` |
-| **Swirl** (2) | `swirlIn`, `swirlInReverse` |
-| **Back** (4) | `backInUp`, `backInDown`, `backInLeft`, `backInRight` |
-| **Light speed** (2) | `lightSpeedInLeft`, `lightSpeedInRight` |
-| **Roll** (2) | `rollInLeft`, `rollInRight` |
-| **Fly** (4) | `flyInUp`, `flyInDown`, `flyInLeft`, `flyInRight` |
-| **Float** (4) | `floatUp`, `floatDown`, `floatLeft`, `floatRight` |
-| **Push** (2) | `pushInLeft`, `pushInRight` |
-| **Expand** (2) | `expandX`, `expandY` |
-| **Skew** (4) | `skewIn`, `skewInReverse`, `skewInY`, `skewInYReverse` |
-| **Drop / Rise** (2) | `drop`, `rise` |
+| Category                       | Presets                                                                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fades** (14)                 | `fade`, `fadeUp`, `fadeDown`, `fadeLeft`, `fadeRight`, `fadeUpBig`, `fadeDownBig`, `fadeLeftBig`, `fadeRightBig`, `fadeScale`, `fadeUpLeft`, `fadeUpRight`, `fadeDownLeft`, `fadeDownRight` |
+| **Slides** (8)                 | `slideUp`, `slideDown`, `slideLeft`, `slideRight`, `slideUpBig`, `slideDownBig`, `slideLeftBig`, `slideRightBig`                                                                            |
+| **Scales** (8)                 | `scaleIn`, `scaleOut`, `scaleUp`, `scaleDown`, `scaleInUp`, `scaleInDown`, `scaleInLeft`, `scaleInRight`                                                                                    |
+| **Zooms** (10)                 | `zoomIn`, `zoomOut`, `zoomInUp`, `zoomInDown`, `zoomInLeft`, `zoomInRight`, `zoomOutUp`, `zoomOutDown`, `zoomOutLeft`, `zoomOutRight`                                                       |
+| **Flips** (6)                  | `flipX`, `flipY`, `flipXReverse`, `flipYReverse`, `flipDiagonal`, `flipDiagonalReverse`                                                                                                     |
+| **Rotations** (8)              | `rotateIn`, `rotateInReverse`, `rotateInUp`, `rotateInDown`, `spinIn`, `spinInReverse`, `scaleRotateIn`, `newspaperIn`                                                                      |
+| **Bounce / Spring / Pop** (10) | `bounceIn`, `bounceInUp`, `bounceInDown`, `bounceInLeft`, `bounceInRight`, `springIn`, `popIn`, `rubberIn`, `squishX`, `squishY`                                                            |
+| **Blur** (6)                   | `blurIn`, `blurInUp`, `blurInDown`, `blurInLeft`, `blurInRight`, `blurScale`                                                                                                                |
+| **Puff** (2)                   | `puffIn`, `puffOut`                                                                                                                                                                         |
+| **Clip path** (8)              | `clipTop`, `clipBottom`, `clipLeft`, `clipRight`, `clipCircle`, `clipCenter`, `clipDiamond`, `clipCorner`                                                                                   |
+| **Perspective** (4)            | `perspectiveUp`, `perspectiveDown`, `perspectiveLeft`, `perspectiveRight`                                                                                                                   |
+| **Tilt** (4)                   | `tiltInUp`, `tiltInDown`, `tiltInLeft`, `tiltInRight`                                                                                                                                       |
+| **Swing** (4)                  | `swingInTop`, `swingInBottom`, `swingInLeft`, `swingInRight`                                                                                                                                |
+| **Slit** (2)                   | `slitHorizontal`, `slitVertical`                                                                                                                                                            |
+| **Swirl** (2)                  | `swirlIn`, `swirlInReverse`                                                                                                                                                                 |
+| **Back** (4)                   | `backInUp`, `backInDown`, `backInLeft`, `backInRight`                                                                                                                                       |
+| **Light speed** (2)            | `lightSpeedInLeft`, `lightSpeedInRight`                                                                                                                                                     |
+| **Roll** (2)                   | `rollInLeft`, `rollInRight`                                                                                                                                                                 |
+| **Fly** (4)                    | `flyInUp`, `flyInDown`, `flyInLeft`, `flyInRight`                                                                                                                                           |
+| **Float** (4)                  | `floatUp`, `floatDown`, `floatLeft`, `floatRight`                                                                                                                                           |
+| **Push** (2)                   | `pushInLeft`, `pushInRight`                                                                                                                                                                 |
+| **Expand** (2)                 | `expandX`, `expandY`                                                                                                                                                                        |
+| **Skew** (4)                   | `skewIn`, `skewInReverse`, `skewInY`, `skewInYReverse`                                                                                                                                      |
+| **Drop / Rise** (2)            | `drop`, `rise`                                                                                                                                                                              |
 
 ## Factories — parameterized presets
 
 ### `createFade(options?)`
 
 ```ts
-createFade()                                    // Pure opacity fade
-createFade({ direction: 'up', distance: 24 })   // Fade with movement
+createFade() // Pure opacity fade
+createFade({ direction: 'up', distance: 24 }) // Fade with movement
 createFade({ duration: 500, easing: 'ease-in-out' })
 ```
 
@@ -95,7 +95,7 @@ Options: `direction?` (default `'up'`), `distance?` (default 16), plus the timin
 
 ```ts
 createScale({ from: 0.5, duration: 400 })
-createScale({ from: 0.8, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' })  // spring bounce
+createScale({ from: 0.8, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }) // spring bounce
 ```
 
 Options: `from?: number` (default 0.9).
@@ -104,7 +104,7 @@ Options: `from?: number` (default 0.9).
 
 ```ts
 createRotate({ degrees: 30, duration: 400 })
-createRotate({ degrees: -90 })  // counter-clockwise
+createRotate({ degrees: -90 }) // counter-clockwise
 ```
 
 Options: `degrees?: number` (default 15).
@@ -113,7 +113,7 @@ Options: `degrees?: number` (default 15).
 
 ```ts
 createBlur({ amount: 12, duration: 400 })
-createBlur({ amount: 8, scale: 0.95 })  // blur with scale
+createBlur({ amount: 8, scale: 0.95 }) // blur with scale
 ```
 
 Options: `amount?: number` (px, default 8), `scale?: number` (optional scale factor).

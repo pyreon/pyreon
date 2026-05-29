@@ -752,7 +752,7 @@ In Pyreon, components run once. A plain variable assignment from props captures 
 // Before this feature — x was static:
 function Greeting(props) {
   const x = props.name ?? 'World'
-  return <div>{x}</div>  // never updated when props.name changed
+  return <div>{x}</div> // never updated when props.name changed
 }
 ```
 
@@ -771,8 +771,12 @@ function Greeting(props) {
 _tpl('<div></div>', (__root) => {
   const __t0 = document.createTextNode('')
   __root.appendChild(__t0)
-  const __d0 = _bind(() => { __t0.data = (props.name ?? 'World') })
-  return () => { __d0() }
+  const __d0 = _bind(() => {
+    __t0.data = props.name ?? 'World'
+  })
+  return () => {
+    __d0()
+  }
 })
 ```
 
@@ -797,15 +801,15 @@ function Profile(props) {
 
 ### Rules
 
-| Condition | Inlined? | Reason |
-| --- | --- | --- |
-| `const x = props.y` | Yes | Direct props member access |
-| `const x = props.y ?? 'default'` | Yes | Expression containing props access |
-| `const [own, rest] = splitProps(props, ['y'])` then `const x = own.y` | Yes | splitProps results are tracked |
-| `const a = props.x; const b = a + 1` | Yes | Transitive resolution |
-| `let x = props.y` | No | `let` is mutable — unsafe to inline |
-| `var x = props.y` | No | `var` is mutable — unsafe to inline |
-| `console.log(x)` where `x` is prop-derived | No | Non-JSX usage stays static (captured value) |
+| Condition                                                             | Inlined? | Reason                                      |
+| --------------------------------------------------------------------- | -------- | ------------------------------------------- |
+| `const x = props.y`                                                   | Yes      | Direct props member access                  |
+| `const x = props.y ?? 'default'`                                      | Yes      | Expression containing props access          |
+| `const [own, rest] = splitProps(props, ['y'])` then `const x = own.y` | Yes      | splitProps results are tracked              |
+| `const a = props.x; const b = a + 1`                                  | Yes      | Transitive resolution                       |
+| `let x = props.y`                                                     | No       | `let` is mutable — unsafe to inline         |
+| `var x = props.y`                                                     | No       | `var` is mutable — unsafe to inline         |
+| `console.log(x)` where `x` is prop-derived                            | No       | Non-JSX usage stays static (captured value) |
 
 ### Non-JSX Usage
 
@@ -815,8 +819,8 @@ The inlining only applies to JSX text and attribute positions. Using a prop-deri
 function MyComponent(props) {
   const label = props.label ?? 'default'
 
-  console.log(label)          // ✓ Correct — logs the setup-time value
-  return <div>{label}</div>   // ✓ Reactive — compiler inlines props.label ?? 'default'
+  console.log(label) // ✓ Correct — logs the setup-time value
+  return <div>{label}</div> // ✓ Reactive — compiler inlines props.label ?? 'default'
 }
 ```
 
@@ -826,7 +830,7 @@ Each reactive text node in a template now gets its own independent `_bind()` cal
 
 ```tsx
 // Input
-<div>
+;<div>
   <span>{firstName()}</span>
   <span>{lastName()}</span>
 </div>
@@ -837,11 +841,18 @@ _tpl('<div><span></span><span></span></div>', (__root) => {
   const __e1 = __root.children[1]
   const __t0 = document.createTextNode('')
   __e0.appendChild(__t0)
-  const __d0 = _bind(() => { __t0.data = firstName() })
+  const __d0 = _bind(() => {
+    __t0.data = firstName()
+  })
   const __t1 = document.createTextNode('')
   __e1.appendChild(__t1)
-  const __d1 = _bind(() => { __t1.data = lastName() })
-  return () => { __d0(); __d1() }
+  const __d1 = _bind(() => {
+    __t1.data = lastName()
+  })
+  return () => {
+    __d0()
+    __d1()
+  }
 })
 ```
 
@@ -856,12 +867,12 @@ For canonical reactive patterns the compiler emits an **effect-free** subscripti
 ```tsx
 const isSelected = createSelector(selectedId)
 ;<For each={rows} by={(r) => r.id}>
-  {(row) => <tr class={() => isSelected(row.id) ? 'selected' : ''}>...</tr>}
+  {(row) => <tr class={() => (isSelected(row.id) ? 'selected' : '')}>...</tr>}
 </For>
 
 // Compiles to (effect-free per-key fast path):
 const __d0 = isSelected.subscribe(row.id, (m) => {
-  __root.className = (m ? 'selected' : '')
+  __root.className = m ? 'selected' : ''
 })
 
 // Instead of the default _bind(() => …) shape:
@@ -875,13 +886,13 @@ The runtime API (`createSelector.subscribe`) ships with `@pyreon/reactivity` 0.2
 ### `selector(k) ? a : b` ternary as a text-child (PR #899)
 
 ```tsx
-<For each={rows} by={(r) => r.id}>
-  {(row) => <td>{() => isSelected(row.id) ? '✓' : ''}</td>}
+;<For each={rows} by={(r) => r.id}>
+  {(row) => <td>{() => (isSelected(row.id) ? '✓' : '')}</td>}
 </For>
 
 // Compiles to:
 const __d0 = isSelected.subscribe(row.id, (m) => {
-  __t0.data = (m ? '✓' : '')
+  __t0.data = m ? '✓' : ''
 })
 ```
 
@@ -897,9 +908,15 @@ const name = signal('hello')
 ;<code>{n().toString(16)}</code>
 
 // Compile to (subscribes directly to the signal, applies formatter in updater):
-const __d0 = _bindDirect(count, (v) => { __t0.data = v.toFixed(2) })
-const __d1 = _bindDirect(name, (v) => { __t1.data = v.toUpperCase() })
-const __d2 = _bindDirect(n, (v) => { __t2.data = v.toString(16) })
+const __d0 = _bindDirect(count, (v) => {
+  __t0.data = v.toFixed(2)
+})
+const __d1 = _bindDirect(name, (v) => {
+  __t1.data = v.toUpperCase()
+})
+const __d2 = _bindDirect(n, (v) => {
+  __t2.data = v.toString(16)
+})
 ```
 
 Detects `signalRef().method(...staticArgs)` where the method is in a curated safelist of pure Number / String / Boolean prototype methods (`toFixed`, `toExponential`, `toPrecision`, `toString`, `valueOf`, `toUpperCase`, `toLowerCase`, `toLocaleUpperCase`, `toLocaleLowerCase`, `trim`, `trimStart`, `trimEnd`, `slice`, `substring`, `substr`, `charAt`, `charCodeAt`, `codePointAt`, `padStart`, `padEnd`, `repeat`, `normalize`, `concat`, `startsWith`, `endsWith`, `includes`, `indexOf`, `lastIndexOf`, `at`). The safelist is intentionally narrow — methods that mutate (`Array.sort`) or depend on call-time state are excluded.
@@ -907,6 +924,7 @@ Detects `signalRef().method(...staticArgs)` where the method is in a curated saf
 ### Bail catalog (same shape for all three)
 
 Auto-promotion falls back to `_bind(...)` when:
+
 - The receiver isn't a known signal or `createSelector()` result (tracked at module scope via `signalVars` / `selectorVars` — same scope-awareness as signal auto-call)
 - The selector call has 0 or 2+ arguments (not the standard shape) / the method receiver has args
 - The key, branch, or method args contain a reactive read
@@ -950,7 +968,7 @@ When the root element of a template has spread attributes, the compiler now emit
 
 ```tsx
 // Input
-<div {...props}>
+;<div {...props}>
   <span>{text()}</span>
 </div>
 
@@ -960,8 +978,12 @@ _tpl('<div><span></span></div>', (__root) => {
   const __e0 = __root.children[0]
   const __t0 = document.createTextNode('')
   __e0.appendChild(__t0)
-  const __d0 = _bind(() => { __t0.data = text() })
-  return () => { __d0() }
+  const __d0 = _bind(() => {
+    __t0.data = text()
+  })
+  return () => {
+    __d0()
+  }
 })
 ```
 
@@ -1018,11 +1040,11 @@ The implementation is a single recursive walk that visits every node in the sour
 
 Performance (Pyreon reactive pass only):
 
-| File size | JS fallback | Rust native | Speedup |
-| --- | --- | --- | --- |
-| Small (9 lines) | 112K ops/sec | 410K ops/sec | 3.7x |
-| Medium (24 lines) | 12.6K ops/sec | 103K ops/sec | 8.2x |
-| Large (500+ lines) | 309 ops/sec | 1,544 ops/sec | 5.0x |
+| File size          | JS fallback   | Rust native   | Speedup |
+| ------------------ | ------------- | ------------- | ------- |
+| Small (9 lines)    | 112K ops/sec  | 410K ops/sec  | 3.7x    |
+| Medium (24 lines)  | 12.6K ops/sec | 103K ops/sec  | 8.2x    |
+| Large (500+ lines) | 309 ops/sec   | 1,544 ops/sec | 5.0x    |
 
 ### Native binary loader + per-platform packages
 
@@ -1033,15 +1055,15 @@ Performance (Pyreon reactive pass only):
 
 Currently published platform packages:
 
-| Platform   | Arch    | libc   | Package                                |
-| ---------- | ------- | ------ | -------------------------------------- |
-| `darwin`   | `arm64` | —      | `@pyreon/compiler-darwin-arm64`        |
-| `darwin`   | `x64`   | —      | `@pyreon/compiler-darwin-x64`          |
-| `linux`    | `x64`   | `gnu`  | `@pyreon/compiler-linux-x64-gnu`       |
-| `linux`    | `x64`   | `musl` | `@pyreon/compiler-linux-x64-musl`      |
-| `linux`    | `arm64` | `gnu`  | `@pyreon/compiler-linux-arm64-gnu`     |
-| `linux`    | `arm64` | `musl` | `@pyreon/compiler-linux-arm64-musl`    |
-| `win32`    | `x64`   | —      | `@pyreon/compiler-win32-x64-msvc`      |
+| Platform | Arch    | libc   | Package                             |
+| -------- | ------- | ------ | ----------------------------------- |
+| `darwin` | `arm64` | —      | `@pyreon/compiler-darwin-arm64`     |
+| `darwin` | `x64`   | —      | `@pyreon/compiler-darwin-x64`       |
+| `linux`  | `x64`   | `gnu`  | `@pyreon/compiler-linux-x64-gnu`    |
+| `linux`  | `x64`   | `musl` | `@pyreon/compiler-linux-x64-musl`   |
+| `linux`  | `arm64` | `gnu`  | `@pyreon/compiler-linux-arm64-gnu`  |
+| `linux`  | `arm64` | `musl` | `@pyreon/compiler-linux-arm64-musl` |
+| `win32`  | `x64`   | —      | `@pyreon/compiler-win32-x64-msvc`   |
 
 `detectLibc()` distinguishes glibc vs musl on Linux at load time (necessary because the wrong libc would silently fail to load, not throw). If neither path resolves (CI without the platform package, WASM, or a platform we don't ship for), the call falls through to the JS path silently — `transformJSX()` always returns a result.
 
@@ -1049,10 +1071,10 @@ To diagnose the resolved path in dev: set `DEBUG=pyreon:compiler` and the loader
 
 ## Exports Summary
 
-| Export                | Type     | Description                                               |
-| --------------------- | -------- | --------------------------------------------------------- |
-| `transformJSX`        | Function | Transform JSX source code (auto-selects native or JS)     |
-| `transformJSX_JS`     | Function | JS-only path — bypasses the native binary                 |
-| `loadNativeBinding`   | Function | Resolve the native `.node` binding (or `null` if absent)  |
-| `TransformResult`     | Type     | Interface for the transform output                        |
-| `CompilerWarning`     | Type     | Interface for compiler warning objects                    |
+| Export              | Type     | Description                                              |
+| ------------------- | -------- | -------------------------------------------------------- |
+| `transformJSX`      | Function | Transform JSX source code (auto-selects native or JS)    |
+| `transformJSX_JS`   | Function | JS-only path — bypasses the native binary                |
+| `loadNativeBinding` | Function | Resolve the native `.node` binding (or `null` if absent) |
+| `TransformResult`   | Type     | Interface for the transform output                       |
+| `CompilerWarning`   | Type     | Interface for compiler warning objects                   |

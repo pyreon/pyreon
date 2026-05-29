@@ -26,6 +26,7 @@ We never publish identifying info without your written consent.
 ```
 
 **Required fields at top**:
+
 - Email (for sharing results — won't be published)
 - Name + Company (optional)
 - Audio recording consent for any follow-up call (yes / no / "let's see")
@@ -40,6 +41,7 @@ We never publish identifying info without your written consent.
 **Tell us about your team's current mobile situation. Do you ship a mobile app today? If yes, what framework? If no, why not?**
 
 Examples of useful answers:
+
 - "We ship a React Native app with Expo SDK 50 — 5 engineers, 50k DAU"
 - "We don't ship mobile because our users are desktop-only B2B"
 - "We're evaluating CMP for an iOS app we plan to ship in 2026"
@@ -161,6 +163,7 @@ PMTC's plan defers desktop to "future phases" — would you wait for it, or pick
 **If PMTC didn't exist and you needed to ship a cross-platform app in 2027, what would you pick?**
 
 [Pick one]
+
 - React Native + Expo
 - Flutter
 - Compose Multiplatform

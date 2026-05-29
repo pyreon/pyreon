@@ -174,17 +174,11 @@ describe('runDocClaimsGate', () => {
     // gate's countHookExports() returns hookCount. The regex requires
     // `use[A-Z][a-zA-Z]+` so use letter-only suffixes (no digits).
     const letters = 'abcdefghijklmnopqrstuvwxyz'
-    const exports = Array.from(
-      { length: opts.hookCount },
-      (_, i) => {
-        const name = (letters[i] ?? `Z${i}`).toUpperCase() + letters[i] + 'ook'
-        return `export { useH${name} }`
-      },
-    ).join('\n')
-    fs.writeFileSync(
-      path.join(hooksDir, 'src', 'index.ts'),
-      exports + '\n',
-    )
+    const exports = Array.from({ length: opts.hookCount }, (_, i) => {
+      const name = (letters[i] ?? `Z${i}`).toUpperCase() + letters[i] + 'ook'
+      return `export { useH${name} }`
+    }).join('\n')
+    fs.writeFileSync(path.join(hooksDir, 'src', 'index.ts'), exports + '\n')
 
     if (opts.readmeClaim !== null) {
       fs.writeFileSync(
@@ -227,9 +221,7 @@ describe('runDocClaimsGate', () => {
 
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
-    const drift = result.findings.find((f) =>
-      f.code.endsWith('-drift'),
-    )!
+    const drift = result.findings.find((f) => f.code.endsWith('-drift'))!
     expect(drift).toBeDefined()
     expect(drift.severity).toBe('error')
     expect(drift.message).toContain('claims 99')
@@ -244,15 +236,12 @@ describe('runDocClaimsGate', () => {
     // 3 actual exports; CLAUDE.md row uses the rejected hedged form.
     buildHooksRepo(tmp, {
       hookCount: 3,
-      claudeMdRow:
-        '| `@pyreon/hooks` | 3+ signal-based hooks for stuff |',
+      claudeMdRow: '| `@pyreon/hooks` | 3+ signal-based hooks for stuff |',
     })
 
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
-    const hedged = result.findings.find((f) =>
-      f.code.endsWith('-hedged'),
-    )!
+    const hedged = result.findings.find((f) => f.code.endsWith('-hedged'))!
     expect(hedged).toBeDefined()
     expect(hedged.severity).toBe('error')
     expect(hedged.message).toContain('hedged claim')
@@ -272,9 +261,7 @@ describe('runDocClaimsGate', () => {
 
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
-    const miss = result.findings.find((f) =>
-      f.code === 'doc-claims/hook-count-pattern-miss',
-    )!
+    const miss = result.findings.find((f) => f.code === 'doc-claims/hook-count-pattern-miss')!
     expect(miss).toBeDefined()
     expect(miss.severity).toBe('warning')
     expect(miss.message).toContain('pattern not found')
@@ -288,14 +275,8 @@ describe('runDocClaimsGate', () => {
     // project, but some claim sites have been deleted/moved" shape.
     // Gate walks claims[] and emits file-missing for each absent one.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-gate-'))
-    fs.mkdirSync(
-      path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src'),
-      { recursive: true },
-    )
-    fs.writeFileSync(
-      path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src', 'index.ts'),
-      '',
-    )
+    fs.mkdirSync(path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src'), { recursive: true })
+    fs.writeFileSync(path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src', 'index.ts'), '')
     // Plant one claim file (CLAUDE.md) so the gate doesn't skip.
     // Content is empty so its claims trigger pattern-miss (warning),
     // not file-missing. All OTHER claim files remain absent and
@@ -305,9 +286,7 @@ describe('runDocClaimsGate', () => {
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
     expect(result.meta.skipped).not.toBe(true)
-    const fileMissing = result.findings.filter((f) =>
-      f.code.endsWith('-file-missing'),
-    )
+    const fileMissing = result.findings.filter((f) => f.code.endsWith('-file-missing'))
     expect(fileMissing.length).toBeGreaterThan(0)
     for (const f of fileMissing) {
       expect(f.severity).toBe('error')
@@ -335,9 +314,7 @@ describe('runDocClaimsGate', () => {
 
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
-    const drift = result.findings.find(
-      (f) => f.code === 'doc-claims/lint-rule-count-drift',
-    )!
+    const drift = result.findings.find((f) => f.code === 'doc-claims/lint-rule-count-drift')!
     expect(drift).toBeDefined()
     expect(drift.severity).toBe('error')
     expect(drift.message).toContain('claims 99')
@@ -358,7 +335,7 @@ describe('runDocClaimsGate', () => {
     fs.writeFileSync(
       path.join(rulesDir, '..', 'manifest.ts'),
       "summary: '3 rules across 1 categories. foo'\n" +
-        "// pyreon-lint --list  # list all 3 rules\n" +
+        '// pyreon-lint --list  # list all 3 rules\n' +
         "desc: 'covers stuff — 9 rules total. bar'\n",
     )
     // Plant CLAUDE.md so the gate doesn't skip (no rule claim in it).
@@ -396,9 +373,7 @@ describe('runDocClaimsGate', () => {
     fs.writeFileSync(path.join(tmp, 'CLAUDE.md'), 'no detector claim here\n')
 
     const result = await runDocClaimsGate({ cwd: tmp })
-    const drift = result.findings.find(
-      (f) => f.code === 'doc-claims/detector-code-count-drift',
-    )!
+    const drift = result.findings.find((f) => f.code === 'doc-claims/detector-code-count-drift')!
     expect(drift).toBeDefined()
     expect(drift.message).toContain('claims 12')
     expect(drift.message).toContain('actual 3')
@@ -412,9 +387,7 @@ describe('runDocClaimsGate', () => {
     // recognises this and returns skipped:true rather than flooding
     // findings with spurious file-missing errors for paths that don't
     // apply to the user's project.
-    const tmp = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'pyreon-claims-gate-skip-'),
-    )
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-gate-skip-'))
     // Tmp dir is empty — no Pyreon-shaped files anywhere.
 
     const result = await runDocClaimsGate({ cwd: tmp })
@@ -439,9 +412,7 @@ describe('runAuditLeakClassesGate', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-leak-gate-'))
     const result = await runAuditLeakClassesGate({ cwd: tmp })
     assertGateResultShape(result, 'audit-leak-classes')
-    const failed = result.findings.find(
-      (f) => f.code === 'audit-leak-classes/gate-failed',
-    )
+    const failed = result.findings.find((f) => f.code === 'audit-leak-classes/gate-failed')
     expect(failed).toBeDefined()
     expect(failed?.severity).toBe('error')
     fs.rmSync(tmp, { recursive: true, force: true })
@@ -466,9 +437,7 @@ describe('runAuditTypesGate', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-audit-gate-'))
     const result = await runAuditTypesGate({ cwd: tmp })
     assertGateResultShape(result, 'audit-types')
-    const failed = result.findings.find(
-      (f) => f.code === 'audit-types/gate-failed',
-    )
+    const failed = result.findings.find((f) => f.code === 'audit-types/gate-failed')
     expect(failed).toBeDefined()
     expect(failed?.severity).toBe('error')
     fs.rmSync(tmp, { recursive: true, force: true })
@@ -551,28 +520,17 @@ describe('_detectMapsInPackOutput', () => {
   it('emits tarball-missing-maps finding when the tarball has no .map files', () => {
     const raw = JSON.stringify([
       {
-        files: [
-          { path: 'package.json' },
-          { path: 'lib/index.js' },
-          { path: 'lib/index.d.ts' },
-        ],
+        files: [{ path: 'package.json' }, { path: 'lib/index.js' }, { path: 'lib/index.d.ts' }],
       },
     ])
-    const result = _detectMapsInPackOutput(
-      raw,
-      cwd,
-      probe,
-      '@pyreon/reactivity',
-    )
+    const result = _detectMapsInPackOutput(raw, cwd, probe, '@pyreon/reactivity')
     expect(result).not.toBeNull()
     expect(result!.code).toBe('distribution/tarball-missing-maps')
     expect(result!.severity).toBe('error')
     expect(result!.gate).toBe('distribution')
     expect(result!.message).toContain('@pyreon/reactivity')
     expect(result!.message).toContain('0 .map files')
-    expect(result!.location?.relPath).toBe(
-      'packages/core/reactivity/package.json',
-    )
+    expect(result!.location?.relPath).toBe('packages/core/reactivity/package.json')
   })
 
   it('returns null when .map files are present in the tarball', () => {
@@ -585,12 +543,7 @@ describe('_detectMapsInPackOutput', () => {
         ],
       },
     ])
-    const result = _detectMapsInPackOutput(
-      raw,
-      cwd,
-      probe,
-      '@pyreon/reactivity',
-    )
+    const result = _detectMapsInPackOutput(raw, cwd, probe, '@pyreon/reactivity')
     expect(result).toBeNull()
   })
 
@@ -654,11 +607,7 @@ describe('_parseAuditTypesOutput', () => {
     expect(scanned).toBe(1)
     // OK is suppressed → 3 findings, not 4
     expect(findings).toHaveLength(3)
-    expect(findings.map((f) => f.severity).sort()).toEqual([
-      'error',
-      'info',
-      'warning',
-    ])
+    expect(findings.map((f) => f.severity).sort()).toEqual(['error', 'info', 'warning'])
     const high = findings.find((f) => f.severity === 'error')!
     expect(high.code).toBe('audit-types/typed-but-unimplemented-high')
     expect(high.gate).toBe('audit-types')
@@ -666,12 +615,8 @@ describe('_parseAuditTypesOutput', () => {
     expect(high.message).toContain('@pyreon/zero')
     expect(high.message).toContain('ZeroConfig.mode')
     expect(high.location?.line).toBe(42)
-    expect(high.location?.relPath).toBe(
-      'packages/zero/zero/src/types.ts',
-    )
-    expect(high.location?.path).toBe(
-      '/repo/packages/zero/zero/src/types.ts',
-    )
+    expect(high.location?.relPath).toBe('packages/zero/zero/src/types.ts')
+    expect(high.location?.path).toBe('/repo/packages/zero/zero/src/types.ts')
   })
 
   it('handles empty results array', () => {
@@ -681,9 +626,7 @@ describe('_parseAuditTypesOutput', () => {
   })
 
   it('handles a package with no findings', () => {
-    const raw = JSON.stringify([
-      { package: '@pyreon/router', packageDir: '/repo/p', findings: [] },
-    ])
+    const raw = JSON.stringify([{ package: '@pyreon/router', packageDir: '/repo/p', findings: [] }])
     const { findings, scanned } = _parseAuditTypesOutput(raw, '/repo')
     expect(findings).toEqual([])
     expect(scanned).toBe(1)
@@ -809,15 +752,11 @@ describe('_parseBundleBudgetsOutput', () => {
     expect(over.location?.relPath).toBe('scripts/bundle-budgets.json')
     expect(over.fix).toContain('--update')
 
-    const missing = findings.find(
-      (f) => f.code === 'bundle-budgets/missing-budget',
-    )!
+    const missing = findings.find((f) => f.code === 'bundle-budgets/missing-budget')!
     expect(missing.severity).toBe('warning')
     expect(missing.message).toContain('@pyreon/new')
 
-    const failed = findings.find(
-      (f) => f.code === 'bundle-budgets/bundle-failed',
-    )!
+    const failed = findings.find((f) => f.code === 'bundle-budgets/bundle-failed')!
     expect(failed.severity).toBe('error')
     expect(failed.message).toContain('@pyreon/broken')
     // Only the FIRST line of the error message is surfaced — the
@@ -852,9 +791,7 @@ describe('runBundleBudgetsGate', () => {
     const result = await runBundleBudgetsGate({ cwd: tmp })
     assertGateResultShape(result, 'bundle-budgets')
     expect(result.category).toBe('performance')
-    const failed = result.findings.find(
-      (f) => f.code === 'bundle-budgets/gate-failed',
-    )
+    const failed = result.findings.find((f) => f.code === 'bundle-budgets/gate-failed')
     expect(failed).toBeDefined()
     expect(failed?.severity).toBe('error')
     fs.rmSync(tmp, { recursive: true, force: true })

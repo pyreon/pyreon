@@ -26,9 +26,7 @@ const OWN_KEYS_PREFIX_ARIA = 'aria-'
  * understands, while still letting consumers override raw CSS for
  * the rest.
  */
-export function collectPassthroughAttrs(
-  props: Record<string, unknown>,
-): Record<string, unknown> {
+export function collectPassthroughAttrs(props: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const key in props) {
     if (

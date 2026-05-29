@@ -30,42 +30,41 @@ import {
 
 ### Mock factories
 
-| Export | Purpose |
-|---|---|
-| `mockCss` | No-op CSS tagged template that returns `''` — drop-in for `@pyreon/ui-core`'s `config.css` in tests that don't need rendered CSS. |
-| `mockStyled` | Pass-through `styled` — returns the wrapped component unchanged. |
+| Export                       | Purpose                                                                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mockCss`                    | No-op CSS tagged template that returns `''` — drop-in for `@pyreon/ui-core`'s `config.css` in tests that don't need rendered CSS.                                             |
+| `mockStyled`                 | Pass-through `styled` — returns the wrapped component unchanged.                                                                                                              |
 | `initTestConfig(overrides?)` | Initialize `@pyreon/ui-core` `config` with the mocks. Returns a cleanup fn restoring the original. Pass `{ css, styled, component, textComponent }` to override individually. |
 
 ```ts
 let cleanup: () => void
-beforeAll(() => { cleanup = initTestConfig() })
+beforeAll(() => {
+  cleanup = initTestConfig()
+})
 afterAll(() => cleanup())
 ```
 
 ### Theme context
 
-| Export | Purpose |
-|---|---|
+| Export                           | Purpose                                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `withThemeContext(fn, options?)` | Run `fn()` inside a pushed rocketstyle theme context. Pops on the way out, even when `fn` throws. |
-| `buildThemeContextMap(options?)` | Lower-level — produces a `Map<symbol, unknown>` suitable for `pushContext()` directly. |
-| `TestThemeOptions` | `{ theme?, mode?: 'light' | 'dark', isDark?, isLight? }`. Defaults: `mode: 'light'`, `theme: { rootSize: 16 }`. |
+| `buildThemeContextMap(options?)` | Lower-level — produces a `Map<symbol, unknown>` suitable for `pushContext()` directly.            |
+| `TestThemeOptions`               | `{ theme?, mode?: 'light'                                                                         | 'dark', isDark?, isLight? }`. Defaults: `mode: 'light'`, `theme: { rootSize: 16 }`. |
 
 ```ts
 it('works in dark mode', () => {
-  const theme = withThemeContext(
-    () => Button({ state: 'primary' }),
-    { mode: 'dark' },
-  )
+  const theme = withThemeContext(() => Button({ state: 'primary' }), { mode: 'dark' })
 })
 ```
 
 ### Render helpers
 
-| Export | Purpose |
-|---|---|
-| `getComputedTheme(Component, props?, ctx?)` | Render a rocketstyle component within theme context, resolve and return `$rocketstyle`. |
-| `renderProps(Component, props?, ctx?)` | Same render flow but returns the VNode's resolved props (after `attrs` / `theme` resolution). |
-| `resolveRocketstyle(value)` | Resolve a value that may be a function accessor or a plain object. |
+| Export                                      | Purpose                                                                                       |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `getComputedTheme(Component, props?, ctx?)` | Render a rocketstyle component within theme context, resolve and return `$rocketstyle`.       |
+| `renderProps(Component, props?, ctx?)`      | Same render flow but returns the VNode's resolved props (after `attrs` / `theme` resolution). |
+| `resolveRocketstyle(value)`                 | Resolve a value that may be a function accessor or a plain object.                            |
 
 ```ts
 const theme = getComputedTheme(Button, { state: 'primary' })
@@ -77,9 +76,9 @@ expect(props.children).toBe('Hello')
 
 ### Mount-and-mutate helpers (require DOM)
 
-| Export | Purpose |
-|---|---|
-| `mountReactive(vnode)` | Mount a VNode into a fresh container appended to `document.body`. Returns `{ container, cleanup, unmount }`. Throws a clear error if `document` is undefined. |
+| Export                                   | Purpose                                                                                                                                                                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mountReactive(vnode)`                   | Mount a VNode into a fresh container appended to `document.body`. Returns `{ container, cleanup, unmount }`. Throws a clear error if `document` is undefined.                                                   |
 | `mountAndExpectOnce(factory, mutations)` | Mount `factory()`'s output, track how many times `factory` was invoked across the supplied mutations, return `{ container, parentCalls, cleanup }`. The canonical assertion is `expect(parentCalls()).toBe(1)`. |
 
 Both require `environment: 'happy-dom'` in your package's `vitest.config.ts` (or the merged `sharedConfig` from the repo root).
@@ -120,20 +119,20 @@ The "parent runs once" pattern catches the bug fixed in PR #191 — a parent com
 
 ### Component fixtures
 
-| Export | Purpose |
-|---|---|
-| `ThemeCapture` | Synthetic component that captures `$rocketstyle` / `$rocketstate` (resolving function accessors) for inspection in mock-vnode tests. |
+| Export          | Purpose                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ThemeCapture`  | Synthetic component that captures `$rocketstyle` / `$rocketstate` (resolving function accessors) for inspection in mock-vnode tests.                          |
 | `BaseComponent` | Synthetic component that exposes the resolved pseudo-state via data attributes — useful when asserting which dimension state the rocketstyle pipeline picked. |
 
 ## Browser subpath (`@pyreon/test-utils/browser`)
 
 Real-Chromium helpers — import from `@pyreon/test-utils/browser` inside `*.browser.test.ts(x)` files that run under `@vitest/browser` with Playwright Chromium.
 
-| Export | Purpose |
-|---|---|
+| Export                  | Purpose                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mountInBrowser(vnode)` | Mount into a fresh `<div>` appended to `document.body` (isolated per-test root — no shared listeners between runs). Returns `{ container, unmount }`. |
-| `flush()` | Await a microtask + a `requestAnimationFrame` tick. Use after a signal write before asserting on DOM state that a reactive effect will apply. |
-| `MountInBrowserResult` | Type for `mountInBrowser`'s return value. |
+| `flush()`               | Await a microtask + a `requestAnimationFrame` tick. Use after a signal write before asserting on DOM state that a reactive effect will apply.         |
+| `MountInBrowserResult`  | Type for `mountInBrowser`'s return value.                                                                                                             |
 
 ```ts
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'

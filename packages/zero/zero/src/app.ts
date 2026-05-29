@@ -62,8 +62,7 @@ export function createApp(options: CreateAppOptions) {
   // path is canonical) and warn in dev. Anyone who genuinely wants two
   // layout wrappers can compose them inside a single component themselves.
   const hasLayoutInRoutes =
-    options.layout !== undefined &&
-    options.routes.some((r) => r.component === options.layout)
+    options.layout !== undefined && options.routes.some((r) => r.component === options.layout)
   if (hasLayoutInRoutes && process.env.NODE_ENV !== 'production') {
     // oxlint-disable-next-line no-console
     console.warn(

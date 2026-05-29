@@ -54,14 +54,7 @@ export const Link = (props: LinkProps): VNode => {
     if (navigate === undefined) return
     // Respect the browser's open-in-new-tab/window affordances and any
     // upstream handler that already handled the event.
-    if (
-      e.defaultPrevented ||
-      e.button !== 0 ||
-      e.metaKey ||
-      e.ctrlKey ||
-      e.shiftKey ||
-      e.altKey
-    ) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
       return
     }
     e.preventDefault()

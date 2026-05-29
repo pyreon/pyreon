@@ -2,17 +2,18 @@
 
 Third user-shape audit (T4.3). Following hn-clone (PR #960, W1-W17) and
 kanban (PR #982, W18-W23). Domain: real-time chat with live SSE stream
-+ virtualized message list — the streaming-primitive surface area no
-prior audit exercised.
+
+- virtualized message list — the streaming-primitive surface area no
+  prior audit exercised.
 
 This file covers **W24-W25**.
 
 ## Status
 
-| Wall | Severity | Status in this PR |
-| --- | --- | --- |
-| W24 | medium | **FIXED** — Zero plugin's dev `*/*` 404 handler narrowed to HTML-only Accept |
-| W25 | low | **DOCUMENTED** — passing `computed<T>` to a child prop: pattern + type-correct call shape |
+| Wall | Severity | Status in this PR                                                                         |
+| ---- | -------- | ----------------------------------------------------------------------------------------- |
+| W24  | medium   | **FIXED** — Zero plugin's dev `*/*` 404 handler narrowed to HTML-only Accept              |
+| W25  | low      | **DOCUMENTED** — passing `computed<T>` to a child prop: pattern + type-correct call shape |
 
 ---
 
@@ -29,8 +30,7 @@ did not.
 requests (`text/html`) AND wildcard requests (`*/*`):
 
 ```ts
-if (!accept.includes("text/html") && !accept.includes("*/*"))
-  return next();
+if (!accept.includes('text/html') && !accept.includes('*/*')) return next()
 ```
 
 `*/*` is the default `Accept` for `fetch()` and `curl`. So any plugin
@@ -118,9 +118,10 @@ either:
 
 **Status: DOCUMENTED in this PR**. Adding a `CLAUDE.md` "Common
 Issues & Fixes" entry covering both halves (child-type-is-value-type
-+ parent-passes-explicit-call). The TS-level unwrapping of `_rp` is
-out of scope for this audit — it would require a compiler-aware type
-transform.
+
+- parent-passes-explicit-call). The TS-level unwrapping of `_rp` is
+  out of scope for this audit — it would require a compiler-aware type
+  transform.
 
 **Workaround in the example**: pass `visible()` at the JSX call site,
 type the child's prop as the value type. Reactivity is preserved end-

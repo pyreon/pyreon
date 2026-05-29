@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — virtual snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/virtual — Pyreon adapter for TanStack Virtual — element-scoped and window-scoped virtualization. Both hooks return reactive signals (\`virtualItems()\`, \`totalSize()\`, \`isScrolling()\`). Always read them inside reactive scopes (JSX thunks, effect, computed) so they update on scroll."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/virtual — Pyreon adapter for TanStack Virtual — element-scoped and window-scoped virtualization. Both hooks return reactive signals (\`virtualItems()\`, \`totalSize()\`, \`isScrolling()\`). Always read them inside reactive scopes (JSX thunks, effect, computed) so they update on scroll."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

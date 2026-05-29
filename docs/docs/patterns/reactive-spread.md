@@ -66,7 +66,7 @@ Or just use the canonical helpers from `@pyreon/core`:
 ```ts
 import { mergeProps, splitProps } from '@pyreon/core'
 
-const merged = mergeProps(defaults, props)       // descriptors preserved
+const merged = mergeProps(defaults, props) // descriptors preserved
 const [own, rest] = splitProps(props, ['title']) // descriptors preserved on both halves
 ```
 
@@ -79,7 +79,7 @@ const [own, rest] = splitProps(props, ['title']) // descriptors preserved on bot
 function copyProps(source) {
   const result = {}
   for (const key in source) {
-    result[key] = source[key]  // reads source[key] — fires getter
+    result[key] = source[key] // reads source[key] — fires getter
   }
   return result
 }
@@ -87,8 +87,8 @@ function copyProps(source) {
 
 ```ts
 // BROKEN — same shape via Object.assign / spread in plain JS
-const copy = Object.assign({}, source)  // fires getters
-const copy = { ...source }              // fires getters (this is a JS-level spread, NOT JSX)
+const copy = Object.assign({}, source) // fires getters
+const copy = { ...source } // fires getters (this is a JS-level spread, NOT JSX)
 ```
 
 The JSX-level spread `<Comp {...source}>` is fine because the compiler wraps it. The JS-level spread `{ ...source }` inside a function body is NOT touched by the compiler — use `mergeProps` or copy descriptors manually.

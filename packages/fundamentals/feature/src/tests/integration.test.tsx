@@ -221,16 +221,20 @@ describe('defaultInitialValues', () => {
     // Real Zod schemas may or may not expose enum values depending on version.
     // Test with a mock schema that guarantees values are present.
     const mockFields = [
-      { name: 'role', type: 'enum' as const, optional: false, label: 'Role', enumValues: ['admin', 'user'] },
+      {
+        name: 'role',
+        type: 'enum' as const,
+        optional: false,
+        label: 'Role',
+        enumValues: ['admin', 'user'],
+      },
     ]
     const values = defaultInitialValues(mockFields)
     expect(values.role).toBe('admin')
   })
 
   it('falls back to empty string for enum without values', () => {
-    const mockFields = [
-      { name: 'status', type: 'enum' as const, optional: false, label: 'Status' },
-    ]
+    const mockFields = [{ name: 'status', type: 'enum' as const, optional: false, label: 'Status' }]
     const values = defaultInitialValues(mockFields)
     expect(values.status).toBe('')
   })
@@ -385,9 +389,7 @@ describe('useList', () => {
     })
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const { unmount } = mountWith(client, () =>
-      posts.useList({ params: { category: 'tech' } }),
-    )
+    const { unmount } = mountWith(client, () => posts.useList({ params: { category: 'tech' } }))
     await new Promise((r) => setTimeout(r, 50))
     expect(capturedUrl).toContain('category=tech')
     unmount()
@@ -545,9 +547,7 @@ describe('useTable', () => {
 
     const client = new QueryClient()
     const { result, unmount } = mountWith(client, () =>
-      posts.useTable([
-        { title: 'A', body: 'B', published: true, category: 'tech', views: 10 },
-      ]),
+      posts.useTable([{ title: 'A', body: 'B', published: true, category: 'tech', views: 10 }]),
     )
 
     expect(result.columns.length).toBe(5)

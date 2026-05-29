@@ -63,8 +63,7 @@ const createLocalProvider = (WrappedComponent: ComponentFn<any>) => {
     // as dependencies of any parent effect, causing cascading re-renders
     // on every mouse event.
     // Resolve $rocketstate if it's a function accessor (from EnhancedComponent)
-    const resolvedState =
-      typeof $rocketstate === 'function' ? $rocketstate() : $rocketstate
+    const resolvedState = typeof $rocketstate === 'function' ? $rocketstate() : $rocketstate
     const updatedState = {
       ...resolvedState,
       pseudo: {

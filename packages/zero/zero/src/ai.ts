@@ -103,8 +103,13 @@ export function generateLlmsTxt(
   // Pages section
   const routes = parseFileRoutes(routeFiles)
   const pages = routes.filter(
-    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound
-      && !r.isCatchAll && !r.urlPath.includes(':'),
+    (r) =>
+      !r.isLayout &&
+      !r.isError &&
+      !r.isLoading &&
+      !r.isNotFound &&
+      !r.isCatchAll &&
+      !r.urlPath.includes(':'),
   )
 
   if (pages.length > 0) {
@@ -124,8 +129,12 @@ export function generateLlmsTxt(
 
   // Dynamic routes (documented separately — AI needs to know about params)
   const dynamicRoutes = routes.filter(
-    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound
-      && (r.urlPath.includes(':') || r.isCatchAll),
+    (r) =>
+      !r.isLayout &&
+      !r.isError &&
+      !r.isLoading &&
+      !r.isNotFound &&
+      (r.urlPath.includes(':') || r.isCatchAll),
   )
   if (dynamicRoutes.length > 0) {
     lines.push('## Dynamic Pages')
@@ -156,7 +165,9 @@ export function generateLlmsTxt(
 
     // From auto-discovered API files (only those not already described)
     const describedPatterns = new Set(
-      Object.keys(config.apiDescriptions ?? {}).map((k) => k.replace(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+/, '')),
+      Object.keys(config.apiDescriptions ?? {}).map((k) =>
+        k.replace(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+/, ''),
+      ),
     )
     for (const pattern of apiPatterns) {
       if (!describedPatterns.has(pattern)) {
@@ -196,9 +207,7 @@ export function generateLlmsFullTxt(
 
   // All pages with details
   const routes = parseFileRoutes(routeFiles)
-  const pages = routes.filter(
-    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound,
-  )
+  const pages = routes.filter((r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound)
 
   if (pages.length > 0) {
     lines.push('## All Routes')
@@ -344,9 +353,7 @@ export function inferJsonLd(options: InferJsonLdOptions): Record<string, unknown
     if (urlObj) {
       const segments = urlObj.pathname.split('/').filter(Boolean)
       if (segments.length > 0) {
-        const items = [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: urlObj.origin },
-        ]
+        const items = [{ '@type': 'ListItem', position: 1, name: 'Home', item: urlObj.origin }]
         let path = ''
         for (let i = 0; i < segments.length; i++) {
           path += `/${segments[i]}`
@@ -382,7 +389,10 @@ export function generateAiPluginManifest(config: AiPluginConfig): Record<string,
   return {
     schema_version: 'v1',
     name_for_human: config.name,
-    name_for_model: config.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
+    name_for_model: config.name
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, ''),
     description_for_human: config.description,
     description_for_model: config.description,
     auth: { type: 'none' },

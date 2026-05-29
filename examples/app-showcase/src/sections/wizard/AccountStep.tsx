@@ -70,9 +70,7 @@ export function AccountStep() {
             placeholder="At least 8 characters"
             value={fields.password.value()}
             $invalid={fields.password.touched() && fields.password.error() !== undefined}
-            onInput={(e: Event) =>
-              fields.password.setValue((e.target as HTMLInputElement).value)
-            }
+            onInput={(e: Event) => fields.password.setValue((e.target as HTMLInputElement).value)}
             onBlur={() => fields.password.setTouched()}
           />
           <FieldError>
@@ -96,9 +94,7 @@ export function AccountStep() {
             onBlur={() => fields.confirmPassword.setTouched()}
           />
           <FieldError>
-            {() =>
-              fields.confirmPassword.touched() ? (fields.confirmPassword.error() ?? '') : ''
-            }
+            {() => (fields.confirmPassword.touched() ? (fields.confirmPassword.error() ?? '') : '')}
           </FieldError>
         </FieldGroup>
 

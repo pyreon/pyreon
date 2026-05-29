@@ -104,25 +104,25 @@
 
   ```ts
   // Before
-  return [...getStack()]; // 40k entries under deep nesting
+  return [...getStack()] // 40k entries under deep nesting
 
   // After
   // Walk top-to-bottom, keep topmost-per-id frames
-  const seen = new Set<symbol>();
-  const reversed: Map<symbol, unknown>[] = [];
+  const seen = new Set<symbol>()
+  const reversed: Map<symbol, unknown>[] = []
   for (let i = stack.length - 1; i >= 0; i--) {
-    const frame = stack[i];
-    let unique = false;
+    const frame = stack[i]
+    let unique = false
     for (const id of frame.keys()) {
       if (!seen.has(id)) {
-        seen.add(id);
-        unique = true;
+        seen.add(id)
+        unique = true
       }
     }
-    if (unique) reversed.push(frame);
+    if (unique) reversed.push(frame)
   }
-  reversed.reverse();
-  return reversed;
+  reversed.reverse()
+  return reversed
   // → ~N entries where N = distinct context ids in scope (typically 2-10)
   ```
 
@@ -141,7 +141,6 @@
   ## Tests
 
   18 new specs in `context.test.ts`:
-
   - **Dedup behavior** (8 specs): empty stack → empty snapshot; single frame → identical; no duplicates → verbatim; duplicate ids collapse to topmost; deep duplicate-heavy stack collapses correctly; multi-key frames kept if any id is un-shadowed; multi-key frames dropped if all ids are shadowed; useContext returns same value pre/post dedup for arbitrary read patterns.
   - **restoreContextStack with deduped snapshots** (2 specs): restoration semantically equivalent; 40-duplicate stack only pushes/pops 1 frame post-dedup.
   - **getContextStackLength** (3 specs): returns LIVE stack length not snapshot length; zero on empty stack; matches array length through push/pop cycles.
@@ -150,12 +149,10 @@
     - 100 snapshots of a 500-frame mixed stack with 50 distinct ids retain **5000 frame references**, not 50,000.
 
   ## Bisect-verified
-
   - Revert `captureContextStack` to `[...getStack()]` → **6 dedup-behavior specs + 2 leak-audit specs fail**; 29 pre-existing specs still pass (semantic equivalence preserved).
   - Restored → 37/37 context tests, 523/523 `@pyreon/core`, 150/150 `@pyreon/runtime-server`, 681/681 `@pyreon/runtime-dom`, 521/521 `@pyreon/router` — total **1875 tests across affected packages**. Lint + typecheck clean. No lockfile drift. No `TEMP BISECT` remnants.
 
   ## Impact
-
   - **Per-snapshot retention drops from O(stack-depth) to O(distinct-ids-in-scope)** — typically 100× reduction on deep trees, the same shape as the bug-report's 800× extrapolation.
   - The leak-audit unit tests are permanent regression locks — re-introducing the bug shape fails CI deterministically (no heap snapshot needed).
 
@@ -199,7 +196,6 @@
 
   New optional `(req: Request) => Request | null`. Lets auth-gated
   `cacheKey` setups scope revalidation explicitly:
-
   - Return a custom `Request` (e.g. stripped cookies for anonymous
     revalidation) — used in place of the original.
   - Return `null` — SKIP revalidation entirely for this entry (stale
@@ -245,7 +241,6 @@
   **Tests**: 4 new specs in `runtime-server/src/tests/ssr.test.ts` (`renderToStream — suspenseTimeoutMs config`) covering explicit short timeout, default preservation, invalid-value fallback, and `Infinity` opt-out. 1 new integration spec in `server/src/tests/server.test.ts` proving the handler's option threads end-to-end.
 
   **Bisect-verified**:
-
   - Revert the `ctx.suspenseTimeoutMs` read to the hard-coded `30_000` → "explicit short timeout drops post-resolve content" spec fails (100ms boundary completes against the still-30s timeout); restored → passes.
   - Revert the createHandler forward (drop `suspenseTimeoutMs` from `renderStreamResponse` call) → "stream mode forwards suspenseTimeoutMs" spec fails the same way; restored → passes.
   - Both restored: runtime-server **150/150** + server **168/168 × 5 stability runs**. Lint + typecheck clean. No lockfile drift. No `TEMP BISECT` remnants. `gen-docs --check` clean.
@@ -286,7 +281,6 @@
   pattern.
 
   ### Validation
-
   - `@pyreon/server` 166/166 tests pass
   - `@pyreon/runtime-server` 143/143 tests pass
   - `@pyreon/test-utils` 90/90 tests pass (+15 new for the audit script)
@@ -394,7 +388,6 @@
   was visible on-screen before hydration replaced it with the real SVG.
 
   Fix:
-
   - `renderPropSkipped` now skips `innerHTML` and `dangerouslySetInnerHTML`
     so neither shows up in the open-tag attribute list.
   - `streamElementNode` (streaming) and `renderElement` (non-streaming)
@@ -552,7 +545,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -566,7 +558,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -575,7 +566,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -593,7 +583,6 @@
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

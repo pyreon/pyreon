@@ -120,7 +120,9 @@ describe('emit-style — Kotlin Modifier', () => {
   })
 
   it('camelCases the function name (struct PyreonPrimaryButton → fn pyreonPrimaryButton)', () => {
-    expect(emitKotlinStyleModifier(PRIMARY_BUTTON).startsWith('fun pyreonPrimaryButton()')).toBe(true)
+    expect(emitKotlinStyleModifier(PRIMARY_BUTTON).startsWith('fun pyreonPrimaryButton()')).toBe(
+      true,
+    )
   })
 
   it('handles literal-color value', () => {

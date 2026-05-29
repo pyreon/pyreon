@@ -36,10 +36,7 @@ describe('callback refs — called with null on unmount', () => {
       calls.push(el)
     }
 
-    const dispose = mount(
-      h('section', null, h('div', { ref: myRef })),
-      container,
-    )
+    const dispose = mount(h('section', null, h('div', { ref: myRef })), container)
 
     expect(calls.length).toBe(1)
     expect(calls[0]?.tagName).toBe('DIV')

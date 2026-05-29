@@ -9,11 +9,7 @@ export default function ReadonlyDemo() {
   ro.subscribe((x) => (v = x))
 
   return (
-    <Demo
-      title="Readonly view"
-      apis="readonly"
-      code={`const ro = readonly(w) // subscribe-only`}
-    >
+    <Demo title="Readonly view" apis="readonly" code={`const ro = readonly(w) // subscribe-only`}>
       <p>
         readonly = <strong>{v}</strong> (only the writable can set)
       </p>

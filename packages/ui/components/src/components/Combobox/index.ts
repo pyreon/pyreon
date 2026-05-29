@@ -1,7 +1,8 @@
 import { el } from '../../factory'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 
-const Combobox = el.config({ name: 'Combobox', component: ComboboxBase })
+const Combobox = el
+  .config({ name: 'Combobox', component: ComboboxBase })
   .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,

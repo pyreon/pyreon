@@ -111,7 +111,9 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
 
   return {
     get result() {
-      return (slots.result ??= signal<QueryObserverResult<TData, TError>>(observer.getCurrentResult()))
+      return (slots.result ??= signal<QueryObserverResult<TData, TError>>(
+        observer.getCurrentResult(),
+      ))
     },
     get data() {
       return (slots.data ??= signal<TData | undefined>(observer.getCurrentResult().data))

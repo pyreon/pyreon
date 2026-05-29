@@ -193,10 +193,14 @@ describe('useIndexedDB — full coverage', () => {
   })
 
   it('custom serializer is used for writes', async () => {
-    const sig = useIndexedDB('custom-ser', { x: 1 }, {
-      serializer: (v) => `CUSTOM:${JSON.stringify(v)}`,
-      debounceMs: 10,
-    })
+    const sig = useIndexedDB(
+      'custom-ser',
+      { x: 1 },
+      {
+        serializer: (v) => `CUSTOM:${JSON.stringify(v)}`,
+        debounceMs: 10,
+      },
+    )
 
     sig.set({ x: 2 })
     await vi.advanceTimersByTimeAsync(50)

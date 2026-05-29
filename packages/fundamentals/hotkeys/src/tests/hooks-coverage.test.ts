@@ -8,11 +8,7 @@ vi.mock('@pyreon/core', () => ({
   },
 }))
 
-import {
-  _resetHotkeys,
-  getActiveScopes,
-  getRegisteredHotkeys,
-} from '../registry'
+import { _resetHotkeys, getActiveScopes, getRegisteredHotkeys } from '../registry'
 import { useHotkey } from '../use-hotkey'
 import { useHotkeyScope } from '../use-hotkey-scope'
 
@@ -110,9 +106,13 @@ describe('useHotkeyScope', () => {
   it('scoped hotkey fires when scope is active', () => {
     let fired = false
     useHotkeyScope('editor')
-    useHotkey('escape', () => {
-      fired = true
-    }, { scope: 'editor' })
+    useHotkey(
+      'escape',
+      () => {
+        fired = true
+      },
+      { scope: 'editor' },
+    )
 
     fireKey('Escape')
     expect(fired).toBe(true)

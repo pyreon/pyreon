@@ -58,9 +58,7 @@ describe('_parseBunLock', () => {
       },
     })
     const result = _parseBunLock(lock)
-    expect(result.get('@pyreon/core')?.versions).toEqual(
-      new Set(['0.24.6', '0.23.0']),
-    )
+    expect(result.get('@pyreon/core')?.versions).toEqual(new Set(['0.24.6', '0.23.0']))
   })
 
   it('skips workspace: resolutions (never duplicated)', () => {
@@ -98,9 +96,7 @@ describe('_parseNpmLock', () => {
         },
       },
     })
-    expect(_parseNpmLock(lock).get('@pyreon/core')?.versions).toEqual(
-      new Set(['0.24.6', '0.23.0']),
-    )
+    expect(_parseNpmLock(lock).get('@pyreon/core')?.versions).toEqual(new Set(['0.24.6', '0.23.0']))
   })
 
   it('ignores non-@pyreon packages', () => {
@@ -189,9 +185,7 @@ packages:
 `
     // All three rows are the same version `0.24.6` (just different peer
     // contexts) — must count as ONE version, not three.
-    expect(_parsePnpmLock(lock).get('@pyreon/core')?.versions).toEqual(
-      new Set(['0.24.6']),
-    )
+    expect(_parsePnpmLock(lock).get('@pyreon/core')?.versions).toEqual(new Set(['0.24.6']))
   })
 
   it('peer-suffix DOES NOT mask a genuine version dup', () => {
@@ -233,10 +227,7 @@ describe('_detectDuplicates', () => {
 
   it('emits ONE finding per package with multiple versions', () => {
     const packages = new Map([
-      [
-        '@pyreon/core',
-        { name: '@pyreon/core', versions: new Set(['0.24.6', '0.23.0']) },
-      ],
+      ['@pyreon/core', { name: '@pyreon/core', versions: new Set(['0.24.6', '0.23.0']) }],
     ])
     const findings = _detectDuplicates(packages, '/tmp/bun.lock', '/tmp')
     expect(findings).toHaveLength(1)
@@ -249,18 +240,9 @@ describe('_detectDuplicates', () => {
 
   it('emits one finding per duplicated package across multiple packages', () => {
     const packages = new Map([
-      [
-        '@pyreon/core',
-        { name: '@pyreon/core', versions: new Set(['0.24.6', '0.23.0']) },
-      ],
-      [
-        '@pyreon/router',
-        { name: '@pyreon/router', versions: new Set(['0.24.6', '0.22.0']) },
-      ],
-      [
-        '@pyreon/clean',
-        { name: '@pyreon/clean', versions: new Set(['0.24.6']) },
-      ],
+      ['@pyreon/core', { name: '@pyreon/core', versions: new Set(['0.24.6', '0.23.0']) }],
+      ['@pyreon/router', { name: '@pyreon/router', versions: new Set(['0.24.6', '0.22.0']) }],
+      ['@pyreon/clean', { name: '@pyreon/clean', versions: new Set(['0.24.6']) }],
     ])
     const findings = _detectDuplicates(packages, '/tmp/bun.lock', '/tmp')
     expect(findings).toHaveLength(2)
@@ -378,10 +360,7 @@ packages:
         },
       }),
     )
-    writeFileSync(
-      join(fixtureRoot, 'package-lock.json'),
-      JSON.stringify({ packages: {} }),
-    )
+    writeFileSync(join(fixtureRoot, 'package-lock.json'), JSON.stringify({ packages: {} }))
 
     const result = await runCheckDedupGate({ cwd: fixtureRoot })
     expect(result.meta.scanned).toBe(2)

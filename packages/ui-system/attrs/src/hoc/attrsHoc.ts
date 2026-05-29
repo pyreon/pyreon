@@ -43,15 +43,11 @@ const createAttrsHOC: AttrsStyleHOC = ({ attrs, priorityAttrs }) => {
       if (!hasAnyChain) return WrappedComponent(filteredProps)
 
       // 1. Resolve priority attrs (lowest precedence defaults).
-      const prioritizedAttrs = hasPriorityAttrs
-        ? calculatePriorityAttrs([filteredProps])
-        : null
+      const prioritizedAttrs = hasPriorityAttrs ? calculatePriorityAttrs([filteredProps]) : null
       // 2. Resolve normal attrs — these see priority + explicit props as input.
       const finalAttrs = hasAttrs
         ? calculateAttrs([
-            prioritizedAttrs
-              ? { ...prioritizedAttrs, ...filteredProps }
-              : filteredProps,
+            prioritizedAttrs ? { ...prioritizedAttrs, ...filteredProps } : filteredProps,
           ])
         : null
 

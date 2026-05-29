@@ -32,7 +32,8 @@ const DIST = join(__dirname, '..', 'dist')
 // IIFE entries that need the strip. Background is ESM so excluded.
 const IIFE_ENTRIES = ['content-script.js', 'devtools.js', 'panel.js', 'page-hook.js']
 
-const BAD_LINE_RE = /^Object\.defineProperties\(exports, \{ __esModule: \{ value: true \}, \[Symbol\.toStringTag\]: \{ value: 'Module' \} \}\);\n?/m
+const BAD_LINE_RE =
+  /^Object\.defineProperties\(exports, \{ __esModule: \{ value: true \}, \[Symbol\.toStringTag\]: \{ value: 'Module' \} \}\);\n?/m
 
 let stripped = 0
 let alreadyClean = 0
@@ -64,7 +65,11 @@ for (const name of IIFE_ENTRIES) {
 }
 
 if (stripped === 0 && alreadyClean === IIFE_ENTRIES.length) {
-  console.log(`[strip-cjs] all ${IIFE_ENTRIES.length} IIFE entries already clean (rolldown may have been fixed upstream)`)
+  console.log(
+    `[strip-cjs] all ${IIFE_ENTRIES.length} IIFE entries already clean (rolldown may have been fixed upstream)`,
+  )
 } else if (stripped > 0) {
-  console.log(`[strip-cjs] ${stripped}/${IIFE_ENTRIES.length} entries fixed; ${alreadyClean} already clean`)
+  console.log(
+    `[strip-cjs] ${stripped}/${IIFE_ENTRIES.length} entries fixed; ${alreadyClean} already clean`,
+  )
 }

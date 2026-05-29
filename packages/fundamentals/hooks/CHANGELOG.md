@@ -105,7 +105,6 @@
   **Policy: only ports that show measurably better under Pyreon's runtime
   were kept.** Two upstream changes were measured neutral/worse here and
   deliberately reverted:
-
   - `styler.hashUpdate` 4-char unroll — measured +1.6% short / +2.1% long
     under Bun (both inside the ±2% JIT noise band). Reverted to the simple
     single-char loop.
@@ -117,7 +116,6 @@
   **Measured wins** (paired before/after micro-bench via
   `bun scripts/perf/port-vitus-labs-bench.ts`, Bun 1.3.13, 3 warmup + 7
   timed runs, report median):
-
   - `styler.CSSResult._staticResolved` cache (8 repeats): **+85.3%**
   - `attrs.removeUndefinedProps` (10-prop input): **+77.4%**
   - `unistyle.shouldNormalize` (5-key static): **+66.0%**
@@ -131,7 +129,6 @@
   - `styler.splitRules charCodeAt vs str[i]`: **+8.0%**
 
   Plus 6 structural cleanups (no perf claim, allocation reductions only):
-
   - `styler.globalStyle` length-check vs `.trim()`
   - `unistyle.normalizeTheme` / `transformTheme` for-in (drops
     Object.entries tuple-array allocations)
@@ -144,7 +141,6 @@
 
   **Behavioural lock-in tests** (ported from vitus-labs `60fc25c1`, 8 new
   specs in `@pyreon/styler`):
-
   - `CSSResult._isDynamic` memoization: populate-on-first / cache-on-
     subsequent (values-mutation sentinel) / nested-propagation.
   - `CSSResult._staticResolved` cache: populate-on-first / cache-hit-via-
@@ -153,7 +149,6 @@
     signals, not React refs).
 
   **Bisect-verified-with-restore**:
-
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
 calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
@@ -166,7 +161,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   per-function structural wins, not a real-app headline number.
 
   **Verification**:
-
   - 1832 tests pass: styler 425 (+8 lock-ins) + unistyle 240 + rocketstyle
     290 + attrs 89 + coolgrid 106 + elements 463 + hooks 219.
   - Browser smokes: elements 16, styler 12, rocketstyle 12, unistyle 6,
@@ -211,7 +205,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   Real-app symptom: N components each call `useStorage('theme', 'light')`. They all share the same cached signal (correct). One component calls `.remove()` (clear storage, reset to default). The cross-tab listener is detached AND the registry entry is deleted. Now cross-tab `storage` events for 'theme' don't reach the surviving N-1 consumers — they're silently orphaned from the cross-tab pipeline.
 
   Fix:
-
   - Same-key cached returns ALSO retain the cross-tab listener (refcount now matches consumer count).
   - `.remove()` no longer deletes the registry entry — keeps it so the listener's dispatch table remains intact for surviving consumers. The registry entry is small (one Map entry per key); the residual cost is negligible vs silently breaking cross-tab sync.
 
@@ -230,7 +223,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   Code-verified at source; no dedicated regression test in this PR (requires either mocked dynamic-import infra for charts, or a fake-indexeddb harness for storage — separable follow-ups).
 
   ### Audit byproducts (NOT fixed in this PR)
-
   - `@pyreon/code` `<CodeEditor>` component does not call `instance.dispose()` on unmount. Could be a design choice (user owns lifecycle since `instance` is an external prop) OR a documentation gap. Worth deciding deliberately, not bundled here.
   - `@pyreon/state-tree` `_hookRegistry` accepts dynamic IDs without bound — would leak if app generates IDs at runtime (uncommon — typical usage is static IDs).
   - `@pyreon/url-state` per-instance popstate listeners (no shared registry like storage has) — inefficient at scale but not a leak.
@@ -351,7 +343,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
 - [#234](https://github.com/pyreon/pyreon/pull/234) [`a8ab19d`](https://github.com/pyreon/pyreon/commit/a8ab19d2db8b764f3643f2fa50f721727b8ba0d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hooks anti-pattern cleanup + lint rule precision improvements
 
   `@pyreon/hooks`:
-
   - `useClipboard`: batch `text.set()` + `copied.set()` in the success branch so
     subscribers reading both see one update, not two. Added
     `typeof navigator === 'undefined'` early-return in `copy()` for SSR safety.
@@ -367,7 +358,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
 
   `@pyreon/lint` — `no-window-in-ssr` rule precision (fewer false positives,
   fewer silent false negatives):
-
   - Track `typeof X` expressions via `UnaryExpression` enter/exit depth instead
     of the inert `parent.operator === 'typeof'` check (oxc's visitor does NOT
     pass `parent`).
@@ -391,7 +381,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     `ConditionalExpression` enter/exit.
 
   `@pyreon/lint` — other rules fixed for the same oxc-no-parent root cause:
-
   - `no-props-destructure`: pre-mark `CallExpression` arguments via WeakSet so
     HOC factory args (`createLink(({ href }) => <a />)`) are correctly skipped
     — previously the `parent?.type === 'CallExpression'` check was inert.
@@ -400,7 +389,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     sequential `.set()` calls to observe intermediate debounce/throttle state).
 
   `@pyreon/lint` — type hygiene:
-
   - `VisitorCallback` signature narrowed to `(node: any) => void`. The earlier
     `parent?: any` second parameter was a false promise — oxc's walker never
     passes `parent`, and rules silently depended on an `undefined` value.

@@ -46,7 +46,12 @@
  */
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { initTestConfig, mountAndExpectOnce, mountReactive, queryOptional } from '@pyreon/test-utils'
+import {
+  initTestConfig,
+  mountAndExpectOnce,
+  mountReactive,
+  queryOptional,
+} from '@pyreon/test-utils'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import DocButton from '../primitives/DocButton'
@@ -95,7 +100,11 @@ describe('text-based primitives — function children patch text nodes', () => {
 
   it('DocText parent component runs once across multiple mutations', () => {
     const headline = signal('Senior Engineer')
-    const { container, parentCalls, cleanup: c } = mountAndExpectOnce(
+    const {
+      container,
+      parentCalls,
+      cleanup: c,
+    } = mountAndExpectOnce(
       () => h(DocText as any, null, () => headline()),
       () => {
         headline.set('Staff Engineer')
@@ -238,7 +247,11 @@ describe('container primitives — function children inside containers stay reac
   it('DocSection propagates reactive children', () => {
     const text = signal('section A')
     const { container, cleanup: c } = mountReactive(
-      h(DocSection as any, null, h(DocText as any, null, () => text())),
+      h(
+        DocSection as any,
+        null,
+        h(DocText as any, null, () => text()),
+      ),
     )
     expect(container.textContent).toBe('section A')
     text.set('section B')
@@ -249,7 +262,11 @@ describe('container primitives — function children inside containers stay reac
   it('DocRow propagates reactive children', () => {
     const inline = signal('one')
     const { container, cleanup: c } = mountReactive(
-      h(DocRow as any, null, h(DocText as any, null, () => inline())),
+      h(
+        DocRow as any,
+        null,
+        h(DocText as any, null, () => inline()),
+      ),
     )
     expect(container.textContent).toBe('one')
     inline.set('two')
@@ -260,7 +277,11 @@ describe('container primitives — function children inside containers stay reac
   it('DocColumn propagates reactive children', () => {
     const col = signal('left')
     const { container, cleanup: c } = mountReactive(
-      h(DocColumn as any, { width: '50%' }, h(DocText as any, null, () => col())),
+      h(
+        DocColumn as any,
+        { width: '50%' },
+        h(DocText as any, null, () => col()),
+      ),
     )
     expect(container.textContent).toBe('left')
     col.set('right')
@@ -304,7 +325,11 @@ describe('container primitives — function children inside containers stay reac
   it('DocQuote propagates reactive children', () => {
     const quote = signal('Hello')
     const { container, cleanup: c } = mountReactive(
-      h(DocQuote as any, null, h(DocText as any, null, () => quote())),
+      h(
+        DocQuote as any,
+        null,
+        h(DocText as any, null, () => quote()),
+      ),
     )
     expect(container.textContent).toBe('Hello')
     quote.set('World')
@@ -384,9 +409,7 @@ describe('data-driven primitives — DocTable mounts cleanly', () => {
   })
 
   it('mounts with empty arrays (regression: no crash on empty rows)', () => {
-    const { container, cleanup: c } = mountReactive(
-      h(DocTable as any, { columns: [], rows: [] }),
-    )
+    const { container, cleanup: c } = mountReactive(h(DocTable as any, { columns: [], rows: [] }))
     expect(container.querySelector('table')).not.toBeNull()
     c()
   })

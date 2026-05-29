@@ -280,9 +280,8 @@ describe('reportError — reactiveTrace enrichment', () => {
       captured = ctx
     })
     // Drive the reactivity → core bridge the same way an effect throw does.
-    const bridge = (
-      globalThis as { __pyreon_report_error__?: (e: unknown, p: 'effect') => void }
-    ).__pyreon_report_error__
+    const bridge = (globalThis as { __pyreon_report_error__?: (e: unknown, p: 'effect') => void })
+      .__pyreon_report_error__
     bridge?.(new Error('effect boom'), 'effect')
     unsub()
 

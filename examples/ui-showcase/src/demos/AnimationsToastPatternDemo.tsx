@@ -31,15 +31,24 @@ export function AnimationsToastPatternDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 12px">Toast Notifications Pattern</Title>
+      <Title size="h2" style="margin-bottom: 12px">
+        Toast Notifications Pattern
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        Group mode (`.group()`) animates items entering/leaving a list with stable keys. Each toast auto-dismisses after 3 seconds.
+        Group mode (`.group()`) animates items entering/leaving a list with stable keys. Each toast
+        auto-dismisses after 3 seconds.
       </Paragraph>
 
       <div style="display: flex; gap: 8px; margin-bottom: 24px;">
-        <Button state="primary" onClick={() => add('info')}>Info</Button>
-        <Button state="success" onClick={() => add('success')}>Success</Button>
-        <Button state="danger" onClick={() => add('error')}>Error</Button>
+        <Button state="primary" onClick={() => add('info')}>
+          Info
+        </Button>
+        <Button state="success" onClick={() => add('success')}>
+          Success
+        </Button>
+        <Button state="danger" onClick={() => add('error')}>
+          Error
+        </Button>
       </div>
 
       {/* Demo viewport — toasts are absolutely positioned within this box, not the page */}

@@ -136,11 +136,7 @@ export function addStorePlugin(plugin: StorePlugin): void {
 // Schema-detection types + helpers live in `@pyreon/validation`. We
 // re-export the public types so consumers of `@pyreon/store` don't have
 // to add a second import line. Same shape, identical semantics.
-export type {
-  InferSchema,
-  SchemaIssue,
-  SchemaParseResult,
-} from '@pyreon/validation'
+export type { InferSchema, SchemaIssue, SchemaParseResult } from '@pyreon/validation'
 
 /**
  * Map a parsed-output type to a record of per-field signals — what the
@@ -171,10 +167,7 @@ export interface SchemaStoreContext<T extends Record<string, unknown>> {
  * (from `@pyreon/validation`), or a Standard Schema-compliant schema, or
  * a user-authored adapter conforming to either shape.
  */
-export interface SchemaStoreConfig<
-  S,
-  U extends Record<string, unknown> = Record<string, unknown>,
-> {
+export interface SchemaStoreConfig<S, U extends Record<string, unknown> = Record<string, unknown>> {
   /** The schema. Pyreon adapter or Standard Schema instance. */
   readonly schema: S
   /** Initial state. Validated once at `defineStore`-time (fail-fast). */
@@ -196,11 +189,12 @@ export interface SchemaStoreConfig<
  * Recursive partial — every property optional at every depth. Arrays
  * and class instances replace (not merge), only plain objects deep-merge.
  */
-export type DeepPartial<T> = T extends ReadonlyArray<unknown>
-  ? T
-  : T extends object
-    ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
-    : T
+export type DeepPartial<T> =
+  T extends ReadonlyArray<unknown>
+    ? T
+    : T extends object
+      ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
+      : T
 
 /** `StoreApi` extended with schema-mode mutation methods. */
 export interface SchemaStoreApi<T> extends StoreApi<T> {
@@ -236,10 +230,7 @@ export interface SchemaStoreApi<T> extends StoreApi<T> {
    * u.update('count', n => (n as number) + 1)
    * ```
    */
-  update<K extends keyof T & string>(
-    key: K,
-    transformer: (current: unknown) => unknown,
-  ): void
+  update<K extends keyof T & string>(key: K, transformer: (current: unknown) => unknown): void
 }
 
 // ─── Schema dispatch helpers ─────────────────────────────────────────────────
@@ -287,9 +278,10 @@ function deepMerge(target: unknown, source: unknown): unknown {
   if (!isPlainObject(target) || !isPlainObject(source)) return source
   const out: Record<string, unknown> = { ...target }
   for (const key of Object.keys(source)) {
-    out[key] = isPlainObject(target[key]) && isPlainObject(source[key])
-      ? deepMerge(target[key], source[key])
-      : source[key]
+    out[key] =
+      isPlainObject(target[key]) && isPlainObject(source[key])
+        ? deepMerge(target[key], source[key])
+        : source[key]
   }
   return out
 }
@@ -329,10 +321,7 @@ function deepMerge(target: unknown, source: unknown): unknown {
  * u.patch({ age: 31 })   // validates merged + writes only changed
  * ```
  */
-export function defineStore<
-  S,
-  U extends Record<string, unknown> = Record<string, unknown>,
->(
+export function defineStore<S, U extends Record<string, unknown> = Record<string, unknown>>(
   id: string,
   config: SchemaStoreConfig<S, U>,
 ): () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>
@@ -347,14 +336,13 @@ export function defineStore<T extends Record<string, unknown>>(
   setup: () => T,
 ): () => StoreApi<T>
 
-export function defineStore(id: string, configOrSetup: unknown): () => StoreApi<Record<string, unknown>> {
+export function defineStore(
+  id: string,
+  configOrSetup: unknown,
+): () => StoreApi<Record<string, unknown>> {
   // ── Schema-mode dispatch ────────────────────────────────────────────────
   // Discriminator: 2nd arg is an object with a `schema` field.
-  if (
-    configOrSetup != null &&
-    typeof configOrSetup === 'object' &&
-    'schema' in configOrSetup
-  ) {
+  if (configOrSetup != null && typeof configOrSetup === 'object' && 'schema' in configOrSetup) {
     return defineSchemaStore(id, configOrSetup as SchemaStoreConfig<unknown>)
   }
 
@@ -410,7 +398,9 @@ function defineSchemaStore(
   function validateOrFail(value: unknown, op: 'set' | 'patch'): Record<string, unknown> {
     const result = parse(value)
     if (result instanceof Promise) {
-      throw new Error('[Pyreon] defineStore: schema returned a Promise at runtime — async unsupported.')
+      throw new Error(
+        '[Pyreon] defineStore: schema returned a Promise at runtime — async unsupported.',
+      )
     }
     if (!result.ok) {
       if (onValidationError) {

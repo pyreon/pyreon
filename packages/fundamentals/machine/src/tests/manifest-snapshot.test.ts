@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — machine snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/machine — Reactive state machines — constrained signals with type-safe transitions. Unlike XState, Pyreon machines have no built-in context. Use regular signals alongside the machine for associated data — the machine handles the state transitions, signals handle the data."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/machine — Reactive state machines — constrained signals with type-safe transitions. Unlike XState, Pyreon machines have no built-in context. Use regular signals alongside the machine for associated data — the machine handles the state transitions, signals handle the data."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

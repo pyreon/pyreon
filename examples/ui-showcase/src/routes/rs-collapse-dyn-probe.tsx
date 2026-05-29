@@ -36,9 +36,9 @@ export default function RsCollapseDynProbe() {
       </Button>
 
       {/* Handler-combined — emits __rsCollapseDynH (handler-combined follow-up).
-        * Distinct children text 'DynH' lets the smoke assertion target THIS
-        * chunk's handler-combined emit specifically (vs the no-handler
-        * 'Dyn' baked template above). */}
+       * Distinct children text 'DynH' lets the smoke assertion target THIS
+       * chunk's handler-combined emit specifically (vs the no-handler
+       * 'Dyn' baked template above). */}
       <Button
         state={isPrimary() ? 'primary' : 'secondary'}
         size="medium"

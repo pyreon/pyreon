@@ -22,13 +22,13 @@ export default {
 
 ## When to use SSG vs SSR / SPA / ISR
 
-| Mode      | Render timing                       | Use for                                                              |
-| --------- | ----------------------------------- | -------------------------------------------------------------------- |
-| **SSG**   | Build time → static HTML            | Content that rarely changes: docs, blogs, marketing, landing pages   |
-| **SSR**   | Every request, on the server        | Per-request personalization, fresh data, auth-gated pages            |
-| **SPA**   | In the browser only                 | Apps behind a login where SEO/first-paint HTML doesn't matter        |
-| **ISR (runtime)** | Cached SSR with stale-while-revalidate | High-traffic pages that tolerate brief staleness — see [Zero → ISR](/docs/zero#isr-incremental-static-regeneration-runtime) |
-| **Build-time ISR** | SSG + platform rebuild-on-stale | Mostly-static pages that change occasionally without a full redeploy — see [below](#build-time-isr-per-route-revalidate) |
+| Mode               | Render timing                          | Use for                                                                                                                     |
+| ------------------ | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **SSG**            | Build time → static HTML               | Content that rarely changes: docs, blogs, marketing, landing pages                                                          |
+| **SSR**            | Every request, on the server           | Per-request personalization, fresh data, auth-gated pages                                                                   |
+| **SPA**            | In the browser only                    | Apps behind a login where SEO/first-paint HTML doesn't matter                                                               |
+| **ISR (runtime)**  | Cached SSR with stale-while-revalidate | High-traffic pages that tolerate brief staleness — see [Zero → ISR](/docs/zero#isr-incremental-static-regeneration-runtime) |
+| **Build-time ISR** | SSG + platform rebuild-on-stale        | Mostly-static pages that change occasionally without a full redeploy — see [below](#build-time-isr-per-route-revalidate)    |
 
 Per-route override: any route file may `export const renderMode = 'ssg'` to opt a single route in or out independent of the global mode.
 
@@ -45,11 +45,11 @@ export default defineConfig({ mode: 'ssg' })
 
 URL → file mapping:
 
-| Path                  | Output file                          |
-| --------------------- | ------------------------------------ |
-| `/`                   | `dist/index.html`                    |
-| `/about`              | `dist/about/index.html`              |
-| `/blog/hello-world`   | `dist/blog/hello-world/index.html`   |
+| Path                | Output file                        |
+| ------------------- | ---------------------------------- |
+| `/`                 | `dist/index.html`                  |
+| `/about`            | `dist/about/index.html`            |
+| `/blog/hello-world` | `dist/blog/hello-world/index.html` |
 
 Or list paths explicitly. `ssg.paths` accepts three shapes:
 
@@ -240,10 +240,10 @@ export default defineConfig({
 })
 ```
 
-| Strategy                       | Default-locale URLs | Non-default URLs            | Use when                                                  |
-| ------------------------------ | ------------------- | --------------------------- | --------------------------------------------------------- |
-| `'prefix-except-default'` (default) | `/about` (clean)    | `/de/about`, `/cs/about`    | SEO-on-default-locale apps — canonical URLs stay clean    |
-| `'prefix'`                     | `/en/about`         | `/de/about`, `/cs/about`    | No "primary" locale — every URL self-identifies its locale |
+| Strategy                            | Default-locale URLs | Non-default URLs         | Use when                                                   |
+| ----------------------------------- | ------------------- | ------------------------ | ---------------------------------------------------------- |
+| `'prefix-except-default'` (default) | `/about` (clean)    | `/de/about`, `/cs/about` | SEO-on-default-locale apps — canonical URLs stay clean     |
+| `'prefix'`                          | `/en/about`         | `/de/about`, `/cs/about` | No "primary" locale — every URL self-identifies its locale |
 
 - Layouts, error/loading boundaries, and `_404.tsx` duplicate along with pages. Under `prefix-except-default`, the **root** `_layout.tsx` is NOT duplicated (the unprefixed default-locale root layout already wraps every path including `/de/...` via hierarchical matching — duplicating it would double-mount the layout). Non-root layouts (`/dashboard/_layout`) **are** duplicated.
 - `getStaticPaths` composes with locales — `/blog/[slug]` × `[en, de]` × `getStaticPaths → [a, b]` produces `/blog/a`, `/blog/b`, `/de/blog/a`, `/de/blog/b`. Cardinality compounds (by design); `ssg.concurrency` bounds in-flight renders independent of route count.
@@ -294,7 +294,9 @@ Distinct from runtime ISR (`mode: 'isr'`, in-memory LRU cache — see [Zero → 
 export const revalidate = 60 // seconds. Or `false` for never-revalidate.
 
 export const getStaticPaths = () => [{ params: { id: '1' } }, { params: { id: '2' } }]
-export default function Post({ params }) { /* … */ }
+export default function Post({ params }) {
+  /* … */
+}
 ```
 
 `revalidate` is a **build-time-only** concern — it never reaches the runtime router. At build, the SSG plugin scans for `export const revalidate = <number|false>` literals, matches each route's URL pattern against the rendered paths (static → exact, dynamic/catch-all → regex), and writes `dist/_pyreon-revalidate.json`:
@@ -344,22 +346,22 @@ The manifest is read once per process and cached (including a cached failure, so
 
 In SSG mode the adapter's `build()` is invoked automatically by the SSG plugin's `closeBundle` with `{ kind: 'ssg', outDir, config }` (vs `{ kind: 'ssr', serverEntry, clientOutDir, outDir, config }` for SSR). Adapter throws are caught and recorded as a `(adapter:<name>)` error so a buggy adapter can't take down the rest of the build (sitemap, error artifact, summary already ran).
 
-| Adapter      | SSG `build()` writes                                                  |
-| ------------ | --------------------------------------------------------------------- |
-| `node`       | no-op                                                                 |
-| `bun`        | no-op                                                                 |
-| `static`     | no-op (dist is already the publishable output)                        |
-| `vercel`     | `.vercel/output/config.json` (Build Output API v3, static variant)    |
-| `cloudflare` | `_routes.json` static routing config                                  |
-| `netlify`    | `netlify.toml` / static config                                        |
+| Adapter      | SSG `build()` writes                                               |
+| ------------ | ------------------------------------------------------------------ |
+| `node`       | no-op                                                              |
+| `bun`        | no-op                                                              |
+| `static`     | no-op (dist is already the publishable output)                     |
+| `vercel`     | `.vercel/output/config.json` (Build Output API v3, static variant) |
+| `cloudflare` | `_routes.json` static routing config                               |
+| `netlify`    | `netlify.toml` / static config                                     |
 
 Set the adapter by name or instance:
 
 ```ts
 import { vercelAdapter } from '@pyreon/zero/server'
 
-defineConfig({ mode: 'ssg', adapter: 'vercel' })          // by name
-defineConfig({ mode: 'ssg', adapter: vercelAdapter() })   // by instance
+defineConfig({ mode: 'ssg', adapter: 'vercel' }) // by name
+defineConfig({ mode: 'ssg', adapter: vercelAdapter() }) // by instance
 ```
 
 The build summary log surfaces what landed: page count, `+ 404.html` (or `+ N 404 pages`), redirect count, `+ N revalidate path(s)`, elapsed ms, `(concurrency: N)`, `[adapter: name]`, and a per-locale breakdown `[en: 100, de: 100, cs: 100]` when i18n is active.
@@ -368,32 +370,32 @@ The build summary log surfaces what landed: page count, `+ 404.html` (or `+ N 40
 
 Files the SSG plugin may write to `dist/`. All `_`-prefixed files are internal manifests (static hosts shouldn't publish them; `seoPlugin` reads + cleans `_pyreon-ssg-paths.json`):
 
-| File                          | When                                         | Consumed by                                  |
-| ----------------------------- | -------------------------------------------- | -------------------------------------------- |
-| `<path>/index.html`           | Per successfully-rendered path               | The static host                              |
-| `404.html`, `<locale>/404.html` | `_404.tsx` exists, `emit404 !== false`     | Static host (unmatched-URL fallback)         |
-| `_redirects`                  | A loader threw `redirect()`, `emitRedirects` | Netlify / Cloudflare Pages                   |
-| `_redirects.json`             | Same                                         | Vercel                                       |
-| `_pyreon-ssg-paths.json`      | Any page rendered                            | `seoPlugin({ sitemap: { useSsgPaths: true } })` |
-| `_pyreon-revalidate.json`     | A route exported `revalidate`                | Deployment adapter / `vercelRevalidateHandler` |
-| `_pyreon-ssg-errors.json`     | `errors.length > 0`, `errorArtifact !== 'none'` | CI gates                                  |
-| `sitemap.xml`                 | `seoPlugin({ sitemap })`                      | Search engines                               |
+| File                            | When                                            | Consumed by                                     |
+| ------------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| `<path>/index.html`             | Per successfully-rendered path                  | The static host                                 |
+| `404.html`, `<locale>/404.html` | `_404.tsx` exists, `emit404 !== false`          | Static host (unmatched-URL fallback)            |
+| `_redirects`                    | A loader threw `redirect()`, `emitRedirects`    | Netlify / Cloudflare Pages                      |
+| `_redirects.json`               | Same                                            | Vercel                                          |
+| `_pyreon-ssg-paths.json`        | Any page rendered                               | `seoPlugin({ sitemap: { useSsgPaths: true } })` |
+| `_pyreon-revalidate.json`       | A route exported `revalidate`                   | Deployment adapter / `vercelRevalidateHandler`  |
+| `_pyreon-ssg-errors.json`       | `errors.length > 0`, `errorArtifact !== 'none'` | CI gates                                        |
+| `sitemap.xml`                   | `seoPlugin({ sitemap })`                        | Search engines                                  |
 
 Manifest writes (`_redirects*`, `_pyreon-*.json`) are atomic (temp file + `rename`) so an interrupted build never leaves a half-written manifest an adapter or CI might misparse. Per-page HTML writes are intentionally non-atomic (individually-readable, no cross-file invariant, and the rename cost on 10k-path sites would be significant).
 
 ## `ssg` config quick reference
 
-| Option            | Type                                                        | Default  | Summary                                                  |
-| ----------------- | ----------------------------------------------------------- | -------- | -------------------------------------------------------- |
-| `paths`           | `string[] \| () => string[] \| () => Promise<string[]>`     | auto     | Explicit prerender paths (else auto-detect)              |
-| `emit404`         | `boolean`                                                   | `true`   | Emit `dist/404.html` from `_404.tsx`                     |
+| Option            | Type                                                        | Default  | Summary                                                   |
+| ----------------- | ----------------------------------------------------------- | -------- | --------------------------------------------------------- |
+| `paths`           | `string[] \| () => string[] \| () => Promise<string[]>`     | auto     | Explicit prerender paths (else auto-detect)               |
+| `emit404`         | `boolean`                                                   | `true`   | Emit `dist/404.html` from `_404.tsx`                      |
 | `emitRedirects`   | `boolean`                                                   | `true`   | Write `_redirects` / `_redirects.json` on loader redirect |
-| `redirectsAsHtml` | `'none' \| 'meta-refresh'`                                   | `'none'` | Also emit a meta-refresh HTML stub per redirect          |
-| `onPathError`     | `(path, error) => string \| null \| Promise<…>`             | —        | Per-path fallback HTML hook                              |
-| `errorArtifact`   | `'json' \| 'none'`                                           | `'json'` | Write `_pyreon-ssg-errors.json` on errors                |
-| `concurrency`     | `number`                                                    | `4`      | Parallel render workers                                  |
-| `onProgress`      | `({ completed, total, currentPath, elapsed }) => void \| …`  | —        | Per-path settle callback                                 |
-| `splitChunks`     | `boolean`                                                   | `true`   | Route-level code splitting                               |
+| `redirectsAsHtml` | `'none' \| 'meta-refresh'`                                  | `'none'` | Also emit a meta-refresh HTML stub per redirect           |
+| `onPathError`     | `(path, error) => string \| null \| Promise<…>`             | —        | Per-path fallback HTML hook                               |
+| `errorArtifact`   | `'json' \| 'none'`                                          | `'json'` | Write `_pyreon-ssg-errors.json` on errors                 |
+| `concurrency`     | `number`                                                    | `4`      | Parallel render workers                                   |
+| `onProgress`      | `({ completed, total, currentPath, elapsed }) => void \| …` | —        | Per-path settle callback                                  |
+| `splitChunks`     | `boolean`                                                   | `true`   | Route-level code splitting                                |
 
 Top-level `i18n` (`I18nRoutingConfig`) drives per-locale route duplication; per-route `export const revalidate` drives the build-time ISR manifest.
 

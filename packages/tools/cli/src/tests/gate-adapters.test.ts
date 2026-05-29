@@ -99,11 +99,7 @@ describe('runReactPatternsGate', () => {
 
   it('--fix mode applies migrations and reports auto-fixed info findings', async () => {
     const cwd = makeTmpDir()
-    writeFile(
-      cwd,
-      'src/App.tsx',
-      `export function X() { return <div className="x" /> }\n`,
-    )
+    writeFile(cwd, 'src/App.tsx', `export function X() { return <div className="x" /> }\n`)
     const result = await runReactPatternsGate({ cwd, fix: true })
     assertShape(result, 'react-patterns')
     // We exercised the --fix branch; the file may or may not have
@@ -230,11 +226,9 @@ describe('runLintGate', () => {
     const result = await runLintGate({ cwd })
     assertShape(result, 'lint')
     // No first-party package src exists → nothing to lint → no findings.
-    expect(
-      result.findings.some((f) =>
-        (f.location?.relPath ?? '').includes('examples/'),
-      ),
-    ).toBe(false)
+    expect(result.findings.some((f) => (f.location?.relPath ?? '').includes('examples/'))).toBe(
+      false,
+    )
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 

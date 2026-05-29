@@ -90,9 +90,7 @@ describe('pyreon/no-redundant-role (frontend, fixable)', () => {
   })
 
   it('does NOT fire on a dynamic `<button role={dynamic}>` (non-literal)', () => {
-    const result = lint(
-      `function App({ dynamic }) { return <button role={dynamic}>x</button> }`,
-    )
+    const result = lint(`function App({ dynamic }) { return <button role={dynamic}>x</button> }`)
     expect(diagIds(result)).not.toContain('pyreon/no-redundant-role')
   })
 
@@ -112,14 +110,10 @@ describe('pyreon/no-redundant-role (frontend, fixable)', () => {
   it('autofix removes the redundant role, leaving other attrs + no double space', () => {
     const source = `function App() { return <button type="button" role="button">x</button> }`
     const result = lint(source)
-    const diag = result.diagnostics.find(
-      (d) => d.ruleId === 'pyreon/no-redundant-role',
-    )
+    const diag = result.diagnostics.find((d) => d.ruleId === 'pyreon/no-redundant-role')
     expect(diag?.fix).toBeDefined()
     const fixed = applyFixes(source, result.diagnostics)
-    expect(fixed).toBe(
-      `function App() { return <button type="button">x</button> }`,
-    )
+    expect(fixed).toBe(`function App() { return <button type="button">x</button> }`)
     expect(fixed).not.toContain('  ') // no double space left behind
     expect(fixed).toContain('type="button"') // sibling attr intact
   })
@@ -135,10 +129,7 @@ describe('pyreon/no-redundant-role — harness sanity', () => {
     const filePath = join(dir, 'src', 'C.tsx')
     writeFileSync(filePath, '')
     try {
-      const result = lint(
-        `function C() { return <nav role="navigation">x</nav> }`,
-        filePath,
-      )
+      const result = lint(`function C() { return <nav role="navigation">x</nav> }`, filePath)
       expect(diagIds(result)).toContain('pyreon/no-redundant-role')
     } finally {
       rmSync(dir, { recursive: true, force: true })

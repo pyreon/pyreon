@@ -2,11 +2,7 @@ import { h } from '@pyreon/core'
 import { redirect, RouterView } from '@pyreon/router'
 
 export function layout() {
-  return h(
-    'div',
-    { 'data-layout': 'auth-gated' },
-    h(RouterView, null),
-  )
+  return h('div', { 'data-layout': 'auth-gated' }, h(RouterView, null))
 }
 
 /**

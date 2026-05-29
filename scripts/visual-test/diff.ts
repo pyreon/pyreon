@@ -60,9 +60,7 @@ async function diffImages(): Promise<DiffResult[]> {
   mkdirSync(DIFF_DIR, { recursive: true })
 
   const currentFiles = readdirSync(CURRENT_DIR).filter((f) => f.endsWith('.png'))
-  const baselineFiles = new Set(
-    readdirSync(BASELINE_DIR).filter((f) => f.endsWith('.png')),
-  )
+  const baselineFiles = new Set(readdirSync(BASELINE_DIR).filter((f) => f.endsWith('.png')))
 
   if (currentFiles.length === 0) {
     console.error('[visual-test] No screenshots in current/. Run capture first.')
@@ -111,14 +109,9 @@ async function diffImages(): Promise<DiffResult[]> {
     const totalPixels = width * height
     const diffImg = new PNG({ width, height })
 
-    const diffPixels = pixelmatch(
-      baselineImg.data,
-      currentImg.data,
-      diffImg.data,
-      width,
-      height,
-      { threshold: 0.1 },
-    )
+    const diffPixels = pixelmatch(baselineImg.data, currentImg.data, diffImg.data, width, height, {
+      threshold: 0.1,
+    })
 
     const percentage = (diffPixels / totalPixels) * 100
 
@@ -165,9 +158,7 @@ function printResults(results: DiffResult[]): void {
 
   for (const r of results) {
     const icon = statusIcon[r.status]
-    const pct = r.status === 'new' || r.status === 'missing'
-      ? '---'
-      : `${r.percentage.toFixed(3)}%`
+    const pct = r.status === 'new' || r.status === 'missing' ? '---' : `${r.percentage.toFixed(3)}%`
     console.log(`  ${icon}    | ${r.name.padEnd(20)} | ${pct}`)
   }
 

@@ -1212,7 +1212,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     diagnose: () => ({
       cause:
         "A <Transition> tried to read .classList on a null element. Usually the ref to the animated child element wasn't assigned by the time applyEnter/applyLeave ran — e.g. the child is itself an async-mounted component, or the Transition wraps something other than a single DOM element.",
-      fix: 'Transition must wrap a single DOM element directly (not a component VNode). If you need a component, wrap the component\'s root DOM element in Transition externally, or expose the ref via forwardRef.',
+      fix: "Transition must wrap a single DOM element directly (not a component VNode). If you need a component, wrap the component's root DOM element in Transition externally, or expose the ref via forwardRef.",
       fixCode:
         '// ✗ Component child — Transition can\'t inject ref\n<Transition show={open}>\n  <MyComponent />\n</Transition>\n\n// ✓ DOM element child\n<Transition show={open}>\n  <div class="modal">...</div>\n</Transition>',
     }),
@@ -1236,8 +1236,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     // that declare a non-SPA mode without the matching entry file.
     pattern: /\[UNRESOLVED_ENTRY\][^\n]*src\/entry-server\.ts/,
     diagnose: () => ({
-      cause:
-        "`zero build` is doing an SSR build pass but `src/entry-server.ts` doesn't exist.",
+      cause: "`zero build` is doing an SSR build pass but `src/entry-server.ts` doesn't exist.",
       fix: "If your app is SPA-only: declare `zero({ mode: 'spa' })` in vite.config.ts AND upgrade `@pyreon/zero-cli` to ≥0.25.2 (where the SSR build pass is skipped for SPA mode). If your app needs SSR/SSG: add `src/entry-server.ts` exporting `createServer(...)` from `@pyreon/zero/server`.",
       fixCode:
         "// vite.config.ts\nimport zero from '@pyreon/zero/server'\nexport default {\n  plugins: [zero({ mode: 'spa' })],\n}",
@@ -1272,7 +1271,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     diagnose: () => ({
       cause:
         'A router hook (useRouter / useNavigate / useParams / useRoute / onBeforeRouteLeave / etc.) was called from a component that is not mounted inside a <RouterProvider>. The router context is provided per-tree, so descendants without a provider get the explicit "no router installed" throw rather than silently no-op.',
-      fix: "Wrap the app root in <RouterProvider router={createRouter({...})}>. For tests, render the unit under <RouterProvider router={...}> with a stub router. For shared components that may render in both routed AND non-routed contexts, accept the navigate callback as a prop instead of calling useNavigate() directly.",
+      fix: 'Wrap the app root in <RouterProvider router={createRouter({...})}>. For tests, render the unit under <RouterProvider router={...}> with a stub router. For shared components that may render in both routed AND non-routed contexts, accept the navigate callback as a prop instead of calling useNavigate() directly.',
       fixCode: `const router = createRouter({ routes })
 mount(() => <RouterProvider router={router}><App /></RouterProvider>, root)`,
     }),

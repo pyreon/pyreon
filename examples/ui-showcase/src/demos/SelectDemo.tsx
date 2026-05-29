@@ -6,7 +6,9 @@ export function SelectDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Select</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Select
+      </Title>
 
       <div style="max-width: 400px; margin-bottom: 24px;">
         <Select

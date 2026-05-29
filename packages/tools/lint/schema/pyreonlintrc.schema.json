@@ -11,13 +11,7 @@
     },
     "preset": {
       "description": "Base preset to extend. Recommended is the safe default. `lib`=strict+architecture; `app`=disable lib-only rules; `best-practices`=recommended + all opt-in best-practice rules (library rules self-gate on package.json deps).",
-      "enum": [
-        "recommended",
-        "strict",
-        "app",
-        "lib",
-        "best-practices"
-      ]
+      "enum": ["recommended", "strict", "app", "lib", "best-practices"]
     },
     "rules": {
       "description": "Per-rule configuration. Each entry is either a bare severity (`\"error\"` / `\"warn\"` / `\"info\"` / `\"off\"`) or an `[severity, options]` tuple. Rules that support path-based exemption read `options.exemptPaths: string[]`.",
@@ -63,12 +57,7 @@
   },
   "definitions": {
     "severity": {
-      "enum": [
-        "error",
-        "warn",
-        "info",
-        "off"
-      ],
+      "enum": ["error", "warn", "info", "off"],
       "description": "Diagnostic severity. `off` disables the rule entirely."
     },
     "ruleOptions": {

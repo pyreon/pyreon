@@ -67,17 +67,20 @@ export default function DndRoute() {
       <header>
         <h1 style="margin: 0 0 8px; font-size: 28px">Drag & Drop</h1>
         <p style="margin: 0; color: #64748b; font-size: 14px; line-height: 1.6">
-          Three @pyreon/dnd scenarios in one page. Each section is independently
-          tested in <code>e2e/app-showcase-dnd.spec.ts</code>.
+          Three @pyreon/dnd scenarios in one page. Each section is independently tested in{' '}
+          <code>e2e/app-showcase-dnd.spec.ts</code>.
         </p>
       </header>
 
       {/* ─── Sortable list ──────────────────────────────────────────── */}
-      <section data-testid="sortable" style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: white">
+      <section
+        data-testid="sortable"
+        style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: white"
+      >
         <h2 style="margin: 0 0 12px; font-size: 18px">1. Sortable list</h2>
         <p style="margin: 0 0 16px; color: #64748b; font-size: 13px">
-          Drag rows to reorder. Order shown below; `useSortable` writes the new
-          order back to the signal via <code>onReorder</code>.
+          Drag rows to reorder. Order shown below; `useSortable` writes the new order back to the
+          signal via <code>onReorder</code>.
         </p>
         <ul
           ref={sortable.containerRef}
@@ -91,9 +94,7 @@ export default function DndRoute() {
                 key={item.id}
                 data-itemid={item.id}
                 data-active={sortable.activeId() === item.id ? 'true' : 'false'}
-                data-over-edge={
-                  sortable.overId() === item.id ? (sortable.overEdge() ?? '') : ''
-                }
+                data-over-edge={sortable.overId() === item.id ? (sortable.overEdge() ?? '') : ''}
                 style="padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; cursor: grab; user-select: none; font-size: 14px"
               >
                 {item.label}
@@ -105,16 +106,23 @@ export default function DndRoute() {
           data-testid="sortable-order"
           style="margin: 12px 0 0; font-family: monospace; font-size: 12px; color: #475569"
         >
-          {() => `order: ${items().map((i) => i.id).join(', ')}`}
+          {() =>
+            `order: ${items()
+              .map((i) => i.id)
+              .join(', ')}`
+          }
         </p>
       </section>
 
       {/* ─── Draggable card → drop zone ─────────────────────────────── */}
-      <section data-testid="card-drop" style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: white">
+      <section
+        data-testid="card-drop"
+        style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: white"
+      >
         <h2 style="margin: 0 0 12px; font-size: 18px">2. Draggable → drop zone</h2>
         <p style="margin: 0 0 16px; color: #64748b; font-size: 13px">
-          Drag the card into the drop zone. The drop handler reads the payload
-          from <code>useDraggable</code>'s data and writes it back to a signal.
+          Drag the card into the drop zone. The drop handler reads the payload from{' '}
+          <code>useDraggable</code>'s data and writes it back to a signal.
         </p>
         <div style="display: flex; gap: 24px; align-items: stretch">
           <div
@@ -142,7 +150,10 @@ export default function DndRoute() {
       </section>
 
       {/* ─── File drop ──────────────────────────────────────────────── */}
-      <section data-testid="file-drop" style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: white">
+      <section
+        data-testid="file-drop"
+        style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: white"
+      >
         <h2 style="margin: 0 0 12px; font-size: 18px">3. File drop</h2>
         <p style="margin: 0 0 16px; color: #64748b; font-size: 13px">
           Drop files anywhere on this card. Filtered to <code>image/*</code> via

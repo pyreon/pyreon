@@ -1,8 +1,8 @@
-import { useHead } from "@pyreon/head"
-import { computed, signal } from "@pyreon/reactivity"
+import { useHead } from '@pyreon/head'
+import { computed, signal } from '@pyreon/reactivity'
 
 export const meta = {
-  title: "Counter — Pyreon Zero",
+  title: 'Counter — Pyreon Zero',
   description: "See Pyreon's signal-based reactivity in action.",
 }
 
@@ -57,7 +57,7 @@ export default function Counter() {
             doubled → <strong>{doubled}</strong>
           </div>
           <div>
-            isEven → <strong>{isEven() ? "true" : "false"}</strong>
+            isEven → <strong>{isEven() ? 'true' : 'false'}</strong>
           </div>
         </div>
       </div>
@@ -68,17 +68,16 @@ export default function Counter() {
         </div>
         <pre>
           <code>
-            <span class="kw">const</span> <span class="fn">count</span> ={" "}
-            <span class="fn">signal</span>(<span class="str">0</span>)
-            <span class="kw">const</span> <span class="fn">doubled</span> ={" "}
-            <span class="fn">computed</span>(() =&gt; <span class="fn">count</span>() * <span class="str">2</span>)
-            {"\n"}
-            <span class="cm">{"// Plain JS — no () needed in JSX:"}</span>
+            <span class="kw">const</span> <span class="fn">count</span> ={' '}
+            <span class="fn">signal</span>(<span class="str">0</span>)<span class="kw">const</span>{' '}
+            <span class="fn">doubled</span> = <span class="fn">computed</span>(() =&gt;{' '}
+            <span class="fn">count</span>() * <span class="str">2</span>){'\n'}
+            <span class="cm">{'// Plain JS — no () needed in JSX:'}</span>
             <span class="tag">&lt;div&gt;</span>
-            {"{"}count{"}"} × 2 = {"{"}doubled{"}"}
+            {'{'}count{'}'} × 2 = {'{'}doubled{'}'}
             <span class="tag">&lt;/div&gt;</span>
-            {"\n"}
-            <span class="cm">{"// Compiler auto-calls signals for you ✓"}</span>
+            {'\n'}
+            <span class="cm">{'// Compiler auto-calls signals for you ✓'}</span>
           </code>
         </pre>
       </div>

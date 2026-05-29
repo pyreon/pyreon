@@ -56,11 +56,11 @@ const can = (key) => permissions()[key] === true
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', {}, () => 'Read: ' + (can('read') ? 'Yes' : 'No')),
-  h('div', {}, () => 'Write: ' + (can('write') ? 'Yes' : 'No')),
-  h('div', {}, () => 'Admin: ' + (can('admin') ? 'Yes' : 'No')),
-  h('button', { onClick: () => permissions.update(p => ({...p, write: !p.write})), style: { marginTop: '8px' } }, 'Toggle Write'),
-  h('button', { onClick: () => permissions.update(p => ({...p, admin: !p.admin})), style: { marginLeft: '8px' } }, 'Toggle Admin'),
+h('div', {}, () => 'Read: ' + (can('read') ? 'Yes' : 'No')),
+h('div', {}, () => 'Write: ' + (can('write') ? 'Yes' : 'No')),
+h('div', {}, () => 'Admin: ' + (can('admin') ? 'Yes' : 'No')),
+h('button', { onClick: () => permissions.update(p => ({...p, write: !p.write})), style: { marginTop: '8px' } }, 'Toggle Write'),
+h('button', { onClick: () => permissions.update(p => ({...p, admin: !p.admin})), style: { marginLeft: '8px' } }, 'Toggle Admin'),
 )
 mount(ui, app)
 </Playground>

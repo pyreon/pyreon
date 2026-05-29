@@ -26,11 +26,7 @@ export default function HmrProbePage() {
       <p>
         count: <span data-testid="hmr-count">{() => count()}</span>
       </p>
-      <button
-        type="button"
-        data-testid="hmr-inc"
-        onClick={() => count.update((n) => n + 1)}
-      >
+      <button type="button" data-testid="hmr-inc" onClick={() => count.update((n) => n + 1)}>
         increment
       </button>
     </div>

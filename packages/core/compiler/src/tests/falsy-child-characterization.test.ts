@@ -43,6 +43,8 @@ describe('Round 3 — bare literal falsy children: pinned current behavior (cont
   // Pinned divergence: a bare `{false}` literal stringifies via textContent.
   // Documented, not fixed — see file header for the rationale.
   it('bare {false} literal takes the static textContent path (known, contrived)', () => {
-    expect(emit(`function C(){ return <div>{false}</div> }`)).toContain('__root.textContent = false')
+    expect(emit(`function C(){ return <div>{false}</div> }`)).toContain(
+      '__root.textContent = false',
+    )
   })
 })

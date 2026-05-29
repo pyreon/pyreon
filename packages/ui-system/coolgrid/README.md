@@ -15,7 +15,7 @@ bun add @pyreon/coolgrid @pyreon/core @pyreon/reactivity @pyreon/ui-core @pyreon
 ```tsx
 import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 
-<Provider theme={theme}>
+;<Provider theme={theme}>
   <Container>
     <Row>
       <Col size={{ xs: 12, md: 8 }}>Main content</Col>
@@ -39,16 +39,16 @@ Sets max-width and seeds the configuration context for descendants.
 </Container>
 ```
 
-| Prop | Type | Description |
-|---|---|---|
-| `columns` | `ValueType` | Number of grid columns (default 12) |
-| `gap` | `ValueType` | Space between columns |
-| `gutter` | `ValueType` | Outer gutter (negative-margin offset on Row) |
-| `padding` | `ValueType` | Column inner padding |
-| `contentAlignX` | `'center' \| 'left' \| 'right' \| 'spaceAround' \| 'spaceBetween' \| 'spaceEvenly'` | Horizontal alignment |
-| `width` | `ContainerWidth \| (widths) => ContainerWidth` | Container max-width override |
-| `component` | `ComponentFn` | Custom root element |
-| `css` | `ExtraStyles` | Extend container styling |
+| Prop            | Type                                                                                | Description                                  |
+| --------------- | ----------------------------------------------------------------------------------- | -------------------------------------------- |
+| `columns`       | `ValueType`                                                                         | Number of grid columns (default 12)          |
+| `gap`           | `ValueType`                                                                         | Space between columns                        |
+| `gutter`        | `ValueType`                                                                         | Outer gutter (negative-margin offset on Row) |
+| `padding`       | `ValueType`                                                                         | Column inner padding                         |
+| `contentAlignX` | `'center' \| 'left' \| 'right' \| 'spaceAround' \| 'spaceBetween' \| 'spaceEvenly'` | Horizontal alignment                         |
+| `width`         | `ContainerWidth \| (widths) => ContainerWidth`                                      | Container max-width override                 |
+| `component`     | `ComponentFn`                                                                       | Custom root element                          |
+| `css`           | `ExtraStyles`                                                                       | Extend container styling                     |
 
 Container-level configuration props cascade to every nested Row and Col through context (built on Pyreon's `pushContext` / `popContext`).
 
@@ -82,12 +82,12 @@ Width is calculated as `(size / columns)` of the parent Row.
 <Col size={{ xs: 0, md: 6 }}>Hidden on xs (size 0 → display:none)</Col>
 ```
 
-| Prop | Type | Description |
-|---|---|---|
-| `size` | `ValueType` | Column span (of `columns`) |
-| `padding` | `ValueType` | Override inner padding |
-| `component` | `ComponentFn` | Custom column element |
-| `css` | `ExtraStyles` | Extend column styling |
+| Prop        | Type          | Description                |
+| ----------- | ------------- | -------------------------- |
+| `size`      | `ValueType`   | Column span (of `columns`) |
+| `padding`   | `ValueType`   | Override inner padding     |
+| `component` | `ComponentFn` | Custom column element      |
+| `css`       | `ExtraStyles` | Extend column styling      |
 
 ## Responsive values
 

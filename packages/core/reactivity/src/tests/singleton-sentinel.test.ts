@@ -47,20 +47,12 @@ afterEach(() => {
 describe('Singleton sentinel — default mode', () => {
   it('first registration records the marker silently', () => {
     expect(() => {
-      registerSingleton(
-        '@pyreon/reactivity',
-        '0.24.6',
-        'file:///workspace/reactivity/lib/index.js',
-      )
+      registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     }).not.toThrow()
   })
 
   it('throws on duplicate load (different normalized locations)', () => {
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     expect(() => {
       registerSingleton(
         '@pyreon/reactivity',
@@ -71,11 +63,7 @@ describe('Singleton sentinel — default mode', () => {
   })
 
   it('error message names actionable fixes (Vite dedupe, npm ls, bun ls, env-var opt-outs)', () => {
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     try {
       registerSingleton(
         '@pyreon/reactivity',
@@ -95,11 +83,7 @@ describe('Singleton sentinel — default mode', () => {
   })
 
   it('HMR re-eval (same normalized location + different Vite query) is allowed silently', () => {
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     // Vite HMR re-eval adds ?v=<timestamp>, ?t=<timestamp>, or ?import.
     expect(() => {
       registerSingleton(
@@ -123,11 +107,7 @@ describe('Singleton sentinel — escape hatches', () => {
     env.PYREON_SINGLE_INSTANCE = 'warn'
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
-      registerSingleton(
-        '@pyreon/reactivity',
-        '0.24.6',
-        'file:///workspace/reactivity/lib/index.js',
-      )
+      registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
       expect(() => {
         registerSingleton(
           '@pyreon/reactivity',
@@ -147,11 +127,7 @@ describe('Singleton sentinel — escape hatches', () => {
     env.PYREON_SINGLE_INSTANCE = 'silent'
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
-      registerSingleton(
-        '@pyreon/reactivity',
-        '0.24.6',
-        'file:///workspace/reactivity/lib/index.js',
-      )
+      registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
       expect(() => {
         registerSingleton(
           '@pyreon/reactivity',
@@ -172,11 +148,7 @@ describe('Singleton sentinel — escape hatches', () => {
     // "user sees a clear error". This test is the empirical proof that
     // turning off the sentinel re-introduces the dual-instance scenario.
     env.PYREON_SINGLE_INSTANCE = 'silent'
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     // No throw — but the second location IS distinct from the first.
     expect(() => {
       registerSingleton(
@@ -224,22 +196,14 @@ describe('Singleton sentinel — per-package coverage', () => {
     it(`throws when ${pkg} is loaded from two different paths`, () => {
       registerSingleton(pkg, '0.24.6', `file:///workspace/${pkg}/lib/index.js`)
       expect(() => {
-        registerSingleton(
-          pkg,
-          '0.24.6',
-          `file:///tmp/duplicate/${pkg}/lib/index.js`,
-        )
+        registerSingleton(pkg, '0.24.6', `file:///tmp/duplicate/${pkg}/lib/index.js`)
       }).toThrow(new RegExp(`Multiple instances of ${pkg.replace('/', '\\/')} detected`))
     })
 
     it(`${pkg} dual-load error message names the specific package`, () => {
       registerSingleton(pkg, '0.24.6', `file:///workspace/${pkg}/lib/index.js`)
       try {
-        registerSingleton(
-          pkg,
-          '0.24.6',
-          `file:///tmp/duplicate/${pkg}/lib/index.js`,
-        )
+        registerSingleton(pkg, '0.24.6', `file:///tmp/duplicate/${pkg}/lib/index.js`)
         expect.fail(`Expected throw for ${pkg}`)
       } catch (err) {
         const msg = String((err as Error).message)
@@ -253,57 +217,29 @@ describe('Singleton sentinel — per-package coverage', () => {
 describe('Singleton sentinel — cross-package isolation', () => {
   it('registering @pyreon/core then @pyreon/router does NOT throw — different names', () => {
     expect(() => {
-      registerSingleton(
-        '@pyreon/core',
-        '0.24.6',
-        'file:///workspace/core/lib/index.js',
-      )
-      registerSingleton(
-        '@pyreon/router',
-        '0.24.6',
-        'file:///workspace/router/lib/index.js',
-      )
+      registerSingleton('@pyreon/core', '0.24.6', 'file:///workspace/core/lib/index.js')
+      registerSingleton('@pyreon/router', '0.24.6', 'file:///workspace/router/lib/index.js')
     }).not.toThrow()
   })
 
   it('a dual-load on one package does NOT affect a sibling package', () => {
-    registerSingleton(
-      '@pyreon/core',
-      '0.24.6',
-      'file:///workspace/core/lib/index.js',
-    )
-    registerSingleton(
-      '@pyreon/router',
-      '0.24.6',
-      'file:///workspace/router/lib/index.js',
-    )
+    registerSingleton('@pyreon/core', '0.24.6', 'file:///workspace/core/lib/index.js')
+    registerSingleton('@pyreon/router', '0.24.6', 'file:///workspace/router/lib/index.js')
     // Dual-load core only.
     expect(() => {
-      registerSingleton(
-        '@pyreon/core',
-        '0.24.6',
-        'file:///tmp/duplicate/core/lib/index.js',
-      )
+      registerSingleton('@pyreon/core', '0.24.6', 'file:///tmp/duplicate/core/lib/index.js')
     }).toThrow(/Multiple instances of @pyreon\/core detected/)
     // Router can still re-register cleanly after sentinel reset.
     _resetSentinel()
     expect(() => {
-      registerSingleton(
-        '@pyreon/router',
-        '0.24.6',
-        'file:///workspace/router/lib/index.js',
-      )
+      registerSingleton('@pyreon/router', '0.24.6', 'file:///workspace/router/lib/index.js')
     }).not.toThrow()
   })
 })
 
 describe('withSilent — refcount opt-out (race-safe replacement for env-var dance)', () => {
   it('suppresses the throw INSIDE the scope; restores detection after', async () => {
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     await withSilent(async () => {
       // Inside the scope: silent, no throw on dual-load.
       expect(() => {
@@ -329,11 +265,7 @@ describe('withSilent — refcount opt-out (race-safe replacement for env-var dan
     // 5 concurrent scopes leaked PYREON_SINGLE_INSTANCE='silent'
     // permanently. Under the refcount, depth returns to 0 after all
     // 5 settle regardless of ordering.
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     await Promise.all(
       Array.from({ length: 5 }, (_, i) =>
         withSilent(async () => {
@@ -359,11 +291,7 @@ describe('withSilent — refcount opt-out (race-safe replacement for env-var dan
   })
 
   it('nested scopes count correctly (push/pop, depth > 0 throughout)', async () => {
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     await withSilent(async () => {
       await withSilent(async () => {
         await withSilent(async () => {
@@ -401,11 +329,7 @@ describe('withSilent — refcount opt-out (race-safe replacement for env-var dan
   })
 
   it('decrement on throw — finally restores depth even if fn throws', async () => {
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     await expect(
       withSilent(async () => {
         throw new Error('boom')
@@ -421,11 +345,7 @@ describe('withSilent — refcount opt-out (race-safe replacement for env-var dan
   })
 
   it('withSilentSync — same semantics, sync', () => {
-    registerSingleton(
-      '@pyreon/reactivity',
-      '0.24.6',
-      'file:///workspace/reactivity/lib/index.js',
-    )
+    registerSingleton('@pyreon/reactivity', '0.24.6', 'file:///workspace/reactivity/lib/index.js')
     const result = withSilentSync(() => {
       expect(() => {
         registerSingleton(

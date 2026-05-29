@@ -255,7 +255,7 @@ describe('_rsCollapseDyn (real browser)', () => {
     expect(calls).toBeGreaterThanOrEqual(4)
     expect(calls).toBeLessThanOrEqual(5)
     // Cleanly land on the right class regardless.
-    expect((query(root, 'button')).className).toBe('rdcc-v0-light')
+    expect(query(root, 'button').className).toBe('rdcc-v0-light')
     void root
   })
 
@@ -283,7 +283,7 @@ describe('_rsCollapseDyn (real browser)', () => {
       ),
     )
     await flush()
-    expect((query(root, 'span')).textContent).toBe('child')
+    expect(query(root, 'span').textContent).toBe('child')
 
     // Disposing the host (via cleanup) must also fire the child binder's
     // disposer — the runtime composes them.

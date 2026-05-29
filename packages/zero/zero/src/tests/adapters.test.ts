@@ -101,7 +101,9 @@ describe('vercel adapter build', () => {
     expect(config.routes.length).toBeGreaterThan(0)
 
     // Verify function config
-    const vcConfig = JSON.parse(await readFile(join(vercelDir, 'functions', 'ssr.func', '.vc-config.json'), 'utf-8'))
+    const vcConfig = JSON.parse(
+      await readFile(join(vercelDir, 'functions', 'ssr.func', '.vc-config.json'), 'utf-8'),
+    )
     expect(vcConfig.runtime).toMatch(/^nodejs/)
 
     // Verify the SSR module import is HOISTED to module scope, NOT
@@ -112,10 +114,7 @@ describe('vercel adapter build', () => {
     // serverless instance (every cold start) paid the full module
     // evaluation cost inside the request budget. Hoisting it
     // evaluates once at function-init, before the first request.
-    const funcSrc = await readFile(
-      join(vercelDir, 'functions', 'ssr.func', 'index.js'),
-      'utf-8',
-    )
+    const funcSrc = await readFile(join(vercelDir, 'functions', 'ssr.func', 'index.js'), 'utf-8')
     expect(funcSrc).toMatch(/^import\s+handler\s+from\s+["']\.\/entry-server\.js["']/m)
     expect(funcSrc).not.toMatch(/await\s+import\s*\(\s*["']\.\/entry-server\.js["']\s*\)/)
 
@@ -197,7 +196,10 @@ describe('cloudflare adapter build', () => {
       /\bprocess\.env\b/,
     ]
     for (const pattern of forbiddenAtRuntime) {
-      expect(worker, `emitted _worker.js must not use ${pattern} (Cloudflare Workers default runtime has no Node APIs)`).not.toMatch(pattern)
+      expect(
+        worker,
+        `emitted _worker.js must not use ${pattern} (Cloudflare Workers default runtime has no Node APIs)`,
+      ).not.toMatch(pattern)
     }
 
     await cleanup()
@@ -334,7 +336,8 @@ function withStubFetch<T>(
   const calls: FetchCall[] = []
   const realFetch = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const call: FetchCall = init !== undefined ? { url, init } : { url }
     calls.push(call)
     return responder(call)
@@ -1161,10 +1164,7 @@ describe('node adapter — runtime contract', () => {
       // Add a .js file to the mock client dir so the static branch has
       // something to find. The default mock only has index.html.
       const { writeFile } = await import('node:fs/promises')
-      await writeFile(
-        join(MOCK_CLIENT, 'app.js'),
-        'console.log("static asset")',
-      )
+      await writeFile(join(MOCK_CLIENT, 'app.js'), 'console.log("static asset")')
 
       const outDir = join(TMP, 'node-runtime-js')
       const port = await pickFreePort()

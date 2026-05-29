@@ -42,7 +42,7 @@ import { signal } from '@pyreon/reactivity'
 const users = signal<User[]>([])
 
 // Signal in → Computed out (auto-reactive)
-const active = rx.filter(users, u => u.active)
+const active = rx.filter(users, (u) => u.active)
 const sorted = rx.sortBy(active, 'name')
 const top10 = rx.take(sorted, 10)
 
@@ -63,8 +63,8 @@ const sorted = computed(() => [...cheap()].sort((a, b) => a.name.localeCompare(b
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', {}, () => 'Cheap items (sorted): ' + sorted().map(i => i.name).join(', ')),
-  h('button', { onClick: () => items.update(prev => [...prev, { name: 'Elderberry', price: 1 }]) }, 'Add Elderberry ($1)'),
+h('div', {}, () => 'Cheap items (sorted): ' + sorted().map(i => i.name).join(', ')),
+h('button', { onClick: () => items.update(prev => [...prev, { name: 'Elderberry', price: 1 }]) }, 'Add Elderberry ($1)'),
 )
 mount(ui, app)
 </Playground>
@@ -75,11 +75,11 @@ Every function detects whether the input is callable (a signal/computed) or a pl
 
 ```tsx
 // Reactive — returns Computed<User[]>
-const active = rx.filter(usersSignal, u => u.active)
+const active = rx.filter(usersSignal, (u) => u.active)
 active() // auto-tracks, re-derives on change
 
 // Static — returns User[]
-const active = rx.filter(usersArray, u => u.active)
+const active = rx.filter(usersArray, (u) => u.active)
 // Just a plain filtered array, no signals involved
 ```
 
@@ -88,13 +88,13 @@ const active = rx.filter(usersArray, u => u.active)
 ### filter
 
 ```tsx
-const active = rx.filter(users, u => u.active)
+const active = rx.filter(users, (u) => u.active)
 ```
 
 ### map
 
 ```tsx
-const names = rx.map(users, u => u.name)
+const names = rx.map(users, (u) => u.name)
 ```
 
 ### sortBy
@@ -150,7 +150,7 @@ const flat = rx.flatten(nestedArrays)
 ### find
 
 ```tsx
-const admin = rx.find(users, u => u.role === 'admin')
+const admin = rx.find(users, (u) => u.role === 'admin')
 ```
 
 ### mapValues
@@ -158,7 +158,7 @@ const admin = rx.find(users, u => u.role === 'admin')
 Transform values of an object/record:
 
 ```tsx
-const counts = rx.mapValues(grouped, arr => arr.length)
+const counts = rx.mapValues(grouped, (arr) => arr.length)
 ```
 
 <Playground title="Aggregation" :height="100">
@@ -170,9 +170,9 @@ const best = computed(() => Math.max(...scores()))
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', {}, () => 'Scores: ' + scores().join(', ')),
-  h('div', {}, () => 'Total: ' + total() + ' | Average: ' + avg().toFixed(1) + ' | Best: ' + best()),
-  h('button', { onClick: () => scores.update(s => [...s, Math.floor(Math.random() * 30) + 70]) }, 'Add Random Score'),
+h('div', {}, () => 'Scores: ' + scores().join(', ')),
+h('div', {}, () => 'Total: ' + total() + ' | Average: ' + avg().toFixed(1) + ' | Best: ' + best()),
+h('button', { onClick: () => scores.update(s => [...s, Math.floor(Math.random() * 30) + 70]) }, 'Add Random Score'),
 )
 mount(ui, app)
 </Playground>
@@ -189,7 +189,7 @@ const total = rx.count(users) // number
 
 ```tsx
 const totalAge = rx.sum(users, 'age')
-const totalAge = rx.sum(users, u => u.age)
+const totalAge = rx.sum(users, (u) => u.age)
 ```
 
 ### min / max
@@ -276,9 +276,9 @@ Chain transforms left-to-right. Returns a `Computed` when the source is a signal
 ```tsx
 const topRisks = rx.pipe(
   findings,
-  items => items.filter(f => f.severity === 'critical'),
-  items => items.sort((a, b) => b.score - a.score),
-  items => items.slice(0, 10),
+  (items) => items.filter((f) => f.severity === 'critical'),
+  (items) => items.sort((a, b) => b.score - a.score),
+  (items) => items.slice(0, 10),
 )
 
 // topRisks() — reactive, re-derives when findings changes
@@ -294,7 +294,13 @@ All functions are also exported as named exports for tree-shaking:
 import { filter, sortBy, take } from '@pyreon/rx'
 
 // Same as rx.filter, rx.sortBy, rx.take
-const result = take(sortBy(filter(users, u => u.active), 'name'), 10)
+const result = take(
+  sortBy(
+    filter(users, (u) => u.active),
+    'name',
+  ),
+  10,
+)
 ```
 
 ## TypeScript

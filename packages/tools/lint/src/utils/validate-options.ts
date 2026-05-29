@@ -36,9 +36,7 @@ export function validateRuleOptions(rule: Rule, options: RuleOptions): Validatio
       continue
     }
     if (!matchesType(value, expected)) {
-      errors.push(
-        `[${rule.meta.id}] option "${key}" must be ${expected}, got ${describe(value)}`,
-      )
+      errors.push(`[${rule.meta.id}] option "${key}" must be ${expected}, got ${describe(value)}`)
     }
   }
 

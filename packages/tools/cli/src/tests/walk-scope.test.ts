@@ -12,10 +12,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import {
-  isCompatPackageFile,
-  isFirstPartySourceFile,
-} from '../doctor/utils/walk'
+import { isCompatPackageFile, isFirstPartySourceFile } from '../doctor/utils/walk'
 
 describe('isFirstPartySourceFile — INCLUDED', () => {
   it.each([
@@ -56,12 +53,8 @@ describe('isFirstPartySourceFile — EXCLUDED', () => {
   })
 
   it('non-source extensions → false even under packages/*/src', () => {
-    expect(isFirstPartySourceFile('packages/core/core/src/readme.md')).toBe(
-      false,
-    )
-    expect(isFirstPartySourceFile('packages/core/core/src/data.json')).toBe(
-      false,
-    )
+    expect(isFirstPartySourceFile('packages/core/core/src/readme.md')).toBe(false)
+    expect(isFirstPartySourceFile('packages/core/core/src/data.json')).toBe(false)
   })
 })
 
@@ -87,11 +80,7 @@ describe('isCompatPackageFile', () => {
 
 describe('Windows path separators normalize', () => {
   it('backslash paths are treated identically', () => {
-    expect(
-      isFirstPartySourceFile('packages\\core\\reactivity\\src\\signal.ts'),
-    ).toBe(true)
-    expect(
-      isCompatPackageFile('packages\\tools\\vue-compat\\src\\index.ts'),
-    ).toBe(true)
+    expect(isFirstPartySourceFile('packages\\core\\reactivity\\src\\signal.ts')).toBe(true)
+    expect(isCompatPackageFile('packages\\tools\\vue-compat\\src\\index.ts')).toBe(true)
   })
 })

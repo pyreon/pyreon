@@ -29,8 +29,14 @@ describe('static-text baking — provably-static children are baked, never _bind
     ['module-const string ref', `const N='hi'; export const C=()=> <div>{N}</div>`],
     ['string literal', `export const C=()=> <div>{'hi'}</div>`],
     ['number literal', `export const C=()=> <div>{42}</div>`],
-    ['static ternary on a module const', `const F=false; export const C=()=> <div>{F ? 'a' : 'b'}</div>`],
-    ['template literal interpolating only a const', `const N='x'; export const C=()=> <div>{\`v-\${N}\`}</div>`],
+    [
+      'static ternary on a module const',
+      `const F=false; export const C=()=> <div>{F ? 'a' : 'b'}</div>`,
+    ],
+    [
+      'template literal interpolating only a const',
+      `const N='x'; export const C=()=> <div>{\`v-\${N}\`}</div>`,
+    ],
     ['module-const array .length', `const A=[1,2,3]; export const C=()=> <div>{A.length}</div>`],
     ['pure built-in call (Math.max)', `export const C=()=> <div>{Math.max(1,2)}</div>`],
     ['const string concat', `const A='a',B='b'; export const C=()=> <div>{A+B}</div>`],

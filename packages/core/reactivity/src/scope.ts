@@ -47,7 +47,13 @@ export class EffectScope {
    * Schedules onUpdate hooks via microtask so all synchronous effects settle first.
    */
   notifyEffectRan(): void {
-    if (!this._active || !this._updateHooks || this._updateHooks.length === 0 || this._updatePending) return
+    if (
+      !this._active ||
+      !this._updateHooks ||
+      this._updateHooks.length === 0 ||
+      this._updatePending
+    )
+      return
     this._updatePending = true
     queueMicrotask(() => {
       this._updatePending = false

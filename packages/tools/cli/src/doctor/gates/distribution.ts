@@ -136,9 +136,7 @@ export interface DistributionGateOptions {
  * const result = await runDistributionGate({ cwd: process.cwd() })
  * if (result.findings.length > 0) process.exit(1)
  */
-export const runDistributionGate = async (
-  opts: DistributionGateOptions,
-): Promise<GateResult> => {
+export const runDistributionGate = async (opts: DistributionGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const probePackage = opts.probePackage ?? '@pyreon/reactivity'
   const findings: Finding[] = []
@@ -192,12 +190,7 @@ export const runDistributionGate = async (
           encoding: 'utf8',
           stdio: ['pipe', 'pipe', 'pipe'],
         })
-        const finding = _detectMapsInPackOutput(
-          out,
-          opts.cwd,
-          probe,
-          probePackage,
-        )
+        const finding = _detectMapsInPackOutput(out, opts.cwd, probe, probePackage)
         if (finding) findings.push(finding)
       } catch {
         // npm not available or pack failed — silently skip. Locally

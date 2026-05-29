@@ -36,12 +36,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
+  "dependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*"
-  },
-  "dependencies": {
-    "@pyreon/reactivity": "workspace:^"
   }
 }

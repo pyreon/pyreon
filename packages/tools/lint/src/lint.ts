@@ -132,10 +132,7 @@ function buildConfig(options: LintOptions): {
         ? [existing[0] as Severity, (existing[1] ?? {}) as RuleOptions]
         : [(existing ?? 'off') as Severity, {}]
       if (currentSeverity === 'off') continue
-      config.rules[id] = [
-        currentSeverity,
-        { ...currentOptions, ...optionOverrides },
-      ] as const
+      config.rules[id] = [currentSeverity, { ...currentOptions, ...optionOverrides }] as const
     }
   }
 

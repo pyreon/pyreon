@@ -83,9 +83,7 @@ describe('node component reactivity (F2)', () => {
 
   it('selected accessor reflects current selection state when read', () => {
     const flow = createFlow<{ label: string }>({
-      nodes: [
-        { id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'A' } },
-      ],
+      nodes: [{ id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'A' } }],
     })
 
     let capturedSelected: (() => boolean) | null = null
@@ -121,9 +119,7 @@ describe('node component reactivity (F2)', () => {
     // inside the accessor body so reactive scopes track the
     // updated payload.
     const flow = createFlow<{ label: string }>({
-      nodes: [
-        { id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Original' } },
-      ],
+      nodes: [{ id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Original' } }],
     })
 
     let calls = 0
@@ -329,9 +325,7 @@ describe('node component reactivity (F2)', () => {
     // the NodeLayer rewrite preserves reactivity at every level, not
     // just the user's custom node component.
     const flow = createFlow<{ label: string }>({
-      nodes: [
-        { id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'A' } },
-      ],
+      nodes: [{ id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'A' } }],
     })
 
     function CustomNode(props: NodeComponentProps<{ label: string }>) {

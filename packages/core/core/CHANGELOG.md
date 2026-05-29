@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -62,12 +61,10 @@
 - [#886](https://github.com/pyreon/pyreon/pull/886) [`cddc592`](https://github.com/pyreon/pyreon/commit/cddc5926f2f23d1b600d01f60fa4e72513d2b6fe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Revert PR [#855](https://github.com/pyreon/pyreon/issues/855)'s `Symbol.for`-on-`globalThis` pattern in `@pyreon/core`'s 5 state files (`lifecycle.ts`, `component.ts`, `context.ts`, `telemetry.ts`, `props.ts`) — restore plain `let _foo = …` module-scope state (PR D of the bullet-proof cross-module-instance plan, `.claude/plans/jaunty-herding-kazoo.md`).
 
   The new architecture (PRs A + B) makes this workaround unnecessary AND harmful:
-
   - **Bundler prevents** (PR B = [#884](https://github.com/pyreon/pyreon/issues/884)): `@pyreon/vite-plugin` injects `resolve.dedupe` for every `@pyreon/*` package — one instance per heap by construction.
   - **Sentinel detects** (PR A = [#883](https://github.com/pyreon/pyreon/issues/883)): every `@pyreon/*` package calls `registerSingleton(...)` at module load — anything that slips through prevention throws a fail-loud Error.
 
   PR [#855](https://github.com/pyreon/pyreon/issues/855)'s Symbol.for pattern had real costs that the new architecture eliminates:
-
   1. **Pollutes `globalThis`** with framework state symbols (visible to userspace, devtools, other libraries).
   2. **Breaks SSR per-request isolation** — state is process-global, ALS-backed runtime-server has to do MORE work to compensate.
   3. **Breaks test isolation** — `vi.resetModules()` doesn't reset `globalThis` state.
@@ -80,7 +77,6 @@
   **Ordering invariant** (per the plan): PR D MUST NOT merge until BOTH PR A ([#883](https://github.com/pyreon/pyreon/issues/883)) and PR B ([#884](https://github.com/pyreon/pyreon/issues/884)) are in `main` AND have been observed in canary for at least one week without incident. If a regression surfaces during canary, PR D simply doesn't ship — the γ workaround stays in `@pyreon/core` as a fallback while the regression is debugged.
 
   Validation:
-
   - `@pyreon/core` tests: 531 pass (was 538 — drop is the 7 deleted `cross-module-state.test.ts` specs that asserted on the now-removed Symbol.for keys)
   - Full core-layer (`reactivity`, `core`, `router`, `runtime-dom`, `runtime-server`, `head`, `server`): 2,548 tests pass
   - SSR per-request isolation via `runtime-server.setContextStackProvider()` preserved (function unchanged; just its underlying state moved from globalThis to module-scope)
@@ -115,7 +111,6 @@
   The `bun` condition exists to point WORKSPACE consumers at TypeScript source (`./src/index.ts`) for HMR + fast refresh during framework development. It was never meant for published consumers. Vite's `[bare]` resolver honors `bun` (→ `src/`) while Vite's `[package entry]` resolver IGNORES it (→ `lib/`) — that's how the same `@pyreon/core` could resolve to two different files in one process. Every `provide()` outside-setup warning was that structural duplication.
 
   `scripts/publish.ts` now performs TWO surgeries on every package's `package.json` BEFORE `npm publish` (Phase 2 already restores the workspace original after — no workspace impact):
-
   1. **`exports`**: strip the `bun` condition from every entry + nested subpath. Published packages emit ONLY `import` + `types`, so consumers' bundlers have ONE canonical entry. **Single resolution path → single module instance.**
   2. **`files`**: drop `src` from the array. Once `bun` is gone from exports, `src/` is unreachable through the package name — shipping it inside the tarball is pure waste (50KB-2MB per package × 53 framework packages ≈ multi-megabytes of dead weight per install). Tarball-only contains `lib/` + README + LICENSE post-strip.
 
@@ -139,14 +134,14 @@
 
   ```ts
   interface LifecycleState {
-    current: LifecycleHooks | null;
+    current: LifecycleHooks | null
   }
-  const KEY = Symbol.for("pyreon-core/lifecycle-state");
-  const g = globalThis as Record<symbol, unknown>;
+  const KEY = Symbol.for('pyreon-core/lifecycle-state')
+  const g = globalThis as Record<symbol, unknown>
   const _state: LifecycleState = (g[KEY] as LifecycleState | undefined) ?? {
     current: null,
-  };
-  if (!g[KEY]) g[KEY] = _state;
+  }
+  if (!g[KEY]) g[KEY] = _state
   ```
 
   The `if (!g[KEY])` guard ensures the FIRST module instance creates the state; subsequent instances see it and use it.
@@ -173,7 +168,6 @@
   Workspace dev workflow unchanged — `bun` condition still routes framework src/ imports to TypeScript source files. Only publish-time package.json is mutated (then restored).
 
   ## Verification
-
   - **7 unit specs** for `stripBunCondition` covering recursive nesting, arrays, primitives, real `@pyreon/core` shape.
   - **7 regression specs** for the Symbol.for state hosting in [`tests/cross-module-state.test.ts`](packages/core/core/src/tests/cross-module-state.test.ts):
     - Each state var reachable at its `Symbol.for` key on `globalThis`
@@ -220,7 +214,6 @@
   Net result: the diagnostic that was supposed to make these warnings actionable was broken across every published consumer.
 
   **The fix**:
-
   - Skip `/\/lifecycle\.[tj]s/` (covers `.ts` source AND `.js` bundles)
   - Skip `/\bcaptureCallSite\b/` and `/\bwarnOutsideSetup\b/` (function-name match — survives bundling)
   - Skip `/\/(core|reactivity|runtime-dom|runtime-server|router|head|ui-core|styler|unistyle|rocketstyle|attrs|elements|kinetic)\/src\//` for every framework package that internally calls lifecycle hooks
@@ -260,25 +253,25 @@
 
   ```ts
   // Before
-  return [...getStack()]; // 40k entries under deep nesting
+  return [...getStack()] // 40k entries under deep nesting
 
   // After
   // Walk top-to-bottom, keep topmost-per-id frames
-  const seen = new Set<symbol>();
-  const reversed: Map<symbol, unknown>[] = [];
+  const seen = new Set<symbol>()
+  const reversed: Map<symbol, unknown>[] = []
   for (let i = stack.length - 1; i >= 0; i--) {
-    const frame = stack[i];
-    let unique = false;
+    const frame = stack[i]
+    let unique = false
     for (const id of frame.keys()) {
       if (!seen.has(id)) {
-        seen.add(id);
-        unique = true;
+        seen.add(id)
+        unique = true
       }
     }
-    if (unique) reversed.push(frame);
+    if (unique) reversed.push(frame)
   }
-  reversed.reverse();
-  return reversed;
+  reversed.reverse()
+  return reversed
   // → ~N entries where N = distinct context ids in scope (typically 2-10)
   ```
 
@@ -297,7 +290,6 @@
   ## Tests
 
   18 new specs in `context.test.ts`:
-
   - **Dedup behavior** (8 specs): empty stack → empty snapshot; single frame → identical; no duplicates → verbatim; duplicate ids collapse to topmost; deep duplicate-heavy stack collapses correctly; multi-key frames kept if any id is un-shadowed; multi-key frames dropped if all ids are shadowed; useContext returns same value pre/post dedup for arbitrary read patterns.
   - **restoreContextStack with deduped snapshots** (2 specs): restoration semantically equivalent; 40-duplicate stack only pushes/pops 1 frame post-dedup.
   - **getContextStackLength** (3 specs): returns LIVE stack length not snapshot length; zero on empty stack; matches array length through push/pop cycles.
@@ -306,12 +298,10 @@
     - 100 snapshots of a 500-frame mixed stack with 50 distinct ids retain **5000 frame references**, not 50,000.
 
   ## Bisect-verified
-
   - Revert `captureContextStack` to `[...getStack()]` → **6 dedup-behavior specs + 2 leak-audit specs fail**; 29 pre-existing specs still pass (semantic equivalence preserved).
   - Restored → 37/37 context tests, 523/523 `@pyreon/core`, 150/150 `@pyreon/runtime-server`, 681/681 `@pyreon/runtime-dom`, 521/521 `@pyreon/router` — total **1875 tests across affected packages**. Lint + typecheck clean. No lockfile drift. No `TEMP BISECT` remnants.
 
   ## Impact
-
   - **Per-snapshot retention drops from O(stack-depth) to O(distinct-ids-in-scope)** — typically 100× reduction on deep trees, the same shape as the bug-report's 800× extrapolation.
   - The leak-audit unit tests are permanent regression locks — re-introducing the bug shape fails CI deterministically (no heap snapshot needed).
 
@@ -331,12 +321,10 @@
   **Reported symptom**: `@pyreon/core@<=0.22.0` apps that repeatedly remount subtrees containing `provide()` calls (route navigation, theme toggle, `<Show>` / `<For>` cycling, kinetic transitions) accumulate orphan frames on the module-level context stack. One reporter observed a 1 GB heap where 33 in-flight effect snapshots × ~10,000-frame copies each retained ~138 MB of arrays. The live context stack held 321,024 entries but only 47 distinct provider Map instances — the same providers were re-referenced thousands of times each.
 
   **Root cause** (two cooperating bugs):
-
   1. `provide()` registered `onUnmount(() => popContext())`. `popContext` pops `stack.pop()` — the last frame. That assumes strict LIFO between push and pop, but `mountReactive`'s effect-re-fire flow runs the previous-mount subtree cleanup INSIDE the effect's snapshot-restore window. The snapshot-pushed frames sit ABOVE the descendant's own provider frame at the moment its `onUnmount` fires. `popContext` pops the snapshot push; the descendant's provider frame is orphaned on the live stack.
   2. `restoreContextStack` used position-based `stack.splice(insertIndex, snapshot.length)` to remove its pushes on exit. That assumed the pushes stayed where they were placed — but identity-based removal by a descendant (fix 1) can shift them down, making `splice(insertIndex, …)` either a no-op or pull the wrong frames.
 
   **Fix**: both layers now use IDENTITY-based removal.
-
   - `provide()` and `withContext()` capture the frame reference at push, register `onUnmount(() => removeContextFrame(frame))`, where `removeContextFrame` does `stack.splice(stack.lastIndexOf(frame), 1)`. Robust to "wrong frame on top" because it splices the specific frame regardless of position. `lastIndexOf` matches the most-recent occurrence — preserves LIFO ordering when the same `Map` reference appears multiple times (the snapshot-push case).
   - `restoreContextStack`'s finally now iterates `snapshot` in reverse and removes each frame via `stack.lastIndexOf(frame) + splice`. Same identity-based approach. Robust to descendants having removed frames at earlier indices.
 
@@ -391,12 +379,10 @@
   Fix: LRU bound (default 256 entries). `Map` preserves insertion order, so the first key is the least-recently-used. `get` / `set` on an existing key refresh recency by re-inserting at the tail. Apps that lint thousands of distinct files in tight succession can bump the cap via `new AstCache(2048)`.
 
   ### Regression tests + bisect
-
   - `packages/tools/vue-compat/src/tests/provide-stack-leak-repro.test.ts` (2 specs) — `createApp().provide().mount(el); unmount()` returns the global context stack to baseline; 100 mount/unmount cycles do NOT accumulate frames. **Bisect-verified**: revert `vue-compat/src/index.ts` → both specs fail with stack-length assertions; restored → pass.
   - `packages/tools/lint/src/tests/ast-cache-lru.test.ts` (5 specs) — cache never exceeds `maxEntries`, evicts LRU on overflow, `get`/`set` refresh recency, re-setting an existing key doesn't double-count, default cap is 256. **Bisect-verified**: revert `lint/src/cache.ts` → all 5 fail; restored → pass.
 
   ### Validation
-
   - `@pyreon/core` 510/510 tests pass
   - `@pyreon/vue-compat` 218/218 tests pass (+ 2 new regression specs)
   - `@pyreon/lint` 639/639 tests pass (+ 5 new LRU specs)
@@ -406,7 +392,6 @@
   ### Audit byproducts (NOT in this PR — deliberately scoped follow-ups)
 
   The 12-package audit also surfaced 4 MEDIUM-risk patterns documented in the audit report. Each filed-worthy as a separate small follow-up:
-
   1. **`@pyreon/solid-compat` `createStore` per-path signal map grows unbounded** — one signal per UNIQUE read-path string. Problematic for stores with dynamic key spaces (dictionaries, pagination, logs).
   2. **`@pyreon/solid-compat` `createResource` has the Class-F stale-resolution race** — `fetchPromise` overwritten on refetch with no AbortSignal; old promise's success handler still runs `setData`. Same shape as [#730](https://github.com/pyreon/pyreon/issues/730)-charts/storage inflight-promise bug.
   3. **`@pyreon/svelte-compat` ChildInstance preservation discards `unmountCallbacks` without firing them** — the cached `writable.subscribe` short-circuit doesn't re-register the unsub after the reset. Subtle; needs a targeted reproducer.
@@ -458,14 +443,13 @@
       extra: { component: ctx.component, reactiveTrace: ctx.reactiveTrace },
       // e.g. [{ name: 'status', prev: '"idle"', next: '"submitting"' },
       //       { name: 'user',   prev: 'null',    next: 'User {id, …}' }]
-    });
-  });
+    })
+  })
   ```
 
   **New: `getReactiveTrace()` / `clearReactiveTrace()`** (`@pyreon/reactivity`) — read / reset the buffer directly (devtools, test isolation), plus the `ReactiveTraceEntry` type.
 
   Design properties:
-
   - **Zero production cost.** The recorder feeding the buffer sits behind the bundler-agnostic production dead-code gate in `signal.ts` `_set` and tree-shakes out of prod bundles. `reactiveTrace` is simply `undefined` in production. Verified: bundle budgets unchanged (all 54 within budget), perf-harness tree-shake regression passes.
   - **Bounded + leak-safe.** Fixed-size (~50-entry) ring buffer, oldest-evicted, never grows. Stores **truncated string previews** of values — never raw references — so it can't pin large arrays / detached DOM / closures, and is always safe to serialize into a report. Hostile values (throwing getters, cycles, huge strings, BigInt) are handled without throwing.
   - **Distinct from `onSignalUpdate`.** That is opt-in and captures stacks (expensive, for time-travel debugging). This is always-on in dev, deliberately cheap (no stack), and exists specifically to enrich error reports.
@@ -480,7 +464,6 @@
   ## Two changes
 
   **1. Widened prop types so inline form typechecks.** Before this PR, `<Defer when={x}><Modal /></Defer>` would fail TypeScript with `Type 'VNode' is not assignable to type '(Component: ComponentFn<P>) => VNodeChild'`. The `children` prop was typed only as the render-prop form, but the compiler-driven inline form passes raw JSX. TS checks the source BEFORE the compiler pass runs, so both shapes need to typecheck:
-
   - `children?: ((Component) => VNodeChild) | VNodeChild` (was: render-prop only)
   - `chunk?: () => Promise<...>` (was: required) — inline form has no `chunk` at source level; compiler synthesizes it
 
@@ -489,7 +472,6 @@
   ## Also adds the verify-modes assertion that should have shipped with PR [#587](https://github.com/pyreon/pyreon/issues/587)
 
   Adds an inline-Defer regression gate to the `playground × spa` verify-modes cell:
-
   - New fixture component `examples/playground/src/components/DeferredFixture.tsx` with a unique fingerprint string
   - `examples/playground/src/pages/About.tsx` uses `<Defer when={open}><DeferredFixture /></Defer>`
   - New `assertStringInExactlyOneChunk(dist, fingerprint, expectedPrefix)` helper in `scripts/verify-modes.ts`
@@ -500,7 +482,6 @@
   **Bisect-verified**: with the `transformDeferInline` call disabled in the vite-plugin's `transform()` hook, the fingerprint lands in `about-*.js` (the route chunk pulls in DeferredFixture via the un-removed static import) and the cell fails with `expected basename to start with "DeferredFixture-". Got: about-*.js`.
 
   ## Honest disclosure of gaps still NOT addressed
-
   - **Props on inline child** — `<Defer when={x}><Modal title="hi" /></Defer>` still bails to explicit form
   - **Closure capture** — `<Modal count={count} />` where count is a local signal still bails
   - **Renamed imports** — `{ Modal as M }` still bails
@@ -527,7 +508,6 @@
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -541,7 +521,6 @@
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -617,7 +596,6 @@
   Why this exists: `<Show when={open()}><Modal /></Show>` ships the modal code in the main bundle unconditionally. `<Defer>` defers the import (Rolldown sees `import('./X')` as a literal and chunks it) and only fires the trigger when the condition is met.
 
   API details:
-
   - `chunk: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>` — dynamic import. The literal `import('./X')` is what enables chunk splitting.
   - `when?: () => boolean` — signal accessor. Load when truthy. Repeated truthy emissions are no-ops (chunk loads exactly once per Defer instance).
   - `on?: 'visible' | 'idle'` — alternative triggers. Mutually exclusive with `when`.
@@ -638,7 +616,6 @@
   **Bug class.** Pyreon's reactive-prop contract is that `<Comp prop={signal()}>` compiles to `h(Comp, { prop: _rp(() => signal()) })` and `mount.ts:makeReactiveProps` converts `_rp`-branded thunks into property GETTERS on the props object. Any prop-pipeline step that VALUE-COPIES `props[key]` (plain assignment, spread, or `Object.assign`) fires the getter at HOC setup time — outside any tracking scope — and stores the resolved value as a static data property. Every downstream JSX accessor reading `props.x` then sees the captured-once value, never re-subscribing to the underlying signal.
 
   **Two layers of fix:**
-
   1. **Compiler-level (closes the bug class for all consumers, including user code).** Both the JS compiler (`src/jsx.ts`) and the Rust native binary (`native/src/lib.rs`) now wrap component-JSX spread arguments with the new `_wrapSpread(...)` helper from `@pyreon/core`. `<Comp {...source}>` compiles to `jsx(Comp, { ..._wrapSpread(source) })` — `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks, so the JS-level spread carries function values (no getters fire), and `makeReactiveProps` converts them back to getters on the consumer side. Fast path: when `source` has no getter descriptors, `_wrapSpread` returns the source unchanged — zero overhead for the 99% of spread sources that don't carry reactive props. Lowercase-tag (DOM) spreads route through the template path's `_applyProps` (already reactive) and skip the wrap.
 
   2. **Framework-level (closes every observed leak site in shipped packages):**
@@ -650,7 +627,6 @@
      - `@pyreon/runtime-dom` — `applyProps` in `props.ts` detects getter descriptors and wraps the write in `renderEffect`.
 
   **Bisect-verified at TWO layers:**
-
   - **Unit / browser**: `packages/ui-system/rocketstyle/src/__tests__/reactive-props-preservation.test.ts` (9 specs) + the new `rocketstyle.browser.test.tsx` spec covering the full pipeline. Reverting any of the 4 leak-site fixes individually fails the relevant spec with `expected 'count: 1' to be 'count: 0'`.
   - **Real-Chromium e2e**: `e2e/ui-showcase-regression.spec.ts:793 — signal-driven prop on Button updates the DOM on flip` exercises a rocketstyle Button with a `title={\`count: \${count()}\`}` prop fed by a signal. Reverting the compiler-level fix (`packages/core/compiler/src/jsx.ts`+`native/src/lib.rs`+ rebuilding the Rust binary) → spec fails with`unexpected value "count: 0"` after click — proving the spread reactivity contract holds end-to-end through the entire prop pipeline (rocketstyle attrs HOC → styler buildProps → Element Wrapper → runtime-dom applyProps).
 
@@ -686,7 +662,6 @@
 ### Patch Changes
 
 - [#258](https://github.com/pyreon/pyreon/pull/258) [`a05c4ba`](https://github.com/pyreon/pyreon/commit/a05c4bab713f5168acd56eb233520102735bd80a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Performance rearchitecture: reactive theme/mode/dimension switching via computed (not effect).
-
   - **styler**: `DynamicStyled` uses one `computed()` per component (not `effect()`) to track theme + mode + dimension signals. The resolve itself runs `runUntracked()` to prevent exponential cascade. String-equality memoization eliminates redundant DOM updates. Per-definition WeakMap cache (Tier 2) skips resolve entirely for repeated identical inputs.
   - **styler**: `ThemeContext` is a `createReactiveContext<Theme>`. `useThemeAccessor()` returns the raw accessor for tracking inside computeds.
   - **ui-core**: `PyreonUI` nested `inversed` prop inherits parent mode reactively — inner section automatically flips when outer mode changes.
@@ -752,7 +727,6 @@
   ### CSS layer cascade fixed — rocketstyle themes now correctly override element base styles ([#206](https://github.com/pyreon/pyreon/issues/206))
 
   The 0.12.11 release had a CSS cascade regression where element base styles (padding, display, flex-direction) overrode rocketstyle theme styles (colors, borders, shadows). Three root causes:
-
   1. **`styles/index.ts` returned a plain string** instead of a `css` tagged-template result, breaking the CSS interpolation chain for responsive styles, pseudo-selectors, and @layer wrapping.
 
   2. **CSS layer architecture was backwards** — Elements were unlayered (highest priority per CSS cascade spec) while rocketstyle used `@layer pyreon` (lower priority). Fixed with explicit two-layer ordering: `@layer elements, rocketstyle;`. Elements use `{ layer: 'elements' }`, rocketstyle uses `{ layer: 'rocketstyle' }`.
@@ -762,7 +736,6 @@
   ### Dev warning false positives fixed ([#206](https://github.com/pyreon/pyreon/issues/206))
 
   Two dev warnings that were dead code before 0.12.11 (due to the `typeof process` dev gate bug) fired incorrectly on valid Pyreon patterns:
-
   - **"Component returned invalid value"** — didn't account for arrays (valid `VNodeChild[]` from Fragment) or NativeItems (from `_tpl()`). Fixed.
   - **"Reactive accessor returned function"** — fired on ALL function returns from reactive accessors, but `() => VNodeChild` IS a valid return (conditional rendering pattern). Removed — function returns are handled correctly by `mountChild`.
 
@@ -791,9 +764,9 @@
 
   ```tsx
   function Comp(props) {
-    const a = b + props.x; // reads props.x AND references b
-    const b = a + 1; // references a → circular
-    return <div>{a}</div>; // ← previously: Maximum call stack size exceeded
+    const a = b + props.x // reads props.x AND references b
+    const b = a + 1 // references a → circular
+    return <div>{a}</div> // ← previously: Maximum call stack size exceeded
   }
   ```
 
@@ -804,7 +777,6 @@
   `direction`, `layerSpacing`, and `edgeRouting` are silently ignored by ELK's `force`/`stress`/`radial`/`box`/`rectpacking` algorithms. `flow.layout()` now emits a `console.warn` in dev mode when these options are set on an algorithm that ignores them. Applicability table verified empirically by running each algorithm with different values.
 
   ### Document-primitives: `DocDocument` accepts reactive metadata + `extractDocNode` one-step API ([#197](https://github.com/pyreon/pyreon/issues/197))
-
   - `DocDocument` props `title`, `author`, `subject` now accept `string | (() => string)`. Accessor functions are resolved at extraction time — each export reads live values from the store.
   - `extractDocNode(templateFn)` — one-step convenience that replaces the two-step `createDocumentExport(fn).getDocNode()` pattern.
   - **Framework fix**: `extractDocumentTree` from `@pyreon/connector-document` now correctly reads `_documentProps` from real rocketstyle primitives (previously only worked with mock vnodes in tests — a silent metadata drop that had been present since the package was created).
@@ -915,12 +887,10 @@
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents
@@ -953,7 +923,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -967,7 +936,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -976,7 +944,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -993,7 +960,6 @@
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

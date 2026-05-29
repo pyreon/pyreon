@@ -518,7 +518,11 @@ function _watchArray(
 
     if (options?.immediate) {
       const current = getters.map((g) => g())
-      cb(current, getters.map(() => undefined), onCleanup)
+      cb(
+        current,
+        getters.map(() => undefined),
+        onCleanup,
+      )
       oldValues = current
       initialized = true
     }
@@ -556,7 +560,11 @@ function _watchArray(
 
   if (options?.immediate) {
     const current = getters.map((g) => g())
-    cb(current, getters.map(() => undefined), onCleanup)
+    cb(
+      current,
+      getters.map(() => undefined),
+      onCleanup,
+    )
     oldValues = current
     initialized = true
   }
@@ -584,9 +592,7 @@ function _watchArray(
     e.dispose()
   }
   if (_currentEffectScope) {
-    ;(
-      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
-    )._cleanups.push(stop)
+    ;(_currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] })._cleanups.push(stop)
   }
   return stop
 }
@@ -686,9 +692,7 @@ function _watchSingle<T>(
     e.dispose()
   }
   if (_currentEffectScope) {
-    ;(
-      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
-    )._cleanups.push(stop)
+    ;(_currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] })._cleanups.push(stop)
   }
   return stop
 }
@@ -700,9 +704,7 @@ function _watchSingle<T>(
  *
  * Inside a component: hook-indexed, created once. Disposed on unmount.
  */
-export function watchEffect(
-  fn: (onCleanup: (fn: () => void) => void) => void,
-): () => void {
+export function watchEffect(fn: (onCleanup: (fn: () => void) => void) => void): () => void {
   const ctx = getCurrentCtx()
 
   let cleanupFn: (() => void) | undefined
@@ -757,9 +759,7 @@ export function watchEffect(
   }
   // Register with current effect scope if one is active
   if (_currentEffectScope) {
-    ;(
-      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
-    )._cleanups.push(stop)
+    ;(_currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] })._cleanups.push(stop)
   }
   return stop
 }
@@ -980,7 +980,7 @@ export function defineComponent<P extends Props = Props>(
         if (typeof handler === 'function') (handler as (...a: unknown[]) => void)(...args)
       },
       slots: {
-        default: children !== undefined ? (() => children) : undefined,
+        default: children !== undefined ? () => children : undefined,
       } as Record<string, (() => VNodeChild) | undefined>,
       attrs: splitVueAttrs(props as Record<string, unknown>, declaredProps),
     }
@@ -1199,8 +1199,9 @@ export function effectScope(detached?: boolean): EffectScopeCompat {
 
   // Auto-collect in parent scope unless detached
   if (!detached && _currentEffectScope) {
-    const parentCleanups = (_currentEffectScope as EffectScopeCompat & { _cleanups?: (() => void)[] })
-      ._cleanups
+    const parentCleanups = (
+      _currentEffectScope as EffectScopeCompat & { _cleanups?: (() => void)[] }
+    )._cleanups
     if (parentCleanups) parentCleanups.push(() => scope.stop())
   }
   ;(scope as EffectScopeCompat & { _cleanups: (() => void)[] })._cleanups = cleanups
@@ -1220,9 +1221,7 @@ export function getCurrentScope(): EffectScopeCompat | undefined {
  */
 export function onScopeDispose(fn: () => void): void {
   if (_currentEffectScope) {
-    ;(
-      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
-    )._cleanups.push(fn)
+    ;(_currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] })._cleanups.push(fn)
   }
 }
 
@@ -1244,18 +1243,14 @@ export function onErrorCaptured(fn: (err: Error) => boolean | void): void {
 /**
  * Dev-only lifecycle hook — no-op in Pyreon.
  */
-export function onRenderTracked(
-  _fn: (event: { key: string; type: string }) => void,
-): void {
+export function onRenderTracked(_fn: (event: { key: string; type: string }) => void): void {
   // Dev-only hook — no equivalent in Pyreon
 }
 
 /**
  * Dev-only lifecycle hook — no-op in Pyreon.
  */
-export function onRenderTriggered(
-  _fn: (event: { key: string; type: string }) => void,
-): void {
+export function onRenderTriggered(_fn: (event: { key: string; type: string }) => void): void {
   // Dev-only hook — no equivalent in Pyreon
 }
 
@@ -1265,12 +1260,8 @@ export function onRenderTriggered(
  * Teleport — renders children into a different DOM element.
  * Maps to Pyreon's Portal.
  */
-export function Teleport(props: {
-  to: string | Element
-  children?: VNodeChild
-}): VNodeChild {
-  const target =
-    typeof props.to === 'string' ? document.querySelector(props.to) : props.to
+export function Teleport(props: { to: string | Element; children?: VNodeChild }): VNodeChild {
+  const target = typeof props.to === 'string' ? document.querySelector(props.to) : props.to
   if (!target) return props.children ?? null
   return Portal({ target, children: props.children ?? null })
 }
@@ -1680,9 +1671,7 @@ export function useAttrs(): Record<string, unknown> {
  * Runs a watchEffect that flushes after DOM updates.
  * In Pyreon, same as `watchEffect()`.
  */
-export function watchPostEffect(
-  fn: (onCleanup: (fn: () => void) => void) => void,
-): () => void {
+export function watchPostEffect(fn: (onCleanup: (fn: () => void) => void) => void): () => void {
   return watchEffect(fn)
 }
 
@@ -1690,9 +1679,7 @@ export function watchPostEffect(
  * Runs a watchEffect that flushes synchronously.
  * In Pyreon, same as `watchEffect()`.
  */
-export function watchSyncEffect(
-  fn: (onCleanup: (fn: () => void) => void) => void,
-): () => void {
+export function watchSyncEffect(fn: (onCleanup: (fn: () => void) => void) => void): () => void {
   return watchEffect(fn)
 }
 
@@ -1703,14 +1690,14 @@ export function watchSyncEffect(
  * and update triggering.
  */
 export function customRef<T>(
-  factory: (
-    track: () => void,
-    trigger: () => void,
-  ) => { get: () => T; set: (v: T) => void },
+  factory: (track: () => void, trigger: () => void) => { get: () => T; set: (v: T) => void },
 ): Ref<T> {
   const s = signal(0)
   const { get, set } = factory(
-    () => { s(); return undefined as never }, // track — reading the signal subscribes
+    () => {
+      s()
+      return undefined as never
+    }, // track — reading the signal subscribes
     () => s.set(s.peek() + 1), // trigger — bump version to re-notify
   )
   return {

@@ -71,11 +71,7 @@ describe('@pyreon/server — hydrateIslands in real Chromium', () => {
     const Counter: ComponentFn = (props) => {
       const count = signal((props.initial as number) ?? 0)
       return (
-        <button
-          data-testid="real-counter"
-          type="button"
-          onClick={() => count.set(count() + 1)}
-        >
+        <button data-testid="real-counter" type="button" onClick={() => count.set(count() + 1)}>
           {() => String(count())}
         </button>
       )
@@ -186,9 +182,7 @@ describe('@pyreon/server — hydrateIslands in real Chromium', () => {
 
     await settle()
     expect(loaderCalled).toBe(false)
-    expect(island.querySelector('[data-testid="ssr-children"]')?.textContent).toBe(
-      'SSR children',
-    )
+    expect(island.querySelector('[data-testid="ssr-children"]')?.textContent).toBe('SSR children')
 
     cleanup()
     cleanupIslands()
@@ -318,9 +312,7 @@ describe('@pyreon/server — hydrateIslands in real Chromium', () => {
     // SSR children remain (they would anyway since never-strategy never
     // mounts; the assertion catches a regression where we'd still write
     // data-island-error even though we don't render).
-    expect(island.querySelector('[data-testid="ssr-children"]')?.textContent).toBe(
-      'SSR children',
-    )
+    expect(island.querySelector('[data-testid="ssr-children"]')?.textContent).toBe('SSR children')
 
     cleanup()
     cleanupIslands()

@@ -30,7 +30,10 @@ function firstJsxElement(code: string): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const visit = (n: any): void => {
     if (found || !n || typeof n !== 'object') return
-    if (n.type === 'JSXElement') { found = n; return }
+    if (n.type === 'JSXElement') {
+      found = n
+      return
+    }
     for (const k in n) {
       const v = n[k]
       if (Array.isArray(v)) for (const c of v) visit(c)
@@ -55,9 +58,7 @@ describe('scanCollapsibleSites — element-child', () => {
     expect(s.source).toBe('@pyreon/ui-components')
     expect(s.props).toEqual({ state: 'primary', size: 'medium' })
     // childTree carries the recursively-static subtree for the resolver.
-    expect(s.childTree).toEqual([
-      { tag: 'div', props: { style: 'width:60%' }, children: [] },
-    ])
+    expect(s.childTree).toEqual([{ tag: 'div', props: { style: 'width:60%' }, children: [] }])
     // The key matches what the compiler emit computes (scan↔emit invariant).
     const node = firstJsxElement(
       '<Progress state="primary" size="medium"><div style="width:60%" /></Progress>',
@@ -89,12 +90,12 @@ describe('scanCollapsibleSites — element-child', () => {
 
   it('distinct subtrees produce distinct keys (no collision)', () => {
     const a = scanCollapsibleSites(
-      "import { Progress } from '@pyreon/ui-components'\nconst x = <Progress state=\"p\"><div style=\"width:10%\" /></Progress>",
+      'import { Progress } from \'@pyreon/ui-components\'\nconst x = <Progress state="p"><div style="width:10%" /></Progress>',
       'A.tsx',
       SRC,
     )
     const b = scanCollapsibleSites(
-      "import { Progress } from '@pyreon/ui-components'\nconst x = <Progress state=\"p\"><div style=\"width:90%\" /></Progress>",
+      'import { Progress } from \'@pyreon/ui-components\'\nconst x = <Progress state="p"><div style="width:90%" /></Progress>',
       'B.tsx',
       SRC,
     )

@@ -290,7 +290,10 @@ describe('partition', () => {
   it('signal returns computed', () => {
     const src = signal([1, 2, 3, 4])
     const parts = partition(src, (n) => n > 2)
-    expect(parts()).toEqual([[3, 4], [1, 2]])
+    expect(parts()).toEqual([
+      [3, 4],
+      [1, 2],
+    ])
     src.set([10, 20])
     expect(parts()).toEqual([[10, 20], []])
   })

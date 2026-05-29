@@ -6,12 +6,12 @@
 
 Four Swift source files under `Sources/PyreonRuntime/`:
 
-| File | Purpose | Status |
-|---|---|---|
-| `PyreonTokens.swift` | Design-system token tables (spacing, colors, typography). Compiler emits the real table in PR 7a alongside this stub. | Stub |
-| `PyreonReactivity.swift` | Adapter helpers between Pyreon's `signal()`/`computed()`/`effect()` and SwiftUI's `@State`/computed properties/`.onChange(of:)`. **Intentionally near-empty** — SwiftUI's primitives ARE the reactive primitives; the compiler emits onto them directly. | Stub |
-| `PyreonViewModifier.swift` | `PyreonStylable` marker protocol for the styler emitter's output (PR 7b). | Stub |
-| `PyreonStorage.swift` | `@PyreonAppStorage<T: Codable>` property wrapper + `PyreonStorage.{read,write,remove,decodeOrDefault}` helpers. **Real implementation** — collapses the 14-line Codable-Data bridge the compiler currently emits inline to one line at the call site. | **Real** |
+| File                       | Purpose                                                                                                                                                                                                                                                  | Status   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `PyreonTokens.swift`       | Design-system token tables (spacing, colors, typography). Compiler emits the real table in PR 7a alongside this stub.                                                                                                                                    | Stub     |
+| `PyreonReactivity.swift`   | Adapter helpers between Pyreon's `signal()`/`computed()`/`effect()` and SwiftUI's `@State`/computed properties/`.onChange(of:)`. **Intentionally near-empty** — SwiftUI's primitives ARE the reactive primitives; the compiler emits onto them directly. | Stub     |
+| `PyreonViewModifier.swift` | `PyreonStylable` marker protocol for the styler emitter's output (PR 7b).                                                                                                                                                                                | Stub     |
+| `PyreonStorage.swift`      | `@PyreonAppStorage<T: Codable>` property wrapper + `PyreonStorage.{read,write,remove,decodeOrDefault}` helpers. **Real implementation** — collapses the 14-line Codable-Data bridge the compiler currently emits inline to one line at the call site.    | **Real** |
 
 The first three carry the FUTURE API surface (namespace + placeholder symbol) so downstream PRs reference the right shape early without blocking on full implementation. `PyreonStorage.swift` is the first module with real, exercised behaviour — Codable-aware UserDefaults persistence.
 

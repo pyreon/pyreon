@@ -43,9 +43,7 @@ describe('gen-docs — end-to-end', () => {
   it('flow manifest produces a bullet that appears verbatim in llms.txt', async () => {
     const llmsTxtPath = join(REPO_ROOT, 'llms.txt')
     const current = readFileSync(llmsTxtPath, 'utf8')
-    const { contents } = regenerateLlmsTxt(current, [
-      { path: 'flow', manifest: flowManifest },
-    ])
+    const { contents } = regenerateLlmsTxt(current, [{ path: 'flow', manifest: flowManifest }])
     expect(contents).toBe(current)
     expect(current).toContain(`- ${flowManifest.name} — ${flowManifest.tagline}`)
   })

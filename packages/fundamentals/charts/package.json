@@ -51,6 +51,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
@@ -63,9 +67,5 @@
   },
   "peerDependencies": {
     "echarts": ">=5.6.0"
-  },
-  "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
   }
 }

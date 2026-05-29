@@ -405,7 +405,8 @@ function isTypeofProcess(node: ts.Expression): boolean {
   if (!ts.isBinaryExpression(node)) return false
   if (node.operatorToken.kind !== ts.SyntaxKind.ExclamationEqualsEqualsToken) return false
   if (!ts.isTypeOfExpression(node.left)) return false
-  if (!ts.isIdentifier(node.left.expression) || node.left.expression.text !== 'process') return false
+  if (!ts.isIdentifier(node.left.expression) || node.left.expression.text !== 'process')
+    return false
   return ts.isStringLiteral(node.right) && node.right.text === 'undefined'
 }
 
@@ -417,10 +418,7 @@ function isProcessNodeEnvProdGuard(node: ts.Expression): boolean {
   if (!ts.isPropertyAccessExpression(left)) return false
   if (!ts.isIdentifier(left.name) || left.name.text !== 'NODE_ENV') return false
   if (!ts.isPropertyAccessExpression(left.expression)) return false
-  if (
-    !ts.isIdentifier(left.expression.name) ||
-    left.expression.name.text !== 'env'
-  ) {
+  if (!ts.isIdentifier(left.expression.name) || left.expression.name.text !== 'env') {
     return false
   }
   if (!ts.isIdentifier(left.expression.expression)) return false
@@ -484,17 +482,9 @@ function detectEmptyTheme(ctx: DetectContext, node: ts.CallExpression): void {
 // LITERAL is evaluated once at call time, so the query never reacts to
 // signal changes. `useMutation` is deliberately NOT flagged: its options
 // are a plain object (mutations are imperative, no tracking).
-const QUERY_OPTS_HOOKS = new Set([
-  'useQuery',
-  'useInfiniteQuery',
-  'useQueries',
-  'useSuspenseQuery',
-])
+const QUERY_OPTS_HOOKS = new Set(['useQuery', 'useInfiniteQuery', 'useQueries', 'useSuspenseQuery'])
 
-function detectQueryOptionsAsFunction(
-  ctx: DetectContext,
-  node: ts.CallExpression,
-): void {
+function detectQueryOptionsAsFunction(ctx: DetectContext, node: ts.CallExpression): void {
   if (!ts.isIdentifier(node.expression)) return
   const hook = node.expression.text
   if (!QUERY_OPTS_HOOKS.has(hook)) return
@@ -546,7 +536,7 @@ function detectRawEventListener(ctx: DetectContext, node: ts.CallExpression): vo
       ctx,
       node,
       'raw-add-event-listener',
-      'Raw `addEventListener` in a component / hook body bypasses Pyreon\'s lifecycle cleanup — listeners leak on unmount. Use `useEventListener` from `@pyreon/hooks` for auto-cleanup.',
+      "Raw `addEventListener` in a component / hook body bypasses Pyreon's lifecycle cleanup — listeners leak on unmount. Use `useEventListener` from `@pyreon/hooks` for auto-cleanup.",
       getNodeText(ctx, node),
       'useEventListener(target, event, handler)',
       false,
@@ -865,11 +855,7 @@ function collectNeverIslandNames(sf: ts.SourceFile): Set<string> {
         for (const prop of opts.properties) {
           if (!ts.isPropertyAssignment(prop)) continue
           const key = prop.name
-          const keyText = ts.isIdentifier(key)
-            ? key.text
-            : ts.isStringLiteral(key)
-              ? key.text
-              : ''
+          const keyText = ts.isIdentifier(key) ? key.text : ts.isStringLiteral(key) ? key.text : ''
           if (keyText === 'name' && ts.isStringLiteral(prop.initializer)) {
             nameVal = prop.initializer.text
           } else if (keyText === 'hydrate' && ts.isStringLiteral(prop.initializer)) {
@@ -902,11 +888,7 @@ function detectIslandNeverWithRegistry(ctx: DetectContext, node: ts.CallExpressi
   for (const prop of arg.properties) {
     if (!ts.isPropertyAssignment(prop) && !ts.isShorthandPropertyAssignment(prop)) continue
     const key = prop.name
-    const keyText = ts.isIdentifier(key)
-      ? key.text
-      : ts.isStringLiteral(key)
-        ? key.text
-        : ''
+    const keyText = ts.isIdentifier(key) ? key.text : ts.isStringLiteral(key) ? key.text : ''
     if (!keyText || !ctx.neverIslandNames.has(keyText)) continue
     pushDiag(
       ctx,
@@ -928,11 +910,7 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
   if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
     detectForKeying(ctx, node)
   }
-  if (
-    ts.isArrowFunction(node) ||
-    ts.isFunctionDeclaration(node) ||
-    ts.isFunctionExpression(node)
-  ) {
+  if (ts.isArrowFunction(node) || ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     detectPropsDestructured(ctx, node)
     detectPropsDestructuredBody(ctx, node)
     detectStaticReturnNullConditional(ctx, node)
@@ -1017,9 +995,7 @@ export function hasPyreonPatterns(code: string): boolean {
     // as-unknown-as-vnodechild
     /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code) ||
     // query-options-as-function: a query hook called with an object literal
-    /\b(?:useQuery|useInfiniteQuery|useQueries|useSuspenseQuery)\s*\(\s*\{/.test(
-      code,
-    ) ||
+    /\b(?:useQuery|useInfiniteQuery|useQueries|useSuspenseQuery)\s*\(\s*\{/.test(code) ||
     // island-never-with-registry-entry: a never-strategy declaration AND a
     // hydrateIslands call must both appear in the same source for the bug
     // shape to trigger. Pre-filter on EITHER half — the AST walker fast-

@@ -1,5 +1,5 @@
 ---
-"@pyreon/i18n": patch
+'@pyreon/i18n': patch
 ---
 
 `createI18n({ messages })` now applies the same flat-key expansion that

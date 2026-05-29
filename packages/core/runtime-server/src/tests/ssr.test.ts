@@ -119,7 +119,9 @@ describe('renderToString — innerHTML / dangerouslySetInnerHTML inner-content r
   })
 
   test('dangerouslySetInnerHTML renders as inner content, not as an attribute', async () => {
-    const html = await renderToString(h('span', { dangerouslySetInnerHTML: { __html: '<em>x</em>' } }))
+    const html = await renderToString(
+      h('span', { dangerouslySetInnerHTML: { __html: '<em>x</em>' } }),
+    )
     expect(html).toBe('<span><em>x</em></span>')
     expect(html).not.toContain('dangerouslySetInnerHTML=')
   })
@@ -415,10 +417,11 @@ describe('renderToStream — suspenseTimeoutMs config', () => {
     })
 
     for (const bad of [0, -1, Number.NaN]) {
-      const html = await collect(
-        renderToStream(vnode, { suspenseTimeoutMs: bad }),
-      )
-      expect(html, `value ${bad} should fall back to default and let the boundary resolve`).toContain('arrived')
+      const html = await collect(renderToStream(vnode, { suspenseTimeoutMs: bad }))
+      expect(
+        html,
+        `value ${bad} should fall back to default and let the boundary resolve`,
+      ).toContain('arrived')
     }
   })
 
@@ -434,9 +437,7 @@ describe('renderToStream — suspenseTimeoutMs config', () => {
       fallback: h('span', null, 'briefly-loading'),
       children: h(Fast as unknown as ComponentFn, null),
     })
-    const html = await collect(
-      renderToStream(vnode, { suspenseTimeoutMs: Infinity }),
-    )
+    const html = await collect(renderToStream(vnode, { suspenseTimeoutMs: Infinity }))
     expect(html).toContain('briefly-loading')
     expect(html).toContain('arrived')
     expect(html).toMatch(/__NS\(\s*["']pyreon-s-0/)
@@ -1143,7 +1144,9 @@ describe('renderToStream — Suspense XSS escape', () => {
   test('escapes </template> inside Suspense async content', async () => {
     async function XSSChild(): Promise<ReturnType<typeof h>> {
       await new Promise<void>((r) => setTimeout(r, 5))
-      return h('div', { dangerouslySetInnerHTML: { __html: '</template><script>alert(1)</script>' } })
+      return h('div', {
+        dangerouslySetInnerHTML: { __html: '</template><script>alert(1)</script>' },
+      })
     }
 
     const vnode = h(Suspense, {
@@ -1295,9 +1298,7 @@ describe('SSR — provide() context cleanup across siblings (Bug 4)', () => {
     const Sibling: ComponentFn = () =>
       h('span', { 'data-testid': 'sibling' }, () => useContext(Ctx))
 
-    const html = await renderToString(
-      h(Fragment, null, h(Provider, null), h(Sibling, null)),
-    )
+    const html = await renderToString(h(Fragment, null, h(Provider, null), h(Sibling, null)))
 
     // Inner child sees the provider's value (correct).
     expect(html).toContain('data-testid="inner-child">provider-value<')

@@ -9,11 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import {
-  decodeIslandProps,
-  encodeIslandProps,
-  IslandPropEncodeError,
-} from '../island-codec'
+import { decodeIslandProps, encodeIslandProps, IslandPropEncodeError } from '../island-codec'
 
 /** Round-trip helper: encode → JSON.stringify → JSON.parse → decode. */
 function roundtrip<T>(value: T, islandName = 'TestIsland'): unknown {
@@ -41,10 +37,7 @@ describe('encodeIslandProps + decodeIslandProps — JSON-native passthrough', ()
   it('drops functions / symbols / undefined silently on plain object props', () => {
     const fn = () => 1
     const sym = Symbol('s')
-    const out = roundtrip({ keep: 1, fn, sym, undef: undefined }) as Record<
-      string,
-      unknown
-    >
+    const out = roundtrip({ keep: 1, fn, sym, undef: undefined }) as Record<string, unknown>
     expect(out).toEqual({ keep: 1 })
     expect('fn' in out).toBe(false)
     expect('sym' in out).toBe(false)
@@ -159,9 +152,7 @@ describe('encodeIslandProps — fail-loud on unsupported types', () => {
     class User {
       constructor(public name: string) {}
     }
-    expect(() => encodeIslandProps({ u: new User('A') }, 'Island')).toThrow(
-      IslandPropEncodeError,
-    )
+    expect(() => encodeIslandProps({ u: new User('A') }, 'Island')).toThrow(IslandPropEncodeError)
     try {
       encodeIslandProps({ u: new User('A') }, 'Island')
     } catch (e) {

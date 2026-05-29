@@ -24,7 +24,8 @@ export const noThemeOutsideProvider: Rule = {
     function declaratorIsHook(node: any): boolean {
       if (node?.id?.type !== 'Identifier') return false
       const init = node.init
-      if (init?.type !== 'ArrowFunctionExpression' && init?.type !== 'FunctionExpression') return false
+      if (init?.type !== 'ArrowFunctionExpression' && init?.type !== 'FunctionExpression')
+        return false
       return HOOK_NAME.test(node.id.name)
     }
 

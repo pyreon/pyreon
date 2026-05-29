@@ -1,16 +1,16 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { posts } from "../../lib/posts"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
+import { posts } from '../../lib/posts'
 
 export const meta = {
-  title: "All posts",
-  description: "Every post on this blog, newest first.",
+  title: 'All posts',
+  description: 'Every post on this blog, newest first.',
 }
 
 export default function BlogIndex() {
   useHead({
     title: meta.title,
-    meta: [{ name: "description", content: meta.description }],
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   return (

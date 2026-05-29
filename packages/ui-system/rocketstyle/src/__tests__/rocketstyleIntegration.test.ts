@@ -102,8 +102,9 @@ describe('rocketstyle factory', () => {
   // and missing .sizes()/.variants()/.states() overrides.
   it('type default matches runtime default (both false)', () => {
     // Runtime: boolean shorthand is IGNORED when useBooleans is false
-    const Button: any = rocketstyle()({ name: 'TypeTest', component: BaseComponent })
-      .sizes(() => ({ level3: { fontSize: 24 } }))
+    const Button: any = rocketstyle()({ name: 'TypeTest', component: BaseComponent }).sizes(() => ({
+      level3: { fontSize: 24 },
+    }))
     const ignored = getComputedTheme(Button, { level3: true })
     expect(ignored.fontSize).toBeUndefined()
 
@@ -116,8 +117,9 @@ describe('rocketstyle factory', () => {
     // Before the fix (type default `true`), `level3: true` would typecheck —
     // silently matching the bokisch / ssr-showcase regression.
     const TypedComponent = (_props: { children?: unknown }): null => null
-    const Typed = rocketstyle()({ name: 'T', component: TypedComponent })
-      .sizes(() => ({ level3: { fontSize: 24 } }))
+    const Typed = rocketstyle()({ name: 'T', component: TypedComponent }).sizes(() => ({
+      level3: { fontSize: 24 },
+    }))
     type Props = (typeof Typed)['$$types']
     const _hasNoBooleanShorthand: 'level3' extends keyof Props ? false : true = true
     void _hasNoBooleanShorthand
@@ -700,9 +702,9 @@ describe('component-swap reset', () => {
       component: ButtonBase,
     }).attrs((() => ({ 'data-from-button': 'original' })) as any)
 
-    const Link: any = Button.config({ component: AnchorBase }).attrs(
-      (() => ({ 'data-from-link': 'fresh' })) as any,
-    )
+    const Link: any = Button.config({ component: AnchorBase }).attrs((() => ({
+      'data-from-link': 'fresh',
+    })) as any)
 
     const result = renderProps(Link)
     expect(result['data-from-button']).toBeUndefined()

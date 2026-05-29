@@ -1,6 +1,6 @@
 ---
-title: "Controlled / uncontrolled components"
-summary: "Use useControllableState from @pyreon/hooks — never reimplement the isControlled/signal/getter pattern."
+title: 'Controlled / uncontrolled components'
+summary: 'Use useControllableState from @pyreon/hooks — never reimplement the isControlled/signal/getter pattern.'
 seeAlso: [signal-writes]
 ---
 
@@ -24,11 +24,7 @@ function Toggle(props: {
     onChange: props.onChange,
   })
 
-  return (
-    <button onClick={() => setChecked(!checked())}>
-      {() => (checked() ? 'on' : 'off')}
-    </button>
-  )
+  return <button onClick={() => setChecked(!checked())}>{() => (checked() ? 'on' : 'off')}</button>
 }
 ```
 
@@ -55,7 +51,7 @@ That shape is subtly wrong — `props.value` is read once at setup in the `isCon
 ```tsx
 // BROKEN — manual isControlled + signal + getter
 function Toggle(props) {
-  const isControlled = props.checked !== undefined    // captured ONCE
+  const isControlled = props.checked !== undefined // captured ONCE
   const internal = signal(props.defaultChecked ?? false)
   const checked = () => (isControlled ? props.checked : internal())
   // If props.checked transitions from undefined to defined, `isControlled`

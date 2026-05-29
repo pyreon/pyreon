@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — url-state snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/url-state — URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe. Type coercion is based on the default value: \`useUrlState("page", 1)\` coerces \`?page=2\` to number \`2\`. \`useUrlState("page", "1")\` keeps it as string \`"1"\`. Always provide the right type as default."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/url-state — URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe. Type coercion is based on the default value: \`useUrlState("page", 1)\` coerces \`?page=2\` to number \`2\`. \`useUrlState("page", "1")\` keeps it as string \`"1"\`. Always provide the right type as default."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

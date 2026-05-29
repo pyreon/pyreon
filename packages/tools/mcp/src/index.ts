@@ -100,277 +100,274 @@ export function createServer(): McpServer {
   // ═══════════════════════════════════════════════════════════════════════════════
 
   server.tool(
-  'get_api',
-  {
-    package: z.string(),
-    symbol: z.string(),
-  },
-  async ({ package: pkg, symbol }) => {
-    const key = `${pkg}/${symbol}`
-    const entry = API_REFERENCE[key]
+    'get_api',
+    {
+      package: z.string(),
+      symbol: z.string(),
+    },
+    async ({ package: pkg, symbol }) => {
+      const key = `${pkg}/${symbol}`
+      const entry = API_REFERENCE[key]
 
-    if (!entry) {
-      const allKeys = Object.keys(API_REFERENCE)
-      const suggestions = allKeys
-        .filter((k) => k.toLowerCase().includes(symbol.toLowerCase()))
-        .slice(0, 5)
+      if (!entry) {
+        const allKeys = Object.keys(API_REFERENCE)
+        const suggestions = allKeys
+          .filter((k) => k.toLowerCase().includes(symbol.toLowerCase()))
+          .slice(0, 5)
+
+        return textResult(
+          `Symbol '${symbol}' not found in @pyreon/${pkg}.\n\n${
+            suggestions.length > 0
+              ? `Did you mean one of these?\n${suggestions.map((s) => `  - ${s}`).join('\n')}`
+              : 'No similar symbols found.'
+          }`,
+        )
+      }
 
       return textResult(
-        `Symbol '${symbol}' not found in @pyreon/${pkg}.\n\n${
-          suggestions.length > 0
-            ? `Did you mean one of these?\n${suggestions.map((s) => `  - ${s}`).join('\n')}`
-            : 'No similar symbols found.'
-        }`,
+        `## @pyreon/${pkg} — ${symbol}\n\n**Signature:**\n\`\`\`typescript\n${entry.signature}\n\`\`\`\n\n**Usage:**\n\`\`\`typescript\n${entry.example}\n\`\`\`\n\n${entry.notes ? `**Notes:** ${entry.notes}\n\n` : ''}${entry.mistakes ? `**Common mistakes:**\n${entry.mistakes}\n` : ''}`,
       )
-    }
+    },
+  )
 
-    return textResult(
-      `## @pyreon/${pkg} — ${symbol}\n\n**Signature:**\n\`\`\`typescript\n${entry.signature}\n\`\`\`\n\n**Usage:**\n\`\`\`typescript\n${entry.example}\n\`\`\`\n\n${entry.notes ? `**Notes:** ${entry.notes}\n\n` : ''}${entry.mistakes ? `**Common mistakes:**\n${entry.mistakes}\n` : ''}`,
-    )
-  },
-)
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: validate
+  // ═══════════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: validate
-// ═══════════════════════════════════════════════════════════════════════════════
+  server.tool(
+    'validate',
+    {
+      code: z.string(),
+      filename: z.string().optional(),
+    },
+    async ({ code, filename }) => {
+      // Run both detectors. The React detector flags "coming from React"
+      // mistakes (useState, className, .value writes) — relevant when the
+      // code has not yet committed to Pyreon. The Pyreon detector flags
+      // "using Pyreon wrong" mistakes (missing <For by>, destructured
+      // props, typeof-process dev gates) — relevant once the imports are
+      // Pyreon. A single snippet may trigger both sets, so we merge.
+      const fname = filename ?? 'snippet.tsx'
+      const reactDiags = detectReactPatterns(code, fname)
+      const pyreonDiags = detectPyreonPatterns(code, fname)
 
-server.tool(
-  'validate',
-  {
-    code: z.string(),
-    filename: z.string().optional(),
-  },
-  async ({ code, filename }) => {
-    // Run both detectors. The React detector flags "coming from React"
-    // mistakes (useState, className, .value writes) — relevant when the
-    // code has not yet committed to Pyreon. The Pyreon detector flags
-    // "using Pyreon wrong" mistakes (missing <For by>, destructured
-    // props, typeof-process dev gates) — relevant once the imports are
-    // Pyreon. A single snippet may trigger both sets, so we merge.
-    const fname = filename ?? 'snippet.tsx'
-    const reactDiags = detectReactPatterns(code, fname)
-    const pyreonDiags = detectPyreonPatterns(code, fname)
+      if (reactDiags.length === 0 && pyreonDiags.length === 0) {
+        return textResult('✓ No issues found. The code follows Pyreon patterns correctly.')
+      }
 
-    if (reactDiags.length === 0 && pyreonDiags.length === 0) {
-      return textResult('✓ No issues found. The code follows Pyreon patterns correctly.')
-    }
+      type Diag = {
+        code: string
+        message: string
+        line: number
+        column: number
+        current: string
+        suggested: string
+        fixable: boolean
+      }
+      const merged: Diag[] = [...reactDiags, ...pyreonDiags]
+      merged.sort((a, b) => a.line - b.line || a.column - b.column)
 
-    type Diag = {
-      code: string
-      message: string
-      line: number
-      column: number
-      current: string
-      suggested: string
-      fixable: boolean
-    }
-    const merged: Diag[] = [...reactDiags, ...pyreonDiags]
-    merged.sort((a, b) => a.line - b.line || a.column - b.column)
+      const issueText = merged
+        .map(
+          (d, i) =>
+            `${i + 1}. **${d.code}** (line ${d.line})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? 'yes' : 'no'}`,
+        )
+        .join('\n\n')
 
-    const issueText = merged
-      .map(
-        (d, i) =>
-          `${i + 1}. **${d.code}** (line ${d.line})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? 'yes' : 'no'}`,
-      )
-      .join('\n\n')
-
-    return textResult(
-      `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}`,
-    )
-  },
-)
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: migrate_react
-// ═══════════════════════════════════════════════════════════════════════════════
-
-server.tool(
-  'migrate_react',
-  {
-    code: z.string(),
-    filename: z.string().optional(),
-  },
-  async ({ code, filename }) => {
-    const result = migrateReactCode(code, filename ?? 'component.tsx')
-
-    const changeList = result.changes.map((c) => `- Line ${c.line}: ${c.description}`).join('\n')
-
-    const remainingIssues = result.diagnostics.filter((d) => !d.fixable)
-    const manualText =
-      remainingIssues.length > 0
-        ? `\n\n**Remaining issues (manual fix needed):**\n${remainingIssues.map((d) => `- Line ${d.line}: ${d.message}\n  Suggested: \`${d.suggested}\``).join('\n')}`
-        : ''
-
-    return textResult(
-      `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Changes applied (${result.changes.length}):**\n${changeList || 'No changes needed.'}${manualText}`,
-    )
-  },
-)
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: diagnose
-// ═══════════════════════════════════════════════════════════════════════════════
-
-server.tool(
-  'diagnose',
-  {
-    // Terse `.describe()` by design: schema descriptions ship in the
-    // `tools/list` payload every consumer pays on every session. The
-    // full param semantics live in the manifest (served on demand via
-    // get_api / mcp_overview), not here. See PR: mcp token slim.
-    error: z.string().describe('Error message / stack.'),
-    componentSource: z
-      .string()
-      .optional()
-      .describe('Failing component source — enables static-detector enrichment.'),
-    filename: z.string().optional().describe('Filename for path-sensitive detectors.'),
-    reactiveTrace: z
-      .array(
-        z.object({
-          name: z.string().optional(),
-          prev: z.string(),
-          next: z.string(),
-          timestamp: z.number(),
-        }),
-      )
-      .optional()
-      .describe('ErrorContext.reactiveTrace from @pyreon/core — causal signal-write run-up.'),
-    phase: z.string().optional().describe('Lifecycle phase (setup/render/mount/unmount/effect).'),
-  },
-  async ({ error, componentSource, filename, reactiveTrace, phase }) => {
-    // Anti-pattern catalog is the bridge from a detector hit to its
-    // prose explanation. Loaded once per call; `[]` when the rules dir
-    // isn't reachable (consumer project) — enrichment degrades, the v1
-    // base diagnosis is unaffected.
-    const doc = loadAntiPatternsDoc()
-    const antiPatterns = doc ? parseAntiPatterns(doc) : []
-
-    const enriched = enrichDiagnosis(
-      { error, componentSource, filename, reactiveTrace, phase },
-      { diagnoseError, detectPyreonPatterns, antiPatterns },
-    )
-    return textResult(formatEnrichedDiagnosis({ error }, enriched))
-  },
-)
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: explain_error
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// The rich-context sibling of `diagnose`. `diagnose` matches an error
-// STRING against known footguns. `explain_error` takes a full
-// `ErrorContext`-shaped report — crucially including the `reactiveTrace`
-// (the causal SEQUENCE of signal writes from @pyreon/core, shipped in
-// the reactive-trace PR) — and assembles a structured failure dossier:
-// reactive run-up + heuristic findings, optional static detection on the
-// component source, correlated anti-pattern catalogue entries.
-//
-// This server ASSEMBLES; the consuming agent reasons; the human gates
-// any patch (the tool only ever returns text — no mutation, no LLM
-// dependency, no autonomy). It is the sound, distinctive core of
-// "AI-native self-healing" — self-EXPLAINING, not autonomous-repairing.
-
-server.tool(
-  'explain_error',
-  {
-    /**
-     * JSON of an `ErrorContext`-shaped report. Minimal shape:
-     * `{ "error": "msg" | { message, name, stack }, "phase"?,
-     *    "component"?, "props"?, "reactiveTrace"?: [{name,prev,next,timestamp}] }`.
-     * The `reactiveTrace` is the high-signal field — capture it via
-     * `registerErrorHandler(ctx => …)` in dev (it is `undefined` in prod
-     * by design).
-     */
-    report: z.string(),
-    /** Optional raw source of the failing component — enables static anti-pattern detection. */
-    componentSource: z.string().optional(),
-  },
-  async ({ report, componentSource }) => {
-    const parsed = parseErrorReport(report)
-    if (!parsed) {
       return textResult(
-        'Could not parse the error report. Pass a JSON object with at least an `error` field, e.g.:\n\n```json\n{\n  "error": { "message": "Cannot read properties of null (reading \'name\')", "name": "TypeError" },\n  "phase": "render",\n  "component": "UserCard",\n  "reactiveTrace": [\n    { "name": "user", "prev": "User {id, …}", "next": "null", "timestamp": 1234.5 }\n  ]\n}\n```\n\nCapture this in dev via `registerErrorHandler(ctx => sendToTool(JSON.stringify(ctx)))` — `ctx.reactiveTrace` is the high-signal field.',
+        `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}`,
+      )
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: migrate_react
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'migrate_react',
+    {
+      code: z.string(),
+      filename: z.string().optional(),
+    },
+    async ({ code, filename }) => {
+      const result = migrateReactCode(code, filename ?? 'component.tsx')
+
+      const changeList = result.changes.map((c) => `- Line ${c.line}: ${c.description}`).join('\n')
+
+      const remainingIssues = result.diagnostics.filter((d) => !d.fixable)
+      const manualText =
+        remainingIssues.length > 0
+          ? `\n\n**Remaining issues (manual fix needed):**\n${remainingIssues.map((d) => `- Line ${d.line}: ${d.message}\n  Suggested: \`${d.suggested}\``).join('\n')}`
+          : ''
+
+      return textResult(
+        `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Changes applied (${result.changes.length}):**\n${changeList || 'No changes needed.'}${manualText}`,
+      )
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: diagnose
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'diagnose',
+    {
+      // Terse `.describe()` by design: schema descriptions ship in the
+      // `tools/list` payload every consumer pays on every session. The
+      // full param semantics live in the manifest (served on demand via
+      // get_api / mcp_overview), not here. See PR: mcp token slim.
+      error: z.string().describe('Error message / stack.'),
+      componentSource: z
+        .string()
+        .optional()
+        .describe('Failing component source — enables static-detector enrichment.'),
+      filename: z.string().optional().describe('Filename for path-sensitive detectors.'),
+      reactiveTrace: z
+        .array(
+          z.object({
+            name: z.string().optional(),
+            prev: z.string(),
+            next: z.string(),
+            timestamp: z.number(),
+          }),
+        )
+        .optional()
+        .describe('ErrorContext.reactiveTrace from @pyreon/core — causal signal-write run-up.'),
+      phase: z.string().optional().describe('Lifecycle phase (setup/render/mount/unmount/effect).'),
+    },
+    async ({ error, componentSource, filename, reactiveTrace, phase }) => {
+      // Anti-pattern catalog is the bridge from a detector hit to its
+      // prose explanation. Loaded once per call; `[]` when the rules dir
+      // isn't reachable (consumer project) — enrichment degrades, the v1
+      // base diagnosis is unaffected.
+      const doc = loadAntiPatternsDoc()
+      const antiPatterns = doc ? parseAntiPatterns(doc) : []
+
+      const enriched = enrichDiagnosis(
+        { error, componentSource, filename, reactiveTrace, phase },
+        { diagnoseError, detectPyreonPatterns, antiPatterns },
+      )
+      return textResult(formatEnrichedDiagnosis({ error }, enriched))
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: explain_error
+  // ═══════════════════════════════════════════════════════════════════════════════
+  //
+  // The rich-context sibling of `diagnose`. `diagnose` matches an error
+  // STRING against known footguns. `explain_error` takes a full
+  // `ErrorContext`-shaped report — crucially including the `reactiveTrace`
+  // (the causal SEQUENCE of signal writes from @pyreon/core, shipped in
+  // the reactive-trace PR) — and assembles a structured failure dossier:
+  // reactive run-up + heuristic findings, optional static detection on the
+  // component source, correlated anti-pattern catalogue entries.
+  //
+  // This server ASSEMBLES; the consuming agent reasons; the human gates
+  // any patch (the tool only ever returns text — no mutation, no LLM
+  // dependency, no autonomy). It is the sound, distinctive core of
+  // "AI-native self-healing" — self-EXPLAINING, not autonomous-repairing.
+
+  server.tool(
+    'explain_error',
+    {
+      /**
+       * JSON of an `ErrorContext`-shaped report. Minimal shape:
+       * `{ "error": "msg" | { message, name, stack }, "phase"?,
+       *    "component"?, "props"?, "reactiveTrace"?: [{name,prev,next,timestamp}] }`.
+       * The `reactiveTrace` is the high-signal field — capture it via
+       * `registerErrorHandler(ctx => …)` in dev (it is `undefined` in prod
+       * by design).
+       */
+      report: z.string(),
+      /** Optional raw source of the failing component — enables static anti-pattern detection. */
+      componentSource: z.string().optional(),
+    },
+    async ({ report, componentSource }) => {
+      const parsed = parseErrorReport(report)
+      if (!parsed) {
+        return textResult(
+          'Could not parse the error report. Pass a JSON object with at least an `error` field, e.g.:\n\n```json\n{\n  "error": { "message": "Cannot read properties of null (reading \'name\')", "name": "TypeError" },\n  "phase": "render",\n  "component": "UserCard",\n  "reactiveTrace": [\n    { "name": "user", "prev": "User {id, …}", "next": "null", "timestamp": 1234.5 }\n  ]\n}\n```\n\nCapture this in dev via `registerErrorHandler(ctx => sendToTool(JSON.stringify(ctx)))` — `ctx.reactiveTrace` is the high-signal field.',
+        )
+      }
+      // Reuse the same catalogue loader the `get_anti_patterns` tool uses
+      // so finding→catalogue correlation works in the monorepo. Degrades
+      // gracefully (no correlation section) when the rules file is absent
+      // (consumer project) — the dossier is still fully useful without it.
+      const doc = loadAntiPatternsDoc()
+      const antiPatterns = doc ? parseAntiPatterns(doc) : undefined
+      const dossierOpts: Parameters<typeof buildErrorDossier>[1] = {}
+      if (componentSource !== undefined) dossierOpts.componentSource = componentSource
+      if (antiPatterns !== undefined) dossierOpts.antiPatterns = antiPatterns
+      return textResult(buildErrorDossier(parsed, dossierOpts))
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_routes
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool('get_routes', {}, async () => {
+    const ctx = getContext()
+
+    if (ctx.routes.length === 0) {
+      return textResult(
+        'No routes detected. Routes are defined via createRouter() or a routes array.',
       )
     }
-    // Reuse the same catalogue loader the `get_anti_patterns` tool uses
-    // so finding→catalogue correlation works in the monorepo. Degrades
-    // gracefully (no correlation section) when the rules file is absent
-    // (consumer project) — the dossier is still fully useful without it.
-    const doc = loadAntiPatternsDoc()
-    const antiPatterns = doc ? parseAntiPatterns(doc) : undefined
-    const dossierOpts: Parameters<typeof buildErrorDossier>[1] = {}
-    if (componentSource !== undefined) dossierOpts.componentSource = componentSource
-    if (antiPatterns !== undefined) dossierOpts.antiPatterns = antiPatterns
-    return textResult(buildErrorDossier(parsed, dossierOpts))
-  },
-)
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: get_routes
-// ═══════════════════════════════════════════════════════════════════════════════
+    const routeTable = ctx.routes
+      .map((r) => {
+        const flags = [
+          r.hasLoader ? 'loader' : '',
+          r.hasGuard ? 'guard' : '',
+          r.params.length > 0 ? `params: ${r.params.join(', ')}` : '',
+          r.name ? `name: "${r.name}"` : '',
+        ]
+          .filter(Boolean)
+          .join(', ')
 
-server.tool('get_routes', {}, async () => {
-  const ctx = getContext()
+        return `  ${r.path}${flags ? ` (${flags})` : ''}`
+      })
+      .join('\n')
 
-  if (ctx.routes.length === 0) {
-    return textResult(
-      'No routes detected. Routes are defined via createRouter() or a routes array.',
-    )
-  }
+    return textResult(`**Routes (${ctx.routes.length}):**\n\n${routeTable}`)
+  })
 
-  const routeTable = ctx.routes
-    .map((r) => {
-      const flags = [
-        r.hasLoader ? 'loader' : '',
-        r.hasGuard ? 'guard' : '',
-        r.params.length > 0 ? `params: ${r.params.join(', ')}` : '',
-        r.name ? `name: "${r.name}"` : '',
-      ]
-        .filter(Boolean)
-        .join(', ')
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_components
+  // ═══════════════════════════════════════════════════════════════════════════════
 
-      return `  ${r.path}${flags ? ` (${flags})` : ''}`
-    })
-    .join('\n')
+  server.tool('get_components', {}, async () => {
+    const ctx = getContext()
 
-  return textResult(`**Routes (${ctx.routes.length}):**\n\n${routeTable}`)
-})
+    if (ctx.components.length === 0) {
+      return textResult('No components detected.')
+    }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: get_components
-// ═══════════════════════════════════════════════════════════════════════════════
+    const compList = ctx.components
+      .map((c) => {
+        const details = [
+          c.props.length > 0 ? `props: { ${c.props.join(', ')} }` : '',
+          c.hasSignals ? `signals: [${c.signalNames.join(', ')}]` : '',
+        ]
+          .filter(Boolean)
+          .join(', ')
 
-server.tool('get_components', {}, async () => {
-  const ctx = getContext()
+        return `  ${c.name} — ${c.file}${details ? `\n    ${details}` : ''}`
+      })
+      .join('\n')
 
-  if (ctx.components.length === 0) {
-    return textResult('No components detected.')
-  }
+    return textResult(`**Components (${ctx.components.length}):**\n\n${compList}`)
+  })
 
-  const compList = ctx.components
-    .map((c) => {
-      const details = [
-        c.props.length > 0 ? `props: { ${c.props.join(', ')} }` : '',
-        c.hasSignals ? `signals: [${c.signalNames.join(', ')}]` : '',
-      ]
-        .filter(Boolean)
-        .join(', ')
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_browser_smoke_status
+  // ═══════════════════════════════════════════════════════════════════════════════
 
-      return `  ${c.name} — ${c.file}${details ? `\n    ${details}` : ''}`
-    })
-    .join('\n')
-
-  return textResult(`**Components (${ctx.components.length}):**\n\n${compList}`)
-})
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: get_browser_smoke_status
-// ═══════════════════════════════════════════════════════════════════════════════
-
-server.tool(
-  'get_browser_smoke_status',
-  {},
-  async () => {
+  server.tool('get_browser_smoke_status', {}, async () => {
     // Walks the current project, reports which browser-categorized
     // packages have at least one `*.browser.test.{ts,tsx}` file.
     // Mirrors `pyreon/require-browser-smoke-test` / the CI script so an
@@ -422,12 +419,7 @@ server.tool(
         return false
       }
       for (const name of entries) {
-        if (
-          name.startsWith('.') ||
-          name === 'node_modules' ||
-          name === 'lib' ||
-          name === 'dist'
-        ) {
+        if (name.startsWith('.') || name === 'node_modules' || name === 'lib' || name === 'dist') {
           continue
         }
         const full = path.join(dir, name)
@@ -518,12 +510,13 @@ server.tool(
       )
     }
     if (unknown.length > 0) {
-      parts.push(`? Listed in browser-packages.json but not found in this repo (${unknown.length}):`)
+      parts.push(
+        `? Listed in browser-packages.json but not found in this repo (${unknown.length}):`,
+      )
       for (const n of unknown) parts.push(`  - ${n}`)
     }
     return textResult(parts.join('\n'))
-  },
-)
+  })
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // Tool: get_pattern — serves docs/patterns/<name>.md
@@ -532,10 +525,7 @@ server.tool(
   server.tool(
     'get_pattern',
     {
-      name: z
-        .string()
-        .optional()
-        .describe('Pattern slug. Omit to list available patterns.'),
+      name: z.string().optional().describe('Pattern slug. Omit to list available patterns.'),
     },
     async ({ name }) => {
       const registry = loadPatternRegistry()
@@ -597,7 +587,10 @@ server.tool(
         const q = name.trim().toLowerCase()
         const matches = all.filter((e) => e.name.toLowerCase().includes(q))
         if (matches.length === 0) {
-          const titles = all.slice(0, 30).map((e) => `  - ${e.name}`).join('\n')
+          const titles = all
+            .slice(0, 30)
+            .map((e) => `  - ${e.name}`)
+            .join('\n')
           return textResult(
             `No anti-pattern title matches "${name}". Call get_anti_patterns() for the full index. First entries:\n${titles}`,
           )
@@ -635,10 +628,7 @@ server.tool(
   server.tool(
     'get_changelog',
     {
-      package: z
-        .string()
-        .optional()
-        .describe('Package name (e.g. "query"). Omit to list all.'),
+      package: z.string().optional().describe('Package name (e.g. "query"). Omit to list all.'),
       limit: z
         .number()
         .int()
@@ -714,10 +704,7 @@ server.tool(
   server.tool(
     'audit_islands',
     {
-      json: z
-        .boolean()
-        .optional()
-        .describe('Raw JSON instead of markdown.'),
+      json: z.boolean().optional().describe('Raw JSON instead of markdown.'),
     },
     async ({ json }) => {
       const result = auditIslands(process.cwd())

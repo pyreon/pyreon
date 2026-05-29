@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Flow } from '../components/flow-component'
 import { createFlow } from '../flow'
 
-
 // Real-Chromium smoke suite for @pyreon/flow.
 //
 // Why this exists: <Flow> renders SVG paths + transforms via CSS, uses
@@ -239,7 +238,12 @@ describe('flow in real browser', () => {
     const { container, unmount } = mountInBrowser(h(Flow, { instance: flow2 }))
     await flush()
 
-    expect(flow2.nodes().map((n) => n.id).sort()).toEqual(['a', 'b'])
+    expect(
+      flow2
+        .nodes()
+        .map((n) => n.id)
+        .sort(),
+    ).toEqual(['a', 'b'])
     expect(flow2.edges().map((e) => e.id)).toEqual(['e'])
     expect(container.querySelectorAll('[data-nodeid]')).toHaveLength(2)
     unmount()
@@ -269,9 +273,7 @@ describe('flow in real browser', () => {
       h('div', { 'data-custom': props.id, class: 'custom-node' }, () => props.data().label)
 
     const flow = createFlow({
-      nodes: [
-        { id: 'c1', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'CUSTOM' } },
-      ],
+      nodes: [{ id: 'c1', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'CUSTOM' } }],
     })
     const { container, unmount } = mountInBrowser(
       h(Flow, { instance: flow, nodeTypes: { custom: CustomNode } }),

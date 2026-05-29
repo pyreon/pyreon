@@ -66,12 +66,13 @@ function printUsage(): void {
 
 const parseGateList = (raw: string | undefined): GateName[] | undefined => {
   if (!raw) return undefined
-  const names = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  const names = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
   const invalid = names.filter((n) => !VALID_GATES.includes(n as GateName))
   if (invalid.length > 0) {
-    console.error(
-      `Unknown gate(s): ${invalid.join(', ')}. Valid: ${VALID_GATES.join(', ')}`,
-    )
+    console.error(`Unknown gate(s): ${invalid.join(', ')}. Valid: ${VALID_GATES.join(', ')}`)
     process.exit(1)
   }
   return names as GateName[]
@@ -109,9 +110,7 @@ async function main(): Promise<void> {
   }
 
   if (command === 'doctor') {
-    const format = args.includes('--gha')
-      ? ('gha' as const)
-      : parseFormat(getFlagValue('--format'))
+    const format = args.includes('--gha') ? ('gha' as const) : parseFormat(getFlagValue('--format'))
 
     const options: DoctorOptions = {
       fix: args.includes('--fix'),

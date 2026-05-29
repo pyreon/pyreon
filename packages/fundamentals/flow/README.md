@@ -60,33 +60,33 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 
 `FlowInstance<TData>`:
 
-| Surface | Methods |
-|---|---|
-| Reactive state | `nodes` / `edges` / `viewport` / `selection` (signals) |
-| Node CRUD | `addNode` / `removeNode` / `updateNode` / `updateNodePosition` / `setNodes` |
-| Edge CRUD | `addEdge` / `removeEdge` / `setEdges` |
-| Edge waypoints | `addEdgeWaypoint` / `removeEdgeWaypoint` |
-| Selection | `selectNode(id, additive?)` / `selectEdge(id, additive?)` / `clearSelection` / `deleteSelected` |
-| Clipboard | `copySelected` / `paste(offset?)` |
-| Viewport | `zoomIn` / `zoomOut` / `zoomTo` / `panTo` / `fitView(ids?, padding?)` |
-| Auto-layout | `layout(algorithm?, options?)` — Promise, elkjs lazy-loaded |
-| Graph queries | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection` |
-| Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` |
-| Serialization | `toJSON()` / `fromJSON(data)` |
-| Lifecycle | `dispose()` |
+| Surface        | Methods                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| Reactive state | `nodes` / `edges` / `viewport` / `selection` (signals)                                          |
+| Node CRUD      | `addNode` / `removeNode` / `updateNode` / `updateNodePosition` / `setNodes`                     |
+| Edge CRUD      | `addEdge` / `removeEdge` / `setEdges`                                                           |
+| Edge waypoints | `addEdgeWaypoint` / `removeEdgeWaypoint`                                                        |
+| Selection      | `selectNode(id, additive?)` / `selectEdge(id, additive?)` / `clearSelection` / `deleteSelected` |
+| Clipboard      | `copySelected` / `paste(offset?)`                                                               |
+| Viewport       | `zoomIn` / `zoomOut` / `zoomTo` / `panTo` / `fitView(ids?, padding?)`                           |
+| Auto-layout    | `layout(algorithm?, options?)` — Promise, elkjs lazy-loaded                                     |
+| Graph queries  | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection`                       |
+| Listeners      | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick`                                   |
+| Serialization  | `toJSON()` / `fromJSON(data)`                                                                   |
+| Lifecycle      | `dispose()`                                                                                     |
 
 ## Components
 
-| Component | Notes |
-|---|---|
-| `<Flow instance={flow} nodeTypes={...} edgeTypes={...}>` | Main container — pan/zoom, mounts nodes/edges |
-| `<Background variant?="dots" \| "lines">` | Grid background |
-| `<MiniMap>` | Overview minimap with viewport indicator |
-| `<Controls>` | Zoom in/out + fit-view buttons |
-| `<Handle type="source" \| "target" position={Position.Top}>` | Connection handle on nodes |
-| `<Panel position="top-left" \| ...>` | Overlay panel relative to the flow viewport |
-| `<NodeResizer>` | Resize handles for the selected node |
-| `<NodeToolbar>` | Toolbar attached to a node |
+| Component                                                    | Notes                                         |
+| ------------------------------------------------------------ | --------------------------------------------- |
+| `<Flow instance={flow} nodeTypes={...} edgeTypes={...}>`     | Main container — pan/zoom, mounts nodes/edges |
+| `<Background variant?="dots" \| "lines">`                    | Grid background                               |
+| `<MiniMap>`                                                  | Overview minimap with viewport indicator      |
+| `<Controls>`                                                 | Zoom in/out + fit-view buttons                |
+| `<Handle type="source" \| "target" position={Position.Top}>` | Connection handle on nodes                    |
+| `<Panel position="top-left" \| ...>`                         | Overlay panel relative to the flow viewport   |
+| `<NodeResizer>`                                              | Resize handles for the selected node          |
+| `<NodeToolbar>`                                              | Toolbar attached to a node                    |
 
 JSX components are **NOT generic at the call site** (`<Flow<MyData> />` isn't valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers pass `FlowInstance<MyData>` without casting.
 
@@ -126,12 +126,12 @@ Available algorithms: `layered` (default), `force`, `stress`, `tree`, `radial`, 
 
 **`LayoutOptions` applicability**:
 
-| Option | Applies to |
-|---|---|
-| `nodeSpacing` | Every algorithm |
-| `direction` | `layered`, `tree` |
-| `layerSpacing` | `layered` only |
-| `edgeRouting` | `layered` only |
+| Option         | Applies to        |
+| -------------- | ----------------- |
+| `nodeSpacing`  | Every algorithm   |
+| `direction`    | `layered`, `tree` |
+| `layerSpacing` | `layered` only    |
+| `edgeRouting`  | `layered` only    |
 
 Other algorithms accept the option in the type (it typechecks) but silently ignore it at layout time. The framework emits a `console.warn` in dev mode when an option is set on an algorithm that ignores it.
 

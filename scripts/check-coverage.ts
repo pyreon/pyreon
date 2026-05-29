@@ -110,7 +110,7 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentStatements: 90,
     currentBranches: 76,
     reason:
-      'Foundational primitives. Statements at floor (actual 90.24%); branches at 79.83% — Overlay\\\'s SSR / happy-dom-only event-handler branches are legitimately harder to cover.',
+      "Foundational primitives. Statements at floor (actual 90.24%); branches at 79.83% — Overlay\\'s SSR / happy-dom-only event-handler branches are legitimately harder to cover.",
   },
   '@pyreon/code': {
     currentStatements: 90,
@@ -272,9 +272,7 @@ function collectPackages(): PackageInfo[] {
 }
 
 /** Run packages with bounded concurrency using async spawn. */
-async function runWithConcurrency(
-  packages: PackageInfo[],
-): Promise<CoverageResult[]> {
+async function runWithConcurrency(packages: PackageInfo[]): Promise<CoverageResult[]> {
   const results: CoverageResult[] = []
   const queue = [...packages]
 

@@ -14,9 +14,8 @@ import rocketstyle from '../init'
 // string tags — so the base is a real ComponentFn here. This also
 // satisfies the rocketstyle `ElementType` generic without `as any`.
 
-const Base: ComponentFn<{ id?: string; children?: VNodeChild; class?: string }> = (
-  props,
-) => h('div', props, props.children)
+const Base: ComponentFn<{ id?: string; children?: VNodeChild; class?: string }> = (props) =>
+  h('div', props, props.children)
 ;(Base as ComponentFn & { displayName?: string }).displayName = 'Base'
 
 describe('@pyreon/rocketstyle in real browser', () => {
@@ -125,10 +124,9 @@ describe('@pyreon/rocketstyle in real browser', () => {
       .theme({ color: 'rgb(0, 128, 0)' }) // green default
 
     // Consumer derivation — only adds .theme(), no .styles() override.
-    const Text: any = TextBase
-      .theme((_t: any, m: any) => ({
-        color: m('rgb(255, 0, 0)', 'rgb(0, 0, 255)'),
-      }))
+    const Text: any = TextBase.theme((_t: any, m: any) => ({
+      color: m('rgb(255, 0, 0)', 'rgb(0, 0, 255)'),
+    }))
 
     const { container, unmount } = mountInBrowser(
       h(PyreonUI, { theme: {}, mode: modeSig }, h(Text, { id: 'derive' })),
@@ -187,9 +185,7 @@ describe('@pyreon/rocketstyle in real browser', () => {
     }))
 
     const { container, unmount } = mountInBrowser(
-      h(PyreonUI, { theme: {}, mode: modeSig },
-        h(Text, { id: 'dim', size: 'large' }),
-      ),
+      h(PyreonUI, { theme: {}, mode: modeSig }, h(Text, { id: 'dim', size: 'large' })),
     )
     const el = container.querySelector<HTMLElement>('#dim')!
     expect(getComputedStyle(el).color).toBe('rgb(255, 0, 0)')
@@ -252,9 +248,7 @@ describe('@pyreon/rocketstyle in real browser', () => {
       .theme({ color: 'rgb(0, 0, 0)', bg: 'rgb(240, 240, 240)' })
       .variants({ box: { bg: 'rgb(20, 30, 40)' } })
 
-    const { container, unmount } = mountInBrowser(
-      h(Box, { id: 'v', variant: 'box' }),
-    )
+    const { container, unmount } = mountInBrowser(h(Box, { id: 'v', variant: 'box' }))
     const el = container.querySelector<HTMLElement>('#v')!
     expect(getComputedStyle(el).color).toBe('rgb(0, 0, 0)')
     expect(getComputedStyle(el).backgroundColor).toBe('rgb(20, 30, 40)')
@@ -298,12 +292,8 @@ describe('@pyreon/rocketstyle in real browser', () => {
         color: m('rgb(12, 34, 56)', 'rgb(210, 220, 230)'),
       }))
 
-    const light = mountInBrowser(
-      h(PyreonUI, { theme: {}, mode: 'light' }, h(Box, { id: 'lt' })),
-    )
-    const dark = mountInBrowser(
-      h(PyreonUI, { theme: {}, mode: 'dark' }, h(Box, { id: 'dk' })),
-    )
+    const light = mountInBrowser(h(PyreonUI, { theme: {}, mode: 'light' }, h(Box, { id: 'lt' })))
+    const dark = mountInBrowser(h(PyreonUI, { theme: {}, mode: 'dark' }, h(Box, { id: 'dk' })))
     expect(getComputedStyle(light.container.querySelector<HTMLElement>('#lt')!).color).toBe(
       'rgb(12, 34, 56)',
     )
@@ -365,8 +355,12 @@ describe('@pyreon/rocketstyle in real browser', () => {
     // was the actual real-app shape: button group children mounted under
     // a single provider, all hitting the same colliding key.
     const groupMount = mountInBrowser(
-      h(PyreonUI, { theme: {}, mode: 'light' },
-        h('div', { id: 'group' },
+      h(
+        PyreonUI,
+        { theme: {}, mode: 'light' },
+        h(
+          'div',
+          { id: 'group' },
           h(Btn, { id: 'g-primary', primary: true }),
           h(Btn, { id: 'g-secondary', secondary: true }),
           h(Btn, { id: 'g-danger', danger: true }),
@@ -412,15 +406,15 @@ describe('@pyreon/rocketstyle in real browser', () => {
     })
 
     // Check a subset — primary, danger, and default all resolve correctly
-    expect(
-      getComputedStyle(instances[0]!.container.querySelector('#c0')!).color,
-    ).toBe('rgb(0, 100, 200)') // primary
-    expect(
-      getComputedStyle(instances[1]!.container.querySelector('#c1')!).color,
-    ).toBe('rgb(200, 50, 50)') // danger
-    expect(
-      getComputedStyle(instances[2]!.container.querySelector('#c2')!).color,
-    ).toBe('rgb(100, 100, 100)') // default
+    expect(getComputedStyle(instances[0]!.container.querySelector('#c0')!).color).toBe(
+      'rgb(0, 100, 200)',
+    ) // primary
+    expect(getComputedStyle(instances[1]!.container.querySelector('#c1')!).color).toBe(
+      'rgb(200, 50, 50)',
+    ) // danger
+    expect(getComputedStyle(instances[2]!.container.querySelector('#c2')!).color).toBe(
+      'rgb(100, 100, 100)',
+    ) // default
 
     for (const inst of instances) inst.unmount()
   })
@@ -448,9 +442,8 @@ describe('@pyreon/rocketstyle in real browser', () => {
 
     // Base renders the label prop as DOM text so we can assert reactivity
     // observably in the rendered tree.
-    const ReactiveBase: ComponentFn<{ label?: string; children?: VNodeChild }> = (
-      props,
-    ) => h('div', { 'data-testid': 'reactive' }, () => props.label)
+    const ReactiveBase: ComponentFn<{ label?: string; children?: VNodeChild }> = (props) =>
+      h('div', { 'data-testid': 'reactive' }, () => props.label)
     ;(ReactiveBase as ComponentFn & { displayName?: string }).displayName = 'ReactiveBase'
 
     const Box: any = rocketstyle()({ name: 'ReactivePropBox', component: ReactiveBase })

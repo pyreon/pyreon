@@ -13,15 +13,13 @@ const Wrapper = element
     maxWidth: { xs: '90%', lg: '70%', xxl: 996 },
   }))
 
-const Title = element
-  .attrs({ tag: 'h2' })
-  .theme((t) => ({
-    fontFamily: t.fontFamily.base,
-    fontSize: { xs: t.fontSize.xLarge, md: t.fontSize.xxLarge },
-    fontWeight: 600,
-    marginBottom: { xs: t.space.medium, md: t.space.large },
-    textAlign: 'center',
-  }))
+const Title = element.attrs({ tag: 'h2' }).theme((t) => ({
+  fontFamily: t.fontFamily.base,
+  fontSize: { xs: t.fontSize.xLarge, md: t.fontSize.xxLarge },
+  fontWeight: 600,
+  marginBottom: { xs: t.space.medium, md: t.space.large },
+  textAlign: 'center',
+}))
 
 const Body = text.theme((t) => ({
   fontSize: { xs: t.fontSize.base, md: t.fontSize.medium },

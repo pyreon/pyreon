@@ -1,6 +1,6 @@
 ---
-title: "SSR-safe hooks"
-summary: "Guard browser globals with typeof or bucket browser-only work into onMount."
+title: 'SSR-safe hooks'
+summary: 'Guard browser globals with typeof or bucket browser-only work into onMount.'
 seeAlso: [dev-warnings, event-listeners]
 ---
 
@@ -57,7 +57,7 @@ Pyreon ships with SSR (`@pyreon/runtime-server`) as a first-class rendering targ
 ```tsx
 // BROKEN — fires at setup, crashes on SSR
 export function useWindowWidth() {
-  const width = signal(window.innerWidth)  // ReferenceError: window is not defined
+  const width = signal(window.innerWidth) // ReferenceError: window is not defined
   window.addEventListener('resize', () => width.set(window.innerWidth))
   return width
 }
@@ -67,7 +67,7 @@ export function useWindowWidth() {
 // ALSO BROKEN — wraps the hook call, skips registration on SSR client-shell
 function Component() {
   if (typeof window !== 'undefined') {
-    const size = useWindowWidth()  // mount-order violation in the SSR shell
+    const size = useWindowWidth() // mount-order violation in the SSR shell
   }
   // …
 }

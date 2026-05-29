@@ -46,13 +46,13 @@ const sessionId = useMemoryStorage('session-id', '')
 
 All five hooks share the same signature: `useX(key, defaultValue, options?)` → `StorageSignal<T>`.
 
-| Hook                                        | Backend         | Cross-tab | SSR-safe | Notes                                |
-| ------------------------------------------- | --------------- | --------- | -------- | ------------------------------------ |
-| `useStorage(key, default, options?)`        | localStorage    | ✅ yes    | safe     | Auto-syncs via `storage` event       |
-| `useSessionStorage(key, default, options?)` | sessionStorage  | ❌ no     | safe     | Tab-scoped                           |
+| Hook                                        | Backend         | Cross-tab | SSR-safe | Notes                                     |
+| ------------------------------------------- | --------------- | --------- | -------- | ----------------------------------------- |
+| `useStorage(key, default, options?)`        | localStorage    | ✅ yes    | safe     | Auto-syncs via `storage` event            |
+| `useSessionStorage(key, default, options?)` | sessionStorage  | ❌ no     | safe     | Tab-scoped                                |
 | `useCookie(key, default, options?)`         | document.cookie | ❌ no     | ✅ yes   | Reads server cookie via `setCookieSource` |
-| `useIndexedDB(key, default, options?)`      | IndexedDB       | ❌ no     | safe     | Async; debounced writes              |
-| `useMemoryStorage(key, default)`            | in-memory Map   | ❌ no     | safe     | SSR / testing                        |
+| `useIndexedDB(key, default, options?)`      | IndexedDB       | ❌ no     | safe     | Async; debounced writes                   |
+| `useMemoryStorage(key, default)`            | in-memory Map   | ❌ no     | safe     | SSR / testing                             |
 
 Same key returns the SAME signal instance per backend:
 
@@ -74,34 +74,34 @@ Inherits `Signal<T>`: `()` (read), `.set(v)` (write), `.update(fn)`, `.peek()`, 
 
 ## Options (shared)
 
-| Option           | Type                          | Description                                              |
-| ---------------- | ----------------------------- | -------------------------------------------------------- |
-| `serializer?`    | `(value: T) => string`        | Default: `JSON.stringify`                                |
-| `deserializer?`  | `(raw: string) => T`          | Default: `JSON.parse`                                    |
-| `onError?`       | `(error: Error) => T \| void` | Called on deserialization fail; return fallback or void  |
+| Option          | Type                          | Description                                             |
+| --------------- | ----------------------------- | ------------------------------------------------------- |
+| `serializer?`   | `(value: T) => string`        | Default: `JSON.stringify`                               |
+| `deserializer?` | `(raw: string) => T`          | Default: `JSON.parse`                                   |
+| `onError?`      | `(error: Error) => T \| void` | Called on deserialization fail; return fallback or void |
 
 ## `useCookie` options
 
 Extends `StorageOptions<T>` with:
 
-| Option       | Type                              | Default |
-| ------------ | --------------------------------- | ------- |
-| `maxAge?`    | `number` (seconds)                | —       |
-| `expires?`   | `Date`                            | —       |
-| `path?`      | `string`                          | `'/'`   |
-| `domain?`    | `string`                          | —       |
-| `secure?`    | `boolean`                         | `false` |
-| `sameSite?`  | `'strict' \| 'lax' \| 'none'`     | `'lax'` |
+| Option      | Type                          | Default |
+| ----------- | ----------------------------- | ------- |
+| `maxAge?`   | `number` (seconds)            | —       |
+| `expires?`  | `Date`                        | —       |
+| `path?`     | `string`                      | `'/'`   |
+| `domain?`   | `string`                      | —       |
+| `secure?`   | `boolean`                     | `false` |
+| `sameSite?` | `'strict' \| 'lax' \| 'none'` | `'lax'` |
 
 ## `useIndexedDB` options
 
 Extends `StorageOptions<T>` with:
 
-| Option       | Type     | Default            |
-| ------------ | -------- | ------------------ |
-| `dbName?`    | `string` | `'pyreon-storage'` |
-| `storeName?` | `string` | `'kv'`             |
-| `debounceMs?`| `number` | `100`              |
+| Option        | Type     | Default            |
+| ------------- | -------- | ------------------ |
+| `dbName?`     | `string` | `'pyreon-storage'` |
+| `storeName?`  | `string` | `'kv'`             |
+| `debounceMs?` | `number` | `100`              |
 
 IndexedDB writes are debounced — rapid `.set()` calls coalesce to a single transaction. The signal updates synchronously; persistence is async.
 
@@ -158,14 +158,14 @@ Every storage signal wraps a base `signal()` with a callable that **forwards `_v
 
 ## Types
 
-| Type                  | Description                                            |
-| --------------------- | ------------------------------------------------------ |
-| `StorageSignal<T>`    | `Signal<T>` + `.remove()`                              |
+| Type                  | Description                                              |
+| --------------------- | -------------------------------------------------------- |
+| `StorageSignal<T>`    | `Signal<T>` + `.remove()`                                |
 | `StorageOptions<T>`   | Shared options — `serializer`, `deserializer`, `onError` |
-| `CookieOptions<T>`    | Cookie-specific options (extends `StorageOptions`)     |
-| `IndexedDBOptions<T>` | IndexedDB-specific options (extends `StorageOptions`)  |
-| `StorageBackend`      | `{ get(key), set(key, value), remove(key) }` (sync)    |
-| `AsyncStorageBackend` | Async variant — internal IndexedDB shape               |
+| `CookieOptions<T>`    | Cookie-specific options (extends `StorageOptions`)       |
+| `IndexedDBOptions<T>` | IndexedDB-specific options (extends `StorageOptions`)    |
+| `StorageBackend`      | `{ get(key), set(key, value), remove(key) }` (sync)      |
+| `AsyncStorageBackend` | Async variant — internal IndexedDB shape                 |
 
 ## Gotchas
 

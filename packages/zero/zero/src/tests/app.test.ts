@@ -61,17 +61,13 @@ describe('createApp — double-layout defense', () => {
     createApp({ routes, layout: Layout, url: '/' })
 
     const warnings = warnSpy.mock.calls.flat().filter((c): c is string => typeof c === 'string')
-    const matches = warnings.some(
-      (s) => s.includes('[Pyreon]') && s.includes('double-mount'),
-    )
+    const matches = warnings.some((s) => s.includes('[Pyreon]') && s.includes('double-mount'))
     expect(matches).toBe(true)
   })
 
   it('does NOT warn when `options.layout` is a distinct component', () => {
     const Distinct: ComponentFn = () => h('div', null, 'distinct')
-    const routes: RouteRecord[] = [
-      { path: '/', component: Page },
-    ]
+    const routes: RouteRecord[] = [{ path: '/', component: Page }]
 
     createApp({ routes, layout: Distinct, url: '/' })
 
@@ -99,8 +95,7 @@ describe('createApp — double-layout defense', () => {
 // `base` option didn't exist on CreateAppOptions, and the router defaulted
 // to `'/'` regardless of the user's zero config.
 describe('createApp — base option (PR E)', () => {
-  const Page: ComponentFn = () =>
-    h('span', { 'data-testid': 'home', id: 'page' }, 'page')
+  const Page: ComponentFn = () => h('span', { 'data-testid': 'home', id: 'page' }, 'page')
 
   it('forwards `base` to createRouter so RouterLink hrefs are prefixed', () => {
     // Use the router exposed by createApp to verify the base reached

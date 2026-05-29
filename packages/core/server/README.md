@@ -24,10 +24,12 @@ const handler = createHandler({
   App,
   routes,
   clientEntry: '/src/entry-client.ts',
-  mode: 'stream',                   // 'string' (renderToString) or 'stream' (renderToStream, default)
-  collectStyles: true,              // inline @pyreon/styler CSS into <head>
+  mode: 'stream', // 'string' (renderToString) or 'stream' (renderToStream, default)
+  collectStyles: true, // inline @pyreon/styler CSS into <head>
   middleware: [
-    async (ctx) => { ctx.locals.user = await getUser(ctx.headers.get('cookie')) },
+    async (ctx) => {
+      ctx.locals.user = await getUser(ctx.headers.get('cookie'))
+    },
     async (ctx) => {
       if (ctx.path.startsWith('/admin') && !ctx.locals.user?.admin) {
         return new Response('Forbidden', { status: 403 })
@@ -94,20 +96,20 @@ hydrateIslands({
 
 ### Hydration strategies
 
-| Strategy | When |
-|----------|------|
-| `'load'` | Synchronously on page load (above-the-fold interactive content) |
-| `'idle'` | During browser idle (`requestIdleCallback`) — non-critical UI |
-| `'visible'` | When the island enters the viewport (`IntersectionObserver`) |
-| `'media(<query>)'` | When a media query matches (`'media(min-width: 768px)'`) |
+| Strategy                  | When                                                                                                                              |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `'load'`                  | Synchronously on page load (above-the-fold interactive content)                                                                   |
+| `'idle'`                  | During browser idle (`requestIdleCallback`) — non-critical UI                                                                     |
+| `'visible'`               | When the island enters the viewport (`IntersectionObserver`)                                                                      |
+| `'media(<query>)'`        | When a media query matches (`'media(min-width: 768px)'`)                                                                          |
 | `'interaction(<events>)'` | On first user interaction (default `focus` / `click` / `pointerenter` / `touchstart`); first click is **replayed** post-hydration |
-| `'never'` | Never hydrate — SSR-only zero-JS surface |
+| `'never'`                 | Never hydrate — SSR-only zero-JS surface                                                                                          |
 
 ### Prefetch hints
 
 ```ts
-island(loader, { hydrate: 'visible', prefetch: 'idle' })   // chunk warms during idle
-island(loader, { hydrate: 'idle',    prefetch: 'visible' }) // chunk warms on viewport entry
+island(loader, { hydrate: 'visible', prefetch: 'idle' }) // chunk warms during idle
+island(loader, { hydrate: 'idle', prefetch: 'visible' }) // chunk warms on viewport entry
 ```
 
 The prefetch hint independently schedules the loader so the underlying module is already cached when the hydration trigger fires. **Suppressed** (`data-prefetch` not emitted) when `hydrate: 'load'` (already eager) or `hydrate: 'never'` (defeats the zero-JS strategy).
@@ -172,13 +174,17 @@ const html = processTemplate(DEFAULT_TEMPLATE, {
 createHandler({
   middleware: [
     // Set request-scoped data
-    async (ctx) => { ctx.locals.user = await getUser(ctx.headers.get('cookie')) },
+    async (ctx) => {
+      ctx.locals.user = await getUser(ctx.headers.get('cookie'))
+    },
     // Short-circuit with a Response
     async (ctx) => {
       if (ctx.path === '/api/health') return new Response('OK')
     },
     // Headers / logging
-    async (ctx) => { console.log(ctx.method, ctx.path) },
+    async (ctx) => {
+      console.log(ctx.method, ctx.path)
+    },
   ],
 })
 ```

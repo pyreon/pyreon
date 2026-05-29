@@ -59,13 +59,13 @@ export function TodoApp() {
 
   const visible = computed(() => {
     const xs = todos()
-    if (filter() === 'active') return xs.filter(t => !t.done)
-    if (filter() === 'completed') return xs.filter(t => t.done)
+    if (filter() === 'active') return xs.filter((t) => !t.done)
+    if (filter() === 'completed') return xs.filter((t) => t.done)
     return xs
   })
 
-  const remaining = computed(() => todos().filter(t => !t.done).length)
-  const hasCompleted = computed(() => todos().some(t => t.done))
+  const remaining = computed(() => todos().filter((t) => !t.done).length)
+  const hasCompleted = computed(() => todos().some((t) => t.done))
 
   const addTodo = () => {
     const text = draft().trim()
@@ -75,15 +75,15 @@ export function TodoApp() {
   }
 
   const toggle = (id: number) => {
-    todos.set(todos().map(t => t.id === id ? { ...t, done: !t.done } : t))
+    todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
   }
 
   const remove = (id: number) => {
-    todos.set(todos().filter(t => t.id !== id))
+    todos.set(todos().filter((t) => t.id !== id))
   }
 
   const clearCompleted = () => {
-    todos.set(todos().filter(t => !t.done))
+    todos.set(todos().filter((t) => !t.done))
   }
 
   return (
@@ -96,13 +96,7 @@ export function TodoApp() {
       />
 
       <For each={visible} by={(t) => t.id}>
-        {(t) => (
-          <TodoRow
-            todo={t}
-            onToggle={() => toggle(t.id)}
-            onRemove={() => remove(t.id)}
-          />
-        )}
+        {(t) => <TodoRow todo={t} onToggle={() => toggle(t.id)} onRemove={() => remove(t.id)} />}
       </For>
 
       <Inline gap={2} align="center">

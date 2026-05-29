@@ -1,10 +1,7 @@
 // Tests for the rocketstyle() chain parser — TS source → RocketstyleIR.
 
 import { describe, expect, it } from 'vitest'
-import {
-  emitKotlinRocketstyleModifier,
-  emitSwiftRocketstyleModifier,
-} from '../emit-rocketstyle'
+import { emitKotlinRocketstyleModifier, emitSwiftRocketstyleModifier } from '../emit-rocketstyle'
 import { parseRocketstyle } from '../parse-rocketstyle'
 
 describe('parse-rocketstyle — single dimension', () => {

@@ -19,9 +19,9 @@ import type { Card, ColumnId } from './data/types'
  * The undo/redo manager wraps every action so users can press
  * Cmd/Ctrl+Z to rewind, Cmd/Ctrl+Shift+Z to replay.
  */
-export const BoardModel = model({ state: { cards: SEED_CARDS as Card[], } })
-      .views(() => ({}))
-      .actions((self) => ({
+export const BoardModel = model({ state: { cards: SEED_CARDS as Card[] } })
+  .views(() => ({}))
+  .actions((self) => ({
     /** Replace the entire card list (used by undo/redo + reset). */
     setCards(cards: Card[]) {
       self.cards.set(cards)
@@ -37,7 +37,7 @@ export const BoardModel = model({ state: { cards: SEED_CARDS as Card[], } })
       // The `self` parameter is typed as `any` by the state-tree model
       // factory, so we cast each `peek()` result to the concrete type
       // here. One cast per action keeps the inner code type-safe.
-      const cards = (self.cards.peek() as Card[])
+      const cards = self.cards.peek() as Card[]
       const moving = cards.find((c) => c.id === cardId)
       if (!moving) return
       const without = cards.filter((c) => c.id !== cardId)

@@ -84,9 +84,7 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
   // rewrites `computed(() => …)` to `computed(() => …, { __sourceLocation: {…} })`
   // at transform time so most dev-mode computeds never pay the stack-capture cost.
   const loc = options?.__sourceLocation
-  return options?.equals
-    ? computedWithEquals(fn, options.equals, loc)
-    : computedLazy(fn, loc)
+  return options?.equals ? computedWithEquals(fn, options.equals, loc) : computedLazy(fn, loc)
 }
 
 /**

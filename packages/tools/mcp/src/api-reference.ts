@@ -3329,7 +3329,6 @@ audit_islands({ json: true })
   },
   // <gen-docs:api-reference:end @pyreon/mcp>
 
-
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/ui-core
   // ═══════════════════════════════════════════════════════════════════════════
@@ -3478,7 +3477,6 @@ value('garbage', 0) // → { value: 0, unit: 'px' }`,
     notes: 'Parse and validate a single property value into a `UnitValue` shape (`{ value, unit }`). Accepts numbers (treated as pixels), strings with units (`"16px"`, `"1rem"`, `"50%"`), or objects already in `UnitValue` form. Optional `fallback` is returned when the input is invalid. The companion `values()` does the same over an array. See also: stripUnit, values.',
   },
   // <gen-docs:api-reference:end @pyreon/unistyle>
-
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/styler
@@ -3687,7 +3685,6 @@ isDynamic("12px")          // false → static, cached`,
   },
   // <gen-docs:api-reference:end @pyreon/styler>
 
-
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/elements
   // ═══════════════════════════════════════════════════════════════════════════
@@ -3800,7 +3797,6 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
     notes: 'Re-exported from `@pyreon/unistyle` for convenience (responsive/breakpoint context). Most apps mount the unified `<PyreonUI>` from `@pyreon/ui-core` instead, which wires this internally — reach for the bare `Provider` only outside the `ui-core` provider tree. See also: Element.',
   },
   // <gen-docs:api-reference:end @pyreon/elements>
-
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storybook

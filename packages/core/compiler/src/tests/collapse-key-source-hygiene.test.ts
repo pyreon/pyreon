@@ -36,7 +36,9 @@ describe('rocketstyleCollapseKey — ground-truth key lock (escape fix is byte-i
   // The escape fix MUST reproduce these exactly (proves zero behavior change);
   // any future algorithm change is also caught here.
   it('emits the exact pre-fix keys', () => {
-    expect(rocketstyleCollapseKey('Button', { state: 'primary', size: 'lg' }, 'Click')).toBe('zfm01z')
+    expect(rocketstyleCollapseKey('Button', { state: 'primary', size: 'lg' }, 'Click')).toBe(
+      'zfm01z',
+    )
     expect(rocketstyleCollapseKey('Card', {}, '')).toBe('mzrimv')
     expect(rocketstyleCollapseKey('Comp', { a: '1' }, '')).toBe('1l6zbih')
     expect(rocketstyleCollapseKey('Comp', {}, 'a=1')).toBe('zteym7')
@@ -63,11 +65,11 @@ function repoRoot(): string {
 describe('source hygiene — no raw C0/DEL control bytes in tracked source', () => {
   it('every tracked .ts/.tsx/.js/.mjs/.rs file is plain text (no raw NUL/SOH/ESC/DEL)', () => {
     const root = repoRoot()
-    const files = execFileSync(
-      'git',
-      ['ls-files', '*.ts', '*.tsx', '*.js', '*.mjs', '*.rs'],
-      { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-    )
+    const files = execFileSync('git', ['ls-files', '*.ts', '*.tsx', '*.js', '*.mjs', '*.rs'], {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
       .split('\n')
       .filter(Boolean)
 
@@ -83,6 +85,9 @@ describe('source hygiene — no raw C0/DEL control bytes in tracked source', () 
         }
       }
     }
-    expect(offenders, `raw control bytes in source — escape them (\\u00NN):\n${offenders.join('\n')}`).toEqual([])
+    expect(
+      offenders,
+      `raw control bytes in source — escape them (\\u00NN):\n${offenders.join('\n')}`,
+    ).toEqual([])
   })
 })

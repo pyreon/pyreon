@@ -29,49 +29,92 @@ export function AnimationsFactoriesDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Preset Factories</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Preset Factories
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        Build custom presets with `createFade`, `createSlide`, `createScale`, `createRotate`, `createBlur`.
+        Build custom presets with `createFade`, `createSlide`, `createScale`, `createRotate`,
+        `createBlur`.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">createFade(direction, distance)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        createFade(direction, distance)
+      </Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => fadeOpen.set(!fadeOpen())} style="margin-bottom: 12px;">
+        <Button
+          state="primary"
+          onClick={() => fadeOpen.set(!fadeOpen())}
+          style="margin-bottom: 12px;"
+        >
           Toggle
         </Button>
-        <FactoryFadeUp show={() => fadeOpen()} style={boxStyle}>fade up 24px</FactoryFadeUp>
+        <FactoryFadeUp show={() => fadeOpen()} style={boxStyle}>
+          fade up 24px
+        </FactoryFadeUp>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">createSlide(direction, distance)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        createSlide(direction, distance)
+      </Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => slideOpen.set(!slideOpen())} style="margin-bottom: 12px;">
+        <Button
+          state="primary"
+          onClick={() => slideOpen.set(!slideOpen())}
+          style="margin-bottom: 12px;"
+        >
           Toggle
         </Button>
-        <FactorySlideRight show={() => slideOpen()} style={boxStyle}>slide right 32px</FactorySlideRight>
+        <FactorySlideRight show={() => slideOpen()} style={boxStyle}>
+          slide right 32px
+        </FactorySlideRight>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">createScale(from, easing)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        createScale(from, easing)
+      </Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => scaleOpen.set(!scaleOpen())} style="margin-bottom: 12px;">
+        <Button
+          state="primary"
+          onClick={() => scaleOpen.set(!scaleOpen())}
+          style="margin-bottom: 12px;"
+        >
           Toggle
         </Button>
-        <FactoryScaleSpring show={() => scaleOpen()} style={boxStyle}>scale spring 0.5→1</FactoryScaleSpring>
+        <FactoryScaleSpring show={() => scaleOpen()} style={boxStyle}>
+          scale spring 0.5→1
+        </FactoryScaleSpring>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">createRotate(degrees, duration)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        createRotate(degrees, duration)
+      </Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => rotateOpen.set(!rotateOpen())} style="margin-bottom: 12px;">
+        <Button
+          state="primary"
+          onClick={() => rotateOpen.set(!rotateOpen())}
+          style="margin-bottom: 12px;"
+        >
           Toggle
         </Button>
-        <FactoryRotate show={() => rotateOpen()} style={boxStyle}>rotate 30°</FactoryRotate>
+        <FactoryRotate show={() => rotateOpen()} style={boxStyle}>
+          rotate 30°
+        </FactoryRotate>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">createBlur(amount, scale)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        createBlur(amount, scale)
+      </Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => blurOpen.set(!blurOpen())} style="margin-bottom: 12px;">
+        <Button
+          state="primary"
+          onClick={() => blurOpen.set(!blurOpen())}
+          style="margin-bottom: 12px;"
+        >
           Toggle
         </Button>
-        <FactoryBlurScale show={() => blurOpen()} style={boxStyle}>blur 12px + scale</FactoryBlurScale>
+        <FactoryBlurScale show={() => blurOpen()} style={boxStyle}>
+          blur 12px + scale
+        </FactoryBlurScale>
       </div>
     </div>
   )

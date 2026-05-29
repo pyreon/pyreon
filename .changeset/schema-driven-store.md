@@ -12,10 +12,12 @@ import { zodSchema } from '@pyreon/validation'
 import { defineStore, computed } from '@pyreon/store'
 import { z } from 'zod'
 
-const UserSchema = zodSchema(z.object({
-  name: z.string().min(1),
-  age: z.number(),
-}))
+const UserSchema = zodSchema(
+  z.object({
+    name: z.string().min(1),
+    age: z.number(),
+  }),
+)
 
 const useUser = defineStore('user', {
   schema: UserSchema,
@@ -28,21 +30,23 @@ const useUser = defineStore('user', {
 })
 
 const u = useUser()
-u.store.name()                          // Signal<string> read
-u.store.greet()                         // computed
-u.set({ name: 'Alice', age: 30 })       // full replace + validate
-u.patch({ age: 31 })                    // partial merge + validate
-u.store.age.set(-1)                     // direct write — bypasses validation (escape hatch)
+u.store.name() // Signal<string> read
+u.store.greet() // computed
+u.set({ name: 'Alice', age: 30 }) // full replace + validate
+u.patch({ age: 31 }) // partial merge + validate
+u.store.age.set(-1) // direct write — bypasses validation (escape hatch)
 ```
 
 ## Library support
 
 **Tier A.1 — First-party adapters** (existing in `@pyreon/validation`, extended in this release with `parse()`):
+
 - `zodSchema(zSchema)` — Zod (any version)
 - `valibotSchema(vSchema, v.safeParse)` — Valibot
 - `arktypeSchema(aType)` — ArkType
 
 **Tier A.2 — Standard Schema** (auto-detected via `'~standard'`, no adapter needed):
+
 - Zod 3.24+
 - Valibot 1.0+
 - ArkType 2.0+
@@ -50,6 +54,7 @@ u.store.age.set(-1)                     // direct write — bypasses validation 
 - Any future Standard Schema-compliant library
 
 **Tier B — User-authored adapter** (any other library, 5-10 lines):
+
 - yup, joi, ajv, io-ts, runtypes, Superstruct, custom validators
 
 ## What's new in `@pyreon/validation`

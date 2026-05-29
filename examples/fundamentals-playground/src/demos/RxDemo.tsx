@@ -1,12 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import {
-  average,
-  filter,
-  groupBy,
-  map,
-  pipe,
-  sum,
-} from '@pyreon/rx'
+import { average, filter, groupBy, map, pipe, sum } from '@pyreon/rx'
 
 interface Product {
   id: number
@@ -49,9 +42,9 @@ export function RxDemo() {
     <div>
       <h2>Rx</h2>
       <p class="desc">
-        Signal-aware reactive transforms. 37 functions across 6 categories.
-        Compose with <code>pipe()</code> — each transform returns a Computed
-        that auto-re-derives when the source signal changes.
+        Signal-aware reactive transforms. 37 functions across 6 categories. Compose with{' '}
+        <code>pipe()</code> — each transform returns a Computed that auto-re-derives when the source
+        signal changes.
       </p>
 
       <div class="section">
@@ -123,8 +116,7 @@ export function RxDemo() {
           Total value (in stock): <strong data-testid="rx-total">${() => totalInStock()}</strong>
         </p>
         <p>
-          Average price (all):{' '}
-          <strong data-testid="rx-avg">${() => avgPrice().toFixed(2)}</strong>
+          Average price (all): <strong data-testid="rx-avg">${() => avgPrice().toFixed(2)}</strong>
         </p>
       </div>
     </div>

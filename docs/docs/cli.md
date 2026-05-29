@@ -70,18 +70,18 @@ By default it runs the **8 fast gates** (~1-2s wall-clock on a warm cache). The 
 
 Each gate emits findings with a `category`, a `severity` (`error` / `warning` / `info`), and a stable `<gate>/<rule>` code. The default category drives where the gate's findings land in the score breakdown.
 
-| Gate | Speed | Category | What it checks |
-| --- | --- | --- | --- |
-| `react-patterns` | fast | `correctness` | "Coming from React" mistakes — `useState`, `useEffect`, `className`, `htmlFor`, `onChange` on inputs, `.value` writes, React imports. |
-| `pyreon-patterns` | fast | `correctness` | "Using Pyreon wrong" mistakes — `<For>` missing `by`, destructured props, bundler-coupled dev gates, signal-write-as-call, and 8 more. |
-| `lint` | fast | `correctness` | All `@pyreon/lint` rules across the project. |
-| `distribution` | fast | `architecture` | Published-package hygiene — `sideEffects` declared, source maps shipped (not excluded via `!lib/**/*.map`). |
-| `doc-claims` | fast | `documentation` | Numeric claims in human-written docs match the source of truth (hook count, doc-page count). Skipped automatically in non-Pyreon projects. |
-| `audit-tests` | fast | `testing` | The mock-vnode anti-pattern — tests that build `{ type, props, children }` literals instead of going through real `h()`. |
-| `islands-audit` | fast | `architecture` | Cross-file islands detectors — duplicate name, never+registry, registry mismatch, nested island, dead island. |
-| `ssg-audit` | fast | `architecture` | SSG-config consistency checks. |
-| `audit-types` | slow | `architecture` | Typed-but-unimplemented public fields (zero non-type refs in the owning package). Requires `--full`. |
-| `bundle-budgets` | slow | `performance` | Each published package's gzipped main-entry size stays within its locked budget. Requires `--full`. |
+| Gate              | Speed | Category        | What it checks                                                                                                                             |
+| ----------------- | ----- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `react-patterns`  | fast  | `correctness`   | "Coming from React" mistakes — `useState`, `useEffect`, `className`, `htmlFor`, `onChange` on inputs, `.value` writes, React imports.      |
+| `pyreon-patterns` | fast  | `correctness`   | "Using Pyreon wrong" mistakes — `<For>` missing `by`, destructured props, bundler-coupled dev gates, signal-write-as-call, and 8 more.     |
+| `lint`            | fast  | `correctness`   | All `@pyreon/lint` rules across the project.                                                                                               |
+| `distribution`    | fast  | `architecture`  | Published-package hygiene — `sideEffects` declared, source maps shipped (not excluded via `!lib/**/*.map`).                                |
+| `doc-claims`      | fast  | `documentation` | Numeric claims in human-written docs match the source of truth (hook count, doc-page count). Skipped automatically in non-Pyreon projects. |
+| `audit-tests`     | fast  | `testing`       | The mock-vnode anti-pattern — tests that build `{ type, props, children }` literals instead of going through real `h()`.                   |
+| `islands-audit`   | fast  | `architecture`  | Cross-file islands detectors — duplicate name, never+registry, registry mismatch, nested island, dead island.                              |
+| `ssg-audit`       | fast  | `architecture`  | SSG-config consistency checks.                                                                                                             |
+| `audit-types`     | slow  | `architecture`  | Typed-but-unimplemented public fields (zero non-type refs in the owning package). Requires `--full`.                                       |
+| `bundle-budgets`  | slow  | `performance`   | Each published package's gzipped main-entry size stays within its locked budget. Requires `--full`.                                        |
 
 The two slow gates only run with `--full`; otherwise they appear in the report's skipped footer with the reason `enable with --full`.
 
@@ -99,27 +99,27 @@ Each category subscore is `100 - clamp(sum of penalties, 0, 100)`, so 10 errors 
 
 Letter grades:
 
-| Grade | Score |
-| --- | --- |
-| A | 90-100 |
-| B | 80-89 |
-| C | 70-79 |
-| D | 60-69 |
-| F | below 60 |
+| Grade | Score    |
+| ----- | -------- |
+| A     | 90-100   |
+| B     | 80-89    |
+| C     | 70-79    |
+| D     | 60-69    |
+| F     | below 60 |
 
 #### Flags
 
-| Flag | Effect |
-| --- | --- |
-| `--full` | Include the slow gates (`audit-types`, `bundle-budgets`). |
-| `--fix` | Auto-fix where possible (`lint` + `react-patterns` findings with auto-fixers). |
-| `--only <gates>` | Run ONLY the listed comma-separated gates. Takes precedence over `--full`. |
-| `--skip <gates>` | Exclude the listed comma-separated gates (applied after `--only`). |
-| `--format text\|json\|gha` | Output format (default: `text`). |
-| `--json` | Shortcut for `--format=json` — emits the full `DoctorReport`. |
-| `--gha` | Shortcut for `--format=gha` — GitHub Actions annotation lines for inline PR notes. |
-| `--ci` | Exit non-zero on **error** findings only (warnings/infos don't fail the build). |
-| `--audit-min-risk high\|medium\|low` | Minimum risk floor for the `audit-tests` gate (default: `medium`). |
+| Flag                                 | Effect                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------- |
+| `--full`                             | Include the slow gates (`audit-types`, `bundle-budgets`).                          |
+| `--fix`                              | Auto-fix where possible (`lint` + `react-patterns` findings with auto-fixers).     |
+| `--only <gates>`                     | Run ONLY the listed comma-separated gates. Takes precedence over `--full`.         |
+| `--skip <gates>`                     | Exclude the listed comma-separated gates (applied after `--only`).                 |
+| `--format text\|json\|gha`           | Output format (default: `text`).                                                   |
+| `--json`                             | Shortcut for `--format=json` — emits the full `DoctorReport`.                      |
+| `--gha`                              | Shortcut for `--format=gha` — GitHub Actions annotation lines for inline PR notes. |
+| `--ci`                               | Exit non-zero on **error** findings only (warnings/infos don't fail the build).    |
+| `--audit-min-risk high\|medium\|low` | Minimum risk floor for the `audit-tests` gate (default: `medium`).                 |
 
 Valid gate names for `--only` / `--skip`: `react-patterns`, `pyreon-patterns`, `lint`, `distribution`, `doc-claims`, `audit-tests`, `islands-audit`, `ssg-audit`, `audit-types`, `bundle-budgets`.
 
@@ -140,11 +140,11 @@ Without `--ci`, the exit code is the total count of findings (errors + warnings 
 
 The pre-v2 single-purpose flags still work — they map to `--only <gate>` shortcuts so existing CI scripts keep functioning unchanged:
 
-| Legacy flag | Equivalent |
-| --- | --- |
-| `--audit-tests` | `--only audit-tests` |
+| Legacy flag       | Equivalent             |
+| ----------------- | ---------------------- |
+| `--audit-tests`   | `--only audit-tests`   |
 | `--check-islands` | `--only islands-audit` |
-| `--check-ssg` | `--only ssg-audit` |
+| `--check-ssg`     | `--only ssg-audit`     |
 
 ```bash
 pyreon doctor --check-islands                          # == --only islands-audit

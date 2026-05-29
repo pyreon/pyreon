@@ -1,11 +1,6 @@
 import { createPanelToBackground, isBackgroundForward } from './messages'
 import { buildMap, getChildren, getRoots } from './tree'
-import {
-  bucketFires,
-  layoutGraph,
-  type ReactiveFire,
-  type ReactiveGraph,
-} from './reactive-view'
+import { bucketFires, layoutGraph, type ReactiveFire, type ReactiveGraph } from './reactive-view'
 import type { PanelMessage, SerializedEntry } from './types'
 
 // --- Panel UI: component tree viewer ---
@@ -69,14 +64,11 @@ const port = chrome.runtime.connect({ name: `pyreon-panel-${tabId}` })
 
 // Fill the title-bar caption with the inspected origin + path (design
 // PxDevChrome shows `pyreon devtools · localhost:5173 · /app/cart`).
-chrome.devtools.inspectedWindow.eval(
-  'location.host + location.pathname',
-  (result: unknown) => {
-    if (typeof result === 'string' && result) {
-      titlebarCaption.textContent = `pyreon devtools · ${result}`
-    }
-  },
-)
+chrome.devtools.inspectedWindow.eval('location.host + location.pathname', (result: unknown) => {
+  if (typeof result === 'string' && result) {
+    titlebarCaption.textContent = `pyreon devtools · ${result}`
+  }
+})
 
 function setLive(on: boolean): void {
   tabLive.style.display = on ? '' : 'none'
@@ -141,11 +133,7 @@ function renderTree(): void {
   }
 }
 
-function renderNode(
-  entry: SerializedEntry,
-  depth: number,
-  container: HTMLElement,
-): void {
+function renderNode(entry: SerializedEntry, depth: number, container: HTMLElement): void {
   const kids = currentChildren.get(entry.id) ?? []
   const hasChildren = kids.length > 0
   const isExpanded = expandedIds.has(entry.id)
@@ -153,10 +141,7 @@ function renderNode(
   const isHot = recentlyMounted.has(entry.id)
 
   const node = document.createElement('div')
-  node.className =
-    'tree-node' +
-    (isSelected ? ' selected' : '') +
-    (isHot ? ' hot pulsing' : '')
+  node.className = 'tree-node' + (isSelected ? ' selected' : '') + (isHot ? ' hot pulsing' : '')
 
   // Left: caret + hot dot + name (design `.tn-label`)
   const label = document.createElement('div')
@@ -197,9 +182,7 @@ function renderNode(
   // Mid: subscription/child count (design `N sub`)
   const sub = document.createElement('div')
   sub.className = 'tree-sub'
-  sub.textContent = hasChildren
-    ? `${kids.length} sub${kids.length !== 1 ? 's' : ''}`
-    : ''
+  sub.textContent = hasChildren ? `${kids.length} sub${kids.length !== 1 ? 's' : ''}` : ''
   node.appendChild(sub)
 
   // Right: state tag (design `RE-RENDERED` → `MOUNTED` for the signal model)
@@ -251,9 +234,7 @@ function renderDetail(): void {
 
   if (entry.parentId) {
     const parent = currentMap.get(entry.parentId)
-    detailParent.textContent = parent
-      ? `${parent.name} (${entry.parentId})`
-      : entry.parentId
+    detailParent.textContent = parent ? `${parent.name} (${entry.parentId})` : entry.parentId
     detailParent.className = 'detail-value clickable'
     detailParent.onclick = () => {
       if (entry.parentId) {
@@ -422,13 +403,7 @@ inspectBtn.addEventListener('click', () => {
 // ── Tab switching + reactive surfaces ───────────────────────────────────
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
-const REACTIVE_TABS = new Set([
-  'signals',
-  'graph',
-  'effects',
-  'profiler',
-  'console',
-])
+const REACTIVE_TABS = new Set(['signals', 'graph', 'effects', 'profiler', 'console'])
 const NEEDS_HTML =
   'The reactive surfaces need <strong>@pyreon/runtime-dom</strong> with the ' +
   'reactive-devtools Foundation (exposes <strong>__PYREON_DEVTOOLS__.reactive</strong>). ' +
@@ -537,9 +512,7 @@ function renderSignals(): void {
   }
   host.appendChild(head)
 
-  const rows = lastGraph.nodes
-    .slice()
-    .sort((a, b) => b.fires - a.fires || a.id - b.id)
+  const rows = lastGraph.nodes.slice().sort((a, b) => b.fires - a.fires || a.id - b.id)
   for (const n of rows) {
     const row = document.createElement('div')
     const hot = n.lastFire !== null && performance.now() - n.lastFire < 1500
@@ -614,10 +587,7 @@ function renderGraph(): void {
   for (const n of laid.nodes) {
     const g = document.createElementNS(SVG_NS, 'g')
     g.setAttribute('transform', `translate(${n.x},${n.y})`)
-    g.setAttribute(
-      'class',
-      `gnode${recent.has(n.id) ? ' hot' : ''}`,
-    )
+    g.setAttribute('class', `gnode${recent.has(n.id) ? ' hot' : ''}`)
     const rect = document.createElementNS(SVG_NS, 'rect')
     rect.setAttribute('x', '-55')
     rect.setAttribute('y', '-12')
@@ -634,8 +604,7 @@ function renderGraph(): void {
     const text = document.createElementNS(SVG_NS, 'text')
     text.setAttribute('x', '-37')
     text.setAttribute('y', '4')
-    text.textContent =
-      n.name.length > 14 ? `${n.name.slice(0, 13)}…` : n.name
+    text.textContent = n.name.length > 14 ? `${n.name.slice(0, 13)}…` : n.name
     g.appendChild(text)
     svg.appendChild(g)
   }
@@ -666,9 +635,7 @@ function renderEffects(): void {
     if (arr) arr.push(f)
     else byId.set(f.id, [f])
   }
-  const lanes = Array.from(byId.entries()).sort(
-    (a, b) => b[1].length - a[1].length,
-  )
+  const lanes = Array.from(byId.entries()).sort((a, b) => b[1].length - a[1].length)
   for (const [id, fires] of lanes) {
     const node = nameById.get(id)
     const lane = document.createElement('div')
@@ -692,9 +659,7 @@ function renderEffects(): void {
 
 // Profiler — design PxArtDevProfiler per-frame fire bars
 function renderProfiler(): void {
-  const svg = document.getElementById(
-    'profiler-svg',
-  ) as unknown as SVGSVGElement | null
+  const svg = document.getElementById('profiler-svg') as unknown as SVGSVGElement | null
   if (!svg) return
   while (svg.firstChild) svg.removeChild(svg.firstChild)
   const b = bucketFires(lastFires, 100)

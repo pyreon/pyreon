@@ -8,8 +8,7 @@ function Consumer() {
   const present = hasContext(THEME)
   return (
     <p>
-      theme = <strong>{theme}</strong> · hasContext ={' '}
-      <strong>{String(present)}</strong>
+      theme = <strong>{theme}</strong> · hasContext = <strong>{String(present)}</strong>
     </p>
   )
 }

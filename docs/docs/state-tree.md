@@ -62,13 +62,13 @@ effect(() => { history.update(h => [...h.slice(-9), count()]) })
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', { style: { fontSize: '24px', fontWeight: 'bold' } }, () => count() + ' (doubled: ' + doubled() + ')'),
-  h('div', { style: { display: 'flex', gap: '8px', margin: '8px 0' } },
-    h('button', { onClick: () => count.update(n => n + 1) }, '+1'),
-    h('button', { onClick: () => count.update(n => n - 1) }, '-1'),
-    h('button', { onClick: () => count.set(0) }, 'Reset'),
-  ),
-  h('div', { style: { fontSize: '12px', color: '#666' } }, () => 'History: [' + history().join(', ') + ']'),
+h('div', { style: { fontSize: '24px', fontWeight: 'bold' } }, () => count() + ' (doubled: ' + doubled() + ')'),
+h('div', { style: { display: 'flex', gap: '8px', margin: '8px 0' } },
+h('button', { onClick: () => count.update(n => n + 1) }, '+1'),
+h('button', { onClick: () => count.update(n => n - 1) }, '-1'),
+h('button', { onClick: () => count.set(0) }, 'Reset'),
+),
+h('div', { style: { fontSize: '12px', color: '#666' } }, () => 'History: [' + history().join(', ') + ']'),
 )
 mount(ui, app)
 </Playground>
@@ -87,10 +87,10 @@ import { model } from '@pyreon/state-tree'
 import { computed } from '@pyreon/reactivity'
 
 const Counter = model({ state: { count: 0 } })
-     .views((self) => ({
+  .views((self) => ({
     doubled: computed(() => self.count() * 2),
   }))
-     .actions((self) => ({
+  .actions((self) => ({
     increment: () => self.count.update((c) => c + 1),
     decrement: () => self.count.update((c) => c - 1),
     reset: () => self.count.set(0),
@@ -114,17 +114,16 @@ const Settings = model({
     // Nullable values
     selectedId: null as string | null,
   },
-})
-  .actions((self) => ({
-    setName: (name: string) => self.name.set(name),
-    addTag: (tag: string) => self.tags.update((t) => [...t, tag]),
-    toggleTheme: () =>
-      self.config.update((c) => ({
-        ...c,
-        theme: c.theme === 'light' ? 'dark' : 'light',
-      })),
-    select: (id: string | null) => self.selectedId.set(id),
-  }))
+}).actions((self) => ({
+  setName: (name: string) => self.name.set(name),
+  addTag: (tag: string) => self.tags.update((t) => [...t, tag]),
+  toggleTheme: () =>
+    self.config.update((c) => ({
+      ...c,
+      theme: c.theme === 'light' ? 'dark' : 'light',
+    })),
+  select: (id: string | null) => self.selectedId.set(id),
+}))
 ```
 
 ### Reading and Writing Signals
@@ -196,21 +195,21 @@ const User = model({
   }))
 
 const u = User.create({ name: 'Alice', age: 30, prefs: { theme: 'dark' } })
-u.name()      // "Alice"
-u.greeting()  // "Hi, Alice"
-u.set({ name: 'Bob', age: 40, prefs: { theme: 'light' } })   // full replace, validated
-u.patch({ age: 41 })                                          // shallow merge, validated
-u.deepPatch({ prefs: { theme: 'dark' } })                     // recursive merge — keeps other prefs keys
-u.update('age', n => (n as number) + 1)                       // transform one field, validated
-u.name.set('')   // direct signal write — bypasses validation (escape hatch)
-u.reset()       // restore parsed initial
+u.name() // "Alice"
+u.greeting() // "Hi, Alice"
+u.set({ name: 'Bob', age: 40, prefs: { theme: 'light' } }) // full replace, validated
+u.patch({ age: 41 }) // shallow merge, validated
+u.deepPatch({ prefs: { theme: 'dark' } }) // recursive merge — keeps other prefs keys
+u.update('age', (n) => (n as number) + 1) // transform one field, validated
+u.name.set('') // direct signal write — bypasses validation (escape hatch)
+u.reset() // restore parsed initial
 ```
 
 **Standard Schema (Tier A.2)** — pass the raw schema, no adapter wrap needed:
 
 ```ts
 const User = model({
-  schema: z.object({ name: z.string(), age: z.number() }),  // raw zod (~standard)
+  schema: z.object({ name: z.string(), age: z.number() }), // raw zod (~standard)
   initial: { name: 'Alice', age: 30 },
 })
 ```
@@ -219,23 +218,23 @@ const User = model({
 
 Schema mode exposes five validated mutation methods. Pick by mutation shape:
 
-| Method | Shape | Merge depth | Use when |
-| --- | --- | --- | --- |
-| `set(full)` | full state | n/a (replaces) | resetting to a known full shape |
-| `patch(partial)` | top-level partial | shallow (depth-1) | replacing one or more top-level fields |
-| `deepPatch(partial)` | recursive partial | deep (plain objects only) | updating nested fields without spreading the parent |
-| `update(key, fn)` | one field | n/a (transformer-controlled) | array filter/append, object key edit, primitive math |
-| `reset()` | (none) | n/a | restore the parsed-initial captured at `.create()` time |
+| Method               | Shape             | Merge depth                  | Use when                                                |
+| -------------------- | ----------------- | ---------------------------- | ------------------------------------------------------- |
+| `set(full)`          | full state        | n/a (replaces)               | resetting to a known full shape                         |
+| `patch(partial)`     | top-level partial | shallow (depth-1)            | replacing one or more top-level fields                  |
+| `deepPatch(partial)` | recursive partial | deep (plain objects only)    | updating nested fields without spreading the parent     |
+| `update(key, fn)`    | one field         | n/a (transformer-controlled) | array filter/append, object key edit, primitive math    |
+| `reset()`            | (none)            | n/a                          | restore the parsed-initial captured at `.create()` time |
 
 All five validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
 
 ```ts
 // Real-world mix:
-u.patch({ name: 'Bob' })                          // simple top-level edit
-u.deepPatch({ prefs: { theme: 'dark' } })         // density survives
-u.update('items', items => items.filter(x => x.id !== id))  // array remove
-u.update('items', items => [...items, newItem])             // array append
-u.update('prefs', p => ({ ...p, theme: 'dark' }))           // alt to deepPatch
+u.patch({ name: 'Bob' }) // simple top-level edit
+u.deepPatch({ prefs: { theme: 'dark' } }) // density survives
+u.update('items', (items) => items.filter((x) => x.id !== id)) // array remove
+u.update('items', (items) => [...items, newItem]) // array append
+u.update('prefs', (p) => ({ ...p, theme: 'dark' })) // alt to deepPatch
 ```
 
 **Validation rules** mirror `@pyreon/store` schema mode exactly:
@@ -280,7 +279,7 @@ const M = model({ state: { count: 0 } })
       self.inc()
       self.inc()
     },
-    quadFromHere: () => self.quadrupled(),  // also sees views
+    quadFromHere: () => self.quadrupled(), // also sees views
   }))
 ```
 
@@ -345,12 +344,12 @@ import { model } from '@pyreon/state-tree'
 import { computed, effect } from '@pyreon/reactivity'
 
 const Counter = model({ state: { count: 0 } })
-     .views((self) => ({
+  .views((self) => ({
     doubled: computed(() => self.count() * 2),
     isPositive: computed(() => self.count() > 0),
     label: computed(() => `Count is ${self.count()}`),
   }))
-     .actions((self) => ({
+  .actions((self) => ({
     increment: () => self.count.update((c) => c + 1),
     decrement: () => self.count.update((c) => c - 1),
   }))
@@ -389,7 +388,7 @@ Views can depend on multiple state fields:
 
 ```ts
 const CartItem = model({ state: { price: 0, quantity: 1, taxRate: 0.1 } })
-     .views((self) => ({
+  .views((self) => ({
     subtotal: computed(() => self.price() * self.quantity()),
     tax: computed(() => self.price() * self.quantity() * self.taxRate()),
     total: computed(() => {
@@ -397,7 +396,7 @@ const CartItem = model({ state: { price: 0, quantity: 1, taxRate: 0.1 } })
       return sub + sub * self.taxRate()
     }),
   }))
-     .actions((self) => ({
+  .actions((self) => ({
     setPrice: (p: number) => self.price.set(p),
     setQuantity: (q: number) => self.quantity.set(q),
   }))
@@ -415,12 +414,11 @@ Actions are functions that mutate state. They are wrapped with the middleware ru
 ### Sync Actions
 
 ```ts
-const Todo = model({ state: { text: '', done: false } })
-     .actions((self) => ({
-    setText: (text: string) => self.text.set(text),
-    toggle: () => self.done.update((d) => !d),
-    complete: () => self.done.set(true),
-  }))
+const Todo = model({ state: { text: '', done: false } }).actions((self) => ({
+  setText: (text: string) => self.text.set(text),
+  toggle: () => self.done.update((d) => !d),
+  complete: () => self.done.set(true),
+}))
 ```
 
 ### Actions With Arguments
@@ -428,11 +426,10 @@ const Todo = model({ state: { text: '', done: false } })
 Actions can accept any number of arguments:
 
 ```ts
-const Counter = model({ state: { count: 0 } })
-     .actions((self) => ({
-    add: (n: number) => self.count.update((c) => c + n),
-    addMultiple: (a: number, b: number) => self.count.update((c) => c + a + b),
-  }))
+const Counter = model({ state: { count: 0 } }).actions((self) => ({
+  add: (n: number) => self.count.update((c) => c + n),
+  addMultiple: (a: number, b: number) => self.count.update((c) => c + a + b),
+}))
 
 const counter = Counter.create()
 counter.add(5)
@@ -446,14 +443,13 @@ counter.count() // 15
 Actions can call other actions through `self`. The `self` proxy always reflects the final, fully-populated instance:
 
 ```ts
-const Counter = model({ state: { x: 0 } })
-     .actions((self) => ({
-    doubleInc: () => {
-      self.inc()
-      self.inc()
-    },
-    inc: () => self.x.update((n: number) => n + 1),
-  }))
+const Counter = model({ state: { x: 0 } }).actions((self) => ({
+  doubleInc: () => {
+    self.inc()
+    self.inc()
+  },
+  inc: () => self.x.update((n: number) => n + 1),
+}))
 
 const c = Counter.create()
 c.doubleInc()
@@ -471,25 +467,24 @@ const UserStore = model({
     loading: false,
     error: null as string | null,
   },
-})
-  .actions((self) => ({
-    async fetchUsers() {
-      self.loading.set(true)
-      self.error.set(null)
-      try {
-        const response = await fetch('/api/users')
-        const data = await response.json()
-        self.users.set(data)
-      } catch (err) {
-        self.error.set(err instanceof Error ? err.message : 'Unknown error')
-      } finally {
-        self.loading.set(false)
-      }
-    },
-  }))
+}).actions((self) => ({
+  async fetchUsers() {
+    self.loading.set(true)
+    self.error.set(null)
+    try {
+      const response = await fetch('/api/users')
+      const data = await response.json()
+      self.users.set(data)
+    } catch (err) {
+      self.error.set(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      self.loading.set(false)
+    }
+  },
+}))
 
 const store = UserStore.create()
-await store.fetchUsers()    // awaitable
+await store.fetchUsers() // awaitable
 ```
 
 **Middleware can observe async completion** by awaiting `next(call)`:
@@ -516,14 +511,13 @@ Middleware that doesn't care about completion can stay sync — `next(call)` ret
 const User = model({
   schema: zodSchema(z.object({ age: z.number().nonnegative() })),
   initial: { age: 0 },
-})
-  .actions((self) => ({
-    async setAgeFromServer() {
-      const r = await fetch('/api/age')
-      const { age } = await r.json()
-      self.patch({ age })  // throws if age < 0, leaving state intact
-    },
-  }))
+}).actions((self) => ({
+  async setAgeFromServer() {
+    const r = await fetch('/api/age')
+    const { age } = await r.json()
+    self.patch({ age }) // throws if age < 0, leaving state intact
+  },
+}))
 ```
 
 ## Nested Models (Composition)
@@ -738,15 +732,19 @@ app.title() // "new"
 Combine `getSnapshot` and `applySnapshot` for persistence:
 
 ```ts
-const TodoList = model({ state: { items: [] as Array<{ text: string; done: boolean }>, filter: 'all' as 'all' | 'active' | 'done', } })
-     .actions((self) => ({
-    addItem: (text: string) => self.items.update((i) => [...i, { text, done: false }]),
-    toggleItem: (idx: number) =>
-      self.items.update((i) =>
-        i.map((item, i2) => (i2 === idx ? { ...item, done: !item.done } : item)),
-      ),
-    setFilter: (f: 'all' | 'active' | 'done') => self.filter.set(f),
-  }))
+const TodoList = model({
+  state: {
+    items: [] as Array<{ text: string; done: boolean }>,
+    filter: 'all' as 'all' | 'active' | 'done',
+  },
+}).actions((self) => ({
+  addItem: (text: string) => self.items.update((i) => [...i, { text, done: false }]),
+  toggleItem: (idx: number) =>
+    self.items.update((i) =>
+      i.map((item, i2) => (i2 === idx ? { ...item, done: !item.done } : item)),
+    ),
+  setFilter: (f: 'all' | 'active' | 'done') => self.filter.set(f),
+}))
 
 // Save to localStorage
 function save(store: ReturnType<typeof TodoList.create>) {
@@ -1136,10 +1134,10 @@ import { model, getSnapshot, applySnapshot, onPatch } from '@pyreon/state-tree'
 import { computed } from '@pyreon/reactivity'
 
 const Counter = model({ state: { count: 0 } })
-     .views((self) => ({
+  .views((self) => ({
     doubled: computed(() => self.count() * 2),
   }))
-     .actions((self) => ({
+  .actions((self) => ({
     inc: () => self.count.update((c) => c + 1),
     add: (n: number) => self.count.update((c) => c + n),
     reset: () => self.count.set(0),
@@ -1222,15 +1220,20 @@ import { model, getSnapshot, applySnapshot, onPatch, addMiddleware } from '@pyre
 import { computed } from '@pyreon/reactivity'
 
 // ---- Todo Item Model ----
-const TodoItem = model({ state: { id: '', text: '', done: false, } })
-     .actions((self) => ({
-    toggle: () => self.done.update((d) => !d),
-    setText: (text: string) => self.text.set(text),
-  }))
+const TodoItem = model({ state: { id: '', text: '', done: false } }).actions((self) => ({
+  toggle: () => self.done.update((d) => !d),
+  setText: (text: string) => self.text.set(text),
+}))
 
 // ---- Todo List Model ----
-const TodoList = model({ state: { items: [] as Array<{ id: string; text: string; done: boolean }>, filter: 'all' as 'all' | 'active' | 'done', nextId: 1, } })
-     .views((self) => ({
+const TodoList = model({
+  state: {
+    items: [] as Array<{ id: string; text: string; done: boolean }>,
+    filter: 'all' as 'all' | 'active' | 'done',
+    nextId: 1,
+  },
+})
+  .views((self) => ({
     filteredItems: computed(() => {
       const items = self.items()
       const filter = self.filter()
@@ -1247,7 +1250,7 @@ const TodoList = model({ state: { items: [] as Array<{ id: string; text: string;
     doneCount: computed(() => self.items().filter((i) => i.done).length),
     totalCount: computed(() => self.items().length),
   }))
-     .actions((self) => ({
+  .actions((self) => ({
     addItem: (text: string) => {
       const id = `todo-${self.nextId.peek()}`
       self.nextId.update((n) => n + 1)
@@ -1324,10 +1327,10 @@ Use `ReturnType` on `.create()` to extract the instance type:
 
 ```ts
 const Counter = model({ state: { count: 0 } })
-     .views((self) => ({
+  .views((self) => ({
     doubled: computed(() => self.count() * 2),
   }))
-     .actions((self) => ({
+  .actions((self) => ({
     inc: () => self.count.update((c) => c + 1),
   }))
 
@@ -1357,16 +1360,15 @@ import type { Snapshot } from '@pyreon/state-tree'
 Inside `actions` and `views`, `self` is typed with `StateSignals<TState>` for state fields and `Record<string, any>` for actions/views. This avoids circular type issues when actions call each other:
 
 ```ts
-const M = model({ state: { x: 0 } })
-     .actions((self) => ({
-    doubleInc: () => {
-      // self.inc is typed as `any` (avoids circular reference)
-      // but works correctly at runtime
-      self.inc()
-      self.inc()
-    },
-    inc: () => self.x.update((n: number) => n + 1),
-  }))
+const M = model({ state: { x: 0 } }).actions((self) => ({
+  doubleInc: () => {
+    // self.inc is typed as `any` (avoids circular reference)
+    // but works correctly at runtime
+    self.inc()
+    self.inc()
+  },
+  inc: () => self.x.update((n: number) => n + 1),
+}))
 ```
 
 ## API Reference

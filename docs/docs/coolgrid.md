@@ -33,7 +33,6 @@ yarn add @pyreon/coolgrid
 
 ```tsx
 import { Container, Row, Col } from '@pyreon/coolgrid'
-
 ;<Container maxWidth={1140} gap={24} gutter={16}>
   <Row>
     <Col xs={12} md={6} lg={4}>
@@ -55,28 +54,28 @@ This creates a three-column layout that stacks to two columns at medium screens 
 const cols = signal([4, 4, 4])
 
 const presets = {
-  'Thirds': [4, 4, 4],
-  'Halves': [6, 6],
-  'Sidebar': [3, 9],
-  'Header': [12],
-  'Quarters': [3, 3, 3, 3],
+'Thirds': [4, 4, 4],
+'Halves': [6, 6],
+'Sidebar': [3, 9],
+'Header': [12],
+'Quarters': [3, 3, 3, 3],
 }
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', { style: { marginBottom: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' } },
-    ...Object.keys(presets).map(name =>
-      h('button', {
-        onClick: () => cols.set(presets[name]),
-        style: { padding: '4px 10px', border: '1px solid #ccc', borderRadius: '4px', background: '#fff', cursor: 'pointer', fontSize: '13px' },
-      }, name),
-    ),
-  ),
-  h('div', { style: { display: 'flex', gap: '8px', padding: '8px', background: '#f5f5f5', borderRadius: '6px' } },
-    () => cols().map(span =>
-      h('div', { style: { flex: span, padding: '16px 8px', background: '#2196f3', color: 'white', borderRadius: '4px', textAlign: 'center', fontSize: '13px' } }, `col ${span}/12`),
-    ),
-  ),
+h('div', { style: { marginBottom: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+...Object.keys(presets).map(name =>
+h('button', {
+onClick: () => cols.set(presets[name]),
+style: { padding: '4px 10px', border: '1px solid #ccc', borderRadius: '4px', background: '#fff', cursor: 'pointer', fontSize: '13px' },
+}, name),
+),
+),
+h('div', { style: { display: 'flex', gap: '8px', padding: '8px', background: '#f5f5f5', borderRadius: '6px' } },
+() => cols().map(span =>
+h('div', { style: { flex: span, padding: '16px 8px', background: '#2196f3', color: 'white', borderRadius: '4px', textAlign: 'center', fontSize: '13px' } }, `col ${span}/12`),
+),
+),
 )
 mount(ui, app)
 </Playground>
@@ -142,7 +141,6 @@ The outermost grid wrapper. Centers content horizontally with auto margins, cons
 
 ```tsx
 import { Container } from '@pyreon/coolgrid'
-
 ;<Container maxWidth={1140} columns={12} gap={24} gutter={16}>
   {children}
 </Container>

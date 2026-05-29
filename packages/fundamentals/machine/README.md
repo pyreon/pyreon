@@ -44,17 +44,17 @@ function View() {
 
 `createMachine({ initial, states })` returns a callable `Machine<TState, TEvent>`:
 
-| Member | Notes |
-|---|---|
-| `machine()` | Read current state — reactive in effects / computeds / JSX |
-| `machine.send(event, payload?)` | Trigger a transition. Silent no-op when no matching `on:` entry. |
-| `machine.matches(...states)` | True if current state is in the list — reactive |
-| `machine.can(event)` | True if `send(event)` would transition (guards evaluated) |
-| `machine.nextEvents()` | Valid event names from the current state — reactive |
-| `machine.reset()` | Return to `initial` |
-| `machine.onEnter(state, cb)` | Callback fires every time `state` is entered. Returns unsubscribe. |
-| `machine.onTransition(cb)` | Callback fires on any transition with `(from, to, event)`. Returns unsubscribe. |
-| `machine.dispose()` | Remove all listeners and clean up |
+| Member                          | Notes                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------- |
+| `machine()`                     | Read current state — reactive in effects / computeds / JSX                      |
+| `machine.send(event, payload?)` | Trigger a transition. Silent no-op when no matching `on:` entry.                |
+| `machine.matches(...states)`    | True if current state is in the list — reactive                                 |
+| `machine.can(event)`            | True if `send(event)` would transition (guards evaluated)                       |
+| `machine.nextEvents()`          | Valid event names from the current state — reactive                             |
+| `machine.reset()`               | Return to `initial`                                                             |
+| `machine.onEnter(state, cb)`    | Callback fires every time `state` is entered. Returns unsubscribe.              |
+| `machine.onTransition(cb)`      | Callback fires on any transition with `(from, to, event)`. Returns unsubscribe. |
+| `machine.dispose()`             | Remove all listeners and clean up                                               |
 
 ## Guards — conditional transitions
 

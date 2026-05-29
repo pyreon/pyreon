@@ -72,10 +72,7 @@ describe('Head integration — CSR', () => {
       useHead({ meta: [{ name: 'keywords', content: 'pyreon,test' }] })
       return h('div', null)
     }
-    const cleanup = mount(
-      h(HeadProvider, { context: ctx, children: h(Page, null) }),
-      container,
-    )
+    const cleanup = mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
     expect(document.head.querySelector('meta[name="keywords"]')).not.toBeNull()
     cleanup()
     expect(document.head.querySelector('meta[name="keywords"]')).toBeNull()

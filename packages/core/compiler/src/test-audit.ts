@@ -259,8 +259,7 @@ function countMockVNodeLiterals(source: string): number {
 }
 
 function classifyRisk(entry: Omit<TestAuditEntry, 'risk'>): AuditRisk {
-  const mocks =
-    entry.mockVNodeLiteralCount + entry.mockHelperCount + entry.mockHelperCallCount
+  const mocks = entry.mockVNodeLiteralCount + entry.mockHelperCount + entry.mockHelperCallCount
   if (mocks === 0) return 'low'
   if (!entry.importsH && entry.realHCallCount === 0) return 'high'
   if (entry.realHCallCount >= mocks) return 'low'
@@ -382,7 +381,9 @@ export function formatTestAudit(
   parts.push('')
 
   if (relevant.length === 0) {
-    parts.push(`No files at risk level "${minRisk}" or above. Every test file either avoids mocks entirely or pairs them with real-\`h()\` coverage.`)
+    parts.push(
+      `No files at risk level "${minRisk}" or above. Every test file either avoids mocks entirely or pairs them with real-\`h()\` coverage.`,
+    )
     return parts.join('\n')
   }
 
@@ -394,24 +395,34 @@ export function formatTestAudit(
 
   for (const [risk, group] of byRisk) {
     const shown = group.slice(0, limit)
-    parts.push(`## ${risk.toUpperCase()} — ${group.length} file${group.length === 1 ? '' : 's'}${shown.length < group.length ? ` (showing ${shown.length})` : ''}`)
+    parts.push(
+      `## ${risk.toUpperCase()} — ${group.length} file${group.length === 1 ? '' : 's'}${shown.length < group.length ? ` (showing ${shown.length})` : ''}`,
+    )
     parts.push('')
     parts.push(describeRisk(risk))
     parts.push('')
     for (const entry of shown) {
-      const mocks =
-        entry.mockVNodeLiteralCount + entry.mockHelperCount + entry.mockHelperCallCount
+      const mocks = entry.mockVNodeLiteralCount + entry.mockHelperCount + entry.mockHelperCallCount
       const breakdown: string[] = []
-      if (entry.mockVNodeLiteralCount > 0) breakdown.push(`${entry.mockVNodeLiteralCount} literal${entry.mockVNodeLiteralCount === 1 ? '' : 's'}`)
-      if (entry.mockHelperCount > 0) breakdown.push(`${entry.mockHelperCount} helper${entry.mockHelperCount === 1 ? '' : 's'}`)
-      if (entry.mockHelperCallCount > 0) breakdown.push(`${entry.mockHelperCallCount} helper call${entry.mockHelperCallCount === 1 ? '' : 's'}`)
+      if (entry.mockVNodeLiteralCount > 0)
+        breakdown.push(
+          `${entry.mockVNodeLiteralCount} literal${entry.mockVNodeLiteralCount === 1 ? '' : 's'}`,
+        )
+      if (entry.mockHelperCount > 0)
+        breakdown.push(`${entry.mockHelperCount} helper${entry.mockHelperCount === 1 ? '' : 's'}`)
+      if (entry.mockHelperCallCount > 0)
+        breakdown.push(
+          `${entry.mockHelperCallCount} helper call${entry.mockHelperCallCount === 1 ? '' : 's'}`,
+        )
       const hSide =
         entry.realHCallCount > 0
           ? `${entry.realHCallCount} real h() call${entry.realHCallCount === 1 ? '' : 's'}`
           : entry.importsH
             ? `imports h but 0 calls found`
             : `no h import`
-      parts.push(`- ${entry.relPath} — ${mocks} mock signal${mocks === 1 ? '' : 's'} (${breakdown.join(' + ')}), ${hSide}`)
+      parts.push(
+        `- ${entry.relPath} — ${mocks} mock signal${mocks === 1 ? '' : 's'} (${breakdown.join(' + ')}), ${hSide}`,
+      )
     }
     parts.push('')
   }

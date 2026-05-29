@@ -1,7 +1,8 @@
 import { el } from '../../factory'
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
 
-const Radio = el.config({ name: 'Radio', component: RadioBase })
+const Radio = el
+  .config({ name: 'Radio', component: RadioBase })
   .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
@@ -29,7 +30,8 @@ const Radio = el.config({ name: 'Radio', component: RadioBase })
 
 export default Radio
 
-export const RadioGroup = el.config({ name: 'RadioGroup', component: RadioGroupBase })
+export const RadioGroup = el
+  .config({ name: 'RadioGroup', component: RadioGroupBase })
   .theme((t) => ({
     display: 'flex',
     gap: t.spacing.xSmall,

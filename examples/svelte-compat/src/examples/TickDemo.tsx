@@ -14,11 +14,7 @@ export default function TickDemo() {
   }
 
   return (
-    <Demo
-      title="tick"
-      apis="tick"
-      code={`await tick() // resolves after the current microtask`}
-    >
+    <Demo title="tick" apis="tick" code={`await tick() // resolves after the current microtask`}>
       <p>
         State: <strong>{s}</strong>
       </p>

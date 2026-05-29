@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — feature snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/feature — Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores. defineFeature composes 5 packages internally (@pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table). All must be installed, and a QueryClient provider must be mounted in the component tree for the query hooks to work."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/feature — Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores. defineFeature composes 5 packages internally (@pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table). All must be installed, and a QueryClient provider must be mounted in the component tree for the query hooks to work."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

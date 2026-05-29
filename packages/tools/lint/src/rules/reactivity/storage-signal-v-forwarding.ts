@@ -78,11 +78,7 @@ function isDirectDelegation(rhs: any): boolean {
 function isDirectCall(expr: any): boolean {
   if (!expr || expr.type !== 'CallExpression') return false
   const callee = expr.callee
-  return Boolean(
-    callee &&
-      callee.type === 'MemberExpression' &&
-      callee.property?.name === 'direct',
-  )
+  return Boolean(callee && callee.type === 'MemberExpression' && callee.property?.name === 'direct')
 }
 
 function getStringLiteralValue(node: any): string | null {

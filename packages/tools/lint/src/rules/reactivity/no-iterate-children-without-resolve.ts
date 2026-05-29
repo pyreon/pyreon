@@ -162,7 +162,17 @@ function endsWithChildren(node: any): boolean {
 }
 
 /** Array-iteration methods that read each element as a value (treats as VNode). */
-const ITER_METHODS = new Set(['filter', 'map', 'forEach', 'reduce', 'every', 'some', 'find', 'findIndex', 'flatMap'])
+const ITER_METHODS = new Set([
+  'filter',
+  'map',
+  'forEach',
+  'reduce',
+  'every',
+  'some',
+  'find',
+  'findIndex',
+  'flatMap',
+])
 
 /**
  * Match `Array.isArray(EXPR) ? EXPR : [EXPR]` where EXPR ends with
@@ -170,9 +180,7 @@ const ITER_METHODS = new Set(['filter', 'map', 'forEach', 'reduce', 'every', 'so
  * be structurally bare — anything else (`: x.flatMap(…)`, `: x.slice()`)
  * isn't the bug shape.
  */
-function matchArrayIsArrayChildrenTernary(
-  cond: any,
-): { key: string } | null {
+function matchArrayIsArrayChildrenTernary(cond: any): { key: string } | null {
   if (!cond || cond.type !== 'ConditionalExpression') return null
   const test = cond.test
   if (test?.type !== 'CallExpression') return null
@@ -462,7 +470,6 @@ export const noIterateChildrenWithoutResolve: Rule = {
         if (isCovered(key)) return
         scope.risky.push({ kind: 'props-access', expr: key, node })
       },
-
     }
 
     return callbacks

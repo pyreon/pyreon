@@ -108,8 +108,14 @@ describe('style-fidelity — cross-target resolution contract', () => {
         {
           name: 'state',
           values: [
-            { name: 'visible', properties: [{ name: 'opacity', value: { kind: 'number', value: 1 } }] },
-            { name: 'dim', properties: [{ name: 'opacity', value: { kind: 'number', value: 0.5 } }] },
+            {
+              name: 'visible',
+              properties: [{ name: 'opacity', value: { kind: 'number', value: 1 } }],
+            },
+            {
+              name: 'dim',
+              properties: [{ name: 'opacity', value: { kind: 'number', value: 0.5 } }],
+            },
           ],
         },
       ],

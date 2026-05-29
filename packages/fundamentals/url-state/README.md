@@ -33,24 +33,24 @@ const query = useUrlState('q', '', { debounce: 300 })
 
 ## `UrlStateSignal<T>`
 
-| Member | Notes |
-|---|---|
-| `state()` | Reactive read |
-| `state.set(value)` | Write — updates signal AND URL |
-| `state.reset()` | Restore the default — URL parameter is removed |
-| `state.remove()` | Strip parameter from URL, reset to default |
+| Member             | Notes                                          |
+| ------------------ | ---------------------------------------------- |
+| `state()`          | Reactive read                                  |
+| `state.set(value)` | Write — updates signal AND URL                 |
+| `state.reset()`    | Restore the default — URL parameter is removed |
+| `state.remove()`   | Strip parameter from URL, reset to default     |
 
 ## Type coercion
 
 Inferred from the default value:
 
-| Default | URL → value | Notes |
-|---|---|---|
-| `1` (number) | `?page=2` → `2` | NaN coerces to `0` (not `NaN`) |
-| `''` (string) | `?q=hello` → `'hello'` | URL-decoded (`+` → space per `application/x-www-form-urlencoded`) |
-| `false` (boolean) | `?dark=1` → `true` | `'1'` / `'true'` truthy, anything else false |
-| `[]` (string[]) | `?tags=a,b` → `['a','b']` | `arrayFormat: 'comma'` (default) or `'repeat'` |
-| `{}` (object) | `?filter=%7B...%7D` → object | JSON encoded |
+| Default           | URL → value                  | Notes                                                             |
+| ----------------- | ---------------------------- | ----------------------------------------------------------------- |
+| `1` (number)      | `?page=2` → `2`              | NaN coerces to `0` (not `NaN`)                                    |
+| `''` (string)     | `?q=hello` → `'hello'`       | URL-decoded (`+` → space per `application/x-www-form-urlencoded`) |
+| `false` (boolean) | `?dark=1` → `true`           | `'1'` / `'true'` truthy, anything else false                      |
+| `[]` (string[])   | `?tags=a,b` → `['a','b']`    | `arrayFormat: 'comma'` (default) or `'repeat'`                    |
+| `{}` (object)     | `?filter=%7B...%7D` → object | JSON encoded                                                      |
 
 For non-standard shapes, supply a custom `serialize` / `deserialize` pair.
 
@@ -72,13 +72,17 @@ interface UrlStateOptions<T> {
 ```ts
 type DateRange = { from: Date; to: Date }
 
-const range = useUrlState<DateRange>('range', { from: new Date(), to: new Date() }, {
-  serialize: (r) => `${r.from.toISOString()}_${r.to.toISOString()}`,
-  deserialize: (raw) => {
-    const [from, to] = raw.split('_')
-    return { from: new Date(from), to: new Date(to) }
+const range = useUrlState<DateRange>(
+  'range',
+  { from: new Date(), to: new Date() },
+  {
+    serialize: (r) => `${r.from.toISOString()}_${r.to.toISOString()}`,
+    deserialize: (raw) => {
+      const [from, to] = raw.split('_')
+      return { from: new Date(from), to: new Date(to) }
+    },
   },
-})
+)
 ```
 
 ## Array encoding

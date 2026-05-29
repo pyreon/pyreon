@@ -42,8 +42,8 @@ async function main() {
     await page.goto(server.url, { waitUntil: 'networkidle', timeout: 15_000 })
 
     // Harness should be installed (main.tsx calls install() in dev).
-    const installed = await page.evaluate(() =>
-      typeof (window as { __pyreon_perf__?: unknown }).__pyreon_perf__ !== 'undefined',
+    const installed = await page.evaluate(
+      () => typeof (window as { __pyreon_perf__?: unknown }).__pyreon_perf__ !== 'undefined',
     )
     await assert(installed, 'window.__pyreon_perf__ installed by main.tsx')
 
@@ -70,7 +70,7 @@ async function main() {
     }
     const rowProbe = await page.evaluate((): RowProbe => {
       const host = document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-      const root = (host.shadowRoot as ShadowRoot)
+      const root = host.shadowRoot as ShadowRoot
       const rows = Array.from(root.querySelectorAll('tbody tr'))
       const names = rows.map((r) => r.querySelector('.name')?.textContent ?? '')
       return {

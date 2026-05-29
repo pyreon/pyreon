@@ -16,9 +16,7 @@ describe('runtime-dom in real browser', () => {
 
   it('mounts and patches DOM when a signal updates', async () => {
     const count = signal(0)
-    const { container, unmount } = mountInBrowser(
-      h('span', { id: 'n' }, () => String(count())),
-    )
+    const { container, unmount } = mountInBrowser(h('span', { id: 'n' }, () => String(count())))
     expect(container.querySelector('#n')?.textContent).toBe('0')
 
     count.set(42)
@@ -172,8 +170,7 @@ describe('runtime-dom in real browser', () => {
             const ct = ev.currentTarget as HTMLInputElement | null
             // Capture observable signals so the test can assert on them
             ;(globalThis as { __test_ct_tag?: string | undefined }).__test_ct_tag = ct?.tagName
-            ;(globalThis as { __test_ct_value?: string | undefined }).__test_ct_value =
-              ct?.value
+            ;(globalThis as { __test_ct_value?: string | undefined }).__test_ct_value = ct?.value
             ;(globalThis as { __test_ct_marker?: string | null | undefined }).__test_ct_marker =
               ct?.getAttribute('data-marker') ?? null
           },
@@ -216,12 +213,8 @@ describe('runtime-dom in real browser', () => {
     const btn = container.querySelector<HTMLButtonElement>('#btn')!
     expect(btn.textContent).toBe('clicks: 0')
 
-    btn.dispatchEvent(
-      new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }),
-    )
-    btn.dispatchEvent(
-      new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }),
-    )
+    btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }))
+    btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }))
     btn.click()
     await flush()
     expect(btn.textContent).toBe('clicks: 1')
@@ -298,11 +291,7 @@ describe('runtime-dom in real browser', () => {
     document.body.appendChild(target)
 
     const { container, unmount } = mountInBrowser(
-      h(
-        'div',
-        { id: 'src' },
-        h(Portal, { target }, h('span', { id: 'teleported' }, 'over there')),
-      ),
+      h('div', { id: 'src' }, h(Portal, { target }, h('span', { id: 'teleported' }, 'over there'))),
     )
 
     // Portal child is in target, NOT in container.
@@ -397,9 +386,7 @@ describe('runtime-dom in real browser', () => {
       }),
     )
     const target = container.querySelector('#evt')!
-    target.dispatchEvent(
-      new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }),
-    )
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
     target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
     await flush()
     expect(pointerDownFired).toBe(1)

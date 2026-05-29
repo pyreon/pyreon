@@ -47,10 +47,7 @@ export type PackageJsonKind = 'flat' | 'monorepo-root' | 'monorepo-web'
  *   - `monorepo-web`   — same as flat but name="web" + workspace deps for
  *                        `@<projectName>/ui` and `@<projectName>/types`.
  */
-export function generatePackageJson(
-  config: ProjectConfig,
-  kind: PackageJsonKind = 'flat',
-): string {
+export function generatePackageJson(config: ProjectConfig, kind: PackageJsonKind = 'flat'): string {
   if (kind === 'monorepo-root') {
     return generateMonorepoRootPackageJson(config)
   }
@@ -103,11 +100,7 @@ export function generatePackageJson(
     if (dep.startsWith('@pyreon/')) {
       deps[dep] = pyreonVersion(dep)
     } else if (dep.startsWith('@tanstack/')) {
-      deps[dep] = dep.includes('query')
-        ? '^5.90.0'
-        : dep.includes('table')
-          ? '^8.21.0'
-          : '^3.13.0'
+      deps[dep] = dep.includes('query') ? '^5.90.0' : dep.includes('table') ? '^8.21.0' : '^3.13.0'
     } else if (dep === 'zod') {
       deps[dep] = '^4.0.0'
     }

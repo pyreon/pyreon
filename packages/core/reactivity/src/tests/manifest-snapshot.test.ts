@@ -7,7 +7,9 @@ import reactivityManifest from '../manifest'
 
 describe('gen-docs — reactivity snapshot', () => {
   it('renders @pyreon/reactivity to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(reactivityManifest)).toMatchInlineSnapshot(`"- @pyreon/reactivity — Fine-grained reactivity: signal, computed, effect, batch, onCleanup, createStore, watch, createResource, untrack. Pyreon signals are NOT \`.value\` getters (Vue ref) or \`[state, setState]\` tuples (React useState). The signal IS the function: \`count()\` reads, \`count.set(v)\` writes, \`count.update(fn)\` derives. This is the #1 confusion for developers coming from other frameworks."`)
+    expect(renderLlmsTxtLine(reactivityManifest)).toMatchInlineSnapshot(
+      `"- @pyreon/reactivity — Fine-grained reactivity: signal, computed, effect, batch, onCleanup, createStore, watch, createResource, untrack. Pyreon signals are NOT \`.value\` getters (Vue ref) or \`[state, setState]\` tuples (React useState). The signal IS the function: \`count()\` reads, \`count.set(v)\` writes, \`count.update(fn)\` derives. This is the #1 confusion for developers coming from other frameworks."`,
+    )
   })
 
   it('renders @pyreon/reactivity to its expected llms-full.txt section — full body snapshot', () => {

@@ -1117,11 +1117,7 @@ describe('hydrateIslands', () => {
       const onClick = () => {
         liveClicks++
       }
-      return h(
-        'button',
-        { 'data-testid': 'trigger', type: 'button', onClick },
-        'open',
-      )
+      return h('button', { 'data-testid': 'trigger', type: 'button', onClick }, 'open')
     }
 
     const cleanup = hydrateIslands({
@@ -1317,11 +1313,7 @@ describe('hydrateIslands', () => {
         liveClicks++
       }
       // Same DOM shape so the path resolves: pyreon-island > div > button
-      return h(
-        'div',
-        null,
-        h('button', { type: 'button', onClick }, 'x'),
-      )
+      return h('div', null, h('button', { type: 'button', onClick }, 'x'))
     }
 
     const cleanup = hydrateIslands({
@@ -1575,8 +1567,7 @@ describe('island.* counter emissions', () => {
     const g = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
     delete g.__pyreon_count__ // remove the sink installed in beforeEach
 
-    document.body.innerHTML =
-      '<pyreon-island data-component="Q" data-props="{}"></pyreon-island>'
+    document.body.innerHTML = '<pyreon-island data-component="Q" data-props="{}"></pyreon-island>'
     const Q: ComponentFn = () => h('div', null, 'q')
 
     // Should not throw — the optional-chain short-circuits.

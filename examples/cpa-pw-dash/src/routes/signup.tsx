@@ -1,16 +1,16 @@
-import { signal } from "@pyreon/reactivity"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { useRouter } from "@pyreon/router"
-import { signUp } from "../lib/auth"
+import { signal } from '@pyreon/reactivity'
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
+import { useRouter } from '@pyreon/router'
+import { signUp } from '../lib/auth'
 
-export const meta = { title: "Create an account" }
+export const meta = { title: 'Create an account' }
 
 export default function Signup() {
   useHead({ title: meta.title })
 
-  const email = signal("")
-  const password = signal("")
+  const email = signal('')
+  const password = signal('')
   const error = signal<string | null>(null)
   const submitting = signal(false)
 
@@ -24,15 +24,15 @@ export default function Signup() {
     const result = signUp(email(), password())
     submitting.set(false)
 
-    if ("error" in result) {
+    if ('error' in result) {
       error.set(result.error)
       return
     }
 
-    if (typeof document !== "undefined") {
+    if (typeof document !== 'undefined') {
       document.cookie = `sid=${result.sessionId}; path=/; max-age=${7 * 24 * 60 * 60}`
     }
-    await router.push("/app/dashboard")
+    await router.push('/app/dashboard')
   }
 
   return (
@@ -65,8 +65,13 @@ export default function Signup() {
 
         {() => (error() ? <div class="error">{error()}</div> : null)}
 
-        <button type="submit" class="btn btn-primary" disabled={submitting} style="width: 100%; justify-content: center; margin-top: 1rem;">
-          {() => (submitting() ? "Creating…" : "Create account")}
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={submitting}
+          style="width: 100%; justify-content: center; margin-top: 1rem;"
+        >
+          {() => (submitting() ? 'Creating…' : 'Create account')}
         </button>
 
         <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--c-text-muted); text-align: center;">

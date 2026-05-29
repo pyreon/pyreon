@@ -29,11 +29,7 @@ import { applyFixes, lintFile } from '../runner'
 import type { LintConfig } from '../types'
 import { _resetProjectDepsCache } from '../utils/project-deps'
 
-const BP_RULES = [
-  queryOptionsAsFunction,
-  i18nPreferTransForRichJsx,
-  preferTypedSearchParams,
-]
+const BP_RULES = [queryOptionsAsFunction, i18nPreferTransForRichJsx, preferTypedSearchParams]
 
 const CONFIG: LintConfig = {
   rules: {
@@ -97,9 +93,7 @@ describe('pyreon/query-options-as-function — autofix (query, dep-gated)', () =
        }`,
       join(queryDir, 'src', 'B.tsx'),
     )
-    const hits = result.diagnostics.filter(
-      (d) => d.ruleId === 'pyreon/query-options-as-function',
-    )
+    const hits = result.diagnostics.filter((d) => d.ruleId === 'pyreon/query-options-as-function')
     expect(hits.length).toBe(2)
   })
 
@@ -136,9 +130,7 @@ describe('pyreon/query-options-as-function — autofix (query, dep-gated)', () =
        function C() { return useQuery({ queryKey: ['k'] }) }`,
       join(queryDir, 'src', 'F.tsx'),
     )
-    const diag = result.diagnostics.find(
-      (d) => d.ruleId === 'pyreon/query-options-as-function',
-    )
+    const diag = result.diagnostics.find((d) => d.ruleId === 'pyreon/query-options-as-function')
     expect(diag?.fix).toBeDefined()
     expect(diag?.fix?.replacement).toBe(`() => ({ queryKey: ['k'] })`)
   })
@@ -189,9 +181,7 @@ describe('pyreon/i18n-prefer-trans-for-rich-jsx (i18n, dep-gated)', () => {
        }`,
       join(i18nDir, 'src', 'A.tsx'),
     )
-    expect(diagIds(result)).toContain(
-      'pyreon/i18n-prefer-trans-for-rich-jsx',
-    )
+    expect(diagIds(result)).toContain('pyreon/i18n-prefer-trans-for-rich-jsx')
   })
 
   it('FIRES on {t(...)} next to a <strong> emphasis element', () => {
@@ -202,9 +192,7 @@ describe('pyreon/i18n-prefer-trans-for-rich-jsx (i18n, dep-gated)', () => {
        }`,
       join(i18nDir, 'src', 'B.tsx'),
     )
-    expect(diagIds(result)).toContain(
-      'pyreon/i18n-prefer-trans-for-rich-jsx',
-    )
+    expect(diagIds(result)).toContain('pyreon/i18n-prefer-trans-for-rich-jsx')
   })
 
   it('does NOT fire on plain {t(...)} with no element siblings (correct use)', () => {
@@ -213,9 +201,7 @@ describe('pyreon/i18n-prefer-trans-for-rich-jsx (i18n, dep-gated)', () => {
        function C({ t }) { return <h1>{t('title')}</h1> }`,
       join(i18nDir, 'src', 'C.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/i18n-prefer-trans-for-rich-jsx',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/i18n-prefer-trans-for-rich-jsx')
   })
 
   it('does NOT fire on {t(...)} alongside only plain text, no elements', () => {
@@ -224,9 +210,7 @@ describe('pyreon/i18n-prefer-trans-for-rich-jsx (i18n, dep-gated)', () => {
        function C({ t }) { return <span>Hello {t('name')} welcome</span> }`,
       join(i18nDir, 'src', 'T.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/i18n-prefer-trans-for-rich-jsx',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/i18n-prefer-trans-for-rich-jsx')
   })
 
   it('does NOT fire on a JSX element with elements but NO t() call', () => {
@@ -235,9 +219,7 @@ describe('pyreon/i18n-prefer-trans-for-rich-jsx (i18n, dep-gated)', () => {
        function C() { return <p>plain <a href="/x">link</a></p> }`,
       join(i18nDir, 'src', 'NoT.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/i18n-prefer-trans-for-rich-jsx',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/i18n-prefer-trans-for-rich-jsx')
   })
 
   it('does NOT fire when @pyreon/i18n is NOT a project dep (auto-detect off)', () => {
@@ -246,9 +228,7 @@ describe('pyreon/i18n-prefer-trans-for-rich-jsx (i18n, dep-gated)', () => {
        function C({ t }) { return <p>{t('intro')} <a href="/x">{t('link')}</a></p> }`,
       join(plainDir, 'src', 'A.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/i18n-prefer-trans-for-rich-jsx',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/i18n-prefer-trans-for-rich-jsx')
   })
 })
 
@@ -291,9 +271,7 @@ describe('pyreon/prefer-typed-search-params (router, dep-gated)', () => {
        }`,
       join(routerDir, 'src', 'B.tsx'),
     )
-    const hits = result.diagnostics.filter(
-      (d) => d.ruleId === 'pyreon/prefer-typed-search-params',
-    )
+    const hits = result.diagnostics.filter((d) => d.ruleId === 'pyreon/prefer-typed-search-params')
     expect(hits.length).toBe(2)
   })
 
@@ -303,9 +281,7 @@ describe('pyreon/prefer-typed-search-params (router, dep-gated)', () => {
        function C() { return useTypedSearchParams({ page: 'number' }) }`,
       join(routerDir, 'src', 'C.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/prefer-typed-search-params',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/prefer-typed-search-params')
   })
 
   it('does NOT fire on new URLSearchParams() in a NON-router file', () => {
@@ -313,9 +289,7 @@ describe('pyreon/prefer-typed-search-params (router, dep-gated)', () => {
       `function parse(s) { return new URLSearchParams(s) }`,
       join(routerDir, 'src', 'NoImport.ts'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/prefer-typed-search-params',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/prefer-typed-search-params')
   })
 
   it('does NOT fire when @pyreon/router is NOT a project dep (auto-detect off)', () => {
@@ -324,8 +298,6 @@ describe('pyreon/prefer-typed-search-params (router, dep-gated)', () => {
        function C() { return new URLSearchParams(location.search) }`,
       join(plainDir, 'src', 'A.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/prefer-typed-search-params',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/prefer-typed-search-params')
   })
 })

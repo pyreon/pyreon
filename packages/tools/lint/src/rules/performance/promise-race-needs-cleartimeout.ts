@@ -14,12 +14,12 @@ function findRaceWithTimeoutCalls(root: any): any[] {
     if (!node || typeof node !== 'object') return
 
     if (
-      node.type === 'CallExpression'
-      && node.callee?.type === 'MemberExpression'
-      && node.callee.object?.type === 'Identifier'
-      && node.callee.object.name === 'Promise'
-      && node.callee.property?.type === 'Identifier'
-      && node.callee.property.name === 'race'
+      node.type === 'CallExpression' &&
+      node.callee?.type === 'MemberExpression' &&
+      node.callee.object?.type === 'Identifier' &&
+      node.callee.object.name === 'Promise' &&
+      node.callee.property?.type === 'Identifier' &&
+      node.callee.property.name === 'race'
     ) {
       const args = node.arguments ?? []
       const firstArg = args[0]
@@ -63,10 +63,7 @@ function isTimeoutPromiseShape(node: any): boolean {
   const args = node.arguments ?? []
   if (args.length < 1) return false
   const executor = args[0]
-  if (
-    executor.type !== 'ArrowFunctionExpression'
-    && executor.type !== 'FunctionExpression'
-  ) {
+  if (executor.type !== 'ArrowFunctionExpression' && executor.type !== 'FunctionExpression') {
     return false
   }
   // Check the executor body contains setTimeout
@@ -76,9 +73,9 @@ function isTimeoutPromiseShape(node: any): boolean {
 function containsSetTimeoutCall(body: any): boolean {
   if (!body || typeof body !== 'object') return false
   if (
-    body.type === 'CallExpression'
-    && body.callee?.type === 'Identifier'
-    && body.callee.name === 'setTimeout'
+    body.type === 'CallExpression' &&
+    body.callee?.type === 'Identifier' &&
+    body.callee.name === 'setTimeout'
   ) {
     return true
   }
@@ -102,9 +99,9 @@ function containsSetTimeoutCall(body: any): boolean {
 function containsClearTimeout(node: any): boolean {
   if (!node || typeof node !== 'object') return false
   if (
-    node.type === 'CallExpression'
-    && node.callee?.type === 'Identifier'
-    && node.callee.name === 'clearTimeout'
+    node.type === 'CallExpression' &&
+    node.callee?.type === 'Identifier' &&
+    node.callee.name === 'clearTimeout'
   ) {
     return true
   }

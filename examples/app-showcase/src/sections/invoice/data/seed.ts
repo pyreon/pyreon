@@ -8,8 +8,18 @@ import type { Invoice, LineItem } from './types'
 
 export const SEED_LINE_ITEMS: LineItem[] = [
   { id: 'li-1', description: 'Pyreon framework consulting (Q2)', quantity: 40, unitPrice: 175 },
-  { id: 'li-2', description: 'Component library audit + recommendations', quantity: 1, unitPrice: 1200 },
-  { id: 'li-3', description: 'Performance tuning workshop (full day)', quantity: 1, unitPrice: 2400 },
+  {
+    id: 'li-2',
+    description: 'Component library audit + recommendations',
+    quantity: 1,
+    unitPrice: 1200,
+  },
+  {
+    id: 'li-3',
+    description: 'Performance tuning workshop (full day)',
+    quantity: 1,
+    unitPrice: 2400,
+  },
   { id: 'li-4', description: 'Migration playbook (custom)', quantity: 1, unitPrice: 800 },
 ]
 

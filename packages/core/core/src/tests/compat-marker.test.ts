@@ -89,8 +89,6 @@ describe('isNativeCompat', () => {
       return null
     })
     const externallyDiscoveredSymbol = Symbol.for('pyreon:native-compat')
-    expect(
-      (Comp as unknown as Record<symbol, boolean>)[externallyDiscoveredSymbol],
-    ).toBe(true)
+    expect((Comp as unknown as Record<symbol, boolean>)[externallyDiscoveredSymbol]).toBe(true)
   })
 })

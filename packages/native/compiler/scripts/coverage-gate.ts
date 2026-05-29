@@ -28,7 +28,7 @@ interface FileResult {
   path: string
   parsed: boolean
   warningCount: number
-  swiftValid: boolean | null  // null when swiftc unavailable
+  swiftValid: boolean | null // null when swiftc unavailable
   error?: string
 }
 
@@ -46,10 +46,7 @@ const REPO_ROOT = resolve(HERE, '..', '..', '..', '..')
 
 // Roots to walk for Pyreon TSX content. examples/ has the most JSX
 // surface; packages/ has fewer + mostly test fixtures.
-const ROOTS = [
-  join(REPO_ROOT, 'examples'),
-  join(REPO_ROOT, 'packages'),
-]
+const ROOTS = [join(REPO_ROOT, 'examples'), join(REPO_ROOT, 'packages')]
 
 // Skip patterns — files we don't want to count in coverage. `*.test.tsx`
 // are tests; `*.stories.tsx` are Storybook; node_modules + .next + dist
@@ -163,25 +160,15 @@ function generateReport(
 
 function printHuman(report: CoverageReport, threshold: number): void {
   const pct = report.totalFiles === 0 ? 0 : (report.parsed / report.totalFiles) * 100
-  const cleanPct = report.totalFiles === 0
-    ? 0
-    : (report.parsedClean / report.totalFiles) * 100
+  const cleanPct = report.totalFiles === 0 ? 0 : (report.parsedClean / report.totalFiles) * 100
   console.log('PMTC compiler coverage report')
   console.log('=============================')
   console.log(`Total .tsx files surveyed:    ${report.totalFiles}`)
-  console.log(
-    `Parsed (transform didn't throw): ${report.parsed} (${pct.toFixed(1)}%)`,
-  )
-  console.log(
-    `Parsed with zero warnings:    ${report.parsedClean} (${cleanPct.toFixed(1)}%)`,
-  )
+  console.log(`Parsed (transform didn't throw): ${report.parsed} (${pct.toFixed(1)}%)`)
+  console.log(`Parsed with zero warnings:    ${report.parsedClean} (${cleanPct.toFixed(1)}%)`)
   if (report.swiftcAvailable) {
-    const swiftPct = report.totalFiles === 0
-      ? 0
-      : (report.swiftValid / report.totalFiles) * 100
-    console.log(
-      `Swift output validates:       ${report.swiftValid} (${swiftPct.toFixed(1)}%)`,
-    )
+    const swiftPct = report.totalFiles === 0 ? 0 : (report.swiftValid / report.totalFiles) * 100
+    console.log(`Swift output validates:       ${report.swiftValid} (${swiftPct.toFixed(1)}%)`)
   } else {
     console.log(`Swift output validates:       (swiftc not on PATH; skipped)`)
   }
@@ -219,7 +206,9 @@ const thresholdArg = args.find((a) => a.startsWith('--threshold='))
 // as the compiler closes mapping gaps; this gate uses parsedClean
 // because it doesn't require swiftc on the runner.
 const DEFAULT_THRESHOLD = 70
-const threshold = thresholdArg ? Number(thresholdArg.slice('--threshold='.length)) : DEFAULT_THRESHOLD
+const threshold = thresholdArg
+  ? Number(thresholdArg.slice('--threshold='.length))
+  : DEFAULT_THRESHOLD
 
 const { report, passed } = generateReport(threshold, includeSwiftc)
 if (jsonOut) {

@@ -51,10 +51,7 @@ export function cloudflareAdapter(): Adapter {
           include: [] as string[],
           exclude: ['/*'],
         }
-        await writeFile(
-          join(options.outDir, '_routes.json'),
-          JSON.stringify(routesConfig, null, 2),
-        )
+        await writeFile(join(options.outDir, '_routes.json'), JSON.stringify(routesConfig, null, 2))
         return
       }
       await validateBuildInputs(options)
@@ -146,7 +143,7 @@ export default {
           {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${apiToken}`,
+              Authorization: `Bearer ${apiToken}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ files: [fullUrl] }),

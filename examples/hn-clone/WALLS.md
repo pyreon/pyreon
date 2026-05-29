@@ -64,6 +64,7 @@ to `diff` the scaffold template against the output to figure out what
 happened.
 
 This is **two problems compounding**:
+
 1. **Scaffold transformation bug** — the template-feature stripper deletes
    the import + const but leaves the references intact.
 2. **SSR error silently swallowed** — a ReferenceError in the layout
@@ -73,6 +74,7 @@ This is **two problems compounding**:
    would have NO IDEA what went wrong.
 
 **Fix suggestions**:
+
 - Either: scaffold should fully strip the store-dependent code OR keep the
   store as a hard dependency (it's the most useful feature; deselecting it
   is an edge case).
@@ -113,11 +115,12 @@ this mode. Plus the dev server happily serves 200s with placeholder bodies
 to anyone curl-testing.
 
 **Fix suggestions**:
+
 - Dev startup should print the active rendering strategy for each route
   (`SPA /` for SSG-in-dev, `SSR /` for ssr-stream/ssr-string).
 - When curl/fetch lands on an unrendered placeholder body, the dev server
   could include an HTML comment like `<!-- pyreon: ssg mode renders
-  client-side; use a real browser or run `zero build` to prerender -->`
+client-side; use a real browser or run `zero build` to prerender -->`
   inside the body, so anyone debugging via curl sees the mode immediately.
 
 **Workaround**: I switched to `mode: 'ssr-stream'` mid-debug; that ALSO
@@ -168,6 +171,7 @@ not in the Vite dev stderr. The only signal is "something threw, here's
 generic error UI."
 
 Debugging took:
+
 1. Visual confirmation: rendered output is the 500 page → something throws
 2. Bisect the component: comment out blocks until error stops
 3. Trace through the framework source to find the bisected API's signature
@@ -177,12 +181,14 @@ Debugging took:
 This is the canonical "framework hides bug" anti-pattern. The error boundary
 is doing exactly what it should for PRODUCTION users, but in DEV mode it
 should at minimum:
+
 - Log the caught error to `console.error` with the full stack
 - Ideally render the error message + stack inline in the error page
 - Even better: a Vite-style error overlay that takes the full viewport with
   the actual stack and source-mapped frames
 
 **Fix suggestions**:
+
 - `_error.tsx` (the default scaffold one) should check `import.meta.env.DEV`
   and render the actual error object (message + stack) when in dev. Hidden
   in production.
@@ -214,6 +220,7 @@ const page = () => Math.max(1, search().page ?? 1)
 
 Two things make this unintuitive coming from Pyreon's signal-first mental
 model:
+
 1. **It's the only fine-grained-reactive-ish API in `@pyreon/router` that
    returns coarse-grained — `get()` re-evaluates the whole object when ANY
    tracked query param changes**. Most signal-based libraries would give
@@ -228,6 +235,7 @@ discoverable if it returned `Signal<{page: number, ...}>` directly, since
 that's also a function (`signal()` reads) AND has `.set(next)`.
 
 **Fix suggestions**:
+
 - Either: rewrite `useTypedSearchParams` to return a single
   `Signal<InferSearchParams<T>>` (read with `signal()`, write with
   `signal.set(next)`). This is the Pyreon-native shape.
@@ -256,6 +264,7 @@ Called from: at use-intersection-observer.ts:23:3
 
 The framework is warning about its OWN code, not user code. This is noise
 that:
+
 1. Erodes trust in the warning system ("oh that warning is always there,
    ignore it") — making it harder to spot real bugs.
 2. Suggests the internal helper isn't using the lifecycle correctly.
@@ -278,6 +287,7 @@ frame package).
 ```
 
 Two issues compounded:
+
 1. The "Skipping SSG" line implies failure right after a "Prerendered 5
    page(s)" success line. Contradictory. Reads as: "SSG worked, then SSG
    failed for a different reason." Confusing.
@@ -288,6 +298,7 @@ Two issues compounded:
    site.
 
 **Fix suggestions**:
+
 - Suppress the "Skipping SSG" line when the previous SSG pass succeeded —
   it's not a user-actionable failure if the prerender already shipped.
 - The `nodeAdapter()` `build()` method shouldn't copy `dist/client/` into
@@ -320,6 +331,7 @@ SSG pre-render couldn't see through it. This wall is the single biggest
 architectural friction I'd flag.
 
 **Fix suggestions**:
+
 - Scaffold flag `--features query` with `--mode ssg` should generate
   examples that use `loader` instead of `useQuery` (or at least mix both
   with a comment noting "useQuery = client-only, loader = SSG-friendly").
@@ -385,11 +397,13 @@ function — NOT the form-level `schema`. The schema fires exclusively in
 
 So a schema-only form with `validateOn: 'blur'` is effectively `'submit'`-only.
 To get blur-time validation users must either:
+
 - Provide per-field validators (manually extract from schema), OR
 - Wrap each field's `onBlur` with `setTouched() + form.validate()` (validates
   the entire form, not just the blurred field).
 
 **Fix suggestions**:
+
 - `useForm` could extract per-field validators from a schema adapter when the
   adapter exposes them (Zod's `schema.shape[name]` works, Valibot's
   `entries[name]` works).
@@ -424,12 +438,15 @@ in a batch, the timing fails.
 
 **Fix in my code**: read both signals into consts BEFORE the ternary, so the
 effect subscribes to both unconditionally:
+
 ```ts
-{() => {
-  const touched = fields.title.touched()
-  const err = fields.title.error()
-  return touched ? err ?? '' : ''
-}}
+{
+  ;() => {
+    const touched = fields.title.touched()
+    const err = fields.title.error()
+    return touched ? (err ?? '') : ''
+  }
+}
 ```
 
 This is documented behavior (matches Solid, Preact-signals) but it's a
@@ -437,6 +454,7 @@ recurring footgun. Real-world it cost me ~15 minutes of "the signal IS set,
 why isn't the DOM updating" debugging.
 
 **Fix suggestions**:
+
 - Could be detected by the Reactivity Lens (`@pyreon/compiler:analyzeReactivity`)
   — flag ternary expressions where one branch reads a signal that's NOT read
   in the other branch.
@@ -463,6 +481,7 @@ helpers are top-level vars, not on the default export. ECharts then throws
 but Pyreon's error boundary or the chart wrapper swallows it (related to W4).
 
 **Fix in my code**: added `chartsViteAlias()` to `vite.config.ts`:
+
 ```ts
 import { chartsViteAlias } from '@pyreon/charts/vite'
 export default {
@@ -472,6 +491,7 @@ export default {
 ```
 
 **Fix suggestions**:
+
 - `@pyreon/charts` could throw a CLEAR error on first chart mount when the
   alias isn't configured (`if (typeof __extends === 'undefined') throw new Error('[@pyreon/charts] tslib alias missing — add chartsViteAlias() to vite.config.ts')`).
 - `pyreon doctor` could detect `@pyreon/charts` in deps + missing tslib alias

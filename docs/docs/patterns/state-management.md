@@ -1,6 +1,6 @@
 ---
-title: "State management — stores vs signals vs models"
-summary: "signal for local UI state, defineStore for shared app state, state-tree models for structured snapshots."
+title: 'State management — stores vs signals vs models'
+summary: 'signal for local UI state, defineStore for shared app state, state-tree models for structured snapshots.'
 seeAlso: [signal-writes]
 ---
 
@@ -31,9 +31,7 @@ import { signal, computed } from '@pyreon/reactivity'
 
 export const useCartStore = defineStore('cart', () => {
   const items = signal<CartItem[]>([])
-  const total = computed(() =>
-    items().reduce((sum, i) => sum + i.price * i.qty, 0),
-  )
+  const total = computed(() => items().reduce((sum, i) => sum + i.price * i.qty, 0))
 
   function add(item: CartItem) {
     items.update((prev) => [...prev, item])
@@ -49,7 +47,7 @@ export const useCartStore = defineStore('cart', () => {
 // Consumer
 const cart = useCartStore()
 cart.add({ id: 'sku-1', price: 10, qty: 2 })
-cart.total()  // 20
+cart.total() // 20
 ```
 
 The setup function runs once per store ID — consumers get the same instance. Signals auto-register for devtools introspection; function returns become wrapped actions with `onAction` hooks.
@@ -98,11 +96,15 @@ Supports `getSnapshot()` / `applySnapshot()` for serialisation, `onPatch()` / `a
 ```tsx
 // BROKEN — creating a store inside a component body
 function BadApp() {
-  const cart = defineStore('cart', () => ({ /* ...setup */ }))   // re-registers on every mount
+  const cart = defineStore('cart', () => ({
+    /* ...setup */
+  })) // re-registers on every mount
 }
 
 // Correct: module-scope definition, component-scope consumption
-export const useCartStore = defineStore('cart', () => ({ /* ...setup */ }))
+export const useCartStore = defineStore('cart', () => ({
+  /* ...setup */
+}))
 
 function GoodApp() {
   const cart = useCartStore()

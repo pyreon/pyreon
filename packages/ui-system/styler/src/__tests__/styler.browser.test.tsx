@@ -80,9 +80,15 @@ describe('@pyreon/styler in real browser', () => {
   })
 
   it('different tags produce distinct elements (div, span, button)', () => {
-    const D = styled('div')`color: red;`
-    const S = styled('span')`color: green;`
-    const B = styled('button')`color: blue;`
+    const D = styled('div')`
+      color: red;
+    `
+    const S = styled('span')`
+      color: green;
+    `
+    const B = styled('button')`
+      color: blue;
+    `
     const { container, unmount } = mountInBrowser(
       h('div', null, h(D, { id: 'd' }), h(S, { id: 's' }), h(B, { id: 'b' })),
     )
@@ -161,16 +167,16 @@ describe('@pyreon/styler in real browser', () => {
       return props.children as never
     }
 
-    const { container, unmount } = mountInBrowser(
-      h(Provider, null, h(Themed, { id: 't' })),
-    )
+    const { container, unmount } = mountInBrowser(h(Provider, null, h(Themed, { id: 't' })))
     const el = container.querySelector<HTMLElement>('#t')!
     expect(getComputedStyle(el).color).toBe('rgb(200, 0, 0)')
     unmount()
   })
 
   it('writes its CSS rules to a real <style> element under document.head', () => {
-    const X = styled('div')`background-color: rgb(10, 20, 30);`
+    const X = styled('div')`
+      background-color: rgb(10, 20, 30);
+    `
     const { unmount } = mountInBrowser(h(X, { id: 'x' }))
     // Chromium accepts inserted CSS rules — the injected sheet exists
     // and the rule is queryable via document.styleSheets.

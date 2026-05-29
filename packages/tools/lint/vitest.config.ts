@@ -7,12 +7,7 @@ export default defineNodeConfig({
   // real filesystem, real .gitignore parsing) which are out of
   // scope for unit-test coverage. The runner.ts smoke test
   // exercises them indirectly. PR #323 finding.
-  coverageExclude: [
-    'src/cli.ts',
-    'src/watcher.ts',
-    'src/config/ignore.ts',
-    'src/lsp.ts',
-  ],
+  coverageExclude: ['src/cli.ts', 'src/watcher.ts', 'src/config/ignore.ts', 'src/lsp.ts'],
   coverageThresholds: {
     statements: 85,
     branches: 75,

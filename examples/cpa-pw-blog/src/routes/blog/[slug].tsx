@@ -1,8 +1,8 @@
-import type { GetStaticPaths } from "@pyreon/zero/server"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { useRoute } from "@pyreon/router"
-import { postBySlug, postSlugs } from "../../lib/posts"
+import type { GetStaticPaths } from '@pyreon/zero/server'
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
+import { useRoute } from '@pyreon/router'
+import { postBySlug, postSlugs } from '../../lib/posts'
 
 /**
  * Enumerate the dynamic route's `:slug` values at build time. The SSG
@@ -51,10 +51,10 @@ export default function PostPage() {
   useHead({
     title: post.title,
     meta: [
-      { name: "description", content: post.description },
-      { property: "og:title", content: post.title },
-      { property: "og:description", content: post.description },
-      { property: "og:type", content: "article" },
+      { name: 'description', content: post.description },
+      { property: 'og:title', content: post.title },
+      { property: 'og:description', content: post.description },
+      { property: 'og:type', content: 'article' },
     ],
   })
 

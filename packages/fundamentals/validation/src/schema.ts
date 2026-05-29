@@ -55,9 +55,7 @@ export interface StandardSchemaShape<T> {
       | {
           readonly issues: ReadonlyArray<{
             readonly message: string
-            readonly path?: ReadonlyArray<
-              string | number | symbol | { readonly key: PropertyKey }
-            >
+            readonly path?: ReadonlyArray<string | number | symbol | { readonly key: PropertyKey }>
           }>
         }
       | Promise<unknown>
@@ -107,9 +105,7 @@ export function isPyreonAdapter(
  * Detect a Standard Schema-compliant schema (Tier A.2). Spec:
  * https://standardschema.dev/
  */
-export function isStandardSchema(
-  value: unknown,
-): value is StandardSchemaShape<unknown> {
+export function isStandardSchema(value: unknown): value is StandardSchemaShape<unknown> {
   if (value == null || typeof value !== 'object') return false
   const std = (value as { '~standard'?: unknown })['~standard']
   return (
@@ -141,9 +137,7 @@ export function wrapStandardSchema<T extends Record<string, unknown>>(
         value?: unknown
         issues?: ReadonlyArray<{
           message: string
-          path?: ReadonlyArray<
-            string | number | symbol | { key: PropertyKey }
-          >
+          path?: ReadonlyArray<string | number | symbol | { key: PropertyKey }>
         }>
       }
       if ('value' in r) {
@@ -151,9 +145,7 @@ export function wrapStandardSchema<T extends Record<string, unknown>>(
       }
       const issues = (r.issues ?? []).map((issue) => ({
         path: (issue.path ?? [])
-          .map((p) =>
-            typeof p === 'object' && p !== null ? String(p.key) : String(p),
-          )
+          .map((p) => (typeof p === 'object' && p !== null ? String(p.key) : String(p)))
           .join('.'),
         message: issue.message,
       }))
@@ -230,10 +222,7 @@ export function extractParseFn<T extends Record<string, unknown>>(
  *   `'set'`, `'patch'`, `'create'`, `'$set'`, etc.)
  */
 export function formatIssues(issues: SchemaIssue[], op: string): string {
-  const lines = issues
-    .slice(0, 5)
-    .map((i) => `  - ${i.path || '<root>'}: ${i.message}`)
-  const more =
-    issues.length > 5 ? `\n  ... and ${issues.length - 5} more` : ''
+  const lines = issues.slice(0, 5).map((i) => `  - ${i.path || '<root>'}: ${i.message}`)
+  const more = issues.length > 5 ? `\n  ... and ${issues.length - 5} more` : ''
   return `[Pyreon] Schema validation failed (${op}):\n${lines.join('\n')}${more}`
 }

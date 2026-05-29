@@ -67,11 +67,6 @@ export const sharedConfig: VitestUserConfig = {
  */
 export const nodeExcludeBrowserTests = {
   test: {
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/lib/**',
-      '**/*.browser.test.{ts,tsx}',
-    ],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/lib/**', '**/*.browser.test.{ts,tsx}'],
   },
 } satisfies VitestUserConfig

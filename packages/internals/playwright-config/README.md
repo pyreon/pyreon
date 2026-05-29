@@ -15,9 +15,7 @@ Not published.
 import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 export default definePlaywrightConfig({
-  projects: [
-    { name: 'playground', testMatch: /e2e\/reactivity\.spec\.ts$/, port: 5173 },
-  ],
+  projects: [{ name: 'playground', testMatch: /e2e\/reactivity\.spec\.ts$/, port: 5173 }],
   webServer: [viteDevServer('@pyreon/playground', 5173)],
 })
 ```
@@ -25,7 +23,8 @@ export default definePlaywrightConfig({
 `definePlaywrightConfig` bakes the shared defaults; each config states only
 what differs (projects + webServers). A project's `port` becomes its
 `use.baseURL`. webServer entries get `reuseExistingServer: !process.env.CI`
-+ a default `timeout` injected.
+
+- a default `timeout` injected.
 
 ### Bespoke servers
 

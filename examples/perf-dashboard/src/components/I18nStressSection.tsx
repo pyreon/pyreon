@@ -136,7 +136,9 @@ export function I18nStressSection() {
   return (
     <Section theme={themeSignal()}>
       <Row>
-        <SectionTitle theme={themeSignal()}>i18n stress (t / interpolate / plural / localeFlip)</SectionTitle>
+        <SectionTitle theme={themeSignal()}>
+          i18n stress (t / interpolate / plural / localeFlip)
+        </SectionTitle>
         <div style="flex: 1" />
         <GhostButton
           theme={themeSignal()}
@@ -159,15 +161,14 @@ export function I18nStressSection() {
         >
           Flip locale
         </GhostButton>
-        <GhostButton
-          theme={themeSignal()}
-          data-testid="i18n-reset"
-          onClick={() => helper.reset()}
-        >
+        <GhostButton theme={themeSignal()} data-testid="i18n-reset" onClick={() => helper.reset()}>
           Reset
         </GhostButton>
       </Row>
-      <div data-testid="i18n-stress-ready" style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 200px; overflow-y: auto;">
+      <div
+        data-testid="i18n-stress-ready"
+        style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 200px; overflow-y: auto;"
+      >
         <For each={() => renderItems()} by={(item: RenderItem) => item.id}>
           {(item: RenderItem) => (
             <span

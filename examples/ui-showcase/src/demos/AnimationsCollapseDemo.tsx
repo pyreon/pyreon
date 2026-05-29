@@ -13,14 +13,22 @@ export function AnimationsCollapseDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Collapse</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Collapse
+      </Title>
       <Paragraph style="margin-bottom: 24px">
         Auto-height accordion animation. Measures content and animates height.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">Standard</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Standard
+      </Title>
       <div style="margin-bottom: 24px; max-width: 400px;">
-        <Button state="primary" onClick={() => standardOpen.set(!standardOpen())} style="margin-bottom: 12px;">
+        <Button
+          state="primary"
+          onClick={() => standardOpen.set(!standardOpen())}
+          style="margin-bottom: 12px;"
+        >
           Toggle
         </Button>
         <Collapse show={() => standardOpen()}>
@@ -32,9 +40,15 @@ export function AnimationsCollapseDemo() {
         </Collapse>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Bouncy (custom easing)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Bouncy (custom easing)
+      </Title>
       <div style="margin-bottom: 24px; max-width: 400px;">
-        <Button state="primary" onClick={() => bouncyOpen.set(!bouncyOpen())} style="margin-bottom: 12px;">
+        <Button
+          state="primary"
+          onClick={() => bouncyOpen.set(!bouncyOpen())}
+          style="margin-bottom: 12px;"
+        >
           Toggle
         </Button>
         <BouncyCollapse show={() => bouncyOpen()}>

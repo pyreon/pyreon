@@ -53,8 +53,8 @@ export default function InvoiceRoute() {
         <HeaderText>
           <InvoiceTitle>Invoice Builder</InvoiceTitle>
           <InvoiceLead>
-            Edit the invoice on the left — the preview on the right updates live. Export to
-            HTML, Markdown, PDF, or DOCX with one click. Same template tree feeds every format.
+            Edit the invoice on the left — the preview on the right updates live. Export to HTML,
+            Markdown, PDF, or DOCX with one click. Same template tree feeds every format.
           </InvoiceLead>
         </HeaderText>
         <ResetButton type="button" onClick={() => inv.store.reset()}>

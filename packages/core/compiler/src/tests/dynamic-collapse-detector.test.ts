@@ -60,7 +60,8 @@ const detect = (code: string) => detectDynamicCollapsibleShape(firstJsxElement(c
 describe('detectDynamicCollapsibleShape — PR 2 (ternary-of-two-literals dynamic-prop subset)', () => {
   // ── POSITIVE: the dynamic-collapsible subset ────────────────────────────
   it('claims a literal-prop site with ONE ternary-of-two-literals', () => {
-    const code = 'const x = <Button state={cond ? "primary" : "secondary"} size="medium">Save</Button>'
+    const code =
+      'const x = <Button state={cond ? "primary" : "secondary"} size="medium">Save</Button>'
     const r = detect(code)
     expect(r).not.toBeNull()
     expect(r!.props).toEqual({ size: 'medium' })
@@ -108,8 +109,7 @@ describe('detectDynamicCollapsibleShape — PR 2 (ternary-of-two-literals dynami
   })
 
   it('trims static-text children (parity with the rest of the family)', () => {
-    const code =
-      'const x = <Button state={c ? "a" : "b"}>\n  Save\n</Button>'
+    const code = 'const x = <Button state={c ? "a" : "b"}>\n  Save\n</Button>'
     const r = detect(code)
     expect(r).not.toBeNull()
     expect(r!.childrenText).toBe('Save')
@@ -126,8 +126,7 @@ describe('detectDynamicCollapsibleShape — PR 2 (ternary-of-two-literals dynami
   })
 
   it('returns null for 2+ ternaries (multi-axis combinatorics is separable scope)', () => {
-    const code =
-      'const x = <Button state={a ? "x" : "y"} size={b ? "small" : "large"}>S</Button>'
+    const code = 'const x = <Button state={a ? "x" : "y"} size={b ? "small" : "large"}>S</Button>'
     expect(detect(code)).toBeNull()
   })
 

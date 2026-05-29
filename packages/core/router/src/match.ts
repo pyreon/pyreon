@@ -710,7 +710,12 @@ const SYNTHETIC_NOT_FOUND_PATH = '__pyreon_not_found_leaf__'
  * Returns `null` when no record has `notFoundComponent`.
  */
 function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteRecord[] | null {
-  let best: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } | null = null
+  let best: {
+    chain: RouteRecord[]
+    record: RouteRecord
+    depth: number
+    specificity: number
+  } | null = null
   // Second-pass fallback: collect the BEST page-level notFoundComponent
   // (no children) in case the layout pass finds nothing. Applies to the
   // layout-less single-page-app case where `_404.tsx` is emitted without

@@ -15,24 +15,38 @@ export function HooksResponsiveDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Responsive & Accessibility Hooks</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Responsive & Accessibility Hooks
+      </Title>
       <Paragraph style="margin-bottom: 24px">
         Detect OS preferences and viewport size reactively.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">useColorScheme()</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        useColorScheme()
+      </Title>
       <p style="margin-bottom: 24px;">
         OS theme: <strong>{() => scheme()}</strong>
       </p>
 
-      <Title size="h3" style="margin-bottom: 12px">useMediaQuery(query)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        useMediaQuery(query)
+      </Title>
       <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 24px;">
-        <p>Mobile (≤ 768px): <strong>{() => String(isMobile())}</strong></p>
-        <p>Tablet (769–1024px): <strong>{() => String(isTablet())}</strong></p>
-        <p>Desktop (≥ 1025px): <strong>{() => String(isDesktop())}</strong></p>
+        <p>
+          Mobile (≤ 768px): <strong>{() => String(isMobile())}</strong>
+        </p>
+        <p>
+          Tablet (769–1024px): <strong>{() => String(isTablet())}</strong>
+        </p>
+        <p>
+          Desktop (≥ 1025px): <strong>{() => String(isDesktop())}</strong>
+        </p>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">useReducedMotion()</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        useReducedMotion()
+      </Title>
       <p style="margin-bottom: 24px;">
         Prefers reduced motion: <strong>{() => String(reducedMotion())}</strong>
       </p>

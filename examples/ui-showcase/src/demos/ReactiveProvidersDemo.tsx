@@ -54,9 +54,8 @@ export function ReactiveProvidersDemo() {
       <h3>Inversed nesting</h3>
       <p>
         Outer <code>{'<PyreonUI mode="light">'}</code> wraps an inner{' '}
-        <code>{'<PyreonUI inversed>'}</code>. Both contain a{' '}
-        <code>state="primary"</code> Button. The inner Button should
-        resolve to dark-mode colors despite the outer being light.
+        <code>{'<PyreonUI inversed>'}</code>. Both contain a <code>state="primary"</code> Button.
+        The inner Button should resolve to dark-mode colors despite the outer being light.
       </p>
       <PyreonUI theme={theme} mode="light">
         <div data-test-region="outer-light">
@@ -73,14 +72,12 @@ export function ReactiveProvidersDemo() {
 
       <h3>Mode prop change at runtime</h3>
       <p>
-        Clicking the toggle swaps <code>mode</code> on the provider.
-        Buttons inside should re-resolve their classes and the visible
-        bg should flip between light and dark slices of the theme.
+        Clicking the toggle swaps <code>mode</code> on the provider. Buttons inside should
+        re-resolve their classes and the visible bg should flip between light and dark slices of the
+        theme.
       </p>
       <div data-test-region="mode-toggle">
-        <Button onClick={() => mode.set(mode() === 'light' ? 'dark' : 'light')}>
-          Toggle mode
-        </Button>
+        <Button onClick={() => mode.set(mode() === 'light' ? 'dark' : 'light')}>Toggle mode</Button>
       </div>
       <PyreonUI theme={theme} mode={mode()}>
         <div data-test-region="mode-swappable">

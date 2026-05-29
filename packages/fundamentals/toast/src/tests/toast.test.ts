@@ -638,7 +638,7 @@ describe('toast — queue cap (regression for unbounded growth)', () => {
     expect(_toasts().at(-1)?.message).toBe(`m${MAX_TOASTS + 4}`)
   })
 
-  it('cancels evicted toasts\' timers + fires onDismiss', async () => {
+  it("cancels evicted toasts' timers + fires onDismiss", async () => {
     vi.useFakeTimers()
     const { MAX_TOASTS } = await import('../toast')
     const dismissCalls: string[] = []

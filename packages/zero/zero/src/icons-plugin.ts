@@ -222,9 +222,7 @@ export function iconsPlugin(cfg: IconsPluginConfig): Plugin {
     throw new Error(
       '[Pyreon] iconsPlugin: provide EXACTLY ONE of `dir` (single set) or ' +
         '`sets` (named multi-set). ' +
-        (hasDir
-          ? 'Both were given.'
-          : 'Neither was given (or `sets` is empty).'),
+        (hasDir ? 'Both were given.' : 'Neither was given (or `sets` is empty).'),
     )
   }
   let root = process.cwd()
@@ -240,17 +238,15 @@ export function iconsPlugin(cfg: IconsPluginConfig): Plugin {
     const out = resolveOut(cfg, root)
     let source: string
     if (hasSets) {
-      const sets: NamedSetInput[] = Object.entries(cfg.sets ?? {}).map(
-        ([key, sc]) => {
-          const scanned = join(root, sc.dir)
-          return {
-            key,
-            files: scanIconDir(scanned),
-            mode: sc.mode ?? 'inline',
-            importDir: rel(out, scanned),
-          }
-        },
-      )
+      const sets: NamedSetInput[] = Object.entries(cfg.sets ?? {}).map(([key, sc]) => {
+        const scanned = join(root, sc.dir)
+        return {
+          key,
+          files: scanIconDir(scanned),
+          mode: sc.mode ?? 'inline',
+          importDir: rel(out, scanned),
+        }
+      })
       source = generateNamedIconSetsSource(sets)
     } else {
       const scanned = join(root, cfg.dir as string)
@@ -282,10 +278,7 @@ export function iconsPlugin(cfg: IconsPluginConfig): Plugin {
       const dirs = watchDirs()
       for (const d of dirs) server.watcher.add(d)
       const onChange = (file: string): void => {
-        if (
-          file.toLowerCase().endsWith('.svg') &&
-          dirs.some((d) => file.startsWith(d))
-        ) {
+        if (file.toLowerCase().endsWith('.svg') && dirs.some((d) => file.startsWith(d))) {
           void regenerate()
         }
       }

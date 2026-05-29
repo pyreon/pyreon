@@ -125,11 +125,7 @@ export function resolveMetaField<S extends StandardSchemaV1<unknown, unknown>>(
   const meta = getMeta(schema)
   if (!meta) return undefined
   const i18nKey =
-    field === 'label'
-      ? meta.i18nLabel
-      : field === 'hint'
-        ? meta.i18nHint
-        : meta.i18nPlaceholder
+    field === 'label' ? meta.i18nLabel : field === 'hint' ? meta.i18nHint : meta.i18nPlaceholder
   if (t && i18nKey) {
     const resolved = t(i18nKey)
     // If t() echoed the key back (no match), fall through to literal.

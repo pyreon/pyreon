@@ -5,11 +5,7 @@
     "outDir": "lib",
     "jsx": "react-jsx",
     "jsxImportSource": "@pyreon/core",
-    "types": [
-      "vitest/globals"
-    ]
+    "types": ["vitest/globals"]
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

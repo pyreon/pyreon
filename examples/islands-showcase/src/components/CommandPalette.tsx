@@ -14,19 +14,16 @@ export default function CommandPalette() {
   const query = signal('')
 
   return (
-    <div data-testid="command-palette" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+    <div
+      data-testid="command-palette"
+      style="padding: 12px; border: 1px solid #ccc; border-radius: 4px;"
+    >
       <div style="display: flex; gap: 8px; align-items: center;">
         <strong>Interaction-only command palette:</strong>
-        <button
-          data-testid="command-palette-trigger"
-          type="button"
-          onClick={() => open.set(true)}
-        >
+        <button data-testid="command-palette-trigger" type="button" onClick={() => open.set(true)}>
           Open palette (⌘K)
         </button>
-        <span data-testid="command-palette-state">
-          {() => (open() ? 'open' : 'closed')}
-        </span>
+        <span data-testid="command-palette-state">{() => (open() ? 'open' : 'closed')}</span>
       </div>
       <div
         data-testid="command-palette-panel"
@@ -44,9 +41,9 @@ export default function CommandPalette() {
         />
         <ul data-testid="command-palette-list" style="margin: 8px 0 0; padding-left: 20px;">
           {() =>
-            ALL_COMMANDS.filter((c) =>
-              c.toLowerCase().includes(query().toLowerCase()),
-            ).map((c) => <li>{c}</li>)
+            ALL_COMMANDS.filter((c) => c.toLowerCase().includes(query().toLowerCase())).map((c) => (
+              <li>{c}</li>
+            ))
           }
         </ul>
       </div>

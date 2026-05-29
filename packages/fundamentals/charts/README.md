@@ -125,7 +125,6 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
 use(BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer)
-
 ;<Chart
   options={() => ({
     series: [{ type: 'bar', data: values() }],
@@ -174,13 +173,13 @@ tooltip, legend, title, toolbox, dataZoom, visualMap, timeline, graphic, brush, 
 
 ## Bundle size (rough)
 
-| Usage                      | ECharts loaded                                                 | Approx gzipped |
-| -------------------------- | -------------------------------------------------------------- | -------------- |
-| No charts rendered         | Nothing                                                        | 0 KB           |
-| Bar + tooltip              | core + BarChart + Grid + Tooltip + Canvas                      | ~35 KB         |
-| Bar + Line + legend        | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB         |
-| Pie only                   | core + PieChart + Canvas                                       | ~25 KB         |
-| `@pyreon/charts` bridge     | Module map + hook                                              | ~3 KB          |
+| Usage                   | ECharts loaded                                                 | Approx gzipped |
+| ----------------------- | -------------------------------------------------------------- | -------------- |
+| No charts rendered      | Nothing                                                        | 0 KB           |
+| Bar + tooltip           | core + BarChart + Grid + Tooltip + Canvas                      | ~35 KB         |
+| Bar + Line + legend     | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB         |
+| Pie only                | core + PieChart + Canvas                                       | ~25 KB         |
+| `@pyreon/charts` bridge | Module map + hook                                              | ~3 KB          |
 
 ## Why Canvas by default
 

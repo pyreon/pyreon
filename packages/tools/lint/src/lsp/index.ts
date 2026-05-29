@@ -655,8 +655,7 @@ export function _handleMessage(
         | undefined
       const hints = range
         ? inlayHints.filter(
-            (h) =>
-              h.position.line >= range.start.line && h.position.line <= range.end.line,
+            (h) => h.position.line >= range.start.line && h.position.line <= range.end.line,
           )
         : inlayHints
       return { jsonrpc: '2.0', id: msg.id, result: hints }

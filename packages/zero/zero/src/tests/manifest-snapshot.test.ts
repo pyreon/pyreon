@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  renderApiReferenceEntries,
-  renderLlmsTxtLine,
-} from '@pyreon/manifest'
+import { renderApiReferenceEntries, renderLlmsTxtLine } from '@pyreon/manifest'
 import zeroManifest from '../manifest'
 
 // Snapshot of the rendered llms.txt + MCP api-reference output for

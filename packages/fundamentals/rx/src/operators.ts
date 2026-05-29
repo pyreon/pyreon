@@ -128,7 +128,10 @@ export function zip(...sources: any[]): any {
  * const all = rx.merge(a, b) // Computed<number[]> → [1, 2, 3, 4]
  * ```
  */
-export function merge<T>(a: ReadableSignal<T[]>, ...rest: (ReadableSignal<T[]> | T[])[]): ReturnType<typeof computed<T[]>>
+export function merge<T>(
+  a: ReadableSignal<T[]>,
+  ...rest: (ReadableSignal<T[]> | T[])[]
+): ReturnType<typeof computed<T[]>>
 export function merge<T>(...sources: T[][]): T[]
 export function merge<T>(...sources: any[]): any {
   const hasSignal = sources.some(isSignal)

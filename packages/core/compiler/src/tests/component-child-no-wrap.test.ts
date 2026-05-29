@@ -69,12 +69,8 @@ describe('JSX transform — component child of stable reference', () => {
       }
     `
     const out = t(src)
-    expect(out, 'member chain must NOT be wrapped in an accessor').not.toContain(
-      '() => obj.deep.x',
-    )
-    expect(out, 'member chain must appear bare').toMatch(
-      /<Inner>\s*\{obj\.deep\.x\}\s*<\/Inner>/,
-    )
+    expect(out, 'member chain must NOT be wrapped in an accessor').not.toContain('() => obj.deep.x')
+    expect(out, 'member chain must appear bare').toMatch(/<Inner>\s*\{obj\.deep\.x\}\s*<\/Inner>/)
   })
 
   test('CONTROL — CallExpression child KEEPS the wrap (preserves reactivity)', () => {

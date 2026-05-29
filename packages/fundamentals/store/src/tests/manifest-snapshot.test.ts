@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — store snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/store — Global state management — Pinia-inspired composition stores returning StoreApi<T>. Stores are singletons by ID — the setup function runs once. Calling the returned hook multiple times returns the same StoreApi instance. Use \`resetStore(id)\` or \`resetAllStores()\` to force re-creation."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/store — Global state management — Pinia-inspired composition stores returning StoreApi<T>. Stores are singletons by ID — the setup function runs once. Calling the returned hook multiple times returns the same StoreApi instance. Use \`resetStore(id)\` or \`resetAllStores()\` to force re-creation."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

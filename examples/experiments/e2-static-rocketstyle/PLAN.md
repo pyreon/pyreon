@@ -13,11 +13,11 @@ Resolving rocketstyle dimension props at build time for literal-prop call sites 
 
 ## Decision rubric (frozen before starting)
 
-| Outcome | Per-mount wall-clock | mountChild per visible | Action |
-|---|---|---|---|
-| **GRADUATE** | collapsed ≤ 30% of baseline | ≤ 1.5 | Write compiler-pass plan as next experiment |
-| **DEFER** | 30-70% of baseline OR mountChild 1.5-3 | mixed | Real win, compiler cost might not justify — re-evaluate |
-| **KILL** | > 70% of baseline OR no mountChild reduction | > 3 | Hypothesis false, postmortem, stop |
+| Outcome      | Per-mount wall-clock                         | mountChild per visible | Action                                                  |
+| ------------ | -------------------------------------------- | ---------------------- | ------------------------------------------------------- |
+| **GRADUATE** | collapsed ≤ 30% of baseline                  | ≤ 1.5                  | Write compiler-pass plan as next experiment             |
+| **DEFER**    | 30-70% of baseline OR mountChild 1.5-3       | mixed                  | Real win, compiler cost might not justify — re-evaluate |
+| **KILL**     | > 70% of baseline OR no mountChild reduction | > 3                    | Hypothesis false, postmortem, stop                      |
 
 ## Method
 
@@ -29,21 +29,25 @@ Resolving rocketstyle dimension props at build time for literal-prop call sites 
 4. Snapshot perf-harness counters before/after each bench. Compare medians + per-mount counter ratios.
 
 ## What I will write
+
 - `baseline-Button.tsx` — current `<Button>` mount harness
 - `collapsed-Button.ts` — hand-written compile-output equivalent (single `_tpl`)
 - `e2.browser.test.ts` — driver + DOM parity check + benchmark
 - `RESULTS.md` — written AS measurement happens
 
 ## What I will NOT write
+
 - A compiler pass
 - A new rocketstyle API
 - New code in `packages/`
 - More plan/scaffold docs
 
 ## Honest risks
+
 1. Hand-written prototype might over-claim what a real compiler can deliver. Document explicitly in RESULTS.md what's bypassed.
 2. Wrapper layers might do load-bearing work the prototype skips (event delegation, theme reactivity). Enumerate.
 3. Boot might not be the right journey — mount is the heaviest, but real apps' user-perceived cost lives on re-render. Measure boot first since the data exists.
 
 ## Time budget
+
 ~7 hours / one focused session. If 7 hours in I don't have a number, abort and report.

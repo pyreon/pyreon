@@ -3,6 +3,7 @@
 > Copy-paste-ready templates for the 3 respondent segments named in [`native-platforms-user-survey.md`](../native-platforms-user-survey.md).
 >
 > **Targets**: 20-30 respondents total.
+>
 > - Segment A (active Pyreon users): 10-15
 > - Segment B (signal-framework users / prospective adopters): 5-10
 > - Segment C (native-first / cross-platform-curious teams): 5-8
@@ -14,6 +15,7 @@
 ## Segment A — active Pyreon users (10-15 respondents)
 
 **Source candidates from**:
+
 - GitHub stars on `pyreon/pyreon` (filter to users with >20 followers as a quality proxy)
 - npm download stats — top 20 organizations by `@pyreon/*` weekly downloads
 - Pyreon Discord active members
@@ -121,6 +123,7 @@ Aggregated results published 4 weeks after close.
 ## Segment B — signal-framework users / prospective adopters (5-10 respondents)
 
 **Source candidates from**:
+
 - Solid Discord / GitHub Discussions — users discussing native mobile
 - Svelte Discord — similar
 - Recent Hacker News commenters on signal-framework threads
@@ -164,6 +167,7 @@ Thanks,
 ## Segment C — native-first / cross-platform-curious teams (5-8 respondents)
 
 **Source candidates from**:
+
 - iOS / Android conference speakers
 - Authors of recent blog posts comparing CMP / Skip / Flutter / RN
 - Authors of public posts about "choosing a mobile framework"
@@ -248,9 +252,9 @@ Open until [date — 4 weeks out].
 Track in a spreadsheet ([`04-analysis-spreadsheet-schema.md`](./04-analysis-spreadsheet-schema.md)
 shows the rest of the schema; this is just the recruitment side):
 
-| Segment | Name | Org | Channel | Status | Notes |
-|---|---|---|---|---|---|
-| A | <name> | <org> | direct-email | pending / scheduled / completed / declined | <why-they-qualified> |
+| Segment | Name   | Org   | Channel      | Status                                     | Notes                |
+| ------- | ------ | ----- | ------------ | ------------------------------------------ | -------------------- |
+| A       | <name> | <org> | direct-email | pending / scheduled / completed / declined | <why-they-qualified> |
 
 Daily review: did the previous day's outreach get responses? Adjust segment balance.
 

@@ -20,7 +20,7 @@ For Pyreon apps (SPAs, SSR apps, example apps):
 // tsconfig.json
 {
   "extends": "@pyreon/typescript/app",
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
 }
 ```
 
@@ -33,8 +33,8 @@ For publishable packages that need `.d.ts` output:
   "extends": "@pyreon/typescript/lib",
   "include": ["src/**/*"],
   "compilerOptions": {
-    "outDir": "./lib"
-  }
+    "outDir": "./lib",
+  },
 }
 ```
 
@@ -47,8 +47,8 @@ If you need finer control, extend `base` and add your own flags:
   "extends": "@pyreon/typescript",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "./src"
-  }
+    "rootDir": "./src",
+  },
 }
 ```
 
@@ -74,9 +74,9 @@ All presets configure:
 
 ## Subpath exports
 
-| Subpath               | File         |
-| --------------------- | ------------ |
-| `@pyreon/typescript`  | `base.json`  |
+| Subpath                  | File        |
+| ------------------------ | ----------- |
+| `@pyreon/typescript`     | `base.json` |
 | `@pyreon/typescript/app` | `app.json`  |
 | `@pyreon/typescript/lib` | `lib.json`  |
 

@@ -43,13 +43,13 @@ Omitting the rule id suppresses every rule on the next line.
 
 ## Presets
 
-| Preset           | What it does                                                                       |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `recommended`    | Default — every non-opt-in rule at its declared severity                           |
-| `strict`         | `recommended` + warnings promoted to errors                                        |
-| `app`            | `recommended` minus library-only rules (cross-layer / circular-import / …)         |
-| `lib`            | `strict` + architecture rules + `require-browser-smoke-test` for browser packages  |
-| `best-practices` | `recommended` + every opt-in best-practice rule enabled                            |
+| Preset           | What it does                                                                      |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `recommended`    | Default — every non-opt-in rule at its declared severity                          |
+| `strict`         | `recommended` + warnings promoted to errors                                       |
+| `app`            | `recommended` minus library-only rules (cross-layer / circular-import / …)        |
+| `lib`            | `strict` + architecture rules + `require-browser-smoke-test` for browser packages |
+| `best-practices` | `recommended` + every opt-in best-practice rule enabled                           |
 
 ## Config file
 
@@ -150,13 +150,13 @@ LSP (also reachable via `pyreon-lint --lsp`):
 
 ```ts
 import { startLspServer } from '@pyreon/lint'
-startLspServer()   // stdin/stdout JSON-RPC; publishes diagnostics + inlay hints
+startLspServer() // stdin/stdout JSON-RPC; publishes diagnostics + inlay hints
 ```
 
 ## CLI subpath
 
 ```ts
-import { /* internal cli entry */ } from '@pyreon/lint/cli'
+import {} from /* internal cli entry */ '@pyreon/lint/cli'
 ```
 
 The `./cli` export wires `process.argv` to `lint()` + a `formatText` / `formatJSON` / `formatCompact` reporter; the `pyreon-lint` bin file is a thin shim that imports it.

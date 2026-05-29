@@ -73,13 +73,11 @@
 
   `COUNTERS.md` gains 7 new entries (6 counters + the `theme.initRef*` pair).
   Each documents:
-
   - Exact source file
   - "Healthy number looks like" description (the diagnostic semantics)
   - The leak-class label + originating PR
 
   `catalog-drift.test.ts` `INSTRUMENTED_PACKAGE_ROOTS` adds 3 new entries:
-
   - `packages/tools/solid-compat/src`
   - `packages/tools/svelte-compat/src`
   - `packages/tools/vite-plugin/src`
@@ -90,7 +88,6 @@
   emit) enforces the link going forward.
 
   ### Validation
-
   - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
     zero skip):
     - `@pyreon/zero` 953/954
@@ -118,7 +115,6 @@
   `writable.subscribe()` from inside a compat component's body leaks
   one subscriber per parent re-render cycle. The interaction between
   two parts of the layer caused it:
-
   1. `index.ts:subscribe` caches the unsub at `ctx.hooks[idx]` AND
      pushes it into `ctx.unmountCallbacks`. On subsequent renders the
      cached fast path fires: `if (cached) { run(v); return cached.unsub }`.
@@ -129,7 +125,6 @@
 
   The cached path NEVER re-pushed the unsub into the new (empty)
   array. So:
-
   - Initial mount: subscribe → unsub pushed → unmountCallbacks = [unsub]
   - Parent re-render: unmountCallbacks reset to [] → child re-runs
     → cached path returns cached.unsub without pushing → still []
@@ -155,7 +150,6 @@
 
   `packages/tools/svelte-compat/src/tests/child-instance-leak-repro.test.ts`
   (2 specs):
-
   1. **Cached subscribe re-attaches unsub after reset** — single
      parent re-render cycle. Asserts `unmountCallbacks.length === 1`
      after the cached path fires, and that post-unmount the subscriber
@@ -169,13 +163,11 @@
   2/2 pass.
 
   ### Validation
-
   - `@pyreon/svelte-compat` 55/55 tests pass (+2 new)
   - Lint + typecheck clean
   - No public-API surface change
 
   ### Remaining LOWs from [#733](https://github.com/pyreon/pyreon/issues/733)
-
   - `@pyreon/vite-plugin` per-instance caches eviction on file delete —
     separate PR (next phase of the follow-up sweep).
 
@@ -211,7 +203,6 @@
   `@pyreon/svelte-compat` is the fifth compat layer (alongside
   react / preact / vue / solid). It shims the Svelte APIs code actually
   `import`s, backed by Pyreon's signal-based reactive engine:
-
   - **`svelte/store`** — `writable`, `readable`, `derived` (single +
     array, sync + async/cleanup forms), `get`, `readonly`. Store contract
     (`subscribe(run, invalidate?) → unsubscribe`, lazy
@@ -255,7 +246,6 @@
   react / preact / vue / solid.
 
   Shims the APIs Svelte code actually `import`s:
-
   - **`svelte/store`** — `writable`, `readable`, `derived` (sync + async/
     cleanup forms), `get`, `readonly`. Backed by Pyreon `signal`; the store
     contract (`subscribe(run, invalidate?) → unsubscribe`, lazy

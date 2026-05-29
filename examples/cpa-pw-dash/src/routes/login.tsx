@@ -1,15 +1,15 @@
-import { signal } from "@pyreon/reactivity"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { useRouter } from "@pyreon/router"
+import { signal } from '@pyreon/reactivity'
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
+import { useRouter } from '@pyreon/router'
 
-export const meta = { title: "Sign in" }
+export const meta = { title: 'Sign in' }
 
 export default function Login() {
   useHead({ title: meta.title })
 
-  const email = signal("demo@example.com")
-  const password = signal("demo1234")
+  const email = signal('demo@example.com')
+  const password = signal('demo1234')
   const error = signal<string | null>(null)
   const submitting = signal(false)
 
@@ -29,14 +29,14 @@ export default function Login() {
     // on success; the browser stores it automatically.
     let res: Response
     try {
-      res = await fetch("/api/signin", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+      res = await fetch('/api/signin', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email: email(), password: password() }),
       })
     } catch {
       submitting.set(false)
-      error.set("Network error — please try again")
+      error.set('Network error — please try again')
       return
     }
 
@@ -44,11 +44,11 @@ export default function Login() {
 
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string }
-      error.set(body.error ?? "Sign in failed")
+      error.set(body.error ?? 'Sign in failed')
       return
     }
 
-    await router.push("/app/dashboard")
+    await router.push('/app/dashboard')
   }
 
   return (
@@ -80,8 +80,13 @@ export default function Login() {
 
         {() => (error() ? <div class="error">{error()}</div> : null)}
 
-        <button type="submit" class="btn btn-primary" disabled={submitting} style="width: 100%; justify-content: center; margin-top: 1rem;">
-          {() => (submitting() ? "Signing in…" : "Sign in")}
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={submitting}
+          style="width: 100%; justify-content: center; margin-top: 1rem;"
+        >
+          {() => (submitting() ? 'Signing in…' : 'Sign in')}
         </button>
 
         <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--c-text-muted); text-align: center;">

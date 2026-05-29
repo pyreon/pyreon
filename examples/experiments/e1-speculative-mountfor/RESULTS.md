@@ -31,12 +31,13 @@ Does an append-only fast path with deopt-to-LIS save ≥15% wall-clock on append
 
 ## Experiment runs (bisect-verified, same SHA, stash-on / stash-off)
 
-| Journey | E1 reverted (median ms) | E1 enabled (median ms) | Δ |
-|---|---|---|---|
-| chat | 182 / 182 / 189 | 183 / 182 / 182 | ~0% (within noise) |
-| shuffleRows | 16 / 16 | 15 / 23 / 16 | ~0% (within noise) |
+| Journey     | E1 reverted (median ms) | E1 enabled (median ms) | Δ                  |
+| ----------- | ----------------------- | ---------------------- | ------------------ |
+| chat        | 182 / 182 / 189         | 183 / 182 / 182        | ~0% (within noise) |
+| shuffleRows | 16 / 16                 | 15 / 23 / 16           | ~0% (within noise) |
 
 Counter signal:
+
 - `runtime.mountFor.appendFast` = 10 per chat run (1 reset + 10 batch appends; the reset is a full replace, not append, so 10 fast-path hits exactly match the 10 batch appends — the path is exercised correctly).
 - `runtime.mountFor.lisOps` on shuffle: 195 (baseline) → 186 (E1, within noise) — confirms the shuffle path still takes the LIS algorithm; the fast-path early-return doesn't affect it because `n === oldN` for shuffle.
 

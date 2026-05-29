@@ -9,10 +9,9 @@ import {
 } from '../devtools'
 import { model } from '../index'
 
-const Counter = model({ state: { count: 0 } })
-     .actions((self) => ({
-    inc: () => self.count.update((c: number) => c + 1),
-  }))
+const Counter = model({ state: { count: 0 } }).actions((self) => ({
+  inc: () => self.count.update((c: number) => c + 1),
+}))
 
 afterEach(() => _resetDevtools())
 

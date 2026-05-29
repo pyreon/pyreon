@@ -64,11 +64,7 @@ describe('HeadProvider — inherits an outer HeadContext (composability contract
       useHead({ title: 'Isolated' })
       return h('div', null)
     }
-    const wrapped = h(
-      HeadProvider as ComponentFn,
-      { context: isolatedCtx },
-      h(App, null),
-    )
+    const wrapped = h(HeadProvider as ComponentFn, { context: isolatedCtx }, h(App, null))
     const { head } = await renderWithHead(wrapped)
     // Tags landed in the isolated ctx, NOT in renderWithHead's outer ctx
     expect(head).toBe('')
@@ -89,11 +85,7 @@ describe('HeadProvider — inherits an outer HeadContext (composability contract
     }
     const Outer: ComponentFn = () => {
       useHead({ title: 'Outer Title' })
-      return h(
-        'div',
-        null,
-        h(HeadProvider as ComponentFn, null, h(Inner, null)),
-      )
+      return h('div', null, h(HeadProvider as ComponentFn, null, h(Inner, null)))
     }
     const { head } = await renderWithHead(h(Outer, null))
     expect(head).toContain('<title>Outer Title</title>')
@@ -106,8 +98,7 @@ describe('HeadProvider — inherits an outer HeadContext (composability contract
     beforeEach(() => {
       container = document.createElement('div')
       document.body.appendChild(container)
-      for (const el of document.head.querySelectorAll('[data-pyreon-head]'))
-        el.remove()
+      for (const el of document.head.querySelectorAll('[data-pyreon-head]')) el.remove()
       document.title = ''
     })
     afterEach(() => {

@@ -128,9 +128,7 @@ export const resolveGates = (opts: OrchestratorOptions): GateName[] => {
  * Run the gates and build the report. Wall-clock is measured here
  * (vs the aggregator's sum-of-elapsedMs which is total CPU time).
  */
-export const runDoctor = async (
-  opts: OrchestratorOptions,
-): Promise<DoctorReport> => {
+export const runDoctor = async (opts: OrchestratorOptions): Promise<DoctorReport> => {
   const start = Date.now()
   const selected = new Set(resolveGates(opts))
   const all: GateName[] = [...FAST_GATES, ...SLOW_GATES]
@@ -138,9 +136,7 @@ export const runDoctor = async (
   const promises = all.map(async (gate): Promise<GateResult> => {
     if (!selected.has(gate)) {
       // Distinguish "user explicitly skipped" from "needs --full".
-      const reason = SLOW_GATES.includes(gate) && !opts.full
-        ? 'enable with --full'
-        : 'skipped'
+      const reason = SLOW_GATES.includes(gate) && !opts.full ? 'enable with --full' : 'skipped'
       return skippedGate(gate, ALL_GATE_CATEGORIES[gate], reason)
     }
     return runGate(gate, opts)
@@ -152,10 +148,7 @@ export const runDoctor = async (
   return { ...report, elapsedMs: Date.now() - start }
 }
 
-const runGate = async (
-  gate: GateName,
-  opts: OrchestratorOptions,
-): Promise<GateResult> => {
+const runGate = async (gate: GateName, opts: OrchestratorOptions): Promise<GateResult> => {
   switch (gate) {
     case 'react-patterns':
       return runReactPatternsGate({ cwd: opts.cwd, fix: opts.fix })

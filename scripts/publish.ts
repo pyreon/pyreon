@@ -73,14 +73,10 @@ for (const dir of packageDirs) {
 // `^X.Y.Z`. They version-lock to the parent via changesets.
 const stubBase = join(PACKAGES_DIR, 'core', 'compiler', 'npm')
 try {
-  const stubDirs = (await readdir(stubBase, { withFileTypes: true })).filter(
-    (d) => d.isDirectory(),
-  )
+  const stubDirs = (await readdir(stubBase, { withFileTypes: true })).filter((d) => d.isDirectory())
   for (const sub of stubDirs) {
     try {
-      const pkg = JSON.parse(
-        await readFile(join(stubBase, sub.name, 'package.json'), 'utf-8'),
-      )
+      const pkg = JSON.parse(await readFile(join(stubBase, sub.name, 'package.json'), 'utf-8'))
       if (pkg.name) versionMap.set(pkg.name, pkg.version)
     } catch {
       // skip a stub dir without package.json
@@ -120,7 +116,6 @@ function resolveWorkspaceDeps(
   }
   return resolved
 }
-
 
 const failed: string[] = []
 const published: string[] = []
@@ -182,11 +177,7 @@ for (const dir of packageDirs) {
     // `optionalDependencies` is the field that broke the 0.18.0 compiler
     // release (shipped as literal `"workspace:^"` → `npm i` hard-fails
     // with `EUNSUPPORTEDPROTOCOL`). Must be resolved too.
-    optionalDependencies: resolveWorkspaceDeps(
-      pkg.optionalDependencies,
-      pkg.name,
-      resolveErrors,
-    ),
+    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies, pkg.name, resolveErrors),
   }
 
   // Defense-in-depth: a `workspace:` range surviving into ANY dep field

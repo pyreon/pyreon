@@ -51,7 +51,13 @@ export interface FileUploadState {
 
 export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
   const [own] = splitProps(props, [
-    'onChange', 'accept', 'maxFiles', 'maxSize', 'disabled', 'multiple', 'children',
+    'onChange',
+    'accept',
+    'maxFiles',
+    'maxSize',
+    'disabled',
+    'multiple',
+    'children',
   ])
 
   const isDragging = signal(false)
@@ -93,14 +99,20 @@ export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
     isDragging,
     files,
     openPicker: () => inputEl?.click(),
-    clear: () => { files.set([]); own.onChange?.([]) },
+    clear: () => {
+      files.set([])
+      own.onChange?.([])
+    },
     removeFile: (index) => {
       const next = files().filter((_, i) => i !== index)
       files.set(next)
       own.onChange?.(next)
     },
     dropZoneProps: {
-      onDragOver: (e: DragEvent) => { e.preventDefault(); isDragging.set(true) },
+      onDragOver: (e: DragEvent) => {
+        e.preventDefault()
+        isDragging.set(true)
+      },
       onDragLeave: () => isDragging.set(false),
       onDrop: (e: DragEvent) => {
         e.preventDefault()
@@ -108,7 +120,9 @@ export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
         if (e.dataTransfer?.files) handleFiles(Array.from(e.dataTransfer.files))
       },
     },
-    inputRef: (el) => { inputEl = el },
+    inputRef: (el) => {
+      inputEl = el
+    },
     inputProps: {
       type: 'file' as const,
       style: 'display:none',

@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  createISRHandler,
-  createMemoryStore,
-  type ISRCacheEntry,
-  type ISRStore,
-} from '../isr'
+import { createISRHandler, createMemoryStore, type ISRCacheEntry, type ISRStore } from '../isr'
 
 function mockHandler(html = '<html>test</html>') {
   return vi.fn(
@@ -197,16 +192,14 @@ describe('createISRHandler', () => {
       let calls = 0
       const inner = vi.fn(async (req: Request) => {
         calls++
-        const session
-          = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
+        const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
         return new Response(`call ${calls} (session=${session})`)
       })
       const handler = createISRHandler(inner, {
         revalidate: 60,
         cacheKey: (req) => {
           const url = new URL(req.url)
-          const session
-            = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
+          const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
           return `${url.pathname}::${session}`
         },
       })
@@ -496,8 +489,7 @@ describe('createISRHandler', () => {
 
       // Update the upstream handler's output (simulates CMS update)
       inner.mockImplementation(
-        async () =>
-          new Response('<html>v2</html>', { headers: { 'content-type': 'text/html' } }),
+        async () => new Response('<html>v2</html>', { headers: { 'content-type': 'text/html' } }),
       )
 
       // Next request MUST miss the cache and pick up v2

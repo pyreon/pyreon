@@ -8,11 +8,11 @@
 
 **Phase 0 pass/fail criteria** (from PMTC plan §"Validation checkpoints"):
 
-| # | Checkpoint | Pass criterion | PRs that close it |
-|---|---|---|---|
-| 1 | **Type mapper coverage** | ≥90% of existing Pyreon source compiles to Swift without manual annotations | PRs 5a-5e + 6 |
-| 2 | **Signal → @State round-trip** | counter app on iOS simulator with button-driven `signal.set` works | PRs 1 + 2 + 3 + 4 |
-| 3 | **Style fidelity** | rocketstyle button rendered in iOS simulator visually identical to web (<5% pixel diff) | PRs 7a-7c + 8 |
+| #   | Checkpoint                     | Pass criterion                                                                          | PRs that close it |
+| --- | ------------------------------ | --------------------------------------------------------------------------------------- | ----------------- |
+| 1   | **Type mapper coverage**       | ≥90% of existing Pyreon source compiles to Swift without manual annotations             | PRs 5a-5e + 6     |
+| 2   | **Signal → @State round-trip** | counter app on iOS simulator with button-driven `signal.set` works                      | PRs 1 + 2 + 3 + 4 |
+| 3   | **Style fidelity**             | rocketstyle button rendered in iOS simulator visually identical to web (<5% pixel diff) | PRs 7a-7c + 8     |
 
 If any of the three fail at Phase 0 end, regroup before Phase 1.
 
@@ -74,22 +74,22 @@ Longest path: **PR 0 → 1 → 2 → 3 → 4 → 7a → 7b → 7c → 8** (9 PRs
 
 ## Effort summary
 
-| PR | Scope | Effort | Critical path? |
-|---|---|---|---|
-| 1 | Swift runtime SPM scaffold | 3-5 days | yes |
-| 2 | `@pyreon/native-cli` scaffold | 3-5 days | yes |
-| 3 | First Xcode project | 3-5 days | yes |
-| 4 | Counter Pyreon source + integration | 5-10 days | yes |
-| 5a | TS→Swift primitive types | 3-5 days | no (parallel) |
-| 5b | Function types + closures | 3-5 days | no |
-| 5c | Generics | 5-10 days | no |
-| 5d | Union types + nullables | 3-5 days | no |
-| 5e | async/Promise mapping | 5-10 days | no |
-| 6 | Type-mapper coverage gate | 1-2 days | no |
-| 7a | PyreonTokens Swift emit | 2-4 days | yes |
-| 7b | styled() → ViewModifier emit | 5-10 days | yes |
-| 7c | rocketstyle dimensions → ViewModifier | 5-10 days | yes |
-| 8 | Visual fidelity (screenshot diff) | 3-5 days | yes |
+| PR  | Scope                                 | Effort    | Critical path? |
+| --- | ------------------------------------- | --------- | -------------- |
+| 1   | Swift runtime SPM scaffold            | 3-5 days  | yes            |
+| 2   | `@pyreon/native-cli` scaffold         | 3-5 days  | yes            |
+| 3   | First Xcode project                   | 3-5 days  | yes            |
+| 4   | Counter Pyreon source + integration   | 5-10 days | yes            |
+| 5a  | TS→Swift primitive types              | 3-5 days  | no (parallel)  |
+| 5b  | Function types + closures             | 3-5 days  | no             |
+| 5c  | Generics                              | 5-10 days | no             |
+| 5d  | Union types + nullables               | 3-5 days  | no             |
+| 5e  | async/Promise mapping                 | 5-10 days | no             |
+| 6   | Type-mapper coverage gate             | 1-2 days  | no             |
+| 7a  | PyreonTokens Swift emit               | 2-4 days  | yes            |
+| 7b  | styled() → ViewModifier emit          | 5-10 days | yes            |
+| 7c  | rocketstyle dimensions → ViewModifier | 5-10 days | yes            |
+| 8   | Visual fidelity (screenshot diff)     | 3-5 days  | yes            |
 
 **Single-contributor critical path total**: ~6-9 weeks (PRs 0→1→2→3→4→7a→7b→7c→8). The type-mapper chain adds another ~3-5 weeks if serialized after, ~zero weeks if parallelized.
 
@@ -127,6 +127,7 @@ Longest path: **PR 0 → 1 → 2 → 3 → 4 → 7a → 7b → 7c → 8** (9 PRs
 **Deliverable**: a buildable Swift package that an Xcode project can consume via `.package(path: "...")`.
 
 **Validation**:
+
 - `swift build` from `packages/native/runtime-swift/` exits 0
 - `swift test` runs the smoke tests
 - Package can be consumed by a sibling Xcode project (manual test: open Xcode, add local package, build)
@@ -160,6 +161,7 @@ pyreon-native build --target=android --source=./src --out=./generated
 **Deliverable**: a CLI binary that turns a directory of Pyreon TSX files into a directory of native source files.
 
 **Validation**:
+
 - Unit tests against tmp directories with known inputs
 - One end-to-end test: invoke CLI against the 7 fixtures from PR 0, assert output matches the snapshot baseline
 - Manual: run against `examples/native-counter-ios/src/` (which doesn't exist until PR 3, so this validation is "exists and the help text is correct" at PR 2 merge)
@@ -195,6 +197,7 @@ examples/native-counter-ios/
 PR 3 establishes the **shape of an iOS app that consumes Pyreon-emitted Swift**. The `generated/` directory is empty in this PR — PR 4 adds the Counter.tsx source that fills it.
 
 Includes a build-phase script that invokes `pyreon-native build --target=ios --source=./src --out=./generated` BEFORE `xcodebuild`. Either:
+
 - Xcode "Run Script" build phase, OR
 - A `build.sh` wrapper script that runs the CLI then xcodebuild
 
@@ -203,6 +206,7 @@ Includes a build-phase script that invokes `pyreon-native build --target=ios --s
 **Deliverable**: an Xcode project that builds (with empty generated/ and empty App.swift body) and produces an empty iOS app.
 
 **Validation**:
+
 - `cd examples/native-counter-ios && ./scripts/build.sh` exits 0
 - `xcodebuild -scheme NativeCounter -destination 'platform=iOS Simulator,name=iPhone 15' build` exits 0
 - The empty app launches in simulator (no UI, just a blank screen)
@@ -246,6 +250,7 @@ Note: PR 4 uses `<VStack>`/`<Text>`/`<Button>` (SwiftUI-shaped names) NOT `<View
 **Deliverable**: build the Xcode project, run in iOS simulator, tap the Increment button, observe the count update on screen.
 
 **Validation** (criterion 2 from PMTC plan):
+
 - ✅ `./scripts/build.sh && xcodebuild ... build` exits 0
 - ✅ App launches in iOS simulator
 - ✅ Initial render shows "0"
@@ -266,15 +271,15 @@ If this PR ships green, **half of Phase 0 is done** (criterion 2 met). Criteria 
 
 **Scope**: a new module `@pyreon/native-compiler/src/type-mapper.ts` that translates TypeScript types to Swift types for the primitive cases:
 
-| TS type | Swift type |
-|---|---|
-| `number` | `Double` (or `Int` if context proves integral — Phase 1) |
-| `string` | `String` |
-| `boolean` | `Bool` |
-| `void` | `Void` |
-| `null` / `undefined` | `nil` / `Optional` (PR 5d handles this fully) |
-| `Array<T>` | `[T]` |
-| `Record<string, T>` / `{ [k: string]: T }` | `[String: T]` |
+| TS type                                    | Swift type                                               |
+| ------------------------------------------ | -------------------------------------------------------- |
+| `number`                                   | `Double` (or `Int` if context proves integral — Phase 1) |
+| `string`                                   | `String`                                                 |
+| `boolean`                                  | `Bool`                                                   |
+| `void`                                     | `Void`                                                   |
+| `null` / `undefined`                       | `nil` / `Optional` (PR 5d handles this fully)            |
+| `Array<T>`                                 | `[T]`                                                    |
+| `Record<string, T>` / `{ [k: string]: T }` | `[String: T]`                                            |
 
 API:
 
@@ -289,6 +294,7 @@ Returns the Swift type as a string for embedding in emit output.
 **Deliverable**: a pure-function type mapper that the existing emitters in PR 0 can call.
 
 **Validation**:
+
 - Unit tests against each TS type variant
 - Round-trip integration test: take a TS source with the primitive types, run it through the existing compiler + new type mapper, assert Swift output uses correct types
 
@@ -304,12 +310,12 @@ Returns the Swift type as a string for embedding in emit output.
 
 **Scope**: extend type-mapper for function-type translation:
 
-| TS shape | Swift shape |
-|---|---|
-| `() => void` | `() -> Void` |
-| `(x: number) => string` | `(Double) -> String` |
-| `(x: T) => U` (with `T`/`U` known) | `(T) -> U` |
-| `(...args: T[]) => U` | `(T...) -> U` (Swift variadic) |
+| TS shape                                   | Swift shape                                                |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| `() => void`                               | `() -> Void`                                               |
+| `(x: number) => string`                    | `(Double) -> String`                                       |
+| `(x: T) => U` (with `T`/`U` known)         | `(T) -> U`                                                 |
+| `(...args: T[]) => U`                      | `(T...) -> U` (Swift variadic)                             |
 | event handlers (`(e: MouseEvent) => void`) | requires platform-event mapping → defer to PR 5d / Phase 1 |
 
 Handles closure capture semantics — Swift closures need `@escaping` if stored beyond call scope; mapper should emit `@escaping` for any function type appearing as a stored property or non-immediately-invoked argument.
@@ -317,6 +323,7 @@ Handles closure capture semantics — Swift closures need `@escaping` if stored 
 **Deliverable**: function-type mapping integrated with PR 5a's primitive mapper. The signal `set` callback (`(next: T) => void`) and effect callback (`() => CleanupFn | void`) both map correctly.
 
 **Validation**:
+
 - Unit tests for closure shapes
 - Round-trip: an effect with a cleanup return type maps correctly
 
@@ -332,22 +339,23 @@ Handles closure capture semantics — Swift closures need `@escaping` if stored 
 
 **Scope**: extend type-mapper for the generic types Pyreon ships:
 
-| TS shape | Swift shape |
-|---|---|
-| `Signal<T>` | (special — see below) |
-| `Computed<T>` | (special) |
-| `Ref<T>` | `@State private var x: T?` for state refs, `@Binding` for parent-passed |
-| `Promise<T>` | (PR 5e) |
-| `Array<T>` / `T[]` | `[T]` (already in PR 5a but generic-aware) |
-| `Map<K, V>` | `[K: V]` (when K is `Hashable`) |
-| `Set<T>` | `Set<T>` (when T is `Hashable`) |
-| user-defined generics (`Box<T>`) | Swift generic struct/class |
+| TS shape                         | Swift shape                                                             |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `Signal<T>`                      | (special — see below)                                                   |
+| `Computed<T>`                    | (special)                                                               |
+| `Ref<T>`                         | `@State private var x: T?` for state refs, `@Binding` for parent-passed |
+| `Promise<T>`                     | (PR 5e)                                                                 |
+| `Array<T>` / `T[]`               | `[T]` (already in PR 5a but generic-aware)                              |
+| `Map<K, V>`                      | `[K: V]` (when K is `Hashable`)                                         |
+| `Set<T>`                         | `Set<T>` (when T is `Hashable`)                                         |
+| user-defined generics (`Box<T>`) | Swift generic struct/class                                              |
 
 **Special handling for `Signal<T>` / `Computed<T>`**: these are NOT mapped to a Pyreon runtime type. Instead, the compiler detects `signal<T>(initial)` and `computed(() => …)` call expressions and emits `@State private var x: T = initial` / a `computed property` directly. The type-mapper documents this contract so other emit passes know not to treat `Signal<T>` / `Computed<T>` as opaque types.
 
 **Deliverable**: generics-aware type mapper that handles the Pyreon reactive types specially.
 
 **Validation**:
+
 - Unit tests for each generic shape
 - Round-trip: a `computed(() => a() + b())` returning `Computed<number>` is emitted as a Swift computed property of type `Double`, NOT as `Computed<Double>`
 
@@ -365,19 +373,20 @@ Handles closure capture semantics — Swift closures need `@escaping` if stored 
 
 **Scope**: extend type-mapper for union and nullable handling:
 
-| TS shape | Swift shape |
-|---|---|
-| `T | null` / `T | undefined` | `T?` (Swift Optional) |
-| `T | null | undefined` | `T?` (collapses both nullish to Optional) |
-| `'a' \| 'b' \| 'c'` (string literal union) | `enum SwiftEnum: String { case a, b, c }` |
-| `number \| string` (heterogeneous union) | `enum SwiftEnum { case number(Double), string(String) }` (Swift associated values) |
-| discriminated union (`{ type: 'a', a: number } \| { type: 'b', b: string }`) | full Swift enum with associated values per case |
+| TS shape                                                                     | Swift shape                                                                        |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------- | ----------------------------------------- |
+| `T                                                                           | null`/`T                                                                           | undefined` | `T?` (Swift Optional)                     |
+| `T                                                                           | null                                                                               | undefined` | `T?` (collapses both nullish to Optional) |
+| `'a' \| 'b' \| 'c'` (string literal union)                                   | `enum SwiftEnum: String { case a, b, c }`                                          |
+| `number \| string` (heterogeneous union)                                     | `enum SwiftEnum { case number(Double), string(String) }` (Swift associated values) |
+| discriminated union (`{ type: 'a', a: number } \| { type: 'b', b: string }`) | full Swift enum with associated values per case                                    |
 
 The discriminated-union → Swift-enum mapping is the highest-leverage piece here — Pyreon component props often use discriminated unions for variant shape (e.g. `{ kind: 'click', onClick } | { kind: 'hover', onHover }`), and Swift enums are the idiomatic native equivalent.
 
 **Deliverable**: full union/nullable mapping integrated with previous PRs.
 
 **Validation**:
+
 - Unit tests per union shape
 - Round-trip: a Pyreon component with a discriminated-union prop emits a Swift component that accepts a Swift enum
 
@@ -393,12 +402,12 @@ The discriminated-union → Swift-enum mapping is the highest-leverage piece her
 
 **Scope**: extend type-mapper for async handling:
 
-| TS shape | Swift shape |
-|---|---|
-| `Promise<T>` | `async throws -> T` (Swift async/await with throws for error handling) |
-| `Promise<void>` | `async throws -> Void` |
-| `async function` declaration | `func name() async throws -> T` |
-| `await expr` | `try await expr` |
+| TS shape                     | Swift shape                                                            |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| `Promise<T>`                 | `async throws -> T` (Swift async/await with throws for error handling) |
+| `Promise<void>`              | `async throws -> Void`                                                 |
+| `async function` declaration | `func name() async throws -> T`                                        |
+| `await expr`                 | `try await expr`                                                       |
 | `.then()` / `.catch()` chain | NOT supported — emit compile error with hint to use async/await syntax |
 
 Swift's structured concurrency (`async`/`await`/`Task`) is the closest match to JS Promises. Promise-rejection maps to Swift's `throws`. The mapper warns if TS code uses `.then()`/`.catch()` chains (rare in modern code but legal); recommends rewriting to async/await before native compile.
@@ -406,6 +415,7 @@ Swift's structured concurrency (`async`/`await`/`Task`) is the closest match to 
 **Deliverable**: async mapping integrated with previous PRs.
 
 **Validation**:
+
 - Unit tests for async patterns
 - Round-trip: an async loader function in Pyreon maps to a Swift `func loader() async throws -> Data`
 
@@ -432,6 +442,7 @@ If coverage <90%, prints per-file breakdown of what couldn't be mapped (e.g. "Bo
 **Deliverable**: a CI gate that fails the build if type-mapper coverage drops below 90% on `ui-components`.
 
 **Validation** (criterion 1 from PMTC plan):
+
 - Script runs successfully against `ui-components`
 - Reports coverage ≥90%
 - If it doesn't, the breakdown clearly identifies remaining gaps for PR 5a-5e follow-ups
@@ -474,6 +485,7 @@ CLI gains a `--emit-tokens` flag that writes the tokens file alongside generated
 **Deliverable**: `PyreonTokens.swift` that downstream PRs (7b, 7c) can reference.
 
 **Validation**:
+
 - Snapshot test: feed a known theme, assert exact Swift output
 - Round-trip: a component referencing `t.spacing.md` in the source emits Swift that references `PyreonTokens.Spacing.md`
 
@@ -490,15 +502,17 @@ CLI gains a `--emit-tokens` flag that writes the tokens file alongside generated
 **Scope**: extend the compiler to detect `styled('div')` and similar `styled()` calls in source, parse the CSS template literal, and emit a SwiftUI `ViewModifier` struct:
 
 User source:
+
 ```tsx
 const StyledButton = styled('button')`
-  background: ${t => t.color.primary};
-  padding: ${t => t.spacing.md};
+  background: ${(t) => t.color.primary};
+  padding: ${(t) => t.spacing.md};
   border-radius: 8px;
 `
 ```
 
 Emitted Swift:
+
 ```swift
 struct StyledButtonModifier: ViewModifier {
   func body(content: Content) -> some View {
@@ -518,6 +532,7 @@ CSS-property → SwiftUI-modifier mapping table (start with the ~20 most-common 
 **Deliverable**: `styled()` calls produce idiomatic SwiftUI `ViewModifier` chains.
 
 **Validation**:
+
 - Unit tests per CSS-property mapping
 - Round-trip: a styled component compiles + builds in the Xcode project from PR 3
 
@@ -534,6 +549,7 @@ CSS-property → SwiftUI-modifier mapping table (start with the ~20 most-common 
 **Scope**: extend the compiler to detect `rocketstyle(component).config({ dimensions: { state, size, variant } }).theme(...)` chains. Emit a Swift `ViewModifier` that takes the dimension props as enum cases and applies the corresponding theme:
 
 User source:
+
 ```tsx
 const Button = rocketstyle('button')
   .config({ dimensions: { state: 'state', size: 'size' } })
@@ -544,6 +560,7 @@ const Button = rocketstyle('button')
 ```
 
 Emitted Swift:
+
 ```swift
 enum ButtonState: String { case primary, secondary }
 enum ButtonSize: String { case medium, small }
@@ -567,6 +584,7 @@ Handles pseudo-state dimensions (`hover`, `active`, `focus`, `pressed`, `disable
 **Deliverable**: rocketstyle components compile to Swift `ViewModifier` + enum-typed dimension props.
 
 **Validation**:
+
 - Unit tests for dimension permutations
 - Round-trip: a `<Button state="primary" size="medium">` use site emits the correct `.modifier(ButtonModifier(state: .primary, size: .medium))` call
 
@@ -593,6 +611,7 @@ Excludes platform-native conventions from the comparison: cursor (iOS has none),
 **Deliverable**: screenshot-diff CI gate that proves rocketstyle output renders visually identical to web (within tolerance).
 
 **Validation** (criterion 3 from PMTC plan):
+
 - Web screenshot generated successfully
 - iOS screenshot generated successfully
 - Pixel diff <5% on the button region
@@ -608,15 +627,15 @@ Excludes platform-native conventions from the comparison: cursor (iOS has none),
 
 ## Phase 0 completion checklist
 
-| # | Checkpoint | Closed by | Status |
-|---|---|---|---|
-| 1 | Type mapper coverage ≥90% on `ui-components` | PRs 5a-5e + 6 | open |
-| 2 | Counter app on iOS simulator: button-driven `signal.set` works | PRs 1-4 | open |
-| 3 | rocketstyle button visually identical web vs iOS (<5% diff) | PRs 7a-7c + 8 | open |
+| #   | Checkpoint                                                     | Closed by     | Status |
+| --- | -------------------------------------------------------------- | ------------- | ------ |
+| 1   | Type mapper coverage ≥90% on `ui-components`                   | PRs 5a-5e + 6 | open   |
+| 2   | Counter app on iOS simulator: button-driven `signal.set` works | PRs 1-4       | open   |
+| 3   | rocketstyle button visually identical web vs iOS (<5% diff)    | PRs 7a-7c + 8 | open   |
 
 When all three checkpoints close, Phase 0 is **complete and validated**. The next decision: does Phase 1 (iOS MVP — 10 widget bindings, full styler emitter, basic Pyreon framework component compilation) get staffed?
 
-That decision is **NOT made by the engineering team**. The PMTC plan says: *"Past Phase 0, additional checkpoints per phase. These three are the minimum bar for 'PMTC is real.'"* — i.e. Phase 1 staffing is a separate strategic decision after Phase 0 evidence.
+That decision is **NOT made by the engineering team**. The PMTC plan says: _"Past Phase 0, additional checkpoints per phase. These three are the minimum bar for 'PMTC is real.'"_ — i.e. Phase 1 staffing is a separate strategic decision after Phase 0 evidence.
 
 ---
 

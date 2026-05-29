@@ -79,8 +79,7 @@ export const ChannelButton = styled('button')<{ $active?: boolean }>`
   width: 100%;
 
   &:hover {
-    background: ${(p) =>
-      p.$active ? t(p).color.system.light[100] : t(p).color.system.light[50]};
+    background: ${(p) => (p.$active ? t(p).color.system.light[100] : t(p).color.system.light[50])};
   }
 `
 
@@ -270,8 +269,7 @@ export const MessageTime = styled('span')`
 
 export const MessageBody = styled('div')<{ $own?: boolean }>`
   padding: 8px 12px;
-  background: ${(p) =>
-    p.$own ? t(p).color.system.primary[100] : t(p).color.system.light.base};
+  background: ${(p) => (p.$own ? t(p).color.system.primary[100] : t(p).color.system.light.base)};
   color: ${(p) => t(p).color.system.dark[800]};
   border: 1px solid ${(p) => t(p).color.system.base[200]};
   border-radius: ${(p) => t(p).borderRadius.medium}px;

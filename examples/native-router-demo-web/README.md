@@ -24,9 +24,9 @@ bun run preview   # serve dist/ via vite preview
 
 ## Source structure
 
-| File | Purpose |
-|---|---|
-| `index.html` | Bootstrap shell — mounts `#app` + loads `entry-client.tsx`. |
+| File                   | Purpose                                                                     |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `index.html`           | Bootstrap shell — mounts `#app` + loads `entry-client.tsx`.                 |
 | `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call; imports `RouterApp` from the iOS sibling. |
 
 The actual `RouterApp.tsx` source lives at [`../native-router-demo-ios/src/RouterApp.tsx`](../native-router-demo-ios/src/RouterApp.tsx).

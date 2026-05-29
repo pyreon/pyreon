@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — code snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/code — Reactive code editor — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages (peer: @pyreon/runtime-dom). \`@pyreon/runtime-dom\` is required in consumer apps because \`<CodeEditor>\` JSX emits \`_tpl()\` / \`_bind()\` calls."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/code — Reactive code editor — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages (peer: @pyreon/runtime-dom). \`@pyreon/runtime-dom\` is required in consumer apps because \`<CodeEditor>\` JSX emits \`_tpl()\` / \`_bind()\` calls."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

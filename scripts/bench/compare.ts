@@ -51,7 +51,7 @@ const current = loadResults(currentPath)
 // ─── Comparison ─────────────────────────────────────────────────────────────
 
 const WARN_THRESHOLD = 0.05 // 5%
-const FAIL_THRESHOLD = 0.20 // 20%
+const FAIL_THRESHOLD = 0.2 // 20%
 
 interface ComparisonRow {
   name: string
@@ -67,7 +67,10 @@ function formatValue(metric: BenchMetric): string {
   return `${metric.mean.toFixed(3)}${metric.unit}`
 }
 
-function computeDelta(baselineVal: number, currentVal: number): { pct: number; label: string; status: string } {
+function computeDelta(
+  baselineVal: number,
+  currentVal: number,
+): { pct: number; label: string; status: string } {
   if (baselineVal === 0) return { pct: 0, label: 'N/A', status: 'pass' }
 
   const pct = (currentVal - baselineVal) / baselineVal
@@ -167,7 +170,9 @@ lines.push('| Benchmark | Baseline | Current | Delta | Status |')
 lines.push('|-----------|----------|---------|-------|--------|')
 
 for (const row of rows) {
-  lines.push(`| ${row.name} | ${row.baselineValue} | ${row.currentValue} | ${row.delta} | ${row.status} |`)
+  lines.push(
+    `| ${row.name} | ${row.baselineValue} | ${row.currentValue} | ${row.delta} | ${row.status} |`,
+  )
 }
 
 lines.push('')

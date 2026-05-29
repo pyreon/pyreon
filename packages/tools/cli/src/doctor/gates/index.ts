@@ -7,48 +7,15 @@
  * for standalone use (the existing `scripts/check-*.ts` wrappers do this).
  */
 
-export {
-  runAuditLeakClassesGate,
-  type AuditLeakClassesGateOptions,
-} from './audit-leak-classes'
-export {
-  runAuditTypesGate,
-  type AuditTypesGateOptions,
-} from './audit-types'
-export {
-  runBundleBudgetsGate,
-  type BundleBudgetsGateOptions,
-} from './bundle-budgets'
-export {
-  runDistributionGate,
-  type DistributionGateOptions,
-} from './distribution'
-export {
-  runDocClaimsGate,
-  type DocClaimsGateOptions,
-} from './doc-claims'
-export {
-  runReactPatternsGate,
-  type ReactPatternsGateOptions,
-} from './react-patterns'
-export {
-  runPyreonPatternsGate,
-  type PyreonPatternsGateOptions,
-} from './pyreon-patterns'
-export {
-  runAuditTestsGate,
-  type AuditTestsGateOptions,
-} from './audit-tests'
-export {
-  runIslandsAuditGate,
-  type IslandsAuditGateOptions,
-} from './islands-audit'
-export {
-  runSsgAuditGate,
-  type SsgAuditGateOptions,
-} from './ssg-audit'
-export {
-  runCheckDedupGate,
-  type CheckDedupGateOptions,
-} from './check-dedup'
+export { runAuditLeakClassesGate, type AuditLeakClassesGateOptions } from './audit-leak-classes'
+export { runAuditTypesGate, type AuditTypesGateOptions } from './audit-types'
+export { runBundleBudgetsGate, type BundleBudgetsGateOptions } from './bundle-budgets'
+export { runDistributionGate, type DistributionGateOptions } from './distribution'
+export { runDocClaimsGate, type DocClaimsGateOptions } from './doc-claims'
+export { runReactPatternsGate, type ReactPatternsGateOptions } from './react-patterns'
+export { runPyreonPatternsGate, type PyreonPatternsGateOptions } from './pyreon-patterns'
+export { runAuditTestsGate, type AuditTestsGateOptions } from './audit-tests'
+export { runIslandsAuditGate, type IslandsAuditGateOptions } from './islands-audit'
+export { runSsgAuditGate, type SsgAuditGateOptions } from './ssg-audit'
+export { runCheckDedupGate, type CheckDedupGateOptions } from './check-dedup'
 export { runLintGate, type LintGateOptions } from './lint'

@@ -173,9 +173,7 @@ function generateNonce(): string {
   // Convert to base64 using btoa
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
-  return typeof btoa === 'function'
-    ? btoa(binary)
-    : Buffer.from(bytes).toString('base64')
+  return typeof btoa === 'function' ? btoa(binary) : Buffer.from(bytes).toString('base64')
 }
 
 /**

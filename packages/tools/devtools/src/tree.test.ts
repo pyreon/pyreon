@@ -38,9 +38,7 @@ describe('getRoots', () => {
   })
 
   it('returns empty array when all entries have parents', () => {
-    const noRoots: SerializedEntry[] = [
-      { id: 'a', name: 'A', parentId: 'x', childIds: [] },
-    ]
+    const noRoots: SerializedEntry[] = [{ id: 'a', name: 'A', parentId: 'x', childIds: [] }]
     expect(getRoots(noRoots)).toHaveLength(0)
   })
 })

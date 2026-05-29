@@ -72,9 +72,7 @@ export function startClient(options: StartClientOptions) {
   // missing the constant in a real Vite build is impossible because the
   // plugin's `config()` hook always declares it via `define`.
   const base =
-    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/'
-      ? __ZERO_BASE__
-      : undefined
+    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/' ? __ZERO_BASE__ : undefined
 
   const { App, router } = createApp({
     routes: options.routes,
@@ -87,12 +85,9 @@ export function startClient(options: StartClientOptions) {
   // If the server embedded loader data, hydrate it BEFORE mounting so the
   // initial render sees the same data the SSR pass produced. This avoids
   // hydration mismatches and eliminates the flash-of-fallback.
-  const ssrLoaderData = (window as unknown as Record<string, unknown>)
-    .__PYREON_LOADER_DATA__
+  const ssrLoaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   const hasSSRLoaderData =
-    ssrLoaderData !== undefined &&
-    typeof ssrLoaderData === 'object' &&
-    ssrLoaderData !== null
+    ssrLoaderData !== undefined && typeof ssrLoaderData === 'object' && ssrLoaderData !== null
   if (hasSSRLoaderData) {
     // `router` is the public Router<> type; hydrateLoaderData uses the
     // internal RouterInstance shape. The cast is safe because they're
@@ -141,9 +136,7 @@ export function startClient(options: StartClientOptions) {
     // centralised in the router.
     const internalCurrentPath = (router as unknown as { _currentPath?: () => string })._currentPath
     const currentPath =
-      typeof internalCurrentPath === 'function'
-        ? internalCurrentPath()
-        : router.currentRoute().path
+      typeof internalCurrentPath === 'function' ? internalCurrentPath() : router.currentRoute().path
     router.replace(currentPath).catch((err: unknown) => {
       // Loader failures are already reported via the route's error handling
       // pipeline. We swallow the promise rejection here to prevent unhandled
@@ -152,11 +145,7 @@ export function startClient(options: StartClientOptions) {
       // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
       if (import.meta.env?.DEV === true) {
         // oxlint-disable-next-line no-console
-        console.warn(
-          '[Pyreon] Initial loader run failed for route:',
-          currentPath,
-          err,
-        )
+        console.warn('[Pyreon] Initial loader run failed for route:', currentPath, err)
       }
     })
   }

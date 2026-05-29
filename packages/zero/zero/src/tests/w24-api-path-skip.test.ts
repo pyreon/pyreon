@@ -34,9 +34,7 @@ describe('W24 — Zero dev 404 handler skips /api/* paths', () => {
 
     // The path-skip line must be inside the 404 handler block,
     // alongside the existing static-asset + internal-path skips.
-    expect(source).toContain(
-      "if (pathname.startsWith(\"/api/\")) return next()",
-    )
+    expect(source).toContain('if (pathname.startsWith("/api/")) return next()')
 
     // Companion: the W24 comment must remain so the rationale survives
     // future refactors.
@@ -56,10 +54,7 @@ describe('W24 — Zero dev 404 handler skips /api/* paths', () => {
     // The path-skip must appear AFTER the handler-start comment AND
     // BEFORE the handle404() call.
     const handle404Call = source.indexOf('handle404(', handlerStart)
-    const apiSkip = source.indexOf(
-      "if (pathname.startsWith(\"/api/\")) return next()",
-      handlerStart,
-    )
+    const apiSkip = source.indexOf('if (pathname.startsWith("/api/")) return next()', handlerStart)
     expect(apiSkip).toBeGreaterThan(handlerStart)
     expect(apiSkip).toBeLessThan(handle404Call)
   })

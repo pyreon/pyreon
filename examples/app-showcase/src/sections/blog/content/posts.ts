@@ -68,12 +68,12 @@ const RAW: Omit<Post, 'readMinutes'>[] = [
       {
         kind: 'list',
         items: [
-          'New visual primitive that has no dimension axes (just static styling) → `styled(\'tag\')`',
+          "New visual primitive that has no dimension axes (just static styling) → `styled('tag')`",
           'Existing rocketstyle component you want to tweak → extend the chain: `Component.attrs(...).theme(...)`',
           'Brand-new design-system component with state/size/variant axes → start with `el`/`txt`/`list` and build a rocketstyle chain',
         ],
       },
-      { kind: 'h3', text: 'Don\'t mix them in one component' },
+      { kind: 'h3', text: "Don't mix them in one component" },
       {
         kind: 'p',
         text: 'A `styled(Card)` wrapper around a rocketstyle Card defeats the purpose: rocketstyle generates one set of classes, styler generates another, and you lose the typed `t` parameter on the inner `.theme()` callback.',
@@ -111,7 +111,7 @@ const RAW: Omit<Post, 'readMinutes'>[] = [
         kind: 'p',
         text: 'Each route file can export `default` (the page), `loader` (data fetch), `meta` (head tags), `guard` (navigation guard), and `renderMode` (`ssr` | `ssg` | `spa`). The fs-router scans these at build time so the router emits `lazy()` for routes with no metadata and a single namespace import for routes that need it. No `_pick` runtime indirection, no `INEFFECTIVE_DYNAMIC_IMPORT` warnings.',
       },
-      { kind: 'h3', text: 'Helpers don\'t belong under routes/' },
+      { kind: 'h3', text: "Helpers don't belong under routes/" },
       {
         kind: 'p',
         text: 'Anything you put under `src/routes/` becomes a route — including helpers like `TodoList.tsx` or `store/todos.ts`. The convention is to keep route files thin and put section helpers under `src/sections/<section>/`. The route file just imports them.',
@@ -122,7 +122,7 @@ const RAW: Omit<Post, 'readMinutes'>[] = [
     slug: 'rx-pipe-filters',
     title: 'Filtering 10,000 items with rx.pipe',
     excerpt:
-      "Hand-rolled filter chains read fine but re-derive everything on every change. rx.pipe gives you a single Computed that only re-runs when its inputs actually change.",
+      'Hand-rolled filter chains read fine but re-derive everything on every change. rx.pipe gives you a single Computed that only re-runs when its inputs actually change.',
     date: '2026-03-14',
     author: 'Vít Bokisch',
     tags: ['rx', 'reactivity'],
@@ -143,7 +143,7 @@ const RAW: Omit<Post, 'readMinutes'>[] = [
       },
       {
         kind: 'p',
-        text: 'The result is `Computed<Todo[]>`. Read it as `filtered()` from a render scope and Pyreon\'s compiler tracks the dependency. Update `searchQuery`, only the filter re-runs and the `<For>` reconciles the diff. Update an unrelated signal, the filter doesn\'t run at all.',
+        text: "The result is `Computed<Todo[]>`. Read it as `filtered()` from a render scope and Pyreon's compiler tracks the dependency. Update `searchQuery`, only the filter re-runs and the `<For>` reconciles the diff. Update an unrelated signal, the filter doesn't run at all.",
       },
     ],
   },

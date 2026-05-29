@@ -33,9 +33,7 @@ function update(nameFilter?: string): void {
     process.exit(1)
   }
 
-  const toUpdate = nameFilter
-    ? files.filter((f) => f === `${nameFilter}.png`)
-    : files
+  const toUpdate = nameFilter ? files.filter((f) => f === `${nameFilter}.png`) : files
 
   if (toUpdate.length === 0 && nameFilter) {
     console.error(`[visual-test] Screenshot "${nameFilter}" not found in current/.`)

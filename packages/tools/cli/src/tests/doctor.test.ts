@@ -111,9 +111,7 @@ describe('doctor() end-to-end', () => {
     const paths = parsed.findings.map(
       (f: { location?: { relPath?: string } }) => f.location?.relPath ?? '',
     )
-    expect(paths.every((p: string) => p.includes('packages/core/app/'))).toBe(
-      true,
-    )
+    expect(paths.every((p: string) => p.includes('packages/core/app/'))).toBe(true)
     expect(paths.some((p: string) => p.includes('examples/'))).toBe(false)
     expect(paths.some((p: string) => p.includes('react-compat'))).toBe(false)
   })

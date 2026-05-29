@@ -43,7 +43,12 @@ const median = (xs: number[]): number => {
 }
 const min = (xs: number[]): number => xs.reduce((a, b) => (a < b ? a : b), Infinity)
 
-const runBench = (name: string, iterations: number, fn: (state: unknown) => void, state: unknown) => {
+const runBench = (
+  name: string,
+  iterations: number,
+  fn: (state: unknown) => void,
+  state: unknown,
+) => {
   for (let w = 0; w < WARMUP; w++) {
     for (let i = 0; i < iterations; i++) fn(state)
   }
@@ -60,12 +65,46 @@ const runBench = (name: string, iterations: number, fn: (state: unknown) => void
 // styler — HTML_PROPS Set vs null-prototype object lookup
 // ============================================================================
 const HTML_PROPS_LIST = [
-  'children', 'className', 'class', 'style', 'id', 'role', 'tabIndex',
-  'onClick', 'onMouseEnter', 'onFocus', 'onBlur', 'onInput', 'onChange',
-  'value', 'type', 'name', 'href', 'src', 'alt', 'title', 'disabled',
-  'readOnly', 'placeholder', 'autoFocus', 'autoComplete', 'maxLength',
-  'minLength', 'min', 'max', 'step', 'pattern', 'required', 'multiple',
-  'accept', 'action', 'method', 'target', 'rel', 'download', 'hidden',
+  'children',
+  'className',
+  'class',
+  'style',
+  'id',
+  'role',
+  'tabIndex',
+  'onClick',
+  'onMouseEnter',
+  'onFocus',
+  'onBlur',
+  'onInput',
+  'onChange',
+  'value',
+  'type',
+  'name',
+  'href',
+  'src',
+  'alt',
+  'title',
+  'disabled',
+  'readOnly',
+  'placeholder',
+  'autoFocus',
+  'autoComplete',
+  'maxLength',
+  'minLength',
+  'min',
+  'max',
+  'step',
+  'pattern',
+  'required',
+  'multiple',
+  'accept',
+  'action',
+  'method',
+  'target',
+  'rel',
+  'download',
+  'hidden',
 ] as const
 
 const HTML_PROPS_SET = new Set<string>(HTML_PROPS_LIST)
@@ -196,8 +235,7 @@ const shallowEqualAfter = (
 // ============================================================================
 // unistyle — alignContent isReverted: array.includes vs ===
 // ============================================================================
-const isRevertedBefore = (direction: string) =>
-  ['inline', 'reverseInline'].includes(direction)
+const isRevertedBefore = (direction: string) => ['inline', 'reverseInline'].includes(direction)
 
 const isRevertedAfter = (direction: string) =>
   direction === 'inline' || direction === 'reverseInline'
@@ -217,19 +255,13 @@ const KEYWORDS: Record<string, true> = {
   readOnly: true,
 }
 
-const pickStyledAttrsBefore = (
-  props: Record<string, unknown>,
-  keywords: Record<string, true>,
-) =>
+const pickStyledAttrsBefore = (props: Record<string, unknown>, keywords: Record<string, true>) =>
   Object.keys(props).reduce<Record<string, unknown>>((acc, key) => {
     if (keywords[key] && props[key]) acc[key] = props[key]
     return acc
   }, {})
 
-const pickStyledAttrsAfter = (
-  props: Record<string, unknown>,
-  keywords: Record<string, true>,
-) => {
+const pickStyledAttrsAfter = (props: Record<string, unknown>, keywords: Record<string, true>) => {
   const result: Record<string, unknown> = {}
   for (const key in props) {
     if (keywords[key] && props[key]) result[key] = props[key]
@@ -352,8 +384,12 @@ const benches: Bench[] = [
       const rule = '.a{color:red;}.b{font:12px;}.c{padding:5px;}.d{margin:10px;}'
       return rule + rule + rule.slice(0, 100)
     },
-    before: (s) => { splitRulesBefore(s as string) },
-    after: (s) => { splitRulesAfter(s as string) },
+    before: (s) => {
+      splitRulesBefore(s as string)
+    },
+    after: (s) => {
+      splitRulesAfter(s as string)
+    },
     upstream: 'styler c483cabc',
   },
   {
@@ -377,16 +413,24 @@ const benches: Bench[] = [
     name: 'unistyle.createMediaQueries (5-breakpoint theme)',
     iterations: 50_000,
     setup: () => ({ xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 }),
-    before: (s) => { createMediaQueriesBefore(s as Record<string, number>, 16) },
-    after: (s) => { createMediaQueriesAfter(s as Record<string, number>, 16) },
+    before: (s) => {
+      createMediaQueriesBefore(s as Record<string, number>, 16)
+    },
+    after: (s) => {
+      createMediaQueriesAfter(s as Record<string, number>, 16)
+    },
     upstream: 'unistyle e573e6c4: +15.9%',
   },
   {
     name: 'unistyle.shouldNormalize (5-key static — most-common miss case)',
     iterations: 500_000,
     setup: () => ({ color: 'red', fontSize: 14, padding: '5px', margin: '10px', display: 'flex' }),
-    before: (s) => { shouldNormalizeBefore(s as Record<string, any>) },
-    after: (s) => { shouldNormalizeAfter(s as Record<string, any>) },
+    before: (s) => {
+      shouldNormalizeBefore(s as Record<string, any>)
+    },
+    after: (s) => {
+      shouldNormalizeAfter(s as Record<string, any>)
+    },
     upstream: 'unistyle e573e6c4: +20.3%',
   },
   {
@@ -397,8 +441,12 @@ const benches: Bench[] = [
       const b = { color: 'red', font: 14, pad: 5, margin: 10, display: 'flex' }
       return [a, b]
     },
-    before: ([a, b]: any) => { shallowEqualBefore(a, b) },
-    after: ([a, b]: any) => { shallowEqualAfter(a, b) },
+    before: ([a, b]: any) => {
+      shallowEqualBefore(a, b)
+    },
+    after: ([a, b]: any) => {
+      shallowEqualAfter(a, b)
+    },
     upstream: 'unistyle e573e6c4: +4.0%',
   },
   {
@@ -428,19 +476,35 @@ const benches: Bench[] = [
       href: '#',
       title: 'tip',
     }),
-    before: (s) => { pickStyledAttrsBefore(s as Record<string, unknown>, KEYWORDS) },
-    after: (s) => { pickStyledAttrsAfter(s as Record<string, unknown>, KEYWORDS) },
+    before: (s) => {
+      pickStyledAttrsBefore(s as Record<string, unknown>, KEYWORDS)
+    },
+    after: (s) => {
+      pickStyledAttrsAfter(s as Record<string, unknown>, KEYWORDS)
+    },
     upstream: 'rocketstyle 00fdadc2',
   },
   {
     name: 'attrs.removeUndefinedProps (10-prop input, 3 undefined)',
     iterations: 200_000,
     setup: () => ({
-      a: 1, b: 'x', c: undefined, d: { nested: 1 }, e: undefined,
-      f: 0, g: false, h: undefined, i: 'y', j: null,
+      a: 1,
+      b: 'x',
+      c: undefined,
+      d: { nested: 1 },
+      e: undefined,
+      f: 0,
+      g: false,
+      h: undefined,
+      i: 'y',
+      j: null,
     }),
-    before: (s) => { removeUndefinedPropsBefore(s as Record<string, unknown>) },
-    after: (s) => { removeUndefinedPropsAfter(s as Record<string, unknown>) },
+    before: (s) => {
+      removeUndefinedPropsBefore(s as Record<string, unknown>)
+    },
+    after: (s) => {
+      removeUndefinedPropsAfter(s as Record<string, unknown>)
+    },
     upstream: 'attrs b003de47',
   },
   {
@@ -468,8 +532,12 @@ const benches: Bench[] = [
     name: 'hooks.useBreakpoint buildSortedBpTuples (5-breakpoint input)',
     iterations: 500_000,
     setup: () => ({ xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 }),
-    before: (s) => { buildSortedBpTuplesBefore(s as Record<string, number>) },
-    after: (s) => { buildSortedBpTuplesAfter(s as Record<string, number>) },
+    before: (s) => {
+      buildSortedBpTuplesBefore(s as Record<string, number>)
+    },
+    after: (s) => {
+      buildSortedBpTuplesAfter(s as Record<string, number>)
+    },
     upstream: 'hooks 4549648a: +80.3%',
   },
 ]

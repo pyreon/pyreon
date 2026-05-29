@@ -109,11 +109,7 @@ describe('parse-theme — 3-level nested objects', () => {
       export default theme
     `)
     const color = ir.groups[0]
-    expect(color?.entries.map((e) => e.name)).toEqual([
-      'system_light',
-      'system_dark',
-      'primary',
-    ])
+    expect(color?.entries.map((e) => e.name)).toEqual(['system_light', 'system_dark', 'primary'])
     expect(warnings.length).toBeGreaterThan(0)
     expect(warnings[0]).toContain('flattened color.system')
   })
@@ -129,11 +125,7 @@ describe('parse-theme — 3-level nested objects', () => {
       export default theme
     `)
     const z = ir.groups[0]
-    expect(z?.entries.map((e) => e.name)).toEqual([
-      'base',
-      'popover_content',
-      'popover_overlay',
-    ])
+    expect(z?.entries.map((e) => e.name)).toEqual(['base', 'popover_content', 'popover_overlay'])
   })
 
   it('handles 4-level nesting (color.system.light.base → color.system_light_base)', () => {
@@ -148,10 +140,7 @@ describe('parse-theme — 3-level nested objects', () => {
       export default theme
     `)
     const color = ir.groups[0]
-    expect(color?.entries.map((e) => e.name)).toEqual([
-      'system_light_base',
-      'system_light_900',
-    ])
+    expect(color?.entries.map((e) => e.name)).toEqual(['system_light_base', 'system_light_900'])
   })
 })
 

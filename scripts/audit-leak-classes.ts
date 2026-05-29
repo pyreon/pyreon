@@ -52,18 +52,16 @@ import { fileURLToPath } from 'node:url'
 // Bun exposes `import.meta.dir` directly; vitest's Node runtime does
 // not declare it in the standard ImportMeta type. Cast through `any`
 // here and fall through to `import.meta.url` resolution under Node.
-const HERE
-  = (import.meta as { dir?: string }).dir
-    ?? dirname(fileURLToPath(import.meta.url))
+const HERE = (import.meta as { dir?: string }).dir ?? dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '..')
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type DetectorId
-  = | 'unbounded-cache'
-    | 'unbalanced-listeners'
-    | 'position-based-pop'
-    | 'promise-race-no-clear'
+export type DetectorId =
+  | 'unbounded-cache'
+  | 'unbalanced-listeners'
+  | 'position-based-pop'
+  | 'promise-race-no-clear'
 
 export interface Finding {
   detector: DetectorId
@@ -103,8 +101,7 @@ function walkSourceFiles(root: string): string[] {
     let entries: string[]
     try {
       entries = readdirSync(dir)
-    }
-    catch {
+    } catch {
       return
     }
     for (const name of entries) {
@@ -113,16 +110,14 @@ function walkSourceFiles(root: string): string[] {
       let st
       try {
         st = statSync(full)
-      }
-      catch {
+      } catch {
         continue
       }
       if (st.isDirectory()) {
         recurse(full)
-      }
-      else if (
-        (full.endsWith('.ts') || full.endsWith('.tsx'))
-        && !SKIP_FILE_SUFFIXES.some((s) => full.endsWith(s))
+      } else if (
+        (full.endsWith('.ts') || full.endsWith('.tsx')) &&
+        !SKIP_FILE_SUFFIXES.some((s) => full.endsWith(s))
       ) {
         out.push(full)
       }
@@ -164,7 +159,8 @@ export function detectUnboundedCache(source: string, filePath: string): Finding[
   // This excludes local declarations inside function bodies (which are
   // GC-safe — they die with their function scope). The `^` anchor with
   // `m` flag requires the declaration to start at column 0.
-  const declRe = /^(?:export\s+)?(?:const|let)\s+(\w+)\s*(?::\s*[^=]+)?=\s*new\s+(Map|Set|WeakMap|WeakSet)\b/gm
+  const declRe =
+    /^(?:export\s+)?(?:const|let)\s+(\w+)\s*(?::\s*[^=]+)?=\s*new\s+(Map|Set|WeakMap|WeakSet)\b/gm
   let match: RegExpExecArray | null
   while ((match = declRe.exec(source)) !== null) {
     const varName = match[1]!
@@ -186,8 +182,7 @@ export function detectUnboundedCache(source: string, filePath: string): Finding[
         file: filePath,
         line: lineOf(source, declOffset),
         leakClass: 'C',
-        message:
-          `Module-level \`${collection}\` "${varName}" has ${writes} write(s) but no \`.delete()\` / \`.clear()\` in same file — unbounded growth risk. Cross-file eviction paths invisible to scan (manual triage).`,
+        message: `Module-level \`${collection}\` "${varName}" has ${writes} write(s) but no \`.delete()\` / \`.clear()\` in same file — unbounded growth risk. Cross-file eviction paths invisible to scan (manual triage).`,
         context: snippet(source, declOffset),
       })
     }
@@ -214,8 +209,7 @@ export function detectUnbalancedListeners(source: string, filePath: string): Fin
       file: filePath,
       line: 1,
       leakClass: 'D',
-      message:
-        `${adds} addEventListener call(s) vs ${removes} removeEventListener — possible Class D listener pile-up. Verify each registration has a paired cleanup or refcount guard.`,
+      message: `${adds} addEventListener call(s) vs ${removes} removeEventListener — possible Class D listener pile-up. Verify each registration has a paired cleanup or refcount guard.`,
       context: `add=${adds} remove=${removes}`,
     },
   ]
@@ -238,7 +232,8 @@ export function detectPositionBasedPop(source: string, filePath: string): Findin
   // Module-level array-typed declaration (column-0 anchor — local
   // arrays inside function bodies are GC-safe). Match either `: T[] = []`
   // or `: Array<T> = []` or generic `= []` with no type annotation.
-  const declRe = /^(?:export\s+)?(?:const|let)\s+(\w+)\s*(?::\s*(?:[\w]+\[\]|Array<[^>]+>)\s*)?=\s*\[\s*\]/gm
+  const declRe =
+    /^(?:export\s+)?(?:const|let)\s+(\w+)\s*(?::\s*(?:[\w]+\[\]|Array<[^>]+>)\s*)?=\s*\[\s*\]/gm
   let match: RegExpExecArray | null
   while ((match = declRe.exec(source)) !== null) {
     const varName = match[1]!
@@ -252,8 +247,7 @@ export function detectPositionBasedPop(source: string, filePath: string): Findin
       file: filePath,
       line: lineOf(source, popMatch.index),
       leakClass: 'A',
-      message:
-        `Module-level array "${varName}" uses \`.pop()\` — Class A position-based-cleanup risk. Verify removal order is strictly LIFO across reactive boundaries. If not, switch to identity-based removal: \`stack.splice(stack.lastIndexOf(frame), 1)\`.`,
+      message: `Module-level array "${varName}" uses \`.pop()\` — Class A position-based-cleanup risk. Verify removal order is strictly LIFO across reactive boundaries. If not, switch to identity-based removal: \`stack.splice(stack.lastIndexOf(frame), 1)\`.`,
       context: snippet(source, popMatch.index),
     })
   }
@@ -295,8 +289,7 @@ export function detectPromiseRaceNoClear(source: string, filePath: string): Find
       file: filePath,
       line: lineOf(source, offset),
       leakClass: 'I',
-      message:
-        `\`Promise.race\` with a \`setTimeout\` rejection branch — no \`clearTimeout\` found in nearby finally block. Capture the timer id and clear it on the success path. Mirror of \`pyreon/promise-race-needs-cleartimeout\` lint rule.`,
+      message: `\`Promise.race\` with a \`setTimeout\` rejection branch — no \`clearTimeout\` found in nearby finally block. Capture the timer id and clear it on the success path. Mirror of \`pyreon/promise-race-needs-cleartimeout\` lint rule.`,
       context: snippet(source, offset),
     })
   }
@@ -331,8 +324,7 @@ function findPackageSrcDirs(filter?: string): string[] {
     const categoryDir = join(packagesRoot, category)
     try {
       if (!statSync(categoryDir).isDirectory()) continue
-    }
-    catch {
+    } catch {
       continue
     }
     for (const pkg of readdirSync(categoryDir)) {
@@ -340,8 +332,7 @@ function findPackageSrcDirs(filter?: string): string[] {
       try {
         const stat = statSync(pkgDir)
         if (!stat.isDirectory()) continue
-      }
-      catch {
+      } catch {
         continue
       }
       const srcDir = join(pkgDir, 'src')
@@ -350,8 +341,7 @@ function findPackageSrcDirs(filter?: string): string[] {
           if (filter && !`@pyreon/${pkg}`.includes(filter) && !pkg.includes(filter)) continue
           dirs.push(srcDir)
         }
-      }
-      catch {
+      } catch {
         continue
       }
     }
@@ -368,81 +358,74 @@ function findPackageSrcDirs(filter?: string): string[] {
 
 if (!import.meta.main) {
   // Imported as a module — skip the CLI driver.
-}
-else {
-const args = process.argv.slice(2)
-const jsonMode = args.includes('--json')
-const detectorArg = args.find((a) => a.startsWith('--detector='))
-const onlyDetector = detectorArg
-  ? (detectorArg.slice('--detector='.length) as DetectorId)
-  : undefined
-const packageFilter = args.find((a) => !a.startsWith('--'))
+} else {
+  const args = process.argv.slice(2)
+  const jsonMode = args.includes('--json')
+  const detectorArg = args.find((a) => a.startsWith('--detector='))
+  const onlyDetector = detectorArg
+    ? (detectorArg.slice('--detector='.length) as DetectorId)
+    : undefined
+  const packageFilter = args.find((a) => !a.startsWith('--'))
 
-if (onlyDetector && !(onlyDetector in DETECTORS)) {
-  // oxlint-disable-next-line no-console
-  console.error(`Unknown detector: ${onlyDetector}`)
-  // oxlint-disable-next-line no-console
-  console.error(`Valid: ${Object.keys(DETECTORS).join(', ')}`)
-  process.exit(2)
-}
-
-const srcDirs = findPackageSrcDirs(packageFilter)
-const allFindings: Finding[] = []
-for (const srcDir of srcDirs) {
-  for (const file of walkSourceFiles(srcDir)) {
-    allFindings.push(...auditFile(file, onlyDetector))
-  }
-}
-
-if (jsonMode) {
-  // oxlint-disable-next-line no-console
-  console.log(JSON.stringify({ findings: allFindings, total: allFindings.length }, null, 2))
-}
-else {
-  // oxlint-disable-next-line no-console
-  console.log(`\n=== audit-leak-classes ===\n`)
-  if (allFindings.length === 0) {
+  if (onlyDetector && !(onlyDetector in DETECTORS)) {
     // oxlint-disable-next-line no-console
-    console.log(`No findings across ${srcDirs.length} package(s).`)
+    console.error(`Unknown detector: ${onlyDetector}`)
+    // oxlint-disable-next-line no-console
+    console.error(`Valid: ${Object.keys(DETECTORS).join(', ')}`)
+    process.exit(2)
   }
-  else {
-    // Group by detector.
-    const grouped: Record<DetectorId, Finding[]> = {
-      'unbounded-cache': [],
-      'unbalanced-listeners': [],
-      'position-based-pop': [],
-      'promise-race-no-clear': [],
+
+  const srcDirs = findPackageSrcDirs(packageFilter)
+  const allFindings: Finding[] = []
+  for (const srcDir of srcDirs) {
+    for (const file of walkSourceFiles(srcDir)) {
+      allFindings.push(...auditFile(file, onlyDetector))
     }
-    for (const f of allFindings) grouped[f.detector].push(f)
-    for (const id of Object.keys(grouped) as DetectorId[]) {
-      const list = grouped[id]
-      if (list.length === 0) continue
+  }
+
+  if (jsonMode) {
+    // oxlint-disable-next-line no-console
+    console.log(JSON.stringify({ findings: allFindings, total: allFindings.length }, null, 2))
+  } else {
+    // oxlint-disable-next-line no-console
+    console.log(`\n=== audit-leak-classes ===\n`)
+    if (allFindings.length === 0) {
+      // oxlint-disable-next-line no-console
+      console.log(`No findings across ${srcDirs.length} package(s).`)
+    } else {
+      // Group by detector.
+      const grouped: Record<DetectorId, Finding[]> = {
+        'unbounded-cache': [],
+        'unbalanced-listeners': [],
+        'position-based-pop': [],
+        'promise-race-no-clear': [],
+      }
+      for (const f of allFindings) grouped[f.detector].push(f)
+      for (const id of Object.keys(grouped) as DetectorId[]) {
+        const list = grouped[id]
+        if (list.length === 0) continue
+        // oxlint-disable-next-line no-console
+        console.log(`\n--- ${id} (Class ${list[0]!.leakClass}) — ${list.length} finding(s) ---\n`)
+        for (const f of list) {
+          // oxlint-disable-next-line no-console
+          console.log(`  ${relative(REPO_ROOT, f.file)}:${f.line}`)
+          // oxlint-disable-next-line no-console
+          console.log(`    ${f.message}`)
+          // oxlint-disable-next-line no-console
+          console.log(`    ${f.context}`)
+          // oxlint-disable-next-line no-console
+          console.log()
+        }
+      }
+      // oxlint-disable-next-line no-console
+      console.log(`\nTotal: ${allFindings.length} finding(s) across ${srcDirs.length} package(s).`)
       // oxlint-disable-next-line no-console
       console.log(
-        `\n--- ${id} (Class ${list[0]!.leakClass}) — ${list.length} finding(s) ---\n`,
+        `\nNOTE: this audit is permissive — false positives expected. See\n  .claude/rules/anti-patterns.md "Memory Leak Classes" for the canonical fix shapes.`,
       )
-      for (const f of list) {
-        // oxlint-disable-next-line no-console
-        console.log(`  ${relative(REPO_ROOT, f.file)}:${f.line}`)
-        // oxlint-disable-next-line no-console
-        console.log(`    ${f.message}`)
-        // oxlint-disable-next-line no-console
-        console.log(`    ${f.context}`)
-        // oxlint-disable-next-line no-console
-        console.log()
-      }
     }
-    // oxlint-disable-next-line no-console
-    console.log(
-      `\nTotal: ${allFindings.length} finding(s) across ${srcDirs.length} package(s).`,
-    )
-    // oxlint-disable-next-line no-console
-    console.log(
-      `\nNOTE: this audit is permissive — false positives expected. See\n  .claude/rules/anti-patterns.md "Memory Leak Classes" for the canonical fix shapes.`,
-    )
   }
-}
 
-// Never exit non-zero — this is an advisory audit, not a CI gate.
-process.exit(0)
+  // Never exit non-zero — this is an advisory audit, not a CI gate.
+  process.exit(0)
 }

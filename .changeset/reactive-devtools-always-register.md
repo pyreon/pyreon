@@ -10,6 +10,7 @@ Pre-fix, `_rdRegister` and `_rdRecordFire` early-returned on `!_active`. The opt
 This change inverts the gating: `_rdRegister` and `_rdRecordFire` always run in `__DEV__` (the caller-side `process.env.NODE_ENV !== 'production'` gate is unchanged — production still tree-shakes the entire call chain to dead code). `_active` is now a READ gate: `getReactiveGraph()` / `getReactiveFires()` / `getFireSummaries()` return empty when no client has attached, so non-attached consumers see nothing even though the registry is populated.
 
 Behavioural changes:
+
 - A devtools panel opened AFTER the app mounts now sees the full live graph immediately on `activate()` — matches user expectation and fixes the empty-tabs UX.
 - `deactivateReactiveDevtools()` no longer clears the registry. The registry tracks the LIVE app state, which a subsequent `activate()` should still see (matches a "close + reopen panel" workflow). Clearing on deactivate would re-create the same bug at the close/reopen boundary.
 - Added `__resetReactiveDevtoolsForTesting()` (internal) for cross-test isolation. Production `deactivate()` only flips the read gate.
@@ -21,11 +22,11 @@ Companion change in `@pyreon/devtools`'s `scripts/verify-extension.ts`: the step
 
 Verified end-to-end with a 4-scenario controlled experiment against `examples/perf-dashboard` (958 components, 477 live signals/computeds/effects, 112 dependency edges):
 
-| Scenario                                  | Nodes | Edges | Fires | Components |
-| ----------------------------------------- | ----: | ----: | ----: | ---------: |
-| A. activate BEFORE mount                  |   477 |   112 |    16 |        958 |
-| B. activate AFTER mount (no interaction)  |   477 |   112 |    16 |        958 |
-| C. activate AFTER mount + app activity    |   477 |   112 |    22 |        958 |
-| D. pre-activate (reload workaround)       |   477 |   112 |    16 |        958 |
+| Scenario                                 | Nodes | Edges | Fires | Components |
+| ---------------------------------------- | ----: | ----: | ----: | ---------: |
+| A. activate BEFORE mount                 |   477 |   112 |    16 |        958 |
+| B. activate AFTER mount (no interaction) |   477 |   112 |    16 |        958 |
+| C. activate AFTER mount + app activity   |   477 |   112 |    22 |        958 |
+| D. pre-activate (reload workaround)      |   477 |   112 |    16 |        958 |
 
 Pre-fix every scenario was `0 / 0 / 0`. Bisect-verified by reverting the `_active` early-returns: broken state reproduces `0 / 0 / 0` across all four scenarios; restoring brings them back to the post-fix numbers above.

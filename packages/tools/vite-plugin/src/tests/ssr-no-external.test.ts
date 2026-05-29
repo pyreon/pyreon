@@ -54,7 +54,9 @@ describe('@pyreon/vite-plugin — ssr.noExternal regression lock', () => {
       arr.some((entry) => (entry instanceof RegExp ? entry.test(name) : entry === name))
 
     expect(matches('@pyreon/core'), '@pyreon/core must be noExternal').toBe(true)
-    expect(matches('@pyreon/runtime-server'), '@pyreon/runtime-server must be noExternal').toBe(true)
+    expect(matches('@pyreon/runtime-server'), '@pyreon/runtime-server must be noExternal').toBe(
+      true,
+    )
     expect(matches('@pyreon/router'), '@pyreon/router must be noExternal').toBe(true)
     expect(matches('@pyreon/head'), '@pyreon/head must be noExternal').toBe(true)
     expect(matches('@pyreon/ui-core'), '@pyreon/ui-core must be noExternal').toBe(true)

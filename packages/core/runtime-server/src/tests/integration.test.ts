@@ -1,13 +1,5 @@
 import type { ComponentFn, VNode } from '@pyreon/core'
-import {
-  createContext,
-  For,
-  h,
-  pushContext,
-  Show,
-  Suspense,
-  useContext,
-} from '@pyreon/core'
+import { createContext, For, h, pushContext, Show, Suspense, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { renderToStream, renderToString, runWithRequestContext } from '../index'
 
@@ -87,9 +79,9 @@ describe('SSR integration — renderToString', () => {
     const Broken = () => {
       throw new Error('test error')
     }
-    await expect(
-      renderToString(h(Broken as unknown as ComponentFn, null)),
-    ).rejects.toThrow('test error')
+    await expect(renderToString(h(Broken as unknown as ComponentFn, null))).rejects.toThrow(
+      'test error',
+    )
   })
 })
 
@@ -210,14 +202,7 @@ describe('SSR integration — renderToStream', () => {
     const Main = () => h('main', null, 'Content')
     const Footer = () => h('footer', null, 'Footer')
 
-    const App = () =>
-      h(
-        'div',
-        { id: 'app' },
-        h(Header, null),
-        h(Main, null),
-        h(Footer, null),
-      )
+    const App = () => h('div', { id: 'app' }, h(Header, null), h(Main, null), h(Footer, null))
 
     const stream = renderToStream(h(App, null))
     const reader = stream.getReader()

@@ -42,7 +42,8 @@ const FilteredBox = attrs({ name: 'FilteredBox', component: Element }).attrs<{
   { filter: ['mood'] },
 )
 
-const boxStyle = 'padding: 16px; background: #f3f4f6; border-radius: 8px; max-width: 320px; margin-bottom: 16px;'
+const boxStyle =
+  'padding: 16px; background: #f3f4f6; border-radius: 8px; max-width: 320px; margin-bottom: 16px;'
 
 export function AttrsCallbacksDemo() {
   const variant = signal<Variant>('primary')
@@ -50,12 +51,17 @@ export function AttrsCallbacksDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 12px">Callbacks, Priority, Filter</Title>
+      <Title size="h2" style="margin-bottom: 12px">
+        Callbacks, Priority, Filter
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        Advanced .attrs() features: compute defaults from props, lock props with priority, strip props from forwarding with filter.
+        Advanced .attrs() features: compute defaults from props, lock props with priority, strip
+        props from forwarding with filter.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">Callback attrs — variant prop</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Callback attrs — variant prop
+      </Title>
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
         <Button
           state={variant() === 'primary' ? 'primary' : 'secondary'}
@@ -80,12 +86,16 @@ export function AttrsCallbacksDemo() {
         ColorBox computes label color from variant prop
       </ColorBox>
 
-      <Title size="h3" style="margin-bottom: 12px">Priority attrs — locked direction</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Priority attrs — locked direction
+      </Title>
       <LockedDir direction="inline" style={boxStyle}>
         Tried to set direction="inline" but priority lock keeps it as "rows"
       </LockedDir>
 
-      <Title size="h3" style="margin-bottom: 12px">Filtered attrs — mood prop stripped</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Filtered attrs — mood prop stripped
+      </Title>
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
         <Button
           state={mood() === 'happy' ? 'primary' : 'secondary'}
@@ -93,10 +103,7 @@ export function AttrsCallbacksDemo() {
         >
           Happy
         </Button>
-        <Button
-          state={mood() === 'sad' ? 'primary' : 'secondary'}
-          onClick={() => mood.set('sad')}
-        >
+        <Button state={mood() === 'sad' ? 'primary' : 'secondary'} onClick={() => mood.set('sad')}>
           Sad
         </Button>
       </div>

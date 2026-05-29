@@ -99,9 +99,9 @@ describe('ssgPlugin', () => {
     })
 
     it('substitutes multiple :params', () => {
-      expect(_internal.expandUrlPattern('/users/:userId/posts/:postId', { userId: '1', postId: '2' })).toBe(
-        '/users/1/posts/2',
-      )
+      expect(
+        _internal.expandUrlPattern('/users/:userId/posts/:postId', { userId: '1', postId: '2' }),
+      ).toBe('/users/1/posts/2')
     })
 
     it('expands a catch-all :param* preserving slashes', () => {
@@ -120,9 +120,15 @@ describe('ssgPlugin', () => {
       // A single :param is ONE URL segment and becomes a dist/<path>/
       // index.html write target. An unsanitized CMS slug containing "/"
       // or "." / ".." would escape the intended structure.
-      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: 'a/b' })).toThrow(/unsafe "slug"/)
-      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '..' })).toThrow(/unsafe "slug"/)
-      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '.' })).toThrow(/unsafe "slug"/)
+      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: 'a/b' })).toThrow(
+        /unsafe "slug"/,
+      )
+      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '..' })).toThrow(
+        /unsafe "slug"/,
+      )
+      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '.' })).toThrow(
+        /unsafe "slug"/,
+      )
       expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '../../etc' })).toThrow(
         /unsafe "slug"/,
       )
@@ -499,7 +505,9 @@ describe('ssgPlugin', () => {
       // is structurally present and its contents preserved.
       const html = _internal.injectIntoTemplate(tpl, result)
       expect(html).toContain('<div id="app"><div>app</div></div>')
-      expect(html.indexOf('<div id="app">')).toBeLessThan(html.indexOf('<script>window.D=1</script>'))
+      expect(html.indexOf('<div id="app">')).toBeLessThan(
+        html.indexOf('<script>window.D=1</script>'),
+      )
     })
 
     it('falls back to before-</body> for loader script when no placeholder', () => {
@@ -705,9 +713,7 @@ describe('ssgPlugin', () => {
     })
 
     it('emits trailing newline (POSIX text-file convention)', () => {
-      const out = _internal.renderErrorArtifact([
-        { path: '/x', error: new Error('y') },
-      ])
+      const out = _internal.renderErrorArtifact([{ path: '/x', error: new Error('y') }])
       expect(out.endsWith('\n')).toBe(true)
     })
 
@@ -830,9 +836,7 @@ describe('ssgPlugin', () => {
       )
       expect(result).toEqual(['/about', '/posts/1', '/about', '/posts/1'])
       // Closing the wiring: feed the result through the gate.
-      expect(() => _internal.assertNoPathCollisions(result)).toThrow(
-        /SSG path collision/,
-      )
+      expect(() => _internal.assertNoPathCollisions(result)).toThrow(/SSG path collision/)
     })
 
     it('resolvePaths forwards async-function dupes verbatim (wiring step 1, async)', async () => {
@@ -1089,26 +1093,20 @@ describe('ssgPlugin', () => {
     })
 
     it('counts per-locale under prefix (every locale prefixed including default)', () => {
-      const result = _internal.buildLocaleSummary(
-        ['/en/', '/en/about', '/de/about', '/cs/about'],
-        {
-          locales: ['en', 'de', 'cs'],
-          defaultLocale: 'en',
-          strategy: 'prefix',
-        },
-      )
+      const result = _internal.buildLocaleSummary(['/en/', '/en/about', '/de/about', '/cs/about'], {
+        locales: ['en', 'de', 'cs'],
+        defaultLocale: 'en',
+        strategy: 'prefix',
+      })
       expect(result).toBe(' [en: 2, de: 1, cs: 1]')
     })
 
-    it('skips unprefixed paths under prefix strategy (defensive — they\'re unexpected)', () => {
-      const result = _internal.buildLocaleSummary(
-        ['/about', '/en/about', '/de/about'],
-        {
-          locales: ['en', 'de'],
-          defaultLocale: 'en',
-          strategy: 'prefix',
-        },
-      )
+    it("skips unprefixed paths under prefix strategy (defensive — they're unexpected)", () => {
+      const result = _internal.buildLocaleSummary(['/about', '/en/about', '/de/about'], {
+        locales: ['en', 'de'],
+        defaultLocale: 'en',
+        strategy: 'prefix',
+      })
       // Unprefixed `/about` not counted under prefix strategy.
       expect(result).toBe(' [en: 1, de: 1]')
     })
@@ -1173,10 +1171,10 @@ describe('ssgPlugin', () => {
     })
 
     it('returns empty object when no routes have a revalidate literal', () => {
-      const result = _internal.buildRevalidateManifest([route('/about'), route('/posts')], [
-        '/about',
-        '/posts',
-      ])
+      const result = _internal.buildRevalidateManifest(
+        [route('/about'), route('/posts')],
+        ['/about', '/posts'],
+      )
       expect(result).toEqual({})
     })
 

@@ -1,5 +1,5 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 interface ErrorPageProps {
   /**
@@ -15,14 +15,14 @@ interface ErrorPageProps {
 }
 
 export default function ErrorPage(props: ErrorPageProps = {}) {
-  useHead({ title: "Something went wrong — Zero" })
+  useHead({ title: 'Something went wrong — Zero' })
 
   // Surface the actual error to the browser devtools immediately so any
   // `pageerror` listener / `console.error` subscriber sees it. Cheap;
   // runs once per error boundary trip. Without this line, errors caught
   // by the framework's boundary are invisible to dev tools.
-  if (props.error !== undefined && typeof console !== "undefined") {
-    console.error("[Pyreon] route error boundary caught:", props.error)
+  if (props.error !== undefined && typeof console !== 'undefined') {
+    console.error('[Pyreon] route error boundary caught:', props.error)
   }
 
   // In dev mode render the error message + stack inline so the user can
@@ -30,8 +30,7 @@ export default function ErrorPage(props: ErrorPageProps = {}) {
   // the generic message — never leak internals to public output.
   const isDev = import.meta.env.DEV
   const err = props.error
-  const message =
-    err instanceof Error ? err.message : err !== undefined ? String(err) : null
+  const message = err instanceof Error ? err.message : err !== undefined ? String(err) : null
   const stack = err instanceof Error ? err.stack : null
 
   return (
@@ -56,9 +55,8 @@ export default function ErrorPage(props: ErrorPageProps = {}) {
             </pre>
           )}
           <p style="margin-top: var(--space-sm); font-size: 11px; color: var(--c-text-muted);">
-            This detail block only renders when <code>import.meta.env.DEV</code> is true.
-            Production builds hide the message + stack but still call{" "}
-            <code>console.error()</code>.
+            This detail block only renders when <code>import.meta.env.DEV</code> is true. Production
+            builds hide the message + stack but still call <code>console.error()</code>.
           </p>
         </details>
       )}

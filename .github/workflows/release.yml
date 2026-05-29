@@ -42,8 +42,8 @@ on:
     # b0a83905 → this fix). See PR #818 v1 for the original broken shape.
     paths:
       - '.changeset/**'
-      - '!.changeset/README.md'     # changesets package's own README
-      - '!.changeset/config.json'   # config edits don't ship; rare
+      - '!.changeset/README.md' # changesets package's own README
+      - '!.changeset/config.json' # config edits don't ship; rare
   workflow_dispatch:
 
 # Read-only default; per-job blocks below grant write only to the

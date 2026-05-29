@@ -164,9 +164,7 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
     // from @pyreon/reactivity scopes the sentinel opt-out via a refcount
     // (race-safe under concurrency; the prior env-var dance leaked `silent`
     // permanently when N opt-out scopes overlapped — see withSilent JSDoc).
-    return withSilent(
-      () => server!.ssrLoadModule(spec) as Promise<Record<string, unknown>>,
-    )
+    return withSilent(() => server!.ssrLoadModule(spec) as Promise<Record<string, unknown>>)
   }
 
   /**

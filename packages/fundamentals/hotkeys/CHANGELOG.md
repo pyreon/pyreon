@@ -149,7 +149,6 @@
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -163,7 +162,6 @@
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -230,7 +228,6 @@
 ### Patch Changes
 
 - [#261](https://github.com/pyreon/pyreon/pull/261) [`72b2023`](https://github.com/pyreon/pyreon/commit/72b2023609bf539e804f64dbefcf2586edf7162f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Triaged safe changes from architecture review PR [#260](https://github.com/pyreon/pyreon/issues/260):
-
   - **hotkeys**: detach global `keydown` listener when last hotkey unregisters (prevents listener accumulation across component remounts)
   - **code**: new `useEditorSignal()` hook — wraps `bindEditorToSignal` with `onUnmount` auto-cleanup (eliminates manual `dispose()` calls)
   - **form**: `ValidateFn` accepts optional `AbortSignal`; `useForm` creates per-cycle `AbortController` cancelled on unmount (prevents orphaned async validators)
@@ -309,11 +306,9 @@
 ### Minor Changes
 
 - [`deb9834`](https://github.com/pyreon/fundamentals/commit/deb983456472cc685d80e97b21196588af53b502) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ### New package
-
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -322,12 +317,10 @@
 ### Minor Changes
 
 - [`5610cdf`](https://github.com/pyreon/fundamentals/commit/5610cdffb69022aacd44419d7c71b97bdcf8403f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ### New packages
-
   - `@pyreon/flow` — reactive flow diagrams with signal-native nodes, edges, pan/zoom, auto-layout via elkjs
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages

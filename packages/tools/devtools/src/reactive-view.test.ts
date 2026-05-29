@@ -47,10 +47,13 @@ describe('layoutGraph', () => {
 
   it('drops edges whose endpoints are absent (defensive against GC)', () => {
     const laid = layoutGraph(
-      g([{ id: 1, kind: 'signal' }], [
-        { from: 1, to: 99 },
-        { from: 1, to: 1 },
-      ]),
+      g(
+        [{ id: 1, kind: 'signal' }],
+        [
+          { from: 1, to: 99 },
+          { from: 1, to: 1 },
+        ],
+      ),
     )
     expect(laid.edges).toEqual([{ from: 1, to: 1 }])
   })

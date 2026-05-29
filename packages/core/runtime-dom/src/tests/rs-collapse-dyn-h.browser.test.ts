@@ -184,7 +184,9 @@ describe('_rsCollapseDynH (real browser)', () => {
   })
 
   it('multiple handlers — all attach + survive value/mode flips', async () => {
-    injectCss(`.rdh5-v0-light{color:rgb(1,1,1)}.rdh5-v0-dark{color:rgb(2,2,2)}.rdh5-v1-light{color:rgb(3,3,3)}.rdh5-v1-dark{color:rgb(4,4,4)}`)
+    injectCss(
+      `.rdh5-v0-light{color:rgb(1,1,1)}.rdh5-v0-dark{color:rgb(2,2,2)}.rdh5-v1-light{color:rgb(3,3,3)}.rdh5-v1-dark{color:rgb(4,4,4)}`,
+    )
     const cond = signal(false)
     const isDark = signal(false)
     let clicks = 0
@@ -240,7 +242,9 @@ describe('_rsCollapseDynH (real browser)', () => {
   })
 
   it('children binder runs alongside class + handlers; ALL three dispose with the host', async () => {
-    injectCss(`.rdh7-v0-light{color:rgb(7,7,7)}.rdh7-v0-dark{color:rgb(8,8,8)}.rdh7-v1-light{color:rgb(9,9,9)}.rdh7-v1-dark{color:rgb(11,11,11)}`)
+    injectCss(
+      `.rdh7-v0-light{color:rgb(7,7,7)}.rdh7-v0-dark{color:rgb(8,8,8)}.rdh7-v1-light{color:rgb(9,9,9)}.rdh7-v1-dark{color:rgb(11,11,11)}`,
+    )
     const cond = signal(false)
     const isDark = signal(false)
     let clicks = 0
@@ -262,8 +266,8 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    expect((query(root, 'span')).textContent).toBe('child')
-    ;(query(root, 'button')).click()
+    expect(query(root, 'span').textContent).toBe('child')
+    query(root, 'button').click()
     expect(clicks).toBe(1)
 
     // Disposing the host (via cleanup) must fire ALL three disposers:
@@ -278,7 +282,9 @@ describe('_rsCollapseDynH (real browser)', () => {
     // behaves identically to `_rsCollapseDyn`. Guards the union as a
     // strict superset — emit can always route to DynH; lighter-weight
     // Dyn is just the no-handler optimization.
-    injectCss(`.rdh8-v0-light{color:rgb(80,80,80)}.rdh8-v0-dark{color:rgb(90,90,90)}.rdh8-v1-light{color:rgb(100,100,100)}.rdh8-v1-dark{color:rgb(110,110,110)}`)
+    injectCss(
+      `.rdh8-v0-light{color:rgb(80,80,80)}.rdh8-v0-dark{color:rgb(90,90,90)}.rdh8-v1-light{color:rgb(100,100,100)}.rdh8-v1-dark{color:rgb(110,110,110)}`,
+    )
     const cond = signal(false)
     const isDark = signal(false)
     const root = mountInto(

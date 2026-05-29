@@ -21,7 +21,11 @@ describe('lifecycle — Show toggle', () => {
     const el = container()
     const text = signal('hello')
     mount(
-      h(Show, { when: () => true }, h('div', null, () => text())),
+      h(
+        Show,
+        { when: () => true },
+        h('div', null, () => text()),
+      ),
       el,
     )
     expect(el.textContent).toBe('hello')
@@ -32,10 +36,7 @@ describe('lifecycle — Show toggle', () => {
   test('show=false — child unmounts', () => {
     const el = container()
     const visible = signal(false)
-    mount(
-      h(Show, { when: visible }, h('div', { id: 'child' }, 'content')),
-      el,
-    )
+    mount(h(Show, { when: visible }, h('div', { id: 'child' }, 'content')), el)
     expect(el.querySelector('#child')).toBeNull()
   })
 
@@ -44,7 +45,11 @@ describe('lifecycle — Show toggle', () => {
     const visible = signal(true)
     const text = signal('initial')
     mount(
-      h(Show, { when: visible }, h('div', { id: 'child' }, () => text())),
+      h(
+        Show,
+        { when: visible },
+        h('div', { id: 'child' }, () => text()),
+      ),
       el,
     )
     expect(el.querySelector('#child')?.textContent).toBe('initial')
@@ -152,7 +157,10 @@ describe('lifecycle — For list', () => {
       ),
       el,
     )
-    items.set([{ id: 1, label: 'Alice' }, { id: 3, label: 'Charlie' }])
+    items.set([
+      { id: 1, label: 'Alice' },
+      { id: 3, label: 'Charlie' },
+    ])
     expect(el.querySelectorAll('li').length).toBe(2)
     expect(el.querySelectorAll('li')[0]?.textContent).toBe('Alice')
     expect(el.querySelectorAll('li')[1]?.textContent).toBe('Charlie')
@@ -263,11 +271,7 @@ describe('lifecycle — effect cleanup', () => {
     })
 
     const unmount = mount(
-      h(
-        'div',
-        null,
-        ...Array.from({ length: totalComponents }, (_, i) => h(Comp, { key: i })),
-      ),
+      h('div', null, ...Array.from({ length: totalComponents }, (_, i) => h(Comp, { key: i }))),
       el,
     )
     expect(el.querySelectorAll('span').length).toBe(totalComponents)
@@ -316,19 +320,27 @@ describe('lifecycle — deep nesting', () => {
     let cleanupCount = 0
 
     const Level4 = defineComponent(() => {
-      onUnmount(() => { cleanupCount++ })
+      onUnmount(() => {
+        cleanupCount++
+      })
       return h('span', null, 'l4')
     })
     const Level3 = defineComponent(() => {
-      onUnmount(() => { cleanupCount++ })
+      onUnmount(() => {
+        cleanupCount++
+      })
       return h('div', null, 'l3', h(Level4, null))
     })
     const Level2 = defineComponent(() => {
-      onUnmount(() => { cleanupCount++ })
+      onUnmount(() => {
+        cleanupCount++
+      })
       return h('div', null, 'l2', h(Level3, null))
     })
     const Level1 = defineComponent(() => {
-      onUnmount(() => { cleanupCount++ })
+      onUnmount(() => {
+        cleanupCount++
+      })
       return h('div', null, 'l1', h(Level2, null))
     })
 

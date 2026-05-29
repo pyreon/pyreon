@@ -25,7 +25,7 @@ implements it from scratch and extends it full-stack.
   signal runtime and compiler are its own code, and the design space overlaps
   heavily by convergence, not derivation. If you know Solid, Pyreon's mental
   model will feel familiar.
-- **Vue** — closest in *spirit* among the three mainstream options: a
+- **Vue** — closest in _spirit_ among the three mainstream options: a
   reactivity system (refs/computed) plus a template compiler. Vue's Vapor
   mode is moving its output toward the same fine-grained, no-VDOM shape.
   Different ecosystem and surface; shared philosophy.
@@ -39,7 +39,7 @@ implements it from scratch and extends it full-stack.
 
 ## What Pyreon adds (scope, not "better")
 
-These are differences in *scope and trade-offs*, not assertions of
+These are differences in _scope and trade-offs_, not assertions of
 superiority:
 
 - **Full-stack via `@pyreon/zero`** — file-system routing, SSR/SSG/ISR/SPA,

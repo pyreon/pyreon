@@ -44,11 +44,7 @@ describe('@pyreon/connector-document in real browser', () => {
     }
     ;(Heading as any)._documentType = 'heading'
 
-    const tree = h(
-      Heading,
-      { _documentProps: { level: 1 }, $rocketstyle: { color: '#000' } },
-      'Hi',
-    )
+    const tree = h(Heading, { _documentProps: { level: 1 }, $rocketstyle: { color: '#000' } }, 'Hi')
     const result = extractDocumentTree(tree)
 
     expect(result.type).toBe('heading')

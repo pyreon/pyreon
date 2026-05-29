@@ -18,12 +18,17 @@ export function AnimationsModalPatternDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 12px">Modal Pattern</Title>
+      <Title size="h2" style="margin-bottom: 12px">
+        Modal Pattern
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        Backdrop fade + dialog spring scale composed via kinetic style-object API. The dialog uses cubic-bezier overshoot for a tactile spring feel.
+        Backdrop fade + dialog spring scale composed via kinetic style-object API. The dialog uses
+        cubic-bezier overshoot for a tactile spring feel.
       </Paragraph>
 
-      <Button state="primary" onClick={() => open.set(true)}>Open Modal</Button>
+      <Button state="primary" onClick={() => open.set(true)}>
+        Open Modal
+      </Button>
 
       <Backdrop
         show={() => open()}
@@ -36,7 +41,9 @@ export function AnimationsModalPatternDemo() {
           show={() => open()}
           style="max-width: 480px; width: 100%; padding: 32px; background: white; border-radius: 12px; box-shadow: 0 25px 50px rgba(0,0,0,0.25); margin: 16px;"
         >
-          <Title size="h3" style="margin-bottom: 12px">Spring Modal</Title>
+          <Title size="h3" style="margin-bottom: 12px">
+            Spring Modal
+          </Title>
           <Paragraph style="margin-bottom: 24px">
             Press Escape or click the backdrop to close. Watch the spring overshoot on enter.
           </Paragraph>

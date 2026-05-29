@@ -557,7 +557,10 @@ export const Children = {
   /**
    * Call `fn` for each non-null child (no return value).
    */
-  forEach(children: VNodeChild | VNodeChild[], fn: (child: VNodeChild, index: number) => void): void {
+  forEach(
+    children: VNodeChild | VNodeChild[],
+    fn: (child: VNodeChild, index: number) => void,
+  ): void {
     const flat = flattenChildren(children)
     let validIndex = 0
     for (let i = 0; i < flat.length; i++) {
@@ -800,10 +803,7 @@ export function useOptimistic<S, A = S>(
   }
 
   const apply = reducer ?? ((_state: S, action: A) => action as unknown as S)
-  const optimistic = entry.actions.reduce<S>(
-    (acc, action) => apply(acc, action),
-    passthrough,
-  )
+  const optimistic = entry.actions.reduce<S>((acc, action) => apply(acc, action), passthrough)
   return [optimistic, entry.add]
 }
 

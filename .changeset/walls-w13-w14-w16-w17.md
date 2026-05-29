@@ -1,8 +1,8 @@
 ---
-"@pyreon/zero": patch
-"@pyreon/hotkeys": minor
-"@pyreon/runtime-dom": patch
-"@pyreon/feature": patch
+'@pyreon/zero': patch
+'@pyreon/hotkeys': minor
+'@pyreon/runtime-dom': patch
+'@pyreon/feature': patch
 ---
 
 Fix 4 more framework DX walls surfaced by deep-audit of the HN-clone (#942) — all bisect-verified at the unit level.

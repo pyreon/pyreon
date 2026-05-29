@@ -11,9 +11,7 @@ import { useContext } from '@pyreon/core'
 const { mode } = useContext(ThemeCtx)
 `
     const result = lintFile('test.tsx', source, allRules, config)
-    const diag = result.diagnostics.find(
-      (d) => d.ruleId === 'pyreon/no-context-destructure',
-    )
+    const diag = result.diagnostics.find((d) => d.ruleId === 'pyreon/no-context-destructure')
     expect(diag).toBeDefined()
     expect(diag!.loc.line).toBeGreaterThan(0)
     expect(diag!.loc.column).toBeGreaterThan(0)
@@ -64,9 +62,7 @@ const { a } = useContext(Ctx1)
 const { b } = useContext(Ctx2)
 `
     const result = lintFile('test.tsx', source, allRules, config)
-    const ctxDiags = result.diagnostics.filter(
-      (d) => d.ruleId === 'pyreon/no-context-destructure',
-    )
+    const ctxDiags = result.diagnostics.filter((d) => d.ruleId === 'pyreon/no-context-destructure')
     expect(ctxDiags.length).toBe(2)
     expect(ctxDiags[0]!.span.start).toBeLessThan(ctxDiags[1]!.span.start)
   })
@@ -77,9 +73,7 @@ import { useContext } from '@pyreon/core'
 const { mode, theme } = useContext(ThemeCtx)
 `
     const result = lintFile('test.tsx', source, allRules, config)
-    const diag = result.diagnostics.find(
-      (d) => d.ruleId === 'pyreon/no-context-destructure',
-    )
+    const diag = result.diagnostics.find((d) => d.ruleId === 'pyreon/no-context-destructure')
     expect(diag).toBeDefined()
     const spanned = source.slice(diag!.span.start, diag!.span.end)
     expect(spanned).toContain('mode')

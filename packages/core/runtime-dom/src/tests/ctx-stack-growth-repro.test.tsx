@@ -39,8 +39,7 @@ describe('Context stack — growth under repeated remounts', () => {
       return h('span', null, useContext(Ctx))
     }
 
-    const App = () =>
-      h('div', null, () => (cond() ? h(InnerProvider, null) : null))
+    const App = () => h('div', null, () => (cond() ? h(InnerProvider, null) : null))
 
     const unmount = mount(h(App, null), container)
 
@@ -78,8 +77,7 @@ describe('Context stack — growth under repeated remounts', () => {
       return h('span', null, `${useContext(A)}/${useContext(B)}`)
     }
 
-    const App = () =>
-      h('div', null, () => (toggleA() ? h(PA, null) : null))
+    const App = () => h('div', null, () => (toggleA() ? h(PA, null) : null))
 
     const unmount = mount(h(App, null), container)
 

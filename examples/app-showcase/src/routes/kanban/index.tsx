@@ -160,8 +160,8 @@ export default function KanbanRoute() {
           <HeaderText>
             <KanbanTitle>Kanban board</KanbanTitle>
             <KanbanLead>
-              Drag cards between columns. Cmd/Ctrl+Z to undo, Shift+Z to redo. Toggle Viewer
-              role to see how the @pyreon/permissions singleton disables every action.
+              Drag cards between columns. Cmd/Ctrl+Z to undo, Shift+Z to redo. Toggle Viewer role to
+              see how the @pyreon/permissions singleton disables every action.
             </KanbanLead>
           </HeaderText>
           <Toolbar>
@@ -205,8 +205,7 @@ export default function KanbanRoute() {
 
         <BoardGrid>
           {COLUMNS.map((column) => {
-            const columnCards = (): Card[] =>
-              board.cards().filter((c) => c.columnId === column.id)
+            const columnCards = (): Card[] => board.cards().filter((c) => c.columnId === column.id)
             return (
               <ColumnRoot
                 $dropTarget={dropTargetCol() === column.id}
@@ -229,9 +228,7 @@ export default function KanbanRoute() {
                       placeholder="New card title…"
                       value={newCardDraft()}
                       disabled={!can('cards.write')}
-                      onInput={(e: Event) =>
-                        newCardDraft.set((e.target as HTMLInputElement).value)
-                      }
+                      onInput={(e: Event) => newCardDraft.set((e.target as HTMLInputElement).value)}
                     />
                   </NewCardForm>
                 ) : null}
@@ -270,7 +267,11 @@ export default function KanbanRoute() {
           <HintItem>⌘/Ctrl + Shift + Z — redo</HintItem>
           <HintItem>N — focus new-card input</HintItem>
           <HintItem>R — reset board</HintItem>
-          <HintItem>{() => `${undoManager.undoDepth()} edit${undoManager.undoDepth() === 1 ? '' : 's'} captured`}</HintItem>
+          <HintItem>
+            {() =>
+              `${undoManager.undoDepth()} edit${undoManager.undoDepth() === 1 ? '' : 's'} captured`
+            }
+          </HintItem>
         </HintFooter>
       </KanbanPage>
     </PermissionsProvider>

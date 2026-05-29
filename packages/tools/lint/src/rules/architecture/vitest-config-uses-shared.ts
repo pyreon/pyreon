@@ -60,20 +60,14 @@ export const vitestConfigUsesShared: Rule = {
     let importsFromVitestConfig = false
 
     return {
-      ImportDeclaration(node: {
-        source?: { value?: string }
-        start?: number
-        end?: number
-      }) {
+      ImportDeclaration(node: { source?: { value?: string }; start?: number; end?: number }) {
         if (node.source?.value === '@pyreon/vitest-config') {
           importsFromVitestConfig = true
         }
       },
       'Program:exit'(node: { start?: number; end?: number }) {
         if (importsFromVitestConfig) return
-        const helperName = isBrowserConfig
-          ? 'defineBrowserConfig'
-          : 'defineNodeConfig'
+        const helperName = isBrowserConfig ? 'defineBrowserConfig' : 'defineNodeConfig'
         context.report({
           message:
             `[Pyreon] ${

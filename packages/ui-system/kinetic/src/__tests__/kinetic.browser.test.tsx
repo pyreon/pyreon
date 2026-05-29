@@ -54,7 +54,12 @@ describe('@pyreon/kinetic browser smoke', () => {
     let onLeaveCalls = 0
     const show = signal(true)
     const { unmount } = mountInBrowser(
-      <Transition show={show} onLeave={() => { onLeaveCalls++ }}>
+      <Transition
+        show={show}
+        onLeave={() => {
+          onLeaveCalls++
+        }}
+      >
         <div data-id="t">hi</div>
       </Transition>,
     )
@@ -181,12 +186,7 @@ describe('@pyreon/kinetic browser smoke', () => {
   it('flipping show=true on an initially-hidden Transition cleans the hidden class and runs enter', async () => {
     const show = signal(false)
     const { container, unmount } = mountInBrowser(
-      <Transition
-        show={show}
-        enterFrom="hide-state"
-        enterTo="show-state"
-        enter="enter-active"
-      >
+      <Transition show={show} enterFrom="hide-state" enterTo="show-state" enter="enter-active">
         <div data-id="reveal-target">content</div>
       </Transition>,
     )
@@ -311,7 +311,9 @@ describe('@pyreon/kinetic browser smoke', () => {
     const Accordion = kinetic('div').collapse()
     const show = signal(false)
     const { container, unmount } = mountInBrowser(
-      h(Accordion, { show, 'data-id': 'accordion' },
+      h(
+        Accordion,
+        { show, 'data-id': 'accordion' },
         h('div', { 'data-id': 'inner' }, 'accordion content'),
       ),
     )

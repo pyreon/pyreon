@@ -44,27 +44,27 @@ render(<Counter />, document.getElementById('app')!)
 
 ## Subpath exports
 
-| Subpath                                 | Surface                                                                                       |
-| --------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Subpath                                 | Surface                                                                                                                                                                                                                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@pyreon/preact-compat`                 | Core: `h` / `createElement`, `Fragment`, `render`, `hydrate`, `Component`, `PureComponent`, `createContext` / `useContext`, `createRef`, `cloneElement`, `toChildArray`, `isValidElement`, `createPortal`, `lazy`, `Suspense`, `ErrorBoundary`, `options`, `version` |
-| `@pyreon/preact-compat/hooks`           | `useState`, `useReducer`, `useEffect`, `useLayoutEffect`, `useMemo`, `useCallback`, `useRef`, `useId`, `memo`, `forwardRef`, `useImperativeHandle`, `useDebugValue`, `useTransition`, `useDeferredValue`, `useErrorBoundary` |
-| `@pyreon/preact-compat/signals`         | `signal`, `computed`, `effect`, `batch`, `ReadonlySignal`, `WritableSignal`                   |
-| `@pyreon/preact-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
-| `@pyreon/preact-compat/jsx-dev-runtime` | Dev variant — same runtime, with source location info                                          |
+| `@pyreon/preact-compat/hooks`           | `useState`, `useReducer`, `useEffect`, `useLayoutEffect`, `useMemo`, `useCallback`, `useRef`, `useId`, `memo`, `forwardRef`, `useImperativeHandle`, `useDebugValue`, `useTransition`, `useDeferredValue`, `useErrorBoundary`                                         |
+| `@pyreon/preact-compat/signals`         | `signal`, `computed`, `effect`, `batch`, `ReadonlySignal`, `WritableSignal`                                                                                                                                                                                          |
+| `@pyreon/preact-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                                                                                                                                                                                                    |
+| `@pyreon/preact-compat/jsx-dev-runtime` | Dev variant — same runtime, with source location info                                                                                                                                                                                                                |
 
 ## Key differences from Preact
 
-| Behavior            | Preact                                | `@pyreon/preact-compat`                                                |
-| ------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
-| Component execution | Re-runs render on every state change  | Runs **once** (setup phase)                                            |
-| `useState` getter   | Returns the value directly            | Returns a **getter function** — call `count()` to read                 |
-| `useEffect` deps    | Controls when the effect re-runs      | Deps array is **ignored** — Pyreon tracks dependencies automatically   |
-| `useCallback`       | Memoizes across renders               | **No-op** — returns `fn` as-is                                         |
-| `useMemo`           | Returns the memoized value            | Returns a **getter function** — call `value()` to read                 |
-| `useLayoutEffect`   | Fires synchronously before paint      | Same as `useEffect`                                                    |
-| Signals `.value`    | Native Preact Signals API             | Wrapped Pyreon signals with the same `.value` interface                |
-| Class components    | Full lifecycle support                | `setState` and `forceUpdate` work; lifecycle methods are not called    |
-| Hooks rules         | Must be called at top level           | **No restrictions** — call anywhere in component setup                 |
+| Behavior            | Preact                               | `@pyreon/preact-compat`                                              |
+| ------------------- | ------------------------------------ | -------------------------------------------------------------------- |
+| Component execution | Re-runs render on every state change | Runs **once** (setup phase)                                          |
+| `useState` getter   | Returns the value directly           | Returns a **getter function** — call `count()` to read               |
+| `useEffect` deps    | Controls when the effect re-runs     | Deps array is **ignored** — Pyreon tracks dependencies automatically |
+| `useCallback`       | Memoizes across renders              | **No-op** — returns `fn` as-is                                       |
+| `useMemo`           | Returns the memoized value           | Returns a **getter function** — call `value()` to read               |
+| `useLayoutEffect`   | Fires synchronously before paint     | Same as `useEffect`                                                  |
+| Signals `.value`    | Native Preact Signals API            | Wrapped Pyreon signals with the same `.value` interface              |
+| Class components    | Full lifecycle support               | `setState` and `forceUpdate` work; lifecycle methods are not called  |
+| Hooks rules         | Must be called at top level          | **No restrictions** — call anywhere in component setup               |
 
 ### Read state via a getter
 
@@ -85,7 +85,7 @@ Signal reads always return the current value. Preact-style `setInterval` callbac
 ```tsx
 useEffect(() => {
   const id = setInterval(() => {
-    setCount((prev) => prev + 1)   // always reads the latest
+    setCount((prev) => prev + 1) // always reads the latest
   }, 1000)
   return () => clearInterval(id)
 })
@@ -111,8 +111,8 @@ export default { plugins: [pyreon({ compat: 'preact' })] }
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@pyreon/preact-compat"
-  }
+    "jsxImportSource": "@pyreon/preact-compat",
+  },
 }
 ```
 

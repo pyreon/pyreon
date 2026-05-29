@@ -77,33 +77,37 @@ describe('styler — identical-mount cache', () => {
     expect(hits).toBeGreaterThan(inserts * 0.95) // >95% hit ratio
     // oxlint-disable-next-line no-console
     console.log(
-      `[ui-styler] dynamic×100: resolve=${inserts}, hit=${hits}, ratio=${(hits / inserts * 100).toFixed(1)}%`,
+      `[ui-styler] dynamic×100: resolve=${inserts}, hit=${hits}, ratio=${((hits / inserts) * 100).toFixed(1)}%`,
     )
   })
 
   // 1000 mount cycles take ~3-4s locally but can stretch to 5-6s on slow CI
   // runners. Bump from default 5000ms to give headroom without hiding real
   // perf regressions (a true regression would be 10s+, well past the bound).
-  it('dynamic styled × 1000 mounts — linear scaling on resolve + sheet ops', { timeout: 15_000 }, async () => {
-    const theme = { bg: '#fff' }
-    const Card = styled('div')<{ theme: { bg: string } }>`
-      background: ${(p) => p.theme.bg};
-    `
-    const root = document.getElementById('root')!
-    const outcome = await perfHarness.record('1000-mounts', () => {
-      for (let i = 0; i < 1000; i++) {
-        const dispose = mount(h(Card, { theme }), root)
-        dispose()
-        resetDom()
-      }
-    })
-    expect(outcome.after['styler.resolve']).toBe(1000)
-    // oxlint-disable-next-line no-console
-    console.log(
-      `[ui-styler] 1000-mounts: resolve=${outcome.after['styler.resolve']}, ` +
-        `insert=${outcome.after['styler.sheet.insert']}, hit=${outcome.after['styler.sheet.insert.hit']}`,
-    )
-  })
+  it(
+    'dynamic styled × 1000 mounts — linear scaling on resolve + sheet ops',
+    { timeout: 15_000 },
+    async () => {
+      const theme = { bg: '#fff' }
+      const Card = styled('div')<{ theme: { bg: string } }>`
+        background: ${(p) => p.theme.bg};
+      `
+      const root = document.getElementById('root')!
+      const outcome = await perfHarness.record('1000-mounts', () => {
+        for (let i = 0; i < 1000; i++) {
+          const dispose = mount(h(Card, { theme }), root)
+          dispose()
+          resetDom()
+        }
+      })
+      expect(outcome.after['styler.resolve']).toBe(1000)
+      // oxlint-disable-next-line no-console
+      console.log(
+        `[ui-styler] 1000-mounts: resolve=${outcome.after['styler.resolve']}, ` +
+          `insert=${outcome.after['styler.sheet.insert']}, hit=${outcome.after['styler.sheet.insert.hit']}`,
+      )
+    },
+  )
 
   it('different themes produce different resolves — no false cache hit', async () => {
     const theme1 = { bg: '#fff' }

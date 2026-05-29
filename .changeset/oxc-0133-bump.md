@@ -1,6 +1,6 @@
 ---
-"@pyreon/compiler": patch
-"@pyreon/lint": patch
+'@pyreon/compiler': patch
+'@pyreon/lint': patch
 ---
 
 Bump `oxc-parser` / `oxc-transform` from `^0.129.0` to `^0.133.0`. Both are

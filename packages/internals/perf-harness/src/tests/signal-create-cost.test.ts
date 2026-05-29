@@ -77,8 +77,7 @@ describe('signal creation cost', () => {
     const t0 = performance.now()
     const outcome = await perfHarness.record('create-10k-injected', () => {
       const all: unknown[] = []
-      for (let i = 0; i < 10_000; i++)
-        all.push(signal(i, { __sourceLocation: injected }))
+      for (let i = 0; i < 10_000; i++) all.push(signal(i, { __sourceLocation: injected }))
     })
     const elapsed = performance.now() - t0
     expect(outcome.after['reactivity.signalCreate']).toBe(10_000)

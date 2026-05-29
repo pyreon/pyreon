@@ -21,9 +21,7 @@ describe('charts loader — tslib alias detection (W12 follow-up)', () => {
     expect(wrapped.message).toContain('[@pyreon/charts]')
     expect(wrapped.message).toContain('tslib alias is missing')
     expect(wrapped.message).toContain('chartsViteAlias')
-    expect(wrapped.message).toContain(
-      "import { chartsViteAlias } from '@pyreon/charts/vite'",
-    )
+    expect(wrapped.message).toContain("import { chartsViteAlias } from '@pyreon/charts/vite'")
     // Original error message preserved at the bottom for debugging.
     expect(wrapped.message).toContain('__extends')
     // Stack preserved.
@@ -70,9 +68,7 @@ describe('charts loader — tslib alias detection (W12 follow-up)', () => {
     // A user error message that happens to contain "extends" should NOT
     // trigger the hint. Regex requires `\b` after the helper name AND the
     // `__` prefix, so this is safe.
-    const benign = new Error(
-      'Custom error: class Foo extends Bar — something else broke',
-    )
+    const benign = new Error('Custom error: class Foo extends Bar — something else broke')
     expect(_wrapTslibError(benign).message).not.toContain('tslib alias')
   })
 })

@@ -33,16 +33,16 @@ The compiler emits a **typecheck-clean** Swift translation. Working:
 
 Not yet working (each tracked as a gap-closure PR in [`compile-baseline test`](../../packages/native/compiler/src/tests/todomvc-baseline.test.ts)):
 
-| Gap | Source pattern | What it needs |
-|---|---|---|
-| G1 | `<TextField value={draft} onInput={...}>` | Two-way binding emission: Swift `TextField("...", text: $draft)`, Kotlin direct mapping |
-| G2 | `onKeyDown={(e) => e.key === 'Enter' && fn()}` | Pattern-match → `.onSubmit { ... }` on Swift, `KeyboardActions(onDone)` on Kotlin |
-| G3 | `todos.set([...todos(), x])` | Immutable spread vs platform mutation choice |
-| G4 | `todos.set(todos().map(t => t.id === id ? {...t, done: !t.done} : t))` | Object-in-array partial update idiom |
-| G5 | `useStorage<T>(key, default)` | `@AppStorage` on Swift, `DataStore` on Kotlin |
-| G6 | `type Filter = 'all' \| 'active' \| 'completed'` | Native enum emission (`enum Filter: String { case all, active, completed }`) |
-| G7 | `<TodoItem state={todo.done ? 'completed' : 'active'}>` | Hoist conditional dim expression to modifier call site |
-| G8 | URL-hash filter sync | `@pyreon/router-ios`/`-android` (Phase 3) |
+| Gap | Source pattern                                                         | What it needs                                                                           |
+| --- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| G1  | `<TextField value={draft} onInput={...}>`                              | Two-way binding emission: Swift `TextField("...", text: $draft)`, Kotlin direct mapping |
+| G2  | `onKeyDown={(e) => e.key === 'Enter' && fn()}`                         | Pattern-match → `.onSubmit { ... }` on Swift, `KeyboardActions(onDone)` on Kotlin       |
+| G3  | `todos.set([...todos(), x])`                                           | Immutable spread vs platform mutation choice                                            |
+| G4  | `todos.set(todos().map(t => t.id === id ? {...t, done: !t.done} : t))` | Object-in-array partial update idiom                                                    |
+| G5  | `useStorage<T>(key, default)`                                          | `@AppStorage` on Swift, `DataStore` on Kotlin                                           |
+| G6  | `type Filter = 'all' \| 'active' \| 'completed'`                       | Native enum emission (`enum Filter: String { case all, active, completed }`)            |
+| G7  | `<TodoItem state={todo.done ? 'completed' : 'active'}>`                | Hoist conditional dim expression to modifier call site                                  |
+| G8  | URL-hash filter sync                                                   | `@pyreon/router-ios`/`-android` (Phase 3)                                               |
 
 Plus three parser-side gaps surfaced by the actual compile that the walkthrough didn't name:
 

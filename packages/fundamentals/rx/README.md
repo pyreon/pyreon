@@ -115,13 +115,13 @@ const totals = rx.reduce(items, (acc, i) => acc + i.qty, 0) // Computed<number>
 
 ## Operators
 
-| Function | Notes |
-|---|---|
-| `distinct(source)` | Deduplicates by Object.is |
+| Function                      | Notes                                                   |
+| ----------------------------- | ------------------------------------------------------- |
+| `distinct(source)`            | Deduplicates by Object.is                               |
 | `scan(source, reducer, seed)` | Running fold — emits accumulator on every source change |
-| `combine(...sources)` | Tuple of latest values from each source |
-| `zip(...sources)` | Element-wise pairing, truncates to shortest |
-| `merge(...sources)` | Concatenate arrays |
+| `combine(...sources)`         | Tuple of latest values from each source                 |
+| `zip(...sources)`             | Element-wise pairing, truncates to shortest             |
+| `merge(...sources)`           | Concatenate arrays                                      |
 
 ## Timing — `debounce` / `throttle` create signal transforms
 

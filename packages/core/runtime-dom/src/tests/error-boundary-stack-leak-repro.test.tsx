@@ -42,14 +42,11 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
 
   // Tiny `h`-builder helpers so the tests stay readable.
   const eb = (testId: string, ...children: VNodeChild[]) =>
-    h(
-      ErrorBoundary,
-      {
-        fallback: (err: unknown) =>
-          h('div', { 'data-testid': `fb-${testId}` }, `caught(${testId}): ${String(err)}`),
-        children: children.length === 1 ? children[0] : children,
-      },
-    )
+    h(ErrorBoundary, {
+      fallback: (err: unknown) =>
+        h('div', { 'data-testid': `fb-${testId}` }, `caught(${testId}): ${String(err)}`),
+      children: children.length === 1 ? children[0] : children,
+    })
 
   const showWhen = (when: () => boolean, child: () => VNodeChild) =>
     h(Show, { when, children: child })
@@ -71,10 +68,23 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
         // touching boundary B.
         showWhen(
           () => aliveA(),
-          () => eb('A', showWhen(() => showA(), () => h(Bomb, { name: 'A' }))),
+          () =>
+            eb(
+              'A',
+              showWhen(
+                () => showA(),
+                () => h(Bomb, { name: 'A' }),
+              ),
+            ),
         ),
         // Boundary B — always mounted.
-        eb('B', showWhen(() => showB(), () => h(Bomb, { name: 'B' }))),
+        eb(
+          'B',
+          showWhen(
+            () => showB(),
+            () => h(Bomb, { name: 'B' }),
+          ),
+        ),
       )
 
     const unmount = mount(h(App, null), container)
@@ -114,8 +124,17 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
       h(
         'div',
         null,
-        eb('A', showWhen(() => showA(), () => h(Bomb, { name: 'A' }))),
-        showWhen(() => aliveB(), () => eb('B', null)),
+        eb(
+          'A',
+          showWhen(
+            () => showA(),
+            () => h(Bomb, { name: 'A' }),
+          ),
+        ),
+        showWhen(
+          () => aliveB(),
+          () => eb('B', null),
+        ),
       )
 
     const unmount = mount(h(App, null), container)

@@ -1,8 +1,4 @@
-import {
-  createBackgroundForward,
-  createBackgroundToContent,
-  isPanelToBackground,
-} from './messages'
+import { createBackgroundForward, createBackgroundToContent, isPanelToBackground } from './messages'
 import type { HookMessage } from './types'
 import { SOURCE } from './types'
 
@@ -24,11 +20,9 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener((message: unknown) => {
     if (!isPanelToBackground(message)) return
 
-    chrome.tabs
-      .sendMessage(tabId, createBackgroundToContent(message.payload))
-      .catch(() => {
-        // Content script not ready or tab closed — safe to ignore
-      })
+    chrome.tabs.sendMessage(tabId, createBackgroundToContent(message.payload)).catch(() => {
+      // Content script not ready or tab closed — safe to ignore
+    })
   })
 
   // Clean up on disconnect

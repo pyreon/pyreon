@@ -25,12 +25,7 @@ describe('ogImagePath', () => {
 
 describe('buildTextOverlaySvg', () => {
   it('produces valid SVG with text elements', () => {
-    const svg = buildTextOverlaySvg(
-      [{ text: 'Hello World', fontSize: 48 }],
-      1200,
-      630,
-      'en',
-    )
+    const svg = buildTextOverlaySvg([{ text: 'Hello World', fontSize: 48 }], 1200, 630, 'en')
 
     expect(svg).toContain('<svg')
     expect(svg).toContain('width="1200"')
@@ -40,59 +35,53 @@ describe('buildTextOverlaySvg', () => {
   })
 
   it('resolves locale-specific text from record', () => {
-    const svg = buildTextOverlaySvg(
-      [{ text: { en: 'Hello', de: 'Hallo' } }],
-      1200, 630, 'de',
-    )
+    const svg = buildTextOverlaySvg([{ text: { en: 'Hello', de: 'Hallo' } }], 1200, 630, 'de')
     expect(svg).toContain('Hallo')
     expect(svg).not.toContain('Hello')
   })
 
   it('resolves locale-specific text from function', () => {
     const svg = buildTextOverlaySvg(
-      [{ text: (locale: string) => locale === 'cs' ? 'Ahoj' : 'Hi' }],
-      1200, 630, 'cs',
+      [{ text: (locale: string) => (locale === 'cs' ? 'Ahoj' : 'Hi') }],
+      1200,
+      630,
+      'cs',
     )
     expect(svg).toContain('Ahoj')
   })
 
   it('uses static text string for all locales', () => {
-    const svg = buildTextOverlaySvg(
-      [{ text: 'pyreon.dev' }],
-      1200, 630, 'de',
-    )
+    const svg = buildTextOverlaySvg([{ text: 'pyreon.dev' }], 1200, 630, 'de')
     expect(svg).toContain('pyreon.dev')
   })
 
   it('positions text using percentage values', () => {
-    const svg = buildTextOverlaySvg(
-      [{ text: 'Test', x: '25%', y: '75%' }],
-      1200, 630, 'en',
-    )
+    const svg = buildTextOverlaySvg([{ text: 'Test', x: '25%', y: '75%' }], 1200, 630, 'en')
     // 25% of 1200 = 300, 75% of 630 = 473 (rounded)
     expect(svg).toContain('x="300"')
     expect(svg).toContain('y="473"')
   })
 
   it('positions text using pixel values', () => {
-    const svg = buildTextOverlaySvg(
-      [{ text: 'Test', x: 100, y: 200 }],
-      1200, 630, 'en',
-    )
+    const svg = buildTextOverlaySvg([{ text: 'Test', x: 100, y: 200 }], 1200, 630, 'en')
     expect(svg).toContain('x="100"')
     expect(svg).toContain('y="200"')
   })
 
   it('applies custom styling', () => {
     const svg = buildTextOverlaySvg(
-      [{
-        text: 'Styled',
-        color: '#ff0000',
-        fontFamily: 'Inter',
-        fontWeight: '600',
-        textAnchor: 'start',
-      }],
-      1200, 630, 'en',
+      [
+        {
+          text: 'Styled',
+          color: '#ff0000',
+          fontFamily: 'Inter',
+          fontWeight: '600',
+          textAnchor: 'start',
+        },
+      ],
+      1200,
+      630,
+      'en',
     )
     expect(svg).toContain('fill="#ff0000"')
     expect(svg).toContain('font-family="Inter"')
@@ -106,7 +95,9 @@ describe('buildTextOverlaySvg', () => {
         { text: 'Title', fontSize: 72, y: '30%' },
         { text: 'Subtitle', fontSize: 36, y: '60%' },
       ],
-      1200, 630, 'en',
+      1200,
+      630,
+      'en',
     )
     expect(svg).toContain('Title')
     expect(svg).toContain('Subtitle')
@@ -115,10 +106,13 @@ describe('buildTextOverlaySvg', () => {
   })
 
   it('wraps long text into multiple tspan elements', () => {
-    const longText = 'This is a very long text that should wrap into multiple lines when it exceeds the maximum width'
+    const longText =
+      'This is a very long text that should wrap into multiple lines when it exceeds the maximum width'
     const svg = buildTextOverlaySvg(
       [{ text: longText, maxWidth: 400, fontSize: 32 }],
-      1200, 630, 'en',
+      1200,
+      630,
+      'en',
     )
     // Multiple tspan elements = text wrapping
     const tspanCount = (svg.match(/<tspan/g) ?? []).length
@@ -126,19 +120,13 @@ describe('buildTextOverlaySvg', () => {
   })
 
   it('escapes XML special characters', () => {
-    const svg = buildTextOverlaySvg(
-      [{ text: 'A & B <C>' }],
-      1200, 630, 'en',
-    )
+    const svg = buildTextOverlaySvg([{ text: 'A & B <C>' }], 1200, 630, 'en')
     expect(svg).toContain('A &amp; B &lt;C&gt;')
     expect(svg).not.toContain('A & B <C>')
   })
 
   it('falls back to first locale in record when current locale missing', () => {
-    const svg = buildTextOverlaySvg(
-      [{ text: { en: 'English', de: 'Deutsch' } }],
-      1200, 630, 'fr',
-    )
+    const svg = buildTextOverlaySvg([{ text: { en: 'English', de: 'Deutsch' } }], 1200, 630, 'fr')
     // Falls back to first key ('en')
     expect(svg).toContain('English')
   })

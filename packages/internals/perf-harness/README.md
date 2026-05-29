@@ -75,32 +75,32 @@ __pyreon_perf__.record('nav', () => router.push('/x'))
 
 ### Low-level (counter write path)
 
-| Export | Purpose |
-|---|---|
-| `_count(name, n?)` | Increment a counter. No-op when disabled. The sink that gets published to `globalThis.__pyreon_count__`. |
-| `_reset()` | Clear all counters. Does not change the enabled flag. |
-| `_snapshot()` | Materialise counter state as `Record<CounterName, number>`. |
-| `_enable()` / `_disable()` / `_isEnabled()` | Toggle counter writes + publish/remove the global sink. |
-| `CounterName` | Type for known counter names (drift-locked to `COUNTERS.md`). |
+| Export                                      | Purpose                                                                                                  |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `_count(name, n?)`                          | Increment a counter. No-op when disabled. The sink that gets published to `globalThis.__pyreon_count__`. |
+| `_reset()`                                  | Clear all counters. Does not change the enabled flag.                                                    |
+| `_snapshot()`                               | Materialise counter state as `Record<CounterName, number>`.                                              |
+| `_enable()` / `_disable()` / `_isEnabled()` | Toggle counter writes + publish/remove the global sink.                                                  |
+| `CounterName`                               | Type for known counter names (drift-locked to `COUNTERS.md`).                                            |
 
 ### High-level (harness API)
 
-| Export | Purpose |
-|---|---|
-| `perfHarness` | Object bundling `enable` / `disable` / `isEnabled` / `reset` / `snapshot` / `diff` / `formatDiff` / `record` / `overlay`. |
-| `PerfHarness` | TypeScript type for the bundle. |
-| `install()` | `_enable()` + attach `perfHarness` to `globalThis.__pyreon_perf__`. Returns the harness for non-DOM consumers. |
-| `uninstall()` | Remove the `__pyreon_perf__` global (writes stay on). |
-| `diffSnapshots(before, after)` | Structured diff — `{ name, before, after, delta }[]`. |
-| `formatDiff(diff)` | Fixed-width table for printing. |
-| `CounterDiff` / `CounterDiffEntry` | Diff types. |
+| Export                             | Purpose                                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `perfHarness`                      | Object bundling `enable` / `disable` / `isEnabled` / `reset` / `snapshot` / `diff` / `formatDiff` / `record` / `overlay`. |
+| `PerfHarness`                      | TypeScript type for the bundle.                                                                                           |
+| `install()`                        | `_enable()` + attach `perfHarness` to `globalThis.__pyreon_perf__`. Returns the harness for non-DOM consumers.            |
+| `uninstall()`                      | Remove the `__pyreon_perf__` global (writes stay on).                                                                     |
+| `diffSnapshots(before, after)`     | Structured diff — `{ name, before, after, delta }[]`.                                                                     |
+| `formatDiff(diff)`                 | Fixed-width table for printing.                                                                                           |
+| `CounterDiff` / `CounterDiffEntry` | Diff types.                                                                                                               |
 
 ### Overlay
 
-| Export | Purpose |
-|---|---|
-| `mountOverlay(options?)` | Shadow-DOM floating panel — live counters, reset/record/export buttons, Ctrl+Shift+P toggle. One overlay per window. |
-| `OverlayHandle` / `OverlayOptions` | Types. |
+| Export                             | Purpose                                                                                                              |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `mountOverlay(options?)`           | Shadow-DOM floating panel — live counters, reset/record/export buttons, Ctrl+Shift+P toggle. One overlay per window. |
+| `OverlayHandle` / `OverlayOptions` | Types.                                                                                                               |
 
 ## Record + diff (`record`)
 

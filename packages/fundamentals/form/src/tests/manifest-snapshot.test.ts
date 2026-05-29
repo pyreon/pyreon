@@ -15,7 +15,9 @@ import formManifest from '../manifest'
 
 describe('gen-docs — form snapshot', () => {
   it('renders @pyreon/form to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(formManifest)).toMatchInlineSnapshot(`"- @pyreon/form — Signal-based form management with fields, validation, arrays, and cross-field watchers. Fields validate on blur by default so users aren't scolded mid-keystroke. Use \`validateOn: "change"\` for instant feedback (often paired with \`debounceMs: 300\` to avoid thrashing async validators), or \`validateOn: "submit"\` for zero-feedback-until-submit forms. \`showError\` (from \`useField\`) gates on \`touched\`, so even with \`validateOn: "change"\` errors won't appear until the user has blurred at least once — this is intentional."`)
+    expect(renderLlmsTxtLine(formManifest)).toMatchInlineSnapshot(
+      `"- @pyreon/form — Signal-based form management with fields, validation, arrays, and cross-field watchers. Fields validate on blur by default so users aren't scolded mid-keystroke. Use \`validateOn: "change"\` for instant feedback (often paired with \`debounceMs: 300\` to avoid thrashing async validators), or \`validateOn: "submit"\` for zero-feedback-until-submit forms. \`showError\` (from \`useField\`) gates on \`touched\`, so even with \`validateOn: "change"\` errors won't appear until the user has blurred at least once — this is intentional."`,
+    )
   })
 
   it('renders @pyreon/form to its expected llms-full.txt section — full body snapshot', () => {

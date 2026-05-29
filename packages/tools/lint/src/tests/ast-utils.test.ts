@@ -137,7 +137,11 @@ describe('ast utils — JSX predicates', () => {
   })
 
   it('isTernaryWithJSX detects JSX in either branch', () => {
-    const ternary = (c: any, a: any) => ({ type: 'ConditionalExpression', consequent: c, alternate: a })
+    const ternary = (c: any, a: any) => ({
+      type: 'ConditionalExpression',
+      consequent: c,
+      alternate: a,
+    })
     expect(isTernaryWithJSX(ternary(jsxElement('a'), { type: 'NullLiteral' }))).toBe(true)
     expect(isTernaryWithJSX(ternary({ type: 'NullLiteral' }, jsxElement('b')))).toBe(true)
     expect(isTernaryWithJSX(ternary({ type: 'NullLiteral' }, { type: 'NullLiteral' }))).toBe(false)
@@ -161,7 +165,11 @@ describe('ast utils — JSX predicates', () => {
       isLogicalAndWithJSX({ type: 'LogicalExpression', operator: '||', right: jsxElement('div') }),
     ).toBe(false)
     expect(
-      isLogicalAndWithJSX({ type: 'LogicalExpression', operator: '&&', right: { type: 'NullLiteral' } }),
+      isLogicalAndWithJSX({
+        type: 'LogicalExpression',
+        operator: '&&',
+        right: { type: 'NullLiteral' },
+      }),
     ).toBe(false)
     expect(isLogicalAndWithJSX({ type: 'BinaryExpression' })).toBe(false)
   })
@@ -192,7 +200,9 @@ describe('ast utils — ancestor predicates', () => {
 
   it('isInsideOnMount detects `onMount(() => …)` wrapping', () => {
     expect(
-      isInsideOnMount([{ type: 'CallExpression', callee: { type: 'Identifier', name: 'onMount' } }]),
+      isInsideOnMount([
+        { type: 'CallExpression', callee: { type: 'Identifier', name: 'onMount' } },
+      ]),
     ).toBe(true)
     expect(
       isInsideOnMount([{ type: 'CallExpression', callee: { type: 'Identifier', name: 'effect' } }]),

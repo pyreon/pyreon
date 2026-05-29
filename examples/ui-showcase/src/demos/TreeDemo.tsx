@@ -44,7 +44,9 @@ export function TreeDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Tree</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Tree
+      </Title>
 
       <div style="max-width: 300px;">
         <TreeBase

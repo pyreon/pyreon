@@ -1,6 +1,6 @@
-import { RouterView } from "@pyreon/router"
-import { Link } from "@pyreon/zero/link"
-import { ThemeToggle } from "@pyreon/zero/theme"
+import { RouterView } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import { ThemeToggle } from '@pyreon/zero/theme'
 
 export function layout() {
   return (

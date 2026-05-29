@@ -185,7 +185,9 @@ describe('<Form> + <Submit>', () => {
 
   it('isSubmitting signal tracks async onSubmit', async () => {
     let resolveSubmit: () => void
-    const submitPromise = new Promise<void>((r) => { resolveSubmit = r })
+    const submitPromise = new Promise<void>((r) => {
+      resolveSubmit = r
+    })
     const email = field('email', 'a@b.com')
     const form = useForm({ fields: [email], onSubmit: () => submitPromise })
 

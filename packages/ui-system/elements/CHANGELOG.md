@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -49,7 +48,6 @@
   ## The fix
 
   `isPyreonComponent` gained a **Tier 2 naming-convention check** that runs after the existing marker checks:
-
   - **`displayName` is set** → component (explicit author intent)
   - **`.name` starts with an uppercase A–Z letter** → component (matches JSX's own component-vs-host discriminator)
   - Anonymous arrows (`name === ''`), `export default` shortcuts (`name === 'default'`), camelCase helpers (`getContent`, `renderHeader`) — all fall through to the bare-call accessor path so existing reactive-accessor patterns work unchanged.
@@ -63,7 +61,6 @@
   The escape hatch for users who insist on PascalCase-named reactive accessors: pass them as an anonymous wrapper — `beforeContent={() => MyAccessor()}` — or rename to camelCase.
 
   ## Test coverage
-
   - **11 unit tests** in `isPyreonComponent.test.ts`: Tier 1 markers (4 specs), Tier 2 displayName/PascalCase (5 specs), accessor fall-through guards (6 specs covering anonymous, camelCase, `default`, empty-name, digit-prefixed, unicode-letter-prefixed), Tier 1 + Tier 2 coexistence (2 specs)
   - **5 behavioral regression tests** in `slot-bare-component-with-hooks.test.tsx` matching the bokisch.com bug shape: PascalCase bare component routes via `h()`, `displayName`-only routes via `h()`, bare component using `onMount` produces NO "outside component setup" warning, anonymous accessor still takes bare-call path, camelCase helper still takes bare-call path
   - **Bisect-verified-with-restore**: reverting Tier 2 → 8 tests fail (5 unit + 3 behavioral); restored → all 496 elements tests pass
@@ -215,7 +212,6 @@
   **Policy: only ports that show measurably better under Pyreon's runtime
   were kept.** Two upstream changes were measured neutral/worse here and
   deliberately reverted:
-
   - `styler.hashUpdate` 4-char unroll — measured +1.6% short / +2.1% long
     under Bun (both inside the ±2% JIT noise band). Reverted to the simple
     single-char loop.
@@ -227,7 +223,6 @@
   **Measured wins** (paired before/after micro-bench via
   `bun scripts/perf/port-vitus-labs-bench.ts`, Bun 1.3.13, 3 warmup + 7
   timed runs, report median):
-
   - `styler.CSSResult._staticResolved` cache (8 repeats): **+85.3%**
   - `attrs.removeUndefinedProps` (10-prop input): **+77.4%**
   - `unistyle.shouldNormalize` (5-key static): **+66.0%**
@@ -241,7 +236,6 @@
   - `styler.splitRules charCodeAt vs str[i]`: **+8.0%**
 
   Plus 6 structural cleanups (no perf claim, allocation reductions only):
-
   - `styler.globalStyle` length-check vs `.trim()`
   - `unistyle.normalizeTheme` / `transformTheme` for-in (drops
     Object.entries tuple-array allocations)
@@ -254,7 +248,6 @@
 
   **Behavioural lock-in tests** (ported from vitus-labs `60fc25c1`, 8 new
   specs in `@pyreon/styler`):
-
   - `CSSResult._isDynamic` memoization: populate-on-first / cache-on-
     subsequent (values-mutation sentinel) / nested-propagation.
   - `CSSResult._staticResolved` cache: populate-on-first / cache-hit-via-
@@ -263,7 +256,6 @@
     signals, not React refs).
 
   **Bisect-verified-with-restore**:
-
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
 calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
@@ -276,7 +268,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   per-function structural wins, not a real-app headline number.
 
   **Verification**:
-
   - 1832 tests pass: styler 425 (+8 lock-ins) + unistyle 240 + rocketstyle
     290 + attrs 89 + coolgrid 106 + elements 463 + hooks 219.
   - Browser smokes: elements 16, styler 12, rocketstyle 12, unistyle 6,
@@ -333,7 +324,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   PR [#731](https://github.com/pyreon/pyreon/issues/731) fixed the kinetic-mode renderers under `packages/ui-system/kinetic/src/kinetic/`.
   It missed the parallel TOP-LEVEL components in the same package + a
   subtle Iterator shape.
-
   - **`@pyreon/kinetic` top-level `Stagger.tsx`** — `(Array.isArray(own.children) ? own.children : [own.children]).filter(isVNode)` collapsed to `[]` when `own.children` is a function. Fixed by calling `resolveChildren(own.children)` at body entry (same helper PR [#731](https://github.com/pyreon/pyreon/issues/731) shipped in `kinetic/src/utils.ts`).
   - **`@pyreon/kinetic` top-level `Transition.tsx`** — 3 × `cloneVNode(props.children, …)` + 1 × `(props.children.props ?? {})` reads. The cloneVNode-on-function shape produces `<undefined>` tags; the `.props` read returns undefined and silently drops the merge-ref. Fixed by resolving once at body entry (`const child = resolveChildren(props.children)`).
   - **`@pyreon/elements` `Iterator`** — falls through to `renderChild(function)` which calls `render(function, props)` and interprets the function as a component. Doesn't crash but loses per-item metadata (`first`/`last`/`position`/`index`/`odd`/`even`). Fixed by unwrapping at body entry with the inline `typeof rawChildren === 'function' ? rawChildren() : rawChildren` ternary.
@@ -341,20 +331,17 @@ calls without rescanning values` fires; restored → 425/425 pass.
   ## Lint rule — `pyreon/no-iterate-children-without-resolve`
 
   New error-level rule under the `reactivity` category. Detects:
-
   1. **`cloneVNode(EXPR, …)`** where EXPR ends with `.children`.
   2. **`(Array.isArray(EXPR) ? EXPR : [EXPR]).METHOD(…)`** where METHOD is one of `filter` / `map` / `forEach` / `reduce` / `every` / `some` / `find` / `findIndex` / `flatMap`.
   3. **`EXPR.props`** reads where EXPR ends with `.children` (the merge-ref pattern from `Transition.tsx`).
 
   **Acceptable mitigations** (per-function scope, inherits through nested arrow functions):
-
   - `resolveChildren(…)` call.
   - `typeof EXPR === 'function' ? EXPR() : EXPR` ternary.
   - `typeof EXPR === 'function'` guard anywhere.
   - `const NAME = <mitigation expression>` — marks NAME as safe-aliased.
 
   **Out of scope** (deliberate precision trade-offs):
-
   - Pass-through `...(Array.isArray(EXPR) ? EXPR : [EXPR])` SpreadElement → mountChild handles function children. Naturally not flagged by the call-site detection.
   - `if (Array.isArray(X)) return X.map(…)` IfStatement-guarded iteration. Framework primitives (`Dynamic`, `Show`, `Switch`) use this with direct h() rest args that never reach the auto-wrap; out of scope.
   - Variable-bound iteration patterns (`const xs = COND; xs.METHOD(…)`). Out of scope — detection at the inline `.METHOD(…)` call site.
@@ -362,7 +349,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   **Bisect-verified at two layers**: 19 unit specs (10 FIRES + 9 CONTROL + real-world shapes), reverting the rule fails all 10 FIRES; full repo sweep against `packages/**` after library fixes → 0 hits (zero false positives, zero remaining real bugs).
 
   ## Surfaces updated
-
   - `packages/ui-system/kinetic/src/Stagger.tsx` — top-level Stagger fix
   - `packages/ui-system/kinetic/src/Transition.tsx` — top-level Transition fix
   - `packages/ui-system/elements/src/helpers/Iterator/component.tsx` — Iterator fix
@@ -376,7 +362,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   - `.claude/rules/anti-patterns.md` — new bug-class entry under Architecture Mistakes
 
   ## Validation
-
   - All 3 library packages pass tests (kinetic 220, elements 463 → +new regression specs)
   - All 650 lint tests pass (19 new specs)
   - `check-doc-claims` clean (count claims locked)
@@ -461,7 +446,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   **Bug class.** Pyreon's reactive-prop contract is that `<Comp prop={signal()}>` compiles to `h(Comp, { prop: _rp(() => signal()) })` and `mount.ts:makeReactiveProps` converts `_rp`-branded thunks into property GETTERS on the props object. Any prop-pipeline step that VALUE-COPIES `props[key]` (plain assignment, spread, or `Object.assign`) fires the getter at HOC setup time — outside any tracking scope — and stores the resolved value as a static data property. Every downstream JSX accessor reading `props.x` then sees the captured-once value, never re-subscribing to the underlying signal.
 
   **Two layers of fix:**
-
   1. **Compiler-level (closes the bug class for all consumers, including user code).** Both the JS compiler (`src/jsx.ts`) and the Rust native binary (`native/src/lib.rs`) now wrap component-JSX spread arguments with the new `_wrapSpread(...)` helper from `@pyreon/core`. `<Comp {...source}>` compiles to `jsx(Comp, { ..._wrapSpread(source) })` — `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks, so the JS-level spread carries function values (no getters fire), and `makeReactiveProps` converts them back to getters on the consumer side. Fast path: when `source` has no getter descriptors, `_wrapSpread` returns the source unchanged — zero overhead for the 99% of spread sources that don't carry reactive props. Lowercase-tag (DOM) spreads route through the template path's `_applyProps` (already reactive) and skip the wrap.
 
   2. **Framework-level (closes every observed leak site in shipped packages):**
@@ -473,7 +457,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
      - `@pyreon/runtime-dom` — `applyProps` in `props.ts` detects getter descriptors and wraps the write in `renderEffect`.
 
   **Bisect-verified at TWO layers:**
-
   - **Unit / browser**: `packages/ui-system/rocketstyle/src/__tests__/reactive-props-preservation.test.ts` (9 specs) + the new `rocketstyle.browser.test.tsx` spec covering the full pipeline. Reverting any of the 4 leak-site fixes individually fails the relevant spec with `expected 'count: 1' to be 'count: 0'`.
   - **Real-Chromium e2e**: `e2e/ui-showcase-regression.spec.ts:793 — signal-driven prop on Button updates the DOM on flip` exercises a rocketstyle Button with a `title={\`count: \${count()}\`}` prop fed by a signal. Reverting the compiler-level fix (`packages/core/compiler/src/jsx.ts`+`native/src/lib.rs`+ rebuilding the Rust binary) → spec fails with`unexpected value "count: 0"` after click — proving the spread reactivity contract holds end-to-end through the entire prop pipeline (rocketstyle attrs HOC → styler buildProps → Element Wrapper → runtime-dom applyProps).
 
@@ -546,7 +529,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
 - [#239](https://github.com/pyreon/pyreon/pull/239) [`ee1bc2b`](https://github.com/pyreon/pyreon/commit/ee1bc2b0dd3ce853eee4a72bcc8629ed0aa1cea5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Elements anti-pattern cleanup + lint rule precision
 
   `@pyreon/elements`:
-
   - `utils.ts`: replaced `process.env.NODE_ENV !== 'production'` (dead code in
     real Vite browser bundles — `process` is not polyfilled) with the
     tree-shake-friendly `import.meta.env?.DEV` gate. Typed through a narrowing
@@ -573,20 +555,17 @@ calls without rescanning values` fires; restored → 425/425 pass.
     `@pyreon/reactivity`, `@pyreon/runtime-dom` added to elements.
 
   `@pyreon/lint` — `no-window-in-ssr`:
-
   - Logical-and guards with a typeof-derived const on either side now recognised
     (e.g. `IS_BROWSER && active() ? <Portal target={document.body} /> : null`).
     Short-circuit semantics mean the body only runs when the guard is truthy.
 
   `@pyreon/lint` — `no-bare-signal-in-jsx`:
-
   - Added `render` to the skip allowlist. `render()` from `@pyreon/ui-core` is
     a VNode-producing helper (takes ComponentFn/string/VNode, returns
     VNodeChild), not a signal read — its JSX call sites always produce a
     VNode and don't need `() =>` wrapping.
 
   `@pyreon/lint` — `dev-guard-warnings`:
-
   - Added conventional dev-flag name set (`__DEV__`, `IS_DEV`, `IS_DEVELOPMENT`,
     `isDev`) so imported dev gates (e.g. `import { IS_DEVELOPMENT } from '../utils'`)
     silence `console.warn` warnings inside their guarded branches. Same convention

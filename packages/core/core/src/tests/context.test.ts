@@ -363,7 +363,12 @@ describe('captureContextStack — dedup', () => {
     // Frame with two contexts; only one is shadowed by a deeper push.
     const a = createContext('a')
     const b = createContext('b')
-    pushContext(new Map<symbol, unknown>([[a.id, 'a1'], [b.id, 'b1']]))
+    pushContext(
+      new Map<symbol, unknown>([
+        [a.id, 'a1'],
+        [b.id, 'b1'],
+      ]),
+    )
     pushContext(new Map([[a.id, 'a2']])) // shadows `a`, NOT `b`
 
     const snap = captureContextStack()
@@ -384,8 +389,18 @@ describe('captureContextStack — dedup', () => {
   test('multi-key frame: dropped if ALL its ids are shadowed', () => {
     const a = createContext('a')
     const b = createContext('b')
-    pushContext(new Map<symbol, unknown>([[a.id, 'a1'], [b.id, 'b1']]))
-    pushContext(new Map<symbol, unknown>([[a.id, 'a2'], [b.id, 'b2']]))
+    pushContext(
+      new Map<symbol, unknown>([
+        [a.id, 'a1'],
+        [b.id, 'b1'],
+      ]),
+    )
+    pushContext(
+      new Map<symbol, unknown>([
+        [a.id, 'a2'],
+        [b.id, 'b2'],
+      ]),
+    )
 
     const snap = captureContextStack()
     expect(snap).toHaveLength(1)
@@ -405,7 +420,12 @@ describe('captureContextStack — dedup', () => {
     const b = createContext('b-default')
     const c = createContext('c-default')
     pushContext(new Map([[a.id, 'a1']]))
-    pushContext(new Map<symbol, unknown>([[a.id, 'a2'], [b.id, 'b1']]))
+    pushContext(
+      new Map<symbol, unknown>([
+        [a.id, 'a2'],
+        [b.id, 'b1'],
+      ]),
+    )
     pushContext(new Map([[c.id, 'c1']]))
     pushContext(new Map([[a.id, 'a3']]))
     pushContext(new Map([[b.id, 'b2']]))

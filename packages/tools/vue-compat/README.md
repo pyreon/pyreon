@@ -29,7 +29,9 @@ function Counter() {
 
   return (
     <div>
-      <p>Count: {count.value}, doubled: {doubled.value}</p>
+      <p>
+        Count: {count.value}, doubled: {doubled.value}
+      </p>
       <button onClick={() => count.value++}>+1</button>
     </div>
   )
@@ -38,27 +40,27 @@ function Counter() {
 
 ## Subpath exports
 
-| Subpath                              | Surface                                                                                       |
-| ------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `@pyreon/vue-compat`                 | Full Composition API surface — see API table below                                             |
-| `@pyreon/vue-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
-| `@pyreon/vue-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
+| Subpath                              | Surface                                            |
+| ------------------------------------ | -------------------------------------------------- |
+| `@pyreon/vue-compat`                 | Full Composition API surface — see API table below |
+| `@pyreon/vue-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)  |
+| `@pyreon/vue-compat/jsx-dev-runtime` | Dev variant — same runtime                         |
 
 ## API surface
 
-| Category         | Exports                                                                                       |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| Refs             | `ref`, `shallowRef`, `triggerRef`, `isRef`, `unref`, `toValue`, `toRef`, `toRefs`             |
-| Computed         | `computed` (getter form + writable `{ get, set }` form)                                       |
-| Reactive         | `reactive`, `shallowReactive`, `readonly`, `shallowReadonly`, `toRaw`, `markRaw`, `isReactive`, `isReadonly`, `isProxy` |
-| Watchers         | `watch`, `watchEffect`, `WatchOptions`                                                         |
-| Lifecycle        | `onMounted`, `onUnmounted`, `onUpdated`, `onBeforeMount`, `onBeforeUnmount`, `onErrorCaptured`, `onRenderTracked`, `onRenderTriggered` |
-| Scheduling       | `nextTick`                                                                                     |
-| DI               | `provide`, `inject`                                                                            |
-| Components       | `defineComponent`, `defineAsyncComponent`, `createApp(App, props?)`                            |
-| Scope            | `effectScope`, `getCurrentScope`, `onScopeDispose`                                             |
-| Built-ins        | `Teleport`, `KeepAlive`, `Transition`                                                          |
-| JSX              | `h`, `Fragment`                                                                                |
+| Category   | Exports                                                                                                                                |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Refs       | `ref`, `shallowRef`, `triggerRef`, `isRef`, `unref`, `toValue`, `toRef`, `toRefs`                                                      |
+| Computed   | `computed` (getter form + writable `{ get, set }` form)                                                                                |
+| Reactive   | `reactive`, `shallowReactive`, `readonly`, `shallowReadonly`, `toRaw`, `markRaw`, `isReactive`, `isReadonly`, `isProxy`                |
+| Watchers   | `watch`, `watchEffect`, `WatchOptions`                                                                                                 |
+| Lifecycle  | `onMounted`, `onUnmounted`, `onUpdated`, `onBeforeMount`, `onBeforeUnmount`, `onErrorCaptured`, `onRenderTracked`, `onRenderTriggered` |
+| Scheduling | `nextTick`                                                                                                                             |
+| DI         | `provide`, `inject`                                                                                                                    |
+| Components | `defineComponent`, `defineAsyncComponent`, `createApp(App, props?)`                                                                    |
+| Scope      | `effectScope`, `getCurrentScope`, `onScopeDispose`                                                                                     |
+| Built-ins  | `Teleport`, `KeepAlive`, `Transition`                                                                                                  |
+| JSX        | `h`, `Fragment`                                                                                                                        |
 
 ## Drop-in compat mode
 
@@ -76,8 +78,8 @@ export default { plugins: [pyreon({ compat: 'vue' })] }
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@pyreon/vue-compat"
-  }
+    "jsxImportSource": "@pyreon/vue-compat",
+  },
 }
 ```
 

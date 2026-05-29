@@ -8,10 +8,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import {
-  _resetProjectDepsCache,
-  isProjectDependency,
-} from '../utils/project-deps'
+import { _resetProjectDepsCache, isProjectDependency } from '../utils/project-deps'
 
 function fixture(pkg: Record<string, unknown>): {
   dir: string

@@ -30,7 +30,7 @@ export default defineManifest({
 const html = await renderToString(<App />)`,
       mistakes: [
         'Expecting signal writes after `renderToString` to change the output — SSR is one-shot; the string is already produced. Reactivity is a post-hydration (client) concern',
-        "Calling Pyreon context APIs (`useHead`, loaders) OUTSIDE `renderToString` and expecting per-request isolation — use `runWithRequestContext` for that; bare calls share the fallback stack across concurrent requests",
+        'Calling Pyreon context APIs (`useHead`, loaders) OUTSIDE `renderToString` and expecting per-request isolation — use `runWithRequestContext` for that; bare calls share the fallback stack across concurrent requests',
         'Reaching for `renderToString` directly when you have an HTTP handler — the `createHandler` in `@pyreon/server` wraps it with template precompilation, middleware, and loader-data injection; prefer that for request handling',
       ],
       seeAlso: ['renderToStream', 'runWithRequestContext'],
@@ -38,7 +38,8 @@ const html = await renderToString(<App />)`,
     {
       name: 'renderToStream',
       kind: 'function',
-      signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
+      signature:
+        'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
       summary:
         'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via `options.suspenseTimeoutMs`; pass `Infinity` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass `options.signal` (e.g. `Request.signal`) to abort pending Suspense work when the consumer disconnects.',
       example: `import { renderToStream } from "@pyreon/runtime-server"
@@ -100,7 +101,7 @@ configureStoreIsolation(setStoreRegistryProvider)`,
       kind: 'function',
       signature: 'decodeKeyFromMarker(encoded: string): string',
       summary:
-        "Inverse of the internal For-list key encoder. `<For>` SSR emits per-item `<!--k:KEY-->` markers; the encoder URL-encodes the key and replaces every `-` with `%2D` so a user-supplied key can never form `-->` and break out of the HTML comment (an injection vector). `decodeKeyFromMarker` reverses that. Not used by the runtime today (hydration does not read per-item markers) — shipped alongside the encoder so future hydration or devtools consumers decode symmetrically without re-deriving the scheme.",
+        'Inverse of the internal For-list key encoder. `<For>` SSR emits per-item `<!--k:KEY-->` markers; the encoder URL-encodes the key and replaces every `-` with `%2D` so a user-supplied key can never form `-->` and break out of the HTML comment (an injection vector). `decodeKeyFromMarker` reverses that. Not used by the runtime today (hydration does not read per-item markers) — shipped alongside the encoder so future hydration or devtools consumers decode symmetrically without re-deriving the scheme.',
       example: `import { decodeKeyFromMarker } from "@pyreon/runtime-server"
 
 decodeKeyFromMarker("a%2Db") // "a-b"`,

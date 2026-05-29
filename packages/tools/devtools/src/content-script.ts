@@ -1,8 +1,4 @@
-import {
-  createContentWire,
-  isBackgroundToContent,
-  isPageWireMessage,
-} from './messages'
+import { createContentWire, isBackgroundToContent, isPageWireMessage } from './messages'
 import { SOURCE } from './types'
 
 // --- Content script: pure bridge between page world and background/panel ---
@@ -33,10 +29,8 @@ window.addEventListener('message', (event: MessageEvent) => {
 })
 
 // 3. Relay messages from background/panel -> page (page-hook)
-chrome.runtime.onMessage.addListener(
-  (message: unknown, _sender, _sendResponse) => {
-    if (!isBackgroundToContent(message)) return
+chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) => {
+  if (!isBackgroundToContent(message)) return
 
-    window.postMessage(createContentWire(message.payload), location.origin)
-  },
-)
+  window.postMessage(createContentWire(message.payload), location.origin)
+})

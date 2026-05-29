@@ -89,13 +89,7 @@ export function Icon(props: IconProps): VNodeChild {
     // attrs (`class`, `style`, `aria-*`, events) are meaningfully
     // forwardable here. Narrow the spread to the host's real surface.
     const hostRest = rest as unknown as PyreonHTMLAttributes<HTMLElement>
-    return (
-      <span
-        style={FILL_STYLE}
-        {...hostRest}
-        dangerouslySetInnerHTML={{ __html: own.svg }}
-      />
-    )
+    return <span style={FILL_STYLE} {...hostRest} dangerouslySetInnerHTML={{ __html: own.svg }} />
   }
 
   return null
@@ -116,15 +110,9 @@ export function Icon(props: IconProps): VNodeChild {
  * // …sized + themed entirely by the consumer:
  * <span style="width:48px"><Check class="text-green-600" /></span>
  */
-export function createIcon(
-  source: string | SvgComponent,
-): (props: SvgAttributes) => VNodeChild {
+export function createIcon(source: string | SvgComponent): (props: SvgAttributes) => VNodeChild {
   return (props: SvgAttributes) =>
-    typeof source === 'string' ? (
-      <Icon svg={source} {...props} />
-    ) : (
-      <Icon as={source} {...props} />
-    )
+    typeof source === 'string' ? <Icon svg={source} {...props} /> : <Icon as={source} {...props} />
 }
 
 // ─── createNamedIcon — typed icon-set runtime ────────────────────────────────
@@ -173,9 +161,7 @@ export function createNamedIcon<R extends Record<string, string>>(
     if (mode === 'image') {
       // svg-only props can't apply to an <img>; only host attrs forward.
       const hostRest = rest as unknown as PyreonHTMLAttributes<HTMLImageElement>
-      return (
-        <img src={source} alt={own.alt ?? ''} style={FILL_STYLE} {...hostRest} />
-      )
+      return <img src={source} alt={own.alt ?? ''} style={FILL_STYLE} {...hostRest} />
     }
     return <Icon svg={source} {...rest} />
   }

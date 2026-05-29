@@ -40,6 +40,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/document": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/document": "workspace:^",
@@ -52,9 +56,5 @@
   },
   "engines": {
     "node": ">= 22"
-  },
-  "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/document": "workspace:^"
   }
 }

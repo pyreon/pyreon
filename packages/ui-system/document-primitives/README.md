@@ -14,61 +14,61 @@ bun add @pyreon/document-primitives @pyreon/document @pyreon/connector-document
 
 ```tsx
 import {
-  DocDocument, DocPage, DocHeading, DocText, DocList, DocListItem,
+  DocDocument,
+  DocPage,
+  DocHeading,
+  DocText,
+  DocList,
+  DocListItem,
   extractDocNode,
 } from '@pyreon/document-primitives'
 import { render, download } from '@pyreon/document'
 
 function ReportTemplate({ data }: { data: () => Report }) {
   return (
-    <DocDocument
-      title={() => `${data().org} — Q4 report`}
-      author={() => data().author}
-    >
+    <DocDocument title={() => `${data().org} — Q4 report`} author={() => data().author}>
       <DocPage>
         <DocHeading level={1}>Q4 Highlights</DocHeading>
         <DocText>Revenue grew {() => data().revenueDelta}% year-over-year.</DocText>
-        <DocList>
-          {() => data().bullets.map((b) => <DocListItem>{b}</DocListItem>)}
-        </DocList>
+        <DocList>{() => data().bullets.map((b) => <DocListItem>{b}</DocListItem>)}</DocList>
       </DocPage>
     </DocDocument>
   )
 }
 
 // Live preview — render the same tree into the DOM
-<ReportTemplate data={() => store.report} />
+;<ReportTemplate data={() => store.report} />
 
 // Export — extract + render to a format
 const tree = extractDocNode(() => <ReportTemplate data={() => store.report} />)
 const pdfBuffer = await render(tree, 'pdf')
-await download(tree, 'q4-report.pdf')   // browser shortcut
+await download(tree, 'q4-report.pdf') // browser shortcut
 const markdown = await render(tree, 'markdown')
 const docxBuffer = await render(tree, 'docx')
 ```
 
 ## The 18 primitives
 
-| Component | `_documentType` | Base | Notes |
-|---|---|---|---|
-| `DocDocument` | `'document'` | `Element` | Root container; accepts `title` / `author` / `subject` (string or `() => string` accessor) |
-| `DocPage` | `'page'` | `Element` | Logical page; carries page-level metadata for paginated formats |
-| `DocSection` | `'section'` | `Element` | Semantic section grouping |
-| `DocRow` | `'row'` | `Element` | Horizontal layout row |
-| `DocColumn` | `'column'` | `Element` | Vertical layout column with optional `width` |
-| `DocHeading` | `'heading'` | `Text` | `level` 1-6 (or `h1`-`h6` flags) |
-| `DocText` | `'text'` | `Text` | Paragraph text |
-| `DocLink` | `'link'` | `Text` | `href` |
-| `DocImage` | `'image'` | `Element` | `src` / `alt` / `width` / `height` |
-| `DocTable` | `'table'` | `Element` | Tabular data with column definitions |
-| `DocList` | `'list'` | `Element` | `ordered: boolean` |
-| `DocListItem` | `'list-item'` | `Element` | List item |
-| `DocCode` | `'code'` | `Text` | Optional `language` for syntax-highlighted exports |
-| `DocDivider` | `'divider'` | `Element` | Horizontal rule |
-| `DocSpacer` | `'spacer'` | `Element` | Vertical spacing; `height` (default 16) |
-| `DocButton` | `'button'` | `Text` | CTA with `href` |
-| `DocQuote` | `'quote'` | `Element` | Blockquote with optional `borderColor` |
-| `DocPageBreak` | `'page-break'` | `Element` | Forces a page break in paginated formats |
+| Component      | `_documentType` | Base      | Notes                                                                                      |
+| -------------- | --------------- | --------- | ------------------------------------------------------------------------------------------ |
+| `DocDocument`  | `'document'`    | `Element` | Root container; accepts `title` / `author` / `subject` (string or `() => string` accessor) |
+| `DocPage`      | `'page'`        | `Element` | Logical page; carries page-level metadata for paginated formats                            |
+| `DocSection`   | `'section'`     | `Element` | Semantic section grouping                                                                  |
+| `DocRow`       | `'row'`         | `Element` | Horizontal layout row                                                                      |
+| `DocColumn`    | `'column'`      | `Element` | Vertical layout column with optional `width`                                               |
+| `DocHeading`   | `'heading'`     | `Text`    | `level` 1-6 (or `h1`-`h6` flags)                                                           |
+| `DocText`      | `'text'`        | `Text`    | Paragraph text                                                                             |
+| `DocLink`      | `'link'`        | `Text`    | `href`                                                                                     |
+| `DocImage`     | `'image'`       | `Element` | `src` / `alt` / `width` / `height`                                                         |
+| `DocTable`     | `'table'`       | `Element` | Tabular data with column definitions                                                       |
+| `DocList`      | `'list'`        | `Element` | `ordered: boolean`                                                                         |
+| `DocListItem`  | `'list-item'`   | `Element` | List item                                                                                  |
+| `DocCode`      | `'code'`        | `Text`    | Optional `language` for syntax-highlighted exports                                         |
+| `DocDivider`   | `'divider'`     | `Element` | Horizontal rule                                                                            |
+| `DocSpacer`    | `'spacer'`      | `Element` | Vertical spacing; `height` (default 16)                                                    |
+| `DocButton`    | `'button'`      | `Text`    | CTA with `href`                                                                            |
+| `DocQuote`     | `'quote'`       | `Element` | Blockquote with optional `borderColor`                                                     |
+| `DocPageBreak` | `'page-break'`  | `Element` | Forces a page break in paginated formats                                                   |
 
 Every primitive is themeable via rocketstyle's `.theme()` and `.attrs()` chain — wrap, restyle, restyle again, all while preserving the `_documentType` marker.
 
@@ -126,7 +126,7 @@ Convenience component that renders a tree-shaped template into a styled preview 
 ```tsx
 import { DocumentPreview } from '@pyreon/document-primitives'
 
-<DocumentPreview>
+;<DocumentPreview>
   <ReportTemplate data={store.report} />
 </DocumentPreview>
 ```
@@ -137,9 +137,12 @@ import { DocumentPreview } from '@pyreon/document-primitives'
 
 ```ts
 import {
-  extractDocumentTree,    // walk a vnode → DocNode
-  resolveStyles,          // $rocketstyle → ResolvedStyles
-  type DocNode, type DocChild, type NodeType, type ResolvedStyles,
+  extractDocumentTree, // walk a vnode → DocNode
+  resolveStyles, // $rocketstyle → ResolvedStyles
+  type DocNode,
+  type DocChild,
+  type NodeType,
+  type ResolvedStyles,
   type ExtractOptions,
 } from '@pyreon/document-primitives'
 ```

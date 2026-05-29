@@ -104,9 +104,7 @@ export function main(argv: string[]): number {
       out: parsed.out,
       ...(parsed.kotlinPackage ? { kotlinPackage: parsed.kotlinPackage } : {}),
     })
-    console.log(
-      `[pyreon-native] compiled ${result.filesCompiled} file(s) → ${parsed.out}`,
-    )
+    console.log(`[pyreon-native] compiled ${result.filesCompiled} file(s) → ${parsed.out}`)
     if (result.warnings.length > 0) {
       console.warn(`[pyreon-native] ${result.warnings.length} warning(s):`)
       for (const w of result.warnings) {

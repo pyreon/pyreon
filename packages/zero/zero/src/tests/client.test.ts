@@ -40,9 +40,7 @@ vi.mock('../app', () => ({
 }))
 
 vi.mock('@pyreon/router', async () => {
-  const actual = await vi.importActual<typeof import('@pyreon/router')>(
-    '@pyreon/router',
-  )
+  const actual = await vi.importActual<typeof import('@pyreon/router')>('@pyreon/router')
   return {
     ...actual,
     hydrateLoaderData: hydrateLoaderDataMock,
@@ -79,8 +77,7 @@ describe('startClient — loader integration', () => {
   it('hydrates SSR loader data from window.__PYREON_LOADER_DATA__', async () => {
     const { startClient } = await import('../client')
     const ssrData = { '/users/:id': { userId: '42', name: 'User 42' } }
-    ;(window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__ =
-      ssrData
+    ;(window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__ = ssrData
 
     startClient({ routes: [route] })
 
@@ -103,8 +100,6 @@ describe('startClient — loader integration', () => {
   it('throws when #app container is missing', async () => {
     const { startClient } = await import('../client')
     document.body.innerHTML = ''
-    expect(() => startClient({ routes: [route] })).toThrow(
-      /Missing #app container/,
-    )
+    expect(() => startClient({ routes: [route] })).toThrow(/Missing #app container/)
   })
 })

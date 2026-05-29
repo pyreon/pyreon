@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/feature',
   title: 'Schema-Driven CRUD',
-  tagline:
-    'Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores',
+  tagline: 'Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores',
   description:
     'Schema-driven feature factory for Pyreon. Define a feature schema and API config once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.',
   category: 'universal',
@@ -91,8 +90,7 @@ store.loading() // loading state`,
     {
       name: 'defineFeature',
       kind: 'function',
-      signature:
-        '<T>(config: FeatureConfig<T>) => Feature<T>',
+      signature: '<T>(config: FeatureConfig<T>) => Feature<T>',
       summary:
         'Define a schema-driven CRUD feature. Accepts a name, field schema, and API config. Returns a Feature object with auto-generated hooks: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`. Composes @pyreon/query (data fetching), @pyreon/form (form state), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). Schema field types are inferred for TypeScript autocompletion across all generated hooks.',
       example: `const Posts = defineFeature({

@@ -55,17 +55,13 @@ export const preferTypedSearchParams: Rule = {
       NewExpression(node: any) {
         if (!importsRouter) return
         const callee = node.callee
-        if (
-          !callee ||
-          callee.type !== 'Identifier' ||
-          callee.name !== 'URLSearchParams'
-        ) {
+        if (!callee || callee.type !== 'Identifier' || callee.name !== 'URLSearchParams') {
           return
         }
 
         context.report({
           message:
-            'Manual `new URLSearchParams(...)` in a routed file — use `useTypedSearchParams({ page: \'number\', q: \'string\' })` from @pyreon/router for auto-coerced, reactive, structurally-shared search params.',
+            "Manual `new URLSearchParams(...)` in a routed file — use `useTypedSearchParams({ page: 'number', q: 'string' })` from @pyreon/router for auto-coerced, reactive, structurally-shared search params.",
           span: getSpan(node),
         })
       },

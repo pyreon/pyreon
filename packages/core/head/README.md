@@ -65,7 +65,7 @@ Static-object form registers ONCE; thunk form runs an effect that re-registers w
 ```ts
 useHead({
   title: 'Page',
-  titleTemplate: '%s | My App',                    // or: (title) => `${title} | My App`
+  titleTemplate: '%s | My App', // or: (title) => `${title} | My App`
   meta: [{ name: 'description', content: '...' }],
   link: [{ rel: 'stylesheet', href: '/app.css' }],
   script: [{ src: '/analytics.js', defer: 'true' }],
@@ -158,10 +158,10 @@ const page = `<!DOCTYPE html>
 ## Subpath exports
 
 ```ts
-import { useHead } from '@pyreon/head/use-head'         // tree-shake fine-grained
-import { HeadProvider } from '@pyreon/head/provider'    // tree-shake fine-grained
-import { renderWithHead } from '@pyreon/head/ssr'       // SSR-only
-import { HeadContext, createHeadContext } from '@pyreon/head/context'  // sub-bundle-stable
+import { useHead } from '@pyreon/head/use-head' // tree-shake fine-grained
+import { HeadProvider } from '@pyreon/head/provider' // tree-shake fine-grained
+import { renderWithHead } from '@pyreon/head/ssr' // SSR-only
+import { HeadContext, createHeadContext } from '@pyreon/head/context' // sub-bundle-stable
 ```
 
 The main entry re-exports everything from `/use-head` + `/provider` for ergonomics. The `/ssr` entry is intentionally separate so client bundles don't pull in `renderToString` from `@pyreon/runtime-server`.

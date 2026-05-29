@@ -26,7 +26,12 @@ async function runTransform(
   id = '/proj/src/test.tsx',
 ): Promise<string> {
   const xform = plugin.transform as
-    | ((this: unknown, code: string, id: string, opts?: { ssr?: boolean }) => Promise<{ code: string } | string | null | undefined>)
+    | ((
+        this: unknown,
+        code: string,
+        id: string,
+        opts?: { ssr?: boolean },
+      ) => Promise<{ code: string } | string | null | undefined>)
     | undefined
   if (!xform) throw new Error('plugin has no transform hook')
   const ctx = {
@@ -251,7 +256,9 @@ describe('Phase D2 — JSX auto-import for canonical primitives', () => {
     // <Container> appears in JSX. Text is used and not imported,
     // so it's auto-imported. The existing import is EXTENDED in place
     // (single import line with both alias + new name).
-    expect(out).toMatch(/import\s*\{[^}]*Stack\s+as\s+Container[^}]*\}\s*from\s*'@pyreon\/primitives'/)
+    expect(out).toMatch(
+      /import\s*\{[^}]*Stack\s+as\s+Container[^}]*\}\s*from\s*'@pyreon\/primitives'/,
+    )
     expect(out).toMatch(/import\s*\{[^}]*\bText\b[^}]*\}\s*from\s*'@pyreon\/primitives'/)
   })
 })

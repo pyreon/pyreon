@@ -132,7 +132,7 @@ export const config = {
         return warnMissingEnv(
           'netlify',
           ['NETLIFY_BUILD_HOOK_URL'],
-          'Create a build hook in Site settings → Build & deploy → Build hooks → Add build hook. Note: Netlify Build Hooks trigger a FULL site rebuild — the path arg is recorded as `trigger_title` for audit traceability but Netlify doesn\'t support per-page ISR natively.',
+          "Create a build hook in Site settings → Build & deploy → Build hooks → Add build hook. Note: Netlify Build Hooks trigger a FULL site rebuild — the path arg is recorded as `trigger_title` for audit traceability but Netlify doesn't support per-page ISR natively.",
         )
       }
       try {

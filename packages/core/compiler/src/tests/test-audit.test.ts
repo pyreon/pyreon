@@ -2,11 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  auditTestEnvironment,
-  formatTestAudit,
-  type TestAuditResult,
-} from '../test-audit'
+import { auditTestEnvironment, formatTestAudit, type TestAuditResult } from '../test-audit'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 // tests/ → src/ → compiler/ → core/ → packages/ → repo root (5 ups)
@@ -296,14 +292,8 @@ describe('auditTestEnvironment — synthetic fixtures', () => {
   })
 
   it('sorts entries by risk (HIGH first) then path', () => {
-    f.writeTest(
-      'z/src/tests/low.test.ts',
-      `import { h } from '@pyreon/core'; const v = h('div')`,
-    )
-    f.writeTest(
-      'a/src/tests/high.test.ts',
-      `const v = { type: 'div', props: {}, children: [] }`,
-    )
+    f.writeTest('z/src/tests/low.test.ts', `import { h } from '@pyreon/core'; const v = h('div')`)
+    f.writeTest('a/src/tests/high.test.ts', `const v = { type: 'div', props: {}, children: [] }`)
     f.writeTest(
       'm/src/tests/medium.test.ts',
       `
@@ -318,10 +308,7 @@ describe('auditTestEnvironment — synthetic fixtures', () => {
   })
 
   it('skips node_modules / lib / dist directories', () => {
-    f.writeTest(
-      'foo/src/tests/real.test.ts',
-      `const x = { type: 'a', props: {}, children: [] }`,
-    )
+    f.writeTest('foo/src/tests/real.test.ts', `const x = { type: 'a', props: {}, children: [] }`)
     f.writeTest(
       'foo/node_modules/some-dep/src/tests/nested.test.ts',
       `const x = { type: 'ignored', props: {}, children: [] }`,
@@ -541,9 +528,7 @@ describe('formatTestAudit', () => {
   })
 
   it('mentions PR #197 so the agent has the context', () => {
-    const out = formatTestAudit(
-      mkResult([{ risk: 'high', mockVNodeLiteralCount: 1 }]),
-    )
+    const out = formatTestAudit(mkResult([{ risk: 'high', mockVNodeLiteralCount: 1 }]))
     expect(out).toContain('PR #197')
   })
 })

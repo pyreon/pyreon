@@ -176,10 +176,7 @@ export function findOwningWorkspace(
 
 // ── Reverse-dep graph + BFS ────────────────────────────────────────────────
 
-export function transitiveDependents(
-  seeds: Set<string>,
-  workspaces: Workspace[],
-): Set<string> {
+export function transitiveDependents(seeds: Set<string>, workspaces: Workspace[]): Set<string> {
   // Build reverse graph: dep -> [dependents]
   const reverse = new Map<string, Set<string>>()
   for (const ws of workspaces) {
@@ -234,9 +231,7 @@ export function filterByCategory(
   // dir — example apps live outside `packages/<category>/`. Every other
   // category maps to `packages/<category>/`.
   const prefix =
-    category === 'examples'
-      ? join(root, 'examples') + '/'
-      : join(root, 'packages', category) + '/'
+    category === 'examples' ? join(root, 'examples') + '/' : join(root, 'packages', category) + '/'
   const byName = new Map<string, Workspace>()
   for (const ws of workspaces) byName.set(ws.name, ws)
 
@@ -300,7 +295,10 @@ export function computeAffectedFlags(opts: {
   // single quotes here breaks GitHub Actions step outputs (the quotes are
   // preserved verbatim and bun receives `--filter='@pyreon/x'` literally,
   // matching no packages).
-  return [...closure].sort().map((name) => `--filter=${name}`).join(' ')
+  return [...closure]
+    .sort()
+    .map((name) => `--filter=${name}`)
+    .join(' ')
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -323,11 +321,10 @@ function main(): void {
     // not executable shell). Same fix shape applies to scripts/e2e-affected.ts
     // — tracked as a follow-up to keep this PR scoped to the typecheck/test
     // shard work.
-    const diffOut = execFileSync(
-      'git',
-      ['diff', '--name-only', `${base}...HEAD`],
-      { cwd: ROOT, encoding: 'utf-8' },
-    )
+    const diffOut = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], {
+      cwd: ROOT,
+      encoding: 'utf-8',
+    })
     changed = diffOut.split('\n').filter(Boolean)
   } catch {
     // Diff failed (bad base ref, shallow clone, etc.) — be safe, run all.

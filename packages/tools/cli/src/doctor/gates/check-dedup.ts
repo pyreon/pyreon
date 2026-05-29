@@ -99,9 +99,7 @@ export const _parseNpmLock = (raw: string): Map<string, ResolvedPackage> => {
   const packages = (lock as { packages?: unknown }).packages
   if (typeof packages !== 'object' || packages === null) return out
 
-  for (const [key, value] of Object.entries(
-    packages as Record<string, unknown>,
-  )) {
+  for (const [key, value] of Object.entries(packages as Record<string, unknown>)) {
     // Extract the package name from the trailing segment.
     const match = key.match(/(?:^|\/)node_modules\/(@?[^/]+(?:\/[^/]+)?)$/)
     if (!match) continue
@@ -214,9 +212,7 @@ const LOCKFILES: ReadonlyArray<{
  * const result = await runCheckDedupGate({ cwd: process.cwd() })
  * if (result.findings.length > 0) process.exit(1)
  */
-export const runCheckDedupGate = async (
-  opts: CheckDedupGateOptions,
-): Promise<GateResult> => {
+export const runCheckDedupGate = async (opts: CheckDedupGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
   let scanned = 0

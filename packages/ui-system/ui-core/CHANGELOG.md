@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -113,7 +112,6 @@
 - [#837](https://github.com/pyreon/pyreon/pull/837) [`b5b87ab`](https://github.com/pyreon/pyreon/commit/b5b87abd2dcdf315260595b3f0b6d3908789c1fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `PyreonUI` — `theme` is now optional + nested PyreonUI inherits theme from the parent.
 
   Three issues fixed together (they share the same root cause — `enrichTheme(undefined)` in a `computed`):
-
   1. **`inversed` looked broken on nested PyreonUI.** `<PyreonUI theme={appTheme}><PyreonUI inversed>...</PyreonUI></PyreonUI>` produced no visible inversion — every styled descendant rendered with an empty theme.
   2. **`theme` was required by the type.** `<PyreonUI inversed>` (no `theme` prop) was a type error AND a runtime crash.
   3. **Nested PyreonUI required re-passing `theme`** even though the parent had already provided one through `ThemeContext`.
@@ -127,7 +125,7 @@
   <PyreonUI theme={appTheme}>
     <Header />
     <PyreonUI inversed>
-      {" "}
+      {' '}
       {/* no theme prop — inherits appTheme */}
       <DarkSidebar /> {/* renders with appTheme + dark mode */}
     </PyreonUI>
@@ -239,7 +237,6 @@
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -253,7 +250,6 @@
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -304,7 +300,6 @@
   **Bug class.** Pyreon's reactive-prop contract is that `<Comp prop={signal()}>` compiles to `h(Comp, { prop: _rp(() => signal()) })` and `mount.ts:makeReactiveProps` converts `_rp`-branded thunks into property GETTERS on the props object. Any prop-pipeline step that VALUE-COPIES `props[key]` (plain assignment, spread, or `Object.assign`) fires the getter at HOC setup time — outside any tracking scope — and stores the resolved value as a static data property. Every downstream JSX accessor reading `props.x` then sees the captured-once value, never re-subscribing to the underlying signal.
 
   **Two layers of fix:**
-
   1. **Compiler-level (closes the bug class for all consumers, including user code).** Both the JS compiler (`src/jsx.ts`) and the Rust native binary (`native/src/lib.rs`) now wrap component-JSX spread arguments with the new `_wrapSpread(...)` helper from `@pyreon/core`. `<Comp {...source}>` compiles to `jsx(Comp, { ..._wrapSpread(source) })` — `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks, so the JS-level spread carries function values (no getters fire), and `makeReactiveProps` converts them back to getters on the consumer side. Fast path: when `source` has no getter descriptors, `_wrapSpread` returns the source unchanged — zero overhead for the 99% of spread sources that don't carry reactive props. Lowercase-tag (DOM) spreads route through the template path's `_applyProps` (already reactive) and skip the wrap.
 
   2. **Framework-level (closes every observed leak site in shipped packages):**
@@ -316,7 +311,6 @@
      - `@pyreon/runtime-dom` — `applyProps` in `props.ts` detects getter descriptors and wraps the write in `renderEffect`.
 
   **Bisect-verified at TWO layers:**
-
   - **Unit / browser**: `packages/ui-system/rocketstyle/src/__tests__/reactive-props-preservation.test.ts` (9 specs) + the new `rocketstyle.browser.test.tsx` spec covering the full pipeline. Reverting any of the 4 leak-site fixes individually fails the relevant spec with `expected 'count: 1' to be 'count: 0'`.
   - **Real-Chromium e2e**: `e2e/ui-showcase-regression.spec.ts:793 — signal-driven prop on Button updates the DOM on flip` exercises a rocketstyle Button with a `title={\`count: \${count()}\`}` prop fed by a signal. Reverting the compiler-level fix (`packages/core/compiler/src/jsx.ts`+`native/src/lib.rs`+ rebuilding the Rust binary) → spec fails with`unexpected value "count: 0"` after click — proving the spread reactivity contract holds end-to-end through the entire prop pipeline (rocketstyle attrs HOC → styler buildProps → Element Wrapper → runtime-dom applyProps).
 
@@ -353,7 +347,6 @@
 ### Patch Changes
 
 - [#258](https://github.com/pyreon/pyreon/pull/258) [`a05c4ba`](https://github.com/pyreon/pyreon/commit/a05c4bab713f5168acd56eb233520102735bd80a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Performance rearchitecture: reactive theme/mode/dimension switching via computed (not effect).
-
   - **styler**: `DynamicStyled` uses one `computed()` per component (not `effect()`) to track theme + mode + dimension signals. The resolve itself runs `runUntracked()` to prevent exponential cascade. String-equality memoization eliminates redundant DOM updates. Per-definition WeakMap cache (Tier 2) skips resolve entirely for repeated identical inputs.
   - **styler**: `ThemeContext` is a `createReactiveContext<Theme>`. `useThemeAccessor()` returns the raw accessor for tracking inside computeds.
   - **ui-core**: `PyreonUI` nested `inversed` prop inherits parent mode reactively — inner section automatically flips when outer mode changes.

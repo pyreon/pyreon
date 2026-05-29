@@ -55,23 +55,23 @@ function Modal() {
 
 For non-component use (one-off registration, dynamic shortcuts read from settings, etc.):
 
-| Function | Notes |
-|---|---|
+| Function                                      | Notes                                              |
+| --------------------------------------------- | -------------------------------------------------- |
 | `registerHotkey(shortcut, handler, options?)` | Returns an `unregister()` function — call manually |
-| `enableScope(scope)` / `disableScope(scope)` | Imperative scope control |
-| `getActiveScopes()` | Currently active scope names |
-| `getRegisteredHotkeys(): HotkeyEntry[]` | All registered shortcuts — useful for help dialogs |
+| `enableScope(scope)` / `disableScope(scope)`  | Imperative scope control                           |
+| `getActiveScopes()`                           | Currently active scope names                       |
+| `getRegisteredHotkeys(): HotkeyEntry[]`       | All registered shortcuts — useful for help dialogs |
 
 ## Options
 
 ```ts
 interface HotkeyOptions {
-  scope?: string                          // default: 'global'
-  preventDefault?: boolean                // default: true
-  stopPropagation?: boolean               // default: false
-  enableOnInputs?: boolean                // default: false
-  description?: string                    // for help dialogs
-  enabled?: boolean | (() => boolean)     // reactive — re-evaluated each fire
+  scope?: string // default: 'global'
+  preventDefault?: boolean // default: true
+  stopPropagation?: boolean // default: false
+  enableOnInputs?: boolean // default: false
+  description?: string // for help dialogs
+  enabled?: boolean | (() => boolean) // reactive — re-evaluated each fire
 }
 ```
 

@@ -22,13 +22,7 @@ export interface CoverageThresholds {
   lines: number
 }
 
-export type PackageCategory =
-  | 'core'
-  | 'fundamentals'
-  | 'ui'
-  | 'tools'
-  | 'zero'
-  | 'internals'
+export type PackageCategory = 'core' | 'fundamentals' | 'ui' | 'tools' | 'zero' | 'internals'
 
 export const CATEGORY_DEFAULTS: Record<PackageCategory, CoverageThresholds> = {
   core: { statements: 90, branches: 90, functions: 90, lines: 90 },

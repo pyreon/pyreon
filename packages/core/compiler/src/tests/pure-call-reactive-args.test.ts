@@ -25,7 +25,9 @@ const isReactive = (o: string): boolean => /_bind\(|_bindText\(/.test(o)
 
 describe('Round 4 — pure call with a DYNAMIC argument must stay reactive', () => {
   it('Math.max(signal(), 0) is reactively wrapped', () => {
-    expect(isReactive(emit(`function C(){ const n=signal(0); return <div>{Math.max(n(),0)}</div> }`))).toBe(true)
+    expect(
+      isReactive(emit(`function C(){ const n=signal(0); return <div>{Math.max(n(),0)}</div> }`)),
+    ).toBe(true)
   })
   it('Math.round(props.x) is reactively wrapped', () => {
     expect(isReactive(emit(`function C(p){ return <div>{Math.round(p.x)}</div> }`))).toBe(true)
@@ -34,7 +36,9 @@ describe('Round 4 — pure call with a DYNAMIC argument must stay reactive', () 
     expect(isReactive(emit(`function C(p){ return <div>{JSON.stringify(p.o)}</div> }`))).toBe(true)
   })
   it('Object.keys(props.o).length is reactively wrapped', () => {
-    expect(isReactive(emit(`function C(p){ return <div>{Object.keys(p.o).length}</div> }`))).toBe(true)
+    expect(isReactive(emit(`function C(p){ return <div>{Object.keys(p.o).length}</div> }`))).toBe(
+      true,
+    )
   })
   it('String(props.x) is reactively wrapped', () => {
     expect(isReactive(emit(`function C(p){ return <div>{String(p.x)}</div> }`))).toBe(true)

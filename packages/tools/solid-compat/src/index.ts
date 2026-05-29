@@ -639,23 +639,23 @@ export function createResource<T, S = true>(
   options?: { initialValue?: T },
 ): ResourceReturn<T>
 export function createResource<T, S = true>(
-  sourceOrFetcher:
-    | (() => S)
-    | true
-    | ((info: { value: T | undefined }) => Promise<T> | T),
+  sourceOrFetcher: (() => S) | true | ((info: { value: T | undefined }) => Promise<T> | T),
   maybeFetcherOrOptions?:
     | ((source: S, info: { value: T | undefined }) => Promise<T> | T)
     | { initialValue?: T },
   maybeOptions?: { initialValue?: T },
 ): ResourceReturn<T> {
   const hasSource = typeof maybeFetcherOrOptions === 'function'
-  const source = hasSource ? (sourceOrFetcher as (() => S) | true) : (() => true as S)
-  const fetcher = (
-    hasSource ? maybeFetcherOrOptions : sourceOrFetcher
-  ) as (source: S, info: { value: T | undefined }) => Promise<T> | T
+  const source = hasSource ? (sourceOrFetcher as (() => S) | true) : () => true as S
+  const fetcher = (hasSource ? maybeFetcherOrOptions : sourceOrFetcher) as (
+    source: S,
+    info: { value: T | undefined },
+  ) => Promise<T> | T
   const opts = hasSource
     ? maybeOptions
-    : (typeof maybeFetcherOrOptions === 'object' ? maybeFetcherOrOptions as { initialValue?: T } : undefined)
+    : typeof maybeFetcherOrOptions === 'object'
+      ? (maybeFetcherOrOptions as { initialValue?: T })
+      : undefined
   const initialValue = opts?.initialValue
 
   const [data, setData] = createSignal<T | undefined>(initialValue)
@@ -846,9 +846,7 @@ const STORE_SIGNAL_SWEEP_THRESHOLD = 256
  */
 export const _STORE_SIGNAL_CACHE = Symbol.for('pyreon/solid-compat:store-signal-cache')
 
-export function createStore<T extends object>(
-  initialValue: T,
-): [T, SetStoreFunction<T>] {
+export function createStore<T extends object>(initialValue: T): [T, SetStoreFunction<T>] {
   const signals = new Map<string, ReturnType<typeof pyreonSignal>>()
   let raw: T = deepClone(initialValue)
 
@@ -986,11 +984,7 @@ export function createStore<T extends object>(
    * without the `DANGEROUS_KEYS` filter. Same shape as
    * `@pyreon/reactivity reconcile.ts:34`.
    */
-  const DANGEROUS_KEYS: Set<unknown> = new Set([
-    '__proto__',
-    'constructor',
-    'prototype',
-  ])
+  const DANGEROUS_KEYS: Set<unknown> = new Set(['__proto__', 'constructor', 'prototype'])
   /** Object.assign equivalent that skips `__proto__` / `constructor` / `prototype`. */
   function safeAssign(target: object, source: unknown): void {
     if (!source || typeof source !== 'object') return
@@ -1021,7 +1015,8 @@ export function createStore<T extends object>(
         for (let i = 0; i < obj.length; i++) {
           if ((head as (item: unknown, index: number) => boolean)(obj[i], i)) {
             if (rest.length === 0) {
-              obj[i] = typeof value === 'function' ? (value as (prev: unknown) => unknown)(obj[i]) : value
+              obj[i] =
+                typeof value === 'function' ? (value as (prev: unknown) => unknown)(obj[i]) : value
             } else {
               applyAtPath(obj[i], rest, value)
             }
@@ -1062,9 +1057,7 @@ export function createStore<T extends object>(
       // the prototype are NOT triggered.
       const target = obj as Record<string | number, unknown>
       const nextValue =
-        typeof value === 'function'
-          ? (value as (prev: unknown) => unknown)(target[key])
-          : value
+        typeof value === 'function' ? (value as (prev: unknown) => unknown)(target[key]) : value
       Object.defineProperty(target, key, {
         value: nextValue,
         writable: true,
@@ -1176,9 +1169,7 @@ export function observable<T>(input: () => T): Observable<T> {
  * Accepts either a producer function `(setter) => cleanup` or an observable with `.subscribe()`.
  */
 export function from<T>(
-  producer:
-    | ((setter: (v: T) => void) => () => void)
-    | Observable<T>,
+  producer: ((setter: (v: T) => void) => () => void) | Observable<T>,
 ): () => T | undefined {
   const [value, setValue] = createSignal<T | undefined>(undefined)
 
@@ -1236,9 +1227,10 @@ export function Index<T>(props: {
   each: readonly T[] | (() => readonly T[])
   children: (item: () => T, index: number) => VNodeChild
 }): VNodeChild {
-  const list = typeof props.each === 'function'
-    ? (props.each as () => readonly T[])
-    : () => props.each as readonly T[]
+  const list =
+    typeof props.each === 'function'
+      ? (props.each as () => readonly T[])
+      : () => props.each as readonly T[]
   const mapped = createMemo(() => {
     const items = list()
     return items.map((item, i) => props.children(() => item, i))
@@ -1270,10 +1262,7 @@ export const DEV = process.env.NODE_ENV !== 'production' ? {} : undefined
 /**
  * Solid-compatible `catchError` — wraps a function and catches synchronous errors.
  */
-export function catchError<T>(
-  tryFn: () => T,
-  onError: (err: Error) => void,
-): T | undefined {
+export function catchError<T>(tryFn: () => T, onError: (err: Error) => void): T | undefined {
   try {
     return tryFn()
   } catch (e) {

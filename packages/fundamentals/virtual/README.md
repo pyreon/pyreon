@@ -50,12 +50,12 @@ Element-scoped virtualizer. Pre-fills `observeElementRect`, `observeElementOffse
 
 Returns `UseVirtualizerResult`:
 
-| Property       | Type                                    | Notes                                                  |
-| -------------- | --------------------------------------- | ------------------------------------------------------ |
+| Property       | Type                                        | Notes                                                 |
+| -------------- | ------------------------------------------- | ----------------------------------------------------- |
 | `instance`     | `Virtualizer<TScrollElement, TItemElement>` | Raw TanStack instance — use for `scrollToIndex`, etc. |
-| `virtualItems` | `Signal<VirtualItem[]>`                 | Visible items                                          |
-| `totalSize`    | `Signal<number>`                        | Total scrollable size (px)                             |
-| `isScrolling`  | `Signal<boolean>`                       | Active scroll                                          |
+| `virtualItems` | `Signal<VirtualItem[]>`                     | Visible items                                         |
+| `totalSize`    | `Signal<number>`                            | Total scrollable size (px)                            |
+| `isScrolling`  | `Signal<boolean>`                           | Active scroll                                         |
 
 ```ts
 const parentRef = signal<HTMLDivElement | null>(null)

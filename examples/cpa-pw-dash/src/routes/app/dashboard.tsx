@@ -1,9 +1,9 @@
-import { computed, signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from "../../lib/db"
+import { computed, signal } from '@pyreon/reactivity'
+import { onMount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from '../../lib/db'
 
-export const meta = { title: "Overview" }
+export const meta = { title: 'Overview' }
 
 export default function Dashboard() {
   useHead({ title: meta.title })
@@ -20,12 +20,12 @@ export default function Dashboard() {
 
   const revenue = computed(() =>
     invoices()
-      .filter((i) => i.status === "paid")
+      .filter((i) => i.status === 'paid')
       .reduce((sum, i) => sum + invoiceTotal(i), 0),
   )
   const outstanding = computed(() =>
     invoices()
-      .filter((i) => i.status === "pending")
+      .filter((i) => i.status === 'pending')
       .reduce((sum, i) => sum + invoiceTotal(i), 0),
   )
 
@@ -44,7 +44,7 @@ export default function Dashboard() {
         <div class="stat-card">
           <div class="label">Invoices</div>
           <div class="value">{() => invoices().length}</div>
-          <div class="delta">{() => invoices().filter((i) => i.status === "paid").length} paid</div>
+          <div class="delta">{() => invoices().filter((i) => i.status === 'paid').length} paid</div>
         </div>
         <div class="stat-card">
           <div class="label">Revenue</div>
@@ -55,7 +55,7 @@ export default function Dashboard() {
           <div class="label">Outstanding</div>
           <div class="value">{() => `$${outstanding().toLocaleString()}`}</div>
           <div class="delta" style="color: var(--c-warning);">
-            {() => invoices().filter((i) => i.status === "pending").length} pending
+            {() => invoices().filter((i) => i.status === 'pending').length} pending
           </div>
         </div>
       </div>

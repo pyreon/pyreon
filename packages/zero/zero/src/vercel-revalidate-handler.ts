@@ -120,10 +120,7 @@ export function vercelRevalidateHandler(
     // the server hasn't been configured.
     const expected = process.env[secretEnvVar]
     if (!expected) {
-      return new Response(
-        `Server misconfigured: ${secretEnvVar} env var not set`,
-        { status: 500 },
-      )
+      return new Response(`Server misconfigured: ${secretEnvVar} env var not set`, { status: 500 })
     }
     if (secret !== expected) {
       return new Response('Forbidden: invalid secret', { status: 403 })
@@ -157,10 +154,7 @@ export function vercelRevalidateHandler(
     // revalidation even with a valid secret. Closes the
     // "secret leaked once → attacker revalidates anything" footgun.
     if (!Object.prototype.hasOwnProperty.call(cache.manifest.revalidate, path)) {
-      return new Response(
-        `Path "${path}" not in revalidate manifest`,
-        { status: 404 },
-      )
+      return new Response(`Path "${path}" not in revalidate manifest`, { status: 404 })
     }
 
     // Run the revalidation. Custom impl OR fallback to a structured

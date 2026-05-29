@@ -1,7 +1,8 @@
 import { el } from '../../factory'
 import { SwitchBase } from '@pyreon/ui-primitives'
 
-const Switch = el.config({ name: 'Switch', component: SwitchBase })
+const Switch = el
+  .config({ name: 'Switch', component: SwitchBase })
   .theme((t) => ({
     backgroundColor: t.color.system.base[300],
     borderRadius: t.borderRadius.pill,

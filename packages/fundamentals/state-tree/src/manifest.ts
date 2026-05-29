@@ -107,15 +107,21 @@ u.reset()                // back to initial`,
         'Using `model({ state, views, actions })` — that single-config form was REMOVED. Chain `.views()` / `.actions()` instead',
         'Defining views/actions referencing each other across MULTIPLE `.actions()` blocks but expecting tight typing — `self` in each block is loosely typed at the tail (`Record<string, any>`) so cross-block calls work; the cost is weak inference for cross-block helpers',
       ],
-      seeAlso: ['ModelDefinition', 'SchemaModelHelpers', 'getSnapshot', 'applySnapshot', 'onPatch', 'addMiddleware'],
+      seeAlso: [
+        'ModelDefinition',
+        'SchemaModelHelpers',
+        'getSnapshot',
+        'applySnapshot',
+        'onPatch',
+        'addMiddleware',
+      ],
     },
     {
       name: 'SchemaModelHelpers',
       kind: 'type',
-      signature:
-        'interface SchemaModelHelpers<TState> { set, patch, deepPatch, update<K>, reset }',
+      signature: 'interface SchemaModelHelpers<TState> { set, patch, deepPatch, update<K>, reset }',
       summary:
-        'The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. `$`-prefixed so they never collide with user schema field names (`name`, `set`, `patch`, etc.). All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`\'s `SchemaStoreApi`.',
+        "The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. `$`-prefixed so they never collide with user schema field names (`name`, `set`, `patch`, etc.). All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`'s `SchemaStoreApi`.",
       example: `// All five helpers — pick by mutation shape:
 u.set({ name: 'Bob', age: 40, prefs: { theme: 'dark', density: 'cozy' } })   // full replace
 u.patch({ name: 'Bob' })                                                       // shallow merge
@@ -125,7 +131,7 @@ u.reset()                                                                       
       mistakes: [
         '`patch({ prefs: { theme } })` REPLACES the whole `prefs` object (shallow merge); use `deepPatch` to keep `density` intact',
         '`deepPatch` REPLACES arrays / class instances (Date, Map, Set) — only plain objects recurse',
-        '`update`\'s transformer is `(unknown) => unknown` — cast at the call site for typed inference (key is constrained to `keyof TState & string`)',
+        "`update`'s transformer is `(unknown) => unknown` — cast at the call site for typed inference (key is constrained to `keyof TState & string`)",
         'Using `update` for multi-field changes — it transforms ONE top-level field at a time; use `patch` / `deepPatch` / `set` for multi-field',
       ],
       seeAlso: ['model', 'DeepPartial'],
@@ -136,7 +142,7 @@ u.reset()                                                                       
       signature:
         'type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T',
       summary:
-        'Recursive partial — every property optional at every depth. Used by `SchemaModelHelpers.deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics. Parallel to `@pyreon/store`\'s `DeepPartial`.',
+        "Recursive partial — every property optional at every depth. Used by `SchemaModelHelpers.deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics. Parallel to `@pyreon/store`'s `DeepPartial`.",
       example: `// State { count: number; prefs: { theme: string; density: string } }
 // DeepPartial admits:
 deepPatch({ count: 5 })                                  // primitive field
@@ -152,7 +158,8 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
     {
       name: 'ModelDefinition',
       kind: 'type',
-      signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), create(initial?), asHook(id) }',
+      signature:
+        'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), create(initial?), asHook(id) }',
       summary:
         'The chainable builder returned by `model()`. Each `.views(f)` / `.actions(f)` returns a NEW `ModelDefinition` with the accumulated layer — immutable builder, safe to share across call sites. `f` receives `self` typed as the model AS IT IS SO FAR (state signals + prior views + prior actions + schema helpers when applicable). Type parameters: `TState` is the underlying value shape; `TViews` / `TActions` accumulate across chain steps; `HasSchema` flips to `true` in schema mode (adds `set`/`patch`/`reset` to instance type).',
       example: `const M = model({ schema })
@@ -161,7 +168,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
   .actions((self) => ({ go: () => self.b() })) // self has a + b
   .actions((self) => ({ go2: () => self.go() })) // self has a + b + go`,
       mistakes: [
-        'Trying to mutate `_config` directly — it\'s frozen by intent. Use the chain methods.',
+        "Trying to mutate `_config` directly — it's frozen by intent. Use the chain methods.",
         'Forgetting that `.views(f).actions(g)` does NOT call `f` or `g` immediately — they run inside `.create()`. Side effects in factories run per-instance, not per-definition.',
       ],
       seeAlso: ['model'],
@@ -180,7 +187,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
       kind: 'function',
       signature: '(instance: ModelInstance, snapshot: Snapshot) => void',
       summary:
-        'Replace a model instance\'s state wholesale from a snapshot. Recursively applies to nested models. Triggers patch listeners with replace operations.',
+        "Replace a model instance's state wholesale from a snapshot. Recursively applies to nested models. Triggers patch listeners with replace operations.",
       example: `applySnapshot(counter, { count: 0 }) // reset to zero`,
       seeAlso: ['getSnapshot', 'model'],
     },

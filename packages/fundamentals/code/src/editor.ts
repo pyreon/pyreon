@@ -339,7 +339,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     effect(() => {
       const val = value()
       // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
+      const v = view.peek()
       if (!v) return
       const current = v.state.doc.toString()
       if (val !== current) {
@@ -356,7 +356,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     effect(() => {
       const lang = language()
       // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
+      const v = view.peek()
       if (!v) return
       loadLanguage(lang).then((ext) => {
         v.dispatch({ effects: languageCompartment.reconfigure(ext) })
@@ -367,7 +367,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     effect(() => {
       const t = theme()
       // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
+      const v = view.peek()
       if (!v) return
       v.dispatch({ effects: themeCompartment.reconfigure(resolveTheme(t)) })
     })
@@ -376,7 +376,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     effect(() => {
       const ro = readOnly()
       // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
+      const v = view.peek()
       if (!v) return
       v.dispatch({
         effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(ro)),

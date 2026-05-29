@@ -24,26 +24,26 @@
 
   ```tsx
   // Author writes the canonical idiomatic shape:
-  const isSelected = createSelector(selectedId);
-  <For each={rows} by={(r) => r.id}>
-    {(row) => <tr class={() => (isSelected(row.id) ? "selected" : "")}>...</tr>}
-  </For>;
+  const isSelected = createSelector(selectedId)
+  ;<For each={rows} by={(r) => r.id}>
+    {(row) => <tr class={() => (isSelected(row.id) ? 'selected' : '')}>...</tr>}
+  </For>
   ```
 
   Compiles to:
 
   ```js
   const __d0 = isSelected.subscribe(row.id, (m) => {
-    __root.className = m ? "selected" : "";
-  });
+    __root.className = m ? 'selected' : ''
+  })
   ```
 
   Instead of the previous (still-correct, slower):
 
   ```js
   const __d0 = _bind(() => {
-    __root.className = isSelected(row.id) ? "selected" : "";
-  });
+    __root.className = isSelected(row.id) ? 'selected' : ''
+  })
   ```
 
   ## Per-row alloc
@@ -59,7 +59,6 @@
   ## Bail catalog (conservative — uncertain ⇒ no promotion)
 
   Falls back to the existing `_bind(...)` shape when:
-
   - The selector identifier is NOT a known `createSelector()` result (tracked at module scope; function-scope `const` declarations follow the same rules as `signal()` auto-call)
   - The selector call has 0 or 2+ arguments (not the standard shape)
   - The key expression contains a reactive read (would freeze the key at first mount)
@@ -73,7 +72,6 @@
   Implemented byte-for-byte in BOTH the JS path (`packages/core/compiler/src/jsx.ts`) and the Rust native path (`packages/core/compiler/native/src/lib.rs`). 9 new cross-backend equivalence specs cover the promotion-positive shapes + the full bail catalog; production users on the Rust binary (3.7-8.9× faster compiler) get the win immediately.
 
   ## Test coverage
-
   - 12 JS-path specs in `selector-subscribe-promote.test.ts`: canonical shape, bare (no-arrow) form, dispose binding shape, every bail in the catalog, deep key expressions, setAttribute-style attrs (aria-current, data-\*).
   - 9 cross-backend equivalence specs in `native-equivalence.test.ts`: bisect-verified-with-restore (disabling the Rust emission branch fails 4 of 9 with the exact `_bind(...)` vs `.subscribe(...)` drift).
   - Real-corpus: `examples/benchmark/src/impl/pyreon.tsx`'s `class={() => isSelected(row.id) ? 'selected' : ''}` confirmed to auto-promote through both backends, byte-identical output.
@@ -88,7 +86,7 @@
 
   ```tsx
   // Author writes the canonical text-child shape:
-  <td>{() => (isSelected(row.id) ? "✓" : "")}</td>
+  <td>{() => (isSelected(row.id) ? '✓' : '')}</td>
   ```
 
   Compiles to `isSelected.subscribe(row.id, (m) => { __t.data = (m ? '✓' : '') })` — the effect-free fast path. Identical bail catalog to the className auto-promotion (only fires when receiver is a known `createSelector()` result, exactly 1 argument, no reactive reads in key or branches).
@@ -105,7 +103,6 @@
   Compile to `_bindDirect(count, (v) => { __t.data = v.toFixed(2) })` — skipping the `withTracking` setup + signal lookup per fire. Same structural shape as `_bindText` for bare signal reads, extended to common formatting patterns.
 
   The detector requires:
-
   - Receiver is a zero-arg call to a known signal (tracked via `signalVars`)
   - Method is in the pure-primitive safelist (Number / String / Boolean prototype methods proven side-effect-free: `toFixed`, `toExponential`, `toPrecision`, `toString`, `valueOf`, `toUpperCase`, `toLowerCase`, `trim*`, `slice`, `substring`, `substr`, `charAt`, `charCodeAt`, `codePointAt`, `padStart`, `padEnd`, `repeat`, `normalize`, `concat`, `startsWith`, `endsWith`, `includes`, `indexOf`, `lastIndexOf`, `at`)
   - Method args contain no reactive reads (would otherwise miss subscriptions)
@@ -125,7 +122,6 @@
   Both detectors implemented byte-for-byte in JS path (`packages/core/compiler/src/jsx.ts`) and Rust native (`packages/core/compiler/native/src/lib.rs`). 13 new cross-backend equivalence specs lock the parity.
 
   ## Test coverage
-
   - 12 JS-path specs in `text-child-selector-promote.test.ts` (canonical shape + bail catalog + deep keys)
   - 16 JS-path specs in `signal-method-promote.test.ts` (Number/String/Boolean methods + bail catalog + integration with other detectors)
   - 13 cross-backend equivalence specs in `native-equivalence.test.ts` (4 selector + 9 method-call)
@@ -156,10 +152,10 @@
 
   ```tsx
   function App() {
-    const count = signal(0); // 🔥 signal fired 240×
-    const doubled = computed(() => count() * 2); // 🔥 derived fired 240×
-    effect(() => console.log(doubled())); // 🔥 effect fired 241×
-    return <div>{count()}</div>;
+    const count = signal(0) // 🔥 signal fired 240×
+    const doubled = computed(() => count() * 2) // 🔥 derived fired 240×
+    effect(() => console.log(doubled())) // 🔥 effect fired 241×
+    return <div>{count()}</div>
   }
   ```
 
@@ -192,8 +188,8 @@
 - [#780](https://github.com/pyreon/pyreon/pull/780) [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: sustained-rate hint via EWMA. Inlay-hint labels now show both cumulative fire count AND current fires/second when active — making hot-path debugging visible at a glance.
 
   ```tsx
-  const count = signal(0); // 🔥 signal fired 240× (12/s) — active
-  const stable = signal(0); // 🔥 signal fired 240×          — idle
+  const count = signal(0) // 🔥 signal fired 240× (12/s) — active
+  const stable = signal(0) // 🔥 signal fired 240×          — idle
   ```
 
   **Why**: cumulative count alone can't distinguish "this is firing right now" from "this fired a lot a few minutes ago." For hot-path debugging (the LPIH [#1](https://github.com/pyreon/pyreon/issues/1) use case), the user needs to see _current_ rate. Adding a decayed-EWMA rate alongside the cumulative count gives both signals without bloating the label.
@@ -209,14 +205,12 @@
   At steady state of λ fires/sec, `rate1s → λ` (when λ·TAU ≫ 1 — true for any rate worth noticing). On read, decay-to-now applied: a node that stopped firing 1.5s ago shows ≈22% of its peak rate; 3s ago shows ≈5%; 5s ago shows ≈0.7% (below the visibility threshold).
 
   **`@pyreon/reactivity`**:
-
   - `FireSummary.rate1s: number` — new field, decayed to "now" at every `getFireSummaries()` call.
   - `NodeRec.rate1s` — internal per-node EWMA state, updated on every fire.
   - `LPIH_RATE_TAU_MS` — exported constant (1000 ms = 1 second time constant).
   - Bridge `writeLpihCache` now includes `rate1s` in each fire entry's JSON.
 
   **`@pyreon/compiler`**:
-
   - `LPIHFireDatum.rate1s?: number` — optional field; older runtimes that don't emit it produce labels without the rate suffix (backward-compatible).
   - `_LPIH_RATE_VISIBLE_THRESHOLD = 0.5` — rates below this are suppressed (don't show "0.1/s" or "0/s" noise from decayed-dormant nodes).
   - Default label formatter: `signal fired 240× (12/s)` when active, `signal fired 240×` when below threshold or no rate field.
@@ -224,11 +218,9 @@
   - Multiple fires at the same line have their rates summed (consistent with the existing count-summing behavior).
 
   **`@pyreon/lint`**:
-
   - `LPIHCacheEntry.rate1s?: number` — round-trips through the cache; no LSP-side logic change beyond the type extension. The compiler's default formatter picks up the new field automatically.
 
   **Tests** (+12 new across all 3 packages, 2383 total, all green):
-
   - @pyreon/reactivity: 367 (+5 — rate1s captured, rises with bursts, decays after TAU, sums at same location, constant value lock)
   - @pyreon/compiler: 1316 (+7 — threshold-suppress, 1-decimal vs integer rounding, creation-site formatter, line-sum, custom formatter receives rate, missing-field passthrough)
   - @pyreon/lint: 700 (no new tests — rate1s is data-only round-trip through the cache; existing integration tests cover the path)
@@ -255,7 +247,7 @@
   detector had an unbounded `\w*` quantifier:
 
   ```ts
-  /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code);
+  ;/on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code)
   ```
 
   Polynomial-time on inputs like `onAAAA…` (long runs of `[A-Z]`):
@@ -286,10 +278,10 @@
 
   ```ts
   if (
-    typeof key === "string" &&
-    (key === "__proto__" || key === "constructor" || key === "prototype")
+    typeof key === 'string' &&
+    (key === '__proto__' || key === 'constructor' || key === 'prototype')
   ) {
-    return;
+    return
   }
   ```
 
@@ -298,7 +290,6 @@
   keys before the bracket-notation assignment on line 1042.
 
   ## Validation
-
   - `bun run --filter='@pyreon/compiler' typecheck` — clean
   - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
   - `bun run --filter='@pyreon/compiler' test pyreon-intercept` — 70/70 pass
@@ -325,7 +316,7 @@
   ```jsx
   // Pre-fix: bails on `state={...}` non-literal → full 5-layer mount
   // Post-fix (with PR 3 emit): collapses with a value dispatcher
-  <Button state={cond ? "primary" : "secondary"} size="medium" onClick={go}>
+  <Button state={cond ? 'primary' : 'secondary'} size="medium" onClick={go}>
     Save
   </Button>
   ```
@@ -337,7 +328,6 @@
   wrapping a `ConditionalExpression` with BOTH branches being `StringLiteral`
   is acceptable as a `DynamicCollapsibleProp { name, condStart, condEnd,
 valueTruthy, valueFalsy }`.
-
   - Composes with the existing `on*`-handler relaxation (same call can
     carry one ternary AND any number of handlers — matches real-corpus
     shape where Buttons with `state={cond ? ...}` almost always have
@@ -354,7 +344,6 @@ valueTruthy, valueFalsy }`.
   ## Bisect verification
 
   Neutralized `detectDynamicCollapsibleShape` (`if (node) return null`):
-
   - 5 POSITIVE specs fail with `expected null not to be null`
   - 8 NEGATIVE specs pass (they always assert null — asymmetry proof
     that the positive assertions are load-bearing on the ternary-
@@ -362,7 +351,6 @@ valueTruthy, valueFalsy }`.
   - Restored → 13/13 pass
 
   ## What's NOT in this PR (follow-up scope)
-
   - **PR 3**: resolver extension (resolve EACH literal value via existing
     SSR pipeline, assert structural-template parity) + emit
     `__rsCollapseDyn(...)` from `tryRocketstyleCollapse` falling through
@@ -376,14 +364,12 @@ valueTruthy, valueFalsy }`.
   in isolation, no compiler-pipeline coupling.
 
   ## Surfaces updated
-
   - `packages/core/compiler/src/jsx.ts` — `detectDynamicCollapsibleShape`
     - `DynamicCollapsibleProp` interface (new exports)
   - `packages/core/compiler/src/tests/dynamic-collapse-detector.test.ts`
     — 13 bisect-verified specs (POSITIVE + NEGATIVE)
 
   ## Related
-
   - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — PR 1: `_rsCollapseDyn` runtime helper
   - **[#761](https://github.com/pyreon/pyreon/issues/761)** (closed spike) — surfaced the recommendation
   - **on\*-handler partial-collapse** PRs (1-3 already shipped) — the
@@ -399,7 +385,6 @@ valueTruthy, valueFalsy }`.
   real-world shape).
 
   ## What this PR ships
-
   1. **`scanCollapsibleSites` extension** — drops the `dyn.handlers.length === 0`
      guard. Handler-bearing dynamic sites now expand into TWO `CollapsibleSite`
      entries (one per literal value) like no-handler ones. Handlers don't
@@ -430,7 +415,6 @@ classes, valueIndex, isDark, handlers)` (5-arg combined emit);
 
   Extended the `ui-showcase × spa` verify-modes cell's dynamic-collapse
   probe to render TWO Buttons:
-
   - `<Button state={isPrimary() ? 'primary' : 'secondary'} size="medium">Dyn</Button>` → `__rsCollapseDyn`
   - `<Button state={isPrimary() ? 'primary' : 'secondary'} size="medium" onClick={h}>DynH</Button>` → `__rsCollapseDynH`
 
@@ -474,7 +458,6 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
   path, and the three-layer bisect coverage.
 
   ## Validation
-
   - `bun run --filter='@pyreon/compiler' typecheck` — clean
   - `bun run --filter='@pyreon/compiler' lint` — zero errors
   - `bun run --filter='@pyreon/compiler' test` — 1285/1285 pass
@@ -486,7 +469,6 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
   - `bun run check-bundle-budgets` — clean (compiler size unchanged)
 
   ## Surfaces updated
-
   - `packages/core/compiler/src/jsx.ts` — `scanCollapsibleSites` drops
     handler-skip guard; `tryDynamicCollapse` routes handler-bearing
     sites to `__rsCollapseDynH`; `needsCollapseDynH` flag + conditional
@@ -504,7 +486,6 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
     qualifiers, documents both helpers
 
   ## Related
-
   - **[#773](https://github.com/pyreon/pyreon/issues/773)** (open) — PR A: `_rsCollapseDynH` runtime helper (this PR depends on it)
   - **[#765](https://github.com/pyreon/pyreon/issues/765) / [#766](https://github.com/pyreon/pyreon/issues/766) / [#767](https://github.com/pyreon/pyreon/issues/767)** (merged) — dynamic-prop sequence PRs 1-3
   - **[#771](https://github.com/pyreon/pyreon/issues/771)** (merged into pre-rebase pr3 branch, content lost on main; re-landed here)
@@ -513,7 +494,6 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
 - [#767](https://github.com/pyreon/pyreon/pull/767) [`f22902a`](https://github.com/pyreon/pyreon/commit/f22902a9a9c5f5b8a5192da086a6b4299291dd57) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(compiler): emit `__rsCollapseDyn` for ternary-of-two-literals sites — PR 3 of the dynamic-prop partial-collapse build
 
   Wires the dynamic-prop fallthrough into the compiler's collapse pipeline:
-
   1. **`scanCollapsibleSites` extension** — when the full detector
      (`detectCollapsibleShape`) bails, fall through to
      `detectDynamicCollapsibleShape` (PR 2). For a hit with no `on*`
@@ -528,11 +508,11 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
 
      ```js
      __rsCollapseDyn(
-       "<button>Save</button>",
-       ["pri_light", "pri_dark", "sec_light", "sec_dark"],
+       '<button>Save</button>',
+       ['pri_light', 'pri_dark', 'sec_light', 'sec_dark'],
        () => (cond ? 0 : 1),
-       () => __pyrMode() === "dark"
-     );
+       () => __pyrMode() === 'dark',
+     )
      ```
 
      Plus the standard idempotent `__rsSheet.injectRules(...)` for BOTH
@@ -546,7 +526,6 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
      modules import both `_rsCollapse` + `_rsCollapseH` (unchanged).
 
   ## Conservative bail discipline
-
   - Either expanded site missing from sites map ⇒ bail (intermittent
     resolver failure on one value mustn't half-collapse)
   - Divergent template HTML across values ⇒ bail (the dispatcher
@@ -561,7 +540,6 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
 
   Reverted the fallthrough chain (`return tryPartialCollapse(...) ||
 tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
-
   - 4 POSITIVE emit specs fail with `expected '<source>' to contain
 '__rsCollapseDyn('` / `'__pyrMode() === "dark"'` / etc.
   - 5 specs pass either way (FULL + on\*-partial regression specs;
@@ -573,7 +551,6 @@ tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
   the dynamic fallthrough — they don't pass for the wrong reason.
 
   ## NOT in this PR
-
   - **PR 4**: bail-census update (assert dynamic-prop addressable count
     flips `collapsible` in the existing census; coverage moves 73.2% →
     ~88%), `verify-modes ui-showcase × spa` probe route (build-artifact
@@ -584,7 +561,6 @@ tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
     runtime helper would close that residual).
 
   ## Surfaces updated
-
   - `packages/core/compiler/src/jsx.ts` — `scanCollapsibleSites` dynamic
     fallthrough (expands one ternary into two static sites);
     `tryDynamicCollapse` emit fn; `needsCollapseDyn` flag; conditional
@@ -598,7 +574,6 @@ tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
   - `.changeset/compiler-emit-dynamic-collapse.md` — this file
 
   ## Related
-
   - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — PR 1: `_rsCollapseDyn` runtime helper
   - **[#766](https://github.com/pyreon/pyreon/issues/766)** (open) — PR 2: `detectDynamicCollapsibleShape` detector
   - **[#761](https://github.com/pyreon/pyreon/issues/761)** (closed spike) — surfaced the recommendation
@@ -623,7 +598,6 @@ tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
   `scripts/verify-modes.ts` gets a new `assertDynProbeCollapsed(distDir)`
   helper that checks the `rs-collapse-dyn-probe-*.js` route chunk for THREE
   minification-stable, dynamic-emit-EXCLUSIVE fingerprints:
-
   - **(A) Baked template** — `Dyn</span></button>` (the static children
     baked into the template literal; a non-collapsed Button never
     serializes children to a literal)
@@ -651,7 +625,6 @@ tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
   `tryDynamicCollapse` fallthrough in `tryRocketstyleCollapse` (`return
 tryPartialCollapse(...) || tryDynamicCollapse(...)` → `return
 tryPartialCollapse(...)`), rebuilt compiler lib, re-ran verify-modes:
-
   - ALL THREE fingerprints become false; the probe falls back to a
     normal `h(Button, props)` mount (visible in the chunk:
     `r(a,{state:i(()=>o()?\`primary\`:\`secondary\`)...})`)
@@ -690,7 +663,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
   the new expansion.
 
   ## Surfaces updated
-
   - `examples/ui-showcase/src/routes/rs-collapse-dyn-probe.tsx` —
     canonical dynamic-collapsible probe route (new)
   - `scripts/verify-modes.ts` — `assertDynProbeCollapsed` helper +
@@ -701,7 +673,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
   - `.changeset/scripts-collapse-dyn-verify-modes.md` — patch changeset
 
   ## Validation
-
   - `bun run --filter='@pyreon/compiler' typecheck` — clean
   - `bun run --filter='@pyreon/compiler' lint` — zero errors
   - `bun run --filter='@pyreon/compiler' test` — 1285/1285 pass (1270
@@ -713,7 +684,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
   - `bun run check-manifest-depth` — clean
 
   ## NOT in this PR (deliberate, scoped)
-
   - **Real-Chromium e2e gate**: SKIPPED for symmetry with the established
     static-collapse pattern (which also has no e2e — runtime locked by
     PR 1's 7 `_rsCollapse` browser specs). PR 1's 7 `_rsCollapseDyn`
@@ -729,7 +699,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     closer to the full 15.4% bucket.
 
   ## Related
-
   - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — PR 1: `_rsCollapseDyn` runtime helper
   - **[#766](https://github.com/pyreon/pyreon/issues/766)** (open) — PR 2: `detectDynamicCollapsibleShape` detector
   - **[#767](https://github.com/pyreon/pyreon/issues/767)** (open) — PR 3: scan extension + emit `__rsCollapseDyn`
@@ -751,7 +720,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
   ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
 
   **Code:**
-
   - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
     interpolated `fullPath` raw into emitted JS. Path is developer-
     controlled (project's own filesystem scan), but a quote / backslash
@@ -775,7 +743,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     depth refuse the dangerous identifiers.
 
   **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
-
   - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
     `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
     caps. Pre-filter is a SCAN before the precise AST walker; losing
@@ -796,7 +763,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     formatting matchable.
 
   **Workflows (`.github/workflows/`):**
-
   - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
     `permissions: contents: read` block. Both workflows are read-only
     (perf records artifacts; audit reports findings).
@@ -812,7 +778,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
   ### Dismissed via API (20 false positives / won't fix)
 
   **True false positives (9):**
-
   - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
     "MAX_PASSES" as if it contained "password". Log is about
     effect-flush pass count.
@@ -833,7 +798,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     arbitrary paths.
 
   **Won't fix (internal dev tooling, not security boundaries):**
-
   - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
     (`pyreon context`, `create-zero`), build-time Vite plugin
     (`icons-plugin`), internal scripts (`check-bundle-budgets`,
@@ -854,7 +818,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     the actual supply-chain guarantee.
 
   ### Remaining (cannot be closed by a code PR)
-
   - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
     squash-merge with self-review by maintainer doesn't count.
     Project-policy issue, not code.
@@ -866,7 +829,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     infra work, out of scope.
 
   ### Validation
-
   - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
   - `@pyreon/compiler` 1257/1257 tests pass
   - `@pyreon/vite-plugin` 104/104 tests pass
@@ -898,14 +860,12 @@ scannerCollapsible` because the scanner now emits 2 entries per
   ## The carve-out
 
   For JSX children of COMPONENT parents (uppercase tag), skip the wrap when:
-
   1. The expression is a **stable reference** — bare `Identifier`, simple
      non-computed `MemberExpression` chain (`obj.x.y`), or any of the above
      wrapped in TS type-only layers (`as T` / `satisfies T` / `!` / parens).
   2. The expression does **not** reference a tracked signal variable.
 
   Both conditions matter:
-
   - **(1)** restricts the carve-out to shapes whose value at JSX-emit time
     is identical to what an effect re-evaluation would produce — a bare
     property read resolves the underlying getter (if any) the same way once
@@ -935,7 +895,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
 
   This compiler fix and PR [#731](https://github.com/pyreon/pyreon/issues/731)'s library-side `resolveChildren` are
   COMPLEMENTARY layers:
-
   - **The compiler fix** addresses the OUTER pass-through pattern — any
     library or user code that forwards children to a child component via
     `<Comp>{children}</Comp>` where `children` is a local binding. No more
@@ -948,7 +907,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     library-side unwrap is still needed for that case.
 
   Verified end-to-end against the bokisch.com Intro reproducer:
-
   - Compiler fix alone (kinetic at vanilla 0.22.0): bug still fires
     (`h1Count: 0`, 3 `<undefined>` tags from TransitionItem's
     `cloneVNode(function, {ref})`).
@@ -957,7 +915,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     (`children: h.children` bare instead of `children: () => h.children`).
 
   ## Bisect-verified at three layers
-
   - **JS backend**: `packages/core/compiler/src/tests/component-child-no-wrap.test.ts`
     (10 specs). Reverting the `isComponentTag(...) && isStableReference(expr)`
     carve-out fails 5 CONTRACT specs; 5 CONTROL specs stay green.
@@ -970,7 +927,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
     emitted bundle shows `children: h.children` (no wrap).
 
   ## Surfaces updated
-
   - `packages/core/compiler/src/jsx.ts` — `handleJsxExpression(node, parentJsx?)`
     - `isComponentTag` + `isStableReference` + `unwrapTypeLayers`
   - `packages/core/compiler/native/src/lib.rs` — same logic, byte-identical
@@ -1010,7 +966,6 @@ scannerCollapsible` because the scanner now emits 2 entries per
   the build-resolved class is byte-for-byte the client-mounted class.
 
   New public surface (all additive):
-
   - `@pyreon/styler` — `StyleSheet.getStyleRules()` (raw SSR rule
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
@@ -1074,7 +1029,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 - [#687](https://github.com/pyreon/pyreon/pull/687) [`c3df9db`](https://github.com/pyreon/pyreon/commit/c3df9dbbcf9e939c92e1c4843b59686cdd25589e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native (Rust) backend brought to 1:1 with the JS backend for the two
   prop-derived/element-child fixes [#686](https://github.com/pyreon/pyreon/issues/686) landed on the JS side only. Without
   this, the production-preferred native backend silently diverged.
-
   - R7 — prop-derived inlining inside callback-nested JSX. `collect_prop_derived_idents`
     (native/src/lib.rs) had empty `Arrow|FunctionExpression => {}` arms and no
     JSX arm, so it never descended into a `.map(i => <li class={cls}/>)`
@@ -1110,7 +1064,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   tests so the verified behavior cannot silently regress.
 
   Fixed (behavior changes):
-
   - Scope-blind prop-derived inlining (silent miscompile + un-parseable emit).
     The reactive-props inlining pass substituted any identifier whose NAME
     matched a prop-derived const, with zero lexical-scope analysis. Idiomatic
@@ -1135,7 +1088,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 
   Proven + locked (fixes scoped as tracked follow-ups, guarded by an it.fails
   spec that flips green-to-red the moment the fix lands):
-
   - JS-vs-Rust backend divergence: the native backend does not inline
     prop-derived consts used inside callback-nested JSX (the
     "const cls = props.t; items.map(i => <li class={cls}/>)" shape), so that
@@ -1152,7 +1104,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 
 - [#689](https://github.com/pyreon/pyreon/pull/689) [`bbccaaf`](https://github.com/pyreon/pyreon/commit/bbccaaf3ec2f5dc3eed3e7195a09023fc59575d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compiler hardening rounds 11–20 — two more real reactivity bugs fixed
   (bisect-verified), plus regression locks for two proven gaps.
-
   - R11 — signal auto-call was scope-blind. `autoCallSignals` inserted `()`
     after every active-signal-named identifier with a hand-rolled skip-list
     that did NOT cover callback parameter binding positions, and it walked the
@@ -1279,11 +1230,11 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **Multi-specifier import handling** (drive-by bug fix)
 
   ```tsx
-  import { Modal, OtherStuff } from "./shared";
+  import { Modal, OtherStuff } from './shared'
   // ... uses OtherStuff elsewhere ...
-  <Defer when={open}>
+  ;<Defer when={open}>
     <Modal />
-  </Defer>;
+  </Defer>
   ```
 
   v1 would have removed the entire `import { Modal, OtherStuff }` declaration, breaking `OtherStuff`'s usage. v2 removes ONLY the `Modal` specifier — the import becomes `import { OtherStuff } from './shared'`. Sibling bindings stay intact. Handles both first-specifier and later-specifier cases.
@@ -1291,16 +1242,15 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **Still NOT in this** (gap 4 — namespace imports)
 
   ```tsx
-  import * as M from "./Modal";
-  <Defer>
+  import * as M from './Modal'
+  ;<Defer>
     <M.Modal />
-  </Defer>; // — still bails
+  </Defer> // — still bails
   ```
 
   Namespace imports with `JSXMemberExpression` children require a different rewrite path (the `_C` binding can't replace `M.Modal` since it's a member access, not an identifier). Not addressed in this PR — explicit form is the workaround.
 
   ## Verification
-
   - 16 unit tests in `defer-inline.test.ts` (3 new props tests + 2 renamed-imports tests + 2 multi-specifier tests in addition to the existing 9)
   - End-to-end via verify-modes — `examples/playground/src/pages/About.tsx` now uses inline `<Defer><DeferredFixture label="..." /></Defer>`, exercising prop-preservation through a real Vite build. The fingerprint `DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987` must land in the route chunk (the render-prop body lives in the caller), NOT in the fixture chunk.
   - Bisect-verified: reverting `buildRenderPropBody` to a constant `{(__C) => <__C />}` (drops prop preservation) → cell fails with `fingerprint "DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" found in 0 chunks`. Restored → passes.
@@ -1321,13 +1271,11 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   ```
 
   The compiler recognises `<M.Modal />` as a depth-1 `JSXMemberExpression`, looks up `M` as an `ImportNamespaceSpecifier`, and rewrites:
-
   1. The chunk extracts `__m.Modal` (the JSX property — `Modal`) from the namespace's source module
   2. The full `M.Modal` JSX name is replaced with `__C` in both opening and closing tags
   3. The static `import * as M from './Modal'` is removed (when M isn't used elsewhere)
 
   Closes gap 4 from the v2 follow-up roadmap — every common import shape now works inline:
-
   - `import X from './X'` ✓ (v1)
   - `import { X } from './X'` ✓ (v1)
   - `import { X as Y } from './X'` ✓ (v2)
@@ -1336,13 +1284,11 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   Plus: multi-specifier imports drop only the deferred binding (v2 drive-by fix).
 
   **Sub-gaps explicitly NOT closed by this PR:**
-
   - **Deeper member expressions** (`<M.Sub.Modal />`) — `analyzeChildElement` returns null for non-depth-1 member expressions. The Defer is left alone; runtime errors with "missing chunk" if mounted. Workaround: explicit form.
   - **Member access on a default-import** (`import M from './X'; <M.Modal />`) — semantically different (member access on a component, not a namespace bag). Compiler emits `defer-inline/unsupported-import-shape` warning so the author understands why the inline form is being skipped.
   - **Namespace bindings referenced elsewhere in the file** (`import * as M; const x = M.Settings; <Defer><M.Modal /></Defer>`) — bails with `defer-inline/import-used-elsewhere` (Rolldown would static-bundle the module on shared usage, making the dynamic import a no-op). Common shape; users hitting this need either the explicit form or to refactor the namespace import.
 
   ## Verification
-
   - **23 unit tests** in `defer-inline.test.ts` (7 new for v3 — basic rewrite + props on member-expression child + non-self-closing + 4 bail-out cases)
   - **Real-app verify-modes**: `examples/playground/src/pages/About.tsx` now uses BOTH the v2 prop-preservation shape (`<DeferredFixture label="..." />`) AND the v3 namespace shape (`<NS.NamespaceFixture />`). New fingerprint `DEFER_NAMESPACE_FIXTURE_MARKER_QRS456` asserts the namespace fixture lands in its own chunk.
   - **Bisect-verified**: disabling the `ImportNamespaceSpecifier` branch in `findImportFor` → fingerprint lands in `about-*.js` (the route chunk) instead of `NamespaceFixture-*.js`. Restored → passes. Grep for `TEMP BISECT` → clean.
@@ -1352,7 +1298,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 - [#611](https://github.com/pyreon/pyreon/pull/611) [`070a0ec`](https://github.com/pyreon/pyreon/commit/070a0ec687ad598cf15963e5615bb1d8c81933a3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Reactivity Lens (experimental)** — surface the compiler's already-computed reactivity analysis back to the author at the source.
 
   Pyreon's [#1](https://github.com/pyreon/pyreon/issues/1) silent footgun: whether code is reactive is invisible at the moment you write it. The compiler ALREADY decides this per-expression for codegen and discards the analysis. The Lens pipes it back.
-
   - `@pyreon/compiler`: additive opt-in `TransformOptions.reactivityLens` → `TransformResult.reactivityLens: ReactivitySpan[]` (emitted code byte-identical with it on/off; all existing compiler tests pass unchanged). New exports `analyzeReactivity()` / `formatReactivityLens()` + `ReactivityKind` / `ReactivitySpan` / `ReactivityFinding` types. `analyzeReactivity` merges the structural compiler facts with the existing `detectPyreonPatterns` footgun detectors under one taxonomy.
   - `@pyreon/lint`: the existing `--lsp` server gains an `inlayHintProvider` + `textDocument/inlayHint` handler rendering `live` / `static` / `live·prop` / `hoisted` ghost-text at each reactive/baked-once expression; footguns publish as `pyreon-lens` warning diagnostics. Adds a `@pyreon/compiler` dependency.
 
@@ -1389,7 +1334,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -1403,7 +1347,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -1442,7 +1385,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   The Publish job correctly had no `NODE_AUTH_TOKEN`, but `actions/setup-node` was still invoked with `registry-url: 'https://registry.npmjs.org'`. setup-node writes a project `.npmrc` containing `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` **whenever `registry-url` is set** — with no token in the env that line resolves to an empty `_authToken=`. npm then sees explicit (empty) registry auth and **skips the OIDC trusted-publishing exchange entirely**, so `npm publish` returns `404` on the PUT even when the package's trusted publisher is configured correctly. Provenance still signed (it uses the GitHub OIDC id-token directly, independent of npm registry auth), which masked the root cause and made the v0.18.0 native-publish failures look like an npmjs.com config problem.
 
   Fix:
-
   - Remove `registry-url:` from the `setup-node` step (no `.npmrc` auth line is written → npm performs the token-free OIDC exchange).
   - Add an "Ensure npm supports OIDC trusted publishing" step (`npm install -g npm@latest`) — npm's native token-free trusted publishing landed in 11.5.1; Node 24's bundled npm can be older (24.x shipped 11.3.x).
   - Belt-and-suspenders `rm -f` of any stray `.npmrc` (repo checkout / cached home) immediately before `npm publish`.
@@ -1460,7 +1402,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   while writing sees the fix (`useQuery(() => (...))`) before the code is
   ever committed. Closes the genuine functional gap (proactive AI-fix),
   not just more coverage.
-
   - New `PyreonDiagnosticCode: 'query-options-as-function'`. Fires on an
     object-literal first arg to `useQuery` / `useInfiniteQuery` /
     `useQueries` / `useSuspenseQuery`. `useMutation` excluded by design
@@ -1510,7 +1451,7 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **Before (v1, PR [#585](https://github.com/pyreon/pyreon/issues/585))** — explicit `chunk` prop required:
 
   ```tsx
-  <Defer chunk={() => import("./ConfirmModal")} when={open}>
+  <Defer chunk={() => import('./ConfirmModal')} when={open}>
     {(Modal) => <Modal onClose={() => setOpen(false)} />}
   </Defer>
   ```
@@ -1518,17 +1459,16 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **After (this PR)** — inline children, compiler does the chunking:
 
   ```tsx
-  import { Modal } from "./ConfirmModal";
+  import { Modal } from './ConfirmModal'
 
-  <Defer when={open}>
+  ;<Defer when={open}>
     <Modal />
-  </Defer>;
+  </Defer>
   ```
 
   The compiler (`@pyreon/compiler`'s new `transformDeferInline`) detects `<Defer>` JSX with no `chunk` prop and a single bare component child, looks up that component's import, rewrites the JSX to use an explicit `chunk={() => import('./path')}` prop, and removes the static import so Rolldown actually emits a separate chunk.
 
   ## v1 scope (this PR)
-
   - Single Defer JSX element per file (multiple Defers in one file each get their own transform pass — works fine)
   - Child must be a single self-closing component element with **no props** (`<Modal />` ✓; `<Modal title="hi" />` falls back to the explicit form)
   - Named or default imports only — renamed imports (`{ Modal as M }`) and namespace imports (`* as M`) bail with a warning, user falls back to explicit form
@@ -1538,7 +1478,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   When the transform bails on any of the above, the user sees a soft warning at compile time. The `<Defer>` element is left unchanged; runtime then errors at chunk-load time because `chunk` is missing, prompting the user to use the explicit form.
 
   ## What's NOT in this PR
-
   - Closure capture (passing `count` signals or local state to the inline child) — requires prop-extraction analysis
   - Rust compiler implementation — JS fallback only
   - HMR for the synthetic chunk module — relies on Rolldown's standard dynamic-import HMR
@@ -1549,7 +1488,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   The transform runs in `@pyreon/vite-plugin`'s `transform()` hook BEFORE `transformJSX()`. By the time the JSX→runtime transform sees the source, the inline form has already been rewritten into the explicit chunk-prop form. No special-casing in the runtime, no new VNode shape, no new bundler hook — just AST rewriting before the existing pipeline.
 
   Verified via 13 unit tests (`@pyreon/compiler/src/tests/defer-inline.test.ts`) covering:
-
   - Basic rewrites: named/default imports, on="visible" / when={signal} triggers, props preservation
   - Bail-outs: chunk already provided, binding used elsewhere, child not imported, child has props, multiple children, syntax errors
   - Multi-Defer files: two independent Defers in one file get rewritten independently
@@ -1567,7 +1505,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **Bug class.** Pyreon's reactive-prop contract is that `<Comp prop={signal()}>` compiles to `h(Comp, { prop: _rp(() => signal()) })` and `mount.ts:makeReactiveProps` converts `_rp`-branded thunks into property GETTERS on the props object. Any prop-pipeline step that VALUE-COPIES `props[key]` (plain assignment, spread, or `Object.assign`) fires the getter at HOC setup time — outside any tracking scope — and stores the resolved value as a static data property. Every downstream JSX accessor reading `props.x` then sees the captured-once value, never re-subscribing to the underlying signal.
 
   **Two layers of fix:**
-
   1. **Compiler-level (closes the bug class for all consumers, including user code).** Both the JS compiler (`src/jsx.ts`) and the Rust native binary (`native/src/lib.rs`) now wrap component-JSX spread arguments with the new `_wrapSpread(...)` helper from `@pyreon/core`. `<Comp {...source}>` compiles to `jsx(Comp, { ..._wrapSpread(source) })` — `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks, so the JS-level spread carries function values (no getters fire), and `makeReactiveProps` converts them back to getters on the consumer side. Fast path: when `source` has no getter descriptors, `_wrapSpread` returns the source unchanged — zero overhead for the 99% of spread sources that don't carry reactive props. Lowercase-tag (DOM) spreads route through the template path's `_applyProps` (already reactive) and skip the wrap.
 
   2. **Framework-level (closes every observed leak site in shipped packages):**
@@ -1579,7 +1516,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
      - `@pyreon/runtime-dom` — `applyProps` in `props.ts` detects getter descriptors and wraps the write in `renderEffect`.
 
   **Bisect-verified at TWO layers:**
-
   - **Unit / browser**: `packages/ui-system/rocketstyle/src/__tests__/reactive-props-preservation.test.ts` (9 specs) + the new `rocketstyle.browser.test.tsx` spec covering the full pipeline. Reverting any of the 4 leak-site fixes individually fails the relevant spec with `expected 'count: 1' to be 'count: 0'`.
   - **Real-Chromium e2e**: `e2e/ui-showcase-regression.spec.ts:793 — signal-driven prop on Button updates the DOM on flip` exercises a rocketstyle Button with a `title={\`count: \${count()}\`}` prop fed by a signal. Reverting the compiler-level fix (`packages/core/compiler/src/jsx.ts`+`native/src/lib.rs`+ rebuilding the Rust binary) → spec fails with`unexpected value "count: 0"` after click — proving the spread reactivity contract holds end-to-end through the entire prop pipeline (rocketstyle attrs HOC → styler buildProps → Element Wrapper → runtime-dom applyProps).
 
@@ -1596,7 +1532,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 - [#311](https://github.com/pyreon/pyreon/pull/311) [`602446b`](https://github.com/pyreon/pyreon/commit/602446bb49e6ea95fe9d2dbc7774bbf9a66da80d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Test-environment audit (T2.5.7) — scans every `*.test.ts(x)` under `packages/` for mock-vnode patterns (the PR [#197](https://github.com/pyreon/pyreon/issues/197) bug class: tests that construct `{ type, props, children }` literals or a custom `vnode()` helper instead of going through the real `h()` from `@pyreon/core`). Classifies each file as HIGH / MEDIUM / LOW based on the balance of mock literals, helper definitions, helper call-sites, real `h()` calls, and the `@pyreon/core` import.
 
   Scanner lives in `@pyreon/compiler` (`auditTestEnvironment`, `formatTestAudit`) so both `@pyreon/mcp` and `@pyreon/cli` can use it without pulling in each other.
-
   - **MCP**: new `audit_test_environment` tool. Options `minRisk` (default `medium`) and `limit` (default 20). Scans 400+ test files in ~50ms.
   - **CLI**: `pyreon doctor --audit-tests` appends the audit output. `--audit-min-risk high|medium|low` to filter. Honors `--json` for machine-readable output.
 
@@ -1645,12 +1580,10 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents
@@ -1666,7 +1599,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -1680,7 +1612,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -1689,7 +1620,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms

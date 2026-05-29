@@ -25,11 +25,7 @@
  *   - --ci: exit non-zero on any error finding
  */
 
-import {
-  runDoctor,
-  type GateName,
-  type OrchestratorOptions,
-} from './doctor/orchestrator'
+import { runDoctor, type GateName, type OrchestratorOptions } from './doctor/orchestrator'
 import { renderGha, renderJson, renderText } from './doctor/render'
 import { isAdvisoryCategory } from './doctor/score'
 import type { DoctorReport } from './doctor/types'
@@ -109,9 +105,8 @@ export const doctor = async (options: DoctorOptions): Promise<number> => {
   // Otherwise, only a non-zero is returned when there are findings AT
   // ALL — so `pyreon doctor && echo green` works as a quick gate.
   if (options.ci) {
-    return report.findings.filter(
-      (f) => f.severity === 'error' && !isAdvisoryCategory(f.category),
-    ).length
+    return report.findings.filter((f) => f.severity === 'error' && !isAdvisoryCategory(f.category))
+      .length
   }
   return report.totals.errors + report.totals.warnings + report.totals.infos
 }

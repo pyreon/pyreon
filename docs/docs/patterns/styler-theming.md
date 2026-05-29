@@ -1,6 +1,6 @@
 ---
-title: "Styling and theming — styled + PyreonUI"
-summary: "styled() for CSS-in-JS, PyreonUI for theme + mode. Never init() manually in app code."
+title: 'Styling and theming — styled + PyreonUI'
+summary: 'styled() for CSS-in-JS, PyreonUI for theme + mode. Never init() manually in app code.'
 seeAlso: [reactive-context]
 ---
 
@@ -14,7 +14,7 @@ Wrap the app in `PyreonUI` (from `@pyreon/ui-core`) to provide theme + light/dar
 import { PyreonUI } from '@pyreon/ui-core'
 import theme from '@pyreon/ui-theme'
 
-<PyreonUI theme={theme} mode="system">
+;<PyreonUI theme={theme} mode="system">
   <App />
 </PyreonUI>
 ```
@@ -68,8 +68,8 @@ Switch theme at runtime by passing a different theme prop to `PyreonUI` — the 
 ```tsx
 // BROKEN — calling init() in app code
 import { init } from '@pyreon/ui-core'
-init({ styled, css })     // PyreonUI does this internally; duplicate calls
-                          // risk conflicting configs
+init({ styled, css }) // PyreonUI does this internally; duplicate calls
+// risk conflicting configs
 
 // Correct:
 const Root = () => (

@@ -16,10 +16,9 @@ export function UrlStateDemo() {
     <div>
       <h2>URL State</h2>
       <p class="desc">
-        URL-synced state — multiple params from a single call, auto type
-        coercion (numbers, booleans, arrays), <code>replaceState</code> (no
-        history spam), SSR-safe. Edit the controls below and watch the URL
-        bar update.
+        URL-synced state — multiple params from a single call, auto type coercion (numbers,
+        booleans, arrays), <code>replaceState</code> (no history spam), SSR-safe. Edit the controls
+        below and watch the URL bar update.
       </p>
 
       <div class="section">
@@ -56,10 +55,7 @@ export function UrlStateDemo() {
               ← prev
             </button>
             <span data-testid="url-state-page">page {() => state.page()}</span>
-            <button
-              data-testid="url-state-next"
-              onClick={() => state.page.set(state.page() + 1)}
-            >
+            <button data-testid="url-state-next" onClick={() => state.page.set(state.page() + 1)}>
               next →
             </button>
           </div>
@@ -82,9 +78,7 @@ export function UrlStateDemo() {
               type="checkbox"
               data-testid="url-state-completed"
               checked={() => state.showCompleted()}
-              onChange={(e) =>
-                state.showCompleted.set(e.currentTarget.checked)
-              }
+              onChange={(e) => state.showCompleted.set(e.currentTarget.checked)}
               style="width: auto; margin-right: 6px"
             />
             Show completed (boolean)

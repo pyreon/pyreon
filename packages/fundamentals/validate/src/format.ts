@@ -23,10 +23,7 @@ import type { PyreonIssue, StandardSchemaIssue, TFn } from './types'
  * Native StdSchema issues without `key`/`fallback` fall through to
  * `message` immediately — no overhead for non-Pyreon validators.
  */
-export function formatError(
-  issue: StandardSchemaIssue | PyreonIssue,
-  t?: TFn,
-): string {
+export function formatError(issue: StandardSchemaIssue | PyreonIssue, t?: TFn): string {
   const pyreonIssue = issue as PyreonIssue
   if (pyreonIssue.key && t) {
     const resolved = t(pyreonIssue.key, pyreonIssue.params)
@@ -96,9 +93,7 @@ export function formatErrorsByPath(
  * wrapper (Standard Schema allows both — different libs emit different
  * shapes).
  */
-function stringifyPath(
-  path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>,
-): string {
+function stringifyPath(path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>): string {
   return path
     .map((seg) => {
       if (typeof seg === 'object' && seg !== null && 'key' in seg) {

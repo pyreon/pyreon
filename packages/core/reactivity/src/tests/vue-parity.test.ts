@@ -138,9 +138,7 @@ describe('onScopeDispose', () => {
     onScopeDispose(() => {
       called = true
     })
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('without an active EffectScope'),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('without an active EffectScope'))
     expect(called).toBe(false)
     warnSpy.mockRestore()
   })

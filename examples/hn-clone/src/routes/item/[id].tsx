@@ -72,7 +72,7 @@ export default function Item() {
   const isBookmarked = computed(() => {
     const data = query.data()
     if (!data) return false
-    return (bookmarks.has(data.id) as boolean)
+    return bookmarks.has(data.id) as boolean
   })
 
   const handleShare = async () => {
@@ -115,9 +115,7 @@ export default function Item() {
         if (query.isPending()) return <div class="feed-state">{t('feed.loading')}</div>
         if (query.isError())
           return (
-            <div class="feed-state error">
-              {t('feed.error', { error: String(query.error()) })}
-            </div>
+            <div class="feed-state error">{t('feed.error', { error: String(query.error()) })}</div>
           )
         const item = query.data()
         if (!item) return <div class="feed-state">Story not found.</div>
@@ -139,10 +137,9 @@ export default function Item() {
                 {item.type !== 'job' && (
                   <>
                     <span>
-                      {t(
-                        item.points === 1 ? 'story.points_one' : 'story.points_other',
-                        { n: item.points ?? 0 },
-                      )}
+                      {t(item.points === 1 ? 'story.points_one' : 'story.points_other', {
+                        n: item.points ?? 0,
+                      })}
                     </span>
                     <span> by </span>
                     {item.user && (
@@ -155,12 +152,9 @@ export default function Item() {
                   </>
                 )}
                 <span class="item-comment-count">
-                  {t(
-                    item.comments_count === 1
-                      ? 'story.comments_one'
-                      : 'story.comments_other',
-                    { n: item.comments_count },
-                  )}
+                  {t(item.comments_count === 1 ? 'story.comments_one' : 'story.comments_other', {
+                    n: item.comments_count,
+                  })}
                 </span>
               </div>
 
@@ -175,9 +169,7 @@ export default function Item() {
                 </button>
                 <span> | </span>
                 <button type="button" class="link-btn" onClick={handleBookmark}>
-                  {() =>
-                    isBookmarked() ? t('item.unbookmark') : t('item.bookmark')
-                  }
+                  {() => (isBookmarked() ? t('item.unbookmark') : t('item.bookmark'))}
                 </button>
                 <span> | </span>
                 <button type="button" class="link-btn" onClick={handleToggleJson}>

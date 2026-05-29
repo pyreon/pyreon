@@ -149,7 +149,13 @@ export const IconButton = el
 
 export const CloseButton = el
   .config({ name: 'CloseButton' })
-  .attrs({ tag: 'button', 'aria-label': 'Close', direction: 'inline', alignX: 'center', alignY: 'center' })
+  .attrs({
+    tag: 'button',
+    'aria-label': 'Close',
+    direction: 'inline',
+    alignX: 'center',
+    alignY: 'center',
+  })
   .theme((t) => ({
     backgroundColor: t.color.system.transparent,
     color: t.color.system.base[400],

@@ -1,7 +1,7 @@
-import { useHead } from "@pyreon/head"
-import { useLoaderData } from "@pyreon/router"
-import type { LoaderContext } from "@pyreon/zero"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { useLoaderData } from '@pyreon/router'
+import type { LoaderContext } from '@pyreon/zero'
+import { Link } from '@pyreon/zero/link'
 
 interface Post {
   id: number
@@ -12,29 +12,29 @@ interface Post {
 const POSTS: Post[] = [
   {
     id: 1,
-    title: "Getting Started with Pyreon Zero",
-    excerpt: "Learn how to build your first app with file-based routing, SSR, and signals.",
+    title: 'Getting Started with Pyreon Zero',
+    excerpt: 'Learn how to build your first app with file-based routing, SSR, and signals.',
   },
   {
     id: 2,
-    title: "Understanding Signals",
-    excerpt: "Deep dive into fine-grained reactivity — how signals replace the virtual DOM.",
+    title: 'Understanding Signals',
+    excerpt: 'Deep dive into fine-grained reactivity — how signals replace the virtual DOM.',
   },
   {
     id: 3,
-    title: "Server-Side Rendering Made Simple",
-    excerpt: "SSR, SSG, ISR — pick the right strategy for every page in your app.",
+    title: 'Server-Side Rendering Made Simple',
+    excerpt: 'SSR, SSG, ISR — pick the right strategy for every page in your app.',
   },
   {
     id: 4,
-    title: "Deploying to Production",
-    excerpt: "From bun build to production with Node, Bun, Vercel, or Cloudflare adapters.",
+    title: 'Deploying to Production',
+    excerpt: 'From bun build to production with Node, Bun, Vercel, or Cloudflare adapters.',
   },
   {
     id: 5,
-    title: "Optimizing Performance",
+    title: 'Optimizing Performance',
     excerpt:
-      "Font loading, image optimization, smart caching, and link prefetching out of the box.",
+      'Font loading, image optimization, smart caching, and link prefetching out of the box.',
   },
 ]
 
@@ -48,10 +48,10 @@ export default function PostsIndex() {
   const data = useLoaderData<{ posts: Post[] }>()
 
   useHead({
-    title: "Posts — Pyreon Zero",
+    title: 'Posts — Pyreon Zero',
     meta: [
       {
-        name: "description",
+        name: 'description',
         content: "Example posts showcasing Zero's data loading.",
       },
     ],
@@ -89,13 +89,13 @@ export default function PostsIndex() {
         </div>
         <pre>
           <code>
-            <span class="cm">{"// Export a loader — runs on the server"}</span>
-            <span class="kw">export async function</span> <span class="fn">loader</span>(ctx) {"{"}
+            <span class="cm">{'// Export a loader — runs on the server'}</span>
+            <span class="kw">export async function</span> <span class="fn">loader</span>(ctx) {'{'}
             <span class="kw">const</span> posts = <span class="kw">await</span> db.posts.
             <span class="fn">findMany</span>()
-            <span class="kw">return</span> {"{"} posts {"}"}
-            {"}"}
-            <span class="cm">{"// Access data in the component"}</span>
+            <span class="kw">return</span> {'{'} posts {'}'}
+            {'}'}
+            <span class="cm">{'// Access data in the component'}</span>
             <span class="kw">const</span> data = <span class="fn">useLoaderData</span>()
           </code>
         </pre>

@@ -12,7 +12,6 @@ function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
 
-
 function renderNode(node: DocNode): string {
   const p = node.props
 

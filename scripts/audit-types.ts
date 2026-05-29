@@ -68,7 +68,8 @@ const EXEMPT_FIELDS: Exemption[] = [
     package: '@pyreon/core',
     interface: 'NativeItem',
     field: '__isNative',
-    reason: 'brand marker consumed cross-package by @pyreon/runtime-dom (mount/nodes/hydrate/template)',
+    reason:
+      'brand marker consumed cross-package by @pyreon/runtime-dom (mount/nodes/hydrate/template)',
   },
 ]
 
@@ -380,7 +381,9 @@ function formatReport(results: AuditResult[]): string {
       lines.push('| Interface | Field | Declared in | Refs |')
       lines.push('|---|---|---|---|')
       for (const f of high.sort(byInterfaceField)) {
-        lines.push(`| \`${f.interface}\` | \`${f.field}\` | ${f.declaredIn}:${f.declaredLine} | ${f.refCount} |`)
+        lines.push(
+          `| \`${f.interface}\` | \`${f.field}\` | ${f.declaredIn}:${f.declaredLine} | ${f.refCount} |`,
+        )
       }
       lines.push('')
     }
@@ -391,7 +394,9 @@ function formatReport(results: AuditResult[]): string {
       lines.push('| Interface | Field | Declared in | Refs |')
       lines.push('|---|---|---|---|')
       for (const f of medium.sort(byInterfaceField)) {
-        lines.push(`| \`${f.interface}\` | \`${f.field}\` | ${f.declaredIn}:${f.declaredLine} | ${f.refCount} |`)
+        lines.push(
+          `| \`${f.interface}\` | \`${f.field}\` | ${f.declaredIn}:${f.declaredLine} | ${f.refCount} |`,
+        )
       }
       lines.push('')
     }
@@ -462,7 +467,10 @@ async function main(): Promise<void> {
   }
 
   if (args.strict) {
-    const totalHigh = results.reduce((acc, r) => acc + r.findings.filter((f) => f.severity === 'HIGH').length, 0)
+    const totalHigh = results.reduce(
+      (acc, r) => acc + r.findings.filter((f) => f.severity === 'HIGH').length,
+      0,
+    )
     if (totalHigh > 0) {
       process.stderr.write(`\n[audit-types] STRICT FAIL: ${totalHigh} HIGH finding(s)\n`)
       process.exit(1)

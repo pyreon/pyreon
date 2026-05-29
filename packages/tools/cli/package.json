@@ -48,10 +48,10 @@
     "@pyreon/compiler": "workspace:^",
     "@pyreon/lint": "workspace:^"
   },
-  "peerDependencies": {
-    "typescript": ">=5.0.0"
-  },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
   }
 }

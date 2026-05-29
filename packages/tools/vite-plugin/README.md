@@ -29,8 +29,8 @@ export default defineConfig({
   "extends": "@pyreon/typescript/app",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@pyreon/core"
-  }
+    "jsxImportSource": "@pyreon/core",
+  },
 }
 ```
 
@@ -70,11 +70,11 @@ vite build --ssr src/entry-server.ts --outDir dist/server   # server bundle
 Alias an existing framework's imports to Pyreon's compat layer — zero code changes:
 
 ```ts
-pyreon({ compat: 'react' })    // react + react-dom → @pyreon/react-compat
-pyreon({ compat: 'preact' })   // preact + hooks + signals → @pyreon/preact-compat
-pyreon({ compat: 'vue' })      // vue → @pyreon/vue-compat
-pyreon({ compat: 'solid' })    // solid-js → @pyreon/solid-compat
-pyreon({ compat: 'svelte' })   // svelte + svelte/store → @pyreon/svelte-compat
+pyreon({ compat: 'react' }) // react + react-dom → @pyreon/react-compat
+pyreon({ compat: 'preact' }) // preact + hooks + signals → @pyreon/preact-compat
+pyreon({ compat: 'vue' }) // vue → @pyreon/vue-compat
+pyreon({ compat: 'solid' }) // solid-js → @pyreon/solid-compat
+pyreon({ compat: 'svelte' }) // svelte + svelte/store → @pyreon/svelte-compat
 ```
 
 Framework-internal `@pyreon/*` files are detected and skip the redirect so published `@pyreon/zero` etc. still load their real JSX runtime.
@@ -82,7 +82,7 @@ Framework-internal `@pyreon/*` files are detected and skip the redirect so publi
 ## Islands auto-registry
 
 ```ts
-pyreon({ islands: true })  // default on
+pyreon({ islands: true }) // default on
 ```
 
 Pre-scans `island(() => import('PATH'), { name, hydrate })` calls at `buildStart` and emits `virtual:pyreon/islands-registry`. Consume it in your client entry:
@@ -109,12 +109,12 @@ A literal-prop rocketstyle call site (`<Button state="primary" size="medium">Sav
 
 ## Options
 
-| Option        | Type                                                | Description                                                                                                |
-| ------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `compat`      | `'react' \| 'preact' \| 'vue' \| 'solid' \| 'svelte'` | Alias an existing framework's imports to the matching `@pyreon/*-compat` package.                          |
-| `ssr.entry`   | `string`                                            | Server entry path. Enables SSR dev middleware.                                                              |
-| `islands`     | `boolean`                                           | Auto-discover `island()` declarations into `virtual:pyreon/islands-registry`. Default `true`.              |
-| `collapse`    | `boolean \| PyreonCollapseOptions`                  | Opt-in compile-time rocketstyle wrapper collapse. OFF by default. Build-only.                              |
+| Option      | Type                                                  | Description                                                                                   |
+| ----------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `compat`    | `'react' \| 'preact' \| 'vue' \| 'solid' \| 'svelte'` | Alias an existing framework's imports to the matching `@pyreon/*-compat` package.             |
+| `ssr.entry` | `string`                                              | Server entry path. Enables SSR dev middleware.                                                |
+| `islands`   | `boolean`                                             | Auto-discover `island()` declarations into `virtual:pyreon/islands-registry`. Default `true`. |
+| `collapse`  | `boolean \| PyreonCollapseOptions`                    | Opt-in compile-time rocketstyle wrapper collapse. OFF by default. Build-only.                 |
 
 `PyreonCollapseOptions`: `sources?: string[]` (default `['@pyreon/ui-components']`), `components?: string[]` (optional local-name allowlist), `provider?: { name, source }` (default `PyreonUI@@pyreon/ui-core`), `theme?: { name, source }` (default `theme@@pyreon/ui-theme`), `mode?: { name, source }` (default `useMode@@pyreon/ui-core`).
 

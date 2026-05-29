@@ -39,6 +39,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/ui-core": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
@@ -46,9 +50,5 @@
   },
   "engines": {
     "node": ">= 22"
-  },
-  "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/ui-core": "workspace:^"
   }
 }

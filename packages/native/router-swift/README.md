@@ -6,13 +6,13 @@
 
 Five Swift source files under `Sources/PyreonRouter/`:
 
-| File | Purpose | Status |
-|---|---|---|
-| `PyreonRouter.swift` | `@Observable` router instance — `path` stack, `push` / `replace` / `back` / `reset`, `params` dictionary. | **Real** |
+| File                   | Purpose                                                                                                       | Status   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- | -------- |
+| `PyreonRouter.swift`   | `@Observable` router instance — `path` stack, `push` / `replace` / `back` / `reset`, `params` dictionary.     | **Real** |
 | `RouterProvider.swift` | Top-level container — wraps `NavigationStack(path:)` + exposes the router via `@Environment(\.pyreonRouter)`. | **Real** |
-| `RouterView.swift` | Active-route view placeholder — SCAFFOLD (host wires per-path content via `.navigationDestination(for:)`). | Scaffold |
-| `Link.swift` | `PyreonLink("/path") { Text("Label") }` — declarative navigation matching `<Link to="/path">Label</Link>`. | **Real** |
-| `Hooks.swift` | `useNavigate(router:)` / `useParams(router:)` — programmatic navigation + param-reading. | **Real** |
+| `RouterView.swift`     | Active-route view placeholder — SCAFFOLD (host wires per-path content via `.navigationDestination(for:)`).    | Scaffold |
+| `Link.swift`           | `PyreonLink("/path") { Text("Label") }` — declarative navigation matching `<Link to="/path">Label</Link>`.    | **Real** |
+| `Hooks.swift`          | `useNavigate(router:)` / `useParams(router:)` — programmatic navigation + param-reading.                      | **Real** |
 
 The compiler-emitted Swift (post-Phase-C2 follow-up) references these symbols 1:1 from a JSX source. Today, hand-written iOS code can already use them — same API the web side ships, different runtime under it.
 
@@ -20,18 +20,18 @@ The compiler-emitted Swift (post-Phase-C2 follow-up) references these symbols 1:
 
 Same surface the web router exposes, mapped to SwiftUI's NavigationStack model:
 
-| Web (`@pyreon/router`) | iOS (this package) |
-|---|---|
-| `createRouter({ routes })` | `PyreonRouter()` |
-| `<RouterProvider router={router}>` | `RouterProvider(router: router) { ... }` |
-| `<RouterView />` | `RouterView()` |
+| Web (`@pyreon/router`)                 | iOS (this package)                             |
+| -------------------------------------- | ---------------------------------------------- |
+| `createRouter({ routes })`             | `PyreonRouter()`                               |
+| `<RouterProvider router={router}>`     | `RouterProvider(router: router) { ... }`       |
+| `<RouterView />`                       | `RouterView()`                                 |
 | `<Link to="/users/123">Profile</Link>` | `PyreonLink("/users/123") { Text("Profile") }` |
-| `useNavigate()` | `useNavigate(router:)` |
-| `useParams()` | `useParams(router:)` |
-| `router.push(path)` | `router.push(path)` |
-| `router.replace(path)` | `router.replace(path)` |
-| `router.back()` | `router.back()` |
-| `router.currentRoute().path` | `router.currentPath` |
+| `useNavigate()`                        | `useNavigate(router:)`                         |
+| `useParams()`                          | `useParams(router:)`                           |
+| `router.push(path)`                    | `router.push(path)`                            |
+| `router.replace(path)`                 | `router.replace(path)`                         |
+| `router.back()`                        | `router.back()`                                |
+| `router.currentRoute().path`           | `router.currentPath`                           |
 
 ## Cross-platform source
 
@@ -46,7 +46,9 @@ function App() {
   return (
     <RouterProvider router={router}>
       <Stack>
-        <Link to="/users/123"><Text>View Profile</Text></Link>
+        <Link to="/users/123">
+          <Text>View Profile</Text>
+        </Link>
         <RouterView />
       </Stack>
     </RouterProvider>

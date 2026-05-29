@@ -26,9 +26,9 @@ bunx @pyreon/mcp     # starts stdio MCP server
   "mcpServers": {
     "pyreon": {
       "command": "bunx",
-      "args": ["@pyreon/mcp"]
-    }
-  }
+      "args": ["@pyreon/mcp"],
+    },
+  },
 }
 ```
 
@@ -40,9 +40,9 @@ bunx @pyreon/mcp     # starts stdio MCP server
   "mcpServers": {
     "pyreon": {
       "command": "bunx",
-      "args": ["@pyreon/mcp"]
-    }
-  }
+      "args": ["@pyreon/mcp"],
+    },
+  },
 }
 ```
 
@@ -54,30 +54,30 @@ bunx @pyreon/mcp     # starts stdio MCP server
   "mcpServers": {
     "pyreon": {
       "command": "bunx",
-      "args": ["@pyreon/mcp"]
-    }
-  }
+      "args": ["@pyreon/mcp"],
+    },
+  },
 }
 ```
 
 ## Tools (14)
 
-| Tool                       | Purpose                                                                                  |
-| -------------------------- | ---------------------------------------------------------------------------------------- |
-| `mcp_overview`             | Discoverability map: every tool's "when to use" + example, in one call                   |
-| `get_api`                  | Look up any Pyreon API — signature, summary, example, common mistakes                    |
-| `validate`                 | Run `detectReactPatterns` + `detectPyreonPatterns` against a code snippet                |
-| `migrate_react`            | One-shot React → Pyreon codemod (`useState` → `signal`, `className` → `class`, …)        |
-| `diagnose`                 | Parse an error message into structured `{ pattern, fix, link }`                          |
-| `explain_error`            | Assemble a failure dossier from a full error report (incl. reactiveTrace)                |
-| `get_routes`               | List routes detected in the current project                                              |
-| `get_components`           | List components with their props + signals                                               |
-| `get_browser_smoke_status` | Report which browser-categorized packages have `*.browser.test.{ts,tsx}` coverage        |
-| `get_pattern`              | Fetch a "how do I do X" pattern body from `docs/patterns/<name>.md`                      |
+| Tool                       | Purpose                                                                                                     |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mcp_overview`             | Discoverability map: every tool's "when to use" + example, in one call                                      |
+| `get_api`                  | Look up any Pyreon API — signature, summary, example, common mistakes                                       |
+| `validate`                 | Run `detectReactPatterns` + `detectPyreonPatterns` against a code snippet                                   |
+| `migrate_react`            | One-shot React → Pyreon codemod (`useState` → `signal`, `className` → `class`, …)                           |
+| `diagnose`                 | Parse an error message into structured `{ pattern, fix, link }`                                             |
+| `explain_error`            | Assemble a failure dossier from a full error report (incl. reactiveTrace)                                   |
+| `get_routes`               | List routes detected in the current project                                                                 |
+| `get_components`           | List components with their props + signals                                                                  |
+| `get_browser_smoke_status` | Report which browser-categorized packages have `*.browser.test.{ts,tsx}` coverage                           |
+| `get_pattern`              | Fetch a "how do I do X" pattern body from `docs/patterns/<name>.md`                                         |
 | `get_anti_patterns`        | Browse the anti-patterns catalogue (compact index by default; drill in with `name`/`category`/`full: true`) |
-| `get_changelog`            | Recent release notes for a `@pyreon/*` package, parsed from `CHANGELOG.md`               |
-| `audit_test_environment`   | Scan test files for mock-vnode patterns (PR #197 bug class)                              |
-| `audit_islands`            | Project-wide islands audit (5 cross-file foot-guns)                                      |
+| `get_changelog`            | Recent release notes for a `@pyreon/*` package, parsed from `CHANGELOG.md`                                  |
+| `audit_test_environment`   | Scan test files for mock-vnode patterns (PR #197 bug class)                                                 |
+| `audit_islands`            | Project-wide islands audit (5 cross-file foot-guns)                                                         |
 
 ### `get_api`
 
@@ -100,10 +100,10 @@ Merges two detectors (React anti-patterns + Pyreon-specific patterns), sorts by 
 ### `get_anti_patterns`
 
 ```ts
-get_anti_patterns()                                // compact index (~3.3K tokens)
-get_anti_patterns({ name: 'props-destructured' })  // single entry, full body — cheapest drill-in
-get_anti_patterns({ category: 'Reactivity Mistakes' })   // category-scoped, full bodies
-get_anti_patterns({ full: true })                  // entire catalog (~14K tokens) — explicit opt-in
+get_anti_patterns() // compact index (~3.3K tokens)
+get_anti_patterns({ name: 'props-destructured' }) // single entry, full body — cheapest drill-in
+get_anti_patterns({ category: 'Reactivity Mistakes' }) // category-scoped, full bodies
+get_anti_patterns({ full: true }) // entire catalog (~14K tokens) — explicit opt-in
 ```
 
 The default index keeps `## <Heading>` markers so categories stay discoverable. Each entry surfaces its `[detector: <code>]` tag inline so an agent can pair the catalog entry with the live static detector.

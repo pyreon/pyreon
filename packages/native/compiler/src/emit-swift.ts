@@ -142,7 +142,10 @@ export function emitSwift(
   // First-seen struct wins on field-set collision (rare in practice).
   _structFieldsToName = new Map()
   for (const s of structs) {
-    const key = s.fields.map((f) => f.name).sort().join(',')
+    const key = s.fields
+      .map((f) => f.name)
+      .sort()
+      .join(',')
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
   }
   // Build the user-component name set so emitSwiftGeneric can include
@@ -312,9 +315,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // isn't readable from free functions — the runtime APIs take router
   // as an explicit arg.
   if (_usesRouter) {
-    lines.push(
-      `  @Environment(\\.pyreonRouter) private var pyreonRouter: PyreonRouter?`,
-    )
+    lines.push(`  @Environment(\\.pyreonRouter) private var pyreonRouter: PyreonRouter?`)
   }
   for (const d of c.decls) {
     lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
@@ -334,7 +335,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(
       `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
     )
-    lines.push(`          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`)
+    lines.push(
+      `          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
+    )
     lines.push(`        } catch { ${name}.reject(error) }`)
     lines.push(`      }`)
   }
@@ -420,8 +423,7 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // for navigate, [String: String] for params).
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
-    const returnType =
-      d.hook === 'navigate' ? '(String) -> Void' : '[String: String]'
+    const returnType = d.hook === 'navigate' ? '(String) -> Void' : '[String: String]'
     return `private var ${swiftIdent(d.name)}: ${returnType} { ${fn}(router: pyreonRouter) }`
   }
   // Phase 4: `const x = useFetch<T>('/url')` → an @State PyreonFetch<T>
@@ -450,11 +452,7 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     const inferred = inferCtx.computeds.get(d.name) ?? { kind: 'unknown' as const }
     const swiftReturnType = swiftType(inferred)
     const bodyLines = d.body.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
-    return [
-      `private var ${swiftIdent(d.name)}: ${swiftReturnType} {`,
-      bodyLines,
-      `  }`,
-    ].join('\n')
+    return [`private var ${swiftIdent(d.name)}: ${swiftReturnType} {`, bodyLines, `  }`].join('\n')
   }
   // Legacy single-expression shape — same pre-computed lookup.
   const inferred = inferCtx.computeds.get(d.name) ?? inferType(d.expr!, inferCtx)
@@ -473,27 +471,19 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
  *     (no return type if `returnType` was unknown)
  *   - Multi-statement → full block with explicit returns
  */
-function emitSwiftFunction(
-  d: Extract<DeclIR, { kind: 'function' }>,
-): string {
+function emitSwiftFunction(d: Extract<DeclIR, { kind: 'function' }>): string {
   // Use `_` (no external label) so call sites match the JS-style
   // unnamed-arg shape `toggle(t.id)` instead of requiring Swift's
   // labeled-call shape `toggle(id: t.id)`. The TS source doesn't
   // carry argument labels at call sites — Pyreon's compile path
   // preserves the call-site shape verbatim, so the function decl
   // must also opt out of Swift's default external labeling.
-  const params = d.params
-    .map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
-    .join(', ')
+  const params = d.params.map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`).join(', ')
   // Render return-type clause. If the type is `unknown`, omit the
   // arrow entirely (= Swift function returning Void).
   const retType = d.returnType.kind === 'unknown' ? '' : ` -> ${swiftType(d.returnType)}`
   // Single-statement single-return concise form.
-  if (
-    d.body.length === 1 &&
-    d.body[0]!.kind === 'return' &&
-    d.body[0]!.expr !== undefined
-  ) {
+  if (d.body.length === 1 && d.body[0]!.kind === 'return' && d.body[0]!.expr !== undefined) {
     const concise = emitSwiftExpr((d.body[0]! as { expr: ExprIR }).expr, 0)
     return `private func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
   }
@@ -568,12 +558,8 @@ function isAppStorageNativeType(t: TypeIR): boolean {
       return t.args.length === 0 && _enumNames.has(t.name)
     case 'union': {
       // `T | null` / `T | undefined` → Optional<T>; native iff T is.
-      const nulls = t.branches.filter(
-        (b) => b.kind === 'null' || b.kind === 'undefined',
-      ).length
-      const others = t.branches.filter(
-        (b) => b.kind !== 'null' && b.kind !== 'undefined',
-      )
+      const nulls = t.branches.filter((b) => b.kind === 'null' || b.kind === 'undefined').length
+      const others = t.branches.filter((b) => b.kind !== 'null' && b.kind !== 'undefined')
       return nulls > 0 && others.length === 1 && isAppStorageNativeType(others[0]!)
     }
     default:
@@ -627,8 +613,7 @@ export function swiftType(t: TypeIR): string {
       // (Swift FUNCTIONS support labels, but function types don't).
       // `unknown` return (void / missing annotation) → `Void`.
       const paramTypes = t.params.map((p) => swiftType(p.type)).join(', ')
-      const returnTypeName =
-        t.returnType.kind === 'unknown' ? 'Void' : swiftType(t.returnType)
+      const returnTypeName = t.returnType.kind === 'unknown' ? 'Void' : swiftType(t.returnType)
       return `(${paramTypes}) -> ${returnTypeName}`
     }
     default:
@@ -644,9 +629,7 @@ export function swiftType(t: TypeIR): string {
  *     hint to refine via an enum at the Pyreon source level
  */
 function swiftUnionType(branches: TypeIR[]): string {
-  const nonNullBranches = branches.filter(
-    (b) => b.kind !== 'null' && b.kind !== 'undefined',
-  )
+  const nonNullBranches = branches.filter((b) => b.kind !== 'null' && b.kind !== 'undefined')
   const hasNullish = branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
   if (nonNullBranches.length === 1 && hasNullish) {
     return `${swiftType(nonNullBranches[0]!)}?`
@@ -816,11 +799,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // signal-read shape for an enum-typed signal (`filter()`).
       const left = e.left
       let prevEnumType: string | undefined
-      if (
-        left.kind === 'call' &&
-        left.callee.kind === 'identifier' &&
-        left.args.length === 0
-      ) {
+      if (left.kind === 'call' && left.callee.kind === 'identifier' && left.args.length === 0) {
         const enumType = _signalEnumTypes.get(left.callee.name)
         if (enumType !== undefined) {
           prevEnumType = _activeEnumType
@@ -944,7 +923,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       //   - multiple structs have the same field-set (collision —
       //     can't disambiguate without type-context)
       if (!e.spreads || e.spreads.length === 0) {
-        const fieldSet = e.fields.map((f) => f.name).sort().join(',')
+        const fieldSet = e.fields
+          .map((f) => f.name)
+          .sort()
+          .join(',')
         const structName = _structFieldsToName.get(fieldSet)
         if (structName !== undefined) {
           const args = e.fields
@@ -1020,13 +1002,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
  * Closes the TodoMVC `Checkbox not in scope` typecheck blocker —
  * the LAST remaining typecheck error after #871/#872.
  */
-function emitSwiftCheckbox(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftCheckbox(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const checked = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
-      a.kind === 'attr' && a.name === 'checked',
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'checked',
   )
   if (!checked) {
     // No `checked` attr — degrade to an empty square. Conservative;
@@ -1062,16 +1040,12 @@ function emitSwiftCheckbox(
  * With G1: `TextField("...", text: $draft)` — full SwiftUI two-way
  *   binding. User-typed text writes back to the @State automatically.
  */
-function emitSwiftTextField(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftTextField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
   const placeholderAttr = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
-      a.kind === 'attr' && a.name === 'placeholder',
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'placeholder',
   )
   // Pattern-match: value attr is a bare Identifier that names a
   // known @State signal in scope. If yes → emit the binding.
@@ -1120,8 +1094,7 @@ function emitSwiftTextField(
  */
 function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
   const onKey = attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && a.name === 'keydown',
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'keydown',
   )
   if (!onKey || onKey.handler.kind !== 'arrow') return undefined
   const arrow = onKey.handler
@@ -1177,9 +1150,7 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   }
   // Complex content; emit Button { action } label: { content }.
   const pad = ' '.repeat(indent + 2)
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -1241,14 +1212,12 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   const by = e.attrs.find((a) => a.kind === 'attr' && a.name === 'by') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
-  const renderArrow = e.children.find(
-    (c) => c.kind === 'expr' && c.expr.kind === 'arrow',
-  ) as Extract<ChildIR, { kind: 'expr' }> | undefined
+  const renderArrow = e.children.find((c) => c.kind === 'expr' && c.expr.kind === 'arrow') as
+    | Extract<ChildIR, { kind: 'expr' }>
+    | undefined
 
   const items = each ? emitSwiftSignalRead(each.value) : 'items'
-  const idPath = by && by.value.kind === 'arrow'
-    ? extractMemberPath(by.value.body)
-    : 'id'
+  const idPath = by && by.value.kind === 'arrow' ? extractMemberPath(by.value.body) : 'id'
 
   if (!renderArrow || renderArrow.expr.kind !== 'arrow') {
     return `ForEach(${items}, id: \\.${idPath}) { _ in EmptyView() }`
@@ -1335,9 +1304,7 @@ function readStaticAttr(
  * Scope: padding/paddingX/paddingY/margin (alias to padding outside
  * a parent layout)/background/radius.
  */
-function emitSwiftLayoutModifiers(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-): string {
+function emitSwiftLayoutModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   const parts: string[] = []
   const padding = readStaticAttr(e, 'padding')
   if (typeof padding === 'number' || typeof padding === 'string') {
@@ -1398,9 +1365,7 @@ function emitSwiftStack(
   const initArgs: string[] = []
   const align = readStaticAttr(e, 'align')
   if (typeof align === 'string') {
-    initArgs.push(
-      `alignment: ${resolveAlign(align, 'swift', isRow ? 'vertical' : 'horizontal')}`,
-    )
+    initArgs.push(`alignment: ${resolveAlign(align, 'swift', isRow ? 'vertical' : 'horizontal')}`)
   }
   const gap = readStaticAttr(e, 'gap')
   if (typeof gap === 'number' || typeof gap === 'string') {
@@ -1413,9 +1378,7 @@ function emitSwiftStack(
   if (e.children.length === 0) {
     return `${viewName}${initSignature} {}${modifiers}`
   }
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `${viewName}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -1439,23 +1402,16 @@ const ZSTACK_ALIGNMENT: Record<string, string> = {
  * `align` → `ZStack(alignment:)`; padding/background/radius/data-testid
  * chain via `emitSwiftLayoutModifiers`.
  */
-function emitSwiftLayer(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftLayer(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const align = readStaticAttr(e, 'align')
   const initSignature =
-    typeof align === 'string'
-      ? `(alignment: ${ZSTACK_ALIGNMENT[align] ?? '.center'})`
-      : ''
+    typeof align === 'string' ? `(alignment: ${ZSTACK_ALIGNMENT[align] ?? '.center'})` : ''
   const modifiers = emitSwiftLayoutModifiers(e)
   const pad = ' '.repeat(indent + 2)
   if (e.children.length === 0) {
     return `ZStack${initSignature} {}${modifiers}`
   }
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `ZStack${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -1465,10 +1421,7 @@ function emitSwiftLayer(
  * bare). Children render inside; padding/background/radius/data-testid
  * chain via `emitSwiftLayoutModifiers`.
  */
-function emitSwiftScroll(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftScroll(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const axis = readStaticAttr(e, 'axis')
   const initSignature = axis === 'horizontal' ? '(.horizontal)' : ''
   const modifiers = emitSwiftLayoutModifiers(e)
@@ -1476,9 +1429,7 @@ function emitSwiftScroll(
   if (e.children.length === 0) {
     return `ScrollView${initSignature} {}${modifiers}`
   }
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `ScrollView${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -1488,9 +1439,7 @@ function emitSwiftScroll(
  * children, no layout props in v1). A `data-testid` still chains via
  * `emitSwiftLayoutModifiers` for XCUITest reachability.
  */
-function emitSwiftSpacer(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-): string {
+function emitSwiftSpacer(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   return `Spacer()${emitSwiftLayoutModifiers(e)}`
 }
 
@@ -1515,10 +1464,7 @@ const HEADING_FONT: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
  * interpolated `\(expr)`), then chains the level font + bold weight +
  * optional `.foregroundColor` + layout modifiers.
  */
-function emitSwiftHeading(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftHeading(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const levelRaw = readStaticAttr(e, 'level')
   const level = (typeof levelRaw === 'number' ? levelRaw : 1) as 1 | 2 | 3 | 4 | 5 | 6
   let result = `${emitSwiftText(e, indent)}.font(${HEADING_FONT[level] ?? '.largeTitle'}).bold()`
@@ -1545,10 +1491,7 @@ const ICON_SCALE: Record<string, string> = {
  * (SF Symbol id). Falls through to generic emit when `name` is missing
  * or non-literal.
  */
-function emitSwiftIcon(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftIcon(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const name = readStaticAttr(e, 'name')
   if (typeof name !== 'string') {
     return emitSwiftGeneric(e, indent)
@@ -1582,10 +1525,7 @@ function emitSwiftIcon(
  *
  * `src` must be a string literal; falls through to generic emit otherwise.
  */
-function emitSwiftImage(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftImage(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const src = readStaticAttr(e, 'src')
   if (typeof src !== 'string') {
     return emitSwiftGeneric(e, indent)
@@ -1625,40 +1565,27 @@ function emitSwiftImage(
  * iOS `.sheet` provides the focus trap + backdrop + dismissal natively,
  * matching the web `<dialog>`-modal contract.
  */
-function emitSwiftModal(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const openAttr = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
-      a.kind === 'attr' && a.name === 'open',
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'open',
   )
   if (!openAttr) {
     return emitSwiftGeneric(e, indent)
   }
 
   const pad = ' '.repeat(indent + 2)
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
-  const content =
-    e.children.length === 0
-      ? ' '
-      : `\n${contentLines}\n${' '.repeat(indent)}`
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  const content = e.children.length === 0 ? ' ' : `\n${contentLines}\n${' '.repeat(indent)}`
 
   // Shape 1 — signal binding projection.
-  if (
-    openAttr.value.kind === 'identifier' &&
-    _signalNames.has(openAttr.value.name)
-  ) {
+  if (openAttr.value.kind === 'identifier' && _signalNames.has(openAttr.value.name)) {
     const sig = swiftIdent(openAttr.value.name)
     return `EmptyView().sheet(isPresented: $${sig}) {${content}}${emitSwiftLayoutModifiers(e)}`
   }
 
   // Shape 2 — custom Binding; needs onClose for the dismiss write.
   const onClose = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && a.name === 'close',
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'close',
   )
   if (!onClose) {
     return emitSwiftGeneric(e, indent)
@@ -1692,10 +1619,7 @@ function emitSwiftModal(
  * primitive consumer demands it; today it's silently dropped (the
  * type-level surface still accepts it).
  */
-function emitSwiftPress(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // Recognize both `onPress` (canonical) and the legacy `onClick`
   // shape so PMTC source migrating from the SwiftUI-flavored vocab
   // (where <Button> takes onClick) compiles without rewrites.
@@ -1706,9 +1630,7 @@ function emitSwiftPress(
   const action = onPress ? emitSwiftAction(onPress.handler, indent) : '{}'
 
   const pad = ' '.repeat(indent + 2)
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   const modifiers = emitSwiftLayoutModifiers(e)
   // `.buttonStyle(.plain)` strips system chrome; matches the canonical
   // "Press = un-styled clickable wrapper" contract.
@@ -1731,10 +1653,7 @@ function emitSwiftPress(
  * - `disabled` → `.disabled(true)` modifier.
  * - `onSubmit` → `.onSubmit { handler() }` modifier (Phase 2 G2 shape).
  */
-function emitSwiftField(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
@@ -1760,8 +1679,7 @@ function emitSwiftField(
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && a.name === 'submit',
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'submit',
   )
   if (onSubmit) {
     result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
@@ -1790,13 +1708,9 @@ function emitSwiftField(
  * modifiers from `padding` / `radius` / `background` token props
  * chain via `emitSwiftLayoutModifiers`.
  */
-function emitSwiftToggle(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const valueAttr = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
-      a.kind === 'attr' && a.name === 'value',
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
   if (!valueAttr) {
     return emitSwiftGeneric(e, indent)
@@ -1816,10 +1730,7 @@ function emitSwiftToggle(
   //    reads via the expression + writes via the `onChange` handler.
   //    This unblocks <Checkbox> → <Toggle> migration for the common
   //    parent-owns-state shape.
-  if (
-    valueAttr.value.kind === 'identifier' &&
-    _signalNames.has(valueAttr.value.name)
-  ) {
+  if (valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)) {
     // Shape 1 — signal binding projection.
     const sig = swiftIdent(valueAttr.value.name)
     let result = `Toggle("", isOn: $${sig})`
@@ -1833,8 +1744,7 @@ function emitSwiftToggle(
 
   // Shape 2 — custom Binding. Requires `onChange` to handle writes.
   const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && a.name === 'change',
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
   )
   if (!onChange) {
     // No onChange handler — can't write back. Fall through to generic.
@@ -1869,13 +1779,9 @@ function emitSwiftToggle(
  * The `to` prop must be a string literal or string-typed expression.
  * Children render inside the closure body.
  */
-function emitSwiftLink(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
+function emitSwiftLink(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const toAttr = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
-      a.kind === 'attr' && a.name === 'to',
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'to',
   )
   if (!toAttr) {
     // No `to` prop — fall through to generic emit (preserves current
@@ -1926,8 +1832,7 @@ function emitSwiftRouterProvider(
   indent: number,
 ): string {
   const routerAttr = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
-      a.kind === 'attr' && a.name === 'router',
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'router',
   )
   if (!routerAttr) {
     return emitSwiftGeneric(e, indent)
@@ -2006,16 +1911,12 @@ function emitSwiftRouterProvider(
  * are unusual; they get the EmptyView fallback until they add a
  * literal home route.
  */
-function pickHomeRoute(
-  routes: import('./types').RouteIR[],
-): import('./types').RouteIR | undefined {
+function pickHomeRoute(routes: import('./types').RouteIR[]): import('./types').RouteIR | undefined {
   const literalRoot = routes.find((r) => r.path === '/')
   if (literalRoot !== undefined) return literalRoot
   // A bare `*` / `(.*)` wildcard is a catch-all, not a launchable home —
   // exclude it so it never becomes the NavigationStack initial body.
-  const firstNonPattern = routes.find(
-    (r) => !r.path.includes(':') && !isWildcardRoute(r),
-  )
+  const firstNonPattern = routes.find((r) => !r.path.includes(':') && !isWildcardRoute(r))
   if (firstNonPattern !== undefined) return firstNonPattern
   return undefined
 }
@@ -2184,9 +2085,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // Also `swiftIdent`-escape the attr label in case the kebab→camel
       // conversion lands on a reserved keyword (e.g. `for-class` →
       // `forClass` — both halves are reserved when used as identifiers).
-      argParts.push(
-        `${swiftIdent(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
-      )
+      argParts.push(`${swiftIdent(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`)
     } else if (a.kind === 'event' && isUserComponent) {
       // User component prop named `on<Cap>` — the parser stripped the
       // `on` prefix and lowercased: `onToggle` → `event { name: 'toggle' }`.
@@ -2203,9 +2102,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   if (e.children.length === 0) {
     return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
   }
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   if (attrPairs) {
     return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }

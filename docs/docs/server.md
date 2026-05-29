@@ -428,7 +428,6 @@ Pyreon's island architecture (partial hydration) has its own dedicated page cove
 
 The short version: `island(loader, { name, hydrate })` wraps an async component import and returns a `ComponentFn` that renders inside a `<pyreon-island>` custom element with serialized props + the hydration strategy as data attributes. Six strategies (`load` / `idle` / `visible` / `interaction` / `media(...)` / `never`), plus a `prefetch` hint that pre-warms the chunk before deferred-hydration triggers fire. Auto-discovered registry under `@pyreon/vite-plugin` (`hydrateIslandsAuto()`) eliminates the manual sync between `island()` declarations and the client registry. Project-wide audit at `pyreon doctor --check-islands` + MCP `audit_islands` tool catches duplicate names, dead islands, registry drift, nested islands, and never-with-registry foot-guns at build time.
 
-
 ---
 
 ## Client-Side Hydration
@@ -560,7 +559,7 @@ Pair with `prefetch: 'idle' | 'visible'` to pre-warm the chunk before the trigge
 island(() => import('./components/MobileMenu'), {
   name: 'MobileMenu',
   hydrate: 'interaction',
-  prefetch: 'idle',          // chunk fetched during browser idle
+  prefetch: 'idle', // chunk fetched during browser idle
 })
 ```
 
@@ -570,15 +569,15 @@ Suppressed (no `data-prefetch` attribute) when `hydrate: 'load'` (loader runs sy
 
 When `@pyreon/perf-harness` is installed, the server-side island machinery emits 7 counters under the `island.*` namespace:
 
-| Counter                  | Meaning                                                     |
-| ------------------------ | ----------------------------------------------------------- |
-| `island.scheduled`       | Per-island hydration scheduled (idle / visible / etc.)      |
-| `island.hydrated`        | Completed hydrations                                        |
-| `island.skipped.never`   | Skipped — `hydrate: 'never'` (zero-JS)                      |
-| `island.skipped.nested`  | Skipped — nested island (outer hydrates first, swaps DOM)   |
+| Counter                    | Meaning                                                   |
+| -------------------------- | --------------------------------------------------------- |
+| `island.scheduled`         | Per-island hydration scheduled (idle / visible / etc.)    |
+| `island.hydrated`          | Completed hydrations                                      |
+| `island.skipped.never`     | Skipped — `hydrate: 'never'` (zero-JS)                    |
+| `island.skipped.nested`    | Skipped — nested island (outer hydrates first, swaps DOM) |
 | `island.skipped.no-loader` | Skipped — registry mismatch (loader not found)            |
-| `island.error`           | Hydration error (also surfaces via `data-island-error`)     |
-| `island.prefetch`        | Prefetch hint fired (idle / visible)                        |
+| `island.error`             | Hydration error (also surfaces via `data-island-error`)   |
+| `island.prefetch`          | Prefetch hint fired (idle / visible)                      |
 
 `scheduled - hydrated` at steady state = islands still waiting on a deferred trigger; `skipped.no-loader` should be zero (registry drift); `error` should be zero (pair with `data-island-error="invalid-props"|"hydration-failed"` on the failing element to diagnose).
 

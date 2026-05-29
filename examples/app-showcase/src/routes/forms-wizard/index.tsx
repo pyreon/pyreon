@@ -19,7 +19,13 @@ import {
   WizardPage,
   WizardTitle,
 } from '../../sections/wizard/styled'
-import { STEP_LABELS, STEPS, type Step, stepIndex, wizardMachine } from '../../sections/wizard/wizardMachine'
+import {
+  STEP_LABELS,
+  STEPS,
+  type Step,
+  stepIndex,
+  wizardMachine,
+} from '../../sections/wizard/wizardMachine'
 import { snapshotWizard, trackPatches, useWizard } from '../../sections/wizard/wizardModel'
 
 /**
@@ -75,8 +81,8 @@ export default function FormsWizardRoute() {
     <WizardPage>
       <WizardTitle>Onboarding wizard</WizardTitle>
       <WizardLead>
-        Multi-step form with per-step Zod validation, a state-tree model that holds the
-        collected data across steps, and a state machine driving navigation.
+        Multi-step form with per-step Zod validation, a state-tree model that holds the collected
+        data across steps, and a state machine driving navigation.
       </WizardLead>
 
       <Stepper>
@@ -142,8 +148,8 @@ function SuccessPanel() {
       <SuccessIcon>✓</SuccessIcon>
       <SuccessTitle>You're all set, {snapshot.profile.fullName || 'friend'}!</SuccessTitle>
       <SuccessText>
-        Your account at {snapshot.account.email} is ready. We've configured your dashboard for
-        a {snapshot.profile.companySize.replace('-', ' ')} team.
+        Your account at {snapshot.account.email} is ready. We've configured your dashboard for a{' '}
+        {snapshot.profile.companySize.replace('-', ' ')} team.
       </SuccessText>
       <NavNext type="button" onClick={startOver}>
         Start over
@@ -155,4 +161,3 @@ function SuccessPanel() {
 export const meta = {
   title: 'Forms Wizard — Pyreon App Showcase',
 }
-

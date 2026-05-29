@@ -65,9 +65,7 @@ export const useInvoice = defineStore('invoice', () => {
   ): void {
     invoice.set({
       ...invoice(),
-      items: invoice().items.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item,
-      ),
+      items: invoice().items.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
     })
   }
 

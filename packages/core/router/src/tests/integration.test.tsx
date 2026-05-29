@@ -35,10 +35,13 @@ describe('router integration — navigation cycle', () => {
   const routes: RouteRecord[] = [
     { path: '/', component: Home },
     { path: '/about', component: About },
-    { path: '/user/:id', component: (props: Record<string, unknown>) => {
-      const params = props.params as Record<string, string>
-      return h('div', null, 'User: ', params.id)
-    }},
+    {
+      path: '/user/:id',
+      component: (props: Record<string, unknown>) => {
+        const params = props.params as Record<string, string>
+        return h('div', null, 'User: ', params.id)
+      },
+    },
     { path: '*', component: NotFound },
   ]
 

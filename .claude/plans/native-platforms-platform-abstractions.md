@@ -21,7 +21,7 @@ PMTC's per-platform abstraction layer follows a **three-package split** per abst
 The user installs only `@pyreon/<abstraction>`. The compiler, at native-target build time, detects the import and resolves the platform binding via:
 
 1. **Build-time substitution**: web target uses the `@pyreon/<abstraction>` JS export directly; iOS/Android targets emit native source that calls into `@pyreon/<abstraction>-ios` / `-android` (linked as SPM / Maven dependencies of the generated Xcode / Android Studio project).
-2. **A static **`PYREON_NATIVE_BINDINGS` manifest** in each abstract package's `package.json` declaring which functions/hooks should be substituted, with what shape per platform. The compiler reads this manifest to know what to substitute.
+2. **A static **`PYREON_NATIVE_BINDINGS` manifest\*\* in each abstract package's `package.json` declaring which functions/hooks should be substituted, with what shape per platform. The compiler reads this manifest to know what to substitute.
 3. **A validation pass** at build time that asserts every consumed binding has implementations for every targeted platform; missing implementations fail the build with a clear error.
 
 This doc specifies the manifest format, the resolution algorithm, the package-split conventions, and an end-to-end walkthrough using `@pyreon/storage` as the reference case.
@@ -123,12 +123,20 @@ Two manifest files per abstraction:
         "signature": "<T>(key: string, defaultValue: T) => StorageSignal<T>",
         "platforms": {
           "web": { "impl": "./src/web.ts", "export": "useStorage" },
-          "ios": { "package": "@pyreon/storage-ios", "module": "PyreonStorage", "symbol": "useStorage" },
-          "android": { "package": "@pyreon/storage-android", "module": "io.pyreon.storage", "symbol": "useStorage" }
+          "ios": {
+            "package": "@pyreon/storage-ios",
+            "module": "PyreonStorage",
+            "symbol": "useStorage",
+          },
+          "android": {
+            "package": "@pyreon/storage-android",
+            "module": "io.pyreon.storage",
+            "symbol": "useStorage",
+          },
         },
         "typeContract": {
-          "T": { "constraint": "Codable" }
-        }
+          "T": { "constraint": "Codable" },
+        },
       },
       {
         "name": "useSessionStorage",
@@ -136,14 +144,22 @@ Two manifest files per abstraction:
         "signature": "<T>(key: string, defaultValue: T) => StorageSignal<T>",
         "platforms": {
           "web": { "impl": "./src/web.ts", "export": "useSessionStorage" },
-          "ios": { "package": "@pyreon/storage-ios", "module": "PyreonStorage", "symbol": "useSessionStorage" },
-          "android": { "package": "@pyreon/storage-android", "module": "io.pyreon.storage", "symbol": "useSessionStorage" }
+          "ios": {
+            "package": "@pyreon/storage-ios",
+            "module": "PyreonStorage",
+            "symbol": "useSessionStorage",
+          },
+          "android": {
+            "package": "@pyreon/storage-android",
+            "module": "io.pyreon.storage",
+            "symbol": "useSessionStorage",
+          },
         },
-        "typeContract": { "T": { "constraint": "Codable" } }
-      }
+        "typeContract": { "T": { "constraint": "Codable" } },
+      },
       // ... more bindings ...
-    ]
-  }
+    ],
+  },
 }
 ```
 
@@ -177,14 +193,14 @@ Two manifest files per abstraction:
     {
       "abstract": "useStorage",
       "symbol": "useStorage",
-      "swiftSignature": "func useStorage<T: Codable>(key: String, defaultValue: T) -> StorageBinding<T>"
+      "swiftSignature": "func useStorage<T: Codable>(key: String, defaultValue: T) -> StorageBinding<T>",
     },
     {
       "abstract": "useSessionStorage",
       "symbol": "useSessionStorage",
-      "swiftSignature": "func useSessionStorage<T: Codable>(key: String, defaultValue: T) -> StorageBinding<T>"
-    }
-  ]
+      "swiftSignature": "func useSessionStorage<T: Codable>(key: String, defaultValue: T) -> StorageBinding<T>",
+    },
+  ],
 }
 ```
 
@@ -207,9 +223,9 @@ When the compiler emits a native target and encounters an import like `import { 
    b. Get the platform-specific entry (`bindings[].platforms[<target>]`).
    c. If the entry is missing for the target, fail with: `[PMTC] @pyreon/storage exports useStorage but has no <target> implementation. Add a binding to PYREON_NATIVE_BINDINGS.bindings[].platforms.<target> in @pyreon/storage's package.json, OR remove the useStorage call from <file>.`
    d. Resolve the binding:
-      - **iOS**: emit Swift `import <module>` at the top of the file. Translate the call site to use the native symbol. Add the SPM dependency to the generated Xcode project's `Package.swift`.
-      - **Android**: same shape with Kotlin `import <package>.<module>.*` + Gradle dependency.
-   e. Apply the `typeContract` constraints to the type-mapper for any generic parameters (e.g. `T: Codable` makes the type mapper emit `<T: Codable>` in the Swift signature and add `@Serializable` / `Codable` conformance to the user's type when needed).
+   - **iOS**: emit Swift `import <module>` at the top of the file. Translate the call site to use the native symbol. Add the SPM dependency to the generated Xcode project's `Package.swift`.
+   - **Android**: same shape with Kotlin `import <package>.<module>.*` + Gradle dependency.
+     e. Apply the `typeContract` constraints to the type-mapper for any generic parameters (e.g. `T: Codable` makes the type mapper emit `<T: Codable>` in the Swift signature and add `@Serializable` / `Codable` conformance to the user's type when needed).
 
 4. **At the end of compilation**, write out the list of resolved native packages so `@pyreon/native-cli` can add them to the project file (Xcode `Package.swift` / Android `build.gradle.kts`).
 
@@ -220,7 +236,7 @@ When the compiler emits a native target and encounters an import like `import { 
 function resolveImport(
   importSpec: ImportSpecifier,
   usedSymbols: string[],
-  target: 'ios' | 'android' | 'web'
+  target: 'ios' | 'android' | 'web',
 ): ResolvedImport {
   const abstractPkg = readPackageJson(importSpec.from)
   const manifest = abstractPkg.PYREON_NATIVE_BINDINGS
@@ -232,11 +248,11 @@ function resolveImport(
 
   const bindings: ResolvedBinding[] = []
   for (const symbol of usedSymbols) {
-    const entry = manifest.bindings.find(b => b.name === symbol)
+    const entry = manifest.bindings.find((b) => b.name === symbol)
     if (!entry) {
       throw new PmtcError(
         `${importSpec.from} has PYREON_NATIVE_BINDINGS but no entry for "${symbol}". ` +
-        `Add a binding or import a different name.`
+          `Add a binding or import a different name.`,
       )
     }
 
@@ -244,8 +260,8 @@ function resolveImport(
     if (!platformEntry) {
       throw new PmtcError(
         `${importSpec.from} exports "${symbol}" but has no ${target} implementation. ` +
-        `Add a binding to PYREON_NATIVE_BINDINGS.bindings[].platforms.${target} ` +
-        `in ${importSpec.from}'s package.json, OR remove the ${symbol} call.`
+          `Add a binding to PYREON_NATIVE_BINDINGS.bindings[].platforms.${target} ` +
+          `in ${importSpec.from}'s package.json, OR remove the ${symbol} call.`,
       )
     }
 
@@ -286,6 +302,7 @@ No change from today. Web target is the "always works" baseline.
 3. Reads `@pyreon/storage-ios/pyreon.json` → confirms `PyreonStorage.useStorage` exists with signature `<T: Codable>(key:defaultValue:) -> StorageBinding<T>`.
 4. Applies `typeContract.T.constraint = "Codable"` to the type mapper. The user's `Todo` type gets emitted with `Codable` conformance added automatically (or fails with a clear error if `Todo` contains a non-Codable field like a function).
 5. Emits Swift:
+
    ```swift
    import PyreonStorage  // added at top of file
 
@@ -297,6 +314,7 @@ No change from today. Web target is the "always works" baseline.
      // ...
    }
    ```
+
 6. Adds `@pyreon/storage-ios` to the generated Xcode project's `Package.swift`:
    ```swift
    dependencies: [
@@ -308,6 +326,7 @@ No change from today. Web target is the "always works" baseline.
 
 1. Same as iOS but with Kotlin shape.
 2. Emits:
+
    ```kotlin
    import io.pyreon.storage.useStorage
 
@@ -317,6 +336,7 @@ No change from today. Web target is the "always works" baseline.
      // ...
    }
    ```
+
 3. Adds Maven coordinate to the generated Android module's `build.gradle.kts`:
    ```kotlin
    dependencies {
@@ -346,58 +366,58 @@ The PMTC plan (and the TodoMVC walkthrough) named these. This doc specifies thei
 
 ### 1. `@pyreon/storage`
 
-| Field | Value |
-|---|---|
-| Abstract | `useStorage<T>(key, default)` / `useSessionStorage<T>` / `useCookie<T>` / `useIndexedDB` / `useMemoryStorage` |
-| Web impl | Existing `@pyreon/storage` package (localStorage / sessionStorage / cookies / IndexedDB / in-memory) |
-| iOS binding | `@AppStorage` (SwiftUI property wrapper) for primitive Codables; `UserDefaults` + JSONEncoder for arbitrary Codable types |
-| Android binding | DataStore (preferred) or SharedPreferences (fallback) + kotlinx-serialization |
-| Type constraint | `T: Codable` (Swift) / `@Serializable` (Kotlin) |
-| Notes | The five existing storage backends (local / session / cookie / indexedDB / memory) likely don't all map cleanly to mobile. `useStorage` and `useSessionStorage` map fine (UserDefaults vs ephemeral). `useCookie` is HTTP-specific — emit a build-time warning for mobile targets and recommend `useStorage`. `useIndexedDB` maps to Core Data on iOS / Room on Android — significantly heavier; defer to a Phase 2 binding. |
+| Field           | Value                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Abstract        | `useStorage<T>(key, default)` / `useSessionStorage<T>` / `useCookie<T>` / `useIndexedDB` / `useMemoryStorage`                                                                                                                                                                                                                                                                                                                |
+| Web impl        | Existing `@pyreon/storage` package (localStorage / sessionStorage / cookies / IndexedDB / in-memory)                                                                                                                                                                                                                                                                                                                         |
+| iOS binding     | `@AppStorage` (SwiftUI property wrapper) for primitive Codables; `UserDefaults` + JSONEncoder for arbitrary Codable types                                                                                                                                                                                                                                                                                                    |
+| Android binding | DataStore (preferred) or SharedPreferences (fallback) + kotlinx-serialization                                                                                                                                                                                                                                                                                                                                                |
+| Type constraint | `T: Codable` (Swift) / `@Serializable` (Kotlin)                                                                                                                                                                                                                                                                                                                                                                              |
+| Notes           | The five existing storage backends (local / session / cookie / indexedDB / memory) likely don't all map cleanly to mobile. `useStorage` and `useSessionStorage` map fine (UserDefaults vs ephemeral). `useCookie` is HTTP-specific — emit a build-time warning for mobile targets and recommend `useStorage`. `useIndexedDB` maps to Core Data on iOS / Room on Android — significantly heavier; defer to a Phase 2 binding. |
 
 ### 2. `@pyreon/camera`
 
-| Field | Value |
-|---|---|
-| Abstract | `useCamera({ facing })` returning `{ preview, capture, switch, permissions }` |
-| Web impl | `getUserMedia()` + `<video>` element rendering the camera stream |
-| iOS binding | `AVCaptureSession` + `UIViewRepresentable`-wrapped `AVCaptureVideoPreviewLayer` |
-| Android binding | CameraX + `AndroidView`-wrapped `PreviewView` |
-| Type constraint | None |
-| Notes | First mobile-only-shaped abstraction (the web impl is "best effort" — most users won't ship the web camera). Permissions are async on all platforms; abstract should expose a `Promise<PermissionState>` for `requestPermission()` that maps to `AVCaptureDevice.requestAccess` / `ActivityCompat.requestPermissions`. |
+| Field           | Value                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Abstract        | `useCamera({ facing })` returning `{ preview, capture, switch, permissions }`                                                                                                                                                                                                                                          |
+| Web impl        | `getUserMedia()` + `<video>` element rendering the camera stream                                                                                                                                                                                                                                                       |
+| iOS binding     | `AVCaptureSession` + `UIViewRepresentable`-wrapped `AVCaptureVideoPreviewLayer`                                                                                                                                                                                                                                        |
+| Android binding | CameraX + `AndroidView`-wrapped `PreviewView`                                                                                                                                                                                                                                                                          |
+| Type constraint | None                                                                                                                                                                                                                                                                                                                   |
+| Notes           | First mobile-only-shaped abstraction (the web impl is "best effort" — most users won't ship the web camera). Permissions are async on all platforms; abstract should expose a `Promise<PermissionState>` for `requestPermission()` that maps to `AVCaptureDevice.requestAccess` / `ActivityCompat.requestPermissions`. |
 
 ### 3. `@pyreon/push`
 
-| Field | Value |
-|---|---|
-| Abstract | `usePush({ onMessage, onToken })` + imperative `requestPermission()` |
-| Web impl | Web Push API + Service Worker for background |
-| iOS binding | UNUserNotificationCenter + APNs registration; AppDelegate hook |
-| Android binding | Firebase Cloud Messaging / WorkManager + NotificationManager |
-| Type constraint | None |
-| Notes | The hardest abstraction — every platform's push story is different at the lifecycle level (web Service Worker / iOS AppDelegate / Android Broadcast Receiver). The abstract API has to be the lowest-common-denominator: registration, onMessage callback, onToken callback. Anything platform-specific (rich notifications, action buttons, deep links from push) needs platform-specific extensions OR `<native:ios>` / `<native:android>` escape blocks. |
+| Field           | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Abstract        | `usePush({ onMessage, onToken })` + imperative `requestPermission()`                                                                                                                                                                                                                                                                                                                                                                                        |
+| Web impl        | Web Push API + Service Worker for background                                                                                                                                                                                                                                                                                                                                                                                                                |
+| iOS binding     | UNUserNotificationCenter + APNs registration; AppDelegate hook                                                                                                                                                                                                                                                                                                                                                                                              |
+| Android binding | Firebase Cloud Messaging / WorkManager + NotificationManager                                                                                                                                                                                                                                                                                                                                                                                                |
+| Type constraint | None                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Notes           | The hardest abstraction — every platform's push story is different at the lifecycle level (web Service Worker / iOS AppDelegate / Android Broadcast Receiver). The abstract API has to be the lowest-common-denominator: registration, onMessage callback, onToken callback. Anything platform-specific (rich notifications, action buttons, deep links from push) needs platform-specific extensions OR `<native:ios>` / `<native:android>` escape blocks. |
 
 ### 4. `@pyreon/biometrics`
 
-| Field | Value |
-|---|---|
-| Abstract | `useBiometrics()` returning `{ authenticate, available, type }` |
-| Web impl | Web Authentication API (passkeys) — only works on supported browsers |
-| iOS binding | LocalAuthentication framework (LAContext + LAPolicy) |
-| Android binding | BiometricPrompt from androidx.biometric |
-| Type constraint | None |
-| Notes | Web support is partial (Safari/Chrome passkeys); abstract should expose `available()` so user code can degrade gracefully. `authenticate()` returns `Promise<{ success, error }>`. |
+| Field           | Value                                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Abstract        | `useBiometrics()` returning `{ authenticate, available, type }`                                                                                                                    |
+| Web impl        | Web Authentication API (passkeys) — only works on supported browsers                                                                                                               |
+| iOS binding     | LocalAuthentication framework (LAContext + LAPolicy)                                                                                                                               |
+| Android binding | BiometricPrompt from androidx.biometric                                                                                                                                            |
+| Type constraint | None                                                                                                                                                                               |
+| Notes           | Web support is partial (Safari/Chrome passkeys); abstract should expose `available()` so user code can degrade gracefully. `authenticate()` returns `Promise<{ success, error }>`. |
 
 ### 5. `@pyreon/deep-links`
 
-| Field | Value |
-|---|---|
-| Abstract | `useDeepLink((url) => void)` + imperative `handleLink(url)` |
-| Web impl | URL routing via `@pyreon/router` (already handled, no new package needed) |
-| iOS binding | `.onOpenURL` SwiftUI modifier + Universal Links entitlement |
-| Android binding | `Intent.ACTION_VIEW` + intent-filter in AndroidManifest |
-| Type constraint | None |
-| Notes | Pairs with `@pyreon/router` for navigation. The abstract is just the hook; navigation handling is the router's job. |
+| Field           | Value                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Abstract        | `useDeepLink((url) => void)` + imperative `handleLink(url)`                                                         |
+| Web impl        | URL routing via `@pyreon/router` (already handled, no new package needed)                                           |
+| iOS binding     | `.onOpenURL` SwiftUI modifier + Universal Links entitlement                                                         |
+| Android binding | `Intent.ACTION_VIEW` + intent-filter in AndroidManifest                                                             |
+| Type constraint | None                                                                                                                |
+| Notes           | Pairs with `@pyreon/router` for navigation. The abstract is just the hook; navigation handling is the router's job. |
 
 ---
 
@@ -414,6 +434,7 @@ Failure: `[PMTC] @pyreon/<name> has malformed PYREON_NATIVE_BINDINGS at bindings
 ### Gate 2 — Cross-package binding consistency
 
 `scripts/check-native-binding-consistency.ts`. For every abstract package's manifest, checks that for every binding:
+
 - The native packages referenced exist
 - The native packages' `pyreon.json` declares the matching symbol
 - The Swift/Kotlin signature in the native manifest is consistent with the abstract signature
@@ -463,18 +484,18 @@ packages/
 
 The spec doesn't require concrete implementations — but the compiler work to CONSUME the manifest must land before any abstraction is built.
 
-| PR | Scope | Phase |
-|---|---|---|
-| Native-CI gate 1 | `check-native-binding-manifests.ts` script | Phase 0 (no actual manifests yet — script returns "0 found, ok") |
-| Compiler manifest reader | Read `PYREON_NATIVE_BINDINGS` from imported packages | Phase 0, after PR 5e |
-| Compiler binding resolver | Apply the algorithm above; emit per-platform | Phase 0, after manifest reader |
-| Compiler missing-impl gate | Error message + actionable fix per the walkthrough | Phase 0, with binding resolver |
-| Native-CI gate 2 | Cross-package consistency checker | Phase 1, once first abstraction ships |
-| `@pyreon/storage` manifest | Add `PYREON_NATIVE_BINDINGS` to existing package | Phase 1 |
-| `@pyreon/storage-ios` | First reference implementation | Phase 1 |
-| `@pyreon/storage-android` | First reference implementation | Phase 1 |
-| `@pyreon/camera` + ios + android | Second abstraction (uses storage as the precedent) | Phase 2 |
-| Remaining abstractions | One per quarter | Phase 2 → Phase 4 |
+| PR                               | Scope                                                | Phase                                                            |
+| -------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------- |
+| Native-CI gate 1                 | `check-native-binding-manifests.ts` script           | Phase 0 (no actual manifests yet — script returns "0 found, ok") |
+| Compiler manifest reader         | Read `PYREON_NATIVE_BINDINGS` from imported packages | Phase 0, after PR 5e                                             |
+| Compiler binding resolver        | Apply the algorithm above; emit per-platform         | Phase 0, after manifest reader                                   |
+| Compiler missing-impl gate       | Error message + actionable fix per the walkthrough   | Phase 0, with binding resolver                                   |
+| Native-CI gate 2                 | Cross-package consistency checker                    | Phase 1, once first abstraction ships                            |
+| `@pyreon/storage` manifest       | Add `PYREON_NATIVE_BINDINGS` to existing package     | Phase 1                                                          |
+| `@pyreon/storage-ios`            | First reference implementation                       | Phase 1                                                          |
+| `@pyreon/storage-android`        | First reference implementation                       | Phase 1                                                          |
+| `@pyreon/camera` + ios + android | Second abstraction (uses storage as the precedent)   | Phase 2                                                          |
+| Remaining abstractions           | One per quarter                                      | Phase 2 → Phase 4                                                |
 
 **Critical insight**: the compiler manifest-reader work (Phase 0) must land BEFORE the first abstraction ships (Phase 1). Otherwise the first abstraction package will accumulate compiler special-cases instead of being a generic consumer of the manifest mechanism.
 

@@ -563,16 +563,9 @@ describe('JSX rules', () => {
   })
 
   it('pyreon/no-props-destructure: respects exemptPaths option', () => {
-    const config = configWithExemptPaths('pyreon/no-props-destructure', [
-      'examples/legacy/',
-    ])
+    const config = configWithExemptPaths('pyreon/no-props-destructure', ['examples/legacy/'])
     const source = `const App = ({ name }) => <div>{name}</div>`
-    const exempted = lintFile(
-      'examples/legacy/old.tsx',
-      source,
-      allRules,
-      config,
-    )
+    const exempted = lintFile('examples/legacy/old.tsx', source, allRules, config)
     expect(findByRule(exempted, 'pyreon/no-props-destructure').length).toBe(0)
     const checked = lintFile('src/App.tsx', source, allRules, config)
     expect(findByRule(checked, 'pyreon/no-props-destructure').length).toBe(1)
@@ -861,13 +854,7 @@ describe('Lifecycle rules', () => {
       })
     }
 
-    const browserObjects = [
-      'document',
-      'window',
-      'navigator',
-      'localStorage',
-      'sessionStorage',
-    ]
+    const browserObjects = ['document', 'window', 'navigator', 'localStorage', 'sessionStorage']
     for (const obj of browserObjects) {
       it(`flags browser-object member read: ${obj}.X`, () => {
         const source = `effect(() => { const x = ${obj}.something })`
@@ -1038,9 +1025,7 @@ describe('SSR rules', () => {
 
   it('pyreon/no-window-in-ssr: exempt via configured exemptPaths', () => {
     const source = `const w = window.innerWidth; document.createElement('div')`
-    const cfg = configWithExemptPaths('pyreon/no-window-in-ssr', [
-      'packages/core/runtime-dom/',
-    ])
+    const cfg = configWithExemptPaths('pyreon/no-window-in-ssr', ['packages/core/runtime-dom/'])
     const result = lintFile('packages/core/runtime-dom/src/foo.ts', source, allRules, cfg)
     const diags = findByRule(result, 'pyreon/no-window-in-ssr')
     expect(diags.length).toBe(0)
@@ -1352,9 +1337,7 @@ const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
 
   it('pyreon/no-process-dev-gate: exempt via configured exemptPaths (server-only code)', () => {
     const source = `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
-    const cfg = configWithExemptPaths('pyreon/no-process-dev-gate', [
-      'packages/core/server/',
-    ])
+    const cfg = configWithExemptPaths('pyreon/no-process-dev-gate', ['packages/core/server/'])
     const result = lintFile('packages/core/server/src/handler.ts', source, allRules, cfg)
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(0)
@@ -1762,15 +1745,8 @@ describe('Hooks rules', () => {
   it('pyreon/no-raw-setinterval: exempt via configured exemptPaths', () => {
     // Wrap in a component so component-context fires; exemptPaths then overrides.
     const source = `function useInterval() { setInterval(() => callback(), d) }`
-    const cfg = configWithExemptPaths('pyreon/no-raw-setinterval', [
-      'packages/fundamentals/hooks/',
-    ])
-    const result = lintFile(
-      'packages/fundamentals/hooks/src/useInterval.ts',
-      source,
-      allRules,
-      cfg,
-    )
+    const cfg = configWithExemptPaths('pyreon/no-raw-setinterval', ['packages/fundamentals/hooks/'])
+    const result = lintFile('packages/fundamentals/hooks/src/useInterval.ts', source, allRules, cfg)
     const diags = findByRule(result, 'pyreon/no-raw-setinterval')
     expect(diags.length).toBe(0)
   })
@@ -2934,7 +2910,9 @@ describe('no-imperative-navigate-in-render: deferred-execution callbacks', () =>
       }
     `
     const result = lintSource(source)
-    expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBeGreaterThanOrEqual(1)
+    expect(
+      findByRule(result, 'pyreon/no-imperative-navigate-in-render').length,
+    ).toBeGreaterThanOrEqual(1)
   })
 
   it('fires when a nested fn is DEFINED and immediately CALLED in the render body', () => {
@@ -2948,7 +2926,9 @@ describe('no-imperative-navigate-in-render: deferred-execution callbacks', () =>
       }
     `
     const result = lintSource(source)
-    expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBeGreaterThanOrEqual(1)
+    expect(
+      findByRule(result, 'pyreon/no-imperative-navigate-in-render').length,
+    ).toBeGreaterThanOrEqual(1)
   })
 
   it('silent when a nested fn containing navigate is defined but NOT called synchronously', () => {
@@ -3068,10 +3048,22 @@ describe('dev-guard-warnings: dev-flag identifier conventions', () => {
 
 describe('test-file heuristic (rules that intentionally skip *.test.* files)', () => {
   const cases: Array<[string, string, string]> = [
-    ['pyreon/no-submit-without-validation', 'src/tests/form.test.tsx', `useForm({ onSubmit: () => {} })`],
-    ['pyreon/no-duplicate-store-id', 'src/tests/store.test.ts', `defineStore('a', () => {}); defineStore('a', () => {})`],
+    [
+      'pyreon/no-submit-without-validation',
+      'src/tests/form.test.tsx',
+      `useForm({ onSubmit: () => {} })`,
+    ],
+    [
+      'pyreon/no-duplicate-store-id',
+      'src/tests/store.test.ts',
+      `defineStore('a', () => {}); defineStore('a', () => {})`,
+    ],
     ['pyreon/no-unregistered-field', 'src/tests/form.test.ts', `const f = useField(form, 'x')`],
-    ['pyreon/no-circular-import', 'packages/core/runtime-dom/src/tests/integration.test.ts', `import { renderToString } from '@pyreon/runtime-server'`],
+    [
+      'pyreon/no-circular-import',
+      'packages/core/runtime-dom/src/tests/integration.test.ts',
+      `import { renderToString } from '@pyreon/runtime-server'`,
+    ],
   ]
 
   for (const [rule, filePath, source] of cases) {
@@ -3095,9 +3087,10 @@ describe('rule options schema', () => {
     // `exemptPaths` declared as string[]; user passes a string. Cast via
     // JSON.parse so we exercise the runtime validator (TypeScript would
     // otherwise reject the literal at compile time).
-    const badOptions = JSON.parse(
-      `{"exemptPaths":"packages/core/runtime-dom/"}`,
-    ) as Record<string, unknown>
+    const badOptions = JSON.parse(`{"exemptPaths":"packages/core/runtime-dom/"}`) as Record<
+      string,
+      unknown
+    >
     const cfg: LintConfig = {
       rules: { 'pyreon/no-window-in-ssr': ['error', badOptions] },
     }
@@ -3142,9 +3135,9 @@ describe('rule options schema', () => {
     // Rule still works (real exemptPaths still applied).
     expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
     // Warning surfaces.
-    expect(sink.some((d) => d.severity === 'warn' && d.message.includes('unknown option "typo"'))).toBe(
-      true,
-    )
+    expect(
+      sink.some((d) => d.severity === 'warn' && d.message.includes('unknown option "typo"')),
+    ).toBe(true)
   })
 
   it('schema-less rules accept any options without validation diagnostics', () => {
@@ -3166,16 +3159,21 @@ describe('rule options schema', () => {
     const { join } = await import('node:path')
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-lint-cfg-bad-'))
     try {
-      writeFileSync(join(dir, '.pyreonlintrc.json'), JSON.stringify({
-        preset: 'recommended',
-        rules: { 'pyreon/no-window-in-ssr': ['error', { exemptPaths: 'oops-not-array' }] },
-      }))
+      writeFileSync(
+        join(dir, '.pyreonlintrc.json'),
+        JSON.stringify({
+          preset: 'recommended',
+          rules: { 'pyreon/no-window-in-ssr': ['error', { exemptPaths: 'oops-not-array' }] },
+        }),
+      )
       writeFileSync(join(dir, 'foo.ts'), `const w = window.innerWidth`)
 
       const { lint } = await import('../lint')
       const result = lint({ paths: [dir], config: join(dir, '.pyreonlintrc.json') })
       expect(result.configDiagnostics.length).toBeGreaterThanOrEqual(1)
-      expect(result.configDiagnostics.some((d) => d.message.includes('must be string[]'))).toBe(true)
+      expect(result.configDiagnostics.some((d) => d.message.includes('must be string[]'))).toBe(
+        true,
+      )
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -3259,7 +3257,8 @@ describe('lint() ruleOptionsOverrides (CLI --rule-options pathway)', () => {
 
       // Without override → rule fires.
       const before = lint({ paths: [dir] })
-      const beforeCount = before.files.flatMap((f) => f.diagnostics)
+      const beforeCount = before.files
+        .flatMap((f) => f.diagnostics)
         .filter((d) => d.ruleId === 'pyreon/no-window-in-ssr').length
       expect(beforeCount).toBeGreaterThanOrEqual(1)
 
@@ -3270,7 +3269,8 @@ describe('lint() ruleOptionsOverrides (CLI --rule-options pathway)', () => {
           'pyreon/no-window-in-ssr': { exemptPaths: [dir] },
         },
       })
-      const afterCount = after.files.flatMap((f) => f.diagnostics)
+      const afterCount = after.files
+        .flatMap((f) => f.diagnostics)
         .filter((d) => d.ruleId === 'pyreon/no-window-in-ssr').length
       expect(afterCount).toBe(0)
     } finally {
@@ -3290,12 +3290,7 @@ describe('lint() ruleOptionsOverrides (CLI --rule-options pathway)', () => {
 describe('dev-guard-warnings: /examples/ skip moved to config', () => {
   it('fires in /examples/ when no exemptPaths are configured', () => {
     const source = `console.warn("oops")`
-    const result = lintFile(
-      'examples/my-app/src/index.tsx',
-      source,
-      allRules,
-      defaultConfig(),
-    )
+    const result = lintFile('examples/my-app/src/index.tsx', source, allRules, defaultConfig())
     expect(findByRule(result, 'pyreon/dev-guard-warnings').length).toBeGreaterThanOrEqual(1)
   })
 
@@ -3531,12 +3526,7 @@ describe('pyreon/require-browser-smoke-test', () => {
           ],
         },
       }
-      const result = lintFile(
-        fake.indexPath,
-        `export const x = 1`,
-        allRules,
-        cfg,
-      )
+      const result = lintFile(fake.indexPath, `export const x = 1`, allRules, cfg)
       expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(1)
     } finally {
       fake.cleanup()
@@ -3551,18 +3541,10 @@ describe('pyreon/require-browser-smoke-test', () => {
     try {
       const cfg: LintConfig = {
         rules: {
-          'pyreon/require-browser-smoke-test': [
-            'error',
-            { exemptPaths: [fake.pkgDir] },
-          ],
+          'pyreon/require-browser-smoke-test': ['error', { exemptPaths: [fake.pkgDir] }],
         },
       }
-      const result = lintFile(
-        fake.indexPath,
-        `export const x = 1`,
-        allRules,
-        cfg,
-      )
+      const result = lintFile(fake.indexPath, `export const x = 1`, allRules, cfg)
       expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(0)
     } finally {
       fake.cleanup()
@@ -3579,10 +3561,7 @@ describe('pyreon/require-browser-smoke-test', () => {
     try {
       const { writeFileSync } = await import('node:fs')
       const { join } = await import('node:path')
-      writeFileSync(
-        join(fake.pkgDir, 'src', 'mount.browser.test.tsx'),
-        `export {}`,
-      )
+      writeFileSync(join(fake.pkgDir, 'src', 'mount.browser.test.tsx'), `export {}`)
       const result = lintWith(
         'pyreon/require-browser-smoke-test',
         `export const x = 1`,
@@ -3659,17 +3638,10 @@ describe('pyreon/require-browser-smoke-test', () => {
     try {
       const pkgDir = join(rootDir, 'packages', 'runtime-dom')
       mkdirSync(join(pkgDir, 'src'), { recursive: true })
-      writeFileSync(
-        join(pkgDir, 'package.json'),
-        JSON.stringify({ name: '@pyreon/runtime-dom' }),
-      )
+      writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: '@pyreon/runtime-dom' }))
       const indexPath = join(pkgDir, 'src', 'index.ts')
       writeFileSync(indexPath, `export const x = 1`)
-      const result = lintWith(
-        'pyreon/require-browser-smoke-test',
-        `export const x = 1`,
-        indexPath,
-      )
+      const result = lintWith('pyreon/require-browser-smoke-test', `export const x = 1`, indexPath)
       // No JSON found → empty list → rule stays silent.
       expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(0)
     } finally {
@@ -3688,23 +3660,13 @@ describe('pyreon/require-browser-smoke-test', () => {
     const rootDir = mkdtempSync(join(tmpdir(), 'pyreon-lint-bad-json-'))
     try {
       mkdirSync(join(rootDir, '.claude', 'rules'), { recursive: true })
-      writeFileSync(
-        join(rootDir, '.claude', 'rules', 'browser-packages.json'),
-        `{ not valid json`,
-      )
+      writeFileSync(join(rootDir, '.claude', 'rules', 'browser-packages.json'), `{ not valid json`)
       const pkgDir = join(rootDir, 'packages', 'runtime-dom')
       mkdirSync(join(pkgDir, 'src'), { recursive: true })
-      writeFileSync(
-        join(pkgDir, 'package.json'),
-        JSON.stringify({ name: '@pyreon/runtime-dom' }),
-      )
+      writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: '@pyreon/runtime-dom' }))
       const indexPath = join(pkgDir, 'src', 'index.ts')
       writeFileSync(indexPath, `export const x = 1`)
-      const result = lintWith(
-        'pyreon/require-browser-smoke-test',
-        `export const x = 1`,
-        indexPath,
-      )
+      const result = lintWith('pyreon/require-browser-smoke-test', `export const x = 1`, indexPath)
       // Parse failure → empty list → rule stays silent (no crash).
       expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(0)
     } finally {

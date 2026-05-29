@@ -20,7 +20,7 @@ import {
 } from './pattern-b-stale-async'
 
 describe('Pattern A — stale-capture race between sibling handlers', () => {
-  it('signal version: child2 (set up after child1.remove) DROPS child1\'s removal (the bug)', () => {
+  it("signal version: child2 (set up after child1.remove) DROPS child1's removal (the bug)", () => {
     const sv = signalListVersion()
     expect(sv.list()).toHaveLength(3)
     // Both children "set up" before any removals — each captures the

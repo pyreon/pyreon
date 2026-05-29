@@ -46,7 +46,15 @@
  */
 
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
@@ -285,9 +293,7 @@ function main(): number {
     }
   }
   console.error('')
-  console.error(
-    `To opt a block OUT of checking, remove the \`${MARKER}\` first-line marker.`,
-  )
+  console.error(`To opt a block OUT of checking, remove the \`${MARKER}\` first-line marker.`)
   console.error(
     'To opt MORE blocks IN, add the marker as the first content line of a tsx/ts fence.',
   )

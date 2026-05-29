@@ -44,10 +44,7 @@ export const pick = <T extends Record<string, any>>(
 ): Partial<T> => {
   if (obj == null) return {} as Partial<T>
   if (!keys || keys.length === 0) {
-    return Object.defineProperties(
-      {} as Partial<T>,
-      Object.getOwnPropertyDescriptors(obj),
-    )
+    return Object.defineProperties({} as Partial<T>, Object.getOwnPropertyDescriptors(obj))
   }
   const result: Record<string, any> = {}
   for (const key of keys) {

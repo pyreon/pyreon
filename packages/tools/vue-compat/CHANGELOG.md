@@ -128,12 +128,10 @@
   Fix: LRU bound (default 256 entries). `Map` preserves insertion order, so the first key is the least-recently-used. `get` / `set` on an existing key refresh recency by re-inserting at the tail. Apps that lint thousands of distinct files in tight succession can bump the cap via `new AstCache(2048)`.
 
   ### Regression tests + bisect
-
   - `packages/tools/vue-compat/src/tests/provide-stack-leak-repro.test.ts` (2 specs) — `createApp().provide().mount(el); unmount()` returns the global context stack to baseline; 100 mount/unmount cycles do NOT accumulate frames. **Bisect-verified**: revert `vue-compat/src/index.ts` → both specs fail with stack-length assertions; restored → pass.
   - `packages/tools/lint/src/tests/ast-cache-lru.test.ts` (5 specs) — cache never exceeds `maxEntries`, evicts LRU on overflow, `get`/`set` refresh recency, re-setting an existing key doesn't double-count, default cap is 256. **Bisect-verified**: revert `lint/src/cache.ts` → all 5 fail; restored → pass.
 
   ### Validation
-
   - `@pyreon/core` 510/510 tests pass
   - `@pyreon/vue-compat` 218/218 tests pass (+ 2 new regression specs)
   - `@pyreon/lint` 639/639 tests pass (+ 5 new LRU specs)
@@ -143,7 +141,6 @@
   ### Audit byproducts (NOT in this PR — deliberately scoped follow-ups)
 
   The 12-package audit also surfaced 4 MEDIUM-risk patterns documented in the audit report. Each filed-worthy as a separate small follow-up:
-
   1. **`@pyreon/solid-compat` `createStore` per-path signal map grows unbounded** — one signal per UNIQUE read-path string. Problematic for stores with dynamic key spaces (dictionaries, pagination, logs).
   2. **`@pyreon/solid-compat` `createResource` has the Class-F stale-resolution race** — `fetchPromise` overwritten on refetch with no AbortSignal; old promise's success handler still runs `setData`. Same shape as [#730](https://github.com/pyreon/pyreon/issues/730)-charts/storage inflight-promise bug.
   3. **`@pyreon/svelte-compat` ChildInstance preservation discards `unmountCallbacks` without firing them** — the cached `writable.subscribe` short-circuit doesn't re-register the unsub after the reset. Subtle; needs a targeted reproducer.
@@ -197,7 +194,6 @@
   compat-layers 12/12 all green). Added the commonly-used public APIs that
   were missing by omission (not the intentional documented limitations like
   React class setState or Vue Options API):
-
   - **react-compat**: `useOptimistic` (React 19) — passthrough reduced
     through pending optimistic actions; overlay clears when `passthrough`
     changes (the non-concurrent-mode equivalent of React discarding
@@ -217,7 +213,6 @@
 
   The partial-fidelity shims from [#619](https://github.com/pyreon/pyreon/issues/619) that COULD be faithfully implemented
   are now real (the rest stay honestly documented as architectural limits):
-
   - **solid-compat `Portal`**: `useShadow` → dedicated `<div>` host + open
     shadow root; `isSVG` → SVG-namespaced `<g>` host; children render into
     the host; host removed on unmount via `onCleanup` (no detached-host
@@ -456,7 +451,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -470,7 +464,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -479,7 +472,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -498,7 +490,6 @@
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

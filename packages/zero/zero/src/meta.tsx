@@ -23,7 +23,9 @@ function faviconLinks(
 ): Array<{ rel: string; type?: string; sizes?: string; href: string }> {
   const hasLocaleOverride = locale && config.locales?.[locale]
   const prefix = hasLocaleOverride ? `/${locale}` : ''
-  const isSvg = (hasLocaleOverride ? config.locales![locale]!.source : config.source).endsWith('.svg')
+  const isSvg = (hasLocaleOverride ? config.locales![locale]!.source : config.source).endsWith(
+    '.svg',
+  )
   const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = []
   if (isSvg) links.push({ rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon.svg` })
   links.push(
@@ -35,7 +37,12 @@ function faviconLinks(
   return links
 }
 
-function ogImagePath(templateName: string, locale?: string, outDir = 'og', format: 'png' | 'jpeg' = 'png'): string {
+function ogImagePath(
+  templateName: string,
+  locale?: string,
+  outDir = 'og',
+  format: 'png' | 'jpeg' = 'png',
+): string {
   const ext = format === 'jpeg' ? 'jpg' : 'png'
   const suffix = locale ? `-${locale}` : ''
   return `/${outDir}/${templateName}${suffix}.${ext}`
@@ -216,24 +223,44 @@ export function buildMetaTags(
   const script: ScriptTagEntry[] = []
 
   const {
-    title, description, canonical, imageAlt, imageWidth, imageHeight,
-    type = 'website', siteName,
-    twitterCard = 'summary_large_image', twitterSite, twitterCreator,
-    locale = 'en_US', alternateLocales,
-    publishedTime, modifiedTime, author, tags, jsonLd, extra,
-    video, videoWidth, videoHeight, audio,
-    favicon, ogTemplate, ogImageDir, ogImageFormat,
+    title,
+    description,
+    canonical,
+    imageAlt,
+    imageWidth,
+    imageHeight,
+    type = 'website',
+    siteName,
+    twitterCard = 'summary_large_image',
+    twitterSite,
+    twitterCreator,
+    locale = 'en_US',
+    alternateLocales,
+    publishedTime,
+    modifiedTime,
+    author,
+    tags,
+    jsonLd,
+    extra,
+    video,
+    videoWidth,
+    videoHeight,
+    audio,
+    favicon,
+    ogTemplate,
+    ogImageDir,
+    ogImageFormat,
   } = props
 
   // noIndex convenience overrides robots
   const robots = props.noIndex ? 'noindex, nofollow' : (props.robots ?? 'index, follow')
 
   // Resolve image: explicit `image` prop takes precedence over `ogTemplate`
-  const image = props.image ?? (
-    ogTemplate
+  const image =
+    props.image ??
+    (ogTemplate
       ? ogImagePath(ogTemplate, locale !== 'en_US' ? locale : undefined, ogImageDir, ogImageFormat)
-      : undefined
-  )
+      : undefined)
 
   // Auto-resolve image dimensions for OG template images
   const resolvedImageWidth = imageWidth ?? (ogTemplate && !props.image ? 1200 : undefined)
@@ -248,8 +275,10 @@ export function buildMetaTags(
   if (canonical) meta.push({ property: 'og:url', content: canonical })
   if (image) meta.push({ property: 'og:image', content: image })
   if (imageAlt) meta.push({ property: 'og:image:alt', content: imageAlt })
-  if (resolvedImageWidth) meta.push({ property: 'og:image:width', content: String(resolvedImageWidth) })
-  if (resolvedImageHeight) meta.push({ property: 'og:image:height', content: String(resolvedImageHeight) })
+  if (resolvedImageWidth)
+    meta.push({ property: 'og:image:width', content: String(resolvedImageWidth) })
+  if (resolvedImageHeight)
+    meta.push({ property: 'og:image:height', content: String(resolvedImageHeight) })
   meta.push({ property: 'og:type', content: type })
   if (siteName) meta.push({ property: 'og:site_name', content: siteName })
   meta.push({ property: 'og:locale', content: locale })
@@ -261,7 +290,8 @@ export function buildMetaTags(
     if (videoHeight) meta.push({ property: 'og:video:height', content: String(videoHeight) })
     // Auto-detect video type from extension
     if (video.endsWith('.mp4')) meta.push({ property: 'og:video:type', content: 'video/mp4' })
-    else if (video.endsWith('.webm')) meta.push({ property: 'og:video:type', content: 'video/webm' })
+    else if (video.endsWith('.webm'))
+      meta.push({ property: 'og:video:type', content: 'video/webm' })
   }
 
   // Audio

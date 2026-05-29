@@ -40,6 +40,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
@@ -47,9 +51,5 @@
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.5.0"
-  },
-  "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
   }
 }

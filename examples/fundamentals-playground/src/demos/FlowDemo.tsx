@@ -44,10 +44,9 @@ export function FlowDemo() {
     <div>
       <h2>Flow</h2>
       <p class="desc">
-        Reactive flow diagrams — signal-native nodes/edges, pan/zoom,
-        auto-layout via lazy-loaded elkjs. Drag the nodes to rearrange;
-        use the controls in the bottom-left to fit/zoom; the MiniMap
-        tracks the viewport.
+        Reactive flow diagrams — signal-native nodes/edges, pan/zoom, auto-layout via lazy-loaded
+        elkjs. Drag the nodes to rearrange; use the controls in the bottom-left to fit/zoom; the
+        MiniMap tracks the viewport.
       </p>
 
       <div class="section">
@@ -72,9 +71,7 @@ export function FlowDemo() {
           Edges: <strong data-testid="flow-edge-count">{() => flow.edges().length}</strong>
           {' · '}
           Zoom:{' '}
-          <strong data-testid="flow-zoom">
-            {() => `${(flow.zoom() * 100).toFixed(0)}%`}
-          </strong>
+          <strong data-testid="flow-zoom">{() => `${(flow.zoom() * 100).toFixed(0)}%`}</strong>
         </p>
         <div class="row" style="margin-top: 12px">
           <button data-testid="flow-fit" onClick={() => flow.fitView()}>
@@ -100,9 +97,7 @@ export function FlowDemo() {
           </button>
           <button
             data-testid="flow-layout"
-            onClick={() =>
-              flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 60 })
-            }
+            onClick={() => flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 60 })}
           >
             Auto-layout
           </button>

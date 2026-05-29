@@ -9,7 +9,9 @@ import { Text } from '../Text'
 describe('@pyreon/elements browser smoke', () => {
   it('Element mounts into real DOM with structural rendering', () => {
     const { container, unmount } = mountInBrowser(
-      <Element tag="div" data-id="el"><span>hello</span></Element>,
+      <Element tag="div" data-id="el">
+        <span>hello</span>
+      </Element>,
     )
     const el = container.querySelector('[data-id="el"]')
     expect(el?.tagName.toLowerCase()).toBe('div')
@@ -33,7 +35,11 @@ describe('@pyreon/elements browser smoke', () => {
   })
 
   it('Text renders as inline element', () => {
-    const { container, unmount } = mountInBrowser(<Text tag="span" data-id="t">hi</Text>)
+    const { container, unmount } = mountInBrowser(
+      <Text tag="span" data-id="t">
+        hi
+      </Text>,
+    )
     const el = container.querySelector('[data-id="t"]')
     expect(el?.tagName.toLowerCase()).toBe('span')
     expect(el?.textContent).toBe('hi')
@@ -73,8 +79,8 @@ describe('@pyreon/elements browser smoke', () => {
         const { container, unmount } = mountInBrowser(<Element tag={tag} data-id={tag} />)
         const el = container.querySelector(`[data-id="${tag}"]`)
         expect(el?.tagName.toLowerCase()).toBe(tag)
-        const voidWarnings = warnSpy.mock.calls.filter((args) =>
-          typeof args[0] === 'string' && args[0].includes('void element'),
+        const voidWarnings = warnSpy.mock.calls.filter(
+          (args) => typeof args[0] === 'string' && args[0].includes('void element'),
         )
         expect(voidWarnings).toEqual([])
         warnSpy.mockRestore()

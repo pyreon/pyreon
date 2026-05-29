@@ -87,9 +87,7 @@ describe('pyreon/query-options-as-function (query, dep-gated)', () => {
        }`,
       join(queryDir, 'src', 'B.tsx'),
     )
-    const hits = result.diagnostics.filter(
-      (d) => d.ruleId === 'pyreon/query-options-as-function',
-    )
+    const hits = result.diagnostics.filter((d) => d.ruleId === 'pyreon/query-options-as-function')
     expect(hits.length).toBe(2)
   })
 
@@ -184,10 +182,7 @@ describe('pyreon/rx-prefer-pipe (rx, dep-gated)', () => {
   })
 
   it('does NOT fire when @pyreon/rx is not imported in the file', () => {
-    const result = lint(
-      `const out = map(filter(src, f), g)`,
-      join(rxDir, 'src', 'NoImport.ts'),
-    )
+    const result = lint(`const out = map(filter(src, f), g)`, join(rxDir, 'src', 'NoImport.ts'))
     expect(diagIds(result)).not.toContain('pyreon/rx-prefer-pipe')
   })
 
@@ -245,9 +240,7 @@ describe('pyreon/no-signal-in-form-initial-values (form, dep-gated)', () => {
        function C() { return useForm({ initialValues: { email: '', remember: false } }) }`,
       join(formDir, 'src', 'C.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/no-signal-in-form-initial-values',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/no-signal-in-form-initial-values')
   })
 
   it('does NOT fire on argument-bearing call value (helper, not a signal read)', () => {
@@ -256,9 +249,7 @@ describe('pyreon/no-signal-in-form-initial-values (form, dep-gated)', () => {
        function C() { return useForm({ initialValues: { x: makeDefault(7) } }) }`,
       join(formDir, 'src', 'H.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/no-signal-in-form-initial-values',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/no-signal-in-form-initial-values')
   })
 
   it('does NOT fire on member-call value obj.method() (not bare-identifier signal shape)', () => {
@@ -267,9 +258,7 @@ describe('pyreon/no-signal-in-form-initial-values (form, dep-gated)', () => {
        function C() { return useForm({ initialValues: { x: store.read() } }) }`,
       join(formDir, 'src', 'Mc.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/no-signal-in-form-initial-values',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/no-signal-in-form-initial-values')
   })
 
   it('does NOT fire when @pyreon/form is NOT a project dep (auto-detect off)', () => {
@@ -278,8 +267,6 @@ describe('pyreon/no-signal-in-form-initial-values (form, dep-gated)', () => {
        function C() { return useForm({ initialValues: { name: nameSignal() } }) }`,
       join(plainDir, 'src', 'A.tsx'),
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/no-signal-in-form-initial-values',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/no-signal-in-form-initial-values')
   })
 })

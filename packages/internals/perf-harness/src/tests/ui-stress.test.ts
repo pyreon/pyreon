@@ -65,7 +65,7 @@ describe('ui-system full stress', () => {
     const inserts = snap['styler.sheet.insert'] ?? 1
     // oxlint-disable-next-line no-console
     console.log(
-      `[stress] 500 styled: resolve=${inserts}, hit=${hits}, ratio=${(hits / inserts * 100).toFixed(1)}%, mountChild=${snap['runtime.mountChild']}`,
+      `[stress] 500 styled: resolve=${inserts}, hit=${hits}, ratio=${((hits / inserts) * 100).toFixed(1)}%, mountChild=${snap['runtime.mountChild']}`,
     )
     expect(hits / inserts).toBeGreaterThan(0.99) // 99%+ hit ratio
   })
@@ -124,14 +124,7 @@ describe('ui-system full stress', () => {
 
     const Row = () => h(Card, { theme: theme() }, 'row')
 
-    mount(
-      h(
-        'div',
-        null,
-        ...Array.from({ length: 100 }, () => h(Row, null)),
-      ),
-      root,
-    )
+    mount(h('div', null, ...Array.from({ length: 100 }, () => h(Row, null))), root)
 
     perfHarness.reset()
     const outcome = await perfHarness.record('50-theme-writes', () => {

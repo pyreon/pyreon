@@ -239,9 +239,7 @@ export function useImage(props: ImageProps): UseImageReturn {
  * // Usage — identical to default <Image>
  * <FigureImage src="/hero.jpg" alt="Hero" width={1200} height={630} />
  */
-export function createImage(
-  Component: (p: ImageRenderProps) => any,
-): (props: ImageProps) => any {
+export function createImage(Component: (p: ImageRenderProps) => any): (props: ImageProps) => any {
   return function WrappedImage(props: ImageProps) {
     // `raw` mode short-circuits — returns a bare <img> with no optimization
     // wrapper, no container, no createImage composition. Documented as the
@@ -280,32 +278,30 @@ export function createImage(
       />
     )
 
-    const placeholderEl = props.placeholder
-      ? (
-          <img
-            src={props.placeholder}
-            alt=""
-            aria-hidden="true"
-            loading="eager"
-            style={img.placeholderStyle}
-          />
-        )
-      : null
+    const placeholderEl = props.placeholder ? (
+      <img
+        src={props.placeholder}
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        style={img.placeholderStyle}
+      />
+    ) : null
 
-    const imageEl = img.hasFormats
-      ? (
-          <picture>
-            {img.formats?.map((fmt) => (
-              <source
-                type={fmt.type}
-                srcSet={() => (img.inView() ? (fmt.srcset ?? '') : '')}
-                sizes={img.sizes}
-              />
-            ))}
-            {imgEl}
-          </picture>
-        )
-      : imgEl
+    const imageEl = img.hasFormats ? (
+      <picture>
+        {img.formats?.map((fmt) => (
+          <source
+            type={fmt.type}
+            srcSet={() => (img.inView() ? (fmt.srcset ?? '') : '')}
+            sizes={img.sizes}
+          />
+        ))}
+        {imgEl}
+      </picture>
+    ) : (
+      imgEl
+    )
 
     return (
       <Component

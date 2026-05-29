@@ -195,12 +195,12 @@ interface PyreonCollapseOptions {
 }
 ```
 
-| Option      | Type      | Required              | Description                                                                                                                                                                             |
-| ----------- | --------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ssr`       | `object`  | No                    | Enable SSR dev middleware. When provided, the plugin adds middleware to Vite's dev server that handles server-rendered requests.                                                        |
-| `ssr.entry` | `string`  | Yes (if `ssr` is set) | Path to the server entry file, relative to the project root. This file must export a `handler` function (or a default export) with the signature `(req: Request) => Promise<Response>`. |
-| `islands`   | `boolean` | No                    | Auto-discover `island()` declarations + emit a virtual registry. Default: `true`. Set `false` to opt out of auto-registration (e.g., when using `hydrateIslands({ ... })` manually).    |
-| `collapse`  | `boolean \| object` | No          | Compile-time rocketstyle wrapper collapse. Default: `false` (off — zero behaviour change). `true` enables with defaults; an object scopes `sources` / `components` / `provider` / `theme` / `mode`. See [Compile-time rocketstyle collapse](#compile-time-rocketstyle-collapse).                                       |
+| Option      | Type                | Required              | Description                                                                                                                                                                                                                                                                      |
+| ----------- | ------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssr`       | `object`            | No                    | Enable SSR dev middleware. When provided, the plugin adds middleware to Vite's dev server that handles server-rendered requests.                                                                                                                                                 |
+| `ssr.entry` | `string`            | Yes (if `ssr` is set) | Path to the server entry file, relative to the project root. This file must export a `handler` function (or a default export) with the signature `(req: Request) => Promise<Response>`.                                                                                          |
+| `islands`   | `boolean`           | No                    | Auto-discover `island()` declarations + emit a virtual registry. Default: `true`. Set `false` to opt out of auto-registration (e.g., when using `hydrateIslands({ ... })` manually).                                                                                             |
+| `collapse`  | `boolean \| object` | No                    | Compile-time rocketstyle wrapper collapse. Default: `false` (off — zero behaviour change). `true` enables with defaults; an object scopes `sources` / `components` / `provider` / `theme` / `mode`. See [Compile-time rocketstyle collapse](#compile-time-rocketstyle-collapse). |
 
 ### Usage
 
@@ -629,7 +629,7 @@ if (import.meta.hot) {
 3. Because there is no page reload, `globalThis.__pyreon_hmr_registry__` survives, so `__hmr_signal` restores the edited module's module-scope signal values (see [Signal-Preserving HMR](#signal-preserving-hmr)).
 4. `@pyreon/zero`'s fs-router tags every lazy route with its `hmrId` (`lazy(() => import('/abs/X'), { hmrId: '/abs/X' })`) so the coordinator can match edits to records. This is inert in production.
 
-The plugin hands the callback the namespace **Vite passes in**, not a re-run of the lazy import thunk. Zero's lazy thunk lives in the virtual routes module, which is *not* invalidated when a leaf route self-accepts — re-importing it would return the old (stale `?t=`) module.
+The plugin hands the callback the namespace **Vite passes in**, not a re-run of the lazy import thunk. Zero's lazy thunk lives in the virtual routes module, which is _not_ invalidated when a leaf route self-accepts — re-importing it would return the old (stale `?t=`) module.
 
 **Automatic full-reload fallback:** when the edit is outside the active route tree (a nested non-route component, an unrelated route, a signal-only module) or no coordinator is registered (a plain `@pyreon/runtime-dom` app, or a module loaded before any router mounted), `__pyreon_hmr_swap__` returns falsy and the callback calls `import.meta.hot.invalidate()` — Vite then propagates and triggers an automatic full reload. Either way, you never refresh by hand.
 

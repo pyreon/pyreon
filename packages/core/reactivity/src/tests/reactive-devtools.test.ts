@@ -176,11 +176,7 @@ describe('reactive-devtools — value preview branches', () => {
       ['s_undef', undefined, (v) => expect(v).toBe('undefined')],
       ['s_sym', Symbol('z'), (v) => expect(v).toContain('Symbol')],
       ['s_fn', function named() {}, (v) => expect(v).toContain('[Function named]')],
-      [
-        's_long',
-        'x'.repeat(200),
-        (v) => expect(v.endsWith('…') && v.length <= 61).toBe(true),
-      ],
+      ['s_long', 'x'.repeat(200), (v) => expect(v.endsWith('…') && v.length <= 61).toBe(true)],
     ]
     for (const [name, val] of cases) {
       const s = signal(val, { name })
@@ -305,8 +301,7 @@ describe('reactive-devtools — preview() edge branches (coverage lock)', () => 
   // performance-fallback branches that landed with #703 and dragged
   // @pyreon/reactivity global branch coverage to 89.75% (< the 90%
   // gate). With these: 90.7% (478/527) — the Coverage CI gate passes.
-  const valueOf = (name: string) =>
-    getReactiveGraph().nodes.find((n) => n.name === name)?.value
+  const valueOf = (name: string) => getReactiveGraph().nodes.find((n) => n.name === name)?.value
 
   it('anonymous function → [Function anonymous] (|| fallback arm)', () => {
     activateReactiveDevtools()

@@ -1,11 +1,7 @@
 import { routes } from 'virtual:zero/routes'
 import { routeMiddleware } from 'virtual:zero/route-middleware'
 import { createServer } from '@pyreon/zero/server'
-import {
-  cacheMiddleware,
-  securityHeaders,
-  varyEncoding,
-} from '@pyreon/zero/cache'
+import { cacheMiddleware, securityHeaders, varyEncoding } from '@pyreon/zero/cache'
 
 export default createServer({
   routes,
@@ -13,9 +9,5 @@ export default createServer({
   config: {
     ssr: { mode: 'stream' },
   },
-  middleware: [
-    securityHeaders(),
-    cacheMiddleware({ staleWhileRevalidate: 120 }),
-    varyEncoding(),
-  ],
+  middleware: [securityHeaders(), cacheMiddleware({ staleWhileRevalidate: 120 }), varyEncoding()],
 })

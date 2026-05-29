@@ -79,9 +79,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
       'packages/some/src/tests/foo.test.ts',
     )
     expect(
-      result.diagnostics.filter(
-        (d) => d.ruleId === 'pyreon/no-querySelector-cast-in-test',
-      ),
+      result.diagnostics.filter((d) => d.ruleId === 'pyreon/no-querySelector-cast-in-test'),
     ).toHaveLength(3)
   })
 
@@ -144,10 +142,7 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
   it('does NOT fire when the path is exempt', () => {
     const config: LintConfig = {
       rules: {
-        'pyreon/no-querySelector-cast-in-test': [
-          'error',
-          { exemptPaths: ['packages/legacy/'] },
-        ],
+        'pyreon/no-querySelector-cast-in-test': ['error', { exemptPaths: ['packages/legacy/'] }],
       },
     }
     const result = lint(

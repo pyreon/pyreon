@@ -14,9 +14,7 @@ describe('reactive style — stale keys removed (real browser)', () => {
 
   it('drops a key that disappears from a reactive style object', async () => {
     const style = signal<Record<string, string>>({ color: 'rgb(255, 0, 0)', fontSize: '14px' })
-    const { container, unmount } = mountInBrowser(
-      h('div', { id: 's1', style: () => style() }, 'x'),
-    )
+    const { container, unmount } = mountInBrowser(h('div', { id: 's1', style: () => style() }, 'x'))
 
     const el = container.querySelector<HTMLDivElement>('#s1')!
     expect(el.style.color).toBe('rgb(255, 0, 0)')
@@ -38,9 +36,7 @@ describe('reactive style — stale keys removed (real browser)', () => {
       color: 'rgb(0, 0, 255)',
       padding: '10px',
     })
-    const { container, unmount } = mountInBrowser(
-      h('div', { id: 's2', style: () => style() }, 'x'),
-    )
+    const { container, unmount } = mountInBrowser(h('div', { id: 's2', style: () => style() }, 'x'))
     const el = container.querySelector<HTMLDivElement>('#s2')!
     expect(el.style.color).toBe('rgb(0, 0, 255)')
 

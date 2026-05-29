@@ -135,11 +135,7 @@ function QueryAtScale(props: { mode: StressMode; count: number }) {
   }
 
   return (
-    <div
-      data-testid="query-stress-ready"
-      data-mode={props.mode}
-      data-count={String(props.count)}
-    >
+    <div data-testid="query-stress-ready" data-mode={props.mode} data-count={String(props.count)}>
       Mounted {props.count} queries (mode={props.mode})
     </div>
   )
@@ -308,15 +304,10 @@ export function QueryStressSection() {
       <SectionTitle theme={themeSignal()}>@pyreon/query — stress harness</SectionTitle>
 
       <Show when={() => queryStressMode() !== 'idle' && queryStressCount() > 0}>
-        <For
-          each={() => [`${queryStressMode()}|${queryStressCount()}`]}
-          by={(k: string) => k}
-        >
+        <For each={() => [`${queryStressMode()}|${queryStressCount()}`]} by={(k: string) => k}>
           {() => (
             <MountedQueryClient>
-              {() => (
-                <QueryAtScale mode={queryStressMode()} count={queryStressCount()} />
-              )}
+              {() => <QueryAtScale mode={queryStressMode()} count={queryStressCount()} />}
             </MountedQueryClient>
           )}
         </For>

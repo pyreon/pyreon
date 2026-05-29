@@ -80,7 +80,9 @@ for (const name of [...allNames].sort()) {
 
 // Only show rows with non-zero delta — keep the comment short. Sort by
 // abs delta descending so the biggest movers surface first.
-const movers = rows.filter((r) => r.delta !== 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+const movers = rows
+  .filter((r) => r.delta !== 0)
+  .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
 
 // Regression threshold: 5% AND > 100 bytes (absolute floor keeps tiny
 // packages from tripping the gate on noise). Match the perf:diff
@@ -110,7 +112,9 @@ if (movers.length === 0) {
   lines.push('_No packages changed size._')
 } else {
   if (REGRESSIONS.length > 0) {
-    lines.push(`**${REGRESSIONS.length} package(s) regressed past threshold (>5% AND >100 bytes).** 🔴`)
+    lines.push(
+      `**${REGRESSIONS.length} package(s) regressed past threshold (>5% AND >100 bytes).** 🔴`,
+    )
     lines.push('')
   } else {
     lines.push('_All deltas within noise threshold._ ✅')
@@ -119,7 +123,9 @@ if (movers.length === 0) {
   lines.push('| Package | Base (gzip) | PR (gzip) | Δ |')
   lines.push('| --- | ---: | ---: | ---: |')
   for (const r of movers) {
-    lines.push(`| \`${r.name}\` | ${fmt(r.baseGzip)} | ${fmt(r.prGzip)} | ${fmtDelta(r.delta, r.pct)} |`)
+    lines.push(
+      `| \`${r.name}\` | ${fmt(r.baseGzip)} | ${fmt(r.prGzip)} | ${fmtDelta(r.delta, r.pct)} |`,
+    )
   }
 }
 

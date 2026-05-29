@@ -109,8 +109,7 @@ export function useFormState<TValues extends Record<string, unknown>, R>(
   // a snapshot, not a getter-backed live view. Maintains the prior contract
   // (consumers can stash the snapshot and read it later without surprises).
   return computed(() => {
-    if (process.env.NODE_ENV !== 'production')
-      _countSink.__pyreon_count__?.('form.formStateScan')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.formStateScan')
     return {
       isSubmitting: summary.isSubmitting,
       isValidating: summary.isValidating,

@@ -22,11 +22,11 @@ bun run preview  # serve dist/ via vite preview
 
 ## Source structure
 
-| File | Purpose |
-|---|---|
-| `index.html` | Bootstrap shell — mounts `#app` + loads `entry-client.tsx`. |
-| `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call. |
-| `src/TodoApp.tsx` | TodoMVC implementation using canonical `@pyreon/primitives` JSX vocab + explicit imports. |
+| File                   | Purpose                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `index.html`           | Bootstrap shell — mounts `#app` + loads `entry-client.tsx`.                               |
+| `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call.                                                         |
+| `src/TodoApp.tsx`      | TodoMVC implementation using canonical `@pyreon/primitives` JSX vocab + explicit imports. |
 
 ## Why a separate `TodoApp.tsx` vs the literal same file as native?
 

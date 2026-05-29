@@ -64,16 +64,11 @@ const FILES_UNDER_TEST: FileContract[] = [
   },
   {
     file: 'props.ts',
-    devWarningStrings: [
-      '[Pyreon] Event handler',
-      '[Pyreon] Blocked unsafe URL',
-    ],
+    devWarningStrings: ['[Pyreon] Event handler', '[Pyreon] Blocked unsafe URL'],
   },
   {
     file: 'transition.ts',
-    devWarningStrings: [
-      '[Pyreon] Transition child is a component',
-    ],
+    devWarningStrings: ['[Pyreon] Transition child is a component'],
   },
 ]
 

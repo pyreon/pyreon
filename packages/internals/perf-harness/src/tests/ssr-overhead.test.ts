@@ -73,9 +73,7 @@ async function freshContext(): Promise<RenderContext> {
   return { renderToString, buildTree }
 }
 
-async function measure(
-  setup: () => Promise<void>,
-): Promise<number> {
+async function measure(setup: () => Promise<void>): Promise<number> {
   await setup()
   const { renderToString, buildTree } = await freshContext()
   const items = Array.from({ length: N }, (_, i) => `row-${i}`)

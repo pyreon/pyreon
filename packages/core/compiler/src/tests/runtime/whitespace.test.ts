@@ -19,10 +19,7 @@ import { compileAndMount } from './harness'
 describe('compiler-runtime — JSX whitespace', () => {
   it('preserves trailing space before expression on same line', async () => {
     const x = signal(7)
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">doubled: {x()}</p></div>`,
-      { x },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">doubled: {x()}</p></div>`, { x })
     expect(container.querySelector('#p')!.textContent).toBe('doubled: 7')
     unmount()
   })
@@ -40,20 +37,16 @@ describe('compiler-runtime — JSX whitespace', () => {
   // the right slot via `replaceChild`.
   it('preserves leading space after expression on same line', async () => {
     const x = signal(3)
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">{x()} remaining</p></div>`,
-      { x },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">{x()} remaining</p></div>`, {
+      x,
+    })
     expect(container.querySelector('#p')!.textContent).toBe('3 remaining')
     unmount()
   })
 
   it('preserves spaces on BOTH sides of expression', async () => {
     const x = signal('cat')
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">a {x()} b</p></div>`,
-      { x },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">a {x()} b</p></div>`, { x })
     expect(container.querySelector('#p')!.textContent).toBe('a cat b')
     unmount()
   })
@@ -77,10 +70,9 @@ describe('compiler-runtime — JSX whitespace', () => {
 
   it('reactive text updates without losing surrounding whitespace', async () => {
     const x = signal(0)
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">count: {x()} items</p></div>`,
-      { x },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">count: {x()} items</p></div>`, {
+      x,
+    })
     expect(container.querySelector('#p')!.textContent).toBe('count: 0 items')
     x.set(42)
     await flush()
@@ -93,10 +85,7 @@ describe('compiler-runtime — JSX whitespace', () => {
     // appended to the parent — which happens to match the source order
     // when there's no text after.
     const x = signal(0)
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">count: {x()}</p></div>`,
-      { x },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">count: {x()}</p></div>`, { x })
     expect(container.querySelector('#p')!.textContent).toBe('count: 0')
     x.set(42)
     await flush()

@@ -69,10 +69,7 @@ describe('theme integration — mode switching', () => {
 
   it('getThemeByMode resolves mode callbacks in nested objects', () => {
     const cb = themeModeCallback('#f0f0f0', '#1a1a1a')
-    const result: any = getThemeByMode(
-      { surface: { bg: cb, border: '1px solid' } },
-      'dark',
-    )
+    const result: any = getThemeByMode({ surface: { bg: cb, border: '1px solid' } }, 'dark')
     expect(result.surface.bg).toBe('#1a1a1a')
     expect(result.surface.border).toBe('1px solid')
   })

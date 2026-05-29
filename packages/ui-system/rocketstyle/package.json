@@ -40,6 +40,12 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/styler": "workspace:^",
+    "@pyreon/ui-core": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
@@ -50,11 +56,5 @@
   },
   "engines": {
     "node": ">= 22"
-  },
-  "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/styler": "workspace:^",
-    "@pyreon/ui-core": "workspace:^"
   }
 }

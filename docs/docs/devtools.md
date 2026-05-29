@@ -54,15 +54,15 @@ The extension reads everything through a global hook the framework attaches in t
 
 `@pyreon/runtime-dom` auto-installs the hook on the first browser `mount()` (idempotent, SSR-safe — a no-op when there is no `window`). It exposes the component-tree surface:
 
-| Member | Description |
-| --- | --- |
-| `version` | Hook protocol version. |
-| `getComponentTree()` | Root components as a collapsible hierarchy. |
-| `getAllComponents()` | Flat list of every mounted component entry. |
-| `highlight(id)` | Briefly outlines a component's DOM element. |
-| `onComponentMount(cb)` / `onComponentUnmount(cb)` | Subscribe to mount/unmount. |
-| `enableOverlay()` / `disableOverlay()` | Click-to-inspect element picker. |
-| `reactive` | The opt-in reactive bridge (see below). |
+| Member                                            | Description                                 |
+| ------------------------------------------------- | ------------------------------------------- |
+| `version`                                         | Hook protocol version.                      |
+| `getComponentTree()`                              | Root components as a collapsible hierarchy. |
+| `getAllComponents()`                              | Flat list of every mounted component entry. |
+| `highlight(id)`                                   | Briefly outlines a component's DOM element. |
+| `onComponentMount(cb)` / `onComponentUnmount(cb)` | Subscribe to mount/unmount.                 |
+| `enableOverlay()` / `disableOverlay()`            | Click-to-inspect element picker.            |
+| `reactive`                                        | The opt-in reactive bridge (see below).     |
 
 ### Reactive bridge (opt-in)
 

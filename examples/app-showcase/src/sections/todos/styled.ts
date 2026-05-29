@@ -274,7 +274,10 @@ export const TodoItemRoot = styled('div')<{ $selected?: boolean; $done?: boolean
   border-radius: ${(p) => t(p).borderRadius.medium}px;
   cursor: pointer;
   box-shadow: ${(p) => (p.$selected ? `0 0 0 3px ${t(p).color.system.primary[100]}` : 'none')};
-  transition: border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    opacity 0.12s;
   opacity: ${(p) => (p.$done ? 0.6 : 1)};
 
   &:hover {

@@ -103,7 +103,11 @@ export interface OgImagePluginConfig {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function resolvePosition(value: number | string | undefined, dimension: number, fallback = '50%'): number {
+function resolvePosition(
+  value: number | string | undefined,
+  dimension: number,
+  fallback = '50%',
+): number {
   if (value === undefined) value = fallback
   if (typeof value === 'number') return value
   if (value.endsWith('%')) return Math.round((Number.parseFloat(value) / 100) * dimension)
@@ -156,10 +160,10 @@ export function buildTextOverlaySvg(
       let w = 0
       for (let i = 0; i < s.length; i++) {
         const code = s.charCodeAt(i)
-        if (code >= 0x3000 && code <= 0x9FFF) {
+        if (code >= 0x3000 && code <= 0x9fff) {
           // CJK characters — full width
           w += fontSize * 1.0
-        } else if (code <= 0x7E && 'iljft!|:;.,\''.includes(s[i]!)) {
+        } else if (code <= 0x7e && "iljft!|:;.,'".includes(s[i]!)) {
           // Narrow Latin characters
           w += fontSize * 0.35
         } else {
@@ -226,11 +230,13 @@ export async function renderOgImage(
     // Overlay text layers if any
     if (template.layers && template.layers.length > 0) {
       const svgOverlay = buildTextOverlaySvg(template.layers, width, height, locale)
-      pipeline = pipeline.composite([{
-        input: Buffer.from(svgOverlay),
-        top: 0,
-        left: 0,
-      }])
+      pipeline = pipeline.composite([
+        {
+          input: Buffer.from(svgOverlay),
+          top: 0,
+          left: 0,
+        },
+      ])
     }
 
     if (template.format === 'jpeg') {

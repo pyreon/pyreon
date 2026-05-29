@@ -103,10 +103,7 @@ export default function Post() { return null }`
   })
 
   it('does NOT fire on _layout / _error / _404 even if name contains brackets', () => {
-    const result = lintRoute(
-      `export const layout = () => null`,
-      'src/routes/_layout.tsx',
-    )
+    const result = lintRoute(`export const layout = () => null`, 'src/routes/_layout.tsx')
     expect(diagIds(result)).not.toContain('pyreon/missing-get-static-paths')
   })
 

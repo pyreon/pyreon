@@ -91,9 +91,7 @@ describe('imports utils — extractImportInfo', () => {
 
   it('extracts named imports with renaming (local name differs)', () => {
     const info = extractImportInfo(
-      importDecl('@pyreon/core', [
-        { kind: 'named', imported: 'h', local: 'createElement' },
-      ]),
+      importDecl('@pyreon/core', [{ kind: 'named', imported: 'h', local: 'createElement' }]),
     )
     expect(info?.specifiers).toEqual([{ imported: 'h', local: 'createElement' }])
   })
@@ -138,9 +136,7 @@ describe('imports utils — importsName', () => {
     extractImportInfo(
       importDecl('@pyreon/reactivity', [{ kind: 'named', imported: 'signal', local: 'signal' }]),
     )!,
-    extractImportInfo(
-      importDecl('@pyreon/core', [{ kind: 'named', imported: 'h', local: 'h' }]),
-    )!,
+    extractImportInfo(importDecl('@pyreon/core', [{ kind: 'named', imported: 'h', local: 'h' }]))!,
   ]
 
   it('returns true when an import imports the named export', () => {
@@ -161,9 +157,7 @@ describe('imports utils — importsName', () => {
 describe('imports utils — getLocalName', () => {
   const imports = [
     extractImportInfo(
-      importDecl('@pyreon/core', [
-        { kind: 'named', imported: 'h', local: 'createElement' },
-      ]),
+      importDecl('@pyreon/core', [{ kind: 'named', imported: 'h', local: 'createElement' }]),
     )!,
   ]
 

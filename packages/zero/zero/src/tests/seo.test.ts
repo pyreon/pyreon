@@ -159,11 +159,7 @@ describe('clusterPathsByLocale (PR K)', () => {
   const i18n = { locales: ['en', 'de', 'cs'], defaultLocale: 'en' } as const
 
   it('groups variants of the same un-prefixed path into one cluster', () => {
-    const entries = [
-      { path: '/about' },
-      { path: '/de/about' },
-      { path: '/cs/about' },
-    ]
+    const entries = [{ path: '/about' }, { path: '/de/about' }, { path: '/cs/about' }]
     const clusters = clusterPathsByLocale(entries, i18n)
     expect(clusters).toHaveLength(1)
     const cluster = clusters[0]!
@@ -193,11 +189,7 @@ describe('clusterPathsByLocale (PR K)', () => {
   it('preserves cluster order from caller insertion order', () => {
     // Insertion-order preservation matters for stable sitemap diffs
     // across build runs.
-    const entries = [
-      { path: '/de/zebra' },
-      { path: '/zebra' },
-      { path: '/about' },
-    ]
+    const entries = [{ path: '/de/zebra' }, { path: '/zebra' }, { path: '/about' }]
     const clusters = clusterPathsByLocale(entries, i18n)
     expect(clusters[0]?.canonical.path).toBe('/zebra')
     expect(clusters[1]?.canonical.path).toBe('/about')
@@ -214,18 +206,20 @@ describe('generateSitemap — hreflang (PR K)', () => {
   it('emits xhtml:link siblings for each locale variant of a clustered URL', () => {
     const config = {
       ...baseConfig,
-      additionalPaths: [
-        { path: '/about' },
-        { path: '/de/about' },
-        { path: '/cs/about' },
-      ],
+      additionalPaths: [{ path: '/about' }, { path: '/de/about' }, { path: '/cs/about' }],
     }
     const sitemap = generateSitemap([], config, i18n)
     // Clustered: 3 inputs → 1 <url> with 3 hreflang siblings + x-default.
     expect(sitemap.match(/<url>/g) ?? []).toHaveLength(1)
-    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="en" href="https://example.com/about"/>')
-    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de/about"/>')
-    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs/about"/>')
+    expect(sitemap).toContain(
+      '<xhtml:link rel="alternate" hreflang="en" href="https://example.com/about"/>',
+    )
+    expect(sitemap).toContain(
+      '<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de/about"/>',
+    )
+    expect(sitemap).toContain(
+      '<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs/about"/>',
+    )
   })
 
   it('emits an x-default hreflang pointing at the default-locale URL', () => {
@@ -234,7 +228,9 @@ describe('generateSitemap — hreflang (PR K)', () => {
       additionalPaths: [{ path: '/about' }, { path: '/de/about' }],
     }
     const sitemap = generateSitemap([], config, i18n)
-    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="x-default" href="https://example.com/about"/>')
+    expect(sitemap).toContain(
+      '<xhtml:link rel="alternate" hreflang="x-default" href="https://example.com/about"/>',
+    )
   })
 
   it('declares xmlns:xhtml on the urlset only when hreflang is active', () => {
@@ -280,9 +276,15 @@ describe('generateSitemap — hreflang (PR K)', () => {
     // All three cluster as the "/" URL.
     expect(sitemap.match(/<url>/g) ?? []).toHaveLength(1)
     expect(sitemap).toContain('<loc>https://example.com</loc>')
-    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="en" href="https://example.com"/>')
-    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de"/>')
-    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs"/>')
+    expect(sitemap).toContain(
+      '<xhtml:link rel="alternate" hreflang="en" href="https://example.com"/>',
+    )
+    expect(sitemap).toContain(
+      '<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de"/>',
+    )
+    expect(sitemap).toContain(
+      '<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs"/>',
+    )
   })
 
   it('omits hreflang when i18n is undefined (back-compat)', () => {
@@ -400,10 +402,7 @@ describe('seoPlugin — useSsgPaths (PR F)', () => {
     const distDir = join(root, 'dist')
     mkdirSync(distDir, { recursive: true })
     if (paths !== null) {
-      writeFileSync(
-        join(distDir, '_pyreon-ssg-paths.json'),
-        JSON.stringify({ paths }, null, 2),
-      )
+      writeFileSync(join(distDir, '_pyreon-ssg-paths.json'), JSON.stringify({ paths }, null, 2))
     }
     return {
       root,

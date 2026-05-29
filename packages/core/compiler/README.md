@@ -16,14 +16,14 @@ bun add -D @pyreon/compiler
 
 The compiler transforms JSX expression containers and props so the runtime receives reactive getters instead of eagerly-evaluated values.
 
-| Input                     | Output                       | Reason            |
-| ------------------------- | ---------------------------- | ----------------- |
-| `<div>{expr}</div>`       | `<div>{() => expr}</div>`    | Dynamic child     |
-| `<div class={expr}>`      | `<div class={() => expr}>`   | Dynamic prop      |
-| `<div>{count}</div>` *    | `<div>{() => count()}</div>` | Signal auto-call  |
-| `<button onClick={fn}>`   | unchanged                    | Event handler     |
-| `<div>{() => expr}</div>` | unchanged                    | Already wrapped   |
-| `<div>{"literal"}</div>`  | unchanged                    | Static value      |
+| Input                     | Output                         | Reason               |
+| ------------------------- | ------------------------------ | -------------------- |
+| `<div>{expr}</div>`       | `<div>{() => expr}</div>`      | Dynamic child        |
+| `<div class={expr}>`      | `<div class={() => expr}>`     | Dynamic prop         |
+| `<div>{count}</div>` \*   | `<div>{() => count()}</div>`   | Signal auto-call     |
+| `<button onClick={fn}>`   | unchanged                      | Event handler        |
+| `<div>{() => expr}</div>` | unchanged                      | Already wrapped      |
+| `<div>{"literal"}</div>`  | unchanged                      | Static value         |
 | `<Comp {...src}>`         | `<Comp {..._wrapSpread(src)}>` | Reactive-safe spread |
 
 \* When `count` is declared as `const count = signal(...)` in the same module, or passed via the `knownSignals` option (the `@pyreon/vite-plugin` does this for cross-module signal exports automatically).
@@ -49,11 +49,11 @@ Element trees with ≥1 DOM tag emit `_tpl()` + `_bind()` instead of nested `h()
 
 Three canonical reactive shapes auto-promote to effect-free runtime calls (~5 → ~2 allocations per binding, no `renderEffect` setup):
 
-| Source                                                          | Default emit                                  | Auto-promoted to                                              |
-| --------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------- |
-| `<tr class={() => sel(k) ? 'a' : 'b'}>` ¹                       | `_bind(() => el.className = sel(k) ? 'a' : 'b')` | `sel.subscribe(k, m => el.className = m ? 'a' : 'b')` |
-| `<td>{() => sel(k) ? 'X' : ''}</td>` ¹                          | `_bind(() => t.data = sel(k) ? 'X' : '')`     | `sel.subscribe(k, m => t.data = m ? 'X' : '')`                |
-| `<span>{count().toFixed(2)}</span>` ²                           | `_bind(() => t.data = count().toFixed(2))`    | `_bindDirect(count, v => t.data = v.toFixed(2))`              |
+| Source                                    | Default emit                                     | Auto-promoted to                                      |
+| ----------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
+| `<tr class={() => sel(k) ? 'a' : 'b'}>` ¹ | `_bind(() => el.className = sel(k) ? 'a' : 'b')` | `sel.subscribe(k, m => el.className = m ? 'a' : 'b')` |
+| `<td>{() => sel(k) ? 'X' : ''}</td>` ¹    | `_bind(() => t.data = sel(k) ? 'X' : '')`        | `sel.subscribe(k, m => t.data = m ? 'X' : '')`        |
+| `<span>{count().toFixed(2)}</span>` ²     | `_bind(() => t.data = count().toFixed(2))`       | `_bindDirect(count, v => t.data = v.toFixed(2))`      |
 
 ¹ `sel` must be declared as `const sel = createSelector(...)` at module scope; key and branches must be non-reactive. ² Method must be in the pure-primitive safelist (Number / String / Boolean prototype: `toFixed`, `toUpperCase`, `slice`, `padStart`, etc. — 28 methods); args must be non-reactive.
 
@@ -68,10 +68,10 @@ const { code, warnings, usesTemplates } = transformJSX(
   `const App = () => <div class={color()}>{count()}</div>`,
   'App.tsx',
   {
-    ssr: false,                           // Skip template emission for SSR
-    knownSignals: ['count', 'color'],     // Cross-module signal names → auto-call
-    reactivityLens: false,                // Opt-in sidecar
-    collapseRocketstyle: false,           // Advanced — see "Rocketstyle collapse" below
+    ssr: false, // Skip template emission for SSR
+    knownSignals: ['count', 'color'], // Cross-module signal names → auto-call
+    reactivityLens: false, // Opt-in sidecar
+    collapseRocketstyle: false, // Advanced — see "Rocketstyle collapse" below
   },
 )
 ```
@@ -118,10 +118,7 @@ The migration is a one-shot codemod, **not** a runtime adapter. For runtime comp
 ```ts
 import { detectPyreonPatterns, hasPyreonPatterns } from '@pyreon/compiler'
 
-const diags = detectPyreonPatterns(
-  `const C = ({ state }) => <div>{state}</div>`,
-  'C.tsx',
-)
+const diags = detectPyreonPatterns(`const C = ({ state }) => <div>{state}</div>`, 'C.tsx')
 // PyreonDiagnostic[] — 15 codes today: 'for-missing-by', 'for-with-key',
 // 'props-destructured', 'props-destructured-body', 'process-dev-gate',
 // 'empty-theme', 'raw-add-event-listener', 'raw-remove-event-listener',
@@ -148,15 +145,15 @@ Three syntactic project-wide audits consumed by `pyreon doctor --check-islands` 
 
 The transform emits calls to symbols exported by `@pyreon/runtime-dom` and `@pyreon/core`:
 
-| Helper           | Where exported          | Purpose |
-|------------------|-------------------------|---------|
-| `_tpl(html)`     | `@pyreon/runtime-dom`   | Parse + clone an HTML template once per template literal |
-| `_bind(fn, …)`   | `@pyreon/runtime-dom`   | Per-binding reactive update wired to a template node |
-| `_bindText(…)`   | `@pyreon/runtime-dom`   | Fast path for reactive text nodes |
-| `_bindDirect(…)` | `@pyreon/runtime-dom`   | Fast path for reactive attributes |
-| `_applyProps(…)` | `@pyreon/runtime-dom`   | Spread props on a template element |
-| `_rp(thunk)`     | `@pyreon/core`          | Brand a reactive prop wrapper |
-| `_wrapSpread(s)` | `@pyreon/core`          | Preserve reactivity through `<Comp {...source}>` |
+| Helper           | Where exported        | Purpose                                                  |
+| ---------------- | --------------------- | -------------------------------------------------------- |
+| `_tpl(html)`     | `@pyreon/runtime-dom` | Parse + clone an HTML template once per template literal |
+| `_bind(fn, …)`   | `@pyreon/runtime-dom` | Per-binding reactive update wired to a template node     |
+| `_bindText(…)`   | `@pyreon/runtime-dom` | Fast path for reactive text nodes                        |
+| `_bindDirect(…)` | `@pyreon/runtime-dom` | Fast path for reactive attributes                        |
+| `_applyProps(…)` | `@pyreon/runtime-dom` | Spread props on a template element                       |
+| `_rp(thunk)`     | `@pyreon/core`        | Brand a reactive prop wrapper                            |
+| `_wrapSpread(s)` | `@pyreon/core`        | Preserve reactivity through `<Comp {...source}>`         |
 
 ## Architecture — dual backend
 
@@ -166,15 +163,15 @@ The transform emits calls to symbols exported by `@pyreon/runtime-dom` and `@pyr
 
 **Per-platform packages**: the native binary ships as separate optional dependencies, one per platform. npm / bun install only the matching one via `os` / `cpu` fields:
 
-| Platform | Arch | libc | Package                              |
-|----------|------|------|--------------------------------------|
-| darwin   | arm64 | —    | `@pyreon/compiler-darwin-arm64`      |
-| darwin   | x64   | —    | `@pyreon/compiler-darwin-x64`        |
-| linux    | x64   | gnu  | `@pyreon/compiler-linux-x64-gnu`     |
-| linux    | x64   | musl | `@pyreon/compiler-linux-x64-musl`    |
-| linux    | arm64 | gnu  | `@pyreon/compiler-linux-arm64-gnu`   |
-| linux    | arm64 | musl | `@pyreon/compiler-linux-arm64-musl`  |
-| win32    | x64   | —    | `@pyreon/compiler-win32-x64-msvc`    |
+| Platform | Arch  | libc | Package                             |
+| -------- | ----- | ---- | ----------------------------------- |
+| darwin   | arm64 | —    | `@pyreon/compiler-darwin-arm64`     |
+| darwin   | x64   | —    | `@pyreon/compiler-darwin-x64`       |
+| linux    | x64   | gnu  | `@pyreon/compiler-linux-x64-gnu`    |
+| linux    | x64   | musl | `@pyreon/compiler-linux-x64-musl`   |
+| linux    | arm64 | gnu  | `@pyreon/compiler-linux-arm64-gnu`  |
+| linux    | arm64 | musl | `@pyreon/compiler-linux-arm64-musl` |
+| win32    | x64   | —    | `@pyreon/compiler-win32-x64-msvc`   |
 
 A `detectLibc()` step distinguishes glibc vs musl on Linux at load time.
 

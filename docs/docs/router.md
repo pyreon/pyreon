@@ -65,16 +65,16 @@ const pages = { '/': 'Home Page', '/about': 'About Us', '/contact': 'Contact' }
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('nav', { style: { display: 'flex', gap: '12px', marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' } },
-    ...Object.keys(pages).map(path =>
-      h('a', {
-        href: '#',
-        onClick: (e) => { e.preventDefault(); route.set(path) },
-        style: () => ({ fontWeight: route() === path ? 'bold' : 'normal', color: route() === path ? '#0d6efd' : 'inherit', textDecoration: 'none' }),
-      }, path === '/' ? 'Home' : path.slice(1))
-    ),
-  ),
-  h('div', { style: { fontSize: '18px' } }, () => pages[route()] || 'Not Found'),
+h('nav', { style: { display: 'flex', gap: '12px', marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' } },
+...Object.keys(pages).map(path =>
+h('a', {
+href: '#',
+onClick: (e) => { e.preventDefault(); route.set(path) },
+style: () => ({ fontWeight: route() === path ? 'bold' : 'normal', color: route() === path ? '#0d6efd' : 'inherit', textDecoration: 'none' }),
+}, path === '/' ? 'Home' : path.slice(1))
+),
+),
+h('div', { style: { fontSize: '18px' } }, () => pages[route()] || 'Not Found'),
 )
 mount(ui, app)
 </Playground>
@@ -207,28 +207,28 @@ interface RouteRecord<TPath extends string = string> {
 }
 ```
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `path` | `string` | Path pattern with `:param` segments |
-| `component` | `ComponentFn \| LazyComponent` | Component to render, or a `lazy()` wrapper |
-| `name` | `string` | Optional name for named navigation |
-| `meta` | `RouteMeta` | Route metadata (title, auth, scroll, custom fields) |
-| `redirect` | `string \| (to) => string` | Redirect target, evaluated before guards |
-| `beforeEnter` | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before entering this route |
-| `beforeLeave` | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before leaving this route |
-| `alias` | `string \| string[]` | Alternative path(s) that render the same component and share guards, loaders, and metadata |
-| `children` | `RouteRecord[]` | Nested child routes |
-| `loader` | `RouteLoaderFn` | Data loader function |
-| `staleWhileRevalidate` | `boolean` | When true, show cached loader data immediately and revalidate in the background |
-| `loaderKey` | `(ctx) => string` | Cache-identity function for loader data. Default: `path + JSON.stringify(params)` |
-| `gcTime` | `number` | Time in ms to keep cached loader data before GC. Default `300000` (5 min); `0` disables caching |
-| `errorComponent` | `ComponentFn` | Component shown when the loader fails (also catches render errors) |
-| `notFoundComponent` | `ComponentFn` | Component rendered for unmatched URLs under this layout (the `_404.tsx` "404 within layout" pattern) |
-| `pendingComponent` | `ComponentFn` | Component shown while this route's loader is running |
-| `pendingMs` | `number` | Delay in ms before showing `pendingComponent` (default `0`) — prevents flash on fast loaders |
-| `pendingMinMs` | `number` | Minimum display time in ms for `pendingComponent` once shown (default `200`) — prevents flicker |
-| `validateSearch` | `(raw) => Record<string, unknown>` | Validate/transform raw query params into typed values. Result on `route.search` / `useValidatedSearch()` |
-| `middleware` | `RouteMiddleware \| RouteMiddleware[]` | Per-route middleware — runs before guards, can accumulate context data |
+| Field                  | Type                                   | Description                                                                                              |
+| ---------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `path`                 | `string`                               | Path pattern with `:param` segments                                                                      |
+| `component`            | `ComponentFn \| LazyComponent`         | Component to render, or a `lazy()` wrapper                                                               |
+| `name`                 | `string`                               | Optional name for named navigation                                                                       |
+| `meta`                 | `RouteMeta`                            | Route metadata (title, auth, scroll, custom fields)                                                      |
+| `redirect`             | `string \| (to) => string`             | Redirect target, evaluated before guards                                                                 |
+| `beforeEnter`          | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before entering this route                                                                  |
+| `beforeLeave`          | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before leaving this route                                                                   |
+| `alias`                | `string \| string[]`                   | Alternative path(s) that render the same component and share guards, loaders, and metadata               |
+| `children`             | `RouteRecord[]`                        | Nested child routes                                                                                      |
+| `loader`               | `RouteLoaderFn`                        | Data loader function                                                                                     |
+| `staleWhileRevalidate` | `boolean`                              | When true, show cached loader data immediately and revalidate in the background                          |
+| `loaderKey`            | `(ctx) => string`                      | Cache-identity function for loader data. Default: `path + JSON.stringify(params)`                        |
+| `gcTime`               | `number`                               | Time in ms to keep cached loader data before GC. Default `300000` (5 min); `0` disables caching          |
+| `errorComponent`       | `ComponentFn`                          | Component shown when the loader fails (also catches render errors)                                       |
+| `notFoundComponent`    | `ComponentFn`                          | Component rendered for unmatched URLs under this layout (the `_404.tsx` "404 within layout" pattern)     |
+| `pendingComponent`     | `ComponentFn`                          | Component shown while this route's loader is running                                                     |
+| `pendingMs`            | `number`                               | Delay in ms before showing `pendingComponent` (default `0`) — prevents flash on fast loaders             |
+| `pendingMinMs`         | `number`                               | Minimum display time in ms for `pendingComponent` once shown (default `200`) — prevents flicker          |
+| `validateSearch`       | `(raw) => Record<string, unknown>`     | Validate/transform raw query params into typed values. Result on `route.search` / `useValidatedSearch()` |
+| `middleware`           | `RouteMiddleware \| RouteMiddleware[]` | Per-route middleware — runs before guards, can accumulate context data                                   |
 
 ### Path Patterns
 
@@ -758,14 +758,14 @@ interface RouterLinkProps {
 </RouterLink>
 ```
 
-| Prop               | Type                              | Default                      | Description                                                      |
-| ------------------ | --------------------------------- | ---------------------------- | ---------------------------------------------------------------- |
-| `to`               | `string`                          | required                     | Navigation target path                                           |
-| `replace`          | `boolean`                         | `false`                      | Use `replace` instead of `push`                                  |
-| `activeClass`      | `string`                          | `"router-link-active"`       | Class when link is active (current path starts with link target) |
-| `exactActiveClass` | `string`                          | `"router-link-exact-active"` | Class on exact path match                                        |
-| `exact`            | `boolean`                         | `false`                      | Only apply activeClass on exact match                            |
-| `prefetch`         | `"intent" \| "hover" \| "viewport" \| "none"` | `"intent"`       | Prefetch strategy for loader data (default prefetches on hover **and** keyboard focus) |
+| Prop               | Type                                          | Default                      | Description                                                                            |
+| ------------------ | --------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------- |
+| `to`               | `string`                                      | required                     | Navigation target path                                                                 |
+| `replace`          | `boolean`                                     | `false`                      | Use `replace` instead of `push`                                                        |
+| `activeClass`      | `string`                                      | `"router-link-active"`       | Class when link is active (current path starts with link target)                       |
+| `exactActiveClass` | `string`                                      | `"router-link-exact-active"` | Class on exact path match                                                              |
+| `exact`            | `boolean`                                     | `false`                      | Only apply activeClass on exact match                                                  |
+| `prefetch`         | `"intent" \| "hover" \| "viewport" \| "none"` | `"intent"`                   | Prefetch strategy for loader data (default prefetches on hover **and** keyboard focus) |
 
 **Active class behavior:**
 
@@ -793,14 +793,14 @@ The active class is segment-aware. `/admin` is a prefix of `/admin/users` but NO
 
 #### Prefetch Strategies
 
-Prefetching runs the target route's loader in advance so data is ready the moment the user navigates. **This is on by default** — every `<RouterLink>` prefetches on hover *and* keyboard focus unless you opt out. You do not need to do anything to get instant-feeling navigation; the table below is for tuning, not enabling.
+Prefetching runs the target route's loader in advance so data is ready the moment the user navigates. **This is on by default** — every `<RouterLink>` prefetches on hover _and_ keyboard focus unless you opt out. You do not need to do anything to get instant-feeling navigation; the table below is for tuning, not enabling.
 
-| Strategy             | Trigger                                              | Use for                                                                 |
-| -------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| `"intent"` (default) | pointer hover **and** keyboard focus                 | Everything by default. Focus coverage means keyboard + screen-reader users get the same head-start as mouse users — no extra work. |
-| `"hover"`            | pointer hover only                                   | Niche: when you specifically want to exclude focus (rare).              |
-| `"viewport"`         | link scrolls within 200px of the viewport, fetched in an idle slice | Long content lists / feeds where most links are never hovered (infinite scroll, search results). |
-| `"none"`             | never                                                | Links the user is unlikely to click (legal/footer), or where the loader is expensive and speculative fetching wastes server load. |
+| Strategy             | Trigger                                                             | Use for                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `"intent"` (default) | pointer hover **and** keyboard focus                                | Everything by default. Focus coverage means keyboard + screen-reader users get the same head-start as mouse users — no extra work. |
+| `"hover"`            | pointer hover only                                                  | Niche: when you specifically want to exclude focus (rare).                                                                         |
+| `"viewport"`         | link scrolls within 200px of the viewport, fetched in an idle slice | Long content lists / feeds where most links are never hovered (infinite scroll, search results).                                   |
+| `"none"`             | never                                                               | Links the user is unlikely to click (legal/footer), or where the loader is expensive and speculative fetching wastes server load.  |
 
 ```tsx
 // Default — no prefetch prop needed. Hover OR keyboard-focus this link
@@ -831,7 +831,7 @@ Prefetching runs the target route's loader in advance so data is ready the momen
 <RouterLink to="/terms" prefetch="none">Terms of Service</RouterLink>
 ```
 
-**Why `"intent"` is the default (and why it matters for accessibility):** hover-only prefetch silently excludes keyboard and screen-reader users — they `focus` a link before activating it, never `hover` it. `"intent"` covers both, so the perceived-latency win (typically 100-300ms off the next navigation) is delivered to *all* users, not just mouse users, with zero configuration.
+**Why `"intent"` is the default (and why it matters for accessibility):** hover-only prefetch silently excludes keyboard and screen-reader users — they `focus` a link before activating it, never `hover` it. `"intent"` covers both, so the perceived-latency win (typically 100-300ms off the next navigation) is delivered to _all_ users, not just mouse users, with zero configuration.
 
 Prefetching is deduplicated per router instance and bounded: each path is prefetched at most once, and the prefetch set is capped (oldest-evicted) so a long-lived SPA navigating across many routes can't grow it unboundedly. Prefetch is best-effort — a failed prefetch is silently dropped and the real navigation re-runs the loader normally.
 
@@ -1309,7 +1309,7 @@ interface LoaderContext {
 
 The `signal` is crucial for cancellation: if the user navigates away before the loader finishes, the signal is aborted. Always pass it to `fetch()` and other async operations.
 
-`request` is populated **only when the loader runs during SSR** (via `prefetchLoaderData(router, path, request)`) — it is `undefined` on every client-side navigation. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
+`request` is populated **only when the loader runs during SSR** (via `prefetchLoaderData(router, path, request)`) — it is `undefined` on every client-side navigation. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` _before_ the layout renders:
 
 ```ts
 loader: ({ request }) => {
@@ -1490,9 +1490,9 @@ Default status is `307` (Temporary Redirect, method-preserving). Use `301` for p
 ```tsx
 import { isRedirectError, getRedirectInfo } from '@pyreon/router'
 
-<ErrorBoundary
+;<ErrorBoundary
   fallback={(err) => {
-    if (isRedirectError(err)) throw err  // re-throw, let the router handle it
+    if (isRedirectError(err)) throw err // re-throw, let the router handle it
     return <div>Error: {err.message}</div>
   }}
 >
@@ -1752,11 +1752,7 @@ interface Router {
    * `options.skipLoaders: true` resolves lazy components but skips loaders
    * entirely (used by SSG 404 generation, where there's no real request).
    */
-  preload(
-    path: string,
-    request?: Request,
-    options?: { skipLoaders?: boolean },
-  ): Promise<void>
+  preload(path: string, request?: Request, options?: { skipLoaders?: boolean }): Promise<void>
 
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next nav.
@@ -2368,9 +2364,7 @@ const routes = [
     path: '/admin',
     component: AdminLayout,
     middleware: [authMiddleware],
-    children: [
-      { path: 'dashboard', component: AdminDashboard },
-    ],
+    children: [{ path: 'dashboard', component: AdminDashboard }],
   },
 ]
 ```

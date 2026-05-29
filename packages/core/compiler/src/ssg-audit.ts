@@ -294,9 +294,7 @@ function detectDynamicRouteMissingGetStaticPaths(
     function visit(node: ts.Node): void {
       if (hasGetStaticPaths && hasDefaultExport) return
       if (ts.isVariableStatement(node)) {
-        const hasExport = node.modifiers?.some(
-          (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-        )
+        const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
         if (hasExport) {
           for (const decl of node.declarationList.declarations) {
             if (ts.isIdentifier(decl.name) && decl.name.text === 'getStaticPaths') {
@@ -306,12 +304,8 @@ function detectDynamicRouteMissingGetStaticPaths(
         }
       }
       if (ts.isFunctionDeclaration(node)) {
-        const hasExport = node.modifiers?.some(
-          (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-        )
-        const isDefault = node.modifiers?.some(
-          (m) => m.kind === ts.SyntaxKind.DefaultKeyword,
-        )
+        const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+        const isDefault = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)
         if (hasExport && node.name?.text === 'getStaticPaths') {
           hasGetStaticPaths = true
         }
@@ -377,9 +371,7 @@ function detectNonLiteralRevalidateExport(
     const source: ts.SourceFile = parsed
     function visit(node: ts.Node): void {
       if (ts.isVariableStatement(node)) {
-        const hasExport = node.modifiers?.some(
-          (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-        )
+        const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
         if (!hasExport) {
           ts.forEachChild(node, visit)
           return
@@ -432,9 +424,7 @@ export function auditSsg(rootDir: string): SsgAuditResult {
     if (!source) continue
     function visit(node: ts.Node): void {
       if (ts.isVariableStatement(node)) {
-        const hasExport = node.modifiers?.some(
-          (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-        )
+        const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
         if (hasExport) {
           for (const decl of node.declarationList.declarations) {
             if (ts.isIdentifier(decl.name) && decl.name.text === 'revalidate') {

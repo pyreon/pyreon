@@ -25,10 +25,18 @@ export function layout(_props: Props) {
     <PyreonUI theme={theme} mode={() => modeSignal()}>
       <div id="layout">
         <nav style="display: flex; gap: 16px; padding: 16px; border-bottom: 1px solid #eee; align-items: center; font-family: system-ui, sans-serif;">
-          <RouterLink to="/" data-testid="nav-home">Home</RouterLink>
-          <RouterLink to="/about" data-testid="nav-about">About</RouterLink>
-          <RouterLink to="/posts" data-testid="nav-posts">Posts</RouterLink>
-          <RouterLink to="/sections" data-testid="nav-sections">Sections</RouterLink>
+          <RouterLink to="/" data-testid="nav-home">
+            Home
+          </RouterLink>
+          <RouterLink to="/about" data-testid="nav-about">
+            About
+          </RouterLink>
+          <RouterLink to="/posts" data-testid="nav-posts">
+            Posts
+          </RouterLink>
+          <RouterLink to="/sections" data-testid="nav-sections">
+            Sections
+          </RouterLink>
           <span style="flex: 1;" />
           <ThemeToggle />
           <ModeToggle />

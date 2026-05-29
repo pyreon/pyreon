@@ -96,9 +96,7 @@ export const _LPIH_RATE_VISIBLE_THRESHOLD = 0.5
 function _formatRate(rate1s: number): string {
   if (rate1s < _LPIH_RATE_VISIBLE_THRESHOLD) return ''
   // < 10/s: 1 decimal place. ≥ 10/s: rounded integer.
-  return rate1s < 10
-    ? ` (${rate1s.toFixed(1)}/s)`
-    : ` (${Math.round(rate1s)}/s)`
+  return rate1s < 10 ? ` (${rate1s.toFixed(1)}/s)` : ` (${Math.round(rate1s)}/s)`
 }
 
 const DEFAULT_FORMAT = (detail: string, fire: LPIHFireDatum): string => {
@@ -242,11 +240,13 @@ export function firesToCreationSiteFindings(
     }
   }
 
-  const format = options.formatDetail ?? ((_: string, fire: LPIHFireDatum) => {
-    const kindLabel = fire.kind ?? 'node'
-    const rate = typeof fire.rate1s === 'number' ? _formatRate(fire.rate1s) : ''
-    return `${kindLabel} fired ${fire.count}×${rate}`
-  })
+  const format =
+    options.formatDetail ??
+    ((_: string, fire: LPIHFireDatum) => {
+      const kindLabel = fire.kind ?? 'node'
+      const rate = typeof fire.rate1s === 'number' ? _formatRate(fire.rate1s) : ''
+      return `${kindLabel} fired ${fire.count}×${rate}`
+    })
 
   // 'live-fire' is a new finding kind — synthetic, not produced by
   // `analyzeReactivity()`. The LSP renders it as an inlay hint the same

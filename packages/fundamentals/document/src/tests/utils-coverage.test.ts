@@ -269,7 +269,7 @@ describe('render — edge cases', () => {
   it('throws for unregistered format', async () => {
     const doc = Document({ children: Text({ children: 'hello' }) })
     unregisterRenderer('nonexistent') // just to exercise the path
-    await expect(render(doc, 'nonexistent')).rejects.toThrow("No renderer registered")
+    await expect(render(doc, 'nonexistent')).rejects.toThrow('No renderer registered')
   })
 
   it('registerRenderer with direct renderer (not lazy loader)', async () => {

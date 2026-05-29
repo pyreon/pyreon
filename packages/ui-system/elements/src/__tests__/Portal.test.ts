@@ -82,10 +82,7 @@ describe('Portal', () => {
       document.body.appendChild(root)
 
       const before = document.body.children.length
-      const unmount = mount(
-        h(Portal, { children: h('span', { id: 'cleanup-child' }, 'x') }),
-        root,
-      )
+      const unmount = mount(h(Portal, { children: h('span', { id: 'cleanup-child' }, 'x') }), root)
       expect(document.body.children.length).toBe(before + 1) // wrapper added
       const wrapper = document.body.querySelector('#cleanup-child')!.parentElement!
       expect(wrapper.isConnected).toBe(true)

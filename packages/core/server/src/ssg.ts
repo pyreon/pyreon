@@ -97,8 +97,7 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
           )
         }),
       ])
-    }
-    finally {
+    } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
 

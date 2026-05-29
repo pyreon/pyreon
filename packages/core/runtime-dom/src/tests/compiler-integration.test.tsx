@@ -51,21 +51,14 @@ function compileExpression(source: string) {
  * Compile a standalone JSX expression (not a component), execute it,
  * mount it into a container, and return { container, cleanup, code }.
  */
-function compileAndMount(
-  source: string,
-  globals: Record<string, unknown> = {},
-) {
+function compileAndMount(source: string, globals: Record<string, unknown> = {}) {
   const { body, code } = compileExpression(source)
 
   const globalNames = Object.keys(globals)
   const globalValues = Object.values(globals)
 
   // The body is an expression (e.g. _tpl(...)) — wrap in return
-  const fn = new Function(
-    ...DEP_NAMES,
-    ...globalNames,
-    `return ${body}`,
-  )
+  const fn = new Function(...DEP_NAMES, ...globalNames, `return ${body}`)
 
   const result = fn(...DEP_VALUES, ...globalValues)
   const container = document.createElement('div')
@@ -96,11 +89,7 @@ function compileComponent(
   if (!nameMatch) throw new Error('Could not find component name in compiled output')
   const compName = nameMatch[1]
 
-  const fn = new Function(
-    ...DEP_NAMES,
-    ...globalNames,
-    `${body}\nreturn ${compName}`,
-  )
+  const fn = new Function(...DEP_NAMES, ...globalNames, `${body}\nreturn ${compName}`)
 
   const Component = fn(...DEP_VALUES, ...globalValues)
 
@@ -129,10 +118,7 @@ describe('compiler integration — signal text reactivity', () => {
 
   it('signal() in text — _bindText updates DOM on signal.set', () => {
     const count = signal(0)
-    const { container } = compileAndMount(
-      '<div>{count()}</div>',
-      { count },
-    )
+    const { container } = compileAndMount('<div>{count()}</div>', { count })
 
     expect(container.querySelector('div')!.textContent).toBe('0')
 
@@ -146,10 +132,10 @@ describe('compiler integration — signal text reactivity', () => {
   it('two independent signals — changing one does not affect the other', () => {
     const a = signal('hello')
     const b = signal('world')
-    const { container } = compileAndMount(
-      '<div><span>{a()}</span><span>{b()}</span></div>',
-      { a, b },
-    )
+    const { container } = compileAndMount('<div><span>{a()}</span><span>{b()}</span></div>', {
+      a,
+      b,
+    })
 
     const spans = container.querySelectorAll('span')
     expect(spans[0]!.textContent).toBe('hello')
@@ -172,10 +158,9 @@ describe('compiler integration — props reactivity', () => {
 
   it('props.name in text — reactive via _bind', () => {
     const name = signal('Alice')
-    const { container } = compileComponent(
-      'const Comp = (props) => <div>{props.name}</div>',
-      { name: _rp(() => name()) },
-    )
+    const { container } = compileComponent('const Comp = (props) => <div>{props.name}</div>', {
+      name: _rp(() => name()),
+    })
 
     expect(container.querySelector('div')!.textContent).toBe('Alice')
 
@@ -238,10 +223,7 @@ describe('compiler integration — class attribute reactivity', () => {
 
   it('class={cls()} — _bindDirect updates className on signal change', () => {
     const cls = signal('active')
-    const { container } = compileAndMount(
-      '<div class={cls()}></div>',
-      { cls },
-    )
+    const { container } = compileAndMount('<div class={cls()}></div>', { cls })
 
     expect(container.querySelector('div')!.className).toBe('active')
 
@@ -259,9 +241,7 @@ describe('compiler integration — static content', () => {
   })
 
   it('purely static JSX — no bindings, renders correctly', () => {
-    const { container, code } = compileAndMount(
-      '<div class="box"><span>hello</span></div>',
-    )
+    const { container, code } = compileAndMount('<div class="box"><span>hello</span></div>')
 
     expect(container.querySelector('div')!.className).toBe('box')
     expect(container.querySelector('span')!.textContent).toBe('hello')
@@ -276,9 +256,7 @@ describe('compiler integration — SVG', () => {
   })
 
   it('SVG element renders correctly via _tpl', () => {
-    const { container } = compileAndMount(
-      '<svg><circle cx="50" cy="50" r="40"></circle></svg>',
-    )
+    const { container } = compileAndMount('<svg><circle cx="50" cy="50" r="40"></circle></svg>')
 
     const svg = container.querySelector('svg')
     expect(svg).not.toBeNull()
@@ -326,10 +304,7 @@ describe('compiler integration — compiler output structure', () => {
   })
 
   it('props.name emits _bind import from @pyreon/reactivity', () => {
-    const { code } = transformJSX(
-      'const Comp = (props) => <div>{props.name}</div>',
-      'test.tsx',
-    )
+    const { code } = transformJSX('const Comp = (props) => <div>{props.name}</div>', 'test.tsx')
     expect(code).toContain('import { _bind } from "@pyreon/reactivity"')
     expect(code).toContain('_bind(() => { __t0.data = props.name })')
   })
@@ -365,10 +340,7 @@ describe('compiler integration — compiler output structure', () => {
   })
 
   it('static JSX emits _tpl with null bind function', () => {
-    const { code } = transformJSX(
-      '<div class="box"><span>hello</span></div>',
-      'test.tsx',
-    )
+    const { code } = transformJSX('<div class="box"><span>hello</span></div>', 'test.tsx')
     expect(code).toContain('() => null')
     expect(code).not.toContain('_bind')
     expect(code).not.toContain('_bindText')
@@ -378,7 +350,9 @@ describe('compiler integration — compiler output structure', () => {
 // ─── Additional edge cases ──────────────────────────────────────────────────
 
 describe('compiler integration — prop-derived with defaults', () => {
-  afterEach(() => { document.body.innerHTML = '' })
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
 
   it('props.x ?? default — starts with default, updates when set', () => {
     const x = signal<string | undefined>(undefined)
@@ -406,14 +380,13 @@ describe('compiler integration — prop-derived with defaults', () => {
 })
 
 describe('compiler integration — ternary and expressions', () => {
-  afterEach(() => { document.body.innerHTML = '' })
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
 
   it('ternary with signal — updates on change', () => {
     const on = signal(true)
-    const { container } = compileAndMount(
-      '<div>{on() ? "yes" : "no"}</div>',
-      { on },
-    )
+    const { container } = compileAndMount('<div>{on() ? "yes" : "no"}</div>', { on })
     expect(container.querySelector('div')!.textContent).toBe('yes')
     on.set(false)
     expect(container.querySelector('div')!.textContent).toBe('no')
@@ -421,10 +394,7 @@ describe('compiler integration — ternary and expressions', () => {
 
   it('template literal with signal', () => {
     const name = signal('world')
-    const { container } = compileAndMount(
-      '<div>{`hello ${name()}`}</div>',
-      { name },
-    )
+    const { container } = compileAndMount('<div>{`hello ${name()}`}</div>', { name })
     expect(container.querySelector('div')!.textContent).toBe('hello world')
     name.set('Pyreon')
     expect(container.querySelector('div')!.textContent).toBe('hello Pyreon')
@@ -432,10 +402,7 @@ describe('compiler integration — ternary and expressions', () => {
 
   it('arithmetic with signal', () => {
     const n = signal(5)
-    const { container } = compileAndMount(
-      '<div>{n() * 2 + 1}</div>',
-      { n },
-    )
+    const { container } = compileAndMount('<div>{n() * 2 + 1}</div>', { n })
     expect(container.querySelector('div')!.textContent).toBe('11')
     n.set(10)
     expect(container.querySelector('div')!.textContent).toBe('21')
@@ -443,14 +410,13 @@ describe('compiler integration — ternary and expressions', () => {
 })
 
 describe('compiler integration — multiple attributes', () => {
-  afterEach(() => { document.body.innerHTML = '' })
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
 
   it('reactive class + static id', () => {
     const cls = signal('a')
-    const { container } = compileAndMount(
-      '<div id="fixed" class={cls()}></div>',
-      { cls },
-    )
+    const { container } = compileAndMount('<div id="fixed" class={cls()}></div>', { cls })
     const div = container.querySelector('div')!
     expect(div.id).toBe('fixed')
     expect(div.className).toBe('a')
@@ -461,10 +427,7 @@ describe('compiler integration — multiple attributes', () => {
 
   it('reactive style string', () => {
     const color = signal('red')
-    const { container } = compileAndMount(
-      '<div style={`color: ${color()}`}></div>',
-      { color },
-    )
+    const { container } = compileAndMount('<div style={`color: ${color()}`}></div>', { color })
     expect(container.querySelector('div')!.style.color).toBe('red')
     color.set('blue')
     expect(container.querySelector('div')!.style.color).toBe('blue')
@@ -472,7 +435,9 @@ describe('compiler integration — multiple attributes', () => {
 })
 
 describe('compiler integration — prop-derived in attributes', () => {
-  afterEach(() => { document.body.innerHTML = '' })
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
 
   it('const cls = props.class ?? "default" on class attr', () => {
     const c = signal<string | undefined>(undefined)

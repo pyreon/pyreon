@@ -14,16 +14,14 @@ import { Section, SectionHeader } from '../base'
 import { element, text } from '../core'
 import { theme } from '../../theme'
 
-const Panel = element
-  .attrs({ tag: 'div', direction: 'rows', alignX: 'center' })
-  .theme((t) => ({
-    padding: t.space.xLarge,
-    borderRadius: t.borderRadius.large,
-    background: t.color.dark.base,
-    color: t.color.light.base,
-    maxWidth: 900,
-    width: { xs: '90%', lg: '100%' },
-  }))
+const Panel = element.attrs({ tag: 'div', direction: 'rows', alignX: 'center' }).theme((t) => ({
+  padding: t.space.xLarge,
+  borderRadius: t.borderRadius.large,
+  background: t.color.dark.base,
+  color: t.color.light.base,
+  maxWidth: 900,
+  width: { xs: '90%', lg: '100%' },
+}))
 
 const ModeLabel = text.theme((t) => ({
   fontSize: t.fontSize.medium,
@@ -41,10 +39,9 @@ function ModeReadout() {
 const InversedPanel = () => (
   <Section id="inversed-panel">
     <SectionHeader title="Inversed Mode Panel">
-      This panel is wrapped in a nested PyreonUI with inversed=true. The
-      parent's mode is flipped for this subtree — used to test the
-      reactivity fix from PR #210 where destructuring props broke the
-      inverted-mode propagation.
+      This panel is wrapped in a nested PyreonUI with inversed=true. The parent's mode is flipped
+      for this subtree — used to test the reactivity fix from PR #210 where destructuring props
+      broke the inverted-mode propagation.
     </SectionHeader>
     <PyreonUI theme={theme} mode="light" inversed>
       <Panel>

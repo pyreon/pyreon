@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -180,7 +179,6 @@
 - [#612](https://github.com/pyreon/pyreon/pull/612) [`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 12 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
 
   **Security (prototype pollution / XSS / DoS)**
-
   - `@pyreon/reactivity` `reconcile()` + `createStore` set trap — a documented "apply an untrusted API response into a store" path (`reconcile(JSON.parse(body), store)`) had no `__proto__`/`constructor`/`prototype` guard. Added on both the write and stale-key-removal passes + defense-in-depth in the proxy set trap.
   - `@pyreon/i18n` `addMessages` — `nestFlatKeys` (dotted-key expansion) ran BEFORE `deepMerge`, so deepMerge's own pollution filter never saw the dotted form; `__proto__.x` walked into `Object.prototype` and wrote onto it. Message JSON is routinely CDN/community-sourced. Guarded.
   - `@pyreon/document` HTML renderer — `language` was interpolated raw into `<html lang="…">` and `styleStr` emitted string values raw into `style="…"`; a CMS/author-supplied value containing `"><script>` broke out → stored XSS. `lang` is now charset-restricted + escaped; style values route through the renderer's existing `sanitizeCss`.
@@ -190,20 +188,17 @@
   - `@pyreon/zero` API-route matcher — dangerous param names from the route pattern guarded (defense-in-depth; consistent with the reconcile / i18n guards).
 
   **Memory leaks**
-
   - `@pyreon/reactivity` `signal._d` — direct-updater disposal nulled an array slot but never compacted, so a long-lived signal (theme/locale/auth, or signals read in `<For>` rows) bound by churning components accumulated one permanent dead slot per ever-mounted binding — an app-lifetime leak that ALSO degraded the signal-write hot path (`notifyDirect` iterated O(total-ever), not O(live)). Switched to a `Set` (same as `_s`): O(1) disposal, O(live) iteration, bounded growth. Proven structurally — `_d.size` stays 0 after 10 000 register/dispose cycles.
   - `@pyreon/dnd` `useSortable` — `itemRef` pushed every pdnd registration onto a shared array and the unmount (`ref(null)`) branch was a no-op, so a churning `<For>` sortable (todo list / kanban — the documented usage) leaked every removed item's draggable/dropTarget registration until the whole sortable unmounted. Now per-key disposal on unmount and re-register.
   - `@pyreon/zero` ISR — a hung revalidation handler pinned its key in the in-flight set forever (`finally` never ran), so the entry could never recover from stale. Background revalidation is now timeout-bounded (`ISRConfig.revalidateTimeoutMs`, default 30 s).
 
   **Correctness / silent-failure**
-
   - `@pyreon/router` `stringifyLoaderData` — the cycle detector used an all-seen `WeakSet` that was never pruned, so a shared (DAG) reference — extremely common, e.g. `{ author: user, lastEditor: user }` from an ORM — falsely threw "circular reference" and 500'd the SSR response. Replaced with true ancestor-path detection (the original code's own comment anticipated exactly this remedy). **Behaviour change (bug fix, strictly more permissive):** payloads that previously 500'd now serialize; real cycles still throw.
   - `@pyreon/server` `processTemplate` — used `String.prototype.replace` with string replacements, so rendered HTML containing literal `$&` / `$$` / `` $` `` / `$'` (prices, code, math) was corrupted by regex-pattern substitution. Switched to function replacements.
   - `@pyreon/i18n` `interpolate` — a serialization failure (circular value, throwing `toString`) was swallowed silently, rendering `{{key}}` to end users with no signal. Now dev-warns (fallback behaviour unchanged).
   - `@pyreon/query` `useSSE` — the reactive effect unconditionally reset `intentionalClose = false`, so an explicit `close()` was silently overridden by any later reactive `url`/`enabled` change. Now respects `intentionalClose` (mirrors `useSubscription`); `reconnect()` is the explicit resume.
 
   **Disclosures (honest scope)**
-
   - **An attempted SWR-swallow fix (surface the empty `.catch` via `__DEV__` warn + `_onError`) was REVERTED from this PR.** Probing empirically proved `revalidateSwrLoaders` is invoked **0 times** even by the canonical `staleWhileRevalidate` nav pattern: `resolveRoute` returns fresh `RouteRecord` objects per resolution, so `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate is never true across navigations — the SWR branch is **dead code**, and the existing "revalidates in background" test's count actually comes from the blocking path running twice. Adding error-surfacing to provably-unreachable code is not hardening (and it dropped router coverage). **The real bug — `staleWhileRevalidate` is effectively non-functional for the nav-away/back case (record-identity-keyed gate)** — is a distinct, significant finding whose correct fix (key the gate by a stable path/loaderKey) is a non-trivial router behaviour change deserving its own focused, aligned PR. Documented in `router/src/tests/loader.test.ts` as a flagged follow-up; deliberately not bundled here (scope/risk).
   - One audit finding (`decodeKeyFromMarker`) was investigated and **dropped as a false positive** — `%2D` never appears in `encodeURIComponent` output, so the manual substitution is uniquely reversible.
   - Z5 (API-route param guard) is defense-in-depth: a string param value assigned to `__proto__` is a silent JS no-op (not exploitable); the guard prevents the real own-prop shadow for `constructor`/`prototype` and matches the repo-wide convention.
@@ -221,14 +216,12 @@
 - [#597](https://github.com/pyreon/pyreon/pull/597) [`7150368`](https://github.com/pyreon/pyreon/commit/7150368f85daa783e55f05541d0c45356c13b00d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `RouterLink` viewport-prefetch polish + prefetch discoverability docs.
 
   **Code — `prefetch="viewport"` refinements** (`components.tsx`):
-
   - IntersectionObserver now uses `rootMargin: '200px'` (was the implicit 0px). The prefetch starts _before_ the link is fully on screen, so a fast scroll-then-click typically lands on already-resolved loader data instead of waiting. Matches the margin instant.page / Astro use.
   - The prefetch is scheduled via `requestIdleCallback` (falls back to `setTimeout(1)` on Safari < 16.4 / jsdom) instead of running synchronously inside the observer callback — so it never contends with the scroll the user is actively performing. The observer disconnects _synchronously_ on first intersection before the idle slice is queued, so scroll jitter can't double-schedule.
 
   No behaviour change for `"intent"` (the default), `"hover"`, or `"none"`.
 
   **Docs — closed a discoverability gap.** `docs/docs/router.md` previously:
-
   - Omitted `'intent'` from the `prefetch` type entirely
   - Documented the default as `"hover"` — the actual default is `'intent'` (hover **and** keyboard focus)
 
@@ -316,7 +309,6 @@
 ### Patch Changes
 
 - [#262](https://github.com/pyreon/pyreon/pull/262) [`ec30b4e`](https://github.com/pyreon/pyreon/commit/ec30b4e2188fb493fdde77a77f521abe000beae0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - QA audit fixes (5 HIGH + 2 MEDIUM):
-
   - **router**: `useBlocker` uses shared ref-counted `beforeunload` listener instead of per-blocker — prevents listener accumulation across multiple blockers
   - **router**: `destroy()` clears `_activeRouter` global ref and releases remaining blocker listeners — prevents stale router surviving in SSR/re-creation
   - **query/useSubscription**: close WebSocket BEFORE nulling handlers — prevents race where queued message fires null handler
@@ -325,7 +317,6 @@
   - **storage/IndexedDB**: initialization errors (corrupted DB, quota exceeded) now call `onError` callback and log in dev mode instead of silently falling back to default
 
 - [#258](https://github.com/pyreon/pyreon/pull/258) [`a05c4ba`](https://github.com/pyreon/pyreon/commit/a05c4bab713f5168acd56eb233520102735bd80a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Performance rearchitecture: reactive theme/mode/dimension switching via computed (not effect).
-
   - **styler**: `DynamicStyled` uses one `computed()` per component (not `effect()`) to track theme + mode + dimension signals. The resolve itself runs `runUntracked()` to prevent exponential cascade. String-equality memoization eliminates redundant DOM updates. Per-definition WeakMap cache (Tier 2) skips resolve entirely for repeated identical inputs.
   - **styler**: `ThemeContext` is a `createReactiveContext<Theme>`. `useThemeAccessor()` returns the raw accessor for tracking inside computeds.
   - **ui-core**: `PyreonUI` nested `inversed` prop inherits parent mode reactively — inner section automatically flips when outer mode changes.
@@ -348,7 +339,6 @@
 - [#256](https://github.com/pyreon/pyreon/pull/256) [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(router): don't clobber nav `_abortController` from prefetch/preload; bound scroll-position cache
 
   Two router issues found during QA:
-
   1. **Prefetch/preload destroyed navigation abort capability.**
      `prefetchLoaderData` (called from `<Link>` hover) and `router.preload()`
      both assigned `router._abortController = new AbortController()`,
@@ -377,7 +367,6 @@
 - [#242](https://github.com/pyreon/pyreon/pull/242) [`95e7e00`](https://github.com/pyreon/pyreon/commit/95e7e00bd3e3b3926bd8348cf91f88494605ccc6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Router anti-pattern cleanup + lint rule precision
 
   `@pyreon/router`:
-
   - `ScrollManager.save()` / `_applyResult()`: added `typeof window === 'undefined'`
     early-return guards so the SSR-safety contract is explicit at the method
     entry instead of relying on callers to pre-check.
@@ -391,7 +380,6 @@
     `no-error-without-prefix` rule + the rest of the framework).
 
   `@pyreon/lint` — `no-window-in-ssr`:
-
   - Parameter-shadowing: identifiers like `location`/`history`/`navigator`
     that are FUNCTION PARAMETERS (or destructured parameter patterns) no
     longer false-positive as browser-global references. E.g. `router.push`
@@ -403,7 +391,6 @@
     recognised as guarded.
 
   `@pyreon/lint` — `no-imperative-navigate-in-render`:
-
   - Full rewrite of the safe-context detection. Previously only recognised
     `onMount`/`effect`/`onUnmount` call callbacks as safe — this false-fired
     on `router.push()` inside any locally-declared event handler
@@ -414,7 +401,6 @@
     which is the actual bug the rule is designed to catch.
 
   `@pyreon/lint` — `no-dom-in-setup`:
-
   - Extended safe-context set: now includes `onUnmount`, `onCleanup`,
     `renderEffect`, and `requestAnimationFrame`. `document.querySelector`
     inside a `requestAnimationFrame` callback is guaranteed to run in a
@@ -563,7 +549,6 @@
 ### Minor Changes
 
 - ### @pyreon/router
-
   - `go(n)` and `forward()` for history navigation
   - Named `replace()` — navigate by route name
   - Optional params (`:id?`) with compile-time type inference
@@ -578,14 +563,12 @@
   - Stale-while-revalidate loaders
 
   ### @pyreon/head
-
   - Cached resolve with dirty flag (30M+ ops/sec cached path)
   - Single-pass HTML escaping (regex + lookup table)
   - DOM element tracking via Map (avoids querySelectorAll per sync)
   - 7-9.5x faster SSR serialization than Unhead (Vue/Nuxt)
 
   ### @pyreon/server
-
   - Pre-compiled template splits at handler creation (17x faster on real templates)
   - Pre-built client entry tag avoids per-request string construction
   - `buildScriptsFast` skips array allocation
@@ -615,7 +598,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -629,7 +611,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -638,7 +619,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -657,7 +637,6 @@
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

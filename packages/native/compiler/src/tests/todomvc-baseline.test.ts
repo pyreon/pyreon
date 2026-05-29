@@ -259,7 +259,9 @@ describe('TodoMVC gap-tracking baseline', () => {
     // continue to use the direct `@AppStorage` shape — see the
     // separate native-typed test below.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('@PyreonAppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []')
+    expect(out.code).toContain(
+      '@PyreonAppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []',
+    )
     // Negative: the old 14-line Data-bridge boilerplate must NOT
     // appear anywhere in the emit.
     expect(out.code).not.toContain('todosData: Data')
@@ -312,7 +314,9 @@ describe('TodoMVC gap-tracking baseline', () => {
     // `rememberSaveable { mutableStateOf(...) }` shape — see the
     // separate native-typed test below.
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toContain('var todos by rememberPyreonStorage<List<Todo>>("pyreon-todomvc:todos", listOf())')
+    expect(out.code).toContain(
+      'var todos by rememberPyreonStorage<List<Todo>>("pyreon-todomvc:todos", listOf())',
+    )
     // Negative: the old Saver-inline boilerplate must NOT appear.
     expect(out.code).not.toContain('Saver<List<Todo>')
     expect(out.code).not.toContain('Json.encodeToString')
@@ -358,7 +362,9 @@ describe('TodoMVC gap-tracking baseline', () => {
     // parallel to Swift's `: Codable` — enables JSON round-trip + the
     // Compose `Saver` glue for `rememberSaveable<List<Todo>>`.
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toMatch(/@Serializable\s*\ndata class Todo\(var id: Int, var text: String, var done: Boolean\)/)
+    expect(out.code).toMatch(
+      /@Serializable\s*\ndata class Todo\(var id: Int, var text: String, var done: Boolean\)/,
+    )
   })
 
   it('Phase 2 — array-literal object whose fields match a known struct emits as struct initializer on Swift', () => {
@@ -388,20 +394,17 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toContain('case all, active, completed')
   })
 
-  it(
-    'Parser-A — BlockStatement arrow bodies parse + emit (addTodo / toggle / remove / clearCompleted as Swift functions)',
-    () => {
-      // CLOSED by Parser-A/B/C PR. All 4 mutation functions now emit
-      // as real `private func` declarations.
-      const out = transform(source, { target: 'swift' })
-      // Each of the 4 const-arrow-function decls should land as a
-      // Swift method on the struct.
-      expect(out.code).toContain('private func addTodo()')
-      expect(out.code).toContain('private func toggle(')
-      expect(out.code).toContain('private func remove(')
-      expect(out.code).toContain('private func clearCompleted()')
-    },
-  )
+  it('Parser-A — BlockStatement arrow bodies parse + emit (addTodo / toggle / remove / clearCompleted as Swift functions)', () => {
+    // CLOSED by Parser-A/B/C PR. All 4 mutation functions now emit
+    // as real `private func` declarations.
+    const out = transform(source, { target: 'swift' })
+    // Each of the 4 const-arrow-function decls should land as a
+    // Swift method on the struct.
+    expect(out.code).toContain('private func addTodo()')
+    expect(out.code).toContain('private func toggle(')
+    expect(out.code).toContain('private func remove(')
+    expect(out.code).toContain('private func clearCompleted()')
+  })
 
   it('Phase 2 — Swift TS-method translation (.length / .trim() / .some)', () => {
     // Phase 2 follow-up. The compiler rewrites TS methods that don't
@@ -604,12 +607,16 @@ describe('TodoMVC gap-tracking baseline', () => {
     // don't accept onClick: parameters, so including events there would
     // produce a typecheck error.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })')
+    expect(out.code).toContain(
+      'TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })',
+    )
   })
 
   it('Phase 2 — user-defined component JSX forwards event handlers as constructor args (Kotlin)', () => {
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toContain('TodoRow(todo = t, onToggle = { toggle(t.id) }, onRemove = { remove(t.id) })')
+    expect(out.code).toContain(
+      'TodoRow(todo = t, onToggle = { toggle(t.id) }, onRemove = { remove(t.id) })',
+    )
   })
 
   it('Phase E2 — <Toggle value={props.todo.done} onChange={props.onToggle}> emits SwiftUI custom Binding', () => {

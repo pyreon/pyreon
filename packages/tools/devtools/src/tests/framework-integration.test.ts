@@ -35,10 +35,7 @@ import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { serialize } from '../serialize'
 import { buildMap, getChildren, getRoots } from '../tree'
-import type {
-  DevtoolsComponentEntry as ExtEntry,
-  PyreonDevtools as ExtDevtools,
-} from '../types'
+import type { DevtoolsComponentEntry as ExtEntry, PyreonDevtools as ExtDevtools } from '../types'
 
 // ── 1 · Compile-time drift lock ──────────────────────────────────────
 // Bidirectional assignability on the STABLE COMPONENT SURFACE: an
@@ -58,12 +55,10 @@ import type {
 // `PyreonReactiveDevtools`, and the page-hook's structural use of it is
 // exercised by the runtime `reactive-available` path.
 type _OmitReactive<T> = Omit<T, 'reactive'>
-type _AssertExtractsFramework = _OmitReactive<ExtDevtools> extends _OmitReactive<FrameworkDevtools>
-  ? true
-  : never
-type _AssertFrameworkSatisfiesExt = _OmitReactive<FrameworkDevtools> extends _OmitReactive<ExtDevtools>
-  ? true
-  : never
+type _AssertExtractsFramework =
+  _OmitReactive<ExtDevtools> extends _OmitReactive<FrameworkDevtools> ? true : never
+type _AssertFrameworkSatisfiesExt =
+  _OmitReactive<FrameworkDevtools> extends _OmitReactive<ExtDevtools> ? true : never
 const _driftEntryFwToExt: ExtEntry = null as unknown as FrameworkEntry
 const _driftEntryExtToFw: FrameworkEntry = null as unknown as ExtEntry
 const _driftFwToExt: _OmitReactive<ExtDevtools> =
@@ -72,14 +67,7 @@ const _driftExtToFw: _OmitReactive<FrameworkDevtools> =
   null as unknown as _OmitReactive<ExtDevtools>
 const _t1: _AssertExtractsFramework = true
 const _t2: _AssertFrameworkSatisfiesExt = true
-void [
-  _driftEntryFwToExt,
-  _driftEntryExtToFw,
-  _driftFwToExt,
-  _driftExtToFw,
-  _t1,
-  _t2,
-]
+void [_driftEntryFwToExt, _driftEntryExtToFw, _driftFwToExt, _driftExtToFw, _t1, _t2]
 
 // ── 2 · Runtime proof against the real framework ─────────────────────
 
@@ -140,9 +128,7 @@ describe('framework integration — live __PYREON_DEVTOOLS__', () => {
     // correct against the real framework registration order.
     const children = getChildren(entries)
     expect(children.get(roots[0]!.id)?.map((c) => c.name)).toEqual(['Branch'])
-    expect(children.get(branch!.id)?.map((c) => c.id)).toEqual(
-      leaves.map((l) => l.id),
-    )
+    expect(children.get(branch!.id)?.map((c) => c.id)).toEqual(leaves.map((l) => l.id))
     expect(children.has(leaves[0]!.id)).toBe(false) // leaves have no children
   })
 

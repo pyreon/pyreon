@@ -24,9 +24,7 @@ import type { FileRoute, RenderMode, RouteFileExports } from './types'
  * For catch-all routes (`/blog/[...slug].tsx`), pass the full path through
  * the catch-all param: `{ params: { slug: 'a/b' } }` → `/blog/a/b`.
  */
-export type GetStaticPaths<
-  TParams extends Record<string, string> = Record<string, string>,
-> = () =>
+export type GetStaticPaths<TParams extends Record<string, string> = Record<string, string>> = () =>
   | Array<{ params: TParams }>
   | Promise<Array<{ params: TParams }>>
 
@@ -571,10 +569,7 @@ export function stripTypeAssertions(literal: string): string {
       continue
     }
     // Check for ` satisfies ` boundary
-    if (
-      i >= 11 &&
-      result.slice(i - 10, i + 1) === ' satisfies '
-    ) {
+    if (i >= 11 && result.slice(i - 10, i + 1) === ' satisfies ') {
       result = result.slice(0, i - 10).trim()
       i = result.length
       depth = 0
@@ -595,9 +590,7 @@ export function stripTypeAssertions(literal: string): string {
  * template literals, and comments are skipped so their contents can't trigger
  * false matches.
  */
-type ExportToken =
-  | { kind: 'declaration'; name: string }
-  | { kind: 'list'; names: string[] }
+type ExportToken = { kind: 'declaration'; name: string } | { kind: 'list'; names: string[] }
 
 function scanTopLevelExportTokens(source: string): ExportToken[] {
   const tokens: ExportToken[] = []
@@ -908,7 +901,14 @@ export function filePathToUrlPath(filePath: string): string {
     if (seg.startsWith('(') && seg.endsWith(')')) continue
 
     // Skip special files
-    if (seg === '_layout' || seg === '_error' || seg === '_loading' || seg === '_404' || seg === '_not-found') continue
+    if (
+      seg === '_layout' ||
+      seg === '_error' ||
+      seg === '_loading' ||
+      seg === '_404' ||
+      seg === '_not-found'
+    )
+      continue
 
     // "index" maps to the parent path
     if (seg === 'index') continue
@@ -1153,8 +1153,7 @@ export function generateRouteModuleFromRoutes(
         if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
         if (exp.hasLoaderKey) props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
         if (exp.hasGcTime) props.push(`${indent}  gcTime: ${mod}.gcTime`)
-        if (exp.hasGetStaticPaths)
-          props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
+        if (exp.hasGetStaticPaths) props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
         if (exp.hasMeta || exp.hasRenderMode) {
           const metaParts: string[] = []
           if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
@@ -1219,9 +1218,7 @@ export function generateRouteModuleFromRoutes(
         const fullPath = `${routesDir}/${page.filePath}`
         props.push(`${indent}  component: ${comp}`)
         if (exp.hasLoader) {
-          props.push(
-            `${indent}  loader: (ctx) => import("${fullPath}").then((m) => m.loader(ctx))`,
-          )
+          props.push(`${indent}  loader: (ctx) => import("${fullPath}").then((m) => m.loader(ctx))`)
         }
         if (exp.hasGuard) {
           props.push(
@@ -1270,8 +1267,7 @@ export function generateRouteModuleFromRoutes(
         if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
         if (exp.hasLoaderKey) props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
         if (exp.hasGcTime) props.push(`${indent}  gcTime: ${mod}.gcTime`)
-        if (exp.hasGetStaticPaths)
-          props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
+        if (exp.hasGetStaticPaths) props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
         if (exp.hasMeta || exp.hasRenderMode) {
           const metaParts: string[] = []
           if (exp.hasMeta) metaParts.push(`...${mod}.meta`)

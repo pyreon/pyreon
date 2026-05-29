@@ -27,13 +27,11 @@
   New gate that walks `bun.lock` / `package-lock.json` / `pnpm-lock.yaml` for any `@pyreon/*` package with more than one resolved version installed. Emits an `error`-severity finding per duplicated package naming every version + the concrete fix (lockfile rewrite, reinstall, `PYREON_SINGLE_INSTANCE=warn` mitigation).
 
   **Defense-in-depth Layer 3.** Pairs with:
-
   - Layer 1 (PR B / [#884](https://github.com/pyreon/pyreon/issues/884)): `@pyreon/vite-plugin` injects `resolve.dedupe` — BUNDLER prevention
   - Layer 2 (PR A / [#883](https://github.com/pyreon/pyreon/issues/883)): every `@pyreon/*` calls `registerSingleton` — RUNTIME detection
   - **Layer 3 (THIS PR): static lockfile scan — CI gate, catches duplicate installs before deploy**
 
   Three pure parsers exported as `_internal` for unit-testability without filesystem dependencies:
-
   - `_parseBunLock(raw)` — bun.lock JSON format (`lockfileVersion: 1`); skips `workspace:*` resolutions
   - `_parseNpmLock(raw)` — package-lock.json v2/v3 format (matches nested `node_modules/.../@pyreon/<name>` paths)
   - `_parsePnpmLock(raw)` — pnpm-lock.yaml v6 + v9+ formats via keyed-line regex
@@ -51,7 +49,6 @@
   **1. HIGH — race condition in sentinel opt-out under concurrent `Promise.all`** (`@pyreon/reactivity` + `@pyreon/zero` + `@pyreon/vite-plugin`).
 
   The env-var dance pattern (`process.env.PYREON_SINGLE_INSTANCE = 'silent'` / capture+restore) used by `ssrLoadModuleQuiet`, SSG-plugin's built-handler import, and rocketstyle-collapse's nested-SSR resolver was race-prone under `Promise.all` of N opt-out scopes:
-
   1. Call A: captures `prev=undefined`, sets `'silent'`
   2. Call B: captures `prev='silent'` (post-A's write), sets `'silent'`
   3. A's `finally` deletes env (prev was undefined)
@@ -60,7 +57,6 @@
   Effect: the sentinel was silently disabled for the entire dev / SSG / collapse-resolver process lifetime. Bisect-verified with a focused reproducer; the leak fires with 5 concurrent scopes in `renderSsr`.
 
   **Fix**: `@pyreon/reactivity` ships two new exports:
-
   - `withSilent(fn): Promise<T>` — async refcount-based scope. Increments `silentDepth` on the sentinel state, awaits the fn, decrements in `finally`. Order-independent under concurrency.
   - `withSilentSync(fn): T` — sync variant.
 
@@ -163,7 +159,6 @@
   discoverable through the existing doctor surface every user runs.
 
   Available via:
-
   - `pyreon doctor` — runs alongside the 8 other fast gates
   - `pyreon doctor --only audit-leak-classes` — just this gate
   - `pyreon doctor --json` — machine-readable per existing convention
@@ -171,7 +166,6 @@
   ### 2. CI nightly run
 
   `.github/workflows/audit-leak-classes.yml` — nightly `schedule: '23 4 * * *'`
-
   - manual `workflow_dispatch` + opt-in via `leak-audit` PR label. Uploads
     both `findings.json` (machine-readable, 30-day retention) and
     `findings.txt` (human-readable summary) as artifacts. Posts a summary
@@ -191,7 +185,6 @@
   catalog in `.claude/rules/anti-patterns.md`.
 
   ### Validation
-
   - `@pyreon/cli` 147/147 tests pass (+1 new test suite for the gate
     adapter with 3 specs covering parse-output mapping, path
     relativization, and empty-findings edge case)
@@ -252,7 +245,6 @@
   Extends the `doc-claims` gate (consumed by `pyreon doctor` AND
   `scripts/check-doc-claims.ts`) from 2 to 5 source-of-truth counters,
   7 → 19 claim sites:
-
   - **lint rule count** — the `allRules` array in
     `packages/tools/lint/src/rules/index.ts`. Claim sites: CLAUDE.md (×3),
     the package README, `docs/docs/lint.md`, `lint/src/manifest.ts` (6×).
@@ -334,7 +326,6 @@
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -348,7 +339,6 @@
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -395,7 +385,6 @@
 - [#570](https://github.com/pyreon/pyreon/pull/570) [`c79ade7`](https://github.com/pyreon/pyreon/commit/c79ade7d8384ff7a0afe1a972db2db8c8fd18c88) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Foundation for `pyreon doctor` v2 — unified gate API + 4 programmatic gates.
 
   Introduces a shared `Finding` + `GateResult` shape (`packages/tools/cli/src/doctor/types.ts`) every doctor gate emits, and extracts four standalone-script gates as programmatic functions so the follow-up aggregator can produce a unified `DoctorReport` with per-category subscores + an overall 0-100 health score:
-
   - `runDistributionGate({ cwd })` — pure-function port of `scripts/check-distribution.ts`. Emits `distribution/missing-sideEffects`, `distribution/missing-map-exclusion`, `distribution/tarball-contains-map` findings under `category: 'architecture'`.
   - `runDocClaimsGate({ cwd })` — pure-function port of `scripts/check-doc-claims.ts`. Emits `doc-claims/<check>-drift` / `-hedged` / `-pattern-miss` / `-file-missing` findings under `category: 'documentation'`.
   - `runAuditTypesGate({ cwd })` — subprocess adapter over `scripts/audit-types.ts --json --all`. Maps HIGH/MEDIUM/LOW script severities onto `error`/`warning`/`info` and emits `audit-types/typed-but-unimplemented-<severity>` under `category: 'architecture'`. The script is 476 lines of mature AST-walking logic; the adapter shape keeps this PR tractable while letting the aggregator consume the same `Finding[]` as the other gates.
@@ -409,7 +398,6 @@
   and beautiful CLI output (after [react.doctor](https://www.react.doctor/)).
 
   **What's new** (on top of PR 1's foundation):
-
   - **6 new gates** wired into the unified `GateResult` API:
     `react-patterns`, `pyreon-patterns`, `lint` (all 66 `@pyreon/lint` rules),
     `audit-tests`, `islands-audit`, `ssg-audit`.
@@ -517,7 +505,6 @@ monorepo paths)'`. The aggregator then excludes documentation from the
 - [#311](https://github.com/pyreon/pyreon/pull/311) [`602446b`](https://github.com/pyreon/pyreon/commit/602446bb49e6ea95fe9d2dbc7774bbf9a66da80d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Test-environment audit (T2.5.7) — scans every `*.test.ts(x)` under `packages/` for mock-vnode patterns (the PR [#197](https://github.com/pyreon/pyreon/issues/197) bug class: tests that construct `{ type, props, children }` literals or a custom `vnode()` helper instead of going through the real `h()` from `@pyreon/core`). Classifies each file as HIGH / MEDIUM / LOW based on the balance of mock literals, helper definitions, helper call-sites, real `h()` calls, and the `@pyreon/core` import.
 
   Scanner lives in `@pyreon/compiler` (`auditTestEnvironment`, `formatTestAudit`) so both `@pyreon/mcp` and `@pyreon/cli` can use it without pulling in each other.
-
   - **MCP**: new `audit_test_environment` tool. Options `minRisk` (default `medium`) and `limit` (default 20). Scans 400+ test files in ~50ms.
   - **CLI**: `pyreon doctor --audit-tests` appends the audit output. `--audit-min-risk high|medium|low` to filter. Honors `--json` for machine-readable output.
 
@@ -645,12 +632,10 @@ monorepo paths)'`. The aggregator then excludes documentation from the
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents

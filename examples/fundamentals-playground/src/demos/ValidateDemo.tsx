@@ -1,27 +1,16 @@
 import { computed, signal } from '@pyreon/reactivity'
-import {
-  formatErrors,
-  parseReactive,
-  s,
-  withField,
-} from '@pyreon/validate'
+import { formatErrors, parseReactive, s, withField } from '@pyreon/validate'
 
 // Pyreon's chainable validator (Standard Schema-compliant).
 // withField(...) attaches Pyreon-only metadata (label/hint/placeholder/
 // i18n keys) on top of any Standard Schema. The wrapped schema retains
 // all its native methods.
 const usernameSchema = withField(
-  s
-    .string()
-    .min(3, { message: 'Must be at least 3 characters' })
-    .max(20, { message: 'Max 20' }),
+  s.string().min(3, { message: 'Must be at least 3 characters' }).max(20, { message: 'Max 20' }),
   { label: 'Username', placeholder: 'pyreon_dev' },
 )
 const ageSchema = withField(
-  s
-    .number()
-    .min(13, { message: 'Must be at least 13' })
-    .max(120, { message: 'Max age 120' }),
+  s.number().min(13, { message: 'Must be at least 13' }).max(120, { message: 'Max age 120' }),
   { label: 'Age', hint: 'In years' },
 )
 const emailSchema = withField(s.string().email({ message: 'Invalid email' }), {
@@ -54,11 +43,10 @@ export function ValidateDemo() {
     <div>
       <h2>Validate</h2>
       <p class="desc">
-        Pyreon's Standard Schema-compliant validator with Pyreon-flavoured
-        DX: <code>withField()</code> attaches metadata (label/hint/i18n
-        keys), <code>parseReactive()</code> returns a Computed that
-        re-validates on every source-signal change, and{' '}
-        <code>formatErrors()</code> resolves issues through i18n.
+        Pyreon's Standard Schema-compliant validator with Pyreon-flavoured DX:{' '}
+        <code>withField()</code> attaches metadata (label/hint/i18n keys),{' '}
+        <code>parseReactive()</code> returns a Computed that re-validates on every source-signal
+        change, and <code>formatErrors()</code> resolves issues through i18n.
       </p>
 
       <div class="section">

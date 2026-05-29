@@ -206,7 +206,9 @@ export function formatEnrichedDiagnosis(input: DiagnoseInput, r: EnrichedDiagnos
   const sections: string[] = [base]
 
   if (r.reactiveNarrative) {
-    sections.push(`---\n\n### ${r.reactiveNarrative.split('\n')[0]}\n\n\`\`\`\n${r.reactiveNarrative.split('\n').slice(1).join('\n')}\n\`\`\``)
+    sections.push(
+      `---\n\n### ${r.reactiveNarrative.split('\n')[0]}\n\n\`\`\`\n${r.reactiveNarrative.split('\n').slice(1).join('\n')}\n\`\`\``,
+    )
   }
 
   if (r.detectorHits.length > 0) {

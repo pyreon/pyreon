@@ -84,10 +84,7 @@ export function checkStyleFidelity(rs: RocketstyleIR): StyleFidelityReport {
  * accessor name from (dimension, property) the same way it does, then
  * regex-grep the switch arm.
  */
-function extractSwiftResolution(
-  rs: RocketstyleIR,
-  emitted: string,
-): StyleFidelityResolution[] {
+function extractSwiftResolution(rs: RocketstyleIR, emitted: string): StyleFidelityResolution[] {
   const out: StyleFidelityResolution[] = []
   for (const dim of rs.dimensions) {
     // Collect the property names this dimension owns (matches the
@@ -132,10 +129,7 @@ function extractSwiftResolution(
  * Same shape for Kotlin — `val <accessor> = when (<dim>) { … }`.
  * Kotlin arms use `<EnumName>.<value> -> <literal>`.
  */
-function extractKotlinResolution(
-  rs: RocketstyleIR,
-  emitted: string,
-): StyleFidelityResolution[] {
+function extractKotlinResolution(rs: RocketstyleIR, emitted: string): StyleFidelityResolution[] {
   const out: StyleFidelityResolution[] = []
   for (const dim of rs.dimensions) {
     const seen = new Set<string>()

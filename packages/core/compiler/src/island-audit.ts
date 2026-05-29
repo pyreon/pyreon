@@ -252,11 +252,7 @@ function extractIslandDecls(sf: ts.SourceFile, absPath: string, root: string): I
  * shorthand (`{ Counter }`) and property-assignment (`{ Counter: () =>
  * import('./Counter') }`) forms.
  */
-function extractRegistryEntries(
-  sf: ts.SourceFile,
-  absPath: string,
-  root: string,
-): RegistryEntry[] {
+function extractRegistryEntries(sf: ts.SourceFile, absPath: string, root: string): RegistryEntry[] {
   const entries: RegistryEntry[] = []
   const relPath = relative(root, absPath)
 
@@ -315,10 +311,7 @@ function extractImports(sf: ts.SourceFile, absPath: string): Set<string> {
   function visit(node: ts.Node): void {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       record(node.moduleSpecifier.text)
-    } else if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword
-    ) {
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const arg0 = node.arguments[0]
       const v = arg0 ? stringLiteralValue(arg0) : undefined
       if (v) record(v)
@@ -418,9 +411,7 @@ function detectDuplicateName(
     for (let i = 0; i < list.length; i++) {
       const self = list[i]
       if (!self) continue
-      const others = list
-        .filter((_, j) => j !== i)
-        .map((d) => d.loc)
+      const others = list.filter((_, j) => j !== i).map((d) => d.loc)
       findings.push({
         code: 'duplicate-name',
         message: `Two or more \`island()\` declarations share the name "${name}". The client-side hydration registry is keyed by name; only the FIRST loader fires — every other declaration fails silently with no error flag, and the user sees broken interactivity on the second component without any signal pointing at the cause. Rename one to make the names unique.`,

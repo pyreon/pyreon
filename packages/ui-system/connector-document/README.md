@@ -25,9 +25,9 @@ const vnode = (
 )
 
 const docTree = extractDocumentTree(vnode)
-const pdf = await render(docTree, 'pdf')      // Buffer
-const docx = await render(docTree, 'docx')    // Buffer
-const md = await render(docTree, 'markdown')  // string
+const pdf = await render(docTree, 'pdf') // Buffer
+const docx = await render(docTree, 'docx') // Buffer
+const md = await render(docTree, 'markdown') // string
 ```
 
 In practice, you'll usually call `extractDocNode` from `@pyreon/document-primitives` — a one-step alias that wraps a template function in an extraction-friendly shape — rather than `extractDocumentTree` directly. Use `extractDocumentTree` when you already have a vnode in hand (a captured render result, a test fixture).
@@ -40,8 +40,8 @@ Walk a JSX vnode and produce a `DocNode` tree.
 
 ```ts
 const tree = extractDocumentTree(vnode, {
-  rootSize: 16,         // base font size for rem→px (default 16)
-  includeStyles: true,  // resolve $rocketstyle into the DocNode.styles field (default true)
+  rootSize: 16, // base font size for rem→px (default 16)
+  includeStyles: true, // resolve $rocketstyle into the DocNode.styles field (default true)
 })
 ```
 
@@ -60,12 +60,15 @@ Convert a `$rocketstyle` theme object into a `ResolvedStyles` (typography, color
 ```ts
 import { resolveStyles } from '@pyreon/connector-document'
 
-const styles = resolveStyles({
-  fontSize: '1.5rem',
-  fontWeight: 'bold',
-  color: '#222',
-  padding: '12px 16px',
-}, 16)
+const styles = resolveStyles(
+  {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#222',
+    padding: '12px 16px',
+  },
+  16,
+)
 // → { fontSize: 24, fontWeight: 700, color: '#222', paddingTop: 12, paddingRight: 16, ... }
 ```
 
@@ -75,10 +78,10 @@ Low-level helpers that `resolveStyles` uses internally. Useful when you need to 
 
 ```ts
 import {
-  parseCssDimension,    // '1.5rem' → 24 (with rootSize=16)
-  parseBoxModel,        // '12px 16px' → { top: 12, right: 16, bottom: 12, left: 16 }
-  parseFontWeight,      // 'bold' → 700; 'normal' → 400; numeric strings → number
-  parseLineHeight,      // '1.5' → { ratio: 1.5 }; '24px' → { px: 24 }
+  parseCssDimension, // '1.5rem' → 24 (with rootSize=16)
+  parseBoxModel, // '12px 16px' → { top: 12, right: 16, bottom: 12, left: 16 }
+  parseFontWeight, // 'bold' → 700; 'normal' → 400; numeric strings → number
+  parseLineHeight, // '1.5' → { ratio: 1.5 }; '24px' → { px: 24 }
 } from '@pyreon/connector-document'
 ```
 

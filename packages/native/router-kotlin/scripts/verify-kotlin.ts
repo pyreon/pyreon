@@ -38,12 +38,9 @@ const SOURCES = [
   'src/main/kotlin/com/pyreon/router/RouterView.kt',
   'src/main/kotlin/com/pyreon/router/Link.kt',
   'src/main/kotlin/com/pyreon/router/Hooks.kt',
-].map(rel => resolve(PACKAGE_ROOT, rel))
+].map((rel) => resolve(PACKAGE_ROOT, rel))
 
-const TEST_FILE = resolve(
-  PACKAGE_ROOT,
-  'src/test/kotlin/com/pyreon/router/PyreonRouterTest.kt',
-)
+const TEST_FILE = resolve(PACKAGE_ROOT, 'src/test/kotlin/com/pyreon/router/PyreonRouterTest.kt')
 
 const typecheckOnly = process.argv.includes('--typecheck-only')
 
@@ -164,9 +161,7 @@ try {
   const result = spawnSync(kotlinc, kotlincArgs, { encoding: 'utf8' })
 
   const stderr = result.stderr ?? ''
-  const errorLines = stderr
-    .split('\n')
-    .filter((line) => /^.*\.kt:\d+:\d+:\s*error:/.test(line))
+  const errorLines = stderr.split('\n').filter((line) => /^.*\.kt:\d+:\d+:\s*error:/.test(line))
 
   if (errorLines.length > 0) {
     console.error('[verify-kotlin] FAILED — kotlinc reported errors:')
@@ -212,7 +207,13 @@ try {
       process.exit(1)
     }
     console.log(`[verify-kotlin] smoke output:`)
-    console.log((smokeResult.stdout ?? '').trim().split('\n').map(l => `  ${l}`).join('\n'))
+    console.log(
+      (smokeResult.stdout ?? '')
+        .trim()
+        .split('\n')
+        .map((l) => `  ${l}`)
+        .join('\n'),
+    )
   }
 } finally {
   try {

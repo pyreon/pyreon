@@ -2,11 +2,7 @@ import { createVitestConfig } from '@vitus-labs/tools-vitest'
 import { mergeConfig } from 'vite'
 import type { ViteUserConfig as VitestUserConfig } from 'vitest/config'
 import { nodeExcludeBrowserTests, sharedConfig } from './internals.ts'
-import {
-  type CoverageThresholds,
-  type PackageCategory,
-  resolveThresholds,
-} from './thresholds.ts'
+import { type CoverageThresholds, type PackageCategory, resolveThresholds } from './thresholds.ts'
 
 export interface DefineNodeConfigOptions {
   /**
@@ -88,9 +84,7 @@ export interface DefineNodeConfigOptions {
  * the resolved config for a reference package per category and asserts
  * it byte-matches the pre-migration manual merge.
  */
-export function defineNodeConfig(
-  opts: DefineNodeConfigOptions = {},
-): VitestUserConfig {
+export function defineNodeConfig(opts: DefineNodeConfigOptions = {}): VitestUserConfig {
   const thresholds = resolveThresholds(opts.category, opts.coverageThresholds)
   // Build createVitestConfig's options conditionally — root tsconfig's
   // `exactOptionalPropertyTypes: true` means we can't pass `undefined`
@@ -109,9 +103,7 @@ export function defineNodeConfig(
   if (opts.includeIndexInCoverage) {
     const coverage = base.test?.coverage as { exclude?: string[] } | undefined
     if (coverage?.exclude) {
-      coverage.exclude = coverage.exclude.filter(
-        (p) => p !== 'src/**/index.ts',
-      )
+      coverage.exclude = coverage.exclude.filter((p) => p !== 'src/**/index.ts')
     }
   }
 

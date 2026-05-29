@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — rx snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions. Detection is purely \`typeof source === "function"\` (see \`isSignal\` in \`rx/src/types.ts\`) — there is NO \`.subscribe\` / value inspection. Any function (the signal, an accessor wrapper \`() => items()\`, a bound method) is treated as reactive and called inside a computed. The actual mistake is the opposite of what you might expect: passing a RESOLVED value (\`items()\`, an already-read array) takes the static path and never updates. Pass the signal, not its resolved value."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions. Detection is purely \`typeof source === "function"\` (see \`isSignal\` in \`rx/src/types.ts\`) — there is NO \`.subscribe\` / value inspection. Any function (the signal, an accessor wrapper \`() => items()\`, a bound method) is treated as reactive and called inside a computed. The actual mistake is the opposite of what you might expect: passing a RESOLVED value (\`items()\`, an already-read array) takes the static path and never updates. Pass the signal, not its resolved value."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

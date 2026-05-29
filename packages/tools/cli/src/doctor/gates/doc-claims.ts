@@ -52,9 +52,7 @@ const countHookExports = (repoRoot: string): number => {
   const indexPath = join(repoRoot, 'packages/fundamentals/hooks/src/index.ts')
   if (!existsSync(indexPath)) return 0
   const source = readFileSync(indexPath, 'utf8')
-  const matched = source.matchAll(
-    /^export \{ (?:default as )?(use[A-Z][a-zA-Z]+) \}/gm,
-  )
+  const matched = source.matchAll(/^export \{ (?:default as )?(use[A-Z][a-zA-Z]+) \}/gm)
   const names = new Set<string>()
   for (const [, name] of matched) {
     if (name) names.add(name)
@@ -74,12 +72,7 @@ const countDocPages = (repoRoot: string): number => {
       return
     }
     for (const name of entries) {
-      if (
-        name === 'node_modules' ||
-        name === 'cache' ||
-        name === 'dist' ||
-        name.startsWith('.')
-      ) {
+      if (name === 'node_modules' || name === 'cache' || name === 'dist' || name.startsWith('.')) {
         continue
       }
       const full = join(dir, name)
@@ -113,9 +106,7 @@ const countLintRules = (repoRoot: string): number => {
   const m = src.match(/export const allRules: Rule\[\] = \[([\s\S]*?)\n\]/)
   if (!m?.[1]) return 0
   // One bare identifier per line; skip `// Category (n)` headers + blanks.
-  return m[1]
-    .split('\n')
-    .filter((l) => /^\s+[a-zA-Z][a-zA-Z0-9]*,?\s*$/.test(l)).length
+  return m[1].split('\n').filter((l) => /^\s+[a-zA-Z][a-zA-Z0-9]*,?\s*$/.test(l)).length
 }
 
 const countLintCategories = (repoRoot: string): number => {
@@ -133,9 +124,7 @@ const countLintCategories = (repoRoot: string): number => {
     if (!isDir) continue
     for (const f of readdirSync(sub)) {
       if (!f.endsWith('.ts')) continue
-      const m = readFileSync(join(sub, f), 'utf8').match(
-        /category:\s*'([a-z0-9-]+)'/,
-      )
+      const m = readFileSync(join(sub, f), 'utf8').match(/category:\s*'([a-z0-9-]+)'/)
       if (m?.[1]) cats.add(m[1])
     }
   }
@@ -146,9 +135,7 @@ const countDetectorCodes = (repoRoot: string): number => {
   const file = join(repoRoot, 'packages/core/compiler/src/pyreon-intercept.ts')
   if (!existsSync(file)) return 0
   const src = readFileSync(file, 'utf8')
-  const m = src.match(
-    /export type PyreonDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/,
-  )
+  const m = src.match(/export type PyreonDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/)
   if (!m?.[1]) return 0
   return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
 }
@@ -265,8 +252,7 @@ const checks: ClaimCheck[] = [
       },
       {
         file: 'CLAUDE.md',
-        pattern:
-          /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
+        pattern: /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
       },
     ],
   },
@@ -277,9 +263,7 @@ export interface DocClaimsGateOptions {
   cwd: string
 }
 
-export const runDocClaimsGate = async (
-  opts: DocClaimsGateOptions,
-): Promise<GateResult> => {
+export const runDocClaimsGate = async (opts: DocClaimsGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
 
@@ -301,8 +285,7 @@ export const runDocClaimsGate = async (
         scanned: 0,
         elapsedMs: Date.now() - start,
         skipped: true,
-        skipReason:
-          'no claim sites found in this project (gate targets Pyreon monorepo paths)',
+        skipReason: 'no claim sites found in this project (gate targets Pyreon monorepo paths)',
       },
     }
   }
@@ -345,9 +328,7 @@ export const runDocClaimsGate = async (
       if (claim.all) {
         const gre = new RegExp(
           claim.pattern.source,
-          claim.pattern.flags.includes('g')
-            ? claim.pattern.flags
-            : claim.pattern.flags + 'g',
+          claim.pattern.flags.includes('g') ? claim.pattern.flags : claim.pattern.flags + 'g',
         )
         const matches = [...content.matchAll(gre)]
         if (matches.length === 0) {

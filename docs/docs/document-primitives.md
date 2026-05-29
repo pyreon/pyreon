@@ -115,10 +115,10 @@ import { download } from '@pyreon/document'
 // Wrap a template fn to get a DocNode tree:
 const helper = createDocumentExport(() => <Invoice data={data} />)
 const tree = helper.getDocNode()
-await download(tree, 'invoice.pdf')   // PDF
-await download(tree, 'invoice.docx')  // DOCX
-await download(tree, 'invoice.html')  // HTML
-await download(tree, 'invoice.md')    // Markdown
+await download(tree, 'invoice.pdf') // PDF
+await download(tree, 'invoice.docx') // DOCX
+await download(tree, 'invoice.html') // HTML
+await download(tree, 'invoice.md') // Markdown
 ```
 
 ## Live Preview + Reactivity
@@ -141,7 +141,7 @@ function ResumeTemplate(props: { resume: () => Resume }) {
 }
 
 // Live preview — pass the accessor:
-<ResumeTemplate resume={store.resume} />
+;<ResumeTemplate resume={store.resume} />
 
 // Export — pass a snapshot:
 const helper = createDocumentExport(() => ResumeTemplate({ resume: () => store.resume() }))

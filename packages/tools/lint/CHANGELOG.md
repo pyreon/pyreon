@@ -74,31 +74,28 @@
 
   ```ts
   // Before (foundation PR):
-  import { startLpihPolling } from "@pyreon/reactivity/lpih";
-  startLpihPolling("/tmp/pyreon-lpih.json", 250);
+  import { startLpihPolling } from '@pyreon/reactivity/lpih'
+  startLpihPolling('/tmp/pyreon-lpih.json', 250)
   // + set PYREON_LPIH_CACHE=/tmp/pyreon-lpih.json on the LSP
 
   // Now (zero config):
-  import { startLpihPolling } from "@pyreon/reactivity/lpih";
-  startLpihPolling(); // writes to <cwd>/.pyreon-lpih.json
+  import { startLpihPolling } from '@pyreon/reactivity/lpih'
+  startLpihPolling() // writes to <cwd>/.pyreon-lpih.json
   // LSP auto-discovers; no env var needed
   ```
 
   **`@pyreon/reactivity/lpih`**:
-
   - `writeLpihCache(path?)` — `path` is now optional, defaults to `getDefaultLpihCachePath()` (which returns `<cwd>/.pyreon-lpih.json`)
   - `startLpihPolling(path?, intervalMs?)` — same default; throws synchronously if no default can be resolved AND no path given (better than silently never writing)
   - New export `getDefaultLpihCachePath(): string | null` — returns the resolved path or null in environments without `process.cwd()` (web workers, etc.)
   - New export `LPIH_DEFAULT_FILENAME = '.pyreon-lpih.json'` — canonical filename constant
 
   **`@pyreon/lint`** LSP:
-
   - `_resolveLpihCachePath(filePath)` — new helper that resolves the cache path for a given source file. Priority: `PYREON_LPIH_CACHE` env (explicit override) → `<project-root>/.pyreon-lpih.json` discovered by walking up to nearest `package.json` (zero-config default) → `undefined` (LPIH inactive)
   - `_findProjectRoot(filePath, maxDepth?)` — memoized walk-up helper. Caches results per-file for the LSP-process lifetime; cleared on `_resetOpenDocuments()`. Synchronous (one `existsSync` per level, typically <10 levels = negligible cost).
   - `_LPIH_DEFAULT_FILENAME` — exported constant locked to `.pyreon-lpih.json` (matches `@pyreon/reactivity/lpih`'s `LPIH_DEFAULT_FILENAME` — a drift gate test in `lsp-lpih.test.ts` validates the agreement).
 
   **Discovery priority** (matches across writer + reader):
-
   1. `PYREON_LPIH_CACHE` env var on the LSP (explicit override) — unchanged
   2. `<project-root>/.pyreon-lpih.json` (auto-discovered) — new default
   3. No cache → LPIH inactive (degrades to static Reactivity-Lens hints only) — unchanged
@@ -113,10 +110,10 @@
 
   ```tsx
   function App() {
-    const count = signal(0); // 🔥 signal fired 240×
-    const doubled = computed(() => count() * 2); // 🔥 derived fired 240×
-    effect(() => console.log(doubled())); // 🔥 effect fired 241×
-    return <div>{count()}</div>;
+    const count = signal(0) // 🔥 signal fired 240×
+    const doubled = computed(() => count() * 2) // 🔥 derived fired 240×
+    effect(() => console.log(doubled())) // 🔥 effect fired 241×
+    return <div>{count()}</div>
   }
   ```
 
@@ -179,7 +176,6 @@ MS))])` inside a try block where the enclosing `finally` block does NOT
   MS ms. Under sustained traffic, hundreds of pending timers pile up.
 
   **Caught real cases (would have surfaced at edit time)**:
-
   - [#734](https://github.com/pyreon/pyreon/issues/734) — `@pyreon/zero` `isr.ts revalidate()` — 30s setTimeout per
     successful revalidation, hundreds piled up under load.
   - [#735](https://github.com/pyreon/pyreon/issues/735) — `@pyreon/zero` `ssg-plugin.ts` per-path render + per-locale
@@ -200,21 +196,18 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   ### 2. `pyreon/init-fn-needs-idempotency` (lifecycle, warn)
 
   Flags an exported `init*` function that:
-
   1. Has at least one `onMount(...)` call in its body.
   2. Is ALSO called from another function in the SAME module.
   3. Lacks a module-level refcount / boolean guard variable
      (`let _x = 0` / `let _flag = false` / `let _disposeShared = null`).
 
   **Caught real case**:
-
   - [#734](https://github.com/pyreon/pyreon/issues/734) — `@pyreon/zero` `initTheme()` ThemeToggle pile-up. `initTheme`
     was exported from `theme.tsx` AND called from `ThemeToggle`'s render
     body, with no refcount guard. Every mounted ThemeToggle registered a
     fresh matchMedia listener + effect (N components → N listeners).
 
   **Conservative by construction (deliberate FN tolerance)**:
-
   - Same-module call requirement means cross-module reentrancy is out of
     scope (would need a full project scan, way beyond per-file lint).
     Legit one-shot inits (`initApp()` exported and called only from a
@@ -234,7 +227,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   Restored → 7/7 pass.
 
   ### Validation
-
   - `@pyreon/lint` 653/653 tests pass (+14 new — 7 per new rule)
   - Lint + typecheck clean
   - Manifest + CLAUDE.md + lint README + lint docs updated to 82 rules /
@@ -253,7 +245,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   fail at edit time instead of shipping.
 
   Other rule categories the audit surfaced but didn't bottom out:
-
   - "Wrapper-callable forwards .direct without \_v" — already covered
     by `pyreon/storage-signal-v-forwarding` (existing rule).
   - "Module-level mutable cross-request bleed" (the csp.ts pattern) —
@@ -291,7 +282,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   PR [#731](https://github.com/pyreon/pyreon/issues/731) fixed the kinetic-mode renderers under `packages/ui-system/kinetic/src/kinetic/`.
   It missed the parallel TOP-LEVEL components in the same package + a
   subtle Iterator shape.
-
   - **`@pyreon/kinetic` top-level `Stagger.tsx`** — `(Array.isArray(own.children) ? own.children : [own.children]).filter(isVNode)` collapsed to `[]` when `own.children` is a function. Fixed by calling `resolveChildren(own.children)` at body entry (same helper PR [#731](https://github.com/pyreon/pyreon/issues/731) shipped in `kinetic/src/utils.ts`).
   - **`@pyreon/kinetic` top-level `Transition.tsx`** — 3 × `cloneVNode(props.children, …)` + 1 × `(props.children.props ?? {})` reads. The cloneVNode-on-function shape produces `<undefined>` tags; the `.props` read returns undefined and silently drops the merge-ref. Fixed by resolving once at body entry (`const child = resolveChildren(props.children)`).
   - **`@pyreon/elements` `Iterator`** — falls through to `renderChild(function)` which calls `render(function, props)` and interprets the function as a component. Doesn't crash but loses per-item metadata (`first`/`last`/`position`/`index`/`odd`/`even`). Fixed by unwrapping at body entry with the inline `typeof rawChildren === 'function' ? rawChildren() : rawChildren` ternary.
@@ -299,20 +289,17 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   ## Lint rule — `pyreon/no-iterate-children-without-resolve`
 
   New error-level rule under the `reactivity` category. Detects:
-
   1. **`cloneVNode(EXPR, …)`** where EXPR ends with `.children`.
   2. **`(Array.isArray(EXPR) ? EXPR : [EXPR]).METHOD(…)`** where METHOD is one of `filter` / `map` / `forEach` / `reduce` / `every` / `some` / `find` / `findIndex` / `flatMap`.
   3. **`EXPR.props`** reads where EXPR ends with `.children` (the merge-ref pattern from `Transition.tsx`).
 
   **Acceptable mitigations** (per-function scope, inherits through nested arrow functions):
-
   - `resolveChildren(…)` call.
   - `typeof EXPR === 'function' ? EXPR() : EXPR` ternary.
   - `typeof EXPR === 'function'` guard anywhere.
   - `const NAME = <mitigation expression>` — marks NAME as safe-aliased.
 
   **Out of scope** (deliberate precision trade-offs):
-
   - Pass-through `...(Array.isArray(EXPR) ? EXPR : [EXPR])` SpreadElement → mountChild handles function children. Naturally not flagged by the call-site detection.
   - `if (Array.isArray(X)) return X.map(…)` IfStatement-guarded iteration. Framework primitives (`Dynamic`, `Show`, `Switch`) use this with direct h() rest args that never reach the auto-wrap; out of scope.
   - Variable-bound iteration patterns (`const xs = COND; xs.METHOD(…)`). Out of scope — detection at the inline `.METHOD(…)` call site.
@@ -320,7 +307,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   **Bisect-verified at two layers**: 19 unit specs (10 FIRES + 9 CONTROL + real-world shapes), reverting the rule fails all 10 FIRES; full repo sweep against `packages/**` after library fixes → 0 hits (zero false positives, zero remaining real bugs).
 
   ## Surfaces updated
-
   - `packages/ui-system/kinetic/src/Stagger.tsx` — top-level Stagger fix
   - `packages/ui-system/kinetic/src/Transition.tsx` — top-level Transition fix
   - `packages/ui-system/elements/src/helpers/Iterator/component.tsx` — Iterator fix
@@ -334,7 +320,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   - `.claude/rules/anti-patterns.md` — new bug-class entry under Architecture Mistakes
 
   ## Validation
-
   - All 3 library packages pass tests (kinetic 220, elements 463 → +new regression specs)
   - All 650 lint tests pass (19 new specs)
   - `check-doc-claims` clean (count claims locked)
@@ -352,7 +337,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
 
   **Code:**
-
   - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
     interpolated `fullPath` raw into emitted JS. Path is developer-
     controlled (project's own filesystem scan), but a quote / backslash
@@ -376,7 +360,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
     depth refuse the dangerous identifiers.
 
   **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
-
   - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
     `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
     caps. Pre-filter is a SCAN before the precise AST walker; losing
@@ -397,7 +380,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
     formatting matchable.
 
   **Workflows (`.github/workflows/`):**
-
   - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
     `permissions: contents: read` block. Both workflows are read-only
     (perf records artifacts; audit reports findings).
@@ -413,7 +395,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   ### Dismissed via API (20 false positives / won't fix)
 
   **True false positives (9):**
-
   - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
     "MAX_PASSES" as if it contained "password". Log is about
     effect-flush pass count.
@@ -434,7 +415,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
     arbitrary paths.
 
   **Won't fix (internal dev tooling, not security boundaries):**
-
   - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
     (`pyreon context`, `create-zero`), build-time Vite plugin
     (`icons-plugin`), internal scripts (`check-bundle-budgets`,
@@ -455,7 +435,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
     the actual supply-chain guarantee.
 
   ### Remaining (cannot be closed by a code PR)
-
   - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
     squash-merge with self-review by maintainer doesn't count.
     Project-policy issue, not code.
@@ -467,7 +446,6 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
     infra work, out of scope.
 
   ### Validation
-
   - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
   - `@pyreon/compiler` 1257/1257 tests pass
   - `@pyreon/vite-plugin` 104/104 tests pass
@@ -498,11 +476,11 @@ xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
 
   ```js
   const Stagger = (props) => {
-    const [own] = splitProps(props, ["children"]);
-    const xs = Array.isArray(own.children) ? own.children : [own.children];
-    const filtered = xs.filter(isVNode); // ← FIRES (was silent pre-fix)
-    return h("div", null, ...filtered);
-  };
+    const [own] = splitProps(props, ['children'])
+    const xs = Array.isArray(own.children) ? own.children : [own.children]
+    const filtered = xs.filter(isVNode) // ← FIRES (was silent pre-fix)
+    return h('div', null, ...filtered)
+  }
   ```
 
   Detection: a new per-scope `boundIterationTargets: Map<NAME, sourceKey>`
@@ -517,9 +495,9 @@ xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
 
   ```js
   // Does NOT fire — mitigation tracked per-source-path, applies to bound forms too.
-  const resolved = resolveChildren(own.children);
-  const xs = Array.isArray(resolved) ? resolved : [resolved];
-  xs.filter(isVNode);
+  const resolved = resolveChildren(own.children)
+  const xs = Array.isArray(resolved) ? resolved : [resolved]
+  xs.filter(isVNode)
   ```
 
   ## Gap 3 — per-source-path mitigation precision
@@ -530,10 +508,10 @@ xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
 
   ```js
   const Outer = (props) => {
-    const child = resolveChildren(props.children); // mitigates `props.children`
-    const Inner = (innerProps) => cloneVNode(innerProps.children, { ref }); // ← FIRES — different source path
-    return Inner({});
-  };
+    const child = resolveChildren(props.children) // mitigates `props.children`
+    const Inner = (innerProps) => cloneVNode(innerProps.children, { ref }) // ← FIRES — different source path
+    return Inner({})
+  }
   ```
 
   `Outer`'s mitigation marks `unwrappedSources = {'props.children'}` +
@@ -546,7 +524,6 @@ xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
   mitigation exists in scope) — that spec fails; restored → 23/23 pass.
 
   ## Coverage
-
   - 4 new unit specs (now 23 total, up from 19): 2 FIRES for Gap 2 + 1
     CONTROL for Gap 2 mitigation + 1 FIRES for Gap 3 cross-component
     precision.
@@ -562,7 +539,6 @@ x.map(…); … return renderChild(x)`) remains intentionally out of
     every primitive's hot path.
 
   ## Surfaces updated
-
   - `packages/tools/lint/src/rules/reactivity/no-iterate-children-without-resolve.ts`
     — `ScopeFrame.boundIterationTargets` + `findBoundIteration` helper +
     `VariableDeclarator` extension + `CallExpression` `Identifier` branch
@@ -602,12 +578,10 @@ x.map(…); … return renderChild(x)`) remains intentionally out of
   Fix: LRU bound (default 256 entries). `Map` preserves insertion order, so the first key is the least-recently-used. `get` / `set` on an existing key refresh recency by re-inserting at the tail. Apps that lint thousands of distinct files in tight succession can bump the cap via `new AstCache(2048)`.
 
   ### Regression tests + bisect
-
   - `packages/tools/vue-compat/src/tests/provide-stack-leak-repro.test.ts` (2 specs) — `createApp().provide().mount(el); unmount()` returns the global context stack to baseline; 100 mount/unmount cycles do NOT accumulate frames. **Bisect-verified**: revert `vue-compat/src/index.ts` → both specs fail with stack-length assertions; restored → pass.
   - `packages/tools/lint/src/tests/ast-cache-lru.test.ts` (5 specs) — cache never exceeds `maxEntries`, evicts LRU on overflow, `get`/`set` refresh recency, re-setting an existing key doesn't double-count, default cap is 256. **Bisect-verified**: revert `lint/src/cache.ts` → all 5 fail; restored → pass.
 
   ### Validation
-
   - `@pyreon/core` 510/510 tests pass
   - `@pyreon/vue-compat` 218/218 tests pass (+ 2 new regression specs)
   - `@pyreon/lint` 639/639 tests pass (+ 5 new LRU specs)
@@ -617,7 +591,6 @@ x.map(…); … return renderChild(x)`) remains intentionally out of
   ### Audit byproducts (NOT in this PR — deliberately scoped follow-ups)
 
   The 12-package audit also surfaced 4 MEDIUM-risk patterns documented in the audit report. Each filed-worthy as a separate small follow-up:
-
   1. **`@pyreon/solid-compat` `createStore` per-path signal map grows unbounded** — one signal per UNIQUE read-path string. Problematic for stores with dynamic key spaces (dictionaries, pagination, logs).
   2. **`@pyreon/solid-compat` `createResource` has the Class-F stale-resolution race** — `fetchPromise` overwritten on refetch with no AbortSignal; old promise's success handler still runs `setData`. Same shape as [#730](https://github.com/pyreon/pyreon/issues/730)-charts/storage inflight-promise bug.
   3. **`@pyreon/svelte-compat` ChildInstance preservation discards `unmountCallbacks` without firing them** — the cached `writable.subscribe` short-circuit doesn't re-register the unsub after the reset. Subtle; needs a targeted reproducer.
@@ -674,14 +647,12 @@ x.map(…); … return renderChild(x)`) remains intentionally out of
   change is needed.
 
   **New rules (74 rules / 16 categories total, up from 67/13):**
-
   - `frontend` (4): `pyreon/require-img-alt` (a11y — error), `pyreon/img-requires-dimensions` (CLS/layout-shift — warn), `pyreon/no-positive-tabindex` (a11y, **auto-fixable** → `0`), `pyreon/prefer-zero-image` (asset optimization — info, gated on `@pyreon/zero`).
   - `query` (1): `pyreon/query-options-as-function` — `useQuery`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` with an options **object literal** breaks signal-tracked refetch; wrap in `() => ({ ... })` (error; `useMutation` excluded).
   - `rx` (1): `pyreon/rx-prefer-pipe` — nested rx transforms → compose with `pipe(...)` for one computed (info).
   - `form` (1, extends the existing category): `pyreon/no-signal-in-form-initial-values` — a signal read in `useForm({ initialValues })` snapshots once; pass the plain value / use a reactive field (warn).
 
   **Configurability (all three levels):**
-
   1. **Opt-in by default** — every new rule sets `meta.optIn: true`: forced
      OFF in `recommended` / `strict` / `app` / `lib` (never a surprise
      score/CI penalty). The new `best-practices` preset enables them
@@ -711,7 +682,6 @@ x.map(…); … return renderChild(x)`) remains intentionally out of
 - [#634](https://github.com/pyreon/pyreon/pull/634) [`82d78b4`](https://github.com/pyreon/pyreon/commit/82d78b4889344bad26175d4adf07c682d639dfa3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): autofix `query-options-as-function` + extend best-practice rules to i18n & router (76 rules / 17 cat)
 
   Follow-up to [#632](https://github.com/pyreon/pyreon/issues/632) (extend more libraries + autofix the mechanically-safe ones).
-
   - **`pyreon/query-options-as-function` is now auto-fixable** (`--fix`): the
     options object literal is wrapped in `() => (...)` (pure syntactic
     thunk; the intended reactivity fix, no other behavior change).
@@ -747,7 +717,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
   severity. Backward-compatible (opt-in default = no behavior change).
 
   **Frontend a11y (category `frontend`, all `optIn`):**
-
   - `pyreon/no-autofocus` (warn, **fixable**) — the `autoFocus`/`autofocus`
     attribute moves focus on mount, disorienting screen-reader/keyboard
     users. Skips `autoFocus={false}`. Fix removes the attribute.
@@ -760,7 +729,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
     ambiguous); `href={dynamic}` skipped.
 
   **Library best-practice (new category `storage`, `optIn` + dep-gated):**
-
   - `pyreon/no-storage-write-as-call` (error, **fixable**) — gated on a
     declared `@pyreon/storage` dependency. `useStorage` /
     `useSessionStorage` / `useCookie` / `useIndexedDB` / `useMemoryStorage`
@@ -810,7 +778,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
 - [#611](https://github.com/pyreon/pyreon/pull/611) [`070a0ec`](https://github.com/pyreon/pyreon/commit/070a0ec687ad598cf15963e5615bb1d8c81933a3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Reactivity Lens (experimental)** — surface the compiler's already-computed reactivity analysis back to the author at the source.
 
   Pyreon's [#1](https://github.com/pyreon/pyreon/issues/1) silent footgun: whether code is reactive is invisible at the moment you write it. The compiler ALREADY decides this per-expression for codegen and discards the analysis. The Lens pipes it back.
-
   - `@pyreon/compiler`: additive opt-in `TransformOptions.reactivityLens` → `TransformResult.reactivityLens: ReactivitySpan[]` (emitted code byte-identical with it on/off; all existing compiler tests pass unchanged). New exports `analyzeReactivity()` / `formatReactivityLens()` + `ReactivityKind` / `ReactivitySpan` / `ReactivityFinding` types. `analyzeReactivity` merges the structural compiler facts with the existing `detectPyreonPatterns` footgun detectors under one taxonomy.
   - `@pyreon/lint`: the existing `--lsp` server gains an `inlayHintProvider` + `textDocument/inlayHint` handler rendering `live` / `static` / `live·prop` / `hoisted` ghost-text at each reactive/baked-once expression; footguns publish as `pyreon-lens` warning diagnostics. Adds a `@pyreon/compiler` dependency.
 
@@ -823,7 +790,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
   Extends the `doc-claims` gate (consumed by `pyreon doctor` AND
   `scripts/check-doc-claims.ts`) from 2 to 5 source-of-truth counters,
   7 → 19 claim sites:
-
   - **lint rule count** — the `allRules` array in
     `packages/tools/lint/src/rules/index.ts`. Claim sites: CLAUDE.md (×3),
     the package README, `docs/docs/lint.md`, `lint/src/manifest.ts` (6×).
@@ -874,7 +840,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -888,7 +853,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -936,7 +900,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
 - [#247](https://github.com/pyreon/pyreon/pull/247) [`d199b67`](https://github.com/pyreon/pyreon/commit/d199b67edb4f2efa87721caa9708915278337513) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Code editor anti-pattern cleanup + lint rule precision
 
   `@pyreon/code`:
-
   - `editor.ts` `CustomGutterMarker.toDOM()`: added `typeof document === 'undefined'`
     early-return — the method is only invoked by CodeMirror at render time
     in a mounted browser, but the explicit guard documents the SSR-safety
@@ -952,7 +915,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
     way to read a signal without subscribing.
 
   `@pyreon/lint`:
-
   - `no-window-in-ssr`: import-name shadowing — `import { history } from
 '@codemirror/commands'` makes every later `history` identifier in the
     file refer to the import, not `window.history`. Same for default
@@ -968,7 +930,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
 - [#239](https://github.com/pyreon/pyreon/pull/239) [`ee1bc2b`](https://github.com/pyreon/pyreon/commit/ee1bc2b0dd3ce853eee4a72bcc8629ed0aa1cea5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Elements anti-pattern cleanup + lint rule precision
 
   `@pyreon/elements`:
-
   - `utils.ts`: replaced `process.env.NODE_ENV !== 'production'` (dead code in
     real Vite browser bundles — `process` is not polyfilled) with the
     tree-shake-friendly `import.meta.env?.DEV` gate. Typed through a narrowing
@@ -995,20 +956,17 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
     `@pyreon/reactivity`, `@pyreon/runtime-dom` added to elements.
 
   `@pyreon/lint` — `no-window-in-ssr`:
-
   - Logical-and guards with a typeof-derived const on either side now recognised
     (e.g. `IS_BROWSER && active() ? <Portal target={document.body} /> : null`).
     Short-circuit semantics mean the body only runs when the guard is truthy.
 
   `@pyreon/lint` — `no-bare-signal-in-jsx`:
-
   - Added `render` to the skip allowlist. `render()` from `@pyreon/ui-core` is
     a VNode-producing helper (takes ComponentFn/string/VNode, returns
     VNodeChild), not a signal read — its JSX call sites always produce a
     VNode and don't need `() =>` wrapping.
 
   `@pyreon/lint` — `dev-guard-warnings`:
-
   - Added conventional dev-flag name set (`__DEV__`, `IS_DEV`, `IS_DEVELOPMENT`,
     `isDev`) so imported dev gates (e.g. `import { IS_DEVELOPMENT } from '../utils'`)
     silence `console.warn` warnings inside their guarded branches. Same convention
@@ -1023,7 +981,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
 - [#234](https://github.com/pyreon/pyreon/pull/234) [`a8ab19d`](https://github.com/pyreon/pyreon/commit/a8ab19d2db8b764f3643f2fa50f721727b8ba0d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hooks anti-pattern cleanup + lint rule precision improvements
 
   `@pyreon/hooks`:
-
   - `useClipboard`: batch `text.set()` + `copied.set()` in the success branch so
     subscribers reading both see one update, not two. Added
     `typeof navigator === 'undefined'` early-return in `copy()` for SSR safety.
@@ -1039,7 +996,6 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
 
   `@pyreon/lint` — `no-window-in-ssr` rule precision (fewer false positives,
   fewer silent false negatives):
-
   - Track `typeof X` expressions via `UnaryExpression` enter/exit depth instead
     of the inert `parent.operator === 'typeof'` check (oxc's visitor does NOT
     pass `parent`).
@@ -1063,7 +1019,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     `ConditionalExpression` enter/exit.
 
   `@pyreon/lint` — other rules fixed for the same oxc-no-parent root cause:
-
   - `no-props-destructure`: pre-mark `CallExpression` arguments via WeakSet so
     HOC factory args (`createLink(({ href }) => <a />)`) are correctly skipped
     — previously the `parent?.type === 'CallExpression'` check was inert.
@@ -1072,7 +1027,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     sequential `.set()` calls to observe intermediate debounce/throttle state).
 
   `@pyreon/lint` — type hygiene:
-
   - `VisitorCallback` signature narrowed to `(node: any) => void`. The earlier
     `parent?: any` second parameter was a false promise — oxc's walker never
     passes `parent`, and rules silently depended on an `undefined` value.
@@ -1080,7 +1034,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
 - [#244](https://github.com/pyreon/pyreon/pull/244) [`c69e178`](https://github.com/pyreon/pyreon/commit/c69e178c2f0155c073a680f357ff71c8f9eec6a8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Kinetic anti-pattern cleanup + lint rule precision
 
   `@pyreon/kinetic`:
-
   - `nextFrame` (utils.ts): added `typeof requestAnimationFrame === 'undefined'`
     early-return. SSR callers receive `0` instead of crashing — the rule
     recognises the guard and the safety contract becomes explicit.
@@ -1100,13 +1053,11 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     `@pyreon/reactivity`, `@pyreon/runtime-dom` added.
 
   `@pyreon/lint` — `no-bare-signal-in-jsx`:
-
   - Skip allowlist extended to `h` and `cloneVNode` (VNode-producing helpers
     from `@pyreon/core`). Their JSX call sites always produce a VNode, not
     a signal value. Matches `render` (already in the list) from ui-core.
 
   `@pyreon/lint` — `no-window-in-ssr`:
-
   - Safe-context call set extended with `watch` (signal-driven watcher from
     `@pyreon/reactivity`) and `requestAnimationFrame`. Both run their
     callbacks post-mount in a browser, so browser-global reads inside them
@@ -1115,7 +1066,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
   4 new bisect-verified regression tests for the rule precision changes.
 
 - [#232](https://github.com/pyreon/pyreon/pull/232) [`9b0c758`](https://github.com/pyreon/pyreon/commit/9b0c75861b2137cd96d472288e11fa47edab7838) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Per-rule options API — ESLint-style tuple form for rule config
-
   - Rule entries now accept `Severity` OR `[Severity, RuleOptions]` — e.g.
     `"pyreon/no-window-in-ssr": ["error", { "exemptPaths": ["src/foundation/"] }]`.
     Bare-severity form continues to work.
@@ -1143,7 +1093,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
 - [#242](https://github.com/pyreon/pyreon/pull/242) [`95e7e00`](https://github.com/pyreon/pyreon/commit/95e7e00bd3e3b3926bd8348cf91f88494605ccc6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Router anti-pattern cleanup + lint rule precision
 
   `@pyreon/router`:
-
   - `ScrollManager.save()` / `_applyResult()`: added `typeof window === 'undefined'`
     early-return guards so the SSR-safety contract is explicit at the method
     entry instead of relying on callers to pre-check.
@@ -1157,7 +1106,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     `no-error-without-prefix` rule + the rest of the framework).
 
   `@pyreon/lint` — `no-window-in-ssr`:
-
   - Parameter-shadowing: identifiers like `location`/`history`/`navigator`
     that are FUNCTION PARAMETERS (or destructured parameter patterns) no
     longer false-positive as browser-global references. E.g. `router.push`
@@ -1169,7 +1117,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     recognised as guarded.
 
   `@pyreon/lint` — `no-imperative-navigate-in-render`:
-
   - Full rewrite of the safe-context detection. Previously only recognised
     `onMount`/`effect`/`onUnmount` call callbacks as safe — this false-fired
     on `router.push()` inside any locally-declared event handler
@@ -1180,7 +1127,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     which is the actual bug the rule is designed to catch.
 
   `@pyreon/lint` — `no-dom-in-setup`:
-
   - Extended safe-context set: now includes `onUnmount`, `onCleanup`,
     `renderEffect`, and `requestAnimationFrame`. `document.querySelector`
     inside a `requestAnimationFrame` callback is guaranteed to run in a
@@ -1193,26 +1139,22 @@ return …` makes the rest of the function body implicitly typeof-guarded.
   typeof-guard-function recognition
 
   `@pyreon/storage` (10 errors → 0):
-
   - `indexed-db.ts`: added `typeof indexedDB === 'undefined'` early-return at
     `openDB` entry. SSR callers receive a rejected promise with a clear
     `[Pyreon] indexedDB is not available` error instead of crashing.
 
   `@pyreon/query` (5 errors → 0):
-
   - `use-subscription.ts`: added `typeof WebSocket === 'undefined'`
     early-return guards at the entry of `connect()`, `send()`, and `close()`.
   - `query-client.ts`: error prefix `[@pyreon/query]` → `[Pyreon]`.
 
   `@pyreon/server` / `@pyreon/core-server` (5 errors → 0):
-
   - `client.ts`: `typeof document === 'undefined' → throw` early-return on
     `startClient` entry. `hydrateIslands` and `scheduleHydration` /
     `observeVisibility` typeof guards.
   - `client.ts` / `html.ts`: error prefixes normalised to `[Pyreon]`.
 
   `@pyreon/lint` — `no-window-in-ssr` typeof-guard functions:
-
   - A function whose body is `return <typeof check>` (or AND-chain of typeof
     checks) now counts as a typeof guard at its call sites — e.g.
     `function isBrowser() { return typeof window !== 'undefined' }` makes
@@ -1232,7 +1174,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
 - [#251](https://github.com/pyreon/pyreon/pull/251) [`290ea64`](https://github.com/pyreon/pyreon/commit/290ea64ee90b5e749008d2b437084fc001ad24f1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Zero meta-framework anti-pattern cleanup + lint rule precision
 
   `@pyreon/zero`:
-
   - `link.tsx` `doPrefetch`: added `typeof document === 'undefined'` early-return.
     Prefetch only fires from browser-mounted Link interactions but the explicit
     guard documents the SSR-safety contract.
@@ -1248,7 +1189,6 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     errors.
 
   `@pyreon/lint`:
-
   - `no-window-in-ssr` and `no-dom-in-setup`: early-return-guard heuristic
     now recognises `throw` as a function-terminating statement (in addition
     to `return`). Common in entry-point functions like `startClient` that

@@ -80,10 +80,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
 function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[] | null {
   // Walk through `ExportNamedDeclaration` → `VariableDeclaration`.
   let varDecl: AnyNode | null = null
-  if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
+  if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
     varDecl = node.declaration
   } else if (node.type === 'VariableDeclaration') {
     varDecl = node
@@ -106,11 +103,7 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     // module scope (which would be a runtime bug in Pyreon anyway).
     if (init.type === 'CallExpression') {
       const calleeName = init.callee?.name as string | undefined
-      if (
-        calleeName === 'signal' ||
-        calleeName === 'computed' ||
-        calleeName === 'useStorage'
-      ) {
+      if (calleeName === 'signal' || calleeName === 'computed' || calleeName === 'useStorage') {
         ctx.warnings.push(
           `Module-level binding ${name} initializes via ${calleeName}() — these belong inside a component. Skipped.`,
         )
@@ -324,9 +317,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'signal') {
     const type = parseGenericTypeArg(init, ctx)
     const initialArg = init.arguments?.[0]
-    const initial: ExprIR = initialArg
-      ? parseExpr(initialArg, ctx)
-      : { kind: 'literal', value: 0 }
+    const initial: ExprIR = initialArg ? parseExpr(initialArg, ctx) : { kind: 'literal', value: 0 }
     return { kind: 'signal', name, type, initial }
   }
   // G5 — `useStorage<T>('key', default)` from `@pyreon/storage` is a
@@ -357,9 +348,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       return null
     }
     const storageKey = keyArg.value
-    const initial: ExprIR = initialArg
-      ? parseExpr(initialArg, ctx)
-      : { kind: 'literal', value: 0 }
+    const initial: ExprIR = initialArg ? parseExpr(initialArg, ctx) : { kind: 'literal', value: 0 }
     return { kind: 'signal', name, type, initial, storageKey }
   }
   if (calleeName === 'computed') {
@@ -412,9 +401,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // routes arg → undefined `routes` → emit falls back to C4 bare-instance.
   if (calleeName === 'createRouter') {
     const routes = tryExtractRoutes(init.arguments?.[0], ctx)
-    return routes !== null
-      ? { kind: 'router', name, routes }
-      : { kind: 'router', name }
+    return routes !== null ? { kind: 'router', name, routes } : { kind: 'router', name }
   }
   if (calleeName === 'useNavigate') {
     return { kind: 'router-hook', name, hook: 'navigate' }
@@ -472,10 +459,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return null
   const routesProp = props.find(
-    (p) =>
-      p?.type === 'Property' &&
-      p?.key?.type === 'Identifier' &&
-      p?.key?.name === 'routes',
+    (p) => p?.type === 'Property' && p?.key?.type === 'Identifier' && p?.key?.name === 'routes',
   )
   if (!routesProp) return null
   const arr = routesProp.value
@@ -494,10 +478,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
       const key = p.key?.name as string | undefined
       if (key === 'path') {
         const v = p.value
-        if (
-          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
-          typeof v.value === 'string'
-        ) {
+        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
           path = v.value
         }
       } else if (key === 'component') {
@@ -507,10 +488,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
         // redirects / `throw redirect()` are a later arc; they leave
         // `redirect` undefined here so the route still needs a component.
         const v = p.value
-        if (
-          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
-          typeof v.value === 'string'
-        ) {
+        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
           redirect = v.value
         }
       } else if (key === 'beforeEnter') {
@@ -546,11 +524,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
  *   - BlockStatement: multi-statement → StatementIR[] verbatim
  *   - Expression body: wraps in `[{ kind: 'return', expr }]`
  */
-function tryFunctionDecl(
-  name: string,
-  arrow: AnyNode,
-  ctx: ParseCtx,
-): DeclIR | null {
+function tryFunctionDecl(name: string, arrow: AnyNode, ctx: ParseCtx): DeclIR | null {
   // Parse parameters with optional type annotations. TS params shape:
   // `(id: T, id2: T2)` where each param is an Identifier with
   // `typeAnnotation.typeAnnotation`.
@@ -724,9 +698,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // emitter drops names at emit time.
       const params = ((node.params as AnyNode[]) ?? []).map((p) => {
         const annotation = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
-        const type: TypeIR = annotation
-          ? parseTypeAnnotation(annotation, ctx)
-          : { kind: 'unknown' }
+        const type: TypeIR = annotation ? parseTypeAnnotation(annotation, ctx) : { kind: 'unknown' }
         // Omit `name` when absent — `exactOptionalPropertyTypes` disallows
         // `name: undefined` for an optional property.
         const paramName: string | undefined =
@@ -907,7 +879,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         return { kind: 'arrow', params, body: { kind: 'literal', value: '' } }
       }
       const inner =
-        expressionStmt.type === 'ReturnStatement' ? expressionStmt.argument : expressionStmt.expression
+        expressionStmt.type === 'ReturnStatement'
+          ? expressionStmt.argument
+          : expressionStmt.expression
       return { kind: 'arrow', params, body: parseExpr(inner, ctx) }
     }
     case 'ArrayExpression': {
@@ -930,9 +904,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           spreads.push(parseExpr(p.argument, ctx))
         }
       }
-      return spreads.length > 0
-        ? { kind: 'object', fields, spreads }
-        : { kind: 'object', fields }
+      return spreads.length > 0 ? { kind: 'object', fields, spreads } : { kind: 'object', fields }
     }
     case 'ParenthesizedExpression': {
       // Parens around JSX in source (`return (<X>...)`) are syntactic

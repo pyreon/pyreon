@@ -53,9 +53,7 @@ describe('_rsCollapse (real browser)', () => {
   it('mode flip swaps to the dark class on the SAME node (no remount)', async () => {
     injectCss('.rsc-l2{color:rgb(10,20,30)}.rsc-d2{color:rgb(40,50,60)}')
     const isDark = signal(false)
-    const root = mountInto(
-      _rsCollapse('<button>X</button>', 'rsc-l2', 'rsc-d2', () => isDark()),
-    )
+    const root = mountInto(_rsCollapse('<button>X</button>', 'rsc-l2', 'rsc-d2', () => isDark()))
     await flush()
     const before = query(root, 'button')
     expect(before.className).toBe('rsc-l2')
@@ -69,7 +67,7 @@ describe('_rsCollapse (real browser)', () => {
 
     isDark.set(false)
     await flush()
-    expect((query(root, 'button')).className).toBe('rsc-l2')
+    expect(query(root, 'button').className).toBe('rsc-l2')
   })
 
   it('children bind runs alongside the class bind and disposes cleanly', async () => {
@@ -103,8 +101,8 @@ describe('_rsCollapse (real browser)', () => {
       ),
     )
     await flush()
-    expect((query(root, 'span')).textContent).toBe('one')
-    expect((query(root, 'button')).className).toBe('rsc-c')
+    expect(query(root, 'span').textContent).toBe('one')
+    expect(query(root, 'button').className).toBe('rsc-c')
     // dispose via afterEach → child cleanup must fire
     for (const u of cleanup.splice(0)) u()
     expect(childDisposed).toBe(true)
@@ -174,7 +172,7 @@ describe('_rsCollapse (real browser)', () => {
     expect(query(root, 'span.w > b').textContent).toBe('Hi')
     // text siblings + order preserved (text before <kbd>, text after).
     expect(btn.textContent).toContain('Press')
-    const kbdIdx = (btn.innerHTML).indexOf('<kbd')
+    const kbdIdx = btn.innerHTML.indexOf('<kbd')
     expect(btn.innerHTML.slice(0, kbdIdx)).toContain('Press')
     expect(btn.innerHTML.indexOf('now')).toBeGreaterThan(kbdIdx)
     // mode flip preserves the whole subtree on the same root node.
@@ -198,8 +196,8 @@ describe('_rsCollapse (real browser)', () => {
     expect(b2.className).toBe('rsc-s')
     isDark.set(true)
     await flush()
-    expect((query(r1, 'button')).className).toBe('rsc-sd')
-    expect((query(r2, 'button')).className).toBe('rsc-sd')
+    expect(query(r1, 'button').className).toBe('rsc-sd')
+    expect(query(r2, 'button').className).toBe('rsc-sd')
   })
 
   it('element-child: SSR markup → hydrateRoot(_rsCollapse) swaps in the baked subtree, no mismatch, reactive after hydrate', async () => {

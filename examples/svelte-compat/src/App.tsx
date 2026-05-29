@@ -21,8 +21,8 @@ export default function App() {
       <header>
         <h1>Pyreon — Svelte Compat</h1>
         <p class="subtitle">
-          Svelte's importable runtime API (svelte/store + lifecycle + context) running on
-          Pyreon's reactive engine. Swap the import path — same signatures, same patterns.
+          Svelte's importable runtime API (svelte/store + lifecycle + context) running on Pyreon's
+          reactive engine. Swap the import path — same signatures, same patterns.
         </p>
         <p class="api-count">
           <strong>18 APIs</strong> demonstrated across <strong>16 interactive examples</strong>
@@ -74,8 +74,7 @@ export default function App() {
 
       <footer>
         <p>
-          Built with <strong>@pyreon/svelte-compat</strong> — 0 lines of Svelte, 100% Pyreon
-          engine
+          Built with <strong>@pyreon/svelte-compat</strong> — 0 lines of Svelte, 100% Pyreon engine
         </p>
       </footer>
     </div>

@@ -15,7 +15,7 @@ bun add @pyreon/elements @pyreon/core @pyreon/reactivity @pyreon/ui-core @pyreon
 ```tsx
 import { Element, Text, List, Overlay, Portal, Provider } from '@pyreon/elements'
 
-<Provider>
+;<Provider>
   <Element
     tag="button"
     direction="inline"
@@ -39,12 +39,12 @@ Most-used primitive. Renders an outer container with optional `beforeContent` / 
 ```tsx
 <Element
   tag="button"
-  direction="inline"        // 'inline' | 'rows' | 'reverseInline' | 'reverseRows'
-  alignX="center"            // 'left' | 'center' | 'right' | 'spaceBetween' | ...
-  alignY="center"            // 'top' | 'center' | 'bottom' | 'stretch' | ...
+  direction="inline" // 'inline' | 'rows' | 'reverseInline' | 'reverseRows'
+  alignX="center" // 'left' | 'center' | 'right' | 'spaceBetween' | ...
+  alignY="center" // 'top' | 'center' | 'bottom' | 'stretch' | ...
   gap={8}
-  block                     // flex vs inline-flex
-  equalCols                  // equalize before/after widths via ResizeObserver
+  block // flex vs inline-flex
+  equalCols // equalize before/after widths via ResizeObserver
   equalBeforeAfter
   beforeContent={<Icon />}
   afterContent={<Icon />}
@@ -55,27 +55,27 @@ Most-used primitive. Renders an outer container with optional `beforeContent` / 
 
 **Content slots** (priority: `children` > `content` > `label`):
 
-| Prop | Type | Notes |
-|---|---|---|
-| `children` | `VNodeChild` | Standard JSX children |
-| `content` | `VNodeChild` | Alternative slot when `children` is awkward |
-| `label` | `VNodeChild` | Third fallback; useful in data-driven `List` |
-| `beforeContent` | `VNodeChild` | Rendered before the main slot |
-| `afterContent` | `VNodeChild` | Rendered after the main slot |
+| Prop            | Type         | Notes                                        |
+| --------------- | ------------ | -------------------------------------------- |
+| `children`      | `VNodeChild` | Standard JSX children                        |
+| `content`       | `VNodeChild` | Alternative slot when `children` is awkward  |
+| `label`         | `VNodeChild` | Third fallback; useful in data-driven `List` |
+| `beforeContent` | `VNodeChild` | Rendered before the main slot                |
+| `afterContent`  | `VNodeChild` | Rendered after the main slot                 |
 
 **Layout props** (all responsive):
 
-| Prop | Default | Description |
-|---|---|---|
-| `tag` | `'div'` | Outer HTML tag |
-| `direction` | `'inline'` | `'inline'` (row) / `'rows'` (column) / `'reverseInline'` / `'reverseRows'` |
-| `alignX` | `'left'` | Horizontal alignment along the flex direction |
-| `alignY` | `'center'` | Cross-axis alignment |
-| `gap` | — | Gap between sections |
-| `block` | — | `flex` vs `inline-flex` |
-| `equalCols` | — | Equal width for before/after columns (snapshot at mount) |
-| `equalBeforeAfter` | — | Equalize before/after via live `ResizeObserver` (resilient to async font/content changes) |
-| `dangerouslySetInnerHTML` | — | Forwards to `runtime-dom` / `runtime-server` |
+| Prop                      | Default    | Description                                                                               |
+| ------------------------- | ---------- | ----------------------------------------------------------------------------------------- |
+| `tag`                     | `'div'`    | Outer HTML tag                                                                            |
+| `direction`               | `'inline'` | `'inline'` (row) / `'rows'` (column) / `'reverseInline'` / `'reverseRows'`                |
+| `alignX`                  | `'left'`   | Horizontal alignment along the flex direction                                             |
+| `alignY`                  | `'center'` | Cross-axis alignment                                                                      |
+| `gap`                     | —          | Gap between sections                                                                      |
+| `block`                   | —          | `flex` vs `inline-flex`                                                                   |
+| `equalCols`               | —          | Equal width for before/after columns (snapshot at mount)                                  |
+| `equalBeforeAfter`        | —          | Equalize before/after via live `ResizeObserver` (resilient to async font/content changes) |
+| `dangerouslySetInnerHTML` | —          | Forwards to `runtime-dom` / `runtime-server`                                              |
 
 Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY`, `afterContentDirection`, etc. — every section accepts the same axis props prefixed with the section name.
 
@@ -89,12 +89,12 @@ Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY
 <Text tag="strong">Bold</Text>
 ```
 
-| Prop | Type | Notes |
-|---|---|---|
-| `tag` | `'h1'`-`'h6'` / `'p'` / `'span'` / `'strong'` / `'em'` / `'small'` / … | Inline-by-default |
-| `paragraph` | `boolean` | Shorthand for `tag="p"` |
-| `children` / `label` | `VNodeChild` | Text content |
-| `css` | `ExtendCss` | Extend styling |
+| Prop                 | Type                                                                   | Notes                   |
+| -------------------- | ---------------------------------------------------------------------- | ----------------------- |
+| `tag`                | `'h1'`-`'h6'` / `'p'` / `'span'` / `'strong'` / `'em'` / `'small'` / … | Inline-by-default       |
+| `paragraph`          | `boolean`                                                              | Shorthand for `tag="p"` |
+| `children` / `label` | `VNodeChild`                                                           | Text content            |
+| `css`                | `ExtendCss`                                                            | Extend styling          |
 
 ## `List` — data-driven children with positional metadata
 
@@ -122,15 +122,15 @@ Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY
 />
 ```
 
-| Prop | Type | Notes |
-|---|---|---|
-| `data` | `Array<string \| number \| object>` | Source data |
-| `component` | `ComponentFn` | Renders per item |
-| `valueName` | `string` | Prop name for scalar values (default `'children'`) |
-| `itemKey` | `string \| (item) => Key` | Key extractor |
-| `itemProps` | `object \| (item, meta) => object` | Extra props injected per item |
-| `wrapComponent` | `ComponentFn` | Wrapper around each item |
-| `rootElement` | `boolean` | Wrap in an `Element` (enables `direction` / `gap` / `align`) |
+| Prop            | Type                                | Notes                                                        |
+| --------------- | ----------------------------------- | ------------------------------------------------------------ |
+| `data`          | `Array<string \| number \| object>` | Source data                                                  |
+| `component`     | `ComponentFn`                       | Renders per item                                             |
+| `valueName`     | `string`                            | Prop name for scalar values (default `'children'`)           |
+| `itemKey`       | `string \| (item) => Key`           | Key extractor                                                |
+| `itemProps`     | `object \| (item, meta) => object`  | Extra props injected per item                                |
+| `wrapComponent` | `ComponentFn`                       | Wrapper around each item                                     |
+| `rootElement`   | `boolean`                           | Wrap in an `Element` (enables `direction` / `gap` / `align`) |
 
 Positional metadata (`{ index, first, last, odd, even, position }`) is passed to both `itemKey` and `itemProps` callbacks.
 
@@ -171,6 +171,7 @@ const overlay = useOverlay({
 ```
 
 Built-in behaviour:
+
 - **Viewport-edge flipping** — automatically flips align when the content would overflow.
 - **Throttled positioning** — scroll + resize listeners throttled (default delay 60ms).
 - **ESC + click-outside** — opt-in via `closeOnEsc` / `closeOn: 'clickOutsideContent'`.
@@ -189,11 +190,11 @@ Built-in behaviour:
 
 Creates a per-instance wrapper element (default `<div>`, configurable via `tag`) INSIDE `target` (default `document.body`). Multiple portals share `target` without intermingling children — each gets its own wrapper.
 
-| Prop | Default | Notes |
-|---|---|---|
-| `target` | `document.body` | Destination element (`HTMLElement \| (() => HTMLElement) \| null`) |
-| `tag` | `'div'` | Wrapper HTML tag |
-| Any data-/aria- attrs | — | Forwarded to the wrapper |
+| Prop                  | Default         | Notes                                                              |
+| --------------------- | --------------- | ------------------------------------------------------------------ |
+| `target`              | `document.body` | Destination element (`HTMLElement \| (() => HTMLElement) \| null`) |
+| `tag`                 | `'div'`         | Wrapper HTML tag                                                   |
+| Any data-/aria- attrs | —               | Forwarded to the wrapper                                           |
 
 ## `Util` — utility wrapper for non-layout primitives
 

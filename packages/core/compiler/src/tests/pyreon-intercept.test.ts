@@ -310,7 +310,9 @@ describe('detectPyreonPatterns', () => {
       const diags = detectPyreonPatterns(code)
       // The binary expression and any enclosing template expressions can both
       // match — dedupe by line to keep the contract observable.
-      const atLine = [...new Set(diags.filter((d) => d.code === 'date-math-random-id').map((d) => d.line))]
+      const atLine = [
+        ...new Set(diags.filter((d) => d.code === 'date-math-random-id').map((d) => d.line)),
+      ]
       expect(atLine.length).toBeGreaterThanOrEqual(1)
     })
 
@@ -536,9 +538,7 @@ describe('detectPyreonPatterns', () => {
         }
       `
       const diags = detectPyreonPatterns(code)
-      expect(
-        diags.filter((d) => d.code === 'static-return-null-conditional'),
-      ).toHaveLength(1)
+      expect(diags.filter((d) => d.code === 'static-return-null-conditional')).toHaveLength(1)
     })
 
     it('does NOT flag non-component functions returning null', () => {
@@ -577,9 +577,7 @@ describe('detectPyreonPatterns', () => {
         }
       `
       const diags = detectPyreonPatterns(code)
-      expect(
-        diags.filter((d) => d.code === 'static-return-null-conditional'),
-      ).toHaveLength(1)
+      expect(diags.filter((d) => d.code === 'static-return-null-conditional')).toHaveLength(1)
     })
   })
 
@@ -712,9 +710,7 @@ describe('detectPyreonPatterns', () => {
         })
       `
       const diags = detectPyreonPatterns(code)
-      expect(
-        diags.filter((d) => d.code === 'island-never-with-registry-entry'),
-      ).toHaveLength(1)
+      expect(diags.filter((d) => d.code === 'island-never-with-registry-entry')).toHaveLength(1)
     })
 
     it('does NOT flag non-string `hydrate` values (variable indirection)', () => {
@@ -770,47 +766,33 @@ describe('detectPyreonPatterns', () => {
     })
 
     it('flags useInfiniteQuery / useQueries / useSuspenseQuery too', () => {
-      for (const hook of [
-        'useInfiniteQuery',
-        'useQueries',
-        'useSuspenseQuery',
-      ]) {
+      for (const hook of ['useInfiniteQuery', 'useQueries', 'useSuspenseQuery']) {
         const diags = detectPyreonPatterns(`const r = ${hook}({ queryKey: ['k'] })`)
-        expect(
-          diags.some((d) => d.code === 'query-options-as-function'),
-        ).toBe(true)
+        expect(diags.some((d) => d.code === 'query-options-as-function')).toBe(true)
       }
     })
 
     it('does NOT flag the correct function form', () => {
       const code = `const q = useQuery(() => ({ queryKey: ['user', id()], queryFn: fetchUser }))`
       const diags = detectPyreonPatterns(code)
-      expect(
-        diags.some((d) => d.code === 'query-options-as-function'),
-      ).toBe(false)
+      expect(diags.some((d) => d.code === 'query-options-as-function')).toBe(false)
     })
 
     it('does NOT flag useMutation (options are a plain object by design)', () => {
       const code = `const m = useMutation({ mutationFn: save, onSuccess })`
       const diags = detectPyreonPatterns(code)
-      expect(
-        diags.some((d) => d.code === 'query-options-as-function'),
-      ).toBe(false)
+      expect(diags.some((d) => d.code === 'query-options-as-function')).toBe(false)
     })
 
     it('does NOT flag an identifier / call options arg (unprovable)', () => {
       const code = `const a = useQuery(opts); const b = useQuery(makeOpts())`
       const diags = detectPyreonPatterns(code)
-      expect(
-        diags.some((d) => d.code === 'query-options-as-function'),
-      ).toBe(false)
+      expect(diags.some((d) => d.code === 'query-options-as-function')).toBe(false)
     })
 
     it('hasPyreonPatterns pre-filter recognizes the object-literal form', () => {
       expect(hasPyreonPatterns(`useQuery({ queryKey: ['k'] })`)).toBe(true)
-      expect(hasPyreonPatterns(`useQuery(() => ({ queryKey: ['k'] }))`)).toBe(
-        false,
-      )
+      expect(hasPyreonPatterns(`useQuery(() => ({ queryKey: ['k'] }))`)).toBe(false)
     })
   })
 })

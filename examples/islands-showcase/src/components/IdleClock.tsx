@@ -8,7 +8,10 @@ export default function IdleClock() {
     return () => clearInterval(id)
   })
   return (
-    <div data-testid="idle-clock" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+    <div
+      data-testid="idle-clock"
+      style="padding: 12px; border: 1px solid #ccc; border-radius: 4px;"
+    >
       <strong>Idle clock:</strong> <span data-testid="idle-clock-time">{now()}</span>
     </div>
   )

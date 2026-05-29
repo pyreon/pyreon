@@ -156,7 +156,7 @@ const fr = {
     'lamp-desk.title': 'Lampe de bureau articulée',
     'lamp-desk.desc': 'Bras finition laiton avec ampoule LED blanc chaud incluse.',
     'headphones-over.title': 'Casque circum-aural',
-    'headphones-over.desc': 'Réduction de bruit active, 30 h d\'autonomie, USB-C.',
+    'headphones-over.desc': "Réduction de bruit active, 30 h d'autonomie, USB-C.",
     'keyboard-mech.title': 'Clavier mécanique',
     'keyboard-mech.desc': 'Switches hot-swap, USB-C, rétroéclairage RGB, ANSI.',
     'webcam-hd.title': 'Webcam 1080p',
@@ -164,7 +164,7 @@ const fr = {
     'novel-paperback.title': 'Le long chemin du retour',
     'novel-paperback.desc': 'Un roman littéraire sur la migration et la mémoire.',
     'cookbook-hardcover.title': 'Cuisine de garde-manger',
-    'cookbook-hardcover.desc': '120 recettes du quotidien autour d\'un garde-manger.',
+    'cookbook-hardcover.desc': "120 recettes du quotidien autour d'un garde-manger.",
   },
 }
 

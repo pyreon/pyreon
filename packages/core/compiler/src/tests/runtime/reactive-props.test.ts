@@ -21,10 +21,7 @@ import { compileAndMount } from './harness'
 describe('compiler-runtime — reactive props inlining', () => {
   it('text content from a signal updates reactively', async () => {
     const value = signal('initial')
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">{value()}</p></div>`,
-      { value },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">{value()}</p></div>`, { value })
     expect(container.querySelector('#p')!.textContent).toBe('initial')
     value.set('updated')
     await flush()
@@ -48,10 +45,10 @@ describe('compiler-runtime — reactive props inlining', () => {
   it('expression with multiple signals tracks all dependencies', async () => {
     const a = signal('hello')
     const b = signal('world')
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">{a() + ' ' + b()}</p></div>`,
-      { a, b },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">{a() + ' ' + b()}</p></div>`, {
+      a,
+      b,
+    })
     expect(container.querySelector('#p')!.textContent).toBe('hello world')
     a.set('hi')
     await flush()

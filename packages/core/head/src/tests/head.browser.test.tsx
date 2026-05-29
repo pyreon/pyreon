@@ -30,11 +30,7 @@ describe('head in real browser', () => {
 
   it('useHead({ title }) writes document.title', () => {
     const { unmount } = mountInBrowser(
-      h(
-        HeadProvider,
-        null,
-        h(Page, { setup: () => useHead({ title: 'Hello Browser' }) }),
-      ),
+      h(HeadProvider, null, h(Page, { setup: () => useHead({ title: 'Hello Browser' }) })),
     )
     expect(document.title).toBe('Hello Browser')
     unmount()
@@ -140,11 +136,7 @@ describe('head in real browser', () => {
   it('jsonLd convenience emits a <script type="application/ld+json"> with stringified content', () => {
     const ld = { '@context': 'https://schema.org', '@type': 'Organization', name: 'Pyreon' }
     const { unmount } = mountInBrowser(
-      h(
-        HeadProvider,
-        null,
-        h(Page, { setup: () => useHead({ jsonLd: ld }) }),
-      ),
+      h(HeadProvider, null, h(Page, { setup: () => useHead({ jsonLd: ld }) })),
     )
     const script = document.head.querySelector<HTMLScriptElement>(
       'script[type="application/ld+json"]',
@@ -231,9 +223,7 @@ describe('head in real browser', () => {
           }),
         ),
       )
-      const el = document.head.querySelector<HTMLScriptElement>(
-        'script[type="speculationrules"]',
-      )
+      const el = document.head.querySelector<HTMLScriptElement>('script[type="speculationrules"]')
       expect(el).not.toBeNull()
       // (b) body is valid JSON and round-trips.
       const parsed = JSON.parse(el?.textContent ?? '')

@@ -358,10 +358,13 @@ async function selfHostFonts(
   // Write cache
   try {
     await mkdir(cacheDir, { recursive: true })
-    await writeFile(cachePath, JSON.stringify({
-      css: rewrittenCss,
-      fontFiles: fontFiles.map((f) => ({ name: f.name, content: f.content.toString('base64') })),
-    }))
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        css: rewrittenCss,
+        fontFiles: fontFiles.map((f) => ({ name: f.name, content: f.content.toString('base64') })),
+      }),
+    )
   } catch {
     // Cache write failure is non-fatal
   }

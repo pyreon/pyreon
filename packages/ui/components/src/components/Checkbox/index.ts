@@ -1,7 +1,8 @@
 import { el } from '../../factory'
 import { CheckboxBase } from '@pyreon/ui-primitives'
 
-const Checkbox = el.config({ name: 'Checkbox', component: CheckboxBase })
+const Checkbox = el
+  .config({ name: 'Checkbox', component: CheckboxBase })
   .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',

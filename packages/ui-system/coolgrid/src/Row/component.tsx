@@ -13,7 +13,8 @@ import Styled from './styled'
  * with negative margins to offset column gutters.
  */
 
-const DEV_PROPS: Record<string, string> = process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'row' } : {}
+const DEV_PROPS: Record<string, string> =
+  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'row' } : {}
 
 const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss']> = (props) => {
   const [own, rest] = splitProps(props, ['children', 'component', 'css', 'contentAlignX'])
@@ -58,7 +59,12 @@ const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss
   provide(RowContext, context)
 
   return (
-    <Styled {...omitCtxKeys(rest)} as={own.component || rowComponent} {...finalProps} {...DEV_PROPS}>
+    <Styled
+      {...omitCtxKeys(rest)}
+      as={own.component || rowComponent}
+      {...finalProps}
+      {...DEV_PROPS}
+    >
       {own.children}
     </Styled>
   )

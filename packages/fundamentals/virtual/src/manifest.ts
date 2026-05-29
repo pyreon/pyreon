@@ -86,7 +86,7 @@ const WindowList = () => {
 </For>`,
       mistakes: [
         'Forgetting to set a fixed height on the scroll container — without overflow:auto + a height, the virtualizer has no viewport to measure',
-        'Passing count as a plain number instead of a function when the list length is dynamic — the virtualizer won\'t update when items change',
+        "Passing count as a plain number instead of a function when the list length is dynamic — the virtualizer won't update when items change",
         'Reading virtualItems() outside a reactive scope — captures the initial window only, never updates on scroll',
         'Using .map() instead of <For> on virtualItems — loses keyed reconciliation',
       ],
@@ -119,7 +119,7 @@ const WindowList = () => {
     'Both hooks return reactive signals (`virtualItems()`, `totalSize()`, `isScrolling()`). Always read them inside reactive scopes (JSX thunks, effect, computed) so they update on scroll.',
     {
       label: 'Absolute positioning',
-      note: 'Virtual items must be positioned absolutely inside a container whose height equals `totalSize()`. Each item\'s `start` property gives its pixel offset from the top.',
+      note: "Virtual items must be positioned absolutely inside a container whose height equals `totalSize()`. Each item's `start` property gives its pixel offset from the top.",
     },
     {
       label: 'Re-exports',

@@ -38,13 +38,13 @@ The compiler-emit pipeline works end-to-end — `./scripts/build.sh` produces `a
 
 ### The Phase 2 Kotlin arc — all CLOSED
 
-| PR | Closes | Status |
-|----|--------|--------|
-| [K1 #879](https://github.com/pyreon/pyreon/pull/879) | enum-vs-string equality (`filter == "active"` → `filter == Filter.active`) | ✅ merged |
-| [K3 #880](https://github.com/pyreon/pyreon/pull/880) | `VStack`/`HStack` → `Column`/`Row` mapping at JSX emit | ✅ merged |
-| [K2 #881](https://github.com/pyreon/pyreon/pull/881) | `derivedStateOf` non-local return (`return@derivedStateOf`) | ✅ merged |
+| PR                                                   | Closes                                                                                       | Status    |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------- |
+| [K1 #879](https://github.com/pyreon/pyreon/pull/879) | enum-vs-string equality (`filter == "active"` → `filter == Filter.active`)                   | ✅ merged |
+| [K3 #880](https://github.com/pyreon/pyreon/pull/880) | `VStack`/`HStack` → `Column`/`Row` mapping at JSX emit                                       | ✅ merged |
+| [K2 #881](https://github.com/pyreon/pyreon/pull/881) | `derivedStateOf` non-local return (`return@derivedStateOf`)                                  | ✅ merged |
 | [K4 #882](https://github.com/pyreon/pyreon/pull/882) | Extended Compose stubs (rememberSaveable / Saver / Material widgets / kotlinx-serialization) | ✅ merged |
-| K-FINAL (this PR) | End-to-end TodoMVC `transform()` → kotlinc validation gate | this PR |
+| K-FINAL (this PR)                                    | End-to-end TodoMVC `transform()` → kotlinc validation gate                                   | this PR   |
 
 ### Remaining gap (shared with iOS, runtime-only)
 

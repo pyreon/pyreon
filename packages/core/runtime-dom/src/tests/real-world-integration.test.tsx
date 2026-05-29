@@ -40,7 +40,9 @@ describe('real-world — todo app pattern', () => {
     onToggle: () => void
     onDelete: () => void
   }) =>
-    h('li', { class: () => (props.completed() ? 'done' : 'pending') },
+    h(
+      'li',
+      { class: () => (props.completed() ? 'done' : 'pending') },
       h('span', { class: 'todo-text' }, () => props.text()),
       h('button', { class: 'toggle', onClick: props.onToggle }, 'toggle'),
       h('button', { class: 'delete', onClick: props.onDelete }, 'delete'),
@@ -55,7 +57,9 @@ describe('real-world — todo app pattern', () => {
     ])
 
     mount(
-      h('ul', null,
+      h(
+        'ul',
+        null,
         For({
           each: todos,
           by: (t: Todo) => t.id,
@@ -79,12 +83,12 @@ describe('real-world — todo app pattern', () => {
 
   test('add a todo -> appears in DOM', () => {
     const el = container()
-    const todos = signal<Todo[]>([
-      createTodo(1, 'Existing'),
-    ])
+    const todos = signal<Todo[]>([createTodo(1, 'Existing')])
 
     mount(
-      h('ul', null,
+      h(
+        'ul',
+        null,
         For({
           each: todos,
           by: (t: Todo) => t.id,
@@ -115,7 +119,9 @@ describe('real-world — todo app pattern', () => {
     const todos = signal<Todo[]>([todo1, todo2])
 
     mount(
-      h('ul', null,
+      h(
+        'ul',
+        null,
         For({
           each: todos,
           by: (t: Todo) => t.id,
@@ -150,7 +156,9 @@ describe('real-world — todo app pattern', () => {
     ])
 
     mount(
-      h('ul', null,
+      h(
+        'ul',
+        null,
         For({
           each: todos,
           by: (t: Todo) => t.id,
@@ -182,7 +190,9 @@ describe('real-world — todo app pattern', () => {
     const todos = signal<Todo[]>([todo1, todo2])
 
     mount(
-      h('ul', null,
+      h(
+        'ul',
+        null,
         For({
           each: todos,
           by: (t: Todo) => t.id,
@@ -215,7 +225,9 @@ describe('real-world — form with validation', () => {
     const email = signal('')
 
     const Form = () =>
-      h('form', null,
+      h(
+        'form',
+        null,
         h('input', {
           type: 'text',
           class: 'username',
@@ -250,16 +262,16 @@ describe('real-world — form with validation', () => {
     const hasError = () => touched() && value().length < 3
 
     const Field = () =>
-      h('div', null,
+      h(
+        'div',
+        null,
         h('input', {
           type: 'text',
           value: () => value(),
           onInput: (e: Event) => value.set((e.target as HTMLInputElement).value),
           onBlur: () => touched.set(true),
         }),
-        h(Show, { when: hasError },
-          h('span', { class: 'error' }, 'Must be at least 3 characters'),
-        ),
+        h(Show, { when: hasError }, h('span', { class: 'error' }, 'Must be at least 3 characters')),
       )
 
     mount(h(Field, null), el)
@@ -287,20 +299,24 @@ describe('real-world — form with validation', () => {
     const submitted = signal(false)
 
     const Form = () =>
-      h('div', null,
-        h('button', {
-          class: 'submit',
-          disabled: () => submitting(),
-          onClick: () => {
-            submitting.set(true)
-            // Simulate async submit
-            submitted.set(true)
-            submitting.set(false)
+      h(
+        'div',
+        null,
+        h(
+          'button',
+          {
+            class: 'submit',
+            disabled: () => submitting(),
+            onClick: () => {
+              submitting.set(true)
+              // Simulate async submit
+              submitted.set(true)
+              submitting.set(false)
+            },
           },
-        }, () => (submitting() ? 'Submitting...' : 'Submit')),
-        h(Show, { when: submitted },
-          h('p', { class: 'success' }, 'Form submitted successfully!'),
+          () => (submitting() ? 'Submitting...' : 'Submit'),
         ),
+        h(Show, { when: submitted }, h('p', { class: 'success' }, 'Form submitted successfully!')),
       )
 
     mount(h(Form, null), el)
@@ -327,8 +343,12 @@ describe('real-world — tab component', () => {
     const TabContent2 = () => h('div', { class: 'tab-content-2' }, 'Third tab content')
 
     const Tabs = () =>
-      h('div', null,
-        h('div', { class: 'tab-bar' },
+      h(
+        'div',
+        null,
+        h(
+          'div',
+          { class: 'tab-bar' },
           h('button', { class: 'tab-0', onClick: () => activeTab.set(0) }, 'Tab 1'),
           h('button', { class: 'tab-1', onClick: () => activeTab.set(1) }, 'Tab 2'),
           h('button', { class: 'tab-2', onClick: () => activeTab.set(2) }, 'Tab 3'),
@@ -364,7 +384,9 @@ describe('real-world — tab component', () => {
     const counter = signal(0)
 
     const CounterTab = () =>
-      h('div', { class: 'counter-tab' },
+      h(
+        'div',
+        { class: 'counter-tab' },
         h('span', { class: 'count' }, () => String(counter())),
         h('button', { class: 'increment', onClick: () => counter.update((n) => n + 1) }, '+'),
       )
@@ -372,8 +394,14 @@ describe('real-world — tab component', () => {
     const OtherTab = () => h('div', { class: 'other-tab' }, 'Other content')
 
     const Tabs = () =>
-      h('div', null,
-        h('button', { class: 'switch', onClick: () => activeTab.update((t) => (t === 0 ? 1 : 0)) }, 'switch'),
+      h(
+        'div',
+        null,
+        h(
+          'button',
+          { class: 'switch', onClick: () => activeTab.update((t) => (t === 0 ? 1 : 0)) },
+          'switch',
+        ),
         h(Show, { when: () => activeTab() === 0 }, h(CounterTab, null)),
         h(Show, { when: () => activeTab() === 1 }, h(OtherTab, null)),
       )
@@ -407,14 +435,22 @@ describe('real-world — tab component', () => {
     const TrackedTab = () => {
       onMount(() => {
         mountCount++
-        return () => { unmountCount++ }
+        return () => {
+          unmountCount++
+        }
       })
       return h('div', { class: 'tracked' }, 'tracked content')
     }
 
     const Tabs = () =>
-      h('div', null,
-        h('button', { class: 'switch', onClick: () => activeTab.update((t) => (t === 0 ? 1 : 0)) }, 'switch'),
+      h(
+        'div',
+        null,
+        h(
+          'button',
+          { class: 'switch', onClick: () => activeTab.update((t) => (t === 0 ? 1 : 0)) },
+          'switch',
+        ),
         h(Show, { when: () => activeTab() === 0 }, h(TrackedTab, null)),
         h(Show, { when: () => activeTab() === 1 }, h('div', null, 'other')),
       )
@@ -500,10 +536,7 @@ describe('real-world — nested context', () => {
 
     const OuterProvider = () => {
       provide(ThemeCtx, 'green')
-      return h(Fragment, null,
-        h(OuterChild, null),
-        h(InnerProvider, null),
-      )
+      return h(Fragment, null, h(OuterChild, null), h(InnerProvider, null))
     }
 
     mount(h(OuterProvider, null), el)
@@ -558,9 +591,7 @@ describe('real-world — nested context', () => {
 
     const App = () => {
       provide(ThemeCtx, 'purple')
-      return h('div', null,
-        h(Show, { when: visible }, h(Child, null)),
-      )
+      return h('div', null, h(Show, { when: visible }, h(Child, null)))
     }
 
     mount(h(App, null), el)
@@ -582,10 +613,14 @@ describe('real-world — complex composition', () => {
     const count = signal(0)
 
     const Counter = () =>
-      h('div', null,
+      h(
+        'div',
+        null,
         h('span', { class: 'value' }, () => String(count())),
         h('span', { class: 'doubled' }, () => String(count() * 2)),
-        h('span', { class: 'label' }, () => (count() === 0 ? 'zero' : count() > 0 ? 'positive' : 'negative')),
+        h('span', { class: 'label' }, () =>
+          count() === 0 ? 'zero' : count() > 0 ? 'positive' : 'negative',
+        ),
         h('button', { class: 'inc', onClick: () => count.update((n) => n + 1) }, '+'),
         h('button', { class: 'dec', onClick: () => count.update((n) => n - 1) }, '-'),
         h('button', { class: 'reset', onClick: () => count.set(0) }, 'reset'),
@@ -637,13 +672,17 @@ describe('real-world — complex composition', () => {
       allItems.filter((i) => i.name.toLowerCase().includes(query().toLowerCase()))
 
     const SearchList = () =>
-      h('div', null,
+      h(
+        'div',
+        null,
         h('input', {
           class: 'search',
           value: () => query(),
           onInput: (e: Event) => query.set((e.target as HTMLInputElement).value),
         }),
-        h('ul', null,
+        h(
+          'ul',
+          null,
           For({
             each: filtered,
             by: (i: Item) => i.id,
@@ -680,15 +719,17 @@ describe('real-world — complex composition', () => {
     const size = signal<'sm' | 'md' | 'lg'>('md')
 
     const Button = () =>
-      h('button', {
-        class: () => [
-          'btn',
-          active() && 'btn-active',
-          disabled() && 'btn-disabled',
-          `btn-${size()}`,
-        ].filter(Boolean).join(' '),
-        disabled: () => disabled(),
-      }, 'Click')
+      h(
+        'button',
+        {
+          class: () =>
+            ['btn', active() && 'btn-active', disabled() && 'btn-disabled', `btn-${size()}`]
+              .filter(Boolean)
+              .join(' '),
+          disabled: () => disabled(),
+        },
+        'Click',
+      )
 
     mount(h(Button, null), el)
 

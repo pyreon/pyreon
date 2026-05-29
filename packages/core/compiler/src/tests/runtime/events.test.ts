@@ -112,10 +112,9 @@ describe('compiler-runtime — events', () => {
     const handler = () => {
       blurred++
     }
-    const { container, unmount } = compileAndMount(
-      `<div><input id="i" onBlur={handler} /></div>`,
-      { handler },
-    )
+    const { container, unmount } = compileAndMount(`<div><input id="i" onBlur={handler} /></div>`, {
+      handler,
+    })
     container
       .querySelector<HTMLInputElement>('#i')!
       .dispatchEvent(new Event('blur', { bubbles: true }))
@@ -165,9 +164,7 @@ describe('compiler-runtime — events', () => {
       `<div><span id="s" onMouseEnter={handler}>hover</span></div>`,
       { handler },
     )
-    container
-      .querySelector<HTMLSpanElement>('#s')!
-      .dispatchEvent(new MouseEvent('mouseenter'))
+    container.querySelector<HTMLSpanElement>('#s')!.dispatchEvent(new MouseEvent('mouseenter'))
     expect(entered).toBe(1)
     unmount()
   })
@@ -181,9 +178,7 @@ describe('compiler-runtime — events', () => {
       `<div><span id="s" onPointerLeave={handler}>hover</span></div>`,
       { handler },
     )
-    container
-      .querySelector<HTMLSpanElement>('#s')!
-      .dispatchEvent(new PointerEvent('pointerleave'))
+    container.querySelector<HTMLSpanElement>('#s')!.dispatchEvent(new PointerEvent('pointerleave'))
     expect(left).toBe(1)
     unmount()
   })

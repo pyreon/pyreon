@@ -330,7 +330,7 @@ describe('batch — additional cascade shapes', () => {
     expect(innerSeen).toEqual([100, 101])
   })
 
-  test('effect disposed during another effect\'s flush — disposed one does not fire', () => {
+  test("effect disposed during another effect's flush — disposed one does not fire", () => {
     const a = signal(0)
     const b = signal(0)
 
@@ -603,12 +603,8 @@ describe('batch — MAX_PASSES exhaustion (regression)', () => {
     })
 
     // Warning fires with the actionable hint.
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('exceeded MAX_PASSES'),
-    )
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Common cause'),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exceeded MAX_PASSES'))
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Common cause'))
 
     // Bisect contract: the queue is cleared after the cap, so a fresh
     // unrelated batch is NOT immediately re-tripped. Without the clear,
@@ -626,9 +622,7 @@ describe('batch — MAX_PASSES exhaustion (regression)', () => {
       unrelated.set(1)
     })
     expect(unrelatedRuns).toBe(baseline + 1)
-    expect(warnSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining('exceeded MAX_PASSES'),
-    )
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('exceeded MAX_PASSES'))
 
     warnSpy.mockRestore()
   })

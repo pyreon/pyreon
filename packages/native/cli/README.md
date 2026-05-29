@@ -45,23 +45,23 @@ The programmatic surface is used by tests + the future Xcode build-phase wrapper
 
 ## Phase 0 scope
 
-| Feature | Status |
-|---|---|
-| Walk source dir for `.tsx` files (skip `.test.tsx`) | Done |
-| Per-target file extension mapping (`.swift` / `.kt`) | Done |
-| Source-map directives in output | Done |
-| Aggregated warnings | Done |
-| File-watching / hot reload | Phase 3 |
-| Incremental compilation | Phase 1+ |
-| Xcode build-phase integration | Roadmap PR 3 |
+| Feature                                              | Status       |
+| ---------------------------------------------------- | ------------ |
+| Walk source dir for `.tsx` files (skip `.test.tsx`)  | Done         |
+| Per-target file extension mapping (`.swift` / `.kt`) | Done         |
+| Source-map directives in output                      | Done         |
+| Aggregated warnings                                  | Done         |
+| File-watching / hot reload                           | Phase 3      |
+| Incremental compilation                              | Phase 1+     |
+| Xcode build-phase integration                        | Roadmap PR 3 |
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| 0 | Build succeeded |
-| 1 | Argv / usage error |
-| 2 | Build error (compiler threw, source dir missing, etc.) |
+| Code | Meaning                                                |
+| ---- | ------------------------------------------------------ |
+| 0    | Build succeeded                                        |
+| 1    | Argv / usage error                                     |
+| 2    | Build error (compiler threw, source dir missing, etc.) |
 
 ## Privacy
 

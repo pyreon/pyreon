@@ -23,7 +23,7 @@ around Solid's compiler:
   `createEventDispatcher`, `mount`, `unmount`, `flushSync`
 
 It does **not** implement the `.svelte` single-file-component compiler
-or the Svelte 5 rune *syntax* (`$state` / `$derived` / `$effect` / the
+or the Svelte 5 rune _syntax_ (`$state` / `$derived` / `$effect` / the
 `$store` auto-subscription sugar) — those are compiler constructs, not
 runtime imports. Components are plain functions returning JSX that run
 on Pyreon via the shared compat JSX runtime (re-render on store change).
@@ -175,26 +175,26 @@ automatically, and JSX routes through the compat runtime.
 
 ### `svelte/store`
 
-| API                          | Behavior                                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| API                          | Behavior                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
 | `writable(value?, start?)`   | Readable + `set` / `update`. Backed by a Pyreon signal. `start` is the lazy `0→1` / `1→0` notifier. |
-| `readable(value?, start?)`   | A `writable` with `set` / `update` hidden.                                                      |
-| `readonly(store)`            | A view of a store exposing only `subscribe`.                                                    |
-| `derived(stores, fn, init?)` | Single store or array; sync `(values) => T` or async `(values, set, update?) => stop`.          |
-| `get(store)`                 | Synchronous one-shot read (subscribe + immediately unsubscribe).                                |
+| `readable(value?, start?)`   | A `writable` with `set` / `update` hidden.                                                          |
+| `readonly(store)`            | A view of a store exposing only `subscribe`.                                                        |
+| `derived(stores, fn, init?)` | Single store or array; sync `(values) => T` or async `(values, set, update?) => stop`.              |
+| `get(store)`                 | Synchronous one-shot read (subscribe + immediately unsubscribe).                                    |
 
 ### `svelte` lifecycle / context
 
-| API                              | Behavior                                                                                  |
-| -------------------------------- | ----------------------------------------------------------------------------------------- |
-| `onMount(fn)`                    | Runs after first render. A returned function runs on destroy (Svelte contract).           |
-| `onDestroy(fn)`                  | Runs on unmount.                                                                           |
-| `beforeUpdate` / `afterUpdate`   | Map to a post-first-render hook (see boundaries).                                          |
-| `tick()`                         | Resolves after the current microtask.                                                     |
-| `setContext` / `getContext` / `hasContext` | Provide / read context up the component tree.                                   |
-| `getAllContexts()`               | Best-effort — returns an empty `Map` (see boundaries).                                     |
-| `createEventDispatcher()`        | Returns a `dispatch(type, detail?)` that forwards to the component's `on<Type>` / `on:<type>` prop with a `CustomEvent`; returns `!defaultPrevented`. |
-| `mount` / `unmount` / `flushSync`| Svelte 5 client API — mount a component into a target / dispose / flush.                   |
+| API                                        | Behavior                                                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onMount(fn)`                              | Runs after first render. A returned function runs on destroy (Svelte contract).                                                                       |
+| `onDestroy(fn)`                            | Runs on unmount.                                                                                                                                      |
+| `beforeUpdate` / `afterUpdate`             | Map to a post-first-render hook (see boundaries).                                                                                                     |
+| `tick()`                                   | Resolves after the current microtask.                                                                                                                 |
+| `setContext` / `getContext` / `hasContext` | Provide / read context up the component tree.                                                                                                         |
+| `getAllContexts()`                         | Best-effort — returns an empty `Map` (see boundaries).                                                                                                |
+| `createEventDispatcher()`                  | Returns a `dispatch(type, detail?)` that forwards to the component's `on<Type>` / `on:<type>` prop with a `CustomEvent`; returns `!defaultPrevented`. |
+| `mount` / `unmount` / `flushSync`          | Svelte 5 client API — mount a component into a target / dispose / flush.                                                                              |
 
 ## Documented boundaries
 

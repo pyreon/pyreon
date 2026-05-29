@@ -50,10 +50,10 @@ This gives you a working application with file-system routing, SSR, and hot modu
 
 `@pyreon/zero` is split into a small client-safe main entry and a larger server-only entry. **This is the single most important thing to get right when importing from Zero.**
 
-| Entry                  | Contains                                                                                                                                                   |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@pyreon/zero`         | Browser-safe only: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme system, i18n hooks, plus types                                                          |
-| `@pyreon/zero/server`  | Everything that touches `node:fs`/`node:path`: `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `i18nRouting`, fs-router helpers, `vercelRevalidateHandler` |
+| Entry                 | Contains                                                                                                                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/zero`        | Browser-safe only: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme system, i18n hooks, plus types                                                                                                          |
+| `@pyreon/zero/server` | Everything that touches `node:fs`/`node:path`: `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `i18nRouting`, fs-router helpers, `vercelRevalidateHandler` |
 
 The main entry exports **throwing stubs** for the most commonly mis-imported server APIs (`createServer`, `defineConfig`, `seoPlugin`, `faviconPlugin`, `validateEnv`, `ogImagePlugin`, `aiPlugin`) so a wrong import fails fast with an actionable message instead of a cryptic `node:fs` bundling error:
 
@@ -121,18 +121,18 @@ export default defineConfig({
 
 ### ZeroConfig Options
 
-| Option       | Type                                                                          | Default | Description                                                  |
-| ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
-| `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode                                        |
-| `vite`       | `Record<string, unknown>`                                                     | `{}`    | Vite config overrides                                        |
-| `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode                                           |
-| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
-| `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey? }`)                         | —       | Runtime ISR config (only used when `mode: "isr"`)            |
-| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | `"node"` | Deployment adapter (name or constructed instance)        |
-| `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
-| `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)** |
-| `middleware` | `Middleware[]`                                                                | `[]`    | Global server middleware                                     |
-| `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                      |
+| Option       | Type                                                                                                                            | Default    | Description                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
+| `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                                                                              | `"ssr"`    | Global rendering mode                                                                                |
+| `vite`       | `Record<string, unknown>`                                                                                                       | `{}`       | Vite config overrides                                                                                |
+| `ssr.mode`   | `"stream" \| "string"`                                                                                                          | `"string"` | SSR output mode                                                                                      |
+| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks? }` | `{}`       | SSG options — see **[SSG](/docs/ssg)**                                                               |
+| `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey? }`)                                                                          | —          | Runtime ISR config (only used when `mode: "isr"`)                                                    |
+| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter`                                               | `"node"`   | Deployment adapter (name or constructed instance)                                                    |
+| `base`       | `string`                                                                                                                        | `"/"`      | Base URL path — single source of truth (see [Base Path](#base-path))                                 |
+| `i18n`       | `I18nRoutingConfig`                                                                                                             | —          | Build-time locale-prefixed route duplication — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)** |
+| `middleware` | `Middleware[]`                                                                                                                  | `[]`       | Global server middleware                                                                             |
+| `port`       | `number`                                                                                                                        | `3000`     | Dev/preview server port                                                                              |
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`, `ssr.mode: 'string'`).
 
@@ -149,12 +149,12 @@ Routes live in `src/routes/`. The file path maps directly to the URL:
 
 ### Special Files
 
-| File           | Purpose                                                                |
-| -------------- | ---------------------------------------------------------------------- |
-| `_layout.tsx`  | Wraps all routes in the same directory and subdirectories              |
-| `_error.tsx`   | Error boundary for the route segment                                   |
-| `_loading.tsx` | Loading/suspense fallback for the route segment                        |
-| `_404.tsx`     | Not-found page (also `_not-found.tsx`) — drives runtime + SSG 404s      |
+| File           | Purpose                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| `_layout.tsx`  | Wraps all routes in the same directory and subdirectories          |
+| `_error.tsx`   | Error boundary for the route segment                               |
+| `_loading.tsx` | Loading/suspense fallback for the route segment                    |
+| `_404.tsx`     | Not-found page (also `_not-found.tsx`) — drives runtime + SSG 404s |
 
 ::: warning Don't double-mount the layout
 fs-router emits `_layout.tsx` as a **parent route**. Do **not** also pass it via `createApp({ layout })` / `startClient({ layout })` — that mounts the layout twice. `createApp` detects this collision and ignores the explicit `layout` with a dev warning, but the correct shape is to never pass it.
@@ -330,12 +330,12 @@ import { Link, useLink, createLink, prefetchRoute } from '@pyreon/zero'
 <Link href="/admin" prefetch="none">Admin</Link>
 ```
 
-| Prop               | Type                              | Default          | Description                                  |
-| ------------------ | --------------------------------- | ---------------- | -------------------------------------------- |
-| `href`             | `string`                          | required         | Navigation target                            |
-| `prefetch`         | `"hover" \| "viewport" \| "none"` | `"hover"`        | When to prefetch the route                   |
+| Prop               | Type                              | Default          | Description                                   |
+| ------------------ | --------------------------------- | ---------------- | --------------------------------------------- |
+| `href`             | `string`                          | required         | Navigation target                             |
+| `prefetch`         | `"hover" \| "viewport" \| "none"` | `"hover"`        | When to prefetch the route                    |
 | `activeClass`      | `string`                          | `"active"`       | Class when the link matches the current route |
-| `exactActiveClass` | `string`                          | `"exact-active"` | Class for exact route match                  |
+| `exactActiveClass` | `string`                          | `"exact-active"` | Class for exact route match                   |
 
 **Three layers:**
 
@@ -368,7 +368,6 @@ Optimized image with lazy loading, responsive `srcset`, multi-format `<picture>`
 
 ```tsx
 import { Image, useImage, createImage } from '@pyreon/zero'
-
 ;<Image
   src="/photos/hero.jpg"
   alt="Hero image"
@@ -417,15 +416,21 @@ import { Icon, createIcon, createNamedIcon } from '@pyreon/zero'
 
 // Component form (recommended) — import the SVG as a component
 import Check from './check.svg?component'
-;<span style="width:2rem"><Icon as={Check} /></span>
+;<span style="width:2rem">
+  <Icon as={Check} />
+</span>
 
 // Raw-markup form — import the SVG as a string
 import check from './check.svg?raw'
-;<span style="width:2rem"><Icon svg={check} /></span>
+;<span style="width:2rem">
+  <Icon svg={check} />
+</span>
 
 // Factory: one reusable component per glyph
 export const CheckIcon = createIcon(check) // or createIcon(Check)
-;<span style="width:48px"><CheckIcon class="text-green-600" /></span>
+;<span style="width:48px">
+  <CheckIcon class="text-green-600" />
+</span>
 ```
 
 There is intentionally **no `useIcon`** — an icon has no composable behavior. For a folder of icons, [`iconsPlugin`](#other-build-time-plugins) scans a directory and generates a strictly-typed `<Icon name="...">` via `createNamedIcon`.
@@ -436,7 +441,6 @@ Per-page head tags, including Open Graph + SEO.
 
 ```tsx
 import { Meta } from '@pyreon/zero'
-
 ;<Meta
   title="My Page"
   description="Page description"
@@ -480,16 +484,16 @@ function Header() {
 }
 ```
 
-| Export               | Type                                         | Description                                              |
-| -------------------- | -------------------------------------------- | -------------------------------------------------------- |
-| `theme`              | `() => "light" \| "dark" \| "system"`        | Current theme preference (reactive)                      |
-| `resolvedTheme`      | `() => "light" \| "dark"`                    | Resolved theme — reactive to OS color-scheme changes     |
-| `toggleTheme`        | `() => void`                                 | Toggle between light and dark                            |
-| `setTheme`           | `(t) => void`                                | Set theme explicitly                                     |
-| `initTheme`          | `() => void`                                 | Initialize from storage/system on startup                |
-| `ThemeToggle`        | Component                                    | Pre-built toggle button                                  |
-| `themeScript`        | `string`                                     | Inline `<script>` to apply theme before first paint      |
-| `setSSRThemeDefault` | `(t) => void`                                | Set the theme used during SSR render                     |
+| Export               | Type                                  | Description                                          |
+| -------------------- | ------------------------------------- | ---------------------------------------------------- |
+| `theme`              | `() => "light" \| "dark" \| "system"` | Current theme preference (reactive)                  |
+| `resolvedTheme`      | `() => "light" \| "dark"`             | Resolved theme — reactive to OS color-scheme changes |
+| `toggleTheme`        | `() => void`                          | Toggle between light and dark                        |
+| `setTheme`           | `(t) => void`                         | Set theme explicitly                                 |
+| `initTheme`          | `() => void`                          | Initialize from storage/system on startup            |
+| `ThemeToggle`        | Component                             | Pre-built toggle button                              |
+| `themeScript`        | `string`                              | Inline `<script>` to apply theme before first paint  |
+| `setSSRThemeDefault` | `(t) => void`                         | Set the theme used during SSR render                 |
 
 Add `themeScript` to your HTML `<head>` and call `initTheme()` on startup to prevent FOUC.
 
@@ -497,16 +501,16 @@ Add `themeScript` to your HTML `<head>` and call `initTheme()` on startup to pre
 
 Built-in server middleware. Wire them into `createServer({ middleware: [...] })`.
 
-| Middleware                | Import path                  | Purpose                                            |
-| ------------------------- | ---------------------------- | -------------------------------------------------- |
-| `cacheMiddleware`         | `@pyreon/zero/cache`         | `Cache-Control` headers by asset type              |
-| `securityHeaders`         | `@pyreon/zero/cache`         | CSP, X-Frame-Options, etc.                         |
-| `varyEncoding`            | `@pyreon/zero/cache`         | `Vary: Accept-Encoding` for CDN correctness        |
-| `corsMiddleware`          | `@pyreon/zero/cors`          | CORS                                               |
-| `rateLimitMiddleware`     | `@pyreon/zero/rate-limit`    | Token-bucket rate limiting                         |
-| `compressionMiddleware`   | `@pyreon/zero/compression`   | gzip/br via native `CompressionStream`             |
-| `cspMiddleware`           | `@pyreon/zero/csp`           | Content-Security-Policy with per-request nonce     |
-| `loggerMiddleware`        | `@pyreon/zero/logger`        | Structured request logging                         |
+| Middleware              | Import path                | Purpose                                        |
+| ----------------------- | -------------------------- | ---------------------------------------------- |
+| `cacheMiddleware`       | `@pyreon/zero/cache`       | `Cache-Control` headers by asset type          |
+| `securityHeaders`       | `@pyreon/zero/cache`       | CSP, X-Frame-Options, etc.                     |
+| `varyEncoding`          | `@pyreon/zero/cache`       | `Vary: Accept-Encoding` for CDN correctness    |
+| `corsMiddleware`        | `@pyreon/zero/cors`        | CORS                                           |
+| `rateLimitMiddleware`   | `@pyreon/zero/rate-limit`  | Token-bucket rate limiting                     |
+| `compressionMiddleware` | `@pyreon/zero/compression` | gzip/br via native `CompressionStream`         |
+| `cspMiddleware`         | `@pyreon/zero/csp`         | Content-Security-Policy with per-request nonce |
+| `loggerMiddleware`      | `@pyreon/zero/logger`      | Structured request logging                     |
 
 ```ts
 import { cacheMiddleware, securityHeaders } from '@pyreon/zero/cache'
@@ -548,11 +552,11 @@ export async function POST(ctx: ApiContext) {
 }
 ```
 
-| File                            | URL                  |
-| ------------------------------- | -------------------- |
-| `src/routes/api/posts.ts`       | `/api/posts`         |
-| `src/routes/api/posts/[id].ts`  | `/api/posts/:id`     |
-| `src/routes/api/[...path].ts`   | `/api/*` (catch-all) |
+| File                           | URL                  |
+| ------------------------------ | -------------------- |
+| `src/routes/api/posts.ts`      | `/api/posts`         |
+| `src/routes/api/posts/[id].ts` | `/api/posts/:id`     |
+| `src/routes/api/[...path].ts`  | `/api/*` (catch-all) |
 
 Wire them via the virtual module. They run before SSR and dispatch by URL + HTTP method; unsupported methods return `405` with an `Allow` header. API routes also work in dev (the plugin dispatches them in the dev server).
 
@@ -602,7 +606,10 @@ export default {
   plugins: [
     seoPlugin({
       sitemap: { origin: 'https://example.com', changefreq: 'weekly', priority: 0.8 },
-      robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://example.com/sitemap.xml' },
+      robots: {
+        rules: [{ userAgent: '*', allow: ['/'] }],
+        sitemap: 'https://example.com/sitemap.xml',
+      },
     }),
   ],
 }
@@ -660,7 +667,6 @@ export default {
 ```tsx
 import hero from './images/hero.jpg?optimize'
 import { Image } from '@pyreon/zero'
-
 ;<Image {...hero} alt="Hero" priority />
 ```
 
@@ -674,11 +680,11 @@ This makes `import hero from './x.jpg?optimize'` resolve to `ProcessedImage` (an
 
 **Placeholder strategies:**
 
-| Strategy           | Output                                                                       |
-| ------------------ | ---------------------------------------------------------------------------- |
-| `'blur'` (default) | Base64 blur data URI (size controlled by `placeholderSize`)                   |
-| `'color'`          | The image's dominant color as a ~200-byte flat SVG data URI                   |
-| `'none'`           | No placeholder (`placeholder: ''`) — skips all placeholder work               |
+| Strategy           | Output                                                          |
+| ------------------ | --------------------------------------------------------------- |
+| `'blur'` (default) | Base64 blur data URI (size controlled by `placeholderSize`)     |
+| `'color'`          | The image's dominant color as a ~200-byte flat SVG data URI     |
+| `'none'`           | No placeholder (`placeholder: ''`) — skips all placeholder work |
 
 `'dominant-color'` is a deprecated alias of `'color'`. `quality` accepts a single number applied to all lossy formats, or a per-format object (`{ avif, webp, jpeg }`) — AVIF achieves comparable perceived quality at a much lower number than WebP/JPEG. Optional CDN delivery providers (`cloudinary`, `imgix`, `vercel`, `bunny`) are also available.
 
@@ -801,14 +807,14 @@ import { resolveAdapter, nodeAdapter, vercelAdapter } from '@pyreon/zero/server'
 defineConfig({ adapter: 'vercel' }) // or adapter: vercelAdapter()
 ```
 
-| Adapter      | SSR build                                  | SSG build                                              |
-| ------------ | ------------------------------------------ | ------------------------------------------------------ |
-| `node`       | Node HTTP server output                    | no-op                                                  |
-| `bun`        | Bun HTTP server output                     | no-op                                                  |
-| `static`     | Static HTML/CSS/JS                         | no-op (dist already final)                             |
-| `vercel`     | `.vercel/output` (Build Output API v3)     | `.vercel/output/config.json` (static variant)          |
-| `cloudflare` | Cloudflare Pages + Workers                 | `_routes.json` static config                           |
-| `netlify`    | Netlify Functions (streaming)              | `netlify.toml` / static config                         |
+| Adapter      | SSR build                              | SSG build                                     |
+| ------------ | -------------------------------------- | --------------------------------------------- |
+| `node`       | Node HTTP server output                | no-op                                         |
+| `bun`        | Bun HTTP server output                 | no-op                                         |
+| `static`     | Static HTML/CSS/JS                     | no-op (dist already final)                    |
+| `vercel`     | `.vercel/output` (Build Output API v3) | `.vercel/output/config.json` (static variant) |
+| `cloudflare` | Cloudflare Pages + Workers             | `_routes.json` static config                  |
+| `netlify`    | Netlify Functions (streaming)          | `netlify.toml` / static config                |
 
 `vercel`/`cloudflare`/`netlify` also implement `Adapter.revalidate(path)` for build-time ISR — see [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate). `static`/`node`/`bun` implement `revalidate` as a no-op.
 
@@ -831,13 +837,13 @@ In-memory LRU cache with stale-while-revalidate. Cached responses carry `x-isr-c
 
 ## Other Build-Time Plugins
 
-| Plugin / API     | Import path                | Purpose                                               |
-| ---------------- | -------------------------- | ----------------------------------------------------- |
-| `faviconPlugin`  | `@pyreon/zero/favicon`     | Per-locale favicon generation; `faviconLinks` helper  |
-| `ogImagePlugin`  | `@pyreon/zero/og-image`    | Build-time Open Graph image generation                |
-| `aiPlugin`       | `@pyreon/zero/ai`          | Generates `llms.txt`, JSON-LD inference, AI manifest  |
-| `iconsPlugin`    | `@pyreon/zero/server`      | Scan an icon dir → typed `<Icon name>` set            |
-| `i18nRouting`    | `@pyreon/zero/server`      | Request-time locale detection middleware              |
+| Plugin / API    | Import path             | Purpose                                              |
+| --------------- | ----------------------- | ---------------------------------------------------- |
+| `faviconPlugin` | `@pyreon/zero/favicon`  | Per-locale favicon generation; `faviconLinks` helper |
+| `ogImagePlugin` | `@pyreon/zero/og-image` | Build-time Open Graph image generation               |
+| `aiPlugin`      | `@pyreon/zero/ai`       | Generates `llms.txt`, JSON-LD inference, AI manifest |
+| `iconsPlugin`   | `@pyreon/zero/server`   | Scan an icon dir → typed `<Icon name>` set           |
+| `i18nRouting`   | `@pyreon/zero/server`   | Request-time locale detection middleware             |
 
 ```ts
 import { faviconPlugin } from '@pyreon/zero/favicon'
@@ -884,44 +890,51 @@ function Dashboard() {
 From `@pyreon/zero/testing`:
 
 ```ts
-import { testMiddleware, createTestApiServer, createMockHandler, createTestContext } from '@pyreon/zero/testing'
+import {
+  testMiddleware,
+  createTestApiServer,
+  createMockHandler,
+  createTestContext,
+} from '@pyreon/zero/testing'
 
 const { headers } = await testMiddleware(corsMiddleware({ origin: '*' }), '/api/posts')
 
-const server = createTestApiServer([{ pattern: '/api/posts', module: { GET: () => Response.json([]) } }])
+const server = createTestApiServer([
+  { pattern: '/api/posts', module: { GET: () => Response.json([]) } },
+])
 const res = await server.request('/api/posts')
 ```
 
 ## Subpath Exports
 
-| Import Path                | Exports                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------ |
-| `@pyreon/zero`             | Client-safe: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme, i18n hooks, types     |
-| `@pyreon/zero/server`      | `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `ogImagePlugin`, `iconsPlugin`, `i18nRouting`, `vercelRevalidateHandler`, fs-router helpers, `createISRHandler`, `validateEnv`, `useNonce`, `useRequestLocals`, default = `zeroPlugin` |
-| `@pyreon/zero/client`      | `startClient`                                                                        |
-| `@pyreon/zero/config`      | `defineConfig`, `resolveConfig`                                                       |
-| `@pyreon/zero/image`       | `Image`, `useImage`, `createImage`                                                   |
-| `@pyreon/zero/link`        | `Link`, `useLink`, `createLink`, `prefetchRoute`                                     |
-| `@pyreon/zero/script`      | `Script`, `useScript`, `createScript`                                                |
-| `@pyreon/zero/meta`        | `Meta`, `buildMetaTags`                                                              |
-| `@pyreon/zero/theme`       | Theme signals + `ThemeToggle`                                                         |
-| `@pyreon/zero/font`        | `fontPlugin`, `fontVariables`                                                         |
-| `@pyreon/zero/image-plugin`| `imagePlugin`                                                                        |
-| `@pyreon/zero/cache`       | `cacheMiddleware`, `securityHeaders`, `varyEncoding`                                  |
-| `@pyreon/zero/seo`         | `seoPlugin`, `seoMiddleware`, `generateSitemap`, `generateRobots`, `jsonLd`           |
-| `@pyreon/zero/actions`     | `defineAction`, `createActionMiddleware`                                              |
-| `@pyreon/zero/api-routes`  | API route utilities, `createApiMiddleware`                                            |
-| `@pyreon/zero/cors`        | `corsMiddleware`                                                                     |
-| `@pyreon/zero/rate-limit`  | `rateLimitMiddleware`                                                                 |
-| `@pyreon/zero/compression` | `compressionMiddleware`                                                              |
-| `@pyreon/zero/csp`         | `cspMiddleware`                                                                       |
-| `@pyreon/zero/env`         | `validateEnv`, `schema`, `publicEnv`                                                  |
-| `@pyreon/zero/logger`      | `loggerMiddleware`                                                                   |
-| `@pyreon/zero/favicon`     | `faviconPlugin`, `faviconLinks`                                                       |
-| `@pyreon/zero/og-image`    | `ogImagePlugin`, `ogImagePath`                                                        |
-| `@pyreon/zero/ai`          | `aiPlugin`, `inferJsonLd`, `generateLlmsTxt`, `generateLlmsFullTxt`                   |
-| `@pyreon/zero/i18n-routing`| `useLocale`, `setLocale`, `buildLocalePath`, `extractLocaleFromPath`                  |
-| `@pyreon/zero/testing`     | Test helpers for middleware + API routes                                             |
+| Import Path                 | Exports                                                                                                                                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/zero`              | Client-safe: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme, i18n hooks, types                                                                                                                                                                                                        |
+| `@pyreon/zero/server`       | `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `ogImagePlugin`, `iconsPlugin`, `i18nRouting`, `vercelRevalidateHandler`, fs-router helpers, `createISRHandler`, `validateEnv`, `useNonce`, `useRequestLocals`, default = `zeroPlugin` |
+| `@pyreon/zero/client`       | `startClient`                                                                                                                                                                                                                                                                           |
+| `@pyreon/zero/config`       | `defineConfig`, `resolveConfig`                                                                                                                                                                                                                                                         |
+| `@pyreon/zero/image`        | `Image`, `useImage`, `createImage`                                                                                                                                                                                                                                                      |
+| `@pyreon/zero/link`         | `Link`, `useLink`, `createLink`, `prefetchRoute`                                                                                                                                                                                                                                        |
+| `@pyreon/zero/script`       | `Script`, `useScript`, `createScript`                                                                                                                                                                                                                                                   |
+| `@pyreon/zero/meta`         | `Meta`, `buildMetaTags`                                                                                                                                                                                                                                                                 |
+| `@pyreon/zero/theme`        | Theme signals + `ThemeToggle`                                                                                                                                                                                                                                                           |
+| `@pyreon/zero/font`         | `fontPlugin`, `fontVariables`                                                                                                                                                                                                                                                           |
+| `@pyreon/zero/image-plugin` | `imagePlugin`                                                                                                                                                                                                                                                                           |
+| `@pyreon/zero/cache`        | `cacheMiddleware`, `securityHeaders`, `varyEncoding`                                                                                                                                                                                                                                    |
+| `@pyreon/zero/seo`          | `seoPlugin`, `seoMiddleware`, `generateSitemap`, `generateRobots`, `jsonLd`                                                                                                                                                                                                             |
+| `@pyreon/zero/actions`      | `defineAction`, `createActionMiddleware`                                                                                                                                                                                                                                                |
+| `@pyreon/zero/api-routes`   | API route utilities, `createApiMiddleware`                                                                                                                                                                                                                                              |
+| `@pyreon/zero/cors`         | `corsMiddleware`                                                                                                                                                                                                                                                                        |
+| `@pyreon/zero/rate-limit`   | `rateLimitMiddleware`                                                                                                                                                                                                                                                                   |
+| `@pyreon/zero/compression`  | `compressionMiddleware`                                                                                                                                                                                                                                                                 |
+| `@pyreon/zero/csp`          | `cspMiddleware`                                                                                                                                                                                                                                                                         |
+| `@pyreon/zero/env`          | `validateEnv`, `schema`, `publicEnv`                                                                                                                                                                                                                                                    |
+| `@pyreon/zero/logger`       | `loggerMiddleware`                                                                                                                                                                                                                                                                      |
+| `@pyreon/zero/favicon`      | `faviconPlugin`, `faviconLinks`                                                                                                                                                                                                                                                         |
+| `@pyreon/zero/og-image`     | `ogImagePlugin`, `ogImagePath`                                                                                                                                                                                                                                                          |
+| `@pyreon/zero/ai`           | `aiPlugin`, `inferJsonLd`, `generateLlmsTxt`, `generateLlmsFullTxt`                                                                                                                                                                                                                     |
+| `@pyreon/zero/i18n-routing` | `useLocale`, `setLocale`, `buildLocalePath`, `extractLocaleFromPath`                                                                                                                                                                                                                    |
+| `@pyreon/zero/testing`      | Test helpers for middleware + API routes                                                                                                                                                                                                                                                |
 
 ::: info
 There are no `@pyreon/zero/adapter-*` or `@pyreon/zero/isr` subpaths. Adapters and `createISRHandler` are exported from `@pyreon/zero/server`.

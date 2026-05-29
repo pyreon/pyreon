@@ -66,7 +66,13 @@ const Component = (props: Partial<Props>) => {
   }
 
   return (
-    <Styled as={own.tag} $contentType={own.contentType} $element={stylingProps} {...debugProps} {...rest}>
+    <Styled
+      as={own.tag}
+      $contentType={own.contentType}
+      $element={stylingProps}
+      {...debugProps}
+      {...rest}
+    >
       {() => resolveSlot(own.children)}
     </Styled>
   )

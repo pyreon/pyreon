@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -134,7 +133,6 @@
   **Policy: only ports that show measurably better under Pyreon's runtime
   were kept.** Two upstream changes were measured neutral/worse here and
   deliberately reverted:
-
   - `styler.hashUpdate` 4-char unroll — measured +1.6% short / +2.1% long
     under Bun (both inside the ±2% JIT noise band). Reverted to the simple
     single-char loop.
@@ -146,7 +144,6 @@
   **Measured wins** (paired before/after micro-bench via
   `bun scripts/perf/port-vitus-labs-bench.ts`, Bun 1.3.13, 3 warmup + 7
   timed runs, report median):
-
   - `styler.CSSResult._staticResolved` cache (8 repeats): **+85.3%**
   - `attrs.removeUndefinedProps` (10-prop input): **+77.4%**
   - `unistyle.shouldNormalize` (5-key static): **+66.0%**
@@ -160,7 +157,6 @@
   - `styler.splitRules charCodeAt vs str[i]`: **+8.0%**
 
   Plus 6 structural cleanups (no perf claim, allocation reductions only):
-
   - `styler.globalStyle` length-check vs `.trim()`
   - `unistyle.normalizeTheme` / `transformTheme` for-in (drops
     Object.entries tuple-array allocations)
@@ -173,7 +169,6 @@
 
   **Behavioural lock-in tests** (ported from vitus-labs `60fc25c1`, 8 new
   specs in `@pyreon/styler`):
-
   - `CSSResult._isDynamic` memoization: populate-on-first / cache-on-
     subsequent (values-mutation sentinel) / nested-propagation.
   - `CSSResult._staticResolved` cache: populate-on-first / cache-hit-via-
@@ -182,7 +177,6 @@
     signals, not React refs).
 
   **Bisect-verified-with-restore**:
-
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
 calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
@@ -195,7 +189,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   per-function structural wins, not a real-app headline number.
 
   **Verification**:
-
   - 1832 tests pass: styler 425 (+8 lock-ins) + unistyle 240 + rocketstyle
     290 + attrs 89 + coolgrid 106 + elements 463 + hooks 219.
   - Browser smokes: elements 16, styler 12, rocketstyle 12, unistyle 6,
@@ -357,7 +350,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   `@pyreon/rocketstyle` (`src/__tests__/rocketstyle.browser.test.tsx`,
   6 tests). Wraps a real `ComponentFn` (not `'div' as any`), matching
   production rocketstyle usage (Element/Text bases).
-
   - `.theme()` mounts and Chromium computes the authored color/padding
     via styler; emits a `pyr-*` class.
   - `state` prop swaps the resolved `$rocketstyle` theme.
@@ -376,7 +368,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   `@pyreon/coolgrid` (`src/__tests__/coolgrid.browser.test.tsx`, 7 tests).
   Wraps in `PyreonUI` (deprecated `<Provider>` from @pyreon/unistyle
   replaced).
-
   - Container mounts with `display: flex; flex-direction: column`.
   - Col size=6/12 → ~50% of Row; two size=6 Cols sum to ~100%
     side-by-side.
@@ -392,7 +383,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
 
   `@pyreon/connector-document`
   (`src/__tests__/connector-document.browser.test.tsx`, 5 tests).
-
   - **Path A strict**: component body throws; if `extractDocumentTree`
     falls through to Path B and invokes the component, the test fails
     with the throw. Passing proves Path A reads `_documentProps` off
@@ -410,7 +400,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
     Node-only dep leaks).
 
   Bisect-verified (load-bearing hot-path revert per suite):
-
   - **rocketstyle**: (a) emptied dimension theme merge → 3/6 failed
     (state, variant, modifier). (b) Static-returned `mode` in `useTheme`
     → 2/6 failed (reactive mode swap, m-callback dark-mode test).

@@ -280,10 +280,7 @@ export const ActionButton = styled('button')<{ $variant?: 'danger' | 'ghost' }>`
   font-size: 12px;
   font-weight: ${(p) => t(p).fontWeight.medium};
   border: 1px solid
-    ${(p) =>
-      p.$variant === 'danger'
-        ? t(p).color.system.error.base
-        : t(p).color.system.base[200]};
+    ${(p) => (p.$variant === 'danger' ? t(p).color.system.error.base : t(p).color.system.base[200])};
   border-radius: ${(p) => t(p).borderRadius.base}px;
   background: transparent;
   color: ${(p) =>

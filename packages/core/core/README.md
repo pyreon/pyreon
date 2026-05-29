@@ -29,8 +29,18 @@ The compiler (`@pyreon/compiler`, via `@pyreon/vite-plugin`) then transforms JSX
 
 ```tsx
 import {
-  onMount, createContext, createReactiveContext, provide, useContext,
-  Show, Switch, Match, For, Suspense, ErrorBoundary, lazy,
+  onMount,
+  createContext,
+  createReactiveContext,
+  provide,
+  useContext,
+  Show,
+  Switch,
+  Match,
+  For,
+  Suspense,
+  ErrorBoundary,
+  lazy,
 } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
@@ -39,7 +49,7 @@ const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 function Timer() {
   const count = signal(0)
   onMount(() => {
-    const id = setInterval(() => count.update(n => n + 1), 1000)
+    const id = setInterval(() => count.update((n) => n + 1), 1000)
     return () => clearInterval(id)
   })
   return <div>{() => count()}</div>
@@ -52,7 +62,9 @@ function Page(props: { items: { id: number; name: string }[] }) {
   return (
     <Switch fallback={<p>None</p>}>
       <Match when={() => props.items.length > 0}>
-        <For each={props.items} by={i => i.id}>{i => <li>{i.name}</li>}</For>
+        <For each={props.items} by={(i) => i.id}>
+          {(i) => <li>{i.name}</li>}
+        </For>
       </Match>
     </Switch>
   )
@@ -99,12 +111,18 @@ return <For each={props.items} ...>...</For>
 ```tsx
 onMount(() => {
   const ws = new WebSocket(url)
-  return () => ws.close()  // cleanup runs on unmount
+  return () => ws.close() // cleanup runs on unmount
 })
 
-onUnmount(() => { /* … */ })
-onUpdate(() => { /* … */ })
-onErrorCaptured((err, info) => { /* return true to stop propagation */ })
+onUnmount(() => {
+  /* … */
+})
+onUpdate(() => {
+  /* … */
+})
+onErrorCaptured((err, info) => {
+  /* return true to stop propagation */
+})
 ```
 
 `onMount`'s return value is the cleanup function — there's no separate `useEffect`-style pair. Hook arrays are lazy-allocated; components with no hooks pay zero cost.
@@ -116,7 +134,7 @@ Two flavors, deliberately distinct:
 ```tsx
 // Static context: useContext returns T directly, safe to destructure
 const ThemeCtx = createContext<'light' | 'dark'>('light')
-const theme = useContext(ThemeCtx)  // 'light' | 'dark'
+const theme = useContext(ThemeCtx) // 'light' | 'dark'
 
 // Reactive context: useContext returns () => T, call it inside reactive scopes
 const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
@@ -168,9 +186,13 @@ import { splitProps, mergeProps, cx, createUniqueId } from '@pyreon/core'
 function Button(props: ButtonProps) {
   const [local, rest] = splitProps(props, ['variant', 'size'])
   const merged = mergeProps({ type: 'button' }, rest)
-  const id = createUniqueId()  // 'pyreon-1', SSR-safe
+  const id = createUniqueId() // 'pyreon-1', SSR-safe
   return (
-    <button id={id} {...merged} class={cx('btn', `btn-${local.variant}`, local.size && `size-${local.size}`)}>
+    <button
+      id={id}
+      {...merged}
+      class={cx('btn', `btn-${local.variant}`, local.size && `size-${local.size}`)}
+    >
       {props.children}
     </button>
   )
@@ -182,12 +204,14 @@ function Button(props: ButtonProps) {
 ## ErrorBoundary
 
 ```tsx
-<ErrorBoundary fallback={(err, reset) => (
-  <div role="alert">
-    <p>{String(err)}</p>
-    <button onClick={reset}>Retry</button>
-  </div>
-)}>
+<ErrorBoundary
+  fallback={(err, reset) => (
+    <div role="alert">
+      <p>{String(err)}</p>
+      <button onClick={reset}>Retry</button>
+    </div>
+  )}
+>
   <App />
 </ErrorBoundary>
 ```

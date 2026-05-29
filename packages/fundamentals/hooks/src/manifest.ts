@@ -121,7 +121,7 @@ useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client
       signature:
         '(target: EventTarget | (() => EventTarget | null), event: string, handler: EventListener, options?: AddEventListenerOptions) => void',
       summary:
-        'Register a DOM event listener with automatic cleanup on unmount. Use this instead of raw `addEventListener` in primitives — never `addEventListener` / `removeEventListener` directly in component code (the cleanup is the hook\'s whole job). `target` may be a getter so reactive refs (`() => buttonRef()`) re-bind when the underlying element changes.',
+        "Register a DOM event listener with automatic cleanup on unmount. Use this instead of raw `addEventListener` in primitives — never `addEventListener` / `removeEventListener` directly in component code (the cleanup is the hook's whole job). `target` may be a getter so reactive refs (`() => buttonRef()`) re-bind when the underlying element changes.",
       example: `useEventListener(window, 'resize', () => layoutSig.set(measure()))
 useEventListener(() => panelRef(), 'keydown', (e) => {
   if (e.key === 'Escape') setOpen(false)
@@ -165,14 +165,15 @@ useFocusTrap(() => modalRef(), () => isOpen())
 useScrollLock(() => isOpen())`,
       mistakes: [
         'Forgetting the second argument `active` — always pass a reactive boolean (`() => isOpen()`) so the trap deactivates when the modal closes; a static `true` traps focus forever',
-        'Using on an element that isn\'t rendered yet — the ref getter must return the element at the time `active` becomes true; pair with a `<Show>` or reactive accessor that mounts the element first',
+        "Using on an element that isn't rendered yet — the ref getter must return the element at the time `active` becomes true; pair with a `<Show>` or reactive accessor that mounts the element first",
       ],
       seeAlso: ['useScrollLock', 'useDialog', 'useClickOutside'],
     },
     {
       name: 'useBreakpoint',
       kind: 'hook',
-      signature: '() => Signal<{ xs: boolean; sm: boolean; md: boolean; lg: boolean; xl: boolean }>',
+      signature:
+        '() => Signal<{ xs: boolean; sm: boolean; md: boolean; lg: boolean; xl: boolean }>',
       summary:
         'Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Use `useMediaQuery` for one-off arbitrary queries.',
       example: `const bp = useBreakpoint()
@@ -187,7 +188,7 @@ useScrollLock(() => isOpen())`,
       kind: 'hook',
       signature: '<T>(source: Signal<T> | (() => T), delayMs: number) => Signal<T>',
       summary:
-        'Returns a debounced signal that only updates after `delayMs` of source-signal idle. Use for search-as-you-type, filter inputs, anywhere downstream effects shouldn\'t fire on every keystroke. The PAIR — `useDebouncedCallback` — debounces a function call instead of a value.',
+        "Returns a debounced signal that only updates after `delayMs` of source-signal idle. Use for search-as-you-type, filter inputs, anywhere downstream effects shouldn't fire on every keystroke. The PAIR — `useDebouncedCallback` — debounces a function call instead of a value.",
       example: `const search = signal('')
 const debouncedSearch = useDebouncedValue(search, 300)
 effect(() => fetchResults(debouncedSearch()))`,
@@ -199,7 +200,8 @@ effect(() => fetchResults(debouncedSearch()))`,
     {
       name: 'useClipboard',
       kind: 'hook',
-      signature: '(timeoutMs?: number) => { copy: (text: string) => Promise<void>; copied: Signal<boolean> }',
+      signature:
+        '(timeoutMs?: number) => { copy: (text: string) => Promise<void>; copied: Signal<boolean> }',
       summary:
         '`navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `timeoutMs` (default 2000). Use the `copied` signal to flash a "Copied!" UI cue without manual timer management.',
       example: `const { copy, copied } = useClipboard()
@@ -209,9 +211,10 @@ effect(() => fetchResults(debouncedSearch()))`,
     {
       name: 'useDialog',
       kind: 'hook',
-      signature: '() => { ref: (el: HTMLDialogElement | null) => void; open: () => void; close: (returnValue?: string) => void; isOpen: Signal<boolean>; returnValue: Signal<string> }',
+      signature:
+        '() => { ref: (el: HTMLDialogElement | null) => void; open: () => void; close: (returnValue?: string) => void; isOpen: Signal<boolean>; returnValue: Signal<string> }',
       summary:
-        'Native `<dialog>` element wrapper with reactive `isOpen` / `returnValue` signals. Handles `showModal()` / `close()` plumbing and the `cancel`/`close` event wiring so consumers don\'t reimplement the boilerplate.',
+        "Native `<dialog>` element wrapper with reactive `isOpen` / `returnValue` signals. Handles `showModal()` / `close()` plumbing and the `cancel`/`close` event wiring so consumers don't reimplement the boilerplate.",
       example: `const dialog = useDialog()
 <dialog ref={dialog.ref}>...</dialog>
 <button onClick={dialog.open}>Open</button>`,
@@ -236,7 +239,7 @@ effect(() => fetchResults(debouncedSearch()))`,
       signature:
         '(onLoadMore: () => void | Promise<void>, opts?: { rootMargin?: string; threshold?: number; enabled?: () => boolean }) => { sentinelRef: (el: HTMLElement | null) => void; isLoading: Signal<boolean> }',
       summary:
-        '`IntersectionObserver`-based infinite loading. Attach the returned `sentinelRef` to a node at the bottom of the list — when it scrolls into view, `onLoadMore` fires. `isLoading` blocks re-fires until the promise resolves. `enabled` accessor lets you stop observing once you\'ve loaded the last page.',
+        "`IntersectionObserver`-based infinite loading. Attach the returned `sentinelRef` to a node at the bottom of the list — when it scrolls into view, `onLoadMore` fires. `isLoading` blocks re-fires until the promise resolves. `enabled` accessor lets you stop observing once you've loaded the last page.",
       example: `const { sentinelRef, isLoading } = useInfiniteScroll(loadNextPage, { rootMargin: '200px', enabled: () => hasMore() })
 <For each={items()} by={(i) => i.id}>{(item) => <Row data={item} />}</For>
 <div ref={sentinelRef}>{() => isLoading() && 'Loading…'}</div>`,
@@ -292,7 +295,7 @@ useIsomorphicLayoutEffect(() => {
     },
     {
       label: 'Hooks return signals, not plain values',
-      note: 'Every hook returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values. Read by calling: `size().width`, `bp().md`, `online()`. This is the cost of fine-grained reactivity but the reward is composition: hooks chain into `effect` / `computed` directly without re-bridging into Pyreon\'s reactivity graph.',
+      note: "Every hook returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values. Read by calling: `size().width`, `bp().md`, `online()`. This is the cost of fine-grained reactivity but the reward is composition: hooks chain into `effect` / `computed` directly without re-bridging into Pyreon's reactivity graph.",
     },
     {
       label: 'SSR-safe by construction',

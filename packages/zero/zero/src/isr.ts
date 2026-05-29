@@ -63,9 +63,11 @@ export interface ISRStore<E = ISRCacheEntry> {
  * small. Without that, `Map.get(...)` wouldn't update ordering and
  * frequently-read entries could be evicted by occasional writes.
  */
-export function createMemoryStore<E = ISRCacheEntry>(opts: {
-  maxEntries?: number
-} = {}): ISRStore<E> {
+export function createMemoryStore<E = ISRCacheEntry>(
+  opts: {
+    maxEntries?: number
+  } = {},
+): ISRStore<E> {
   const cache = new Map<string, E>()
   const maxEntries = Math.max(1, opts.maxEntries ?? 1000)
   return {
@@ -166,11 +168,11 @@ export function createISRHandler(
   // behaviour byte-identical (same `maxEntries` default, same Map +
   // delete+re-insert LRU bump) so existing callers see no behavioural
   // change.
-  const store: ISRStore<CacheEntry>
-    = config.store
-      ?? createMemoryStore<CacheEntry>(
-        config.maxEntries !== undefined ? { maxEntries: config.maxEntries } : {},
-      )
+  const store: ISRStore<CacheEntry> =
+    config.store ??
+    createMemoryStore<CacheEntry>(
+      config.maxEntries !== undefined ? { maxEntries: config.maxEntries } : {},
+    )
   const revalidating = new Set<string>()
   const revalidateMs = config.revalidate * 1000
   // Bounded background-revalidation timeout. Without it, a handler that
@@ -196,8 +198,8 @@ export function createISRHandler(
   // pre-M1 behaviour). User-supplied `cacheKey` opts in to varying
   // by cookies / query / headers — required for auth-gated pages.
   // See `ISRConfig.cacheKey` JSDoc for the auth-incompatibility caveat.
-  const deriveKey: (req: Request, url: URL) => string
-    = typeof config.cacheKey === 'function'
+  const deriveKey: (req: Request, url: URL) => string =
+    typeof config.cacheKey === 'function'
       ? (req, _url) => (config.cacheKey as (r: Request) => string)(req)
       : (_req, url) => url.pathname
 

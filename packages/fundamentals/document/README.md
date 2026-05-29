@@ -56,12 +56,12 @@ Builder methods mirror every renderer: `toHtml` / `toPdf` / `toDocx` / `toPptx` 
 
 ## Primitives — 18 nodes
 
-| Category | Primitives |
-|---|---|
-| Layout | `Document`, `Page`, `PageBreak`, `Section`, `Row`, `Column`, `Spacer`, `Divider` |
-| Content | `Heading`, `Text`, `Image`, `Link`, `Button`, `Code`, `Quote` |
-| Lists | `List`, `ListItem` |
-| Tables | `Table` |
+| Category | Primitives                                                                       |
+| -------- | -------------------------------------------------------------------------------- |
+| Layout   | `Document`, `Page`, `PageBreak`, `Section`, `Row`, `Column`, `Spacer`, `Divider` |
+| Content  | `Heading`, `Text`, `Image`, `Link`, `Button`, `Code`, `Quote`                    |
+| Lists    | `List`, `ListItem`                                                               |
+| Tables   | `Table`                                                                          |
 
 Every primitive is a pure factory returning a `DocNode` — no runtime, no JSX runtime needed if you build the tree imperatively. `isDocNode(value)` narrows at boundaries.
 
@@ -124,12 +124,12 @@ If you need the document tree to also render in the browser (live preview + expo
 
 Approximate chunk sizes (already vendored in `lib/`):
 
-| Renderer | Approx chunk |
-|---|---|
-| PDF (pdfmake + fonts) | ~3 MB |
-| DOCX | ~700 KB |
-| XLSX | ~1.1 MB |
-| PPTX | ~400 KB |
+| Renderer              | Approx chunk |
+| --------------------- | ------------ |
+| PDF (pdfmake + fonts) | ~3 MB        |
+| DOCX                  | ~700 KB      |
+| XLSX                  | ~1.1 MB      |
+| PPTX                  | ~400 KB      |
 
 These load only when their format is invoked. The 14 MB published `lib/` is the trade-off for a single-install batteries-included experience; consumers tree-shake at their build step so unused renderers don't ship to end users.
 

@@ -6,9 +6,13 @@ export function InputDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Input</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Input
+      </Title>
 
-      <Title size="h3" style="margin-bottom: 12px">Basic</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Basic
+      </Title>
       <div style="max-width: 400px; margin-bottom: 24px;">
         <Input
           placeholder="Enter your name"
@@ -20,27 +24,35 @@ export function InputDemo() {
         </p>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">States</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        States
+      </Title>
       <div style="max-width: 400px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Input state="error" placeholder="Error state" />
         <Input state="success" placeholder="Success state" />
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Sizes</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Sizes
+      </Title>
       <div style="max-width: 400px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Input size="small" placeholder="Small" />
         <Input size="medium" placeholder="Medium" />
         <Input size="large" placeholder="Large" />
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Variants</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Variants
+      </Title>
       <div style="max-width: 400px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Input variant="outline" placeholder="Outline" />
         <Input variant="filled" placeholder="Filled" />
         <Input variant="underline" placeholder="Underline" />
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Textarea</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Textarea
+      </Title>
       <div style="max-width: 400px; margin-bottom: 24px;">
         <Textarea placeholder="Write something..." rows={4} />
       </div>

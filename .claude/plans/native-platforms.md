@@ -15,7 +15,7 @@
 - **Per-platform concerns plug in cleanly**: abstract Pyreon API (`@pyreon/router`, `@pyreon/camera`, …) + per-platform implementations (`@pyreon/router-ios`, `@pyreon/router-android`). User code calls the abstract API; the compiler picks the right binding per target.
 - **The cost is years, not months**: ~2-3 years to production-ready iOS + Android with a focused team. This is a multi-year strategic commitment, not an MVP.
 - **What we lose vs JS-on-native (RN-style)**: over-the-air dynamic updates. App-store releases only. Acceptable trade for "truly native."
-- **What we gain**: a story no other framework can tell — *same component, every platform, native everywhere, signal model the whole way down*.
+- **What we gain**: a story no other framework can tell — _same component, every platform, native everywhere, signal model the whole way down_.
 
 ---
 
@@ -23,14 +23,14 @@
 
 You write ONE Pyreon component. The compiler emits per-target.
 
-| Target | Compiler emits | Runtime |
-|---|---|---|
-| **Web** | JS + DOM templates (today's path) | Pyreon JS runtime |
-| **SSR** | JS rendering to HTML strings (today's path) | Pyreon JS runtime |
-| **iOS** | Swift + SwiftUI | Native — no JS engine, no bridge |
-| **Android** | Kotlin + Jetpack Compose | Native — no JS engine, no bridge |
-| **macOS** (future) | Swift + AppKit / SwiftUI | Native |
-| **Linux / Windows desktop** (future) | Compose for Desktop OR Rust + iced/egui | Native |
+| Target                               | Compiler emits                              | Runtime                          |
+| ------------------------------------ | ------------------------------------------- | -------------------------------- |
+| **Web**                              | JS + DOM templates (today's path)           | Pyreon JS runtime                |
+| **SSR**                              | JS rendering to HTML strings (today's path) | Pyreon JS runtime                |
+| **iOS**                              | Swift + SwiftUI                             | Native — no JS engine, no bridge |
+| **Android**                          | Kotlin + Jetpack Compose                    | Native — no JS engine, no bridge |
+| **macOS** (future)                   | Swift + AppKit / SwiftUI                    | Native                           |
+| **Linux / Windows desktop** (future) | Compose for Desktop OR Rust + iced/egui     | Native                           |
 
 The user never writes platform code for the common path. They write Pyreon. The compiler does the work.
 
@@ -59,7 +59,9 @@ export function Counter() {
 ### Web output (today's compiler, unchanged)
 
 ```js
-const _$h0 = _tpl(`<div class="view-xyz"><span class="text-abc"></span><button class="btn-def">Increment</button></div>`)
+const _$h0 = _tpl(
+  `<div class="view-xyz"><span class="text-abc"></span><button class="btn-def">Increment</button></div>`,
+)
 export function Counter() {
   const count = signal(0)
   const root = _$h0.cloneNode(true)
@@ -118,21 +120,21 @@ The user's source is **byte-for-byte the same**. The compiler emits idiomatic pe
 
 The reason PMTC isn't a hack: SwiftUI and Compose are themselves signal-based reactive UI frameworks. They use the same idea Pyreon uses; they just call the primitives different names. Pyreon compiling onto them is structural fit, not translation:
 
-| Pyreon construct | SwiftUI equivalent | Compose equivalent |
-|---|---|---|
-| `signal<T>(initial)` | `@State private var x: T = initial` | `var x by remember { mutableStateOf(initial) }` |
-| `computed(() => f(a(), b()))` | computed property reading `@State` | `derivedStateOf { f(a, b) }` |
-| `effect(() => { /* runs on dep change */ })` | `.onChange(of: dep) { ... }` | `LaunchedEffect(dep) { ... }` |
-| `<For each={items} by={i => i.id}>{i => ...}</For>` | `ForEach(items, id: \.id) { i in ... }` | `LazyColumn { items(items, key = { it.id }) { ... } }` |
-| `<Show when={cond}>{...}</Show>` | `if cond { ... }` view builder | `if (cond) { ... }` composable |
-| `onMount(() => { ...; return cleanup })` | `.onAppear { ... }.onDisappear { cleanup }` | `DisposableEffect(Unit) { onDispose { cleanup } }` |
-| `onUnmount(() => ...)` | `.onDisappear { ... }` | `DisposableEffect(Unit) { onDispose { ... } }` |
-| `provide(ctx, value)` | `.environment(ctx, value)` | `CompositionLocalProvider(ctx provides value) { ... }` |
-| `useContext(ctx)` | `@Environment(ctx) var ctx` | `val v = ctx.current` |
-| `batch(() => { ... })` | implicit (SwiftUI batches in one render pass) | `Snapshot.withMutableSnapshot { ... }` |
-| `createStore(...)` | `@Observable class Store { ... }` | `class Store { val x = mutableStateOf(...) }` |
-| `signal<'a' \| 'b' \| 'c'>('a')` (string-literal union) | `@State private var x: X = .a` + `enum X: String { case a, b, c }` | `var x by remember { mutableStateOf(X.a) }` + `enum class X { a, b, c }` |
-| `<input value={s} onInput={e => s.set(e.target.value)}>` (two-way binding pattern) | `TextField("…", text: $s)` (compact Binding form via `$`) | `TextField(value = s, onValueChange = { s = it })` (already matches Pyreon shape) |
+| Pyreon construct                                                                   | SwiftUI equivalent                                                 | Compose equivalent                                                                |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `signal<T>(initial)`                                                               | `@State private var x: T = initial`                                | `var x by remember { mutableStateOf(initial) }`                                   |
+| `computed(() => f(a(), b()))`                                                      | computed property reading `@State`                                 | `derivedStateOf { f(a, b) }`                                                      |
+| `effect(() => { /* runs on dep change */ })`                                       | `.onChange(of: dep) { ... }`                                       | `LaunchedEffect(dep) { ... }`                                                     |
+| `<For each={items} by={i => i.id}>{i => ...}</For>`                                | `ForEach(items, id: \.id) { i in ... }`                            | `LazyColumn { items(items, key = { it.id }) { ... } }`                            |
+| `<Show when={cond}>{...}</Show>`                                                   | `if cond { ... }` view builder                                     | `if (cond) { ... }` composable                                                    |
+| `onMount(() => { ...; return cleanup })`                                           | `.onAppear { ... }.onDisappear { cleanup }`                        | `DisposableEffect(Unit) { onDispose { cleanup } }`                                |
+| `onUnmount(() => ...)`                                                             | `.onDisappear { ... }`                                             | `DisposableEffect(Unit) { onDispose { ... } }`                                    |
+| `provide(ctx, value)`                                                              | `.environment(ctx, value)`                                         | `CompositionLocalProvider(ctx provides value) { ... }`                            |
+| `useContext(ctx)`                                                                  | `@Environment(ctx) var ctx`                                        | `val v = ctx.current`                                                             |
+| `batch(() => { ... })`                                                             | implicit (SwiftUI batches in one render pass)                      | `Snapshot.withMutableSnapshot { ... }`                                            |
+| `createStore(...)`                                                                 | `@Observable class Store { ... }`                                  | `class Store { val x = mutableStateOf(...) }`                                     |
+| `signal<'a' \| 'b' \| 'c'>('a')` (string-literal union)                            | `@State private var x: X = .a` + `enum X: String { case a, b, c }` | `var x by remember { mutableStateOf(X.a) }` + `enum class X { a, b, c }`          |
+| `<input value={s} onInput={e => s.set(e.target.value)}>` (two-way binding pattern) | `TextField("…", text: $s)` (compact Binding form via `$`)          | `TextField(value = s, onValueChange = { s = it })` (already matches Pyreon shape) |
 
 These aren't translations the way "JSX → React" or "JSX → Vue templates" are translations. These are the same construct expressed in each framework's native vocabulary. Pyreon's reactive primitives are the lingua franca; SwiftUI / Compose / DOM are the dialects.
 
@@ -194,9 +196,9 @@ Same tokens, native types. Zero user effort.
 
 ```tsx
 const Button = styled('button')`
-  background: ${t => t.color.primary};
-  padding: ${t => t.spacing.md};
-  border-radius: ${t => t.radius.md};
+  background: ${(t) => t.color.primary};
+  padding: ${(t) => t.spacing.md};
+  border-radius: ${(t) => t.radius.md};
 `
 ```
 
@@ -213,7 +215,9 @@ The structural shape is the same on every target — a description of how to sty
 User code:
 
 ```tsx
-<Button state="primary" size="medium" onClick={onSave}>Save</Button>
+<Button state="primary" size="medium" onClick={onSave}>
+  Save
+</Button>
 ```
 
 iOS output:
@@ -276,6 +280,7 @@ You write rocketstyle **once**, in Pyreon JSX. Both native targets get idiomatic
 ### Themes (light/dark)
 
 `@pyreon/ui-theme`'s `light` / `dark` variants compile to:
+
 - **Web**: today's class-swap + CSS-variable approach
 - **iOS**: `@Environment(\.colorScheme)` — system-driven, no JS, native dark-mode switching
 - **Android**: `MaterialTheme.colorScheme` (or `isSystemInDarkTheme()` if needed) — system-driven
@@ -313,11 +318,11 @@ function Home() {
 
 Per-platform implementations:
 
-| Platform | Implementation |
-|---|---|
-| **Web** | `@pyreon/router` — `history.pushState`, URL matching, popstate handling (today's package) |
-| **iOS** | `@pyreon/router-ios` — SwiftUI `NavigationStack` with typed `NavigationLink` destinations. `nav.push('/profile/42')` compiles to `path.append(ProfileDestination(id: 42))` |
-| **Android** | `@pyreon/router-android` — Compose `NavController` + `NavHost` with composable destinations. `nav.push('/profile/42')` compiles to `navController.navigate("profile/42")` |
+| Platform    | Implementation                                                                                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Web**     | `@pyreon/router` — `history.pushState`, URL matching, popstate handling (today's package)                                                                                  |
+| **iOS**     | `@pyreon/router-ios` — SwiftUI `NavigationStack` with typed `NavigationLink` destinations. `nav.push('/profile/42')` compiles to `path.append(ProfileDestination(id: 42))` |
+| **Android** | `@pyreon/router-android` — Compose `NavController` + `NavHost` with composable destinations. `nav.push('/profile/42')` compiles to `navController.navigate("profile/42")`  |
 
 The compiler swaps the implementation at emit-time. User code never references platform routing primitives.
 
@@ -332,19 +337,15 @@ import { useCamera } from '@pyreon/camera'
 
 function ScanScreen() {
   const camera = useCamera({ facing: 'rear' })
-  return (
-    <View>
-      {() => camera.preview()}
-    </View>
-  )
+  return <View>{() => camera.preview()}</View>
 }
 ```
 
-| Platform | Implementation |
-|---|---|
-| **Web** | `getUserMedia()` → `<video>` element rendering the camera stream |
-| **iOS** | `AVCaptureSession` → `UIViewRepresentable`-wrapped `AVCaptureVideoPreviewLayer` |
-| **Android** | `CameraX` → `AndroidView`-wrapped `PreviewView` from `androidx.camera.view` |
+| Platform    | Implementation                                                                  |
+| ----------- | ------------------------------------------------------------------------------- |
+| **Web**     | `getUserMedia()` → `<video>` element rendering the camera stream                |
+| **iOS**     | `AVCaptureSession` → `UIViewRepresentable`-wrapped `AVCaptureVideoPreviewLayer` |
+| **Android** | `CameraX` → `AndroidView`-wrapped `PreviewView` from `androidx.camera.view`     |
 
 The abstract `@pyreon/camera` package ships the **TypeScript interface + the JS/web implementation**. Native implementations ship as `@pyreon/camera-ios` (Swift) and `@pyreon/camera-android` (Kotlin), part of the native build toolchain. The compiler resolves which one to link based on target.
 
@@ -378,17 +379,17 @@ function PressureDemo() {
 
 ## What we build vs reuse
 
-| Category | We build | We reuse |
-|---|---|---|
-| Compiler | Swift emitter, Kotlin emitter, type mapper (TS → Swift/Kotlin generics, async, error types), signal → `@State` mapper, rocketstyle → ViewModifier emitter | Existing JS emitter (today's compiler), JSX parser |
-| Reactivity runtime | Per-platform compile-time mapping (signals → @State / MutableState — almost no runtime code needed) | Existing JS reactivity for web/SSR |
-| Components | Pyreon framework packages stay JS-first; their LOGIC compiles, but per-platform UI bindings are new | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/store`, `@pyreon/form`, `@pyreon/query` — all platform-neutral, just compile |
-| UI primitives | iOS/Android native bindings for `<View>`, `<Text>`, `<Button>`, `<ScrollView>`, `<TextInput>`, etc. | SwiftUI + Compose (we emit FOR them; not against them) |
-| Styler / theming | Per-target emitters for CSS / `ViewModifier` / `Modifier` chains | `@pyreon/unistyle` tokens, `@pyreon/rocketstyle` dimension system — unchanged user-facing API |
-| Routing | `@pyreon/router-ios` (NavigationStack), `@pyreon/router-android` (NavController) | `@pyreon/router` for web (today) |
-| Platform APIs | Per-API native bindings on demand (camera, biometrics, push, …) | Pyreon abstract interfaces (`@pyreon/camera` etc.) |
-| Build / packaging | `@pyreon/native-cli` (Xcode + Gradle integration; Fastlane pipelines) | Vite for web (today) |
-| Hot reload (dev) | Compiler incremental recompile + native-side live edit (Swift HotReloading library, Compose Live Edit) | Vite HMR for web (today) |
+| Category           | We build                                                                                                                                                  | We reuse                                                                                                                    |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Compiler           | Swift emitter, Kotlin emitter, type mapper (TS → Swift/Kotlin generics, async, error types), signal → `@State` mapper, rocketstyle → ViewModifier emitter | Existing JS emitter (today's compiler), JSX parser                                                                          |
+| Reactivity runtime | Per-platform compile-time mapping (signals → @State / MutableState — almost no runtime code needed)                                                       | Existing JS reactivity for web/SSR                                                                                          |
+| Components         | Pyreon framework packages stay JS-first; their LOGIC compiles, but per-platform UI bindings are new                                                       | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/store`, `@pyreon/form`, `@pyreon/query` — all platform-neutral, just compile |
+| UI primitives      | iOS/Android native bindings for `<View>`, `<Text>`, `<Button>`, `<ScrollView>`, `<TextInput>`, etc.                                                       | SwiftUI + Compose (we emit FOR them; not against them)                                                                      |
+| Styler / theming   | Per-target emitters for CSS / `ViewModifier` / `Modifier` chains                                                                                          | `@pyreon/unistyle` tokens, `@pyreon/rocketstyle` dimension system — unchanged user-facing API                               |
+| Routing            | `@pyreon/router-ios` (NavigationStack), `@pyreon/router-android` (NavController)                                                                          | `@pyreon/router` for web (today)                                                                                            |
+| Platform APIs      | Per-API native bindings on demand (camera, biometrics, push, …)                                                                                           | Pyreon abstract interfaces (`@pyreon/camera` etc.)                                                                          |
+| Build / packaging  | `@pyreon/native-cli` (Xcode + Gradle integration; Fastlane pipelines)                                                                                     | Vite for web (today)                                                                                                        |
+| Hot reload (dev)   | Compiler incremental recompile + native-side live edit (Swift HotReloading library, Compose Live Edit)                                                    | Vite HMR for web (today)                                                                                                    |
 
 The big-budget items are the **compiler emitters** (Swift + Kotlin) and the **UI primitive bindings** (iOS + Android per-widget). Everything else either survives unchanged or is small per-target glue.
 
@@ -414,13 +415,13 @@ The big-budget items are the **compiler emitters** (Swift + Kotlin) and the **UI
 
 ## Honest timeline
 
-| Phase | Duration | Deliverable |
-|---|---|---|
-| **Phase 0** — feasibility spike | 2-3 months focused | One Pyreon component compiling to SwiftUI + rendering on iOS simulator. Proves the type-mapping and signal-mapping work. Counter app. |
-| **Phase 1** — iOS MVP | +4-6 months | Counter, list, form. 10 native widget bindings (`View`, `Text`, `Image`, `ScrollView`, `Button`, `TextInput`, `Switch`, `Touchable`, `Stack`, `StatusBar`). Basic styler emitter. iOS only. |
-| **Phase 2** — Android parity | +4-6 months | Same surface area on Android via Compose. Both targets passing the same test suite. |
-| **Phase 3** — production polish | +6-12 months | Routing (`router-ios`/`router-android`), full theming + dark mode, animation primitives, accessibility, real apps shipping in production. |
-| **Phase 4** — ecosystem | ongoing, years | Third-party native module bindings, platform-specific feature parity (push notifications, deep links, biometrics, payments), `@pyreon/native-cli` polish. |
+| Phase                           | Duration           | Deliverable                                                                                                                                                                                 |
+| ------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Phase 0** — feasibility spike | 2-3 months focused | One Pyreon component compiling to SwiftUI + rendering on iOS simulator. Proves the type-mapping and signal-mapping work. Counter app.                                                       |
+| **Phase 1** — iOS MVP           | +4-6 months        | Counter, list, form. 10 native widget bindings (`View`, `Text`, `Image`, `ScrollView`, `Button`, `TextInput`, `Switch`, `Touchable`, `Stack`, `StatusBar`). Basic styler emitter. iOS only. |
+| **Phase 2** — Android parity    | +4-6 months        | Same surface area on Android via Compose. Both targets passing the same test suite.                                                                                                         |
+| **Phase 3** — production polish | +6-12 months       | Routing (`router-ios`/`router-android`), full theming + dark mode, animation primitives, accessibility, real apps shipping in production.                                                   |
+| **Phase 4** — ecosystem         | ongoing, years     | Third-party native module bindings, platform-specific feature parity (push notifications, deep links, biometrics, payments), `@pyreon/native-cli` polish.                                   |
 
 **Realistic envelope**: **2-3 years to production-ready** iOS + Android with a focused team. Ecosystem parity with React Native takes ~5+ years. This is a strategic multi-year commitment, not an MVP.
 
@@ -432,15 +433,15 @@ The cost framing: if Pyreon's goal is to be **the framework that competes with R
 
 ### Real risks (specific, dated)
 
-| Risk | Mitigation |
-|---|---|
-| **Compiler complexity blows up**: Swift's type system is rich (generics + protocols + opaque types); Kotlin's is similarly rich. TS → Swift/Kotlin type translation has edge cases. | Phase 0 spike focuses on type mapper. If type mapping doesn't reach "covers 90% of Pyreon's existing TS without manual annotations," reconsider scope. |
-| **Per-platform widget bindings never finish**: there are hundreds of UIKit / Compose widgets. Building all bindings is years of work. | Same answer as every native framework: ship 10 essentials, grow on demand. Don't try to be complete. |
-| **Compose / SwiftUI evolve faster than we keep up**: Apple ships SwiftUI improvements yearly; Google ships Compose updates monthly. PMTC has to track. | Treat SwiftUI / Compose as "supported version N". Pin to LTS-equivalent versions; bump on a planned cadence. |
-| **TypeScript-only features lose fidelity in Swift/Kotlin output**: variance, conditional types, mapped types. | Type mapper documents what's supported; user code that uses unsupported constructs gets compiler errors at native-target builds. |
-| **Apple's EU DMA-era runtime restrictions tighten further (2026+)**: Apple has been restricting dynamic-code behaviors. PMTC sidesteps this entirely (no JS), but might face other restrictions. | PMTC is already on the safe side — no dynamic code at all. Lowest risk profile. |
-| **Compose Multiplatform overlaps**: JetBrains is building Compose Multiplatform (Kotlin → iOS + Android + Desktop + Web). Risk: it eats PMTC's strategic positioning. | Compose Multiplatform requires writing in Kotlin. PMTC's pitch is "write Pyreon JSX." Different audience. |
-| **Skip overlaps**: Skip transpiles Kotlin ↔ Swift, deployable as a single codebase. Risk: it solves part of the same problem more cheaply. | Skip requires writing Kotlin OR Swift as the source. PMTC's source is Pyreon JSX. Different audience again. |
+| Risk                                                                                                                                                                                             | Mitigation                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Compiler complexity blows up**: Swift's type system is rich (generics + protocols + opaque types); Kotlin's is similarly rich. TS → Swift/Kotlin type translation has edge cases.              | Phase 0 spike focuses on type mapper. If type mapping doesn't reach "covers 90% of Pyreon's existing TS without manual annotations," reconsider scope. |
+| **Per-platform widget bindings never finish**: there are hundreds of UIKit / Compose widgets. Building all bindings is years of work.                                                            | Same answer as every native framework: ship 10 essentials, grow on demand. Don't try to be complete.                                                   |
+| **Compose / SwiftUI evolve faster than we keep up**: Apple ships SwiftUI improvements yearly; Google ships Compose updates monthly. PMTC has to track.                                           | Treat SwiftUI / Compose as "supported version N". Pin to LTS-equivalent versions; bump on a planned cadence.                                           |
+| **TypeScript-only features lose fidelity in Swift/Kotlin output**: variance, conditional types, mapped types.                                                                                    | Type mapper documents what's supported; user code that uses unsupported constructs gets compiler errors at native-target builds.                       |
+| **Apple's EU DMA-era runtime restrictions tighten further (2026+)**: Apple has been restricting dynamic-code behaviors. PMTC sidesteps this entirely (no JS), but might face other restrictions. | PMTC is already on the safe side — no dynamic code at all. Lowest risk profile.                                                                        |
+| **Compose Multiplatform overlaps**: JetBrains is building Compose Multiplatform (Kotlin → iOS + Android + Desktop + Web). Risk: it eats PMTC's strategic positioning.                            | Compose Multiplatform requires writing in Kotlin. PMTC's pitch is "write Pyreon JSX." Different audience.                                              |
+| **Skip overlaps**: Skip transpiles Kotlin ↔ Swift, deployable as a single codebase. Risk: it solves part of the same problem more cheaply.                                                       | Skip requires writing Kotlin OR Swift as the source. PMTC's source is Pyreon JSX. Different audience again.                                            |
 
 ### Non-goals (explicit)
 
@@ -457,11 +458,11 @@ The cost framing: if Pyreon's goal is to be **the framework that competes with R
 
 Three pass/fail criteria for the Phase 0 spike. If any fail, regroup before Phase 1.
 
-| Checkpoint | Pass criterion |
-|---|---|
-| **Type mapper coverage** | At least 90% of existing Pyreon source compiles to Swift without manual annotations. (Measure: feed `@pyreon/ui-components` source to the type mapper; count `// pyreon-native-skip` annotations needed.) |
-| **Signal → `@State` round-trip** | A signal modified in user code, propagated through a computed, observed by an effect, observed by a SwiftUI `View`, fires the SwiftUI re-render path. (Measure: counter app on iOS simulator with a manual `signal.set` from a button works.) |
-| **Style fidelity** | A rocketstyle button rendered in iOS simulator looks visually identical to the same rocketstyle button rendered on web (modulo platform native conventions like cursor style). (Measure: side-by-side screenshot diff at <5% pixel difference.) |
+| Checkpoint                       | Pass criterion                                                                                                                                                                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Type mapper coverage**         | At least 90% of existing Pyreon source compiles to Swift without manual annotations. (Measure: feed `@pyreon/ui-components` source to the type mapper; count `// pyreon-native-skip` annotations needed.)                                       |
+| **Signal → `@State` round-trip** | A signal modified in user code, propagated through a computed, observed by an effect, observed by a SwiftUI `View`, fires the SwiftUI re-render path. (Measure: counter app on iOS simulator with a manual `signal.set` from a button works.)   |
+| **Style fidelity**               | A rocketstyle button rendered in iOS simulator looks visually identical to the same rocketstyle button rendered on web (modulo platform native conventions like cursor style). (Measure: side-by-side screenshot diff at <5% pixel difference.) |
 
 Past Phase 0, additional checkpoints per phase. These three are the minimum bar for "PMTC is real."
 
@@ -479,7 +480,7 @@ Past Phase 0, additional checkpoints per phase. These three are the minimum bar 
 ## What this doc commits to
 
 - **The direction is chosen**: PMTC. The previous multi-option survey is archived at [`archive/native-platforms-survey-2026-05.md`](archive/native-platforms-survey-2026-05.md) for context.
-- **Not yet committed**: timeline, staffing, sequencing, or first phase kickoff. This doc says *which direction*, not *when we start*.
+- **Not yet committed**: timeline, staffing, sequencing, or first phase kickoff. This doc says _which direction_, not _when we start_.
 - **Next action**: when ready to begin, build the Phase 0 spike. The pass/fail criteria above define what "Phase 0 succeeded" means.
 - **Until then**: keep the codebase native-friendly. Don't add DOM-coupling to `@pyreon/core` / `@pyreon/reactivity` / `@pyreon/compiler`. Don't lock the architecture against a future PMTC target. The audit in PR #787 ("Mount-loop closure hazards" subsection in CLAUDE.md) confirms current state is clean.
 
@@ -489,12 +490,12 @@ Past Phase 0, additional checkpoints per phase. These three are the minimum bar 
 
 The previous survey (archived) ranked four options. Under "build from scratch if needed, take all the time, truly native" framing — the user's framing — the ranking inverts:
 
-| | Truly native? | Same code? | Same styles? | Years to ship |
-|---|---|---|---|---|
-| Option A — RN bridge | (1) native widgets only — JS engine ships | yes | mostly | ~1 year |
-| Option B — **PMTC (this doc)** | **(3) native widgets + native code + native idiom** | **yes** | **yes** | **~2-3 years** |
-| Option C — signal-aware bridge | (1) — JS engine ships | yes | mostly | ~6-12 months |
-| Option D — Skia / custom renderer | not native widgets — disqualified | yes | yes, but pixels | ~3+ years |
+|                                   | Truly native?                                       | Same code? | Same styles?    | Years to ship  |
+| --------------------------------- | --------------------------------------------------- | ---------- | --------------- | -------------- |
+| Option A — RN bridge              | (1) native widgets only — JS engine ships           | yes        | mostly          | ~1 year        |
+| Option B — **PMTC (this doc)**    | **(3) native widgets + native code + native idiom** | **yes**    | **yes**         | **~2-3 years** |
+| Option C — signal-aware bridge    | (1) — JS engine ships                               | yes        | mostly          | ~6-12 months   |
+| Option D — Skia / custom renderer | not native widgets — disqualified                   | yes        | yes, but pixels | ~3+ years      |
 
 Where (1) = native widgets only; (2) = native widgets + native code; (3) = native widgets + native code + native idiom (indistinguishable from hand-written).
 

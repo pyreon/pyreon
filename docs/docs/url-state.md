@@ -40,8 +40,8 @@ import { useUrlState } from '@pyreon/url-state'
 
 const page = useUrlState('page', 1)
 
-page()       // 1 (or value from URL)
-page.set(2)  // URL becomes ?page=2
+page() // 1 (or value from URL)
+page.set(2) // URL becomes ?page=2
 page.reset() // back to default (1)
 page.remove() // removes ?page entirely
 ```
@@ -52,12 +52,12 @@ const sort = signal('name')
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', {}, () => 'Page: ' + page() + ' | Sort: ' + sort()),
-  h('div', { style: { marginTop: '8px', display: 'flex', gap: '8px' } },
-    h('button', { onClick: () => page.update(p => p + 1) }, 'Next Page'),
-    h('button', { onClick: () => page.set(1) }, 'Reset'),
-    h('button', { onClick: () => sort.set(sort() === 'name' ? 'date' : 'name') }, () => 'Sort: ' + sort()),
-  ),
+h('div', {}, () => 'Page: ' + page() + ' | Sort: ' + sort()),
+h('div', { style: { marginTop: '8px', display: 'flex', gap: '8px' } },
+h('button', { onClick: () => page.update(p => p + 1) }, 'Next Page'),
+h('button', { onClick: () => page.set(1) }, 'Reset'),
+h('button', { onClick: () => sort.set(sort() === 'name' ? 'date' : 'name') }, () => 'Sort: ' + sort()),
+),
 )
 mount(ui, app)
 </Playground>
@@ -65,22 +65,22 @@ mount(ui, app)
 ## Single Parameter
 
 ```tsx
-const page = useUrlState('page', 1)       // number
+const page = useUrlState('page', 1) // number
 const active = useUrlState('active', true) // boolean
-const q = useUrlState('q', '')             // string
-const tags = useUrlState('tags', ['a'])    // string[]
+const q = useUrlState('q', '') // string
+const tags = useUrlState('tags', ['a']) // string[]
 ```
 
 Type is inferred from the default value. The URL string is automatically coerced to the correct type on read.
 
 ### Type Coercion Rules
 
-| Default Value    | URL String    | Parsed Value      |
-| ---------------- | ------------- | ----------------- |
-| `1` (number)     | `"42"`        | `42`              |
-| `true` (boolean) | `"false"`     | `false`           |
-| `''` (string)    | `"hello"`     | `"hello"`         |
-| `['a']` (array)  | `"a,b,c"`    | `['a', 'b', 'c']` |
+| Default Value    | URL String | Parsed Value      |
+| ---------------- | ---------- | ----------------- |
+| `1` (number)     | `"42"`     | `42`              |
+| `true` (boolean) | `"false"`  | `false`           |
+| `''` (string)    | `"hello"`  | `"hello"`         |
+| `['a']` (array)  | `"a,b,c"`  | `['a', 'b', 'c']` |
 
 ## Schema Mode
 
@@ -89,9 +89,9 @@ Manage multiple URL parameters from a single call:
 ```tsx
 const params = useUrlState({ page: 1, sort: 'name', q: '' })
 
-params.page()       // 1
-params.sort()       // 'name'
-params.q()          // ''
+params.page() // 1
+params.sort() // 'name'
+params.q() // ''
 
 params.page.set(2)
 params.sort.set('date')
@@ -111,14 +111,14 @@ const q = useUrlState('q', '', {
 })
 ```
 
-| Option        | Type                      | Default   | Description                                           |
-| ------------- | ------------------------- | --------- | ----------------------------------------------------- |
-| `serialize`   | `(value: T) => string`    | auto      | Custom serializer for complex types                   |
-| `deserialize` | `(raw: string) => T`      | auto      | Custom deserializer for complex types                 |
-| `replace`     | `boolean`                 | `true`    | Use `replaceState` (true) or `pushState` (false)      |
-| `debounce`    | `number`                  | `0`       | Debounce URL writes by this many ms                   |
-| `arrayFormat` | `'comma' \| 'repeat'`    | `'comma'` | Array encoding: `?tags=a,b` vs `?tags=a&tags=b`      |
-| `onChange`     | `(value: T) => void`     | —         | Called on external changes (popstate, other signals)   |
+| Option        | Type                   | Default   | Description                                          |
+| ------------- | ---------------------- | --------- | ---------------------------------------------------- |
+| `serialize`   | `(value: T) => string` | auto      | Custom serializer for complex types                  |
+| `deserialize` | `(raw: string) => T`   | auto      | Custom deserializer for complex types                |
+| `replace`     | `boolean`              | `true`    | Use `replaceState` (true) or `pushState` (false)     |
+| `debounce`    | `number`               | `0`       | Debounce URL writes by this many ms                  |
+| `arrayFormat` | `'comma' \| 'repeat'`  | `'comma'` | Array encoding: `?tags=a,b` vs `?tags=a&tags=b`      |
+| `onChange`    | `(value: T) => void`   | —         | Called on external changes (popstate, other signals) |
 
 ## Debounced Updates
 
@@ -162,10 +162,14 @@ setUrlRouter(router)
 For complex types that don't have automatic coercion:
 
 ```tsx
-const filters = useUrlState('filters', { status: 'active', role: 'admin' }, {
-  serialize: (v) => btoa(JSON.stringify(v)),
-  deserialize: (s) => JSON.parse(atob(s)),
-})
+const filters = useUrlState(
+  'filters',
+  { status: 'active', role: 'admin' },
+  {
+    serialize: (v) => btoa(JSON.stringify(v)),
+    deserialize: (s) => JSON.parse(atob(s)),
+  },
+)
 ```
 
 ## Back/Forward Navigation
@@ -179,10 +183,5 @@ On the server (`typeof window === 'undefined'`), `useUrlState` returns signals i
 ## TypeScript
 
 ```ts
-import type {
-  ArrayFormat,
-  Serializer,
-  UrlStateOptions,
-  UrlStateSignal,
-} from '@pyreon/url-state'
+import type { ArrayFormat, Serializer, UrlStateOptions, UrlStateSignal } from '@pyreon/url-state'
 ```

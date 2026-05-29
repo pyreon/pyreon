@@ -80,7 +80,8 @@ export const noImperativeNavigateInRender: Rule = {
       VariableDeclarator(node: any) {
         if (
           /^[A-Z]/.test(node.id?.name ?? '') &&
-          (node.init?.type === 'ArrowFunctionExpression' || node.init?.type === 'FunctionExpression')
+          (node.init?.type === 'ArrowFunctionExpression' ||
+            node.init?.type === 'FunctionExpression')
         ) {
           componentBodyDepth++
           dangerousBindings.push(new Set())
@@ -90,7 +91,8 @@ export const noImperativeNavigateInRender: Rule = {
       'VariableDeclarator:exit'(node: any) {
         if (
           /^[A-Z]/.test(node.id?.name ?? '') &&
-          (node.init?.type === 'ArrowFunctionExpression' || node.init?.type === 'FunctionExpression')
+          (node.init?.type === 'ArrowFunctionExpression' ||
+            node.init?.type === 'FunctionExpression')
         ) {
           componentBodyDepth--
           dangerousBindings.pop()

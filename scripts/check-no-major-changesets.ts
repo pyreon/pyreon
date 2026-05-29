@@ -31,9 +31,7 @@ if (!existsSync(CHANGESET_DIR)) {
 }
 
 const offenders: string[] = []
-const files = readdirSync(CHANGESET_DIR).filter(
-  (f) => f.endsWith('.md') && f !== 'README.md',
-)
+const files = readdirSync(CHANGESET_DIR).filter((f) => f.endsWith('.md') && f !== 'README.md')
 
 for (const f of files) {
   const body = readFileSync(join(CHANGESET_DIR, f), 'utf8')

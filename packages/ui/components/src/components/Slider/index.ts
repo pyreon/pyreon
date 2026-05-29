@@ -1,7 +1,8 @@
 import { el } from '../../factory'
 import { SliderBase } from '@pyreon/ui-primitives'
 
-const Slider = el.config({ name: 'Slider', component: SliderBase })
+const Slider = el
+  .config({ name: 'Slider', component: SliderBase })
   .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.base[200],

@@ -12,11 +12,17 @@ interface Post {
 export default function PostsPage() {
   const posts = useLoaderData<Post[]>()
 
-  return h('div', { 'data-testid': 'posts-page' },
+  return h(
+    'div',
+    { 'data-testid': 'posts-page' },
     h('h1', null, 'Posts'),
-    h('div', { class: 'post-list' },
+    h(
+      'div',
+      { class: 'post-list' },
       ...(posts ?? []).map((post) =>
-        h('div', { class: 'post-item', 'data-testid': 'post-item', key: post.id },
+        h(
+          'div',
+          { class: 'post-item', 'data-testid': 'post-item', key: post.id },
           h(RouterLink, { to: `/posts/${post.id}` }, post.title),
         ),
       ),

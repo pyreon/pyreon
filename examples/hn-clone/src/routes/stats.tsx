@@ -25,9 +25,7 @@ export default function StatsPage() {
   const query = useQuery(() => ({
     queryKey: ['stats-corpus'],
     queryFn: async () => {
-      const pages = await Promise.all(
-        [1, 2, 3, 4, 5].map((p) => fetchFeed('news', p)),
-      )
+      const pages = await Promise.all([1, 2, 3, 4, 5].map((p) => fetchFeed('news', p)))
       return pages.flat()
     },
     staleTime: 5 * 60 * 1000,
@@ -38,10 +36,7 @@ export default function StatsPage() {
   // Top 10 domains by story count — rx groupBy + a Pyreon computed for
   // the sort+take (rx doesn't sort Records directly; we materialize the
   // groups, count them, then sort and take).
-  const domainGroups = groupBy(
-    stories as never,
-    (s: Story) => s.domain ?? 'self',
-  )
+  const domainGroups = groupBy(stories as never, (s: Story) => s.domain ?? 'self')
 
   const topDomains = computed(() => {
     const grouped = (domainGroups as never as () => Record<string, Story[]>)()
@@ -52,10 +47,7 @@ export default function StatsPage() {
   })
 
   // Top 10 users by submission count.
-  const userGroups = groupBy(
-    stories as never,
-    (s: Story) => s.user ?? '(anon)',
-  )
+  const userGroups = groupBy(stories as never, (s: Story) => s.user ?? '(anon)')
   const topUsers = computed(() => {
     const grouped = (userGroups as never as () => Record<string, Story[]>)()
     return Object.entries(grouped)
@@ -88,11 +80,7 @@ export default function StatsPage() {
   const scatterTake = take(stories as never, 100)
   const scatterData = computed(() => {
     const arr = (scatterTake as never as () => Story[])()
-    return arr.map<[number, number, string]>((s) => [
-      s.points ?? 0,
-      s.comments_count ?? 0,
-      s.title,
-    ])
+    return arr.map<[number, number, string]>((s) => [s.points ?? 0, s.comments_count ?? 0, s.title])
   })
 
   // ── Chart options ─────────────────────────────────────────────────────────
@@ -101,11 +89,18 @@ export default function StatsPage() {
     tooltip: { trigger: 'axis' },
     grid: { left: 110, right: 24 },
     xAxis: { type: 'value' },
-    yAxis: { type: 'category', data: topDomains().map((d) => d.domain).reverse() },
+    yAxis: {
+      type: 'category',
+      data: topDomains()
+        .map((d) => d.domain)
+        .reverse(),
+    },
     series: [
       {
         type: 'bar',
-        data: topDomains().map((d) => d.count).reverse(),
+        data: topDomains()
+          .map((d) => d.count)
+          .reverse(),
         itemStyle: { color: '#ff6600' },
       },
     ],
@@ -178,16 +173,10 @@ export default function StatsPage() {
               <Chart options={() => userPie()} style="height: 360px; width: 100%" />
             </div>
             <div class="chart-card">
-              <Chart
-                options={() => pointsHistogram()}
-                style="height: 360px; width: 100%"
-              />
+              <Chart options={() => pointsHistogram()} style="height: 360px; width: 100%" />
             </div>
             <div class="chart-card">
-              <Chart
-                options={() => pointsVsComments()}
-                style="height: 360px; width: 100%"
-              />
+              <Chart options={() => pointsVsComments()} style="height: 360px; width: 100%" />
             </div>
           </div>
         )

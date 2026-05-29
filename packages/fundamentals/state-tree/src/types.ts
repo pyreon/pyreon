@@ -33,11 +33,12 @@ export type StateSignals<TState extends StateShape> = {
  * and class instances replace (not merge), only plain objects deep-merge.
  * Parallel to `@pyreon/store`'s `DeepPartial`.
  */
-export type DeepPartial<T> = T extends ReadonlyArray<unknown>
-  ? T
-  : T extends object
-    ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
-    : T
+export type DeepPartial<T> =
+  T extends ReadonlyArray<unknown>
+    ? T
+    : T extends object
+      ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
+      : T
 
 /**
  * Validated mutation helpers exposed on schema-mode model instances and on
@@ -98,13 +99,7 @@ export interface SchemaModelHelpers<TState extends StateShape> {
  * with these mutation helper names. Exposed for downstream consumers
  * that want to validate field names at design time (e.g. linting).
  */
-export const RESERVED_SCHEMA_HELPER_KEYS = [
-  'set',
-  'patch',
-  'deepPatch',
-  'update',
-  'reset',
-] as const
+export const RESERVED_SCHEMA_HELPER_KEYS = ['set', 'patch', 'deepPatch', 'update', 'reset'] as const
 
 /**
  * `self` type inside actions / views. Includes state signals + all previously-

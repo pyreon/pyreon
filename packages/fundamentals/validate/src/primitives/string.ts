@@ -21,7 +21,8 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-export const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/
+export const ISO_DATETIME_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/
 export const ISO_TIME_RE = /^\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
 
 export class StringSchema extends SchemaBase<string> {

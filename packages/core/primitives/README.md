@@ -14,7 +14,9 @@ import { Stack, Inline, Text, Button, Field } from '@pyreon/primitives'
 function TodoApp() {
   return (
     <Stack gap="md" padding="md">
-      <Text size="lg" weight="bold">Todos</Text>
+      <Text size="lg" weight="bold">
+        Todos
+      </Text>
       <Field value={draft} onChangeText={(t) => draft.set(t)} placeholder="Add..." />
       <Inline gap="sm" align="center">
         <Text>Total: {todos().length}</Text>
@@ -31,14 +33,14 @@ On the **web target** this compiles via `@pyreon/runtime-dom` to DOM (the implem
 
 **6 primitives with real web implementations**:
 
-| Primitive | DOM shape | Notes |
-|-----------|-----------|-------|
-| `<Stack>` | `<div style="display:flex">` | Default `direction="column"` |
-| `<Inline>` | `<div style="display:flex;flex-direction:row">` | Sugar for `<Stack direction="row">` |
-| `<Text>` | `<span>` | Tokenized color / size / weight / truncate |
-| `<Button>` | `<button>` | 4 variants (primary/secondary/ghost/danger) |
-| `<Press>` | `<div role="button" tabindex="0">` | ARIA-button keyboard contract + long-press polyfill |
-| `<Field>` | `<input>` | `kind` prop selects type (text/email/password/etc.) |
+| Primitive  | DOM shape                                       | Notes                                               |
+| ---------- | ----------------------------------------------- | --------------------------------------------------- |
+| `<Stack>`  | `<div style="display:flex">`                    | Default `direction="column"`                        |
+| `<Inline>` | `<div style="display:flex;flex-direction:row">` | Sugar for `<Stack direction="row">`                 |
+| `<Text>`   | `<span>`                                        | Tokenized color / size / weight / truncate          |
+| `<Button>` | `<button>`                                      | 4 variants (primary/secondary/ghost/danger)         |
+| `<Press>`  | `<div role="button" tabindex="0">`              | ARIA-button keyboard contract + long-press polyfill |
+| `<Field>`  | `<input>`                                       | `kind` prop selects type (text/email/password/etc.) |
 
 **10 more primitives** have type definitions but no web runtime yet (`<Layer>`, `<Scroll>`, `<Spacer>`, `<Heading>`, `<Image>`, `<Icon>`, `<Link>`, `<Toggle>`, `<Modal>`). They ship in follow-up PRs as real apps demand each.
 
@@ -63,14 +65,14 @@ Same source. Three idiomatic outputs.
 
 Tokens-first. No responsive props in v1. No animation primitives in v1. Apps that need rich responsive web layouts use `@pyreon/elements` directly.
 
-| Prop | Type | Example |
-|------|------|---------|
-| `padding` / `margin` / `gap` | `number` (theme.space index) OR `"sm"\|"md"\|"lg"` | `padding={4}` → 16px |
-| `color` | `"text"\|"surface"\|"primary"\|...` | `color="primary"` → blue-600 |
-| `background` | theme key | `background="surface"` → white |
-| `align` | `"start"\|"center"\|"end"\|"stretch"` | flex `alignItems` |
-| `justify` | `"start"\|"center"\|"end"\|"between"\|"around"\|"evenly"` | flex `justifyContent` |
-| `radius` | `"none"\|"sm"\|"md"\|"lg"\|"full"` | border-radius |
+| Prop                         | Type                                                      | Example                        |
+| ---------------------------- | --------------------------------------------------------- | ------------------------------ |
+| `padding` / `margin` / `gap` | `number` (theme.space index) OR `"sm"\|"md"\|"lg"`        | `padding={4}` → 16px           |
+| `color`                      | `"text"\|"surface"\|"primary"\|...`                       | `color="primary"` → blue-600   |
+| `background`                 | theme key                                                 | `background="surface"` → white |
+| `align`                      | `"start"\|"center"\|"end"\|"stretch"`                     | flex `alignItems`              |
+| `justify`                    | `"start"\|"center"\|"end"\|"between"\|"around"\|"evenly"` | flex `justifyContent`          |
+| `radius`                     | `"none"\|"sm"\|"md"\|"lg"\|"full"`                        | border-radius                  |
 
 ## Tests
 

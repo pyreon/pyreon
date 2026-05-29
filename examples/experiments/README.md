@@ -58,7 +58,7 @@ Branches use `chore/experiment-e<n>-<slug>` (the repo's `chore/` prefix is enfor
 ## Experiment runs
 
 | Run | SHA | Wall-clock (median / p90) | Counters delta vs baseline | Notes |
-|-----|-----|---------------------------|----------------------------|-------|
+| --- | --- | ------------------------- | -------------------------- | ----- |
 | 1   | ... | ...                       | ...                        | ...   |
 
 ## Decision

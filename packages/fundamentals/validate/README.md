@@ -49,17 +49,17 @@ const stop = watchValid(emailSchema, $email, (valid) => {
 
 ## API surface (v1)
 
-| Helper | Purpose |
-| --- | --- |
-| `withField(schema, meta)` | Attach `FieldMeta` (label, hint, placeholder, i18n keys, autoFocus, autoComplete) to any Standard Schema. Returns the same reference — metadata is a Symbol-keyed non-enumerable slot. |
-| `getMeta(schema)` | Read attached metadata back. Returns `undefined` for unwrapped schemas. |
-| `resolveMetaField(schema, field, t?)` | Read a field through optional i18n. `t('auth.email.label')` wins over `meta.label` when it resolves. |
-| `parseReactive(schema, source)` | `Computed<ParseResult>` that re-derives on signal changes. Synchronous. |
-| `parseReactiveAsync(schema, source)` | Async variant for schemas with async refinements. |
-| `watchValid(schema, source, cb)` | Fire `cb(valid)` only on validity transitions, not every error change. |
-| `formatError(issue, t?)` | Resolve a single issue's text. `issue.key + t` wins; falls back to `fallback` then `message`. |
-| `formatErrors(issues, t?)` | Array variant. |
-| `formatErrorsByPath(issues, t?, options?)` | Build a per-field error map keyed by the issue's path. Compatible with `@pyreon/form`'s `Errors` shape. |
+| Helper                                     | Purpose                                                                                                                                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `withField(schema, meta)`                  | Attach `FieldMeta` (label, hint, placeholder, i18n keys, autoFocus, autoComplete) to any Standard Schema. Returns the same reference — metadata is a Symbol-keyed non-enumerable slot. |
+| `getMeta(schema)`                          | Read attached metadata back. Returns `undefined` for unwrapped schemas.                                                                                                                |
+| `resolveMetaField(schema, field, t?)`      | Read a field through optional i18n. `t('auth.email.label')` wins over `meta.label` when it resolves.                                                                                   |
+| `parseReactive(schema, source)`            | `Computed<ParseResult>` that re-derives on signal changes. Synchronous.                                                                                                                |
+| `parseReactiveAsync(schema, source)`       | Async variant for schemas with async refinements.                                                                                                                                      |
+| `watchValid(schema, source, cb)`           | Fire `cb(valid)` only on validity transitions, not every error change.                                                                                                                 |
+| `formatError(issue, t?)`                   | Resolve a single issue's text. `issue.key + t` wins; falls back to `fallback` then `message`.                                                                                          |
+| `formatErrors(issues, t?)`                 | Array variant.                                                                                                                                                                         |
+| `formatErrorsByPath(issues, t?, options?)` | Build a per-field error map keyed by the issue's path. Compatible with `@pyreon/form`'s `Errors` shape.                                                                                |
 
 ## Why mutate-in-place?
 

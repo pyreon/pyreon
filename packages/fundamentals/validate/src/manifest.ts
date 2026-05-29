@@ -99,7 +99,7 @@ const $sameResult = parseReactive(sameSchema, $email)
       kind: 'function',
       signature: '<S extends StandardSchemaV1>(schema: S) => FieldMeta | undefined',
       summary:
-        'Read the Pyreon field metadata attached via withField(). Returns undefined for schemas that haven\'t been wrapped — consumers should be defensive (`getMeta(schema)?.label ?? fallback`). Accepts both objects AND functions (ArkType\'s `Type` instances are callable).',
+        "Read the Pyreon field metadata attached via withField(). Returns undefined for schemas that haven't been wrapped — consumers should be defensive (`getMeta(schema)?.label ?? fallback`). Accepts both objects AND functions (ArkType's `Type` instances are callable).",
       example: `const meta = getMeta(emailSchema)
 const label = meta?.label ?? humanize(fieldName)`,
       seeAlso: ['withField', 'resolveMetaField'],
@@ -113,7 +113,7 @@ const label = meta?.label ?? humanize(fieldName)`,
   t?: TFn,
 ) => string | undefined`,
       summary:
-        "Read a metadata field through optional i18n. If the metadata has an `i18n<Field>` key AND a `t` function is provided AND `t` resolves it (returns a non-key string), the resolved string wins. Otherwise falls back to the literal. Recommended over `getMeta(schema)?.label` directly when you have a `t` from `useI18n()`.",
+        'Read a metadata field through optional i18n. If the metadata has an `i18n<Field>` key AND a `t` function is provided AND `t` resolves it (returns a non-key string), the resolved string wins. Otherwise falls back to the literal. Recommended over `getMeta(schema)?.label` directly when you have a `t` from `useI18n()`.',
       example: `const label = resolveMetaField(emailSchema, 'label', t)
 // → t('auth.email.label') if set + resolved, else meta.label, else undefined`,
       seeAlso: ['getMeta', 'formatErrors'],
@@ -126,7 +126,7 @@ const label = meta?.label ?? humanize(fieldName)`,
   source: Signal<unknown> | (() => unknown),
 ) => Computed<ParseResult>`,
       summary:
-        "Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise).",
+        'Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise).',
       example: `const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -151,7 +151,7 @@ $email.set('foo@bar.com')  // $result re-derives`,
   source: Signal<unknown> | (() => unknown),
 ) => Computed<Promise<ParseResult>>`,
       summary:
-        "Async variant of parseReactive. The outer Computed re-evaluates synchronously on source change; the inner Promise resolves once the validator finishes. Rapid source changes produce overlapping in-flight promises — the caller is responsible for handling staleness (a `watch()` over the Computed naturally drops stale frames).",
+        'Async variant of parseReactive. The outer Computed re-evaluates synchronously on source change; the inner Promise resolves once the validator finishes. Rapid source changes produce overlapping in-flight promises — the caller is responsible for handling staleness (a `watch()` over the Computed naturally drops stale frames).',
       example: `const schema = z.string().refine(async (s) => await checkUnique(s))
 const $result = parseReactiveAsync(schema, $username)
 
@@ -170,7 +170,7 @@ watch($result, async (current) => {
   callback: (valid: boolean) => void,
 ) => () => void`,
       summary:
-        "Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about \"is this OK?\" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`.",
+        'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`.',
       example: `const stop = watchValid(emailSchema, $email, (valid) => {
   submitButton.disabled = !valid
 })
@@ -183,7 +183,7 @@ onUnmount(stop)`,
       kind: 'function',
       signature: '(issue: StandardSchemaIssue | PyreonIssue, t?: TFn) => string',
       summary:
-        "Resolve a single issue to a human-readable string. Resolution order: (1) `issue.key` + `t` provided AND `t` returns a non-key string → resolved string; (2) `issue.fallback` if set; (3) `issue.message` (always present per StdSchema spec). Native StdSchema issues without `key`/`fallback` fall through to `message` immediately — no overhead.",
+        'Resolve a single issue to a human-readable string. Resolution order: (1) `issue.key` + `t` provided AND `t` returns a non-key string → resolved string; (2) `issue.fallback` if set; (3) `issue.message` (always present per StdSchema spec). Native StdSchema issues without `key`/`fallback` fall through to `message` immediately — no overhead.',
       example: `const message = formatError(issue, t)
 // → t('validate.string.too-short', { min: 2 }) when key + t resolve
 // → issue.fallback ('Must be at least 2 characters') when t echoes the key
@@ -227,7 +227,7 @@ const messages = formatErrors(result.issues ?? [], t)`,
     },
     {
       label: 'Compiler-emit is a follow-up',
-      note: 'A future PR adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators per schema at build time. v1 ships at the underlying lib\'s speed (Valibot/ArkType are already 3-5× faster than Zod; the compiler PR closes the gap for Zod schemas too).',
+      note: "A future PR adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators per schema at build time. v1 ships at the underlying lib's speed (Valibot/ArkType are already 3-5× faster than Zod; the compiler PR closes the gap for Zod schemas too).",
     },
   ],
 })

@@ -94,10 +94,34 @@ describe('reporter — formatText', () => {
         {
           filePath: '/x.ts',
           diagnostics: [
-            { ruleId: 'r', severity: 'error', message: 'm', loc: { line: 1, column: 1 }, span: span(0, 1) },
-            { ruleId: 'r', severity: 'error', message: 'm', loc: { line: 2, column: 1 }, span: span(2, 3) },
-            { ruleId: 'r', severity: 'warn', message: 'm', loc: { line: 3, column: 1 }, span: span(4, 5) },
-            { ruleId: 'r', severity: 'warn', message: 'm', loc: { line: 4, column: 1 }, span: span(6, 7) },
+            {
+              ruleId: 'r',
+              severity: 'error',
+              message: 'm',
+              loc: { line: 1, column: 1 },
+              span: span(0, 1),
+            },
+            {
+              ruleId: 'r',
+              severity: 'error',
+              message: 'm',
+              loc: { line: 2, column: 1 },
+              span: span(2, 3),
+            },
+            {
+              ruleId: 'r',
+              severity: 'warn',
+              message: 'm',
+              loc: { line: 3, column: 1 },
+              span: span(4, 5),
+            },
+            {
+              ruleId: 'r',
+              severity: 'warn',
+              message: 'm',
+              loc: { line: 4, column: 1 },
+              span: span(6, 7),
+            },
           ],
         },
       ],

@@ -35,17 +35,17 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
-  "devDependencies": {
-    "@pyreon/test-utils": "workspace:^",
-    "@pyreon/typescript": "workspace:^",
-    "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.7"
-  },
   "dependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/elements": "workspace:^",
     "@pyreon/hooks": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/test-utils": "workspace:^",
+    "@pyreon/typescript": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^4.1.7"
   }
 }

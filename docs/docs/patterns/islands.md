@@ -70,14 +70,14 @@ hydrateIslandsAuto(registry)
 
 ## Decision tree — which `hydrate` strategy?
 
-| Strategy            | When it fires                            | Use for                                                  |
-| ------------------- | ---------------------------------------- | -------------------------------------------------------- |
-| `'load'`            | Immediately on page load                 | Above-the-fold interactive components (header CTA, hero) |
-| `'idle'`            | After `requestIdleCallback` settles      | Non-critical widgets that should hydrate when free       |
-| `'visible'`         | When the island scrolls into view        | Below-the-fold content (comments, deep widgets)          |
-| `'interaction'`     | First focus/click/pointerenter/touch     | Modals, dropdowns, command palettes (interactive but not visible) |
-| `'media(<query>)'`  | When `window.matchMedia(query)` matches  | Mobile-only menus, viewport-conditional UI               |
-| `'never'`           | Never                                    | Pure-display content that needs the same component tree as exports (e.g. `@pyreon/document-primitives`) |
+| Strategy           | When it fires                           | Use for                                                                                                 |
+| ------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `'load'`           | Immediately on page load                | Above-the-fold interactive components (header CTA, hero)                                                |
+| `'idle'`           | After `requestIdleCallback` settles     | Non-critical widgets that should hydrate when free                                                      |
+| `'visible'`        | When the island scrolls into view       | Below-the-fold content (comments, deep widgets)                                                         |
+| `'interaction'`    | First focus/click/pointerenter/touch    | Modals, dropdowns, command palettes (interactive but not visible)                                       |
+| `'media(<query>)'` | When `window.matchMedia(query)` matches | Mobile-only menus, viewport-conditional UI                                                              |
+| `'never'`          | Never                                   | Pure-display content that needs the same component tree as exports (e.g. `@pyreon/document-primitives`) |
 
 **Pick by question:** "When does the user need this island to be interactive?"
 

@@ -45,9 +45,15 @@ const GlobalStyle = createGlobalStyle`
 Creates a styled Pyreon component from an HTML tag, another component, or a styled component.
 
 ```ts
-const Box = styled('div')`display: flex;`
-const StyledLink = styled(Link)`color: blue;`
-const Wider = styled(Box)`padding: 24px;`         // wrap an existing styled
+const Box = styled('div')`
+  display: flex;
+`
+const StyledLink = styled(Link)`
+  color: blue;
+`
+const Wider = styled(Box)`
+  padding: 24px;
+` // wrap an existing styled
 ```
 
 #### Dynamic interpolations
@@ -103,10 +109,12 @@ const Card = styled('div')`
 // Conditional fragments
 const Box = styled('div')`
   display: flex;
-  ${(props) => props.$bordered && css`
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-  `};
+  ${(props) =>
+    props.$bordered &&
+    css`
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+    `};
 `
 ```
 
@@ -140,13 +148,13 @@ const GlobalStyle = createGlobalStyle`
 ```tsx
 import { ThemeProvider, useTheme, useThemeAccessor } from '@pyreon/styler'
 
-<ThemeProvider theme={{ colors: { primary: '#0d6efd' } }}>
+;<ThemeProvider theme={{ colors: { primary: '#0d6efd' } }}>
   <App />
 </ThemeProvider>
 
 // Inside a component:
-const theme = useTheme()                  // snapshot at call time
-const themeFn = useThemeAccessor()        // () => Theme — track inside effects/computeds
+const theme = useTheme() // snapshot at call time
+const themeFn = useThemeAccessor() // () => Theme — track inside effects/computeds
 effect(() => console.log(themeFn().colors))
 ```
 
@@ -190,9 +198,17 @@ Read-only hook for retrieving the resolved class name of a `CSSResult` — usefu
 
 ```ts
 import {
-  resolve, resolveValue, normalizeCSS, clearNormCache,
-  hash, hashUpdate, hashFinalize, HASH_INIT,
-  buildProps, filterProps, isDynamic,
+  resolve,
+  resolveValue,
+  normalizeCSS,
+  clearNormCache,
+  hash,
+  hashUpdate,
+  hashFinalize,
+  HASH_INIT,
+  buildProps,
+  filterProps,
+  isDynamic,
 } from '@pyreon/styler'
 ```
 
@@ -219,9 +235,15 @@ Native CSS nesting is forwarded unchanged — `&:hover`, `&::before`, nested sel
 ```ts
 const Card = styled('div')`
   padding: 16px;
-  &:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-  & > h2 { margin: 0 0 8px; }
-  @media (min-width: 768px) { padding: 24px; }
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  & > h2 {
+    margin: 0 0 8px;
+  }
+  @media (min-width: 768px) {
+    padding: 24px;
+  }
 `
 ```
 

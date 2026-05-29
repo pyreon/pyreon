@@ -57,8 +57,7 @@ type CloneAndEnhance = (
  *   const NewBtn = Button.config({ component: 'a' }).attrs(sharedAttrs)
  */
 const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
-  const componentChanged =
-    opts.component != null && opts.component !== defaultOpts.component
+  const componentChanged = opts.component != null && opts.component !== defaultOpts.component
 
   return rocketComponent({
     ...defaultOpts,
@@ -72,9 +71,7 @@ const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
       ? chainOptions(opts.priorityAttrs, [])
       : chainOptions(opts.priorityAttrs, defaultOpts.priorityAttrs),
     statics: { ...defaultOpts.statics, ...opts.statics },
-    compose: componentChanged
-      ? { ...opts.compose }
-      : { ...defaultOpts.compose, ...opts.compose },
+    compose: componentChanged ? { ...opts.compose } : { ...defaultOpts.compose, ...opts.compose },
     ...chainOrOptions(CONFIG_KEYS, opts, defaultOpts),
     ...chainReservedKeyOptions([...defaultOpts.dimensionKeys, ...STYLING_KEYS], opts, defaultOpts),
   } as Parameters<typeof rocketComponent>[0])
@@ -310,8 +307,7 @@ const rocketComponent: RocketComponent = (options) => {
         // arrays. Sort + join so equivalent sets hash identically; without
         // this both `['a','b']` and `['b','a']` would produce different keys.
         if (Array.isArray(v)) {
-          key +=
-            '|' + (v.length === 0 ? '' : (v as unknown[]).slice().sort().join(','))
+          key += '|' + (v.length === 0 ? '' : (v as unknown[]).slice().sort().join(','))
         } else {
           // String/number/boolean serialize directly. Anything else (including
           // undefined / objects) gets a typeof tag so we don't collide.

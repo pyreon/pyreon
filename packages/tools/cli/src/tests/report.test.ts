@@ -51,12 +51,7 @@ describe('buildReport', () => {
     ]
     const report = buildReport(gates)
     // Errors first, sorted by category (architecture < correctness alphabetically)
-    expect(report.findings.map((x) => x.code)).toEqual([
-      'b/err2',
-      'b/err1',
-      'a/warn',
-      'a/info',
-    ])
+    expect(report.findings.map((x) => x.code)).toEqual(['b/err2', 'b/err1', 'a/warn', 'a/info'])
   })
 
   it('counts totals across gates', () => {
@@ -89,9 +84,7 @@ describe('buildReport', () => {
   })
 
   it('computes score from findings (1 error = -10)', () => {
-    const gates = [
-      g('a', 'correctness', [f('error', 'correctness', 'a/err')]),
-    ]
+    const gates = [g('a', 'correctness', [f('error', 'correctness', 'a/err')])]
     const report = buildReport(gates)
     expect(report.score).toBe(90)
     expect(report.grade).toBe('A')

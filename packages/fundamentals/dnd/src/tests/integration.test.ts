@@ -45,7 +45,10 @@ vi.mock('@atlaskit/pragmatic-drag-and-drop/external/file', () => ({
 }))
 
 vi.mock('@atlaskit/pragmatic-drag-and-drop/combine', () => ({
-  combine: (...fns: (() => void)[]) => () => fns.forEach((fn) => fn()),
+  combine:
+    (...fns: (() => void)[]) =>
+    () =>
+      fns.forEach((fn) => fn()),
 }))
 
 let lastAutoScrollOpts: any = null
@@ -1542,9 +1545,13 @@ describe('useSortable — callback coverage via mock', () => {
 
     if (lastAutoScrollOpts?.canScroll) {
       // canScroll returns true for matching sortable ID
-      expect(lastAutoScrollOpts.canScroll({ source: { data: { __pyreon_sortable_id: sortableId } } })).toBe(true)
+      expect(
+        lastAutoScrollOpts.canScroll({ source: { data: { __pyreon_sortable_id: sortableId } } }),
+      ).toBe(true)
       // canScroll returns false for different sortable ID
-      expect(lastAutoScrollOpts.canScroll({ source: { data: { __pyreon_sortable_id: 'other' } } })).toBe(false)
+      expect(
+        lastAutoScrollOpts.canScroll({ source: { data: { __pyreon_sortable_id: 'other' } } }),
+      ).toBe(false)
     }
 
     container.remove()
@@ -1578,9 +1585,14 @@ describe('useSortable — callback coverage via mock', () => {
     })
 
     if (itemDropTarget?.canDrop) {
-      const sortableId = allDraggableOpts[allDraggableOpts.length - 1]?.getInitialData().__pyreon_sortable_id
-      expect(itemDropTarget.canDrop({ source: { data: { __pyreon_sortable_id: sortableId } } })).toBe(true)
-      expect(itemDropTarget.canDrop({ source: { data: { __pyreon_sortable_id: 'other' } } })).toBe(false)
+      const sortableId =
+        allDraggableOpts[allDraggableOpts.length - 1]?.getInitialData().__pyreon_sortable_id
+      expect(
+        itemDropTarget.canDrop({ source: { data: { __pyreon_sortable_id: sortableId } } }),
+      ).toBe(true)
+      expect(itemDropTarget.canDrop({ source: { data: { __pyreon_sortable_id: 'other' } } })).toBe(
+        false,
+      )
     }
 
     container.remove()
@@ -1717,7 +1729,11 @@ describe('useSortable — callback coverage via mock', () => {
     const bContainer = allDropTargetOpts.find((o: any) => {
       try {
         const d = o.getData()
-        return d.__pyreon_sortable_group === 'kanban' && d.__pyreon_sortable_id !== undefined && d.__pyreon_sortable_id !== a1Draggable!.getInitialData().__pyreon_sortable_id
+        return (
+          d.__pyreon_sortable_group === 'kanban' &&
+          d.__pyreon_sortable_id !== undefined &&
+          d.__pyreon_sortable_id !== a1Draggable!.getInitialData().__pyreon_sortable_id
+        )
       } catch {
         return false
       }
@@ -1738,9 +1754,7 @@ describe('useSortable — callback coverage via mock', () => {
     bContainer!.onDrop({ source: { data: sourceData } })
 
     // Container-level drop appends at end of B (B already has 1 item).
-    expect(receivedByB).toEqual([
-      { item: { id: 'a1', title: 'A1' }, index: 1 },
-    ])
+    expect(receivedByB).toEqual([{ item: { id: 'a1', title: 'A1' }, index: 1 }])
     expect(removedFromA).toEqual([{ id: 'a1', title: 'A1' }])
 
     elA.remove()
@@ -1789,7 +1803,10 @@ describe('useSortable — callback coverage via mock', () => {
     const bContainer = allDropTargetOpts.find((o: any) => {
       try {
         const d = o.getData()
-        return d.__pyreon_sortable_id !== undefined && d.__pyreon_sortable_id !== a1Draggable!.getInitialData().__pyreon_sortable_id
+        return (
+          d.__pyreon_sortable_id !== undefined &&
+          d.__pyreon_sortable_id !== a1Draggable!.getInitialData().__pyreon_sortable_id
+        )
       } catch {
         return false
       }

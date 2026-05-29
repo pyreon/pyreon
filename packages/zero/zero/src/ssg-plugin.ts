@@ -347,7 +347,9 @@ const SSR_ENTRY_FILENAME = '__pyreon-zero-ssg-entry.js'
 /** Per-route enumerator. URL pattern (`/posts/:id`) → params list. */
 export type GetStaticPathsRegistry = Map<
   string,
-  () => Promise<Array<{ params: Record<string, string> }>> | Array<{ params: Record<string, string> }>
+  () =>
+    | Promise<Array<{ params: Record<string, string> }>>
+    | Array<{ params: Record<string, string> }>
 >
 
 /**
@@ -383,10 +385,7 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
       // (`a/b/c`), so it's exempt from the `/` check but still rejects
       // `.`/`..` traversal segments.
       const segs = isCatchAll ? value.split('/') : [value]
-      if (
-        (!isCatchAll && value.includes('/')) ||
-        segs.some((s) => s === '.' || s === '..')
-      ) {
+      if ((!isCatchAll && value.includes('/')) || segs.some((s) => s === '.' || s === '..')) {
         throw new Error(
           `[zero:ssg] getStaticPaths for "${pattern}" produced an unsafe "${name}" value ` +
             `(${JSON.stringify(value)}): a ${isCatchAll ? 'catch-all' : 'dynamic'} segment ` +
@@ -446,15 +445,11 @@ async function autoDetectStaticPaths(
     try {
       const result = await enumerator()
       if (!Array.isArray(result)) {
-        throw new Error(
-          `getStaticPaths for "${path}" must return an array, got ${typeof result}`,
-        )
+        throw new Error(`getStaticPaths for "${path}" must return an array, got ${typeof result}`)
       }
       for (const entry of result) {
         if (!entry || typeof entry !== 'object' || !entry.params) {
-          throw new Error(
-            `getStaticPaths for "${path}" returned an entry without "params"`,
-          )
+          throw new Error(`getStaticPaths for "${path}" returned an entry without "params"`)
         }
         out.push(expandUrlPattern(path, entry.params))
       }
@@ -548,10 +543,7 @@ async function writeFileAtomic(target: string, content: string | Uint8Array): Pr
  *
  * @internal Exposed via `_internal.buildLocaleSummary` for unit tests.
  */
-function buildLocaleSummary(
-  writtenPaths: readonly string[],
-  i18n: I18nRoutingConfig,
-): string {
+function buildLocaleSummary(writtenPaths: readonly string[], i18n: I18nRoutingConfig): string {
   if (writtenPaths.length === 0 || i18n.locales.length === 0) return ''
   const counts = new Map<string, number>()
   for (const locale of i18n.locales) counts.set(locale, 0)
@@ -1358,10 +1350,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       if (existsSync(routesDir)) {
         try {
           const fileRoutesWithExports = await scanRouteFilesWithExports(routesDir, config.mode)
-          const revalidateManifest = buildRevalidateManifest(
-            fileRoutesWithExports,
-            writtenPaths,
-          )
+          const revalidateManifest = buildRevalidateManifest(fileRoutesWithExports, writtenPaths)
           revalidateCount = Object.keys(revalidateManifest).length
           if (revalidateCount > 0) {
             // M2.1 — atomic write. Adapters polling for the manifest at
@@ -1415,8 +1404,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // single-entry iterator from the singular when the Map isn't there
         // so users with a stale SSR_ENTRY cache or downstream consumers that
         // never rebuilt their lib/ keep emitting one 404.html.
-        const localeEntries: (string | null)[]
-          = handlerMod.__notFoundComponentsByLocale instanceof Map
+        const localeEntries: (string | null)[] =
+          handlerMod.__notFoundComponentsByLocale instanceof Map
             ? [...handlerMod.__notFoundComponentsByLocale.keys()]
             : handlerMod.__notFoundComponent
               ? [null]
@@ -1445,10 +1434,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             ])
             if (result) {
               const html = injectIntoTemplate(template, result)
-              const filePath
-                = locale == null
-                  ? join(distDir, '404.html')
-                  : join(distDir, locale, '404.html')
+              const filePath =
+                locale == null ? join(distDir, '404.html') : join(distDir, locale, '404.html')
               // Ensure the locale subdirectory exists before writeFile —
               // dist/de/ may not have been created yet if no static pages
               // landed under that locale, but most apps will have at
@@ -1479,10 +1466,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       if (redirects.length > 0 && config.ssg?.emitRedirects !== false) {
         // M2.1 — atomic so an interrupted build doesn't leave a half-
         // written `_redirects` file that adapters / static hosts misparse.
-        await writeFileAtomic(
-          join(distDir, '_redirects'),
-          renderNetlifyRedirects(redirects),
-        )
+        await writeFileAtomic(join(distDir, '_redirects'), renderNetlifyRedirects(redirects))
         await writeFileAtomic(
           join(distDir, '_redirects.json'),
           renderVercelRedirectsJson(redirects),
@@ -1501,10 +1485,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       if (errors.length > 0 && config.ssg?.errorArtifact !== 'none') {
         // M2.1 — atomic so CI that reads this manifest (`jq '.errors | length'`)
         // never sees a partial-JSON parse error from an interrupted build.
-        await writeFileAtomic(
-          join(distDir, '_pyreon-ssg-errors.json'),
-          renderErrorArtifact(errors),
-        )
+        await writeFileAtomic(join(distDir, '_pyreon-ssg-errors.json'), renderErrorArtifact(errors))
       }
 
       // PR J — adapter.build() invocation for SSG mode. Each platform

@@ -1,12 +1,7 @@
 import type { SchemaIssue, SchemaParseResult } from '@pyreon/validation'
 import { extractParseFn, formatIssues } from '@pyreon/validation'
 import { createInstance } from './instance'
-import type {
-  ModelInstance,
-  ModelSelf,
-  Snapshot,
-  StateShape,
-} from './types'
+import type { ModelInstance, ModelSelf, Snapshot, StateShape } from './types'
 import { MODEL_BRAND } from './types'
 
 // ─── Hook registry ────────────────────────────────────────────────────────────
@@ -66,9 +61,7 @@ export interface NormalizedConfig<TState extends StateShape> {
   /** Ordered list of view factories (always an array, possibly empty). */
   readonly viewFactories: ReadonlyArray<(self: any) => Record<string, unknown>>
   /** Ordered list of action factories (always an array, possibly empty). */
-  readonly actionFactories: ReadonlyArray<
-    (self: any) => Record<string, (...args: any[]) => any>
-  >
+  readonly actionFactories: ReadonlyArray<(self: any) => Record<string, (...args: any[]) => any>>
 }
 
 // ─── ModelDefinition ──────────────────────────────────────────────────────────
@@ -166,9 +159,7 @@ export class ModelDefinition<
    * const counter = Counter.create({ count: 5 })
    * ```
    */
-  create(
-    initial?: Partial<Snapshot<TState>>,
-  ): ModelInstance<TState, TViews, TActions, HasSchema> {
+  create(initial?: Partial<Snapshot<TState>>): ModelInstance<TState, TViews, TActions, HasSchema> {
     return createInstance(this._config, initial ?? {}) as never
   }
 
@@ -187,12 +178,7 @@ export class ModelDefinition<
       if (!_hookRegistry.has(id)) {
         _hookRegistry.set(id, this.create())
       }
-      return _hookRegistry.get(id) as ModelInstance<
-        TState,
-        TViews,
-        TActions,
-        HasSchema
-      >
+      return _hookRegistry.get(id) as ModelInstance<TState, TViews, TActions, HasSchema>
     }
   }
 }
@@ -233,9 +219,7 @@ export class ModelDefinition<
 export function model<TState extends StateShape>(
   config: PlainStateConfig<TState>,
 ): ModelDefinition<TState, Record<never, never>, Record<never, never>, false>
-export function model<S>(
-  config: SchemaConfig<S>,
-): ModelDefinition<
+export function model<S>(config: SchemaConfig<S>): ModelDefinition<
   S extends { readonly _infer: infer T extends StateShape }
     ? T
     : S extends {
@@ -297,9 +281,7 @@ export function model(
       viewFactories: [],
       actionFactories: [],
       ...(parsedInitial !== undefined ? { _parsedInitial: parsedInitial } : {}),
-      ...(config.onValidationError
-        ? { _onValidationError: config.onValidationError }
-        : {}),
+      ...(config.onValidationError ? { _onValidationError: config.onValidationError } : {}),
     }
     return new ModelDefinition(cfg)
   }

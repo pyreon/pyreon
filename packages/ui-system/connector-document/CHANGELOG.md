@@ -185,7 +185,6 @@
   `@pyreon/rocketstyle` (`src/__tests__/rocketstyle.browser.test.tsx`,
   6 tests). Wraps a real `ComponentFn` (not `'div' as any`), matching
   production rocketstyle usage (Element/Text bases).
-
   - `.theme()` mounts and Chromium computes the authored color/padding
     via styler; emits a `pyr-*` class.
   - `state` prop swaps the resolved `$rocketstyle` theme.
@@ -204,7 +203,6 @@
   `@pyreon/coolgrid` (`src/__tests__/coolgrid.browser.test.tsx`, 7 tests).
   Wraps in `PyreonUI` (deprecated `<Provider>` from @pyreon/unistyle
   replaced).
-
   - Container mounts with `display: flex; flex-direction: column`.
   - Col size=6/12 → ~50% of Row; two size=6 Cols sum to ~100%
     side-by-side.
@@ -220,7 +218,6 @@
 
   `@pyreon/connector-document`
   (`src/__tests__/connector-document.browser.test.tsx`, 5 tests).
-
   - **Path A strict**: component body throws; if `extractDocumentTree`
     falls through to Path B and invokes the component, the test fails
     with the throw. Passing proves Path A reads `_documentProps` off
@@ -238,7 +235,6 @@
     Node-only dep leaks).
 
   Bisect-verified (load-bearing hot-path revert per suite):
-
   - **rocketstyle**: (a) emptied dimension theme merge → 3/6 failed
     (state, variant, modifier). (b) Static-returned `mode` in `useTheme`
     → 2/6 failed (reactive mode swap, m-callback dark-mode test).

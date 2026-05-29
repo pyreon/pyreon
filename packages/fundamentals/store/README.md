@@ -25,12 +25,12 @@ const useCounter = defineStore('counter', () => {
 // Singleton — same instance for every call with this ID
 const { store, patch, subscribe, reset, dispose } = useCounter()
 
-store.count()       // 0 — reactive read
-store.increment()   // wrapped action
-store.doubled()     // 2
+store.count() // 0 — reactive read
+store.increment() // wrapped action
+store.doubled() // 2
 
-patch({ count: 10 })                                    // object form, batched
-patch((s) => s.count.set(s.count.peek() + 1))           // functional form, raw signals
+patch({ count: 10 }) // object form, batched
+patch((s) => s.count.set(s.count.peek() + 1)) // functional form, raw signals
 
 const unsub = subscribe((m) => console.log(m.type, m.events))
 unsub()
@@ -40,32 +40,32 @@ unsub()
 
 The setup function runs ONCE per store ID; subsequent `useCounter()` calls return the cached instance. The return value is auto-classified:
 
-| Return value shape          | Becomes                                  |
-|-----------------------------|------------------------------------------|
-| `Signal<T>` (callable + `.set`/`.peek`) | Tracked state (snapshotted in `.state`) |
-| `Computed<T>` (with `.dispose`) | Pass-through (read like a signal)        |
-| `function`                  | Wrapped action (intercepted by `onAction`) |
-| Any other value             | Pass-through                             |
+| Return value shape                      | Becomes                                    |
+| --------------------------------------- | ------------------------------------------ |
+| `Signal<T>` (callable + `.set`/`.peek`) | Tracked state (snapshotted in `.state`)    |
+| `Computed<T>` (with `.dispose`)         | Pass-through (read like a signal)          |
+| `function`                              | Wrapped action (intercepted by `onAction`) |
+| Any other value                         | Pass-through                               |
 
 ## StoreApi
 
-| Property | Description |
-|---|---|
-| `store` | Your setup return value (signals, computeds, actions) |
-| `id` | The string ID |
-| `state` | Snapshot — `.peek()` of every signal, non-reactive |
-| `patch(obj \| fn)` | Object form: `{ key: value }` per signal, batched. Function form: `(rawSignals) => { … }` |
-| `subscribe(cb, opts?)` | Mutation listener; `{ immediate: true }` fires once on registration |
-| `onAction(cb)` | Action interception with `ctx.after(fn)` / `ctx.onError(fn)` |
-| `reset()` | Reset every signal to its initial value |
-| `dispose()` | Detach, dispose computeds, clear subscribers |
+| Property               | Description                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `store`                | Your setup return value (signals, computeds, actions)                                     |
+| `id`                   | The string ID                                                                             |
+| `state`                | Snapshot — `.peek()` of every signal, non-reactive                                        |
+| `patch(obj \| fn)`     | Object form: `{ key: value }` per signal, batched. Function form: `(rawSignals) => { … }` |
+| `subscribe(cb, opts?)` | Mutation listener; `{ immediate: true }` fires once on registration                       |
+| `onAction(cb)`         | Action interception with `ctx.after(fn)` / `ctx.onError(fn)`                              |
+| `reset()`              | Reset every signal to its initial value                                                   |
+| `dispose()`            | Detach, dispose computeds, clear subscribers                                              |
 
 `patch()` discriminator on subscribe events:
 
 ```ts
 subscribe((m) => {
-  m.type           // 'direct' | 'patch'
-  m.events         // array of { key, prev, next }
+  m.type // 'direct' | 'patch'
+  m.events // array of { key, prev, next }
 })
 ```
 

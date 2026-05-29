@@ -73,12 +73,14 @@ vs current cost:
 **Estimated saving: ~30-40µs per cache hit.**
 
 For the E2 bench (200 buttons all with identical props):
+
 - 199 of 200 are cache hits (the first one populates the cache)
 - 199 × 35µs ≈ 7ms saved per 200-mount run
 - Baseline 8.80ms → ~1.8ms with dimension memo
 - **~5× speedup on the rocketstyle path WITHOUT any compiler work.**
 
 This compounds independently with the compiler-collapse RFC (option C):
+
 - Compiler-collapse handles literal-prop call sites at BUILD time (zero runtime cost)
 - Dimension memo handles literal-prop call sites at RUNTIME (one-cache-miss cost, ~0 thereafter)
 - Both apply to dynamic-prop call sites: compiler falls through, runtime memo still helps if the prop-tuple repeats
@@ -101,6 +103,7 @@ Roughly:
 - Per-theme partition: prefix the cache key with the theme identity (themeSignal.peek() or similar).
 
 Risk areas:
+
 - Pseudo-state CSS (`:hover`, `:focus`) lives in the same generated class. Memo must include enough state to capture pseudo-state changes.
 - Reactive `theme` overrides on a per-component basis (`<Button theme={customTheme}>`) need to be part of the memo key.
 - Existing tests in `@pyreon/rocketstyle` should pass unchanged (memo is transparent).

@@ -1,4 +1,4 @@
-import type { ApiContext } from "@pyreon/zero/api-routes"
+import type { ApiContext } from '@pyreon/zero/api-routes'
 
 /**
  * API route example — /api/posts
@@ -10,9 +10,9 @@ import type { ApiContext } from "@pyreon/zero/api-routes"
  */
 
 const POSTS = [
-  { id: 1, title: "Getting Started with Pyreon Zero", published: true },
-  { id: 2, title: "Understanding Signals", published: true },
-  { id: 3, title: "Server-Side Rendering Made Simple", published: false },
+  { id: 1, title: 'Getting Started with Pyreon Zero', published: true },
+  { id: 2, title: 'Understanding Signals', published: true },
+  { id: 3, title: 'Server-Side Rendering Made Simple', published: false },
 ]
 
 export function GET(_ctx: ApiContext) {
@@ -26,7 +26,7 @@ export async function POST(ctx: ApiContext) {
   }
 
   if (!body.title) {
-    return Response.json({ error: "Title is required" }, { status: 400 })
+    return Response.json({ error: 'Title is required' }, { status: 400 })
   }
 
   const post = {

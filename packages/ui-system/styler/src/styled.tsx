@@ -140,10 +140,7 @@ const createStyledComponent = (
     // separately (see PR #561). This optimization is correct under the
     // existing cache lifetime contract; the HMR-staleness issue is broader
     // than the VNode cache.
-    const cachedEmptyVNode = h(
-      tag as string,
-      staticClassName ? { class: staticClassName } : {},
-    )
+    const cachedEmptyVNode = h(tag as string, staticClassName ? { class: staticClassName } : {})
 
     const StaticStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
       // Hot path: no extra props beyond what's empty AND no `ref` / `as`.
@@ -304,24 +301,25 @@ const createStyledComponent = (
     // The resolve itself runs UNTRACKED to prevent exponential cascade.
     const hasReactive = isReactiveRS || isReactiveState
     const cssClass = hasReactive
-      ? computed(() => {
-          // TRACKED reads:
-          const rs = isReactiveRS ? $rs() : $rs
-          const rsState = isReactiveState ? $rsState() : $rsState
-          const t = themeAccessor() // TRACKED — theme swap
+      ? computed(
+          () => {
+            // TRACKED reads:
+            const rs = isReactiveRS ? $rs() : $rs
+            const rsState = isReactiveState ? $rsState() : $rsState
+            const t = themeAccessor() // TRACKED — theme swap
 
-          // UNTRACKED: resolve + sheet insert
-          return runUntracked(() => doResolve(rs, rsState, t))
-        }, { equals: (a, b) => a === b })
+            // UNTRACKED: resolve + sheet insert
+            return runUntracked(() => doResolve(rs, rsState, t))
+          },
+          { equals: (a, b) => a === b },
+        )
       : null
 
     const finalTag = rawProps.as || tag
     const isDOM = typeof finalTag === 'string'
 
     // Initial class: computed (reactive) or direct resolve (static)
-    const className = cssClass
-      ? cssClass()
-      : doResolve($rs, $rsState, theme)
+    const className = cssClass ? cssClass() : doResolve($rs, $rsState, theme)
     const finalProps = buildProps(rawProps, className, isDOM, customFilter)
 
     // Reactive path: lightweight renderEffect that reads the pre-computed

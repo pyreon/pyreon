@@ -49,14 +49,11 @@ import { _tpl } from '@pyreon/runtime-dom'
  * it here, simulating what the compiler pass would emit.
  */
 export function makeCollapsedButton(label: string, resolvedClass: string): NativeItem {
-  return _tpl(
-    `<button class="${resolvedClass}"></button>`,
-    (root) => {
-      // Set the text child once. No reactive binding — this models a
-      // literal-string label call site, the same shape that benefits from
-      // the rest of the compile-time collapse.
-      root.textContent = label
-      return null
-    },
-  )
+  return _tpl(`<button class="${resolvedClass}"></button>`, (root) => {
+    // Set the text child once. No reactive binding — this models a
+    // literal-string label call site, the same shape that benefits from
+    // the rest of the compile-time collapse.
+    root.textContent = label
+    return null
+  })
 }

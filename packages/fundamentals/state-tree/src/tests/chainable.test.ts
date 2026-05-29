@@ -92,14 +92,13 @@ describe('chainable .actions() — accumulating composition', () => {
     // The live self proxy returns the FINAL instance, so forward references
     // within a single .actions() block work as long as the call happens at
     // invocation time (not at factory-evaluation time).
-    const M = model({ state: { count: 0 } })
-      .actions((self) => ({
-        bump: () => self.count.update((n: number) => n + 1),
-        bumpTwice: () => {
-          self.bump()
-          self.bump()
-        },
-      }))
+    const M = model({ state: { count: 0 } }).actions((self) => ({
+      bump: () => self.count.update((n: number) => n + 1),
+      bumpTwice: () => {
+        self.bump()
+        self.bump()
+      },
+    }))
     const m = M.create() as ReturnType<typeof M.create> & {
       bump: () => void
       bumpTwice: () => void

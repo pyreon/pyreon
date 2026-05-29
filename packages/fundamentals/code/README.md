@@ -35,40 +35,40 @@ const App = () => <CodeEditor instance={editor} style="height: 400px" />
 
 ## `createEditor(config)` → `EditorInstance`
 
-| Config field | Default | Notes |
-|---|---|---|
-| `value` | `''` | Initial content |
-| `language` | `'plain'` | Lazy-loaded grammar |
-| `theme` | `'light'` | `'light'` / `'dark'` / a CodeMirror Extension |
-| `lineNumbers` | `true` | |
-| `readOnly` | `false` | |
-| `foldGutter` | `true` | |
-| `bracketMatching` | `true` | |
-| `autocomplete` | `true` | |
-| `search` | `true` | Cmd/Ctrl+F |
-| `lint` | `false` | Pass diagnostics via `setDiagnostics` |
-| `vim` / `emacs` | `false` | Keybindings |
-| `tabSize` | `2` | |
-| `placeholder` | — | Hint text when empty |
-| `keybindings` | — | Custom keymap |
+| Config field      | Default   | Notes                                         |
+| ----------------- | --------- | --------------------------------------------- |
+| `value`           | `''`      | Initial content                               |
+| `language`        | `'plain'` | Lazy-loaded grammar                           |
+| `theme`           | `'light'` | `'light'` / `'dark'` / a CodeMirror Extension |
+| `lineNumbers`     | `true`    |                                               |
+| `readOnly`        | `false`   |                                               |
+| `foldGutter`      | `true`    |                                               |
+| `bracketMatching` | `true`    |                                               |
+| `autocomplete`    | `true`    |                                               |
+| `search`          | `true`    | Cmd/Ctrl+F                                    |
+| `lint`            | `false`   | Pass diagnostics via `setDiagnostics`         |
+| `vim` / `emacs`   | `false`   | Keybindings                                   |
+| `tabSize`         | `2`       |                                               |
+| `placeholder`     | —         | Hint text when empty                          |
+| `keybindings`     | —         | Custom keymap                                 |
 
 `EditorInstance` shape:
 
-| Member | Type |
-|---|---|
-| `value` | `Signal<string>` — two-way synced with the editor |
-| `language` | `Signal<EditorLanguage>` |
-| `theme` | `Signal<EditorTheme>` |
-| `readOnly` | `Signal<boolean>` |
-| `cursor` | `Computed<{ line, col }>` |
-| `selection` | `Computed<{ from, to, text }>` |
-| `lineCount` | `Computed<number>` |
-| `focused` | `Signal<boolean>` |
-| `view` | `Signal<EditorView \| null>` (raw CodeMirror, null until mounted) |
-| `focus()` / `insert(text)` / `replaceSelection(text)` | imperative |
-| `select(from, to)` / `selectAll()` / `goToLine(line)` | imperative |
-| `undo()` / `redo()` / `foldAll()` / `unfoldAll()` | imperative |
-| `dispose()` | manual cleanup (auto on unmount when used via `<CodeEditor>`) |
+| Member                                                | Type                                                              |
+| ----------------------------------------------------- | ----------------------------------------------------------------- |
+| `value`                                               | `Signal<string>` — two-way synced with the editor                 |
+| `language`                                            | `Signal<EditorLanguage>`                                          |
+| `theme`                                               | `Signal<EditorTheme>`                                             |
+| `readOnly`                                            | `Signal<boolean>`                                                 |
+| `cursor`                                              | `Computed<{ line, col }>`                                         |
+| `selection`                                           | `Computed<{ from, to, text }>`                                    |
+| `lineCount`                                           | `Computed<number>`                                                |
+| `focused`                                             | `Signal<boolean>`                                                 |
+| `view`                                                | `Signal<EditorView \| null>` (raw CodeMirror, null until mounted) |
+| `focus()` / `insert(text)` / `replaceSelection(text)` | imperative                                                        |
+| `select(from, to)` / `selectAll()` / `goToLine(line)` | imperative                                                        |
+| `undo()` / `redo()` / `foldAll()` / `unfoldAll()`     | imperative                                                        |
+| `dispose()`                                           | manual cleanup (auto on unmount when used via `<CodeEditor>`)     |
 
 ## Languages — 20 supported, lazy-loaded
 
@@ -106,7 +106,6 @@ Single-pane editor mounting the `EditorInstance` view.
 
 ```tsx
 import { TabbedEditor } from '@pyreon/code'
-
 ;<TabbedEditor
   tabs={[
     { id: 'main', label: 'main.ts', value: 'export {}', language: 'typescript' },

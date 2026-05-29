@@ -50,21 +50,21 @@ function PostActions(props: { post: Post }) {
 
 `createPermissions(initial?: PermissionMap)` returns a callable `Permissions` instance:
 
-| Method | Returns | Notes |
-|---|---|---|
-| `can(key, context?)` | `boolean` | Reactive — re-evaluates on permission change |
-| `can.not(key, context?)` | `boolean` | Inverse — true when denied |
-| `can.all(...keys)` | `boolean` | Every listed key granted |
-| `can.any(...keys)` | `boolean` | At least one granted |
-| `can.set(map)` | `void` | Replace all permissions reactively |
-| `can.patch(map)` | `void` | Merge in — existing keys overwritten, new keys added |
-| `can.granted` | `Computed<string[]>` | Currently granted keys (true + predicate-keys-that-exist) |
-| `can.entries` | `Computed<[key, value][]>` | All entries — useful for admin dashboards |
+| Method                   | Returns                    | Notes                                                     |
+| ------------------------ | -------------------------- | --------------------------------------------------------- |
+| `can(key, context?)`     | `boolean`                  | Reactive — re-evaluates on permission change              |
+| `can.not(key, context?)` | `boolean`                  | Inverse — true when denied                                |
+| `can.all(...keys)`       | `boolean`                  | Every listed key granted                                  |
+| `can.any(...keys)`       | `boolean`                  | At least one granted                                      |
+| `can.set(map)`           | `void`                     | Replace all permissions reactively                        |
+| `can.patch(map)`         | `void`                     | Merge in — existing keys overwritten, new keys added      |
+| `can.granted`            | `Computed<string[]>`       | Currently granted keys (true + predicate-keys-that-exist) |
+| `can.entries`            | `Computed<[key, value][]>` | All entries — useful for admin dashboards                 |
 
 ### `PermissionsProvider` / `usePermissions()`
 
 ```tsx
-<PermissionsProvider instance={can}>
+;<PermissionsProvider instance={can}>
   <App />
 </PermissionsProvider>
 
@@ -80,8 +80,8 @@ function ProtectedRoute() {
 
 ```ts
 type PermissionValue<TContext = unknown> =
-  | boolean                                       // static grant or denial
-  | ((context?: TContext) => boolean)             // dynamic — evaluated per check
+  | boolean // static grant or denial
+  | ((context?: TContext) => boolean) // dynamic — evaluated per check
 ```
 
 - **`true` / `false`** — static (RBAC, feature flags).
@@ -106,11 +106,12 @@ A literal key always wins over a wildcard — `'posts.*': true` + `'posts.delete
 ### Role-based access control
 
 ```ts
-const fromRole = (role: 'admin' | 'editor' | 'viewer') => ({
-  admin: { '*': true },
-  editor: { 'posts.*': true, 'users.read': true },
-  viewer: { 'posts.read': true },
-})[role]
+const fromRole = (role: 'admin' | 'editor' | 'viewer') =>
+  ({
+    admin: { '*': true },
+    editor: { 'posts.*': true, 'users.read': true },
+    viewer: { 'posts.read': true },
+  })[role]
 
 // On login:
 can.set(fromRole(user.role))

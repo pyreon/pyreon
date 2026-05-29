@@ -8,16 +8,17 @@ export default function ForDemo() {
   items.subscribe((v) => (list = v))
 
   return (
-    <Demo title="For (control-flow re-export)" apis="For" code={`<For each={list} by={n => n}>…</For>`}>
+    <Demo
+      title="For (control-flow re-export)"
+      apis="For"
+      code={`<For each={list} by={n => n}>…</For>`}
+    >
       <ul>
         <For each={() => list} by={(n: number) => n}>
           {(n: number) => <li>item {n}</li>}
         </For>
       </ul>
-      <button
-        type="button"
-        onClick={() => items.update((l) => [...l, l.length + 1])}
-      >
+      <button type="button" onClick={() => items.update((l) => [...l, l.length + 1])}>
         add item
       </button>
     </Demo>

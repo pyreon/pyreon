@@ -81,13 +81,10 @@ describe('validate.ts module surface', () => {
     }
   })
 
-  it.skipIf(!isSwiftcAvailable())(
-    'validateSwift catches a genuinely-broken Swift snippet',
-    () => {
-      const result = validateSwift('this is { not swift at all : ;')
-      expect(result.ok).toBe(false)
-      expect(result.error).toBeDefined()
-      expect(result.error).toMatch(/error:/i)
-    },
-  )
+  it.skipIf(!isSwiftcAvailable())('validateSwift catches a genuinely-broken Swift snippet', () => {
+    const result = validateSwift('this is { not swift at all : ;')
+    expect(result.ok).toBe(false)
+    expect(result.error).toBeDefined()
+    expect(result.error).toMatch(/error:/i)
+  })
 })

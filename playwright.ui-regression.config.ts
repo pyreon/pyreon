@@ -22,8 +22,6 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  *   `bun run test:e2e:ui-regression` (this config) as a separate step.
  */
 export default definePlaywrightConfig({
-  projects: [
-    { name: 'ui-showcase', testMatch: /ui-showcase-regression\.spec\.ts$/, port: 5174 },
-  ],
+  projects: [{ name: 'ui-showcase', testMatch: /ui-showcase-regression\.spec\.ts$/, port: 5174 }],
   webServer: [viteDevServer('@pyreon/example-ui-showcase', 5174)],
 })

@@ -45,41 +45,55 @@ const parses = (o: string): boolean => {
 
 describe('Round 11 — signal auto-call respects lexical shadowing', () => {
   it('destructured-shorthand callback param shadowing a signal is NOT auto-called', () => {
-    const out = emit(`function C(){ const x = signal(0); return <ul>{[{x:1}].map(({x}) => <li>{x}</li>)}</ul> }`)
+    const out = emit(
+      `function C(){ const x = signal(0); return <ul>{[{x:1}].map(({x}) => <li>{x}</li>)}</ul> }`,
+    )
     expect(parses(out)).toBe(true)
     expect(out).not.toContain('{x()}')
     expect(out).toContain('({x}) => <li>{x}</li>')
   })
 
   it('destructured param shadowing a signal in a filter predicate is NOT auto-called', () => {
-    const out = emit(`function C(){ const id = signal(0); return <ul>{[{id:1}].filter(({id}) => id > 0).map(r => <li>{r}</li>)}</ul> }`)
+    const out = emit(
+      `function C(){ const id = signal(0); return <ul>{[{id:1}].filter(({id}) => id > 0).map(r => <li>{r}</li>)}</ul> }`,
+    )
     expect(parses(out)).toBe(true)
     expect(out).not.toMatch(/\(\{id\}\) => id\(\)/)
   })
 
   it('renamed destructured value param shadowing a signal is NOT auto-called', () => {
-    const out = emit(`function C(){ const v = signal(0); return <ul>{[{k:1}].map(({k: v}) => <li>{v}</li>)}</ul> }`)
+    const out = emit(
+      `function C(){ const v = signal(0); return <ul>{[{k:1}].map(({k: v}) => <li>{v}</li>)}</ul> }`,
+    )
     expect(out).not.toContain('{v()}')
   })
 
   it('plain callback param shadowing a signal is NOT auto-called', () => {
-    const out = emit(`function C(){ const s = signal(0); return <ul>{[1].map(s => <li>{s}</li>)}</ul> }`)
+    const out = emit(
+      `function C(){ const s = signal(0); return <ul>{[1].map(s => <li>{s}</li>)}</ul> }`,
+    )
     expect(out).not.toContain('{s()}')
   })
 
   // ── CONTROL: legitimate signal reads MUST still auto-call ──
   it('CONTROL: a direct non-shadowed signal child still auto-calls', () => {
-    expect(emit(`function C(){ const s = signal(0); return <div>{s}</div> }`)).toContain('__t0.data = s()')
+    expect(emit(`function C(){ const s = signal(0); return <div>{s}</div> }`)).toContain(
+      '__t0.data = s()',
+    )
   })
 
   it('CONTROL: a non-shadowed signal SIBLING of a shadowing callback still auto-calls', () => {
-    const out = emit(`function C(){ const s = signal(0); return <div>{[1].map(s => <i>{s}</i>)}<b>{s}</b></div> }`)
+    const out = emit(
+      `function C(){ const s = signal(0); return <div>{[1].map(s => <i>{s}</i>)}<b>{s}</b></div> }`,
+    )
     expect(out).not.toContain('<i>{s()}</i>') // the shadowing param — not called
     expect(out).toContain('__t0.data = s()') // the real signal sibling — called
   })
 
   it('CONTROL: signal.set in a handler is not auto-called but its arg is', () => {
-    const out = emit(`function C(){ const s = signal(0); return <button onClick={() => s.set(s() + 1)}>{s}</button> }`)
+    const out = emit(
+      `function C(){ const s = signal(0); return <button onClick={() => s.set(s() + 1)}>{s}</button> }`,
+    )
     expect(out).toContain('s.set(s() + 1)')
     expect(out).toContain('__t0.data = s()')
   })

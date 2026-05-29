@@ -39,10 +39,7 @@ interface JsonOutput {
   missing: unknown[]
 }
 
-function setupFixturePackagesDir(opts: {
-  badPackage?: boolean
-  goodPackage?: boolean
-}): string {
+function setupFixturePackagesDir(opts: { badPackage?: boolean; goodPackage?: boolean }): string {
   // realpathSync canonicalises macOS `/var/folders` → `/private/var/...`
   // so any internal path comparison the script does sees the same form.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-budgets-test-')))
@@ -95,19 +92,15 @@ function runCheck(packagesRoot: string): {
   json: JsonOutput | null
   stderr: string
 } {
-  const result = spawnSync(
-    'bun',
-    [SCRIPT, '--json', `--packages-root=${packagesRoot}`],
-    {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      timeout: 60_000,
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-      },
+  const result = spawnSync('bun', [SCRIPT, '--json', `--packages-root=${packagesRoot}`], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+    timeout: 60_000,
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
     },
-  )
+  })
   let json: JsonOutput | null = null
   try {
     // The script emits the bun-run preamble (`$ bun scripts/...`) on

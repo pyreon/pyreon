@@ -10,13 +10,22 @@
 import { PyreonUI } from '@pyreon/ui-core'
 import theme from '@pyreon/ui-theme'
 import {
-  Button, Card, Badge, Alert,
-  Input, Modal, Tabs, Tab, TabPanel,
+  Button,
+  Card,
+  Badge,
+  Alert,
+  Input,
+  Modal,
+  Tabs,
+  Tab,
+  TabPanel,
 } from '@pyreon/ui-components'
 
-<PyreonUI theme={theme} mode="system">
+;<PyreonUI theme={theme} mode="system">
   <Card>
-    <Badge state="success" size="small">Active</Badge>
+    <Badge state="success" size="small">
+      Active
+    </Badge>
     <Alert state="info">Welcome back.</Alert>
 
     <Tabs defaultValue="account">
@@ -30,7 +39,9 @@ import {
       </TabPanel>
     </Tabs>
 
-    <Button state="primary" size="medium">Save</Button>
+    <Button state="primary" size="medium">
+      Save
+    </Button>
   </Card>
 </PyreonUI>
 ```
@@ -50,6 +61,7 @@ import {
 `Button`, `CloseButton`, `IconButton`, `ButtonGroup`, `ActionIcon`.
 
 `Button` ships dimensions:
+
 - **states**: `primary`, `secondary`, `danger`, `success`
 - **sizes**: `small`, `medium`, `large`
 - **variants**: `solid` (default), `outline`, `subtle`, `ghost`, `link`
@@ -102,12 +114,12 @@ import {
 
 Components are built from three base factories re-exported from `src/factory.ts`:
 
-| Factory | Renders | Use for |
-|---|---|---|
-| `el` | `<Element>` (block layout) | Buttons, Cards, Layouts — anything that needs `direction`, `gap`, `alignX`, `alignY` |
-| `txt` | `<Text>` (inline typography) | Headings, paragraphs, links |
-| `list` | `<List>` (data-driven children) | Lists with positional metadata |
-| `rs` | Bare rocketstyle | Components that don't need Element's layout surface |
+| Factory | Renders                         | Use for                                                                              |
+| ------- | ------------------------------- | ------------------------------------------------------------------------------------ |
+| `el`    | `<Element>` (block layout)      | Buttons, Cards, Layouts — anything that needs `direction`, `gap`, `alignX`, `alignY` |
+| `txt`   | `<Text>` (inline typography)    | Headings, paragraphs, links                                                          |
+| `list`  | `<List>` (data-driven children) | Lists with positional metadata                                                       |
+| `rs`    | Bare rocketstyle                | Components that don't need Element's layout surface                                  |
 
 Plus `MaybeNull`, `ObjectValue`, `SimpleValue` types for `list` data shapes.
 
@@ -130,23 +142,41 @@ const Button = el
     active: { transform: 'scale(0.98)' },
   }))
   .states((t) => ({
-    primary: { backgroundColor: t.color.system.primary.base, color: t.color.system.light.base,
-               hover: { backgroundColor: t.color.system.primary[800] } },
-    secondary: { /* … */ },
-    danger:    { /* … */ },
-    success:   { /* … */ },
+    primary: {
+      backgroundColor: t.color.system.primary.base,
+      color: t.color.system.light.base,
+      hover: { backgroundColor: t.color.system.primary[800] },
+    },
+    secondary: {
+      /* … */
+    },
+    danger: {
+      /* … */
+    },
+    success: {
+      /* … */
+    },
   }))
   .sizes((t) => ({
-    small:  { fontSize: t.fontSize.small,  paddingTop: t.spacing.xSmall, /* … */ },
-    medium: { fontSize: t.fontSize.base,   paddingTop: t.spacing.small,  /* … */ },
-    large:  { fontSize: t.fontSize.medium, paddingTop: t.spacing.medium, /* … */ },
+    small: { fontSize: t.fontSize.small, paddingTop: t.spacing.xSmall /* … */ },
+    medium: { fontSize: t.fontSize.base, paddingTop: t.spacing.small /* … */ },
+    large: { fontSize: t.fontSize.medium, paddingTop: t.spacing.medium /* … */ },
   }))
   .variants((t) => ({
-    solid:   {},
-    outline: { backgroundColor: t.color.system.transparent, borderColor: t.color.system.primary.base, /* … */ },
-    subtle:  { /* … */ },
-    ghost:   { /* … */ },
-    link:    { /* … */ },
+    solid: {},
+    outline: {
+      backgroundColor: t.color.system.transparent,
+      borderColor: t.color.system.primary.base /* … */,
+    },
+    subtle: {
+      /* … */
+    },
+    ghost: {
+      /* … */
+    },
+    link: {
+      /* … */
+    },
   }))
 ```
 

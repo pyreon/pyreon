@@ -112,9 +112,7 @@ describe('integration', () => {
       }
 
       const md = createMedia(768, 16)
-      const result = md`
-        color: blue;
-      `
+      const result = md`color: blue;`
 
       // Wrap in a styled component
       const Comp = styled('div')`

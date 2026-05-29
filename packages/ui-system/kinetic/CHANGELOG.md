@@ -124,7 +124,6 @@
   PR [#731](https://github.com/pyreon/pyreon/issues/731) fixed the kinetic-mode renderers under `packages/ui-system/kinetic/src/kinetic/`.
   It missed the parallel TOP-LEVEL components in the same package + a
   subtle Iterator shape.
-
   - **`@pyreon/kinetic` top-level `Stagger.tsx`** — `(Array.isArray(own.children) ? own.children : [own.children]).filter(isVNode)` collapsed to `[]` when `own.children` is a function. Fixed by calling `resolveChildren(own.children)` at body entry (same helper PR [#731](https://github.com/pyreon/pyreon/issues/731) shipped in `kinetic/src/utils.ts`).
   - **`@pyreon/kinetic` top-level `Transition.tsx`** — 3 × `cloneVNode(props.children, …)` + 1 × `(props.children.props ?? {})` reads. The cloneVNode-on-function shape produces `<undefined>` tags; the `.props` read returns undefined and silently drops the merge-ref. Fixed by resolving once at body entry (`const child = resolveChildren(props.children)`).
   - **`@pyreon/elements` `Iterator`** — falls through to `renderChild(function)` which calls `render(function, props)` and interprets the function as a component. Doesn't crash but loses per-item metadata (`first`/`last`/`position`/`index`/`odd`/`even`). Fixed by unwrapping at body entry with the inline `typeof rawChildren === 'function' ? rawChildren() : rawChildren` ternary.
@@ -132,20 +131,17 @@
   ## Lint rule — `pyreon/no-iterate-children-without-resolve`
 
   New error-level rule under the `reactivity` category. Detects:
-
   1. **`cloneVNode(EXPR, …)`** where EXPR ends with `.children`.
   2. **`(Array.isArray(EXPR) ? EXPR : [EXPR]).METHOD(…)`** where METHOD is one of `filter` / `map` / `forEach` / `reduce` / `every` / `some` / `find` / `findIndex` / `flatMap`.
   3. **`EXPR.props`** reads where EXPR ends with `.children` (the merge-ref pattern from `Transition.tsx`).
 
   **Acceptable mitigations** (per-function scope, inherits through nested arrow functions):
-
   - `resolveChildren(…)` call.
   - `typeof EXPR === 'function' ? EXPR() : EXPR` ternary.
   - `typeof EXPR === 'function'` guard anywhere.
   - `const NAME = <mitigation expression>` — marks NAME as safe-aliased.
 
   **Out of scope** (deliberate precision trade-offs):
-
   - Pass-through `...(Array.isArray(EXPR) ? EXPR : [EXPR])` SpreadElement → mountChild handles function children. Naturally not flagged by the call-site detection.
   - `if (Array.isArray(X)) return X.map(…)` IfStatement-guarded iteration. Framework primitives (`Dynamic`, `Show`, `Switch`) use this with direct h() rest args that never reach the auto-wrap; out of scope.
   - Variable-bound iteration patterns (`const xs = COND; xs.METHOD(…)`). Out of scope — detection at the inline `.METHOD(…)` call site.
@@ -153,7 +149,6 @@
   **Bisect-verified at two layers**: 19 unit specs (10 FIRES + 9 CONTROL + real-world shapes), reverting the rule fails all 10 FIRES; full repo sweep against `packages/**` after library fixes → 0 hits (zero false positives, zero remaining real bugs).
 
   ## Surfaces updated
-
   - `packages/ui-system/kinetic/src/Stagger.tsx` — top-level Stagger fix
   - `packages/ui-system/kinetic/src/Transition.tsx` — top-level Transition fix
   - `packages/ui-system/elements/src/helpers/Iterator/component.tsx` — Iterator fix
@@ -167,7 +162,6 @@
   - `.claude/rules/anti-patterns.md` — new bug-class entry under Architecture Mistakes
 
   ## Validation
-
   - All 3 library packages pass tests (kinetic 220, elements 463 → +new regression specs)
   - All 650 lint tests pass (19 new specs)
   - `check-doc-claims` clean (count claims locked)
@@ -178,7 +172,6 @@
   **Reported symptom**: `kinetic('div').stagger()` (and `.group()`) with multiple component-VNode children rendered `<undefined>` HTML tags in place of the real children post-hydration. SSR HTML was correct (`<h1>Hello</h1>` + tagline + icons with `--stagger-index` styles inlined) but client hydration replaced the entire subtree with literal `<undefined></undefined>` elements + `<!--pyreon-->` markers. Reproduced on `examples/bokisch.com`'s Intro section: `kinetic('div').preset(blurInUp).stagger({ interval: 80 })` + `show={() => true}` + `appear` + three rocketstyle-wrapped children → SSG'd HTML carried the children, post-hydrate every child was `<undefined>` (puppeteer-verified, `h1Count: 0`, body text missing "Hello", "I build…", icon labels).
 
   **Root cause** (compiler + library cooperation):
-
   1. The Pyreon vite-plugin compiler's prop-inlining pass rewrites `<Comp>{children}</Comp>` where `children` is a local `const` derived from a getter-shaped binding (`const children = childHolder.children` after `splitProps`) as `Comp({ ..., children: () => childHolder.children })`. The receiving component therefore sees `props.children` as a FUNCTION, not the expected `VNode | VNode[]`. DOM-consuming code routes through `mountChild` which handles function children correctly (as reactive accessors via `mountReactive`), so this wrap is invisible to most consumers.
 
   2. **StaggerRenderer** iterated children directly at the VNode level (to build per-child `TransitionItem` wrappers): `(Array.isArray(children) ? children : [children]).filter(isVNode)`. When `children` was a function, this produced `[function].filter(isVNode) === []` → the rendered `<div>` had ZERO children → SSR-rendered content was replaced by an empty `<div>` during client mount.
@@ -186,7 +179,6 @@
   3. **TransitionItem** then ALSO hit the wrap one level down: StaggerRenderer's `<TransitionItem>{cloneVNode(child, {style})}</TransitionItem>` JSX child likewise compiles to `() => cloneVNode(child, {style})`. `TransitionItem`'s `cloneVNode(props.children, {ref})` spread a function (no own enumerable properties) → produced `{type: undefined, props: {ref}}` → `mountElement(undefined)` → `document.createElement(undefined)` → literal `<undefined>` HTML tag.
 
   **Fix**: new `resolveChildren` helper in `utils.ts` — unwraps a children value that may be a compiler-emitted accessor. Applied at both fix-sites:
-
   - `StaggerRenderer` calls `resolveChildren(children)` before the iteration. Group works around the same shape independently via its existing `typeof children === 'function'` normalize.
   - `TransitionItem` calls `resolveChildren(props.children)` once at body entry, then all downstream `cloneVNode` / `child?.props?.ref` / `child?.props?.style` reads use the resolved value.
 
@@ -208,7 +200,6 @@
 - [#719](https://github.com/pyreon/pyreon/pull/719) [`50afe21`](https://github.com/pyreon/pyreon/commit/50afe21856cf348eba8d096e1be0eedd6879850b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(kinetic): `kinetic(tag).<mode>` API emits children in SSR for initially-hidden state — completes the PR [#717](https://github.com/pyreon/pyreon/issues/717) SSR coverage
 
   **Bug class continuation of [#717](https://github.com/pyreon/pyreon/issues/717).** PR [#717](https://github.com/pyreon/pyreon/issues/717) fixed the top-level `<Transition>` direct-import path, but the `kinetic(tag).<mode>` factory API — which the README promotes as the primary surface ("Four Modes" section) — has its own per-mode renderers that all carried the identical `<Show when={shouldMount} fallback={null}>` shape:
-
   - `TransitionRenderer` → `kinetic('div').preset(fadeUp)` (default `.transition` mode)
   - `TransitionItem` → `kinetic('ul').stagger()` per item (cascading-children mode) AND `kinetic('ul').group()` per item
   - `CollapseRenderer` → `kinetic('div').collapse()` (height-animation mode)
@@ -216,7 +207,6 @@
   Every consumer of these — including the documented cascading-Stagger pattern surfaced by a real resume-page report — still hit the SSR-children-dropped bug after [#717](https://github.com/pyreon/pyreon/issues/717) landed. The reporter's scroll-reveal `<Reveal>` helper (`useIntersection` + sticky-signal + `kinetic` mode) stayed blocked because the SSR fix didn't reach the renderers backing the kinetic-mode factory.
 
   **Fix.** Same `wasInitiallyShown` branch pattern from [#717](https://github.com/pyreon/pyreon/issues/717), applied to each of the three renderers:
-
   - Initially-visible → existing `<Show>`-gated mount unchanged (preserves runtime-unmount semantic for visible→hidden).
   - Initially-hidden → always renders children with hidden-state class/style inlined. Picker: `leaveTo` / `leaveToStyle` (explicit hidden-end state) wins; falls back to `enterFrom` / `enterStyle` (pre-enter state).
 
@@ -229,7 +219,6 @@
   **Trade-off (consistent across all three renderers).** For initially-hidden kinetic-mode components, `unmount: true` no longer triggers a true DOM removal after a later leave animation completes — the element stays in DOM with the leave-to class applied. Initially-visible components keep the unmount semantic. Matches Framer Motion / react-transition-group conventions; the price of SSR correctness.
 
   **Coverage added.**
-
   - `kinetic-modes.ssr.test.tsx` — 9 SSR specs against real `renderToString` covering all three renderers with both initially-hidden + initially-visible cases per mode, plus the preset-path `enterStyle` fallback assertion.
   - `kinetic.browser.test.tsx` — 4 new real-Chromium specs: kinetic('section').transition initial-hidden mount + show-flip enter, kinetic('ul').stagger() all-items-mounted, kinetic('div').collapse() inner-content-present-with-height:0.
   - `Collapse.test.tsx` helper updated (`wireContentRef`) to walk both vnode shapes (direct div for the SSR-correct initially-hidden branch + Show-wrapped div for the unchanged initially-visible branch) — pure test-plumbing change, behavioral assertions unchanged.
@@ -250,8 +239,8 @@
   <Transition
     show={() => false}
     enter="transition-all duration-300"
-    enterStyle={{ opacity: 0, transform: "translateY(16px)" }} // ← preset hidden state
-    enterToStyle={{ opacity: 1, transform: "translateY(0)" }}
+    enterStyle={{ opacity: 0, transform: 'translateY(16px)' }} // ← preset hidden state
+    enterToStyle={{ opacity: 1, transform: 'translateY(0)' }}
   >
     ...
   </Transition>
@@ -288,7 +277,6 @@
   **Why it shipped undetected.** Zero existing tests exercised `show: () => false` initial state, and zero kinetic tests touched the runtime-server path. Both layers needed — real `renderToString` + a hidden initial state — to surface the bug.
 
   **Fix.** `Transition` now branches at setup on `props.show()`:
-
   - **Initially-visible** Transitions keep the original `<Show>`-gated mount unchanged, preserving the runtime-unmount semantic for the visible→hidden transition (modals closing, dropdowns collapsing, etc.).
   - **Initially-hidden** Transitions always render children with the hidden-state class/style inlined — `leaveTo` if defined (explicit hidden-end state), else `enterFrom` (pre-enter state, covers the scroll-reveal pattern that only configures the enter side). The existing `watch(stage)` effect drives the enter animation when `show` flips true on the **same** DOM element.
 
@@ -331,7 +319,6 @@
 
   Fix routes every hop through descriptor-preserving primitives from
   `@pyreon/core`:
-
   - `createKineticComponent`: `splitProps(props, [...KINETIC_KEYS])` for the
     kinetic/html split, then `splitProps(htmlProps, ['children'])` to carve
     out children — getters survive (`Object.getOwnPropertyDescriptor` +
@@ -429,7 +416,6 @@ ref, style })` — last-source-wins lets `ref`/the animation-controlled
 - [#244](https://github.com/pyreon/pyreon/pull/244) [`c69e178`](https://github.com/pyreon/pyreon/commit/c69e178c2f0155c073a680f357ff71c8f9eec6a8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Kinetic anti-pattern cleanup + lint rule precision
 
   `@pyreon/kinetic`:
-
   - `nextFrame` (utils.ts): added `typeof requestAnimationFrame === 'undefined'`
     early-return. SSR callers receive `0` instead of crashing — the rule
     recognises the guard and the safety contract becomes explicit.
@@ -449,13 +435,11 @@ ref, style })` — last-source-wins lets `ref`/the animation-controlled
     `@pyreon/reactivity`, `@pyreon/runtime-dom` added.
 
   `@pyreon/lint` — `no-bare-signal-in-jsx`:
-
   - Skip allowlist extended to `h` and `cloneVNode` (VNode-producing helpers
     from `@pyreon/core`). Their JSX call sites always produce a VNode, not
     a signal value. Matches `render` (already in the list) from ui-core.
 
   `@pyreon/lint` — `no-window-in-ssr`:
-
   - Safe-context call set extended with `watch` (signal-driven watcher from
     `@pyreon/reactivity`) and `requestAnimationFrame`. Both run their
     callbacks post-mount in a browser, so browser-global reads inside them

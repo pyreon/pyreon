@@ -54,9 +54,7 @@ export default function CardItem(props: CardItemProps) {
       const cols = board.columns()
       const targetCol = cols.find((c) => c.id === props.columnId)
       if (!targetCol) return
-      const targetIndex = targetCol.cards.findIndex(
-        (c) => c.id === props.cardId,
-      )
+      const targetIndex = targetCol.cards.findIndex((c) => c.id === props.cardId)
       if (targetIndex === -1) return
       board.moveCard(cardId, props.columnId, targetIndex)
     },
@@ -90,11 +88,7 @@ export default function CardItem(props: CardItemProps) {
         </span>
       </div>
       <div class="card-actions">
-        <button
-          type="button"
-          onClick={handleDelete}
-          data-testid={`card-${props.cardId}-delete`}
-        >
+        <button type="button" onClick={handleDelete} data-testid={`card-${props.cardId}-delete`}>
           ✕
         </button>
       </div>

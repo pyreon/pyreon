@@ -91,11 +91,7 @@ export interface FireBuckets {
  * observed range (Profiler tab). The design uses 100&thinsp;ms frames.
  * Empty input → a single empty frame so the chart renders a baseline.
  */
-export function bucketFires(
-  fires: ReactiveFire[],
-  frameMs = 100,
-  maxFrames = 60,
-): FireBuckets {
+export function bucketFires(fires: ReactiveFire[], frameMs = 100, maxFrames = 60): FireBuckets {
   if (fires.length === 0) {
     return { frames: [0], max: 1, total: 0, frameMs }
   }

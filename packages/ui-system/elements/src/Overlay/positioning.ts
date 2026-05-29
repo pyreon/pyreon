@@ -24,7 +24,7 @@ export type PositionResult = {
   resolvedAlignY: AlignY
 }
 
-const sel = <T,>(cond: boolean, a: T, b: T): T => (cond ? a : b)
+const sel = <T>(cond: boolean, a: T, b: T): T => (cond ? a : b)
 
 export const calcDropdownVertical = (
   c: DOMRect,
@@ -38,7 +38,8 @@ export const calcDropdownVertical = (
   // the explicit guard documents the SSR-safety contract at the callsite
   // and lets `no-window-in-ssr` prove it locally. Return shape mirrors the
   // "no element" path below (empty `pos`, alignment preserved).
-  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: alignX, resolvedAlignY: align }
+  if (typeof window === 'undefined')
+    return { pos: {}, resolvedAlignX: alignX, resolvedAlignY: align }
   const pos: OverlayPosition = {}
 
   const topPos = t.top - offsetY - c.height
@@ -90,7 +91,8 @@ export const calcDropdownHorizontal = (
   offsetX: number,
   offsetY: number,
 ): PositionResult => {
-  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: align, resolvedAlignY: alignY }
+  if (typeof window === 'undefined')
+    return { pos: {}, resolvedAlignX: align, resolvedAlignY: alignY }
   const pos: OverlayPosition = {}
 
   const leftPos = t.left - offsetX - c.width

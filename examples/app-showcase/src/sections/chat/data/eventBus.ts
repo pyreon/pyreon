@@ -72,7 +72,11 @@ export const chatBus = {
    * Every 9th send fails on purpose so the toast.error path is
    * exercised in the demo.
    */
-  async send(channelId: string, body: string, author: { name: string; color: string }): Promise<Message> {
+  async send(
+    channelId: string,
+    body: string,
+    author: { name: string; color: string },
+  ): Promise<Message> {
     return new Promise((resolve, reject) => {
       sendCounter += 1
       const shouldFail = sendCounter % 9 === 0

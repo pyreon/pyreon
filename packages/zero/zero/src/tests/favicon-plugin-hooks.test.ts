@@ -90,9 +90,7 @@ describe('faviconPlugin transformIndexHtml — ?v= cache-bust stamping', () => {
   it('unreadable source ⇒ no ?v= (graceful, never breaks the build)', () => {
     const p = faviconPlugin({ source: 'does-not-exist.svg' } as never) as any
     p.configResolved({ root: dir, command: 'serve' })
-    const links = (p.transformIndexHtml as () => Tag[])().filter(
-      (t: Tag) => t.tag === 'link',
-    )
+    const links = (p.transformIndexHtml as () => Tag[])().filter((t: Tag) => t.tag === 'link')
     for (const l of links) expect(l.attrs.href).not.toMatch(/\?v=/)
   })
 })
@@ -111,9 +109,7 @@ describe('faviconPlugin generateBundle — dev is not blocked', () => {
 
 describe('faviconPlugin transformIndexHtml — SVG favicon is theme-aware (regression)', () => {
   const svgLinks = (cfg: Record<string, unknown>) =>
-    tagsFor(cfg).filter(
-      (t) => t.tag === 'link' && t.attrs.type === 'image/svg+xml',
-    )
+    tagsFor(cfg).filter((t) => t.tag === 'link' && t.attrs.type === 'image/svg+xml')
 
   it('single-variant (no darkSource) → ONE static /favicon.svg, no data-favicon-theme', () => {
     const svgs = svgLinks({})
@@ -141,9 +137,7 @@ describe('faviconPlugin transformIndexHtml — SVG favicon is theme-aware (regre
     expect(dark!.attrs.media).toBe('not all') // dark hidden until swapped
     // The static, non-theme-aware /favicon.svg must NOT be injected
     // (it would out-prioritise the variants and re-introduce the bug).
-    expect(
-      svgs.some((l) => /^\/favicon\.svg/.test(l.attrs.href)),
-    ).toBe(false)
+    expect(svgs.some((l) => /^\/favicon\.svg/.test(l.attrs.href))).toBe(false)
 
     // Still carries the same data-favicon-theme contract the swap
     // script toggles — proves it participates in reactive switching.

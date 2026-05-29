@@ -14,6 +14,7 @@ This page explains exactly what's reactive and what's static.
 **Signal reads inside reactive scopes re-evaluate when the signal changes. Signal reads outside reactive scopes evaluate once and become static.**
 
 A "reactive scope" is:
+
 - An `effect()` callback
 - A `computed()` callback
 - A `() =>` wrapper in JSX (compiler-generated or manual)
@@ -36,8 +37,12 @@ function Hello() {
 Each text expression gets its own independent binding. In a list:
 
 ```tsx
-<For each={items} by={r => r.id}>
-  {r => <li>{r.name()} - {r.email()}</li>}
+<For each={items} by={(r) => r.id}>
+  {(r) => (
+    <li>
+      {r.name()} - {r.email()}
+    </li>
+  )}
 </For>
 // ✓ r.name() changing does NOT re-evaluate r.email()
 // Each text node has its own _bind
@@ -77,12 +82,12 @@ The compiler wraps signal reads in component props with `_rp()`:
 ```tsx
 // ✗ BAD — destructuring captures the value once (static)
 function Bad({ title }) {
-  return <div>{title}</div>  // never updates
+  return <div>{title}</div> // never updates
 }
 
 // ✓ GOOD — props.title is a getter (reactive)
 function Good(props) {
-  return <div>{props.title}</div>  // updates when title changes
+  return <div>{props.title}</div> // updates when title changes
 }
 ```
 
@@ -112,7 +117,7 @@ const count = signal(0)
 const doubled = computed(() => count() * 2) // ✓ re-computes when count changes
 
 effect(() => {
-  console.log(count())  // ✓ re-runs when count changes
+  console.log(count()) // ✓ re-runs when count changes
   console.log(doubled()) // ✓ also tracked
 })
 ```
@@ -124,7 +129,7 @@ The compiler detects `const` variables derived from `props.*` or `splitProps` re
 ```tsx
 function MyComponent(props) {
   const name = props.name ?? 'Anonymous'
-  const label = name + '!'  // transitive — derived from props-derived const
+  const label = name + '!' // transitive — derived from props-derived const
 
   return <div>{label}</div>
   // Compiler inlines to: _bind(() => { t.data = ((props.name ?? 'Anonymous') + '!') })
@@ -145,8 +150,8 @@ function MyComponent(props) {
 
 ```tsx
 function MyComponent(props) {
-  let name = props.name    // ✗ let — mutable, not inlined
-  const value = count()    // ✗ signal read captured once — static
+  let name = props.name // ✗ let — mutable, not inlined
+  const value = count() // ✗ signal read captured once — static
 
   return <div>{name}</div> // never updates
 }
@@ -157,7 +162,11 @@ function MyComponent(props) {
 ```tsx
 function MyComponent({ name, count }) {
   // ✗ name and count are captured values, not getters
-  return <div>{name} - {count}</div> // never updates
+  return (
+    <div>
+      {name} - {count}
+    </div>
+  ) // never updates
 }
 ```
 
@@ -200,16 +209,14 @@ one branch is NOT tracked when the other branch is taken.
 // ✗ Subtle bug: when `touched` is false, `error()` is never read → never
 // tracked. Later, when the form validator sets the error, the accessor
 // does NOT re-run because it wasn't subscribed to `error`.
-<div class="field-error">
-  {() => fields.title.touched() ? fields.title.error() ?? '' : ''}
-</div>
+<div class="field-error">{() => (fields.title.touched() ? (fields.title.error() ?? '') : '')}</div>
 ```
 
 **The trap fires when the conditional flips alongside the dependent signal**.
 In the form case above, both `touched` and `error` flip together on submit:
 the validator marks every field touched AND sets errors in one batch. The
 accessor re-runs because `touched` changed, but at re-run time `error` is
-*still* `undefined` (the validator hasn't finished). When `error.set('...')`
+_still_ `undefined` (the validator hasn't finished). When `error.set('...')`
 fires later, the accessor doesn't re-subscribe — the bug is silent.
 
 ```tsx
@@ -219,7 +226,7 @@ fires later, the accessor doesn't re-subscribe — the bug is silent.
   {() => {
     const touched = fields.title.touched()
     const err = fields.title.error()
-    return touched ? err ?? '' : ''
+    return touched ? (err ?? '') : ''
   }}
 </div>
 ```
@@ -245,21 +252,21 @@ in the same batch AND one gates display of the other.
 
 ## Quick Reference
 
-| Expression | Reactive? | Why |
-|-----------|-----------|-----|
-| `<div>{count()}</div>` | ✓ | Compiler wraps text children |
-| `<div class={active() ? 'a' : 'b'} />` | ✓ | Compiler wraps attributes with calls |
-| `<Comp title={name()} />` | ✓ | Compiler wraps with `_rp()` |
-| `props.title` in JSX | ✓ | Getter property (from `_rp`) |
-| `const x = props.title` in JSX | ✓ | Compiler inlines `props.title` at use site |
-| `let x = props.title` | ✗ | `let` not inlined (mutable) |
-| `const { title } = props` | ✗ | Destructured = static |
-| `effect(() => count())` | ✓ | Effect tracks signals |
-| `computed(() => a() + b())` | ✓ | Computed tracks signals |
-| `const x = count()` at setup | ✗ | Evaluated once, stored |
-| `<Show when={() => x()}>` | ✓ | Explicit accessor |
-| `<For each={items} by={...}>` | ✓ | Keyed reactive list |
-| `items().map(...)` | ✗ | Use `<For>` instead |
+| Expression                             | Reactive? | Why                                        |
+| -------------------------------------- | --------- | ------------------------------------------ |
+| `<div>{count()}</div>`                 | ✓         | Compiler wraps text children               |
+| `<div class={active() ? 'a' : 'b'} />` | ✓         | Compiler wraps attributes with calls       |
+| `<Comp title={name()} />`              | ✓         | Compiler wraps with `_rp()`                |
+| `props.title` in JSX                   | ✓         | Getter property (from `_rp`)               |
+| `const x = props.title` in JSX         | ✓         | Compiler inlines `props.title` at use site |
+| `let x = props.title`                  | ✗         | `let` not inlined (mutable)                |
+| `const { title } = props`              | ✗         | Destructured = static                      |
+| `effect(() => count())`                | ✓         | Effect tracks signals                      |
+| `computed(() => a() + b())`            | ✓         | Computed tracks signals                    |
+| `const x = count()` at setup           | ✗         | Evaluated once, stored                     |
+| `<Show when={() => x()}>`              | ✓         | Explicit accessor                          |
+| `<For each={items} by={...}>`          | ✓         | Keyed reactive list                        |
+| `items().map(...)`                     | ✗         | Use `<For>` instead                        |
 
 ## Common Mistakes
 

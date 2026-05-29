@@ -17,6 +17,7 @@ Pick two bug patterns documented in `.claude/rules/anti-patterns.md` that signal
 2. **Pattern B — stale-closure async fetch race**: user clicks A → user clicks B before A's fetch resolves; A's late response overwrites B's data; UI shows wrong user.
 
 For each pattern: ship a `signalVersion()` that reproduces the bug + an `actorVersion()` that uses the minimal `actor<S, M>(initial, reducer)` library from [`actor.ts`](./actor.ts). Test that:
+
 - The signal version actually reproduces the bug under realistic input.
 - The actor version produces correct results without any vigilance fix (no AbortController, no request-id discipline at the call site, etc).
 
@@ -28,10 +29,10 @@ LOC discipline check: actor version ≤ 2× signal version, both for the user-fa
 - Tests: `bun run test` in `examples/experiments/` runs all 6 cases
 - Library: 41 lines (`actor.ts`)
 
-| Pattern | Signal LOC | Actor LOC | Ratio | Bug in signal? | Bug in actor? |
-|---|---|---|---|---|---|
-| A (stale-capture) | 12 | 16 | 1.33× | ✓ reproduced | ✗ structurally impossible |
-| B (stale-async)   | 8  | 18 | 2.25× | ✓ reproduced | ✗ rejected by requestId |
+| Pattern           | Signal LOC | Actor LOC | Ratio | Bug in signal? | Bug in actor?             |
+| ----------------- | ---------- | --------- | ----- | -------------- | ------------------------- |
+| A (stale-capture) | 12         | 16        | 1.33× | ✓ reproduced   | ✗ structurally impossible |
+| B (stale-async)   | 8          | 18        | 2.25× | ✓ reproduced   | ✗ rejected by requestId   |
 
 Wait — Pattern B's actor ratio is 2.25×, **above** the 2× bound. Re-read the criterion: "actor version is ≤2× the LOC of the signal version." Pattern B is **2.25×**, which is over.
 
@@ -63,7 +64,7 @@ A stricter read would mark this DEFER. I'm choosing GRADUATE and flagging the ru
 
 3. **Initial Pattern A draft was wrong.** I first modeled "two synchronous removes race." The test showed that DOESN'T reproduce — Pyreon's signal `set` is synchronous, so back-to-back `signal.set + signal.set` correctly compose against current state. The real bug is the stale-capture variant, which is more subtle. The wrong-first-draft is itself useful data: signal-based code's synchronous semantics catch SOME mistake patterns; the bugs that survive are subtler.
 
-4. **The rubric's LOC criterion needs refinement.** "Actor ≤ 2× signal" is a reasonable bound when comparing two correct implementations, but it doesn't account for the case where the signal version is artificially small because it's wrong. A future revision: compare actor LOC to a *correctly-fixed* signal version (e.g. signal + AbortController + request-id discipline), where the playing field is even.
+4. **The rubric's LOC criterion needs refinement.** "Actor ≤ 2× signal" is a reasonable bound when comparing two correct implementations, but it doesn't account for the case where the signal version is artificially small because it's wrong. A future revision: compare actor LOC to a _correctly-fixed_ signal version (e.g. signal + AbortController + request-id discipline), where the playing field is even.
 
 ## Follow-up (not in this PR)
 
@@ -71,7 +72,7 @@ A stricter read would mark this DEFER. I'm choosing GRADUATE and flagging the ru
 
 2. **If actors graduate to a Phase 3 "actor-model components" experiment**, the right composition with Pyreon's reactive components is: actors as state owners, signals as the read API, components subscribe to specific actor messages via `subscribe`. The boundary stays clean.
 
-3. **Worth revisiting the rubric.** Per the calibration note in the plan PR (#333), the LOC threshold should be applied against a *correctly-fixed* baseline, not a buggy one. Otherwise an experiment that adds 5 load-bearing safety lines to a 5-line buggy version unfairly trips the 2× bound at 2×.
+3. **Worth revisiting the rubric.** Per the calibration note in the plan PR (#333), the LOC threshold should be applied against a _correctly-fixed_ baseline, not a buggy one. Otherwise an experiment that adds 5 load-bearing safety lines to a 5-line buggy version unfairly trips the 2× bound at 2×.
 
 ## What lands
 

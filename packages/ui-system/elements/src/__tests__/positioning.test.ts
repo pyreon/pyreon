@@ -68,23 +68,49 @@ describe('positioning helpers — SSR fallback (window undefined)', () => {
   })
 
   it('calcDropdownVertical returns alignment-preserving empty fallback', () => {
-    Object.defineProperty(globalThis, 'window', { value: undefined, configurable: true, writable: true })
-    const result = calcDropdownVertical(rect(0, 0, 60, 40), rect(100, 200, 80, 30), 'bottom', 'left', 0, 0)
+    Object.defineProperty(globalThis, 'window', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+    const result = calcDropdownVertical(
+      rect(0, 0, 60, 40),
+      rect(100, 200, 80, 30),
+      'bottom',
+      'left',
+      0,
+      0,
+    )
     expect(result.pos).toEqual({})
     expect(result.resolvedAlignX).toBe('left')
     expect(result.resolvedAlignY).toBe('bottom')
   })
 
   it('calcDropdownHorizontal returns alignment-preserving empty fallback', () => {
-    Object.defineProperty(globalThis, 'window', { value: undefined, configurable: true, writable: true })
-    const result = calcDropdownHorizontal(rect(0, 0, 60, 40), rect(100, 200, 80, 30), 'right', 'top', 0, 0)
+    Object.defineProperty(globalThis, 'window', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+    const result = calcDropdownHorizontal(
+      rect(0, 0, 60, 40),
+      rect(100, 200, 80, 30),
+      'right',
+      'top',
+      0,
+      0,
+    )
     expect(result.pos).toEqual({})
     expect(result.resolvedAlignX).toBe('right')
     expect(result.resolvedAlignY).toBe('top')
   })
 
   it('calcModalPos returns empty object', () => {
-    Object.defineProperty(globalThis, 'window', { value: undefined, configurable: true, writable: true })
+    Object.defineProperty(globalThis, 'window', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
     expect(calcModalPos(rect(0, 0, 400, 300), 'center', 'center', 0, 0)).toEqual({})
   })
 })

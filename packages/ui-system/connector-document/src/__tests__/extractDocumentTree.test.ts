@@ -128,8 +128,7 @@ describe('extractDocumentTree', () => {
 
   it('handles component functions without _documentType by calling them', () => {
     const Text = docComponent('text')
-    const Wrapper = (props: any) =>
-      node(Text, { $rocketstyle: { fontSize: 14 } }, [props.children])
+    const Wrapper = (props: any) => node(Text, { $rocketstyle: { fontSize: 14 } }, [props.children])
 
     const tree = node(Wrapper, {}, ['wrapped text'])
 
@@ -223,9 +222,9 @@ describe('extractDocumentTree', () => {
         Image,
         {
           _documentProps: {
-            src: 'static-url.png',         // plain
+            src: 'static-url.png', // plain
             alt: () => 'dynamic alt text', // accessor
-            width: 800,                    // plain number
+            width: 800, // plain number
             caption: () => 'caption ' + 42, // accessor returning a string
           },
         },
@@ -247,11 +246,7 @@ describe('extractDocumentTree', () => {
       // change must not break them. This test mirrors the shape
       // of DocHeading's existing _documentProps.
       const Heading = docComponent('heading')
-      const tree = node(
-        Heading,
-        { _documentProps: { level: 1 } },
-        ['Hello'],
-      )
+      const tree = node(Heading, { _documentProps: { level: 1 } }, ['Hello'])
 
       const result = extractDocumentTree(tree)
       expect(result.props).toEqual({ level: 1 })
@@ -343,11 +338,7 @@ describe('extractDocumentTree', () => {
       }) as ((...args: any[]) => any) & DocumentMarker
       ;(DocDocLike as any)._documentType = 'document'
 
-      const jsxVnode = node(
-        DocDocLike,
-        { _documentProps: { title: 'from-jsx' } },
-        [],
-      )
+      const jsxVnode = node(DocDocLike, { _documentProps: { title: 'from-jsx' } }, [])
 
       const result = extractDocumentTree(jsxVnode)
       expect(result.props.title).toBe('from-jsx')
@@ -420,11 +411,7 @@ describe('extractDocumentTree — real h() round-trip', () => {
     // marker on the div — should be invisible to the extractor.
     // Consumers sprinkle layout containers without breaking the
     // extraction pipeline.
-    const tree = h(
-      Section,
-      {},
-      h('div', {}, h(Text, { $rocketstyle: { fontSize: 14 } }, 'Hello')),
-    )
+    const tree = h(Section, {}, h('div', {}, h(Text, { $rocketstyle: { fontSize: 14 } }, 'Hello')))
 
     const result = extractDocumentTree(tree)
     expect(result.type).toBe('section')

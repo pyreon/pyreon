@@ -12,7 +12,7 @@ A minimal blog built with [`@pyreon/zero`](https://github.com/pyreon/pyreon/tree
 - **`_layout.tsx`** — global navigation + theme provider, rendered once per page
 - **API routes** — `/api/rss.xml` (RSS feed), `/api/echo/[...path]` (streaming catch-all canary)
 - **Sitemap auto-emit** — `useSsgPaths: true` reads the resolved-paths manifest so dynamic blog URLs land in `dist/sitemap.xml`
-- **Per-post `useHead`** — title + og:* meta tags per route
+- **Per-post `useHead`** — title + og:\* meta tags per route
 - **`@pyreon/zero/font`** — Google Fonts self-hosted at build time (CDN in dev), with sized fallback for CLS protection
 
 ## Build

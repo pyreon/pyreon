@@ -64,10 +64,7 @@ function encodePNG(width: number, height: number, rgba: Uint8Array): Buffer {
   const rawRows = new Uint8Array(height * (1 + width * 4))
   for (let y = 0; y < height; y++) {
     rawRows[y * (1 + width * 4)] = 0 // filter: none
-    rawRows.set(
-      rgba.subarray(y * width * 4, (y + 1) * width * 4),
-      y * (1 + width * 4) + 1,
-    )
+    rawRows.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), y * (1 + width * 4) + 1)
   }
   const compressed = deflateSync(Buffer.from(rawRows))
 
@@ -114,10 +111,7 @@ function renderIcon(size: number): Uint8Array {
       return (x - radius) ** 2 + (y - (size - radius - 1)) ** 2 <= radius ** 2
     }
     if (x >= size - radius && y >= size - radius) {
-      return (
-        (x - (size - radius - 1)) ** 2 + (y - (size - radius - 1)) ** 2 <=
-        radius ** 2
-      )
+      return (x - (size - radius - 1)) ** 2 + (y - (size - radius - 1)) ** 2 <= radius ** 2
     }
     return true
   }
@@ -133,22 +127,12 @@ function renderIcon(size: number): Uint8Array {
 
   function inLetterP(x: number, y: number): boolean {
     // Vertical bar (left side)
-    if (
-      x >= letterLeft &&
-      x < letterLeft + stroke &&
-      y >= letterTop &&
-      y < letterBottom
-    ) {
+    if (x >= letterLeft && x < letterLeft + stroke && y >= letterTop && y < letterBottom) {
       return true
     }
 
     // Top horizontal bar
-    if (
-      y >= letterTop &&
-      y < letterTop + stroke &&
-      x >= letterLeft &&
-      x < letterRight
-    ) {
+    if (y >= letterTop && y < letterTop + stroke && x >= letterLeft && x < letterRight) {
       return true
     }
 
@@ -158,12 +142,7 @@ function renderIcon(size: number): Uint8Array {
     }
 
     // Right vertical bar (top half only — the bump of the P)
-    if (
-      x >= letterRight - stroke &&
-      x < letterRight &&
-      y >= letterTop &&
-      y < midY + stroke
-    ) {
+    if (x >= letterRight - stroke && x < letterRight && y >= letterTop && y < midY + stroke) {
       return true
     }
 

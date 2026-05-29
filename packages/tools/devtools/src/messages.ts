@@ -21,9 +21,7 @@ export function isPageWireMessage(data: unknown): data is PageWireMessage {
   )
 }
 
-export function isContentWireMessage(
-  data: unknown,
-): data is ContentWireMessage {
+export function isContentWireMessage(data: unknown): data is ContentWireMessage {
   return (
     typeof data === 'object' &&
     data !== null &&
@@ -43,9 +41,7 @@ export function isBackgroundForward(data: unknown): data is BackgroundForward {
   )
 }
 
-export function isBackgroundToContent(
-  data: unknown,
-): data is BackgroundToContent {
+export function isBackgroundToContent(data: unknown): data is BackgroundToContent {
   return (
     typeof data === 'object' &&
     data !== null &&
@@ -75,21 +71,14 @@ export function createContentWire(payload: PanelMessage): ContentWireMessage {
   return { source: SOURCE.content, payload }
 }
 
-export function createBackgroundForward(
-  tabId: number,
-  payload: HookMessage,
-): BackgroundForward {
+export function createBackgroundForward(tabId: number, payload: HookMessage): BackgroundForward {
   return { source: SOURCE.background, tabId, payload }
 }
 
-export function createBackgroundToContent(
-  payload: PanelMessage,
-): BackgroundToContent {
+export function createBackgroundToContent(payload: PanelMessage): BackgroundToContent {
   return { source: SOURCE.backgroundForward, payload }
 }
 
-export function createPanelToBackground(
-  payload: PanelMessage,
-): PanelToBackground {
+export function createPanelToBackground(payload: PanelMessage): PanelToBackground {
   return { source: SOURCE.panel, payload }
 }

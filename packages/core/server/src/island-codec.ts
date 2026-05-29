@@ -65,10 +65,7 @@ type Encoded = unknown // a JSON-safe value
  * `IslandPropEncodeError` for class instances, naming the prop path
  * + class.
  */
-export function encodeIslandProps(
-  value: unknown,
-  islandName: string,
-): Encoded {
+export function encodeIslandProps(value: unknown, islandName: string): Encoded {
   const seen = new WeakSet<object>()
   return walk(value, seen, '$', islandName, 0)
 }
@@ -101,11 +98,7 @@ function walk(
   // Objects from here on.
   const obj = value as object
   if (seen.has(obj)) {
-    throw new IslandPropEncodeError(
-      `Circular reference at "${path}".`,
-      path,
-      islandName,
-    )
+    throw new IslandPropEncodeError(`Circular reference at "${path}".`, path, islandName)
   }
   seen.add(obj)
 
@@ -141,11 +134,7 @@ function walk(
     for (let i = 0; i < obj.length; i++) {
       const item = obj[i]
       // Match JSON.stringify on arrays: function/symbol/undefined → null.
-      if (
-        typeof item === 'function' ||
-        typeof item === 'symbol' ||
-        item === undefined
-      ) {
+      if (typeof item === 'function' || typeof item === 'symbol' || item === undefined) {
         arr.push(null)
         continue
       }
@@ -159,8 +148,7 @@ function walk(
   // custom class instance. Fail loud naming the constructor.
   const proto = Object.getPrototypeOf(obj)
   if (proto !== null && proto !== Object.prototype) {
-    const ctor = (obj as { constructor?: { name?: string } }).constructor
-      ?.name
+    const ctor = (obj as { constructor?: { name?: string } }).constructor?.name
     throw new IslandPropEncodeError(
       `Cannot encode instance of class \`${ctor ?? '<anonymous>'}\` at "${path}". Class instances lose their prototype across the JSON wire; pass an ID + restore on the client, or convert to a plain object on the caller side.`,
       path,

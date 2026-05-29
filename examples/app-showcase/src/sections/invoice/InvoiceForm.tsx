@@ -111,9 +111,7 @@ export function InvoiceForm() {
             id="fromName"
             type="text"
             value={() => store.invoice().from.name}
-            onInput={(e: Event) =>
-              store.updateFrom('name', (e.target as HTMLInputElement).value)
-            }
+            onInput={(e: Event) => store.updateFrom('name', (e.target as HTMLInputElement).value)}
           />
         </FieldGroup>
         <SpacedFieldGroup>
@@ -122,9 +120,7 @@ export function InvoiceForm() {
             id="fromEmail"
             type="email"
             value={() => store.invoice().from.email}
-            onInput={(e: Event) =>
-              store.updateFrom('email', (e.target as HTMLInputElement).value)
-            }
+            onInput={(e: Event) => store.updateFrom('email', (e.target as HTMLInputElement).value)}
           />
         </SpacedFieldGroup>
         <SpacedFieldGroup>
@@ -288,11 +284,7 @@ function LineItemList() {
             )
           }
         />
-        <LineRemove
-          type="button"
-          title="Remove line"
-          onClick={() => store.removeLineItem(item.id)}
-        >
+        <LineRemove type="button" title="Remove line" onClick={() => store.removeLineItem(item.id)}>
           ×
         </LineRemove>
       </LineItemRow>

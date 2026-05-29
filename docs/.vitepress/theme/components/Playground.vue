@@ -16,7 +16,9 @@ function getInitialCode(): string {
   // Prefer slot content (avoids Vue template parsing issues with special chars)
   if (slots.default) {
     const vnodes = slots.default()
-    const text = vnodes.map((vn: any) => (typeof vn.children === 'string' ? vn.children : '')).join('')
+    const text = vnodes
+      .map((vn: any) => (typeof vn.children === 'string' ? vn.children : ''))
+      .join('')
     if (text.trim()) return text.trim()
   }
   return (props.code ?? '').trim()
@@ -126,9 +128,7 @@ onMounted(() => {
   <div class="playground">
     <div class="playground-header">
       <span class="playground-title">{{ title || 'Live Example' }}</span>
-      <button class="playground-run" @click="run" :disabled="isRunning">
-        &#9654; Run
-      </button>
+      <button class="playground-run" @click="run" :disabled="isRunning">&#9654; Run</button>
     </div>
     <div class="playground-body">
       <div class="playground-editor">

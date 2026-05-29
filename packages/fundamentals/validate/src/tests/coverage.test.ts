@@ -201,7 +201,11 @@ describe('array — error + length branches', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) {
       const paths = r.issues.map((i) =>
-        (i.path ?? []).map((seg) => (typeof seg === 'object' && seg !== null && 'key' in seg ? String(seg.key) : String(seg))).join('.'),
+        (i.path ?? [])
+          .map((seg) =>
+            typeof seg === 'object' && seg !== null && 'key' in seg ? String(seg.key) : String(seg),
+          )
+          .join('.'),
       )
       expect(paths.some((p) => p.startsWith('1.id'))).toBe(true)
     }
@@ -321,7 +325,10 @@ describe('schema base — modifiers + parseAsync + brand', () => {
   })
 
   it('~standard.validate async branch surfaces issues from earlier checks', async () => {
-    const schema = s.string().min(10).transform(async (v) => v.length)
+    const schema = s
+      .string()
+      .min(10)
+      .transform(async (v) => v.length)
     const result = schema['~standard'].validate('hi')
     expect(result).toBeInstanceOf(Promise)
     const resolved = await result
@@ -370,9 +377,7 @@ describe('ValidationError + path formatting', () => {
 
   it('handles { key } path segments via Standard Schema interop', () => {
     // Manually construct a ValidationError with a StdSchema-shaped path.
-    const ve = new ValidationError([
-      { message: 'bad', path: [{ key: 'user' }, { key: 'name' }] },
-    ])
+    const ve = new ValidationError([{ message: 'bad', path: [{ key: 'user' }, { key: 'name' }] }])
     expect(ve.message).toMatch(/user\.name/)
   })
 

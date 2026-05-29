@@ -33,9 +33,7 @@ afterEach(() => {
 
 describe('LPIH — stack-line parser', () => {
   it('parses V8 parenthesized form', () => {
-    const loc = _parseStackLine(
-      '    at userCode (/Users/test/app.ts:42:7)',
-    )
+    const loc = _parseStackLine('    at userCode (/Users/test/app.ts:42:7)')
     expect(loc).toEqual({ file: '/Users/test/app.ts', line: 42, col: 7 })
   })
 
@@ -55,9 +53,7 @@ describe('LPIH — stack-line parser', () => {
   })
 
   it('handles file paths with colons (Windows-like or URL schemes)', () => {
-    const loc = _parseStackLine(
-      '    at userCode (file:///Users/test/app.ts:42:7)',
-    )
+    const loc = _parseStackLine('    at userCode (file:///Users/test/app.ts:42:7)')
     // The regex captures the LAST ":line:col" pair — `file` includes any
     // earlier colons (file:/// prefix preserved). Editors handle that.
     expect(loc?.line).toBe(42)

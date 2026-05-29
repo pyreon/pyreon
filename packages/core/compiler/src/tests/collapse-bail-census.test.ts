@@ -169,8 +169,7 @@ function classifySite(node: any): SiteClass {
       // structural shape).
       const expr = v.type === 'JSXExpressionContainer' ? v.expression : null
       const isLitStr = (n: any): boolean =>
-        n &&
-        (n.type === 'StringLiteral' || (n.type === 'Literal' && typeof n.value === 'string'))
+        n && (n.type === 'StringLiteral' || (n.type === 'Literal' && typeof n.value === 'string'))
       const isTernaryOfLits =
         expr &&
         expr.type === 'ConditionalExpression' &&
@@ -329,9 +328,15 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
         `      dynamic a ternary/handler, static children — the BOUNDED 2^k subset.`,
         `      NOT shipped: the ONLY remaining *tractable* frontier. go/no-go number.)`,
         `  ══ TOTAL ADDRESSED (collapsed end-to-end): ${
-          myCollapsible + partialAddressable + dynamicTernaryAddressable + elementChildStaticAddressable
+          myCollapsible +
+          partialAddressable +
+          dynamicTernaryAddressable +
+          elementChildStaticAddressable
         } (${pct(
-          myCollapsible + partialAddressable + dynamicTernaryAddressable + elementChildStaticAddressable,
+          myCollapsible +
+            partialAddressable +
+            dynamicTernaryAddressable +
+            elementChildStaticAddressable,
         )} of all sites)`,
         `     (full + on*-handler partial + dynamic-prop + element-child — every`,
         `      collapse path shipped today. The remaining bail buckets are OUT OF`,

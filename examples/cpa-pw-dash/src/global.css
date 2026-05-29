@@ -96,7 +96,9 @@ select {
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   padding: var(--space-sm) var(--space-md);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 input:focus,
@@ -124,7 +126,9 @@ label {
   border-radius: var(--radius-md);
   font-weight: 500;
   border: 1px solid transparent;
-  transition: background 150ms ease, border-color 150ms ease;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
 }
 
 .btn-primary {
@@ -259,7 +263,9 @@ label {
   border-radius: var(--radius-sm);
   color: var(--c-text-secondary);
   font-size: 0.9375rem;
-  transition: background 150ms ease, color 150ms ease;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
 }
 
 .app-sidebar a:hover {

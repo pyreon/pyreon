@@ -6,7 +6,9 @@ export function TabsDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Tabs</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Tabs
+      </Title>
 
       <Tabs value={active()} onChange={(v: string) => active.set(v)}>
         <div style="display: flex; margin-bottom: 16px;">

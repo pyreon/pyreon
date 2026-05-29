@@ -848,9 +848,7 @@ describe('JSX transform — template emission', () => {
     //
     // This test asserts the OUTPUT is well-formed: the const line ends
     // in `;` and the ref call IIFE follows on its own line.
-    const result = t(
-      '<div><span ref={(el) => { x = el }} data-state={cls()} /></div>',
-    )
+    const result = t('<div><span ref={(el) => { x = el }} data-state={cls()} /></div>')
     // Const declaration must terminate before the ref IIFE.
     expect(result).toMatch(/const __e0 = __root\.children\[0\];\s*\n/)
     // The ref IIFE is its own statement, calling __e0 (not chained).
@@ -871,9 +869,7 @@ describe('JSX transform — template emission', () => {
     // valid JS, wrong runtime behavior. So we BOTH parse-check AND
     // string-shape-check: parse to catch syntax errors, regex to catch
     // the silent-merge case (which parses fine but means the wrong thing).
-    const result = t(
-      '<div><span ref={(el) => { x = el }} data-state={cls()} /></div>',
-    )
+    const result = t('<div><span ref={(el) => { x = el }} data-state={cls()} /></div>')
     const codeOnly = result.replace(/^\s*import\b[^;]+;?\s*/gm, '')
     const wrapped = `let x;\nconst _tpl = () => {}; const _bind = () => {}; const _bindDirect = () => {}; const cls = () => "v";\nreturn ${codeOnly};`
     expect(() => new Function(wrapped)).not.toThrow()
@@ -1388,7 +1384,9 @@ describe('JSX transform — reactive props detection', () => {
   })
 
   test('prop-derived variable inlined in text child', () => {
-    const result = t('function Comp(props) { const x = props.name ?? "anon"; return <div>{x}</div> }')
+    const result = t(
+      'function Comp(props) { const x = props.name ?? "anon"; return <div>{x}</div> }',
+    )
     expect(result).toContain('_bind(() => {')
     expect(result).toContain('props.name ?? "anon"')
     // x should be inlined, not used directly
@@ -1396,13 +1394,17 @@ describe('JSX transform — reactive props detection', () => {
   })
 
   test('prop-derived variable inlined in attribute', () => {
-    const result = t('function Comp(props) { const align = props.alignX ?? "left"; return <div class={align}></div> }')
+    const result = t(
+      'function Comp(props) { const align = props.alignX ?? "left"; return <div class={align}></div> }',
+    )
     expect(result).toContain('_bind(() => {')
     expect(result).toContain('props.alignX ?? "left"')
   })
 
   test('splitProps results tracked as props-like', () => {
-    const result = t('function Comp(props) { const [own, rest] = splitProps(props, ["x"]); const v = own.x ?? 5; return <div>{v}</div> }')
+    const result = t(
+      'function Comp(props) { const [own, rest] = splitProps(props, ["x"]); const v = own.x ?? 5; return <div>{v}</div> }',
+    )
     expect(result).toContain('_bind(() => {')
     expect(result).toContain('own.x ?? 5')
   })
@@ -1435,7 +1437,9 @@ describe('JSX transform — reactive props detection', () => {
 
 describe('JSX transform — transitive prop derivation', () => {
   test('const b = a + 1 where a is prop-derived', () => {
-    const result = t('function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }')
+    const result = t(
+      'function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }',
+    )
     expect(result).toContain('_bind(() => {')
     expect(result).toContain('props.x')
     // b should be inlined transitively
@@ -1443,7 +1447,9 @@ describe('JSX transform — transitive prop derivation', () => {
   })
 
   test('deep chain: c = b * 2, b = a + 1, a = props.x', () => {
-    const result = t('function Comp(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }')
+    const result = t(
+      'function Comp(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }',
+    )
     expect(result).toContain('props.x')
     // Full chain inlined
     expect(result).toContain('_bind')
@@ -1456,20 +1462,26 @@ describe('JSX transform — transitive prop derivation', () => {
   })
 
   test('let variables NOT tracked (mutable — can be reassigned)', () => {
-    const result = t('function Comp(props) { let x = props.y; x = "override"; return <div>{x}</div> }')
+    const result = t(
+      'function Comp(props) { let x = props.y; x = "override"; return <div>{x}</div> }',
+    )
     // let is excluded — x is NOT inlined, set statically
     expect(result).toContain('textContent = x')
     expect(result).not.toContain('_bind')
   })
 
   test('mixed props and signals in same expression', () => {
-    const result = t('function Comp(props) { return <div class={`${props.base} ${count()}`}></div> }')
+    const result = t(
+      'function Comp(props) { return <div class={`${props.base} ${count()}`}></div> }',
+    )
     expect(result).toContain('_bind(() => {')
   })
 
   test('prop-derived used in non-JSX stays static', () => {
     // The variable is still captured — only JSX usage is inlined
-    const result = t('function Comp(props) { const x = props.y; console.log(x); return <div>{x}</div> }')
+    const result = t(
+      'function Comp(props) { const x = props.y; console.log(x); return <div>{x}</div> }',
+    )
     // console.log(x) uses the captured value — compiler doesn't touch it
     expect(result).toContain('console.log(x)')
     // JSX usage is inlined
@@ -1478,13 +1490,17 @@ describe('JSX transform — transitive prop derivation', () => {
   })
 
   test('.map() callback params NOT treated as props', () => {
-    const result = t('function App(props) { return <div>{tabs.map((tab) => { const C = tab.component; return <div><C /></div> })}</div> }')
+    const result = t(
+      'function App(props) { return <div>{tabs.map((tab) => { const C = tab.component; return <div><C /></div> })}</div> }',
+    )
     // tab is a callback param, not a component's props — should NOT be tracked
     expect(result).not.toContain('(tab.component)')
   })
 
   test('prop read with ?? default used multiple times', () => {
-    const result = t('function Comp(props) { const x = props.a ?? "def"; return <div class={x}>{x}</div> }')
+    const result = t(
+      'function Comp(props) { const x = props.a ?? "def"; return <div class={x}>{x}</div> }',
+    )
     // Both uses should be inlined
     const matches = result.match(/props\.a \?\? "def"/g)
     expect(matches?.length).toBeGreaterThanOrEqual(2)
@@ -1501,19 +1517,25 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
   })
 
   test('ternary with prop-derived var is inlined', () => {
-    const result = t('function C(props) { const v = props.x; return <div>{v ? "yes" : "no"}</div> }')
+    const result = t(
+      'function C(props) { const v = props.x; return <div>{v ? "yes" : "no"}</div> }',
+    )
     expect(result).toContain('props.x')
     expect(result).toContain('? "yes" : "no"')
   })
 
   test('both branches of ternary inlined when both are prop-derived', () => {
-    const result = t('function C(props) { const a = props.x; const b = props.y; return <div>{a ? b : "none"}</div> }')
+    const result = t(
+      'function C(props) { const a = props.x; const b = props.y; return <div>{a ? b : "none"}</div> }',
+    )
     expect(result).toContain('props.x')
     expect(result).toContain('props.y')
   })
 
   test('concatenation with prop-derived inlined', () => {
-    const result = t('function C(props) { const x = props.cls; return <div class={x + " extra"}></div> }')
+    const result = t(
+      'function C(props) { const x = props.cls; return <div class={x + " extra"}></div> }',
+    )
     expect(result).toContain('props.cls')
     expect(result).toContain('" extra"')
   })
@@ -1526,7 +1548,9 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
   })
 
   test('deep transitive: c = b * 2, b = a + 1, a = props.x via AST', () => {
-    const result = t('function C(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }')
+    const result = t(
+      'function C(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }',
+    )
     expect(result).toContain('props.x')
     // Full chain resolved via AST visitor
     expect(result).toContain('_bind')
@@ -1622,7 +1646,9 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
   })
 
   test('own.children in template uses _mountSlot', () => {
-    const result = t('function C(props) { const own = props; return <label><input/>{own.children}</label> }')
+    const result = t(
+      'function C(props) { const own = props; return <label><input/>{own.children}</label> }',
+    )
     expect(result).toContain('_mountSlot')
     expect(result).toContain('own.children')
   })
@@ -1848,7 +1874,9 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('signal in attribute expression is auto-called', () => {
-    const result = t('function C() { const show = signal(false); return <div class={show ? "active" : ""}></div> }')
+    const result = t(
+      'function C() { const show = signal(false); return <div class={show ? "active" : ""}></div> }',
+    )
     expect(result).toContain('show()')
     expect(result).toContain('_bind')
   })
@@ -1860,13 +1888,17 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('signal in ternary is auto-called', () => {
-    const result = t('function C() { const show = signal(false); return <div>{show ? "yes" : "no"}</div> }')
+    const result = t(
+      'function C() { const show = signal(false); return <div>{show ? "yes" : "no"}</div> }',
+    )
     expect(result).toContain('show()')
     expect(result).toContain('? "yes" : "no"')
   })
 
   test('signal in template literal is auto-called', () => {
-    const result = t('function C() { const name = signal("world"); return <div>{`hello ${name}`}</div> }')
+    const result = t(
+      'function C() { const name = signal("world"); return <div>{`hello ${name}`}</div> }',
+    )
     expect(result).toContain('name()')
   })
 
@@ -1876,13 +1908,17 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('multiple signals in one expression are all auto-called', () => {
-    const result = t('function C() { const a = signal(1); const b = signal(2); return <div>{a + b}</div> }')
+    const result = t(
+      'function C() { const a = signal(1); const b = signal(2); return <div>{a + b}</div> }',
+    )
     expect(result).toContain('a()')
     expect(result).toContain('b()')
   })
 
   test('signal in conditional attribute is auto-called', () => {
-    const result = t('function C() { const active = signal(false); return <div title={active ? "on" : "off"}></div> }')
+    const result = t(
+      'function C() { const active = signal(false); return <div title={active ? "on" : "off"}></div> }',
+    )
     expect(result).toContain('active()')
   })
 
@@ -1892,18 +1928,24 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('computed() IS auto-called (same callable pattern as signal)', () => {
-    const result = t('function C() { const doubled = computed(() => 2); return <div>{doubled}</div> }')
+    const result = t(
+      'function C() { const doubled = computed(() => 2); return <div>{doubled}</div> }',
+    )
     expect(result).toContain('doubled()')
     expect(result).toContain('_bind')
   })
 
   test('computed already called is NOT double-called', () => {
-    const result = t('function C() { const doubled = computed(() => 2); return <div>{doubled()}</div> }')
+    const result = t(
+      'function C() { const doubled = computed(() => 2); return <div>{doubled()}</div> }',
+    )
     expect(result).not.toContain('doubled()()')
   })
 
   test('signal + computed in same expression both auto-called', () => {
-    const result = t('function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }')
+    const result = t(
+      'function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }',
+    )
     expect(result).toContain('.data = count()')
     expect(result).toContain('.data = doubled()')
   })
@@ -1923,7 +1965,9 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('signal as event handler value IS auto-called (unwraps to the handler fn)', () => {
-    const result = t('function C() { const handler = signal(() => {}); return <div onClick={handler}></div> }')
+    const result = t(
+      'function C() { const handler = signal(() => {}); return <div onClick={handler}></div> }',
+    )
     // onClick={handler} where handler is a signal → handler() unwraps to the function
     // This is correct — the event listener gets the unwrapped function value
     expect(result).toContain('handler()')
@@ -1955,13 +1999,16 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('knownSignals respects scope shadowing', () => {
-    const code = 'import { count } from "./store"; function App() { const count = "shadow"; return <div>{count}</div> }'
+    const code =
+      'import { count } from "./store"; function App() { const count = "shadow"; return <div>{count}</div> }'
     const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
     expect(result).not.toContain('.data = count()')
   })
 
   test('props.x is still inlined alongside signal auto-call', () => {
-    const result = t('function C(props) { const show = signal(false); const label = props.label; return <div class={show ? label : "default"}></div> }')
+    const result = t(
+      'function C(props) { const show = signal(false); const label = props.label; return <div class={show ? label : "default"}></div> }',
+    )
     expect(result).toContain('show()')
     expect(result).toContain('props.label')
   })
@@ -2065,8 +2112,8 @@ describe('JSX transform — signal auto-call', () => {
     `)
     // Inner's show is a plain string, NOT a signal — should NOT be auto-called
     // But App's show IS a signal — should be auto-called
-    expect(result).toContain('show()')  // App's usage
-    expect(result).toContain('textContent = show')  // Inner's usage (static)
+    expect(result).toContain('show()') // App's usage
+    expect(result).toContain('textContent = show') // Inner's usage (static)
   })
 
   test('function parameter shadowing signal is NOT auto-called', () => {
@@ -2080,8 +2127,8 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // Display's count is a parameter, not the signal
-    expect(result).toContain('textContent = count')  // Display: static
-    expect(result).toContain('.data = count()')       // App: auto-called
+    expect(result).toContain('textContent = count') // Display: static
+    expect(result).toContain('.data = count()') // App: auto-called
   })
 
   test('destructured parameter shadowing signal is NOT auto-called', () => {
@@ -2095,8 +2142,8 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // Greet's name is destructured from props — shadows the signal
-    expect(result).toContain('textContent = name')  // Greet: static
-    expect(result).toContain('.data = name()')       // App: auto-called
+    expect(result).toContain('textContent = name') // Greet: static
+    expect(result).toContain('.data = name()') // App: auto-called
   })
 
   test('signal in outer scope is auto-called when NOT shadowed', () => {
@@ -2125,8 +2172,8 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // Inner's item is array-destructured — shadows the signal
-    expect(result).toContain('textContent = item')  // Inner: static
-    expect(result).toContain('.data = item()')       // App: auto-called
+    expect(result).toContain('textContent = item') // Inner: static
+    expect(result).toContain('.data = item()') // App: auto-called
   })
 
   test('signal re-declared as signal in inner scope is still auto-called', () => {
@@ -2181,7 +2228,9 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('signal + prop-derived in same expression both resolved', () => {
-    const result = t('function C(props) { const x = signal(0); const label = props.label; return <div>{x ? label : "none"}</div> }')
+    const result = t(
+      'function C(props) { const x = signal(0); const label = props.label; return <div>{x ? label : "none"}</div> }',
+    )
     expect(result).toContain('x()')
     expect(result).toContain('props.label')
     expect(result).toContain('_bind')
@@ -2205,7 +2254,9 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('const declared without init is not tracked as signal', () => {
-    const result = t('function C() { const x = signal(0); function Inner() { let x; return <div>{x}</div> } return <div>{x}</div> }')
+    const result = t(
+      'function C() { const x = signal(0); function Inner() { let x; return <div>{x}</div> } return <div>{x}</div> }',
+    )
     // Inner's x is let, not tracked. App's x is signal
     expect(result).toContain('.data = x()')
   })
@@ -2225,7 +2276,7 @@ describe('JSX transform — signal auto-call', () => {
     // (let is not const so it's not in signalVars, but it's also not tracked as shadow)
     // Actually findShadowingNames only checks top-level VariableDeclaration declarations
     // let is VariableDeclaration kind=let — it should shadow
-    expect(result).toContain('.data = show()')  // outer: auto-called
+    expect(result).toContain('.data = show()') // outer: auto-called
   })
 
   test('knownSignals with empty array does not crash', () => {
@@ -2235,7 +2286,8 @@ describe('JSX transform — signal auto-call', () => {
   })
 
   test('knownSignals combined with local signal declarations', () => {
-    const code = 'import { count } from "./store"; function App() { const local = signal(0); return <div>{count}{local}</div> }'
+    const code =
+      'import { count } from "./store"; function App() { const local = signal(0); return <div>{count}{local}</div> }'
     const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
     // Both the imported signal (via knownSignals) and the local signal should be auto-called
     expect(result).toContain('count()')
@@ -2335,7 +2387,9 @@ describe('JSX transform — template combined _bind for complex expressions', ()
 
 describe('JSX transform — children expression as bareIdentifier "children"', () => {
   test('bare children identifier uses _mountSlot', () => {
-    const result = t('function C(props) { const children = props.children; return <div>{children}</div> }')
+    const result = t(
+      'function C(props) { const children = props.children; return <div>{children}</div> }',
+    )
     expect(result).toContain('_mountSlot')
   })
 })
@@ -2398,18 +2452,24 @@ describe('JSX transform — isStatic edge cases', () => {
 
 describe('JSX transform — signal auto-call in template _bind expressions', () => {
   test('signal in _bind reactive attribute expression', () => {
-    const result = t('function C() { const cls = signal("a"); return <div class={`${cls} extra`}><span /></div> }')
+    const result = t(
+      'function C() { const cls = signal("a"); return <div class={`${cls} extra`}><span /></div> }',
+    )
     expect(result).toContain('cls()')
     expect(result).toContain('_bind')
   })
 
   test('signal in template text child expression', () => {
-    const result = t('function C() { const name = signal("X"); return <div>{`Hello ${name}`}</div> }')
+    const result = t(
+      'function C() { const name = signal("X"); return <div>{`Hello ${name}`}</div> }',
+    )
     expect(result).toContain('name()')
   })
 
   test('signal auto-call with addition', () => {
-    const result = t('function C() { const a = signal(1); const b = signal(2); return <div>{a + b}</div> }')
+    const result = t(
+      'function C() { const a = signal(1); const b = signal(2); return <div>{a + b}</div> }',
+    )
     expect(result).toContain('a()')
     expect(result).toContain('b()')
   })
@@ -2488,7 +2548,9 @@ describe('JSX transform — signalVars.size > shadowedSignals.size check', () =>
 describe('JSX transform — _isDynamic with signal member expression and call position', () => {
   test('signal.set() is NOT flagged as dynamic (signal in callee position)', () => {
     // When signal is the callee of a call expression, it's already being called
-    const result = t('function C() { const x = signal(0); return <button onClick={() => x.set(1)}>click</button> }')
+    const result = t(
+      'function C() { const x = signal(0); return <button onClick={() => x.set(1)}>click</button> }',
+    )
     // onClick is an event handler — not wrapped regardless
     expect(result).not.toContain('_rp')
   })
@@ -2504,14 +2566,18 @@ describe('JSX transform — _isDynamic with signal member expression and call po
 
 describe('JSX transform — referencesPropDerived computed access', () => {
   test('prop-derived var used as computed property key is treated as reference', () => {
-    const result = t('function C(props) { const key = props.key; return <div title={obj[key]}></div> }')
+    const result = t(
+      'function C(props) { const key = props.key; return <div title={obj[key]}></div> }',
+    )
     // key is used as computed property — it IS a reference (p.computed === true)
     expect(result).toContain('props.key')
     expect(result).toContain('_bind')
   })
 
   test('prop-derived var in non-computed property position is NOT a reference', () => {
-    const result = t('function C(props) { const data = props.data; return <div title={result.data}></div> }')
+    const result = t(
+      'function C(props) { const data = props.data; return <div title={result.data}></div> }',
+    )
     // result.data — 'data' is a non-computed property name, NOT a prop-derived reference
     expect(result).not.toContain('_bind')
   })
@@ -2567,7 +2633,9 @@ describe('JSX transform — isStatic for various literal types', () => {
 
 describe('JSX transform — accessesProps stops at nested functions', () => {
   test('props read inside arrow function does not make outer expression reactive', () => {
-    const result = t('function C(props) { return <div title={items.map(x => props.fmt(x))}></div> }')
+    const result = t(
+      'function C(props) { return <div title={items.map(x => props.fmt(x))}></div> }',
+    )
     // The arrow function contains a props read, but accessesProps stops at arrow boundaries
     expect(result).toContain('.map')
   })
@@ -2635,7 +2703,9 @@ describe('JSX transform — unwrapAccessor with function expression', () => {
 
 describe('JSX transform — prop-derived vars inside callbacks excluded', () => {
   test('const inside .map callback is NOT tracked as prop-derived', () => {
-    const result = t('function C(props) { return <div>{items.map(item => { const x = props.y; return <span>{x}</span> })}</div> }')
+    const result = t(
+      'function C(props) { return <div>{items.map(item => { const x = props.y; return <span>{x}</span> })}</div> }',
+    )
     // x is declared inside a callback (callbackDepth > 0) — not tracked
     expect(result).toContain('() =>')
   })
@@ -2728,13 +2798,17 @@ describe('JSX transform — additional branch coverage paths', () => {
   })
 
   test('signal auto-call inside template attribute _bind', () => {
-    const result = t('function C() { const cls = signal("a"); return <div class={cls + " b"}><span /></div> }')
+    const result = t(
+      'function C() { const cls = signal("a"); return <div class={cls + " b"}><span /></div> }',
+    )
     expect(result).toContain('cls() + " b"')
     expect(result).toContain('_bind')
   })
 
   test('template with event + ref + dynamic attr + text child', () => {
-    const result = t('<div ref={myRef} onClick={handler} class={cls()} title="static">{text()}</div>')
+    const result = t(
+      '<div ref={myRef} onClick={handler} class={cls()} title="static">{text()}</div>',
+    )
     expect(result).toContain('_tpl(')
     expect(result).toContain('myRef')
     expect(result).toContain('__ev_click = handler')
@@ -2791,7 +2865,9 @@ describe('JSX transform — additional branch coverage paths', () => {
   })
 
   test('signal variable reference not confused with same-name property', () => {
-    const result = t('function C() { const x = signal(0); return <div data-val={obj.method(x)}></div> }')
+    const result = t(
+      'function C() { const x = signal(0); return <div data-val={obj.method(x)}></div> }',
+    )
     expect(result).toContain('x()')
     expect(result).toContain('_bind')
   })
@@ -2834,7 +2910,9 @@ describe('JSX transform — additional branch coverage paths', () => {
 
   test('signal NOT tracked inside callback arg (callbackDepth > 0)', () => {
     // collectPropDerivedFromDecl skips when callbackDepth > 0
-    const result = t('function C(props) { return <div>{items.map(item => { const x = signal(0); return <span>{x}</span> })}</div> }')
+    const result = t(
+      'function C(props) { return <div>{items.map(item => { const x = signal(0); return <span>{x}</span> })}</div> }',
+    )
     // x is inside a callback — signal tracking doesn't apply at callback depth
     expect(result).toContain('() =>')
   })
@@ -2861,7 +2939,9 @@ describe('JSX transform — additional branch coverage paths', () => {
 
   test('signal auto-call not triggered on arrow function children', () => {
     // Arrow functions in JSX are not recursed into by referencesSignalVar
-    const result = t('function C() { const x = signal(0); return <div>{() => { const x = "shadow"; return x }}</div> }')
+    const result = t(
+      'function C() { const x = signal(0); return <div>{() => { const x = "shadow"; return x }}</div> }',
+    )
     // The arrow function is not touched
     expect(result).toBeDefined()
   })
@@ -2874,7 +2954,9 @@ describe('JSX transform — additional branch coverage paths', () => {
   })
 
   test('signal in JSX attribute expression container — auto-called in bind', () => {
-    const result = t('function C() { const x = signal(0); return <div data-val={x}><span /></div> }')
+    const result = t(
+      'function C() { const x = signal(0); return <div data-val={x}><span /></div> }',
+    )
     // x is a signal identifier in an attribute — should be auto-called
     expect(result).toContain('x()')
     expect(result).toContain('_bind')

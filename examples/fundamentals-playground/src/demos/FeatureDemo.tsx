@@ -21,10 +21,7 @@ let tasks: Task[] = [
 ]
 let nextId = 4
 
-async function mockFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
+async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   // 250-450ms simulated network delay
   await new Promise((r) => setTimeout(r, 250 + Math.random() * 200))
   const url = typeof input === 'string' ? input : input.toString()
@@ -47,9 +44,7 @@ async function mockFetch(
   }
   if (id && method === 'PUT') {
     const body = JSON.parse((init?.body as string) ?? '{}') as Partial<Task>
-    tasks = tasks.map((t) =>
-      t.id === id ? { ...t, ...body, id } : t,
-    )
+    tasks = tasks.map((t) => (t.id === id ? { ...t, ...body, id } : t))
     const updated = tasks.find((t) => t.id === id)
     return new Response(JSON.stringify(updated), { status: 200 })
   }
@@ -104,14 +99,12 @@ function FeatureContent() {
     <div>
       <h2>Feature</h2>
       <p class="desc">
-        Schema-driven CRUD primitives — one <code>defineFeature(...)</code>{' '}
-        call generates <code>useList</code> / <code>useById</code> /{' '}
-        <code>useSearch</code> / <code>useCreate</code> /{' '}
-        <code>useUpdate</code> / <code>useDelete</code> against a REST API.
-        Composes <code>@pyreon/query</code> + <code>@pyreon/form</code> +{' '}
-        <code>@pyreon/store</code> + <code>@pyreon/table</code> +{' '}
-        <code>@pyreon/validation</code>. This demo runs against an in-memory
-        mock fetcher (see the demo source).
+        Schema-driven CRUD primitives — one <code>defineFeature(...)</code> call generates{' '}
+        <code>useList</code> / <code>useById</code> / <code>useSearch</code> /{' '}
+        <code>useCreate</code> / <code>useUpdate</code> / <code>useDelete</code> against a REST API.
+        Composes <code>@pyreon/query</code> + <code>@pyreon/form</code> + <code>@pyreon/store</code>{' '}
+        + <code>@pyreon/table</code> + <code>@pyreon/validation</code>. This demo runs against an
+        in-memory mock fetcher (see the demo source).
       </p>
 
       <div class="section">
@@ -153,9 +146,7 @@ function FeatureContent() {
                       />
                       <span
                         style={
-                          task.done
-                            ? 'flex:1; text-decoration:line-through; color:#999'
-                            : 'flex:1'
+                          task.done ? 'flex:1; text-decoration:line-through; color:#999' : 'flex:1'
                         }
                       >
                         {task.title}
@@ -214,9 +205,7 @@ function FeatureContent() {
         <div style="margin-top:12px" data-testid="feature-search-results">
           {() =>
             term().trim() === '' ? (
-              <p style="font-size:13px; color:#666">
-                (type a term above to see matching tasks)
-              </p>
+              <p style="font-size:13px; color:#666">(type a term above to see matching tasks)</p>
             ) : search.isLoading() ? (
               <p style="font-size:13px; color:#666">Searching…</p>
             ) : (search.data() ?? []).length === 0 ? (
@@ -236,23 +225,17 @@ function FeatureContent() {
         <h3>Mutation state</h3>
         <p style="font-size:13px">
           create:{' '}
-          <span
-            class={() => (createMut.isPending() ? 'badge blue' : 'badge gray')}
-          >
+          <span class={() => (createMut.isPending() ? 'badge blue' : 'badge gray')}>
             {() => (createMut.isPending() ? 'pending' : 'idle')}
           </span>
           {' · '}
           update:{' '}
-          <span
-            class={() => (updateMut.isPending() ? 'badge blue' : 'badge gray')}
-          >
+          <span class={() => (updateMut.isPending() ? 'badge blue' : 'badge gray')}>
             {() => (updateMut.isPending() ? 'pending' : 'idle')}
           </span>
           {' · '}
           delete:{' '}
-          <span
-            class={() => (deleteMut.isPending() ? 'badge blue' : 'badge gray')}
-          >
+          <span class={() => (deleteMut.isPending() ? 'badge blue' : 'badge gray')}>
             {() => (deleteMut.isPending() ? 'pending' : 'idle')}
           </span>
         </p>

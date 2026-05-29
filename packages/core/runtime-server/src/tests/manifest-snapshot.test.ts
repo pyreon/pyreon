@@ -32,8 +32,6 @@ describe('gen-docs — runtime-server snapshot', () => {
     const r = renderApiReferenceEntries(manifest)
     expect(r['runtime-server/renderToString']?.mistakes).toContain('one-shot')
     expect(r['runtime-server/renderToStream']?.mistakes).toContain('Suspense')
-    expect(r['runtime-server/configureStoreIsolation']?.mistakes).toContain(
-      'global registry',
-    )
+    expect(r['runtime-server/configureStoreIsolation']?.mistakes).toContain('global registry')
   })
 })

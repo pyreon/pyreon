@@ -55,8 +55,7 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
   // Adapt the runner's Row type (id + label) to Svelte's. Identical
   // shape — just keeps the type system honest about the per-framework
   // type parameter.
-  const toSvelteRows = (rows: Row[]): SvelteRow[] =>
-    rows.map((r) => ({ id: r.id, label: r.label }))
+  const toSvelteRows = (rows: Row[]): SvelteRow[] => rows.map((r) => ({ id: r.id, label: r.label }))
 
   await bench(
     'create 1,000 rows',

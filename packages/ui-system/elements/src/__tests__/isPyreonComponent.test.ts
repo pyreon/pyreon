@@ -77,7 +77,7 @@ describe('isPyreonComponent', () => {
     })
 
     it('detects explicit displayName even with no .name', () => {
-      const fn: any = (() => null) // anonymous, name === ""
+      const fn: any = () => null // anonymous, name === ""
       fn.displayName = 'MyHeader'
       expect(isPyreonComponent(fn)).toBe(true)
     })

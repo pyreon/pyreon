@@ -55,6 +55,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
+  "dependencies": {
+    "@pyreon/form": "workspace:^"
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
@@ -77,8 +80,5 @@
     "arktype": {
       "optional": true
     }
-  },
-  "dependencies": {
-    "@pyreon/form": "workspace:^"
   }
 }

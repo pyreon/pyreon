@@ -52,7 +52,11 @@ function extractCodeBlocks(markdown: string): CodeBlock[] {
         inside = { lang: fence[1]!.trim(), startLine: i + 2, buf: [] }
       } else {
         // Closing fence; flush.
-        blocks.push({ lang: inside.lang, source: inside.buf.join('\n'), startLine: inside.startLine })
+        blocks.push({
+          lang: inside.lang,
+          source: inside.buf.join('\n'),
+          startLine: inside.startLine,
+        })
         inside = null
       }
     } else if (inside !== null) {
@@ -69,7 +73,7 @@ function isRelevantBlock(block: CodeBlock): boolean {
 function scriptKindFor(lang: string): ts.ScriptKind {
   if (lang === 'tsx' || lang === 'typescript') return ts.ScriptKind.TSX
   if (lang === 'ts') return ts.ScriptKind.TSX // treat `ts` blocks as TSX too — patterns often
-                                              // include inline JSX in "ts" blocks by convention
+  // include inline JSX in "ts" blocks by convention
   if (lang === 'jsx') return ts.ScriptKind.JSX
   if (lang === 'js' || lang === 'javascript') return ts.ScriptKind.JSX // same rationale
   return ts.ScriptKind.TSX
@@ -92,10 +96,7 @@ interface SourceFileWithParseDiagnostics extends ts.SourceFile {
   readonly parseDiagnostics: readonly ts.Diagnostic[]
 }
 
-function checkBlock(
-  patternName: string,
-  block: CodeBlock,
-): SyntaxFailure[] {
+function checkBlock(patternName: string, block: CodeBlock): SyntaxFailure[] {
   const sf = ts.createSourceFile(
     `${patternName}-block.tsx`,
     block.source,

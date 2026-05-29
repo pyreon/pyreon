@@ -49,13 +49,9 @@ if (json) {
     rule: f.code.replace(/^distribution\//, ''),
     detail: f.message,
   }))
-  console.log(
-    JSON.stringify({ violations, totalPackages: result.meta.scanned ?? 0 }, null, 2),
-  )
+  console.log(JSON.stringify({ violations, totalPackages: result.meta.scanned ?? 0 }, null, 2))
 } else if (result.findings.length === 0) {
-  console.log(
-    `✓ Distribution gate clean. ${result.meta.scanned} published package(s) checked.`,
-  )
+  console.log(`✓ Distribution gate clean. ${result.meta.scanned} published package(s) checked.`)
   console.log(`  • All have \`sideEffects\` declared`)
   console.log(`  • None exclude \`lib/**/*.map\` from the published tarball`)
   console.log(`  • npm pack --dry-run probe: .map files present in tarball`)

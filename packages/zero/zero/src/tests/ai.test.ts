@@ -277,17 +277,29 @@ describe('aiPlugin', () => {
     plugin.configResolved({ root: '/tmp/test', command: 'serve' })
 
     let handler: any
-    plugin.configureServer({ middlewares: { use: (h: any) => { handler = h } } })
+    plugin.configureServer({
+      middlewares: {
+        use: (h: any) => {
+          handler = h
+        },
+      },
+    })
 
     let capturedBody = ''
     let capturedContentType = ''
     const mockRes = {
-      setHeader: (k: string, v: string) => { if (k === 'Content-Type') capturedContentType = v },
-      end: (body: string) => { capturedBody = body },
+      setHeader: (k: string, v: string) => {
+        if (k === 'Content-Type') capturedContentType = v
+      },
+      end: (body: string) => {
+        capturedBody = body
+      },
     }
     let nextCalled = false
 
-    await handler({ url: '/llms.txt' }, mockRes, () => { nextCalled = true })
+    await handler({ url: '/llms.txt' }, mockRes, () => {
+      nextCalled = true
+    })
     expect(capturedContentType).toBe('text/plain; charset=utf-8')
     expect(capturedBody).toContain('# Test App')
     expect(nextCalled).toBe(false)
@@ -298,10 +310,18 @@ describe('aiPlugin', () => {
     plugin.configResolved({ root: '/tmp/test', command: 'serve' })
 
     let handler: any
-    plugin.configureServer({ middlewares: { use: (h: any) => { handler = h } } })
+    plugin.configureServer({
+      middlewares: {
+        use: (h: any) => {
+          handler = h
+        },
+      },
+    })
 
     let nextCalled = false
-    await handler({ url: '/about' }, {}, () => { nextCalled = true })
+    await handler({ url: '/about' }, {}, () => {
+      nextCalled = true
+    })
     expect(nextCalled).toBe(true)
   })
 })

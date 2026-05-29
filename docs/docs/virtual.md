@@ -49,19 +49,19 @@ const rowH = 28
 const app = document.getElementById('app')
 const startIdx = computed(() => Math.floor(scrollTop() / rowH))
 const endIdx = computed(() => Math.min(startIdx() + Math.ceil(containerH / rowH) + 1, items.length))
-const offsetY = computed(() => startIdx() * rowH)
+const offsetY = computed(() => startIdx() \* rowH)
 
 const ui = h('div', {
-  style: { height: containerH + 'px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px' },
-  onScroll: (e) => scrollTop.set(e.target.scrollTop),
+style: { height: containerH + 'px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px' },
+onScroll: (e) => scrollTop.set(e.target.scrollTop),
 },
-  h('div', { style: { height: (items.length * rowH) + 'px', position: 'relative' } },
-    h('div', { style: () => ({ position: 'absolute', top: offsetY() + 'px', width: '100%' }) },
-      () => items.slice(startIdx(), endIdx()).map((item, i) =>
-        h('div', { style: { height: rowH + 'px', padding: '4px 8px', borderBottom: '1px solid #f0f0f0' } }, item)
-      )
-    )
-  )
+h('div', { style: { height: (items.length \* rowH) + 'px', position: 'relative' } },
+h('div', { style: () => ({ position: 'absolute', top: offsetY() + 'px', width: '100%' }) },
+() => items.slice(startIdx(), endIdx()).map((item, i) =>
+h('div', { style: { height: rowH + 'px', padding: '4px 8px', borderBottom: '1px solid #f0f0f0' } }, item)
+)
+)
+)
 )
 mount(ui, app)
 </Playground>

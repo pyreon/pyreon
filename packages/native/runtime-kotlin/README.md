@@ -33,12 +33,12 @@ Same `MutableState<T>` projection (so Compose recomposes on writes). Backend is 
 
 ## API surface — mirrors `@pyreon/native-runtime-swift`
 
-| Swift | Kotlin |
-|-------|--------|
-| `@PyreonAppStorage("k") var x: T = d` | `var x by rememberPyreonStorage("k", d)` |
-| `PyreonStorage.read(T.self, key:)` | `PyreonStorage.read<T>(key)` |
-| `PyreonStorage.write(_:key:)` | `PyreonStorage.write(key, value)` |
-| `PyreonStorage.remove(key:)` | `PyreonStorage.remove(key)` |
+| Swift                                        | Kotlin                                      |
+| -------------------------------------------- | ------------------------------------------- |
+| `@PyreonAppStorage("k") var x: T = d`        | `var x by rememberPyreonStorage("k", d)`    |
+| `PyreonStorage.read(T.self, key:)`           | `PyreonStorage.read<T>(key)`                |
+| `PyreonStorage.write(_:key:)`                | `PyreonStorage.write(key, value)`           |
+| `PyreonStorage.remove(key:)`                 | `PyreonStorage.remove(key)`                 |
 | `PyreonStorage.decodeOrDefault(d, default:)` | `PyreonStorage.decodeOrDefault(d, default)` |
 
 **Failure semantics match exactly**: silent fallback to default on decode failure, silent drop on write failure. Use the throwing escape hatches when you need visibility.
@@ -71,20 +71,21 @@ bun run test
 ```
 
 The script (`scripts/verify-kotlin.ts`):
+
 1. Spawns kotlinc with the runtime source + smoke test + stubs for `androidx.compose.runtime`, `kotlinx.serialization`, `kotlinx.serialization.json`
 2. If `java` is available, runs the resulting JAR's `main()` smoke
 3. Skips gracefully when `kotlinc` is absent (matches `runtime-swift`'s SwiftPM skip pattern)
 
 ## Verifiable locally vs requires Android SDK
 
-| Layer | Verifiable now? | How |
-|-------|-----------------|-----|
-| `PyreonStorage.kt` typechecks against the Compose + kotlinx-serialization API surfaces | ✅ | `bun run test` via kotlinc + stubs |
-| `InMemoryBackend` round-trips strings | ✅ (when Java present) | smoke `main()` in the JAR |
-| `rememberPyreonStorage` Composable surface | ✅ (typecheck only) | kotlinc validates the signature against the Compose stubs |
-| `rememberPyreonStorage` recomposition behaviour | ❌ | needs real Compose runtime |
-| `DataStoreBackend` (cross-launch persistence) | ❌ | needs Android SDK + emulator/device |
-| Real kotlinx-serialization JSON round-trip | ❌ (stubs only) | needs the kotlinx-serialization plugin (runtime annotation processor) |
+| Layer                                                                                  | Verifiable now?        | How                                                                   |
+| -------------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------- |
+| `PyreonStorage.kt` typechecks against the Compose + kotlinx-serialization API surfaces | ✅                     | `bun run test` via kotlinc + stubs                                    |
+| `InMemoryBackend` round-trips strings                                                  | ✅ (when Java present) | smoke `main()` in the JAR                                             |
+| `rememberPyreonStorage` Composable surface                                             | ✅ (typecheck only)    | kotlinc validates the signature against the Compose stubs             |
+| `rememberPyreonStorage` recomposition behaviour                                        | ❌                     | needs real Compose runtime                                            |
+| `DataStoreBackend` (cross-launch persistence)                                          | ❌                     | needs Android SDK + emulator/device                                   |
+| Real kotlinx-serialization JSON round-trip                                             | ❌ (stubs only)        | needs the kotlinx-serialization plugin (runtime annotation processor) |
 
 The honest framing: **API surface is real and validated** through kotlinc. **Runtime behaviour is real for `InMemoryBackend` and stubbed for the rest**. End-to-end Android validation is a documented gap that needs Android CI infrastructure to close.
 

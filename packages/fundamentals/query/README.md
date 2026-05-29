@@ -53,18 +53,18 @@ const query = useQuery(() => ({
 
 Returns `UseQueryResult<TData, TError>`:
 
-| Property      | Type                                            | Notes                                  |
-| ------------- | ----------------------------------------------- | -------------------------------------- |
-| `result`      | `Signal<QueryObserverResult>`                   | Full observer result (escape hatch)    |
-| `data`        | `Signal<TData \| undefined>`                    |                                        |
-| `error`       | `Signal<TError \| null>`                        |                                        |
-| `status`      | `Signal<'pending' \| 'error' \| 'success'>`     |                                        |
-| `isPending`   | `Signal<boolean>`                               | No data yet                            |
-| `isLoading`   | `Signal<boolean>`                               | First fetch in progress                |
-| `isFetching`  | `Signal<boolean>`                               | Any fetch (incl. background refetch)   |
-| `isError`     | `Signal<boolean>`                               |                                        |
-| `isSuccess`   | `Signal<boolean>`                               |                                        |
-| `refetch()`   | `() => Promise<QueryObserverResult>`            | Manual refetch                         |
+| Property     | Type                                        | Notes                                |
+| ------------ | ------------------------------------------- | ------------------------------------ |
+| `result`     | `Signal<QueryObserverResult>`               | Full observer result (escape hatch)  |
+| `data`       | `Signal<TData \| undefined>`                |                                      |
+| `error`      | `Signal<TError \| null>`                    |                                      |
+| `status`     | `Signal<'pending' \| 'error' \| 'success'>` |                                      |
+| `isPending`  | `Signal<boolean>`                           | No data yet                          |
+| `isLoading`  | `Signal<boolean>`                           | First fetch in progress              |
+| `isFetching` | `Signal<boolean>`                           | Any fetch (incl. background refetch) |
+| `isError`    | `Signal<boolean>`                           |                                      |
+| `isSuccess`  | `Signal<boolean>`                           |                                      |
+| `refetch()`  | `() => Promise<QueryObserverResult>`        | Manual refetch                       |
 
 **Lazy signal allocation**: each property is materialized on first access via getter (`??=`), so a consumer that only reads `data` and `isLoading` doesn't allocate the other 7 signals. Same `Signal<T>` identity is preserved across repeat access.
 
@@ -81,9 +81,9 @@ const mutation = useMutation({
   onSuccess: (data) => console.log('Created', data),
 })
 
-mutation.mutate({ title: 'Hello' })       // fire-and-forget, errors land in mutation.error()
+mutation.mutate({ title: 'Hello' }) // fire-and-forget, errors land in mutation.error()
 await mutation.mutateAsync({ title: '!' }) // promise — use for try/catch
-mutation.reset()                           // back to idle
+mutation.reset() // back to idle
 ```
 
 `UseMutationResult` shape mirrors `UseQueryResult` plus `mutate` / `mutateAsync` / `reset`, with status `'idle' | 'pending' | 'success' | 'error'`.
@@ -199,7 +199,18 @@ Pair with a sibling `ErrorBoundary` so the fallback's retry button clears errore
 ```tsx
 <QueryErrorResetBoundary>
   {({ reset }) => (
-    <ErrorBoundary fallback={(err, retry) => <button onClick={() => { reset(); retry() }}>Retry</button>}>
+    <ErrorBoundary
+      fallback={(err, retry) => (
+        <button
+          onClick={() => {
+            reset()
+            retry()
+          }}
+        >
+          Retry
+        </button>
+      )}
+    >
       <UserList />
     </ErrorBoundary>
   )}

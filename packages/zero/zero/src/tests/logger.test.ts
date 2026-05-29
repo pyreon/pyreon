@@ -10,7 +10,12 @@ describe('loggerMiddleware', () => {
   it('returns no-op when level is none', () => {
     const mw = loggerMiddleware({ level: 'none' })
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    mw({ req: new Request('http://localhost/test'), path: '/test', headers: new Headers(), locals: {} } as any)
+    mw({
+      req: new Request('http://localhost/test'),
+      path: '/test',
+      headers: new Headers(),
+      locals: {},
+    } as any)
     // queueMicrotask is async, but with level=none it's a no-op function
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
@@ -20,8 +25,18 @@ describe('loggerMiddleware', () => {
     const mw = loggerMiddleware({ colors: false })
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
-    mw({ req: new Request('http://localhost/__vite'), path: '/__vite', headers: new Headers(), locals: {} } as any)
-    mw({ req: new Request('http://localhost/@fs'), path: '/@fs', headers: new Headers(), locals: {} } as any)
+    mw({
+      req: new Request('http://localhost/__vite'),
+      path: '/__vite',
+      headers: new Headers(),
+      locals: {},
+    } as any)
+    mw({
+      req: new Request('http://localhost/@fs'),
+      path: '/@fs',
+      headers: new Headers(),
+      locals: {},
+    } as any)
 
     // Wait for microtask
     await new Promise((r) => setTimeout(r, 10))
@@ -85,7 +100,12 @@ describe('loggerMiddleware', () => {
     const mw = loggerMiddleware({ skip: ['/health'], colors: false })
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
-    mw({ req: new Request('http://localhost/health'), path: '/health', headers: new Headers(), locals: {} } as any)
+    mw({
+      req: new Request('http://localhost/health'),
+      path: '/health',
+      headers: new Headers(),
+      locals: {},
+    } as any)
 
     await new Promise((r) => setTimeout(r, 10))
     expect(spy).not.toHaveBeenCalled()

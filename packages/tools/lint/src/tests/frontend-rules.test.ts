@@ -30,12 +30,7 @@ import { applyFixes, lintFile } from '../runner'
 import type { LintConfig } from '../types'
 import { _resetProjectDepsCache } from '../utils/project-deps'
 
-const FRONTEND_RULES = [
-  requireImgAlt,
-  imgRequiresDimensions,
-  noPositiveTabindex,
-  preferZeroImage,
-]
+const FRONTEND_RULES = [requireImgAlt, imgRequiresDimensions, noPositiveTabindex, preferZeroImage]
 
 /**
  * `best-practices` preset (enables opt-in rules at declared severity)
@@ -87,16 +82,12 @@ describe('pyreon/require-img-alt (frontend)', () => {
   })
 
   it('FIRES on `<img>` with other attrs but still no alt', () => {
-    const result = lint(
-      `function App() { return <img src="/a.png" width="10" height="10" /> }`,
-    )
+    const result = lint(`function App() { return <img src="/a.png" width="10" height="10" /> }`)
     expect(diagIds(result)).toContain('pyreon/require-img-alt')
   })
 
   it('does NOT fire when `alt` is present with a value', () => {
-    const result = lint(
-      `function App() { return <img src="/a.png" alt="Company logo" /> }`,
-    )
+    const result = lint(`function App() { return <img src="/a.png" alt="Company logo" /> }`)
     expect(diagIds(result)).not.toContain('pyreon/require-img-alt')
   })
 
@@ -115,16 +106,12 @@ describe('pyreon/require-img-alt (frontend)', () => {
 
 describe('pyreon/img-requires-dimensions (frontend)', () => {
   it('FIRES on `<img>` with no width/height', () => {
-    const result = lint(
-      `function App() { return <img src="/a.png" alt="x" /> }`,
-    )
+    const result = lint(`function App() { return <img src="/a.png" alt="x" /> }`)
     expect(diagIds(result)).toContain('pyreon/img-requires-dimensions')
   })
 
   it('FIRES on `<img>` with only width (height missing)', () => {
-    const result = lint(
-      `function App() { return <img src="/a.png" alt="x" width={100} /> }`,
-    )
+    const result = lint(`function App() { return <img src="/a.png" alt="x" width={100} /> }`)
     expect(diagIds(result)).toContain('pyreon/img-requires-dimensions')
   })
 
@@ -172,9 +159,7 @@ describe('pyreon/no-positive-tabindex (frontend, fixable)', () => {
   it('autofix rewrites the numeric value to `0`', () => {
     const source = `function App() { return <div tabIndex={3} /> }`
     const result = lint(source)
-    const diag = result.diagnostics.find(
-      (d) => d.ruleId === 'pyreon/no-positive-tabindex',
-    )
+    const diag = result.diagnostics.find((d) => d.ruleId === 'pyreon/no-positive-tabindex')
     expect(diag?.fix).toBeDefined()
     expect(diag?.fix?.replacement).toBe('0')
     const fixed = applyFixes(source, result.diagnostics)
@@ -184,9 +169,7 @@ describe('pyreon/no-positive-tabindex (frontend, fixable)', () => {
   it('autofix rewrites the string value to `"0"`', () => {
     const source = `function App() { return <div tabindex="5" /> }`
     const result = lint(source)
-    const diag = result.diagnostics.find(
-      (d) => d.ruleId === 'pyreon/no-positive-tabindex',
-    )
+    const diag = result.diagnostics.find((d) => d.ruleId === 'pyreon/no-positive-tabindex')
     expect(diag?.fix?.replacement).toBe('"0"')
     const fixed = applyFixes(source, result.diagnostics)
     expect(fixed).toBe(`function App() { return <div tabindex="0" /> }`)
@@ -246,9 +229,7 @@ describe('pyreon/prefer-zero-image (frontend, dep-gated)', () => {
       `function G() { return <div><img src="/a.jpg" alt="a" width={1} height={1} /><img src="/b.jpg" alt="b" width={1} height={1} /></div> }`,
       filePath,
     )
-    const hits = result.diagnostics.filter(
-      (d) => d.ruleId === 'pyreon/prefer-zero-image',
-    )
+    const hits = result.diagnostics.filter((d) => d.ruleId === 'pyreon/prefer-zero-image')
     expect(hits.length).toBe(2)
   })
 
@@ -263,19 +244,13 @@ describe('pyreon/prefer-zero-image (frontend, dep-gated)', () => {
 
   it('does NOT fire on a bare `<img>` with no src even in a zero project', () => {
     const filePath = join(zeroDir, 'src', 'Placeholder.tsx')
-    const result = lint(
-      `function P() { return <img alt="" width={1} height={1} /> }`,
-      filePath,
-    )
+    const result = lint(`function P() { return <img alt="" width={1} height={1} /> }`, filePath)
     expect(diagIds(result)).not.toContain('pyreon/prefer-zero-image')
   })
 
   it('does NOT fire on the optimized `<Image>` element in a zero project', () => {
     const filePath = join(zeroDir, 'src', 'Hero.tsx')
-    const result = lint(
-      `function Hero() { return <Image src="/hero.jpg" alt="Hero" /> }`,
-      filePath,
-    )
+    const result = lint(`function Hero() { return <Image src="/hero.jpg" alt="Hero" /> }`, filePath)
     expect(diagIds(result)).not.toContain('pyreon/prefer-zero-image')
   })
 })

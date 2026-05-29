@@ -59,7 +59,9 @@ Each declared dimension creates a chain method AND a corresponding prop on the c
 ### Default: `useBooleans: false` (string prop values)
 
 ```tsx
-<Button state="primary" size="lg">Save</Button>
+<Button state="primary" size="lg">
+  Save
+</Button>
 ```
 
 Boolean shorthand (`<Button primary lg>Save</Button>`) is opt-in via `rocketstyle({ useBooleans: true })`. **Important**: before April 2026 the type default was `true` but the runtime was `false` — boolean props typechecked but were silently dropped at runtime. Fixed in `rocketstyle/init.ts`; new code should not rely on the historical behaviour.
@@ -105,7 +107,9 @@ Factory initializer. Returns a function that accepts component configuration.
 
 ```ts
 const factory = rocketstyle({
-  dimensions: { /* custom dimensions */ },
+  dimensions: {
+    /* custom dimensions */
+  },
   useBooleans: true,
 })
 
@@ -185,8 +189,8 @@ styled(Component)`
 ```ts
 const rocketButton = rocketstyle({
   dimensions: {
-    intent: 'intent',                                  // prop: intent="primary"
-    size:   'size',
+    intent: 'intent', // prop: intent="primary"
+    size: 'size',
     appearance: { propName: 'appearance', multi: true },
   },
 })

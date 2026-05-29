@@ -160,8 +160,7 @@ export const TextInput = styled('input')<{ $invalid?: boolean }>`
   padding: 10px 12px;
   font-size: 14px;
   border: 1px solid
-    ${(p) =>
-      p.$invalid ? t(p).color.system.error.base : t(p).color.system.base[200]};
+    ${(p) => (p.$invalid ? t(p).color.system.error.base : t(p).color.system.base[200])};
   border-radius: ${(p) => t(p).borderRadius.base}px;
   background: ${(p) => t(p).color.system.light.base};
   color: ${(p) => t(p).color.system.dark[800]};
@@ -172,8 +171,7 @@ export const TextInput = styled('input')<{ $invalid?: boolean }>`
     border-color: ${(p) =>
       p.$invalid ? t(p).color.system.error.base : t(p).color.system.primary[300]};
     box-shadow: 0 0 0 3px
-      ${(p) =>
-        p.$invalid ? t(p).color.system.error[100] : t(p).color.system.primary[100]};
+      ${(p) => (p.$invalid ? t(p).color.system.error[100] : t(p).color.system.primary[100])};
   }
 
   &::placeholder {

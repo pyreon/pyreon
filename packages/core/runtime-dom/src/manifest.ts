@@ -106,7 +106,8 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
     {
       name: 'Transition',
       kind: 'component',
-      signature: '<Transition name={name} mode={mode} onEnter={fn} onLeave={fn}>{children}</Transition>',
+      signature:
+        '<Transition name={name} mode={mode} onEnter={fn} onLeave={fn}>{children}</Transition>',
       summary:
         'CSS-based enter/leave animation wrapper. Applies `{name}-enter-from`, `{name}-enter-active`, `{name}-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `mode` controls sequencing: `"out-in"` waits for leave to complete before entering, `"in-out"` enters first. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically.',
       example: `<Transition name="fade" mode="out-in">
@@ -148,7 +149,8 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
     {
       name: 'KeepAlive',
       kind: 'component',
-      signature: '<KeepAlive include={pattern} exclude={pattern} max={number}>{children}</KeepAlive>',
+      signature:
+        '<KeepAlive include={pattern} exclude={pattern} max={number}>{children}</KeepAlive>',
       summary:
         'Cache component instances across mount/unmount cycles so their state (signals, scroll position, form inputs) is preserved when they are toggled out and back in. `include`/`exclude` filter by component name. `max` limits cache size (LRU eviction). Useful for tab panels and multi-step forms.',
       example: `const tab = signal<"a" | "b">("a")

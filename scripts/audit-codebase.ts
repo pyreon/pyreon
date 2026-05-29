@@ -149,19 +149,20 @@ function dirSize(dir: string): number {
 function countExports(pkgPath: string): number {
   // Read the index.ts entry of each public export and count `export` statements.
   // Doesn't deep-resolve re-exports; rough surface metric.
-  const indexCandidates = [
-    join(pkgPath, 'src', 'index.ts'),
-    join(pkgPath, 'src', 'index.tsx'),
-  ]
+  const indexCandidates = [join(pkgPath, 'src', 'index.ts'), join(pkgPath, 'src', 'index.tsx')]
   for (const path of indexCandidates) {
     if (existsSync(path)) {
       try {
         const src = readFileSync(path, 'utf-8')
         // Match `export { ... }`, `export const|function|class|interface|type|enum|let|var X`
-        const named = src.match(/^export\s+(const|function|class|interface|type|enum|let|var)\s+(\w+)/gm) ?? []
-        const reexports = (src.match(/^export\s*\{([^}]+)\}/gm) ?? []).flatMap(line => {
+        const named =
+          src.match(/^export\s+(const|function|class|interface|type|enum|let|var)\s+(\w+)/gm) ?? []
+        const reexports = (src.match(/^export\s*\{([^}]+)\}/gm) ?? []).flatMap((line) => {
           const inner = line.match(/\{([^}]+)\}/)?.[1] ?? ''
-          return inner.split(',').map(s => s.trim()).filter(Boolean)
+          return inner
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
         })
         return named.length + reexports.length
       } catch {
@@ -350,6 +351,8 @@ const totalFixes = results.reduce((sum, r) => sum + r.fixCommits6mo, 0)
 console.log('')
 console.log(`# packages       : ${results.length}`)
 console.log(`# total src LOC  : ${totalSrcLoc.toLocaleString()}`)
-console.log(`# total test LOC : ${totalTestLoc.toLocaleString()} (ratio ${(totalTestLoc / totalSrcLoc).toFixed(2)})`)
+console.log(
+  `# total test LOC : ${totalTestLoc.toLocaleString()} (ratio ${(totalTestLoc / totalSrcLoc).toFixed(2)})`,
+)
 console.log(`# total lib MB   : ${(totalLib / 1024 / 1024).toFixed(2)}`)
 console.log(`# fix+perf 180d  : ${totalFixes}`)

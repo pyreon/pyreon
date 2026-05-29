@@ -202,7 +202,12 @@ describe('createTabbedEditor — advanced', () => {
     te.closeOthers('a.ts')
     // b.ts should remain because closable: false, a.ts stays as the keep target
     expect(te.tabs()).toHaveLength(2)
-    expect(te.tabs().map((t: any) => t.name).sort()).toEqual(['a.ts', 'b.ts'])
+    expect(
+      te
+        .tabs()
+        .map((t: any) => t.name)
+        .sort(),
+    ).toEqual(['a.ts', 'b.ts'])
   })
 })
 

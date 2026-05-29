@@ -41,9 +41,7 @@ describe('isPyreonAdapter', () => {
   })
 
   it('returns true for arktypeSchema adapter', () => {
-    const adapter = arktypeSchema(
-      type({ x: 'string' }) as unknown as (data: unknown) => unknown,
-    )
+    const adapter = arktypeSchema(type({ x: 'string' }) as unknown as (data: unknown) => unknown)
     expect(isPyreonAdapter(adapter)).toBe(true)
   })
 
@@ -65,9 +63,7 @@ describe('isPyreonAdapter', () => {
   })
 
   it('returns false for object with parse but no _infer', () => {
-    expect(isPyreonAdapter({ parse: () => ({ ok: true, value: {} }) })).toBe(
-      false,
-    )
+    expect(isPyreonAdapter({ parse: () => ({ ok: true, value: {} }) })).toBe(false)
   })
 })
 
@@ -110,9 +106,7 @@ describe('isStandardSchema', () => {
 describe('wrapStandardSchema', () => {
   it('wraps a raw zod schema and returns ok on valid input', () => {
     const schema = z.object({ name: z.string(), age: z.number() })
-    const parse = wrapStandardSchema<{ name: string; age: number }>(
-      schema as never,
-    )
+    const parse = wrapStandardSchema<{ name: string; age: number }>(schema as never)
     const result = parse({ name: 'Alice', age: 30 })
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -269,26 +263,18 @@ describe('extractParseFn', () => {
   })
 
   it('throws on neither shape (plain object)', () => {
-    expect(() => extractParseFn({ foo: 'bar' })).toThrow(
-      /TypedSchemaAdapter|Standard Schema/,
-    )
+    expect(() => extractParseFn({ foo: 'bar' })).toThrow(/TypedSchemaAdapter|Standard Schema/)
   })
 
   it('throws on null / undefined', () => {
-    expect(() => extractParseFn(null)).toThrow(
-      /TypedSchemaAdapter|Standard Schema/,
-    )
-    expect(() => extractParseFn(undefined)).toThrow(
-      /TypedSchemaAdapter|Standard Schema/,
-    )
+    expect(() => extractParseFn(null)).toThrow(/TypedSchemaAdapter|Standard Schema/)
+    expect(() => extractParseFn(undefined)).toThrow(/TypedSchemaAdapter|Standard Schema/)
   })
 
   it('throws with clear message when adapter has _infer but no parse', () => {
     const broken = { _infer: undefined as never, parse: 'not-a-function' }
     // isPyreonAdapter returns false (parse is not a function), so falls to throw.
-    expect(() => extractParseFn(broken)).toThrow(
-      /TypedSchemaAdapter|Standard Schema/,
-    )
+    expect(() => extractParseFn(broken)).toThrow(/TypedSchemaAdapter|Standard Schema/)
   })
 
   it('throws with clear message when adapter has _infer but parse is missing', () => {
@@ -311,10 +297,7 @@ describe('extractParseFn', () => {
 
 describe('formatIssues', () => {
   it('formats single issue with the operation prefix', () => {
-    const msg = formatIssues(
-      [{ path: 'name', message: 'required' }],
-      'init',
-    )
+    const msg = formatIssues([{ path: 'name', message: 'required' }], 'init')
     expect(msg).toContain('Schema validation failed (init)')
     expect(msg).toContain('name: required')
   })
@@ -333,10 +316,7 @@ describe('formatIssues', () => {
   })
 
   it('uses <root> placeholder for empty path', () => {
-    const msg = formatIssues(
-      [{ path: '', message: 'top-level error' }],
-      '$patch',
-    )
+    const msg = formatIssues([{ path: '', message: 'top-level error' }], '$patch')
     expect(msg).toContain('<root>: top-level error')
   })
 

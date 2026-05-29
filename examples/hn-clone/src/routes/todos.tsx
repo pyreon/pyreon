@@ -54,9 +54,7 @@ function writeTodos(todos: Todo[]) {
 const mockFetcher = (async (input, init) => {
   const url = typeof input === 'string' ? input : input.toString()
   const method = (init?.method ?? 'GET').toUpperCase()
-  const body = init?.body
-    ? (JSON.parse(init.body as string) as Partial<Todo>)
-    : undefined
+  const body = init?.body ? (JSON.parse(init.body as string) as Partial<Todo>) : undefined
 
   // Match `/api/todos` or `/api/todos/:id`
   const m = url.match(/\/api\/todos(?:\/(\d+))?$/)
@@ -76,8 +74,7 @@ const mockFetcher = (async (input, init) => {
     return t ? respond(t) : respond({ error: 'Not found' }, 404)
   }
   if (method === 'POST') {
-    const nextId =
-      (todos.reduce((max, t) => Math.max(max, t.id), 0) || 0) + 1
+    const nextId = (todos.reduce((max, t) => Math.max(max, t.id), 0) || 0) + 1
     const created: Todo = {
       id: nextId,
       title: body?.title ?? '',
@@ -143,9 +140,8 @@ export default function TodosPage() {
       <header>
         <h1>Todos (feature demo)</h1>
         <p>
-          Demonstrates <code>defineFeature()</code> with a mock localStorage
-          fetcher. Real HN is read-only, so this is a self-contained CRUD
-          surface to show the feature primitives.
+          Demonstrates <code>defineFeature()</code> with a mock localStorage fetcher. Real HN is
+          read-only, so this is a self-contained CRUD surface to show the feature primitives.
         </p>
       </header>
 
@@ -158,9 +154,7 @@ export default function TodosPage() {
           type="text"
           placeholder="New todo title…"
           value={() => (form.fields.title.value() as string) ?? ''}
-          onInput={(e) =>
-            form.fields.title.setValue((e.currentTarget as HTMLInputElement).value)
-          }
+          onInput={(e) => form.fields.title.setValue((e.currentTarget as HTMLInputElement).value)}
           style="flex:1;padding:8px"
           data-testid="todo-input"
         />
@@ -177,14 +171,9 @@ export default function TodosPage() {
       {() => {
         if (list.isPending()) return <div class="feed-state">Loading todos…</div>
         if (list.isError())
-          return (
-            <div class="feed-state error">
-              {String(list.error() ?? 'unknown error')}
-            </div>
-          )
+          return <div class="feed-state error">{String(list.error() ?? 'unknown error')}</div>
         const todos = (list.data() ?? []) as Todo[]
-        if (todos.length === 0)
-          return <div class="feed-state">No todos yet. Add one above.</div>
+        if (todos.length === 0) return <div class="feed-state">No todos yet. Add one above.</div>
         return (
           <ul class="todo-list" style="list-style:none;padding:0">
             {todos.map((todo) => (
@@ -193,14 +182,8 @@ export default function TodosPage() {
                 data-testid={`todo-${todo.id}`}
                 style="display:flex;gap:8px;padding:8px;border-bottom:1px solid #eee;align-items:center"
               >
-                <input
-                  type="checkbox"
-                  checked={todo.done}
-                  onChange={() => handleToggle(todo)}
-                />
-                <span
-                  style={todo.done ? 'text-decoration:line-through;color:#999' : ''}
-                >
+                <input type="checkbox" checked={todo.done} onChange={() => handleToggle(todo)} />
+                <span style={todo.done ? 'text-decoration:line-through;color:#999' : ''}>
                   {todo.title}
                 </span>
                 <span style="margin-left:auto;font-size:12px;color:#999">

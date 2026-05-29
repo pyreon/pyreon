@@ -120,7 +120,10 @@ export function useField(
     // function-typed delegation otherwise.
     register: ((opts?: { type?: 'checkbox' | 'number' }) =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      (form.register as (f: string, o?: unknown) => unknown)(name, opts)) as UseFieldResult<unknown>['register'],
+      (form.register as (f: string, o?: unknown) => unknown)(
+        name,
+        opts,
+      )) as UseFieldResult<unknown>['register'],
     hasError,
     showError,
   }

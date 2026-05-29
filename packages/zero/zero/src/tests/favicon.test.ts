@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from 'vitest'
 import { createIcoFromPngs, faviconLinks } from '../favicon'
 
 describe('createIcoFromPngs', () => {
@@ -24,9 +24,7 @@ describe('createIcoFromPngs', () => {
 
   it('encodes directory entry sizes correctly', () => {
     const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-    const ico = createIcoFromPngs([
-      { buffer: fakePng as Buffer, size: 16 },
-    ])
+    const ico = createIcoFromPngs([{ buffer: fakePng as Buffer, size: 16 }])
 
     // First directory entry starts at byte 6
     expect(ico[6]).toBe(16) // width
@@ -35,20 +33,16 @@ describe('createIcoFromPngs', () => {
 
   it('encodes size 256 as 0 per ICO spec', () => {
     const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-    const ico = createIcoFromPngs([
-      { buffer: fakePng as Buffer, size: 256 },
-    ])
+    const ico = createIcoFromPngs([{ buffer: fakePng as Buffer, size: 256 }])
 
     // 256 is stored as 0 in ICO format
-    expect(ico[6]).toBe(0)  // width
-    expect(ico[7]).toBe(0)  // height
+    expect(ico[6]).toBe(0) // width
+    expect(ico[7]).toBe(0) // height
   })
 
   it('includes PNG data after header and directory', () => {
     const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-    const ico = createIcoFromPngs([
-      { buffer: fakePng as Buffer, size: 32 },
-    ])
+    const ico = createIcoFromPngs([{ buffer: fakePng as Buffer, size: 32 }])
 
     // header(6) + 1 dir entry(16) = 22, data starts there
     expect(ico[22]).toBe(0x89) // PNG magic byte

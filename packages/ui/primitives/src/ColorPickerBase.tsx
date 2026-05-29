@@ -50,7 +50,10 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 function rgbToHex(r: number, g: number, b: number): string {
-  const toHex = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0')
+  const toHex = (n: number) =>
+    Math.round(Math.max(0, Math.min(255, n)))
+      .toString(16)
+      .padStart(2, '0')
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
@@ -87,12 +90,25 @@ function hsbToRgb(h: number, s: number, b: number): { r: number; g: number; b: n
   let gP = 0
   let bP = 0
 
-  if (h < 60) { rP = c; gP = x }
-  else if (h < 120) { rP = x; gP = c }
-  else if (h < 180) { gP = c; bP = x }
-  else if (h < 240) { gP = x; bP = c }
-  else if (h < 300) { rP = x; bP = c }
-  else { rP = c; bP = x }
+  if (h < 60) {
+    rP = c
+    gP = x
+  } else if (h < 120) {
+    rP = x
+    gP = c
+  } else if (h < 180) {
+    gP = c
+    bP = x
+  } else if (h < 240) {
+    gP = x
+    bP = c
+  } else if (h < 300) {
+    rP = x
+    bP = c
+  } else {
+    rP = c
+    bP = x
+  }
 
   return {
     r: Math.round((rP + m) * 255),
@@ -104,9 +120,7 @@ function hsbToRgb(h: number, s: number, b: number): { r: number; g: number; b: n
 // ─── ColorPickerBase ─────────────────────────────────────────────────────────
 
 export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
-  const [own] = splitProps(props, [
-    'value', 'defaultValue', 'onChange', 'alpha', 'children',
-  ])
+  const [own] = splitProps(props, ['value', 'defaultValue', 'onChange', 'alpha', 'children'])
 
   const initial = own.defaultValue ?? own.value ?? '#3b82f6'
   const initialRgb = hexToRgb(initial)

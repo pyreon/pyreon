@@ -11,10 +11,7 @@ describe('buildCspHeader', () => {
   })
 
   it('handles nonce replacement', () => {
-    const header = buildCspHeader(
-      { scriptSrc: ["'self'", "'nonce'"] },
-      'abc123',
-    )
+    const header = buildCspHeader({ scriptSrc: ["'self'", "'nonce'"] }, 'abc123')
     expect(header).toBe("script-src 'self' 'nonce-abc123'")
   })
 

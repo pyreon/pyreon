@@ -83,7 +83,11 @@ describe('s.string', () => {
     const r = s.string().min(5).parse('hi')
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      const issue = r.issues[0] as { key?: string; params?: Record<string, unknown>; fallback?: string }
+      const issue = r.issues[0] as {
+        key?: string
+        params?: Record<string, unknown>
+        fallback?: string
+      }
       expect(issue.key).toBe('validate.string.too-short')
       expect(issue.params).toEqual({ min: 5, actual: 2 })
       expect(issue.fallback).toBe('Must be at least 5 characters')
@@ -99,7 +103,11 @@ describe('s.string', () => {
     const r = schema.parse('a')
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      const issue = r.issues[0] as { key?: string; params?: Record<string, unknown>; fallback?: string }
+      const issue = r.issues[0] as {
+        key?: string
+        params?: Record<string, unknown>
+        fallback?: string
+      }
       expect(issue.key).toBe('profile.name.too-short')
       expect(issue.params).toEqual({ hint: 'use a longer name' })
       expect(issue.fallback).toBe('Name too short')
@@ -210,9 +218,9 @@ describe('s.object', () => {
     const r = userSchema.parse({ name: 'A', age: 'thirty' })
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      const paths = r.issues.map((i) => Array.isArray(i.path) ? i.path.join('.') : '')
+      const paths = r.issues.map((i) => (Array.isArray(i.path) ? i.path.join('.') : ''))
       expect(paths).toContain('name') // min(2) failed
-      expect(paths).toContain('age')  // type failed
+      expect(paths).toContain('age') // type failed
     }
   })
 
@@ -268,7 +276,7 @@ describe('s.array', () => {
     const r = schema.parse([1, 2, 'three'])
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      const paths = r.issues.map((i) => Array.isArray(i.path) ? i.path.join('.') : '')
+      const paths = r.issues.map((i) => (Array.isArray(i.path) ? i.path.join('.') : ''))
       expect(paths).toContain('2') // index 2
     }
   })

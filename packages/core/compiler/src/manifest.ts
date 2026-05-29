@@ -57,7 +57,7 @@ const { code } = transformJSX_JS("<div>{name()}</div>", "x.tsx")`,
       name: 'analyzeReactivity',
       kind: 'function',
       signature:
-        "analyzeReactivity(code: string, filename?: string, options?: { knownSignals?: string[] }): AnalyzeReactivityResult",
+        'analyzeReactivity(code: string, filename?: string, options?: { knownSignals?: string[] }): AnalyzeReactivityResult',
       summary:
         "Reactivity-Lens entry point (experimental). The compiler ALREADY decides per-expression whether code is reactive while emitting codegen; this surfaces that ground truth back to the author instead of discarding it. Returns `{ findings, spans }` — `findings` merges the structural codegen decisions (`reactive` / `reactive-prop` / `reactive-attr` / `static-text` / `hoisted-static`) with the EXISTING `detectPyreonPatterns` footguns (`kind: 'footgun'`, carrying the detector `code`) under one (line, column)-sorted taxonomy. Forces the JS backend so the sidecar is always present. Absence of a span is “not asserted”, never an implicit static claim.",
       example: `import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
@@ -79,8 +79,7 @@ console.log(formatReactivityLens(code, result)) // annotated-source debug view`,
     {
       name: 'formatReactivityLens',
       kind: 'function',
-      signature:
-        'formatReactivityLens(code: string, result: AnalyzeReactivityResult): string',
+      signature: 'formatReactivityLens(code: string, result: AnalyzeReactivityResult): string',
       summary:
         'Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline `live` / `static` / `live·prop` / `hoisted` / footgun tag. The LSP surface in `@pyreon/lint --lsp` consumes the structured `findings` directly (inlay hints + diagnostics); this string renderer is for terminals and bug reports.',
       example: `import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
@@ -93,8 +92,7 @@ process.stdout.write(formatReactivityLens(src, r))`,
     {
       name: 'detectReactPatterns',
       kind: 'function',
-      signature:
-        "detectReactPatterns(code: string, filename?: string): ReactDiagnostic[]",
+      signature: 'detectReactPatterns(code: string, filename?: string): ReactDiagnostic[]',
       summary:
         'AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on inputs, `.value` writes on signals, React-package imports. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column.',
       example: `import { detectReactPatterns } from "@pyreon/compiler"
@@ -106,8 +104,7 @@ console.log(diags[0]?.code) // "react-use-state"`,
     {
       name: 'migrateReactCode',
       kind: 'function',
-      signature:
-        "migrateReactCode(code: string, filename?: string): MigrationResult",
+      signature: 'migrateReactCode(code: string, filename?: string): MigrationResult',
       summary:
         'One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. Returns the rewritten code plus the list of applied `MigrationChange`s. Mechanical only: shapes it cannot safely rewrite are left as `detectReactPatterns` diagnostics for the human.',
       example: `import { migrateReactCode } from "@pyreon/compiler"
@@ -140,8 +137,7 @@ if (d) console.log(d.cause, d.fix)`,
     {
       name: 'detectPyreonPatterns',
       kind: 'function',
-      signature:
-        "detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]",
+      signature: 'detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]',
       summary:
         'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 14 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Every diagnostic reports `fixable: false` (invariant — no `migrate_pyreon` codemod ships yet).',
       example: `import { detectPyreonPatterns } from "@pyreon/compiler"
@@ -183,8 +179,7 @@ console.log(formatTestAudit(r, { minRisk: "high" }))`,
     {
       name: 'formatTestAudit',
       kind: 'function',
-      signature:
-        'formatTestAudit(result: TestAuditResult, options?: AuditFormatOptions): string',
+      signature: 'formatTestAudit(result: TestAuditResult, options?: AuditFormatOptions): string',
       summary:
         'Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` filters the floor (`high` | `medium` | `low`). The CLI / MCP surfaces also have a JSON path — this is the text view.',
       example: `import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
@@ -231,8 +226,7 @@ for (const f of r.findings) console.log(f.code, f.location.file)`,
     {
       name: 'formatSsgAudit',
       kind: 'function',
-      signature:
-        'formatSsgAudit(result: SsgAuditResult, options?: SsgAuditFormatOptions): string',
+      signature: 'formatSsgAudit(result: SsgAuditResult, options?: SsgAuditFormatOptions): string',
       summary:
         'Text renderer for an `auditSsg` result — file path + line/column + actionable fix per finding. CI gates use the JSON path instead.',
       example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
@@ -243,8 +237,7 @@ console.log(formatSsgAudit(auditSsg(".")))`,
     {
       name: 'transformDeferInline',
       kind: 'function',
-      signature:
-        'transformDeferInline(code: string, filename?: string): DeferInlineResult',
+      signature: 'transformDeferInline(code: string, filename?: string): DeferInlineResult',
       summary:
         'Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings }`; runs before the JSX transform in the Vite plugin chain.',
       example: `import { transformDeferInline } from "@pyreon/compiler"

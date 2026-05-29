@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/charts',
   title: 'Reactive ECharts',
-  tagline:
-    'Reactive ECharts bridge with lazy loading, auto-detection, typed options',
+  tagline: 'Reactive ECharts bridge with lazy loading, auto-detection, typed options',
   description:
     'Reactive ECharts bridge for Pyreon. Zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.',
   category: 'browser',

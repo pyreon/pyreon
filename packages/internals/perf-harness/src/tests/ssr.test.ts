@@ -70,7 +70,9 @@ describe('SSR counter shape', () => {
   it('renderToString fires runtime-server.escape for strings with special chars', async () => {
     const outcome = await perfHarness.record('ssr-escape-count', async () => {
       // "&" and "<" both trigger escape; "hello" does not
-      await renderToString(h('div', null, 'hello', h('span', null, 'a & b'), h('span', null, '<x>')))
+      await renderToString(
+        h('div', null, 'hello', h('span', null, 'a & b'), h('span', null, '<x>')),
+      )
     })
     // 'hello' stays; 'a & b' and '<x>' both need escape → ≥ 2
     expect(outcome.after['runtime-server.escape']).toBe(2)

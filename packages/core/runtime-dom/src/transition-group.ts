@@ -215,7 +215,13 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
             : rawVNode
         return mountChild(vnode, container, null)
       })
-      const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false, cancelTransition: null }
+      const entry: ItemEntry = {
+        key,
+        ref: itemRef,
+        cleanup,
+        leaving: false,
+        cancelTransition: null,
+      }
       entries.set(key, entry)
       newEntries.push(entry)
     }

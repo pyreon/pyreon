@@ -794,9 +794,7 @@ describe('createFlow — advanced', () => {
   describe('paste ID uniqueness (monotonic counter)', () => {
     it('multiple pastes produce unique node IDs', () => {
       const flow = createFlow({
-        nodes: [
-          { id: 'a', position: { x: 0, y: 0 }, data: {} },
-        ],
+        nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: {} }],
       })
 
       flow.selectNode('a')
@@ -815,9 +813,7 @@ describe('createFlow — advanced', () => {
 
     it('pasted IDs are deterministic (counter-based, not random)', () => {
       const flow = createFlow({
-        nodes: [
-          { id: 'n1', position: { x: 0, y: 0 }, data: {} },
-        ],
+        nodes: [{ id: 'n1', position: { x: 0, y: 0 }, data: {} }],
       })
 
       flow.selectNode('n1')

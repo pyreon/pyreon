@@ -29,9 +29,7 @@ export default function ChannelPage() {
   const store = useChatModel()
 
   // Reactive channelId from route params.
-  const channelId = computed<string>(
-    () => (router.currentRoute().params.id ?? 'general') as string,
-  )
+  const channelId = computed<string>(() => (router.currentRoute().params.id ?? 'general') as string)
 
   // Persist last-visited channel to localStorage as user navigates.
   effect(() => {
@@ -200,10 +198,7 @@ export default function ChannelPage() {
 
       <MessageList messages={visible()} />
 
-      <MessageInput
-        onSend={handleSend}
-        disabled={sendMutation.isPending()}
-      />
+      <MessageInput onSend={handleSend} disabled={sendMutation.isPending()} />
     </section>
   )
 }

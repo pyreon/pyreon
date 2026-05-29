@@ -15,13 +15,13 @@ The single-config form `model({ state, views, actions })` is **REMOVED**. Use th
 model({
   state: { count: 0 },
   views: (self) => ({ doubled: () => self.count() * 2 }),
-  actions: (self) => ({ inc: () => self.count.update(n => n + 1) }),
+  actions: (self) => ({ inc: () => self.count.update((n) => n + 1) }),
 })
 
 // After
 model({ state: { count: 0 } })
   .views((self) => ({ doubled: () => self.count() * 2 }))
-  .actions((self) => ({ inc: () => self.count.update(n => n + 1) }))
+  .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }))
 ```
 
 Migration is mechanical: `state` stays inside `model(...)`; `views` and `actions` keys move to chained `.views(...)` / `.actions(...)` calls verbatim. Behavior of each factory is unchanged. Empty `views: () => ({})` can be dropped.
@@ -35,11 +35,11 @@ Accepts a `TypedSchemaAdapter` (`zodSchema(...)` / `valibotSchema(...)` / `arkty
 Schema-mode instances expose **five validated mutation helpers** with bare names matching `@pyreon/store`'s `SchemaStoreApi`:
 
 ```ts
-u.set({ ...full })           // full replace, validated
-u.patch({ name: 'Bob' })     // shallow merge, validated
-u.deepPatch({ prefs: { theme: 'dark' } })  // recursive merge — keeps siblings
-u.update('items', items => items.filter(x => x.id !== id))  // transform one field
-u.reset()                     // restore parsed initial
+u.set({ ...full }) // full replace, validated
+u.patch({ name: 'Bob' }) // shallow merge, validated
+u.deepPatch({ prefs: { theme: 'dark' } }) // recursive merge — keeps siblings
+u.update('items', (items) => items.filter((x) => x.id !== id)) // transform one field
+u.reset() // restore parsed initial
 ```
 
 Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.

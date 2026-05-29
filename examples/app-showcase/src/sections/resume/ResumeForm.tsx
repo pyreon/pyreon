@@ -93,9 +93,7 @@ export function ResumeForm() {
             id="skills"
             value={() => store.resume().skills.join('\n')}
             onInput={(e: Event) =>
-              store.setSkills(
-                (e.target as HTMLTextAreaElement).value.split('\n').filter(Boolean),
-              )
+              store.setSkills((e.target as HTMLTextAreaElement).value.split('\n').filter(Boolean))
             }
             placeholder="TypeScript&#10;Pyreon&#10;Performance"
           />
@@ -128,9 +126,7 @@ function ContactFields() {
             id={`contact-${f.key}`}
             type={f.type}
             value={() => r.store.resume().contact[f.key]}
-            onInput={(e: Event) =>
-              r.store.setContact(f.key, (e.target as HTMLInputElement).value)
-            }
+            onInput={(e: Event) => r.store.setContact(f.key, (e.target as HTMLInputElement).value)}
           />
         </FieldGroup>
       ))}

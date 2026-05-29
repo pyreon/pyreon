@@ -123,11 +123,7 @@ async function walkAndCopy(
       // — they're namespace-prefixed sub-overlays copied via explicit
       // calls. Nested `_<name>/` dirs (deeper than top level) are passed
       // through verbatim — the convention is only at the entry point.
-      if (
-        isTopLevel &&
-        options.skipUnderscoreDirs &&
-        entry.name.startsWith('_')
-      ) {
+      if (isTopLevel && options.skipUnderscoreDirs && entry.name.startsWith('_')) {
         continue
       }
       await mkdir(dstPath, { recursive: true })

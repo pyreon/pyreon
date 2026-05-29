@@ -100,7 +100,7 @@
   detector had an unbounded `\w*` quantifier:
 
   ```ts
-  /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code);
+  ;/on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code)
   ```
 
   Polynomial-time on inputs like `onAAAA…` (long runs of `[A-Z]`):
@@ -131,10 +131,10 @@
 
   ```ts
   if (
-    typeof key === "string" &&
-    (key === "__proto__" || key === "constructor" || key === "prototype")
+    typeof key === 'string' &&
+    (key === '__proto__' || key === 'constructor' || key === 'prototype')
   ) {
-    return;
+    return
   }
   ```
 
@@ -143,7 +143,6 @@
   keys before the bracket-notation assignment on line 1042.
 
   ## Validation
-
   - `bun run --filter='@pyreon/compiler' typecheck` — clean
   - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
   - `bun run --filter='@pyreon/compiler' test pyreon-intercept` — 70/70 pass
@@ -202,7 +201,6 @@
   | [#3](https://github.com/pyreon/pyreon/issues/3) (`for...in`)                                               | Behavioral equivalent for clean object literals; defense-only    | All 47 runtime-dom browser specs + 218 solid-compat specs unchanged |
 
   ## Validation
-
   - `bun run --filter='@pyreon/runtime-dom' typecheck` — clean
   - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
   - `bun run --filter='@pyreon/runtime-dom' lint` — zero errors
@@ -215,7 +213,6 @@
   - `bun run check-bundle-budgets` — clean (runtime-dom + solid-compat unchanged)
 
   ## Surfaces updated
-
   - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDyn` + `_rsCollapseDynH` use `renderEffect` directly (no `_bindDirect` indirection); `_rsCollapseH` + `_rsCollapseDynH` use `Object.keys` (not `for...in`)
   - `packages/core/runtime-dom/src/tests/rs-collapse-dyn.browser.test.ts` — new regression spec locking the 1:1 `valueIndex()`-call contract
   - `packages/tools/solid-compat/src/index.ts` — `applyAtPath` uses `Object.defineProperty` for the bracket write + simplified guard
@@ -224,7 +221,6 @@
   ## What's NOT in this PR
 
   A wider audit of the recent merges turned up other surfaces I considered but did NOT include:
-
   - **Other unbounded regex quantifiers in `pyreon-intercept.ts`** (e.g. `\\bFor\\b[^=]*\\beach`) — measured polynomially worst-case (O(N²) on N "For" runs) but CodeQL didn't flag them, the input is dev source (not adversary-controlled), and fixing every theoretical site without a CodeQL signal would be excessive. Left alone.
   - **Degenerate `state={cond ? 'a' : 'a'}` ternaries** — emit 4 identical classes. Sub-optimal but correct. The compiler could detect and bail / use `_rsCollapse` instead; not worth the additional detector complexity for a vanishingly rare input.
   - **`await` / `yield` inside cond expressions** — the compiler would emit `() => (await cond) ? 0 : 1` in a non-async arrow → syntax error. Extreme edge case (who awaits in a JSX attribute?), no real-corpus instance. Worth catching in the detector eventually but not urgent.
@@ -252,7 +248,6 @@
   ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
 
   **Code:**
-
   - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
     interpolated `fullPath` raw into emitted JS. Path is developer-
     controlled (project's own filesystem scan), but a quote / backslash
@@ -276,7 +271,6 @@
     depth refuse the dangerous identifiers.
 
   **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
-
   - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
     `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
     caps. Pre-filter is a SCAN before the precise AST walker; losing
@@ -297,7 +291,6 @@
     formatting matchable.
 
   **Workflows (`.github/workflows/`):**
-
   - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
     `permissions: contents: read` block. Both workflows are read-only
     (perf records artifacts; audit reports findings).
@@ -313,7 +306,6 @@
   ### Dismissed via API (20 false positives / won't fix)
 
   **True false positives (9):**
-
   - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
     "MAX_PASSES" as if it contained "password". Log is about
     effect-flush pass count.
@@ -334,7 +326,6 @@
     arbitrary paths.
 
   **Won't fix (internal dev tooling, not security boundaries):**
-
   - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
     (`pyreon context`, `create-zero`), build-time Vite plugin
     (`icons-plugin`), internal scripts (`check-bundle-budgets`,
@@ -355,7 +346,6 @@
     the actual supply-chain guarantee.
 
   ### Remaining (cannot be closed by a code PR)
-
   - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
     squash-merge with self-review by maintainer doesn't count.
     Project-policy issue, not code.
@@ -367,7 +357,6 @@
     infra work, out of scope.
 
   ### Validation
-
   - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
   - `@pyreon/compiler` 1257/1257 tests pass
   - `@pyreon/vite-plugin` 104/104 tests pass
@@ -413,13 +402,11 @@
 
   `COUNTERS.md` gains 7 new entries (6 counters + the `theme.initRef*` pair).
   Each documents:
-
   - Exact source file
   - "Healthy number looks like" description (the diagnostic semantics)
   - The leak-class label + originating PR
 
   `catalog-drift.test.ts` `INSTRUMENTED_PACKAGE_ROOTS` adds 3 new entries:
-
   - `packages/tools/solid-compat/src`
   - `packages/tools/svelte-compat/src`
   - `packages/tools/vite-plugin/src`
@@ -430,7 +417,6 @@
   emit) enforces the link going forward.
 
   ### Validation
-
   - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
     zero skip):
     - `@pyreon/zero` 953/954
@@ -502,7 +488,6 @@
   ### Regression tests + bisect
 
   `packages/tools/solid-compat/src/tests/leak-repro.test.ts` (4 specs):
-
   1. **createResource SLOW + FAST refetch — FAST wins, SLOW ignored**.
      Manual promise resolvers control ordering. Bisect-verified:
      removed `if (myVersion !== fetchVersion) return` from both
@@ -522,14 +507,12 @@
      evicted because it had a subscriber).
 
   ### Validation
-
   - `@pyreon/solid-compat` 218/218 tests pass (+4 new regression specs)
   - Lint + typecheck clean
   - New `_STORE_SIGNAL_CACHE` symbol export is `@internal` (Symbol.for
     registry — test-only)
 
   ### Remaining LOW from [#733](https://github.com/pyreon/pyreon/issues/733)
-
   - `@pyreon/svelte-compat` ChildInstance preservation discards
     `unmountCallbacks` — separate PR (different package).
   - `@pyreon/vite-plugin` per-instance caches eviction on file delete
@@ -577,7 +560,6 @@
   compat-layers 12/12 all green). Added the commonly-used public APIs that
   were missing by omission (not the intentional documented limitations like
   React class setState or Vue Options API):
-
   - **react-compat**: `useOptimistic` (React 19) — passthrough reduced
     through pending optimistic actions; overlay clears when `passthrough`
     changes (the non-concurrent-mode equivalent of React discarding
@@ -597,7 +579,6 @@
 
   The partial-fidelity shims from [#619](https://github.com/pyreon/pyreon/issues/619) that COULD be faithfully implemented
   are now real (the rest stay honestly documented as architectural limits):
-
   - **solid-compat `Portal`**: `useShadow` → dedicated `<div>` host + open
     shadow root; `isSVG` → SVG-namespaced `<g>` host; children render into
     the host; host removed on unmount via `onCleanup` (no detached-host
@@ -836,7 +817,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -850,7 +830,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -859,7 +838,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -878,7 +856,6 @@
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

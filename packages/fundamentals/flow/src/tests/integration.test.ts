@@ -153,9 +153,7 @@ describe('viewport operations', () => {
 
   it('isNodeVisible returns true for node in viewport', () => {
     const flow = createFlow({
-      nodes: [
-        { id: '1', position: { x: 100, y: 100 }, width: 100, height: 50, data: {} },
-      ],
+      nodes: [{ id: '1', position: { x: 100, y: 100 }, width: 100, height: 50, data: {} }],
     })
     expect(flow.isNodeVisible('1')).toBe(true)
   })
@@ -1914,9 +1912,7 @@ describe('warnIgnoredOptions — gate pattern regression', () => {
 
     // Extract `warnIgnoredOptions`'s function body — declaration
     // plus everything up to the closing brace at column 0.
-    const fnMatch = source.match(
-      /function warnIgnoredOptions\([^)]*\): void \{[\s\S]*?^\}/m,
-    )
+    const fnMatch = source.match(/function warnIgnoredOptions\([^)]*\): void \{[\s\S]*?^\}/m)
     expect(fnMatch, 'warnIgnoredOptions function should exist in layout.ts').toBeTruthy()
     const rawFnBody = fnMatch![0]
 
@@ -1962,7 +1958,7 @@ describe('warnIgnoredOptions — gate pattern regression', () => {
     // Stub the elkjs dynamic import so the bundle is self-contained.
     const harness = layoutSource.replace(
       "import('elkjs/lib/elk.bundled.js')",
-      "Promise.resolve({ default: class { layout(g){ return Promise.resolve({children:[]}) } } })",
+      'Promise.resolve({ default: class { layout(g){ return Promise.resolve({children:[]}) } } })',
     )
 
     async function bundle(mode: 'dev' | 'prod') {

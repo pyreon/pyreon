@@ -106,7 +106,6 @@
   Real-app symptom: N components each call `useStorage('theme', 'light')`. They all share the same cached signal (correct). One component calls `.remove()` (clear storage, reset to default). The cross-tab listener is detached AND the registry entry is deleted. Now cross-tab `storage` events for 'theme' don't reach the surviving N-1 consumers — they're silently orphaned from the cross-tab pipeline.
 
   Fix:
-
   - Same-key cached returns ALSO retain the cross-tab listener (refcount now matches consumer count).
   - `.remove()` no longer deletes the registry entry — keeps it so the listener's dispatch table remains intact for surviving consumers. The registry entry is small (one Map entry per key); the residual cost is negligible vs silently breaking cross-tab sync.
 
@@ -125,7 +124,6 @@
   Code-verified at source; no dedicated regression test in this PR (requires either mocked dynamic-import infra for charts, or a fake-indexeddb harness for storage — separable follow-ups).
 
   ### Audit byproducts (NOT fixed in this PR)
-
   - `@pyreon/code` `<CodeEditor>` component does not call `instance.dispose()` on unmount. Could be a design choice (user owns lifecycle since `instance` is an external prop) OR a documentation gap. Worth deciding deliberately, not bundled here.
   - `@pyreon/state-tree` `_hookRegistry` accepts dynamic IDs without bound — would leak if app generates IDs at runtime (uncommon — typical usage is static IDs).
   - `@pyreon/url-state` per-instance popstate listeners (no shared registry like storage has) — inefficient at scale but not a leak.
@@ -203,7 +201,6 @@
 ### Patch Changes
 
 - [#262](https://github.com/pyreon/pyreon/pull/262) [`ec30b4e`](https://github.com/pyreon/pyreon/commit/ec30b4e2188fb493fdde77a77f521abe000beae0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - QA audit fixes (5 HIGH + 2 MEDIUM):
-
   - **router**: `useBlocker` uses shared ref-counted `beforeunload` listener instead of per-blocker — prevents listener accumulation across multiple blockers
   - **router**: `destroy()` clears `_activeRouter` global ref and releases remaining blocker listeners — prevents stale router surviving in SSR/re-creation
   - **query/useSubscription**: close WebSocket BEFORE nulling handlers — prevents race where queued message fires null handler
@@ -229,26 +226,22 @@
   typeof-guard-function recognition
 
   `@pyreon/storage` (10 errors → 0):
-
   - `indexed-db.ts`: added `typeof indexedDB === 'undefined'` early-return at
     `openDB` entry. SSR callers receive a rejected promise with a clear
     `[Pyreon] indexedDB is not available` error instead of crashing.
 
   `@pyreon/query` (5 errors → 0):
-
   - `use-subscription.ts`: added `typeof WebSocket === 'undefined'`
     early-return guards at the entry of `connect()`, `send()`, and `close()`.
   - `query-client.ts`: error prefix `[@pyreon/query]` → `[Pyreon]`.
 
   `@pyreon/server` / `@pyreon/core-server` (5 errors → 0):
-
   - `client.ts`: `typeof document === 'undefined' → throw` early-return on
     `startClient` entry. `hydrateIslands` and `scheduleHydration` /
     `observeVisibility` typeof guards.
   - `client.ts` / `html.ts`: error prefixes normalised to `[Pyreon]`.
 
   `@pyreon/lint` — `no-window-in-ssr` typeof-guard functions:
-
   - A function whose body is `return <typeof check>` (or AND-chain of typeof
     checks) now counts as a typeof guard at its call sites — e.g.
     `function isBrowser() { return typeof window !== 'undefined' }` makes
@@ -316,11 +309,9 @@
 ### Minor Changes
 
 - [`deb9834`](https://github.com/pyreon/fundamentals/commit/deb983456472cc685d80e97b21196588af53b502) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ### New package
-
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -329,12 +320,10 @@
 ### Minor Changes
 
 - [`5610cdf`](https://github.com/pyreon/fundamentals/commit/5610cdffb69022aacd44419d7c71b97bdcf8403f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ### New packages
-
   - `@pyreon/flow` — reactive flow diagrams with signal-native nodes, edges, pan/zoom, auto-layout via elkjs
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages

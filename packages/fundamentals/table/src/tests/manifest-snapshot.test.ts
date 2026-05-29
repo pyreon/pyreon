@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — table snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/table — Pyreon adapter for TanStack Table — reactive options, signal-driven state, flexRender. Options must be a FUNCTION \`() => TableOptions<T>\`, not a plain object. Signal reads inside the function are tracked reactively — changing any tracked signal re-syncs the table automatically."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/table — Pyreon adapter for TanStack Table — reactive options, signal-driven state, flexRender. Options must be a FUNCTION \`() => TableOptions<T>\`, not a plain object. Signal reads inside the function are tracked reactively — changing any tracked signal re-syncs the table automatically."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

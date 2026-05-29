@@ -47,9 +47,7 @@ const TRIPLE_TO_SHORT: Record<string, string> = {
 
 const artifactsDir = process.argv[2]
 if (!artifactsDir) {
-  console.error(
-    'Usage: bun scripts/bootstrap-native-publish.ts <downloaded-artifacts-dir>',
-  )
+  console.error('Usage: bun scripts/bootstrap-native-publish.ts <downloaded-artifacts-dir>')
   process.exit(2)
 }
 const artifactsRoot = resolve(artifactsDir)
@@ -138,9 +136,7 @@ console.log(`
      runtime and fails on a local publish):
 `)
 for (const s of staged) {
-  console.log(
-    `  ( cd "packages/core/compiler/npm/${s.short}" && npm publish --access public )`,
-  )
+  console.log(`  ( cd "packages/core/compiler/npm/${s.short}" && npm publish --access public )`)
 }
 console.log(`
   3. Then configure trusted publishing for EACH now-existing package:

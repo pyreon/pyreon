@@ -109,16 +109,14 @@ export const FilterChip = styled('button')<{ $active?: boolean }>`
   font-size: 12px;
   font-weight: ${(p) => t(p).fontWeight.medium};
   border: 1px solid
-    ${(p) =>
-      p.$active ? t(p).color.system.primary[300] : t(p).color.system.base[200]};
+    ${(p) => (p.$active ? t(p).color.system.primary[300] : t(p).color.system.base[200])};
   background: ${(p) => (p.$active ? t(p).color.system.primary[100] : t(p).color.system.light.base)};
   color: ${(p) => (p.$active ? t(p).color.system.primary.text : t(p).color.system.dark[600])};
   border-radius: ${(p) => t(p).borderRadius.pill}px;
   cursor: pointer;
 
   &:hover {
-    background: ${(p) =>
-      p.$active ? t(p).color.system.primary[100] : t(p).color.system.base[50]};
+    background: ${(p) => (p.$active ? t(p).color.system.primary[100] : t(p).color.system.base[50])};
   }
 `
 

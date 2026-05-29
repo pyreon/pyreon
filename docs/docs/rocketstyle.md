@@ -119,7 +119,6 @@ Rocketstyle components can be configured at the tree level using the built-in `P
 
 ```tsx
 import { Provider } from '@pyreon/rocketstyle'
-
 ;<Provider value={{ theme: 'dark', size: 'sm' }}>
   {/* All rocketstyle components inside inherit these defaults */}
   <Button>Uses dark theme, sm size</Button>

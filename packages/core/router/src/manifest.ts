@@ -116,7 +116,7 @@ const User = () => {
       kind: 'component',
       signature: '<RouterView />',
       summary:
-        'Render the matched route\'s component. For nested routes, the parent route component includes a `<RouterView />` that renders the matched child. Each `<RouterView>` renders one level of the route tree.',
+        "Render the matched route's component. For nested routes, the parent route component includes a `<RouterView />` that renders the matched child. Each `<RouterView>` renders one level of the route tree.",
       example: `// Renders the matched route's component
 <RouterView />
 
@@ -132,7 +132,8 @@ const Admin = () => (
     {
       name: 'RouterLink',
       kind: 'component',
-      signature: '<RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>',
+      signature:
+        '<RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>',
       summary:
         'Declarative navigation link that renders an `<a>` element. Supports string paths or named route objects (`{ name, params }`). Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Click handler calls `router.push()` and prevents default.',
       example: `<RouterLink to="/" activeClass="nav-active">Home</RouterLink>
@@ -245,7 +246,7 @@ const data = useMiddlewareData()
       kind: 'hook',
       signature: 'useLoaderData<T>(): T',
       summary:
-        'Access the data returned by the current route\'s `loader` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type.',
+        "Access the data returned by the current route's `loader` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type.",
       example: `// Route: { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) }
 
 const User = () => {
@@ -303,7 +304,8 @@ import { isRedirectError } from "@pyreon/router"
     {
       name: 'getRedirectInfo',
       kind: 'function',
-      signature: 'getRedirectInfo(err: unknown): { url: string; status: 301 | 302 | 303 | 307 | 308 } | null',
+      signature:
+        'getRedirectInfo(err: unknown): { url: string; status: 301 | 302 | 303 | 307 | 308 } | null',
       summary:
         "Extract the redirect URL and status from a thrown RedirectError. Returns `null` for non-redirect errors. Used by `@pyreon/server`'s SSR handler to convert the thrown error into a 302/307 `Response`.",
       example: `import { getRedirectInfo } from "@pyreon/router"
@@ -338,7 +340,7 @@ setSearch({ page: "2" })`,
       kind: 'hook',
       signature: 'useBlocker(shouldBlock: () => boolean): Blocker',
       summary:
-        'Block navigation when a condition is true (e.g., unsaved form changes). Returns a `Blocker` object with `proceed()` and `reset()` methods. Also hooks into the browser\'s `beforeunload` event to warn on tab close. Uses a shared ref-counted listener for `beforeunload` — N blockers share one event handler.',
+        "Block navigation when a condition is true (e.g., unsaved form changes). Returns a `Blocker` object with `proceed()` and `reset()` methods. Also hooks into the browser's `beforeunload` event to warn on tab close. Uses a shared ref-counted listener for `beforeunload` — N blockers share one event handler.",
       example: `const blocker = useBlocker(() => form.isDirty())
 
 <Show when={blocker.isBlocked()}>

@@ -7,15 +7,10 @@
 import { describe, expect, it } from 'vitest'
 import { zeroPlugin } from '../vite-plugin'
 
-type IndexHtmlHandler = (
-  html: string,
-  ctx?: unknown,
-) => string | undefined | null
+type IndexHtmlHandler = (html: string, ctx?: unknown) => string | undefined | null
 
 function getTransform(plugin: ReturnType<typeof zeroPlugin>[number]) {
-  const t = plugin.transformIndexHtml as
-    | IndexHtmlHandler
-    | { handler: IndexHtmlHandler }
+  const t = plugin.transformIndexHtml as IndexHtmlHandler | { handler: IndexHtmlHandler }
   return typeof t === 'function' ? t : t.handler
 }
 
@@ -58,9 +53,7 @@ describe('W19 — auto-inject entry-client script', () => {
       '<html><body><script type="module" src="/src/entry-client.ts"></script><!--pyreon-scripts--></body></html>'
     const result = transform(html, undefined)
     // Only one script tag — no duplicate injection
-    const matches = (result as string).match(
-      /src="\/src\/entry-client\.ts"/g,
-    )
+    const matches = (result as string).match(/src="\/src\/entry-client\.ts"/g)
     expect(matches?.length).toBe(1)
   })
 

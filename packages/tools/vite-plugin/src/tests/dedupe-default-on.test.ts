@@ -51,10 +51,7 @@ function seedNodeModules(root: string, packages: string[]): void {
   }
 }
 
-function writePackageJson(
-  root: string,
-  deps: Record<string, string>,
-): void {
+function writePackageJson(root: string, deps: Record<string, string>): void {
   writeFileSync(
     join(root, 'package.json'),
     JSON.stringify({ name: 'fixture', version: '0.0.0', dependencies: deps }),
@@ -73,13 +70,7 @@ describe('PR B — transitive @pyreon/* dedupe', () => {
     it('captures transitive deps NOT in the consumer package.json', () => {
       // Consumer declares only @pyreon/zero; transitive deps are pulled by it.
       writePackageJson(fixtureRoot, { '@pyreon/zero': 'workspace:^' })
-      seedNodeModules(fixtureRoot, [
-        'zero',
-        'core',
-        'router',
-        'runtime-dom',
-        'reactivity',
-      ])
+      seedNodeModules(fixtureRoot, ['zero', 'core', 'router', 'runtime-dom', 'reactivity'])
 
       const config = invokeConfigHook(fixtureRoot)
       const resolve = config.resolve as { dedupe?: string[] }

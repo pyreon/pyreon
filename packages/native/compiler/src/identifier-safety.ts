@@ -36,9 +36,7 @@ export function safeIdent(name: string): string {
   const segments = name.split('-').filter((s) => s.length > 0)
   if (segments.length === 0) return name
   return segments
-    .map((seg, i) =>
-      i === 0 ? seg : seg.charAt(0).toUpperCase() + seg.slice(1),
-    )
+    .map((seg, i) => (i === 0 ? seg : seg.charAt(0).toUpperCase() + seg.slice(1)))
     .join('')
 }
 
@@ -60,16 +58,61 @@ export function safeIdent(name: string): string {
 // keywords (`_`) that aren't user-emittable identifiers.
 const SWIFT_KEYWORDS = new Set([
   // Declarations
-  'associatedtype', 'class', 'deinit', 'enum', 'extension', 'fileprivate',
-  'func', 'import', 'init', 'inout', 'internal', 'let', 'open', 'operator',
-  'private', 'protocol', 'public', 'rethrows', 'static', 'struct', 'subscript',
-  'typealias', 'var',
+  'associatedtype',
+  'class',
+  'deinit',
+  'enum',
+  'extension',
+  'fileprivate',
+  'func',
+  'import',
+  'init',
+  'inout',
+  'internal',
+  'let',
+  'open',
+  'operator',
+  'private',
+  'protocol',
+  'public',
+  'rethrows',
+  'static',
+  'struct',
+  'subscript',
+  'typealias',
+  'var',
   // Statements
-  'break', 'case', 'continue', 'default', 'defer', 'do', 'else', 'fallthrough',
-  'for', 'guard', 'if', 'in', 'repeat', 'return', 'switch', 'where', 'while',
+  'break',
+  'case',
+  'continue',
+  'default',
+  'defer',
+  'do',
+  'else',
+  'fallthrough',
+  'for',
+  'guard',
+  'if',
+  'in',
+  'repeat',
+  'return',
+  'switch',
+  'where',
+  'while',
   // Expressions + types
-  'as', 'Any', 'catch', 'false', 'is', 'nil', 'super', 'self', 'Self', 'throw',
-  'throws', 'true', 'try',
+  'as',
+  'Any',
+  'catch',
+  'false',
+  'is',
+  'nil',
+  'super',
+  'self',
+  'Self',
+  'throw',
+  'throws',
+  'true',
+  'try',
 ])
 
 // Kotlin reserved (hard) keywords — same backtick-escape mechanism:
@@ -81,10 +124,34 @@ const SWIFT_KEYWORDS = new Set([
 // Excludes soft keywords (`set`/`get`/`field` etc.) — Kotlin permits
 // them as identifiers in most positions, so emit only the hard set.
 const KOTLIN_KEYWORDS = new Set([
-  'as', 'break', 'class', 'continue', 'do', 'else', 'false', 'for', 'fun',
-  'if', 'in', 'interface', 'is', 'null', 'object', 'package', 'return',
-  'super', 'this', 'throw', 'true', 'try', 'typealias', 'typeof', 'val',
-  'var', 'when', 'while',
+  'as',
+  'break',
+  'class',
+  'continue',
+  'do',
+  'else',
+  'false',
+  'for',
+  'fun',
+  'if',
+  'in',
+  'interface',
+  'is',
+  'null',
+  'object',
+  'package',
+  'return',
+  'super',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typealias',
+  'typeof',
+  'val',
+  'var',
+  'when',
+  'while',
 ])
 
 /**

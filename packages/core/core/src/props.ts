@@ -207,9 +207,7 @@ export function _wrapSpread(
  *
  * Returns the same object if no reactive props found (fast path).
  */
-export function makeReactiveProps(
-  raw: Record<string, unknown>,
-): Record<string, unknown> {
+export function makeReactiveProps(raw: Record<string, unknown>): Record<string, unknown> {
   // Fast path: scan for any REACTIVE_PROP-branded function first.
   // If none found, return raw immediately — no object allocation, no property copying.
   // This saves ~90 object allocations + ~450 property copies per page load

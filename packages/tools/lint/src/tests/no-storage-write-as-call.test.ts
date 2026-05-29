@@ -31,10 +31,7 @@ const CONFIG: LintConfig = {
 
 const EXEMPT_CONFIG: LintConfig = {
   rules: {
-    'pyreon/no-storage-write-as-call': [
-      'error',
-      { exemptPaths: ['generated/'] },
-    ],
+    'pyreon/no-storage-write-as-call': ['error', { exemptPaths: ['generated/'] }],
   },
 }
 
@@ -147,8 +144,7 @@ describe('pyreon/no-storage-write-as-call (storage, dep-gated)', () => {
   })
 
   it('autofixes name(arg) → name.set(arg)', () => {
-    const source =
-      `import { useStorage } from '@pyreon/storage'
+    const source = `import { useStorage } from '@pyreon/storage'
        function C() { const pref = useStorage('k', 0); pref(42); return pref }`
     const result = lint(source, join(storageDir, 'src', 'Fix.tsx'))
     expect(diagIds(result)).toContain('pyreon/no-storage-write-as-call')

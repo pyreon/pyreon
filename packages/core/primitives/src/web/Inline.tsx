@@ -21,10 +21,7 @@ import { buildStackStyle } from './Stack'
  */
 export const Inline = (props: InlineProps): VNode => {
   // Spoof a Stack with direction="row" — same shape, just default override.
-  const computed = buildStackStyle(
-    { ...props, direction: 'row' },
-    'row',
-  )
+  const computed = buildStackStyle({ ...props, direction: 'row' }, 'row')
   return h(
     'div',
     {

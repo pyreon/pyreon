@@ -739,7 +739,7 @@ describe('ErrorBoundary', () => {
     expect(el.querySelector('#recovered')).toBeNull()
 
     // Click retry — reset() fires, shouldThrow is false, children re-render
-    ;(query<HTMLButtonElement>(el, '#retry')).click()
+    query<HTMLButtonElement>(el, '#retry').click()
 
     expect(el.querySelector('#recovered')?.textContent).toBe('back')
     expect(el.querySelector('#retry')).toBeNull()
@@ -774,7 +774,7 @@ describe('ErrorBoundary', () => {
     )
 
     expect(el.querySelector('#fix')).not.toBeNull()
-    ;(query<HTMLButtonElement>(el, '#fix')).click()
+    query<HTMLButtonElement>(el, '#fix').click()
     expect(el.querySelector('#signal-ok')?.textContent).toBe('fixed')
   })
 
@@ -802,19 +802,12 @@ describe('ErrorBoundary', () => {
 
   test('lazy() loader rejection surfaces to ErrorBoundary via Suspense', async () => {
     const el = container()
-    const Comp = lazy<Record<string, never>>(() =>
-      Promise.reject(new Error('module load failed')),
-    )
+    const Comp = lazy<Record<string, never>>(() => Promise.reject(new Error('module load failed')))
 
     mount(
       h(ErrorBoundary, {
-        fallback: (err: unknown) =>
-          h('p', { id: 'lazy-fb' }, `Caught: ${(err as Error).message}`),
-        children: h(
-          Suspense,
-          { fallback: h('p', { id: 'spinner' }, 'loading...') },
-          h(Comp, {}),
-        ),
+        fallback: (err: unknown) => h('p', { id: 'lazy-fb' }, `Caught: ${(err as Error).message}`),
+        children: h(Suspense, { fallback: h('p', { id: 'spinner' }, 'loading...') }, h(Comp, {})),
       }),
       el,
     )
@@ -838,8 +831,7 @@ describe('ErrorBoundary', () => {
 
   test('lazy() resolves successfully renders content without firing fallback', async () => {
     const el = container()
-    const Inner: ComponentFn<Record<string, never>> = () =>
-      h('p', { id: 'loaded' }, 'content')
+    const Inner: ComponentFn<Record<string, never>> = () => h('p', { id: 'loaded' }, 'content')
     const Comp = lazy<Record<string, never>>(() => Promise.resolve({ default: Inner }))
 
     let fallbackInvocations = 0
@@ -849,11 +841,7 @@ describe('ErrorBoundary', () => {
           fallbackInvocations++
           return h('p', { id: 'should-not-appear' }, 'error')
         },
-        children: h(
-          Suspense,
-          { fallback: h('p', { id: 'spinner' }, 'loading...') },
-          h(Comp, {}),
-        ),
+        children: h(Suspense, { fallback: h('p', { id: 'spinner' }, 'loading...') }, h(Comp, {})),
       }),
       el,
     )
@@ -3418,10 +3406,7 @@ describe('mount — SVG namespace', () => {
 
   test('deeply nested SVG elements inherit namespace', () => {
     const el = container()
-    mount(
-      h('svg', null, h('g', null, h('rect', null))),
-      el,
-    )
+    mount(h('svg', null, h('g', null, h('rect', null))), el)
     const svg = el.firstElementChild!
     const g = svg.firstElementChild!
     const rect = g.firstElementChild!
@@ -3481,11 +3466,7 @@ describe('mount — SVG namespace', () => {
     // exposes x, y, width, height as read-only SVGAnimatedLength.
     const el = container()
     mount(
-      h(
-        'svg',
-        null,
-        h('rect', { x: '5', y: '10', width: '100', height: '50', fill: 'red' }),
-      ),
+      h('svg', null, h('rect', { x: '5', y: '10', width: '100', height: '50', fill: 'red' })),
       el,
     )
 
@@ -3500,10 +3481,7 @@ describe('mount — SVG namespace', () => {
 
   test('elements outside svg do not get SVG namespace', () => {
     const el = container()
-    mount(
-      h(Fragment, null, h('svg', null, h('circle', null)), h('div', null, 'text')),
-      el,
-    )
+    mount(h(Fragment, null, h('svg', null, h('circle', null)), h('div', null, 'text')), el)
     const svg = el.querySelector('svg')!
     const circle = svg.firstElementChild!
     const div = el.querySelector('div')!
@@ -3514,14 +3492,7 @@ describe('mount — SVG namespace', () => {
 
   test('svg with multiple children all get SVG namespace', () => {
     const el = container()
-    mount(
-      h('svg', null,
-        h('circle', null),
-        h('rect', null),
-        h('path', null),
-      ),
-      el,
-    )
+    mount(h('svg', null, h('circle', null), h('rect', null), h('path', null)), el)
     const svg = el.firstElementChild!
     for (const child of Array.from(svg.children)) {
       expect(child.namespaceURI).toBe(SVG_NS)

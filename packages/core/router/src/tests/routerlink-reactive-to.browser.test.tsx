@@ -53,11 +53,7 @@ describe('RouterLink reactive `to` prop', () => {
     ]
     const router = createRouter({ routes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
-      h(
-        RouterProvider,
-        { router },
-        h(NavItem, { path: _rp(() => '/about') as unknown as string }),
-      ),
+      h(RouterProvider, { router }, h(NavItem, { path: _rp(() => '/about') as unknown as string })),
     )
     await flush()
     const link = container.querySelector<HTMLAnchorElement>('#nav-link')

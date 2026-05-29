@@ -1,24 +1,24 @@
 export const meta = {
-  title: "Welcome to your new Pyreon blog",
-  date: "2026-04-28",
+  title: 'Welcome to your new Pyreon blog',
+  date: '2026-04-28',
   description:
-    "A quick tour of how this blog is wired together — TSX posts, SSG, RSS, and dark mode out of the box.",
-  tags: ["pyreon", "ssg", "intro"],
+    'A quick tour of how this blog is wired together — TSX posts, SSG, RSS, and dark mode out of the box.',
+  tags: ['pyreon', 'ssg', 'intro'],
 }
 
 export default function Post() {
   return (
     <>
       <p>
-        This blog ships pre-rendered at build time. Every post is a small TSX file in{" "}
-        <code>src/content/posts/</code>, and the loader at <code>src/lib/posts.ts</code> walks
-        the directory via Vite's <code>import.meta.glob</code>.
+        This blog ships pre-rendered at build time. Every post is a small TSX file in{' '}
+        <code>src/content/posts/</code>, and the loader at <code>src/lib/posts.ts</code> walks the
+        directory via Vite's <code>import.meta.glob</code>.
       </p>
 
       <h2>Adding a post</h2>
 
       <p>
-        Drop a new <code>.tsx</code> file alongside this one. Export <code>meta</code> with{" "}
+        Drop a new <code>.tsx</code> file alongside this one. Export <code>meta</code> with{' '}
         <code>title</code>, <code>date</code>, and <code>description</code>, then a default
         component for the body:
       </p>
@@ -38,17 +38,16 @@ export default function Post() {
       </pre>
 
       <p>
-        The post auto-appears in <code>/blog/</code> and the <code>/api/rss</code> feed. The
-        slug comes from the filename.
+        The post auto-appears in <code>/blog/</code> and the <code>/api/rss</code> feed. The slug
+        comes from the filename.
       </p>
 
       <h2>Why TSX instead of Markdown?</h2>
 
       <p>
         TSX gives you the full Pyreon component model inside posts — interactive demos, live
-        signals, charts — without an extra build step or a markdown-to-JSX bridge. If you'd
-        prefer markdown, swap the loader for a remark/MDX pipeline; the route shape stays the
-        same.
+        signals, charts — without an extra build step or a markdown-to-JSX bridge. If you'd prefer
+        markdown, swap the loader for a remark/MDX pipeline; the route shape stays the same.
       </p>
 
       <h2>What's next?</h2>

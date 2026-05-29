@@ -114,7 +114,7 @@ Runtime guard — returns `true` for components produced by `attrs()`.
 ```ts
 import { isAttrsComponent } from '@pyreon/attrs'
 isAttrsComponent(Button) // true
-isAttrsComponent('div')   // false
+isAttrsComponent('div') // false
 ```
 
 ## TypeScript
@@ -122,9 +122,9 @@ isAttrsComponent('div')   // false
 Each `.attrs<P>()` generic accumulates into the component's prop type. Three type-only properties expose the accumulated shapes:
 
 ```ts
-type AllProps      = typeof Button.$$types          // origin + extended
-type OriginProps   = typeof Button.$$originTypes    // base component's props
-type ExtendedProps = typeof Button.$$extendedTypes  // everything added through .attrs<P>()
+type AllProps = typeof Button.$$types // origin + extended
+type OriginProps = typeof Button.$$originTypes // base component's props
+type ExtendedProps = typeof Button.$$extendedTypes // everything added through .attrs<P>()
 ```
 
 Use `ExtractProps<typeof Button>` from `@pyreon/core` to recover the union when forwarding through another HOC.

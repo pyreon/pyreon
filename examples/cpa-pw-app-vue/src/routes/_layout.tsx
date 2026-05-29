@@ -1,8 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@pyreon/query"
-import { RouterView } from "@pyreon/router"
-import { Link } from "@pyreon/zero/link"
-import { ThemeToggle } from "@pyreon/zero/theme"
-import { useAppStore } from "../stores/app"
+import { QueryClient, QueryClientProvider } from '@pyreon/query'
+import { RouterView } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import { ThemeToggle } from '@pyreon/zero/theme'
+import { useAppStore } from '../stores/app'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000 } },
@@ -43,7 +43,7 @@ export function layout() {
               onClick={toggleSidebar}
               title="Toggle sidebar"
             >
-              {() => (sidebarOpen() ? "◀" : "▶")}
+              {() => (sidebarOpen() ? '◀' : '▶')}
             </button>
             <ThemeToggle class="theme-toggle" />
           </nav>

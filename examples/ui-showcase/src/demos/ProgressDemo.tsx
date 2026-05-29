@@ -3,9 +3,13 @@ import { Progress, Title } from '@pyreon/ui-components'
 export function ProgressDemo() {
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Progress</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Progress
+      </Title>
 
-      <Title size="h3" style="margin-bottom: 12px">States</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        States
+      </Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <div>
           <div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">Primary (60%)</div>
@@ -27,7 +31,9 @@ export function ProgressDemo() {
         </div>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Sizes</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Sizes
+      </Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <div>
           <div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">Small</div>
@@ -49,7 +55,9 @@ export function ProgressDemo() {
         </div>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Various Percentages</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Various Percentages
+      </Title>
       <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px;">
         <Progress state="primary" size="medium">
           <div style="width: 10%; height: 100%; background: currentColor; border-radius: inherit;" />

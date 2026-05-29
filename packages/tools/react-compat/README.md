@@ -36,30 +36,30 @@ createRoot(document.getElementById('app')!).render(<Counter />)
 
 ## Subpath exports
 
-| Subpath                                | Surface                                                                                       |
-| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Subpath                                | Surface                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@pyreon/react-compat`                 | Full React 19 surface — every hook listed above, plus `Fragment`, `h` / `createElement`, `createRef`, `cloneElement`, `Children`, `createContext` / `useContext`, `createPortal`, `forwardRef`, `memo`, `lazy`, `Suspense`, `ErrorBoundary`, `StrictMode`, `Profiler`, `Component`, `PureComponent`, `act`, `flushSync`, `startTransition`, `useDebugValue`, `isValidElement`, `version` |
-| `@pyreon/react-compat/dom`             | `createRoot(container)` — drop-in for `react-dom/client`                                       |
-| `@pyreon/react-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
-| `@pyreon/react-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
+| `@pyreon/react-compat/dom`             | `createRoot(container)` — drop-in for `react-dom/client`                                                                                                                                                                                                                                                                                                                                 |
+| `@pyreon/react-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                                                                                                                                                                                                                                                                                                                        |
+| `@pyreon/react-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Key differences from React
 
-| Behavior              | React                                  | `@pyreon/react-compat`                                                 |
-| --------------------- | -------------------------------------- | ---------------------------------------------------------------------- |
-| Component execution   | Re-runs render on every state change   | Runs **once** (setup phase)                                            |
-| `useState` getter     | Returns the value directly             | Returns a **getter function** — call `count()` to read                 |
-| `useEffect` deps      | Controls when the effect re-runs       | Deps array is **ignored** — Pyreon tracks dependencies automatically   |
-| `useCallback`         | Memoizes across renders                | **No-op** — returns `fn` as-is                                         |
-| `useMemo`             | Returns the memoized value             | Returns a **getter function** — call `value()` to read                 |
-| `useLayoutEffect`     | Sync before paint                      | Same as `useEffect`                                                    |
-| `useInsertionEffect`  | Library-injected CSS before mutations  | Same as `useEffect`                                                    |
-| `useTransition`       | Returns `[isPending, startTransition]` | Same shape; `isPending` is a getter                                    |
-| `useSyncExternalStore`| Subscribes via React's scheduler       | Same shape; getter return                                              |
-| `memo`                | Bails on equal props                   | **No-op** — pass-through                                               |
-| `forwardRef`          | Wraps for ref forwarding               | Pass-through; refs are first-class props                               |
-| Class components      | Full lifecycle support                 | `setState` + `forceUpdate` work; lifecycle methods are not called      |
-| Hooks rules           | Must be called at top level            | **No restrictions** — call anywhere in component setup                 |
+| Behavior               | React                                  | `@pyreon/react-compat`                                               |
+| ---------------------- | -------------------------------------- | -------------------------------------------------------------------- |
+| Component execution    | Re-runs render on every state change   | Runs **once** (setup phase)                                          |
+| `useState` getter      | Returns the value directly             | Returns a **getter function** — call `count()` to read               |
+| `useEffect` deps       | Controls when the effect re-runs       | Deps array is **ignored** — Pyreon tracks dependencies automatically |
+| `useCallback`          | Memoizes across renders                | **No-op** — returns `fn` as-is                                       |
+| `useMemo`              | Returns the memoized value             | Returns a **getter function** — call `value()` to read               |
+| `useLayoutEffect`      | Sync before paint                      | Same as `useEffect`                                                  |
+| `useInsertionEffect`   | Library-injected CSS before mutations  | Same as `useEffect`                                                  |
+| `useTransition`        | Returns `[isPending, startTransition]` | Same shape; `isPending` is a getter                                  |
+| `useSyncExternalStore` | Subscribes via React's scheduler       | Same shape; getter return                                            |
+| `memo`                 | Bails on equal props                   | **No-op** — pass-through                                             |
+| `forwardRef`           | Wraps for ref forwarding               | Pass-through; refs are first-class props                             |
+| Class components       | Full lifecycle support                 | `setState` + `forceUpdate` work; lifecycle methods are not called    |
+| Hooks rules            | Must be called at top level            | **No restrictions** — call anywhere in component setup               |
 
 ### Read state via a getter
 
@@ -99,8 +99,8 @@ export default { plugins: [pyreon({ compat: 'react' })] }
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@pyreon/react-compat"
-  }
+    "jsxImportSource": "@pyreon/react-compat",
+  },
 }
 ```
 

@@ -364,11 +364,7 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   /** Export the flow as a JSON-serializable object */
   toJSON: () => { nodes: FlowNode<TData>[]; edges: FlowEdge[]; viewport: Viewport }
   /** Import flow state from a JSON object */
-  fromJSON: (data: {
-    nodes: FlowNode<TData>[]
-    edges: FlowEdge[]
-    viewport?: Viewport
-  }) => void
+  fromJSON: (data: { nodes: FlowNode<TData>[]; edges: FlowEdge[]; viewport?: Viewport }) => void
 
   // ── Viewport animation ─────────────────────────────────────────────────
 

@@ -39,9 +39,7 @@ describe('callInternal', () => {
 
   it('throws if the property is not a function', () => {
     const obj = { _notAFn: 42 }
-    expect(() => callInternal(obj, '_notAFn')).toThrow(
-      /not a function/,
-    )
+    expect(() => callInternal(obj, '_notAFn')).toThrow(/not a function/)
   })
 
   it('throws if the property does not exist', () => {

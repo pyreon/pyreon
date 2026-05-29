@@ -42,7 +42,11 @@ afterAll(() => cleanup())
 interface CounterGlobal {
   __pyreon_count__?: ((name: string) => void) | undefined
 }
-function installCounter(): { snapshot: () => Record<string, number>; reset: () => void; uninstall: () => void } {
+function installCounter(): {
+  snapshot: () => Record<string, number>
+  reset: () => void
+  uninstall: () => void
+} {
   const counts: Record<string, number> = {}
   const prev = (globalThis as CounterGlobal).__pyreon_count__
   ;(globalThis as CounterGlobal).__pyreon_count__ = (name: string) => {

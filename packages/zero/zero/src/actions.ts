@@ -167,10 +167,7 @@ async function executeAction(action: RegisteredAction, req: Request): Promise<Re
     // (not 500) so the client sees the right status code. Don't leak
     // the parser's internal error message; surface only the shape.
     console.error('[Pyreon Action] failed to parse request body:', err)
-    return Response.json(
-      { error: 'Invalid request body' },
-      { status: 400 },
-    )
+    return Response.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
   // Execute the user-supplied action handler. Surface errors to server

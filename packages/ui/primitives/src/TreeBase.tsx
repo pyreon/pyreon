@@ -63,8 +63,14 @@ export interface TreeState {
 
 export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
   const [own] = splitProps(props, [
-    'data', 'value', 'defaultValue', 'onChange', 'multiple',
-    'defaultExpanded', 'onExpand', 'children',
+    'data',
+    'value',
+    'defaultValue',
+    'onChange',
+    'multiple',
+    'defaultExpanded',
+    'onExpand',
+    'children',
   ])
 
   const baseId = createUniqueId()
@@ -78,7 +84,9 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
   const expanded = signal(new Set<string>(own.defaultExpanded ?? []))
   const focused = signal<string | null>(null)
 
-  function isExpanded(id: string): boolean { return expanded().has(id) }
+  function isExpanded(id: string): boolean {
+    return expanded().has(id)
+  }
 
   function isSelectedFn(id: string): boolean {
     const sel = selected()
@@ -87,7 +95,12 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
 
   function toggleExpand(id: string) {
     const next = new Set(expanded())
-    if (next.has(id)) { next.delete(id) } else { next.add(id); own.onExpand?.(id) }
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+      own.onExpand?.(id)
+    }
     expanded.set(next)
   }
 
@@ -108,7 +121,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
 
   function select(id: string) {
     if (own.multiple) {
-      const current = Array.isArray(selected()) ? selected() as string[] : []
+      const current = Array.isArray(selected()) ? (selected() as string[]) : []
       const next = current.includes(id) ? current.filter((v) => v !== id) : [...current, id]
       setSelected(next)
     } else {

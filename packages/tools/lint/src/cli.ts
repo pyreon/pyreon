@@ -172,7 +172,9 @@ export function parseRuleOptionsOverride(
     }
   } catch (err) {
     // oxlint-disable-next-line no-console
-    console.error(`[pyreon-lint] --rule-options ${ruleId}: invalid JSON — ${(err as Error).message}`)
+    console.error(
+      `[pyreon-lint] --rule-options ${ruleId}: invalid JSON — ${(err as Error).message}`,
+    )
   }
 }
 

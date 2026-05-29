@@ -44,9 +44,7 @@ export function BoardCard(props: BoardCardProps) {
     >
       <CardPriorityStripe $priority={props.card.priority} />
       <CardTitle>{props.card.title}</CardTitle>
-      {props.card.description ? (
-        <CardDescription>{props.card.description}</CardDescription>
-      ) : null}
+      {props.card.description ? <CardDescription>{props.card.description}</CardDescription> : null}
       <CardFooter>
         <TagRow>
           {props.card.tags.map((tag) => (

@@ -128,8 +128,8 @@ export default function BlogIndexPage() {
       <BlogMain>
         <BlogTitle>Pyreon Blog</BlogTitle>
         <BlogLead>
-          Notes on signals, routing, styling, and shipping with Pyreon Zero. Filter by tag in
-          the sidebar — every state change is reflected in the URL.
+          Notes on signals, routing, styling, and shipping with Pyreon Zero. Filter by tag in the
+          sidebar — every state change is reflected in the URL.
         </BlogLead>
 
         {() => {

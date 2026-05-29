@@ -183,9 +183,7 @@ export function lintFile(
         // that happen to produce an identical message don't collapse.
         for (const d of validation.diagnostics) {
           if (
-            !configDiagnosticsSink.some(
-              (x) => x.ruleId === d.ruleId && x.message === d.message,
-            )
+            !configDiagnosticsSink.some((x) => x.ruleId === d.ruleId && x.message === d.message)
           ) {
             configDiagnosticsSink.push(d)
           }

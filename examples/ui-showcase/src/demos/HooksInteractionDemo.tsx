@@ -17,22 +17,29 @@ export function HooksInteractionDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Interaction Hooks</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Interaction Hooks
+      </Title>
       <Paragraph style="margin-bottom: 24px">
         Track hover, focus, and keyboard input reactively.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">useHover()</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        useHover()
+      </Title>
       <Card
         {...hover.props}
         style={() =>
           `padding: 24px; max-width: 320px; margin-bottom: 24px; background: ${hover.hovered() ? '#dbeafe' : '#f3f4f6'}; transition: background 0.2s;`
         }
       >
-        Hover over me — currently: <strong>{() => (hover.hovered() ? 'hovered' : 'not hovered')}</strong>
+        Hover over me — currently:{' '}
+        <strong>{() => (hover.hovered() ? 'hovered' : 'not hovered')}</strong>
       </Card>
 
-      <Title size="h3" style="margin-bottom: 12px">useFocus()</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        useFocus()
+      </Title>
       <input
         {...focus.props}
         type="text"
@@ -45,7 +52,9 @@ export function HooksInteractionDemo() {
         State: <strong>{() => (focus.focused() ? 'focused' : 'blurred')}</strong>
       </p>
 
-      <Title size="h3" style="margin-bottom: 12px">useKeyboard(key, handler)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        useKeyboard(key, handler)
+      </Title>
       <Paragraph style="margin-bottom: 12px; font-size: 14px;">
         Press <kbd>Enter</kbd>, <kbd>Esc</kbd>, or <kbd>Space</kbd> anywhere on the page.
       </Paragraph>

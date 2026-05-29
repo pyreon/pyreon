@@ -93,12 +93,12 @@ Two separate primitive layers serve different needs:
 
 The cross-platform vocabulary. 16 semantic primitives designed for **fundamentally the easiest DX** across all three targets:
 
-| Category | Primitives |
-|----------|-----------|
-| Layout | `<Stack>`, `<Inline>`, `<Layer>`, `<Scroll>`, `<Spacer>` |
-| Content | `<Text>`, `<Heading>`, `<Image>`, `<Icon>` |
-| Interaction | `<Button>`, `<Press>`, `<Link>` |
-| Input | `<Field>`, `<Toggle>`, `<Modal>` |
+| Category     | Primitives                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Layout       | `<Stack>`, `<Inline>`, `<Layer>`, `<Scroll>`, `<Spacer>`                                                                 |
+| Content      | `<Text>`, `<Heading>`, `<Image>`, `<Icon>`                                                                               |
+| Interaction  | `<Button>`, `<Press>`, `<Link>`                                                                                          |
+| Input        | `<Field>`, `<Toggle>`, `<Modal>`                                                                                         |
 | Control flow | `<For>`, `<Show>`, `<Match>`, `<Switch>`, `<Suspense>`, `<ErrorBoundary>`, `<Dynamic>`, `<Portal>` (existing, unchanged) |
 
 Designed for cross-platform from scratch. Semantic names (`<Stack>` not `<View>` / `<VStack>` / `<div>`). One canonical event name per concept (`onPress` everywhere). Tokens-first styling (`padding={4}` resolves via theme).
@@ -114,60 +114,58 @@ Cross-platform apps use `@pyreon/primitives`. Web-only apps that need rocketstyl
 When the canonical vocabulary doesn't reach (Apple Pencil gestures, AR scenes, Android intents, browser-specific APIs), drop into platform-specific code via explicit wrappers:
 
 ```tsx
-<NativeIOS>
-  {/* iOS-only SwiftUI JSX — Compose + web targets ignore this */}
-</NativeIOS>
+<NativeIOS>{/* iOS-only SwiftUI JSX — Compose + web targets ignore this */}</NativeIOS>
 ```
 
 ## Canonical primitive vocabulary (Layer 3a)
 
 ### Layout
 
-| Primitive | Web | iOS | Android |
-|-----------|-----|-----|---------|
-| `<Stack direction?="column"\|"row" gap? align? justify?>` | `<div style="display:flex">` | `VStack` / `HStack` | `Column` / `Row` |
-| `<Inline gap?>` (sugar for `<Stack direction="row">`) | flex row | `HStack` | `Row` |
-| `<Layer>` (z-stack) | `position:relative` + abs | `ZStack` | `Box` |
-| `<Scroll axis?>` | `overflow:auto` | `ScrollView` | `Column(verticalScroll)` |
-| `<Spacer />` | `flex:1` | `Spacer()` | `Spacer(weight=1)` |
+| Primitive                                                 | Web                          | iOS                 | Android                  |
+| --------------------------------------------------------- | ---------------------------- | ------------------- | ------------------------ |
+| `<Stack direction?="column"\|"row" gap? align? justify?>` | `<div style="display:flex">` | `VStack` / `HStack` | `Column` / `Row`         |
+| `<Inline gap?>` (sugar for `<Stack direction="row">`)     | flex row                     | `HStack`            | `Row`                    |
+| `<Layer>` (z-stack)                                       | `position:relative` + abs    | `ZStack`            | `Box`                    |
+| `<Scroll axis?>`                                          | `overflow:auto`              | `ScrollView`        | `Column(verticalScroll)` |
+| `<Spacer />`                                              | `flex:1`                     | `Spacer()`          | `Spacer(weight=1)`       |
 
 ### Content
 
-| Primitive | Web | iOS | Android |
-|-----------|-----|-----|---------|
-| `<Text>` | `<span>` | `Text` | `Text` |
-| `<Heading level={1\|...6}>` | `<h1>`..`<h6>` | `Text(.font(...))` | `Text(style=...)` |
-| `<Image src alt fit?>` | `<img>` | `Image` / `AsyncImage` | `AsyncImage` |
-| `<Icon name>` | `<svg>` | `Image(systemName:)` | `Icon` |
+| Primitive                   | Web            | iOS                    | Android           |
+| --------------------------- | -------------- | ---------------------- | ----------------- |
+| `<Text>`                    | `<span>`       | `Text`                 | `Text`            |
+| `<Heading level={1\|...6}>` | `<h1>`..`<h6>` | `Text(.font(...))`     | `Text(style=...)` |
+| `<Image src alt fit?>`      | `<img>`        | `Image` / `AsyncImage` | `AsyncImage`      |
+| `<Icon name>`               | `<svg>`        | `Image(systemName:)`   | `Icon`            |
 
 ### Interaction
 
-| Primitive | Web | iOS | Android |
-|-----------|-----|-----|---------|
-| `<Button onPress>` (styled CTA) | `<button>` | `Button` | `Button` |
-| `<Press onPress>` (un-styled wrapper) | `<div onClick role=button>` | `Button { }` no chrome | `Box(clickable)` |
-| `<Link to external?>` (router-agnostic) | `<a href>` + SPA-nav when `init({ navigate })` is wired | `NavigationLink` | `Box(clickable + navigate)` |
+| Primitive                               | Web                                                     | iOS                    | Android                     |
+| --------------------------------------- | ------------------------------------------------------- | ---------------------- | --------------------------- |
+| `<Button onPress>` (styled CTA)         | `<button>`                                              | `Button`               | `Button`                    |
+| `<Press onPress>` (un-styled wrapper)   | `<div onClick role=button>`                             | `Button { }` no chrome | `Box(clickable)`            |
+| `<Link to external?>` (router-agnostic) | `<a href>` + SPA-nav when `init({ navigate })` is wired | `NavigationLink`       | `Box(clickable + navigate)` |
 
 ### Input
 
-| Primitive | Web | iOS | Android |
-|-----------|-----|-----|---------|
-| `<Field value onChangeText kind?>` | `<input>` | `TextField` / `SecureField` | `TextField` |
-| `<Toggle value onChange>` | `<input type=checkbox>` | `Toggle` | `Switch` |
-| `<Modal open onClose>` | `<dialog>` | `.sheet(isPresented:)` | `Dialog` |
+| Primitive                          | Web                     | iOS                         | Android     |
+| ---------------------------------- | ----------------------- | --------------------------- | ----------- |
+| `<Field value onChangeText kind?>` | `<input>`               | `TextField` / `SecureField` | `TextField` |
+| `<Toggle value onChange>`          | `<input type=checkbox>` | `Toggle`                    | `Switch`    |
+| `<Modal open onClose>`             | `<dialog>`              | `.sheet(isPresented:)`      | `Dialog`    |
 
 ## Event model
 
 One canonical event name per concept; the compiler maps it to the platform-native handler:
 
-| Concept | Pyreon canonical | Web | iOS | Android |
-|---------|------------------|-----|-----|---------|
-| Tap | `onPress` | `onClick` | `action:` | `onClick =` |
-| Long press | `onLongPress` | polyfill | `.onLongPressGesture` | `combinedClickable(onLongClick)` |
-| Text change | `onChangeText` | `onInput` | text binding | `onValueChange` |
-| Submit | `onSubmit` | form `onSubmit` | `.onSubmit { }` | `keyboardActions onDone` |
-| Focus / blur | `onFocus` / `onBlur` | same | `.focused()` | `onFocusChanged` |
-| Appear / disappear | `onAppear` / `onDisappear` | `IntersectionObserver` | `.onAppear` | `LaunchedEffect` |
+| Concept            | Pyreon canonical           | Web                    | iOS                   | Android                          |
+| ------------------ | -------------------------- | ---------------------- | --------------------- | -------------------------------- |
+| Tap                | `onPress`                  | `onClick`              | `action:`             | `onClick =`                      |
+| Long press         | `onLongPress`              | polyfill               | `.onLongPressGesture` | `combinedClickable(onLongClick)` |
+| Text change        | `onChangeText`             | `onInput`              | text binding          | `onValueChange`                  |
+| Submit             | `onSubmit`                 | form `onSubmit`        | `.onSubmit { }`       | `keyboardActions onDone`         |
+| Focus / blur       | `onFocus` / `onBlur`       | same                   | `.focused()`          | `onFocusChanged`                 |
+| Appear / disappear | `onAppear` / `onDisappear` | `IntersectionObserver` | `.onAppear`           | `LaunchedEffect`                 |
 
 Hover events are deferred (mobile platforms don't have hover).
 
@@ -175,14 +173,14 @@ Hover events are deferred (mobile platforms don't have hover).
 
 **Tokens-first.** No raw pixels in cross-platform code.
 
-| Prop | Type | Resolves to |
-|------|------|-------------|
+| Prop                       | Type                                                   | Resolves to                                                              |
+| -------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
 | `padding`, `margin`, `gap` | `number` (theme.space index) OR `"sm" \| "md" \| "lg"` | Web: inline `style` px; iOS: `.padding()`; Android: `Modifier.padding()` |
-| `color` | `"text" \| "surface" \| "primary" \| ...` (theme key) | Per-platform color resolution |
-| `background` | theme key | Per-platform background |
-| `align` | `"start" \| "center" \| "end"` | Per-platform alignment |
-| `justify` | `"start" \| "center" \| "end" \| "between"` | Per-platform main-axis |
-| `radius` | `"none" \| "sm" \| "md" \| "lg" \| "full"` | Per-platform corner radius |
+| `color`                    | `"text" \| "surface" \| "primary" \| ...` (theme key)  | Per-platform color resolution                                            |
+| `background`               | theme key                                              | Per-platform background                                                  |
+| `align`                    | `"start" \| "center" \| "end"`                         | Per-platform alignment                                                   |
+| `justify`                  | `"start" \| "center" \| "end" \| "between"`            | Per-platform main-axis                                                   |
+| `radius`                   | `"none" \| "sm" \| "md" \| "lg" \| "full"`             | Per-platform corner radius                                               |
 
 **No responsive props in v1.** Web has media queries, iOS has size classes, Android has configuration changes — unifying these is a multi-week design problem deferred to a future arc. Apps that need responsive web layouts use `@pyreon/elements` directly (it has full responsive prop support).
 
@@ -211,13 +209,13 @@ The 5-phase implementation roadmap:
 
 Foundation rollout (A–E):
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — **all 15** primitives have web DOM runtimes |
-| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ iOS (Swift) **15/15**; Android (Compose) emit completing via the P2.2 series |
-| **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters + routes emit (path + component) | ✅ Done |
-| **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source | ✅ Done |
-| **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract | ✅ Done |
+| Phase | Scope                                                                                    | Status                                                                          |
+| ----- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **A** | Architectural foundation: canonical primitives package + web runtimes                    | ✅ Done — **all 15** primitives have web DOM runtimes                           |
+| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table)           | ✅ iOS (Swift) **15/15**; Android (Compose) emit completing via the P2.2 series |
+| **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters + routes emit (path + component) | ✅ Done                                                                         |
+| **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source         | ✅ Done                                                                         |
+| **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract                | ✅ Done                                                                         |
 
 ONE `TodoApp.tsx` source → THREE example apps (web, iOS, Android), all typecheck-clean.
 
@@ -225,14 +223,14 @@ ONE `TodoApp.tsx` source → THREE example apps (web, iOS, Android), all typeche
 
 The vocabulary is multiplatform; the road to shipping real production apps continues:
 
-| Step | Scope | Status |
-|------|-------|--------|
-| Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate landed (opt-in); launch-and-render next |
-| Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
-| Router parity (advanced) | per-route **guards** (`beforeEnter`), loaders, nested routes, typed `useParams<T>` | 🟡 guards landing; loaders / nested / typed planned |
-| Data + forms | `useFetch` (runtime + emit), `useForm`, `usePermissions` as per-service native runtime ports | 🟡 useFetch runtime landed; emit + form/permissions runtimes landing |
-| Lifecycle | `<Suspense>` / `<ErrorBoundary>` / `<Transition>` on native | ⏳ planned |
-| DX | `pyreon create-multiplatform` scaffold, asset pipeline | ⏳ planned |
+| Step                     | Scope                                                                                                                         | Status                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Real-device CI           | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render           | 🟡 build gate landed (opt-in); launch-and-render next                |
+| Router matching          | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing))                    |
+| Router parity (advanced) | per-route **guards** (`beforeEnter`), loaders, nested routes, typed `useParams<T>`                                            | 🟡 guards landing; loaders / nested / typed planned                  |
+| Data + forms             | `useFetch` (runtime + emit), `useForm`, `usePermissions` as per-service native runtime ports                                  | 🟡 useFetch runtime landed; emit + form/permissions runtimes landing |
+| Lifecycle                | `<Suspense>` / `<ErrorBoundary>` / `<Transition>` on native                                                                   | ⏳ planned                                                           |
+| DX                       | `pyreon create-multiplatform` scaffold, asset pipeline                                                                        | ⏳ planned                                                           |
 
 ## Native routing
 
@@ -243,26 +241,30 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 ```tsx
 const router = createRouter({
   routes: [
-    { path: '/',            component: Home },
-    { path: '/users/:id',   component: User },          // path param
-    { path: '/files/:rest*', component: Files },         // splat / catch-all
-    { path: '/old',         redirect: '/users/1' },      // redirect (alias)
-    { path: '/admin',       component: Admin, beforeEnter: () => isAuthed() }, // guard
-    { path: '*',            component: NotFound },        // wildcard 404
+    { path: '/', component: Home },
+    { path: '/users/:id', component: User }, // path param
+    { path: '/files/:rest*', component: Files }, // splat / catch-all
+    { path: '/old', redirect: '/users/1' }, // redirect (alias)
+    { path: '/admin', component: Admin, beforeEnter: () => isAuthed() }, // guard
+    { path: '*', component: NotFound }, // wildcard 404
   ],
 })
-return <RouterProvider router={router}><RouterView /></RouterProvider>
+return (
+  <RouterProvider router={router}>
+    <RouterView />
+  </RouterProvider>
+)
 ```
 
 **Path matching** (mirrors `@pyreon/router`'s `match.ts`, verified by the
 native router runtime's own `swift test` / kotlinc smoke):
 
-| Pattern | Matches | Captures |
-|---------|---------|----------|
-| `/users/:id` | `/users/42` | `id = "42"` |
-| `/blog/:rest*` (splat) | `/blog/a/b/c` (one-or-more tail) | `rest = "a/b/c"` |
-| `/users/:id?` (optional) | `/users` **and** `/users/42` | `id` absent or set |
-| `*` / `(.*)` (wildcard) | any unmatched path | — (renders the 404 component) |
+| Pattern                  | Matches                          | Captures                      |
+| ------------------------ | -------------------------------- | ----------------------------- |
+| `/users/:id`             | `/users/42`                      | `id = "42"`                   |
+| `/blog/:rest*` (splat)   | `/blog/a/b/c` (one-or-more tail) | `rest = "a/b/c"`              |
+| `/users/:id?` (optional) | `/users` **and** `/users/42`     | `id` absent or set            |
+| `*` / `(.*)` (wildcard)  | any unmatched path               | — (renders the 404 component) |
 
 Leading/trailing slashes are tolerated (`/about/` matches `/about`).
 

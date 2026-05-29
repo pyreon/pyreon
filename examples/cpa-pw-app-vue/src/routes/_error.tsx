@@ -1,8 +1,8 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 export default function ErrorPage() {
-  useHead({ title: "Something went wrong — Zero" })
+  useHead({ title: 'Something went wrong — Zero' })
 
   return (
     <div class="error-page">

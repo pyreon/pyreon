@@ -7,9 +7,13 @@ export function ModalDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Modal</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Modal
+      </Title>
 
-      <Button state="primary" onClick={() => open.set(true)}>Open Modal</Button>
+      <Button state="primary" onClick={() => open.set(true)}>
+        Open Modal
+      </Button>
 
       <ModalBase
         open={open()}
@@ -21,11 +25,16 @@ export function ModalDemo() {
         <Card style="max-width: 500px; width: 100%; padding: 24px;">
           <Title size="h3">Modal Title</Title>
           <Paragraph style="margin: 12px 0;">
-            This is a modal dialog. Press Escape or click outside to close. Scroll is locked while open.
+            This is a modal dialog. Press Escape or click outside to close. Scroll is locked while
+            open.
           </Paragraph>
           <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <Button state="secondary" variant="ghost" onClick={() => open.set(false)}>Cancel</Button>
-            <Button state="primary" onClick={() => open.set(false)}>Confirm</Button>
+            <Button state="secondary" variant="ghost" onClick={() => open.set(false)}>
+              Cancel
+            </Button>
+            <Button state="primary" onClick={() => open.set(false)}>
+              Confirm
+            </Button>
           </div>
         </Card>
       </ModalBase>

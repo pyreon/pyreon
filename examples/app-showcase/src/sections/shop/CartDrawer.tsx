@@ -93,7 +93,9 @@ export function CartDrawer() {
                     </LineQtyRow>
                   </LineInfo>
                   <LineTotal>
-                    {() => formatPrice(product.priceUsd * line.qty, store.currency(), i18n.locale())}
+                    {() =>
+                      formatPrice(product.priceUsd * line.qty, store.currency(), i18n.locale())
+                    }
                   </LineTotal>
                 </CartLineRow>
               )

@@ -12,9 +12,8 @@ export default function App() {
     <main style="max-width: 720px; margin: 24px auto; font-family: system-ui, sans-serif; line-height: 1.5;">
       <h1>Pyreon Islands Showcase</h1>
       <p data-testid="static-intro">
-        This page is server-rendered HTML. Each <code>&lt;pyreon-island&gt;</code>{' '}
-        below ships its own JS bundle and hydrates on its declared strategy.{' '}
-        <StaticBadge label="zero JS" />
+        This page is server-rendered HTML. Each <code>&lt;pyreon-island&gt;</code> below ships its
+        own JS bundle and hydrates on its declared strategy. <StaticBadge label="zero JS" />
       </p>
 
       <section style="margin-top: 32px;">
@@ -38,9 +37,9 @@ export default function App() {
       <section style="margin-top: 32px;">
         <h2>interaction</h2>
         <p>
-          Hydrates on the user's first interaction with the island (focus / click /
-          pointerenter / touchstart). Perfect for modals, dropdowns, command
-          palettes — interactive but not visible until the user reaches for them.
+          Hydrates on the user's first interaction with the island (focus / click / pointerenter /
+          touchstart). Perfect for modals, dropdowns, command palettes — interactive but not visible
+          until the user reaches for them.
         </p>
         <CommandPalette />
       </section>
@@ -48,8 +47,8 @@ export default function App() {
       <section style="margin-top: 32px;">
         <h2>visible</h2>
         <p>
-          Hydrates when the island scrolls into view (IntersectionObserver). Scroll
-          down and watch comments appear.
+          Hydrates when the island scrolls into view (IntersectionObserver). Scroll down and watch
+          comments appear.
         </p>
         <div style="height: 800px; display: flex; align-items: flex-end;">
           <VisibleComments />

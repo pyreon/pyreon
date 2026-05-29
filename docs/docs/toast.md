@@ -51,22 +51,22 @@ const toasts = signal([])
 let id = 0
 
 const addToast = (type, msg) => {
-  const toast = { id: ++id, type, msg }
-  toasts.update(t => [...t, toast])
-  setTimeout(() => toasts.update(t => t.filter(x => x.id !== toast.id)), 2000)
+const toast = { id: ++id, type, msg }
+toasts.update(t => [...t, toast])
+setTimeout(() => toasts.update(t => t.filter(x => x.id !== toast.id)), 2000)
 }
 
 const app = document.getElementById('app')
 const colors = { success: '#198754', error: '#dc3545', info: '#0d6efd' }
 const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px' } },
-    h('button', { onClick: () => addToast('success', 'Saved!') }, 'Success'),
-    h('button', { onClick: () => addToast('error', 'Failed!') }, 'Error'),
-    h('button', { onClick: () => addToast('info', 'FYI') }, 'Info'),
-  ),
-  h('div', { style: { marginTop: '12px' } }, () =>
-    toasts().map(t => h('div', { style: { padding: '6px 12px', marginBottom: '4px', borderRadius: '4px', color: '#fff', background: colors[t.type] } }, t.msg))
-  ),
+h('div', { style: { display: 'flex', gap: '8px' } },
+h('button', { onClick: () => addToast('success', 'Saved!') }, 'Success'),
+h('button', { onClick: () => addToast('error', 'Failed!') }, 'Error'),
+h('button', { onClick: () => addToast('info', 'FYI') }, 'Info'),
+),
+h('div', { style: { marginTop: '12px' } }, () =>
+toasts().map(t => h('div', { style: { padding: '6px 12px', marginBottom: '4px', borderRadius: '4px', color: '#fff', background: colors[t.type] } }, t.msg))
+),
 )
 mount(ui, app)
 </Playground>
@@ -94,8 +94,8 @@ const id = toast.loading('Uploading...')
 toast.update(id, { message: 'Almost done...', type: 'info' })
 
 // Dismiss
-toast.dismiss(id)    // dismiss one
-toast.dismiss()      // dismiss all
+toast.dismiss(id) // dismiss one
+toast.dismiss() // dismiss all
 ```
 
 Every `toast()` call returns a unique string ID.
@@ -115,14 +115,14 @@ toast('Custom toast', {
 })
 ```
 
-| Option        | Type                                        | Default       | Description                                  |
-| ------------- | ------------------------------------------- | ------------- | -------------------------------------------- |
-| `type`        | `'info' \| 'success' \| 'warning' \| 'error'` | `'info'`      | Toast variant — controls styling             |
-| `duration`    | `number`                                    | `4000`        | Auto-dismiss delay in ms. `0` = persistent   |
-| `position`    | `ToastPosition`                             | from Toaster  | Override position for this toast              |
-| `dismissible` | `boolean`                                   | `true`        | Show dismiss button                          |
-| `action`      | `{ label: string; onClick: () => void }`    | —             | Action button next to the message            |
-| `onDismiss`   | `() => void`                                | —             | Called when dismissed (manually or by timeout)|
+| Option        | Type                                          | Default      | Description                                    |
+| ------------- | --------------------------------------------- | ------------ | ---------------------------------------------- |
+| `type`        | `'info' \| 'success' \| 'warning' \| 'error'` | `'info'`     | Toast variant — controls styling               |
+| `duration`    | `number`                                      | `4000`       | Auto-dismiss delay in ms. `0` = persistent     |
+| `position`    | `ToastPosition`                               | from Toaster | Override position for this toast               |
+| `dismissible` | `boolean`                                     | `true`       | Show dismiss button                            |
+| `action`      | `{ label: string; onClick: () => void }`      | —            | Action button next to the message              |
+| `onDismiss`   | `() => void`                                  | —            | Called when dismissed (manually or by timeout) |
 
 ## Promise Pattern
 
@@ -153,12 +153,7 @@ import { Toaster } from '@pyreon/toast'
 function App() {
   return (
     <>
-      <Toaster
-        position="bottom-right"
-        max={3}
-        gap={12}
-        offset={24}
-      />
+      <Toaster position="bottom-right" max={3} gap={12} offset={24} />
       <MyApp />
     </>
   )
@@ -167,12 +162,12 @@ function App() {
 
 ### Toaster Props
 
-| Prop       | Type            | Default       | Description                      |
-| ---------- | --------------- | ------------- | -------------------------------- |
-| `position` | `ToastPosition` | `'top-right'` | Default position for all toasts  |
-| `max`      | `number`        | `5`           | Maximum visible toasts           |
-| `gap`      | `number`        | `8`           | Gap between toasts in px         |
-| `offset`   | `number`        | `16`          | Offset from viewport edge in px  |
+| Prop       | Type            | Default       | Description                     |
+| ---------- | --------------- | ------------- | ------------------------------- |
+| `position` | `ToastPosition` | `'top-right'` | Default position for all toasts |
+| `max`      | `number`        | `5`           | Maximum visible toasts          |
+| `gap`      | `number`        | `8`           | Gap between toasts in px        |
+| `offset`   | `number`        | `16`          | Offset from viewport edge in px |
 
 ### Positions
 

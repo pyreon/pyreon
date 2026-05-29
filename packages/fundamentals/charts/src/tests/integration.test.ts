@@ -204,18 +204,12 @@ describe('renderer selection', () => {
   })
 
   it('loads canvas renderer explicitly', async () => {
-    const core = await ensureModules(
-      { series: [{ type: 'bar', data: [1] }] },
-      'canvas',
-    )
+    const core = await ensureModules({ series: [{ type: 'bar', data: [1] }] }, 'canvas')
     expect(core).toBeDefined()
   })
 
   it('loads SVG renderer when specified', async () => {
-    const core = await ensureModules(
-      { series: [{ type: 'bar', data: [1] }] },
-      'svg',
-    )
+    const core = await ensureModules({ series: [{ type: 'bar', data: [1] }] }, 'svg')
     expect(core).toBeDefined()
   })
 })

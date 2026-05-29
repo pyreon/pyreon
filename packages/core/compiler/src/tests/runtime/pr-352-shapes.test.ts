@@ -62,10 +62,7 @@ describe('compiler-runtime — PR #352 bug shapes (real Chromium)', () => {
   // cleanJSXElementLiteralChild algorithm) the trailing space survives.
   it('same-line whitespace before an expression is preserved', async () => {
     const x = signal(7)
-    const { container, unmount } = compileAndMount(
-      `<div><p id="p">doubled: {x()}</p></div>`,
-      { x },
-    )
+    const { container, unmount } = compileAndMount(`<div><p id="p">doubled: {x()}</p></div>`, { x })
     const p = container.querySelector('#p')!
     expect(p.textContent).toBe('doubled: 7')
     x.set(42)

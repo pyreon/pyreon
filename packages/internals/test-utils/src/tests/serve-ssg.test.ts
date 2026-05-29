@@ -49,20 +49,11 @@ describe('parseRedirects', () => {
   })
 
   it('defaults status to 301 when column 3 is missing', () => {
-    expect(parseRedirects('/from /to')).toEqual([
-      { from: '/from', to: '/to', status: 301 },
-    ])
+    expect(parseRedirects('/from /to')).toEqual([{ from: '/from', to: '/to', status: 301 }])
   })
 
   it('tolerates blank lines and inline whitespace', () => {
-    const content = [
-      '',
-      '# comment',
-      '   ',
-      '/a  /b  301',
-      '',
-      '/c /d 302',
-    ].join('\n')
+    const content = ['', '# comment', '   ', '/a  /b  301', '', '/c /d 302'].join('\n')
     expect(parseRedirects(content)).toEqual([
       { from: '/a', to: '/b', status: 301 },
       { from: '/c', to: '/d', status: 302 },
@@ -101,9 +92,7 @@ describe('loadRedirects', () => {
   it('reads + parses _redirects from <root>/_redirects', () => {
     const root = makeRoot('/old /new 301\n')
     try {
-      expect(loadRedirects(root)).toEqual([
-        { from: '/old', to: '/new', status: 301 },
-      ])
+      expect(loadRedirects(root)).toEqual([{ from: '/old', to: '/new', status: 301 }])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

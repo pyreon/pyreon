@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/document',
   title: 'Universal Document Rendering',
-  tagline:
-    'Universal document rendering — 18 primitives, 14+ output formats',
+  tagline: 'Universal document rendering — 18 primitives, 14+ output formats',
   description:
     'Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.',
   category: 'universal',
@@ -69,7 +68,8 @@ await doc.toNotion()    // Notion blocks`,
     {
       name: 'render',
       kind: 'function',
-      signature: '(node: DocNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
+      signature:
+        '(node: DocNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
       summary:
         'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 14+ built-in formats plus custom renderers registered via `registerRenderer()`.',
       example: `const pdf = await render(doc, 'pdf')            // Uint8Array

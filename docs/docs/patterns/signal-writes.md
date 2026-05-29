@@ -1,6 +1,6 @@
 ---
-title: "Signal reads and writes"
-summary: "Signals are callable. Read with mySignal(), write with mySignal.set(...), never mySignal(value)."
+title: 'Signal reads and writes'
+summary: 'Signals are callable. Read with mySignal(), write with mySignal.set(...), never mySignal(value).'
 seeAlso: [controllable-state]
 ---
 
@@ -15,16 +15,16 @@ import { signal } from '@pyreon/reactivity'
 
 const count = signal(0)
 
-count()                          // read: 0
-count.set(5)                     // write: 5
-count.update((n) => n + 1)       // write via function: 6
-count.peek()                     // read WITHOUT subscribing (rare — loop-prevention only)
+count() // read: 0
+count.set(5) // write: 5
+count.update((n) => n + 1) // write via function: 6
+count.peek() // read WITHOUT subscribing (rare — loop-prevention only)
 ```
 
 In JSX, bare signal references auto-call (the compiler rewrites them):
 
 ```tsx
-const AutoCall = () => <div>{count}</div>               // compiled → <div>{() => count()}</div>
+const AutoCall = () => <div>{count}</div> // compiled → <div>{() => count()}</div>
 const AlreadyCalled = () => <div>count = {count()}</div> // already called — compiler leaves it alone
 ```
 
@@ -43,26 +43,26 @@ A callable signal is one identifier with two behaviours — read (no arg) or upd
 ```ts
 const count = signal(0)
 
-count(5)              // DOES NOT WRITE. The argument is read and ignored.
-                      // Dev mode prints a warning; production silently no-ops.
+count(5) // DOES NOT WRITE. The argument is read and ignored.
+// Dev mode prints a warning; production silently no-ops.
 
-count.value = 5       // TypeError — signals have no .value property
+count.value = 5 // TypeError — signals have no .value property
 ```
 
 ```tsx
 // BROKEN — destructuring loses reactivity
 function Counter(props: { n: Signal<number> }) {
-  const { n } = props            // captures the signal reference once, fine so far…
-  const value = n()              // …but value is a plain number, not reactive
-  return <div>{value}</div>      // never updates
+  const { n } = props // captures the signal reference once, fine so far…
+  const value = n() // …but value is a plain number, not reactive
+  return <div>{value}</div> // never updates
 }
 ```
 
 ```tsx
 // BROKEN — reading inside setup captures the initial value
 const Counter = (props) => {
-  const initial = props.count()  // static
-  return <div>{initial}</div>    // never updates
+  const initial = props.count() // static
+  return <div>{initial}</div> // never updates
 }
 
 // FIX — read inside the reactive expression

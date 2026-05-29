@@ -229,8 +229,7 @@ function preview(v: unknown): string {
     const t = typeof v
     if (t === 'string') s = JSON.stringify(v) as string
     else if (t === 'number' || t === 'boolean' || t === 'bigint') s = String(v)
-    else if (t === 'function')
-      s = `[Function ${(v as { name?: string }).name || 'anonymous'}]`
+    else if (t === 'function') s = `[Function ${(v as { name?: string }).name || 'anonymous'}]`
     else if (t === 'symbol') s = (v as symbol).toString()
     else if (Array.isArray(v)) s = `Array(${(v as unknown[]).length})`
     else {
@@ -548,8 +547,7 @@ export function getReactiveGraph(): ReactiveGraph {
     // getter that never throws (computed's getter routes errors through
     // `_errorHandler` and returns the stale value). No defensive wrapper
     // here — it would be an uncoverable dead branch.
-    const valueStr =
-      rec.kind === 'effect' ? '' : preview((node as { _v?: unknown })._v)
+    const valueStr = rec.kind === 'effect' ? '' : preview((node as { _v?: unknown })._v)
     // Resolve the deferred loc on first read — most apps never reach
     // this branch for the bulk of their signals, so the expensive
     // `.stack` formatting cost is paid only for nodes the consumer
@@ -608,9 +606,7 @@ export function getFireSummaries(): FireSummary[] {
     // ≈0.7% of its steady-state rate; in 10×TAU, basically 0. This is
     // what makes "stopped firing" visible in the editor.
     const decayedRate =
-      rec.lastFire !== null
-        ? rec.rate1s * Math.exp(-(nowTs - rec.lastFire) / LPIH_RATE_TAU_MS)
-        : 0
+      rec.lastFire !== null ? rec.rate1s * Math.exp(-(nowTs - rec.lastFire) / LPIH_RATE_TAU_MS) : 0
     const existing = byKey.get(k)
     if (existing) {
       existing.count += rec.fires
@@ -650,4 +646,3 @@ export function getReactiveFires(): ReactiveFire[] {
   }
   return out
 }
-

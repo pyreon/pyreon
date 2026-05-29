@@ -65,9 +65,5 @@ function hmrTestTrigger(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [
-    pyreon(),
-    zero(),
-    ...(process.env.PYREON_HMR_TEST ? [hmrTestTrigger()] : []),
-  ],
+  plugins: [pyreon(), zero(), ...(process.env.PYREON_HMR_TEST ? [hmrTestTrigger()] : [])],
 })

@@ -20,7 +20,7 @@ describe('withField + getMeta — Zod', () => {
     expect(getMeta(wrapped)).toEqual({ label: 'Email' })
   })
 
-  it('preserves the original schema\'s `.parse()` semantics', () => {
+  it("preserves the original schema's `.parse()` semantics", () => {
     const schema = z.string().email()
     const wrapped = withField(schema, { label: 'Email' })
     expect(wrapped.parse('foo@bar.com')).toBe('foo@bar.com')

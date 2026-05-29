@@ -100,8 +100,8 @@ describe('async actions — middleware integration', () => {
     const m = M.create() as ReturnType<typeof M.create> & {
       load: (n: number) => Promise<number>
     }
-    const spy = vi.fn((call: { name: string; args: unknown[] }, next: (c: typeof call) => unknown) =>
-      next(call),
+    const spy = vi.fn(
+      (call: { name: string; args: unknown[] }, next: (c: typeof call) => unknown) => next(call),
     )
     addMiddleware(m, spy as never)
     await m.load(7)

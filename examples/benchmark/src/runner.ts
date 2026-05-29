@@ -64,7 +64,7 @@ export interface BenchSuite {
 export const WARMUP_MIN = 5
 export const WARMUP_MAX = 15
 export const STABILIZE_WINDOW = 3
-export const STABILIZE_TOLERANCE = 0.10 // 10% — rolling-window p90 deltas
+export const STABILIZE_TOLERANCE = 0.1 // 10% — rolling-window p90 deltas
 export const RUNS = 20
 export const BOOTSTRAP_RESAMPLES = 1000
 
@@ -119,8 +119,14 @@ export async function bench(
     if (warmupUsed >= WARMUP_MIN && warmupUsed >= STABILIZE_WINDOW * 2) {
       const recent = warmupSamples.slice(-STABILIZE_WINDOW)
       const prior = warmupSamples.slice(-(STABILIZE_WINDOW * 2), -STABILIZE_WINDOW)
-      const recentP90 = quantile([...recent].sort((a, b) => a - b), 0.9)
-      const priorP90 = quantile([...prior].sort((a, b) => a - b), 0.9)
+      const recentP90 = quantile(
+        [...recent].sort((a, b) => a - b),
+        0.9,
+      )
+      const priorP90 = quantile(
+        [...prior].sort((a, b) => a - b),
+        0.9,
+      )
       const delta = Math.abs(recentP90 - priorP90) / Math.max(priorP90, 1e-9)
       if (delta < STABILIZE_TOLERANCE) break
     }

@@ -1,4 +1,4 @@
-import { vercelRevalidateHandler } from "@pyreon/zero/server"
+import { vercelRevalidateHandler } from '@pyreon/zero/server'
 
 /**
  * Build-time ISR webhook (M3.1 reference). Drop-in handler that

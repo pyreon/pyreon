@@ -37,9 +37,7 @@ describe('@pyreon/elements Element mount cost', () => {
     const mountChild = outcome.after['runtime.mountChild'] ?? 0
     const resolve = outcome.after['styler.resolve'] ?? 0
     // oxlint-disable-next-line no-console
-    console.log(
-      `[ui-elements] single Element: mountChild=${mountChild}, styler.resolve=${resolve}`,
-    )
+    console.log(`[ui-elements] single Element: mountChild=${mountChild}, styler.resolve=${resolve}`)
     // Element should fit in a small number of mountChild calls
     expect(mountChild).toBeLessThan(30)
   })

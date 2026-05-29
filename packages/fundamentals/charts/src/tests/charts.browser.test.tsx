@@ -81,10 +81,7 @@ describe('charts in real browser', () => {
     // (error becomes non-null). Both outcomes are valid contract — what
     // we forbid is a thrown exception escaping useChart.
     const start = Date.now()
-    while (
-      result.loading() &&
-      Date.now() - start < 5000
-    ) {
+    while (result.loading() && Date.now() - start < 5000) {
       await new Promise<void>((r) => setTimeout(r, 25))
     }
 

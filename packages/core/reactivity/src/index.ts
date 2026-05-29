@@ -14,12 +14,7 @@ export { Cell, cell } from './cell'
 export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { defineCrossModuleState } from './cross-module-state'
-export {
-  _resetSentinel,
-  registerSingleton,
-  withSilent,
-  withSilentSync,
-} from './singleton-sentinel'
+export { _resetSentinel, registerSingleton, withSilent, withSilentSync } from './singleton-sentinel'
 export { inspectSignal, onSignalUpdate, why } from './debug'
 export type {
   FireSummary,
@@ -58,13 +53,7 @@ export {
 } from './effect'
 export { reconcile } from './reconcile'
 export { createResource, type Resource } from './resource'
-export {
-  EffectScope,
-  effectScope,
-  getCurrentScope,
-  onScopeDispose,
-  setCurrentScope,
-} from './scope'
+export { EffectScope, effectScope, getCurrentScope, onScopeDispose, setCurrentScope } from './scope'
 export {
   type ReadonlySignal,
   type Signal,

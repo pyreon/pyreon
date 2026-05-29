@@ -124,8 +124,7 @@ export default function BookmarksPage() {
 
       {() => {
         const list = items()
-        if (list.length === 0)
-          return <div class="feed-state">{t('bookmarks.empty')}</div>
+        if (list.length === 0) return <div class="feed-state">{t('bookmarks.empty')}</div>
         return (
           <ol
             ref={sortable.containerRef}
@@ -138,11 +137,9 @@ export default function BookmarksPage() {
                 key={String(b.id)}
                 class="story-row bookmark-row"
                 data-bookmark-id={b.id}
-                data-active={() =>
-                  sortable.activeId() === String(b.id) ? 'true' : 'false'
-                }
+                data-active={() => (sortable.activeId() === String(b.id) ? 'true' : 'false')}
                 data-over-edge={() =>
-                  sortable.overId() === String(b.id) ? sortable.overEdge() ?? '' : ''
+                  sortable.overId() === String(b.id) ? (sortable.overEdge() ?? '') : ''
                 }
               >
                 <span class="story-rank drag-handle" aria-label="drag to reorder">

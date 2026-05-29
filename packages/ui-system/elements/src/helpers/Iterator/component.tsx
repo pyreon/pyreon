@@ -99,9 +99,8 @@ const Component = (props: LooseProps) => {
   // function — wrong shape, lost per-item metadata. Resolving eagerly here
   // keeps every downstream branch correct. Mirrors the kinetic Stagger /
   // TransitionItem fix (PR #731 + parallel top-level fixes).
-  const children = typeof rawChildren === 'function'
-    ? (rawChildren as () => VNodeChild)()
-    : rawChildren
+  const children =
+    typeof rawChildren === 'function' ? (rawChildren as () => VNodeChild)() : rawChildren
 
   const injectItemProps = typeof itemProps === 'function' ? itemProps : () => itemProps
 

@@ -197,7 +197,8 @@ try {
   //     type-check pass. ~3-5x faster.
   const kotlincArgs = typecheckOnly
     ? [
-        '-d', tempDir,
+        '-d',
+        tempDir,
         composeRuntimePath,
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
@@ -205,7 +206,8 @@ try {
       ]
     : [
         '-include-runtime',
-        '-d', jarPath,
+        '-d',
+        jarPath,
         composeRuntimePath,
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
@@ -216,9 +218,7 @@ try {
   const result = spawnSync(kotlinc, kotlincArgs, { encoding: 'utf8' })
 
   const stderr = result.stderr ?? ''
-  const errorLines = stderr
-    .split('\n')
-    .filter((line) => /^.*\.kt:\d+:\d+:\s*error:/.test(line))
+  const errorLines = stderr.split('\n').filter((line) => /^.*\.kt:\d+:\d+:\s*error:/.test(line))
 
   if (errorLines.length > 0) {
     console.error('[verify-kotlin] FAILED — kotlinc reported errors:')

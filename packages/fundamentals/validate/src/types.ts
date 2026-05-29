@@ -38,7 +38,9 @@ export interface StandardSchemaV1<TInput = unknown, TOutput = TInput> {
   readonly '~standard': {
     readonly version: 1
     readonly vendor: string
-    readonly validate: (value: unknown) =>
+    readonly validate: (
+      value: unknown,
+    ) =>
       | { readonly value: TOutput; readonly issues?: undefined }
       | { readonly value?: undefined; readonly issues: ReadonlyArray<StandardSchemaIssue> }
       | Promise<
@@ -73,9 +75,7 @@ export type StandardSchemaResult<T> =
  */
 export interface StandardSchemaIssue {
   readonly message: string
-  readonly path?:
-    | ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
-    | undefined
+  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
 }
 
 /**

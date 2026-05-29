@@ -131,10 +131,7 @@ describe('auditSsg — dynamic-route-missing-get-static-paths', () => {
   it('FIRES for [id].tsx without getStaticPaths', () => {
     const fixture = makeFixture()
     try {
-      fixture.write(
-        'examples/myapp/src/routes/posts/[id].tsx',
-        'export default () => null',
-      )
+      fixture.write('examples/myapp/src/routes/posts/[id].tsx', 'export default () => null')
       const result = auditSsg(fixture.root)
       expect(findingCodes(result)).toContain('dynamic-route-missing-get-static-paths')
       const finding = result.findings.find(
@@ -150,10 +147,7 @@ describe('auditSsg — dynamic-route-missing-get-static-paths', () => {
   it('FIRES for catch-all [...slug].tsx without getStaticPaths', () => {
     const fixture = makeFixture()
     try {
-      fixture.write(
-        'examples/myapp/src/routes/blog/[...slug].tsx',
-        'export default () => null',
-      )
+      fixture.write('examples/myapp/src/routes/blog/[...slug].tsx', 'export default () => null')
       const result = auditSsg(fixture.root)
       expect(findingCodes(result)).toContain('dynamic-route-missing-get-static-paths')
     } finally {
@@ -208,10 +202,7 @@ export default () => null`,
     // possible — `_layout.[locale].tsx`) shouldn't be flagged.
     const fixture = makeFixture()
     try {
-      fixture.write(
-        'examples/myapp/src/routes/_layout.tsx',
-        'export const layout = () => null',
-      )
+      fixture.write('examples/myapp/src/routes/_layout.tsx', 'export const layout = () => null')
       fixture.write('examples/myapp/src/routes/_404.tsx', 'export default () => null')
       const result = auditSsg(fixture.root)
       expect(findingCodes(result)).not.toContain('dynamic-route-missing-get-static-paths')

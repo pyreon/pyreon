@@ -60,8 +60,8 @@ function Provider({ theme, children, ...props }: ProviderType): VNodeChild {
   provide(context, () => ({
     theme: theme as Record<string, unknown>,
     mode: (props.mode as 'light' | 'dark') ?? 'light',
-    isDark: props.isDark as boolean ?? false,
-    isLight: props.isLight as boolean ?? true,
+    isDark: (props.isDark as boolean) ?? false,
+    isLight: (props.isLight as boolean) ?? true,
     ...props,
   }))
 

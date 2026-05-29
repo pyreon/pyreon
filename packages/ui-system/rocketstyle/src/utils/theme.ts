@@ -158,7 +158,10 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
 
   // Apply transform dimension values last with the fully accumulated theme
   for (let i = 0; i < deferredTransforms.length; i++) {
-    merge(finalTheme, deferredTransforms[i]!(finalTheme, appTheme ?? {}, themeModeCallback, config.css))
+    merge(
+      finalTheme,
+      deferredTransforms[i]!(finalTheme, appTheme ?? {}, themeModeCallback, config.css),
+    )
   }
 
   // Ensure pseudo-state keys always exist as objects so .styles() can

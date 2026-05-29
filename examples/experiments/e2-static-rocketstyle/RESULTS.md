@@ -6,11 +6,11 @@ Does compile-time resolution of rocketstyle dimension props for literal-prop cal
 
 ## GRADUATE / KILL criteria (frozen, copied from PLAN)
 
-| Outcome | Per-mount wall-clock | mountChild per visible | Action |
-|---|---|---|---|
-| **GRADUATE** | collapsed ≤ 30% of baseline | ≤ 1.5 | Write compiler-pass plan as next experiment |
-| **DEFER** | 30-70% of baseline OR mountChild 1.5-3 | mixed | Real win, compiler cost might not justify — re-evaluate |
-| **KILL** | > 70% of baseline OR no mountChild reduction | > 3 | Hypothesis false, postmortem, stop |
+| Outcome      | Per-mount wall-clock                         | mountChild per visible | Action                                                  |
+| ------------ | -------------------------------------------- | ---------------------- | ------------------------------------------------------- |
+| **GRADUATE** | collapsed ≤ 30% of baseline                  | ≤ 1.5                  | Write compiler-pass plan as next experiment             |
+| **DEFER**    | 30-70% of baseline OR mountChild 1.5-3       | mixed                  | Real win, compiler cost might not justify — re-evaluate |
+| **KILL**     | > 70% of baseline OR no mountChild reduction | > 3                    | Hypothesis false, postmortem, stop                      |
 
 ## Method
 
@@ -24,24 +24,25 @@ Does compile-time resolution of rocketstyle dimension props for literal-prop cal
 
 ## Results
 
-| Metric | Baseline | Collapsed | Δ |
-|---|---|---|---|
-| Wall-clock median (200 mounts × 5 runs) | **8.80ms** | **0.20ms** | **44× faster** |
-| Wall-clock per mount | 44µs | 1µs | 44× |
-| mountChild per visible button | **9.0** | **1.0** | 9× reduction |
-| runtime.tpl per visible button | 0 | 1 | cloneNode fast path active |
-| styler.resolve per button | **22** | 0 | -100% |
-| unistyle.descriptor per button | **21** | 0 | -100% |
-| unistyle.styles per button | 5 | 0 | -100% |
-| rocketstyle.getTheme per button | 1 | 0 | -100% |
-| rocketstyle.localThemeManager.hit per button | 4 | 0 | -100% |
-| reactivity.computedRecompute per button | 1 | 0 | -100% |
-| styler.sheet.insert per button | 3 | 0 | -100% |
-| reactivity.effectRun per button | 1 | 0 | -100% |
+| Metric                                       | Baseline   | Collapsed  | Δ                          |
+| -------------------------------------------- | ---------- | ---------- | -------------------------- |
+| Wall-clock median (200 mounts × 5 runs)      | **8.80ms** | **0.20ms** | **44× faster**             |
+| Wall-clock per mount                         | 44µs       | 1µs        | 44×                        |
+| mountChild per visible button                | **9.0**    | **1.0**    | 9× reduction               |
+| runtime.tpl per visible button               | 0          | 1          | cloneNode fast path active |
+| styler.resolve per button                    | **22**     | 0          | -100%                      |
+| unistyle.descriptor per button               | **21**     | 0          | -100%                      |
+| unistyle.styles per button                   | 5          | 0          | -100%                      |
+| rocketstyle.getTheme per button              | 1          | 0          | -100%                      |
+| rocketstyle.localThemeManager.hit per button | 4          | 0          | -100%                      |
+| reactivity.computedRecompute per button      | 1          | 0          | -100%                      |
+| styler.sheet.insert per button               | 3          | 0          | -100%                      |
+| reactivity.effectRun per button              | 1          | 0          | -100%                      |
 
 > **Correction note (added after first ship)**: my first writeup divided these counters by `N=200` instead of `N × RUNS = 1000`, inflating every per-button counter 5×. Fixed above. The wall-clock numbers (44× speedup, mountChild 9 vs 1) were computed correctly from per-run totals. Lesson logged: always divide counter totals by `N × RUNS`, never just `N`.
 
 Raw bench output:
+
 ```
 [e2:setup] resolvedClass=pyr-38xe3m pyr-186j8ah
 [e2:baseline]   N=200 × RUNS=5 median=8.80ms runs=[9.9, 8.8, 8.8, 8.4, 8.8]
@@ -54,10 +55,10 @@ Raw bench output:
 
 **Outcome: GRADUATE.** The hypothesis is dramatically validated.
 
-| Criterion | Threshold | Actual | Status |
-|---|---|---|---|
+| Criterion  | Threshold                   | Actual   | Status            |
+| ---------- | --------------------------- | -------- | ----------------- |
 | Wall-clock | collapsed ≤ 30% of baseline | **2.3%** | ✅ exceeds by 13× |
-| mountChild | ≤ 1.5 per visible | **1.0** | ✅ exact target |
+| mountChild | ≤ 1.5 per visible           | **1.0**  | ✅ exact target   |
 
 ## Striking secondary findings worth their own attention
 
@@ -86,6 +87,7 @@ The 44× factor is the **upper bound** of what's possible — a real compiler wo
 ## Realistic achievable-bound estimate
 
 Even being conservative:
+
 - 50% of call sites resolvable + 44× win on those + identity on others = **22× average improvement on resolved sites alone, ~10× weighted across the codebase.**
 - 30% resolvable = **~6× weighted improvement.**
 

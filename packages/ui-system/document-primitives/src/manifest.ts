@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     '18 rocketstyle document components — render in browser AND export to 14+ formats via the same tree',
   description:
-    '18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\\\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.',
+    "18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.",
   category: 'browser',
   features: [
     '18 primitives covering structure, text, lists, tables, code, layout',
@@ -79,7 +79,7 @@ await download(tree, 'report.docx')`,
       mistakes: [
         'Calling `props.title()` at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: `<DocDocument title={() => get().name}>`',
         "DocRow direction: layout props (direction, gap) go in `.attrs()` not `.theme()`. Element accepts `'inline'` | `'rows'` | `'reverseInline'` | `'reverseRows'` — `'row'` is NOT valid",
-        "For text children reactivity, pass a signal accessor and read inside body: `<DocText>{() => store.field()}</DocText>`",
+        'For text children reactivity, pass a signal accessor and read inside body: `<DocText>{() => store.field()}</DocText>`',
         "Don't declare runtime-filled fields (`tag`, `_documentProps`) in the rocketstyle `.attrs<P>()` generic — they leak as required JSX props",
         'Using `createDocumentExport(...).getDocNode()` in new code — prefer `extractDocNode(fn)` which is one call instead of two. `createDocumentExport` is kept for backward compat',
       ],
@@ -88,8 +88,7 @@ await download(tree, 'report.docx')`,
     {
       name: 'createDocumentExport',
       kind: 'function',
-      signature:
-        'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
+      signature: 'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
       summary:
         'Wrapper around `extractDocNode`. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a `DocumentExport` instance). New code should use `extractDocNode(templateFn)` which is one call instead of two.',
       example: `// Two-step form (kept for backward compat). New code should
@@ -137,8 +136,7 @@ const tree = helper.getDocNode()`,
     {
       name: 'DocSection',
       kind: 'component',
-      signature:
-        "(props: { direction?: 'column' | 'row'; children: VNodeChild }) => VNodeChild",
+      signature: "(props: { direction?: 'column' | 'row'; children: VNodeChild }) => VNodeChild",
       summary:
         'Semantic grouping inside a page. Default `direction` is `"column"` (children stack vertically); `"row"` arranges them horizontally. Use to group related content for visual rhythm and for export targets that emit semantic section markers (HTML `<section>`, DOCX section breaks).',
       example: `<DocPage>
@@ -164,8 +162,7 @@ const tree = helper.getDocNode()`,
     {
       name: 'DocColumn',
       kind: 'component',
-      signature:
-        '(props: { width?: number | string; children: VNodeChild }) => VNodeChild',
+      signature: '(props: { width?: number | string; children: VNodeChild }) => VNodeChild',
       summary:
         'A column inside a row layout. Optional `width` controls the column\\\'s share of the row — accepts a number (interpreted as pixels) or a string (`"50%"`, `"1fr"`). When omitted, columns share available width equally. Most common shape is `<DocRow><DocColumn width="30%" /> <DocColumn width="70%" /></DocRow>`.',
       example: `<DocRow>
@@ -277,7 +274,7 @@ const tree = helper.getDocNode()`,
       kind: 'component',
       signature: '(props: { children: VNodeChild }) => VNodeChild',
       summary:
-        'Single item inside a `DocList`. Children may be plain text, `DocText`, nested `DocList` for sublists, or any other inline primitive. Visual marker (bullet vs number) is decided by the parent list\\\'s `ordered` prop, not by the item.',
+        "Single item inside a `DocList`. Children may be plain text, `DocText`, nested `DocList` for sublists, or any other inline primitive. Visual marker (bullet vs number) is decided by the parent list\\'s `ordered` prop, not by the item.",
       example: `<DocList>
   <DocListItem>Top-level item</DocListItem>
   <DocListItem>
@@ -371,18 +368,15 @@ const tree = helper.getDocNode()`,
   gotchas: [
     {
       label: 'Reactive metadata',
-      note:
-        '`DocDocument` `title` / `author` / `subject` accept either strings or `() => string` accessors. Function values are stored in `_documentProps` and resolved by `extractDocumentTree` at extraction time, so each export click reads the LIVE value from any underlying signal — no `const initial = get()` workaround needed.',
+      note: '`DocDocument` `title` / `author` / `subject` accept either strings or `() => string` accessors. Function values are stored in `_documentProps` and resolved by `extractDocumentTree` at extraction time, so each export click reads the LIVE value from any underlying signal — no `const initial = get()` workaround needed.',
     },
     {
       label: 'PR #197 framework fix',
-      note:
-        'Before PR #197, `extractDocumentTree` only looked at the JSX vnode\\\'s direct props for `_documentProps` — but rocketstyle\\\'s attrs HOC stamps that field AFTER the component runs, so every real primitive\\\'s metadata was silently dropped during export. The extractor now CALLS the component function to capture the post-attrs vnode and reads `_documentProps` from there.',
+      note: "Before PR #197, `extractDocumentTree` only looked at the JSX vnode\\'s direct props for `_documentProps` — but rocketstyle\\'s attrs HOC stamps that field AFTER the component runs, so every real primitive\\'s metadata was silently dropped during export. The extractor now CALLS the component function to capture the post-attrs vnode and reads `_documentProps` from there.",
     },
     {
       label: 'DocTable read-only DOM property collision',
-      note:
-        '`HTMLTableElement.rows` and `.cells` are read-only DOM properties — assigning to them throws. `DocTable` uses `.attrs(callback, { filter: ["rows", "columns", ...] })` to strip these props before they reach the DOM. Watch for similar collisions when adding new primitives that accept prop names matching native HTML element properties.',
+      note: '`HTMLTableElement.rows` and `.cells` are read-only DOM properties — assigning to them throws. `DocTable` uses `.attrs(callback, { filter: ["rows", "columns", ...] })` to strip these props before they reach the DOM. Watch for similar collisions when adding new primitives that accept prop names matching native HTML element properties.',
     },
   ],
 })

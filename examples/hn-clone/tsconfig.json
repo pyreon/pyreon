@@ -3,13 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "exactOptionalPropertyTypes": false,
-    "types": [
-      "bun",
-      "vite/client"
-    ]
+    "types": ["bun", "vite/client"]
   },
-  "include": [
-    "src",
-    "env.d.ts"
-  ]
+  "include": ["src", "env.d.ts"]
 }

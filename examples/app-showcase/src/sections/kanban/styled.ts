@@ -106,15 +106,16 @@ export const BoardGrid = styled('div')`
 export const ColumnRoot = styled('div')<{ $dropTarget?: boolean }>`
   background: ${(p) => t(p).color.system.base[50]};
   border: 1px solid
-    ${(p) =>
-      p.$dropTarget ? t(p).color.system.primary[300] : t(p).color.system.base[200]};
+    ${(p) => (p.$dropTarget ? t(p).color.system.primary[300] : t(p).color.system.base[200])};
   border-radius: ${(p) => t(p).borderRadius.large}px;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 240px;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 
   background: ${(p) =>
     p.$dropTarget ? t(p).color.system.primary[50] : t(p).color.system.base[50]};
@@ -163,10 +164,11 @@ export const CardSlot = styled('div')<{ $dropping?: boolean }>`
   flex-direction: column;
   gap: 8px;
   min-height: 24px;
-  border-top: 2px solid
-    ${(p) => (p.$dropping ? t(p).color.system.primary[300] : 'transparent')};
+  border-top: 2px solid ${(p) => (p.$dropping ? t(p).color.system.primary[300] : 'transparent')};
   padding-top: ${(p) => (p.$dropping ? '6px' : '0')};
-  transition: padding-top 0.12s, border-color 0.12s;
+  transition:
+    padding-top 0.12s,
+    border-color 0.12s;
 `
 
 // ─── Card ────────────────────────────────────────────────────────────
@@ -187,7 +189,9 @@ export const CardRoot = styled('div')<{ $dragging?: boolean; $disabled?: boolean
   cursor: ${(p) => (p.$disabled ? 'default' : 'grab')};
   position: relative;
   opacity: ${(p) => (p.$dragging ? 0.4 : 1)};
-  transition: box-shadow 0.12s, opacity 0.12s;
+  transition:
+    box-shadow 0.12s,
+    opacity 0.12s;
   user-select: none;
 
   &:hover {

@@ -18,7 +18,6 @@ function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
 
-
 /** Parse a data URL and return the base64 data and media type, or null for external URLs. */
 function parseDataUrl(src: string): { data: string; mime: string } | null {
   const match = src.match(/^data:(image\/[^;]+);base64,(.+)$/)

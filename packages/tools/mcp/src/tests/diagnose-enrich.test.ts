@@ -19,7 +19,8 @@ const ap = (over: Partial<AntiPatternEntry>): AntiPatternEntry => ({
   name: 'Destructuring props',
   category: 'reactivity',
   categoryHeading: 'Reactivity Mistakes',
-  description: 'Destructuring props captures getter values once — loses reactivity.\nUse props.x directly.',
+  description:
+    'Destructuring props captures getter values once — loses reactivity.\nUse props.x directly.',
   detectorCodes: ['props-destructured'],
   ...over,
 })
@@ -35,10 +36,7 @@ describe('enrichDiagnosis — backward compatibility (string-only)', () => {
   })
 
   test('error-only with no pattern → string-only, null diagnosis', () => {
-    const r = enrichDiagnosis(
-      { error: 'totally unfamiliar nonsense xyzzy' },
-      realDeps(),
-    )
+    const r = enrichDiagnosis({ error: 'totally unfamiliar nonsense xyzzy' }, realDeps())
     expect(r.contextLevel).toBe('string-only')
     expect(r.patternDiagnosis).toBeNull()
   })
@@ -69,10 +67,7 @@ describe('enrichDiagnosis — componentSource detector enrichment', () => {
     const componentSource = `function C({ value }: { value: string }) {
   return <div>{value}</div>
 }`
-    const r = enrichDiagnosis(
-      { error: 'value is undefined', componentSource },
-      realDeps(),
-    )
+    const r = enrichDiagnosis({ error: 'value is undefined', componentSource }, realDeps())
     expect(r.contextLevel).toBe('enriched')
     expect(r.detectorHits.length).toBeGreaterThan(0)
     expect(r.detectorHits.map((d) => d.code)).toContain('props-destructured')
@@ -86,17 +81,16 @@ describe('enrichDiagnosis — componentSource detector enrichment', () => {
       ap({ name: 'Destructuring props', detectorCodes: ['props-destructured'] }),
       ap({ name: 'Unrelated entry', detectorCodes: ['for-missing-by'] }),
     ]
-    const r = enrichDiagnosis(
-      { error: 'x', componentSource },
-      realDeps(antiPatterns),
-    )
+    const r = enrichDiagnosis({ error: 'x', componentSource }, realDeps(antiPatterns))
     expect(r.relatedAntiPatterns.map((e) => e.name)).toEqual(['Destructuring props'])
   })
 
   test('dedupes anti-pattern entries when multiple hits point to the same entry', () => {
     const componentSource = `function A({ a }: { a: string }) { return <div>{a}</div> }
 function B({ b }: { b: string }) { return <span>{b}</span> }`
-    const antiPatterns = [ap({ name: 'Destructuring props', detectorCodes: ['props-destructured'] })]
+    const antiPatterns = [
+      ap({ name: 'Destructuring props', detectorCodes: ['props-destructured'] }),
+    ]
     const r = enrichDiagnosis({ error: 'x', componentSource }, realDeps(antiPatterns))
     expect(r.detectorHits.length).toBeGreaterThanOrEqual(2)
     expect(r.relatedAntiPatterns).toHaveLength(1) // deduped by name
@@ -106,10 +100,7 @@ function B({ b }: { b: string }) { return <span>{b}</span> }`
     const componentSource = `function C(props: { value: string }) {
   return <div>{props.value}</div>
 }`
-    const r = enrichDiagnosis(
-      { error: 'x', componentSource },
-      realDeps([ap({})]),
-    )
+    const r = enrichDiagnosis({ error: 'x', componentSource }, realDeps([ap({})]))
     expect(r.contextLevel).toBe('enriched')
     expect(r.detectorHits).toEqual([])
     expect(r.relatedAntiPatterns).toEqual([])

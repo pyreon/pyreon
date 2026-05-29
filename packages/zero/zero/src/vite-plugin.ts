@@ -5,11 +5,7 @@ import { Readable } from 'node:stream'
 import type { Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiRouteEntry } from './api-routes'
-import {
-  createApiMiddleware,
-  generateApiRouteModule,
-  matchApiRoute,
-} from './api-routes'
+import { createApiMiddleware, generateApiRouteModule, matchApiRoute } from './api-routes'
 import { resolveConfig } from './config'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
 // `redirect()` errors into real HTTP redirects (302/307/308).
@@ -47,21 +43,21 @@ function resolveNestedPackage(root: string, name: string): string | undefined {
   if (existsSync(nested)) return nested
   return undefined
 }
-import { renderErrorOverlay } from "./error-overlay";
+import { renderErrorOverlay } from './error-overlay'
 import {
-	generateMiddlewareModule,
-	generateRouteModuleFromRoutes,
-	scanRouteFiles,
-	scanRouteFilesWithExports,
-} from "./fs-router";
-import { expandRoutesForLocales } from "./i18n-routing";
-import { render404Page } from "./not-found";
-import { ssgPlugin } from "./ssg-plugin";
-import type { ZeroConfig } from "./types";
+  generateMiddlewareModule,
+  generateRouteModuleFromRoutes,
+  scanRouteFiles,
+  scanRouteFilesWithExports,
+} from './fs-router'
+import { expandRoutesForLocales } from './i18n-routing'
+import { render404Page } from './not-found'
+import { ssgPlugin } from './ssg-plugin'
+import type { ZeroConfig } from './types'
 
-import { withSilent } from "@pyreon/reactivity";
+import { withSilent } from '@pyreon/reactivity'
 
-const VIRTUAL_ROUTES_ID = "virtual:zero/routes";
+const VIRTUAL_ROUTES_ID = 'virtual:zero/routes'
 
 /**
  * `ssrLoadModule` wrapper that opts out of the `@pyreon/reactivity`
@@ -90,18 +86,18 @@ const VIRTUAL_ROUTES_ID = "virtual:zero/routes";
  * and `ssg-plugin.ts`'s built-handler import.
  */
 async function ssrLoadModuleQuiet(
-	server: ViteDevServer,
-	specifier: string,
+  server: ViteDevServer,
+  specifier: string,
 ): Promise<Record<string, unknown>> {
-	return withSilent(() => server.ssrLoadModule(specifier));
+  return withSilent(() => server.ssrLoadModule(specifier))
 }
-const RESOLVED_VIRTUAL_ROUTES_ID = `\0${VIRTUAL_ROUTES_ID}`;
+const RESOLVED_VIRTUAL_ROUTES_ID = `\0${VIRTUAL_ROUTES_ID}`
 
-const VIRTUAL_MIDDLEWARE_ID = "virtual:zero/route-middleware";
-const RESOLVED_VIRTUAL_MIDDLEWARE_ID = `\0${VIRTUAL_MIDDLEWARE_ID}`;
+const VIRTUAL_MIDDLEWARE_ID = 'virtual:zero/route-middleware'
+const RESOLVED_VIRTUAL_MIDDLEWARE_ID = `\0${VIRTUAL_MIDDLEWARE_ID}`
 
-const VIRTUAL_API_ROUTES_ID = "virtual:zero/api-routes";
-const RESOLVED_VIRTUAL_API_ROUTES_ID = `\0${VIRTUAL_API_ROUTES_ID}`;
+const VIRTUAL_API_ROUTES_ID = 'virtual:zero/api-routes'
+const RESOLVED_VIRTUAL_API_ROUTES_ID = `\0${VIRTUAL_API_ROUTES_ID}`
 
 /**
  * Per-plugin-instance storage for the user-supplied ZeroConfig. Lets
@@ -114,7 +110,7 @@ const RESOLVED_VIRTUAL_API_ROUTES_ID = `\0${VIRTUAL_API_ROUTES_ID}`;
  * stays an implementation detail — callers can't enumerate or mutate
  * the table, only read by Plugin identity.
  */
-const zeroPluginConfigMap = new WeakMap<Plugin, ZeroConfig>();
+const zeroPluginConfigMap = new WeakMap<Plugin, ZeroConfig>()
 
 /**
  * Retrieve the `ZeroConfig` that was passed to `zeroPlugin(userConfig)`
@@ -122,7 +118,7 @@ const zeroPluginConfigMap = new WeakMap<Plugin, ZeroConfig>();
  * isn't a recognized pyreon-zero main plugin instance.
  */
 export function getZeroPluginConfig(plugin: Plugin): ZeroConfig | undefined {
-	return zeroPluginConfigMap.get(plugin);
+  return zeroPluginConfigMap.get(plugin)
 }
 
 /**
@@ -137,13 +133,12 @@ export function getZeroPluginConfig(plugin: Plugin): ZeroConfig | undefined {
  * @internal
  */
 export function argvHasPortFlag(argv: readonly string[] = process.argv): boolean {
-	for (let i = 0; i < argv.length; i++) {
-		const a = argv[i];
-		if (a === "--port" || a === "-p") return true;
-		if (a !== undefined && (a.startsWith("--port=") || a.startsWith("-p=")))
-			return true;
-	}
-	return false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (a === '--port' || a === '-p') return true
+    if (a !== undefined && (a.startsWith('--port=') || a.startsWith('-p='))) return true
+  }
+  return false
 }
 
 /**
@@ -160,413 +155,383 @@ export function argvHasPortFlag(argv: readonly string[] = process.argv): boolean
  * }
  */
 export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
-	const config = resolveConfig(userConfig);
-	let routesDir: string;
-	let root: string;
+  const config = resolveConfig(userConfig)
+  let routesDir: string
+  let root: string
 
-	const mainPlugin: Plugin = {
-		name: "pyreon-zero",
-		enforce: "pre",
+  const mainPlugin: Plugin = {
+    name: 'pyreon-zero',
+    enforce: 'pre',
 
-		configResolved(resolvedConfig) {
-			root = resolvedConfig.root;
-			routesDir = `${root}/src/routes`;
-		},
+    configResolved(resolvedConfig) {
+      root = resolvedConfig.root
+      routesDir = `${root}/src/routes`
+    },
 
-		/**
-		 * W19 from kanban audit — auto-inject the client entry script
-		 * before `<!--pyreon-scripts-->` so users don't have to remember
-		 * to add `<script type="module" src="/src/entry-client.ts">` to
-		 * `index.html` by hand.
-		 *
-		 * Skipped when:
-		 * - `config.entryClient === false` (explicit opt-out)
-		 * - html doesn't contain `<!--pyreon-scripts-->` (not a Zero-shaped template)
-		 * - html already contains a `<script type="module"` referencing the entry
-		 */
-		transformIndexHtml: {
-			order: 'pre',
-			handler(html) {
-				if (config.entryClient === false) return html;
-				const entry = config.entryClient ?? '/src/entry-client.ts';
-				if (!html.includes('<!--pyreon-scripts-->')) return html;
-				if (html.includes(`src="${entry}"`)) return html;
-				if (html.includes(`src='${entry}'`)) return html;
-				const tag = `<script type="module" src="${entry}"></script>`;
-				return html.replace(
-					'<!--pyreon-scripts-->',
-					`${tag}\n    <!--pyreon-scripts-->`,
-				);
-			},
-		},
+    /**
+     * W19 from kanban audit — auto-inject the client entry script
+     * before `<!--pyreon-scripts-->` so users don't have to remember
+     * to add `<script type="module" src="/src/entry-client.ts">` to
+     * `index.html` by hand.
+     *
+     * Skipped when:
+     * - `config.entryClient === false` (explicit opt-out)
+     * - html doesn't contain `<!--pyreon-scripts-->` (not a Zero-shaped template)
+     * - html already contains a `<script type="module"` referencing the entry
+     */
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        if (config.entryClient === false) return html
+        const entry = config.entryClient ?? '/src/entry-client.ts'
+        if (!html.includes('<!--pyreon-scripts-->')) return html
+        if (html.includes(`src="${entry}"`)) return html
+        if (html.includes(`src='${entry}'`)) return html
+        const tag = `<script type="module" src="${entry}"></script>`
+        return html.replace('<!--pyreon-scripts-->', `${tag}\n    <!--pyreon-scripts-->`)
+      },
+    },
 
-		resolveId(id) {
-			if (id === VIRTUAL_ROUTES_ID) return RESOLVED_VIRTUAL_ROUTES_ID;
-			if (id === VIRTUAL_MIDDLEWARE_ID) return RESOLVED_VIRTUAL_MIDDLEWARE_ID;
-			if (id === VIRTUAL_API_ROUTES_ID) return RESOLVED_VIRTUAL_API_ROUTES_ID;
-		},
+    resolveId(id) {
+      if (id === VIRTUAL_ROUTES_ID) return RESOLVED_VIRTUAL_ROUTES_ID
+      if (id === VIRTUAL_MIDDLEWARE_ID) return RESOLVED_VIRTUAL_MIDDLEWARE_ID
+      if (id === VIRTUAL_API_ROUTES_ID) return RESOLVED_VIRTUAL_API_ROUTES_ID
+    },
 
-		async load(id) {
-			if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
-				try {
-					// Detect each file's optional exports up front so the
-					// generator emits the optimal shape:
-					//   • lazy() for routes that only export `default` (best code splitting)
-					//   • Direct mod.loader/.guard/.meta access for routes with metadata
-					//   • No spurious IMPORT_IS_UNDEFINED warnings from Rolldown
-					const baseRoutes = await scanRouteFilesWithExports(routesDir, config.mode);
-					// PR H — fan routes into per-locale variants when `i18n` is
-					// configured. No-op when unset; identity-returns the input
-					// otherwise so existing apps see byte-identical output.
-					const routes = config.i18n
-						? expandRoutesForLocales(baseRoutes, config.i18n)
-						: baseRoutes;
-					// SSG mode: lazy() route splitting by default (parity with
-					// SSR/SPA). Opt-out via `ssg.splitChunks: false` for tiny
-					// sites that prefer single-chunk + instant navigation.
-					//
-					// Pre-2026-Q3: SSG was hardcoded to `staticImports: true`
-					// (bundle everything). Trade-off was instant post-hydration
-					// nav, but the initial bundle grew linearly with route
-					// count — a 50-route docs site shipped all 50 route
-					// components on first paint. Lazy splitting (now the
-					// default for SSG) fixes that: only the landing route +
-					// deps load up front, the rest fetch on navigation. See
-					// `ssg.splitChunks` JSDoc in types.ts for the crossover-
-					// point rationale.
-					const ssgSplitDisabled =
-						config.mode === "ssg" && config.ssg?.splitChunks === false;
-					return generateRouteModuleFromRoutes(routes, routesDir, {
-						staticImports: ssgSplitDisabled,
-					});
-				} catch (_err) {
-					return `export const routes = []`;
-				}
-			}
+    async load(id) {
+      if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
+        try {
+          // Detect each file's optional exports up front so the
+          // generator emits the optimal shape:
+          //   • lazy() for routes that only export `default` (best code splitting)
+          //   • Direct mod.loader/.guard/.meta access for routes with metadata
+          //   • No spurious IMPORT_IS_UNDEFINED warnings from Rolldown
+          const baseRoutes = await scanRouteFilesWithExports(routesDir, config.mode)
+          // PR H — fan routes into per-locale variants when `i18n` is
+          // configured. No-op when unset; identity-returns the input
+          // otherwise so existing apps see byte-identical output.
+          const routes = config.i18n ? expandRoutesForLocales(baseRoutes, config.i18n) : baseRoutes
+          // SSG mode: lazy() route splitting by default (parity with
+          // SSR/SPA). Opt-out via `ssg.splitChunks: false` for tiny
+          // sites that prefer single-chunk + instant navigation.
+          //
+          // Pre-2026-Q3: SSG was hardcoded to `staticImports: true`
+          // (bundle everything). Trade-off was instant post-hydration
+          // nav, but the initial bundle grew linearly with route
+          // count — a 50-route docs site shipped all 50 route
+          // components on first paint. Lazy splitting (now the
+          // default for SSG) fixes that: only the landing route +
+          // deps load up front, the rest fetch on navigation. See
+          // `ssg.splitChunks` JSDoc in types.ts for the crossover-
+          // point rationale.
+          const ssgSplitDisabled = config.mode === 'ssg' && config.ssg?.splitChunks === false
+          return generateRouteModuleFromRoutes(routes, routesDir, {
+            staticImports: ssgSplitDisabled,
+          })
+        } catch (_err) {
+          return `export const routes = []`
+        }
+      }
 
-			if (id === RESOLVED_VIRTUAL_MIDDLEWARE_ID) {
-				try {
-					const files = await scanRouteFiles(routesDir);
-					return generateMiddlewareModule(files, routesDir);
-				} catch (_err) {
-					return `export const routeMiddleware = []`;
-				}
-			}
+      if (id === RESOLVED_VIRTUAL_MIDDLEWARE_ID) {
+        try {
+          const files = await scanRouteFiles(routesDir)
+          return generateMiddlewareModule(files, routesDir)
+        } catch (_err) {
+          return `export const routeMiddleware = []`
+        }
+      }
 
-			if (id === RESOLVED_VIRTUAL_API_ROUTES_ID) {
-				try {
-					const files = await scanRouteFiles(routesDir);
-					return generateApiRouteModule(files, routesDir);
-				} catch (_err) {
-					return `export const apiRoutes = []`;
-				}
-			}
-		},
+      if (id === RESOLVED_VIRTUAL_API_ROUTES_ID) {
+        try {
+          const files = await scanRouteFiles(routesDir)
+          return generateApiRouteModule(files, routesDir)
+        } catch (_err) {
+          return `export const apiRoutes = []`
+        }
+      }
+    },
 
-		configureServer(server) {
-			// Dev-mode API-route middleware — production wires `createApiMiddleware`
-			// via `createServer`, but dev had no equivalent. API requests fell
-			// through to Vite's default 404. This middleware loads the
-			// `virtual:zero/api-routes` module and dispatches matching requests to
-			// the route's `GET()` / `POST()` / etc. handler. Mirrors the production
-			// flow in `entry-server.ts` minus the ergonomic helpers (auth, cors,
-			// etc. — those plug in via user-defined Pyreon middleware which dev
-			// doesn't currently load; not in scope here).
-			//
-			// Registered FIRST so API requests don't get SSR'd or 404'd.
-			server.middlewares.use((req, res, next) => {
-				const pathname = req.url?.split("?")[0] ?? "/";
-				if (pathname.startsWith("/@") || pathname.startsWith("/__"))
-					return next();
-				// Skip files (extension-bearing) — let Vite's static pipeline serve.
-				if (/\.\w+$/.test(pathname)) return next();
+    configureServer(server) {
+      // Dev-mode API-route middleware — production wires `createApiMiddleware`
+      // via `createServer`, but dev had no equivalent. API requests fell
+      // through to Vite's default 404. This middleware loads the
+      // `virtual:zero/api-routes` module and dispatches matching requests to
+      // the route's `GET()` / `POST()` / etc. handler. Mirrors the production
+      // flow in `entry-server.ts` minus the ergonomic helpers (auth, cors,
+      // etc. — those plug in via user-defined Pyreon middleware which dev
+      // doesn't currently load; not in scope here).
+      //
+      // Registered FIRST so API requests don't get SSR'd or 404'd.
+      server.middlewares.use((req, res, next) => {
+        const pathname = req.url?.split('?')[0] ?? '/'
+        if (pathname.startsWith('/@') || pathname.startsWith('/__')) return next()
+        // Skip files (extension-bearing) — let Vite's static pipeline serve.
+        if (/\.\w+$/.test(pathname)) return next()
 
-				dispatchApiRoute(server, req, res).then(
-					(handled) => {
-						if (!handled) next();
-					},
-					(err: unknown) => {
-						// oxlint-disable-next-line no-console
-						console.error("[Pyreon] Error in dev API dispatcher:", err);
-						next();
-					},
-				);
-			});
+        dispatchApiRoute(server, req, res).then(
+          (handled) => {
+            if (!handled) next()
+          },
+          (err: unknown) => {
+            // oxlint-disable-next-line no-console
+            console.error('[Pyreon] Error in dev API dispatcher:', err)
+            next()
+          },
+        )
+      })
 
-			// Dev-mode SSR middleware — for mode: "ssr", actually render each
-			// matched route server-side instead of serving the SPA shell.
-			// Runs BEFORE the 404 handler so matched routes are SSR'd and
-			// unmatched ones fall through to the 404 handler.
-			if (config.mode === "ssr") {
-				server.middlewares.use((req, res, next) => {
-					const accept = req.headers.accept ?? "";
-					if (!accept.includes("text/html") && !accept.includes("*/*"))
-						return next();
-					const pathname = req.url?.split("?")[0] ?? "/";
-					if (pathname.startsWith("/@") || pathname.startsWith("/__"))
-						return next();
-					if (/\.\w+$/.test(pathname)) return next();
+      // Dev-mode SSR middleware — for mode: "ssr", actually render each
+      // matched route server-side instead of serving the SPA shell.
+      // Runs BEFORE the 404 handler so matched routes are SSR'd and
+      // unmatched ones fall through to the 404 handler.
+      if (config.mode === 'ssr') {
+        server.middlewares.use((req, res, next) => {
+          const accept = req.headers.accept ?? ''
+          if (!accept.includes('text/html') && !accept.includes('*/*')) return next()
+          const pathname = req.url?.split('?')[0] ?? '/'
+          if (pathname.startsWith('/@') || pathname.startsWith('/__')) return next()
+          if (/\.\w+$/.test(pathname)) return next()
 
-					// Build a Web Request from the Node IncomingMessage so loaders
-					// can read cookies / auth headers via `ctx.request` and call
-					// `redirect()` from a server-side context.
-					const reqHost = req.headers.host ?? "localhost";
-					const reqUrl = new URL(req.url ?? "/", `http://${reqHost}`);
-					const reqHeaders = new Headers();
-					for (const [key, value] of Object.entries(req.headers)) {
-						if (value !== undefined) {
-							reqHeaders.set(
-								key,
-								Array.isArray(value) ? value.join(", ") : String(value),
-							);
-						}
-					}
-					const webReq = new Request(reqUrl.href, {
-						method: req.method ?? "GET",
-						headers: reqHeaders,
-					});
+          // Build a Web Request from the Node IncomingMessage so loaders
+          // can read cookies / auth headers via `ctx.request` and call
+          // `redirect()` from a server-side context.
+          const reqHost = req.headers.host ?? 'localhost'
+          const reqUrl = new URL(req.url ?? '/', `http://${reqHost}`)
+          const reqHeaders = new Headers()
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (value !== undefined) {
+              reqHeaders.set(key, Array.isArray(value) ? value.join(', ') : String(value))
+            }
+          }
+          const webReq = new Request(reqUrl.href, {
+            method: req.method ?? 'GET',
+            headers: reqHeaders,
+          })
 
-					renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
-						(result) => {
-							if (result === null) return next();
-							res.statusCode = result.status;
-							res.setHeader("Content-Type", "text/html; charset=utf-8");
-							res.setHeader("Content-Length", Buffer.byteLength(result.html));
-							res.end(result.html);
-						},
-						(err: unknown) => {
-							// Loader-thrown `redirect()` — convert to a real HTTP redirect
-							// (302/307/308) BEFORE the layout renders. This is the dev-mode
-							// equivalent of the production handler's redirect catch.
-							const info = getRedirectInfo(err);
-							if (info) {
-								res.statusCode = info.status;
-								res.setHeader("Location", info.url);
-								res.end();
-								return;
-							}
-							const error = err instanceof Error ? err : new Error(String(err));
-							server.ssrFixStacktrace(error);
-							const html = renderErrorOverlay(error);
-							res.statusCode = 500;
-							res.setHeader("Content-Type", "text/html; charset=utf-8");
-							res.setHeader("Content-Length", Buffer.byteLength(html));
-							res.end(html);
-						},
-					);
-				});
-			}
+          renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
+            (result) => {
+              if (result === null) return next()
+              res.statusCode = result.status
+              res.setHeader('Content-Type', 'text/html; charset=utf-8')
+              res.setHeader('Content-Length', Buffer.byteLength(result.html))
+              res.end(result.html)
+            },
+            (err: unknown) => {
+              // Loader-thrown `redirect()` — convert to a real HTTP redirect
+              // (302/307/308) BEFORE the layout renders. This is the dev-mode
+              // equivalent of the production handler's redirect catch.
+              const info = getRedirectInfo(err)
+              if (info) {
+                res.statusCode = info.status
+                res.setHeader('Location', info.url)
+                res.end()
+                return
+              }
+              const error = err instanceof Error ? err : new Error(String(err))
+              server.ssrFixStacktrace(error)
+              const html = renderErrorOverlay(error)
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'text/html; charset=utf-8')
+              res.setHeader('Content-Length', Buffer.byteLength(html))
+              res.end(html)
+            },
+          )
+        })
+      }
 
-			// 404 handler — check if the requested path matches any route.
-			// If not, render the nearest _404.tsx component with a 404 status.
-			// Uses a sync wrapper that calls the async handler, since Connect
-			// middleware does not natively support async functions.
-			server.middlewares.use((req, res, next) => {
-				const accept = req.headers.accept ?? "";
-				// Accept HTML requests and wildcard requests (fetch without explicit Accept header)
-				if (!accept.includes("text/html") && !accept.includes("*/*"))
-					return next();
+      // 404 handler — check if the requested path matches any route.
+      // If not, render the nearest _404.tsx component with a 404 status.
+      // Uses a sync wrapper that calls the async handler, since Connect
+      // middleware does not natively support async functions.
+      server.middlewares.use((req, res, next) => {
+        const accept = req.headers.accept ?? ''
+        // Accept HTML requests and wildcard requests (fetch without explicit Accept header)
+        if (!accept.includes('text/html') && !accept.includes('*/*')) return next()
 
-				const pathname = req.url?.split("?")[0] ?? "/";
+        const pathname = req.url?.split('?')[0] ?? '/'
 
-				// Skip static assets, Vite internal requests, and file-like paths (with extensions)
-				if (pathname.startsWith("/@") || pathname.startsWith("/__"))
-					return next();
-				if (/\.\w+$/.test(pathname)) return next();
-				// W24 from chat audit — skip `/api/*` paths so user plugins that
-				// register their own dev API middleware (via `configureServer`)
-				// aren't shadowed by this 404 handler when their middleware is
-				// registered AFTER Zero's (the typical plugin order). The dev
-				// API-route dispatcher at line ~277 already handles fs-router
-				// `src/routes/api/*` paths; anything else under `/api/*` falls
-				// through to user middleware OR to Vite's terminal 404 — both
-				// of which are correct outcomes.
-				if (pathname.startsWith("/api/")) return next();
+        // Skip static assets, Vite internal requests, and file-like paths (with extensions)
+        if (pathname.startsWith('/@') || pathname.startsWith('/__')) return next()
+        if (/\.\w+$/.test(pathname)) return next()
+        // W24 from chat audit — skip `/api/*` paths so user plugins that
+        // register their own dev API middleware (via `configureServer`)
+        // aren't shadowed by this 404 handler when their middleware is
+        // registered AFTER Zero's (the typical plugin order). The dev
+        // API-route dispatcher at line ~277 already handles fs-router
+        // `src/routes/api/*` paths; anything else under `/api/*` falls
+        // through to user middleware OR to Vite's terminal 404 — both
+        // of which are correct outcomes.
+        if (pathname.startsWith('/api/')) return next()
 
-				handle404(
-					server,
-					routesDir,
-					pathname,
-					res,
-					root,
-					req.originalUrl ?? pathname,
-				).then(
-					(handled) => {
-						if (!handled) next();
-					},
-					(err) => {
-						// oxlint-disable-next-line no-console
-						console.error('[Pyreon] Error in 404 handler:', err);
-						next();
-					},
-				);
-			});
+        handle404(server, routesDir, pathname, res, root, req.originalUrl ?? pathname).then(
+          (handled) => {
+            if (!handled) next()
+          },
+          (err) => {
+            // oxlint-disable-next-line no-console
+            console.error('[Pyreon] Error in 404 handler:', err)
+            next()
+          },
+        )
+      })
 
-			// SSR error overlay — intercept HTML requests and catch SSR errors
-			// This runs as a late middleware (return function) so it wraps
-			// Vite's own SSR handling and catches rendering failures.
-			server.middlewares.use((req, res, next) => {
-				const accept = req.headers.accept ?? "";
-				if (!accept.includes("text/html")) return next();
+      // SSR error overlay — intercept HTML requests and catch SSR errors
+      // This runs as a late middleware (return function) so it wraps
+      // Vite's own SSR handling and catches rendering failures.
+      server.middlewares.use((req, res, next) => {
+        const accept = req.headers.accept ?? ''
+        if (!accept.includes('text/html')) return next()
 
-				const originalEnd = res.end.bind(res);
-				let errored = false;
+        const originalEnd = res.end.bind(res)
+        let errored = false
 
-				const handleError = (err: unknown) => {
-					if (errored) return;
-					errored = true;
-					const error = err instanceof Error ? err : new Error(String(err));
-					server.ssrFixStacktrace(error);
-					const html = renderErrorOverlay(error);
-					res.statusCode = 500;
-					res.setHeader("Content-Type", "text/html; charset=utf-8");
-					res.setHeader("Content-Length", Buffer.byteLength(html));
-					originalEnd(html);
-				};
+        const handleError = (err: unknown) => {
+          if (errored) return
+          errored = true
+          const error = err instanceof Error ? err : new Error(String(err))
+          server.ssrFixStacktrace(error)
+          const html = renderErrorOverlay(error)
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'text/html; charset=utf-8')
+          res.setHeader('Content-Length', Buffer.byteLength(html))
+          originalEnd(html)
+        }
 
-				res.on("error", handleError);
+        res.on('error', handleError)
 
-				// Wrap next() in try/catch to handle both sync and async errors.
-				// Express-style middleware may throw synchronously or pass errors
-				// through next(err), and Vite's SSR pipeline may reject promises.
-				try {
-					const result = next() as unknown;
-					// Handle async errors from Vite's SSR pipeline
-					if (
-						result &&
-						typeof (result as Promise<unknown>).catch === "function"
-					) {
-						(result as Promise<unknown>).catch(handleError);
-					}
-				} catch (err) {
-					handleError(err);
-				}
-			});
+        // Wrap next() in try/catch to handle both sync and async errors.
+        // Express-style middleware may throw synchronously or pass errors
+        // through next(err), and Vite's SSR pipeline may reject promises.
+        try {
+          const result = next() as unknown
+          // Handle async errors from Vite's SSR pipeline
+          if (result && typeof (result as Promise<unknown>).catch === 'function') {
+            ;(result as Promise<unknown>).catch(handleError)
+          }
+        } catch (err) {
+          handleError(err)
+        }
+      })
 
-			// Watch routes directory for changes
-			server.watcher.add(`${routesDir}/**/*.{tsx,jsx,ts,js}`);
+      // Watch routes directory for changes
+      server.watcher.add(`${routesDir}/**/*.{tsx,jsx,ts,js}`)
 
-			// Invalidate virtual modules when route files change
-			server.watcher.on("all", (event, path) => {
-				if (
-					path.startsWith(routesDir) &&
-					(event === "add" || event === "unlink")
-				) {
-					for (const resolvedId of [
-						RESOLVED_VIRTUAL_ROUTES_ID,
-						RESOLVED_VIRTUAL_MIDDLEWARE_ID,
-						RESOLVED_VIRTUAL_API_ROUTES_ID,
-					]) {
-						const mod = server.moduleGraph.getModuleById(resolvedId);
-						if (mod) server.moduleGraph.invalidateModule(mod);
-					}
-					server.ws.send({ type: "full-reload" });
-				}
-			});
-		},
+      // Invalidate virtual modules when route files change
+      server.watcher.on('all', (event, path) => {
+        if (path.startsWith(routesDir) && (event === 'add' || event === 'unlink')) {
+          for (const resolvedId of [
+            RESOLVED_VIRTUAL_ROUTES_ID,
+            RESOLVED_VIRTUAL_MIDDLEWARE_ID,
+            RESOLVED_VIRTUAL_API_ROUTES_ID,
+          ]) {
+            const mod = server.moduleGraph.getModuleById(resolvedId)
+            if (mod) server.moduleGraph.invalidateModule(mod)
+          }
+          server.ws.send({ type: 'full-reload' })
+        }
+      })
+    },
 
-		config(viteUserConfig) {
-			// Discover all @pyreon/* packages installed in node_modules.
-			// The "bun" export condition points to TS source — esbuild's
-			// dep optimizer would compile them with the wrong JSX runtime.
-			const cwd = viteUserConfig.root ?? process.cwd()
-			const pyreonExclude = scanPyreonPackages(cwd)
+    config(viteUserConfig) {
+      // Discover all @pyreon/* packages installed in node_modules.
+      // The "bun" export condition points to TS source — esbuild's
+      // dep optimizer would compile them with the wrong JSX runtime.
+      const cwd = viteUserConfig.root ?? process.cwd()
+      const pyreonExclude = scanPyreonPackages(cwd)
 
-			// `@pyreon/runtime-server` is only imported by zero's dev SSR
-			// middleware and the production server entry — apps rarely list it
-			// as a direct dep. Resolve it to the copy nested under zero so
-			// `ssrLoadModule("@pyreon/runtime-server")` works uniformly.
-			const runtimeServerAlias = resolveNestedPackage(
-				cwd,
-				"@pyreon/runtime-server",
-			)
+      // `@pyreon/runtime-server` is only imported by zero's dev SSR
+      // middleware and the production server entry — apps rarely list it
+      // as a direct dep. Resolve it to the copy nested under zero so
+      // `ssrLoadModule("@pyreon/runtime-server")` works uniformly.
+      const runtimeServerAlias = resolveNestedPackage(cwd, '@pyreon/runtime-server')
 
-			return {
-				resolve: {
-					conditions: ['bun'],
-					...(runtimeServerAlias
-						? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
-						: {}),
-				},
-				// Vite's SSR module graph has its own resolver that defaults to the
-				// "node" condition — which would pick the built `lib/index.js` for
-				// every `@pyreon/*` package and bypass workspace source edits. Mirror
-				// the client-side "bun" condition + alias so dev SSR uses `src/`.
-				ssr: {
-					resolve: {
-						conditions: ['bun'],
-						...(runtimeServerAlias
-							? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
-							: {}),
-					},
-				},
-				optimizeDeps: {
-					exclude: pyreonExclude,
-				},
-				// Port handling — the zero-canonical default is 3000 (matches
-				// `zero dev` / `zero preview` / the runtime adapter, and
-				// matches Next.js / Remix / Astro convention).
-				//
-				// Apply the default UNLESS Vite's CLI was invoked with
-				// `--port`/`-p` (in which case the CLI flag must win — see
-				// memory: vite cli port doesnt override plugin). PR #579
-				// proved this empirically: returning `server: { port: 3000 }`
-				// unconditionally clobbered `vite --port 517N --strictPort`
-				// in the e2e playwright config and every webServer timed
-				// out. argv detection here lets the CLI win at the source.
-				//
-				// Precedence (CLI > user vite.config > zero({port}) > 3000):
-				//   1. `vite --port N` → argvHasPortFlag() === true → plugin
-				//      omits `server.port` entirely → CLI value wins
-				//   2. User `vite.config.ts server: { port: N }` → user
-				//      config beats plugin in Vite's merge order
-				//   3. `zero({ port: N })` → resolved into `config.port`
-				//   4. Default 3000 — when no other source set a port
-				//
-				// `process.argv` is populated by the time Vite invokes the
-				// plugin's config() hook (Vite calls plugins synchronously
-				// during CLI bootstrap before applying inline overrides).
-				...(userConfig.port === undefined && argvHasPortFlag()
-					? {}
-					: { server: { port: config.port } }),
-				// Propagate `zero({ base })` to Vite's `base` config — that's
-				// what controls asset URL rewriting in the built HTML/JS
-				// (`<script src="/blog/assets/…">`). Pre-fix this was a
-				// typed-but-unimplemented field: `__ZERO_BASE__` was defined
-				// as a Vite global but no consumer existed, AND Vite's own
-				// `base` had to be set manually in vite.config.ts. Setting
-				// it here makes `zero({ base: '/blog/' })` the canonical
-				// single-source-of-truth surface; the value flows through
-				// to (a) Vite's HTML/asset URL rewriter, (b) `createRouter`
-				// via `__ZERO_BASE__` in `startClient` / `createApp`, (c)
-				// the SSG entry's `createApp({ base })` call.
-				//
-				// Vite's config-merge semantics: plugin-returned config is
-				// the BASE; user's `vite.config.ts` top-level overrides.
-				// So a user who sets BOTH `zero({ base: '/blog/' })` AND
-				// `vite.config.base: '/foo/'` gets the latter — the user's
-				// explicit override wins. The default `/` is a no-op
-				// (matches Vite's default), so always-setting is safe.
-				base: config.base,
-				define: {
-					__ZERO_MODE__: JSON.stringify(config.mode),
-					__ZERO_BASE__: JSON.stringify(config.base),
-				},
-			};
-		},
-	};
+      return {
+        resolve: {
+          conditions: ['bun'],
+          ...(runtimeServerAlias
+            ? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
+            : {}),
+        },
+        // Vite's SSR module graph has its own resolver that defaults to the
+        // "node" condition — which would pick the built `lib/index.js` for
+        // every `@pyreon/*` package and bypass workspace source edits. Mirror
+        // the client-side "bun" condition + alias so dev SSR uses `src/`.
+        ssr: {
+          resolve: {
+            conditions: ['bun'],
+            ...(runtimeServerAlias
+              ? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
+              : {}),
+          },
+        },
+        optimizeDeps: {
+          exclude: pyreonExclude,
+        },
+        // Port handling — the zero-canonical default is 3000 (matches
+        // `zero dev` / `zero preview` / the runtime adapter, and
+        // matches Next.js / Remix / Astro convention).
+        //
+        // Apply the default UNLESS Vite's CLI was invoked with
+        // `--port`/`-p` (in which case the CLI flag must win — see
+        // memory: vite cli port doesnt override plugin). PR #579
+        // proved this empirically: returning `server: { port: 3000 }`
+        // unconditionally clobbered `vite --port 517N --strictPort`
+        // in the e2e playwright config and every webServer timed
+        // out. argv detection here lets the CLI win at the source.
+        //
+        // Precedence (CLI > user vite.config > zero({port}) > 3000):
+        //   1. `vite --port N` → argvHasPortFlag() === true → plugin
+        //      omits `server.port` entirely → CLI value wins
+        //   2. User `vite.config.ts server: { port: N }` → user
+        //      config beats plugin in Vite's merge order
+        //   3. `zero({ port: N })` → resolved into `config.port`
+        //   4. Default 3000 — when no other source set a port
+        //
+        // `process.argv` is populated by the time Vite invokes the
+        // plugin's config() hook (Vite calls plugins synchronously
+        // during CLI bootstrap before applying inline overrides).
+        ...(userConfig.port === undefined && argvHasPortFlag()
+          ? {}
+          : { server: { port: config.port } }),
+        // Propagate `zero({ base })` to Vite's `base` config — that's
+        // what controls asset URL rewriting in the built HTML/JS
+        // (`<script src="/blog/assets/…">`). Pre-fix this was a
+        // typed-but-unimplemented field: `__ZERO_BASE__` was defined
+        // as a Vite global but no consumer existed, AND Vite's own
+        // `base` had to be set manually in vite.config.ts. Setting
+        // it here makes `zero({ base: '/blog/' })` the canonical
+        // single-source-of-truth surface; the value flows through
+        // to (a) Vite's HTML/asset URL rewriter, (b) `createRouter`
+        // via `__ZERO_BASE__` in `startClient` / `createApp`, (c)
+        // the SSG entry's `createApp({ base })` call.
+        //
+        // Vite's config-merge semantics: plugin-returned config is
+        // the BASE; user's `vite.config.ts` top-level overrides.
+        // So a user who sets BOTH `zero({ base: '/blog/' })` AND
+        // `vite.config.base: '/foo/'` gets the latter — the user's
+        // explicit override wins. The default `/` is a no-op
+        // (matches Vite's default), so always-setting is safe.
+        base: config.base,
+        define: {
+          __ZERO_MODE__: JSON.stringify(config.mode),
+          __ZERO_BASE__: JSON.stringify(config.base),
+        },
+      }
+    },
+  }
 
-	// Stash the original user config keyed by plugin identity so the CLI
-	// (which loads vite.config.ts and inspects the plugin list) can
-	// recover it via `getZeroPluginConfig(plugin)` without us hanging a
-	// `_`-prefixed property off the public Plugin object.
-	zeroPluginConfigMap.set(mainPlugin, userConfig);
+  // Stash the original user config keyed by plugin identity so the CLI
+  // (which loads vite.config.ts and inspects the plugin list) can
+  // recover it via `getZeroPluginConfig(plugin)` without us hanging a
+  // `_`-prefixed property off the public Plugin object.
+  zeroPluginConfigMap.set(mainPlugin, userConfig)
 
-	// SSG mode auto-wires the static-site generation hook. Other modes get
-	// just the main plugin. The SSG plugin internally no-ops when
-	// `mode !== 'ssg'`, but skipping it entirely keeps the plugin chain
-	// minimal for SSR/SPA/ISR builds (one less `closeBundle` to call).
-	return config.mode === "ssg" ? [mainPlugin, ssgPlugin(userConfig)] : [mainPlugin];
+  // SSG mode auto-wires the static-site generation hook. Other modes get
+  // just the main plugin. The SSG plugin internally no-ops when
+  // `mode !== 'ssg'`, but skipping it entirely keeps the plugin chain
+  // minimal for SSR/SPA/ISR builds (one less `closeBundle` to call).
+  return config.mode === 'ssg' ? [mainPlugin, ssgPlugin(userConfig)] : [mainPlugin]
 }
 
 /**
@@ -582,92 +547,90 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
  * request adapter.
  */
 async function dispatchApiRoute(
-	server: ViteDevServer,
-	req: IncomingMessage,
-	res: ServerResponse,
+  server: ViteDevServer,
+  req: IncomingMessage,
+  res: ServerResponse,
 ): Promise<boolean> {
-	let apiRoutes: ApiRouteEntry[];
-	try {
-		const mod = await ssrLoadModuleQuiet(server, VIRTUAL_API_ROUTES_ID);
-		apiRoutes = (mod.apiRoutes ?? []) as ApiRouteEntry[];
-	} catch {
-		return false;
-	}
-	if (apiRoutes.length === 0) return false;
+  let apiRoutes: ApiRouteEntry[]
+  try {
+    const mod = await ssrLoadModuleQuiet(server, VIRTUAL_API_ROUTES_ID)
+    apiRoutes = (mod.apiRoutes ?? []) as ApiRouteEntry[]
+  } catch {
+    return false
+  }
+  if (apiRoutes.length === 0) return false
 
-	const host = req.headers.host ?? "localhost";
-	const url = new URL(req.url ?? "/", `http://${host}`);
-	const pathname = url.pathname;
+  const host = req.headers.host ?? 'localhost'
+  const url = new URL(req.url ?? '/', `http://${host}`)
+  const pathname = url.pathname
 
-	// Quick gate: only build the Web Request when the path actually matches
-	// an api route. Reuses the same `matchApiRoute` that `createApiMiddleware`
-	// uses internally — including catch-all `:param*` patterns from
-	// `[...slug].ts` API routes — so the gate and the dispatcher agree on
-	// what counts as a match. Avoids per-request body buffering for SSR /
-	// static traffic that doesn't target an API route.
-	const anyMatch = apiRoutes.some((r) => matchApiRoute(r.pattern, pathname) !== null);
-	if (!anyMatch) return false;
+  // Quick gate: only build the Web Request when the path actually matches
+  // an api route. Reuses the same `matchApiRoute` that `createApiMiddleware`
+  // uses internally — including catch-all `:param*` patterns from
+  // `[...slug].ts` API routes — so the gate and the dispatcher agree on
+  // what counts as a match. Avoids per-request body buffering for SSR /
+  // static traffic that doesn't target an API route.
+  const anyMatch = apiRoutes.some((r) => matchApiRoute(r.pattern, pathname) !== null)
+  if (!anyMatch) return false
 
-	// Convert Node IncomingMessage → Web Request. Stream the request body
-	// for non-GET/HEAD via `Readable.toWeb` instead of buffering — large
-	// uploads (multipart, file POSTs) don't have to fit in memory before
-	// the handler sees them. `duplex: 'half'` is required by the WHATWG
-	// fetch spec when `body` is a `ReadableStream`.
-	const method = (req.method ?? "GET").toUpperCase();
-	const headers = new Headers();
-	for (const [key, value] of Object.entries(req.headers)) {
-		if (value !== undefined) {
-			headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
-		}
-	}
-	const requestInit: RequestInit & { duplex?: "half" } = { method, headers };
-	if (method !== "GET" && method !== "HEAD") {
-		// `Readable.toWeb` returns Node's `node:stream/web` `ReadableStream`;
-		// `RequestInit.body` expects the DOM `ReadableStream`. They're
-		// structurally identical at runtime but TS keeps them as separate
-		// types — `as unknown as` is the standard bridge per TS's own
-		// "convert to unknown first" suggestion.
-		requestInit.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>;
-		requestInit.duplex = "half";
-	}
-	const webReq = new Request(url.href, requestInit);
+  // Convert Node IncomingMessage → Web Request. Stream the request body
+  // for non-GET/HEAD via `Readable.toWeb` instead of buffering — large
+  // uploads (multipart, file POSTs) don't have to fit in memory before
+  // the handler sees them. `duplex: 'half'` is required by the WHATWG
+  // fetch spec when `body` is a `ReadableStream`.
+  const method = (req.method ?? 'GET').toUpperCase()
+  const headers = new Headers()
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value !== undefined) {
+      headers.set(key, Array.isArray(value) ? value.join(', ') : String(value))
+    }
+  }
+  const requestInit: RequestInit & { duplex?: 'half' } = { method, headers }
+  if (method !== 'GET' && method !== 'HEAD') {
+    // `Readable.toWeb` returns Node's `node:stream/web` `ReadableStream`;
+    // `RequestInit.body` expects the DOM `ReadableStream`. They're
+    // structurally identical at runtime but TS keeps them as separate
+    // types — `as unknown as` is the standard bridge per TS's own
+    // "convert to unknown first" suggestion.
+    requestInit.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>
+    requestInit.duplex = 'half'
+  }
+  const webReq = new Request(url.href, requestInit)
 
-	const middleware = createApiMiddleware(apiRoutes);
-	const response = await middleware({
-		req: webReq,
-		url,
-		path: pathname + url.search,
-		headers: new Headers(),
-		locals: {},
-	});
+  const middleware = createApiMiddleware(apiRoutes)
+  const response = await middleware({
+    req: webReq,
+    url,
+    path: pathname + url.search,
+    headers: new Headers(),
+    locals: {},
+  })
 
-	if (!response) return false;
+  if (!response) return false
 
-	// Pipe the Web Response body directly to the Node response stream
-	// instead of buffering with `arrayBuffer()`. Critical for SSE, large
-	// downloads, and any handler that returns a `Response` constructed
-	// from a streaming source — buffering would defeat the streaming
-	// contract and OOM on large payloads.
-	res.statusCode = response.status;
-	response.headers.forEach((v, k) => {
-		res.setHeader(k, v);
-	});
-	if (response.body) {
-		// `pipe(res)` ends `res` automatically on stream completion and
-		// auto-cancels the upstream Web ReadableStream if the client
-		// disconnects (Node ≥18). We don't await — once the headers and
-		// pipe are wired, the function's job is done. The connect chain
-		// doesn't call `next()` because we resolved with `true`.
-		// `response.body` is a DOM `ReadableStream`; `Readable.fromWeb`
-		// expects `node:stream/web`'s `ReadableStream`. Cross-realm types
-		// don't unify in TS — bridge via `unknown` per TS's own guidance.
-		Readable.fromWeb(
-			response.body as unknown as import("node:stream/web").ReadableStream,
-		).pipe(res);
-	} else {
-		res.end();
-	}
-	return true;
+  // Pipe the Web Response body directly to the Node response stream
+  // instead of buffering with `arrayBuffer()`. Critical for SSE, large
+  // downloads, and any handler that returns a `Response` constructed
+  // from a streaming source — buffering would defeat the streaming
+  // contract and OOM on large payloads.
+  res.statusCode = response.status
+  response.headers.forEach((v, k) => {
+    res.setHeader(k, v)
+  })
+  if (response.body) {
+    // `pipe(res)` ends `res` automatically on stream completion and
+    // auto-cancels the upstream Web ReadableStream if the client
+    // disconnects (Node ≥18). We don't await — once the headers and
+    // pipe are wired, the function's job is done. The connect chain
+    // doesn't call `next()` because we resolved with `true`.
+    // `response.body` is a DOM `ReadableStream`; `Readable.fromWeb`
+    // expects `node:stream/web`'s `ReadableStream`. Cross-realm types
+    // don't unify in TS — bridge via `unknown` per TS's own guidance.
+    Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream).pipe(res)
+  } else {
+    res.end()
+  }
+  return true
 }
 
 /**
@@ -706,54 +669,54 @@ async function dispatchApiRoute(
  * actually matches a route (caller continues to next middleware).
  */
 async function handle404(
-	server: import("vite").ViteDevServer,
-	_routesDir: string,
-	pathname: string,
-	res: import("http").ServerResponse,
-	root: string,
-	originalUrl: string,
+  server: import('vite').ViteDevServer,
+  _routesDir: string,
+  pathname: string,
+  res: import('http').ServerResponse,
+  root: string,
+  originalUrl: string,
 ): Promise<boolean> {
-	const mod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
-	const routes = mod.routes as Array<{ path?: string; children?: unknown[] }>;
-	const patterns = flattenRoutePatterns(routes);
+  const mod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID)
+  const routes = mod.routes as Array<{ path?: string; children?: unknown[] }>
+  const patterns = flattenRoutePatterns(routes)
 
-	if (patterns.some((pattern) => matchPattern(pattern, pathname))) {
-		return false; // Route matches — not a 404
-	}
+  if (patterns.some((pattern) => matchPattern(pattern, pathname))) {
+    return false // Route matches — not a 404
+  }
 
-	// Try the router-driven path: renderSsr → resolveRoute →
-	// findNotFoundFallback. Returns layout-wrapped 404 HTML + status 404 if
-	// any reachable `notFoundComponent` matches; returns null only when no
-	// `_404.tsx` / `_not-found.tsx` exists anywhere in the routes tree.
-	//
-	// Try/catch protects against ssrLoadModule failures (e.g. the user's
-	// `app.ts` has a syntax error in dev): we'd rather serve the bare
-	// fallback than crash the 404 handler. The caller's error path catches
-	// `next(err)` if renderSsr rejects in a way we can't recover from.
-	try {
-		const result = await renderSsr(server, root, originalUrl, pathname);
-		if (result !== null) {
-			res.statusCode = result.status;
-			res.setHeader("Content-Type", "text/html; charset=utf-8");
-			res.setHeader("Content-Length", Buffer.byteLength(result.html));
-			res.end(result.html);
-			return true;
-		}
-	} catch {
-		// Fall through to bare HTML below.
-	}
+  // Try the router-driven path: renderSsr → resolveRoute →
+  // findNotFoundFallback. Returns layout-wrapped 404 HTML + status 404 if
+  // any reachable `notFoundComponent` matches; returns null only when no
+  // `_404.tsx` / `_not-found.tsx` exists anywhere in the routes tree.
+  //
+  // Try/catch protects against ssrLoadModule failures (e.g. the user's
+  // `app.ts` has a syntax error in dev): we'd rather serve the bare
+  // fallback than crash the 404 handler. The caller's error path catches
+  // `next(err)` if renderSsr rejects in a way we can't recover from.
+  try {
+    const result = await renderSsr(server, root, originalUrl, pathname)
+    if (result !== null) {
+      res.statusCode = result.status
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Content-Length', Buffer.byteLength(result.html))
+      res.end(result.html)
+      return true
+    }
+  } catch {
+    // Fall through to bare HTML below.
+  }
 
-	// No `notFoundComponent` reachable + renderSsr returned null — emit a
-	// minimal static page so the user gets SOMETHING. Apps that want
-	// branded 404s should add `_404.tsx` (or `_not-found.tsx`) to their
-	// routes tree.
-	const html = await render404Page(undefined);
+  // No `notFoundComponent` reachable + renderSsr returned null — emit a
+  // minimal static page so the user gets SOMETHING. Apps that want
+  // branded 404s should add `_404.tsx` (or `_not-found.tsx`) to their
+  // routes tree.
+  const html = await render404Page(undefined)
 
-	res.statusCode = 404;
-	res.setHeader("Content-Type", "text/html; charset=utf-8");
-	res.setHeader("Content-Length", Buffer.byteLength(html));
-	res.end(html);
-	return true;
+  res.statusCode = 404
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.setHeader('Content-Length', Buffer.byteLength(html))
+  res.end(html)
+  return true
 }
 
 /**
@@ -769,123 +732,113 @@ async function handle404(
  *      still gets a chance to inject its HMR client + JSX runtime prelude)
  */
 async function renderSsr(
-	server: ViteDevServer,
-	root: string,
-	originalUrl: string,
-	pathname: string,
-	req?: Request,
+  server: ViteDevServer,
+  root: string,
+  originalUrl: string,
+  pathname: string,
+  req?: Request,
 ): Promise<{ html: string; status: number } | null> {
-	const routesMod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
-	const routes = routesMod.routes as Array<{
-		path?: string;
-		children?: unknown[];
-	}>;
+  const routesMod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID)
+  const routes = routesMod.routes as Array<{
+    path?: string
+    children?: unknown[]
+  }>
 
-	// Read + transform index.html (Vite injects the HMR client / JSX prelude).
-	let template = await readFile(join(root, "index.html"), "utf-8");
-	template = await server.transformIndexHtml(originalUrl, template);
+  // Read + transform index.html (Vite injects the HMR client / JSX prelude).
+  let template = await readFile(join(root, 'index.html'), 'utf-8')
+  template = await server.transformIndexHtml(originalUrl, template)
 
-	// Framework modules load through Vite's SSR module graph so user code (which
-	// imports the same packages) shares a single module instance — otherwise two
-	// copies of `@pyreon/router` would hold separate `RouterContext` IDs and
-	// `useContext` in RouterLink would miss the RouterProvider's value.
-	// `@pyreon/runtime-server` isn't a direct dep of most apps, so zero's
-	// `config()` hook registers an alias that points it at the copy under
-	// zero's own `node_modules` — same path → same Vite module → same instance.
-	const [core, _headPkg, headSsr, routerPkg, runtimeServer] = await Promise.all(
-		[
-			ssrLoadModuleQuiet(server, "@pyreon/core") as Promise<
-				typeof import("@pyreon/core")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/head") as Promise<
-				typeof import("@pyreon/head")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/head/ssr") as Promise<
-				typeof import("@pyreon/head/ssr")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/router") as Promise<
-				typeof import("@pyreon/router")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/runtime-server") as Promise<
-				typeof import("@pyreon/runtime-server")
-			>,
-		],
-	);
+  // Framework modules load through Vite's SSR module graph so user code (which
+  // imports the same packages) shares a single module instance — otherwise two
+  // copies of `@pyreon/router` would hold separate `RouterContext` IDs and
+  // `useContext` in RouterLink would miss the RouterProvider's value.
+  // `@pyreon/runtime-server` isn't a direct dep of most apps, so zero's
+  // `config()` hook registers an alias that points it at the copy under
+  // zero's own `node_modules` — same path → same Vite module → same instance.
+  const [core, _headPkg, headSsr, routerPkg, runtimeServer] = await Promise.all([
+    ssrLoadModuleQuiet(server, '@pyreon/core') as Promise<typeof import('@pyreon/core')>,
+    ssrLoadModuleQuiet(server, '@pyreon/head') as Promise<typeof import('@pyreon/head')>,
+    ssrLoadModuleQuiet(server, '@pyreon/head/ssr') as Promise<typeof import('@pyreon/head/ssr')>,
+    ssrLoadModuleQuiet(server, '@pyreon/router') as Promise<typeof import('@pyreon/router')>,
+    ssrLoadModuleQuiet(server, '@pyreon/runtime-server') as Promise<
+      typeof import('@pyreon/runtime-server')
+    >,
+  ])
 
-	// Don't auto-load `_layout.tsx` as the outer Layout. fs-router already
-	// emits it as a parent route in the matched chain — wrapping createApp
-	// with the same layout AGAIN produced a double mount: the App tree was
-	// `<Layout><RouterView/></Layout>` AND the router's first matched
-	// record was the layout, rendering it a second time inside RouterView.
-	// Symptom: duplicate `<nav>`, duplicate `<div id="layout">`,
-	// hydration mismatches, strict-mode locator violations in playwright.
-	//
-	// If a user genuinely needs an outer wrapper that sits ABOVE the
-	// router (e.g. a global provider not tied to any route), they can
-	// still pass it via `startClient({ layout })` — but the file should
-	// NOT live under `src/routes/_layout.{ts,tsx,…}` (which fs-router
-	// always treats as a parent route).
+  // Don't auto-load `_layout.tsx` as the outer Layout. fs-router already
+  // emits it as a parent route in the matched chain — wrapping createApp
+  // with the same layout AGAIN produced a double mount: the App tree was
+  // `<Layout><RouterView/></Layout>` AND the router's first matched
+  // record was the layout, rendering it a second time inside RouterView.
+  // Symptom: duplicate `<nav>`, duplicate `<div id="layout">`,
+  // hydration mismatches, strict-mode locator violations in playwright.
+  //
+  // If a user genuinely needs an outer wrapper that sits ABOVE the
+  // router (e.g. a global provider not tied to any route), they can
+  // still pass it via `startClient({ layout })` — but the file should
+  // NOT live under `src/routes/_layout.{ts,tsx,…}` (which fs-router
+  // always treats as a parent route).
 
-	// Use zero's own `createApp` rather than reassembling the tree by hand —
-	// guarantees server and client agree on every wrapper component (any
-	// future change to the App tree only needs to happen in one place).
-	// Load via `ssrLoadModule` so app.ts shares Vite's SSR module graph with
-	// the user's code: both end up importing the SAME `@pyreon/router` /
-	// `@pyreon/core` / `@pyreon/head` instances, so contexts (RouterContext,
-	// HeadContext, etc.) match between provider and consumer. A direct Node
-	// `import("./app")` would resolve those packages via Node's module graph,
-	// producing duplicate context registries that never connect.
-	const appMod = (await ssrLoadModuleQuiet(
-		server,
-		"@pyreon/zero/server",
-	)) as unknown as typeof import("./server")
-	const { App, router: routerInst } = appMod.createApp({
-		routes: routes as import("@pyreon/router").RouteRecord[],
-		routerMode: "history",
-		url: pathname,
-	})
+  // Use zero's own `createApp` rather than reassembling the tree by hand —
+  // guarantees server and client agree on every wrapper component (any
+  // future change to the App tree only needs to happen in one place).
+  // Load via `ssrLoadModule` so app.ts shares Vite's SSR module graph with
+  // the user's code: both end up importing the SAME `@pyreon/router` /
+  // `@pyreon/core` / `@pyreon/head` instances, so contexts (RouterContext,
+  // HeadContext, etc.) match between provider and consumer. A direct Node
+  // `import("./app")` would resolve those packages via Node's module graph,
+  // producing duplicate context registries that never connect.
+  const appMod = (await ssrLoadModuleQuiet(
+    server,
+    '@pyreon/zero/server',
+  )) as unknown as typeof import('./server')
+  const { App, router: routerInst } = appMod.createApp({
+    routes: routes as import('@pyreon/router').RouteRecord[],
+    routerMode: 'history',
+    url: pathname,
+  })
 
-	// `preload` loads lazy route components AND runs loaders for `pathname` so
-	// the synchronous render pass produces final HTML — no loading fallbacks,
-	// no `useLoaderData() === undefined`.
-	//
-	// M1.2 — Unmatched URLs no longer bail to a static 404 page. The router's
-	// `resolveRoute` (PR L5) walks the route tree and, if a parent layout has
-	// `notFoundComponent` AND the URL is under that layout's prefix, builds a
-	// synthetic chain `[...ancestorLayouts, syntheticLeaf]` with
-	// `isNotFound: true`. The render then produces 404 HTML INSIDE the
-	// layout's chrome. If the routes tree has no reachable `notFoundComponent`,
-	// `matched` stays empty — fall through to `handle404` for the static
-	// fallback (preserves backward compat for apps without `_404.tsx`).
-	await routerInst.preload(pathname, req);
+  // `preload` loads lazy route components AND runs loaders for `pathname` so
+  // the synchronous render pass produces final HTML — no loading fallbacks,
+  // no `useLoaderData() === undefined`.
+  //
+  // M1.2 — Unmatched URLs no longer bail to a static 404 page. The router's
+  // `resolveRoute` (PR L5) walks the route tree and, if a parent layout has
+  // `notFoundComponent` AND the URL is under that layout's prefix, builds a
+  // synthetic chain `[...ancestorLayouts, syntheticLeaf]` with
+  // `isNotFound: true`. The render then produces 404 HTML INSIDE the
+  // layout's chrome. If the routes tree has no reachable `notFoundComponent`,
+  // `matched` stays empty — fall through to `handle404` for the static
+  // fallback (preserves backward compat for apps without `_404.tsx`).
+  await routerInst.preload(pathname, req)
 
-	const resolved = routerInst.currentRoute() as
-		| { matched?: unknown[]; isNotFound?: boolean }
-		| undefined;
-	if (!resolved?.matched || resolved.matched.length === 0) {
-		return null;
-	}
-	const status = resolved.isNotFound === true ? 404 : 200;
+  const resolved = routerInst.currentRoute() as
+    | { matched?: unknown[]; isNotFound?: boolean }
+    | undefined
+  if (!resolved?.matched || resolved.matched.length === 0) {
+    return null
+  }
+  const status = resolved.isNotFound === true ? 404 : 200
 
-	return runtimeServer.runWithRequestContext(async () => {
-		const app = core.h(App as Parameters<typeof core.h>[0], null);
+  return runtimeServer.runWithRequestContext(async () => {
+    const app = core.h(App as Parameters<typeof core.h>[0], null)
 
-		const { html: appHtml, head } = await headSsr.renderWithHead(app);
-		const loaderData = routerPkg.serializeLoaderData(
-			routerInst as Parameters<typeof routerPkg.serializeLoaderData>[0],
-		);
-		const hasData = loaderData && Object.keys(loaderData).length > 0;
-		// M2.2 — safe serializer (parity with production handler / SSG entry).
-		const loaderScript = hasData
-			? `<script>window.__PYREON_LOADER_DATA__=${routerPkg.stringifyLoaderData(loaderData)}</script>`
-			: "";
+    const { html: appHtml, head } = await headSsr.renderWithHead(app)
+    const loaderData = routerPkg.serializeLoaderData(
+      routerInst as Parameters<typeof routerPkg.serializeLoaderData>[0],
+    )
+    const hasData = loaderData && Object.keys(loaderData).length > 0
+    // M2.2 — safe serializer (parity with production handler / SSG entry).
+    const loaderScript = hasData
+      ? `<script>window.__PYREON_LOADER_DATA__=${routerPkg.stringifyLoaderData(loaderData)}</script>`
+      : ''
 
-		const html = template
-			.replace("<!--pyreon-head-->", head)
-			.replace("<!--pyreon-app-->", appHtml)
-			.replace("<!--pyreon-scripts-->", loaderScript);
-		return { html, status };
-	});
+    const html = template
+      .replace('<!--pyreon-head-->', head)
+      .replace('<!--pyreon-app-->', appHtml)
+      .replace('<!--pyreon-scripts-->', loaderScript)
+    return { html, status }
+  })
 }
 
 /**
@@ -901,20 +854,16 @@ async function renderSsr(
  * 404 for every nested-layout route. Re-enables PR #411 specs that rely on
  * `/app/*` routing.
  */
-function flattenRoutePatterns(
-	routes: Array<{ path?: string; children?: unknown[] }>,
-): string[] {
-	const patterns: string[] = [];
-	for (const route of routes) {
-		if (!route.path) continue;
-		patterns.push(route.path);
-		if (route.children) {
-			patterns.push(
-				...flattenRoutePatterns(
-					route.children as Array<{ path?: string; children?: unknown[] }>,
-				),
-			);
-		}
-	}
-	return patterns;
+function flattenRoutePatterns(routes: Array<{ path?: string; children?: unknown[] }>): string[] {
+  const patterns: string[] = []
+  for (const route of routes) {
+    if (!route.path) continue
+    patterns.push(route.path)
+    if (route.children) {
+      patterns.push(
+        ...flattenRoutePatterns(route.children as Array<{ path?: string; children?: unknown[] }>),
+      )
+    }
+  }
+  return patterns
 }

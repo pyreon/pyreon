@@ -96,13 +96,9 @@ export default function SubmitPage() {
             id="title"
             type="text"
             value={() => fields.title.value()}
-            onInput={(e) =>
-              fields.title.setValue((e.currentTarget as HTMLInputElement).value)
-            }
+            onInput={(e) => fields.title.setValue((e.currentTarget as HTMLInputElement).value)}
             onBlur={() => fields.title.setTouched()}
-            class={() =>
-              fields.title.touched() && fields.title.error() ? 'field-invalid' : ''
-            }
+            class={() => (fields.title.touched() && fields.title.error() ? 'field-invalid' : '')}
           />
           <div class="field-error">
             {() => {
@@ -113,7 +109,7 @@ export default function SubmitPage() {
               // validator finally writes an error after a submit click.
               const touched = fields.title.touched()
               const err = fields.title.error()
-              return touched ? err ?? '' : ''
+              return touched ? (err ?? '') : ''
             }}
           </div>
         </div>
@@ -125,19 +121,15 @@ export default function SubmitPage() {
             type="url"
             placeholder="https://"
             value={() => fields.url.value() ?? ''}
-            onInput={(e) =>
-              fields.url.setValue((e.currentTarget as HTMLInputElement).value)
-            }
+            onInput={(e) => fields.url.setValue((e.currentTarget as HTMLInputElement).value)}
             onBlur={() => fields.url.setTouched()}
-            class={() =>
-              fields.url.touched() && fields.url.error() ? 'field-invalid' : ''
-            }
+            class={() => (fields.url.touched() && fields.url.error() ? 'field-invalid' : '')}
           />
           <div class="field-error">
             {() => {
               const touched = fields.url.touched()
               const err = fields.url.error()
-              return touched ? err ?? '' : ''
+              return touched ? (err ?? '') : ''
             }}
           </div>
         </div>
@@ -148,19 +140,15 @@ export default function SubmitPage() {
             id="text"
             rows={6}
             value={() => fields.text.value() ?? ''}
-            onInput={(e) =>
-              fields.text.setValue((e.currentTarget as HTMLTextAreaElement).value)
-            }
+            onInput={(e) => fields.text.setValue((e.currentTarget as HTMLTextAreaElement).value)}
             onBlur={() => fields.text.setTouched()}
-            class={() =>
-              fields.text.touched() && fields.text.error() ? 'field-invalid' : ''
-            }
+            class={() => (fields.text.touched() && fields.text.error() ? 'field-invalid' : '')}
           />
           <div class="field-error">
             {() => {
               const touched = fields.text.touched()
               const err = fields.text.error()
-              return touched ? err ?? '' : ''
+              return touched ? (err ?? '') : ''
             }}
           </div>
         </div>
@@ -169,9 +157,7 @@ export default function SubmitPage() {
           <button
             type="submit"
             class="btn-primary"
-            disabled={() =>
-              machine() === 'submitting' || machine() === 'success'
-            }
+            disabled={() => machine() === 'submitting' || machine() === 'success'}
           >
             {() => {
               const s = machine()

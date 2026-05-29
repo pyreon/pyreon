@@ -174,12 +174,7 @@ const SUITES: Suite[] = [
   {
     name: 'cpa',
     script: 'test:e2e:cpa',
-    triggers: [
-      ...ROUTER_CORE,
-      'packages/zero/create-zero/',
-      'examples/cpa-pw-',
-      'e2e/cpa',
-    ],
+    triggers: [...ROUTER_CORE, 'packages/zero/create-zero/', 'examples/cpa-pw-', 'e2e/cpa'],
   },
   {
     name: 'native-todomvc-web',
@@ -248,17 +243,12 @@ export function forcesFullRun(path: string): boolean {
  *                 treated as "unknown blast radius" → run ALL (safe).
  * @param opts.all force the full suite (push:main / merge_group).
  */
-export function selectSuites(
-  changed: string[] | null,
-  opts: { all?: boolean } = {},
-): Suite[] {
+export function selectSuites(changed: string[] | null, opts: { all?: boolean } = {}): Suite[] {
   if (opts.all) return SUITES
   if (changed === null) return SUITES // diff failed → safe full run
   if (changed.length === 0) return [] // nothing changed → green skip
   if (changed.some(forcesFullRun)) return SUITES
-  return SUITES.filter((s) =>
-    changed.some((f) => s.triggers.some((t) => f.startsWith(t))),
-  )
+  return SUITES.filter((s) => changed.some((f) => s.triggers.some((t) => f.startsWith(t))))
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────
@@ -285,11 +275,10 @@ function main(): void {
       // entirely (`--base="; rm -rf / #"` becomes just an unknown ref to
       // git, not executable shell). Same fix applied to scripts/affected.ts
       // (PR #968 follow-up); landed alongside the concurrency fix in this PR.
-      const out = execFileSync(
-        'git',
-        ['diff', '--name-only', `${base}...HEAD`],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-      )
+      const out = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
       changed = out.split('\n').filter(Boolean)
     } catch {
       changed = null // can't diff → selectSuites returns ALL (safe)
@@ -302,9 +291,7 @@ function main(): void {
     console.log(chosen.map((s) => s.name).join('\n'))
   } else {
     // One compact line — consumed by `fromJSON()` in the workflow.
-    console.log(
-      JSON.stringify(chosen.map((s) => ({ name: s.name, script: s.script }))),
-    )
+    console.log(JSON.stringify(chosen.map((s) => ({ name: s.name, script: s.script }))))
   }
 }
 

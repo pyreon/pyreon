@@ -15,7 +15,7 @@ bun add @pyreon/unistyle @pyreon/core @pyreon/reactivity @pyreon/ui-core
 ```tsx
 import { Provider, breakpoints } from '@pyreon/unistyle'
 
-<Provider theme={breakpoints}>
+;<Provider theme={breakpoints}>
   <App />
 </Provider>
 ```
@@ -68,12 +68,12 @@ theme object
    ↓  emit @media rules
 ```
 
-| Param | Type | Notes |
-|---|---|---|
-| `key` | `string` | Theme prop name to read from props |
-| `css` | `function` | `css` tagged template from `@pyreon/styler` |
-| `styles` | `function` | Style processor (use the exported `styles`) |
-| `normalize` | `boolean` | Fill missing breakpoints by inheriting from previous (default `true`) |
+| Param       | Type       | Notes                                                                 |
+| ----------- | ---------- | --------------------------------------------------------------------- |
+| `key`       | `string`   | Theme prop name to read from props                                    |
+| `css`       | `function` | `css` tagged template from `@pyreon/styler`                           |
+| `styles`    | `function` | Style processor (use the exported `styles`)                           |
+| `normalize` | `boolean`  | Fill missing breakpoints by inheriting from previous (default `true`) |
 
 `makeItResponsive` carries a **render-output cache** keyed by theme reference — the same `(internalTheme, outerTheme)` pair returns the previous CSSResult array verbatim. Re-renders against a stable provider cost ~0.
 
@@ -111,68 +111,92 @@ With `normalize: true` (default), missing breakpoints inherit from the previous 
 ```ts
 import { value, values, stripUnit } from '@pyreon/unistyle'
 
-value(16)              // '1rem'    (16 / 16)
-value(24)              // '1.5rem'
-value(0)               // '0'       (always unitless)
-value('2em')           // '2em'     (string passthrough)
-value(16, 16, 'px')    // '16px'    (output-unit override)
+value(16) // '1rem'    (16 / 16)
+value(24) // '1.5rem'
+value(0) // '0'       (always unitless)
+value('2em') // '2em'     (string passthrough)
+value(16, 16, 'px') // '16px'    (output-unit override)
 
-stripUnit('24px')           // 24
-stripUnit('24px', true)     // [24, 'px']
-stripUnit(24)               // 24
+stripUnit('24px') // 24
+stripUnit('24px', true) // [24, 'px']
+stripUnit(24) // 24
 
-values([null, 16, 24], 16)  // '1rem' (picks first non-null and converts)
+values([null, 16, 24], 16) // '1rem' (picks first non-null and converts)
 ```
 
 ## Alignment helpers
 
 ```ts
-import { alignContent, ALIGN_CONTENT_MAP_X, ALIGN_CONTENT_MAP_Y, ALIGN_CONTENT_DIRECTION } from '@pyreon/unistyle'
+import {
+  alignContent,
+  ALIGN_CONTENT_MAP_X,
+  ALIGN_CONTENT_MAP_Y,
+  ALIGN_CONTENT_DIRECTION,
+} from '@pyreon/unistyle'
 ```
 
 Maps alignment keywords → CSS flex values:
 
-| Keyword            | X-axis            | Y-axis            |
-| ------------------ | ----------------- | ----------------- |
-| `left` / `top`     | `flex-start`      | `flex-start`      |
-| `center`           | `center`          | `center`          |
-| `right` / `bottom` | `flex-end`        | `flex-end`        |
-| `spaceBetween`     | `space-between`   | `space-between`   |
-| `spaceAround`      | `space-around`    | `space-around`    |
-| `block`            | `stretch`         | `stretch`         |
+| Keyword            | X-axis          | Y-axis          |
+| ------------------ | --------------- | --------------- |
+| `left` / `top`     | `flex-start`    | `flex-start`    |
+| `center`           | `center`        | `center`        |
+| `right` / `bottom` | `flex-end`      | `flex-end`      |
+| `spaceBetween`     | `space-between` | `space-between` |
+| `spaceAround`      | `space-around`  | `space-around`  |
+| `block`            | `stretch`       | `stretch`       |
 
 ## Default breakpoints
 
 ```ts
 import { breakpoints, enrichTheme } from '@pyreon/unistyle'
 
-breakpoints  // { rootSize: 16, breakpoints: { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1440 } }
+breakpoints // { rootSize: 16, breakpoints: { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1440 } }
 ```
 
 Values are converted to `em` units in media queries for correct cross-browser behaviour. `enrichTheme(userTheme)` merges your theme with the defaults — used by `<PyreonUI>` internally.
 
 ## Other exports
 
-| Export | Notes |
-|---|---|
-| `createMediaQueries` | Builds breakpoint-name → tagged-template-function map |
-| `transformTheme` | Property-centric → breakpoint-centric pivot |
-| `normalizeTheme` | Fills gaps so every breakpoint has a complete set |
-| `sortBreakpoints` | Sorts breakpoint definitions by value (ascending) |
-| `extendCss` | Helper for processing `ExtendCss` props (string, fn, callback) |
-| `Provider` / `context` | Theme context provider + consumer |
-| `enrichTheme` | Merge user theme with default breakpoints/spacing |
+| Export                 | Notes                                                          |
+| ---------------------- | -------------------------------------------------------------- |
+| `createMediaQueries`   | Builds breakpoint-name → tagged-template-function map          |
+| `transformTheme`       | Property-centric → breakpoint-centric pivot                    |
+| `normalizeTheme`       | Fills gaps so every breakpoint has a complete set              |
+| `sortBreakpoints`      | Sorts breakpoint definitions by value (ascending)              |
+| `extendCss`            | Helper for processing `ExtendCss` props (string, fn, callback) |
+| `Provider` / `context` | Theme context provider + consumer                              |
+| `enrichTheme`          | Merge user theme with default breakpoints/spacing              |
 
 ## Types
 
 ```ts
 import type {
-  PyreonTheme, Breakpoints,
-  ITheme, Styles, StylesTheme, ExtendCss,
-  AlignContent, AlignContentAlignXKeys, AlignContentAlignYKeys, AlignContentDirectionKeys,
-  BrowserColors, Color, PropertyValue, UnitValue, Value, Values,
-  MakeItResponsive, MakeItResponsiveStyles, TransformTheme, NormalizeTheme, SortBreakpoints, CreateMediaQueries,
-  StripUnit, Defaults, TProvider,
+  PyreonTheme,
+  Breakpoints,
+  ITheme,
+  Styles,
+  StylesTheme,
+  ExtendCss,
+  AlignContent,
+  AlignContentAlignXKeys,
+  AlignContentAlignYKeys,
+  AlignContentDirectionKeys,
+  BrowserColors,
+  Color,
+  PropertyValue,
+  UnitValue,
+  Value,
+  Values,
+  MakeItResponsive,
+  MakeItResponsiveStyles,
+  TransformTheme,
+  NormalizeTheme,
+  SortBreakpoints,
+  CreateMediaQueries,
+  StripUnit,
+  Defaults,
+  TProvider,
 } from '@pyreon/unistyle'
 ```
 

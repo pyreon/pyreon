@@ -143,9 +143,7 @@ function main(): void {
   console.error(
     '  Add a section to docs/docs/mcp.md following the existing pattern (description + Parameters table + Example call).',
   )
-  console.error(
-    '  See docs/docs/mcp.md "Tools by intent" navigator for the canonical ordering.',
-  )
+  console.error('  See docs/docs/mcp.md "Tools by intent" navigator for the canonical ordering.')
   process.exit(1)
 }
 

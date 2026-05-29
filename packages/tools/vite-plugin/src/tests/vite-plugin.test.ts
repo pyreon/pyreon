@@ -40,7 +40,14 @@ function createBuildPlugin(opts?: PyreonPluginOptions) {
 
 async function transform(plugin: ReturnType<typeof pyreonPlugin>, code: string, id: string) {
   const transformHook = plugin.transform as (
-    this: { warn: (msg: string) => void; resolve: (id: string, importer?: string, options?: { skipSelf: boolean }) => Promise<{ id: string } | null> },
+    this: {
+      warn: (msg: string) => void
+      resolve: (
+        id: string,
+        importer?: string,
+        options?: { skipSelf: boolean },
+      ) => Promise<{ id: string } | null>
+    },
     code: string,
     id: string,
   ) => Promise<{ code: string; map: null } | undefined>
@@ -163,12 +170,8 @@ export function App() { return null }
 `
     const result = await transform(plugin, code, '/src/state.tsx')
     expect(result).toBeDefined()
-    expect(result!.code).toContain(
-      '__hmr_signal("/src/state.tsx", "password", signal, "")',
-    )
-    expect(result!.code).toContain(
-      '__hmr_signal("/src/state.tsx", "items", signal, [])',
-    )
+    expect(result!.code).toContain('__hmr_signal("/src/state.tsx", "password", signal, "")')
+    expect(result!.code).toContain('__hmr_signal("/src/state.tsx", "items", signal, [])')
     expect(result!.code).toContain('__hmr_signal("/src/state.tsx", "count", signal, 0)')
   })
 

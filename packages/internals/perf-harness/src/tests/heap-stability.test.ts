@@ -111,7 +111,10 @@ describe('heap stability under rapid lifecycle', () => {
     // All cycles produce the same counter signature
     const normalised = cycleSnapshots.map((s) => JSON.stringify(s, Object.keys(s).sort()))
     const unique = new Set(normalised)
-    expect(unique.size, `Show toggle produced ${unique.size} distinct counter shapes across 50 cycles`).toBe(1)
+    expect(
+      unique.size,
+      `Show toggle produced ${unique.size} distinct counter shapes across 50 cycles`,
+    ).toBe(1)
     dispose()
   })
 })

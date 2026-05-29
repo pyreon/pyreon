@@ -1,5 +1,5 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 /**
  * Not-found page. fs-router scans `_404.tsx` and attaches the default
@@ -13,8 +13,8 @@ import { Link } from "@pyreon/zero/link"
  */
 export default function NotFoundPage() {
   useHead({
-    title: "404 — Not found",
-    meta: [{ name: "robots", content: "noindex" }],
+    title: '404 — Not found',
+    meta: [{ name: 'robots', content: 'noindex' }],
   })
 
   return (

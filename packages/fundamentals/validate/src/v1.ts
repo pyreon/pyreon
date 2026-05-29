@@ -54,7 +54,15 @@ export const s = {
 // ─── Named function-comp exports ───────────────────────────────────────
 
 export { array, boolean, enum_, literal, number, object, string }
-export { ArraySchema, BooleanSchema, EnumSchema, LiteralSchema, NumberSchema, ObjectSchema, StringSchema }
+export {
+  ArraySchema,
+  BooleanSchema,
+  EnumSchema,
+  LiteralSchema,
+  NumberSchema,
+  ObjectSchema,
+  StringSchema,
+}
 
 // ─── pipe — function-comp variant of method chaining ───────────────────
 
@@ -74,7 +82,10 @@ export { ArraySchema, BooleanSchema, EnumSchema, LiteralSchema, NumberSchema, Ob
  * follow-up PR adds Valibot-style descriptor-object actions for
  * better tree-shaking.
  */
-export function pipe<S extends Schema<unknown>>(schema: S, ...actions: ReadonlyArray<(s: S) => S>): S {
+export function pipe<S extends Schema<unknown>>(
+  schema: S,
+  ...actions: ReadonlyArray<(s: S) => S>
+): S {
   let current = schema
   for (const action of actions) current = action(current)
   return current

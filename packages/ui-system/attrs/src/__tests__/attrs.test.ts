@@ -155,8 +155,7 @@ describe('.config() chaining', () => {
   })
 
   it('should swap the rendered component', () => {
-    const AltComponent = (props: any) =>
-      h('span', { ...props, 'data-testid': 'alt' }, props.label)
+    const AltComponent = (props: any) => h('span', { ...props, 'data-testid': 'alt' }, props.label)
 
     const Original = attrs({ name: 'Test', component: BaseComponent })
     const Swapped = Original.config({ component: AltComponent })
@@ -170,8 +169,7 @@ describe('.config() chaining', () => {
   })
 
   it('should preserve attrs chain after config swap', () => {
-    const AltComponent = (props: any) =>
-      h('span', { ...props, 'data-testid': 'alt' }, props.label)
+    const AltComponent = (props: any) => h('span', { ...props, 'data-testid': 'alt' }, props.label)
 
     const Component = attrs({ name: 'Test', component: BaseComponent })
       .attrs(() => ({ label: 'from-attrs' }))

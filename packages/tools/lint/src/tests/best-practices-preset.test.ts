@@ -12,9 +12,7 @@ import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
 import type { Severity } from '../types'
 
-const OPT_IN_IDS = allRules
-  .filter((r) => r.meta.optIn === true)
-  .map((r) => r.meta.id)
+const OPT_IN_IDS = allRules.filter((r) => r.meta.optIn === true).map((r) => r.meta.id)
 
 function sev(entry: unknown): Severity {
   return Array.isArray(entry) ? (entry[0] as Severity) : (entry as Severity)

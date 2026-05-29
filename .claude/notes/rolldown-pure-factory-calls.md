@@ -21,18 +21,18 @@ Package declares `sideEffects: false`. A consumer importing one preset (`import 
 
 Same behaviour across three bundlers:
 
-| Bundler | Bundle size (consumer using 1 preset) | Presets shipped |
-|---|---|---|
-| Rolldown 1.0.2 (`minify: true, treeshake: true`) | **13,232 bytes** | 114 |
-| esbuild (`--bundle --minify`) | **13,548 bytes** | 114 |
-| Vite 8.0.13 (via Rolldown, prod build) | matches Rolldown | 114 |
+| Bundler                                          | Bundle size (consumer using 1 preset) | Presets shipped |
+| ------------------------------------------------ | ------------------------------------- | --------------- |
+| Rolldown 1.0.2 (`minify: true, treeshake: true`) | **13,232 bytes**                      | 114             |
+| esbuild (`--bundle --minify`)                    | **13,548 bytes**                      | 114             |
+| Vite 8.0.13 (via Rolldown, prod build)           | matches Rolldown                      | 114             |
 
 After `/* @__PURE__ */` annotations on the 122 factory call sites in `presets.ts`:
 
-| Bundler | Bundle size | Presets shipped |
-|---|---|---|
-| Rolldown 1.0.2 | **309 bytes** | 1 |
-| esbuild | **324 bytes** | 1 |
+| Bundler        | Bundle size   | Presets shipped |
+| -------------- | ------------- | --------------- |
+| Rolldown 1.0.2 | **309 bytes** | 1               |
+| esbuild        | **324 bytes** | 1               |
 
 **98% reduction** in the size attributable to `@pyreon/kinetic-presets`.
 

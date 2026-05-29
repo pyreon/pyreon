@@ -36,20 +36,12 @@ type TagMap = HTMLElementTagNameMap
  *   const btn = query(container, 'button')         // HTMLButtonElement
  *   const card = query<HTMLDivElement>(container, '[data-card]')
  */
-export function query<K extends keyof TagMap>(
-  root: ParentNode,
-  selector: K,
-): TagMap[K]
-export function query<T extends Element = HTMLElement>(
-  root: ParentNode,
-  selector: string,
-): T
+export function query<K extends keyof TagMap>(root: ParentNode, selector: K): TagMap[K]
+export function query<T extends Element = HTMLElement>(root: ParentNode, selector: string): T
 export function query(root: ParentNode, selector: string): Element {
   const el = root.querySelector(selector)
   if (!el) {
-    throw new Error(
-      `[@pyreon/test-utils] query: no element matches "${selector}"`,
-    )
+    throw new Error(`[@pyreon/test-utils] query: no element matches "${selector}"`)
   }
   return el
 }
@@ -71,10 +63,7 @@ export function queryOptional<T extends Element = HTMLElement>(
   root: ParentNode,
   selector: string,
 ): T | null
-export function queryOptional(
-  root: ParentNode,
-  selector: string,
-): Element | null {
+export function queryOptional(root: ParentNode, selector: string): Element | null {
   return root.querySelector(selector)
 }
 
@@ -86,14 +75,8 @@ export function queryOptional(
  * automatically; everything else defaults to `HTMLElement` or accepts
  * an explicit `<T>`.
  */
-export function queryAll<K extends keyof TagMap>(
-  root: ParentNode,
-  selector: K,
-): TagMap[K][]
-export function queryAll<T extends Element = HTMLElement>(
-  root: ParentNode,
-  selector: string,
-): T[]
+export function queryAll<K extends keyof TagMap>(root: ParentNode, selector: K): TagMap[K][]
+export function queryAll<T extends Element = HTMLElement>(root: ParentNode, selector: string): T[]
 export function queryAll(root: ParentNode, selector: string): Element[] {
   return Array.from(root.querySelectorAll(selector))
 }

@@ -37,7 +37,8 @@ export function makeIssue(opts: {
   }
   if (opts.code !== undefined) (out as { code?: string }).code = opts.code
   if (opts.key !== undefined) (out as { key?: string }).key = opts.key
-  if (opts.params !== undefined) (out as { params?: Readonly<Record<string, unknown>> }).params = opts.params
+  if (opts.params !== undefined)
+    (out as { params?: Readonly<Record<string, unknown>> }).params = opts.params
   if (opts.fallback !== undefined) (out as { fallback?: string }).fallback = opts.fallback
   return out
 }

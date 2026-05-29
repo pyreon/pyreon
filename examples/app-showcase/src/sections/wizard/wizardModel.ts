@@ -21,9 +21,15 @@ import {
  *      which we collect into an `undoStack` so the user can undo
  *      edits across steps. The patch tape is also a free audit log.
  */
-export const WizardModel = model({ state: { account: DEFAULT_WIZARD.account, profile: DEFAULT_WIZARD.profile, preferences: DEFAULT_WIZARD.preferences, } })
-      .views(() => ({}))
-      .actions((self) => ({
+export const WizardModel = model({
+  state: {
+    account: DEFAULT_WIZARD.account,
+    profile: DEFAULT_WIZARD.profile,
+    preferences: DEFAULT_WIZARD.preferences,
+  },
+})
+  .views(() => ({}))
+  .actions((self) => ({
     setAccount(values: AccountValues) {
       self.account.set(values)
     },
@@ -64,16 +70,15 @@ export function trackPatches(
 
 /** Helper that re-exports getSnapshot/applySnapshot at the section's API level. */
 export function snapshotWizard(instance: ReturnType<typeof useWizard>): WizardSnapshot {
-  return getSnapshot<{ account: AccountValues; profile: ProfileValues; preferences: PreferencesValues }>(
-    instance,
-  ) as WizardSnapshot
+  return getSnapshot<{
+    account: AccountValues
+    profile: ProfileValues
+    preferences: PreferencesValues
+  }>(instance) as WizardSnapshot
 }
 
 /** Restore from a previously captured snapshot (e.g. for "load draft"). */
-export function restoreWizard(
-  instance: ReturnType<typeof useWizard>,
-  snap: WizardSnapshot,
-): void {
+export function restoreWizard(instance: ReturnType<typeof useWizard>, snap: WizardSnapshot): void {
   // The state-tree types use a `StateShape` index-signature constraint
   // that our concrete `WizardSnapshot` doesn't quite satisfy at the
   // type level. The runtime accepts any plain object with matching

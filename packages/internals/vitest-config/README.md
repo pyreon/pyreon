@@ -67,14 +67,14 @@ export default defineBrowserConfig(playwright(), {
 
 Per-category defaults (one source of truth — `src/thresholds.ts`):
 
-| Category | statements | branches | functions | lines |
-|----------|------------|----------|-----------|-------|
-| core | 90 | 90 | 90 | 90 |
-| fundamentals | 85 | 80 | 85 | 85 |
-| ui | 80 | 75 | 80 | 80 |
-| tools | 80 | 75 | 80 | 80 |
-| zero | 80 | 75 | 80 | 80 |
-| internals | 90 | 90 | 90 | 90 |
+| Category     | statements | branches | functions | lines |
+| ------------ | ---------- | -------- | --------- | ----- |
+| core         | 90         | 90       | 90        | 90    |
+| fundamentals | 85         | 80       | 85        | 85    |
+| ui           | 80         | 75       | 80        | 80    |
+| tools        | 80         | 75       | 80        | 80    |
+| zero         | 80         | 75       | 80        | 80    |
+| internals    | 90         | 90       | 90        | 90    |
 
 Partial overrides keep other metrics at the category default — `{ branches: 70 }` only relaxes the branches floor.
 

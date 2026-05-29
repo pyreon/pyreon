@@ -100,18 +100,14 @@ describe('explicit validators', () => {
   })
 
   it('oneOf() validates', () => {
-    const result = validateEnv(
-      { ENV: oneOf(['dev', 'prod'] as const) },
-      { ENV: 'prod' },
-    )
+    const result = validateEnv({ ENV: oneOf(['dev', 'prod'] as const) }, { ENV: 'prod' })
     expect(result.ENV).toBe('prod')
   })
 
   it('oneOf() rejects invalid', () => {
-    expect(() => validateEnv(
-      { ENV: oneOf(['dev', 'prod'] as const) },
-      { ENV: 'staging' },
-    )).toThrow('must be one of')
+    expect(() => validateEnv({ ENV: oneOf(['dev', 'prod'] as const) }, { ENV: 'staging' })).toThrow(
+      'must be one of',
+    )
   })
 })
 

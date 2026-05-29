@@ -198,9 +198,8 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     configureServer(server) {
       const sourcePath = join(root, config.source)
       const darkPath = config.darkSource ? join(root, config.darkSource) : null
-      const devSourcePath = typeof config.devSource === 'string'
-        ? join(root, config.devSource)
-        : null
+      const devSourcePath =
+        typeof config.devSource === 'string' ? join(root, config.devSource) : null
       const autoDevBadge = config.devSource === true
       const devCache = new Map<string, Uint8Array>()
 
@@ -224,7 +223,9 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         const localeSource = resolveLocaleSource(url, config, root)
         const svgUrl = localeSource ? localeSource.url : url
         const svgPath = localeSource ? localeSource.sourcePath : sourcePath
-        const isSvgSource = localeSource ? localeSource.source.endsWith('.svg') : config.source.endsWith('.svg')
+        const isSvgSource = localeSource
+          ? localeSource.source.endsWith('.svg')
+          : config.source.endsWith('.svg')
 
         // Serve the per-theme SVG variants (the app-toggle path):
         // /favicon-light.svg → source, /favicon-dark.svg → darkSource.
@@ -233,8 +234,7 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         // the /favicon.svg handler's intent.
         if (
           isSvgSource &&
-          (svgUrl.endsWith('/favicon-light.svg') ||
-            svgUrl.endsWith('/favicon-dark.svg'))
+          (svgUrl.endsWith('/favicon-light.svg') || svgUrl.endsWith('/favicon-dark.svg'))
         ) {
           const isDarkVariant = svgUrl.endsWith('/favicon-dark.svg')
           const variantPath = isDarkVariant ? (darkPath ?? svgPath) : svgPath
@@ -265,7 +265,9 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
             res.setHeader('Content-Type', 'image/svg+xml')
             res.end(content)
             return
-          } catch { /* fall through */ }
+          } catch {
+            /* fall through */
+          }
         }
 
         // Serve generated PNGs on-demand — supports dark variants + dev badge
@@ -359,8 +361,27 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
       // emitted as the no-JS / direct-reference fallback only.
       if (isSvg && hasDark) {
         tags.push(
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/svg+xml', href: '/favicon-light.svg', 'data-favicon-theme': 'light' }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/svg+xml', href: '/favicon-dark.svg', 'data-favicon-theme': 'dark', media: 'not all' }, injectTo: 'head' },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'icon',
+              type: 'image/svg+xml',
+              href: '/favicon-light.svg',
+              'data-favicon-theme': 'light',
+            },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'icon',
+              type: 'image/svg+xml',
+              href: '/favicon-dark.svg',
+              'data-favicon-theme': 'dark',
+              media: 'not all',
+            },
+            injectTo: 'head',
+          },
         )
       } else if (isSvg) {
         tags.push({
@@ -377,19 +398,89 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         const darkAttrs = { 'data-favicon-theme': 'dark', media: 'not all' }
 
         tags.push(
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-light-32x32.png', ...lightAttrs }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-dark-32x32.png', ...darkAttrs }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-light-16x16.png', ...lightAttrs }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-dark-16x16.png', ...darkAttrs }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon-light.png', ...lightAttrs }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon-dark.png', ...darkAttrs }, injectTo: 'head' },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'icon',
+              type: 'image/png',
+              sizes: '32x32',
+              href: '/favicon-light-32x32.png',
+              ...lightAttrs,
+            },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'icon',
+              type: 'image/png',
+              sizes: '32x32',
+              href: '/favicon-dark-32x32.png',
+              ...darkAttrs,
+            },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'icon',
+              type: 'image/png',
+              sizes: '16x16',
+              href: '/favicon-light-16x16.png',
+              ...lightAttrs,
+            },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'icon',
+              type: 'image/png',
+              sizes: '16x16',
+              href: '/favicon-dark-16x16.png',
+              ...darkAttrs,
+            },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'apple-touch-icon',
+              sizes: '180x180',
+              href: '/apple-touch-icon-light.png',
+              ...lightAttrs,
+            },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'apple-touch-icon',
+              sizes: '180x180',
+              href: '/apple-touch-icon-dark.png',
+              ...darkAttrs,
+            },
+            injectTo: 'head',
+          },
         )
       } else {
         // Single-variant (no dark mode)
         tags.push(
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' }, injectTo: 'head' },
+          {
+            tag: 'link',
+            attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' },
+            injectTo: 'head',
+          },
+          {
+            tag: 'link',
+            attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+            injectTo: 'head',
+          },
         )
       }
 
@@ -459,12 +550,32 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
       }
 
       // Generate favicons for the base (default) source
-      await generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest)
+      await generateFaviconSet.call(
+        this,
+        root,
+        config.source,
+        config.darkSource,
+        '',
+        config,
+        themeColor,
+        backgroundColor,
+        generateManifest,
+      )
 
       // Generate locale-specific favicon sets
       if (config.locales) {
         for (const [locale, localeConfig] of Object.entries(config.locales)) {
-          await generateFaviconSet.call(this, root, localeConfig.source, localeConfig.darkSource, `${locale}/`, config, themeColor, backgroundColor, generateManifest)
+          await generateFaviconSet.call(
+            this,
+            root,
+            localeConfig.source,
+            localeConfig.darkSource,
+            `${locale}/`,
+            config,
+            themeColor,
+            backgroundColor,
+            generateManifest,
+          )
         }
       }
     },
@@ -590,7 +701,10 @@ async function generateFaviconSet(
 
     for (const { size, name } of SIZES) {
       // Light variant
-      const lightName = name.replace(/^(favicon-)/, '$1light-').replace(/^(apple-touch-icon)/, '$1-light').replace(/^(icon-)/, '$1light-')
+      const lightName = name
+        .replace(/^(favicon-)/, '$1light-')
+        .replace(/^(apple-touch-icon)/, '$1-light')
+        .replace(/^(icon-)/, '$1light-')
       const lightPng = await resizeToPng(sourcePath, size)
       if (lightPng) {
         this.emitFile({ type: 'asset', fileName: `${prefix}${lightName}`, source: lightPng })
@@ -598,7 +712,10 @@ async function generateFaviconSet(
 
       // Dark variant
       if (darkExists) {
-        const darkName = name.replace(/^(favicon-)/, '$1dark-').replace(/^(apple-touch-icon)/, '$1-dark').replace(/^(icon-)/, '$1dark-')
+        const darkName = name
+          .replace(/^(favicon-)/, '$1dark-')
+          .replace(/^(apple-touch-icon)/, '$1-dark')
+          .replace(/^(icon-)/, '$1dark-')
         const darkPng = await resizeToPng(darkPath, size)
         if (darkPng) {
           this.emitFile({ type: 'asset', fileName: `${prefix}${darkName}`, source: darkPng })
@@ -679,7 +796,9 @@ export function faviconLinks(
 }> {
   const hasLocaleOverride = locale && config.locales?.[locale]
   const prefix = hasLocaleOverride ? `/${locale}` : ''
-  const isSvg = (hasLocaleOverride ? config.locales![locale]!.source : config.source).endsWith('.svg')
+  const isSvg = (hasLocaleOverride ? config.locales![locale]!.source : config.source).endsWith(
+    '.svg',
+  )
   const hasDark = !!config.darkSource
 
   const links: Array<{
@@ -698,8 +817,19 @@ export function faviconLinks(
   // swap reaches the SVG. `/favicon.svg` stays the no-JS fallback.
   if (isSvg && hasDark) {
     links.push(
-      { rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon-light.svg`, 'data-favicon-theme': 'light' },
-      { rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon-dark.svg`, 'data-favicon-theme': 'dark', media: 'not all' },
+      {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: `${prefix}/favicon-light.svg`,
+        'data-favicon-theme': 'light',
+      },
+      {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: `${prefix}/favicon-dark.svg`,
+        'data-favicon-theme': 'dark',
+        media: 'not all',
+      },
     )
   } else if (isSvg) {
     links.push({ rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon.svg` })
@@ -721,7 +851,10 @@ export function faviconLinks(
 async function resizeToPng(input: string, size: number): Promise<Uint8Array | null> {
   try {
     const sharp = await import('sharp').then((m) => m.default ?? m)
-    return await sharp(input).resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any).png().toBuffer()
+    return await sharp(input)
+      .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any)
+      .png()
+      .toBuffer()
   } catch {
     warnSharpMissing()
     return null
@@ -731,8 +864,14 @@ async function resizeToPng(input: string, size: number): Promise<Uint8Array | nu
 async function generateIco(input: string): Promise<Uint8Array | null> {
   try {
     const sharp = await import('sharp').then((m) => m.default ?? m)
-    const png16 = await sharp(input).resize(16, 16, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any).png().toBuffer()
-    const png32 = await sharp(input).resize(32, 32, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any).png().toBuffer()
+    const png16 = await sharp(input)
+      .resize(16, 16, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any)
+      .png()
+      .toBuffer()
+    const png32 = await sharp(input)
+      .resize(32, 32, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any)
+      .png()
+      .toBuffer()
 
     // ICO format: header + directory entries + PNG data
     return createIcoFromPngs([
@@ -759,8 +898,8 @@ export function createIcoFromPngs(entries: IcoEntry[]): Uint8Array {
 
   // ICO header
   const header = Buffer.alloc(headerSize)
-  header.writeUInt16LE(0, 0)              // reserved
-  header.writeUInt16LE(1, 2)              // type: icon
+  header.writeUInt16LE(0, 0) // reserved
+  header.writeUInt16LE(1, 2) // type: icon
   header.writeUInt16LE(entries.length, 4) // count
 
   // Directory entries
@@ -770,14 +909,14 @@ export function createIcoFromPngs(entries: IcoEntry[]): Uint8Array {
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!
     const offset = i * dirEntrySize
-    dirEntries.writeUInt8(entry.size === 256 ? 0 : entry.size, offset)     // width
+    dirEntries.writeUInt8(entry.size === 256 ? 0 : entry.size, offset) // width
     dirEntries.writeUInt8(entry.size === 256 ? 0 : entry.size, offset + 1) // height
-    dirEntries.writeUInt8(0, offset + 2)                                    // palette
-    dirEntries.writeUInt8(0, offset + 3)                                    // reserved
-    dirEntries.writeUInt16LE(1, offset + 4)                                 // color planes
-    dirEntries.writeUInt16LE(32, offset + 6)                                // bits per pixel
-    dirEntries.writeUInt32LE(entry.buffer.length, offset + 8)               // size
-    dirEntries.writeUInt32LE(dataOffset, offset + 12)                       // offset
+    dirEntries.writeUInt8(0, offset + 2) // palette
+    dirEntries.writeUInt8(0, offset + 3) // reserved
+    dirEntries.writeUInt16LE(1, offset + 4) // color planes
+    dirEntries.writeUInt16LE(32, offset + 6) // bits per pixel
+    dirEntries.writeUInt32LE(entry.buffer.length, offset + 8) // size
+    dirEntries.writeUInt32LE(dataOffset, offset + 12) // offset
 
     dataOffset += entry.buffer.length
     dataBuffers.push(entry.buffer)
@@ -802,7 +941,8 @@ function addDevBadgeToSvg(svg: string): string {
   const cy = (h ?? 32) - r
   const fontSize = r * 0.85
 
-  const badge = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ef4444" stroke="white" stroke-width="${size * 0.03}"/>` +
+  const badge =
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ef4444" stroke="white" stroke-width="${size * 0.03}"/>` +
     `<text x="${cx}" y="${cy}" font-size="${fontSize}" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">D</text>`
 
   // Insert badge before closing </svg>
@@ -828,10 +968,12 @@ async function addDevBadgeToPng(pngBuffer: Uint8Array, size: number): Promise<Ui
     const badgePng = await sharp(Buffer.from(badgeSvg)).png().toBuffer()
 
     return await (sharp(Buffer.from(pngBuffer)) as any)
-      .composite([{
-        input: badgePng,
-        gravity: 'southeast',
-      }])
+      .composite([
+        {
+          input: badgePng,
+          gravity: 'southeast',
+        },
+      ])
       .png()
       .toBuffer()
   } catch {

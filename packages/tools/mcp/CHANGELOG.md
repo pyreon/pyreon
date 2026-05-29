@@ -110,7 +110,6 @@
   The original `diagnose` took only an error string and matched it against a fixed regex table. That's the "known error message → canned fix" tier — it can't reason about _why_ the app reached the bad state because it never sees the component or the reactive run-up.
 
   v2 keeps the string-only path **byte-identical** (verified — every existing `diagnose` test passes unchanged) and adds optional structured context:
-
   - **`componentSource`** → runs `detectPyreonPatterns` over it and maps each hit to the documented `.claude/rules/anti-patterns.md` entry via the `AntiPatternEntry.detectorCodes` bridge. The agent gets "here's the static foot-gun in this component + its catalog explanation," not just the raw error.
   - **`reactiveTrace`** → the causal sequence of signal writes leading to the crash (`ErrorContext.reactiveTrace` from `@pyreon/core`, shipped [#598](https://github.com/pyreon/pyreon/issues/598)). Formatted as a chronological run-up.
   - `filename` / `phase` — optional hints.
@@ -128,14 +127,13 @@
 - [#599](https://github.com/pyreon/pyreon/pull/599) [`872f083`](https://github.com/pyreon/pyreon/commit/872f083c6036aa34974abbe425c90d9e0cbbdb66) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `explain_error` MCP tool — assembles a structured failure dossier from a full Pyreon error report.
 
   The rich-context sibling of `diagnose`. `diagnose` matches an error _string_ against known footguns; `explain_error` takes a full `ErrorContext`-shaped report — crucially the **`reactiveTrace`** (the causal sequence of signal writes from `@pyreon/core`'s error reports) — and assembles:
-
   - The **reactive run-up** (the write sequence, oldest → newest)
   - **Heuristic findings** over that sequence: `empty-trace` (crash is NOT state-driven — don't chase a reactive bug), `last-write-correlation` (the write whose signal name is in the error message), `nullish-then-crash` (a signal set null/undefined that the error references), `write-storm` (same signal written past a loop threshold), `type-flip` (value shape changed: `Array(3)` → `null`)
   - Optional **static detection** (`detectPyreonPatterns` / `detectReactPatterns`) when the component source is supplied
   - **Correlated anti-pattern catalogue** entries (matched via the finding → detector-code mapping, reusing the `get_anti_patterns` loader)
 
   ```ts
-  explain_error({ report: JSON.stringify(errorContext) });
+  explain_error({ report: JSON.stringify(errorContext) })
   // errorContext captured via registerErrorHandler(ctx => …) in dev
   ```
 
@@ -159,7 +157,6 @@
   \* tools/list + mcp_overview + 2×get_api + one `get_anti_patterns({})`.
 
   **`get_anti_patterns` is now token-frugal by default:**
-
   - **no args → a COMPACT INDEX** — one line per entry (title + `[detector: <code>]` tag + one-sentence hook). Keeps the per-category `## <Heading>` markers so an agent still discovers categories in one call; only the prose body is elided.
   - `{ name }` → the single matching entry's full body (cheapest drill-in).
   - `{ category }` → that category's full bodies — **unchanged contract** (the existing filtered tests pass untouched).
@@ -206,7 +203,6 @@
   **What this adds.** A new opt-in `speculationRules?: SpeculationRules` field on `UseHeadInput` (plus exported `SpeculationRules` / `SpeculationRule` / `SpeculationEagerness` types). It auto-wraps the object as a single `<script type="speculationrules">` tag — supported browsers prefetch or fully prerender the next document(s) for near-instant navigation; unsupported browsers ignore it (no polyfill). Both `source: 'list'` (explicit URLs) and `source: 'document'` (CSS-selector predicate — the Qwik "prefetch by intent" shape) are typed. **Zero runtime JS, opt-in (nothing emitted unless called), SSR + client for free** (rides the existing head pipeline, including its `</script>`-breakout escaper), deduplicated by a single key. No default behavior change.
 
   **Run as a bounded spike with kill-criteria fixed first** (the codebase's own Tier-2 methodology), shipped only because both load-bearing criteria passed:
-
   1. **Correctness & SSR-safety — ✅ 0 defects.** 7 unit specs: SSR single-block emission + valid-JSON round-trip, CSR `document.head` sync, key dedup (innermost wins, never two blocks), reactive regen on signal change, `document`-source predicate round-trip, opt-in absence, and XSS-safety (`/x</script><b>pwn` URL → escaped, JSON still parses back to the original).
   2. **Real-Chromium browser acceptance — ✅.** A `*.browser.test.tsx` spec asserts in real Chromium: the script lands in `<head>`, `HTMLScriptElement.type === 'speculationrules'`, the body is valid JSON that round-trips, and Chromium raises **zero** speculation-rules parse errors. (Whether Chromium then prefetches/prerenders is browser-discretionary + headless-flag-dependent and is **intentionally not asserted** — the framework's contract is "emit a correct, valid declarative hint", same as `<link rel=prefetch>`. The docs + manifest mistakes state this explicitly; no measured-TTI claim is made.)
   3. **Net value over existing prefetch — qualitatively yes, honestly framed.** `RouterLink prefetch=intent` warms loader _data_ for in-app client-side nav; Speculation Rules warm the _document_ at the platform level for full navigations — a strictly additional, complementary capability the framework didn't expose. Not overclaimed as a guaranteed perf win.
@@ -226,19 +222,16 @@
 - [#606](https://github.com/pyreon/pyreon/pull/606) [`fde0f41`](https://github.com/pyreon/pyreon/commit/fde0f41ad6312ad0ee45d8e70ece965d7c4fec41) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix the biggest MCP `get_api` quality gap: enrich + correct the two thinnest fundamentals manifests, and add a ratchet so density can't silently erode.
 
   **The gap (measured, via the authoritative `findManifests` loader — the same one `get_api` uses):**
-
   - `@pyreon/rx`: **3** `api[]` entries for 37 functions. `get_api(rx, sortBy)` / `(rx, debounce)` / `(rx, search)` / `(rx, groupBy)` all **404'd** — agents got nothing for the most-used transforms.
   - `@pyreon/store`: `StoreApi` referenced **3× in `seeAlso`** with no `api[]` entry — `get_api(store, StoreApi)` 404'd despite being the central return type.
 
   **Plus four real inaccuracies in the existing rx manifest** that were actively _misleading_ AI agents (found by grounding every claim in source, not assuming):
-
   1. "signals detected by checking for a `.subscribe` method" — false; detection is purely `typeof source === "function"` (`rx/src/types.ts`).
   2. "pass `items` not `() => items()`" — backwards; an accessor wrapper _is_ a function and works. The real mistake is passing a resolved `items()` (static path, never updates).
   3. `groupBy` documented as returning `Computed<Map<…>>` — it returns `Record<string, T[]>` (keys `String()`-coerced).
   4. `search` documented as `{ keys: [...] }` options + "fuzzy" — it's a positional `keys` array and plain case-insensitive `String.includes` (not fuzzy).
 
   **Fixed (delta, authoritative counts):**
-
   - `@pyreon/store`: 5 → **6** entries, 2 → **6** with `mistakes[]` (added `StoreApi` entry; added grounded foot-gun catalogs to `addStorePlugin` / `resetStore` / `resetAllStores`; expanded `defineStore`). Every foot-gun traced to real source behaviour (plugin-runs-once-at-creation, silent `patch({typoKey})` no-op, `__proto__` guard, registry-detach semantics, `store.pluginRun` O(stores×plugins)).
   - `@pyreon/rx`: 3 → **9** entries, 2 → **9** with `mistakes[]` (added `map`/`sortBy`/`groupBy`/`search`/`debounce`/`throttle`; beefed `filter`/`pipe`/`rx`) **and the 4 inaccuracies corrected** across summary, longExample, gotchas, and per-entry notes.
 
@@ -268,7 +261,7 @@
 
   **No runtime or API change** — purely additive doc metadata. `gen-docs --check` in sync; lint **0 errors** (303 pre-existing warnings, same class as prior PRs); typecheck clean (styler + mcp); styler 410 tests, manifest 135 all green; new `manifest-snapshot.test.ts` (5 specs) locks the rendered bullet/section/api-reference shape + foot-gun-catalog assertions locally; `check-manifest-depth` passes (styler enters at port-grade density, intentionally NOT added to `LOCKED` — visible migration backlog, not yet flagship).
 
-  **Authoring note for the next ui-system migration**: `@pyreon/manifest`'s `renderStringLiteral` serializer escapes backtick + `${` when emitting MCP entries into `api-reference.ts`, but does NOT escape literal backslashes. A `summary`/`mistakes` string whose RESOLVED value contains a literal `\` (e.g. from over-escaped nested `` \`…\``` code spans) emits `\\\ `` → the raw backtick prematurely closes the generated template literal → `api-reference.ts` parse error. Keep manifest prose backslash-free: use plain single-backtick code spans for identifiers, never nested backtick-in-backtick escapes; `${`-in-prose is fine (serializer-escaped, round-trips). Documented in `.claude/rules/anti-patterns.md`.
+  **Authoring note for the next ui-system migration**: `@pyreon/manifest`'s `renderStringLiteral` serializer escapes backtick + `${` when emitting MCP entries into `api-reference.ts`, but does NOT escape literal backslashes. A `summary`/`mistakes` string whose RESOLVED value contains a literal `\` (e.g. from over-escaped nested ``\`…\``` code spans) emits `\\\`` → the raw backtick prematurely closes the generated template literal → `api-reference.ts` parse error. Keep manifest prose backslash-free: use plain single-backtick code spans for identifiers, never nested backtick-in-backtick escapes; `${`-in-prose is fine (serializer-escaped, round-trips). Documented in `.claude/rules/anti-patterns.md`.
 
 - Updated dependencies [[`5fb461a`](https://github.com/pyreon/pyreon/commit/5fb461aaf9fcc8d2a624af1442f4db97fd7f33c9), [`5b69841`](https://github.com/pyreon/pyreon/commit/5b69841a6ab30963977e276d120c33d66682da23), [`e274fce`](https://github.com/pyreon/pyreon/commit/e274fceeb37d0893c7425463e443185388fce475), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`6472de0`](https://github.com/pyreon/pyreon/commit/6472de00ffdbcff1fd453c125c404b75fc5cc46d), [`0408e47`](https://github.com/pyreon/pyreon/commit/0408e475e63770996eff17bfb6ac318e89c45df4), [`7e0fe1a`](https://github.com/pyreon/pyreon/commit/7e0fe1a4f7cbb68f7647d85bef843de90d04d506), [`c5b2ea2`](https://github.com/pyreon/pyreon/commit/c5b2ea2fe0df3f52b2af21e0d79b1e391ca9fad5), [`6581f07`](https://github.com/pyreon/pyreon/commit/6581f073293a72360fe9391990d08316e0dc5b4b), [`070a0ec`](https://github.com/pyreon/pyreon/commit/070a0ec687ad598cf15963e5615bb1d8c81933a3)]:
   - @pyreon/compiler@0.19.0
@@ -301,7 +294,6 @@
 - [#311](https://github.com/pyreon/pyreon/pull/311) [`602446b`](https://github.com/pyreon/pyreon/commit/602446bb49e6ea95fe9d2dbc7774bbf9a66da80d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Test-environment audit (T2.5.7) — scans every `*.test.ts(x)` under `packages/` for mock-vnode patterns (the PR [#197](https://github.com/pyreon/pyreon/issues/197) bug class: tests that construct `{ type, props, children }` literals or a custom `vnode()` helper instead of going through the real `h()` from `@pyreon/core`). Classifies each file as HIGH / MEDIUM / LOW based on the balance of mock literals, helper definitions, helper call-sites, real `h()` calls, and the `@pyreon/core` import.
 
   Scanner lives in `@pyreon/compiler` (`auditTestEnvironment`, `formatTestAudit`) so both `@pyreon/mcp` and `@pyreon/cli` can use it without pulling in each other.
-
   - **MCP**: new `audit_test_environment` tool. Options `minRisk` (default `medium`) and `limit` (default 20). Scans 400+ test files in ~50ms.
   - **CLI**: `pyreon doctor --audit-tests` appends the audit output. `--audit-min-risk high|medium|low` to filter. Honors `--json` for machine-readable output.
 
@@ -435,12 +427,10 @@
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents

@@ -199,7 +199,8 @@ function computeKeyedLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
-  if (process.env.NODE_ENV !== 'production' && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+  if (process.env.NODE_ENV !== 'production' && ops > 0)
+    _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
@@ -478,7 +479,8 @@ function computeForLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     // v ≤ lastV here, so tails can't be extended: lo < lisLen always.
   }
-  if (process.env.NODE_ENV !== 'production' && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+  if (process.env.NODE_ENV !== 'production' && ops > 0)
+    _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 

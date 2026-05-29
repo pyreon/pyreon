@@ -67,7 +67,7 @@ const getContentSlots = (result: VNode): VNode[] => {
 describe('Element integration', () => {
   it('renders with content prop producing Wrapper VNode', () => {
     const result = asVNode(Element({ content: 'hello world', children: undefined }))
-    expect(typeof result.type).toBe("function")
+    expect(typeof result.type).toBe('function')
     const children = result.props.children
     expect(children).toBeDefined()
   })
@@ -81,7 +81,7 @@ describe('Element integration', () => {
         children: undefined,
       }),
     )
-    expect(typeof result.type).toBe("function")
+    expect(typeof result.type).toBe('function')
     const slots = getContentSlots(result)
     // With before/after content, there should be Content wrapper VNodes
     expect(slots.length).toBeGreaterThanOrEqual(2)
@@ -98,7 +98,7 @@ describe('Element integration', () => {
 
     // When beforeContent/afterContent are absent, direction falls through
     // to wrapper level and contentDirection/contentAlignX take effect
-    expect(typeof result.type).toBe("function")
+    expect(typeof result.type).toBe('function')
     // The wrapper receives alignment props
     expect(result.props).toBeDefined()
   })

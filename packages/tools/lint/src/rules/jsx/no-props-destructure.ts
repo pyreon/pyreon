@@ -166,8 +166,7 @@ function checkFunction(node: any, context: any, depth: number, callArgFns: WeakM
     }
 
     context.report({
-      message:
-        `Destructured props in component function — breaks reactive prop tracking. ${suggestion}`,
+      message: `Destructured props in component function — breaks reactive prop tracking. ${suggestion}`,
       span: getSpan(firstParam),
     })
   }

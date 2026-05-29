@@ -18,7 +18,11 @@ import {
 const ROW_HEIGHT = 56
 
 function fmtUsd(n: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(n)
 }
 
 function initials(name: string): string {

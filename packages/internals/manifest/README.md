@@ -33,7 +33,8 @@ export default defineManifest({
     {
       name: 'createFlow',
       kind: 'function',
-      signature: '<TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>',
+      signature:
+        '<TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>',
       summary: 'Create a reactive flow instance. Generic over node data shape.',
       example: 'const flow = createFlow<MyData>({ nodes: [...], edges: [...] })',
       mistakes: [
@@ -42,45 +43,43 @@ export default defineManifest({
       seeAlso: ['useFlow'],
     },
   ],
-  gotchas: [
-    'LayoutOptions.direction applies to layered/tree only; force/stress/radial ignore it',
-  ],
+  gotchas: ['LayoutOptions.direction applies to layered/tree only; force/stress/radial ignore it'],
 })
 ```
 
 ## Exports
 
-| Export | Purpose |
-|---|---|
-| `defineManifest<const M>(m)` | Identity helper — preserves string-literal types via the `const` type-parameter modifier so `category: 'browser'` stays `'browser'` and discriminated unions narrow correctly. No runtime wrap, no freeze. |
-| `PackageManifest` | Top-level manifest shape — `name`, `tagline`, `description`, `category`, `peerDeps`, `features`, `api`, `gotchas`, `longExample`, `title`, `since`. |
-| `ApiEntry` | One per exported symbol — `name`, `kind`, `signature`, `summary`, `example`, `mistakes`, `seeAlso`, `stability`, `since`, `deprecated`. |
-| `ApiKind` | `'function' \| 'hook' \| 'component' \| 'type' \| 'class' \| 'constant'` — controls how the generator groups + formats entries. |
-| `Gotcha` | Bare `string` (rendered as `> **Note**: …`) or `{ label, note }` (rendered as `> **<label>**: …`). |
-| `SemVer` | `${number}.${number}.${number}` template-literal type — catches `'1'` / `'v1.0.0'` / `'1..0.0'` typos. |
-| `findManifests()` | Walks the monorepo and loads every `packages/**/src/manifest.ts`. Returns `LoadedManifest[]` with category + filesystem path. |
-| `getPackageCategories()` | Returns the canonical category list (`'core' | 'fundamentals' | 'tools' | 'ui-system' | 'zero' | 'internals' | 'ui'`). |
-| `renderLlmsTxtLine(m)` | One-line bullet for `llms.txt`. |
-| `renderLlmsFullSection(m)` | Per-package section for `llms-full.txt`. |
-| `renderApiReferenceBlock(m)` | MCP api-reference block (between `<gen-docs:api-reference:start/end @pyreon/<name>>` markers). |
-| `renderApiReferenceEntries(m)` | Lower-level — emit each `api[]` entry as `McpApiReferenceEntry`. |
-| `McpApiReferenceEntry` | Type structurally locked equal to MCP's real `ApiEntry` via a compile-time `Equal<...>` check in the MCP package's tests. Any drift fails `tsc --noEmit`. |
-| `formatLineDiff(a, b)` | Used by `gen-docs --check` to print a colored diff when generated output drifts from committed. |
+| Export                         | Purpose                                                                                                                                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------- | ----------- | ------ | ----------- | ------- |
+| `defineManifest<const M>(m)`   | Identity helper — preserves string-literal types via the `const` type-parameter modifier so `category: 'browser'` stays `'browser'` and discriminated unions narrow correctly. No runtime wrap, no freeze. |
+| `PackageManifest`              | Top-level manifest shape — `name`, `tagline`, `description`, `category`, `peerDeps`, `features`, `api`, `gotchas`, `longExample`, `title`, `since`.                                                        |
+| `ApiEntry`                     | One per exported symbol — `name`, `kind`, `signature`, `summary`, `example`, `mistakes`, `seeAlso`, `stability`, `since`, `deprecated`.                                                                    |
+| `ApiKind`                      | `'function' \| 'hook' \| 'component' \| 'type' \| 'class' \| 'constant'` — controls how the generator groups + formats entries.                                                                            |
+| `Gotcha`                       | Bare `string` (rendered as `> **Note**: …`) or `{ label, note }` (rendered as `> **<label>**: …`).                                                                                                         |
+| `SemVer`                       | `${number}.${number}.${number}` template-literal type — catches `'1'` / `'v1.0.0'` / `'1..0.0'` typos.                                                                                                     |
+| `findManifests()`              | Walks the monorepo and loads every `packages/**/src/manifest.ts`. Returns `LoadedManifest[]` with category + filesystem path.                                                                              |
+| `getPackageCategories()`       | Returns the canonical category list (`'core'                                                                                                                                                               | 'fundamentals' | 'tools' | 'ui-system' | 'zero' | 'internals' | 'ui'`). |
+| `renderLlmsTxtLine(m)`         | One-line bullet for `llms.txt`.                                                                                                                                                                            |
+| `renderLlmsFullSection(m)`     | Per-package section for `llms-full.txt`.                                                                                                                                                                   |
+| `renderApiReferenceBlock(m)`   | MCP api-reference block (between `<gen-docs:api-reference:start/end @pyreon/<name>>` markers).                                                                                                             |
+| `renderApiReferenceEntries(m)` | Lower-level — emit each `api[]` entry as `McpApiReferenceEntry`.                                                                                                                                           |
+| `McpApiReferenceEntry`         | Type structurally locked equal to MCP's real `ApiEntry` via a compile-time `Equal<...>` check in the MCP package's tests. Any drift fails `tsc --noEmit`.                                                  |
+| `formatLineDiff(a, b)`         | Used by `gen-docs --check` to print a colored diff when generated output drifts from committed.                                                                                                            |
 
 ## Design decisions
 
 ### Source-of-truth boundary
 
-| Field | Authoritative source | Rationale |
-|---|---|---|
-| `signature` | Manifest | Hand-maintained string; lives next to all other generated inputs. |
-| `summary` | Manifest | User-facing copy — reviewed as docs, not source-adjacent technical prose. |
-| `example` | Manifest | Single location for docs + MCP + llms-full. |
-| `mistakes` | Manifest | Feeds MCP `validate` — needs structured access. |
-| `seeAlso` | Manifest | Generator emits cross-references; future validator resolves them. |
-| `@deprecated` JSDoc on symbol | Source | IDE quick-info needs it; pair with `stability: 'deprecated'` here. |
-| `@internal` JSDoc on symbol | Source | Controls TS doc generation. |
-| Conceptual prose in `docs/guide/**/*.md` | Source | Not a structured API reference. |
+| Field                                    | Authoritative source | Rationale                                                                 |
+| ---------------------------------------- | -------------------- | ------------------------------------------------------------------------- |
+| `signature`                              | Manifest             | Hand-maintained string; lives next to all other generated inputs.         |
+| `summary`                                | Manifest             | User-facing copy — reviewed as docs, not source-adjacent technical prose. |
+| `example`                                | Manifest             | Single location for docs + MCP + llms-full.                               |
+| `mistakes`                               | Manifest             | Feeds MCP `validate` — needs structured access.                           |
+| `seeAlso`                                | Manifest             | Generator emits cross-references; future validator resolves them.         |
+| `@deprecated` JSDoc on symbol            | Source               | IDE quick-info needs it; pair with `stability: 'deprecated'` here.        |
+| `@internal` JSDoc on symbol              | Source               | Controls TS doc generation.                                               |
+| Conceptual prose in `docs/guide/**/*.md` | Source               | Not a structured API reference.                                           |
 
 ### One entry per overloaded symbol
 

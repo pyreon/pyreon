@@ -133,7 +133,6 @@
 - [#612](https://github.com/pyreon/pyreon/pull/612) [`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 12 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
 
   **Security (prototype pollution / XSS / DoS)**
-
   - `@pyreon/reactivity` `reconcile()` + `createStore` set trap — a documented "apply an untrusted API response into a store" path (`reconcile(JSON.parse(body), store)`) had no `__proto__`/`constructor`/`prototype` guard. Added on both the write and stale-key-removal passes + defense-in-depth in the proxy set trap.
   - `@pyreon/i18n` `addMessages` — `nestFlatKeys` (dotted-key expansion) ran BEFORE `deepMerge`, so deepMerge's own pollution filter never saw the dotted form; `__proto__.x` walked into `Object.prototype` and wrote onto it. Message JSON is routinely CDN/community-sourced. Guarded.
   - `@pyreon/document` HTML renderer — `language` was interpolated raw into `<html lang="…">` and `styleStr` emitted string values raw into `style="…"`; a CMS/author-supplied value containing `"><script>` broke out → stored XSS. `lang` is now charset-restricted + escaped; style values route through the renderer's existing `sanitizeCss`.
@@ -143,20 +142,17 @@
   - `@pyreon/zero` API-route matcher — dangerous param names from the route pattern guarded (defense-in-depth; consistent with the reconcile / i18n guards).
 
   **Memory leaks**
-
   - `@pyreon/reactivity` `signal._d` — direct-updater disposal nulled an array slot but never compacted, so a long-lived signal (theme/locale/auth, or signals read in `<For>` rows) bound by churning components accumulated one permanent dead slot per ever-mounted binding — an app-lifetime leak that ALSO degraded the signal-write hot path (`notifyDirect` iterated O(total-ever), not O(live)). Switched to a `Set` (same as `_s`): O(1) disposal, O(live) iteration, bounded growth. Proven structurally — `_d.size` stays 0 after 10 000 register/dispose cycles.
   - `@pyreon/dnd` `useSortable` — `itemRef` pushed every pdnd registration onto a shared array and the unmount (`ref(null)`) branch was a no-op, so a churning `<For>` sortable (todo list / kanban — the documented usage) leaked every removed item's draggable/dropTarget registration until the whole sortable unmounted. Now per-key disposal on unmount and re-register.
   - `@pyreon/zero` ISR — a hung revalidation handler pinned its key in the in-flight set forever (`finally` never ran), so the entry could never recover from stale. Background revalidation is now timeout-bounded (`ISRConfig.revalidateTimeoutMs`, default 30 s).
 
   **Correctness / silent-failure**
-
   - `@pyreon/router` `stringifyLoaderData` — the cycle detector used an all-seen `WeakSet` that was never pruned, so a shared (DAG) reference — extremely common, e.g. `{ author: user, lastEditor: user }` from an ORM — falsely threw "circular reference" and 500'd the SSR response. Replaced with true ancestor-path detection (the original code's own comment anticipated exactly this remedy). **Behaviour change (bug fix, strictly more permissive):** payloads that previously 500'd now serialize; real cycles still throw.
   - `@pyreon/server` `processTemplate` — used `String.prototype.replace` with string replacements, so rendered HTML containing literal `$&` / `$$` / `` $` `` / `$'` (prices, code, math) was corrupted by regex-pattern substitution. Switched to function replacements.
   - `@pyreon/i18n` `interpolate` — a serialization failure (circular value, throwing `toString`) was swallowed silently, rendering `{{key}}` to end users with no signal. Now dev-warns (fallback behaviour unchanged).
   - `@pyreon/query` `useSSE` — the reactive effect unconditionally reset `intentionalClose = false`, so an explicit `close()` was silently overridden by any later reactive `url`/`enabled` change. Now respects `intentionalClose` (mirrors `useSubscription`); `reconnect()` is the explicit resume.
 
   **Disclosures (honest scope)**
-
   - **An attempted SWR-swallow fix (surface the empty `.catch` via `__DEV__` warn + `_onError`) was REVERTED from this PR.** Probing empirically proved `revalidateSwrLoaders` is invoked **0 times** even by the canonical `staleWhileRevalidate` nav pattern: `resolveRoute` returns fresh `RouteRecord` objects per resolution, so `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate is never true across navigations — the SWR branch is **dead code**, and the existing "revalidates in background" test's count actually comes from the blocking path running twice. Adding error-surfacing to provably-unreachable code is not hardening (and it dropped router coverage). **The real bug — `staleWhileRevalidate` is effectively non-functional for the nav-away/back case (record-identity-keyed gate)** — is a distinct, significant finding whose correct fix (key the gate by a stable path/loaderKey) is a non-trivial router behaviour change deserving its own focused, aligned PR. Documented in `router/src/tests/loader.test.ts` as a flagged follow-up; deliberately not bundled here (scope/risk).
   - One audit finding (`decodeKeyFromMarker`) was investigated and **dropped as a false positive** — `%2D` never appears in `encodeURIComponent` output, so the manual substitution is uniquely reversible.
   - Z5 (API-route param guard) is defense-in-depth: a string param value assigned to `__proto__` is a silent JS no-op (not exploitable); the guard prevents the real own-prop shadow for `constructor`/`prototype` and matches the repo-wide convention.
@@ -166,7 +162,6 @@
 - [#641](https://github.com/pyreon/pyreon/pull/641) [`078b1e7`](https://github.com/pyreon/pyreon/commit/078b1e72343828b2d73f97c03e0b5b0f335fe979) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Repo sweep: duplication removal + two SSG correctness/robustness fixes.
 
   **`@pyreon/document` — duplication removal (behaviour-preserving).**
-
   - `getTextContent` (recursive node-tree → text flatten) was copy-pasted **byte-identically into 13 of the 18 renderers** (svg/pdf/pptx/xlsx/docx + every chat target). Consolidated into the package's `nodes.ts` as the single source of truth; the 13 copies replaced with an import. (text/markdown/html deliberately walk the tree differently and were left untouched.)
   - The HTML/XML escape function (`& < > "`) was copy-pasted **4×** under three names (`escapeHtml`/`escapeXml`/`esc`) into html/svg/email/telegram. Consolidated into `sanitize.ts` as `escapeXml`; renderers import it (aliased to their local names — zero call-site churn). The intentionally-distinct escapes (csv quoting, runtime-server's 5-char+perf-counter variant, the standalone compiler escapes) were correctly left alone — different algorithm/layer.
   - Net: ~80 LOC of true duplication removed, no API/behaviour change. Proven by the full `@pyreon/document` suite (441/441) — the per-renderer text/escape tests exercise the consolidated path; identical-body removal verified by `diff` (0 lines).
@@ -174,7 +169,6 @@
   **`@pyreon/zero` — sitemap duplicate `<url>` (correctness bug).** `generateSitemap` built `allPaths = [...routeScan, ...additionalPaths]` with **no dedup**. The i18n cluster path dedups via `byUnPrefixed`, but the non-i18n branch is a raw 1:1 map — so a static route present in BOTH the route scan AND `additionalPaths` (routine: SSG-emitted paths merged via `seoPlugin`) emitted a **duplicate `<url>`/`<loc>`**. (The nearby "merge dedups" comment was itself inaccurate — that merge is a plain spread.) Now deduped by path (first-wins, order-preserving) at the single source, covering both branches. Regression test: a path in both inputs → exactly one `<loc>`, `<url>` count correct. Bisect-verified.
 
   **`@pyreon/zero` — SSG path-escape + duplicate-path robustness (edge cases).**
-
   - `expandUrlPattern` substituted `getStaticPaths` param values verbatim into what becomes a `dist/<path>/index.html` write target. An unsanitized CMS slug containing `/` (in a single non-catch-all `:slug`) or `.`/`..` traversal segments would escape the intended structure. Now rejected with a clear error (catch-all `:rest*` still spans segments but still rejects `.`/`..`). Bisect-verified.
   - `autoDetectStaticPaths` had no dedup — a `getStaticPaths` returning a duplicate slug (CMS dup, pagination overlap) or i18n fan-out collision rendered the same `dist/<path>/index.html` twice (wasted work + last-write race) and fed a duplicate into the SSG→sitemap merge. Now order-preserving deduped. Bisect-verified.
 
@@ -293,10 +287,8 @@
 ### Minor Changes
 
 - [`deb9834`](https://github.com/pyreon/fundamentals/commit/deb983456472cc685d80e97b21196588af53b502) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ### New package
-
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations

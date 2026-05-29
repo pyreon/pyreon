@@ -45,9 +45,7 @@ describe('Icon — component form (`as`)', () => {
   it('applies the container-fill + currentColor defaults', () => {
     const svg = render(h(Icon, { as: StarSvg })).querySelector('svg')
     expect(svg?.getAttribute('fill')).toBe('currentColor')
-    expect(svg?.getAttribute('style')).toBe(
-      'display: block; width: 100%; height: 100%;',
-    )
+    expect(svg?.getAttribute('style')).toBe('display: block; width: 100%; height: 100%;')
     // The svg's own viewBox survives (not clobbered by Icon).
     expect(svg?.getAttribute('viewBox')).toBe('0 0 10 10')
   })
@@ -76,9 +74,7 @@ describe('Icon — raw-markup form (`svg`)', () => {
     const span = render(
       h(Icon, { svg: RAW, class: 'icon-host', 'aria-hidden': 'true' }),
     ).querySelector('span')
-    expect(span?.getAttribute('style')).toBe(
-      'display: block; width: 100%; height: 100%;',
-    )
+    expect(span?.getAttribute('style')).toBe('display: block; width: 100%; height: 100%;')
     expect(span?.getAttribute('class')).toBe('icon-host')
     expect(span?.getAttribute('aria-hidden')).toBe('true')
   })
@@ -103,9 +99,7 @@ describe('createIcon — reusable loaded glyph', () => {
 
   it('from an imported SVG component → renders it directly + forwards props', () => {
     const Star = createIcon(StarSvg)
-    const svg = render(h(Star, { 'aria-label': 'star', fill: 'gold' })).querySelector(
-      'svg',
-    )
+    const svg = render(h(Star, { 'aria-label': 'star', fill: 'gold' })).querySelector('svg')
     expect(svg?.getAttribute('aria-label')).toBe('star')
     expect(svg?.getAttribute('fill')).toBe('gold')
     expect(svg?.querySelector('path')?.getAttribute('d')).toBe('M5 0 6 4Z')
@@ -117,7 +111,7 @@ describe('createNamedIcon — typed set runtime', () => {
   const RAW_B = '<svg viewBox="0 0 6 6"><circle r="3"></circle></svg>'
 
   it('inline mode: name → raw svg inlined via <Icon> (one <span> host)', () => {
-    const Icon = createNamedIcon({ 'box': RAW_A, 'dot': RAW_B })
+    const Icon = createNamedIcon({ box: RAW_A, dot: RAW_B })
     const root = render(h(Icon, { name: 'dot', class: 'x' }))
     const svg = root.querySelector('svg')
     expect(svg?.getAttribute('viewBox')).toBe('0 0 6 6')
@@ -126,7 +120,7 @@ describe('createNamedIcon — typed set runtime', () => {
   })
 
   it('inline mode: switching name resolves the other entry', () => {
-    const Icon = createNamedIcon({ 'box': RAW_A, 'dot': RAW_B })
+    const Icon = createNamedIcon({ box: RAW_A, dot: RAW_B })
     const svg = render(h(Icon, { name: 'box' })).querySelector('svg')
     expect(svg?.getAttribute('viewBox')).toBe('0 0 4 4')
     expect(svg?.querySelector('rect')).toBeTruthy()
@@ -134,7 +128,7 @@ describe('createNamedIcon — typed set runtime', () => {
 
   it('image mode: name → <img> with the asset URL, original colors, no svg mutation', () => {
     const Icon = createNamedIcon(
-      { 'logo': '/assets/logo.svg', 'mark': '/assets/mark.svg' },
+      { logo: '/assets/logo.svg', mark: '/assets/mark.svg' },
       { mode: 'image' },
     )
     const root = render(h(Icon, { name: 'logo', class: 'brand' }))
@@ -146,10 +140,8 @@ describe('createNamedIcon — typed set runtime', () => {
   })
 
   it('image mode: alt prop is forwarded onto the <img>', () => {
-    const Icon = createNamedIcon({ 'logo': '/l.svg' }, { mode: 'image' })
-    const img = render(h(Icon, { name: 'logo', alt: 'Company logo' })).querySelector(
-      'img',
-    )
+    const Icon = createNamedIcon({ logo: '/l.svg' }, { mode: 'image' })
+    const img = render(h(Icon, { name: 'logo', alt: 'Company logo' })).querySelector('img')
     expect(img?.getAttribute('alt')).toBe('Company logo')
   })
 })

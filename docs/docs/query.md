@@ -45,11 +45,11 @@ Each `useQuery` / `useMutation` / `useSuspenseQuery` / `useInfiniteQuery` expose
 
 Real-world impact (5-run median on the perf-dashboard stress journeys):
 
-| Journey | `signalCreate` | `signalWrite` | wall-clock |
-| --- | --- | --- | --- |
-| `queryMount-1000` | 9000 → **0** | 10006 → **6** (-99.9%) | -15% |
-| `queryNotify-10k` | n/a | 20070 → **7** (-100%) | -22% |
-| `mutationInvalidate-1000` | 908 → **0** | unchanged | heap -25.8% |
+| Journey                   | `signalCreate` | `signalWrite`          | wall-clock  |
+| ------------------------- | -------------- | ---------------------- | ----------- |
+| `queryMount-1000`         | 9000 → **0**   | 10006 → **6** (-99.9%) | -15%        |
+| `queryNotify-10k`         | n/a            | 20070 → **7** (-100%)  | -22%        |
+| `mutationInvalidate-1000` | 908 → **0**    | unchanged              | heap -25.8% |
 
 The journey numbers are the EXTREME case (the stress component reads ZERO result fields → zero materialization). Real apps reading 1-3 fields land in the 67-89% range. Reference: PR #492.
 
@@ -153,21 +153,21 @@ const loading = signal(false)
 const data = signal(null)
 
 const fetchUser = async () => {
-  loading.set(true)
-  const res = await fetch('https://jsonplaceholder.typicode.com/users/' + userId())
-  data.set(await res.json())
-  loading.set(false)
+loading.set(true)
+const res = await fetch('https://jsonplaceholder.typicode.com/users/' + userId())
+data.set(await res.json())
+loading.set(false)
 }
 fetchUser()
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
-    h('button', { onClick: () => { userId.set(1); fetchUser() } }, 'User 1'),
-    h('button', { onClick: () => { userId.set(2); fetchUser() } }, 'User 2'),
-    h('button', { onClick: () => { userId.set(3); fetchUser() } }, 'User 3'),
-  ),
-  h('div', {}, () => loading() ? 'Loading...' : data() ? data().name + ' (' + data().email + ')' : ''),
+h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+h('button', { onClick: () => { userId.set(1); fetchUser() } }, 'User 1'),
+h('button', { onClick: () => { userId.set(2); fetchUser() } }, 'User 2'),
+h('button', { onClick: () => { userId.set(3); fetchUser() } }, 'User 3'),
+),
+h('div', {}, () => loading() ? 'Loading...' : data() ? data().name + ' (' + data().email + ')' : ''),
 )
 mount(ui, app)
 </Playground>

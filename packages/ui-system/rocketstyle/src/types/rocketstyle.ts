@@ -93,9 +93,7 @@ export interface IRocketStyleComponent<
   DFP = OA extends infer O
     ? Omit<O, keyof EA & keyof O> &
         Partial<Pick<O, keyof EA & keyof O>> &
-        MergeTypes<
-          [Partial<Omit<EA, keyof O>>, DefaultProps, ExtractDimensionProps<D, DKP, UB>]
-        >
+        MergeTypes<[Partial<Omit<EA, keyof O>>, DefaultProps, ExtractDimensionProps<D, DKP, UB>]>
     : never,
 > {
   // The component is callable — Pyreon components are plain functions

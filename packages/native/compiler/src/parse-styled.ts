@@ -102,11 +102,7 @@ function walkProgram(program: AnyNode, styles: StyleIR[], warnings: string[]): v
   }
 }
 
-function collectDeclarations(
-  varDecl: AnyNode,
-  styles: StyleIR[],
-  warnings: string[],
-): void {
+function collectDeclarations(varDecl: AnyNode, styles: StyleIR[], warnings: string[]): void {
   const decls = (varDecl as { declarations?: AnyNode[] }).declarations ?? []
   for (const d of decls) {
     const id = (d as { id?: AnyNode }).id
@@ -174,11 +170,7 @@ function readTagArg(args: AnyNode[] | undefined, warnings: string[]): string | n
  * The flat property-list pattern is what the canonical @pyreon/styler
  * usage produces.
  */
-function parseCssTemplate(
-  quasi: AnyNode,
-  declName: string,
-  warnings: string[],
-): StyleProperty[] {
+function parseCssTemplate(quasi: AnyNode, declName: string, warnings: string[]): StyleProperty[] {
   const quasis = (quasi as { quasis?: AnyNode[] }).quasis ?? []
   const expressions = (quasi as { expressions?: AnyNode[] }).expressions ?? []
 
@@ -190,7 +182,7 @@ function parseCssTemplate(
   for (let i = 0; i < quasis.length; i++) {
     const q = quasis[i]
     if (q) {
-      const cooked = ((q as { value?: { cooked?: string; raw?: string } }).value?.cooked) ?? ''
+      const cooked = (q as { value?: { cooked?: string; raw?: string } }).value?.cooked ?? ''
       parts.push({ kind: 'text', value: cooked })
     }
     const e = expressions[i]
@@ -211,7 +203,8 @@ function parseCssTemplate(
     let buf = ''
     for (const ch of p.value) {
       if (ch === ';') {
-        if (buf.length > 0) declarations[declarations.length - 1]!.push({ kind: 'text', value: buf })
+        if (buf.length > 0)
+          declarations[declarations.length - 1]!.push({ kind: 'text', value: buf })
         declarations.push([])
         buf = ''
       } else {
@@ -299,7 +292,10 @@ function resolveValue(
   // Case A: all-static — concat text + emit string.
   const allStatic = parts.every((p) => p.kind === 'text')
   if (allStatic) {
-    const text = parts.map((p) => (p.kind === 'text' ? p.value : '')).join('').trim()
+    const text = parts
+      .map((p) => (p.kind === 'text' ? p.value : ''))
+      .join('')
+      .trim()
     if (!text) return null
     const numeric = tryParseNumber(text)
     if (numeric !== null) return { name: propName, value: { kind: 'number', value: numeric } }

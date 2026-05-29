@@ -89,9 +89,7 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     expect(out.code).toContain('private func addTodo()')
     // Phase 2 TS-method translation: `.trim()` rewrites to Swift's
     // canonical String trimming form, and `.length` rewrites to `.count`.
-    expect(out.code).toContain(
-      'let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)',
-    )
+    expect(out.code).toContain('let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)')
     expect(out.code).toContain('if text.count == 0 {')
     // Phase 2.5: nextId++ emits an IIFE that preserves post-increment
     // semantics (old value AND side-effect). Pre-fix shape was
@@ -206,7 +204,7 @@ describe('Bonus — ConditionalExpression (ternary)', () => {
 })
 
 describe('Bonus — comparison operators (`===` / `!==`)', () => {
-  it("coalesces Pyreon `===` to native `==`", () => {
+  it('coalesces Pyreon `===` to native `==`', () => {
     const out = transform(
       `
       export function App() {

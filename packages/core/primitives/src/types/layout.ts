@@ -26,10 +26,7 @@ import type {
  * - iOS: `VStack` / `HStack`
  * - Android: `Column` / `Row`
  */
-export interface StackProps
-  extends BaseLayoutProps,
-    ChildrenProp,
-    HtmlPassthroughProps {
+export interface StackProps extends BaseLayoutProps, ChildrenProp, HtmlPassthroughProps {
   direction?: 'column' | 'row'
   /** Cross-axis alignment of children (flex `alignItems`). */
   align?: Align
@@ -51,10 +48,7 @@ export interface StackProps
  * - iOS: `HStack`
  * - Android: `Row`
  */
-export interface InlineProps
-  extends BaseLayoutProps,
-    ChildrenProp,
-    HtmlPassthroughProps {
+export interface InlineProps extends BaseLayoutProps, ChildrenProp, HtmlPassthroughProps {
   align?: Align
   justify?: Justify
   gap?: Space
@@ -70,10 +64,7 @@ export interface InlineProps
  * - iOS: `ZStack`
  * - Android: `Box`
  */
-export interface LayerProps
-  extends BaseLayoutProps,
-    ChildrenProp,
-    HtmlPassthroughProps {
+export interface LayerProps extends BaseLayoutProps, ChildrenProp, HtmlPassthroughProps {
   align?: Align
 }
 
@@ -85,10 +76,7 @@ export interface LayerProps
  * - iOS: `ScrollView`
  * - Android: `Column(verticalScroll)` / `Row(horizontalScroll)`
  */
-export interface ScrollProps
-  extends BaseLayoutProps,
-    ChildrenProp,
-    HtmlPassthroughProps {
+export interface ScrollProps extends BaseLayoutProps, ChildrenProp, HtmlPassthroughProps {
   axis?: 'vertical' | 'horizontal'
 }
 

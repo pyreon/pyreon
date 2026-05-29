@@ -139,24 +139,19 @@ export default function TodosPage() {
   //    into a single Computed<Todo[]>. The result re-derives only when
   //    one of its inputs actually changes, so the list stays cheap to
   //    re-render even with thousands of todos.
-  const filtered = rx.combine(
-    store.todos,
-    searchQuery,
-    status,
-    (items, q, currentStatus) => {
-      const needle = q.trim().toLowerCase()
-      return items.filter((todo) => {
-        if (currentStatus === 'active' && todo.done) return false
-        if (currentStatus === 'completed' && !todo.done) return false
-        if (needle) {
-          const inTitle = todo.title.toLowerCase().includes(needle)
-          const inNotes = (todo.notes ?? '').toLowerCase().includes(needle)
-          if (!inTitle && !inNotes) return false
-        }
-        return true
-      })
-    },
-  )
+  const filtered = rx.combine(store.todos, searchQuery, status, (items, q, currentStatus) => {
+    const needle = q.trim().toLowerCase()
+    return items.filter((todo) => {
+      if (currentStatus === 'active' && todo.done) return false
+      if (currentStatus === 'completed' && !todo.done) return false
+      if (needle) {
+        const inTitle = todo.title.toLowerCase().includes(needle)
+        const inNotes = (todo.notes ?? '').toLowerCase().includes(needle)
+        if (!inTitle && !inNotes) return false
+      }
+      return true
+    })
+  })
 
   // Project filter layered on top — keeps the combine arity at 3 so
   // each rx.combine call has a clear, narrow purpose.
@@ -176,15 +171,17 @@ export default function TodosPage() {
             onClick={() => projectId.set('all')}
           />
           {() =>
-            store.projects().map((p) => (
-              <ProjectButton
-                label={p.name}
-                color={p.color}
-                count={store.todos().filter((todo) => todo.projectId === p.id).length}
-                $active={projectId() === p.id}
-                onClick={() => projectId.set(p.id)}
-              />
-            ))
+            store
+              .projects()
+              .map((p) => (
+                <ProjectButton
+                  label={p.name}
+                  color={p.color}
+                  count={store.todos().filter((todo) => todo.projectId === p.id).length}
+                  $active={projectId() === p.id}
+                  onClick={() => projectId.set(p.id)}
+                />
+              ))
           }
         </SidebarSection>
 
@@ -316,4 +313,3 @@ function FilterTabs(props: { status: UrlStateSignal<StatusFilter> }) {
 export const meta = {
   title: 'Todos — Pyreon App Showcase',
 }
-

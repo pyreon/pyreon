@@ -20,8 +20,7 @@ export function defineConfig(config: ZeroConfig): ZeroConfig {
 /** Merge user config with defaults. */
 export function resolveConfig(
   userConfig: ZeroConfig = {},
-): Required<Pick<ZeroConfig, 'mode' | 'base' | 'port' | 'adapter' | 'entryClient'>> &
-  ZeroConfig {
+): Required<Pick<ZeroConfig, 'mode' | 'base' | 'port' | 'adapter' | 'entryClient'>> & ZeroConfig {
   return {
     mode: 'ssr',
     base: '/',

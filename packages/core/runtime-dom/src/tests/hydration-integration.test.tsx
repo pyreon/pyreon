@@ -26,8 +26,7 @@ afterEach(() => {
 
 describe('hydration integration — SSR -> hydrate -> reactive', () => {
   test('simple text: SSR renders, hydrate attaches, signal updates text', async () => {
-    const Comp = (props: { name: () => string }) =>
-      h('div', null, () => props.name())
+    const Comp = (props: { name: () => string }) => h('div', null, () => props.name())
 
     // 1. Server render
     const html = await renderToString(h(Comp, { name: () => 'Alice' }))
@@ -113,22 +112,19 @@ describe('hydration integration — SSR -> hydrate -> reactive', () => {
     // mountChild for the reactive boundary. We verify the reactive text
     // still works after hydration.
     const Comp = (props: { text: () => string }) =>
-      h('div', null,
+      h(
+        'div',
+        null,
         h('p', null, () => props.text()),
       )
 
-    const html = await renderToString(
-      h(Comp, { text: () => 'visible content' }),
-    )
+    const html = await renderToString(h(Comp, { text: () => 'visible content' }))
     expect(html).toContain('visible content')
 
     const el = container()
     el.innerHTML = html
 
-    const cleanup = hydrateRoot(
-      el,
-      h(Comp, { text: () => text() }),
-    )
+    const cleanup = hydrateRoot(el, h(Comp, { text: () => text() }))
 
     // Content visible after hydration
     expect(el.querySelector('p')?.textContent).toBe('visible content')
@@ -150,8 +146,12 @@ describe('hydration integration — SSR -> hydrate -> reactive', () => {
     // Hydrate with Show — Show is a reactive component, so it remounts fresh
     const cleanup = hydrateRoot(
       el,
-      h('div', null,
-        h(Show, { when: visible },
+      h(
+        'div',
+        null,
+        h(
+          Show,
+          { when: visible },
           h('p', null, () => text()),
         ),
       ),
@@ -216,25 +216,22 @@ describe('hydration integration — SSR -> hydrate -> reactive', () => {
 
   test('multiple reactive children in a single element', async () => {
     const Comp = (props: { first: () => string; last: () => string }) =>
-      h('div', null,
+      h(
+        'div',
+        null,
         h('span', { class: 'first' }, () => props.first()),
         ' ',
         h('span', { class: 'last' }, () => props.last()),
       )
 
-    const html = await renderToString(
-      h(Comp, { first: () => 'John', last: () => 'Doe' }),
-    )
+    const html = await renderToString(h(Comp, { first: () => 'John', last: () => 'Doe' }))
 
     const el = container()
     el.innerHTML = html
 
     const first = signal('John')
     const last = signal('Doe')
-    const cleanup = hydrateRoot(
-      el,
-      h(Comp, { first: () => first(), last: () => last() }),
-    )
+    const cleanup = hydrateRoot(el, h(Comp, { first: () => first(), last: () => last() }))
 
     expect(el.querySelector('.first')!.textContent).toBe('John')
     expect(el.querySelector('.last')!.textContent).toBe('Doe')
@@ -254,9 +251,15 @@ describe('hydration integration — SSR -> hydrate -> reactive', () => {
     let clickCount = 0
 
     const Comp = () =>
-      h('button', {
-        onClick: () => { clickCount++ },
-      }, 'Click me')
+      h(
+        'button',
+        {
+          onClick: () => {
+            clickCount++
+          },
+        },
+        'Click me',
+      )
 
     const html = await renderToString(h(Comp, null))
 
@@ -277,24 +280,21 @@ describe('hydration integration — SSR -> hydrate -> reactive', () => {
 
   test('Fragment children hydrate correctly', async () => {
     const Comp = (props: { a: () => string; b: () => string }) =>
-      h(Fragment, null,
+      h(
+        Fragment,
+        null,
         h('span', { class: 'a' }, () => props.a()),
         h('span', { class: 'b' }, () => props.b()),
       )
 
-    const html = await renderToString(
-      h(Comp, { a: () => 'first', b: () => 'second' }),
-    )
+    const html = await renderToString(h(Comp, { a: () => 'first', b: () => 'second' }))
 
     const el = container()
     el.innerHTML = html
 
     const a = signal('first')
     const b = signal('second')
-    const cleanup = hydrateRoot(
-      el,
-      h(Comp, { a: () => a(), b: () => b() }),
-    )
+    const cleanup = hydrateRoot(el, h(Comp, { a: () => a(), b: () => b() }))
 
     expect(el.querySelector('.a')!.textContent).toBe('first')
     expect(el.querySelector('.b')!.textContent).toBe('second')
@@ -313,8 +313,7 @@ describe('hydration integration — SSR -> hydrate -> reactive', () => {
 
 describe('hydration integration — mismatch recovery', () => {
   test('text mismatch: SSR has "Alice", client has "Bob" — recovers', async () => {
-    const Comp = (props: { name: () => string }) =>
-      h('div', null, () => props.name())
+    const Comp = (props: { name: () => string }) => h('div', null, () => props.name())
 
     const html = await renderToString(h(Comp, { name: () => 'Alice' }))
 
@@ -360,7 +359,11 @@ describe('hydration integration — mismatch recovery', () => {
     const text = signal('first')
     const cleanup = hydrateRoot(
       el,
-      h('div', null, h('span', null, () => text())),
+      h(
+        'div',
+        null,
+        h('span', null, () => text()),
+      ),
     )
 
     // First span hydrated
@@ -390,7 +393,13 @@ describe('hydration integration — mismatch recovery', () => {
 describe('hydration integration — onHydrationMismatch telemetry hook', () => {
   test('handler fires with full mismatch context on tag mismatch', async () => {
     const { onHydrationMismatch } = await import('../hydration-debug')
-    const captured: Array<{ type: string; expected: unknown; actual: unknown; path: string; timestamp: number }> = []
+    const captured: Array<{
+      type: string
+      expected: unknown
+      actual: unknown
+      path: string
+      timestamp: number
+    }> = []
     const unsub = onHydrationMismatch((ctx) => {
       captured.push({
         type: ctx.type,
@@ -520,18 +529,13 @@ describe('hydration integration — `_rp`-wrapped component props (regression)',
     const Link = (props: { to: string }) =>
       h('a', { href: `#${props.to}`, id: 'lnk' }, () => props.to)
 
-    const html = await renderToString(
-      h(Link, { to: _rp(() => '/about') as unknown as string }),
-    )
+    const html = await renderToString(h(Link, { to: _rp(() => '/about') as unknown as string }))
     expect(html).toBe('<a href="#/about" id="lnk">/about</a>')
     expect(html).not.toContain('=>')
 
     const el = container()
     el.innerHTML = html
-    const cleanup = hydrateRoot(
-      el,
-      h(Link, { to: _rp(() => '/about') as unknown as string }),
-    )
+    const cleanup = hydrateRoot(el, h(Link, { to: _rp(() => '/about') as unknown as string }))
     const link = el.querySelector<HTMLAnchorElement>('#lnk')!
     expect(link.getAttribute('href')).toBe('#/about')
     expect(link.textContent).toBe('/about')

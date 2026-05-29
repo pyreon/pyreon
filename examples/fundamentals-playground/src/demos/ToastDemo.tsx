@@ -14,8 +14,8 @@ export function ToastDemo() {
     <div>
       <h2>Toast</h2>
       <p class="desc">
-        Toast notifications — imperative API with success/error/warning/info/loading
-        variants, auto-dismiss, pause-on-hover, accessibility (role=alert + aria-live).
+        Toast notifications — imperative API with success/error/warning/info/loading variants,
+        auto-dismiss, pause-on-hover, accessibility (role=alert + aria-live).
       </p>
 
       <div class="section">
@@ -24,10 +24,7 @@ export function ToastDemo() {
           <button onClick={() => toast.success('Saved successfully!')} data-testid="toast-success">
             success
           </button>
-          <button
-            onClick={() => toast.error('Something went wrong')}
-            data-testid="toast-error"
-          >
+          <button onClick={() => toast.error('Something went wrong')} data-testid="toast-error">
             error
           </button>
           <button onClick={() => toast.warning('Heads up!')} data-testid="toast-warning">
@@ -64,8 +61,8 @@ export function ToastDemo() {
       <div class="section">
         <h3>Promise helper</h3>
         <p style="margin-bottom: 12px; font-size: 13px; color: #666">
-          <code>toast.promise(p, &#123;loading, success, error&#125;)</code> auto-transitions
-          a single toast through all three states.
+          <code>toast.promise(p, &#123;loading, success, error&#125;)</code> auto-transitions a
+          single toast through all three states.
         </p>
         <div class="row">
           <button
@@ -74,8 +71,7 @@ export function ToastDemo() {
               toast.promise(fakeApi(1200, false), {
                 loading: 'Fetching…',
                 success: (val) => `Fetched: ${val}`,
-                error: (err) =>
-                  `Failed: ${err instanceof Error ? err.message : String(err)}`,
+                error: (err) => `Failed: ${err instanceof Error ? err.message : String(err)}`,
               })
             }
           >
@@ -87,8 +83,7 @@ export function ToastDemo() {
               toast.promise(fakeApi(1200, true), {
                 loading: 'Fetching (will fail)…',
                 success: 'unreachable',
-                error: (err) =>
-                  `Failed: ${err instanceof Error ? err.message : String(err)}`,
+                error: (err) => `Failed: ${err instanceof Error ? err.message : String(err)}`,
               })
             }
           >

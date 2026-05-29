@@ -44,9 +44,7 @@ describe('parseArgs — feature flags', () => {
   })
 
   it('rejects --with-<unknown>', () => {
-    expect(() => parseArgs(['--with-frobnicator'])).toThrow(
-      /Unknown feature in --with-frobnicator/,
-    )
+    expect(() => parseArgs(['--with-frobnicator'])).toThrow(/Unknown feature in --with-frobnicator/)
   })
 
   it('rejects --no-<unknown>', () => {

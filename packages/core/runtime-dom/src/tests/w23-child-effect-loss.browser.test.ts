@@ -84,12 +84,7 @@ describe('W23 — child effect subscription persistence', () => {
     runs.length = 0
     external.set('flip-3')
     expect(runs.sort()).toEqual(
-      [
-        'row-a (#1)/flip-3',
-        'row-b (#2)/flip-3',
-        'row-c (#3)/flip-3',
-        'row-d (#4)/flip-3',
-      ].sort(),
+      ['row-a (#1)/flip-3', 'row-b (#2)/flip-3', 'row-c (#3)/flip-3', 'row-d (#4)/flip-3'].sort(),
     )
 
     container.remove()

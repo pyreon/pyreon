@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/hotkeys',
   title: 'Keyboard Shortcuts',
-  tagline:
-    'Keyboard shortcut management — scope-aware, modifier keys, conflict detection',
+  tagline: 'Keyboard shortcut management — scope-aware, modifier keys, conflict detection',
   description:
     'Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, scope-based activation for context-aware shortcuts, and conflict detection. Component-scoped hooks auto-unregister on unmount. Imperative API available for non-component contexts.',
   category: 'universal',
@@ -44,7 +43,7 @@ disableScope('editor')                   // programmatically disable a scope
 useHotkey('escape', () => closeModal(), { enableOnFormElements: true })`,
   features: [
     'useHotkey(shortcut, handler, options?) — component-scoped, auto-unregisters on unmount',
-    'useHotkeyScope(scope) — activate a scope for a component\'s lifetime',
+    "useHotkeyScope(scope) — activate a scope for a component's lifetime",
     'mod alias — Command on Mac, Ctrl elsewhere',
     'Scope-based activation for context-aware shortcuts',
     'Imperative API: registerHotkey, enableScope, disableScope, getRegisteredHotkeys',
@@ -57,7 +56,7 @@ useHotkey('escape', () => closeModal(), { enableOnFormElements: true })`,
       signature:
         '(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void',
       summary:
-        'Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: `mod+s`, `ctrl+shift+p`, `escape`, etc. `mod` is Command on Mac, Ctrl elsewhere. By default, shortcuts don\'t fire when focused on form elements (input, textarea, select) — override with `enableOnFormElements: true`. Supports `scope` option for context-aware activation and `description` for introspection.',
+        "Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: `mod+s`, `ctrl+shift+p`, `escape`, etc. `mod` is Command on Mac, Ctrl elsewhere. By default, shortcuts don't fire when focused on form elements (input, textarea, select) — override with `enableOnFormElements: true`. Supports `scope` option for context-aware activation and `description` for introspection.",
       example: `useHotkey('mod+s', (e) => {
   e.preventDefault()
   save()

@@ -64,9 +64,7 @@ describe('<Stack> happy-dom unit', () => {
   })
 
   it('direction="row" emits flex-direction: row', () => {
-    const { container, unmount } = mountTest(
-      h(Stack, { direction: 'row' }, h('span', null, 'a')),
-    )
+    const { container, unmount } = mountTest(h(Stack, { direction: 'row' }, h('span', null, 'a')))
     expect((container.firstElementChild as HTMLDivElement).style.flexDirection).toBe('row')
     unmount()
   })
@@ -84,17 +82,13 @@ describe('<Stack> happy-dom unit', () => {
   })
 
   it('align="center" maps to flex alignItems: center', () => {
-    const { container, unmount } = mountTest(
-      h(Stack, { align: 'center' }, h('span', null, 'a')),
-    )
+    const { container, unmount } = mountTest(h(Stack, { align: 'center' }, h('span', null, 'a')))
     expect((container.firstElementChild as HTMLDivElement).style.alignItems).toBe('center')
     unmount()
   })
 
   it('justify="between" maps to flex justifyContent: space-between', () => {
-    const { container, unmount } = mountTest(
-      h(Stack, { justify: 'between' }, h('span', null, 'a')),
-    )
+    const { container, unmount } = mountTest(h(Stack, { justify: 'between' }, h('span', null, 'a')))
     expect((container.firstElementChild as HTMLDivElement).style.justifyContent).toBe(
       'space-between',
     )
@@ -132,9 +126,7 @@ describe('<Stack> happy-dom unit', () => {
   })
 
   it('margin (uniform) maps to style.margin', () => {
-    const { container, unmount } = mountTest(
-      h(Stack, { margin: 3 }, h('span', null, 'a')),
-    )
+    const { container, unmount } = mountTest(h(Stack, { margin: 3 }, h('span', null, 'a')))
     expect((container.firstElementChild as HTMLDivElement).style.margin).toBe('12px')
     unmount()
   })
@@ -151,9 +143,7 @@ describe('<Stack> happy-dom unit', () => {
   })
 
   it('radius token → borderRadius', () => {
-    const { container, unmount } = mountTest(
-      h(Stack, { radius: 'md' }, h('span', null, 'a')),
-    )
+    const { container, unmount } = mountTest(h(Stack, { radius: 'md' }, h('span', null, 'a')))
     expect((container.firstElementChild as HTMLDivElement).style.borderRadius).toBe('8px')
     unmount()
   })
@@ -279,9 +269,7 @@ describe('<Heading> happy-dom unit', () => {
 
 describe('<Image> happy-dom unit', () => {
   it('renders an <img> with src + alt + default object-fit:cover', () => {
-    const { container, unmount } = mountTest(
-      h(Image, { src: '/a.png', alt: 'a photo' }),
-    )
+    const { container, unmount } = mountTest(h(Image, { src: '/a.png', alt: 'a photo' }))
     const img = container.firstElementChild as HTMLImageElement
     expect(img.tagName).toBe('IMG')
     expect(img.getAttribute('src')).toBe('/a.png')
@@ -291,9 +279,7 @@ describe('<Image> happy-dom unit', () => {
   })
 
   it('fit prop maps to object-fit', () => {
-    const { container, unmount } = mountTest(
-      h(Image, { src: '/a.png', alt: '', fit: 'contain' }),
-    )
+    const { container, unmount } = mountTest(h(Image, { src: '/a.png', alt: '', fit: 'contain' }))
     expect((container.firstElementChild as HTMLImageElement).style.objectFit).toBe('contain')
     unmount()
   })
@@ -414,9 +400,7 @@ describe('<Button> happy-dom unit', () => {
   })
 
   it('disabled sets the disabled attr + opacity 0.5 + cursor not-allowed', () => {
-    const { container, unmount } = mountTest(
-      h(Button, { onPress: () => {}, disabled: true }, 'X'),
-    )
+    const { container, unmount } = mountTest(h(Button, { onPress: () => {}, disabled: true }, 'X'))
     const btn = container.firstElementChild as HTMLButtonElement
     expect(btn.disabled).toBe(true)
     expect(btn.style.opacity).toBe('0.5')
@@ -426,9 +410,7 @@ describe('<Button> happy-dom unit', () => {
 
   it('disabled blocks onPress', () => {
     let n = 0
-    const { container, unmount } = mountTest(
-      h(Button, { onPress: () => n++, disabled: true }, 'X'),
-    )
+    const { container, unmount } = mountTest(h(Button, { onPress: () => n++, disabled: true }, 'X'))
     ;(container.firstElementChild as HTMLButtonElement).click()
     expect(n).toBe(0)
     unmount()
@@ -470,9 +452,7 @@ describe('<Press> happy-dom unit', () => {
     let n = 0
     const { container, unmount } = mountTest(h(Press, { onPress: () => n++ }, 'tap'))
     const root = container.firstElementChild as HTMLDivElement
-    root.dispatchEvent(
-      new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }),
-    )
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }))
     expect(n).toBe(1)
     unmount()
   })
@@ -613,9 +593,7 @@ describe('<Link> happy-dom unit', () => {
   it('external link is never intercepted, even with init({ navigate })', () => {
     const calls: string[] = []
     init({ navigate: (to) => calls.push(to) })
-    const { container, unmount } = mountTest(
-      h(Link, { to: 'https://x.com', external: true }, 'X'),
-    )
+    const { container, unmount } = mountTest(h(Link, { to: 'https://x.com', external: true }, 'X'))
     const a = container.querySelector('a') as HTMLAnchorElement
     const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true })
     a.dispatchEvent(evt)
@@ -898,9 +876,7 @@ describe('<Layer> happy-dom unit', () => {
   })
 
   it('align maps directly to grid place-items (native grid keyword)', () => {
-    const { container, unmount } = mountTest(
-      h(Layer, { align: 'center' }, h('span', null, 'a')),
-    )
+    const { container, unmount } = mountTest(h(Layer, { align: 'center' }, h('span', null, 'a')))
     expect((container.firstElementChild as HTMLDivElement).style.placeItems).toBe('center')
     unmount()
   })
@@ -975,11 +951,7 @@ describe('<Scroll> happy-dom unit', () => {
 
   it('full BaseLayoutProps surface (per-axis padding/margin + uniform margin)', () => {
     const { container, unmount } = mountTest(
-      h(
-        Scroll,
-        { paddingX: 2, paddingY: 3, margin: 1, marginX: 4 },
-        h('span', null, 'a'),
-      ),
+      h(Scroll, { paddingX: 2, paddingY: 3, margin: 1, marginX: 4 }, h('span', null, 'a')),
     )
     const s = (container.firstElementChild as HTMLDivElement).style
     expect(s.paddingLeft).toBe('8px')
@@ -1143,9 +1115,7 @@ describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () =>
   })
 
   it('<Text data-testid> reaches the rendered DOM', () => {
-    const { container, unmount } = mountTest(
-      h(Text, { 'data-testid': 'my-text', children: 'hi' }),
-    )
+    const { container, unmount } = mountTest(h(Text, { 'data-testid': 'my-text', children: 'hi' }))
     const root = container.firstElementChild as HTMLElement
     expect(root.tagName).toBe('SPAN')
     expect(root.getAttribute('data-testid')).toBe('my-text')
@@ -1222,12 +1192,8 @@ describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () =>
   })
 
   it('<Icon data-testid> reaches the rendered DOM', () => {
-    const { container, unmount } = mountTest(
-      h(Icon, { 'data-testid': 'my-icon', name: 'star' }),
-    )
-    expect((container.firstElementChild as SVGElement).getAttribute('data-testid')).toBe(
-      'my-icon',
-    )
+    const { container, unmount } = mountTest(h(Icon, { 'data-testid': 'my-icon', name: 'star' }))
+    expect((container.firstElementChild as SVGElement).getAttribute('data-testid')).toBe('my-icon')
     unmount()
   })
 

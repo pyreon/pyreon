@@ -34,8 +34,8 @@ import { withBase } from 'vitepress'
 
     <h1 class="px-nf-h1">This path has no readers.</h1>
     <p class="px-nf-body">
-      The page you asked for either was never defined, or this route
-      doesn't subscribe to it. Check the spelling, the imports, the scope.
+      The page you asked for either was never defined, or this route doesn't subscribe to it. Check
+      the spelling, the imports, the scope.
     </p>
     <div class="px-nf-cta">
       <a class="px-nf-btn" :href="withBase('/docs/')">↗ docs index</a>

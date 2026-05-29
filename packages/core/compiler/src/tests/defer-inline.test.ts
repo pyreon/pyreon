@@ -14,7 +14,9 @@ export function App() {
     const result = transformDeferInline(input, 'app.tsx')
     expect(result.changed).toBe(true)
     expect(result.code).not.toContain("import { Modal } from './Modal'")
-    expect(result.code).toContain(`chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`)
+    expect(result.code).toContain(
+      `chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`,
+    )
     expect(result.code).toContain('{(__C) => <__C />}')
   })
 
@@ -59,7 +61,9 @@ export function Post() {
     const result = transformDeferInline(input, 'post.tsx')
     expect(result.changed).toBe(true)
     expect(result.code).toContain('on="visible"')
-    expect(result.code).toContain(`chunk={() => import('./Comments').then((__m) => ({ default: __m.Comments }))}`)
+    expect(result.code).toContain(
+      `chunk={() => import('./Comments').then((__m) => ({ default: __m.Comments }))}`,
+    )
   })
 })
 
@@ -161,7 +165,7 @@ export function App() {
 `
     const result = transformDeferInline(input, 'app.tsx')
     expect(result.changed).toBe(true)
-    expect(result.code).not.toContain("import { Modal }")
+    expect(result.code).not.toContain('import { Modal }')
     // Props pass through verbatim. Only the component name is replaced.
     expect(result.code).toContain('{(__C) => <__C title="Confirm" size="md" />}')
   })
@@ -224,8 +228,10 @@ export function App() {
     expect(result.changed).toBe(true)
     // Local name `M` is used at the JSX site, but the chunk extracts
     // `__m.Modal` (the original exported name from './Modal').
-    expect(result.code).toContain(`chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`)
-    expect(result.code).not.toContain("import { Modal as M }")
+    expect(result.code).toContain(
+      `chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`,
+    )
+    expect(result.code).not.toContain('import { Modal as M }')
     expect(result.code).toContain('{(__C) => <__C />}')
   })
 
@@ -241,12 +247,14 @@ export function App() {
     const result = transformDeferInline(input, 'app.tsx')
     expect(result.changed).toBe(true)
     // OtherThing is referenced elsewhere — its import must survive.
-    expect(result.code).toContain("OtherThing")
+    expect(result.code).toContain('OtherThing')
     expect(result.code).toMatch(/import \{\s*OtherThing\s*\} from '\.\/shared'/)
     // Modal binding is gone from the import declaration.
     expect(result.code).not.toMatch(/import \{[^}]*\bModal\b[^}]*\}/)
     // ...but the dynamic chunk pulls Modal from './shared' (same source).
-    expect(result.code).toContain(`chunk={() => import('./shared').then((__m) => ({ default: __m.Modal }))}`)
+    expect(result.code).toContain(
+      `chunk={() => import('./shared').then((__m) => ({ default: __m.Modal }))}`,
+    )
   })
 })
 
@@ -269,8 +277,12 @@ export function App() {
     expect(result.changed).toBe(true)
     expect(result.code).not.toContain("import { Modal } from './Modal'")
     expect(result.code).not.toContain("import { Comments } from './Comments'")
-    expect(result.code).toContain(`chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`)
-    expect(result.code).toContain(`chunk={() => import('./Comments').then((__m) => ({ default: __m.Comments }))}`)
+    expect(result.code).toContain(
+      `chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`,
+    )
+    expect(result.code).toContain(
+      `chunk={() => import('./Comments').then((__m) => ({ default: __m.Comments }))}`,
+    )
   })
 })
 
@@ -288,7 +300,9 @@ export function App() {
 `
     const result = transformDeferInline(input, 'app.tsx')
     expect(result.changed).toBe(true)
-    expect(result.code).toContain(`chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`)
+    expect(result.code).toContain(
+      `chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`,
+    )
     // M.Modal in the JSX replaced with __C (the whole member expression
     // is the "name" range that gets substituted).
     expect(result.code).toContain('{(__C) => <__C />}')

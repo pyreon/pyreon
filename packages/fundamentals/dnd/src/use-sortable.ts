@@ -166,8 +166,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
         onDrop: ({ source }) => {
           // Item-level dropTarget for cross-list drops marks the source
           // data as handled — container skips so we don't insert twice.
-          const handled = (source.data as Record<string, unknown>)
-            .__pyreon_sortable_handled
+          const handled = (source.data as Record<string, unknown>).__pyreon_sortable_handled
           if (source.data[SORT_ID] === sortableId) {
             // Same-list drop on container edge → reorder finalization.
             performReorder()
@@ -316,32 +315,23 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
             // shapes — insert at THIS item's index, then propagate to
             // the source to remove.
             if (source.data[SORT_ID] === sortableId) return
-            if (
-              !groupId ||
-              source.data[SORT_GROUP] !== groupId ||
-              !options.onCrossListReceive
-            ) {
+            if (!groupId || source.data[SORT_GROUP] !== groupId || !options.onCrossListReceive) {
               return
             }
             const item = source.data[SORT_PAYLOAD] as T
             const edge = extractClosestEdge(self.data) as DropEdge | null
             const currentItems = options.items()
-            const targetIndex = currentItems.findIndex(
-              (i) => options.by(i) === key,
-            )
+            const targetIndex = currentItems.findIndex((i) => options.by(i) === key)
             if (targetIndex === -1) return
             const insertAt =
-              edge === 'bottom' || edge === 'right'
-                ? targetIndex + 1
-                : Math.max(0, targetIndex)
+              edge === 'bottom' || edge === 'right' ? targetIndex + 1 : Math.max(0, targetIndex)
             options.onCrossListReceive(item, insertAt)
             const sourceSortableId = source.data[SORT_ID] as string
             const sourceInstance = _sortableRegistry.get(sourceSortableId)
             sourceInstance?.onCrossListDrop?.(item)
             // Mark so the container's onDrop (which also fires) skips
             // re-inserting at the end of the list.
-            ;(source.data as Record<string, unknown>).__pyreon_sortable_handled =
-              true
+            ;(source.data as Record<string, unknown>).__pyreon_sortable_handled = true
           },
         }),
       )

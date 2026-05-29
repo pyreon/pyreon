@@ -14,19 +14,36 @@ bun add @pyreon/router @pyreon/core @pyreon/reactivity
 
 ```tsx
 import {
-  createRouter, RouterProvider, RouterView, RouterLink,
-  useRoute, useRouter, useLoaderData, useTypedSearchParams, useTransition,
-  notFound, NotFoundBoundary, redirect, lazy,
+  createRouter,
+  RouterProvider,
+  RouterView,
+  RouterLink,
+  useRoute,
+  useRouter,
+  useLoaderData,
+  useTypedSearchParams,
+  useTransition,
+  notFound,
+  NotFoundBoundary,
+  redirect,
+  lazy,
 } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
 
 const router = createRouter<'home' | 'user'>({
   routes: [
     { path: '/', component: Home, name: 'home' },
-    { path: '/user/:id', component: User, name: 'user',
-      loader: ({ params }) => fetchUser(params.id) },
-    { path: '/admin', component: AdminLayout,
-      children: [{ path: 'users', component: AdminUsers }] },
+    {
+      path: '/user/:id',
+      component: User,
+      name: 'user',
+      loader: ({ params }) => fetchUser(params.id),
+    },
+    {
+      path: '/admin',
+      component: AdminLayout,
+      children: [{ path: 'users', component: AdminUsers }],
+    },
     { path: '/old-path', redirect: '/new-path' },
     { path: '/dashboard', component: lazy(() => import('./Dashboard')) },
     { path: '(.*)', component: NotFoundPage },
@@ -37,7 +54,9 @@ function App() {
   return (
     <RouterProvider router={router}>
       <nav>
-        <RouterLink to="/" prefetch="intent">Home</RouterLink>
+        <RouterLink to="/" prefetch="intent">
+          Home
+        </RouterLink>
         <RouterLink to={{ name: 'user', params: { id: '42' } }}>Profile</RouterLink>
       </nav>
       <NotFoundBoundary fallback={<p>404</p>}>
@@ -51,7 +70,11 @@ function User() {
   const route = useRoute<'/user/:id'>()
   const data = useLoaderData<{ name: string }>()
   const params = useTypedSearchParams({ page: 'number', q: 'string' })
-  return <h1>{data.name} (id={route().params.id}, page={params().page})</h1>
+  return (
+    <h1>
+      {data.name} (id={route().params.id}, page={params().page})
+    </h1>
+  )
 }
 
 mount(<App />, document.getElementById('app')!)
@@ -61,7 +84,7 @@ mount(<App />, document.getElementById('app')!)
 
 ```ts
 createRouter({ routes, mode: 'history' }) // default; uses pushState
-createRouter({ routes, mode: 'hash' })    // for static hosting; pushState w/ #
+createRouter({ routes, mode: 'hash' }) // for static hosting; pushState w/ #
 createRouter({ routes, url: '/some/path' }) // SSR — pin to a URL for one render
 ```
 
@@ -158,7 +181,7 @@ import { notFound, redirect } from '@pyreon/router'
 // In a loader
 loader: async ({ params, request }) => {
   const user = await fetchUser(params.id)
-  if (!user) notFound()                     // → NotFoundBoundary fallback
+  if (!user) notFound() // → NotFoundBoundary fallback
   if (!user.isVerified) redirect('/verify') // → router.replace, or HTTP 302/307 on SSR
   return user
 }
@@ -202,7 +225,7 @@ Structural sharing — returns the same object reference when validated values h
 For untyped or single-shot reads:
 
 ```ts
-const params = useSearchParams()         // accessor → URLSearchParams
+const params = useSearchParams() // accessor → URLSearchParams
 const typed = useTypedSearchParams({ page: 'number', q: 'string' })
 typed().page // number (NaN coerced to 0)
 ```
@@ -213,11 +236,11 @@ Route changes auto-wrap in `document.startViewTransition()` when supported. Opt 
 
 **`await router.push()` / `.replace()` resolves on `updateCallbackDone`** — the DOM commit, NOT the full animation:
 
-| Promise | Resolves when | Router awaits? |
-|---|---|---|
-| `updateCallbackDone` | Callback done; DOM swapped; new state live | ✅ yes |
-| `ready` | Snapshot captured, pseudo-elements ready | no — `.catch()` only |
-| `finished` | Full animation completed (200-300ms) | no — `.catch()` only |
+| Promise              | Resolves when                              | Router awaits?       |
+| -------------------- | ------------------------------------------ | -------------------- |
+| `updateCallbackDone` | Callback done; DOM swapped; new state live | ✅ yes               |
+| `ready`              | Snapshot captured, pseudo-elements ready   | no — `.catch()` only |
+| `finished`           | Full animation completed (200-300ms)       | no — `.catch()` only |
 
 Blocking every navigation on a 200-300ms animation is unacceptable; `.ready` and `.finished` get `.catch()` handlers so their `AbortError` (when a newer navigation interrupts) doesn't leak as unhandled.
 
@@ -227,7 +250,9 @@ Blocking every navigation on a 200-300ms animation is unacceptable; `.ready` and
 
 ```ts
 onBeforeRouteLeave((to, from) => confirm('Leave?') || false)
-onBeforeRouteUpdate((to, from) => { /* same-route params changed */ })
+onBeforeRouteUpdate((to, from) => {
+  /* same-route params changed */
+})
 
 // Browser navigation guard for unsaved changes
 useBlocker(() => isDirty)
@@ -237,14 +262,16 @@ useBlocker(() => isDirty)
 
 ```ts
 import {
-  prefetchLoaderData, hydrateLoaderData,
-  serializeLoaderData, stringifyLoaderData,
+  prefetchLoaderData,
+  hydrateLoaderData,
+  serializeLoaderData,
+  stringifyLoaderData,
 } from '@pyreon/router'
 
 // Server: pre-fetch + serialize
 await prefetchLoaderData(router, url.pathname, request)
 const blob = serializeLoaderData(router)
-const json = stringifyLoaderData(blob)   // safe stringifier — drops fns, throws on cycles
+const json = stringifyLoaderData(blob) // safe stringifier — drops fns, throws on cycles
 
 // Client: hydrate
 hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
@@ -256,12 +283,16 @@ hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
 
 ```ts
 import {
-  resolveRoute, buildPath, findRouteByName,
-  parseQuery, parseQueryMulti, stringifyQuery,
+  resolveRoute,
+  buildPath,
+  findRouteByName,
+  parseQuery,
+  parseQueryMulti,
+  stringifyQuery,
 } from '@pyreon/router'
 
 const resolved = resolveRoute(routes, '/user/42?tab=settings')
-const url = buildPath('/user/:id', { id: '42' })       // '/user/42'
+const url = buildPath('/user/:id', { id: '42' }) // '/user/42'
 const url2 = buildPath('/blog/:rest*', { rest: 'a/b' }) // '/blog/a/b' — catch-all
 ```
 

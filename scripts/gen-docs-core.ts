@@ -45,10 +45,7 @@ export interface RegenerateResult {
  * if (missingEntries.length > 0) throw new Error(`missing: ${missingEntries.join(', ')}`)
  * ```
  */
-export function regenerateLlmsTxt(
-  contents: string,
-  manifests: LoadedManifest[],
-): RegenerateResult {
+export function regenerateLlmsTxt(contents: string, manifests: LoadedManifest[]): RegenerateResult {
   let next = contents
   let changedLines = 0
   const missingEntries: string[] = []
@@ -286,18 +283,12 @@ export const defaultIO: CliIO = {
  * }
  * ```
  */
-export async function main(
-  repoRoot: string,
-  argv: string[],
-  io: CliIO = defaultIO,
-): Promise<void> {
+export async function main(repoRoot: string, argv: string[], io: CliIO = defaultIO): Promise<void> {
   const check = argv.includes('--check')
   const manifests = await findManifests(repoRoot)
 
   if (!check) {
-    io.stdout(
-      `[gen-docs] found ${manifests.length} manifest${manifests.length === 1 ? '' : 's'}`,
-    )
+    io.stdout(`[gen-docs] found ${manifests.length} manifest${manifests.length === 1 ? '' : 's'}`)
   }
   if (manifests.length === 0) {
     if (!check) io.stdout('[gen-docs] no manifests found — nothing to regenerate')
@@ -389,7 +380,7 @@ export async function main(
 function buildMissingEntriesError(fileLabel: string, names: string[]): string {
   const placementHint =
     fileLabel === 'llms.txt'
-      ? 'bullet (form: `- <name> — <any text>`) under the package list section that matches the package\'s category'
+      ? "bullet (form: `- <name> — <any text>`) under the package list section that matches the package's category"
       : 'section (form: `## <name> — <title>` followed by a code block) at an appropriate location'
   return (
     `[gen-docs] ERROR: these manifests have no matching ${fileLabel} entry\n` +

@@ -36,7 +36,10 @@ function invokeAccessors(root: VNode): VNode[] {
       return
     }
     if (!node || typeof node !== 'object') return
-    if (Array.isArray(node)) { node.forEach(visit); return }
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+      return
+    }
     const vnode = node as VNode & { props?: { children?: unknown } }
     if (vnode.props && 'children' in vnode.props) visit(vnode.props.children)
     if (Array.isArray(vnode.children)) vnode.children.forEach(visit)
@@ -85,7 +88,9 @@ describe('Element resolveSlot — bare-function components with hooks (regressio
     // `runWithHooks` establishes a setup window before the body runs.
     let warnCalls: unknown[][] = []
     const originalWarn = console.warn
-    console.warn = (...args: unknown[]) => { warnCalls.push(args) }
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args)
+    }
 
     try {
       // Component using onMount + onUnmount (covers the report's

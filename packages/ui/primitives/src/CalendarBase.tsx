@@ -78,7 +78,10 @@ export interface CalendarDay {
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
-function dateEquals(a: CalendarDate | null | undefined, b: CalendarDate | null | undefined): boolean {
+function dateEquals(
+  a: CalendarDate | null | undefined,
+  b: CalendarDate | null | undefined,
+): boolean {
   if (!a || !b) return false
   return a.year === b.year && a.month === b.month && a.day === b.day
 }
@@ -114,8 +117,15 @@ function getToday(): CalendarDate {
  */
 export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
   const [own] = splitProps(props, [
-    'value', 'defaultValue', 'onChange', 'min', 'max',
-    'disabledDates', 'locale', 'firstDayOfWeek', 'children',
+    'value',
+    'defaultValue',
+    'onChange',
+    'min',
+    'max',
+    'disabledDates',
+    'locale',
+    'firstDayOfWeek',
+    'children',
   ])
 
   const locale = own.locale ?? 'en-US'
@@ -204,7 +214,12 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     return grid
   })
 
-  function makeDay(date: CalendarDate, isCurrentMonth: boolean, _viewY: number, _viewM: number): CalendarDay {
+  function makeDay(
+    date: CalendarDate,
+    isCurrentMonth: boolean,
+    _viewY: number,
+    _viewM: number,
+  ): CalendarDay {
     return {
       date,
       isCurrentMonth,
@@ -248,8 +263,12 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     }
   }
 
-  function prevYear() { _viewYear.set(_viewYear() - 1) }
-  function nextYear() { _viewYear.set(_viewYear() + 1) }
+  function prevYear() {
+    _viewYear.set(_viewYear() - 1)
+  }
+  function nextYear() {
+    _viewYear.set(_viewYear() + 1)
+  }
 
   function goTo(month: number, year: number) {
     _viewMonth.set(month)

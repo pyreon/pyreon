@@ -76,9 +76,7 @@ describe('imagePlugin resolveId — importer-relative + alias (regression)', () 
   it('relative ?optimize carries the resolved ABSOLUTE path (not the raw ./id)', async () => {
     const p = makePlugin()
     const out = await p.resolveId.call(ctx, '../images/hero.png?optimize', importer)
-    expect(out).toBe(
-      `\0virtual:zero-image:${join(tmp, 'src/images/hero.png')}?optimize`,
-    )
+    expect(out).toBe(`\0virtual:zero-image:${join(tmp, 'src/images/hero.png')}?optimize`)
     // pre-fix this was `\0virtual:zero-image:../images/hero.png?optimize`
     expect(out).not.toContain('virtual:zero-image:../')
   })
@@ -86,9 +84,7 @@ describe('imagePlugin resolveId — importer-relative + alias (regression)', () 
   it('aliased ?optimize carries the resolved ABSOLUTE path (no public/ doubling)', async () => {
     const p = makePlugin()
     const out = await p.resolveId.call(ctx, '~img/hero.png?optimize', importer)
-    expect(out).toBe(
-      `\0virtual:zero-image:${join(tmp, 'src/images/hero.png')}?optimize`,
-    )
+    expect(out).toBe(`\0virtual:zero-image:${join(tmp, 'src/images/hero.png')}?optimize`)
     expect(out).not.toContain('~img/')
   })
 
@@ -103,9 +99,7 @@ describe('imagePlugin resolveId — importer-relative + alias (regression)', () 
   it('load() resolves a relative ?component SVG via the carried abs path (sharp-free e2e)', async () => {
     const p = makePlugin(true)
     const vid = await p.resolveId.call(ctx, '../images/logo.svg?component', importer)
-    expect(vid).toBe(
-      `\0virtual:zero-svg:${join(tmp, 'src/images/logo.svg')}?component`,
-    )
+    expect(vid).toBe(`\0virtual:zero-svg:${join(tmp, 'src/images/logo.svg')}?component`)
     const mod = await p.load.call(ctx, vid)
     // pre-fix: load() computed `../images/logo.svg` vs cwd → existsSync
     // false → returned null. Post-fix: carried abs path → reads file.

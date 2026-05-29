@@ -10,8 +10,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/form',
   title: 'Form Management',
-  tagline:
-    'Signal-based form management with fields, validation, arrays, and cross-field watchers',
+  tagline: 'Signal-based form management with fields, validation, arrays, and cross-field watchers',
   description:
     'Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`, `dirty`) is its own `Signal<T>` so templates only re-run for the slice they read. First-class schema validation (plug in `zodSchema` / `valibotSchema` / `arktypeSchema` from `@pyreon/validation`), per-field `validateOn: blur | change | submit`, async validators with optional `debounceMs` and version-based stale-result discarding, cross-field validation via `(value, allValues) => …`, dynamic `useFieldArray` with stable keys for keyed rendering, and typed `useWatch` overloads for single / multi / all-field reactive watchers.',
   category: 'universal',
@@ -137,7 +136,7 @@ form.setErrors({ email: 'Already registered' })`,
       signature:
         '<TValues, K extends keyof TValues & string>(form: FormState<TValues>, name: K) => UseFieldResult<TValues[K]>',
       summary:
-        'Extract a single field\'s state and helpers from a form instance — avoids passing the entire `FormState` to leaf components. Returns all `FieldState` signals (`value`, `error`, `touched`, `dirty`) plus two convenience computeds: `hasError` (true when an error string exists) and `showError` (true when touched AND errored — the typical UI condition for gating error display). Also exposes `register(opts?)` to bind an `<input>` element with a single spread.',
+        "Extract a single field's state and helpers from a form instance — avoids passing the entire `FormState` to leaf components. Returns all `FieldState` signals (`value`, `error`, `touched`, `dirty`) plus two convenience computeds: `hasError` (true when an error string exists) and `showError` (true when touched AND errored — the typical UI condition for gating error display). Also exposes `register(opts?)` to bind an `<input>` element with a single spread.",
       mistakes: [
         'Destructuring `const { value } = useField(form, "email")` and calling `value()` — works, but the getter evaluates to the Signal itself; storing `value()` at setup captures the initial value and defeats reactivity',
         'Forgetting `showError` and reimplementing `touched() && hasError()` in every template — `showError` is a `Computed<boolean>`, use it directly',

@@ -137,9 +137,7 @@ describe('Provider/Consumer integration', () => {
         component: BaseComponent,
       }).config({})
 
-      pushContext(
-        buildThemeContextMap({ mode: 'dark', isDark: true, isLight: false }),
-      )
+      pushContext(buildThemeContextMap({ mode: 'dark', isDark: true, isLight: false }))
       try {
         const result = Button({})
         expect(result).toBeDefined()

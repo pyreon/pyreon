@@ -69,7 +69,9 @@ describe('Context cascading: Container -> Row -> Col', () => {
     const Row = (await import('../Row')).default
 
     // 1st call: ContainerContext, 2nd call: unistyle theme
-    mockUseContext.mockReturnValueOnce({ columns: 12, gap: 8 }).mockReturnValueOnce(() => ({ theme: {} }))
+    mockUseContext
+      .mockReturnValueOnce({ columns: 12, gap: 8 })
+      .mockReturnValueOnce(() => ({ theme: {} }))
 
     Row({ columns: 24, gap: 32, children: 'test' })
 
@@ -84,7 +86,9 @@ describe('Context cascading: Container -> Row -> Col', () => {
 
     // Col calls useContext twice:
     // 1st: RowContext, 2nd: unistyle theme inside useGridContext
-    mockUseContext.mockReturnValueOnce({ columns: 12, gap: 20 }).mockReturnValueOnce(() => ({ theme: {} }))
+    mockUseContext
+      .mockReturnValueOnce({ columns: 12, gap: 20 })
+      .mockReturnValueOnce(() => ({ theme: {} }))
 
     const result = asVNode(Col({ size: 4, children: 'test' }))
     expect(result.props.$coolgrid).toBeDefined()

@@ -85,7 +85,7 @@ const form = useForm({
       kind: 'function',
       signature: '<T>(schema: ZodType<T>) => ValidateFn<T>',
       summary:
-        'Create a per-field validator from a Zod schema. Returns a function compatible with `useForm({ validators: { fieldName: zodField(z.string().email()) } })`. Use when individual fields have independent validation rules that don\'t need cross-field context.',
+        "Create a per-field validator from a Zod schema. Returns a function compatible with `useForm({ validators: { fieldName: zodField(z.string().email()) } })`. Use when individual fields have independent validation rules that don't need cross-field context.",
       example: `const form = useForm({
   initialValues: { username: '' },
   validators: { username: zodField(z.string().min(3).max(20)) },
@@ -98,7 +98,7 @@ const form = useForm({
       kind: 'function',
       signature: '<T>(schema: ValibotSchema<T>, safeParse: SafeParseFn) => SchemaAdapter<T>',
       summary:
-        'Create a whole-form schema adapter from a Valibot schema. Requires passing the `safeParse` function explicitly (Valibot uses standalone functions, not methods). This keeps the adapter independent of Valibot\'s internal module structure across versions.',
+        "Create a whole-form schema adapter from a Valibot schema. Requires passing the `safeParse` function explicitly (Valibot uses standalone functions, not methods). This keeps the adapter independent of Valibot's internal module structure across versions.",
       example: `import * as v from 'valibot'
 const schema = v.object({ email: v.pipe(v.string(), v.email()) })
 const form = useForm({
@@ -149,7 +149,7 @@ const form = useForm({
     'All three schema libraries are optional peer dependencies. Install only the one you use — the adapters are tree-shaken per import path (`@pyreon/validation/zod`, `@pyreon/validation/valibot`, `@pyreon/validation/arktype`).',
     {
       label: 'Valibot standalone functions',
-      note: 'Valibot uses standalone functions (not methods), so `valibotSchema` and `valibotField` require passing `v.safeParse` as an explicit argument. This is by design to avoid internal coupling to Valibot\'s module structure.',
+      note: "Valibot uses standalone functions (not methods), so `valibotSchema` and `valibotField` require passing `v.safeParse` as an explicit argument. This is by design to avoid internal coupling to Valibot's module structure.",
     },
     {
       label: 'Duck typing',

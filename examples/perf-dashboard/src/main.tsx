@@ -30,17 +30,18 @@ if ((import.meta as ViteMeta).env?.DEV === true) {
 
 // Expose journey-helper hooks so scripts/perf/record.ts can reset state
 // between measurement runs (see journeys.ts → form journey).
-;(window as unknown as { __pyreon_perf_dashboard: Record<string, () => void> }).__pyreon_perf_dashboard =
-  {
-    resetForm: () => {
-      for (let i = 0; i < longFormFields.length; i++) {
-        const f = longFormFields[i]
-        if (f) f.sig.set(`field-${i}-default`)
-      }
-      passwordSignal.set('')
-      confirmPasswordSignal.set('')
-    },
-  }
+;(
+  window as unknown as { __pyreon_perf_dashboard: Record<string, () => void> }
+).__pyreon_perf_dashboard = {
+  resetForm: () => {
+    for (let i = 0; i < longFormFields.length; i++) {
+      const f = longFormFields[i]
+      if (f) f.sig.set(`field-${i}-default`)
+    }
+    passwordSignal.set('')
+    confirmPasswordSignal.set('')
+  },
+}
 
 // ── Forms-stress journey hooks ──────────────────────────────────────────────
 //

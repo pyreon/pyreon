@@ -170,7 +170,7 @@
 
   ```ts
   // vite.config.ts
-  plugins: [pyreon(), zero({ port: 8080 })];
+  plugins: [pyreon(), zero({ port: 8080 })]
   ```
 
   ```sh
@@ -179,7 +179,6 @@
   ```
 
   Two changes:
-
   1. **Removed the CAC `default: 3000`** on the `--port` flag. The default made `options.port` always-defined, which meant the config-file fallback could never fire.
   2. **New `loadZeroConfigPort(root)`** in `packages/zero/cli/src/commands/load-config.ts` — loads `vite.config.ts` via `vite.loadConfigFromFile`, walks the plugin list, finds the zero plugin instance, reads its captured `ZeroConfig.port`. Falls back to `undefined` gracefully when no zero plugin is present (consumer is using `pyreon()` only) so the framework's 3000 default kicks in.
 
@@ -349,7 +348,6 @@
 - ## @pyreon/zero
 
   ### New Features
-
   - **API routes** — file-based `.ts` handlers in `src/routes/api/` with HTTP method exports (GET, POST, PUT, DELETE)
   - **Server actions** — `defineAction()` with automatic client/server boundary detection (direct execution on server, fetch on client)
   - **Per-route middleware** — route files export `middleware` dispatched via `virtual:zero/route-middleware`
@@ -362,7 +360,6 @@
   - **Dev route table** — `zero dev` prints page + API routes on startup
 
   ### Improvements
-
   - Bumped all @pyreon/\* core deps to ^0.5.4
   - Added `./actions`, `./api-routes`, `./cors`, `./rate-limit`, `./compression`, `./testing` subpath exports
   - Fixed static adapter build skip for SSG mode
@@ -371,19 +368,16 @@
   ## @pyreon/zero-cli
 
   ### New Commands
-
   - `zero doctor` — detect React patterns (proxies @pyreon/cli)
   - `zero context` — generate AI project context
   - `zero create <name>` — scaffold a new project
 
   ### Improvements
-
   - Dev server prints route table on startup (page routes + API routes)
 
   ## @pyreon/create-zero
 
   ### New Features
-
   - **Interactive scaffolding** with @clack/prompts — pick rendering mode, features, AI toolchain
   - Generates customized package.json, vite.config.ts, entry files based on selections
   - AI toolchain opt-in: .mcp.json, CLAUDE.md, doctor scripts
@@ -391,12 +385,10 @@
   ## @pyreon/meta
 
   ### New Packages
-
   - `@pyreon/machine` — reactive state machines (`createMachine`)
   - `@pyreon/permissions` — reactive permissions (`createPermissions`, `usePermissions`)
 
   ### Updates
-
   - All fundamentals: query ^0.5.0, virtual ^0.5.0
   - All UI system: ^0.1.1 (styler, hooks, elements, coolgrid, kinetic, etc.)
   - 75 export verification tests

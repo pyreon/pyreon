@@ -1,15 +1,15 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 export const meta = {
-  title: "About — Pyreon Zero",
-  description: "Learn about the Pyreon Zero meta-framework.",
+  title: 'About — Pyreon Zero',
+  description: 'Learn about the Pyreon Zero meta-framework.',
 }
 
 export default function About() {
   useHead({
     title: meta.title,
-    meta: [{ name: "description", content: meta.description }],
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   return (
@@ -65,15 +65,15 @@ export default function About() {
         </h2>
         <div style="display: grid; gap: var(--space-sm);">
           {[
-            ["Pyreon", "Signal-based UI framework with JSX"],
-            ["Vite", "Lightning-fast dev server and optimized builds"],
-            ["File Router", "Drop a file, get a route — layouts, guards, loaders"],
-            ["SSR / SSG / ISR", "Every rendering strategy, per-route overrides"],
-            ["<Image>", "Lazy loading, responsive srcset, blur-up placeholders"],
-            ["<Link>", "Prefetch on hover or viewport entry for instant nav"],
-            ["Font Plugin", "Google Fonts optimization, preconnect, font-display:swap"],
-            ["Cache MW", "Immutable hashed assets, stale-while-revalidate pages"],
-            ["SEO Tools", "Sitemap, robots.txt, JSON-LD structured data"],
+            ['Pyreon', 'Signal-based UI framework with JSX'],
+            ['Vite', 'Lightning-fast dev server and optimized builds'],
+            ['File Router', 'Drop a file, get a route — layouts, guards, loaders'],
+            ['SSR / SSG / ISR', 'Every rendering strategy, per-route overrides'],
+            ['<Image>', 'Lazy loading, responsive srcset, blur-up placeholders'],
+            ['<Link>', 'Prefetch on hover or viewport entry for instant nav'],
+            ['Font Plugin', 'Google Fonts optimization, preconnect, font-display:swap'],
+            ['Cache MW', 'Immutable hashed assets, stale-while-revalidate pages'],
+            ['SEO Tools', 'Sitemap, robots.txt, JSON-LD structured data'],
           ].map(([name, desc]) => (
             <div
               class="card"

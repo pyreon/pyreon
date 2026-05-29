@@ -67,9 +67,7 @@ describe('pyreon/anchor-is-valid (frontend)', () => {
   })
 
   it('FIRES on `<a href="javascript:void(0)">` (javascript: URL)', () => {
-    const result = lint(
-      `function App() { return <a href="javascript:void(0)">x</a> }`,
-    )
+    const result = lint(`function App() { return <a href="javascript:void(0)">x</a> }`)
     expect(diagIds(result)).toContain('pyreon/anchor-is-valid')
   })
 
@@ -79,9 +77,7 @@ describe('pyreon/anchor-is-valid (frontend)', () => {
   })
 
   it('does NOT fire on a dynamic `<a href={url}>` (non-literal)', () => {
-    const result = lint(
-      `function App({ url }) { return <a href={url}>x</a> }`,
-    )
+    const result = lint(`function App({ url }) { return <a href={url}>x</a> }`)
     expect(diagIds(result)).not.toContain('pyreon/anchor-is-valid')
   })
 
@@ -96,16 +92,12 @@ describe('pyreon/anchor-is-valid (frontend)', () => {
   })
 
   it('does NOT fire when the file path is exempted', () => {
-    const result = lint(
-      `function App() { return <a>x</a> }`,
-      'src/App.tsx',
-      {
-        rules: {
-          ...getPreset('best-practices').rules,
-          'pyreon/anchor-is-valid': ['warn', { exemptPaths: ['src/App.tsx'] }],
-        },
+    const result = lint(`function App() { return <a>x</a> }`, 'src/App.tsx', {
+      rules: {
+        ...getPreset('best-practices').rules,
+        'pyreon/anchor-is-valid': ['warn', { exemptPaths: ['src/App.tsx'] }],
       },
-    )
+    })
     expect(diagIds(result)).not.toContain('pyreon/anchor-is-valid')
   })
 })

@@ -132,7 +132,7 @@ effect(() => {
       kind: 'function',
       signature: '(fn: () => void) => () => void',
       summary:
-        'DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectScope` integration. Used internally by `_bind` / `_tpl` for compiled-template DOM updates. **Prefer `effect()` for general use**; reach for `renderEffect()` only when you\'re hand-writing DOM update logic and have measured the overhead difference. Returns a dispose function (not an `Effect` object — different shape from `effect()`).',
+        "DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectScope` integration. Used internally by `_bind` / `_tpl` for compiled-template DOM updates. **Prefer `effect()` for general use**; reach for `renderEffect()` only when you're hand-writing DOM update logic and have measured the overhead difference. Returns a dispose function (not an `Effect` object — different shape from `effect()`).",
       example: `// Inside a custom DOM helper that updates a text node:
 const node = document.createTextNode('')
 const dispose = renderEffect(() => {
@@ -171,7 +171,7 @@ batch(() => {
       kind: 'function',
       signature: '() => Promise<void>',
       summary:
-        'Returns a promise that resolves after the next microtask. Use to await pending reactive updates — every signal write that happens before `nextTick()` is fully flushed (effects ran, computeds settled, DOM patched) by the time the promise resolves. Equivalent to Vue\'s `nextTick`. Useful in tests and in code that needs to read the post-update DOM state.',
+        "Returns a promise that resolves after the next microtask. Use to await pending reactive updates — every signal write that happens before `nextTick()` is fully flushed (effects ran, computeds settled, DOM patched) by the time the promise resolves. Equivalent to Vue's `nextTick`. Useful in tests and in code that needs to read the post-update DOM state.",
       example: `count.set(5)
 // Effects haven't run yet (sync writes are queued)
 await nextTick()
@@ -179,7 +179,7 @@ await nextTick()
 expect(node.textContent).toBe('5')`,
       mistakes: [
         'Awaiting `nextTick()` inside a `batch()` callback — pointless; the batch flushes when the callback returns, not when the microtask drains. Move the await outside `batch()`',
-        'Using `nextTick()` to defer work — it doesn\'t schedule anything; it just resolves on the next microtask. Use `setTimeout` / `requestAnimationFrame` for actual deferral',
+        "Using `nextTick()` to defer work — it doesn't schedule anything; it just resolves on the next microtask. Use `setTimeout` / `requestAnimationFrame` for actual deferral",
       ],
       seeAlso: ['batch'],
     },
@@ -203,7 +203,8 @@ expect(node.textContent).toBe('5')`,
     {
       name: 'watch',
       kind: 'function',
-      signature: '<T>(source: () => T, callback: (next: T, prev: T) => void, options?: WatchOptions) => () => void',
+      signature:
+        '<T>(source: () => T, callback: (next: T, prev: T) => void, options?: WatchOptions) => () => void',
       summary:
         'Explicit reactive watcher — tracks `source` and fires `callback` when it changes. Unlike `effect()`, the callback receives both `next` and `prev` values and does NOT auto-track signals read inside the callback body. `source` is evaluated at setup time to establish tracking; reading browser globals there still fires SSR lint rules. Returns a dispose function.',
       example: `watch(() => count(), (next, prev) => {
@@ -221,7 +222,7 @@ expect(node.textContent).toBe('5')`,
       kind: 'function',
       signature: '<T>(source: () => T) => (value: T) => boolean',
       summary:
-        'Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-selected values\' subscribers are affected. Unlike a plain `() => source() === value` (which re-evaluates for every row in a list), this only triggers TWO subscribers per source change (deselected + newly selected) regardless of list size. Critical for keyed-list selection patterns.',
+        "Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-selected values' subscribers are affected. Unlike a plain `() => source() === value` (which re-evaluates for every row in a list), this only triggers TWO subscribers per source change (deselected + newly selected) regardless of list size. Critical for keyed-list selection patterns.",
       example: `const selectedId = signal<string | null>(null)
 const isSelected = createSelector(() => selectedId())
 
@@ -233,8 +234,8 @@ const isSelected = createSelector(() => selectedId())
 )}</For>`,
       mistakes: [
         'Using a plain `() => source() === value` in lists — every row subscribes to source; selecting a row notifies ALL N rows (O(N))',
-        'Calling `isSelected` outside a reactive scope — returns the current value but doesn\'t subscribe',
-        'Using `createSelector` for non-equality predicates — it\'s purpose-built for `===` matching; for ranges or filters, use `computed()`',
+        "Calling `isSelected` outside a reactive scope — returns the current value but doesn't subscribe",
+        "Using `createSelector` for non-equality predicates — it's purpose-built for `===` matching; for ranges or filters, use `computed()`",
       ],
       seeAlso: ['signal', 'computed'],
     },
@@ -243,7 +244,7 @@ const isSelected = createSelector(() => selectedId())
       kind: 'function',
       signature: '<T>(value: T) => Cell<T>',
       summary:
-        'Lightweight reactive primitive — class-based alternative to `signal()`. **1 object allocation vs `signal()`\'s ~6 closures**, single-listener fast path (no Set allocated when ≤1 subscriber), methods on prototype shared across instances. **NOT callable as a getter** — does not integrate with effect dependency tracking. Use when you need reactive state but plan to subscribe directly via `.subscribe()` / `.listen()`, NOT via `effect()`. Ideal for keyed-list row labels where the subscription lifetime equals the row\'s lifetime.',
+        "Lightweight reactive primitive — class-based alternative to `signal()`. **1 object allocation vs `signal()`'s ~6 closures**, single-listener fast path (no Set allocated when ≤1 subscriber), methods on prototype shared across instances. **NOT callable as a getter** — does not integrate with effect dependency tracking. Use when you need reactive state but plan to subscribe directly via `.subscribe()` / `.listen()`, NOT via `effect()`. Ideal for keyed-list row labels where the subscription lifetime equals the row's lifetime.",
       example: `import { cell } from '@pyreon/reactivity'
 
 // Create a cell:
@@ -263,8 +264,8 @@ const dispose = label.subscribe(() => console.log(label.peek()))
 label.listen(() => console.log('changed'))`,
       mistakes: [
         'Using `label()` to read — Cells are NOT callable. Use `label.peek()` to read',
-        'Reading `label.peek()` inside `effect()` and expecting tracked re-runs — Cells don\'t integrate with effect tracking. Use `signal()` if you need automatic dependency tracking',
-        'Using `cell()` for ALL reactive state — only switch from `signal()` when you\'ve measured allocation pressure (1000+ instances) AND you don\'t need effect-based subscriptions',
+        "Reading `label.peek()` inside `effect()` and expecting tracked re-runs — Cells don't integrate with effect tracking. Use `signal()` if you need automatic dependency tracking",
+        "Using `cell()` for ALL reactive state — only switch from `signal()` when you've measured allocation pressure (1000+ instances) AND you don't need effect-based subscriptions",
       ],
       seeAlso: ['signal'],
     },
@@ -284,15 +285,14 @@ store.todos.push({ text: 'Build app', done: false })  // array methods work`,
         'Replacing the entire store object — `store = { ... }` replaces the variable, not the proxy. Mutate properties instead: `store.filter = "active"`',
         'Destructuring store properties at setup — `const { filter } = store` captures the value once, losing reactivity. Read `store.filter` inside reactive scopes',
         'Using `createStore` for simple scalar state — use `signal()` for primitives; `createStore` adds proxy overhead that only pays off for nested objects',
-        'Expecting fine-grained reactivity inside Map/Set/Date/RegExp/Promise — these are returned raw because Proxy can\'t intercept methods that rely on internal slots. Mutating the raw instance (`store.users.set(...)`) does NOT notify subscribers. Replace the whole field (`store.users = new Map(store.users)`) to trigger reactivity',
+        "Expecting fine-grained reactivity inside Map/Set/Date/RegExp/Promise — these are returned raw because Proxy can't intercept methods that rely on internal slots. Mutating the raw instance (`store.users.set(...)`) does NOT notify subscribers. Replace the whole field (`store.users = new Map(store.users)`) to trigger reactivity",
       ],
       seeAlso: ['signal'],
     },
     {
       name: 'createResource',
       kind: 'function',
-      signature:
-        '<T, P>(source: () => P, fetcher: (param: P) => Promise<T>) => Resource<T>',
+      signature: '<T, P>(source: () => P, fetcher: (param: P) => Promise<T>) => Resource<T>',
       summary:
         'Async data primitive. Auto-fetches whenever `source()` changes — `data`, `loading`, `error` are signals readable inside effects. Stale-response guarded via internal `requestId` (typing fast then slow does not flicker old data). `refetch()` re-runs the fetcher with the current source value. **`dispose()` MUST be called for resources created outside an `EffectScope`** — otherwise the source-tracking effect leaks for the lifetime of the program.',
       example: `const userId = signal(1)
@@ -335,7 +335,7 @@ reconcile(
       mistakes: [
         'Passing a non-store as `target` — `reconcile` requires a `createStore` proxy; for plain objects, just assign',
         'Expecting reconciliation by key for arrays — arrays are reconciled BY INDEX. For keyed list reconciliation, use a Map keyed by id and reconcile each entry by key, OR replace the array reference (which `<For>` reconciles via `by`)',
-        'Using `reconcile` inside an effect — it triggers writes; you\'d cycle. Call it outside reactive scopes (e.g. in a query callback or event handler)',
+        "Using `reconcile` inside an effect — it triggers writes; you'd cycle. Call it outside reactive scopes (e.g. in a query callback or event handler)",
       ],
       seeAlso: ['createStore', 'signal'],
     },
@@ -351,7 +351,7 @@ isStore(a)  // true
 isStore(b)  // false
 isStore(null)  // false (null-safe)`,
       mistakes: [
-        'Using `isStore` to detect ANY proxy — it\'s specific to Pyreon\'s store proxies. Other proxies return `false`',
+        "Using `isStore` to detect ANY proxy — it's specific to Pyreon's store proxies. Other proxies return `false`",
         'Calling on `null` / `undefined` and expecting a throw — null-safe; returns `false`',
       ],
       seeAlso: ['createStore', 'reconcile'],
@@ -369,7 +369,7 @@ store.user.name = 'Bob'          // does NOT trigger any effect (nested mutation
 store.count = 5                  // triggers count effect
 store.user = { name: 'Bob' }     // triggers user effect (reference replacement)`,
       mistakes: [
-        'Expecting nested mutations to trigger effects — they don\'t. Use `createStore` if you need deep reactivity, or replace the top-level reference (`store.user = { ...store.user, name: \'Bob\' }`)',
+        "Expecting nested mutations to trigger effects — they don't. Use `createStore` if you need deep reactivity, or replace the top-level reference (`store.user = { ...store.user, name: 'Bob' }`)",
         'Mixing shallow + deep on the same raw object — `createStore(raw)` and `shallowReactive({ wrapper: raw })` produce DIFFERENT proxies (separate caches). Pick one shape per data flow',
       ],
       seeAlso: ['createStore', 'markRaw'],
@@ -379,7 +379,7 @@ store.user = { name: 'Bob' }     // triggers user effect (reference replacement)
       kind: 'function',
       signature: '<T extends object>(value: T) => T',
       summary:
-        'Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn\'t be deeply proxied (Vue 3 parity). Marking is one-way: there\'s no `unmarkRaw`. Mark BEFORE the object enters a store; marking after wrap doesn\'t unwrap an existing proxy.',
+        "Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn't be deeply proxied (Vue 3 parity). Marking is one-way: there's no `unmarkRaw`. Mark BEFORE the object enters a store; marking after wrap doesn't unwrap an existing proxy.",
       example: `import { markRaw, createStore } from '@pyreon/reactivity'
 
 class Editor { /* ... */ }
@@ -388,7 +388,7 @@ const store = createStore({ editor: ed })
 store.editor === ed                 // true — raw reference preserved
 store.editor.someMethod()           // works — class methods see real receiver`,
       mistakes: [
-        'Marking an object AFTER it\'s been wrapped — the existing proxy is unaffected. Mark before the object enters any store',
+        "Marking an object AFTER it's been wrapped — the existing proxy is unaffected. Mark before the object enters any store",
         'Expecting `markRaw(obj)` to return a different object — it mutates `obj` and returns the SAME reference (with the marker symbol attached)',
         'Using markRaw on plain data objects to "skip" deep wrap — for that, use `shallowReactive`. markRaw is for class instances and externally-managed shapes',
       ],
@@ -399,7 +399,7 @@ store.editor.someMethod()           // works — class methods see real receiver
       kind: 'function',
       signature: '(fn: () => T) => T',
       summary:
-        'Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked`. Use inside effects when you need to read a signal\'s current value as a one-shot snapshot without the effect re-running when that signal changes.',
+        "Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked`. Use inside effects when you need to read a signal's current value as a one-shot snapshot without the effect re-running when that signal changes.",
       example: `effect(() => {
   const current = count()        // tracked — effect re-runs on count change
   const other = untrack(() => otherSignal())  // NOT tracked — just reads the current value
@@ -414,7 +414,7 @@ store.editor.someMethod()           // works — class methods see real receiver
       kind: 'function',
       signature: '() => EffectScope',
       summary:
-        'Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and disposes them all at once via `scope.stop()`. `@pyreon/core`\'s `mountReactive` uses this internally for component lifetime management. **Always use a scope for effects created outside a component\'s setup phase** (e.g. in event handlers, route loaders, or async-await chains) — without one, effects leak for the lifetime of the program.',
+        "Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and disposes them all at once via `scope.stop()`. `@pyreon/core`'s `mountReactive` uses this internally for component lifetime management. **Always use a scope for effects created outside a component's setup phase** (e.g. in event handlers, route loaders, or async-await chains) — without one, effects leak for the lifetime of the program.",
       example: `import { effectScope, signal, effect } from '@pyreon/reactivity'
 
 const scope = effectScope()
@@ -501,7 +501,8 @@ myScope.runInScope(() => doWork())`,
     {
       name: 'onSignalUpdate',
       kind: 'function',
-      signature: '(listener: (event: { signal, name, prev, next, stack, timestamp }) => void) => () => void',
+      signature:
+        '(listener: (event: { signal, name, prev, next, stack, timestamp }) => void) => () => void',
       summary:
         'Register a global trace listener that fires on every signal write. Returns a disposer. **Dev/debug only** — every signal write incurs the listener call. Use for time-travel debugging, recording reactive transcripts in tests, or building devtools panels. Multiple listeners are supported (each gets every event).',
       example: `import { onSignalUpdate, signal } from '@pyreon/reactivity'
@@ -514,7 +515,7 @@ count.set(5)   // logs: count: 0 → 5
 dispose()      // remove listener`,
       mistakes: [
         'Leaving `onSignalUpdate` registered in production — fires on EVERY signal write, even hot-path internal ones. Always dispose when done',
-        'Throwing inside the listener — corrupts the signal\'s notification flow (the listener fires after `_v` is updated but before subscribers are notified). Wrap your handler in try/catch',
+        "Throwing inside the listener — corrupts the signal's notification flow (the listener fires after `_v` is updated but before subscribers are notified). Wrap your handler in try/catch",
         'Expecting the event to capture writes that occur via batch flushes — the event fires per `set()` call, regardless of batch state',
       ],
       seeAlso: ['inspectSignal', 'why'],

@@ -11,13 +11,7 @@ import { join, resolve } from 'node:path'
 import { copyOverlay } from './template-engine'
 import type { AdapterId, ProjectConfig } from './templates'
 
-const SHARED_ADAPTERS_ROOT = resolve(
-  import.meta.dirname,
-  '..',
-  'templates',
-  '_shared',
-  '_adapters',
-)
+const SHARED_ADAPTERS_ROOT = resolve(import.meta.dirname, '..', 'templates', '_shared', '_adapters')
 
 export interface AdapterGen {
   id: AdapterId
@@ -129,5 +123,8 @@ export function adapterFor(id: AdapterId): AdapterGen {
 }
 
 function slug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '')
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/^-+|-+$/g, '')
 }

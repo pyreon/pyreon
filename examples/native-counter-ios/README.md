@@ -21,15 +21,15 @@ ios/App.swift + ios/ContentView.swift  consumes the generated symbol
 
 What's here:
 
-| File | Purpose |
-|---|---|
-| `src/Counter.tsx` | User-authored Pyreon source — **real counter** with `signal()`, label "Count: N", and Increment button |
-| `ios/App.swift` | `@main` SwiftUI app entry point |
-| `ios/ContentView.swift` | Root view, bootstraps `Counter()` from `generated/` |
-| `ios/Info.plist` | Standard iOS bundle metadata |
-| `scripts/build.sh` | Drives the Pyreon → Swift compile loop |
-| `package.json` | Workspace member, runs `build.sh` via `bun run build` |
-| `.gitignore` | Generated outputs + Xcode artifacts not committed |
+| File                    | Purpose                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/Counter.tsx`       | User-authored Pyreon source — **real counter** with `signal()`, label "Count: N", and Increment button |
+| `ios/App.swift`         | `@main` SwiftUI app entry point                                                                        |
+| `ios/ContentView.swift` | Root view, bootstraps `Counter()` from `generated/`                                                    |
+| `ios/Info.plist`        | Standard iOS bundle metadata                                                                           |
+| `scripts/build.sh`      | Drives the Pyreon → Swift compile loop                                                                 |
+| `package.json`          | Workspace member, runs `build.sh` via `bun run build`                                                  |
+| `.gitignore`            | Generated outputs + Xcode artifacts not committed                                                      |
 
 What's NOT here yet:
 

@@ -14,7 +14,8 @@ export const imgRequiresDimensions: Rule = {
   meta: {
     id: 'pyreon/img-requires-dimensions',
     category: 'frontend',
-    description: 'Require explicit `width` and `height` attributes on `<img>` to reserve layout space and avoid CLS.',
+    description:
+      'Require explicit `width` and `height` attributes on `<img>` to reserve layout space and avoid CLS.',
     severity: 'warn',
     fixable: false,
     optIn: true,

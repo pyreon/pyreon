@@ -203,7 +203,8 @@ export const NodeCard = styled('div')<{ $kind: WorkflowNodeKind; $selected: bool
   border: 2px solid
     ${(p) => (p.$selected ? KIND_COLORS[p.$kind].accent : KIND_COLORS[p.$kind].border)};
   border-radius: ${(p) => t(p).borderRadius.medium}px;
-  box-shadow: ${(p) => (p.$selected ? '0 4px 12px rgba(0,0,0,0.15)' : '0 1px 3px rgba(0,0,0,0.05)')};
+  box-shadow: ${(p) =>
+    p.$selected ? '0 4px 12px rgba(0,0,0,0.15)' : '0 1px 3px rgba(0,0,0,0.05)'};
   display: flex;
   flex-direction: column;
   gap: 4px;

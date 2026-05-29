@@ -93,9 +93,7 @@ export type {
  * `
  * ```
  */
-export function resolveTheme<T = Record<string, unknown>>(
-  value: (() => T) | T,
-): T {
+export function resolveTheme<T = Record<string, unknown>>(value: (() => T) | T): T {
   return typeof value === 'function' ? (value as () => T)() : value
 }
 

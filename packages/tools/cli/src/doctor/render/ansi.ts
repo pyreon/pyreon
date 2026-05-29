@@ -90,11 +90,7 @@ export const hyperlink = (text: string, url: string): string => {
 }
 
 /** Build a `file://` URL with optional line / column suffix. */
-export const fileUrl = (
-  absPath: string,
-  line?: number,
-  _column?: number,
-): string => {
+export const fileUrl = (absPath: string, line?: number, _column?: number): string => {
   // file:// URLs don't have a standard line/column shape across
   // terminals; vscode uses `#L<line>`, iTerm2 + others use `:line:col`
   // in the visible text but not the URL. We embed `#L<line>` since

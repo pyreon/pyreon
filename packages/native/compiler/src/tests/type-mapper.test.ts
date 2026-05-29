@@ -98,14 +98,14 @@ describe('swiftType — typeRef', () => {
     expect(swiftType({ kind: 'typeRef', name: 'Foo', args: [] })).toBe('Foo')
   })
   it('Array<T> → [T] (Swift idiom)', () => {
-    expect(
-      swiftType({ kind: 'typeRef', name: 'Array', args: [{ kind: 'string' }] }),
-    ).toBe('[String]')
+    expect(swiftType({ kind: 'typeRef', name: 'Array', args: [{ kind: 'string' }] })).toBe(
+      '[String]',
+    )
   })
   it('Promise<T> → Task<T, Error>', () => {
-    expect(
-      swiftType({ kind: 'typeRef', name: 'Promise', args: [{ kind: 'string' }] }),
-    ).toBe('Task<String, Error>')
+    expect(swiftType({ kind: 'typeRef', name: 'Promise', args: [{ kind: 'string' }] })).toBe(
+      'Task<String, Error>',
+    )
   })
   it('user-defined generic ref → Name<T> verbatim', () => {
     expect(
@@ -149,9 +149,9 @@ describe('kotlinType — nullable + union types', () => {
     expect(kotlinType({ kind: 'null' })).toBe('Any?')
   })
   it('T | null → T?', () => {
-    expect(
-      kotlinType({ kind: 'union', branches: [{ kind: 'string' }, { kind: 'null' }] }),
-    ).toBe('String?')
+    expect(kotlinType({ kind: 'union', branches: [{ kind: 'string' }, { kind: 'null' }] })).toBe(
+      'String?',
+    )
   })
   it('T | undefined → T?', () => {
     expect(
@@ -176,14 +176,14 @@ describe('kotlinType — typeRef', () => {
     expect(kotlinType({ kind: 'typeRef', name: 'Foo', args: [] })).toBe('Foo')
   })
   it('Array<T> → List<T> (Kotlin idiom)', () => {
-    expect(
-      kotlinType({ kind: 'typeRef', name: 'Array', args: [{ kind: 'string' }] }),
-    ).toBe('List<String>')
+    expect(kotlinType({ kind: 'typeRef', name: 'Array', args: [{ kind: 'string' }] })).toBe(
+      'List<String>',
+    )
   })
   it('Promise<T> → Deferred<T>', () => {
-    expect(
-      kotlinType({ kind: 'typeRef', name: 'Promise', args: [{ kind: 'string' }] }),
-    ).toBe('Deferred<String>')
+    expect(kotlinType({ kind: 'typeRef', name: 'Promise', args: [{ kind: 'string' }] })).toBe(
+      'Deferred<String>',
+    )
   })
   it('user-defined generic ref → Name<T> verbatim', () => {
     expect(
@@ -198,9 +198,9 @@ describe('kotlinType — typeRef', () => {
 
 describe('swiftType — function types (roadmap PR 5b)', () => {
   it('zero-arg → Void: () -> Void', () => {
-    expect(
-      swiftType({ kind: 'function', params: [], returnType: { kind: 'unknown' } }),
-    ).toBe('() -> Void')
+    expect(swiftType({ kind: 'function', params: [], returnType: { kind: 'unknown' } })).toBe(
+      '() -> Void',
+    )
   })
   it('one-arg number → Bool', () => {
     expect(
@@ -241,9 +241,9 @@ describe('swiftType — function types (roadmap PR 5b)', () => {
 
 describe('kotlinType — function types (roadmap PR 5b)', () => {
   it('zero-arg → Unit: () -> Unit', () => {
-    expect(
-      kotlinType({ kind: 'function', params: [], returnType: { kind: 'unknown' } }),
-    ).toBe('() -> Unit')
+    expect(kotlinType({ kind: 'function', params: [], returnType: { kind: 'unknown' } })).toBe(
+      '() -> Unit',
+    )
   })
   it('one-arg number → Boolean', () => {
     expect(

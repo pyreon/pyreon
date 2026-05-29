@@ -281,40 +281,29 @@ describe('captureCallSite — skip patterns cover published-bundle paths', () =>
     /<anonymous>/,
   ]
 
-  const isSkipped = (line: string): boolean =>
-    skipPatterns.some((p) => p.test(line))
+  const isSkipped = (line: string): boolean => skipPatterns.some((p) => p.test(line))
 
   test('skips published-bundle lib paths (`@pyreon/X/lib/`)', () => {
     expect(
-      isSkipped(
-        'at HeadProvider (file:///app/node_modules/@pyreon/head/lib/index.js:42:7)',
-      ),
+      isSkipped('at HeadProvider (file:///app/node_modules/@pyreon/head/lib/index.js:42:7)'),
     ).toBe(true)
+    expect(isSkipped('at provide (file:///app/node_modules/@pyreon/core/lib/index.js:96:5)')).toBe(
+      true,
+    )
     expect(
-      isSkipped(
-        'at provide (file:///app/node_modules/@pyreon/core/lib/index.js:96:5)',
-      ),
-    ).toBe(true)
-    expect(
-      isSkipped(
-        'at ThemeProvider (file:///app/node_modules/@pyreon/styler/lib/index.js:24:3)',
-      ),
+      isSkipped('at ThemeProvider (file:///app/node_modules/@pyreon/styler/lib/index.js:24:3)'),
     ).toBe(true)
   })
 
   test('skips workspace source paths (`bun` condition consumers)', () => {
-    expect(
-      isSkipped(
-        'at provide (/Users/me/proj/packages/core/core/src/context.ts:88:3)',
-      ),
-    ).toBe(true)
+    expect(isSkipped('at provide (/Users/me/proj/packages/core/core/src/context.ts:88:3)')).toBe(
+      true,
+    )
     expect(
       isSkipped('at HeadProvider (/Users/me/proj/packages/core/head/src/provider.ts:56:5)'),
     ).toBe(true)
     expect(
-      isSkipped(
-        'at RouterProvider (/Users/me/proj/packages/core/router/src/components.tsx:30:5)',
-      ),
+      isSkipped('at RouterProvider (/Users/me/proj/packages/core/router/src/components.tsx:30:5)'),
     ).toBe(true)
   })
 

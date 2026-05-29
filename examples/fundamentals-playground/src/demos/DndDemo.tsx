@@ -28,10 +28,9 @@ export function DndDemo() {
     <div>
       <h2>DnD</h2>
       <p class="desc">
-        Signal-driven drag and drop — wraps <code>@atlaskit/pragmatic-drag-
-        and-drop</code> with Pyreon's reactivity. Sortable lists, draggable
-        cards, drop zones, file drops. The list below is a sortable: grab a
-        row by its handle, drag to reorder. The drop edge (above/below) is
+        Signal-driven drag and drop — wraps <code>@atlaskit/pragmatic-drag- and-drop</code> with
+        Pyreon's reactivity. Sortable lists, draggable cards, drop zones, file drops. The list below
+        is a sortable: grab a row by its handle, drag to reorder. The drop edge (above/below) is
         signal-tracked too.
       </p>
 
@@ -77,7 +76,11 @@ export function DndDemo() {
       <div class="section">
         <h3>Snapshot</h3>
         <pre style="font-size: 13px" data-testid="dnd-order">
-          {() => items().map((t) => t.name).join(' → ')}
+          {() =>
+            items()
+              .map((t) => t.name)
+              .join(' → ')
+          }
         </pre>
         <div class="row" style="margin-top: 12px">
           <button onClick={() => items.set(initial)}>Reset order</button>

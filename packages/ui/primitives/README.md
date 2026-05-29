@@ -143,7 +143,7 @@ Render-function primitive. State exposes expanded set (`expanded()` / `toggleExp
 const value = navigateByRole(e, {
   containerSelector: '[role="tablist"]',
   itemSelector: '[role="tab"]',
-  keys: 'horizontal',  // 'horizontal' | 'vertical' | 'both'
+  keys: 'horizontal', // 'horizontal' | 'vertical' | 'both'
 })
 if (value) tabs.onChange(value)
 ```

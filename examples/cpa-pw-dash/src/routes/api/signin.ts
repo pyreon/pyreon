@@ -1,5 +1,5 @@
-import type { ApiContext } from "@pyreon/zero/api-routes"
-import { signIn } from "../../lib/auth"
+import type { ApiContext } from '@pyreon/zero/api-routes'
+import { signIn } from '../../lib/auth'
 
 /**
  * Server-side sign-in endpoint. Receives credentials over POST, calls
@@ -26,25 +26,24 @@ export async function POST(ctx: ApiContext) {
   try {
     body = await ctx.request.json()
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 })
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { email, password } =
-    (body as { email?: unknown; password?: unknown }) ?? {}
-  if (typeof email !== "string" || typeof password !== "string") {
-    return Response.json({ error: "Missing email or password" }, { status: 400 })
+  const { email, password } = (body as { email?: unknown; password?: unknown }) ?? {}
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return Response.json({ error: 'Missing email or password' }, { status: 400 })
   }
 
   const result = signIn(email, password)
-  if ("error" in result) {
+  if ('error' in result) {
     return Response.json({ error: result.error }, { status: 401 })
   }
 
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: {
-      "content-type": "application/json",
-      "set-cookie": `sid=${result.sessionId}; path=/; max-age=${7 * 24 * 60 * 60}`,
+      'content-type': 'application/json',
+      'set-cookie': `sid=${result.sessionId}; path=/; max-age=${7 * 24 * 60 * 60}`,
     },
   })
 }

@@ -1,12 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@pyreon/query'
 import { signal } from '@pyreon/reactivity'
 import { rx } from '@pyreon/rx'
-import {
-  type ColumnDef,
-  getCoreRowModel,
-  getSortedRowModel,
-  useTable,
-} from '@pyreon/table'
+import { type ColumnDef, getCoreRowModel, getSortedRowModel, useTable } from '@pyreon/table'
 import { toast } from '@pyreon/toast'
 import { useUrlState } from '@pyreon/url-state'
 import { useDashboardPermissions } from './permissions'
@@ -108,23 +103,18 @@ export function OrdersTable() {
   const status = useUrlState('status', 'all' as 'all' | OrderStatus)
 
   // ── Reactive filter pipeline via @pyreon/rx ─────────────────────────
-  const filtered = rx.combine(
-    ordersAccessor,
-    search,
-    status,
-    (rows, query, currentStatus) => {
-      const needle = query.trim().toLowerCase()
-      return rows.filter((order) => {
-        if (currentStatus !== 'all' && order.status !== currentStatus) return false
-        if (!needle) return true
-        return (
-          order.id.toLowerCase().includes(needle) ||
-          order.customer.toLowerCase().includes(needle) ||
-          order.customerEmail.toLowerCase().includes(needle)
-        )
-      })
-    },
-  )
+  const filtered = rx.combine(ordersAccessor, search, status, (rows, query, currentStatus) => {
+    const needle = query.trim().toLowerCase()
+    return rows.filter((order) => {
+      if (currentStatus !== 'all' && order.status !== currentStatus) return false
+      if (!needle) return true
+      return (
+        order.id.toLowerCase().includes(needle) ||
+        order.customer.toLowerCase().includes(needle) ||
+        order.customerEmail.toLowerCase().includes(needle)
+      )
+    })
+  })
 
   // ── Refund mutation with optimistic toast feedback ───────────────────
   const refundMutation = useMutation<Order, Error, string, { toastId: string }>({
@@ -172,7 +162,9 @@ export function OrdersTable() {
 
   // Sorted + paginated rows for the current page.
   const visibleRows = (): Order[] => {
-    const sorted = table().getSortedRowModel().rows.map((row) => row.original)
+    const sorted = table()
+      .getSortedRowModel()
+      .rows.map((row) => row.original)
     const start = pageIndex() * PAGE_SIZE
     return sorted.slice(start, start + PAGE_SIZE)
   }
@@ -232,10 +224,7 @@ export function OrdersTable() {
             <thead>
               <tr>
                 {COLUMNS.map((column) => (
-                  <Th
-                    $sortable={column.sortable}
-                    onClick={() => toggleSort(column.id)}
-                  >
+                  <Th $sortable={column.sortable} onClick={() => toggleSort(column.id)}>
                     {column.label}
                     {column.sortable ? <span>{sortIndicator(column.id)}</span> : null}
                   </Th>
@@ -285,7 +274,11 @@ export function OrdersTable() {
           }}
         </span>
         <PageButtons>
-          <PageButton type="button" disabled={pageIndex() === 0} onClick={() => changePage(pageIndex() - 1)}>
+          <PageButton
+            type="button"
+            disabled={pageIndex() === 0}
+            onClick={() => changePage(pageIndex() - 1)}
+          >
             ← Prev
           </PageButton>
           <PageButton $active>{pageIndex() + 1}</PageButton>

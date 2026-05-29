@@ -63,7 +63,12 @@ function createFullDoc() {
           Divider({ color: '#ccc', thickness: 2 }),
           PageBreak(),
           Spacer({ height: 20 }),
-          Button({ href: 'https://example.com/pay', background: '#4f46e5', color: '#fff', children: 'Pay Now' }),
+          Button({
+            href: 'https://example.com/pay',
+            background: '#4f46e5',
+            color: '#fff',
+            children: 'Pay Now',
+          }),
           Quote({ borderColor: '#4f46e5', children: 'A wise quote' }),
           Section({
             direction: 'row',
@@ -304,7 +309,14 @@ describe('Confluence renderer', () => {
 
   it('renders text with marks', async () => {
     const doc = Document({
-      children: Text({ bold: true, italic: true, underline: true, strikethrough: true, color: '#ff0000', children: 'styled' }),
+      children: Text({
+        bold: true,
+        italic: true,
+        underline: true,
+        strikethrough: true,
+        color: '#ff0000',
+        children: 'styled',
+      }),
     })
     const result = (await render(doc, 'confluence')) as string
     const parsed = JSON.parse(result)
@@ -445,7 +457,7 @@ describe('WhatsApp renderer', () => {
   it('renders spacer as newline', async () => {
     const doc = Document({ children: Spacer({ height: 10 }) })
     const result = (await render(doc, 'whatsapp')) as string
-    expect(result).toBe('')  // just whitespace, trimmed
+    expect(result).toBe('') // just whitespace, trimmed
   })
 
   it('skips images', async () => {

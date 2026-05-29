@@ -14,11 +14,11 @@ A call site is **statically resolvable** if it has zero dynamic dimension props 
 
 ## Headline
 
-| | Count | % |
-|---|---:|---:|
-| Total rocketstyle call sites in `examples/` | **576** | 100% |
-| Statically resolvable | **549** | **95.3%** |
-| Dynamic | 27 | 4.7% |
+|                                             |   Count |         % |
+| ------------------------------------------- | ------: | --------: |
+| Total rocketstyle call sites in `examples/` | **576** |      100% |
+| Statically resolvable                       | **549** | **95.3%** |
+| Dynamic                                     |      27 |      4.7% |
 
 Reasons for falling through:
 
@@ -27,29 +27,29 @@ Reasons for falling through:
 
 ## Per-component breakdown (top components, ≥5 sites)
 
-| Component | Total | Resolvable | Resolvable % |
-|---|---:|---:|---:|
-| Title | 208 | 207 | 100% |
-| Button | 86 | 73 | 85% |
-| Paragraph | 62 | 62 | 100% |
-| Kbd | 25 | 25 | 100% |
-| Avatar | 17 | 17 | 100% |
-| Chip | 17 | 17 | 100% |
-| Input | 14 | 10 | 71% |
-| Badge | 14 | 14 | 100% |
-| Loader | 14 | 14 | 100% |
-| Card | 12 | 9 | 75% |
-| Box | 12 | 12 | 100% |
-| Progress | 11 | 11 | 100% |
-| Image | 10 | 10 | 100% |
-| Alert | 7 | 7 | 100% |
-| Highlight | 7 | 7 | 100% |
-| Checkbox | 6 | 6 | 100% |
-| NavLink | 6 | 1 | 17% |
-| Divider | 6 | 6 | 100% |
-| Notification | 5 | 5 | 100% |
-| Code | 5 | 5 | 100% |
-| Center | 5 | 5 | 100% |
+| Component    | Total | Resolvable | Resolvable % |
+| ------------ | ----: | ---------: | -----------: |
+| Title        |   208 |        207 |         100% |
+| Button       |    86 |         73 |          85% |
+| Paragraph    |    62 |         62 |         100% |
+| Kbd          |    25 |         25 |         100% |
+| Avatar       |    17 |         17 |         100% |
+| Chip         |    17 |         17 |         100% |
+| Input        |    14 |         10 |          71% |
+| Badge        |    14 |         14 |         100% |
+| Loader       |    14 |         14 |         100% |
+| Card         |    12 |          9 |          75% |
+| Box          |    12 |         12 |         100% |
+| Progress     |    11 |         11 |         100% |
+| Image        |    10 |         10 |         100% |
+| Alert        |     7 |          7 |         100% |
+| Highlight    |     7 |          7 |         100% |
+| Checkbox     |     6 |          6 |         100% |
+| NavLink      |     6 |          1 |          17% |
+| Divider      |     6 |          6 |         100% |
+| Notification |     5 |          5 |         100% |
+| Code         |     5 |          5 |         100% |
+| Center       |     5 |          5 |         100% |
 
 The two outliers — **NavLink at 17%** and **Button at 85%** — are worth looking at:
 
@@ -64,12 +64,12 @@ The two outliers — **NavLink at 17%** and **Button at 85%** — are worth look
 
 ## Combined with E2's 44× per-mount win
 
-| Resolvable % | Weighted speedup (44× × resolvable + 1× × dynamic) |
-|---|---|
-| 95% (this audit) | **41×** |
-| 80% (pessimistic real-app estimate) | **35×** |
-| 70% (very pessimistic) | **31×** |
-| 50% (worst-credible case) | **22×** |
+| Resolvable %                        | Weighted speedup (44× × resolvable + 1× × dynamic) |
+| ----------------------------------- | -------------------------------------------------- |
+| 95% (this audit)                    | **41×**                                            |
+| 80% (pessimistic real-app estimate) | **35×**                                            |
+| 70% (very pessimistic)              | **31×**                                            |
+| 50% (worst-credible case)           | **22×**                                            |
 
 **Even the worst-credible case is a 22× weighted improvement.** The achievable bound on real apps is dramatic.
 

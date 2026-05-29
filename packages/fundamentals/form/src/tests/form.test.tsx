@@ -1972,7 +1972,7 @@ describe('useForm — auto-revalidate after first failed submit (audit bug #2)',
   // the full pipeline composes correctly: failed submit → debounced async
   // validator runs on every typed keystroke → version-tracking discards
   // stale results → live error state matches the latest valid value.
-  it("integrates with debounced async validators after first failed submit", async () => {
+  it('integrates with debounced async validators after first failed submit', async () => {
     let validatorCalls = 0
     const asyncValidator = async (v: string): Promise<string | undefined> => {
       validatorCalls++

@@ -40,7 +40,11 @@ function chatBackendPlugin() {
     }
   }
 
-  function makeMessage(channelId: string, body: string, author: { name: string; color: string }): unknown {
+  function makeMessage(
+    channelId: string,
+    body: string,
+    author: { name: string; color: string },
+  ): unknown {
     return {
       id: `srv_${channelId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       channelId,

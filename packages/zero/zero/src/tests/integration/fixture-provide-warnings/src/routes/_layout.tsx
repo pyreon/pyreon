@@ -27,10 +27,5 @@ function Header(): VNodeChild {
 
 export function layout(): VNodeChild {
   useHead({ title: 'site title from layout' })
-  return h(
-    PyreonUI,
-    { theme },
-    h(Header, null),
-    h(RouterView, null),
-  )
+  return h(PyreonUI, { theme }, h(Header, null), h(RouterView, null))
 }

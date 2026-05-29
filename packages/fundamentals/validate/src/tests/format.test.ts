@@ -157,9 +157,7 @@ describe('formatErrorsByPath — per-field map variant', () => {
   })
 
   it('resolves keys via t', () => {
-    const issues: PyreonIssue[] = [
-      { message: 'fallback', key: 'k.name', path: ['name'] },
-    ]
+    const issues: PyreonIssue[] = [{ message: 'fallback', key: 'k.name', path: ['name'] }]
     const t = (k: string) => (k === 'k.name' ? 'translated' : k)
     expect(formatErrorsByPath(issues, t)).toEqual({ name: 'translated' })
   })

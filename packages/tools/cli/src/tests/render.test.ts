@@ -129,9 +129,9 @@ describe('renderText', () => {
   })
 
   it('truncates to topN with "and N more" hint', () => {
-    const findings = Array(15).fill(null).map((_, i) =>
-      f('info', 'correctness', `lint/x${i}`),
-    )
+    const findings = Array(15)
+      .fill(null)
+      .map((_, i) => f('info', 'correctness', `lint/x${i}`))
     const report = buildReport([g('lint', 'correctness', findings)])
     const out = stripAnsi(renderText(report, { cwd: '/', topN: 3 }))
     expect(out).toContain('and 12 more')

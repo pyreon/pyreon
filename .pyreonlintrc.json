@@ -26,19 +26,13 @@
     "pyreon/no-raw-addeventlistener": [
       "info",
       {
-        "exemptPaths": [
-          "packages/core/runtime-dom/",
-          "packages/fundamentals/hooks/"
-        ]
+        "exemptPaths": ["packages/core/runtime-dom/", "packages/fundamentals/hooks/"]
       }
     ],
     "pyreon/no-raw-setinterval": [
       "info",
       {
-        "exemptPaths": [
-          "packages/core/runtime-dom/",
-          "packages/fundamentals/hooks/"
-        ]
+        "exemptPaths": ["packages/core/runtime-dom/", "packages/fundamentals/hooks/"]
       }
     ],
     "pyreon/no-imperative-effect-on-create": [

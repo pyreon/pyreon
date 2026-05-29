@@ -49,29 +49,38 @@ const cardStyle =
 export default function HomePage() {
   return (
     <div>
-      <Title size="h1" style="margin-bottom: 12px">Pyreon UI Showcase</Title>
+      <Title size="h1" style="margin-bottom: 12px">
+        Pyreon UI Showcase
+      </Title>
       <Paragraph style="margin-bottom: 32px; font-size: 16px; color: #4b5563;">
-        A live catalog of every UI primitive, component, hook, and animation in the Pyreon framework.
-        Built with the Pyreon Zero stack — file-based routing, SSR, signals, and rocketstyle theming.
+        A live catalog of every UI primitive, component, hook, and animation in the Pyreon
+        framework. Built with the Pyreon Zero stack — file-based routing, SSR, signals, and
+        rocketstyle theming.
       </Paragraph>
 
       {/* Stats grid */}
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 40px;">
         {stats.map((s) => (
           <div style="padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; text-align: center;">
-            <div style="font-size: 32px; font-weight: 700; color: #0070f3; line-height: 1;">{s.value}</div>
+            <div style="font-size: 32px; font-weight: 700; color: #0070f3; line-height: 1;">
+              {s.value}
+            </div>
             <div style="font-size: 13px; color: #6b7280; margin-top: 6px;">{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Featured categories */}
-      <Title size="h2" style="margin-bottom: 16px">Browse by category</Title>
+      <Title size="h2" style="margin-bottom: 16px">
+        Browse by category
+      </Title>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 32px;">
         {featured.map((f) => (
           <RouterLink to={f.path} style={cardStyle}>
             <Card style="height: 100%;">
-              <Title size="h3" style="margin-bottom: 8px; color: #0070f3;">{f.title} →</Title>
+              <Title size="h3" style="margin-bottom: 8px; color: #0070f3;">
+                {f.title} →
+              </Title>
               <Paragraph style="font-size: 14px; color: #4b5563;">{f.desc}</Paragraph>
             </Card>
           </RouterLink>

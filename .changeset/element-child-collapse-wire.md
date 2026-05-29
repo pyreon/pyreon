@@ -15,7 +15,7 @@ already contains the children.
 
 - **Compiler** (`@pyreon/compiler`): `detectElementChildCollapsibleShape`
   (literal root props + recursively-static element children → `{ props,
-  childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
+childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
   `CollapsibleSite` per element-child site carrying `childTree` +
   `childrenText = serializeStaticChildren(childTree)`;
   `tryRocketstyleCollapse` falls through to `tryElementChildCollapse`

@@ -20,11 +20,7 @@ import { Show } from '@pyreon/core'
 const count = signal(0)
 
 function App() {
-  return (
-    <button onClick={() => count.update(n => n + 1)}>
-      Clicks: {() => count()}
-    </button>
-  )
+  return <button onClick={() => count.update((n) => n + 1)}>Clicks: {() => count()}</button>
 }
 
 const unmount = mount(<App />, document.getElementById('app')!)
@@ -62,7 +58,7 @@ The `_tpl` hydration path uses a framework-wide correctness-first SWAP: when the
 ## applyProp / applyProps
 
 ```ts
-applyProp(el, 'class', { active: isActive() })   // cx-normalized
+applyProp(el, 'class', { active: isActive() }) // cx-normalized
 applyProp(el, 'style', { color: 'red' })
 applyProp(el, 'onClick', handler)
 applyProps(el, { class: 'btn', 'data-id': id })
@@ -100,14 +96,14 @@ const el = template() // cloneNode under the hood
 
 These symbols are emitted by `@pyreon/compiler`. Not for hand-written user code, but documented here as the contract:
 
-| Symbol | Purpose |
-|---|---|
-| `_tpl(html)` | Parse + clone an HTML template once per literal |
-| `_bindText(source, textNode)` | Reactive text — reads `source._v` directly on the fast path |
-| `_bindDirect(source, el, key)` | Reactive attribute — fast path for primitive props |
-| `_mountSlot(...)` | Mount a reactive child slot under a template anchor |
-| `_applyProps(...)` | Spread props on a template element |
-| `_rsCollapse(...)` / `_rsCollapseH(...)` | Rocketstyle compile-time-collapse mount paths |
+| Symbol                                   | Purpose                                                     |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `_tpl(html)`                             | Parse + clone an HTML template once per literal             |
+| `_bindText(source, textNode)`            | Reactive text — reads `source._v` directly on the fast path |
+| `_bindDirect(source, el, key)`           | Reactive attribute — fast path for primitive props          |
+| `_mountSlot(...)`                        | Mount a reactive child slot under a template anchor         |
+| `_applyProps(...)`                       | Spread props on a template element                          |
+| `_rsCollapse(...)` / `_rsCollapseH(...)` | Rocketstyle compile-time-collapse mount paths               |
 
 ## Event delegation
 
@@ -126,8 +122,10 @@ import { Transition } from '@pyreon/runtime-dom'
 // or, for explicit tree-shake:
 // import { Transition } from '@pyreon/runtime-dom/transition'
 
-<Transition name="fade" mode="out-in">
-  <Show when={visible()}><div>Content</div></Show>
+;<Transition name="fade" mode="out-in">
+  <Show when={visible()}>
+    <div>Content</div>
+  </Show>
 </Transition>
 ```
 
@@ -136,8 +134,10 @@ CSS-class enter/leave animations + JS hooks (`onBeforeEnter`, `onAfterLeave`, et
 ```tsx
 import { TransitionGroup } from '@pyreon/runtime-dom'
 
-<TransitionGroup name="list" tag="ul">
-  <For each={items} by={i => i.id}>{(item) => <li>{item.name}</li>}</For>
+;<TransitionGroup name="list" tag="ul">
+  <For each={items} by={(i) => i.id}>
+    {(item) => <li>{item.name}</li>}
+  </For>
 </TransitionGroup>
 ```
 
@@ -149,9 +149,7 @@ import { TransitionGroup } from '@pyreon/runtime-dom'
 import { KeepAlive } from '@pyreon/runtime-dom'
 // or: import { KeepAlive } from '@pyreon/runtime-dom/keep-alive'
 
-<KeepAlive>
-  {() => tab() === 'home' ? <Home /> : <Settings />}
-</KeepAlive>
+;<KeepAlive>{() => (tab() === 'home' ? <Home /> : <Settings />)}</KeepAlive>
 ```
 
 Caches inactive subtrees instead of destroying them — preserves component state (form inputs, scroll positions, signals) across toggles. Pair with `<Show>` or a route guard for tab-style UIs.

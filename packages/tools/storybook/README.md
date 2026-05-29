@@ -59,11 +59,11 @@ export const WithSignal: Story = {
 
 ## Subpath exports
 
-| Subpath                      | Surface                                                                          |
-| ---------------------------- | -------------------------------------------------------------------------------- |
-| `@pyreon/storybook`          | `Meta`, `StoryObj`, `StoryFn`, `StoryContext`, `DecoratorFn`, `InferProps`, `PyreonRenderer`, `defaultRender`, `renderToCanvas`, plus Pyreon re-exports (`h`, `Fragment`, `signal`, `computed`, `effect`, `mount`) |
-| `@pyreon/storybook/preset`   | Storybook framework preset — loaded by `.storybook/main.ts` when `framework: "@pyreon/storybook"` |
-| `@pyreon/storybook/preview`  | Preview annotations entry — registered by the preset                              |
+| Subpath                     | Surface                                                                                                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@pyreon/storybook`         | `Meta`, `StoryObj`, `StoryFn`, `StoryContext`, `DecoratorFn`, `InferProps`, `PyreonRenderer`, `defaultRender`, `renderToCanvas`, plus Pyreon re-exports (`h`, `Fragment`, `signal`, `computed`, `effect`, `mount`) |
+| `@pyreon/storybook/preset`  | Storybook framework preset — loaded by `.storybook/main.ts` when `framework: "@pyreon/storybook"`                                                                                                                  |
+| `@pyreon/storybook/preview` | Preview annotations entry — registered by the preset                                                                                                                                                               |
 
 ## API
 
@@ -88,7 +88,9 @@ type Story = StoryObj<typeof meta>
 
 export const Demo: Story = {
   args: { variant: 'primary' },
-  play: async ({ canvasElement }) => { /* ... */ },
+  play: async ({ canvasElement }) => {
+    /* ... */
+  },
 }
 ```
 

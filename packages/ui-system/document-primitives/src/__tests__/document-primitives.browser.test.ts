@@ -98,11 +98,7 @@ describe('document-primitives in real browser', () => {
 
   it('extracts href from real DocLink primitive', () => {
     const tree = extractDocumentTree(
-      h(
-        DocDocument,
-        { title: 't' },
-        h(DocLink, { href: 'https://example.com' }, 'click me'),
-      ),
+      h(DocDocument, { title: 't' }, h(DocLink, { href: 'https://example.com' }, 'click me')),
     )
     const link = (tree.children.find((c) => typeof c !== 'string' && c.type === 'link') ??
       null) as { type: string; props: { href?: string } } | null
@@ -115,12 +111,7 @@ describe('document-primitives in real browser', () => {
       h(
         DocDocument,
         { title: 't' },
-        h(
-          DocList,
-          { ordered: true },
-          h(DocListItem, null, 'one'),
-          h(DocListItem, null, 'two'),
-        ),
+        h(DocList, { ordered: true }, h(DocListItem, null, 'one'), h(DocListItem, null, 'two')),
       ),
     )
     const list = (tree.children.find((c) => typeof c !== 'string' && c.type === 'list') ??
@@ -132,11 +123,7 @@ describe('document-primitives in real browser', () => {
 
   it('extracts language from real DocCode primitive', () => {
     const tree = extractDocumentTree(
-      h(
-        DocDocument,
-        { title: 't' },
-        h(DocCode, { language: 'typescript' }, 'const x = 1'),
-      ),
+      h(DocDocument, { title: 't' }, h(DocCode, { language: 'typescript' }, 'const x = 1')),
     )
     const code = (tree.children.find((c) => typeof c !== 'string' && c.type === 'code') ??
       null) as { type: string; props: { language?: string } } | null
@@ -180,15 +167,13 @@ describe('document-primitives in real browser', () => {
       ),
     )
     const table = (tree.children.find((c) => typeof c !== 'string' && c.type === 'table') ??
-      null) as
-      | {
-          type: string
-          props: {
-            rows?: unknown[]
-            columns?: unknown[]
-          }
-        }
-      | null
+      null) as {
+      type: string
+      props: {
+        rows?: unknown[]
+        columns?: unknown[]
+      }
+    } | null
     expect(table).not.toBeNull()
     expect(Array.isArray(table?.props.rows)).toBe(true)
     expect(table?.props.rows).toHaveLength(2)
@@ -232,9 +217,7 @@ describe('document-primitives in real browser', () => {
   it('handles primitives that have NO _documentProps cleanly (DocText)', () => {
     // DocText has `_documentProps: {}` — empty object. Confirms the
     // extractor doesn't choke on absent metadata.
-    const tree = extractDocumentTree(
-      h(DocDocument, { title: 't' }, h(DocText, null, 'just text')),
-    )
+    const tree = extractDocumentTree(h(DocDocument, { title: 't' }, h(DocText, null, 'just text')))
     const text = (tree.children.find((c) => typeof c !== 'string' && c.type === 'text') ??
       null) as { type: string; children?: unknown[] } | null
     expect(text).not.toBeNull()

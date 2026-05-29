@@ -289,8 +289,7 @@ export class StyleSheet {
    *   via @layer order (base < rocketstyle) instead of specificity hacks.
    */
   insert(cssText: string, _unused = false, insertLayer?: string): string {
-    if (process.env.NODE_ENV !== 'production')
-      _countSink.__pyreon_count__?.('styler.sheet.insert')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('styler.sheet.insert')
     // Fast path: skip hash computation on repeated insertions of same CSS text
     const icKey = insertLayer ? `${cssText}\0L:${insertLayer}` : cssText
     const icHit = this.insertCache.get(icKey)

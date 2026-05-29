@@ -151,11 +151,7 @@ describe('tree-shake — single-preset consumer ships only that preset', () => {
     const consumerPath = join(dir, 'app.mjs')
     const bundlePath = join(dir, 'out.js')
 
-    writeFileSync(
-      consumerPath,
-      `import { fade } from '${libEntry}'\nconsole.log(fade)\n`,
-      'utf8',
-    )
+    writeFileSync(consumerPath, `import { fade } from '${libEntry}'\nconsole.log(fade)\n`, 'utf8')
 
     const esbuild = (await import('esbuild')) as unknown as {
       build: (opts: Record<string, unknown>) => Promise<unknown>

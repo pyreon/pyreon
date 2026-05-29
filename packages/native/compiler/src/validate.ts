@@ -94,8 +94,8 @@ export function validateSwift(source: string): ValidationResult {
     // `stdout` and `stderr` (Buffer | string) — surface both for the
     // diagnostic.
     const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
+    const stderr = typeof e.stderr === 'string' ? e.stderr : (e.stderr?.toString('utf8') ?? '')
+    const stdout = typeof e.stdout === 'string' ? e.stdout : (e.stdout?.toString('utf8') ?? '')
     const output = [stderr, stdout].filter(Boolean).join('\n').trim()
     return {
       ok: false,
@@ -180,8 +180,8 @@ export function validateKotlin(source: string): ValidationResult {
     return { ok: true }
   } catch (err) {
     const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
+    const stderr = typeof e.stderr === 'string' ? e.stderr : (e.stderr?.toString('utf8') ?? '')
+    const stdout = typeof e.stdout === 'string' ? e.stdout : (e.stdout?.toString('utf8') ?? '')
     const output = [stderr, stdout].filter(Boolean).join('\n').trim()
     return {
       ok: false,

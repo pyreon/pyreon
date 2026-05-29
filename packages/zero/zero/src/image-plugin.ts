@@ -39,29 +39,40 @@ function warnSharpMissing() {
  * CDN provider — rewrites image URLs to CDN endpoints.
  * Return the rewritten URL, or null to use local processing.
  */
-export type ImageCdnProvider = (src: string, opts: {
-  width: number
-  quality: number
-  format: ImageFormat
-}) => string | null
+export type ImageCdnProvider = (
+  src: string,
+  opts: {
+    width: number
+    quality: number
+    format: ImageFormat
+  },
+) => string | null
 
 /** Built-in CDN providers. */
 export const cdnProviders = {
   /** Cloudinary: `https://res.cloudinary.com/{cloud}/image/upload/...` */
-  cloudinary: (cloudName: string): ImageCdnProvider => (src, { width, quality, format }) =>
-    `https://res.cloudinary.com/${cloudName}/image/upload/w_${width},q_${quality},f_${format}/${src}`,
+  cloudinary:
+    (cloudName: string): ImageCdnProvider =>
+    (src, { width, quality, format }) =>
+      `https://res.cloudinary.com/${cloudName}/image/upload/w_${width},q_${quality},f_${format}/${src}`,
 
   /** Imgix: `https://{domain}.imgix.net/...?w=...&q=...&fm=...` */
-  imgix: (domain: string): ImageCdnProvider => (src, { width, quality, format }) =>
-    `https://${domain}.imgix.net/${src}?w=${width}&q=${quality}&fm=${format}&auto=format`,
+  imgix:
+    (domain: string): ImageCdnProvider =>
+    (src, { width, quality, format }) =>
+      `https://${domain}.imgix.net/${src}?w=${width}&q=${quality}&fm=${format}&auto=format`,
 
   /** Vercel Image Optimization: `/_next/image?url=...&w=...&q=...` */
-  vercel: (): ImageCdnProvider => (src, { width, quality }) =>
-    `/_vercel/image?url=${encodeURIComponent(src)}&w=${width}&q=${quality}`,
+  vercel:
+    (): ImageCdnProvider =>
+    (src, { width, quality }) =>
+      `/_vercel/image?url=${encodeURIComponent(src)}&w=${width}&q=${quality}`,
 
   /** Bunny CDN: `https://{pullZone}.b-cdn.net/...?width=...&quality=...` */
-  bunny: (pullZone: string): ImageCdnProvider => (src, { width, quality }) =>
-    `https://${pullZone}.b-cdn.net/${src}?width=${width}&quality=${quality}`,
+  bunny:
+    (pullZone: string): ImageCdnProvider =>
+    (src, { width, quality }) =>
+      `https://${pullZone}.b-cdn.net/${src}?width=${width}&quality=${quality}`,
 } as const
 
 /**
@@ -215,11 +226,12 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
   const outSubDir = config.outDir ?? 'assets/img'
   const include = config.include ?? IMAGE_EXT_RE
   const cdn = config.cdn
-  const svgOpts: SvgOptions | false = config.svg === true
-    ? { currentColor: true }
-    : config.svg === false || config.svg === undefined
-      ? false
-      : config.svg
+  const svgOpts: SvgOptions | false =
+    config.svg === true
+      ? { currentColor: true }
+      : config.svg === false || config.svg === undefined
+        ? false
+        : config.svg
 
   let root = ''
   let outDir = ''
@@ -238,8 +250,7 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
     async resolveId(id, importer) {
       const isSvgComponent =
         svgOpts && id.includes('?component') && id.split('?')[0]!.endsWith('.svg')
-      const isOptimize =
-        id.includes('?optimize') && include.test(id.split('?')[0]!)
+      const isOptimize = id.includes('?optimize') && include.test(id.split('?')[0]!)
       if (!isSvgComponent && !isOptimize) return null
 
       // Resolve the bare specifier to an ABSOLUTE fs path the way Vite
@@ -361,12 +372,7 @@ export default function SvgComponent(props) {
       }
 
       if (!isBuild) {
-        const result = await loadDevImage(
-          absPath,
-          rawPath,
-          placeholderStrategy,
-          placeholderSize,
-        )
+        const result = await loadDevImage(absPath, rawPath, placeholderStrategy, placeholderSize)
         return `export default ${JSON.stringify(result)}`
       }
 
@@ -690,9 +696,7 @@ const DEFAULT_QUALITY = 80
  *
  * @internal Exported for testing.
  */
-export function resolveQuality(
-  q: ImageQuality | undefined,
-): (format: ImageFormat) => number {
+export function resolveQuality(q: ImageQuality | undefined): (format: ImageFormat) => number {
   if (q === undefined) return () => DEFAULT_QUALITY
   if (typeof q === 'number') return () => q
   return (format) => q[format] ?? DEFAULT_QUALITY

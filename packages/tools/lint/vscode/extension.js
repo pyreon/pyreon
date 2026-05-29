@@ -44,12 +44,7 @@ function activate(_context) {
     ],
   }
 
-  client = new LanguageClient(
-    'pyreonLint',
-    'Pyreon Lint',
-    serverOptions,
-    clientOptions,
-  )
+  client = new LanguageClient('pyreonLint', 'Pyreon Lint', serverOptions, clientOptions)
 
   client.start()
 }

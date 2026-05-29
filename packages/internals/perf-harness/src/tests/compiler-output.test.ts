@@ -34,26 +34,20 @@ describe('compiler JSX transform efficiency', () => {
     // Users explicitly write `{() => name()}` for reactive prop-driven
     // text. This test freezes current behavior; if the compiler gains
     // signal-detection across prop boundaries, flip to expect `_bind`.
-    const code = transform(
-      `export default ({name}) => <div>Hello <b>{name}</b>!</div>`,
-    )
+    const code = transform(`export default ({name}) => <div>Hello <b>{name}</b>!</div>`)
     expect(code).toMatch(/_tpl\s*\(/)
     expect(code).toMatch(/textContent\s*=\s*name/)
   })
 
   it('list (.map) — wrapped as reactive accessor thunk', () => {
-    const code = transform(
-      `export default ({items}) => <ul>{items.map(x => <li>{x}</li>)}</ul>`,
-    )
+    const code = transform(`export default ({items}) => <ul>{items.map(x => <li>{x}</li>)}</ul>`)
     // The compiler wraps the map expression so the runtime's mountChild
     // treats it as a reactive accessor.
     expect(code).toMatch(/\(\s*\)\s*=>\s*items\.map/)
   })
 
   it('spread props on root element → handled via _applyProps', () => {
-    const code = transform(
-      `export default (props) => <div {...props}>content</div>`,
-    )
+    const code = transform(`export default (props) => <div {...props}>content</div>`)
     // Spread compile path
     expect(code).toMatch(/_tpl|_applyProps|spread|\bh\b/)
   })
@@ -70,9 +64,7 @@ describe('compiler JSX transform efficiency', () => {
   })
 
   it('pure static call (Math.random, etc.) is NOT wrapped in a reactive getter', () => {
-    const code = transform(
-      `export default () => <div data-id={Math.random()}>content</div>`,
-    )
+    const code = transform(`export default () => <div data-id={Math.random()}>content</div>`)
     // Math.random is pure — should NOT be wrapped in _bind / () => wrapper.
     // Look for the raw Math.random call in the output.
     expect(code).toContain('Math.random')

@@ -172,13 +172,9 @@ describe('computeReactivityHints with liveFires', () => {
   })
 
   it('drops fires from other files', async () => {
-    const { inlayHints } = await computeReactivityHints(
-      'app.tsx',
-      'const x = 1',
-      {
-        liveFires: [{ file: 'other.tsx', line: 2, count: 100, kind: 'signal' }],
-      },
-    )
+    const { inlayHints } = await computeReactivityHints('app.tsx', 'const x = 1', {
+      liveFires: [{ file: 'other.tsx', line: 2, count: 100, kind: 'signal' }],
+    })
     expect(inlayHints.some((h) => h.label.includes('🔥'))).toBe(false)
   })
 })
@@ -206,9 +202,7 @@ describe('LPIH defensive limits', () => {
     writeFileSync(
       CACHE_PATH,
       JSON.stringify({
-        fires: [
-          { file: '/abs/app.tsx', line: 1, count: 5, kind: 'signal' },
-        ],
+        fires: [{ file: '/abs/app.tsx', line: 1, count: 5, kind: 'signal' }],
       }),
       'utf8',
     )
@@ -220,9 +214,7 @@ describe('LPIH defensive limits', () => {
     writeFileSync(
       CACHE_PATH,
       JSON.stringify({
-        fires: [
-          { file: '/abs/app.tsx', line: 1, count: 100, kind: 'signal' },
-        ],
+        fires: [{ file: '/abs/app.tsx', line: 1, count: 100, kind: 'signal' }],
       }),
       'utf8',
     )
@@ -237,9 +229,7 @@ describe('LPIH defensive limits', () => {
     writeFileSync(
       CACHE_PATH,
       JSON.stringify({
-        fires: [
-          { file: '/abs/app.tsx', line: 1, count: 100, kind: 'signal' },
-        ],
+        fires: [{ file: '/abs/app.tsx', line: 1, count: 100, kind: 'signal' }],
       }),
       'utf8',
     )
@@ -252,9 +242,7 @@ describe('LPIH defensive limits', () => {
     writeFileSync(
       CACHE_PATH,
       JSON.stringify({
-        fires: [
-          { file: '/abs/app.tsx', line: 1, count: 5, kind: 'signal' },
-        ],
+        fires: [{ file: '/abs/app.tsx', line: 1, count: 5, kind: 'signal' }],
       }),
       'utf8',
     )
@@ -282,9 +270,7 @@ describe('_uriToFilePath — cross-platform file:// handling', () => {
   })
 
   it('handles percent-encoded paths', () => {
-    expect(_uriToFilePath('file:///Users/with%20space/app.tsx')).toBe(
-      '/Users/with space/app.tsx',
-    )
+    expect(_uriToFilePath('file:///Users/with%20space/app.tsx')).toBe('/Users/with space/app.tsx')
   })
 })
 
@@ -293,9 +279,7 @@ describe('LSP transport — full JSON-RPC roundtrip with LPIH cache', () => {
     writeFileSync(
       CACHE_PATH,
       JSON.stringify({
-        fires: [
-          { file: '/abs/app.tsx', line: 2, count: 240, kind: 'signal' },
-        ],
+        fires: [{ file: '/abs/app.tsx', line: 2, count: 240, kind: 'signal' }],
       }),
       'utf8',
     )
@@ -469,9 +453,7 @@ describe('LPIH path discovery — default <project-root>/.pyreon-lpih.json', () 
   })
 
   it('_findProjectRoot walks past multiple directory levels', () => {
-    const root = _findProjectRoot(
-      join(PROJECT_DIR, 'src', 'nested', 'deep', 'util.ts'),
-    )
+    const root = _findProjectRoot(join(PROJECT_DIR, 'src', 'nested', 'deep', 'util.ts'))
     expect(root).toBe(PROJECT_DIR)
   })
 
@@ -508,9 +490,7 @@ describe('LPIH path discovery — default <project-root>/.pyreon-lpih.json', () 
     // The walker walks up to filesystem root; we expect undefined as
     // long as no package.json exists at / or in the walk chain.
     // In practice this passes because there's no / level package.json.
-    expect(out === undefined || !out.endsWith('/tmp/.pyreon-lpih.json')).toBe(
-      true,
-    )
+    expect(out === undefined || !out.endsWith('/tmp/.pyreon-lpih.json')).toBe(true)
   })
 
   it('LSP textDocument/inlayHint reads the default-path cache when env var unset', async () => {
@@ -617,9 +597,7 @@ describe('LPIH monorepo path-map — PYREON_LPIH_PATH_MAP env var', () => {
     })
 
     it('parses a single from=to pair', () => {
-      expect(_parseLpihPathMap('/host=/workspaces')).toEqual([
-        { from: '/host', to: '/workspaces' },
-      ])
+      expect(_parseLpihPathMap('/host=/workspaces')).toEqual([{ from: '/host', to: '/workspaces' }])
     })
 
     it('parses multiple pairs separated by ;', () => {
@@ -652,9 +630,7 @@ describe('LPIH monorepo path-map — PYREON_LPIH_PATH_MAP env var', () => {
 
     it('drops entries with empty `from`', () => {
       // =/no/from would silently match every path — drop it.
-      expect(_parseLpihPathMap('=/no/from;/ok=/yes')).toEqual([
-        { from: '/ok', to: '/yes' },
-      ])
+      expect(_parseLpihPathMap('=/no/from;/ok=/yes')).toEqual([{ from: '/ok', to: '/yes' }])
     })
 
     it('trims surrounding whitespace per pair', () => {
@@ -668,9 +644,7 @@ describe('LPIH monorepo path-map — PYREON_LPIH_PATH_MAP env var', () => {
   describe('_applyLpihPathMap', () => {
     it('rewrites matching prefix', () => {
       const map: readonly LPIHPathMapEntry[] = [{ from: '/host', to: '/workspaces' }]
-      expect(_applyLpihPathMap('/host/proj/src/x.ts', map)).toBe(
-        '/workspaces/proj/src/x.ts',
-      )
+      expect(_applyLpihPathMap('/host/proj/src/x.ts', map)).toBe('/workspaces/proj/src/x.ts')
     })
 
     it('returns input unchanged when no rule matches', () => {
@@ -712,11 +686,7 @@ describe('LPIH monorepo path-map — PYREON_LPIH_PATH_MAP env var', () => {
         }),
         'utf8',
       )
-      const fires = await _readLpihCache(
-        CACHE_PATH,
-        undefined,
-        '/host/proj=/workspaces/proj',
-      )
+      const fires = await _readLpihCache(CACHE_PATH, undefined, '/host/proj=/workspaces/proj')
       expect(fires).toHaveLength(2)
       expect(fires[0]?.file).toBe('/workspaces/proj/src/x.ts')
       expect(fires[1]?.file).toBe('/workspaces/proj/src/y.ts')
@@ -734,11 +704,7 @@ describe('LPIH monorepo path-map — PYREON_LPIH_PATH_MAP env var', () => {
         }),
         'utf8',
       )
-      const fires = await _readLpihCache(
-        CACHE_PATH,
-        undefined,
-        '/host=/workspaces',
-      )
+      const fires = await _readLpihCache(CACHE_PATH, undefined, '/host=/workspaces')
       expect(fires[0]?.file).toBe('/other/path.ts')
     })
 
@@ -766,11 +732,7 @@ describe('LPIH monorepo path-map — PYREON_LPIH_PATH_MAP env var', () => {
         }),
         'utf8',
       )
-      const fires = await _readLpihCache(
-        CACHE_PATH,
-        undefined,
-        '/host=/A;/host/proj=/B',
-      )
+      const fires = await _readLpihCache(CACHE_PATH, undefined, '/host=/A;/host/proj=/B')
       expect(fires[0]?.file).toBe('/B/a.ts')
       expect(fires[1]?.file).toBe('/A/other/b.ts')
     })

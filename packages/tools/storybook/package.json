@@ -51,9 +51,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
-  "peerDependencies": {
-    "storybook": ">=8.0.0"
-  },
   "dependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
@@ -61,5 +58,8 @@
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "peerDependencies": {
+    "storybook": ">=8.0.0"
   }
 }

@@ -18,8 +18,9 @@ const RULE = 'pyreon/no-heavy-import-only-in-handler'
 
 /** Isolated: only this rule, default config. */
 function lintOne(source: string, filePath = 'src/comp.tsx') {
-  return lintFile(filePath, source, [noHeavyImportOnlyInHandler], { rules: { [RULE]: 'warn' } })
-    .diagnostics.map((d) => d.ruleId)
+  return lintFile(filePath, source, [noHeavyImportOnlyInHandler], {
+    rules: { [RULE]: 'warn' },
+  }).diagnostics.map((d) => d.ruleId)
 }
 
 /** Preset-wired: proves the rule ships in `recommended`. */

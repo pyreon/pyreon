@@ -280,10 +280,7 @@ export interface ZeroConfig {
      *   },
      * }
      */
-    onPathError?: (
-      path: string,
-      error: unknown,
-    ) => string | null | Promise<string | null>
+    onPathError?: (path: string, error: unknown) => string | null | Promise<string | null>
     /**
      * When `'json'` (default), write `dist/_pyreon-ssg-errors.json` after
      * the render loop summarising every error encountered (path traversal,

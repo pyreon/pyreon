@@ -7,7 +7,9 @@ import runtimeDomManifest from '../manifest'
 
 describe('gen-docs — runtime-dom snapshot', () => {
   it('renders @pyreon/runtime-dom to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(runtimeDomManifest)).toMatchInlineSnapshot(`"- @pyreon/runtime-dom — DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements. SVG and MathML elements ALWAYS use \`setAttribute()\` for prop forwarding, never property assignment. Many SVG properties (\`markerWidth\`, \`refX\`, etc.) are read-only \`SVGAnimatedLength\` getters — \`el[key] = value\` crashes. Detected by \`el.namespaceURI !== "http://www.w3.org/1999/xhtml"\`."`)
+    expect(renderLlmsTxtLine(runtimeDomManifest)).toMatchInlineSnapshot(
+      `"- @pyreon/runtime-dom — DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements. SVG and MathML elements ALWAYS use \`setAttribute()\` for prop forwarding, never property assignment. Many SVG properties (\`markerWidth\`, \`refX\`, etc.) are read-only \`SVGAnimatedLength\` getters — \`el[key] = value\` crashes. Detected by \`el.namespaceURI !== "http://www.w3.org/1999/xhtml"\`."`,
+    )
   })
 
   it('renders @pyreon/runtime-dom to its expected llms-full.txt section — full body snapshot', () => {

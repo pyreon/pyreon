@@ -21,6 +21,7 @@ The survey targets **20-30 current and prospective Pyreon users** with a structu
 5. **Alternative they'd pick if PMTC didn't exist** — Skip / Compose Multiplatform / React Native / Flutter / WebView shell / don't-do-mobile-at-all?
 
 **Decision thresholds** (based on response distribution):
+
 - **≥70% "would adopt"** with ≥50% citing "truly native widgets matter" → Scenario 1 from the competitor survey is real. Staff Phase 1.
 - **30-70% "would adopt"** with mixed reasons → ambiguous. Run a follow-up survey after Phase 0 ships the counter app — give respondents something concrete to react to.
 - **<30% "would adopt"** OR ≥60% citing "ecosystem" as the deal-breaker → Scenario 3 from the competitor survey. **Don't staff Phase 1.** Reconsider scope (partial-PMTC mode via Compose Multiplatform per #795's recommendation, or accept that mobile is out of Pyreon's scope).
@@ -51,13 +52,14 @@ Without the survey, Phase 1 staffing is a bet on Scenario 1 being true. With the
 
 **Target**: 20-30 respondents across these segments:
 
-| Segment | Target count | Why |
-|---|---|---|
-| Active Pyreon users (current `@pyreon/*` consumers identifiable via npm + GitHub) | 10-15 | The "actual audience" — Pyreon's existing user base |
-| Prospective adopters (signal-framework users — Solid, Svelte 5, recent React-with-signals) | 5-10 | Tests if PMTC pulls users FROM other signal frameworks, not just retains existing Pyreon users |
-| Native-first teams (iOS or Android engineers who currently DON'T use cross-platform tools) | 5-8 | The "non-audience" sanity check — if they're not interested, that's correct; if they ARE interested, PMTC may have broader appeal than the framing assumes |
+| Segment                                                                                    | Target count | Why                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Active Pyreon users (current `@pyreon/*` consumers identifiable via npm + GitHub)          | 10-15        | The "actual audience" — Pyreon's existing user base                                                                                                        |
+| Prospective adopters (signal-framework users — Solid, Svelte 5, recent React-with-signals) | 5-10         | Tests if PMTC pulls users FROM other signal frameworks, not just retains existing Pyreon users                                                             |
+| Native-first teams (iOS or Android engineers who currently DON'T use cross-platform tools) | 5-8          | The "non-audience" sanity check — if they're not interested, that's correct; if they ARE interested, PMTC may have broader appeal than the framing assumes |
 
 **Recruitment channels**:
+
 - Pyreon GitHub Discussions (post a public call)
 - Pyreon Discord / community channels
 - Direct outreach to companies known to ship with `@pyreon/*` (visible via npm + Sentry / Datadog public dashboards if applicable)
@@ -81,57 +83,57 @@ Without the survey, Phase 1 staffing is a bet on Scenario 1 being true. With the
 
 **Q1**: "Tell me about your team's current mobile situation. Do you ship a mobile app today? If yes, what framework? If no, why not?"
 
-*What this measures*: are these teams even in PMTC's target market? A team that doesn't want mobile is a definite "no" regardless of PMTC's quality.
+_What this measures_: are these teams even in PMTC's target market? A team that doesn't want mobile is a definite "no" regardless of PMTC's quality.
 
 **Q2**: "If you ship mobile today: what's your single biggest pain point with your current framework?"
 
-*What this measures*: identifies the gap PMTC would need to close. If everyone says "ecosystem maturity" (RN's pain point), PMTC's pitch is weak. If everyone says "WebView feels janky" or "Flutter widgets don't feel native," PMTC's pitch is strong.
+_What this measures_: identifies the gap PMTC would need to close. If everyone says "ecosystem maturity" (RN's pain point), PMTC's pitch is weak. If everyone says "WebView feels janky" or "Flutter widgets don't feel native," PMTC's pitch is strong.
 
 **Q3**: "On a scale of 1-10, how important is 'the iOS app uses real UIKit widgets, not drawn Skia pixels'?"
 
-*What this measures*: tests the central PMTC differentiator. The Flutter precedent suggests most users don't care; this question asks Pyreon's specific audience.
+_What this measures_: tests the central PMTC differentiator. The Flutter precedent suggests most users don't care; this question asks Pyreon's specific audience.
 
 #### Section 2: Hypothetical adoption (3 questions)
 
 **Q4**: "If Pyreon shipped 'write one Pyreon source, compile to native iOS + Android + web — truly native widgets, no JS engine on mobile' in Q4 2027, would you migrate your current mobile work to it? What would change between 'maybe' and 'definitely'?"
 
-*What this measures*: the headline adoption signal. "Maybe" answers are more honest than "yes" — probe what would tip them.
+_What this measures_: the headline adoption signal. "Maybe" answers are more honest than "yes" — probe what would tip them.
 
 **Q5**: "Imagine PMTC ships in 2027. Two years to ship is the timeline. Would you wait, or would you ship something else in the meantime that you'd then have to migrate from?"
 
-*What this measures*: time-to-market pressure. If most respondents say "we'd ship RN in 2026 and stay there," PMTC's 2-3 year window is too long. If most say "we'd wait — we don't need mobile this year," PMTC's window is acceptable.
+_What this measures_: time-to-market pressure. If most respondents say "we'd ship RN in 2026 and stay there," PMTC's 2-3 year window is too long. If most say "we'd wait — we don't need mobile this year," PMTC's window is acceptable.
 
 **Q6**: "Three things PMTC explicitly gives up: (a) over-the-air updates, (b) the React Native ecosystem of native bindings, (c) Vite-quality hot reload. Which of these is a deal-breaker?"
 
-*What this measures*: which Phase-3 deferred concerns are actually critical. If OTA updates are universal deal-breakers, PMTC's pitch needs to change (or the framework needs a JS engine sidecar mode, which contradicts the core thesis).
+_What this measures_: which Phase-3 deferred concerns are actually critical. If OTA updates are universal deal-breakers, PMTC's pitch needs to change (or the framework needs a JS engine sidecar mode, which contradicts the core thesis).
 
 #### Section 3: Trade-off tolerance (3 questions)
 
 **Q7**: "Compose Multiplatform ships TODAY with iOS Skia rendering (real Compose widgets on Android; Skia-drawn 'looks like UIKit' widgets on iOS). PMTC ships in 2027 with real SwiftUI on iOS. Which would you pick if both existed in 2027?"
 
-*What this measures*: head-to-head positioning vs the biggest competitor. The honest answer this question reveals is critical: if respondents say "CMP's iOS is fine, ship date matters more," PMTC is over-investing.
+_What this measures_: head-to-head positioning vs the biggest competitor. The honest answer this question reveals is critical: if respondents say "CMP's iOS is fine, ship date matters more," PMTC is over-investing.
 
 **Q8**: "Skip ships today: write Swift+SwiftUI, get an Android app via Kotlin/Compose translation. Source language is Swift not TSX. Would you switch from Pyreon TSX to Swift to get iOS+Android today?"
 
-*What this measures*: how strong the "Pyreon source language" lock-in is. If 80%+ say "no, I want TSX," PMTC's positioning is defensible. If many say "I'd consider Swift if it works today," PMTC's audience is smaller.
+_What this measures_: how strong the "Pyreon source language" lock-in is. If 80%+ say "no, I want TSX," PMTC's positioning is defensible. If many say "I'd consider Swift if it works today," PMTC's audience is smaller.
 
 **Q9**: "How important is desktop (macOS / Windows / Linux native apps) in your roadmap? PMTC's plan defers desktop to 'future phases' — would you wait for it, or pick Flutter / CMP which ship desktop today?"
 
-*What this measures*: cross-platform desktop demand. If respondents are desktop-curious, PMTC's iOS+Android+web scope is incomplete for their needs.
+_What this measures_: cross-platform desktop demand. If respondents are desktop-curious, PMTC's iOS+Android+web scope is incomplete for their needs.
 
 #### Section 4: Alternatives + commitment (3 questions)
 
 **Q10**: "If PMTC didn't exist and you needed to ship a cross-platform app in 2027, what would you pick? Walk me through your decision."
 
-*What this measures*: the counterfactual. What does Pyreon's audience currently DO? If most pick "Capacitor + web bundle" the bar PMTC needs to clear is low. If most pick "we hire iOS engineers and write Swift," PMTC's pitch is weak.
+_What this measures_: the counterfactual. What does Pyreon's audience currently DO? If most pick "Capacitor + web bundle" the bar PMTC needs to clear is low. If most pick "we hire iOS engineers and write Swift," PMTC's pitch is weak.
 
 **Q11**: "Beyond just 'adoption' — would your team contribute to PMTC if Pyreon open-sourced the compiler work? Bug fixes, widget bindings, testing, documentation?"
 
-*What this measures*: community-side support. PMTC's 2-3 year build is expensive; community contribution shortens it materially. If even 20% of respondents say they'd contribute, the staffing math improves.
+_What this measures_: community-side support. PMTC's 2-3 year build is expensive; community contribution shortens it materially. If even 20% of respondents say they'd contribute, the staffing math improves.
 
 **Q12**: "What would convince you to publicly bet on PMTC — talk about it at a conference, write a blog post, recommend it to clients?"
 
-*What this measures*: advocacy potential. Adoption is a lagging indicator; advocacy is leading. Frameworks succeed because their early adopters evangelize.
+_What this measures_: advocacy potential. Adoption is a lagging indicator; advocacy is leading. Frameworks succeed because their early adopters evangelize.
 
 ### Anti-design choices
 
@@ -150,39 +152,43 @@ Questions deliberately NOT asked:
 
 Each response gets coded against:
 
-| Code | Definition |
-|---|---|
-| **A (Adopt)** | Q4 = "yes" or "probably yes" + no deal-breaker in Q6 |
+| Code                           | Definition                                                                               |
+| ------------------------------ | ---------------------------------------------------------------------------------------- |
+| **A (Adopt)**                  | Q4 = "yes" or "probably yes" + no deal-breaker in Q6                                     |
 | **A-cond (Conditional adopt)** | Q4 = "maybe" + named condition (e.g. "if ecosystem catches up", "if hot reload is fast") |
-| **R (Reject)** | Q4 = "no" or deal-breaker in Q6 |
-| **R-time (Time-rejected)** | Would adopt eventually but Q5 says ship-something-else first |
-| **R-eco (Ecosystem-rejected)** | Q6 says "the RN ecosystem is the deal-breaker" |
-| **R-OTA (OTA-rejected)** | Q6 says "no OTA updates is a deal-breaker" |
-| **CMP-prefer** | Q7 says CMP wins even with Skia compromise |
-| **Skip-prefer** | Q8 says Swift source is acceptable |
-| **Native-real (truly cares)** | Q3 ≥ 8 AND Q7 = "PMTC even waiting 2 years" |
+| **R (Reject)**                 | Q4 = "no" or deal-breaker in Q6                                                          |
+| **R-time (Time-rejected)**     | Would adopt eventually but Q5 says ship-something-else first                             |
+| **R-eco (Ecosystem-rejected)** | Q6 says "the RN ecosystem is the deal-breaker"                                           |
+| **R-OTA (OTA-rejected)**       | Q6 says "no OTA updates is a deal-breaker"                                               |
+| **CMP-prefer**                 | Q7 says CMP wins even with Skia compromise                                               |
+| **Skip-prefer**                | Q8 says Swift source is acceptable                                                       |
+| **Native-real (truly cares)**  | Q3 ≥ 8 AND Q7 = "PMTC even waiting 2 years"                                              |
 
 A single response gets multiple codes. The codes drive the decision math.
 
 ### Decision thresholds
 
 **STAFF PHASE 1**:
+
 - ≥70% of responses code as **A** or **A-cond** (with conditions that are reasonable to meet)
 - AND ≥50% code as **Native-real** (the central PMTC differentiator is actually valued by half the audience)
 - AND ≤20% code as **R-OTA** (the biggest non-fixable deal-breaker isn't dominant)
 
 **RE-SURVEY AFTER PHASE 0 COUNTER SHIP**:
+
 - 30-70% code as **A** or **A-cond**
 - Mixed signal on **Native-real** vs **CMP-prefer**
 - This means the abstract pitch lands ambiguously — give respondents the counter-on-iOS-simulator demo and re-ask
 
 **DO NOT STAFF PHASE 1**:
+
 - <30% code as **A** or **A-cond**
 - OR ≥60% code as **R-eco** (ecosystem deal-breaker; impossible to fix in <5 years)
 - OR ≥40% code as **CMP-prefer** even when warned about Skia rendering (PMTC's strategic position is captured)
 - OR ≥40% code as **R-time** (ship-something-else-first is the real answer; PMTC is too slow)
 
 In the "do not staff" case, the recommended next actions per the competitor survey (#795):
+
 - Reconsider scope (partial-PMTC mode via Compose Multiplatform target — 6-9mo spike, trades "real widgets on iOS" for ship speed)
 - OR accept that mobile is out of Pyreon's scope (focus on web competitive position vs Solid / Svelte)
 
@@ -202,14 +208,15 @@ This survey has real limits — name them so the decision-making accounts for th
 
 The survey runs **during Phase 0** (months 1-3 of Phase 0 work), with results available at Phase 0 completion:
 
-| Month | Activity |
-|---|---|
-| Phase 0 month 1 | Recruitment + scheduling (build the list, send incentives, schedule interviews) |
+| Month           | Activity                                                                              |
+| --------------- | ------------------------------------------------------------------------------------- |
+| Phase 0 month 1 | Recruitment + scheduling (build the list, send incentives, schedule interviews)       |
 | Phase 0 month 2 | Interviews + async responses (target 5-8 interviews/week × 4 weeks = 20-32 responses) |
-| Phase 0 month 3 | Coding + analysis (transcribe, code, write up findings) |
-| End of Phase 0 | Survey results report + go/no-go recommendation |
+| Phase 0 month 3 | Coding + analysis (transcribe, code, write up findings)                               |
+| End of Phase 0  | Survey results report + go/no-go recommendation                                       |
 
 Phase 1 staffing decision uses BOTH:
+
 - The three Phase 0 technical criteria
 - The user survey decision thresholds
 
@@ -219,12 +226,12 @@ Both must green-light. If technical passes but market fails, **don't staff Phase
 
 ## Cost
 
-| Item | Cost |
-|---|---|
-| Respondent incentives ($25-50 × 20-30) | $500-1500 |
-| Transcription (3hr per interview at $20/hr × 20 interviews) | $1200 |
-| Researcher time (recruiting + interviewing + analysis, ~80hr at internal rate) | Variable |
-| **External cash cost** | **$1700-2700** |
+| Item                                                                           | Cost           |
+| ------------------------------------------------------------------------------ | -------------- |
+| Respondent incentives ($25-50 × 20-30)                                         | $500-1500      |
+| Transcription (3hr per interview at $20/hr × 20 interviews)                    | $1200          |
+| Researcher time (recruiting + interviewing + analysis, ~80hr at internal rate) | Variable       |
+| **External cash cost**                                                         | **$1700-2700** |
 
 For a 2-3 year, multi-million-dollar engineering investment, $1700-2700 of survey cost is rounding error. The risk-adjusted expected value of the survey (catching Scenario 3 before Phase 1 staffing = saving 4-6 months of one or two engineers' work = $200k-1M) is overwhelming.
 

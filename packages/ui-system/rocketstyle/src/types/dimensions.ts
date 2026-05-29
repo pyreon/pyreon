@@ -43,7 +43,10 @@ type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (...args: any[]) => any
     ? T[K]
     : NonNullable<T[K]> extends Record<string, any>
-      ? DeepPartial<NonNullable<T[K]>> | ModeAware<DeepPartial<NonNullable<T[K]>>> | Extract<T[K], null>
+      ?
+          | DeepPartial<NonNullable<T[K]>>
+          | ModeAware<DeepPartial<NonNullable<T[K]>>>
+          | Extract<T[K], null>
       : ModeAware<T[K]>
 }
 

@@ -191,14 +191,17 @@ export function renderToStream(
   const signal = ac.signal
   if (options.signal) {
     if (options.signal.aborted) ac.abort(options.signal.reason)
-    else options.signal.addEventListener('abort', () => ac.abort(options.signal!.reason), { once: true })
+    else
+      options.signal.addEventListener('abort', () => ac.abort(options.signal!.reason), {
+        once: true,
+      })
   }
   // Resolve the Suspense timeout. Invalid input (≤0, NaN) falls back to
   // 30_000 — same as pre-config behavior. `Infinity` is preserved so the
   // boundary code can detect it and skip the race entirely.
   const userTimeout = options.suspenseTimeoutMs
-  const suspenseTimeoutMs
-    = userTimeout === Infinity
+  const suspenseTimeoutMs =
+    userTimeout === Infinity
       ? Infinity
       : userTimeout !== undefined && Number.isFinite(userTimeout) && userTimeout > 0
         ? userTimeout
@@ -329,10 +332,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
   // for the full architectural rationale.
   const stackLenBefore = getContextStackLength()
   try {
-    const { vnode: output } = runWithHooks(
-      vnode.type as ComponentFn,
-      mergeChildrenIntoProps(vnode),
-    )
+    const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
     const resolved = output instanceof Promise ? await output : output
     if (resolved !== null) await streamNode(resolved, enqueue)
   } catch (err) {
@@ -371,12 +371,16 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
   // emitted by the compiler for signal-derived prop expressions — are
   // called once at render time (SSR is one-shot; any reactivity happens
   // post-hydration on the client).
-  const dangerous = props.dangerouslySetInnerHTML as { __html: string } | (() => { __html: string }) | undefined
+  const dangerous = props.dangerouslySetInnerHTML as
+    | { __html: string }
+    | (() => { __html: string })
+    | undefined
   const innerHtml = props.innerHTML as string | (() => string) | undefined
   const dangerousHtml =
-    typeof dangerous === 'function' ? (dangerous as () => { __html: string })()?.__html : dangerous?.__html
-  const plainInnerHtml =
-    typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
+    typeof dangerous === 'function'
+      ? (dangerous as () => { __html: string })()?.__html
+      : dangerous?.__html
+  const plainInnerHtml = typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
   if (dangerousHtml) {
     enqueue(dangerousHtml)
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
@@ -500,8 +504,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
                 timeoutId = setTimeout(() => resolve('timeout'), suspenseTimeoutMs)
               }),
             ])
-          }
-          finally {
+          } finally {
             if (timeoutId !== undefined) clearTimeout(timeoutId)
           }
         }
@@ -689,8 +692,7 @@ async function renderElement(vnode: VNode): Promise<string> {
     typeof dangerous === 'function'
       ? (dangerous as () => { __html: string })()?.__html
       : dangerous?.__html
-  const plainInnerHtml =
-    typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
+  const plainInnerHtml = typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
   if (dangerousHtml) {
     html += dangerousHtml
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
@@ -882,8 +884,7 @@ function escapeHtml(str: string): string {
  */
 function mergeChildrenIntoProps(vnode: VNode): Record<string, unknown> {
   const raw =
-    vnode.children.length > 0 &&
-    (vnode.props as Record<string, unknown>).children === undefined
+    vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
       ? {
           ...vnode.props,
           children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,

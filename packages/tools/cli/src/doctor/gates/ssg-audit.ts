@@ -22,9 +22,7 @@ export interface SsgAuditGateOptions {
   cwd: string
 }
 
-export const runSsgAuditGate = async (
-  opts: SsgAuditGateOptions,
-): Promise<GateResult> => {
+export const runSsgAuditGate = async (opts: SsgAuditGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
   const result = auditSsg(opts.cwd)

@@ -19,18 +19,18 @@ No build step is needed for development — the Vite plugin reads `src/` directl
 
 Each section lives under `src/routes/<section>/` and is registered in [src/sections.ts](src/sections.ts). The sidebar nav is generated from that registry.
 
-| Section         | Status         | Pyreon features                                                              |
-| --------------- | -------------- | ---------------------------------------------------------------------------- |
-| Todos           | ✅ available   | `store`, `storage`, `form`, `url-state`, `hotkeys`, `rx`, `styler`           |
-| Blog            | ✅ available   | `zero` SSG, `head`, router loaders, file routing (`[slug]`), `url-state`     |
-| Dashboard       | ✅ available   | `query`, `table`, `charts`, `virtual`, `permissions`, `toast`, `coolgrid`    |
-| Forms Wizard    | ✅ available   | `form`, `validation` (zod), `state-tree` (snapshots + patches), `machine`    |
-| Chat            | ✅ available   | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`        |
-| Kanban          | ✅ available   | `state-tree` (snapshot undo), `permissions`, `hotkeys`, native HTML5 DnD     |
-| I18n Shop       | ✅ available   | `i18n` (3 locales), `store`, `storage` (persisted cart), `url-state`         |
-| Invoice Builder | ✅ available   | `document` (PDF/DOCX/HTML/MD export), `store`, `reactivity`, `toast`         |
-| Resume Builder  | ✅ available   | `document-primitives` + `connector-document` round-trip, `store`, `toast`    |
-| Flow Editor     | ✅ available   | `flow` (canvas, custom nodes, layered auto-layout), `code` (JSON), `store`   |
+| Section         | Status       | Pyreon features                                                            |
+| --------------- | ------------ | -------------------------------------------------------------------------- |
+| Todos           | ✅ available | `store`, `storage`, `form`, `url-state`, `hotkeys`, `rx`, `styler`         |
+| Blog            | ✅ available | `zero` SSG, `head`, router loaders, file routing (`[slug]`), `url-state`   |
+| Dashboard       | ✅ available | `query`, `table`, `charts`, `virtual`, `permissions`, `toast`, `coolgrid`  |
+| Forms Wizard    | ✅ available | `form`, `validation` (zod), `state-tree` (snapshots + patches), `machine`  |
+| Chat            | ✅ available | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`      |
+| Kanban          | ✅ available | `state-tree` (snapshot undo), `permissions`, `hotkeys`, native HTML5 DnD   |
+| I18n Shop       | ✅ available | `i18n` (3 locales), `store`, `storage` (persisted cart), `url-state`       |
+| Invoice Builder | ✅ available | `document` (PDF/DOCX/HTML/MD export), `store`, `reactivity`, `toast`       |
+| Resume Builder  | ✅ available | `document-primitives` + `connector-document` round-trip, `store`, `toast`  |
+| Flow Editor     | ✅ available | `flow` (canvas, custom nodes, layered auto-layout), `code` (JSON), `store` |
 
 The Todos source lives at [src/routes/todos/](src/routes/todos/) (route entry) and [src/sections/todos/](src/sections/todos/) (helpers, store).
 

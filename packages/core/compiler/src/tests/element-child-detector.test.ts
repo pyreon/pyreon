@@ -149,21 +149,15 @@ describe('detectStaticElementChild — negative (hard bail)', () => {
   })
 
   it('bails on an on* handler on the element', () => {
-    expect(
-      detectStaticElementChild(firstJsxElement('<span onClick={h}>x</span>')),
-    ).toBeNull()
+    expect(detectStaticElementChild(firstJsxElement('<span onClick={h}>x</span>'))).toBeNull()
   })
 
   it('bails on a dynamic {expr} prop', () => {
-    expect(
-      detectStaticElementChild(firstJsxElement('<span class={dyn}>x</span>')),
-    ).toBeNull()
+    expect(detectStaticElementChild(firstJsxElement('<span class={dyn}>x</span>'))).toBeNull()
   })
 
   it('bails on a spread attribute', () => {
-    expect(
-      detectStaticElementChild(firstJsxElement('<span {...rest}>x</span>')),
-    ).toBeNull()
+    expect(detectStaticElementChild(firstJsxElement('<span {...rest}>x</span>'))).toBeNull()
   })
 
   it('bails on a boolean (valueless) attribute', () => {
@@ -171,18 +165,14 @@ describe('detectStaticElementChild — negative (hard bail)', () => {
   })
 
   it('bails on an expression child', () => {
-    expect(
-      detectStaticElementChild(firstJsxElement('<span>{value}</span>')),
-    ).toBeNull()
+    expect(detectStaticElementChild(firstJsxElement('<span>{value}</span>'))).toBeNull()
   })
 
   it('bails when a NESTED child is non-static (recursive bail)', () => {
     expect(
       detectStaticElementChild(firstJsxElement('<span><b onClick={h}>x</b></span>')),
     ).toBeNull()
-    expect(
-      detectStaticElementChild(firstJsxElement('<span><Inner /></span>')),
-    ).toBeNull()
+    expect(detectStaticElementChild(firstJsxElement('<span><Inner /></span>'))).toBeNull()
   })
 
   it('bails on a style object-literal prop (not a string literal)', () => {
@@ -195,15 +185,11 @@ describe('detectStaticElementChild — negative (hard bail)', () => {
   })
 
   it('bails on a fragment child', () => {
-    expect(
-      detectStaticElementChild(firstJsxElement('<span><>x</></span>')),
-    ).toBeNull()
+    expect(detectStaticElementChild(firstJsxElement('<span><>x</></span>'))).toBeNull()
   })
 
   it('bails on a JSX-comment child (empty expression container)', () => {
-    expect(
-      detectStaticElementChild(firstJsxElement('<span>{/* c */}x</span>')),
-    ).toBeNull()
+    expect(detectStaticElementChild(firstJsxElement('<span>{/* c */}x</span>'))).toBeNull()
   })
 })
 

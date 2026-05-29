@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/storage',
   title: 'Reactive Storage',
-  tagline:
-    'Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB',
+  tagline: 'Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB',
   description:
     'Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.',
   category: 'universal',
@@ -58,7 +57,8 @@ const secret = useEncrypted('api-key', '')`,
     {
       name: 'useStorage',
       kind: 'hook',
-      signature: '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+      signature:
+        '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
       summary:
         'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serialize`/`deserialize` in options for non-JSON types.',
       example: `const theme = useStorage('theme', 'light')
@@ -85,7 +85,8 @@ locale.set('fr')`,
     {
       name: 'useIndexedDB',
       kind: 'hook',
-      signature: '<T>(key: string, defaultValue: T, options?: IndexedDBOptions) => StorageSignal<T>',
+      signature:
+        '<T>(key: string, defaultValue: T, options?: IndexedDBOptions) => StorageSignal<T>',
       summary:
         'Reactive signal backed by IndexedDB for large data. Writes are debounced to avoid excessive I/O. The signal initializes with `defaultValue` synchronously and hydrates from IndexedDB asynchronously — the value updates reactively once the read completes. Silent init error logging in dev mode.',
       example: `const draft = useIndexedDB('article-draft', { title: '', body: '' })
@@ -95,7 +96,8 @@ draft.set({ title: 'New Article', body: 'Content...' })`,
     {
       name: 'createStorage',
       kind: 'function',
-      signature: '(backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+      signature:
+        '(backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
       summary:
         'Factory for custom storage backends. Pass an object with `getItem`, `setItem`, `removeItem` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer.',
       example: `const useEncrypted = createStorage({

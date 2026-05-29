@@ -52,12 +52,8 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 // on the static import path of this cheap entry. It loads ONLY when
 // `pyreon({ collapse })` is enabled AND a collapsible site is scanned;
 // collapse-off consumers never pull it (bundle-budget + cold-load).
-let _createCollapseResolver:
-  | ((root: string) => Promise<CollapseResolver>)
-  | null = null
-async function loadCreateCollapseResolver(): Promise<
-  (root: string) => Promise<CollapseResolver>
-> {
+let _createCollapseResolver: ((root: string) => Promise<CollapseResolver>) | null = null
+async function loadCreateCollapseResolver(): Promise<(root: string) => Promise<CollapseResolver>> {
   if (!_createCollapseResolver) {
     _createCollapseResolver = (await import('./rocketstyle-collapse')).createCollapseResolver
   }
@@ -505,8 +501,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   // `false` to opt out. Object form overrides interval / cache path.
   const lpihOpt = options?.lpih
   const lpihEnabled = lpihOpt !== false
-  const lpihUserCfg: PyreonLpihOptions =
-    lpihOpt && lpihOpt !== true ? lpihOpt : {}
+  const lpihUserCfg: PyreonLpihOptions = lpihOpt && lpihOpt !== true ? lpihOpt : {}
   const lpihIntervalMs = lpihUserCfg.intervalMs ?? 250
 
   // ── P0 rocketstyle-collapse config (opt-in) ───────────────────────────────
@@ -542,8 +537,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   // Back-compat: the old single-source shape (`{ source, names }`)
   // collapses to a single mapping entry. Users on the new shape pass
   // `mappings: [...]` directly.
-  const jsxAutoImportMappings = jsxAutoImportUserCfg.mappings
-    ?? (jsxAutoImportUserCfg.source && jsxAutoImportUserCfg.names
+  const jsxAutoImportMappings =
+    jsxAutoImportUserCfg.mappings ??
+    (jsxAutoImportUserCfg.source && jsxAutoImportUserCfg.names
       ? [{ source: jsxAutoImportUserCfg.source, names: jsxAutoImportUserCfg.names }]
       : defaultMappings)
   const collapseComponentFilter = collapseUserCfg.components
@@ -632,9 +628,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // pipeline. Workspace-linked apps in this monorepo aren't affected
       // because Vite never tries to pre-bundle workspace deps.
       const pyreonExclude = scanPyreonDeps(projectRoot)
-      const optimizeDepsExclude = Array.from(
-        new Set([...compatExclude, ...pyreonExclude]),
-      )
+      const optimizeDepsExclude = Array.from(new Set([...compatExclude, ...pyreonExclude]))
 
       // Transitive @pyreon/* dedupe — default-on. Eliminates the dual-load
       // bug class at the bundler layer by forcing every @pyreon/* import to
@@ -925,7 +919,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // ── Resolve imported signals from the registry ─────────────────────
       // Check each import in this file: if the imported module has signal
       // exports in the registry, pass them as knownSignals to the compiler.
-      const knownSignals = await resolveImportedSignals(sourceForJsx, id, signalExportRegistry, this, resolveCache)
+      const knownSignals = await resolveImportedSignals(
+        sourceForJsx,
+        id,
+        signalExportRegistry,
+        this,
+        resolveCache,
+      )
 
       // Vite passes `ssr: true` when transforming for the SSR module graph
       // (both build --ssr and dev `ssrLoadModule`). The compiler emits plain
@@ -1573,9 +1573,7 @@ function injectSignalNames(code: string, moduleId: string): string {
     const { start, end, name, args, matchIdx } = matches[i] as Match
     const { line, col } = _offsetToLineCol(matchIdx, lineStarts)
     const locLiteral = `__sourceLocation: { file: ${JSON.stringify(moduleId)}, line: ${line}, col: ${col} }`
-    const inner = name !== null
-      ? `name: ${JSON.stringify(name)}, ${locLiteral}`
-      : locLiteral
+    const inner = name !== null ? `name: ${JSON.stringify(name)}, ${locLiteral}` : locLiteral
     output = `${output.slice(0, start)}${args}, { ${inner} }${output.slice(end)}`
   }
   return output
@@ -1808,9 +1806,7 @@ function injectHmr(code: string, moduleId: string): string {
   // AUTOMATIC full reload. Either way the user never refreshes by hand.
   lines.push(`  import.meta.hot.accept((__m) => {`)
   lines.push(`    const __s = globalThis.__pyreon_hmr_swap__;`)
-  lines.push(
-    `    if (typeof __s === "function" && __m && __s(${escapedId}, __m)) return;`,
-  )
+  lines.push(`    if (typeof __s === "function" && __m && __s(${escapedId}, __m)) return;`)
   lines.push(`    import.meta.hot.invalidate();`)
   lines.push(`  });`)
   lines.push(`}`)
@@ -1838,9 +1834,7 @@ function transformCompatAttributes(code: string): string {
   // Match className/htmlFor in JSX attribute position:
   // After < and tag name, or after whitespace between attributes
   // Pattern: word boundary + attribute name + = (with optional whitespace)
-  return code
-    .replace(/(\s)className(\s*=)/g, '$1class$2')
-    .replace(/(\s)htmlFor(\s*=)/g, '$1for$2')
+  return code.replace(/(\s)className(\s*=)/g, '$1class$2').replace(/(\s)htmlFor(\s*=)/g, '$1for$2')
 }
 
 /**
@@ -2260,10 +2254,7 @@ function resolveRelative(fromFile: string, relPath: string): string {
  * Duplicate `name` across declarations: the LAST one wins. Documented as
  * an anti-pattern (caught by the planned `pyreon doctor --check-islands`).
  */
-function renderIslandsRegistry(
-  registry: Map<string, IslandDecl[]>,
-  enabled: boolean,
-): string {
+function renderIslandsRegistry(registry: Map<string, IslandDecl[]>, enabled: boolean): string {
   if (!enabled) {
     return [
       `// pyreon plugin: islands feature is disabled (pyreon({ islands: false })).`,
@@ -2305,13 +2296,23 @@ function renderIslandsRegistry(
  * is transformed before store.ts — without pre-scanning, the registry would
  * be empty and imported signals would not be auto-called.
  */
-async function prescanSignalExports(root: string, registry: Map<string, Set<string>>): Promise<void> {
+async function prescanSignalExports(
+  root: string,
+  registry: Map<string, Set<string>>,
+): Promise<void> {
   const files: string[] = []
 
   function walk(dir: string) {
     try {
       for (const entry of readdirSync(dir)) {
-        if (entry.startsWith('.') || entry === 'node_modules' || entry === 'dist' || entry === 'lib' || entry === 'build') continue
+        if (
+          entry.startsWith('.') ||
+          entry === 'node_modules' ||
+          entry === 'dist' ||
+          entry === 'lib' ||
+          entry === 'build'
+        )
+          continue
         const full = pathJoin(dir, entry)
         try {
           const stat = statSync(full)
@@ -2355,7 +2356,11 @@ async function prescanSignalExports(root: string, registry: Map<string, Set<stri
 // backtracking; real import specifiers have 1-2 spaces around `as`.
 const AS_SPLIT_RE = /\s{1,10}as\s{1,10}/
 
-function scanSignalExports(code: string, moduleId: string, registry: Map<string, Set<string>>): void {
+function scanSignalExports(
+  code: string,
+  moduleId: string,
+  registry: Map<string, Set<string>>,
+): void {
   const normalizedId = normalizeModuleId(moduleId)
   let match: RegExpExecArray | null
   const signals = new Set<string>()
@@ -2422,7 +2427,13 @@ async function resolveImportedSignals(
   code: string,
   _moduleId: string,
   registry: Map<string, Set<string>>,
-  pluginCtx: { resolve: (id: string, importer?: string, options?: { skipSelf: boolean }) => Promise<{ id: string } | null> },
+  pluginCtx: {
+    resolve: (
+      id: string,
+      importer?: string,
+      options?: { skipSelf: boolean },
+    ) => Promise<{ id: string } | null>
+  },
   resolveCache: Map<string, string | null>,
 ): Promise<string[]> {
   if (registry.size === 0) return []

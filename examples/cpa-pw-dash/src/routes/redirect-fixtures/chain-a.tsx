@@ -1,4 +1,4 @@
-import { redirect } from "@pyreon/router"
+import { redirect } from '@pyreon/router'
 
 /**
  * Step 1 of a 3-hop redirect chain regression fixture. Exercises the
@@ -8,7 +8,7 @@ import { redirect } from "@pyreon/router"
  * up to its redirect cap) and lands on the final target.
  */
 export async function loader(): Promise<never> {
-  redirect("/redirect-fixtures/chain-b")
+  redirect('/redirect-fixtures/chain-b')
 }
 
 export default function ChainAFixture() {

@@ -110,7 +110,7 @@ export const TabPanelBase: ComponentFn<TabPanelBaseProps> = (props) => {
 
   const isActive = () => tabs.value() === own.value
 
-  return (() => {
+  return () => {
     if (!isActive()) return null
 
     return (
@@ -122,5 +122,5 @@ export const TabPanelBase: ComponentFn<TabPanelBaseProps> = (props) => {
         {own.children}
       </div>
     )
-  })
+  }
 }

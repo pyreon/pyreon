@@ -144,8 +144,7 @@ hydrateIslands({
     {
       name: 'hydrateIslandsAuto',
       kind: 'function',
-      signature:
-        'hydrateIslandsAuto(registry: AutoIslandRegistry): () => void',
+      signature: 'hydrateIslandsAuto(registry: AutoIslandRegistry): () => void',
       summary:
         'Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle.',
       example: `// src/entry-client.ts
@@ -154,7 +153,7 @@ import * as registry from "virtual:pyreon/islands-registry"
 
 hydrateIslandsAuto(registry)`,
       mistakes: [
-        'Calling without the registry argument — the function takes the imported virtual module explicitly. The user-side `import` is what lets the plugin\\\'s `resolveId` hook run; importing from inside `@pyreon/server/client` would fail at build time because Rolldown\\\'s static-import analysis runs before plugin resolveId hooks for workspace sources.',
+        "Calling without the registry argument — the function takes the imported virtual module explicitly. The user-side `import` is what lets the plugin\\'s `resolveId` hook run; importing from inside `@pyreon/server/client` would fail at build time because Rolldown\\'s static-import analysis runs before plugin resolveId hooks for workspace sources.",
         'Using under a non-Vite bundler — the virtual module only exists under `@pyreon/vite-plugin`. Fall back to manual `hydrateIslands({ ... })` for non-Vite consumers.',
         'Setting `pyreon({ islands: false })` and still calling `hydrateIslandsAuto()` — the plugin emits a stub registry that throws at runtime with a clear error message. Either re-enable islands (the default) or use `hydrateIslands({ ... })` instead.',
       ],
@@ -173,7 +172,7 @@ hydrateIslandsAuto(registry)`,
 })`,
       mistakes: [
         'Passing a relative `outDir` and being surprised when it resolves against `process.cwd()` — pass an absolute path for predictability',
-        'Expecting per-page errors to throw — they\\\'re collected in `result.errors`; check the array after `await`',
+        "Expecting per-page errors to throw — they\\'re collected in `result.errors`; check the array after `await`",
         'Generating thousands of paths without batching — the function processes the array sequentially; if you need parallelism, batch the `paths` array yourself',
       ],
       seeAlso: ['createHandler'],
@@ -182,13 +181,11 @@ hydrateIslandsAuto(registry)`,
   gotchas: [
     {
       label: 'Stream mode',
-      note:
-        '`mode: "stream"` uses `renderToStream` with shell + app + tail emission; Suspense boundaries resolve out-of-order. The `<head>` collected via `@pyreon/head` is flushed in the shell before any Suspense boundaries resolve, so async-loaded data does not contribute to it.',
+      note: '`mode: "stream"` uses `renderToStream` with shell + app + tail emission; Suspense boundaries resolve out-of-order. The `<head>` collected via `@pyreon/head` is flushed in the shell before any Suspense boundaries resolve, so async-loaded data does not contribute to it.',
     },
     {
       label: 'Loader-data escaping',
-      note:
-        'Inline script JSON is rewritten — `</script>` becomes `<\\/script>` to prevent breaking out of the wrapping `<script>` tag. User data in a custom template is your responsibility; only the loader-data injection point is escaped.',
+      note: 'Inline script JSON is rewritten — `</script>` becomes `<\\/script>` to prevent breaking out of the wrapping `<script>` tag. User data in a custom template is your responsibility; only the loader-data injection point is escaped.',
     },
   ],
 })

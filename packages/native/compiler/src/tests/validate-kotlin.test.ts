@@ -161,22 +161,25 @@ fun TodoApp() {
 }
 `
 
-describe.skipIf(skipCondition)('K4 — extended Compose stubs typecheck against TodoMVC-shape fixture', () => {
-  it('hand-written TodoMVC-shape Composable typechecks against the extended stubs', () => {
-    // The fixture above exercises every K4 stub addition in the shape
-    // the real TodoMVC emit will produce post-K1+K2+K3. Validates the
-    // stubs themselves, not the emit. After K1/K2/K3 all merge, a
-    // follow-up replaces this with the real `transform()` output.
-    const result = validateKotlin(TODOMVC_SHAPE_FIXTURE)
-    if (!result.ok) {
-      throw new Error(
-        `K4 stub-validation failed:\n${result.error}\n\n` +
-          `--- fixture ---\n${TODOMVC_SHAPE_FIXTURE}\n--- end ---`,
-      )
-    }
-    expect(result.ok).toBe(true)
-  })
-})
+describe.skipIf(skipCondition)(
+  'K4 — extended Compose stubs typecheck against TodoMVC-shape fixture',
+  () => {
+    it('hand-written TodoMVC-shape Composable typechecks against the extended stubs', () => {
+      // The fixture above exercises every K4 stub addition in the shape
+      // the real TodoMVC emit will produce post-K1+K2+K3. Validates the
+      // stubs themselves, not the emit. After K1/K2/K3 all merge, a
+      // follow-up replaces this with the real `transform()` output.
+      const result = validateKotlin(TODOMVC_SHAPE_FIXTURE)
+      if (!result.ok) {
+        throw new Error(
+          `K4 stub-validation failed:\n${result.error}\n\n` +
+            `--- fixture ---\n${TODOMVC_SHAPE_FIXTURE}\n--- end ---`,
+        )
+      }
+      expect(result.ok).toBe(true)
+    })
+  },
+)
 
 // ----------------------------------------------------------------------------
 // K-FINAL — end-to-end TodoMVC emit validation
@@ -206,39 +209,49 @@ const TODOMVC_SOURCE_PATH = (() => {
   const here = dirname(fileURLToPath(import.meta.url))
   return resolve(
     here,
-    '..', '..', '..', '..', '..',
-    'examples', 'native-todomvc-ios', 'src', 'TodoApp.tsx',
+    '..',
+    '..',
+    '..',
+    '..',
+    '..',
+    'examples',
+    'native-todomvc-ios',
+    'src',
+    'TodoApp.tsx',
   )
 })()
 
-describe.skipIf(skipCondition)('K-FINAL — real TodoMVC emit typechecks via kotlinc + K4 stubs', () => {
-  it('transform()-emitted Kotlin for examples/native-todomvc-ios/src/TodoApp.tsx is typecheck-clean', () => {
-    const source = readFileSync(TODOMVC_SOURCE_PATH, 'utf8')
-    const out = transform(source, { target: 'kotlin' })
+describe.skipIf(skipCondition)(
+  'K-FINAL — real TodoMVC emit typechecks via kotlinc + K4 stubs',
+  () => {
+    it('transform()-emitted Kotlin for examples/native-todomvc-ios/src/TodoApp.tsx is typecheck-clean', () => {
+      const source = readFileSync(TODOMVC_SOURCE_PATH, 'utf8')
+      const out = transform(source, { target: 'kotlin' })
 
-    // Sanity: emit must contain the shape K1+K2+K3 produce. If these
-    // fail, the regression is in the Kotlin emit not the stubs — the
-    // structural anchors point straight at the right K* fix.
-    expect(out.code).toContain('if (filter == Filter.active)') // K1
-    expect(out.code).toContain('return@derivedStateOf xs') // K2
-    // K3: Column { ... TextField ... } — supports both bare `Column {`
-    // (legacy) AND `Column(arg = ...) {` (Phase B canonical-primitive
-    // emit with gap/align/data-testid). The arg list may contain nested
-    // parens (Arrangement.spacedBy(8.dp), Modifier.testTag("x")) so
-    // match any non-brace chars between `Column` and the body brace.
-    expect(out.code).toMatch(/Column[^{]*\{[\s\S]+TextField/) // K3
-    expect(out.code).toContain('@Serializable') // foundational @Serializable annotation
+      // Sanity: emit must contain the shape K1+K2+K3 produce. If these
+      // fail, the regression is in the Kotlin emit not the stubs — the
+      // structural anchors point straight at the right K* fix.
+      expect(out.code).toContain('if (filter == Filter.active)') // K1
+      expect(out.code).toContain('return@derivedStateOf xs') // K2
+      // K3: Column { ... TextField ... } — supports both bare `Column {`
+      // (legacy) AND `Column(arg = ...) {` (Phase B canonical-primitive
+      // emit with gap/align/data-testid). The arg list may contain nested
+      // parens (Arrangement.spacedBy(8.dp), Modifier.testTag("x")) so
+      // match any non-brace chars between `Column` and the body brace.
+      expect(out.code).toMatch(/Column[^{]*\{[\s\S]+TextField/) // K3
+      expect(out.code).toContain('@Serializable') // foundational @Serializable annotation
 
-    // End-to-end: pass the full emit through kotlinc with the K4 stubs.
-    // 0 errors = the full Phase 2 Kotlin arc is intact AND the stub
-    // surface covers everything the emit references.
-    const result = validateKotlin(out.code)
-    if (!result.ok) {
-      throw new Error(
-        `K-FINAL: TodoMVC Kotlin emit failed kotlinc validation:\n${result.error}\n\n` +
-          `--- emit ---\n${out.code}\n--- end ---`,
-      )
-    }
-    expect(result.ok).toBe(true)
-  })
-})
+      // End-to-end: pass the full emit through kotlinc with the K4 stubs.
+      // 0 errors = the full Phase 2 Kotlin arc is intact AND the stub
+      // surface covers everything the emit references.
+      const result = validateKotlin(out.code)
+      if (!result.ok) {
+        throw new Error(
+          `K-FINAL: TodoMVC Kotlin emit failed kotlinc validation:\n${result.error}\n\n` +
+            `--- emit ---\n${out.code}\n--- end ---`,
+        )
+      }
+      expect(result.ok).toBe(true)
+    })
+  },
+)

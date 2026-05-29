@@ -710,9 +710,7 @@ describe('resolveRoute — notFoundComponent fallback', () => {
     it('synthesizes a [DefaultChromeLayout, syntheticLeaf] chain when only a page record has notFoundComponent', () => {
       const Index = () => null
       const NotFound = () => null
-      const routes: RouteRecord[] = [
-        { path: '/', component: Index, notFoundComponent: NotFound },
-      ]
+      const routes: RouteRecord[] = [{ path: '/', component: Index, notFoundComponent: NotFound }]
       const r = resolveRoute('/missing', routes)
       expect(r.isNotFound).toBe(true)
       // Chain shape: [synthetic chrome layout, synthetic leaf]
@@ -752,9 +750,7 @@ describe('resolveRoute — notFoundComponent fallback', () => {
           path: '/',
           component: () => null,
           notFoundComponent: LayoutNotFound,
-          children: [
-            { path: '/page', component: () => null, notFoundComponent: PageNotFound },
-          ],
+          children: [{ path: '/page', component: () => null, notFoundComponent: PageNotFound }],
         },
       ]
       const r = resolveRoute('/missing', routes)

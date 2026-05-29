@@ -47,8 +47,7 @@ export default function ShortcutsPage() {
       <h1>Keyboard Shortcuts</h1>
       <p class="shortcuts-intro">
         All shortcuts are registered via <code>@pyreon/hotkeys</code> — scope-aware,
-        sequential-prefix, mod-aware (⌘ on Mac / Ctrl elsewhere via the{' '}
-        <code>mod</code> token).
+        sequential-prefix, mod-aware (⌘ on Mac / Ctrl elsewhere via the <code>mod</code> token).
       </p>
 
       {groups.map((group) => (

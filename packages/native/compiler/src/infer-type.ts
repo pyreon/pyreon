@@ -87,10 +87,7 @@ function inferComputedReturnType(
  * encountered along the way so subsequent inferType calls can resolve
  * the local bindings.
  */
-function findFirstReturnExpr(
-  stmts: StatementIR[],
-  ctx: InferenceCtx,
-): ExprIR | undefined {
+function findFirstReturnExpr(stmts: StatementIR[], ctx: InferenceCtx): ExprIR | undefined {
   for (const s of stmts) {
     if (s.kind === 'let') {
       ctx.locals.set(s.name, inferType(s.expr, ctx))

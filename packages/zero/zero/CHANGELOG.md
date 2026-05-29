@@ -46,7 +46,6 @@
   **1. HIGH — race condition in sentinel opt-out under concurrent `Promise.all`** (`@pyreon/reactivity` + `@pyreon/zero` + `@pyreon/vite-plugin`).
 
   The env-var dance pattern (`process.env.PYREON_SINGLE_INSTANCE = 'silent'` / capture+restore) used by `ssrLoadModuleQuiet`, SSG-plugin's built-handler import, and rocketstyle-collapse's nested-SSR resolver was race-prone under `Promise.all` of N opt-out scopes:
-
   1. Call A: captures `prev=undefined`, sets `'silent'`
   2. Call B: captures `prev='silent'` (post-A's write), sets `'silent'`
   3. A's `finally` deletes env (prev was undefined)
@@ -55,7 +54,6 @@
   Effect: the sentinel was silently disabled for the entire dev / SSG / collapse-resolver process lifetime. Bisect-verified with a focused reproducer; the leak fires with 5 concurrent scopes in `renderSsr`.
 
   **Fix**: `@pyreon/reactivity` ships two new exports:
-
   - `withSilent(fn): Promise<T>` — async refcount-based scope. Increments `silentDepth` on the sentinel state, awaits the fn, decrements in `finally`. Order-independent under concurrency.
   - `withSilentSync(fn): T` — sync variant.
 
@@ -180,7 +178,6 @@
   **Bisect-verified**: reverting `handle404` to skip the `renderSsr` delegation fails the new regression tests with `expected '<h1>404 — Not Found</h1>...' to contain 'Page Not Found'` (the bare fallback's "Not Found" doesn't match the fixture's `<h1>404 — Page Not Found</h1>` from `_404.ts`). Restored → 977/977 zero tests pass + no `TEMP BISECT` remnants.
 
   **Test coverage**: 5 new regression tests in `src/tests/integration/dev-404-ssg.test.ts`:
-
   - uses the user's `_404` component on an unmatched URL
   - emits the `_404` component WRAPPED in the layout/app chrome (doctype + html/head/body)
   - known routes still serve normally (not 404)
@@ -247,7 +244,6 @@
 
   New optional `(req: Request) => Request | null`. Lets auth-gated
   `cacheKey` setups scope revalidation explicitly:
-
   - Return a custom `Request` (e.g. stripped cookies for anonymous
     revalidation) — used in place of the original.
   - Return `null` — SKIP revalidation entirely for this entry (stale
@@ -295,9 +291,9 @@
   ```ts
   // ISRConfig.store accepts any backing matching:
   interface ISRStore<E = ISRCacheEntry> {
-    get(key: string): Promise<E | undefined> | E | undefined;
-    set(key: string, entry: E): Promise<void> | void;
-    delete?(key: string): Promise<void> | void;
+    get(key: string): Promise<E | undefined> | E | undefined
+    set(key: string, entry: E): Promise<void> | void
+    delete?(key: string): Promise<void> | void
   }
   ```
 
@@ -312,7 +308,6 @@
   its own eviction/TTL policy).
 
   New exports from `@pyreon/zero/server`:
-
   - `ISRStore<E>` interface
   - `ISRCacheEntry` interface (`{ html, headers, timestamp }`)
   - `createMemoryStore({ maxEntries? })` — the default factory
@@ -320,24 +315,24 @@
   Example Redis adapter:
 
   ```ts
-  import { Redis } from "ioredis";
-  import type { ISRStore } from "@pyreon/zero/server";
+  import { Redis } from 'ioredis'
+  import type { ISRStore } from '@pyreon/zero/server'
 
-  const redis = new Redis(/* ... */);
+  const redis = new Redis(/* ... */)
   const store: ISRStore = {
     async get(key) {
-      const v = await redis.get(`isr:${key}`);
-      return v ? JSON.parse(v) : undefined;
+      const v = await redis.get(`isr:${key}`)
+      return v ? JSON.parse(v) : undefined
     },
     async set(key, entry) {
-      await redis.set(`isr:${key}`, JSON.stringify(entry), "EX", 86400);
+      await redis.set(`isr:${key}`, JSON.stringify(entry), 'EX', 86400)
     },
     async delete(key) {
-      await redis.del(`isr:${key}`);
+      await redis.del(`isr:${key}`)
     },
-  };
+  }
 
-  const handler = createISRHandler(ssrHandler, { revalidate: 60, store });
+  const handler = createISRHandler(ssrHandler, { revalidate: 60, store })
   ```
 
   Tests: 6 new specs in `tests/isr.test.ts` "pluggable store" describe —
@@ -357,20 +352,20 @@
   **New surface**:
 
   ```ts
-  import { createISRHandler } from "@pyreon/zero/server";
+  import { createISRHandler } from '@pyreon/zero/server'
 
-  const isr = createISRHandler(ssrHandler, { revalidate: 60 });
+  const isr = createISRHandler(ssrHandler, { revalidate: 60 })
 
   // As before — Bun.serve({ fetch: isr }) still works
-  Bun.serve({ fetch: isr });
+  Bun.serve({ fetch: isr })
 
   // CMS webhook → drop one cache entry, next request renders fresh
-  const result = await isr.revalidateNow("/posts/123");
+  const result = await isr.revalidateNow('/posts/123')
   // → { dropped: true } if entry existed AND store supports delete
   // → { dropped: false } otherwise (honest signal for TTL-only stores)
 
   // Admin "purge cache" endpoint → drop everything
-  await isr.revalidateAll();
+  await isr.revalidateAll()
   // throws clear error if store has no clear() method
   ```
 
@@ -381,7 +376,6 @@
   **Internal hygiene**: both methods also clear the in-flight `revalidating` flag for the dropped key(s) so the next request re-renders fresh rather than short-circuiting on the stale-revalidate guard.
 
   **Tests**: 7 new specs in `isr.test.ts` under `revalidateNow + revalidateAll` covering:
-
   1. drops a cached entry — next request MISSes
   2. dropped:false for keys that never existed
   3. idempotent (call twice — sensible flags)
@@ -418,13 +412,11 @@
   Now the parse step has its own try/catch and returns **400 (Bad Request)** with a generic `{ error: 'Invalid request body' }` payload. The generic message also prevents leaking parser internals (`Unexpected token X in JSON at position N` could expose sensitive offset / state info to hostile clients).
 
   **Tests (3 new specs in `actions.test.ts`):**
-
   1. **logs action runtime errors to console.error with prefix** — `vi.spyOn(console, 'error')` asserts the `[Pyreon Action] handler failed:` log fires with the error attached.
   2. **returns 400 (not 500) on malformed JSON request body** — `body: '{not valid json'` with `Content-Type: application/json` → 400 + `{ error: 'Invalid request body' }` + `console.error` captures the parse error.
   3. **does NOT leak internal parser error messages to the client** — null bytes + junk body → generic message; asserts the response body does NOT match `/position|token|offset/i` so even strict parsers (with offset reporting) can't leak.
 
   **Bisect-verified per fix:**
-
   - Drop `console.error` from the handler-error catch → "logs action runtime errors" fails; other 2 pass. Restored → 3/3.
   - Restore single outer try/catch (pre-fix shape) → "returns 400" + "leak internal" both fail (status 500 + parser internals leaked); logging spec still passes. Restored → 3/3.
 
@@ -439,7 +431,6 @@
   The harness now decodes the URL once, normalizes the path via `node:path.normalize`, asserts the candidate stays within `clientDir`, then checks `Bun.file(candidate).exists()`. Same security guarantees (path traversal rejected, null bytes rejected, malformed percent-encoding rejected with 400), but `normalize` is pure string arithmetic — never throws on missing files. SSR routes now correctly fall through to the handler.
 
   **New gate**: `bun adapter — runtime contract` describe block in `packages/zero/zero/src/tests/adapters.test.ts` spawns `bun run dist/index.ts` as a subprocess against the mock build fixture and drives real HTTP requests against the emitted server:
-
   1. SSR fallback: `GET /api/anything` → handler response (`"ok"`).
   2. Static file: `GET /` → mock `index.html` with `cache-control` header.
 
@@ -456,21 +447,17 @@
   Follow-up to the bun ([#752](https://github.com/pyreon/pyreon/issues/752)) and node ([#753](https://github.com/pyreon/pyreon/issues/753)) adapter audits, which each found 1-2 real bugs in their emitted server harnesses under runtime-contract gates. The cloud adapter family (vercel/cloudflare/netlify) doesn't have runtime-contract gates yet (each needs its own CLI emulator install — wrangler dev / vercel dev / netlify dev, ~150 MB each), but a static audit pass surfaces four concrete production bugs that don't need runtime emulation to diagnose:
 
   **Cloudflare** (`packages/zero/zero/src/adapters/cloudflare.ts`)
-
   - **Silent catch**: the emitted `_worker.js` had `try { ... } catch (err) { return new Response("Internal Server Error", { status: 500 }) }` with NO `console.error(err)`. Production crashes shipped a bare 500 to clients AND ZERO diagnostic info to Cloudflare Tail logs (the standard Workers debugging surface). Now logs `[Pyreon SSR] handler failed:` + the full error.
   - **Dead code**: the emitted worker computed `const ext = url.pathname.split(".").pop()` then ran an `if (ext && ...) { /* comment */ }` block with an **empty body** — pure dead code that did nothing at runtime, just consumed cold-start budget per request. Removed.
 
   **Netlify** (`packages/zero/zero/src/adapters/netlify.ts`)
-
   - **Silent catch**: same shape as Cloudflare — `catch (err) { return 500 }` with no log. Now logs to Netlify Function logs panel (also reachable via `netlify functions:log`).
 
   **Vercel** (`packages/zero/zero/src/adapters/vercel.ts`)
-
   - **Per-request dynamic import**: the emitted function called `(await import("./entry-server.js")).default` inside the handler — Node's module cache makes subsequent calls near-free, but the FIRST request on every fresh serverless instance (i.e. every cold start) paid the full module evaluation cost inside the request budget, observable as a TTFB spike on cold starts. Now hoisted to module scope (`import handler from "./entry-server.js"` at the top), evaluated once at function-init before the first request.
   - **No error logging**: pre-fix the handler had NO try/catch — SSR throws propagated to Vercel's launcher which logged them generically. Now wrapped with the same `[Pyreon SSR] handler failed:` prefix so the cause is trivially greppable in the dashboard log stream.
 
   Shape assertions added to the existing `vercel/cloudflare/netlify adapter build` tests:
-
   - Cloudflare: asserts `console.error([Pyreon SSR]` present, asserts the dead `ext` computation is absent.
   - Netlify: asserts `console.error([Pyreon SSR]` present.
   - Vercel: asserts `import handler from "./entry-server.js"` is hoisted at module-scope, asserts `await import("./entry-server.js")` is absent, asserts `console.error([Pyreon SSR]` present.
@@ -491,7 +478,6 @@
   ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
 
   **Code:**
-
   - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
     interpolated `fullPath` raw into emitted JS. Path is developer-
     controlled (project's own filesystem scan), but a quote / backslash
@@ -515,7 +501,6 @@
     depth refuse the dangerous identifiers.
 
   **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
-
   - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
     `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
     caps. Pre-filter is a SCAN before the precise AST walker; losing
@@ -536,7 +521,6 @@
     formatting matchable.
 
   **Workflows (`.github/workflows/`):**
-
   - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
     `permissions: contents: read` block. Both workflows are read-only
     (perf records artifacts; audit reports findings).
@@ -552,7 +536,6 @@
   ### Dismissed via API (20 false positives / won't fix)
 
   **True false positives (9):**
-
   - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
     "MAX_PASSES" as if it contained "password". Log is about
     effect-flush pass count.
@@ -573,7 +556,6 @@
     arbitrary paths.
 
   **Won't fix (internal dev tooling, not security boundaries):**
-
   - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
     (`pyreon context`, `create-zero`), build-time Vite plugin
     (`icons-plugin`), internal scripts (`check-bundle-budgets`,
@@ -594,7 +576,6 @@
     the actual supply-chain guarantee.
 
   ### Remaining (cannot be closed by a code PR)
-
   - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
     squash-merge with self-review by maintainer doesn't count.
     Project-policy issue, not code.
@@ -606,7 +587,6 @@
     infra work, out of scope.
 
   ### Validation
-
   - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
   - `@pyreon/compiler` 1257/1257 tests pass
   - `@pyreon/vite-plugin` 104/104 tests pass
@@ -652,13 +632,11 @@
 
   `COUNTERS.md` gains 7 new entries (6 counters + the `theme.initRef*` pair).
   Each documents:
-
   - Exact source file
   - "Healthy number looks like" description (the diagnostic semantics)
   - The leak-class label + originating PR
 
   `catalog-drift.test.ts` `INSTRUMENTED_PACKAGE_ROOTS` adds 3 new entries:
-
   - `packages/tools/solid-compat/src`
   - `packages/tools/svelte-compat/src`
   - `packages/tools/vite-plugin/src`
@@ -669,7 +647,6 @@
   emit) enforces the link going forward.
 
   ### Validation
-
   - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
     zero skip):
     - `@pyreon/zero` 953/954
@@ -697,7 +674,6 @@
   **Bug B — `mode: 'stream'` SSR was silently buffered into a single chunk.** The harness called `await response.text()` to drain the entire Response body into a string BEFORE writing to the client socket. For Suspense streaming this defeats the whole point — every chunk queued server-side and arrived at the client all at once at the end (strictly worse than `mode: 'string'` because the buffering happens twice). Fix: pipe the Response body's `ReadableStream` reader directly to `res.write` chunk-by-chunk. For `mode: 'string'` the body is a single chunk and the loop runs once with identical observable behaviour. For `mode: 'stream'` chunks land at the client incrementally.
 
   **New gate**: `node adapter — runtime contract` describe block in `packages/zero/zero/src/tests/adapters.test.ts` adds 5 specs:
-
   1. SSR fallback for non-static paths.
   2. Static `.js` file served with `immutable` cache-control.
   3. **`GET /` serves the static `index.html`** (Bug A regression lock).
@@ -705,7 +681,6 @@
   5. SSR response status + headers correctly forwarded.
 
   **Bisect-verified per fix**:
-
   - Revert just Bug A's `.html` exclusion → spec [#3](https://github.com/pyreon/pyreon/issues/3) fails with `expected received string to contain "STATIC INDEX HTML"`; other 4 pass. Restored → all 5 pass.
   - Revert just Bug B's pipe → spec [#4](https://github.com/pyreon/pyreon/issues/4) fails with `Node server failed to start within 10000ms` (the buffered server can't respond to the 200ms readiness ping during the 300ms streaming delay — a great demonstration of Bug B's real impact); other 4 pass. Restored → all 5 pass.
   - Both restored together: 5/5 pass × 5 stability runs, full zero suite 962/962 (1 skipped pre-existing). Lint + typecheck clean. No lockfile drift.
@@ -747,7 +722,6 @@
   footer is the canonical shape) — or `<ThemeToggle>` mounted
   alongside an explicit `initTheme()` call in `_layout.tsx` (which
   the JSDoc literally recommends) — registers N media-query listeners
-
   - N effects. Each OS color-scheme flip then fires N redundant
     updates writing the SAME value to `document.documentElement.dataset.theme`
     and the SAME value to N favicon links. Class D event-listener pile-up.
@@ -790,7 +764,6 @@
   trade-off before reaching for a "fix."
 
   ### Regression tests + bisect
-
   - `packages/zero/zero/src/tests/theme-init-leak-repro.test.ts`
     (2 specs) — 3 and 5 mounted ThemeToggles register exactly ONE
     matchMedia listener. **Bisect-verified**: reverted refcount logic
@@ -804,7 +777,6 @@
     → 1/1 pass.
 
   ### Validation
-
   - `@pyreon/zero` 947/948 tests pass (1 pre-existing skip, +3 new
     regression specs)
   - Lint + typecheck clean across all 4 zero packages
@@ -813,7 +785,6 @@
   ### Audit byproducts (NOT in this PR — deliberately scoped follow-ups)
 
   The audit also surfaced several LOW patterns worth noting:
-
   1. **`@pyreon/zero` `ssg-plugin.ts` 3× same `Promise.race` shape** —
      lines 517, 1159, 1402 (build-time SSG render timeouts, mode
      switch timeouts). Lower impact than `isr.ts` because each runs
@@ -856,7 +827,6 @@
   `ssg-plugin.ts` ran `Promise.race([work, new Promise((_, reject) =>
 setTimeout(reject, 30_000))])` without clearing the timer when `work`
   won the race:
-
   - `renderOne(p)` — per-path SSG render (line 1156)
   - 404 render loop — per-locale 404 emission (line 1399)
 
@@ -881,7 +851,6 @@ setTimeout(reject, 30_000))])` without clearing the timer when `work`
   `_clientNonce` variable, then `useNonce()` read that variable as a
   "client-side fallback" when `locals.cspNonce` was undefined. Two
   problems:
-
   1. **Server-side cross-request bleed**: with concurrent SSR requests,
      request A's nonce would overwrite `_clientNonce` before B finished
      rendering. If any render path bypassed the locals-context plumbing
@@ -901,7 +870,6 @@ setTimeout(reject, 30_000))])` without clearing the timer when `work`
   this contract.
 
   ### Regression tests + bisect
-
   - `packages/zero/zero/src/tests/csp.test.ts` updated. Removed the
     "useNonce returns the nonce set by middleware" test (it was
     inadvertently exercising the bug — it called `useNonce()` outside
@@ -922,7 +890,6 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
     tests still pass.
 
   ### Validation
-
   - `@pyreon/zero` 947/948 tests pass (1 pre-existing skip)
   - Lint + typecheck clean across all 4 zero packages
   - No public-API breakage — `useNonce()` signature unchanged
@@ -969,7 +936,6 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   `faviconPlugin({ source: 'x.svg', darkSource: 'x-dark.svg' })` emitted a single static `<link rel="icon" type="image/svg+xml" href="/favicon.svg">` with no `data-favicon-theme`/`media`. The theme-swap script + `initTheme()` only toggle `[data-favicon-theme]` links, and browsers prefer an SVG favicon over PNG when both are present — so the carefully theme-toggled PNG variants were never displayed and the favicon never changed with the app theme, in dev or prod, in every modern browser. The `darkSource` JSDoc also documented a `prefers-color-scheme` mechanism that was unimplemented (and would only track the OS, not a manual in-app toggle).
 
   Fix — the SVG favicon now participates in the same `data-favicon-theme` contract as the PNG dual-variant, across every surface:
-
   - `transformIndexHtml` + `faviconLinks` (SSR): when `darkSource` is set, emit two theme-aware SVG links — `/favicon-light.svg` (`data-favicon-theme="light"`) and `/favicon-dark.svg` (`data-favicon-theme="dark"`, `media="not all"`) — instead of one static link. The existing swap script / `initTheme()` already toggle them; the `?v=` cache-bust loop already stamps them.
   - Build (`generateFaviconSet`) emits `favicon-light.svg` (source) + `favicon-dark.svg` (darkSource) alongside the existing wrapped `favicon.svg` (kept as the no-JS / direct-`/favicon.svg`-reference OS-`prefers-color-scheme` fallback only).
   - Dev (`configureServer`) serves `/favicon-light.svg` → source and `/favicon-dark.svg` → darkSource (locale-aware; dev-badge / `devSource` applies to the light/active variant, matching the `/favicon.svg` handler).
@@ -990,7 +956,6 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   Root cause was a **packaging gap, not missing types**: the correct ambient declarations (covering `*.{jpg,jpeg,png,webp,avif}?optimize` → `ProcessedImage`, `*.svg?component` → `ComponentFn`, `*.svg?raw` → `string`) already existed, but there was no `exports["./image-types"]`, so the documented `/// <reference types="@pyreon/zero/image-types" />` could not resolve.
 
   Fix:
-
   - Wire `./image-types` as a real build entry — `{ "bun": "./src/image-types.ts", "import": "./lib/image-types.js", "types": "./lib/types/image-types.d.ts" }` (mirroring `./client`). `vl_rolldown_build` derives a build **entry** from every exports subpath, so the source must be a buildable `src/image-types.ts` — a hand-authored `.d.ts` with no `.ts` failed the zero build with `[UNRESOLVED_ENTRY] src/image-types.ts`. The build compiles it to an empty `lib/image-types.js` and DTS-emits the ambients verbatim to `lib/types/image-types.d.ts` (a real `.d.ts` → always ambient + `moduleDetection`-exempt for consumers).
   - `src/image-types.ts` is excluded from zero's own `tsc --noEmit`: the repo tsconfig sets `moduleDetection: force`, which would read `declare module '*.svg?raw'` in a `.ts` as an augmentation of a non-existent module (TS2664). It carries no logic; the emitted `.d.ts` is the contract (covered by the build's DTS emit + the regression test).
   - The internal `ProcessedImage` import uses the package self-ref `import('@pyreon/zero/image-plugin')` — resolution-stable in the published layout (resolves through the consumer's `./image-plugin` export to the clean `lib/types` declaration, not the full `src` `.ts`) and re-uses the plugin's own type so the ambient **can never drift**.
@@ -1025,7 +990,6 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   Now: **dev** keeps the soft one-time warning (favicons just don't appear locally — iteration isn't blocked). A **production `vite build`** with a configured `source` and `sharp` missing is a **hard, actionable error** (`this.error` in `generateBundle`) — the build aborts with the install command, the source path, and the opt-out. To intentionally build without favicons, remove `faviconPlugin()`.
 
   Bisect-proven via real `vite build`:
-
   - `sharp` missing → build aborts with the actionable message, **no `dist`** (won't silently ship faviconless).
   - `sharp` installed → build succeeds; all 8 assets (`favicon.ico/.svg`, 16/32 png, apple-touch-icon, icon-192/512, `site.webmanifest`) emitted **and** every `<head>` tag injected (`icon` svg+png, `apple-touch-icon`, `manifest`, `theme-color`).
 
@@ -1036,7 +1000,6 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
 - [#655](https://github.com/pyreon/pyreon/pull/655) [`cc3003c`](https://github.com/pyreon/pyreon/commit/cc3003c3e7ab2e8b9649c3aa6b5e001506916a0d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `imagePlugin`: resolve `?optimize` / `?component` imports importer-relative + alias-aware (the way Vite resolves `?url`).
 
   `resolveId` embedded the raw, unresolved import id into the virtual id, so `load()` had to guess the path with cwd/`public` string math. Two documented patterns were broken (reported on bokisch.com, `@pyreon/zero@0.19.0`):
-
   - `import x from './img.png?optimize'` — `load()` resolved `./img.png` against **cwd** (project root), not the **importer's** directory → `ENOENT` for the exact src-tree pattern the JSDoc advertises. (`?url` worked because Vite resolves it itself.)
   - `import x from '~/assets/img.png?optimize'` (alias) — arrived already-absolute, then `join(root,'public',absPath)` **doubled** the path → `ENOENT`.
 
@@ -1064,7 +1027,6 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
 - [#595](https://github.com/pyreon/pyreon/pull/595) [`0b3e2b3`](https://github.com/pyreon/pyreon/commit/0b3e2b387d4cd6debe6a466877d2100a96ceceb9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `imagePlugin` — implement the `'color'` placeholder strategy + add per-format quality. Closes a typed-but-unimplemented bug.
 
   **Closed bug (the `audit-types` class):** `PlaceholderStrategy` typed `'dominant-color'` from the plugin's inception but no code path ever implemented it — the CDN, dev, and build paths each open-coded `generateBlurPlaceholder`, so `placeholder: 'dominant-color'` silently produced a blur and `placeholder: 'none'` was silently ignored in build mode (only the CDN path honored it). All three paths now route through one `generatePlaceholder` dispatcher:
-
   - `'blur'` (default, unchanged) — downscaled + blurred WebP base64
   - `'color'` — sharp `.stats().dominant` → ~200-byte flat-fill SVG data URI (instant paint, zero layout shift, constant size regardless of source complexity)
   - `'dominant-color'` — **deprecated alias of `'color'`**, normalized via `normalizePlaceholder`
@@ -1073,7 +1035,7 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   **Better API — per-format quality.** `quality` now accepts a per-format map in addition to a single number:
 
   ```ts
-  imagePlugin({ formats: ["avif", "webp"], quality: { avif: 55, webp: 75 } });
+  imagePlugin({ formats: ['avif', 'webp'], quality: { avif: 55, webp: 75 } })
   ```
 
   AVIF reaches WebP-equivalent perceived quality at a much lower number, so one flat value either over-spends bytes on AVIF or under-delivers on WebP. Formats omitted from the map fall back to 80. A bare number still works unchanged (backward-compatible). Resolved once into a per-format lookup (`resolveQuality`) threaded through the CDN / dev / build paths.
@@ -1087,7 +1049,6 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   `<Icon>` does **not** synthesize its own `<svg>` around hand-authored `<path>`
   children. You load a complete svg (it already contains the `<svg>` root) and
   Icon makes it container-sizable + theme-aware. Two source props:
-
   - `as` — an imported SVG **component** (`import X from './x.svg?component'`).
     Rendered **directly, no host wrapper**; svg attributes forward. Recommended.
   - `svg` — the raw `<svg>…</svg>` **markup string**
@@ -1128,10 +1089,10 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   ```ts
   iconsPlugin({
     sets: {
-      ui: { dir: "./src/icons/ui" },
-      brand: { dir: "./src/icons/brand", mode: "image" },
+      ui: { dir: './src/icons/ui' },
+      brand: { dir: './src/icons/brand', mode: 'image' },
     },
-  });
+  })
   ```
 
   ```tsx
@@ -1177,16 +1138,16 @@ iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
 
   ```ts
   // vite.config.ts
-  import { iconsPlugin } from "@pyreon/zero/server";
-  plugins: [iconsPlugin({ dir: "./src/icons" })];
+  import { iconsPlugin } from '@pyreon/zero/server'
+  plugins: [iconsPlugin({ dir: './src/icons' })]
   ```
 
   ```tsx
   // app — autocompletes, rejects typos, real go-to-definition:
-  import { Icon } from "./icons.gen";
-  <span style="width:2rem">
+  import { Icon } from './icons.gen'
+  ;<span style="width:2rem">
     <Icon name="check-circle" />
-  </span>;
+  </span>
   ```
 
   The generated file calls `createNamedIcon(REGISTRY)`, so `keyof typeof
@@ -1197,7 +1158,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   `hydrateIslandsAuto(registry)` with an explicit import).
 
   Two render modes per the colorful-vs-system split:
-
   - `mode: 'inline'` (default) — **system icons**. Each svg inlined as `?raw`
     markup via `Icon`; `currentColor`-themeable, recolor via CSS `color`.
   - `mode: 'image'` — **colorful / brand icons**. Each svg emitted as a static
@@ -1217,7 +1177,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   Verification: pure scanner/generator unit tests
   (`src/tests/icons-plugin.test.ts` — `iconNameFromFile` kebab cases,
   `scanIconDir` filter/sort/missing-dir, `generateIconSetSource` inline vs image
-
   - binding-collision guard + empty set) and real-`h()` happy-dom mount tests for
     `createNamedIcon` both modes (`src/tests/icon.test.ts`); manifest entries
     (`iconsPlugin`, `createNamedIcon`) + regenerated MCP api-reference; snapshot
@@ -1228,7 +1187,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
 - [#612](https://github.com/pyreon/pyreon/pull/612) [`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 12 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
 
   **Security (prototype pollution / XSS / DoS)**
-
   - `@pyreon/reactivity` `reconcile()` + `createStore` set trap — a documented "apply an untrusted API response into a store" path (`reconcile(JSON.parse(body), store)`) had no `__proto__`/`constructor`/`prototype` guard. Added on both the write and stale-key-removal passes + defense-in-depth in the proxy set trap.
   - `@pyreon/i18n` `addMessages` — `nestFlatKeys` (dotted-key expansion) ran BEFORE `deepMerge`, so deepMerge's own pollution filter never saw the dotted form; `__proto__.x` walked into `Object.prototype` and wrote onto it. Message JSON is routinely CDN/community-sourced. Guarded.
   - `@pyreon/document` HTML renderer — `language` was interpolated raw into `<html lang="…">` and `styleStr` emitted string values raw into `style="…"`; a CMS/author-supplied value containing `"><script>` broke out → stored XSS. `lang` is now charset-restricted + escaped; style values route through the renderer's existing `sanitizeCss`.
@@ -1238,20 +1196,17 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   - `@pyreon/zero` API-route matcher — dangerous param names from the route pattern guarded (defense-in-depth; consistent with the reconcile / i18n guards).
 
   **Memory leaks**
-
   - `@pyreon/reactivity` `signal._d` — direct-updater disposal nulled an array slot but never compacted, so a long-lived signal (theme/locale/auth, or signals read in `<For>` rows) bound by churning components accumulated one permanent dead slot per ever-mounted binding — an app-lifetime leak that ALSO degraded the signal-write hot path (`notifyDirect` iterated O(total-ever), not O(live)). Switched to a `Set` (same as `_s`): O(1) disposal, O(live) iteration, bounded growth. Proven structurally — `_d.size` stays 0 after 10 000 register/dispose cycles.
   - `@pyreon/dnd` `useSortable` — `itemRef` pushed every pdnd registration onto a shared array and the unmount (`ref(null)`) branch was a no-op, so a churning `<For>` sortable (todo list / kanban — the documented usage) leaked every removed item's draggable/dropTarget registration until the whole sortable unmounted. Now per-key disposal on unmount and re-register.
   - `@pyreon/zero` ISR — a hung revalidation handler pinned its key in the in-flight set forever (`finally` never ran), so the entry could never recover from stale. Background revalidation is now timeout-bounded (`ISRConfig.revalidateTimeoutMs`, default 30 s).
 
   **Correctness / silent-failure**
-
   - `@pyreon/router` `stringifyLoaderData` — the cycle detector used an all-seen `WeakSet` that was never pruned, so a shared (DAG) reference — extremely common, e.g. `{ author: user, lastEditor: user }` from an ORM — falsely threw "circular reference" and 500'd the SSR response. Replaced with true ancestor-path detection (the original code's own comment anticipated exactly this remedy). **Behaviour change (bug fix, strictly more permissive):** payloads that previously 500'd now serialize; real cycles still throw.
   - `@pyreon/server` `processTemplate` — used `String.prototype.replace` with string replacements, so rendered HTML containing literal `$&` / `$$` / `` $` `` / `$'` (prices, code, math) was corrupted by regex-pattern substitution. Switched to function replacements.
   - `@pyreon/i18n` `interpolate` — a serialization failure (circular value, throwing `toString`) was swallowed silently, rendering `{{key}}` to end users with no signal. Now dev-warns (fallback behaviour unchanged).
   - `@pyreon/query` `useSSE` — the reactive effect unconditionally reset `intentionalClose = false`, so an explicit `close()` was silently overridden by any later reactive `url`/`enabled` change. Now respects `intentionalClose` (mirrors `useSubscription`); `reconnect()` is the explicit resume.
 
   **Disclosures (honest scope)**
-
   - **An attempted SWR-swallow fix (surface the empty `.catch` via `__DEV__` warn + `_onError`) was REVERTED from this PR.** Probing empirically proved `revalidateSwrLoaders` is invoked **0 times** even by the canonical `staleWhileRevalidate` nav pattern: `resolveRoute` returns fresh `RouteRecord` objects per resolution, so `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate is never true across navigations — the SWR branch is **dead code**, and the existing "revalidates in background" test's count actually comes from the blocking path running twice. Adding error-surfacing to provably-unreachable code is not hardening (and it dropped router coverage). **The real bug — `staleWhileRevalidate` is effectively non-functional for the nav-away/back case (record-identity-keyed gate)** — is a distinct, significant finding whose correct fix (key the gate by a stable path/loaderKey) is a non-trivial router behaviour change deserving its own focused, aligned PR. Documented in `router/src/tests/loader.test.ts` as a flagged follow-up; deliberately not bundled here (scope/risk).
   - One audit finding (`decodeKeyFromMarker`) was investigated and **dropped as a false positive** — `%2D` never appears in `encodeURIComponent` output, so the manual substitution is uniquely reversible.
   - Z5 (API-route param guard) is defense-in-depth: a string param value assigned to `__proto__` is a silent JS no-op (not exploitable); the guard prevents the real own-prop shadow for `constructor`/`prototype` and matches the repo-wide convention.
@@ -1261,7 +1216,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
 - [#641](https://github.com/pyreon/pyreon/pull/641) [`078b1e7`](https://github.com/pyreon/pyreon/commit/078b1e72343828b2d73f97c03e0b5b0f335fe979) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Repo sweep: duplication removal + two SSG correctness/robustness fixes.
 
   **`@pyreon/document` — duplication removal (behaviour-preserving).**
-
   - `getTextContent` (recursive node-tree → text flatten) was copy-pasted **byte-identically into 13 of the 18 renderers** (svg/pdf/pptx/xlsx/docx + every chat target). Consolidated into the package's `nodes.ts` as the single source of truth; the 13 copies replaced with an import. (text/markdown/html deliberately walk the tree differently and were left untouched.)
   - The HTML/XML escape function (`& < > "`) was copy-pasted **4×** under three names (`escapeHtml`/`escapeXml`/`esc`) into html/svg/email/telegram. Consolidated into `sanitize.ts` as `escapeXml`; renderers import it (aliased to their local names — zero call-site churn). The intentionally-distinct escapes (csv quoting, runtime-server's 5-char+perf-counter variant, the standalone compiler escapes) were correctly left alone — different algorithm/layer.
   - Net: ~80 LOC of true duplication removed, no API/behaviour change. Proven by the full `@pyreon/document` suite (441/441) — the per-renderer text/escape tests exercise the consolidated path; identical-body removal verified by `diff` (0 lines).
@@ -1269,7 +1223,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   **`@pyreon/zero` — sitemap duplicate `<url>` (correctness bug).** `generateSitemap` built `allPaths = [...routeScan, ...additionalPaths]` with **no dedup**. The i18n cluster path dedups via `byUnPrefixed`, but the non-i18n branch is a raw 1:1 map — so a static route present in BOTH the route scan AND `additionalPaths` (routine: SSG-emitted paths merged via `seoPlugin`) emitted a **duplicate `<url>`/`<loc>`**. (The nearby "merge dedups" comment was itself inaccurate — that merge is a plain spread.) Now deduped by path (first-wins, order-preserving) at the single source, covering both branches. Regression test: a path in both inputs → exactly one `<loc>`, `<url>` count correct. Bisect-verified.
 
   **`@pyreon/zero` — SSG path-escape + duplicate-path robustness (edge cases).**
-
   - `expandUrlPattern` substituted `getStaticPaths` param values verbatim into what becomes a `dist/<path>/index.html` write target. An unsanitized CMS slug containing `/` (in a single non-catch-all `:slug`) or `.`/`..` traversal segments would escape the intended structure. Now rejected with a clear error (catch-all `:rest*` still spans segments but still rejects `.`/`..`). Bisect-verified.
   - `autoDetectStaticPaths` had no dedup — a `getStaticPaths` returning a duplicate slug (CMS dup, pagination overlap) or i18n fan-out collision rendered the same `dist/<path>/index.html` twice (wasted work + last-write race) and fed a duplicate into the SSG→sitemap merge. Now order-preserving deduped. Bisect-verified.
 
@@ -1324,9 +1277,9 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   ```ts
   // vite.config.ts — opt out for a 3-page marketing site
   zero({
-    mode: "ssg",
+    mode: 'ssg',
     ssg: { splitChunks: false },
-  });
+  })
   ```
 
   Verified end-to-end against all 7 SSG verify-modes cells including `cpa-pw-blog` (dynamic routes + `getStaticPaths` — the case that exercises the lazy-route + namespace-import-for-build-time-export path). ISR, SSR, SPA modes are unchanged — they already had lazy splitting.
@@ -1338,7 +1291,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
 - [#582](https://github.com/pyreon/pyreon/pull/582) [`53b264b`](https://github.com/pyreon/pyreon/commit/53b264b87897a35d8418ad37ce85c805a5b7874f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/zero` Vite plugin now defaults to port 3000 — matching `zero dev` / `zero preview` (already 3000), the runtime adapter (already 3000), and Next.js / Remix / Astro convention.
 
   Precedence (verified end-to-end against a running example):
-
   1. **Vite CLI `--port N` flag** — the plugin's `config()` hook detects `--port` / `--port=N` / `-p N` / `-p=N` in `process.argv` and omits its `server.port` entirely so Vite's CLI parsing wins (proven empirically: `vite --port 5174 --strictPort` binds 5174, not 3000).
   2. **User `vite.config.ts` `server: { port: N }`** — user config beats plugin in Vite's merge order.
   3. **`zero({ port: N })`** — resolved into `config.port` and applied unconditionally (even when CLI has `--port` — explicit user intent in vite.config.ts wins over the argv detection).
@@ -1468,7 +1420,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
 - [#251](https://github.com/pyreon/pyreon/pull/251) [`290ea64`](https://github.com/pyreon/pyreon/commit/290ea64ee90b5e749008d2b437084fc001ad24f1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Zero meta-framework anti-pattern cleanup + lint rule precision
 
   `@pyreon/zero`:
-
   - `link.tsx` `doPrefetch`: added `typeof document === 'undefined'` early-return.
     Prefetch only fires from browser-mounted Link interactions but the explicit
     guard documents the SSR-safety contract.
@@ -1484,7 +1435,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
     errors.
 
   `@pyreon/lint`:
-
   - `no-window-in-ssr` and `no-dom-in-setup`: early-return-guard heuristic
     now recognises `throw` as a function-terminating statement (in addition
     to `return`). Common in entry-point functions like `startClient` that
@@ -1627,7 +1577,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
 - ## @pyreon/zero
 
   ### New Features
-
   - **API routes** — file-based `.ts` handlers in `src/routes/api/` with HTTP method exports (GET, POST, PUT, DELETE)
   - **Server actions** — `defineAction()` with automatic client/server boundary detection (direct execution on server, fetch on client)
   - **Per-route middleware** — route files export `middleware` dispatched via `virtual:zero/route-middleware`
@@ -1640,7 +1589,6 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   - **Dev route table** — `zero dev` prints page + API routes on startup
 
   ### Improvements
-
   - Bumped all @pyreon/\* core deps to ^0.5.4
   - Added `./actions`, `./api-routes`, `./cors`, `./rate-limit`, `./compression`, `./testing` subpath exports
   - Fixed static adapter build skip for SSG mode
@@ -1649,19 +1597,16 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   ## @pyreon/zero-cli
 
   ### New Commands
-
   - `zero doctor` — detect React patterns (proxies @pyreon/cli)
   - `zero context` — generate AI project context
   - `zero create <name>` — scaffold a new project
 
   ### Improvements
-
   - Dev server prints route table on startup (page routes + API routes)
 
   ## @pyreon/create-zero
 
   ### New Features
-
   - **Interactive scaffolding** with @clack/prompts — pick rendering mode, features, AI toolchain
   - Generates customized package.json, vite.config.ts, entry files based on selections
   - AI toolchain opt-in: .mcp.json, CLAUDE.md, doctor scripts
@@ -1669,12 +1614,10 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   ## @pyreon/meta
 
   ### New Packages
-
   - `@pyreon/machine` — reactive state machines (`createMachine`)
   - `@pyreon/permissions` — reactive permissions (`createPermissions`, `usePermissions`)
 
   ### Updates
-
   - All fundamentals: query ^0.5.0, virtual ^0.5.0
   - All UI system: ^0.1.1 (styler, hooks, elements, coolgrid, kinetic, etc.)
   - 75 export verification tests

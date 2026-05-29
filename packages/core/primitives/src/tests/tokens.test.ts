@@ -44,7 +44,16 @@ describe('resolveColor', () => {
   })
 
   it('all token names produce valid hex', () => {
-    const tokens = ['text', 'surface', 'primary', 'secondary', 'success', 'warning', 'danger', 'muted'] as const
+    const tokens = [
+      'text',
+      'surface',
+      'primary',
+      'secondary',
+      'success',
+      'warning',
+      'danger',
+      'muted',
+    ] as const
     for (const t of tokens) {
       expect(resolveColor(t)).toMatch(/^#[0-9a-f]{6}$/i)
     }

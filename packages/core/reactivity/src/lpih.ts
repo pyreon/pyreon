@@ -124,7 +124,7 @@ async function _writeToPath(path: string): Promise<number> {
   }
   const pid =
     typeof process !== 'undefined' && 'pid' in process
-      ? (process as { pid?: number }).pid ?? 0
+      ? ((process as { pid?: number }).pid ?? 0)
       : 0
   const tmp = `${path}.tmp.${pid}.${++_seq}`
   const fs = await import('node:fs/promises')
@@ -179,10 +179,7 @@ async function _writeToPath(path: string): Promise<number> {
  *   startLpihPolling() // writes to <cwd>/.pyreon-lpih.json every 250ms
  * }
  */
-export function startLpihPolling(
-  path?: string,
-  intervalMs = 250,
-): () => void {
+export function startLpihPolling(path?: string, intervalMs = 250): () => void {
   const resolvedPath = path ?? getDefaultLpihCachePath()
   if (resolvedPath === null) {
     throw new Error(

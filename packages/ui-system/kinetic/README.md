@@ -38,9 +38,9 @@ Key advantages: 10x smaller than Motion for CSS-transition use cases; only libra
 ## `kinetic(tag)` — animated component factory
 
 ```ts
-kinetic('div')           // HTML element string
+kinetic('div') // HTML element string
 kinetic('section')
-kinetic(MyComponent)     // Any Pyreon component
+kinetic(MyComponent) // Any Pyreon component
 ```
 
 Returns a renderable Pyreon component with chain methods. Default mode: **transition**.

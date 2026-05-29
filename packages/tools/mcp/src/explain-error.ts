@@ -90,8 +90,7 @@ export function parseErrorReport(raw: string): ErrorReport | null {
   }
   if (typeof o.phase === 'string') report.phase = o.phase
   if (typeof o.component === 'string') report.component = o.component
-  if (o.props && typeof o.props === 'object')
-    report.props = o.props as Record<string, unknown>
+  if (o.props && typeof o.props === 'object') report.props = o.props as Record<string, unknown>
   if (Array.isArray(o.reactiveTrace)) {
     report.reactiveTrace = o.reactiveTrace.filter(
       (e): e is TraceEntry =>
@@ -207,7 +206,9 @@ export function analyzeReactiveTrace(
 }
 
 /** Coarse shape classifier over a trace preview string (the previews are produced by reactive-trace.ts). */
-function shapeOf(preview: string): 'array' | 'object' | 'string' | 'nullish' | 'scalar' | 'unknown' {
+function shapeOf(
+  preview: string,
+): 'array' | 'object' | 'string' | 'nullish' | 'scalar' | 'unknown' {
   const p = preview.trim()
   if (NULLISH.has(p)) return 'nullish'
   if (p.startsWith('Array(')) return 'array'
@@ -239,8 +240,7 @@ function formatTrace(trace: TraceEntry[]): string {
  */
 export function buildErrorDossier(report: ErrorReport, opts: DossierOptions = {}): string {
   const msg = errorMessage(report)
-  const errName =
-    typeof report.error === 'object' ? (report.error.name ?? 'Error') : 'Error'
+  const errName = typeof report.error === 'object' ? (report.error.name ?? 'Error') : 'Error'
   const sections: string[] = []
 
   // 1. Error summary
@@ -264,10 +264,7 @@ export function buildErrorDossier(report: ErrorReport, opts: DossierOptions = {}
     )
   }
   const findingText = findings
-    .map(
-      (f) =>
-        `- **${f.code}** (confidence: ${f.confidence})\n  ${f.detail}`,
-    )
+    .map((f) => `- **${f.code}** (confidence: ${f.confidence})\n  ${f.detail}`)
     .join('\n')
   sections.push(`## Suspected cause (heuristic — verify, do not assume)\n\n${findingText}`)
 
@@ -281,10 +278,7 @@ export function buildErrorDossier(report: ErrorReport, opts: DossierOptions = {}
     if (diags.length > 0) {
       sections.push(
         `## Static issues in the component source (${diags.length})\n\n${diags
-          .map(
-            (d) =>
-              `- **${d.code}** (line ${d.line}): ${d.message}\n  Fix: \`${d.suggested}\``,
-          )
+          .map((d) => `- **${d.code}** (line ${d.line}): ${d.message}\n  Fix: \`${d.suggested}\``)
           .join('\n')}`,
       )
     } else {
@@ -298,9 +292,7 @@ export function buildErrorDossier(report: ErrorReport, opts: DossierOptions = {}
   if (opts.antiPatterns && opts.antiPatterns.length > 0) {
     const wanted = new Set<string>()
     for (const f of findings) for (const d of f.relatedDetectors) wanted.add(d)
-    const matched = opts.antiPatterns.filter((ap) =>
-      ap.detectorCodes.some((c) => wanted.has(c)),
-    )
+    const matched = opts.antiPatterns.filter((ap) => ap.detectorCodes.some((c) => wanted.has(c)))
     if (matched.length > 0) {
       sections.push(
         `## Related anti-patterns from the catalogue\n\n${matched

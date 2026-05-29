@@ -73,10 +73,7 @@ export default function BoardColumn(props: BoardColumnProps) {
     >
       <div class="column-header">
         <span>{() => column()?.title ?? ''}</span>
-        <span
-          class="column-count"
-          data-testid={`column-${props.columnId}-count`}
-        >
+        <span class="column-count" data-testid={`column-${props.columnId}-count`}>
           {() => column()?.cards.length ?? 0}
         </span>
       </div>
@@ -87,9 +84,7 @@ export default function BoardColumn(props: BoardColumnProps) {
             const cards = column()?.cards ?? []
             const term = getTerm().trim().toLowerCase()
             if (!term) return cards
-            return cards.filter((c) =>
-              c.title.toLowerCase().includes(term),
-            )
+            return cards.filter((c) => c.title.toLowerCase().includes(term))
           }}
           by={(c) => c.id}
         >
@@ -103,9 +98,7 @@ export default function BoardColumn(props: BoardColumnProps) {
             <textarea
               placeholder="Enter card title…"
               value={() => newTitle()}
-              onInput={(e) =>
-                newTitle.set((e.currentTarget as HTMLTextAreaElement).value)
-              }
+              onInput={(e) => newTitle.set((e.currentTarget as HTMLTextAreaElement).value)}
               autoFocus
               data-testid={`new-card-input-${props.columnId}`}
             />
@@ -113,9 +106,7 @@ export default function BoardColumn(props: BoardColumnProps) {
               <select
                 value={() => newPriority()}
                 onChange={(e) =>
-                  newPriority.set(
-                    (e.currentTarget as HTMLSelectElement).value as Priority,
-                  )
+                  newPriority.set((e.currentTarget as HTMLSelectElement).value as Priority)
                 }
               >
                 <option value="low">Low</option>

@@ -13,7 +13,7 @@ export default defineManifest({
     'lint(options) programmatic API + lintFile() low-level entry',
     'CLI: pyreon-lint with --preset / --fix / --watch / --format / --rule-options',
     '4 presets: recommended, strict, app, lib',
-    'Per-rule options via tuple form in config or `--rule-options id=\'{json}\'`',
+    "Per-rule options via tuple form in config or `--rule-options id='{json}'`",
     'AstCache (FNV-1a hash) for repeat runs',
     'LSP server for IDE integration (startLspServer)',
     'Inline suppression: // pyreon-lint-ignore <rule> OR // pyreon-lint-disable-next-line <rule>',

@@ -43,7 +43,16 @@ const SECONDARY = {
 
 function collapseOpt(
   candidates: string[],
-  sites: Record<string, { templateHtml: string; lightClass: string; darkClass: string; rules: string[]; ruleKey: string }>,
+  sites: Record<
+    string,
+    {
+      templateHtml: string
+      lightClass: string
+      darkClass: string
+      rules: string[]
+      ruleKey: string
+    }
+  >,
 ) {
   return {
     collapseRocketstyle: {
@@ -57,7 +66,11 @@ function collapseOpt(
 describe('compiler — dynamic-prop collapse emission (PR 3, ternary-of-two-literals)', () => {
   it('emits __rsCollapseDyn with stride-2 value-major classes + cond dispatcher', () => {
     const truthyKey = rocketstyleCollapseKey('Button', { state: 'primary', size: 'medium' }, 'Save')
-    const falsyKey = rocketstyleCollapseKey('Button', { state: 'secondary', size: 'medium' }, 'Save')
+    const falsyKey = rocketstyleCollapseKey(
+      'Button',
+      { state: 'secondary', size: 'medium' },
+      'Save',
+    )
     const src =
       'const x = <Button state={isPrimary ? "primary" : "secondary"} size="medium">Save</Button>'
     const { code } = transformJSX(
@@ -88,12 +101,14 @@ describe('compiler — dynamic-prop collapse emission (PR 3, ternary-of-two-lite
     )
     // Conditional import — dynamic-only modules pull `_rsCollapseDyn`
     // ONLY (tree-shake-friendly per-feature granularity).
-    expect(code).toContain('import { _rsCollapseDyn as __rsCollapseDyn } from "@pyreon/runtime-dom";')
+    expect(code).toContain(
+      'import { _rsCollapseDyn as __rsCollapseDyn } from "@pyreon/runtime-dom";',
+    )
     expect(code).not.toContain('_rsCollapse as __rsCollapse')
     expect(code).not.toContain('_rsCollapseH as __rsCollapseH')
   })
 
-  it('unions BOTH values\' rule bundles via injectRules (de-duped by ruleKey)', () => {
+  it("unions BOTH values' rule bundles via injectRules (de-duped by ruleKey)", () => {
     const truthyKey = rocketstyleCollapseKey('Button', { state: 'primary' }, 'X')
     const falsyKey = rocketstyleCollapseKey('Button', { state: 'secondary' }, 'X')
     const src = 'const x = <Button state={c ? "primary" : "secondary"}>X</Button>'
@@ -133,11 +148,7 @@ describe('compiler — dynamic-prop collapse emission (PR 3, ternary-of-two-lite
     // Only the truthy half resolved — falsy is absent (resolver returned
     // null for that variant). Half-resolved ⇒ keep the normal mount.
     const src = 'const x = <Button state={c ? "primary" : "secondary"}>S</Button>'
-    const { code } = transformJSX(
-      src,
-      'E.tsx',
-      collapseOpt(['Button'], { [truthyKey]: PRIMARY }),
-    )
+    const { code } = transformJSX(src, 'E.tsx', collapseOpt(['Button'], { [truthyKey]: PRIMARY }))
     expect(code).not.toContain('__rsCollapseDyn(')
     // Normal mount preserved — `<Button …>` JSX still appears (or its
     // standard `h()` form post-transform).
@@ -161,8 +172,7 @@ describe('compiler — dynamic-prop collapse emission (PR 3, ternary-of-two-lite
   it('BAILS when the dynamic site ALSO has on*-handlers (PR 3 scope: no-handler only)', () => {
     const truthyKey = rocketstyleCollapseKey('Button', { state: 'primary' }, 'H')
     const falsyKey = rocketstyleCollapseKey('Button', { state: 'secondary' }, 'H')
-    const src =
-      'const x = <Button state={c ? "primary" : "secondary"} onClick={go}>H</Button>'
+    const src = 'const x = <Button state={c ? "primary" : "secondary"} onClick={go}>H</Button>'
     const { code } = transformJSX(
       src,
       'G.tsx',

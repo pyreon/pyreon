@@ -114,7 +114,7 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
       data-checked={checked() || undefined}
       data-disabled={isDisabled() || undefined}
       data-value={own.value}
-      tabIndex={isDisabled() ? -1 : (checked() || !group.value()) ? 0 : -1}
+      tabIndex={isDisabled() ? -1 : checked() || !group.value() ? 0 : -1}
       onClick={select}
       onKeyDown={handleKeyDown}
     >

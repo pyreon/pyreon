@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — hotkeys snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/hotkeys — Keyboard shortcut management — scope-aware, modifier keys, conflict detection. By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnFormElements: true\` in options to override. Escape is a common candidate for this override."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/hotkeys — Keyboard shortcut management — scope-aware, modifier keys, conflict detection. By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnFormElements: true\` in options to override. Escape is a common candidate for this override."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

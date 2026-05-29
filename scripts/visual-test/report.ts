@@ -23,19 +23,13 @@ interface ScreenshotInfo {
 
 function collectScreenshots(): ScreenshotInfo[] {
   const baselines = new Set(
-    existsSync(BASELINE_DIR)
-      ? readdirSync(BASELINE_DIR).filter((f) => f.endsWith('.png'))
-      : [],
+    existsSync(BASELINE_DIR) ? readdirSync(BASELINE_DIR).filter((f) => f.endsWith('.png')) : [],
   )
   const currents = new Set(
-    existsSync(CURRENT_DIR)
-      ? readdirSync(CURRENT_DIR).filter((f) => f.endsWith('.png'))
-      : [],
+    existsSync(CURRENT_DIR) ? readdirSync(CURRENT_DIR).filter((f) => f.endsWith('.png')) : [],
   )
   const diffs = new Set(
-    existsSync(DIFF_DIR)
-      ? readdirSync(DIFF_DIR).filter((f) => f.endsWith('.png'))
-      : [],
+    existsSync(DIFF_DIR) ? readdirSync(DIFF_DIR).filter((f) => f.endsWith('.png')) : [],
   )
 
   const allNames = new Set([...baselines, ...currents])
@@ -68,13 +62,7 @@ function generateReport(): string {
   ]
 
   for (const s of screenshots) {
-    const status = !s.hasBaseline
-      ? 'NEW'
-      : !s.hasCurrent
-        ? 'MISSING'
-        : s.hasDiff
-          ? 'CHANGED'
-          : 'OK'
+    const status = !s.hasBaseline ? 'NEW' : !s.hasCurrent ? 'MISSING' : s.hasDiff ? 'CHANGED' : 'OK'
 
     lines.push(
       `| ${s.name} | ${s.hasBaseline ? 'yes' : '-'} | ${s.hasCurrent ? 'yes' : '-'} | ${status} |`,
@@ -93,7 +81,9 @@ function generateReport(): string {
     )
   }
   if (missing.length > 0) {
-    lines.push(`**${missing.length} missing screenshot(s)** — baselines exist but no current capture.`)
+    lines.push(
+      `**${missing.length} missing screenshot(s)** — baselines exist but no current capture.`,
+    )
   }
   if (changed.length > 0) {
     lines.push(

@@ -21,12 +21,12 @@ The interactive prompts walk through template choice, deployment adapter, featur
 
 Four curated starting points selected by the `--template` flag (or interactively):
 
-| Template | Default mode | What you get |
-| --- | --- | --- |
-| **`app`** | SSR streaming | Counter, posts, layout, admin route group — the full-featured starter. |
-| **`blog`** | Static (SSG) | Markdown-style TSX posts in `src/content/posts/`, RSS feed at `/rss.xml`, SEO-ready. |
-| **`dashboard`** | SSR streaming | SaaS shape: marketing landing → auth-gated `/app/*` routes (overview, users, invoices, settings) → invoice export demo using `@pyreon/document-primitives` (the same component tree renders in browser AND exports to PDF / email). |
-| **`monorepo`** | SSR streaming | Bun workspaces shell — `apps/web/` (full Pyreon Zero app, `app`-template shape) + `packages/ui/` (`@<name>/ui` shared components) + `packages/types/` (`@<name>/types` framework-agnostic shared types). Root `package.json` declares workspaces and proxies `dev`/`build`/`preview`/`typecheck` via `bun run --filter='web' …`. |
+| Template        | Default mode  | What you get                                                                                                                                                                                                                                                                                                                     |
+| --------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`app`**       | SSR streaming | Counter, posts, layout, admin route group — the full-featured starter.                                                                                                                                                                                                                                                           |
+| **`blog`**      | Static (SSG)  | Markdown-style TSX posts in `src/content/posts/`, RSS feed at `/rss.xml`, SEO-ready.                                                                                                                                                                                                                                             |
+| **`dashboard`** | SSR streaming | SaaS shape: marketing landing → auth-gated `/app/*` routes (overview, users, invoices, settings) → invoice export demo using `@pyreon/document-primitives` (the same component tree renders in browser AND exports to PDF / email).                                                                                              |
+| **`monorepo`**  | SSR streaming | Bun workspaces shell — `apps/web/` (full Pyreon Zero app, `app`-template shape) + `packages/ui/` (`@<name>/ui` shared components) + `packages/types/` (`@<name>/types` framework-agnostic shared types). Root `package.json` declares workspaces and proxies `dev`/`build`/`preview`/`typecheck` via `bun run --filter='web' …`. |
 
 Force a template non-interactively:
 
@@ -64,14 +64,14 @@ The `@<projectName>/` scope is auto-derived from the project name — no extra p
 
 Pick a target during the prompt or pass `--adapter`. Each adapter writes the platform-specific deploy artefact alongside the project, and the generated `vite.config.ts` automatically imports the matching `*Adapter()` factory from `@pyreon/zero/server`.
 
-| Adapter | Files written |
-| --- | --- |
-| `vercel` | `vercel.json` |
-| `cloudflare` | `wrangler.toml`, `_routes.json` |
-| `netlify` | `netlify.toml` |
-| `node` | `Dockerfile`, `.dockerignore` |
-| `bun` | `Dockerfile` (bun-based), `.dockerignore` |
-| `static` | (none — `dist/` is the artefact) |
+| Adapter      | Files written                             |
+| ------------ | ----------------------------------------- |
+| `vercel`     | `vercel.json`                             |
+| `cloudflare` | `wrangler.toml`, `_routes.json`           |
+| `netlify`    | `netlify.toml`                            |
+| `node`       | `Dockerfile`, `.dockerignore`             |
+| `bun`        | `Dockerfile` (bun-based), `.dockerignore` |
+| `static`     | (none — `dist/` is the artefact)          |
 
 ## Features
 
@@ -81,12 +81,12 @@ Pick a target during the prompt or pass `--adapter`. Each adapter writes the pla
 
 Four atomic shortcuts via `--preset`:
 
-| Preset | Feature set |
-| --- | --- |
-| `minimal` | (no features) |
-| `standard` | `store` + `query` + `forms` — today's `app` defaults |
-| `dashboard` | `standard` + `table` + `charts` |
-| `full` | every feature on (22 total) |
+| Preset      | Feature set                                          |
+| ----------- | ---------------------------------------------------- |
+| `minimal`   | (no features)                                        |
+| `standard`  | `store` + `query` + `forms` — today's `app` defaults |
+| `dashboard` | `standard` + `table` + `charts`                      |
+| `full`      | every feature on (22 total)                          |
 
 ```bash
 bunx create-pyreon-app my-app --preset standard --yes
@@ -119,10 +119,10 @@ Highest-priority flag wins; `--with-X` / `--no-X` overlay every priority:
 
 Two scaffolders that write **plain files into your project** — no Pyreon-side wrapper packages, no version coupling. You own the integration code and update it independently of Pyreon releases.
 
-| Integration | Files written | Replaces |
-| --- | --- | --- |
-| `supabase` | `src/lib/supabase.ts`, `src/lib/auth.ts`, `src/lib/db.ts` (in dashboard) | The dashboard template's in-memory auth + db stubs |
-| `email` | `src/lib/email.ts`, `src/emails/welcome.tsx`, `src/routes/api/email/welcome.ts` | — |
+| Integration | Files written                                                                   | Replaces                                           |
+| ----------- | ------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `supabase`  | `src/lib/supabase.ts`, `src/lib/auth.ts`, `src/lib/db.ts` (in dashboard)        | The dashboard template's in-memory auth + db stubs |
+| `email`     | `src/lib/email.ts`, `src/emails/welcome.tsx`, `src/routes/api/email/welcome.ts` | —                                                  |
 
 The `dashboard` template preselects both. For `app` / `blog`, integrations are off by default but selectable.
 
@@ -132,13 +132,13 @@ The email integration showcases the **document-primitives angle**: the same `<Do
 
 Multi-select for the AI rule files you want generated. All five share a canonical "Pyreon principles" body so the guidance stays consistent across tools.
 
-| Option | File | Default |
-| --- | --- | --- |
-| `mcp` | `.mcp.json` | ✓ |
-| `claude` | `CLAUDE.md` | ✓ |
-| `cursor` | `.cursor/rules/pyreon.md` | — |
-| `copilot` | `.github/copilot-instructions.md` | — |
-| `agents` | `AGENTS.md` | — |
+| Option    | File                              | Default |
+| --------- | --------------------------------- | ------- |
+| `mcp`     | `.mcp.json`                       | ✓       |
+| `claude`  | `CLAUDE.md`                       | ✓       |
+| `cursor`  | `.cursor/rules/pyreon.md`         | —       |
+| `copilot` | `.github/copilot-instructions.md` | —       |
+| `agents`  | `AGENTS.md`                       | —       |
 
 ## Compat mode
 
@@ -167,22 +167,22 @@ bunx create-pyreon-app my-blog --template blog --adapter cloudflare --yes
 bunx create-pyreon-app my-mono --template monorepo --preset standard --yes
 ```
 
-| Flag | Values |
-| --- | --- |
-| `--template` | `app` / `blog` / `dashboard` / `monorepo` |
-| `--adapter` | `vercel` / `cloudflare` / `netlify` / `node` / `bun` / `static` |
-| `--mode` | `ssr-stream` / `ssr-string` / `ssg` / `spa` |
-| `--preset` | `minimal` / `standard` / `dashboard` / `full` (composes with `--with-X` / `--no-X`) |
-| `--features` | csv (`store,query,forms,…`) — overrides `--preset` entirely |
-| `--with-<feature>` | atomic add (e.g. `--with-store --with-i18n`) |
-| `--no-<feature>` | atomic remove (e.g. `--no-forms`) |
-| `--integrations` | csv (`supabase,email`) |
-| `--ai` | csv (`mcp,claude,cursor,copilot,agents`) |
-| `--compat` | `none` / `react` / `vue` / `solid` / `preact` |
-| `--packages` | `meta` (single barrel) / `individual` (selected packages only) |
-| `--lint` / `--no-lint` | toggle `@pyreon/lint` |
-| `--yes` | accept defaults, skip prompts |
-| `--help`, `-h` | show usage |
+| Flag                   | Values                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `--template`           | `app` / `blog` / `dashboard` / `monorepo`                                           |
+| `--adapter`            | `vercel` / `cloudflare` / `netlify` / `node` / `bun` / `static`                     |
+| `--mode`               | `ssr-stream` / `ssr-string` / `ssg` / `spa`                                         |
+| `--preset`             | `minimal` / `standard` / `dashboard` / `full` (composes with `--with-X` / `--no-X`) |
+| `--features`           | csv (`store,query,forms,…`) — overrides `--preset` entirely                         |
+| `--with-<feature>`     | atomic add (e.g. `--with-store --with-i18n`)                                        |
+| `--no-<feature>`       | atomic remove (e.g. `--no-forms`)                                                   |
+| `--integrations`       | csv (`supabase,email`)                                                              |
+| `--ai`                 | csv (`mcp,claude,cursor,copilot,agents`)                                            |
+| `--compat`             | `none` / `react` / `vue` / `solid` / `preact`                                       |
+| `--packages`           | `meta` (single barrel) / `individual` (selected packages only)                      |
+| `--lint` / `--no-lint` | toggle `@pyreon/lint`                                                               |
+| `--yes`                | accept defaults, skip prompts                                                       |
+| `--help`, `-h`         | show usage                                                                          |
 
 ## What gets generated
 

@@ -146,7 +146,9 @@ describe('@pyreon/charts vitest.browser.config integration', () => {
     // Asserts the import + the use site. Two separate matches so a
     // partial removal (import without use, or use without import)
     // surfaces clearly.
-    expect(source).toMatch(/import\s*\{[^}]*tslibBrowserAlias[^}]*\}\s*from\s*['"]@pyreon\/vitest-config['"]/)
+    expect(source).toMatch(
+      /import\s*\{[^}]*tslibBrowserAlias[^}]*\}\s*from\s*['"]@pyreon\/vitest-config['"]/,
+    )
     expect(source).toMatch(/tslibBrowserAlias\s*\(\s*import\.meta\.url\s*\)/)
   })
 })

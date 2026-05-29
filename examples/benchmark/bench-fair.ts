@@ -205,9 +205,7 @@ async function main(): Promise<void> {
   if (args.throttle && args.throttle > 1) {
     console.log(`[bench-fair] CPU throttling enabled — rate ${args.throttle}×`)
   }
-  console.log(
-    `[bench-fair] running ${args.frameworks.length} framework(s) — each in a fresh page…`,
-  )
+  console.log(`[bench-fair] running ${args.frameworks.length} framework(s) — each in a fresh page…`)
 
   const suites: SuiteResult[] = []
   for (const framework of args.frameworks) {
@@ -236,7 +234,7 @@ async function main(): Promise<void> {
       methodology: {
         warmupMin: 5,
         warmupMax: 15,
-        stabilizeTolerance: 0.10,
+        stabilizeTolerance: 0.1,
         runs: 20,
         bootstrapResamples: 1000,
         pageIsolation: 'per-framework',
@@ -378,8 +376,9 @@ function printDiffTable(baseline: SuiteResult[], current: SuiteResult[]): void {
   for (const t of tests) {
     const cells = current.map((s) => {
       const cur = s.results.find((x) => x.name === t)?.median
-      const base = baseline.find((b) => b.framework === s.framework)?.results.find((x) => x.name === t)
-        ?.median
+      const base = baseline
+        .find((b) => b.framework === s.framework)
+        ?.results.find((x) => x.name === t)?.median
       if (cur === undefined || base === undefined) return pad('—', COLW)
       const ratio = cur / base
       const sign = ratio < 1 ? '✓' : ratio > 1.05 ? '✗' : '·'

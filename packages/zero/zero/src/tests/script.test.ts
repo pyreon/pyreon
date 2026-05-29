@@ -328,10 +328,7 @@ describe('useScript — real mount (covers onMount strategy machine)', () => {
   it('onIdle — schedules loadScript via requestIdleCallback or setTimeout fallback', async () => {
     const { mount, h, Script, container, cleanup } = await setup()
     try {
-      const unmount = mount(
-        h(Script, { src: '/idle.js', strategy: 'onIdle' }),
-        container,
-      )
+      const unmount = mount(h(Script, { src: '/idle.js', strategy: 'onIdle' }), container)
       expect(document.head.querySelector('script[src="/idle.js"]')).toBeNull()
       // happy-dom may have requestIdleCallback OR fall through to setTimeout(200).
       // Wait long enough for either.

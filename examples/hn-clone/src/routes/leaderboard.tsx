@@ -42,9 +42,7 @@ export default function LeaderboardPage() {
   const query = useQuery(() => ({
     queryKey: ['leaderboard-corpus'],
     queryFn: async () => {
-      const pages = await Promise.all(
-        [1, 2, 3, 4, 5].map((p) => fetchFeed('news', p)),
-      )
+      const pages = await Promise.all([1, 2, 3, 4, 5].map((p) => fetchFeed('news', p)))
       return pages.flat()
     },
     staleTime: 5 * 60 * 1000,
@@ -52,10 +50,7 @@ export default function LeaderboardPage() {
 
   // Aggregate via rx — same pipeline as /stats but reshape for table.
   const stories = computed<Story[]>(() => query.data() ?? [])
-  const byUser = groupBy(
-    stories as never,
-    (s: Story) => s.user ?? '(anon)',
-  )
+  const byUser = groupBy(stories as never, (s: Story) => s.user ?? '(anon)')
 
   const tableData = computed<UserRow[]>(() => {
     const grouped = (byUser as never as () => Record<string, Story[]>)()
@@ -108,9 +103,7 @@ export default function LeaderboardPage() {
         <h1>{() => t('nav.leaderboard')}</h1>
         <p class="leaderboard-meta">
           {() =>
-            query.isPending()
-              ? t('feed.loading')
-              : `${tableData().length} unique submitters`
+            query.isPending() ? t('feed.loading') : `${tableData().length} unique submitters`
           }
         </p>
       </header>
@@ -137,10 +130,7 @@ function LeaderboardTable(props: { table: Computed<Table<UserRow>> }) {
       <table class="leaderboard-table">
         <thead>
           <tr>
-            <For
-              each={() => props.table().getHeaderGroups()[0]?.headers ?? []}
-              by={(h) => h.id}
-            >
+            <For each={() => props.table().getHeaderGroups()[0]?.headers ?? []} by={(h) => h.id}>
               {(header) => {
                 const h = header as {
                   column: {
@@ -155,11 +145,7 @@ function LeaderboardTable(props: { table: Computed<Table<UserRow>> }) {
                   <th
                     data-testid={`th-${h.column.id}`}
                     class={() => (h.column.getCanSort() ? 'sortable' : '')}
-                    onClick={
-                      h.column.getCanSort()
-                        ? h.column.getToggleSortingHandler()
-                        : undefined
-                    }
+                    onClick={h.column.getCanSort() ? h.column.getToggleSortingHandler() : undefined}
                   >
                     {String(h.column.columnDef.header)}
                     {() => {

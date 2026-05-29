@@ -8,11 +8,7 @@ export default function ShowDemo() {
   on.subscribe((v) => (flag = v))
 
   return (
-    <Demo
-      title="Show (control-flow re-export)"
-      apis="Show"
-      code={`<Show when={flag}>…</Show>`}
-    >
+    <Demo title="Show (control-flow re-export)" apis="Show" code={`<Show when={flag}>…</Show>`}>
       <Show when={flag} fallback={<p class="muted">hidden</p>}>
         <p class="highlight">visible ✓</p>
       </Show>

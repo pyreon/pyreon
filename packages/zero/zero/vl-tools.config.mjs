@@ -1,7 +1,5 @@
 export default {
   build: {
-    external: [
-      /^node:/,
-    ],
+    external: [/^node:/],
   },
 }

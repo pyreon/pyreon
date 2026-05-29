@@ -25,19 +25,19 @@ PMTC targets a quadrant **no shipping framework occupies today**: real native wi
 
 The four-axis comparison that frames every other discussion in this doc:
 
-| Framework | Real native widgets? | Engine on device? | Web target? | Source language |
-|---|---|---|---|---|
-| **PMTC (claimed)** | **Yes (real SwiftUI + Compose)** | **No** | **Yes (DOM)** | TSX dialect |
-| Skip | **Yes (real Compose)** | No | No | Swift |
-| Compose Multiplatform | No (Skia on iOS) | No (Kotlin/Native) | Yes (JS/WASM) | Kotlin |
-| React Native (0.78+) | Yes (Fabric → UIKit/View) | **Yes (Hermes)** | Limited (RN Web) | React TSX |
-| Expo (= RN+toolchain) | (= RN) | (= RN) | (= RN Web) | React TSX |
-| NativeScript-Vue | Yes (UIKit/Android View) | **Yes (V8/JSC)** | No | Vue 3 |
-| Lynx | Yes (custom tree → platform views) | **Yes (PrimJS)** | Limited | TSX (ReactLynx) |
-| Flutter | **No (Impeller draws)** | No (Dart AOT) | Yes (WebGPU port WIP) | Dart |
-| Capacitor | **No (WebView)** | **Yes (in WebView)** | Yes (IS web) | Any web |
-| Tauri 2.0 (mobile) | **No (WebView)** | **Yes (in WebView)** | Yes | Any web + Rust |
-| Solid Native | (= RN) | (= RN) | No | TSX + Solid |
+| Framework             | Real native widgets?               | Engine on device?    | Web target?           | Source language |
+| --------------------- | ---------------------------------- | -------------------- | --------------------- | --------------- |
+| **PMTC (claimed)**    | **Yes (real SwiftUI + Compose)**   | **No**               | **Yes (DOM)**         | TSX dialect     |
+| Skip                  | **Yes (real Compose)**             | No                   | No                    | Swift           |
+| Compose Multiplatform | No (Skia on iOS)                   | No (Kotlin/Native)   | Yes (JS/WASM)         | Kotlin          |
+| React Native (0.78+)  | Yes (Fabric → UIKit/View)          | **Yes (Hermes)**     | Limited (RN Web)      | React TSX       |
+| Expo (= RN+toolchain) | (= RN)                             | (= RN)               | (= RN Web)            | React TSX       |
+| NativeScript-Vue      | Yes (UIKit/Android View)           | **Yes (V8/JSC)**     | No                    | Vue 3           |
+| Lynx                  | Yes (custom tree → platform views) | **Yes (PrimJS)**     | Limited               | TSX (ReactLynx) |
+| Flutter               | **No (Impeller draws)**            | No (Dart AOT)        | Yes (WebGPU port WIP) | Dart            |
+| Capacitor             | **No (WebView)**                   | **Yes (in WebView)** | Yes (IS web)          | Any web         |
+| Tauri 2.0 (mobile)    | **No (WebView)**                   | **Yes (in WebView)** | Yes                   | Any web + Rust  |
+| Solid Native          | (= RN)                             | (= RN)               | No                    | TSX + Solid     |
 
 **Bold cells are PMTC's three distinguishing claims**: real native widgets, no engine on device, web target included. **Exactly one row matches all three: PMTC.** Skip matches the first two but not web. CMP matches "no engine" and "web" but not "real widgets on iOS." Everything else trades at least two of the three.
 
@@ -54,6 +54,7 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 **Architecture**: Swift Package Manager build plugin. Two modes — **Skip Lite** transpiles Swift+SwiftUI to Kotlin+Compose at build time; **Skip Fuse** compiles Swift natively for Android using the official Swift SDK for Android. Either way, the Android app runs real Jetpack Compose widgets (Material 3). The iOS app is the unmodified Swift build. Source-level translation, no engine on device.
 
 **What they win**:
+
 - **Truly native on both platforms**. Skip's SkipUI library maps `SwiftUI.Divider` → `androidx.compose.material3.Divider`. The widgets on Android are real Compose primitives, not drawn pixels. Same axis PMTC claims, achieved today.
 - **iOS path is literally unchanged**. iOS builds are a normal Xcode build; Skip only adds the Android emission step. Zero risk to iOS DX.
 - **Shipping today**. 2,200+ Swift packages now build for Android via Skip. Production apps exist (mostly indie/small shops).
@@ -61,6 +62,7 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 - **Pure source-level**. No runtime engine, no bridge, no compromises in the iOS output.
 
 **Where they fall short of PMTC's pitch**:
+
 - **No web target**. Skip is iOS-first; web isn't in their plan. PMTC's pitch is "same source, web AND mobile" — Skip cannot serve the web side at all.
 - **Source language is Swift**. A web team using Pyreon today writes TSX. Skip would require rewriting in Swift. Zero migration path for web-first teams.
 - **SwiftUI subset, not full Swift**. SkipUI's coverage of SwiftUI is partial — large percentage but not complete. New SwiftUI features land in Skip with lag.
@@ -78,6 +80,7 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 **Architecture**: Kotlin/Native compiles the Compose runtime + your composables to a native binary. On iOS, the entire UI is drawn into a single `ComposeUIViewController` via Skia/Skiko — NOT into UIKit views. On Android the same code uses real Compose primitives. JS/WASM target also exists for web (Skia-rendered).
 
 **What they win**:
+
 - **JetBrains-scale backing**. Kotlin's parent company funds CMP development directly. Multi-year sustained investment is guaranteed in a way no indie framework can promise.
 - **iOS stable as of 1.8.0 (May 2025)**. Production-ready today. PMTC won't ship anything Phase-1-equivalent for ~1 year minimum.
 - **Production usage at scale**. Respawn (96% shared), Wrike, Physics Wallah (17M MAU), BiliBili IM. Real apps shipping with real users.
@@ -85,6 +88,7 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 - **Compose itself is the dominant Android UI framework now** — picking CMP doesn't fork the Android team off the platform default; they get to use the same APIs they'd use for Android-only.
 
 **Where they fall short of PMTC's pitch**:
+
 - **iOS UI is Skia-rendered, NOT UIKit widgets**. This is the central PMTC vs CMP axis. CMP renders Compose into a single iOS surface; the user touches a `ComposeUIViewController`, not UIKit views. Platform-native scrolling physics, gestures, accessibility — all must be re-implemented in Compose rather than inherited from UIKit.
 - **Source language is Kotlin**. A web team using Pyreon today writes TSX. CMP would require rewriting in Kotlin. Same problem as Skip's Swift requirement.
 - **iOS-platform accessibility is a known weakness** vs real UIKit. Compose's accessibility model maps imperfectly to iOS's VoiceOver expectations. JetBrains is working on it (1.10.x improvements to `UIKitInteropProperties`), but it's behind native.
@@ -103,14 +107,16 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 **Architecture**: Hermes JS engine on device + React (TSX/JSX) + Fabric renderer (C++ shared renderer producing real UIKit/Android Views) + TurboModules (native modules via JSI) + Bridgeless Mode (the legacy JSON bridge is gone). React 19 supported as of 0.78 (Feb 2025). New Architecture is the default starting with 0.79.
 
 **What they win**:
+
 - **Production-dominant**. 4M weekly npm downloads. Meta (Facebook, Instagram, Ads Manager, Messenger Desktop), Shopify (86% shared code), Discord (98% shared), Microsoft Office, Walmart, Coinbase, Bloomberg, Tesla, Pinterest, Uber Eats, Wix, Salesforce. The volume leader by a wide margin.
 - **Real native widgets via Fabric**. Not canvas, not WebView — Fabric produces actual UIKit views on iOS and Android Views on Android. The widget-level "native" claim is true.
 - **Massive ecosystem**. Every native module you can imagine has an RN binding. Camera, push, biometrics, payments, deep links — solved. PMTC has to build all of these from scratch as part of its 2-3-year window.
-- **Meta is now officially recommending Expo as the default RN framework** (quote from Nicola Corti, Meta: *"the only recommended community framework for React Native is Expo"*). One blessed path, mature toolchain.
+- **Meta is now officially recommending Expo as the default RN framework** (quote from Nicola Corti, Meta: _"the only recommended community framework for React Native is Expo"_). One blessed path, mature toolchain.
 - **OTA updates via EAS Update / CodePush**. Bug fixes ship in hours without App Store review. PMTC explicitly gives this up (no JS engine = no dynamic code) — a real loss for some teams.
 - **React 19 features land first**: `useActionState`, `useOptimistic`, `use`, Actions, ref-as-prop. The React ecosystem keeps evolving and RN follows close behind.
 
 **Where they fall short of PMTC's pitch**:
+
 - **JS engine on device**. Hermes still ships in the binary. ~5-10 MB cost. The runtime cost (memory, battery during heavy JS work) is real, even with Hermes's ahead-of-time bytecode compilation.
 - **Native output is NOT human-readable Swift/Kotlin**. The C++ Fabric layer produces native views at runtime via reflection — there is no "here's the SwiftUI code your component compiled to" inspection. PMTC's pitch ("Swift devs can read the output and recognize it as SwiftUI") is structurally impossible with RN.
 - **StyleSheet is not CSS**. RN's styling is a constrained subset (no cascade, JS object syntax, Yoga for layout). PMTC's claim of "same styler / unistyle / rocketstyle across platforms" is a step up from RN's "RN-only stylesheet, write platform-specific overrides for divergent styling."
@@ -126,9 +132,10 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 
 ### 4. Flutter — the cautionary tale for "draws its own widgets"
 
-**Architecture**: Dart AOT-compiled to native ARM binary, with the Impeller rendering engine (Metal on iOS, Vulkan on Android API 29+) drawing all UI onto a single platform surface. Widgets are Flutter's own — `Cupertino*` widgets *imitate* UIKit; they are not UIKit views.
+**Architecture**: Dart AOT-compiled to native ARM binary, with the Impeller rendering engine (Metal on iOS, Vulkan on Android API 29+) drawing all UI onto a single platform surface. Widgets are Flutter's own — `Cupertino*` widgets _imitate_ UIKit; they are not UIKit views.
 
 **What they win**:
+
 - **Mature, massive ecosystem**. ByteDance, Alibaba, BMW, Google Pay, eBay Motors, broad enterprise adoption.
 - **Single codebase truly works**. iOS, Android, web (via WebGPU port WIP), desktop, embedded — Flutter ships everywhere.
 - **Performance is excellent**. Impeller delivers ~50% frame rasterization improvements in 3.27 (Dec 2024). Dart AOT means no JIT churn.
@@ -136,6 +143,7 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 - **No JS engine, no bridge** — Dart compiles ahead-of-time. Same property PMTC claims, achieved years ago.
 
 **Where they fall short of PMTC's pitch**:
+
 - **Not native widgets — period**. This is the deepest structural difference. A Flutter `CupertinoButton` is Flutter's drawing of what UIKit's button looks like. The user is interacting with pixels, not a `UIButton`. PMTC's pitch ("structurally indistinguishable from hand-written SwiftUI") is the explicit opposite.
 - **Cupertino widgets lag real iOS by 1-2 OS releases**. When Apple ships a new UIKit visual treatment, Flutter has to manually re-implement it. The lag is permanent — Flutter can never catch up because it's reimplementing, not inheriting.
 - **Accessibility behavior diverges from platform expectations**. Flutter's accessibility tree is bridged to OS accessibility APIs, but the mapping is imperfect. Real UIKit views inherit accessibility for free; Flutter has to fake it.
@@ -153,12 +161,14 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 **Architecture**: Web app runs inside a system WebView (WKWebView iOS, Android WebView Android) with a native-bridge plugin system marshaling JSON to Swift/Kotlin code for platform APIs.
 
 **What they win**:
+
 - **Trivial migration from web**. Your existing React/Vue/Solid/whatever web app drops in as-is. No rewrite.
 - **Ship in days, not years**. PMTC is ~2-3 years. Capacitor is a weekend project.
 - **Mature**: years in production, Burger King app, Tim Hortons, Sworkit. Real shipping apps.
 - **Plugin ecosystem is mature** — Cordova plugins compatible, plus modern Capacitor plugins for every common native API.
 
 **Where they fall short of PMTC's pitch**:
+
 - **Not native widgets**. UI is HTML/CSS in a WebView. Everything PMTC says about "structurally indistinguishable from hand-written SwiftUI" is the opposite of Capacitor.
 - **WebView performance ceiling** = system WebView's ceiling. Complex gestures, scroll physics, animations — all worse than native.
 - **Bridge overhead** for every native API call. JSON serialization between JS and native code. Adds up at high traffic.
@@ -175,11 +185,13 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 **Architecture**: Rust core + system WebView (WKWebView iOS/macOS, WebView2 Windows, WebKitGTK Linux, Android System WebView) with Rust-driven IPC and Swift/Kotlin plugin authoring for mobile-specific APIs.
 
 **What they win**:
+
 - **Rust core gives better perf than pure-JS shells** for compute-heavy work.
 - **Smaller binary than Electron** by using the system WebView (no bundled Chromium).
 - **Tauri 2.0 (October 2024) added mobile support officially**. iOS + Android targets exist today.
 
 **Where they fall short of PMTC's pitch**:
+
 - **WebView UI**. Same problem as Capacitor — not native widgets, not native performance.
 - **Mobile is explicitly second-class** in the Tauri team's own framing. The 2.0 launch blog said "not the 'mobile as a first-class citizen' release."
 - **Mobile plugin ecosystem is small** vs Capacitor's mature plugin directory.
@@ -197,6 +209,7 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 **Architecture**: Custom dual-threaded native runtime — **PrimJS engine** (QuickJS-derived) + a separate "main thread" rendering pipeline producing a native UI tree. **ReactLynx** is the default JS framework; Vue/Svelte community ports exist. CSS for styles (real CSS, not RN StyleSheet).
 
 **What they win**:
+
 - **Real CSS support**. Selectors, variables, animations, transitions, gradients, masks. A real differentiator vs RN's constrained StyleSheet. PMTC's `@pyreon/styler` story is closer to Lynx's than to RN's.
 - **TikTok-class production usage**. Shipping inside TikTok's Search panel and TikTok Studio (the creator app). Real production scale (TikTok is one of the largest mobile apps on Earth).
 - **Native widget tree, not canvas**. Lynx produces native iOS/Android views (not Skia-drawn pixels).
@@ -204,6 +217,7 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 - **Open-sourced March 2025**, actively developed by ByteDance.
 
 **Where they fall short of PMTC's pitch**:
+
 - **PrimJS engine ships on device** — JS engine cost (memory, binary size, battery during hot paths). PMTC explicitly avoids this.
 - **Cannot scaffold a brand-new standalone app**. Lynx must be **embedded into an existing native host app**. PMTC apps can be standalone Xcode projects / Android Studio projects.
 - **No web target yet** (limited/early-stage). PMTC's web is first-class.
@@ -222,12 +236,14 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 **Architecture**: JS runtime (V8 Android, JavaScriptCore iOS) with **reflection-based access to native iOS/Android APIs**. Vue 3 SFCs render to a NativeScript view tree that instantiates real platform widgets (UILabel/UIButton on iOS, android.widget.TextView on Android). NativeScript 8.x adds experimental SwiftUI + Compose interop hooks.
 
 **What they win**:
+
 - **Real platform widgets**. Not canvas, not WebView — `UIView` / `android.view.View` instances. Same widget-level claim PMTC makes.
 - **Direct native API access from JS**. You can call `UIAlertController` directly from JS via reflection. Most-flexible native bridge among the cross-platform JS frameworks.
 - **Mature** (years in production). NativeScript itself at 8.8 mid-2025. NativeScript-Vue actively maintained.
 - **Vue 3 is the source language** — Composition API, SFCs, the full Vue ecosystem.
 
 **Where they fall short of PMTC's pitch**:
+
 - **JS engine on device**. V8 on Android, JSC on iOS. Same engine cost as RN.
 - **Reflection-based native access has perf cost on hot paths**. Calling `UIView` methods from JS via reflection is slower than the same call in Swift.
 - **Output is JS, not Swift/Kotlin source**. PMTC's "readable native output" claim doesn't translate — NativeScript runs JS that manipulates native views at runtime.
@@ -272,11 +288,12 @@ Each section structured: **what they win**, **where they fall short of PMTC's pi
 
 After surveying everything: **PMTC has exactly one genuinely-unoccupied strategic position**:
 
-> *"Same TSX source. Real SwiftUI on iOS. Real Compose on Android. Real DOM on web. No JS engine. No canvas. No WebView. Output reads as idiomatic platform code."*
+> _"Same TSX source. Real SwiftUI on iOS. Real Compose on Android. Real DOM on web. No JS engine. No canvas. No WebView. Output reads as idiomatic platform code."_
 
 This is the **"truly native + web + same source"** triple. The cells in the matrix that bold-mark for PMTC are the only row where all three are true.
 
 **Adjacent positions that aren't PMTC's**:
+
 - "Truly native + same source, but no web" → **Skip**
 - "Same source + web + native widgets, but JS engine" → **React Native + Expo**
 - "Same source + web + no engine, but Skia-rendered (not real widgets)" → **Compose Multiplatform**
@@ -355,6 +372,7 @@ This doc is a snapshot. Multiplatform UI moves fast. Re-survey before any major 
 - **Flutter**: bump every 6 months. Watch Cupertino widget fidelity vs new iOS releases.
 
 Re-do this entire survey if any of:
+
 - A new framework launches in PMTC's quadrant (real widgets + no engine + web + same source).
 - CMP or Skip announces a competing position (SwiftUI emit, or web target).
 - The PMTC Phase 0 spike succeeds and Phase 1 is being scoped.

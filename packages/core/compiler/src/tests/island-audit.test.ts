@@ -30,9 +30,10 @@ function makeFixture(): Fixture {
     write: (relPath, body) => {
       // Allow the caller to write under either `packages/` or `examples/`.
       // If the relPath doesn't start with one of those, default to packages/.
-      const top = relPath.startsWith('packages/') || relPath.startsWith('examples/')
-        ? relPath
-        : `packages/${relPath}`
+      const top =
+        relPath.startsWith('packages/') || relPath.startsWith('examples/')
+          ? relPath
+          : `packages/${relPath}`
       const full = join(root, top)
       mkdirSync(dirname(full), { recursive: true })
       writeFileSync(full, body)
@@ -359,10 +360,7 @@ describe('auditIslands — dead-island', () => {
          export const Counter = island(() => import('./CounterImpl'), { name: 'Counter', hydrate: 'load' })`,
       )
       f.write('a/src/CounterImpl.tsx', `export default () => null`)
-      f.write(
-        'a/src/index.ts',
-        `export { Counter } from './Counter'`,
-      )
+      f.write('a/src/index.ts', `export { Counter } from './Counter'`)
       const r = auditIslands(f.root)
       expect(findingCodes(r)).not.toContain('dead-island')
     } finally {

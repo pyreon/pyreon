@@ -39,7 +39,9 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('rejects non-POST methods with 405', async () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60 } })
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
         new Request('http://localhost/api/_pyreon-revalidate?path=/about&secret=' + VALID_SECRET),
       )
@@ -52,7 +54,9 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('rejects missing path / secret with 400', async () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60 } })
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
         new Request('http://localhost/api/_pyreon-revalidate', { method: 'POST' }),
       )
@@ -66,12 +70,13 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60 } })
     delete process.env.VERCEL_REVALIDATE_TOKEN
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
-        new Request(
-          'http://localhost/api/_pyreon-revalidate?path=/about&secret=anything',
-          { method: 'POST' },
-        ),
+        new Request('http://localhost/api/_pyreon-revalidate?path=/about&secret=anything', {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(500)
       expect(await res.text()).toContain('VERCEL_REVALIDATE_TOKEN')
@@ -83,12 +88,13 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('rejects wrong secret with 403', async () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60 } })
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
-        new Request(
-          'http://localhost/api/_pyreon-revalidate?path=/about&secret=wrong',
-          { method: 'POST' },
-        ),
+        new Request('http://localhost/api/_pyreon-revalidate?path=/about&secret=wrong', {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(403)
     } finally {
@@ -99,7 +105,9 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('rejects path NOT in manifest with 404 (closes secret-leak-arbitrary-path footgun)', async () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60, '/posts/1': 60 } })
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
         new Request(
           `http://localhost/api/_pyreon-revalidate?path=/admin/secrets&secret=${VALID_SECRET}`,
@@ -116,12 +124,13 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('happy path: valid POST + secret + manifest path returns 200', async () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60 } })
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(200)
       const body = (await res.json()) as { revalidated: boolean; path: string }
@@ -164,10 +173,9 @@ describe('vercelRevalidateHandler (M3.1)', () => {
         },
       })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(500)
       expect(await res.text()).toContain('upstream cache invalidation failed')
@@ -179,12 +187,13 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('returns 500 when manifest is missing', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-vercel-rev-nomanifest-'))
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(500)
       expect(await res.text()).toContain('unreadable or malformed')
@@ -197,12 +206,13 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-vercel-rev-malformed-'))
     writeFileSync(join(dir, '_pyreon-revalidate.json'), 'not valid json {')
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(500)
     } finally {
@@ -213,12 +223,13 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('returns 500 when manifest lacks `revalidate` field', async () => {
     const dir = makeManifestDir({ notRevalidate: { '/about': 60 } })
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+      })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(500)
     } finally {
@@ -261,10 +272,9 @@ describe('vercelRevalidateHandler (M3.1)', () => {
         manifestPath: join(dir, 'my-custom-manifest.json'),
       })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+          method: 'POST',
+        }),
       )
       expect(res.status).toBe(200)
     } finally {

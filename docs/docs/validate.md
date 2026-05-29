@@ -76,17 +76,17 @@ const stop = watchValid(emailSchema, $email, (valid) => {
 
 ### Available metadata
 
-| Field | Type | Use |
-| --- | --- | --- |
-| `label` | `string` | Human-readable form label. |
-| `hint` | `string` | Short helper text under the input. |
-| `placeholder` | `string` | Input placeholder. |
-| `defaultValue` | `unknown` | Initial value for `useForm`. |
-| `autoFocus` | `boolean` | Whether the input should auto-focus on mount. |
-| `autoComplete` | `string` | HTML autocomplete token (`'email'`, `'new-password'`, `'off'`, …). |
-| `i18nLabel` | `string` | i18n key — wins over `label` when `t` resolves. |
-| `i18nHint` | `string` | i18n key for `hint`. |
-| `i18nPlaceholder` | `string` | i18n key for `placeholder`. |
+| Field             | Type      | Use                                                                |
+| ----------------- | --------- | ------------------------------------------------------------------ |
+| `label`           | `string`  | Human-readable form label.                                         |
+| `hint`            | `string`  | Short helper text under the input.                                 |
+| `placeholder`     | `string`  | Input placeholder.                                                 |
+| `defaultValue`    | `unknown` | Initial value for `useForm`.                                       |
+| `autoFocus`       | `boolean` | Whether the input should auto-focus on mount.                      |
+| `autoComplete`    | `string`  | HTML autocomplete token (`'email'`, `'new-password'`, `'off'`, …). |
+| `i18nLabel`       | `string`  | i18n key — wins over `label` when `t` resolves.                    |
+| `i18nHint`        | `string`  | i18n key for `hint`.                                               |
+| `i18nPlaceholder` | `string`  | i18n key for `placeholder`.                                        |
 
 ### Reading metadata
 
@@ -215,7 +215,7 @@ import { bindSchema } from '@pyreon/validation'
 
 const form = useForm({
   initialValues: { email: '' },
-  schema: bindSchema(z.object({ email: z.string().email() })),  // or valibot, or arktype
+  schema: bindSchema(z.object({ email: z.string().email() })), // or valibot, or arktype
   onSubmit: (v) => save(v),
 })
 ```

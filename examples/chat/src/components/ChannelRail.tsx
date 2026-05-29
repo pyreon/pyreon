@@ -30,9 +30,7 @@ export default function ChannelRail() {
           {(c) => (
             <RouterLink
               to={`/channels/${c.id}`}
-              class={() =>
-                `channel-link ${activeId() === c.id ? 'active' : ''}`
-              }
+              class={() => `channel-link ${activeId() === c.id ? 'active' : ''}`}
               data-testid={`channel-link-${c.id}`}
             >
               <span class="channel-hash">#</span>

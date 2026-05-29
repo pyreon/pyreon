@@ -432,9 +432,7 @@ async function runPreviewSmoke(
     }
     const contentType = response.headers.get('content-type') ?? ''
     if (!contentType.includes('html')) {
-      throw new Error(
-        `preview returned non-HTML content-type "${contentType}" from ${url}`,
-      )
+      throw new Error(`preview returned non-HTML content-type "${contentType}" from ${url}`)
     }
 
     // Cell-defined assertion (e.g. asserts specific text or marker present).
@@ -486,7 +484,9 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
   // doesn't conflict with Pyreon's outer workspace discovery. Non-isolated
   // cells go under examples/ so @pyreon/* deps resolve to local source.
   const isolated = cell.isolated === true
-  const parentDir = isolated ? mkdtempSync(join(tmpdir(), 'cpa-smoke-')) : join(REPO_ROOT, 'examples')
+  const parentDir = isolated
+    ? mkdtempSync(join(tmpdir(), 'cpa-smoke-'))
+    : join(REPO_ROOT, 'examples')
   const projectDir = join(parentDir, cell.name)
   const start = Date.now()
 
@@ -534,7 +534,8 @@ async function main(): Promise<void> {
   const keep = args.includes('--keep')
   const filters = args.filter((a) => !a.startsWith('--'))
 
-  const cells = filters.length === 0 ? MATRIX : MATRIX.filter((c) => filters.some((f) => c.name.includes(f)))
+  const cells =
+    filters.length === 0 ? MATRIX : MATRIX.filter((c) => filters.some((f) => c.name.includes(f)))
 
   if (cells.length === 0) {
     console.error(`No cells match filter(s): ${filters.join(', ')}`)

@@ -179,9 +179,7 @@ export interface EditorBinding {
  * binding.dispose()
  * ```
  */
-export function bindEditorToSignal<T>(
-  options: BindEditorToSignalOptions<T>,
-): EditorBinding {
+export function bindEditorToSignal<T>(options: BindEditorToSignalOptions<T>): EditorBinding {
   const { editor, signal, serialize, parse, onParseError } = options
 
   // The two flags break the format-on-input race documented in the

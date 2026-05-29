@@ -97,9 +97,7 @@ export interface AuditTypesGateOptions {
   packages?: string[]
 }
 
-export const runAuditTypesGate = async (
-  opts: AuditTypesGateOptions,
-): Promise<GateResult> => {
+export const runAuditTypesGate = async (opts: AuditTypesGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
   const scriptPath = join(opts.cwd, 'scripts/audit-types.ts')

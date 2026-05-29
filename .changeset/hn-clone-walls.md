@@ -38,7 +38,7 @@ the next two lines were left behind:
 
 ```ts
 // scaffold output — broken
-const sidebarOpen = app.store.sidebarOpen     // app is undefined
+const sidebarOpen = app.store.sidebarOpen // app is undefined
 const toggleSidebar = app.store.toggleSidebar // app is undefined
 ```
 
@@ -105,6 +105,6 @@ implementation.
 - W4 verified: `/throw` test route surfaces "Intentional test error..."
   message + stack in the rendered body + `console.error`
 - W1 verified: scaffold output of `create-pyreon-app w1-test-2 --features
-  query` has zero `app.store.` or `useAppStore` references
+query` has zero `app.store.` or `useAppStore` references
 - W6 verified: `page.on('console')` warning capture returns empty on every
   page load (previously: one warning per page)

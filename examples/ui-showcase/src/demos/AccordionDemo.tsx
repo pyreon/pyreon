@@ -1,5 +1,11 @@
 import { signal } from '@pyreon/reactivity'
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent, Title } from '@pyreon/ui-components'
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+  Title,
+} from '@pyreon/ui-components'
 
 function AccordionEntry(props: { title: string; content: string; defaultOpen?: boolean }) {
   const open = signal(props.defaultOpen ?? false)
@@ -8,13 +14,9 @@ function AccordionEntry(props: { title: string; content: string; defaultOpen?: b
     <AccordionItem>
       <AccordionTrigger onClick={() => open.set(!open())}>
         <span>{props.title}</span>
-        <span>{() => open() ? '−' : '+'}</span>
+        <span>{() => (open() ? '−' : '+')}</span>
       </AccordionTrigger>
-      <div>
-        {() => open() ? (
-          <AccordionContent>{props.content}</AccordionContent>
-        ) : null}
-      </div>
+      <div>{() => (open() ? <AccordionContent>{props.content}</AccordionContent> : null)}</div>
     </AccordionItem>
   )
 }
@@ -22,7 +24,9 @@ function AccordionEntry(props: { title: string; content: string; defaultOpen?: b
 export function AccordionDemo() {
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Accordion</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Accordion
+      </Title>
 
       <Accordion style="max-width: 600px;">
         <AccordionEntry

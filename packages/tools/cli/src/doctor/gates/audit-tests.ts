@@ -33,9 +33,7 @@ const RISK_RANK: Record<AuditRisk, number> = {
   low: 1,
 }
 
-export const runAuditTestsGate = async (
-  opts: AuditTestsGateOptions,
-): Promise<GateResult> => {
+export const runAuditTestsGate = async (opts: AuditTestsGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
   const minRisk = opts.minRisk ?? 'medium'

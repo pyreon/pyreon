@@ -426,6 +426,5 @@ describe('makeItResponsive', () => {
       // New outer theme object → no render cache hit → media template re-runs
       expect(xsCalls).toBeGreaterThan(callsAfterA)
     })
-
   })
 })

@@ -19,10 +19,7 @@ import {
   startLpihPolling,
   writeLpihCache,
 } from '../lpih'
-import {
-  __resetReactiveDevtoolsForTesting,
-  activateReactiveDevtools,
-} from '../reactive-devtools'
+import { __resetReactiveDevtoolsForTesting, activateReactiveDevtools } from '../reactive-devtools'
 import { signal } from '../signal'
 
 let TMP_DIR: string
@@ -147,9 +144,7 @@ describe('writeLpihCache — defensive cleanup', () => {
 
     // No tmp file should be left behind in TMP_DIR.
     const files = await fs.readdir(TMP_DIR)
-    const tmpFiles = files.filter(
-      (f) => f.startsWith('target-as-dir.tmp.') || f.includes('.tmp.'),
-    )
+    const tmpFiles = files.filter((f) => f.startsWith('target-as-dir.tmp.') || f.includes('.tmp.'))
     expect(tmpFiles).toEqual([])
     void s
   })

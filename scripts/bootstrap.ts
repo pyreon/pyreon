@@ -173,9 +173,7 @@ function maxFileMtime(dir: string): number {
 // want lib/ built after `bun install` for example builds to work).
 if (process.env.PYREON_BOOTSTRAP_SKIP === '1') {
   // oxlint-disable-next-line no-console
-  console.log(
-    '[bootstrap] Skipped (PYREON_BOOTSTRAP_SKIP=1). lib/ must be built separately.',
-  )
+  console.log('[bootstrap] Skipped (PYREON_BOOTSTRAP_SKIP=1). lib/ must be built separately.')
   process.exit(0)
 }
 
@@ -400,9 +398,7 @@ const firstPassDirtyCount = stillDirty.length
 let retryFixedCount = 0
 if (stillDirty.length > 0 && !forceFail) {
   // oxlint-disable-next-line no-console
-  console.log(
-    `\n[bootstrap] Retrying ${stillDirty.length} still-dirty package(s) sequentially…`,
-  )
+  console.log(`\n[bootstrap] Retrying ${stillDirty.length} still-dirty package(s) sequentially…`)
   const retried = [...stillDirty]
   stillDirty = []
   for (const pkg of retried) {

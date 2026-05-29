@@ -177,7 +177,7 @@ describe('pyreon/no-iterate-children-without-resolve', () => {
       expect(diagIds(result)).not.toContain('pyreon/no-iterate-children-without-resolve')
     })
 
-    it('outer mitigation on `props.children` does NOT cover INNER inline-component\'s `innerProps.children`', () => {
+    it("outer mitigation on `props.children` does NOT cover INNER inline-component's `innerProps.children`", () => {
       // Gap 3: mitigations track PER-SOURCE-PATH, not "any mitigation
       // anywhere in scope chain." Outer resolves `props.children` →
       // `unwrappedSources = {'props.children'}` + `safeIdents = {'child'}`.

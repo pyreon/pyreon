@@ -42,14 +42,7 @@ export interface CliArgs {
 }
 
 const TEMPLATE_VALUES: TemplateId[] = ['app', 'blog', 'dashboard', 'monorepo']
-const ADAPTER_VALUES: AdapterId[] = [
-  'vercel',
-  'cloudflare',
-  'netlify',
-  'node',
-  'bun',
-  'static',
-]
+const ADAPTER_VALUES: AdapterId[] = ['vercel', 'cloudflare', 'netlify', 'node', 'bun', 'static']
 const MODE_VALUES: RenderMode[] = ['ssr-stream', 'ssr-string', 'ssg', 'spa']
 const INTEGRATION_VALUES: IntegrationId[] = ['supabase', 'email']
 const AI_VALUES: AiToolId[] = ['mcp', 'claude', 'cursor', 'copilot', 'agents']
@@ -150,11 +143,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
           out.features = parseCsv(consumeValue())
           break
         case 'integrations':
-          out.integrations = parseEnumCsv(
-            consumeValue(),
-            INTEGRATION_VALUES,
-            '--integrations',
-          )
+          out.integrations = parseEnumCsv(consumeValue(), INTEGRATION_VALUES, '--integrations')
           break
         case 'ai':
           out.ai = parseEnumCsv(consumeValue(), AI_VALUES, '--ai')
@@ -165,11 +154,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
         case 'pm':
         case 'packages':
         case 'package-strategy':
-          out.packageStrategy = pickEnum(
-            consumeValue(),
-            PKG_STRATEGY_VALUES,
-            '--packages',
-          )
+          out.packageStrategy = pickEnum(consumeValue(), PKG_STRATEGY_VALUES, '--packages')
           break
         default:
           throw new Error(`Unknown flag: ${a}. Run with --help for usage.`)
@@ -206,9 +191,7 @@ function parseEnumCsv<T extends string>(
   if (parts === undefined) return undefined
   for (const p of parts) {
     if (!(allowed as readonly string[]).includes(p)) {
-      throw new Error(
-        `Invalid value "${p}" for ${flag}. Expected one of: ${allowed.join(', ')}.`,
-      )
+      throw new Error(`Invalid value "${p}" for ${flag}. Expected one of: ${allowed.join(', ')}.`)
     }
   }
   return parts as T[]
@@ -221,9 +204,7 @@ function pickEnum<T extends string>(
 ): T | undefined {
   if (raw === undefined) return undefined
   if (!(allowed as readonly string[]).includes(raw)) {
-    throw new Error(
-      `Invalid value "${raw}" for ${flag}. Expected one of: ${allowed.join(', ')}.`,
-    )
+    throw new Error(`Invalid value "${raw}" for ${flag}. Expected one of: ${allowed.join(', ')}.`)
   }
   return raw as T
 }

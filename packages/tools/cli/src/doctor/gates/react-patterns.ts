@@ -16,17 +16,10 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import {
-  detectReactPatterns,
-  hasReactPatterns,
-  migrateReactCode,
-} from '@pyreon/compiler'
+import { detectReactPatterns, hasReactPatterns, migrateReactCode } from '@pyreon/compiler'
 
 import type { Finding, GateResult } from '../types'
-import {
-  collectFirstPartySourceFiles,
-  isCompatPackageFile,
-} from '../utils/walk'
+import { collectFirstPartySourceFiles, isCompatPackageFile } from '../utils/walk'
 
 export interface ReactPatternsGateOptions {
   cwd: string
@@ -34,17 +27,13 @@ export interface ReactPatternsGateOptions {
   fix?: boolean | undefined
 }
 
-export const runReactPatternsGate = async (
-  opts: ReactPatternsGateOptions,
-): Promise<GateResult> => {
+export const runReactPatternsGate = async (opts: ReactPatternsGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
   // First-party source only, and NOT the `*-compat` packages: a React/
   // Vue/etc. compatibility shim exposing `useState` / `className` is its
   // literal purpose — flagging it is a definitional false positive.
-  const files = collectFirstPartySourceFiles(opts.cwd).filter(
-    (f) => !isCompatPackageFile(f),
-  )
+  const files = collectFirstPartySourceFiles(opts.cwd).filter((f) => !isCompatPackageFile(f))
 
   for (const file of files) {
     let code: string

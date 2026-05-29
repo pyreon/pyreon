@@ -47,11 +47,7 @@ describe('<Stack> — web', () => {
 
   it('honors direction="row" + align="center" + justify="between"', () => {
     const { container, unmount } = mountInBrowser(
-      h(
-        Stack,
-        { direction: 'row', align: 'center', justify: 'between' },
-        h('span', null, 'a'),
-      ),
+      h(Stack, { direction: 'row', align: 'center', justify: 'between' }, h('span', null, 'a')),
     )
     const cs = getComputedStyle(container.firstElementChild as HTMLDivElement)
     expect(cs.flexDirection).toBe('row')
@@ -163,11 +159,11 @@ describe('<Press> — web', () => {
 
   it('Enter key triggers onPress (ARIA-button keyboard contract)', async () => {
     let pressed = 0
-    const { container, unmount } = mountInBrowser(
-      h(Press, { onPress: () => pressed++ }, 'tap'),
-    )
+    const { container, unmount } = mountInBrowser(h(Press, { onPress: () => pressed++ }, 'tap'))
     const root = container.firstElementChild as HTMLDivElement
-    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    root.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    )
     await flush()
     expect(pressed).toBe(1)
     unmount()
@@ -175,9 +171,7 @@ describe('<Press> — web', () => {
 
   it('Space key triggers onPress (ARIA-button keyboard contract)', async () => {
     let pressed = 0
-    const { container, unmount } = mountInBrowser(
-      h(Press, { onPress: () => pressed++ }, 'tap'),
-    )
+    const { container, unmount } = mountInBrowser(h(Press, { onPress: () => pressed++ }, 'tap'))
     const root = container.firstElementChild as HTMLDivElement
     root.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }))
     await flush()
@@ -508,8 +502,7 @@ describe('<Icon> — web', () => {
     // App-provided sprite — the documented zero-bundle pattern.
     const sprite = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     sprite.style.display = 'none'
-    sprite.innerHTML =
-      '<symbol id="check" viewBox="0 0 16 16"><path d="M2 8l4 4 8-8" /></symbol>'
+    sprite.innerHTML = '<symbol id="check" viewBox="0 0 16 16"><path d="M2 8l4 4 8-8" /></symbol>'
     document.body.appendChild(sprite)
 
     const { container, unmount } = mountInBrowser(

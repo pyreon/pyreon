@@ -1,5 +1,5 @@
-import type { ApiContext } from "@pyreon/zero/api-routes"
-import { getSession } from "../../lib/auth"
+import type { ApiContext } from '@pyreon/zero/api-routes'
+import { getSession } from '../../lib/auth'
 
 /**
  * Server-side session lookup endpoint. Reads the `sid` cookie from the
@@ -14,7 +14,7 @@ import { getSession } from "../../lib/auth"
  * navigate CSR-side after a successful login without false redirects.
  */
 export async function GET(ctx: ApiContext) {
-  const cookie = ctx.request.headers.get("cookie") ?? ""
+  const cookie = ctx.request.headers.get('cookie') ?? ''
   const sid = /(?:^|;\s*)sid=([^;]+)/.exec(cookie)?.[1]
   const session = await getSession(sid)
   return Response.json({ session })

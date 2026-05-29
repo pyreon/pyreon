@@ -59,20 +59,20 @@ pyreon-lint --config ./custom-lint.json
 
 ### Options
 
-| Option              | Description                                             |
-| ------------------- | ------------------------------------------------------- |
-| `--preset <name>`   | Preset: `recommended` (default), `strict`, `app`, `lib`, `best-practices` |
-| `--fix`             | Auto-fix fixable issues                                 |
-| `--format <fmt>`    | Output: `text` (default), `json`, `compact`             |
-| `--quiet`           | Only show errors (hide warnings and info)               |
-| `--watch`           | Watch mode — re-lint on file changes                    |
-| `--list`            | List all available rules                                |
-| `--rule <id>=<sev>` | Override rule severity                                  |
-| `--rule-options <id>=<json>` | Override per-rule options (JSON object)        |
-| `--config <path>`   | Custom config file path                                 |
-| `--ignore <path>`   | Custom ignore file path                                 |
-| `--version, -v`     | Show version                                            |
-| `--help, -h`        | Show help                                               |
+| Option                       | Description                                                               |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `--preset <name>`            | Preset: `recommended` (default), `strict`, `app`, `lib`, `best-practices` |
+| `--fix`                      | Auto-fix fixable issues                                                   |
+| `--format <fmt>`             | Output: `text` (default), `json`, `compact`                               |
+| `--quiet`                    | Only show errors (hide warnings and info)                                 |
+| `--watch`                    | Watch mode — re-lint on file changes                                      |
+| `--list`                     | List all available rules                                                  |
+| `--rule <id>=<sev>`          | Override rule severity                                                    |
+| `--rule-options <id>=<json>` | Override per-rule options (JSON object)                                   |
+| `--config <path>`            | Custom config file path                                                   |
+| `--ignore <path>`            | Custom ignore file path                                                   |
+| `--version, -v`              | Show version                                                              |
+| `--help, -h`                 | Show help                                                                 |
 
 ## Configuration
 
@@ -87,10 +87,7 @@ Create `.pyreonlintrc.json` in your project root:
   "rules": {
     "pyreon/no-classname": "off",
     "pyreon/no-eager-import": "warn",
-    "pyreon/no-window-in-ssr": [
-      "error",
-      { "exemptPaths": ["src/foundation/"] }
-    ]
+    "pyreon/no-window-in-ssr": ["error", { "exemptPaths": ["src/foundation/"] }]
   },
   "include": ["src/**/*.{ts,tsx}"],
   "exclude": ["**/*.test.ts", "**/generated/**"]
@@ -211,21 +208,21 @@ Every opt-in rule's message is prescriptive (states the fix) so an AI assistant 
 
 ### Reactivity (13)
 
-| Rule                            | Severity | Fixable | Description                                                                        |
-| ------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
-| `pyreon/no-bare-signal-in-jsx`  | error    | yes     | `{count()}` won't be reactive — wrap in `() => count()`                            |
-| `pyreon/no-signal-in-loop`      | error    |         | `signal()` inside loops creates signals on every iteration                         |
-| `pyreon/no-signal-in-props`     | warn     |         | `<C x={sig()} />` captures the value once unless the compiler wraps it             |
-| `pyreon/no-async-effect`        | error    |         | `async` in `effect`/`renderEffect`/`computed` — reads after `await` aren't tracked |
-| `pyreon/no-context-destructure` | warn     |         | Destructuring `useContext()` breaks reactivity when the provider uses getters      |
-| `pyreon/no-signal-call-write`   | error    |         | `sig(value)` does NOT write — use `sig.set(value)` / `sig.update(fn)`              |
-| `pyreon/no-nested-effect`       | warn     |         | `effect()` inside `effect()` — use `computed()`                                    |
-| `pyreon/no-peek-in-tracked`     | error    |         | `.peek()` inside effect/computed bypasses tracking                                 |
-| `pyreon/no-unbatched-updates`   | warn     |         | 3+ `.set()` calls without `batch()`                                                |
-| `pyreon/prefer-computed`        | warn     |         | `effect()` that only sets a signal — use `computed()`                              |
-| `pyreon/no-effect-assignment`   | warn     |         | `effect(() => signal.update(...))` — use `computed()`                              |
-| `pyreon/no-signal-leak`         | warn     |         | Signal created but never read                                                      |
-| `pyreon/storage-signal-v-forwarding` | error |        | Signal-like wrapper callable missing `_v` forwarding — breaks `_bindText` fast path |
+| Rule                                 | Severity | Fixable | Description                                                                         |
+| ------------------------------------ | -------- | ------- | ----------------------------------------------------------------------------------- |
+| `pyreon/no-bare-signal-in-jsx`       | error    | yes     | `{count()}` won't be reactive — wrap in `() => count()`                             |
+| `pyreon/no-signal-in-loop`           | error    |         | `signal()` inside loops creates signals on every iteration                          |
+| `pyreon/no-signal-in-props`          | warn     |         | `<C x={sig()} />` captures the value once unless the compiler wraps it              |
+| `pyreon/no-async-effect`             | error    |         | `async` in `effect`/`renderEffect`/`computed` — reads after `await` aren't tracked  |
+| `pyreon/no-context-destructure`      | warn     |         | Destructuring `useContext()` breaks reactivity when the provider uses getters       |
+| `pyreon/no-signal-call-write`        | error    |         | `sig(value)` does NOT write — use `sig.set(value)` / `sig.update(fn)`               |
+| `pyreon/no-nested-effect`            | warn     |         | `effect()` inside `effect()` — use `computed()`                                     |
+| `pyreon/no-peek-in-tracked`          | error    |         | `.peek()` inside effect/computed bypasses tracking                                  |
+| `pyreon/no-unbatched-updates`        | warn     |         | 3+ `.set()` calls without `batch()`                                                 |
+| `pyreon/prefer-computed`             | warn     |         | `effect()` that only sets a signal — use `computed()`                               |
+| `pyreon/no-effect-assignment`        | warn     |         | `effect(() => signal.update(...))` — use `computed()`                               |
+| `pyreon/no-signal-leak`              | warn     |         | Signal created but never read                                                       |
+| `pyreon/storage-signal-v-forwarding` | error    |         | Signal-like wrapper callable missing `_v` forwarding — breaks `_bindText` fast path |
 
 ### JSX (11)
 
@@ -245,23 +242,23 @@ Every opt-in rule's message is prescriptive (states the fix) so an AI assistant 
 
 ### Lifecycle (5)
 
-| Rule                                    | Severity | Description                                                                       |
-| --------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `pyreon/no-missing-cleanup`             | warn     | `onMount` with timer/listener but no cleanup return                               |
-| `pyreon/no-mount-in-effect`             | warn     | `onMount()` inside `effect()` runs every re-execution                             |
-| `pyreon/no-effect-in-mount`             | info     | `effect()` inside `onMount()` is redundant                                        |
-| `pyreon/no-dom-in-setup`                | warn     | DOM access in component setup — use `onMount`                                     |
-| `pyreon/no-imperative-effect-on-create` | warn     | `effect()` doing DOM/IO/timer work at component setup — move it into `onMount()`  |
+| Rule                                    | Severity | Description                                                                      |
+| --------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| `pyreon/no-missing-cleanup`             | warn     | `onMount` with timer/listener but no cleanup return                              |
+| `pyreon/no-mount-in-effect`             | warn     | `onMount()` inside `effect()` runs every re-execution                            |
+| `pyreon/no-effect-in-mount`             | info     | `effect()` inside `onMount()` is redundant                                       |
+| `pyreon/no-dom-in-setup`                | warn     | DOM access in component setup — use `onMount`                                    |
+| `pyreon/no-imperative-effect-on-create` | warn     | `effect()` doing DOM/IO/timer work at component setup — move it into `onMount()` |
 
 ### Performance (5)
 
-| Rule                                    | Severity | Description                                                            |
-| --------------------------------------- | -------- | ---------------------------------------------------------------------- |
-| `pyreon/no-large-for-without-by`        | error    | `<For>` without `by` — O(n) reconciliation                             |
-| `pyreon/no-effect-in-for`               | warn     | `effect()` inside `<For>` creates N effects                            |
-| `pyreon/no-heavy-import-only-in-handler`| warn     | Heavy module imported statically but used only in a deferred scope — use a dynamic `import()` |
-| `pyreon/no-eager-import`                | info     | Static import of heavy packages — use `lazy()`                         |
-| `pyreon/prefer-show-over-display`       | info     | Conditional `display` style — use `<Show>`                             |
+| Rule                                     | Severity | Description                                                                                   |
+| ---------------------------------------- | -------- | --------------------------------------------------------------------------------------------- |
+| `pyreon/no-large-for-without-by`         | error    | `<For>` without `by` — O(n) reconciliation                                                    |
+| `pyreon/no-effect-in-for`                | warn     | `effect()` inside `<For>` creates N effects                                                   |
+| `pyreon/no-heavy-import-only-in-handler` | warn     | Heavy module imported statically but used only in a deferred scope — use a dynamic `import()` |
+| `pyreon/no-eager-import`                 | info     | Static import of heavy packages — use `lazy()`                                                |
+| `pyreon/prefer-show-over-display`        | info     | Conditional `display` style — use `<Show>`                                                    |
 
 ### SSR (3)
 
@@ -296,11 +293,11 @@ Every opt-in rule's message is prescriptive (states the fix) so an AI assistant 
 
 Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
 
-| Rule                              | Severity | Description                                                                            |
-| --------------------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `pyreon/revalidate-not-pure-literal` | error | `export const revalidate` must be a numeric literal or `false` — non-literals are silently dropped from the build-time ISR manifest |
-| `pyreon/missing-get-static-paths` | warn     | Dynamic route (`[id].tsx` / `[...slug].tsx`) without `export const getStaticPaths` — silently skipped by SSG auto-detect |
-| `pyreon/invalid-loader-export`    | error    | `export const loader` is not callable — crashes the SSR runtime with `loader is not a function` |
+| Rule                                 | Severity | Description                                                                                                                         |
+| ------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `pyreon/revalidate-not-pure-literal` | error    | `export const revalidate` must be a numeric literal or `false` — non-literals are silently dropped from the build-time ISR manifest |
+| `pyreon/missing-get-static-paths`    | warn     | Dynamic route (`[id].tsx` / `[...slug].tsx`) without `export const getStaticPaths` — silently skipped by SSG auto-detect            |
+| `pyreon/invalid-loader-export`       | error    | `export const loader` is not callable — crashes the SSR runtime with `loader is not a function`                                     |
 
 ### Store (3)
 
@@ -312,12 +309,12 @@ Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
 
 ### Form (4)
 
-| Rule                                  | Severity | Description                                        |
-| ------------------------------------- | -------- | -------------------------------------------------- |
-| `pyreon/no-unregistered-field`        | warn     | `useField()` without `register()`                  |
-| `pyreon/no-submit-without-validation` | warn     | `useForm({ onSubmit })` without validators         |
-| `pyreon/prefer-field-array`           | info     | `signal([])` in form files — use `useFieldArray()` |
-| `pyreon/no-signal-in-form-initial-values` ᵒ | warn | `useForm({ initialValues: { x: sig() } })` snapshots the signal once — pass the plain value / use a reactive field |
+| Rule                                        | Severity | Description                                                                                                        |
+| ------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `pyreon/no-unregistered-field`              | warn     | `useField()` without `register()`                                                                                  |
+| `pyreon/no-submit-without-validation`       | warn     | `useForm({ onSubmit })` without validators                                                                         |
+| `pyreon/prefer-field-array`                 | info     | `signal([])` in form files — use `useFieldArray()`                                                                 |
+| `pyreon/no-signal-in-form-initial-values` ᵒ | warn     | `useForm({ initialValues: { x: sig() } })` snapshots the signal once — pass the plain value / use a reactive field |
 
 ### Styling (4)
 
@@ -350,44 +347,44 @@ Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
 
 Opt-in frontend best practices — accessibility + layout-shift (CLS) + asset optimization.
 
-| Rule                            | Severity | Fixable | Description                                                                              |
-| ------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
-| `pyreon/require-img-alt`        | error    |         | `<img>` without an `alt` attribute — required for a11y (`alt=""` for decorative is fine)  |
-| `pyreon/img-requires-dimensions`| warn     |         | `<img>` without both `width` & `height` — causes layout shift (CLS); set intrinsic dimensions |
-| `pyreon/no-positive-tabindex`   | warn     | yes     | `tabIndex={n}` where n > 0 breaks natural tab order — use `0` (autofix) or `-1`           |
-| `pyreon/prefer-zero-image`      | info     |         | Raw `<img>` in a `@pyreon/zero` project — prefer `<Image>` for lazy-load + srcset + blur (dep-gated) |
+| Rule                             | Severity | Fixable | Description                                                                                          |
+| -------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `pyreon/require-img-alt`         | error    |         | `<img>` without an `alt` attribute — required for a11y (`alt=""` for decorative is fine)             |
+| `pyreon/img-requires-dimensions` | warn     |         | `<img>` without both `width` & `height` — causes layout shift (CLS); set intrinsic dimensions        |
+| `pyreon/no-positive-tabindex`    | warn     | yes     | `tabIndex={n}` where n > 0 breaks natural tab order — use `0` (autofix) or `-1`                      |
+| `pyreon/prefer-zero-image`       | info     |         | Raw `<img>` in a `@pyreon/zero` project — prefer `<Image>` for lazy-load + srcset + blur (dep-gated) |
 
 ### Query (1) ᵒ
 
 Auto-gated on a `@pyreon/query` dependency.
 
-| Rule                               | Severity | Description                                                                                          |
-| ---------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| Rule                               | Severity                 | Description                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pyreon/query-options-as-function` | error (**auto-fixable**) | `useQuery`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` with an options **object literal** — `--fix` wraps it in `() => ({ ... })` so `queryKey` tracks signals and refetches reactively (`useMutation` excluded). Also a proactive MCP `validate` detector (flagged before commit, not just in lint output). |
 
 ### Rx (1) ᵒ
 
 Auto-gated on a `@pyreon/rx` dependency.
 
-| Rule                    | Severity | Description                                                                                  |
-| ----------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| Rule                    | Severity | Description                                                                                                                     |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `pyreon/rx-prefer-pipe` | info     | Nested rx transforms (`map(filter(src, …), …)`) — compose via `pipe(src, filter(…), map(…))` for a single computed instead of N |
 
 ### I18n (1) ᵒ
 
 Auto-gated on a `@pyreon/i18n` dependency.
 
-| Rule                                  | Severity | Description                                                                                  |
-| ------------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `pyreon/i18n-prefer-trans-for-rich-jsx` | info   | `{t('…')}` interleaved with JSX element siblings (rich content) — use the `<Trans>` component for safe JSX interpolation. Plain-text `{t('title')}` never fires (zero-FP: single element's children-array check) |
+| Rule                                    | Severity | Description                                                                                                                                                                                                      |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pyreon/i18n-prefer-trans-for-rich-jsx` | info     | `{t('…')}` interleaved with JSX element siblings (rich content) — use the `<Trans>` component for safe JSX interpolation. Plain-text `{t('title')}` never fires (zero-FP: single element's children-array check) |
 
 ### Router — opt-in (1) ᵒ
 
 Auto-gated on a `@pyreon/router` dependency. (The 4 non-opt-in router rules are listed under [Router](#router-4) above.)
 
-| Rule                             | Severity | Description                                                                              |
-| -------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
-| `pyreon/prefer-typed-search-params` | info  | Manual `new URLSearchParams(...)` in a router-aware file — use `useTypedSearchParams()` for typed, auto-coerced, SSR-safe search params |
+| Rule                                | Severity | Description                                                                                                                             |
+| ----------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `pyreon/prefer-typed-search-params` | info     | Manual `new URLSearchParams(...)` in a router-aware file — use `useTypedSearchParams()` for typed, auto-coerced, SSR-safe search params |
 
 ## Notable Rules
 

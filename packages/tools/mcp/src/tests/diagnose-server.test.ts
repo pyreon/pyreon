@@ -97,7 +97,8 @@ describe('MCP server — diagnose tool', () => {
     try {
       const text = await callTool(client, 'diagnose', {
         error: 'name is stale after parent update',
-        componentSource: 'function Greeting({ name }: { name: string }) { return <div>{name}</div> }',
+        componentSource:
+          'function Greeting({ name }: { name: string }) { return <div>{name}</div> }',
       })
       expect(text).toContain('### Static detector findings')
       expect(text).toContain('props-destructured')

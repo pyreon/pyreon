@@ -20,9 +20,7 @@ export default function BoardPage() {
   const debouncedQ = useDebouncedValue(q, 200)
   provide(FilterTermCtx, () => debouncedQ())
 
-  const columnIds = computed<string[]>(() =>
-    (board.columns() as Column[]).map((c) => c.id),
-  )
+  const columnIds = computed<string[]>(() => (board.columns() as Column[]).map((c) => c.id))
 
   const addColumnOpen = signal(false)
   const newColumnTitle = signal('')
@@ -66,11 +64,7 @@ export default function BoardPage() {
                 class="kanban-search"
                 placeholder="Column title…"
                 value={() => newColumnTitle()}
-                onInput={(e) =>
-                  newColumnTitle.set(
-                    (e.currentTarget as HTMLInputElement).value,
-                  )
-                }
+                onInput={(e) => newColumnTitle.set((e.currentTarget as HTMLInputElement).value)}
                 autoFocus
                 data-testid="new-column-input"
               />

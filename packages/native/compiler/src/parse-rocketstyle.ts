@@ -113,11 +113,7 @@ export function parseRocketstyle(
 // oxlint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyNode = any
 
-function walkProgram(
-  program: AnyNode,
-  rocketstyles: RocketstyleIR[],
-  warnings: string[],
-): void {
+function walkProgram(program: AnyNode, rocketstyles: RocketstyleIR[], warnings: string[]): void {
   const body = (program as { body?: AnyNode[] }).body ?? []
   for (const stmt of body) {
     if (stmt.type === 'VariableDeclaration') {
@@ -213,7 +209,10 @@ function collectChain(node: AnyNode): ChainInfo | null {
   }
   if (cur.type === 'CallExpression') {
     const callee = unwrapTSLayers((cur as { callee?: AnyNode }).callee)
-    if (callee?.type === 'Identifier' && CHAIN_HEAD_NAMES.has((callee as { name?: string }).name ?? '')) {
+    if (
+      callee?.type === 'Identifier' &&
+      CHAIN_HEAD_NAMES.has((callee as { name?: string }).name ?? '')
+    ) {
       return { head: (callee as { name?: string }).name ?? '', dimensions }
     }
   }
@@ -345,10 +344,7 @@ function resolveValue(node: AnyNode, themeParamName: string | null): StyleValue 
     return null
   }
   // Negative number → UnaryExpression.
-  if (
-    node.type === 'UnaryExpression' &&
-    (node as { operator?: string }).operator === '-'
-  ) {
+  if (node.type === 'UnaryExpression' && (node as { operator?: string }).operator === '-') {
     const arg = (node as { argument?: AnyNode }).argument
     if (arg?.type === 'Literal') {
       const v = (arg as { value?: unknown }).value

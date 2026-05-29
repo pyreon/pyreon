@@ -129,7 +129,11 @@ const ALL_FRAMEWORKS = [
   { name: 'Pyreon (compiled)', run: runPyreonTpl },
 ] as const
 
-async function runSelected(frameworks: typeof ALL_FRAMEWORKS | { name: string; run: typeof ALL_FRAMEWORKS[number]['run'] }[]): Promise<BenchSuite[]> {
+async function runSelected(
+  frameworks:
+    | typeof ALL_FRAMEWORKS
+    | { name: string; run: (typeof ALL_FRAMEWORKS)[number]['run'] }[],
+): Promise<BenchSuite[]> {
   runBtn.disabled = true
   tableEl.innerHTML = ''
   const suites: BenchSuite[] = []
@@ -198,7 +202,10 @@ if (__frameworkParam) {
     void runSelected([entry])
   } else {
     setStatus(`Unknown framework: ${__frameworkParam}`)
-    console.error(`[bench] unknown framework "${__frameworkParam}". Valid:`, ALL_FRAMEWORKS.map((f) => f.name))
+    console.error(
+      `[bench] unknown framework "${__frameworkParam}". Valid:`,
+      ALL_FRAMEWORKS.map((f) => f.name),
+    )
   }
 } else if (__url.searchParams.get('auto') === '1') {
   void runAll()

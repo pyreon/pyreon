@@ -98,7 +98,7 @@ describe('ExtractProps — bisect-load-bearing: pre-fix shape would FAIL these',
     void b
   })
 
-  it("a 3-overload Iterator-shaped surface MUST surface SimpleProps + ObjectProps + ChildrenProps", () => {
+  it('a 3-overload Iterator-shaped surface MUST surface SimpleProps + ObjectProps + ChildrenProps', () => {
     // Synthetic Iterator overload-shape — mirrors the real
     // `@pyreon/elements` Iterator. The structural failure mode pre-fix:
     // `ExtractProps<typeof Iterator>` returned just `ChildrenProps`, so any
@@ -112,10 +112,7 @@ describe('ExtractProps — bisect-load-bearing: pre-fix shape would FAIL these',
         component: SimpleItem
         valueName?: string
       }): VNodeChild
-      <T extends { id: number }>(props: {
-        data: T[]
-        component: ObjectItem
-      }): VNodeChild
+      <T extends { id: number }>(props: { data: T[]; component: ObjectItem }): VNodeChild
       (props: { children: VNodeChild }): VNodeChild
     }
     type Props = ExtractProps<IteratorLike>

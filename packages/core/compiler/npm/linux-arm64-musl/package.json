@@ -12,7 +12,6 @@
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/compiler/npm/linux-arm64-musl"
   },
-  "main": "pyreon-compiler.node",
   "files": [
     "pyreon-compiler.node",
     "README.md",
@@ -27,14 +26,15 @@
   "libc": [
     "glibc"
   ],
-  "engines": {
-    "node": ">=18"
-  },
+  "main": "pyreon-compiler.node",
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "lint": "echo 'no source — platform binary package'",
     "typecheck": "echo 'no source — platform binary package'"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

@@ -2,7 +2,7 @@
 
 Svelte-compatible importable runtime — stores, lifecycle, context — running on Pyreon's reactive engine.
 
-`@pyreon/svelte-compat` shims the Svelte APIs your code actually `import`s — `svelte/store` (`writable` / `readable` / `derived` / `get` / `readonly`) and the `svelte` lifecycle / context / dispatch surface (`onMount`, `onDestroy`, `beforeUpdate`, `afterUpdate`, `tick`, `setContext` / `getContext` / `hasContext` / `getAllContexts`, `createEventDispatcher`, `mount` / `unmount` / `flushSync`) — all backed by Pyreon's signal-based reactivity. **This is a runtime shim, not a Svelte compiler.** Single-file components (`.svelte`), Svelte 5 rune *syntax* (`$state` / `$derived` / `$effect` / `$store` auto-subscription), and `<svelte:component>` directives are compiler constructs and are out of scope — only what code imports at runtime is covered (the same boundary `@pyreon/solid-compat` draws around Solid's compiler).
+`@pyreon/svelte-compat` shims the Svelte APIs your code actually `import`s — `svelte/store` (`writable` / `readable` / `derived` / `get` / `readonly`) and the `svelte` lifecycle / context / dispatch surface (`onMount`, `onDestroy`, `beforeUpdate`, `afterUpdate`, `tick`, `setContext` / `getContext` / `hasContext` / `getAllContexts`, `createEventDispatcher`, `mount` / `unmount` / `flushSync`) — all backed by Pyreon's signal-based reactivity. **This is a runtime shim, not a Svelte compiler.** Single-file components (`.svelte`), Svelte 5 rune _syntax_ (`$state` / `$derived` / `$effect` / `$store` auto-subscription), and `<svelte:component>` directives are compiler constructs and are out of scope — only what code imports at runtime is covered (the same boundary `@pyreon/solid-compat` draws around Solid's compiler).
 
 ## Install
 
@@ -19,14 +19,20 @@ const count = writable(0)
 const doubled = derived(count, ($c) => $c * 2)
 
 const unsub = count.subscribe((c) => console.log(c))
-count.set(5)         // logs 5
-count.update((c) => c + 1)  // logs 6
-get(doubled)         // 12
+count.set(5) // logs 5
+count.update((c) => c + 1) // logs 6
+get(doubled) // 12
 unsub()
 ```
 
 ```tsx
-import { onMount, onDestroy, setContext, getContext, createEventDispatcher } from '@pyreon/svelte-compat'
+import {
+  onMount,
+  onDestroy,
+  setContext,
+  getContext,
+  createEventDispatcher,
+} from '@pyreon/svelte-compat'
 
 const THEME = Symbol('theme')
 
@@ -46,22 +52,22 @@ function Child() {
 
 ## Subpath exports
 
-| Subpath                                 | Surface                                                                                       |
-| --------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Subpath                                 | Surface                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@pyreon/svelte-compat`                 | Lifecycle / context / dispatch: `onMount`, `onDestroy`, `beforeUpdate`, `afterUpdate`, `tick`, `setContext`, `getContext`, `hasContext`, `getAllContexts`, `createEventDispatcher`, `mount`, `unmount`, `flushSync`. Control-flow re-exports: `<For>`, `<Show>`, `<Switch>`, `<Match>`, `<ErrorBoundary>`, `<Suspense>` |
-| `@pyreon/svelte-compat/store`           | Stores: `writable`, `readable`, `derived`, `readonly`, `get`, plus type exports (`Subscriber`, `Invalidator`, `Unsubscriber`, `Updater`, `StartStopNotifier`, `Readable`, `Writable`) |
-| `@pyreon/svelte-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
-| `@pyreon/svelte-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
+| `@pyreon/svelte-compat/store`           | Stores: `writable`, `readable`, `derived`, `readonly`, `get`, plus type exports (`Subscriber`, `Invalidator`, `Unsubscriber`, `Updater`, `StartStopNotifier`, `Readable`, `Writable`)                                                                                                                                   |
+| `@pyreon/svelte-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                                                                                                                                                                                                                                                       |
+| `@pyreon/svelte-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                                                                                                                                                                                                                                              |
 
 ## Stores (`svelte/store` equivalents)
 
-| API                                  | Notes                                                                                  |
-| ------------------------------------ | -------------------------------------------------------------------------------------- |
-| `writable<T>(value?, start?)`        | Returns `{ set, update, subscribe }`. `start` runs on first subscribe with `set`/`update` and returns a stop fn. |
-| `readable<T>(value?, start?)`        | Same as `writable` minus `set` / `update` — only `start` mutates.                       |
-| `derived(stores, fn, initial?)`      | Auto-recomputes when any input store changes. `stores` can be a single store or an array. |
-| `readonly(store)`                    | Strips `set` / `update` from a writable.                                                |
-| `get(store)`                         | Synchronous one-shot read.                                                              |
+| API                             | Notes                                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `writable<T>(value?, start?)`   | Returns `{ set, update, subscribe }`. `start` runs on first subscribe with `set`/`update` and returns a stop fn. |
+| `readable<T>(value?, start?)`   | Same as `writable` minus `set` / `update` — only `start` mutates.                                                |
+| `derived(stores, fn, initial?)` | Auto-recomputes when any input store changes. `stores` can be a single store or an array.                        |
+| `readonly(store)`               | Strips `set` / `update` from a writable.                                                                         |
+| `get(store)`                    | Synchronous one-shot read.                                                                                       |
 
 Stores are **NOT** Pyreon `Signal`s under the hood (load-bearing lesson PR #704 caught) — using `signal()` inside the wrapper would freeze the store after first write under compat-mode component re-renders. Stores are a plain subscriber-set + value-snapshot, matching Svelte's own runtime semantics.
 
@@ -81,8 +87,8 @@ export default { plugins: [pyreon({ compat: 'svelte' })] }
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@pyreon/svelte-compat"
-  }
+    "jsxImportSource": "@pyreon/svelte-compat",
+  },
 }
 ```
 
@@ -93,7 +99,7 @@ This is a **runtime** shim. It covers what code imports at runtime — the same 
 - ✅ `svelte/store` — `writable`, `readable`, `derived`, `get`, `readonly`
 - ✅ `svelte` — `onMount`, `onDestroy`, `beforeUpdate`, `afterUpdate`, `tick`, context, dispatch, mount/unmount/flushSync
 - ❌ `.svelte` single-file-component compiler
-- ❌ Svelte 5 rune *syntax* (`$state` / `$derived` / `$effect` / `$store` auto-subscription)
+- ❌ Svelte 5 rune _syntax_ (`$state` / `$derived` / `$effect` / `$store` auto-subscription)
 - ❌ Reactive `$:` statements
 - ❌ `<svelte:component>` / `<svelte:element>` directives
 

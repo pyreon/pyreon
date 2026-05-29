@@ -23,11 +23,7 @@ import { Button } from './index'
 describe('@pyreon/ui-components — browser smoke', () => {
   it('mounts a Button into real DOM with text content', () => {
     const { container, unmount } = mountInBrowser(
-      h(
-        PyreonUI,
-        { theme },
-        h(Button as never, { id: 'smoke-btn' }, 'Click me'),
-      ),
+      h(PyreonUI, { theme }, h(Button as never, { id: 'smoke-btn' }, 'Click me')),
     )
     const btn = container.querySelector('#smoke-btn')!
     expect(btn).not.toBeNull()

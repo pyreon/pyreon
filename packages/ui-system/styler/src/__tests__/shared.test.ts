@@ -95,21 +95,27 @@ describe('isDynamic', () => {
   // perf regression, never as a test failure.
   describe('CSSResult _isDynamic memoization', () => {
     it('populates _isDynamic on first call for dynamic templates', () => {
-      const r = css`color: ${() => 'red'};`
+      const r = css`
+        color: ${() => 'red'};
+      `
       expect(r._isDynamic).toBe(undefined)
       isDynamic(r)
       expect(r._isDynamic).toBe(true)
     })
 
     it('populates _isDynamic on first call for static templates', () => {
-      const r = css`color: ${'red'};`
+      const r = css`
+        color: ${'red'};
+      `
       expect(r._isDynamic).toBe(undefined)
       isDynamic(r)
       expect(r._isDynamic).toBe(false)
     })
 
     it('returns cached result on subsequent calls without rescanning values', () => {
-      const r = css`color: ${() => 'red'};`
+      const r = css`
+        color: ${() => 'red'};
+      `
       const first = isDynamic(r)
       expect(first).toBe(true)
       expect(r._isDynamic).toBe(true)
@@ -122,8 +128,12 @@ describe('isDynamic', () => {
     })
 
     it('memoizes nested CSSResults independently', () => {
-      const inner = css`color: ${() => 'red'};`
-      const outer = css`${inner}`
+      const inner = css`
+        color: ${() => 'red'};
+      `
+      const outer = css`
+        ${inner}
+      `
       isDynamic(outer)
       // Recursing through outer populates inner too.
       expect(inner._isDynamic).toBe(true)

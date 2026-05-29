@@ -1,6 +1,6 @@
 ---
-title: "Data fetching — useQuery + useMutation"
-summary: "Options-as-function so signal reads track. useMutation with invalidates for cache management."
+title: 'Data fetching — useQuery + useMutation'
+summary: 'Options-as-function so signal reads track. useMutation with invalidates for cache management.'
 seeAlso: [signal-writes, form-fields]
 ---
 
@@ -49,14 +49,11 @@ Mutations use an object (mutations are imperative — no tracking needed) + `inv
 function DeleteButton(props: { id: string }) {
   const deleteUser = useMutation({
     mutationFn: (id: string) => api.deleteUser(id),
-    invalidates: [['users']],   // all queries with this prefix invalidate on success
+    invalidates: [['users']], // all queries with this prefix invalidate on success
   })
 
   return (
-    <button
-      disabled={() => deleteUser.isPending()}
-      onClick={() => deleteUser.mutate(props.id)}
-    >
+    <button disabled={() => deleteUser.isPending()} onClick={() => deleteUser.mutate(props.id)}>
       Delete
     </button>
   )
@@ -81,7 +78,7 @@ Pyreon components run once, so a plain options object would bake the initial val
 // BROKEN — options object evaluated ONCE at component setup,
 // user.data() never updates even though userId changes.
 const user = useQuery({
-  queryKey: ['user', userId()],  // read at setup, captures 'alice' forever
+  queryKey: ['user', userId()], // read at setup, captures 'alice' forever
   queryFn: () => api.fetchUser(userId()),
 })
 ```

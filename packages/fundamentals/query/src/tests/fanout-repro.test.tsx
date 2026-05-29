@@ -44,20 +44,16 @@ describe('queryReactiveKey fanout (deferred bug from PR #490)', () => {
     let unmount: () => void = () => {}
     try {
       unmount = mount(
-        h(
-          QueryClientProvider,
-          { client },
-          () => {
-            for (let i = 0; i < 100; i++) {
-              const idx = i
-              useQuery(() => ({
-                queryKey: ['perf-reactive', reactKey(), idx],
-                queryFn: () => Promise.resolve(idx),
-              }))
-            }
-            return h('div', null, 'mounted')
-          },
-        ),
+        h(QueryClientProvider, { client }, () => {
+          for (let i = 0; i < 100; i++) {
+            const idx = i
+            useQuery(() => ({
+              queryKey: ['perf-reactive', reactKey(), idx],
+              queryFn: () => Promise.resolve(idx),
+            }))
+          }
+          return h('div', null, 'mounted')
+        }),
         root,
       )
 

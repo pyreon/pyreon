@@ -21,8 +21,6 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  */
 export default definePlaywrightConfig({
   timeout: 60_000,
-  projects: [
-    { name: 'perf-dashboard', testMatch: /\/perf-dashboard-.*\.spec\.ts$/, port: 5183 },
-  ],
+  projects: [{ name: 'perf-dashboard', testMatch: /\/perf-dashboard-.*\.spec\.ts$/, port: 5183 }],
   webServer: [viteDevServer('@pyreon/example-perf-dashboard', 5183)],
 })

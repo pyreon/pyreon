@@ -546,7 +546,11 @@ useHead({
     prerender: [{ source: 'list', urls: ['/about', '/pricing'], eagerness: 'moderate' }],
     // Or let the browser pick links from the current document by selector.
     prefetch: [
-      { source: 'document', where: { selector_matches: 'a[data-prefetch]' }, eagerness: 'conservative' },
+      {
+        source: 'document',
+        where: { selector_matches: 'a[data-prefetch]' },
+        eagerness: 'conservative',
+      },
     ],
   },
 })

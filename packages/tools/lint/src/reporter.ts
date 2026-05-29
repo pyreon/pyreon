@@ -43,14 +43,10 @@ export function formatText(result: LintResult): string {
     lines.push('')
     const parts: string[] = []
     if (result.totalErrors > 0)
-      parts.push(
-        emberCore(`${result.totalErrors} error${result.totalErrors === 1 ? '' : 's'}`),
-      )
+      parts.push(emberCore(`${result.totalErrors} error${result.totalErrors === 1 ? '' : 's'}`))
     if (result.totalWarnings > 0)
       parts.push(
-        emberWarm(
-          `${result.totalWarnings} warning${result.totalWarnings === 1 ? '' : 's'}`,
-        ),
+        emberWarm(`${result.totalWarnings} warning${result.totalWarnings === 1 ? '' : 's'}`),
       )
     if (result.totalInfos > 0) parts.push(cyan(`${result.totalInfos} info`))
     lines.push(`${SEVERITY_SYMBOL.error} ${parts.join(', ')}`)

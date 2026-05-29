@@ -355,11 +355,7 @@ function ChatSection() {
       <Row>
         <SectionTitle theme={themeSignal()}>Chat (append-heavy)</SectionTitle>
         <div style="flex: 1" />
-        <GhostButton
-          theme={themeSignal()}
-          data-testid="chat-append-1"
-          onClick={() => append(1)}
-        >
+        <GhostButton theme={themeSignal()} data-testid="chat-append-1" onClick={() => append(1)}>
           Append 1
         </GhostButton>
         <GhostButton
@@ -434,7 +430,9 @@ function WidgetGridSection() {
 function LongFormSection() {
   return (
     <Section theme={themeSignal()}>
-      <SectionTitle theme={themeSignal()}>Long form (30 fields, cross-field validation)</SectionTitle>
+      <SectionTitle theme={themeSignal()}>
+        Long form (30 fields, cross-field validation)
+      </SectionTitle>
       <Grid>
         <For each={() => longFormFields} by={(f: FormField) => f.id}>
           {(f: FormField) => (
@@ -502,8 +500,9 @@ function FormAtScale(props: { scale: number }) {
   //
   // Cleared by FormStressSection's <Show> when scale flips back to 0.
   if (typeof window !== 'undefined') {
-    ;(window as unknown as { __pyreon_perf_forms_active?: { form: unknown; scale: number } }).__pyreon_perf_forms_active =
-      { form, scale: props.scale }
+    ;(
+      window as unknown as { __pyreon_perf_forms_active?: { form: unknown; scale: number } }
+    ).__pyreon_perf_forms_active = { form, scale: props.scale }
   }
 
   return (
@@ -547,10 +546,7 @@ function FormStressSection() {
   // stay at "true" and re-evaluate children with the new prop instead of
   // remounting, defeating the per-scale isolation we need.
   return (
-    <For
-      each={() => (formStressScale() > 0 ? [formStressScale()] : [])}
-      by={(s: number) => s}
-    >
+    <For each={() => (formStressScale() > 0 ? [formStressScale()] : [])} by={(s: number) => s}>
       {(scale: number) => <FormAtScale scale={scale} />}
     </For>
   )

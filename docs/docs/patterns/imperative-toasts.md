@@ -1,6 +1,6 @@
 ---
-title: "Imperative notifications — toasts"
-summary: "Mount <Toaster /> once, then toast() / toast.success() / toast.promise() from anywhere."
+title: 'Imperative notifications — toasts'
+summary: 'Mount <Toaster /> once, then toast() / toast.success() / toast.promise() from anywhere.'
 seeAlso: [event-listeners]
 ---
 
@@ -13,7 +13,7 @@ Mount `<Toaster />` once at the app root, then call `toast()` from anywhere (eve
 ```tsx
 import { toast, Toaster } from '@pyreon/toast'
 
-<App>
+;<App>
   <MainContent />
   <Toaster />
 </App>
@@ -83,8 +83,8 @@ function BadRoot2() {
 ```tsx
 // BROKEN — calling toast() inside a render body fires on every render
 function BadComponent() {
-  toast('rendered!')  // fires once the FIRST render, then again if anything
-                      // upstream triggers re-creation
+  toast('rendered!') // fires once the FIRST render, then again if anything
+  // upstream triggers re-creation
   return <div>...</div>
 }
 

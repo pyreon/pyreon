@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  computeScore,
-  gradeFor,
-  isAdvisoryCategory,
-  scoreCategory,
-} from '../doctor/score'
+import { computeScore, gradeFor, isAdvisoryCategory, scoreCategory } from '../doctor/score'
 import type { Finding, GateResult } from '../doctor/types'
 
 const makeFinding = (
@@ -83,19 +78,16 @@ describe('scoreCategory', () => {
   })
 
   it('saturates at 0', () => {
-    const findings = Array(20).fill(null).map(() =>
-      makeFinding('correctness', 'error'),
-    )
+    const findings = Array(20)
+      .fill(null)
+      .map(() => makeFinding('correctness', 'error'))
     const result = scoreCategory('correctness', findings, true)
     expect(result.score).toBe(0)
     expect(result.grade).toBe('F')
   })
 
   it('only counts findings in the named category', () => {
-    const findings = [
-      makeFinding('correctness', 'error'),
-      makeFinding('performance', 'error'),
-    ]
+    const findings = [makeFinding('correctness', 'error'), makeFinding('performance', 'error')]
     const result = scoreCategory('correctness', findings, true)
     expect(result.score).toBe(90) // -10 for the one correctness error
   })
@@ -127,10 +119,7 @@ describe('computeScore', () => {
   it('averages included categories', () => {
     // 2 gates: lint (correctness, 1 error → 90) + distribution
     // (architecture, 0 findings → 100). Mean = 95.
-    const gates = [
-      makeGate('lint', 'correctness'),
-      makeGate('distribution', 'architecture'),
-    ]
+    const gates = [makeGate('lint', 'correctness'), makeGate('distribution', 'architecture')]
     const findings = [makeFinding('correctness', 'error')]
     const { score } = computeScore(findings, gates)
     expect(score).toBe(95)
@@ -189,9 +178,7 @@ describe('advisory best-practices category', () => {
 
   it('best-practices errors do NOT drag the overall grade', () => {
     // 10 advisory errors would be a 0 subscore — but excluded from mean.
-    const bpErrors = Array.from({ length: 10 }, () =>
-      makeFinding('best-practices', 'error'),
-    )
+    const bpErrors = Array.from({ length: 10 }, () => makeFinding('best-practices', 'error'))
     const cleanGates = [makeGate('lint', 'correctness', [])]
     const withBp = computeScore(bpErrors, cleanGates)
     const withoutBp = computeScore([], cleanGates)

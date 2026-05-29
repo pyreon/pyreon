@@ -1,6 +1,7 @@
 {
   "name": "@pyreon/devtools",
   "version": "0.1.0",
+  "private": true,
   "description": "Chrome DevTools extension for the Pyreon UI framework — live component tree, click-to-highlight, inspector",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/devtools#readme",
   "bugs": {
@@ -13,7 +14,6 @@
     "directory": "packages/tools/devtools"
   },
   "type": "module",
-  "private": true,
   "scripts": {
     "build": "vl_rolldown_build && bun run scripts/sync-manifest.ts && bun run scripts/strip-cjs-decorators.ts",
     "dev": "vl_rolldown_build-watch",

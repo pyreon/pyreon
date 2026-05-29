@@ -48,7 +48,9 @@ describe('Compiler: text-child selector.subscribe auto-promotion', () => {
         export const X = (k) => <span>{() => isSel(k) ? 'YES' : 'NO'}</span>
       `
       const out = transform(src).code
-      expect(out).toMatch(/isSel\.subscribe\(k,\s*\(m\)\s*=>\s*\{[^}]*__t0\.data = \(m \? 'YES' : 'NO'\)/)
+      expect(out).toMatch(
+        /isSel\.subscribe\(k,\s*\(m\)\s*=>\s*\{[^}]*__t0\.data = \(m \? 'YES' : 'NO'\)/,
+      )
     })
 
     it('preserves deep key expressions literally (row.deep.path.id)', () => {

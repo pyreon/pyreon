@@ -155,7 +155,6 @@
 ### Minor Changes
 
 - [#483](https://github.com/pyreon/pyreon/pull/483) [`7f26cd7`](https://github.com/pyreon/pyreon/commit/7f26cd78d74db8237aa6261a11965325d944f1ca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Granular `useFormState` selectors + O(1) `form.isValid` / `form.isDirty`. Pre-fix, every `useFormState(form, selector)` call rebuilt the full summary on each invalidation — `s => s.isValid` triggered a 10k-field scan because `buildSummary()` always materialized `touchedFields` / `dirtyFields` / `errors` maps. And `form.isValid` / `form.isDirty` were themselves O(N) computeds iterating every field on each recompute. Post-fix:
-
   - `useFormState` returns a getter-backed summary; selectors only track the signals they actually read. A button gated on `s => s.isValid && !s.isSubmitting` no longer scans the field maps. Verified against the 10k-field stress benchmark: `form.formStateScan.fieldsRead` drops from 10000 to 0 on selector reads.
   - `form.isValid` and `form.isDirty` are now O(1) reads of incrementally-tracked `_invalidCount` / `_dirtyCount` signals, updated via per-field `signal.subscribe` listeners (lighter than effects). Cost: 2 extra signal-creates per form, 2 subscribers per field at mount; benefit: form-level reactive reads scale flat regardless of field count.
   - The 3 atomic computeds (touched/dirty/errors maps) are shared across all `useFormState()` calls on the same form via a per-form WeakMap cache — selector A reading `errors` reuses the same computed as selector B reading `errors`. A field's error flip invalidates only the errors map, not touched/dirty.
@@ -181,7 +180,6 @@
 ### Patch Changes
 
 - [#261](https://github.com/pyreon/pyreon/pull/261) [`72b2023`](https://github.com/pyreon/pyreon/commit/72b2023609bf539e804f64dbefcf2586edf7162f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Triaged safe changes from architecture review PR [#260](https://github.com/pyreon/pyreon/issues/260):
-
   - **hotkeys**: detach global `keydown` listener when last hotkey unregisters (prevents listener accumulation across component remounts)
   - **code**: new `useEditorSignal()` hook — wraps `bindEditorToSignal` with `onUnmount` auto-cleanup (eliminates manual `dispose()` calls)
   - **form**: `ValidateFn` accepts optional `AbortSignal`; `useForm` creates per-cycle `AbortController` cancelled on unmount (prevents orphaned async validators)
@@ -260,11 +258,9 @@
 ### Minor Changes
 
 - [`deb9834`](https://github.com/pyreon/fundamentals/commit/deb983456472cc685d80e97b21196588af53b502) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ### New package
-
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -273,12 +269,10 @@
 ### Minor Changes
 
 - [`5610cdf`](https://github.com/pyreon/fundamentals/commit/5610cdffb69022aacd44419d7c71b97bdcf8403f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ### New packages
-
   - `@pyreon/flow` — reactive flow diagrams with signal-native nodes, edges, pan/zoom, auto-layout via elkjs
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages

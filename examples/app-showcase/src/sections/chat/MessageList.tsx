@@ -106,9 +106,7 @@ export function MessageList() {
                     <Avatar $color={message.authorColor}>{initials(message.author)}</Avatar>
                     <MessageContent $own={message.own}>
                       <MessageMeta>
-                        <MessageAuthor $color={message.authorColor}>
-                          {message.author}
-                        </MessageAuthor>
+                        <MessageAuthor $color={message.authorColor}>{message.author}</MessageAuthor>
                         <MessageTime>
                           {formatTime(message.createdAt)}
                           {message.pending ? ' · sending…' : ''}

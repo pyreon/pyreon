@@ -33,8 +33,8 @@ export interface ThemeEntry {
 export type ThemeValue =
   | { kind: 'number'; value: number }
   | { kind: 'string'; value: string }
-  | { kind: 'cgfloat'; value: number }   // Swift's CGFloat — visible distinction at emit
-  | { kind: 'dp'; value: number }        // Kotlin's dp — visible distinction at emit
+  | { kind: 'cgfloat'; value: number } // Swift's CGFloat — visible distinction at emit
+  | { kind: 'dp'; value: number } // Kotlin's dp — visible distinction at emit
 
 /**
  * Emit `PyreonTokens.swift` from a ThemeIR.
@@ -58,7 +58,9 @@ export function emitSwiftTokens(theme: ThemeIR): string {
   for (const group of theme.groups) {
     lines.push(`  public enum ${capitalize(group.name)} {`)
     for (const entry of group.entries) {
-      lines.push(`    public static let ${entry.name}: ${swiftValueType(entry.value)} = ${swiftValueLiteral(entry.value)}`)
+      lines.push(
+        `    public static let ${entry.name}: ${swiftValueType(entry.value)} = ${swiftValueLiteral(entry.value)}`,
+      )
     }
     lines.push(`  }`)
   }

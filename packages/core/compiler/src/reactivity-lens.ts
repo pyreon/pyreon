@@ -162,10 +162,7 @@ const KIND_BADGE: Record<ReactivityFindingKind, string> = {
  * LSP inlay hints); this is the spike's "can you see reactivity flow" probe
  * and a stable diff target for tests.
  */
-export function formatReactivityLens(
-  code: string,
-  result: AnalyzeReactivityResult,
-): string {
+export function formatReactivityLens(code: string, result: AnalyzeReactivityResult): string {
   const lines = code.split('\n')
   const byLine = new Map<number, ReactivityFinding[]>()
   for (const f of result.findings) {

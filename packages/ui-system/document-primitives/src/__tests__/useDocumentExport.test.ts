@@ -129,8 +129,7 @@ describe('extractDocNode (one-step alias)', () => {
     // Equivalence guarantee — the two-step form delegates to the
     // one-step form internally, so they MUST produce identical
     // output for identical input.
-    const template = () =>
-      node(DocText, { $rocketstyle: { fontSize: 14 } }, ['Hello'])
+    const template = () => node(DocText, { $rocketstyle: { fontSize: 14 } }, ['Hello'])
 
     const oneStep = extractDocNode(template)
     const twoStep = createDocumentExport(template).getDocNode()
@@ -155,14 +154,10 @@ describe('extractDocNode (one-step alias)', () => {
     // catch the regression. The three extractions should be deeply
     // equal under any change to the primitive's setup path.
     const template = () =>
-      node(
-        DocDocument,
-        { _documentProps: { title: 'Idempotent', author: 'Test' } },
-        [
-          node(DocHeading, { _documentProps: { level: 1 } }, ['Hello']),
-          node(DocText, { $rocketstyle: { fontSize: 14 } }, ['World']),
-        ],
-      )
+      node(DocDocument, { _documentProps: { title: 'Idempotent', author: 'Test' } }, [
+        node(DocHeading, { _documentProps: { level: 1 } }, ['Hello']),
+        node(DocText, { $rocketstyle: { fontSize: 14 } }, ['World']),
+      ])
 
     const first = extractDocNode(template)
     const second = extractDocNode(template)
@@ -217,150 +212,160 @@ describe('DocDocument reactive metadata (D1 integration)', () => {
   // compilation, rocketstyle wrapping, etc.) which takes 5+
   // seconds on slow CI runners on first hit. The default 5000ms
   // timeout fails reliably on CI.
-  it('DocDocument with accessor title produces live values across multiple extractions', { timeout: 60_000 }, async () => {
-    // Use happy-dom + initTestConfig like the rest of the test suite
-    const { initTestConfig } = await import('@pyreon/test-utils')
-    const { h } = await import('@pyreon/core')
-    const cleanup = initTestConfig()
-    try {
-      // Real DocDocument from the package (not the mock above)
-      const RealDocDocument = (await import('../primitives/DocDocument')).default
+  it(
+    'DocDocument with accessor title produces live values across multiple extractions',
+    { timeout: 60_000 },
+    async () => {
+      // Use happy-dom + initTestConfig like the rest of the test suite
+      const { initTestConfig } = await import('@pyreon/test-utils')
+      const { h } = await import('@pyreon/core')
+      const cleanup = initTestConfig()
+      try {
+        // Real DocDocument from the package (not the mock above)
+        const RealDocDocument = (await import('../primitives/DocDocument')).default
 
-      // Closure state that the accessor reads from. Mutating it
-      // between extractions simulates a signal change.
-      let currentName = 'Aisha'
-      const titleAccessor = () => `${currentName} — Resume`
-      const authorAccessor = () => currentName
+        // Closure state that the accessor reads from. Mutating it
+        // between extractions simulates a signal change.
+        let currentName = 'Aisha'
+        const titleAccessor = () => `${currentName} — Resume`
+        const authorAccessor = () => currentName
 
-      // Build the template via h() so DocDocument's attrs callback
-      // runs (storing the accessor functions in _documentProps).
-      const template = () =>
-        h(
-          RealDocDocument as never,
-          { title: titleAccessor, author: authorAccessor } as never,
+        // Build the template via h() so DocDocument's attrs callback
+        // runs (storing the accessor functions in _documentProps).
+        const template = () =>
+          h(RealDocDocument as never, { title: titleAccessor, author: authorAccessor } as never)
+
+        const first = extractDocNode(template)
+        expect(first.type).toBe('document')
+        expect(first.props.title).toBe('Aisha — Resume')
+        expect(first.props.author).toBe('Aisha')
+
+        // Mutate the closure-captured name. The next extraction
+        // should see the new value because extractDocumentTree calls
+        // the function fresh.
+        currentName = 'Marcus'
+        const second = extractDocNode(template)
+        expect(second.props.title).toBe('Marcus — Resume')
+        expect(second.props.author).toBe('Marcus')
+
+        // And once more for good measure
+        currentName = 'Priya'
+        const third = extractDocNode(template)
+        expect(third.props.title).toBe('Priya — Resume')
+        expect(third.props.author).toBe('Priya')
+      } finally {
+        cleanup()
+      }
+    },
+  )
+
+  it(
+    'DocDocument with plain string title still works (backward compat)',
+    { timeout: 30_000 },
+    async () => {
+      const { initTestConfig } = await import('@pyreon/test-utils')
+      const { h } = await import('@pyreon/core')
+      const cleanup = initTestConfig()
+      try {
+        const RealDocDocument = (await import('../primitives/DocDocument')).default
+
+        const tree = extractDocNode(() =>
+          h(RealDocDocument as never, { title: 'Static title', author: 'Static author' } as never),
         )
 
-      const first = extractDocNode(template)
-      expect(first.type).toBe('document')
-      expect(first.props.title).toBe('Aisha — Resume')
-      expect(first.props.author).toBe('Aisha')
+        expect(tree.props.title).toBe('Static title')
+        expect(tree.props.author).toBe('Static author')
+      } finally {
+        cleanup()
+      }
+    },
+  )
 
-      // Mutate the closure-captured name. The next extraction
-      // should see the new value because extractDocumentTree calls
-      // the function fresh.
-      currentName = 'Marcus'
-      const second = extractDocNode(template)
-      expect(second.props.title).toBe('Marcus — Resume')
-      expect(second.props.author).toBe('Marcus')
+  it(
+    'DocDocument subject prop also accepts both string and accessor (full prop coverage)',
+    { timeout: 30_000 },
+    async () => {
+      // The widening covered all three metadata props (title, author,
+      // subject). The previous tests only exercise title and author —
+      // this test fills the coverage gap so a typo in the subject
+      // type widening would be caught.
+      const { initTestConfig } = await import('@pyreon/test-utils')
+      const { h } = await import('@pyreon/core')
+      const cleanup = initTestConfig()
+      try {
+        const RealDocDocument = (await import('../primitives/DocDocument')).default
 
-      // And once more for good measure
-      currentName = 'Priya'
-      const third = extractDocNode(template)
-      expect(third.props.title).toBe('Priya — Resume')
-      expect(third.props.author).toBe('Priya')
-    } finally {
-      cleanup()
-    }
-  })
+        // Plain string subject
+        const plainTree = extractDocNode(() =>
+          h(RealDocDocument as never, { subject: 'Q4 Report' } as never),
+        )
+        expect(plainTree.props.subject).toBe('Q4 Report')
 
-  it('DocDocument with plain string title still works (backward compat)', { timeout: 30_000 }, async () => {
-    const { initTestConfig } = await import('@pyreon/test-utils')
-    const { h } = await import('@pyreon/core')
-    const cleanup = initTestConfig()
-    try {
-      const RealDocDocument = (await import('../primitives/DocDocument')).default
+        // Accessor subject — value resolved at extraction time
+        let topic = 'Initial topic'
+        const accessorTree1 = extractDocNode(() =>
+          h(RealDocDocument as never, { subject: () => topic } as never),
+        )
+        expect(accessorTree1.props.subject).toBe('Initial topic')
 
-      const tree = extractDocNode(() =>
-        h(
-          RealDocDocument as never,
-          { title: 'Static title', author: 'Static author' } as never,
-        ),
-      )
+        topic = 'Updated topic'
+        const accessorTree2 = extractDocNode(() =>
+          h(RealDocDocument as never, { subject: () => topic } as never),
+        )
+        expect(accessorTree2.props.subject).toBe('Updated topic')
+      } finally {
+        cleanup()
+      }
+    },
+  )
 
-      expect(tree.props.title).toBe('Static title')
-      expect(tree.props.author).toBe('Static author')
-    } finally {
-      cleanup()
-    }
-  })
+  it(
+    'extractDocNode does NOT invoke a real DocDocument component (T3.1 Path C)',
+    { timeout: 30_000 },
+    async () => {
+      // The architectural invariant locked in by T3.1 (PR #321):
+      // `extractDocumentTree` consumes a real rocketstyle primitive's
+      // `__rs_attrs` chain directly, never invoking the wrapped component
+      // function. The previous Path B workaround had to call the full
+      // styled wrapper per export to read post-attrs `_documentProps`.
+      //
+      // Spy mechanism: wrap the imported component in a Proxy whose
+      // `apply` trap counts function-call invocations. Property reads
+      // (IS_ROCKETSTYLE, __rs_attrs, _documentType, .meta, .displayName,
+      // etc.) flow through to the original via the default `get` handler,
+      // so extractDocumentTree's contract still works — but any code
+      // path that CALLS the spied component bumps the counter.
+      //
+      // The connector-document tests already pin this with a
+      // `FakeRocketDoc` fixture; this test pins it for a real
+      // rocketstyle primitive end-to-end, closing the abstract /
+      // concrete coverage gap.
+      const { initTestConfig } = await import('@pyreon/test-utils')
+      const { h } = await import('@pyreon/core')
+      const cleanup = initTestConfig()
+      try {
+        const RealDocDocument = (await import('../primitives/DocDocument')).default
 
-  it('DocDocument subject prop also accepts both string and accessor (full prop coverage)', { timeout: 30_000 }, async () => {
-    // The widening covered all three metadata props (title, author,
-    // subject). The previous tests only exercise title and author —
-    // this test fills the coverage gap so a typo in the subject
-    // type widening would be caught.
-    const { initTestConfig } = await import('@pyreon/test-utils')
-    const { h } = await import('@pyreon/core')
-    const cleanup = initTestConfig()
-    try {
-      const RealDocDocument = (await import('../primitives/DocDocument')).default
+        let callCount = 0
+        const SpiedDoc = new Proxy(RealDocDocument, {
+          apply(target, thisArg, args) {
+            callCount++
+            return Reflect.apply(target as (...a: unknown[]) => unknown, thisArg, args as unknown[])
+          },
+        })
 
-      // Plain string subject
-      const plainTree = extractDocNode(() =>
-        h(RealDocDocument as never, { subject: 'Q4 Report' } as never),
-      )
-      expect(plainTree.props.subject).toBe('Q4 Report')
+        const tree = extractDocNode(() =>
+          h(SpiedDoc as never, { title: 'Hoisted', author: 'Aisha' } as never),
+        )
 
-      // Accessor subject — value resolved at extraction time
-      let topic = 'Initial topic'
-      const accessorTree1 = extractDocNode(() =>
-        h(RealDocDocument as never, { subject: () => topic } as never),
-      )
-      expect(accessorTree1.props.subject).toBe('Initial topic')
-
-      topic = 'Updated topic'
-      const accessorTree2 = extractDocNode(() =>
-        h(RealDocDocument as never, { subject: () => topic } as never),
-      )
-      expect(accessorTree2.props.subject).toBe('Updated topic')
-    } finally {
-      cleanup()
-    }
-  })
-
-  it('extractDocNode does NOT invoke a real DocDocument component (T3.1 Path C)', { timeout: 30_000 }, async () => {
-    // The architectural invariant locked in by T3.1 (PR #321):
-    // `extractDocumentTree` consumes a real rocketstyle primitive's
-    // `__rs_attrs` chain directly, never invoking the wrapped component
-    // function. The previous Path B workaround had to call the full
-    // styled wrapper per export to read post-attrs `_documentProps`.
-    //
-    // Spy mechanism: wrap the imported component in a Proxy whose
-    // `apply` trap counts function-call invocations. Property reads
-    // (IS_ROCKETSTYLE, __rs_attrs, _documentType, .meta, .displayName,
-    // etc.) flow through to the original via the default `get` handler,
-    // so extractDocumentTree's contract still works — but any code
-    // path that CALLS the spied component bumps the counter.
-    //
-    // The connector-document tests already pin this with a
-    // `FakeRocketDoc` fixture; this test pins it for a real
-    // rocketstyle primitive end-to-end, closing the abstract /
-    // concrete coverage gap.
-    const { initTestConfig } = await import('@pyreon/test-utils')
-    const { h } = await import('@pyreon/core')
-    const cleanup = initTestConfig()
-    try {
-      const RealDocDocument = (await import('../primitives/DocDocument')).default
-
-      let callCount = 0
-      const SpiedDoc = new Proxy(RealDocDocument, {
-        apply(target, thisArg, args) {
-          callCount++
-          return Reflect.apply(target as (...a: unknown[]) => unknown, thisArg, args as unknown[])
-        },
-      })
-
-      const tree = extractDocNode(() =>
-        h(SpiedDoc as never, { title: 'Hoisted', author: 'Aisha' } as never),
-      )
-
-      expect(tree.type).toBe('document')
-      expect(tree.props.title).toBe('Hoisted')
-      expect(tree.props.author).toBe('Aisha')
-      // The architectural assertion — the styled wrapper must NOT run.
-      expect(callCount).toBe(0)
-    } finally {
-      cleanup()
-    }
-  })
+        expect(tree.type).toBe('document')
+        expect(tree.props.title).toBe('Hoisted')
+        expect(tree.props.author).toBe('Aisha')
+        // The architectural assertion — the styled wrapper must NOT run.
+        expect(callCount).toBe(0)
+      } finally {
+        cleanup()
+      }
+    },
+  )
 })

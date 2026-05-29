@@ -63,21 +63,28 @@ function methodColor(method: string, colors: boolean): string {
   if (!colors) return method.padEnd(7)
   const padded = method.padEnd(7)
   switch (method) {
-    case 'GET': return `${COLORS.green}${padded}${COLORS.reset}`
-    case 'POST': return `${COLORS.cyan}${padded}${COLORS.reset}`
-    case 'PUT': return `${COLORS.yellow}${padded}${COLORS.reset}`
-    case 'PATCH': return `${COLORS.yellow}${padded}${COLORS.reset}`
-    case 'DELETE': return `${COLORS.red}${padded}${COLORS.reset}`
-    default: return `${COLORS.magenta}${padded}${COLORS.reset}`
+    case 'GET':
+      return `${COLORS.green}${padded}${COLORS.reset}`
+    case 'POST':
+      return `${COLORS.cyan}${padded}${COLORS.reset}`
+    case 'PUT':
+      return `${COLORS.yellow}${padded}${COLORS.reset}`
+    case 'PATCH':
+      return `${COLORS.yellow}${padded}${COLORS.reset}`
+    case 'DELETE':
+      return `${COLORS.red}${padded}${COLORS.reset}`
+    default:
+      return `${COLORS.magenta}${padded}${COLORS.reset}`
   }
 }
 
 function defaultFormat(entry: LogEntry, colors: boolean): string {
-  const dur = entry.duration < 1
-    ? '<1ms'
-    : entry.duration < 1000
-      ? `${Math.round(entry.duration)}ms`
-      : `${(entry.duration / 1000).toFixed(2)}s`
+  const dur =
+    entry.duration < 1
+      ? '<1ms'
+      : entry.duration < 1000
+        ? `${Math.round(entry.duration)}ms`
+        : `${(entry.duration / 1000).toFixed(2)}s`
 
   const dim = colors ? COLORS.dim : ''
   const reset = colors ? COLORS.reset : ''

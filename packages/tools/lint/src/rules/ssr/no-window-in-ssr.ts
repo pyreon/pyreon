@@ -557,16 +557,36 @@ export const noWindowInSsr: Rule = {
       // type references (erased at compile), not runtime accesses. Cover
       // the common entry points; depth counter handles any nested
       // `TSTypeAnnotation` etc.
-      TSTypeAnnotation(_n: any) { inTsTypePos++ },
-      'TSTypeAnnotation:exit'(_n: any) { inTsTypePos-- },
-      TSTypeReference(_n: any) { inTsTypePos++ },
-      'TSTypeReference:exit'(_n: any) { inTsTypePos-- },
-      TSTypeAliasDeclaration(_n: any) { inTsTypePos++ },
-      'TSTypeAliasDeclaration:exit'(_n: any) { inTsTypePos-- },
-      TSInterfaceDeclaration(_n: any) { inTsTypePos++ },
-      'TSInterfaceDeclaration:exit'(_n: any) { inTsTypePos-- },
-      TSTypeParameter(_n: any) { inTsTypePos++ },
-      'TSTypeParameter:exit'(_n: any) { inTsTypePos-- },
+      TSTypeAnnotation(_n: any) {
+        inTsTypePos++
+      },
+      'TSTypeAnnotation:exit'(_n: any) {
+        inTsTypePos--
+      },
+      TSTypeReference(_n: any) {
+        inTsTypePos++
+      },
+      'TSTypeReference:exit'(_n: any) {
+        inTsTypePos--
+      },
+      TSTypeAliasDeclaration(_n: any) {
+        inTsTypePos++
+      },
+      'TSTypeAliasDeclaration:exit'(_n: any) {
+        inTsTypePos--
+      },
+      TSInterfaceDeclaration(_n: any) {
+        inTsTypePos++
+      },
+      'TSInterfaceDeclaration:exit'(_n: any) {
+        inTsTypePos--
+      },
+      TSTypeParameter(_n: any) {
+        inTsTypePos++
+      },
+      'TSTypeParameter:exit'(_n: any) {
+        inTsTypePos--
+      },
       MemberExpression(node: any) {
         // `x.addEventListener` — `addEventListener` is the property name, not
         // a global. Pre-mark so the Identifier visitor skips it.

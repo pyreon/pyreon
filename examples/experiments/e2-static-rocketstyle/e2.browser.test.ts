@@ -119,7 +119,6 @@ describe('E2 — compile-time wrapper-collapse for rocketstyle', () => {
     await flush()
   })
 
-
   it('baseline + collapsed produce the same <button class="...">', async () => {
     const baseRoot = document.createElement('div')
     document.body.appendChild(baseRoot)
@@ -376,9 +375,9 @@ describe('E2 Phase 4 — shipped _rsCollapse vs real Button (RFC acceptance)', (
     try {
       unmount = hydrateRoot(
         app,
-        _rsCollapse(templateHtml, ssrClass, darkSentinel, () =>
-          isDark(),
-        ) as unknown as Parameters<typeof hydrateRoot>[1],
+        _rsCollapse(templateHtml, ssrClass, darkSentinel, () => isDark()) as unknown as Parameters<
+          typeof hydrateRoot
+        >[1],
       )
       await flush()
     } finally {

@@ -149,34 +149,34 @@ export function layout() {
 
   return (
     <I18nProvider instance={i18n}>
-     <PermissionsProvider instance={can}>
-      <QueryClientProvider client={queryClient}>
-        <SkipToContent />
-        <OfflineBanner />
-        <HotkeysRegistry />
+      <PermissionsProvider instance={can}>
+        <QueryClientProvider client={queryClient}>
+          <SkipToContent />
+          <OfflineBanner />
+          <HotkeysRegistry />
 
-        <Nav sidebarOpen={sidebar.value} toggleSidebar={sidebar.toggle} />
+          <Nav sidebarOpen={sidebar.value} toggleSidebar={sidebar.toggle} />
 
-        <main id="main" tabIndex={-1} class="hn-main">
-          <RouterView />
-        </main>
+          <main id="main" tabIndex={-1} class="hn-main">
+            <RouterView />
+          </main>
 
-        <footer class="hn-footer">
-          <span>
-            Built with{' '}
-            <a href="https://github.com/pyreon/pyreon" target="_blank" rel="noreferrer">
-              Pyreon Zero
-            </a>{' '}
-            · Data from the{' '}
-            <a href="https://github.com/HackerNews/API" target="_blank" rel="noreferrer">
-              Hacker News API
-            </a>
-          </span>
-        </footer>
+          <footer class="hn-footer">
+            <span>
+              Built with{' '}
+              <a href="https://github.com/pyreon/pyreon" target="_blank" rel="noreferrer">
+                Pyreon Zero
+              </a>{' '}
+              · Data from the{' '}
+              <a href="https://github.com/HackerNews/API" target="_blank" rel="noreferrer">
+                Hacker News API
+              </a>
+            </span>
+          </footer>
 
-        <Toaster position="bottom-right" />
-      </QueryClientProvider>
-     </PermissionsProvider>
+          <Toaster position="bottom-right" />
+        </QueryClientProvider>
+      </PermissionsProvider>
     </I18nProvider>
   )
 }

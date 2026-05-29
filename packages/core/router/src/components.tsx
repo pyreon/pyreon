@@ -168,10 +168,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
     },
     {
       equals: (a, b) =>
-        a.rec === b.rec &&
-        a.comp === b.comp &&
-        a.errored === b.errored &&
-        a.route === b.route,
+        a.rec === b.rec && a.comp === b.comp && a.errored === b.errored && a.route === b.route,
     },
   )
 
@@ -273,7 +270,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     return classes.join(' ').trim()
   }
 
-  const ariaCurrent = (): string | undefined => isExactMatch() ? 'page' : undefined
+  const ariaCurrent = (): string | undefined => (isExactMatch() ? 'page' : undefined)
 
   // Viewport prefetching — observe link visibility with IntersectionObserver.
   //
@@ -294,9 +291,8 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   //      (Safari < 16.4, jsdom) so the behaviour degrades, not breaks.
   const ref = createRef<Element>()
   if (prefetchMode === 'viewport' && router && typeof IntersectionObserver !== 'undefined') {
-    const ric = (
-      globalThis as { requestIdleCallback?: (cb: () => void) => number }
-    ).requestIdleCallback
+    const ric = (globalThis as { requestIdleCallback?: (cb: () => void) => number })
+      .requestIdleCallback
     const scheduleIdle = (fn: () => void): void => {
       if (typeof ric === 'function') ric(fn)
       else setTimeout(fn, 1)
@@ -538,7 +534,10 @@ function PendingLoader(props: {
       dataReady = true
       if (phase.peek() === 'hidden') {
         // Data arrived before pendingMs — skip pending, go straight to ready
-        if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null }
+        if (pendingTimer) {
+          clearTimeout(pendingTimer)
+          pendingTimer = null
+        }
         phase.set('ready')
       } else if (minTimeElapsed) {
         phase.set('ready')

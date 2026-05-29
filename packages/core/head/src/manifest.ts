@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/head',
   title: 'Head Management',
-  tagline:
-    'Reactive `<head>` tag management — useHead(), HeadProvider, renderWithHead() for SSR',
+  tagline: 'Reactive `<head>` tag management — useHead(), HeadProvider, renderWithHead() for SSR',
   description:
     'Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app.',
   category: 'browser',
@@ -119,7 +118,7 @@ const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
 const doc = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bodyAttrs}>\${html}</body></html>\``,
       mistakes: [
         'Awaiting `renderWithHead` and then NOT splicing `head` into the `<head>` element — every `useHead()` call quietly disappears',
-        'Forgetting to interpolate `htmlAttrs` / `bodyAttrs` (the leading space is included in each string) — `htmlAttrs.lang` and `bodyAttrs.class` set via `useHead` won\\\'t reach the DOM',
+        "Forgetting to interpolate `htmlAttrs` / `bodyAttrs` (the leading space is included in each string) — `htmlAttrs.lang` and `bodyAttrs.class` set via `useHead` won\\'t reach the DOM",
       ],
       seeAlso: ['useHead', 'HeadProvider'],
     },
@@ -141,13 +140,11 @@ const { tags, htmlAttrs, bodyAttrs } = ctx.resolve()`,
   gotchas: [
     {
       label: 'Key deduplication',
-      note:
-        'Tags with the same key replace each other (innermost wins). Meta keys: `name` → `property` → index. Link keys: `href + rel` → `rel` → index. Script keys: `src` → index. Style and noscript are unkeyed and always accumulated.',
+      note: 'Tags with the same key replace each other (innermost wins). Meta keys: `name` → `property` → index. Link keys: `href + rel` → `rel` → index. Script keys: `src` → index. Style and noscript are unkeyed and always accumulated.',
     },
     {
       label: 'Inline script escaping',
-      note:
-        'Script / style / noscript bodies are not HTML-escaped, but the SSR serializer rewrites `</script>` / `</style>` / `</noscript>` and `<!--` to prevent breaking out of the wrapping tag. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.',
+      note: 'Script / style / noscript bodies are not HTML-escaped, but the SSR serializer rewrites `</script>` / `</style>` / `</noscript>` and `<!--` to prevent breaking out of the wrapping tag. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.',
     },
   ],
 })

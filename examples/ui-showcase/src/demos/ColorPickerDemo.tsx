@@ -8,13 +8,17 @@ export function ColorPickerDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Color Picker</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Color Picker
+      </Title>
 
       <ColorPickerBase value={color()} onChange={(hex: string) => color.set(hex)}>
         {(state: ColorPickerState) => (
           <div style="max-width: 280px;">
             <div
-              style={() => `width: 100%; height: 160px; border-radius: 8px; margin-bottom: 12px; background: linear-gradient(to right, white, hsl(${state.hue()}, 100%, 50%)), linear-gradient(to top, black, transparent); background-blend-mode: multiply; cursor: crosshair;`}
+              style={() =>
+                `width: 100%; height: 160px; border-radius: 8px; margin-bottom: 12px; background: linear-gradient(to right, white, hsl(${state.hue()}, 100%, 50%)), linear-gradient(to top, black, transparent); background-blend-mode: multiply; cursor: crosshair;`
+              }
               onClick={(e: MouseEvent) => {
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
                 const s = ((e.clientX - rect.left) / rect.width) * 100
@@ -29,13 +33,21 @@ export function ColorPickerDemo() {
               max="360"
               value={state.hue()}
               onInput={(e: Event) => {
-                state.setHSB(Number((e.target as HTMLInputElement).value), state.saturation(), state.brightness())
+                state.setHSB(
+                  Number((e.target as HTMLInputElement).value),
+                  state.saturation(),
+                  state.brightness(),
+                )
               }}
               style="width: 100%; margin-bottom: 12px;"
             />
 
             <div style="display: flex; align-items: center; gap: 12px;">
-              <div style={() => `width: 40px; height: 40px; border-radius: 8px; background: ${state.hex()}; border: 1px solid #e5e7eb;`} />
+              <div
+                style={() =>
+                  `width: 40px; height: 40px; border-radius: 8px; background: ${state.hex()}; border: 1px solid #e5e7eb;`
+                }
+              />
               <input
                 type="text"
                 value={state.hex()}
@@ -45,7 +57,10 @@ export function ColorPickerDemo() {
             </div>
 
             <p style="font-size: 12px; color: #6b7280; margin-top: 8px;">
-              HSB: {() => `${Math.round(state.hue())}° ${Math.round(state.saturation())}% ${Math.round(state.brightness())}%`}
+              HSB:{' '}
+              {() =>
+                `${Math.round(state.hue())}° ${Math.round(state.saturation())}% ${Math.round(state.brightness())}%`
+              }
             </p>
           </div>
         )}

@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/permissions',
   title: 'Permissions',
-  tagline:
-    'Reactive permissions — RBAC, ABAC, feature flags, subscription tiers',
+  tagline: 'Reactive permissions — RBAC, ABAC, feature flags, subscription tiers',
   description:
     'Universal reactive permissions for Pyreon. A permission is a boolean or a predicate function — check with `can(key, context?)` which reads as a reactive signal in effects, computeds, and JSX. Supports wildcard matching (`posts.*` matches any `posts.X`), inverse and multi-checks, and runtime updates via `can.set()` / `can.patch()`. Works for any authorization model: RBAC, ABAC, feature flags, subscription tiers. PermissionsProvider/usePermissions context pattern enables SSR and testing isolation.',
   category: 'universal',
@@ -79,7 +78,7 @@ can.set({ 'admin.*': true })  // replace all
 can.patch({ 'posts.delete': true })  // merge`,
       mistakes: [
         'Reading `can("key")` outside a reactive scope and expecting updates — the check is a signal read, it only re-evaluates inside `effect()`, `computed()`, or JSX expression thunks',
-        'Using a static object instead of a predicate for context-dependent checks — `\'posts.update\': true` always passes, use `(post) => post.authorId === userId()` for ABAC',
+        "Using a static object instead of a predicate for context-dependent checks — `'posts.update': true` always passes, use `(post) => post.authorId === userId()` for ABAC",
         'Forgetting that wildcard `admin.*` only matches one level — `admin.users.list` is NOT matched by `admin.*`, only `admin.users` is',
       ],
       seeAlso: ['PermissionsProvider', 'usePermissions'],

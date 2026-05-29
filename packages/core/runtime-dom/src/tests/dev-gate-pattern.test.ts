@@ -32,9 +32,7 @@ describe('runtime-dom dev-warning gate (source pattern)', () => {
       const source = await readFile(path.join(SRC, file), 'utf8')
       // Strip line + block comments so referencing the broken pattern in
       // documentation doesn't false-positive.
-      const code = source
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/(^|[^:])\/\/.*$/gm, '$1')
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
       // The bundler-agnostic gate must appear (bare `process.env.NODE_ENV`).
       expect(code).toMatch(/process\.env\.NODE_ENV/)

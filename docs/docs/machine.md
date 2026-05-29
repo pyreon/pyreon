@@ -59,11 +59,11 @@ const send = (event) => {
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', { style: { fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' } }, () => 'State: ' + state()),
-  h('button', { onClick: () => send('FETCH') }, 'FETCH'),
-  h('button', { onClick: () => send('SUCCESS'), style: { marginLeft: '8px' } }, 'SUCCESS'),
-  h('button', { onClick: () => send('ERROR'), style: { marginLeft: '8px' } }, 'ERROR'),
-  h('button', { onClick: () => send('RETRY'), style: { marginLeft: '8px' } }, 'RETRY'),
+h('div', { style: { fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' } }, () => 'State: ' + state()),
+h('button', { onClick: () => send('FETCH') }, 'FETCH'),
+h('button', { onClick: () => send('SUCCESS'), style: { marginLeft: '8px' } }, 'SUCCESS'),
+h('button', { onClick: () => send('ERROR'), style: { marginLeft: '8px' } }, 'ERROR'),
+h('button', { onClick: () => send('RETRY'), style: { marginLeft: '8px' } }, 'RETRY'),
 )
 mount(ui, app)
 </Playground>

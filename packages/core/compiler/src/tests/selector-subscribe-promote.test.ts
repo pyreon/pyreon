@@ -44,7 +44,9 @@ describe('Compiler: selector.subscribe auto-promotion', () => {
       `
       const out = transform(src).code
       // The updater receives `m` and applies `m ? 'on' : 'off'`
-      expect(out).toMatch(/isSel\.subscribe\(k,\s*\(m\)\s*=>\s*\{[^}]*className\s*=\s*\(m\s*\?\s*'on'\s*:\s*'off'\)/)
+      expect(out).toMatch(
+        /isSel\.subscribe\(k,\s*\(m\)\s*=>\s*\{[^}]*className\s*=\s*\(m\s*\?\s*'on'\s*:\s*'off'\)/,
+      )
     })
 
     it('also promotes the bare `selector(k) ? a : b` form without the arrow', () => {

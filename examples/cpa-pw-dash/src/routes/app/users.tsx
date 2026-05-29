@@ -1,9 +1,9 @@
-import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { listUsers, type User } from "../../lib/db"
+import { signal } from '@pyreon/reactivity'
+import { onMount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { listUsers, type User } from '../../lib/db'
 
-export const meta = { title: "Users" }
+export const meta = { title: 'Users' }
 
 export default function Users() {
   useHead({ title: meta.title })

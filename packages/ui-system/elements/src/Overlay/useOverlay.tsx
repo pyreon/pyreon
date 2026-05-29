@@ -61,7 +61,6 @@ const devWarn = (msg: string) => {
   console.warn(msg)
 }
 
-
 type ComputeResult = {
   pos: OverlayPosition
   resolvedAlignX?: AlignX

@@ -34,7 +34,7 @@ const Button = styled("button")\`
 \`
 // <Button $compact onClick={...}>Go</Button>  — $compact not forwarded to <button>`,
       mistakes: [
-        "Expecting `$`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-`$` name if the attribute must land on the element",
+        'Expecting `$`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-`$` name if the attribute must land on the element',
         'Destructuring `props` in the interpolation (`${({ theme }) => …}`) and being surprised it does not update on a whole-theme swap — read `props.theme` lazily; the theme context is reactive and the styled resolver re-runs on swap',
         'Passing a resolved value where a function interpolation is needed for reactivity — `${signal()}` snapshots once at definition; use `${() => signal()}` (or `${(p) => p.x}`) to stay on the dynamic path',
         'Using `styled.div` and expecting a different identity per call — the Proxy returns the same tag template fn shape; per-definition caches key on the template, not the call site',
@@ -44,8 +44,7 @@ const Button = styled("button")\`
     {
       name: 'css',
       kind: 'function',
-      signature:
-        'css(strings: TemplateStringsArray, ...values: Interpolation[]): CSSResult',
+      signature: 'css(strings: TemplateStringsArray, ...values: Interpolation[]): CSSResult',
       summary:
         'Tagged-template that returns a LAZY `CSSResult` — it is NOT a class name or a CSS string until resolved by `styled()`, `useCSS()`, or composition into another template. Compose reusable fragments with it (assign a `css` result to `const base`, then interpolate `base` inside a `styled` template). Resolution is deferred so it can read the props/theme of the consuming component at use time.',
       example: `import { css, useCSS } from "@pyreon/styler"
@@ -250,8 +249,7 @@ normalizeCSS("color:  red ;") // canonical form, dedup-stable`,
     {
       name: 'resolveValue',
       kind: 'function',
-      signature:
-        'resolveValue(value: Interpolation, props: Record<string, any>): string',
+      signature: 'resolveValue(value: Interpolation, props: Record<string, any>): string',
       summary:
         'Resolves a SINGLE interpolation against `props`: invokes function interpolations with `props`, flattens nested `CSSResult` / `KeyframesResult`, and stringifies the result. The per-interpolation primitive `resolve()` loops over.',
       example: `import { resolveValue } from "@pyreon/styler"
@@ -276,7 +274,7 @@ afterEach(() => clearNormCache())`,
       signature:
         'buildProps(rawProps: Record<string, any>, generatedCls: string, isDOM: boolean, customFilter?: (prop: string) => boolean): Record<string, any>',
       summary:
-        "Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, and (for DOM targets) filters non-DOM attributes — `customFilter` overrides per-component. **Copies DESCRIPTORS, not values**, so compiler-emitted reactive (`_rp` getter) props survive forwarding instead of collapsing to a static snapshot.",
+        'Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, and (for DOM targets) filters non-DOM attributes — `customFilter` overrides per-component. **Copies DESCRIPTORS, not values**, so compiler-emitted reactive (`_rp` getter) props survive forwarding instead of collapsing to a static snapshot.',
       example: `import { buildProps } from "@pyreon/styler"
 
 const forwarded = buildProps(rawProps, "sc-abc123", true)`,
@@ -289,8 +287,7 @@ const forwarded = buildProps(rawProps, "sc-abc123", true)`,
     {
       name: 'filterProps',
       kind: 'function',
-      signature:
-        'filterProps(props: Record<string, unknown>): Record<string, unknown>',
+      signature: 'filterProps(props: Record<string, unknown>): Record<string, unknown>',
       summary:
         'Returns a copy of `props` with `$`-transient and known non-DOM props removed — the DOM-safety filter `buildProps` applies for element targets. Exposed for consumers doing their own forwarding who still want the styler allowlist semantics. Descriptor-preserving, same reactive-prop rationale as `buildProps`.',
       example: `import { filterProps } from "@pyreon/styler"

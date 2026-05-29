@@ -113,10 +113,7 @@ Body text.`,
   })
 
   it('falls back to the slug when neither frontmatter nor heading has a title', () => {
-    writeFileSync(
-      join(tmp, 'docs/patterns/slug-only.md'),
-      'Body with no title.',
-    )
+    writeFileSync(join(tmp, 'docs/patterns/slug-only.md'), 'Body with no title.')
     const r = loadPatternRegistry(tmp)
     const p = r.patterns.find((x) => x.name === 'slug-only')!
     expect(p.title).toBe('slug-only')

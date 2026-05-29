@@ -45,9 +45,7 @@ describe('@pyreon/solid-compat — browser smoke', () => {
     const host = mountTarget.firstElementChild as HTMLElement
     expect(host.tagName.toLowerCase()).toBe('div')
     expect(host.shadowRoot).not.toBeNull()
-    expect(host.shadowRoot!.querySelector('#sb-shadow')?.textContent).toBe(
-      'shadowed',
-    )
+    expect(host.shadowRoot!.querySelector('#sb-shadow')?.textContent).toBe('shadowed')
     unmount()
     // host removed on cleanup — no detached-host leak across mount cycles
     expect(mountTarget.firstElementChild).toBeNull()

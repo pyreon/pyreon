@@ -6,13 +6,13 @@
 
 5 Kotlin sources under `src/main/kotlin/com/pyreon/router/`:
 
-| File | Purpose | Status |
-|---|---|---|
-| `PyreonRouter.kt` | Router model — `MutableState<List<String>>` path stack + push/replace/back/reset/params reactivity. | **Real** |
-| `RouterProvider.kt` | `@Composable` container — exposes router via `LocalPyreonRouter` `CompositionLocal`. | **Real** |
-| `RouterView.kt` | `@Composable` placeholder — host wires per-path content via `when(router.currentPath)` for now. | Scaffold |
-| `Link.kt` | `PyreonLink(to) { navigate -> ... }` — exposes navigate action to caller-supplied clickable wrapper. | **Real** |
-| `Hooks.kt` | `useNavigate()` / `useParams()` — `@Composable` programmatic navigation + param reading. | **Real** |
+| File                | Purpose                                                                                              | Status   |
+| ------------------- | ---------------------------------------------------------------------------------------------------- | -------- |
+| `PyreonRouter.kt`   | Router model — `MutableState<List<String>>` path stack + push/replace/back/reset/params reactivity.  | **Real** |
+| `RouterProvider.kt` | `@Composable` container — exposes router via `LocalPyreonRouter` `CompositionLocal`.                 | **Real** |
+| `RouterView.kt`     | `@Composable` placeholder — host wires per-path content via `when(router.currentPath)` for now.      | Scaffold |
+| `Link.kt`           | `PyreonLink(to) { navigate -> ... }` — exposes navigate action to caller-supplied clickable wrapper. | **Real** |
+| `Hooks.kt`          | `useNavigate()` / `useParams()` — `@Composable` programmatic navigation + param reading.             | **Real** |
 
 The compiler-emitted Kotlin (post-Phase-C3 follow-up) references these symbols 1:1 from a JSX source. Today, hand-written Compose code can already use them — same API the web side ships, different runtime under it.
 
@@ -20,18 +20,18 @@ The compiler-emitted Kotlin (post-Phase-C3 follow-up) references these symbols 1
 
 Same surface the web router exposes, mapped to Compose state + CompositionLocal:
 
-| Web (`@pyreon/router`) | Android (this package) |
-|---|---|
-| `createRouter({ routes })` | `PyreonRouter()` |
-| `<RouterProvider router={router}>` | `RouterProvider(router) { ... }` |
-| `<RouterView />` | `RouterView()` |
+| Web (`@pyreon/router`)                 | Android (this package)                         |
+| -------------------------------------- | ---------------------------------------------- |
+| `createRouter({ routes })`             | `PyreonRouter()`                               |
+| `<RouterProvider router={router}>`     | `RouterProvider(router) { ... }`               |
+| `<RouterView />`                       | `RouterView()`                                 |
 | `<Link to="/users/123">Profile</Link>` | `PyreonLink("/users/123") { navigate -> ... }` |
-| `useNavigate()` | `useNavigate()` |
-| `useParams()` | `useParams()` |
-| `router.push(path)` | `router.push(path)` |
-| `router.replace(path)` | `router.replace(path)` |
-| `router.back()` | `router.back()` |
-| `router.currentRoute().path` | `router.currentPath` |
+| `useNavigate()`                        | `useNavigate()`                                |
+| `useParams()`                          | `useParams()`                                  |
+| `router.push(path)`                    | `router.push(path)`                            |
+| `router.replace(path)`                 | `router.replace(path)`                         |
+| `router.back()`                        | `router.back()`                                |
+| `router.currentRoute().path`           | `router.currentPath`                           |
 
 ## Cross-platform source
 
@@ -46,7 +46,9 @@ function App() {
   return (
     <RouterProvider router={router}>
       <Stack>
-        <Link to="/users/123"><Text>View Profile</Text></Link>
+        <Link to="/users/123">
+          <Text>View Profile</Text>
+        </Link>
         <RouterView />
       </Stack>
     </RouterProvider>
@@ -60,7 +62,7 @@ function App() {
 
 ## Why caller-wraps-clickable for `PyreonLink`?
 
-Compose's foundation-vs-material split makes the cross-platform-parity choice harder than on web/iOS. HTML has `<a>`; SwiftUI has `Button`; Compose has *several* clickable wrappers depending on the Material flavour — pulling `androidx.compose.material:material` into this package would force every consumer onto Material 2, AND would prevent typechecking against the minimal kotlinc stubs (no Android-SDK install required).
+Compose's foundation-vs-material split makes the cross-platform-parity choice harder than on web/iOS. HTML has `<a>`; SwiftUI has `Button`; Compose has _several_ clickable wrappers depending on the Material flavour — pulling `androidx.compose.material:material` into this package would force every consumer onto Material 2, AND would prevent typechecking against the minimal kotlinc stubs (no Android-SDK install required).
 
 The current shape — `PyreonLink(to) { navigate -> content() }` — keeps the package free of `material*` deps. The Material-wrapped ergonomic surface (`PyreonLink(to) { content() }` that auto-wraps in a Material `Surface`) lives in a follow-up `@pyreon/native-router-kotlin-material` extension module when real apps need it.
 

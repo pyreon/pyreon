@@ -76,10 +76,7 @@ export function createComponentContextTracker(): ComponentContextTracker {
   function declaratorIsComponentOrHook(node: any): boolean {
     if (node?.id?.type !== 'Identifier') return false
     const init = node.init
-    if (
-      init?.type !== 'ArrowFunctionExpression' &&
-      init?.type !== 'FunctionExpression'
-    )
+    if (init?.type !== 'ArrowFunctionExpression' && init?.type !== 'FunctionExpression')
       return false
     return isComponentOrHookName(node.id.name)
   }

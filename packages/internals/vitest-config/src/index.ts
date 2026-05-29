@@ -9,8 +9,5 @@ export type { BrowserProviderFactory } from './browser.ts'
 export { defineBrowserConfig, resolveTslibEsmEntry, tslibBrowserAlias } from './browser.ts'
 export type { DefineNodeConfigOptions } from './node.ts'
 export { defineNodeConfig } from './node.ts'
-export type {
-  CoverageThresholds,
-  PackageCategory,
-} from './thresholds.ts'
+export type { CoverageThresholds, PackageCategory } from './thresholds.ts'
 export { CATEGORY_DEFAULTS, resolveThresholds } from './thresholds.ts'

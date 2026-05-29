@@ -27,9 +27,12 @@ export function AnimationsTabPatternDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 12px">Tab Cross-Fade Pattern</Title>
+      <Title size="h2" style="margin-bottom: 12px">
+        Tab Cross-Fade Pattern
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        Each tab panel mounts/unmounts with a fade animation. Switching tabs cross-fades the content.
+        Each tab panel mounts/unmounts with a fade animation. Switching tabs cross-fades the
+        content.
       </Paragraph>
 
       <div style="display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid #e5e7eb;">
@@ -53,7 +56,9 @@ export function AnimationsTabPatternDemo() {
             show={() => active() === tab}
             style="padding: 16px; background: #f9fafb; border-radius: 8px; position: absolute; inset: 0;"
           >
-            <Title size="h3" style="margin-bottom: 8px">{content[tab]!.title}</Title>
+            <Title size="h3" style="margin-bottom: 8px">
+              {content[tab]!.title}
+            </Title>
             <Paragraph>{content[tab]!.body}</Paragraph>
           </FadePanel>
         ))}

@@ -51,7 +51,7 @@ describe('@pyreon/coolgrid in real browser', () => {
     unmount()
   })
 
-  it('Col size=2 in a 6-col grid yields ~33% — grid columns aren\'t hardcoded to 12', () => {
+  it("Col size=2 in a 6-col grid yields ~33% — grid columns aren't hardcoded to 12", () => {
     // Explicitly overrides `grid.columns` to 6 to prove the math is
     // `size / columns`, not `size / 12`.
     const theme = { ...gridTheme, grid: { ...gridTheme.grid, columns: 6 } }
@@ -124,15 +124,7 @@ describe('@pyreon/coolgrid in real browser', () => {
       h(
         PyreonUI,
         { theme: gridTheme },
-        h(
-          Container,
-          null,
-          h(
-            Row,
-            { id: 'row', gap: 24 },
-            h(Col, { id: 'g', size: 6 }, 'G'),
-          ),
-        ),
+        h(Container, null, h(Row, { id: 'row', gap: 24 }, h(Col, { id: 'g', size: 6 }, 'G'))),
       ),
     )
     const row = container.querySelector<HTMLElement>('#row')!
@@ -161,11 +153,7 @@ describe('@pyreon/coolgrid in real browser', () => {
         h(
           Container,
           null,
-          h(
-            Row,
-            { id: 'row' },
-            h(Col, { id: 'r', size: [12, 6, 4] } as any, 'x'),
-          ),
+          h(Row, { id: 'row' }, h(Col, { id: 'r', size: [12, 6, 4] } as any, 'x')),
         ),
       ),
     )

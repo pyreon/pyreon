@@ -1,8 +1,8 @@
-import { redirect, RouterView, useLoaderData } from "@pyreon/router"
-import type { LoaderContext } from "@pyreon/router"
-import { Link } from "@pyreon/zero/link"
-import { ThemeToggle } from "@pyreon/zero/theme"
-import { getSession, type SessionInfo } from "../../lib/auth"
+import { redirect, RouterView, useLoaderData } from '@pyreon/router'
+import type { LoaderContext } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import { ThemeToggle } from '@pyreon/zero/theme'
+import { getSession, type SessionInfo } from '../../lib/auth'
 
 /**
  * Auth-gated route group. Every `/app/*` route runs through this layout's
@@ -22,7 +22,7 @@ import { getSession, type SessionInfo } from "../../lib/auth"
  */
 export async function loader(ctx: LoaderContext): Promise<{ session: SessionInfo }> {
   const session = await resolveSession(ctx)
-  if (!session) redirect("/login")
+  if (!session) redirect('/login')
   return { session }
 }
 
@@ -39,11 +39,11 @@ export async function loader(ctx: LoaderContext): Promise<{ session: SessionInfo
  */
 async function resolveSession(ctx: LoaderContext): Promise<SessionInfo | null> {
   if (ctx.request) {
-    const cookie = ctx.request.headers.get("cookie") ?? ""
+    const cookie = ctx.request.headers.get('cookie') ?? ''
     const sid = /(?:^|;\s*)sid=([^;]+)/.exec(cookie)?.[1]
     return getSession(sid)
   }
-  const res = await fetch("/api/session", { credentials: "same-origin" })
+  const res = await fetch('/api/session', { credentials: 'same-origin' })
   if (!res.ok) return null
   const body = (await res.json()) as { session: SessionInfo | null }
   return body.session
@@ -65,8 +65,8 @@ async function resolveSession(ctx: LoaderContext): Promise<SessionInfo | null> {
  * anyway so the loader always runs. Falls back to `'anon'` on SSR.
  */
 export function loaderKey(): string {
-  if (typeof document === "undefined") return "auth-gate|ssr"
-  const sid = /(?:^|;\s*)sid=([^;]+)/.exec(document.cookie)?.[1] ?? "anon"
+  if (typeof document === 'undefined') return 'auth-gate|ssr'
+  const sid = /(?:^|;\s*)sid=([^;]+)/.exec(document.cookie)?.[1] ?? 'anon'
   return `auth-gate|${sid}`
 }
 
@@ -108,4 +108,3 @@ export function layout() {
     </div>
   )
 }
-

@@ -12,9 +12,6 @@ import { defineConfig } from 'vite'
 // regular dev/build/preview commands stay simple, AND so `bun run
 // build:subpath` is a one-liner for local repro of the subpath shape.
 export default defineConfig({
-  plugins: [
-    pyreon(),
-    zero({ mode: 'ssg', base: '/blog/', ssg: { paths: ['/', '/about'] } }),
-  ],
+  plugins: [pyreon(), zero({ mode: 'ssg', base: '/blog/', ssg: { paths: ['/', '/about'] } })],
   resolve: { conditions: ['bun'] },
 })

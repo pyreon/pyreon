@@ -52,9 +52,7 @@ describe('code editor in real browser', () => {
 
   it('exposes reactive cursor + lineCount signals', async () => {
     const editor = createEditor({ value: 'line1\nline2\nline3' })
-    const { unmount } = mountInBrowser(
-      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
-    )
+    const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor, style: 'height: 200px' }))
     await flush()
 
     expect(editor.lineCount()).toBe(3)
@@ -79,9 +77,7 @@ describe('code editor in real browser', () => {
   it('handles unicode + multi-line + special chars (round-trip preserves bytes)', async () => {
     const tricky = '😀 emoji\n  indented\ttab\nü-ü\r\nCRLF preserved?'
     const editor = createEditor({ value: tricky })
-    const { unmount } = mountInBrowser(
-      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
-    )
+    const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor, style: 'height: 200px' }))
     await flush()
     // CodeMirror normalizes line endings — read what it actually stored.
     expect(editor.value()).toContain('😀 emoji')
@@ -93,9 +89,7 @@ describe('code editor in real browser', () => {
   it('bindEditorToSignal — external signal change updates the editor', async () => {
     const data = signal({ name: 'Alice' })
     const editor = createEditor({ value: JSON.stringify(data(), null, 2), language: 'json' })
-    const { unmount } = mountInBrowser(
-      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
-    )
+    const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor, style: 'height: 200px' }))
     await flush()
 
     const binding = bindEditorToSignal({
@@ -123,9 +117,7 @@ describe('code editor in real browser', () => {
   it('bindEditorToSignal — editor.value.set() propagates back to the signal via parse', async () => {
     const data = signal({ name: 'Alice' })
     const editor = createEditor({ value: JSON.stringify(data(), null, 2), language: 'json' })
-    const { unmount } = mountInBrowser(
-      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
-    )
+    const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor, style: 'height: 200px' }))
     await flush()
 
     const binding = bindEditorToSignal({
@@ -152,9 +144,7 @@ describe('code editor in real browser', () => {
   it('bindEditorToSignal — invalid input calls onParseError and leaves signal at last valid value', async () => {
     const data = signal({ name: 'Alice' })
     const editor = createEditor({ value: JSON.stringify(data(), null, 2), language: 'json' })
-    const { unmount } = mountInBrowser(
-      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
-    )
+    const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor, style: 'height: 200px' }))
     await flush()
 
     const errors: Error[] = []

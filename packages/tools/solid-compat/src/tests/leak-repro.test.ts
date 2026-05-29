@@ -115,8 +115,9 @@ describe('createStore — subscriber-aware signal eviction (#733 Class C shape)'
     }
 
     // Reach into the internal Map via the @internal debug symbol.
-    const cache
-      = (store as unknown as Record<symbol, Map<string, unknown> | undefined>)[_STORE_SIGNAL_CACHE]
+    const cache = (store as unknown as Record<symbol, Map<string, unknown> | undefined>)[
+      _STORE_SIGNAL_CACHE
+    ]
     if (!cache) throw new Error('store should expose _STORE_SIGNAL_CACHE')
     const beforeSweepSize = cache.size
 

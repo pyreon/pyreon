@@ -3,7 +3,9 @@ import { Breadcrumb, BreadcrumbItem, Title } from '@pyreon/ui-components'
 export function BreadcrumbDemo() {
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Breadcrumb</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Breadcrumb
+      </Title>
 
       <div style="margin-bottom: 24px;">
         <Breadcrumb gap="small">

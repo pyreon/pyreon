@@ -7,14 +7,11 @@ function createPanel(): void {
   chrome.devtools.panels.create('Pyreon', 'icons/pyreon-32.png', 'panel.html')
 }
 
-chrome.devtools.inspectedWindow.eval(
-  '!!(window.__PYREON_DEVTOOLS__)',
-  (result, _exceptionInfo) => {
-    if (result) {
-      createPanel()
-    }
-  },
-)
+chrome.devtools.inspectedWindow.eval('!!(window.__PYREON_DEVTOOLS__)', (result, _exceptionInfo) => {
+  if (result) {
+    createPanel()
+  }
+})
 
 // Re-check periodically for SPAs that bootstrap asynchronously
 let retries = 0

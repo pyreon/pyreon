@@ -24,9 +24,9 @@ bun add -d @pyreon/lint
 
 ## Configuration
 
-| Setting | Default | Description |
-|---|---|---|
-| `pyreonLint.enable` | `true` | Enable/disable diagnostics |
+| Setting             | Default         | Description                                 |
+| ------------------- | --------------- | ------------------------------------------- |
+| `pyreonLint.enable` | `true`          | Enable/disable diagnostics                  |
 | `pyreonLint.preset` | `"recommended"` | Lint preset (recommended, strict, app, lib) |
 
 ## How it works

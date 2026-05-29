@@ -160,7 +160,11 @@ function findThemeObject(program: AnyNode): AnyNode | null {
       for (const d of decls) {
         const id = (d as { id?: AnyNode }).id
         const init = unwrapTSLayers((d as { init?: AnyNode }).init)
-        if (id?.type === 'Identifier' && (id as { name?: string }).name === 'theme' && init?.type === 'ObjectExpression') {
+        if (
+          id?.type === 'Identifier' &&
+          (id as { name?: string }).name === 'theme' &&
+          init?.type === 'ObjectExpression'
+        ) {
           themeBinding = init
         }
       }
@@ -290,7 +294,8 @@ function collectGroupEntries(
     if (isScalarLiteral(value)) {
       const tv = literalToThemeValue(value, groupName)
       if (tv) entries.push({ name: entryName, value: tv })
-      else warnings.push(`[parse-theme] skipped '${groupName}.${entryName}' — non-emittable literal`)
+      else
+        warnings.push(`[parse-theme] skipped '${groupName}.${entryName}' — non-emittable literal`)
     } else if (value.type === 'ObjectExpression') {
       // Nested object — flatten with underscore. The canonical theme
       // does this for color subgroups (`color.system.light.base`) and

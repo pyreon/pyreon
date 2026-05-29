@@ -9,9 +9,9 @@ LPIH surfaces **live runtime data at the source line** in your editor — signal
 
 ```tsx
 function App() {
-  const count = signal(0)             // 🔥 signal fired 240× (12/s)
-  const doubled = computed(() => count() * 2)  // 🔥 derived fired 240× (12/s)
-  effect(() => console.log(doubled()))         // 🔥 effect fired 241× (12/s)
+  const count = signal(0) // 🔥 signal fired 240× (12/s)
+  const doubled = computed(() => count() * 2) // 🔥 derived fired 240× (12/s)
+  effect(() => console.log(doubled())) // 🔥 effect fired 241× (12/s)
   return <div>{count()}</div>
 }
 ```
@@ -42,14 +42,14 @@ import { defineConfig } from 'vite'
 import pyreon from '@pyreon/vite-plugin'
 
 export default defineConfig({
-  plugins: [pyreon()],     // LPIH on by default in dev (R1, #786)
+  plugins: [pyreon()], // LPIH on by default in dev (R1, #786)
 })
 ```
 
 Opt out via `pyreon({ lpih: false })`. Override interval / cache path:
 
 ```ts
-pyreon({ lpih: { intervalMs: 500 } })           // slower poll
+pyreon({ lpih: { intervalMs: 500 } }) // slower poll
 pyreon({ lpih: { cachePath: '/custom/x.json' } }) // non-default path
 ```
 
@@ -131,10 +131,10 @@ Per-creation, LPIH captures and surfaces:
 
 Time from "save file" to "ghost text updated", measured 20-trial median over a real JSON-RPC `didChange + inlayHint` cycle:
 
-| Metric | Value |
-|---|---|
-| Median LSP roundtrip | **0.32 ms** |
-| p95 | **2.78 ms** |
+| Metric                                     | Value             |
+| ------------------------------------------ | ----------------- |
+| Median LSP roundtrip                       | **0.32 ms**       |
+| p95                                        | **2.78 ms**       |
 | User-perceived (incl. 150 ms LSP debounce) | **~150 ms** total |
 
 For context: a traditional devtools-panel workflow takes ~3-5 seconds of conscious human work (switch tab → click panel → scan list → map back to source). LPIH is **20× faster** for "is this signal firing?"-type questions.
@@ -143,11 +143,11 @@ For context: a traditional devtools-panel workflow takes ~3-5 seconds of conscio
 
 100,000 signals + 10,000 computeds + 10,000 effects = 120k reactive primitives, 5-trial median:
 
-| Devtools state | Wall-clock | Per-creation |
-|---|---|---|
-| **INACTIVE** (production-equivalent) | 7.4 ms | **62 ns** |
-| **ACTIVE** (LPIH worst case) | 269 ms | **2,245 ns** (~2.2 µs) |
-| Production NODE_ENV=production | — | **0** (tree-shaken) |
+| Devtools state                       | Wall-clock | Per-creation           |
+| ------------------------------------ | ---------- | ---------------------- |
+| **INACTIVE** (production-equivalent) | 7.4 ms     | **62 ns**              |
+| **ACTIVE** (LPIH worst case)         | 269 ms     | **2,245 ns** (~2.2 µs) |
+| Production NODE_ENV=production       | —          | **0** (tree-shaken)    |
 
 At realistic real-app creation rates (~100-1000 signals total / ~100/sec peak), per-session LPIH cost is **0.2-2.3 ms total** — invisible. Devtools-attached mode is **opt-in**; the default is OFF.
 
@@ -155,12 +155,12 @@ At realistic real-app creation rates (~100-1000 signals total / ~100/sec peak), 
 
 Time from "user clicked button → signal fired" to "ghost text reflects the new count":
 
-| Step | Time |
-|---|---|
-| Bridge write (`writeLpihCache`) — getFireSummaries + JSON.stringify + atomic rename | ~1.5 ms |
-| Cache read + JSON.parse | ~0.05 ms |
-| LSP inlayHint (analyze + merge + serialize) | ~0.24 ms |
-| **Total bridge-to-editor** | **~1.8 ms** |
+| Step                                                                                | Time        |
+| ----------------------------------------------------------------------------------- | ----------- |
+| Bridge write (`writeLpihCache`) — getFireSummaries + JSON.stringify + atomic rename | ~1.5 ms     |
+| Cache read + JSON.parse                                                             | ~0.05 ms    |
+| LSP inlayHint (analyze + merge + serialize)                                         | ~0.24 ms    |
+| **Total bridge-to-editor**                                                          | **~1.8 ms** |
 
 Add the ~150 ms LSP debounce + the polling interval (250 ms default) → end-to-end latency is **~400 ms** in the worst case. Still subjectively instant.
 

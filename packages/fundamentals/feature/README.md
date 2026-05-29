@@ -75,14 +75,14 @@ function EditUser({ id }: { id: number }) {
 
 ## `defineFeature(config)`
 
-| Option           | Type                        | Description                                                              |
-| ---------------- | --------------------------- | ------------------------------------------------------------------------ |
-| `name`           | `string`                    | Unique feature name — used for store ID and query-key namespace          |
-| `schema`         | Zod-compatible schema       | Validation schema (Zod v3 / v4, duck-typed; ArkType / Valibot also work) |
-| `api`            | `string`                    | REST base path (e.g. `'/api/users'`)                                     |
+| Option           | Type                        | Description                                                                    |
+| ---------------- | --------------------------- | ------------------------------------------------------------------------------ |
+| `name`           | `string`                    | Unique feature name — used for store ID and query-key namespace                |
+| `schema`         | Zod-compatible schema       | Validation schema (Zod v3 / v4, duck-typed; ArkType / Valibot also work)       |
+| `api`            | `string`                    | REST base path (e.g. `'/api/users'`)                                           |
 | `initialValues?` | `Partial<TValues>`          | Default create-form values (auto-generated from schema field types if omitted) |
-| `validate?`      | `SchemaValidateFn<TValues>` | Custom schema-level validation (overrides schema-from-`safeParseAsync`)  |
-| `fetcher?`       | `typeof fetch`              | Custom fetch (e.g. for auth headers); defaults to global `fetch`         |
+| `validate?`      | `SchemaValidateFn<TValues>` | Custom schema-level validation (overrides schema-from-`safeParseAsync`)        |
+| `fetcher?`       | `typeof fetch`              | Custom fetch (e.g. for auth headers); defaults to global `fetch`               |
 
 `TValues` is inferred from `schema._output` (Zod v3/v4 carry it) — all generated hooks are end-to-end typed.
 
@@ -116,13 +116,13 @@ const { data, isPending } = users.useList({ page, pageSize: 10 })
 
 `ListOptions`:
 
-| Field         | Type                                          | Description                                       |
-| ------------- | --------------------------------------------- | ------------------------------------------------- |
-| `params?`     | `Record<string, string \| number \| boolean>` | Additional query parameters                       |
-| `page?`       | `number \| Signal<number>`                    | Reactive page number                              |
-| `pageSize?`   | `number`                                      | Items per page (defaults to `20` if `page` is set) |
-| `staleTime?`  | `number`                                      | Override stale time for this query                |
-| `enabled?`    | `boolean`                                     | Enable/disable                                    |
+| Field        | Type                                          | Description                                        |
+| ------------ | --------------------------------------------- | -------------------------------------------------- |
+| `params?`    | `Record<string, string \| number \| boolean>` | Additional query parameters                        |
+| `page?`      | `number \| Signal<number>`                    | Reactive page number                               |
+| `pageSize?`  | `number`                                      | Items per page (defaults to `20` if `page` is set) |
+| `staleTime?` | `number`                                      | Override stale time for this query                 |
+| `enabled?`   | `boolean`                                     | Enable/disable                                     |
 
 ## Edit form (auto-fetch)
 
@@ -139,14 +139,14 @@ const form = users.useForm({
 
 `FeatureFormOptions`:
 
-| Field            | Type                             | Description                            |
-| ---------------- | -------------------------------- | -------------------------------------- |
-| `mode?`          | `'create' \| 'edit'`             | Default: `'create'`                    |
-| `id?`            | `string \| number`               | Required when `mode: 'edit'`           |
-| `initialValues?` | `Partial<TValues>`               | Override defaults                      |
-| `validateOn?`    | `'blur' \| 'change' \| 'submit'` | Default: `'blur'`                      |
-| `onSuccess?`     | `(result: unknown) => void`      | After successful submit                |
-| `onError?`       | `(error: unknown) => void`       | On submit error                        |
+| Field            | Type                             | Description                  |
+| ---------------- | -------------------------------- | ---------------------------- |
+| `mode?`          | `'create' \| 'edit'`             | Default: `'create'`          |
+| `id?`            | `string \| number`               | Required when `mode: 'edit'` |
+| `initialValues?` | `Partial<TValues>`               | Override defaults            |
+| `validateOn?`    | `'blur' \| 'change' \| 'submit'` | Default: `'blur'`            |
+| `onSuccess?`     | `(result: unknown) => void`      | After successful submit      |
+| `onError?`       | `(error: unknown) => void`       | On submit error              |
 
 ## Optimistic updates (useUpdate)
 
@@ -214,14 +214,14 @@ function AutoForm({ feature }: { feature: Feature<any> }) {
 
 `FieldInfo`:
 
-| Property       | Type                   | Description                                                                                                   |
-| -------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `name`         | `string`               | Schema key                                                                                                    |
-| `type`         | `FieldType`            | `'string' \| 'number' \| 'boolean' \| 'date' \| 'enum' \| 'array' \| 'object' \| 'reference' \| 'unknown'`     |
-| `optional`     | `boolean`              | Schema `.optional()` / `.nullable()`                                                                          |
-| `enumValues?`  | `(string \| number)[]` | Enum-only                                                                                                     |
-| `referenceTo?` | `string`               | Reference-only — name of the referenced feature                                                               |
-| `label`        | `string`               | Auto-derived from name (`firstName` → `'First Name'`, `created_at` → `'Created At'`)                          |
+| Property       | Type                   | Description                                                                                                |
+| -------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `name`         | `string`               | Schema key                                                                                                 |
+| `type`         | `FieldType`            | `'string' \| 'number' \| 'boolean' \| 'date' \| 'enum' \| 'array' \| 'object' \| 'reference' \| 'unknown'` |
+| `optional`     | `boolean`              | Schema `.optional()` / `.nullable()`                                                                       |
+| `enumValues?`  | `(string \| number)[]` | Enum-only                                                                                                  |
+| `referenceTo?` | `string`               | Reference-only — name of the referenced feature                                                            |
+| `label`        | `string`               | Auto-derived from name (`firstName` → `'First Name'`, `created_at` → `'Created At'`)                       |
 
 Helpers: `extractFields(schema)` returns the `FieldInfo[]` for any Zod schema; `isReference(value)` checks for the `reference()` brand; `defaultInitialValues(fields)` generates default values from field types.
 
@@ -243,13 +243,13 @@ effect(() => {
 
 `FeatureStore<TValues>`:
 
-| Property     | Type                             | Description                            |
-| ------------ | -------------------------------- | -------------------------------------- |
-| `items`      | `Signal<TValues[]>`              | Cached list                            |
-| `selected`   | `Signal<TValues \| null>`        | Currently selected item                |
-| `loading`    | `Signal<boolean>`                | Loading state                          |
-| `select(id)` | `(id: string \| number) => void` | Select by ID from `items`              |
-| `clear()`    | `() => void`                     | Clear selection                        |
+| Property     | Type                             | Description               |
+| ------------ | -------------------------------- | ------------------------- |
+| `items`      | `Signal<TValues[]>`              | Cached list               |
+| `selected`   | `Signal<TValues \| null>`        | Currently selected item   |
+| `loading`    | `Signal<boolean>`                | Loading state             |
+| `select(id)` | `(id: string \| number) => void` | Select by ID from `items` |
+| `clear()`    | `() => void`                     | Clear selection           |
 
 ## Error handling
 

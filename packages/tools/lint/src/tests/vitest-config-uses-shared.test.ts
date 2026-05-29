@@ -15,11 +15,7 @@ const ON: LintConfig = {
   rules: { 'pyreon/vitest-config-uses-shared': 'error' },
 }
 
-function lint(
-  source: string,
-  filePath: string,
-  config: LintConfig = ON,
-) {
+function lint(source: string, filePath: string, config: LintConfig = ON) {
   return lintFile(filePath, source, [vitestConfigUsesShared], config)
 }
 
@@ -65,9 +61,7 @@ describe('pyreon/vitest-config-uses-shared', () => {
        export default defineNodeConfig({ category: 'core' })`,
       'packages/some/pkg/vitest.config.ts',
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/vitest-config-uses-shared',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/vitest-config-uses-shared')
   })
 
   it('does NOT fire when defineBrowserConfig is imported from @pyreon/vitest-config', () => {
@@ -77,9 +71,7 @@ describe('pyreon/vitest-config-uses-shared', () => {
        export default defineBrowserConfig(playwright())`,
       'packages/some/pkg/vitest.browser.config.ts',
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/vitest-config-uses-shared',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/vitest-config-uses-shared')
   })
 
   it('does NOT fire on non-vitest.config files', () => {
@@ -88,9 +80,7 @@ describe('pyreon/vitest-config-uses-shared', () => {
        export default defineConfig({})`,
       'packages/some/pkg/vite.config.ts',
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/vitest-config-uses-shared',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/vitest-config-uses-shared')
   })
 
   it('does NOT fire on src/ files even if they have similar imports', () => {
@@ -99,19 +89,14 @@ describe('pyreon/vitest-config-uses-shared', () => {
        export const config = mergeConfig({}, {})`,
       'packages/some/pkg/src/index.ts',
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/vitest-config-uses-shared',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/vitest-config-uses-shared')
   })
 
   // ── exemptPaths ──────────────────────────────────────────────────────────
   it('does NOT fire when the path is exempt', () => {
     const config: LintConfig = {
       rules: {
-        'pyreon/vitest-config-uses-shared': [
-          'error',
-          { exemptPaths: ['packages/legacy/'] },
-        ],
+        'pyreon/vitest-config-uses-shared': ['error', { exemptPaths: ['packages/legacy/'] }],
       },
     }
     const result = lint(
@@ -120,8 +105,6 @@ describe('pyreon/vitest-config-uses-shared', () => {
       'packages/legacy/pkg/vitest.config.ts',
       config,
     )
-    expect(diagIds(result)).not.toContain(
-      'pyreon/vitest-config-uses-shared',
-    )
+    expect(diagIds(result)).not.toContain('pyreon/vitest-config-uses-shared')
   })
 })

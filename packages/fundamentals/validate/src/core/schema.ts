@@ -27,7 +27,9 @@ import { makeCtx } from './ops'
  * value is fully type-T (transforms applied). On failure, `issues` is
  * the ordered list of parse problems.
  */
-export type Result<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly issues: ReadonlyArray<PyreonIssue> }
+export type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly issues: ReadonlyArray<PyreonIssue> }
 
 /**
  * Sync validator function the parse compiler produces. Accepts the
@@ -86,8 +88,7 @@ export abstract class Schema<T> {
         ok: false,
         issues: [
           {
-            message:
-              '[Pyreon] schema is async — use parseAsync(input) instead of parse()',
+            message: '[Pyreon] schema is async — use parseAsync(input) instead of parse()',
             path: [],
           } satisfies StandardSchemaIssue,
         ],
@@ -226,7 +227,13 @@ export abstract class Schema<T> {
    */
   refine(
     fn: (value: T) => boolean | Promise<boolean>,
-    opts: { message: string; code?: string; key?: string; params?: Record<string, unknown>; fallback?: string },
+    opts: {
+      message: string
+      code?: string
+      key?: string
+      params?: Record<string, unknown>
+      fallback?: string
+    },
   ): this {
     this._ops.push({ kind: 'refine', fn: fn as (v: unknown) => boolean | Promise<boolean>, opts })
     this._invalidateCompile()
@@ -444,7 +451,9 @@ function scanChecks(ops: ReadonlyArray<Op>): ReadonlyArray<CheckFn> {
   return fns
 }
 
-function scanTransforms(ops: ReadonlyArray<Op>): ReadonlyArray<(v: unknown) => unknown | Promise<unknown>> {
+function scanTransforms(
+  ops: ReadonlyArray<Op>,
+): ReadonlyArray<(v: unknown) => unknown | Promise<unknown>> {
   const fns: Array<(v: unknown) => unknown | Promise<unknown>> = []
   for (const op of ops) {
     if (op.kind === 'transform') fns.push(op.fn)
@@ -454,7 +463,13 @@ function scanTransforms(ops: ReadonlyArray<Op>): ReadonlyArray<(v: unknown) => u
 
 interface RefineSpec {
   fn: (value: unknown) => boolean | Promise<boolean>
-  opts: { message: string; code?: string; key?: string; params?: Readonly<Record<string, unknown>>; fallback?: string }
+  opts: {
+    message: string
+    code?: string
+    key?: string
+    params?: Readonly<Record<string, unknown>>
+    fallback?: string
+  }
 }
 
 function scanRefines(ops: ReadonlyArray<Op>): ReadonlyArray<RefineSpec> {
@@ -487,7 +502,11 @@ function applyRefines(
   return applyRefinesSync(value, refines, ctx)
 }
 
-function applyRefinesSync(value: unknown, refines: ReadonlyArray<RefineSpec>, ctx: ParseCtx): unknown {
+function applyRefinesSync(
+  value: unknown,
+  refines: ReadonlyArray<RefineSpec>,
+  ctx: ParseCtx,
+): unknown {
   for (const r of refines) {
     const ok = r.fn(value)
     if (ok instanceof Promise) {
@@ -511,14 +530,12 @@ function applyRefinesSync(value: unknown, refines: ReadonlyArray<RefineSpec>, ct
   return value
 }
 
-function makeRefineIssue(
-  opts: RefineSpec['opts'],
-  path: ParseCtx['path'],
-): PyreonIssue {
+function makeRefineIssue(opts: RefineSpec['opts'], path: ParseCtx['path']): PyreonIssue {
   const issue: PyreonIssue = { message: opts.message, path }
   if (opts.code !== undefined) (issue as { code?: string }).code = opts.code
   if (opts.key !== undefined) (issue as { key?: string }).key = opts.key
-  if (opts.params !== undefined) (issue as { params?: Readonly<Record<string, unknown>> }).params = opts.params
+  if (opts.params !== undefined)
+    (issue as { params?: Readonly<Record<string, unknown>> }).params = opts.params
   if (opts.fallback !== undefined) (issue as { fallback?: string }).fallback = opts.fallback
   return issue
 }
@@ -585,7 +602,10 @@ export class TransformSchema<TIn, TOut> extends Schema<TOut> {
 
   constructor(inner: Schema<TIn>, fn: (value: TIn) => TOut | Promise<TOut>) {
     super()
-    this._ops = [...inner._ops, { kind: 'transform', fn: fn as (v: unknown) => unknown | Promise<unknown> }]
+    this._ops = [
+      ...inner._ops,
+      { kind: 'transform', fn: fn as (v: unknown) => unknown | Promise<unknown> },
+    ]
     ;(this as unknown as { _compileType: typeof inner._compileType })._compileType = (
       inner as unknown as { _compileType: typeof inner._compileType }
     )._compileType.bind(inner)
@@ -597,10 +617,7 @@ export class TransformSchema<TIn, TOut> extends Schema<TOut> {
  * primitive subclasses' chainable methods so the compiler doesn't need
  * to know about every check kind.
  */
-export function attachCheck(
-  op: Op,
-  fn: (value: unknown, ctx: ParseCtx) => void,
-): Op {
+export function attachCheck(op: Op, fn: (value: unknown, ctx: ParseCtx) => void): Op {
   ;(op as { _checkFn?: typeof fn })._checkFn = fn
   return op
 }

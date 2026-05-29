@@ -1,9 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  _handleMessage,
-  _resetOpenDocuments,
-  computeReactivityHints,
-} from '../lsp/index'
+import { _handleMessage, _resetOpenDocuments, computeReactivityHints } from '../lsp/index'
 
 // Warm the lazy `@pyreon/compiler` import ONCE before any test. The first
 // `loadAnalyze()` cold-transforms the entire compiler barrel (jsx.ts +

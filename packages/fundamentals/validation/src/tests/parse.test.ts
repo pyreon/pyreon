@@ -140,7 +140,10 @@ describe('valibotSchema.parse', () => {
   })
 
   it('returns the Promise sentinel when async safeParseAsync was passed (caller detects)', () => {
-    const asyncAdapter = valibotSchema<{ name: string }>(v.object({ name: v.string() }), v.safeParseAsync)
+    const asyncAdapter = valibotSchema<{ name: string }>(
+      v.object({ name: v.string() }),
+      v.safeParseAsync,
+    )
     const result = asyncAdapter.parse!({ name: 'A' })
     expect(result).toBeInstanceOf(Promise)
   })
@@ -165,7 +168,9 @@ describe('arktypeSchema.parse', () => {
     name: 'string > 0',
     age: 'number',
   })
-  const adapter = arktypeSchema<{ name: string; age: number }>(UserType as unknown as (data: unknown) => unknown)
+  const adapter = arktypeSchema<{ name: string; age: number }>(
+    UserType as unknown as (data: unknown) => unknown,
+  )
 
   it('returns { ok: true, value } on valid input', () => {
     const result = adapter.parse!({ name: 'Alice', age: 30 })

@@ -88,8 +88,7 @@ export const noStorageWriteAsCall: Rule = {
 
         const name = callee.name
         context.report({
-          message:
-            `Calling a storage signal ("${name}(...)") reads and discards the argument — use ${name}.set(...) (or .update(...)) to write.`,
+          message: `Calling a storage signal ("${name}(...)") reads and discards the argument — use ${name}.set(...) (or .update(...)) to write.`,
           span: getSpan(node),
           fix: { span: getSpan(callee), replacement: `${name}.set` },
         })

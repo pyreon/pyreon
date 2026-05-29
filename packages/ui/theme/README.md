@@ -11,8 +11,10 @@ import { PyreonUI } from '@pyreon/ui-core'
 import theme from '@pyreon/ui-theme'
 import { Button } from '@pyreon/ui-components'
 
-<PyreonUI theme={theme} mode="system">
-  <Button state="primary" size="medium">Save</Button>
+;<PyreonUI theme={theme} mode="system">
+  <Button state="primary" size="medium">
+    Save
+  </Button>
 </PyreonUI>
 ```
 
@@ -20,10 +22,10 @@ The default `theme` is the only runtime export. Type augmentation runs as a side
 
 ## Exports
 
-| Export | Description |
-|---|---|
+| Export                   | Description                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------- |
 | `theme` (default export) | The default theme object. Frozen-shape (`as const`) so its literal types flow through to consumers. |
-| `Theme` (type) | `typeof theme` — the exact theme shape. Use for typing custom theme overrides. |
+| `Theme` (type)           | `typeof theme` — the exact theme shape. Use for typing custom theme overrides.                      |
 
 ```ts
 import theme, { type Theme } from '@pyreon/ui-theme'
@@ -33,24 +35,24 @@ import theme, { type Theme } from '@pyreon/ui-theme'
 
 The full object is in [`src/theme.ts`](./src/theme.ts). Top-level keys:
 
-| Key | Description |
-|---|---|
-| `rootSize` | Root font size (px) — `16`. Used by `@pyreon/unistyle`'s rem helpers. |
-| `breakpoints` | `{ xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 }` — the responsive grid. |
-| `spacing` | `reset` (0) / `xxxSmall` (1) … `xxxLarge` (32) — px-valued spacing scale. |
-| `fontFamily` | `base` (Inter + system sans-serif) and `mono` (JetBrains Mono + monospaces). |
-| `fontSize` | `xSmall` (10) … `xxLarge` (24) — px-valued font scale. |
-| `headingSize` | `level1` (32) … `level6` (12) — heading-only font scale. |
-| `fontWeight` | `light` (300), `base` (400), `medium` (500), `semibold` (600), `bold` (700). |
-| `lineHeight` | `reset` (1), `small` (1.25), `base` (1.5), `large` (1.75). |
-| `elementSize` | `xxSmall` (12) … `xxxLarge` (48) — height for buttons, inputs, etc. |
-| `borderWidth` | `base` (1), `medium` (2), `large` (4). |
-| `borderStyle` | `base: 'solid'`, `dashed: 'dashed'`. |
+| Key            | Description                                                                                                      |
+| -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `rootSize`     | Root font size (px) — `16`. Used by `@pyreon/unistyle`'s rem helpers.                                            |
+| `breakpoints`  | `{ xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 }` — the responsive grid.                                          |
+| `spacing`      | `reset` (0) / `xxxSmall` (1) … `xxxLarge` (32) — px-valued spacing scale.                                        |
+| `fontFamily`   | `base` (Inter + system sans-serif) and `mono` (JetBrains Mono + monospaces).                                     |
+| `fontSize`     | `xSmall` (10) … `xxLarge` (24) — px-valued font scale.                                                           |
+| `headingSize`  | `level1` (32) … `level6` (12) — heading-only font scale.                                                         |
+| `fontWeight`   | `light` (300), `base` (400), `medium` (500), `semibold` (600), `bold` (700).                                     |
+| `lineHeight`   | `reset` (1), `small` (1.25), `base` (1.5), `large` (1.75).                                                       |
+| `elementSize`  | `xxSmall` (12) … `xxxLarge` (48) — height for buttons, inputs, etc.                                              |
+| `borderWidth`  | `base` (1), `medium` (2), `large` (4).                                                                           |
+| `borderStyle`  | `base: 'solid'`, `dashed: 'dashed'`.                                                                             |
 | `borderRadius` | `reset` (0), `small` (2), `base` (4), `medium` (8), `large` (12), `xLarge` (16), `circle: '50%'`, `pill` (9999). |
-| `shadows` | `small` / `base` / `medium` / `large` — drop-shadow scale. |
-| `zIndex` | `base` (10), `popover` (`{ overlay: 100, content: 101 }`), `drawer` (2000/2001), `modal` (3000/3001). |
-| `transition` | `fast` (`all .1s`), `base` (`all .15s`), `slow` (`all .3s`). |
-| `color.system` | Semantic palette — see below. |
+| `shadows`      | `small` / `base` / `medium` / `large` — drop-shadow scale.                                                       |
+| `zIndex`       | `base` (10), `popover` (`{ overlay: 100, content: 101 }`), `drawer` (2000/2001), `modal` (3000/3001).            |
+| `transition`   | `fast` (`all .1s`), `base` (`all .15s`), `slow` (`all .3s`).                                                     |
+| `color.system` | Semantic palette — see below.                                                                                    |
 
 ### Color palette
 
@@ -67,10 +69,10 @@ Under `color.system` each color carries `base` (full opacity) + `text` (where ap
 - `warning` — amber-500 + `text: '#92400e'`
 
 ```ts
-t.color.system.primary.base   // 'rgba(59, 130, 246, 1)'
-t.color.system.primary.text   // '#1e40af'
-t.color.system.primary[200]   // 'rgba(59, 130, 246, 0.2)'
-t.color.system.transparent    // 'transparent'
+t.color.system.primary.base // 'rgba(59, 130, 246, 1)'
+t.color.system.primary.text // '#1e40af'
+t.color.system.primary[200] // 'rgba(59, 130, 246, 0.2)'
+t.color.system.transparent // 'transparent'
 ```
 
 ## Global type augmentation

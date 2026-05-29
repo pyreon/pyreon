@@ -31,9 +31,7 @@ import type { BindEditorToSignalOptions } from './bind-signal'
  * }
  * ```
  */
-export function useEditorSignal<T>(
-  options: BindEditorToSignalOptions<T>,
-): void {
+export function useEditorSignal<T>(options: BindEditorToSignalOptions<T>): void {
   const binding = bindEditorToSignal(options)
 
   // Auto-dispose when the component unmounts

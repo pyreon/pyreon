@@ -10,25 +10,21 @@ import { Background, Button, Card, Section, SectionHeader } from '../base'
 import { element } from '../core'
 import { workItems } from '../../content'
 
-const Grid = element
-  .attrs({ tag: 'div' })
-  .theme((t) => ({
-    display: 'grid',
-    gridTemplateColumns: {
-      xs: '1fr',
-      md: 'repeat(2, 1fr)',
-      lg: 'repeat(3, 1fr)',
-    },
-    gap: { xs: t.space.large, md: t.space.xLarge },
-    maxWidth: 1200,
-    width: { xs: '90%', lg: '100%' },
-  }))
+const Grid = element.attrs({ tag: 'div' }).theme((t) => ({
+  display: 'grid',
+  gridTemplateColumns: {
+    xs: '1fr',
+    md: 'repeat(2, 1fr)',
+    lg: 'repeat(3, 1fr)',
+  },
+  gap: { xs: t.space.large, md: t.space.xLarge },
+  maxWidth: 1200,
+  width: { xs: '90%', lg: '100%' },
+}))
 
-const ButtonRow = element
-  .attrs({ alignX: 'center' })
-  .theme((t) => ({
-    marginTop: t.space.xLarge,
-  }))
+const ButtonRow = element.attrs({ alignX: 'center' }).theme((t) => ({
+  marginTop: t.space.xLarge,
+}))
 
 const firstBatch = workItems.slice(0, 3)
 const restBatch = workItems.slice(3)
@@ -41,29 +37,19 @@ const CardGrid = () => {
     <Background variant="secondary">
       <Section id="card-grid">
         <SectionHeader title="Experience Cards">
-          Each card uses a hover transition (lift + shadow). The "Show more"
-          button is driven by a Pyreon signal — the Show component toggles
-          the rest of the grid reactively without a full re-render.
+          Each card uses a hover transition (lift + shadow). The "Show more" button is driven by a
+          Pyreon signal — the Show component toggles the rest of the grid reactively without a full
+          re-render.
         </SectionHeader>
         <Grid>
           {firstBatch.map((item) => (
-            <Card
-              title={item.role}
-              subtitle={item.company}
-              note={item.date}
-              list={item.duties}
-            />
+            <Card title={item.role} subtitle={item.company} note={item.date} list={item.duties} />
           ))}
         </Grid>
         <Show when={() => expanded()}>
           <Grid>
             {restBatch.map((item) => (
-              <Card
-                title={item.role}
-                subtitle={item.company}
-                note={item.date}
-                list={item.duties}
-              />
+              <Card title={item.role} subtitle={item.company} note={item.date} list={item.duties} />
             ))}
           </Grid>
         </Show>

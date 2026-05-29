@@ -187,10 +187,7 @@ export const requireBrowserSmokeTest: Rule = {
     // Run exactly once per package: only on `<package>/src/index.ts`
     // (or .tsx). Test files in the package are excluded automatically
     // because they don't match this pattern.
-    if (
-      !filePath.endsWith('/src/index.ts') &&
-      !filePath.endsWith('/src/index.tsx')
-    ) {
+    if (!filePath.endsWith('/src/index.ts') && !filePath.endsWith('/src/index.tsx')) {
       return {}
     }
 

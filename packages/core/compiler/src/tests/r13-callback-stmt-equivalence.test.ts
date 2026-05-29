@@ -29,11 +29,26 @@ const j = (c: string): string => transformJSX_JS(c, 'c.tsx').code ?? ''
 const r = (c: string): string => transformJSX(c, 'c.tsx').code ?? ''
 
 const CASES: Array<[string, string]> = [
-  ['while', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { while(i){ return <li class={c}/> } })}</ul> }`],
-  ['switch', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { switch(i){ default: return <li class={c}/> } })}</ul> }`],
-  ['labeled', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { lbl: { return <li class={c}/> } })}</ul> }`],
-  ['try-catch', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { try { return <li class={c}/> } catch { return null } })}</ul> }`],
-  ['for', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { for(let k=0;k<i;k++){ return <li class={c}/> } })}</ul> }`],
+  [
+    'while',
+    `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { while(i){ return <li class={c}/> } })}</ul> }`,
+  ],
+  [
+    'switch',
+    `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { switch(i){ default: return <li class={c}/> } })}</ul> }`,
+  ],
+  [
+    'labeled',
+    `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { lbl: { return <li class={c}/> } })}</ul> }`,
+  ],
+  [
+    'try-catch',
+    `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { try { return <li class={c}/> } catch { return null } })}</ul> }`,
+  ],
+  [
+    'for',
+    `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { for(let k=0;k<i;k++){ return <li class={c}/> } })}</ul> }`,
+  ],
 ]
 
 describe('Round 13 — prop-derived inlining inside callback statement shapes is JS≡Rust', () => {

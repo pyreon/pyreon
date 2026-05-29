@@ -2,11 +2,7 @@ import { render } from '@pyreon/ui-core'
 import { useTheme } from '../hooks'
 import type { Configuration } from '../types/configuration'
 import type { ComponentFn } from '../types/utils'
-import {
-  calculateChainOptions,
-  mergeDescriptors,
-  removeUndefinedProps,
-} from '../utils/attrs'
+import { calculateChainOptions, mergeDescriptors, removeUndefinedProps } from '../utils/attrs'
 
 export type RocketStyleHOC = ({
   inversed,

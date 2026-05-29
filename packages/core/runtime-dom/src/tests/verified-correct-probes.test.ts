@@ -19,12 +19,7 @@ describe('Fragment + key — key is inert', () => {
 
   it('Fragment with a key renders its children inline (key does not reconcile)', () => {
     mount(
-      h(
-        Fragment,
-        { key: 'x' },
-        h('span', { id: 'a' }, 'a'),
-        h('span', { id: 'b' }, 'b'),
-      ),
+      h(Fragment, { key: 'x' }, h('span', { id: 'a' }, 'a'), h('span', { id: 'b' }, 'b')),
       container,
     )
 
@@ -36,10 +31,7 @@ describe('Fragment + key — key is inert', () => {
   })
 
   it('Fragment without a key renders identically', () => {
-    mount(
-      h(Fragment, null, h('span', { id: 'a' }, 'a'), h('span', { id: 'b' }, 'b')),
-      container,
-    )
+    mount(h(Fragment, null, h('span', { id: 'a' }, 'a'), h('span', { id: 'b' }, 'b')), container)
     expect(container.children).toHaveLength(2)
     expect(container.querySelector('#a')?.textContent).toBe('a')
     expect(container.querySelector('#b')?.textContent).toBe('b')

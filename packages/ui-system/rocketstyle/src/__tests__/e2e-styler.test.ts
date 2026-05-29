@@ -7,7 +7,12 @@
  * Unlike the React version which tested CSS injection in the DOM,
  * this Pyreon version tests the computed $rocketstyle output directly.
  */
-import { ThemeCapture, getComputedTheme, initTestConfig, withThemeContext } from '@pyreon/test-utils'
+import {
+  ThemeCapture,
+  getComputedTheme,
+  initTestConfig,
+  withThemeContext,
+} from '@pyreon/test-utils'
 import rocketstyle from '../init'
 
 let cleanup: () => void
@@ -220,11 +225,10 @@ describe('e2e: rocketstyle theme computation', () => {
     const Comp: any = rocketstyle()({
       name: 'ChainedModComp',
       component: ThemeCapture,
+    }).modifiers({
+      first: () => ({ step: 'one' }),
+      second: (accTheme: any) => ({ sawStep: accTheme.step }),
     })
-      .modifiers({
-        first: () => ({ step: 'one' }),
-        second: (accTheme: any) => ({ sawStep: accTheme.step }),
-      })
 
     const theme = getComputedTheme(Comp, {
       modifier: ['first', 'second'],

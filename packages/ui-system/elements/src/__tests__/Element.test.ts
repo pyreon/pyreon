@@ -76,7 +76,7 @@ describe('Element', () => {
     it('returns a VNode whose type is the Wrapper component (a function)', () => {
       const result = asVNode(Element({ children: 'hello' }))
       expect(typeof result.type).toBe('function')
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
     })
 
     it('passes tag as the tag prop to Wrapper', () => {
@@ -91,7 +91,7 @@ describe('Element', () => {
 
     it('renders with no children', () => {
       const result = asVNode(Element({}))
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
     })
   })
 
@@ -531,7 +531,7 @@ describe('Element', () => {
     it('renders img with no children', () => {
       // @ts-expect-error — testing element-specific attr forwarding
       const result = asVNode(Element({ tag: 'img', src: '/pic.png' }))
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
       expect(getLayoutProps(result).tag).toBe('img')
       expect(result.props.src).toBe('/pic.png')
       expect(result.props.children).toBeUndefined()
@@ -540,7 +540,7 @@ describe('Element', () => {
     it('renders input with no children', () => {
       // @ts-expect-error — testing element-specific attr forwarding
       const result = asVNode(Element({ tag: 'input', type: 'text' }))
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
       expect(getLayoutProps(result).tag).toBe('input')
       expect(result.props.type).toBe('text')
       expect(result.props.children).toBeUndefined()
@@ -548,20 +548,20 @@ describe('Element', () => {
 
     it('renders with dangerouslySetInnerHTML (treated as empty)', () => {
       const result = asVNode(Element({ dangerouslySetInnerHTML: { __html: '<b>hi</b>' } }))
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
       expect(result.props.dangerouslySetInnerHTML).toEqual({ __html: '<b>hi</b>' })
       expect(result.props.children).toBeUndefined()
     })
 
     it('renders br with no children', () => {
       const result = asVNode(Element({ tag: 'br' }))
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
       expect(result.props.children).toBeUndefined()
     })
 
     it('renders hr with no children', () => {
       const result = asVNode(Element({ tag: 'hr' }))
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
       expect(result.props.children).toBeUndefined()
     })
   })
@@ -642,7 +642,7 @@ describe('Element', () => {
   describe('button tag (flex fix needed)', () => {
     it('passes tag as button to Wrapper', () => {
       const result = asVNode(Element({ tag: 'button', children: 'click' }))
-      expect(typeof result.type).toBe("function")
+      expect(typeof result.type).toBe('function')
       expect(getLayoutProps(result).tag).toBe('button')
     })
 

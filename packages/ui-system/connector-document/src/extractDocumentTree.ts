@@ -149,7 +149,9 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
       // idempotence assumption is now structural rather than implicit:
       // we never call the component, so it cannot have side effects
       // that affect the second extraction.
-      const rsAttrs = (type as { __rs_attrs?: Array<(p: Record<string, unknown>) => Record<string, unknown>> }).__rs_attrs
+      const rsAttrs = (
+        type as { __rs_attrs?: Array<(p: Record<string, unknown>) => Record<string, unknown>> }
+      ).__rs_attrs
       if (rsAttrs && rsAttrs.length > 0) {
         const mergedProps = { ...props }
         if (children && children.length > 0) {

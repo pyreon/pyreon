@@ -63,7 +63,10 @@ describe('zero/theme — initTheme() is idempotent across N ThemeToggle instance
   it('REGRESSION: 3 mounted ThemeToggles register exactly ONE matchMedia listener', () => {
     // Three sibling ThemeToggles — header, sidebar, and footer is the
     // canonical multi-widget case the pre-fix code couldn't dedup.
-    mount(h('div', null, h(ThemeToggle, null), h(ThemeToggle, null), h(ThemeToggle, null)), container)
+    mount(
+      h('div', null, h(ThemeToggle, null), h(ThemeToggle, null), h(ThemeToggle, null)),
+      container,
+    )
 
     // The critical assertion: ONE listener, not three. Pre-fix this is 3.
     expect(mql.addEventListener).toHaveBeenCalledTimes(1)

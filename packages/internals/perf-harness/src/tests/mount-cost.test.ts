@@ -48,7 +48,8 @@ describe('mount cost scaling', () => {
       const dispose = mount(h('ul', null, ...children), root)
       dispose()
     })
-    const ratio = (out1000.after['runtime.mountChild'] ?? 0) / (out100.after['runtime.mountChild'] ?? 1)
+    const ratio =
+      (out1000.after['runtime.mountChild'] ?? 0) / (out100.after['runtime.mountChild'] ?? 1)
     // 10× input should produce ~10× mountChild (linear). Bound generously.
     expect(ratio).toBeLessThan(15)
     // oxlint-disable-next-line no-console
@@ -67,7 +68,8 @@ describe('mount cost scaling', () => {
       const dispose = mount(nested(1000), root)
       dispose()
     })
-    const ratio = (out1000.after['runtime.mountChild'] ?? 0) / (out100.after['runtime.mountChild'] ?? 1)
+    const ratio =
+      (out1000.after['runtime.mountChild'] ?? 0) / (out100.after['runtime.mountChild'] ?? 1)
     expect(ratio).toBeLessThan(15)
     // oxlint-disable-next-line no-console
     console.log(

@@ -2,12 +2,7 @@
 
 export type { DeferInlineResult, DeferInlineWarning } from './defer-inline'
 export { transformDeferInline } from './defer-inline'
-export type {
-  CompilerWarning,
-  ReactivityKind,
-  ReactivitySpan,
-  TransformResult,
-} from './jsx'
+export type { CompilerWarning, ReactivityKind, ReactivitySpan, TransformResult } from './jsx'
 export { transformJSX, transformJSX_JS, rocketstyleCollapseKey, scanCollapsibleSites } from './jsx'
 export type { CollapsibleSite, StaticChild, StaticChildNode } from './jsx'
 export type {
@@ -35,12 +30,7 @@ export {
 } from './react-intercept'
 export type { PyreonDiagnostic, PyreonDiagnosticCode } from './pyreon-intercept'
 export { detectPyreonPatterns, hasPyreonPatterns } from './pyreon-intercept'
-export type {
-  AuditFormatOptions,
-  AuditRisk,
-  TestAuditEntry,
-  TestAuditResult,
-} from './test-audit'
+export type { AuditFormatOptions, AuditRisk, TestAuditEntry, TestAuditResult } from './test-audit'
 export { auditTestEnvironment, formatTestAudit } from './test-audit'
 export type {
   IslandAuditFormatOptions,

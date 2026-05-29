@@ -200,7 +200,8 @@ function assertDynProbeCollapsed(distDir: string): void {
   // backtick-quoted strings each CONTAINING a `pyr-` prefix.
   // The regular `_rsCollapse` emit takes only TWO class args
   // (light/dark); a 4-element class array is unique to `_rsCollapseDyn`.
-  const classArray = /\[`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`\]/.test(src)
+  const classArray =
+    /\[`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`\]/.test(src)
   // Value dispatcher — `()=>+!cond` is the minifier's canonical
   // transform of `() => (cond) ? 0 : 1` (both produce 0 for truthy
   // cond, 1 for falsy: `+!true=0, +!false=1`). The regular `_rsCollapse`
@@ -279,9 +280,7 @@ function assertDynProbeCollapsed(distDir: string): void {
 function assertCrossPackageButtonCollapsed(distDir: string): void {
   const assetsDir = join(distDir, 'assets')
   if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
-  const buttonChunk = readdirSync(assetsDir).find(
-    (f) => /^button-[A-Za-z0-9_-]+\.js$/.test(f),
-  )
+  const buttonChunk = readdirSync(assetsDir).find((f) => /^button-[A-Za-z0-9_-]+\.js$/.test(f))
   if (!buttonChunk) {
     throw new Error(
       `expected a \`button-*.js\` route chunk under ${assetsDir} ` +
@@ -1321,24 +1320,15 @@ const MATRIX: Cell[] = [
       // Home — useHead({ title: 'Blog', meta: [{ name: 'description', … }] })
       assertFileContains(join(dist, 'index.html'), '<title>Blog</title>')
       assertFileContains(join(dist, 'index.html'), 'name="description"')
-      assertFileContains(
-        join(dist, 'index.html'),
-        'A statically-rendered Pyreon Zero blog.',
-      )
+      assertFileContains(join(dist, 'index.html'), 'A statically-rendered Pyreon Zero blog.')
 
       // About — distinct title + description (proves per-route resolution)
       assertFileContains(join(dist, 'about', 'index.html'), '<title>About</title>')
       assertFileContains(join(dist, 'about', 'index.html'), 'About this blog.')
 
       // Blog index — distinct title + description
-      assertFileContains(
-        join(dist, 'blog', 'index.html'),
-        '<title>All posts</title>',
-      )
-      assertFileContains(
-        join(dist, 'blog', 'index.html'),
-        'Every post on this blog, newest first.',
-      )
+      assertFileContains(join(dist, 'blog', 'index.html'), '<title>All posts</title>')
+      assertFileContains(join(dist, 'blog', 'index.html'), 'Every post on this blog, newest first.')
 
       // Dynamic [slug] — title + description + 3 OG tags PER prerendered
       // post. The OG-tag triplet is the killer assertion: it's the

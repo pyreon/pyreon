@@ -1,7 +1,8 @@
 import { el } from '../../factory'
 import { SelectBase } from '@pyreon/ui-primitives'
 
-const Select = el.config({ name: 'Select', component: SelectBase })
+const Select = el
+  .config({ name: 'Select', component: SelectBase })
   .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,

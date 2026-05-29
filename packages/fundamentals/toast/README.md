@@ -36,17 +36,17 @@ toast.promise(saveDraft(), {
 
 ## API
 
-| Surface | Signature | Notes |
-|---|---|---|
-| `toast(message, options?)` | `→ string` | Returns the toast ID |
-| `toast.success(message, options?)` | shortcut for `{ type: 'success' }` | |
-| `toast.error(message, options?)` | `{ type: 'error' }` | |
-| `toast.warning(message, options?)` | `{ type: 'warning' }` | |
-| `toast.info(message, options?)` | `{ type: 'info' }` | |
-| `toast.loading(message, options?)` | persistent loading toast — won't auto-dismiss | |
-| `toast.update(id, patch)` | mutate an open toast (text + type) | |
-| `toast.dismiss(id?)` | dismiss one or every toast | |
-| `toast.promise(promise, opts)` | transitions loading → success / error automatically | |
+| Surface                            | Signature                                           | Notes                |
+| ---------------------------------- | --------------------------------------------------- | -------------------- |
+| `toast(message, options?)`         | `→ string`                                          | Returns the toast ID |
+| `toast.success(message, options?)` | shortcut for `{ type: 'success' }`                  |                      |
+| `toast.error(message, options?)`   | `{ type: 'error' }`                                 |                      |
+| `toast.warning(message, options?)` | `{ type: 'warning' }`                               |                      |
+| `toast.info(message, options?)`    | `{ type: 'info' }`                                  |                      |
+| `toast.loading(message, options?)` | persistent loading toast — won't auto-dismiss       |                      |
+| `toast.update(id, patch)`          | mutate an open toast (text + type)                  |                      |
+| `toast.dismiss(id?)`               | dismiss one or every toast                          |                      |
+| `toast.promise(promise, opts)`     | transitions loading → success / error automatically |                      |
 
 ```ts
 toast(message: string | VNodeChild, options?: ToastOptions): string
@@ -55,7 +55,11 @@ toast(message: string | VNodeChild, options?: ToastOptions): string
 The `message` accepts plain strings AND `VNodeChild`, so you can render rich content:
 
 ```tsx
-toast(<span>Saved to <strong>{name}</strong></span>)
+toast(
+  <span>
+    Saved to <strong>{name}</strong>
+  </span>,
+)
 ```
 
 ## `ToastOptions`

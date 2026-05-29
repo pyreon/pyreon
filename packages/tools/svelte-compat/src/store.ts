@@ -8,13 +8,7 @@
  * `@pyreon/svelte-compat` (`./index`).
  */
 
-export {
-  derived,
-  get,
-  readable,
-  readonly,
-  writable,
-} from './index'
+export { derived, get, readable, readonly, writable } from './index'
 export type {
   Invalidator,
   Readable,

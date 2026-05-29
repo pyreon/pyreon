@@ -887,16 +887,16 @@ Maps to `onUnmount`. Pyreon does not have a separate pre-unmount phase, so `onBe
 
 #### Lifecycle Hook Summary
 
-| Vue 3 Hook        | Pyreon Mapping | Notes                                    |
-| ----------------- | -------------- | ---------------------------------------- |
-| `onBeforeMount`   | `onMount`      | No separate pre-mount phase              |
-| `onMounted`       | `onMount`      | Identical to `onBeforeMount` in Pyreon   |
-| `onBeforeUnmount` | `onUnmount`    | No separate pre-unmount phase            |
-| `onUnmounted`     | `onUnmount`    | Identical to `onBeforeUnmount` in Pyreon |
-| `onUpdated`       | `onUpdate`     | Fires after reactive updates             |
-| `onBeforeUpdate`  | Not available  | Use `watch`/`watchEffect` instead        |
-| `onErrorCaptured` | Not available  | Use try/catch in setup                   |
-| `onActivated`     | Not available  | `<KeepAlive>` works (see below) but does not emit activation hooks |
+| Vue 3 Hook        | Pyreon Mapping | Notes                                                                |
+| ----------------- | -------------- | -------------------------------------------------------------------- |
+| `onBeforeMount`   | `onMount`      | No separate pre-mount phase                                          |
+| `onMounted`       | `onMount`      | Identical to `onBeforeMount` in Pyreon                               |
+| `onBeforeUnmount` | `onUnmount`    | No separate pre-unmount phase                                        |
+| `onUnmounted`     | `onUnmount`    | Identical to `onBeforeUnmount` in Pyreon                             |
+| `onUpdated`       | `onUpdate`     | Fires after reactive updates                                         |
+| `onBeforeUpdate`  | Not available  | Use `watch`/`watchEffect` instead                                    |
+| `onErrorCaptured` | Not available  | Use try/catch in setup                                               |
+| `onActivated`     | Not available  | `<KeepAlive>` works (see below) but does not emit activation hooks   |
 | `onDeactivated`   | Not available  | `<KeepAlive>` works (see below) but does not emit deactivation hooks |
 
 ### Async
@@ -1942,43 +1942,43 @@ createApp(App).mount('#app')
 
 ## Complete Exports
 
-| Export            | Type     | Description                                          |
-| ----------------- | -------- | ---------------------------------------------------- |
-| `ref`             | Function | Create a reactive ref                                |
-| `shallowRef`      | Function | Create a shallow ref (identical to `ref`)            |
-| `triggerRef`      | Function | Force-trigger ref subscribers                        |
-| `isRef`           | Function | Check if a value is a ref                            |
-| `unref`           | Function | Unwrap a ref or return as-is                         |
-| `computed`        | Function | Create a readonly computed ref                       |
-| `reactive`        | Function | Create a deeply reactive proxy                       |
-| `shallowReactive` | Function | Create a shallow reactive proxy (same as `reactive`) |
-| `readonly`        | Function | Create a readonly proxy                              |
-| `toRaw`           | Function | Get the raw object behind a proxy                    |
-| `toRef`           | Function | Create a ref linked to a reactive property           |
-| `toRefs`          | Function | Convert all properties to refs                       |
-| `watch`           | Function | Watch a source and run a callback on change          |
-| `watchEffect`     | Function | Run a function reactively                            |
-| `onMounted`       | Function | Lifecycle: after mount                               |
-| `onUnmounted`     | Function | Lifecycle: on unmount                                |
-| `onUpdated`       | Function | Lifecycle: after update                              |
-| `onBeforeMount`   | Function | Lifecycle: before mount (same as `onMounted`)        |
-| `onBeforeUnmount` | Function | Lifecycle: before unmount (same as `onUnmounted`)    |
-| `nextTick`        | Function | Wait for reactive flush                              |
-| `provide`         | Function | Provide a value to descendants                       |
-| `inject`          | Function | Inject a value from ancestors                        |
-| `defineComponent` | Function | Define a component                                   |
-| `KeepAlive`         | Function | Keep a child subtree alive (wraps runtime-dom KeepAlive) |
-| `Transition`        | Function | CSS enter/leave transition for a single child        |
-| `TransitionGroup`   | Function | CSS enter/leave + FLIP move for a keyed list         |
-| `Suspense`          | Function | Show fallback while an async child loads             |
-| `getCurrentInstance` | Function | Minimal current-component-instance handle            |
-| `useSlots`          | Function | Current component's slots (`default` only)           |
-| `useAttrs`          | Function | Fallthrough attrs (declared props excluded under `defineComponent({ props })`) |
-| `h`               | Function | Create virtual DOM nodes                             |
-| `Fragment`        | Symbol   | Fragment for multiple root elements                  |
-| `createApp`       | Function | Create an application instance                       |
-| `batch`           | Function | Batch multiple reactive writes                       |
-| `Ref`             | Type     | Ref interface                                        |
-| `ComputedRef`     | Type     | Computed ref interface                               |
-| `WatchOptions`    | Type     | Watch options interface                              |
-| `ComponentInternalInstance` | Type | Minimal component-instance handle interface       |
+| Export                      | Type     | Description                                                                    |
+| --------------------------- | -------- | ------------------------------------------------------------------------------ |
+| `ref`                       | Function | Create a reactive ref                                                          |
+| `shallowRef`                | Function | Create a shallow ref (identical to `ref`)                                      |
+| `triggerRef`                | Function | Force-trigger ref subscribers                                                  |
+| `isRef`                     | Function | Check if a value is a ref                                                      |
+| `unref`                     | Function | Unwrap a ref or return as-is                                                   |
+| `computed`                  | Function | Create a readonly computed ref                                                 |
+| `reactive`                  | Function | Create a deeply reactive proxy                                                 |
+| `shallowReactive`           | Function | Create a shallow reactive proxy (same as `reactive`)                           |
+| `readonly`                  | Function | Create a readonly proxy                                                        |
+| `toRaw`                     | Function | Get the raw object behind a proxy                                              |
+| `toRef`                     | Function | Create a ref linked to a reactive property                                     |
+| `toRefs`                    | Function | Convert all properties to refs                                                 |
+| `watch`                     | Function | Watch a source and run a callback on change                                    |
+| `watchEffect`               | Function | Run a function reactively                                                      |
+| `onMounted`                 | Function | Lifecycle: after mount                                                         |
+| `onUnmounted`               | Function | Lifecycle: on unmount                                                          |
+| `onUpdated`                 | Function | Lifecycle: after update                                                        |
+| `onBeforeMount`             | Function | Lifecycle: before mount (same as `onMounted`)                                  |
+| `onBeforeUnmount`           | Function | Lifecycle: before unmount (same as `onUnmounted`)                              |
+| `nextTick`                  | Function | Wait for reactive flush                                                        |
+| `provide`                   | Function | Provide a value to descendants                                                 |
+| `inject`                    | Function | Inject a value from ancestors                                                  |
+| `defineComponent`           | Function | Define a component                                                             |
+| `KeepAlive`                 | Function | Keep a child subtree alive (wraps runtime-dom KeepAlive)                       |
+| `Transition`                | Function | CSS enter/leave transition for a single child                                  |
+| `TransitionGroup`           | Function | CSS enter/leave + FLIP move for a keyed list                                   |
+| `Suspense`                  | Function | Show fallback while an async child loads                                       |
+| `getCurrentInstance`        | Function | Minimal current-component-instance handle                                      |
+| `useSlots`                  | Function | Current component's slots (`default` only)                                     |
+| `useAttrs`                  | Function | Fallthrough attrs (declared props excluded under `defineComponent({ props })`) |
+| `h`                         | Function | Create virtual DOM nodes                                                       |
+| `Fragment`                  | Symbol   | Fragment for multiple root elements                                            |
+| `createApp`                 | Function | Create an application instance                                                 |
+| `batch`                     | Function | Batch multiple reactive writes                                                 |
+| `Ref`                       | Type     | Ref interface                                                                  |
+| `ComputedRef`               | Type     | Computed ref interface                                                         |
+| `WatchOptions`              | Type     | Watch options interface                                                        |
+| `ComponentInternalInstance` | Type     | Minimal component-instance handle interface                                    |

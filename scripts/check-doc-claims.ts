@@ -29,7 +29,9 @@ const result = await runDocClaimsGate({ cwd: REPO_ROOT })
 if (json) {
   // Preserve the historical JSON shape ({ drifts: [...] }) for CI consumers.
   const drifts = result.findings.map((f) => ({
-    check: f.code.replace(/^doc-claims\//, '').replace(/-(drift|hedged|pattern-miss|file-missing)$/, ''),
+    check: f.code
+      .replace(/^doc-claims\//, '')
+      .replace(/-(drift|hedged|pattern-miss|file-missing)$/, ''),
     file: f.location?.relPath ?? '',
     code: f.code,
     severity: f.severity,

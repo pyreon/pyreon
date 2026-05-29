@@ -38,11 +38,11 @@ describe('HTML template', () => {
     // `$&`, `` $` ``, `$'`, `$n` in the REPLACEMENT even with a string
     // search. Rendered SSR HTML routinely contains these (prices, code,
     // math). Must round-trip verbatim.
-    const appHtml = 'Total: $$50 — match $& and back$`tick and $\' and $1 group'
+    const appHtml = "Total: $$50 — match $& and back$`tick and $' and $1 group"
     const result = processTemplate(DEFAULT_TEMPLATE, {
       head: 'price $& head',
       app: appHtml,
-      scripts: '$$ scripts $\'',
+      scripts: "$$ scripts $'",
     })
     expect(result).toContain(appHtml)
     expect(result).toContain('price $& head')
@@ -649,10 +649,9 @@ describe('island', () => {
     const Inner: ComponentFn = () => h('span', null, 'direct')
     // Loader returns the ComponentFn DIRECTLY (no { default } wrapper) —
     // covers the function-typeof branch in the unwrap code.
-    const Widget = island(
-      () => Promise.resolve(Inner as unknown as ComponentFn),
-      { name: 'Direct' },
-    )
+    const Widget = island(() => Promise.resolve(Inner as unknown as ComponentFn), {
+      name: 'Direct',
+    })
 
     const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
       {},
@@ -691,7 +690,7 @@ describe('island', () => {
     expect('data-prefetch' in vnode.props).toBe(false)
   })
 
-  test("island() emits data-prefetch when paired with a deferred hydrate strategy", async () => {
+  test('island() emits data-prefetch when paired with a deferred hydrate strategy', async () => {
     const Inner: ComponentFn = () => h('div', null)
     const Widget = island(() => Promise.resolve({ default: Inner }), {
       name: 'PrefetchIdle',
@@ -773,9 +772,7 @@ describe('island', () => {
     expect(vnode.props['data-props']).toBe('{}')
     // Codec catches circulars with a named-path error now (vs. the prior
     // generic "BigInt or circular reference" message).
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Circular'),
-    )
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Circular'))
     errorSpy.mockRestore()
   })
 
@@ -793,9 +790,7 @@ describe('island', () => {
     // Same fallback shape as before (empty props → no client surprise),
     // but the dev error now NAMES the offender so the user spots it.
     expect(vnode.props['data-props']).toBe('{}')
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('User'),
-    )
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('User'))
     errorSpy.mockRestore()
   })
 

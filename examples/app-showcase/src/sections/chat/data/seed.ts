@@ -6,8 +6,18 @@ import type { Channel, Message } from './types'
  */
 
 export const channels: Channel[] = [
-  { id: 'general', name: 'general', topic: 'Company-wide announcements and updates', memberCount: 142 },
-  { id: 'engineering', name: 'engineering', topic: 'Tech talk, code reviews, infra', memberCount: 38 },
+  {
+    id: 'general',
+    name: 'general',
+    topic: 'Company-wide announcements and updates',
+    memberCount: 142,
+  },
+  {
+    id: 'engineering',
+    name: 'engineering',
+    topic: 'Tech talk, code reviews, infra',
+    memberCount: 38,
+  },
   { id: 'design', name: 'design', topic: 'Design crits, Figma threads, brand', memberCount: 24 },
   { id: 'random', name: 'random', topic: 'Off-topic chatter and memes', memberCount: 87 },
   { id: 'launches', name: 'launches', topic: 'Ship logs and launch coordination', memberCount: 19 },
@@ -41,7 +51,7 @@ const SEED_BODIES: Record<string, string[]> = {
     'Postgres v17 upgrade is scheduled for Saturday morning.',
     'Switched the staging deploy to Bun 1.4 — feels noticeably faster.',
     'New benchmark numbers are up: createRows down to 9ms.',
-    "Anyone want to pair on the websocket retry logic?",
+    'Anyone want to pair on the websocket retry logic?',
   ],
   design: [
     'Posted the new auth-flow mocks in Figma. Crit Friday at 2pm.',
@@ -52,7 +62,7 @@ const SEED_BODIES: Record<string, string[]> = {
   random: [
     'Coffee machine is broken again 😭',
     'Anyone want to grab lunch at the new ramen place?',
-    'My cat learned to open doors today and I\'m a little scared',
+    "My cat learned to open doors today and I'm a little scared",
     'Sunset over the office tonight is unreal',
     'Reminder: pet pictures channel exists and is empty',
   ],

@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -128,7 +127,6 @@
   class as [#776](https://github.com/pyreon/pyreon/issues/776) (`mountReactive`), in the sibling reactive entry point
   for inline keyed arrays. Three call sites in `mountKeyedList`'s effect
   body used the closure-captured `parent`:
-
   1. `parent.insertBefore(anchor, tailMarker)` in `mountNewEntries`
   2. `mountVNode(vnode, parent, tailMarker)` immediately after
   3. `keyedListReorder(..., parent, tailMarker)` → `applyKeyedMoves`
@@ -167,7 +165,6 @@
   +2 new specs), 681/681 unit tests. Lint + typecheck clean.
 
   Discovery + fix chain across this bug class:
-
   - [#770](https://github.com/pyreon/pyreon/issues/770) leak-audit harness
   - [#772](https://github.com/pyreon/pyreon/issues/772) leak-sweep multi-journey driver
   - [#774](https://github.com/pyreon/pyreon/issues/774) it.fails CONTRACT lock for For-of-Show
@@ -242,7 +239,6 @@
   | [#3](https://github.com/pyreon/pyreon/issues/3) (`for...in`)                                               | Behavioral equivalent for clean object literals; defense-only    | All 47 runtime-dom browser specs + 218 solid-compat specs unchanged |
 
   ## Validation
-
   - `bun run --filter='@pyreon/runtime-dom' typecheck` — clean
   - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
   - `bun run --filter='@pyreon/runtime-dom' lint` — zero errors
@@ -255,7 +251,6 @@
   - `bun run check-bundle-budgets` — clean (runtime-dom + solid-compat unchanged)
 
   ## Surfaces updated
-
   - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDyn` + `_rsCollapseDynH` use `renderEffect` directly (no `_bindDirect` indirection); `_rsCollapseH` + `_rsCollapseDynH` use `Object.keys` (not `for...in`)
   - `packages/core/runtime-dom/src/tests/rs-collapse-dyn.browser.test.ts` — new regression spec locking the 1:1 `valueIndex()`-call contract
   - `packages/tools/solid-compat/src/index.ts` — `applyAtPath` uses `Object.defineProperty` for the bracket write + simplified guard
@@ -264,7 +259,6 @@
   ## What's NOT in this PR
 
   A wider audit of the recent merges turned up other surfaces I considered but did NOT include:
-
   - **Other unbounded regex quantifiers in `pyreon-intercept.ts`** (e.g. `\\bFor\\b[^=]*\\beach`) — measured polynomially worst-case (O(N²) on N "For" runs) but CodeQL didn't flag them, the input is dev source (not adversary-controlled), and fixing every theoretical site without a CodeQL signal would be excessive. Left alone.
   - **Degenerate `state={cond ? 'a' : 'a'}` ternaries** — emit 4 identical classes. Sub-optimal but correct. The compiler could detect and bail / use `_rsCollapse` instead; not worth the additional detector complexity for a vanishingly rare input.
   - **`await` / `yield` inside cond expressions** — the compiler would emit `() => (await cond) ? 0 : 1` in a non-async arrow → syntax error. Extreme edge case (who awaits in a JSX attribute?), no real-corpus instance. Worth catching in the detector eventually but not urgent.
@@ -288,7 +282,6 @@ onClick={h}>` — the most common real-world shape).
 
   `_rsCollapseDynH(html, classes, valueIndex, isDark, handlers, bind?)` —
   structurally the union of:
-
   - `_rsCollapseDyn`'s stride-2 value-major class dispatch ([#765](https://github.com/pyreon/pyreon/issues/765))
   - `_rsCollapseH`'s handler re-attachment via the canonical
     `_bindEvent` → `applyEventProp` path ([#681](https://github.com/pyreon/pyreon/issues/681))
@@ -325,7 +318,6 @@ onClick={h}>` — the most common real-world shape).
   → 8/8 pass.
 
   ## NOT in this PR (explicit follow-up scope)
-
   - **Compiler emit + scan extension**: a follow-up PR will extend
     `tryDynamicCollapse` to stop bailing on handlers — instead route
     to `__rsCollapseDynH(...)` with the residual handlers object
@@ -338,7 +330,6 @@ onClick={h}>` — the most common real-world shape).
     landed separately in [#767](https://github.com/pyreon/pyreon/issues/767)).
 
   ## Validation
-
   - `bun run --filter='@pyreon/runtime-dom' typecheck` — clean
   - `bun run --filter='@pyreon/runtime-dom' lint` — zero errors
   - `bun run --filter='@pyreon/runtime-dom' test` — 681 pass + 1 skipped
@@ -349,7 +340,6 @@ onClick={h}>` — the most common real-world shape).
   - `bun run check-manifest-depth` — clean
 
   ## Surfaces updated
-
   - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDynH` (new)
   - `packages/core/runtime-dom/src/index.ts` — re-export
   - `packages/core/runtime-dom/src/tests/rs-collapse-dyn-h.browser.test.ts`
@@ -357,7 +347,6 @@ onClick={h}>` — the most common real-world shape).
   - `.changeset/runtime-dom-rs-collapse-dyn-h.md` — patch changeset
 
   ## Related
-
   - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — `_rsCollapseDyn` runtime helper
   - **[#766](https://github.com/pyreon/pyreon/issues/766)** (merged) — `detectDynamicCollapsibleShape` detector
   - **[#767](https://github.com/pyreon/pyreon/issues/767)** (open) — scan extension + `__rsCollapseDyn` emit
@@ -372,23 +361,18 @@ onClick={h}>` — the most common real-world shape).
   commonly a ternary of two literals:
 
   ```jsx
-  <Button state={cond ? "primary" : "secondary"}>Save</Button>
+  <Button state={cond ? 'primary' : 'secondary'}>Save</Button>
   ```
 
   would compile to:
 
   ```js
   __rsCollapseDyn(
-    "<button>Save</button>",
-    [
-      "btn-primary-light",
-      "btn-primary-dark",
-      "btn-secondary-light",
-      "btn-secondary-dark",
-    ],
+    '<button>Save</button>',
+    ['btn-primary-light', 'btn-primary-dark', 'btn-secondary-light', 'btn-secondary-dark'],
     () => (cond ? 0 : 1),
-    () => __pyrMode() === "dark"
-  );
+    () => __pyrMode() === 'dark',
+  )
   ```
 
   Class layout is **stride-2, value-major**: index = `2 * valueIndex + (isDark ? 1 : 0)`.
@@ -401,7 +385,6 @@ onClick={h}>` — the most common real-world shape).
   Per the `collapse-bail-census` measurement on the real `@pyreon/ui-components`
   corpus (`packages/core/compiler/src/tests/collapse-bail-census.test.ts`),
   the bail buckets sit at:
-
   - dynamic-prop: **15.3%** ← targeted by this PR's sequence
   - element-child: 9.2% (recursive collapse, harder)
   - `on*`-handler-only: 7.8% (just shipped via `_rsCollapseH` + PRs 1-3)
@@ -412,7 +395,6 @@ onClick={h}>` — the most common real-world shape).
   type info needed, no Cartesian explosion (max 2 values per dim prop).
 
   ## What this PR ships
-
   - `_rsCollapseDyn(html, classes, valueIndex, isDark, bind?)` in
     `packages/core/runtime-dom/src/template.ts`
   - Re-exported from `@pyreon/runtime-dom`
@@ -433,7 +415,6 @@ onClick={h}>` — the most common real-world shape).
 
   Mirrors the established `on*`-handler partial-collapse 4-PR sequence
   (also referenced in `.claude/plans/open-work-2026-q3.md` → [#1](https://github.com/pyreon/pyreon/issues/1)):
-
   - **PR 2**: `detectDynamicCollapsibleShape` compiler detector
     (ternary-of-two-literals AST shape on ≤1 dimension prop; mirrors
     `detectPartialCollapsibleShape`'s "extend bail catalogue with one
@@ -473,7 +454,6 @@ onClick={h}>` — the most common real-world shape).
   documented additive controls (single-value, defaults, child binder).
 
   ## Surfaces updated
-
   - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDyn` (new)
   - `packages/core/runtime-dom/src/index.ts` — re-export
   - `packages/core/runtime-dom/src/tests/rs-collapse-dyn.browser.test.ts`
@@ -555,7 +535,6 @@ onClick={h}>` — the most common real-world shape).
   the build-resolved class is byte-for-byte the client-mounted class.
 
   New public surface (all additive):
-
   - `@pyreon/styler` — `StyleSheet.getStyleRules()` (raw SSR rule
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
@@ -715,7 +694,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   later.
 
   Fix:
-
   - `<Transition>`: track `pendingEnterCancel` (parallel to the existing
     `pendingLeaveCancel`). `onUnmount` calls both to tear down listeners,
     clear safety timers, and strip active-state classes WITHOUT firing
@@ -867,12 +845,10 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents
@@ -908,7 +884,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -922,7 +897,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -931,7 +905,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -949,7 +922,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

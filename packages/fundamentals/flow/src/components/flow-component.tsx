@@ -1,13 +1,7 @@
 import { For, type VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from '../edges'
-import type {
-  Connection,
-  FlowEdge,
-  FlowInstance,
-  FlowNode,
-  NodeComponentProps,
-} from '../types'
+import type { Connection, FlowEdge, FlowInstance, FlowNode, NodeComponentProps } from '../types'
 import { Position } from '../types'
 
 // ─── Node type registry ──────────────────────────────────────────────────────
@@ -32,9 +26,7 @@ function DefaultNode(props: NodeComponentProps) {
         return `padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`
       }}
     >
-      {() =>
-        ((props.data() as { label?: string } | undefined)?.label as string) ?? props.id
-      }
+      {() => ((props.data() as { label?: string } | undefined)?.label as string) ?? props.id}
     </div>
   )
 }

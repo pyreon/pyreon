@@ -115,9 +115,7 @@ describe('useSyncExternalStore', () => {
 
   test('returns initial snapshot', () => {
     const store = createStore(42)
-    const result = withHookCtx(() =>
-      useSyncExternalStore(store.subscribe, store.getSnapshot),
-    )
+    const result = withHookCtx(() => useSyncExternalStore(store.subscribe, store.getSnapshot))
     expect(result).toBe(42)
   })
 
@@ -181,7 +179,9 @@ describe('useSyncExternalStore', () => {
       }
     }
     const getSnapshot = () => currentVal
-    const notify = () => { if (listener) listener() }
+    const notify = () => {
+      if (listener) listener()
+    }
 
     runner.run(() => useSyncExternalStore(subscribe, getSnapshot))
     // Notify without changing value
@@ -219,15 +219,11 @@ describe('useSyncExternalStore', () => {
     }
 
     const store = createReduxLikeStore({ count: 0, name: 'test' })
-    const result = withHookCtx(() =>
-      useSyncExternalStore(store.subscribe, store.getState),
-    )
+    const result = withHookCtx(() => useSyncExternalStore(store.subscribe, store.getState))
     expect(result).toEqual({ count: 0, name: 'test' })
 
     store.dispatch({ type: 'increment' })
-    const result2 = withHookCtx(() =>
-      useSyncExternalStore(store.subscribe, store.getState),
-    )
+    const result2 = withHookCtx(() => useSyncExternalStore(store.subscribe, store.getState))
     expect(result2).toEqual({ count: 1, name: 'test' })
   })
 
@@ -403,7 +399,9 @@ describe('startTransition', () => {
   test('does not throw', () => {
     // Verify startTransition is callable without error (void return)
     let executed = false
-    startTransition(() => { executed = true })
+    startTransition(() => {
+      executed = true
+    })
     expect(executed).toBe(true)
   })
 })
@@ -536,9 +534,7 @@ describe('useActionState', () => {
 
   test('updates state when sync action completes', () => {
     const runner = createHookRunner()
-    const [, dispatch] = runner.run(() =>
-      useActionState((s: number, p: number) => s + p, 0),
-    )
+    const [, dispatch] = runner.run(() => useActionState((s: number, p: number) => s + p, 0))
 
     dispatch(5)
     const [state2, , isPending2] = runner.run(() =>
@@ -555,29 +551,24 @@ describe('useActionState', () => {
 
     const [, dispatch] = runner.run(() =>
       useActionState(
-        (_s: number, _p: number) => new Promise<number>((r) => {
-          resolveFn = r
-        }),
+        (_s: number, _p: number) =>
+          new Promise<number>((r) => {
+            resolveFn = r
+          }),
         0,
       ),
     )
 
     dispatch(1)
     const [, , isPending] = runner.run(() =>
-      useActionState(
-        (_s: number, _p: number) => Promise.resolve(0),
-        0,
-      ),
+      useActionState((_s: number, _p: number) => Promise.resolve(0), 0),
     )
     expect(isPending).toBe(true)
 
     resolveFn(42)
     await new Promise<void>((r) => queueMicrotask(r))
     const [state3, , isPending3] = runner.run(() =>
-      useActionState(
-        (_s: number, _p: number) => Promise.resolve(0),
-        0,
-      ),
+      useActionState((_s: number, _p: number) => Promise.resolve(0), 0),
     )
     expect(state3).toBe(42)
     expect(isPending3).toBe(false)
@@ -586,9 +577,7 @@ describe('useActionState', () => {
 
 describe('useOptimistic', () => {
   test('returns [passthrough, addFn] initially', () => {
-    const [state, add] = withHookCtx(() =>
-      useOptimistic<number, number>(10, (s, a) => s + a),
-    )
+    const [state, add] = withHookCtx(() => useOptimistic<number, number>(10, (s, a) => s + a))
     expect(state).toBe(10)
     expect(typeof add).toBe('function')
   })
@@ -598,36 +587,26 @@ describe('useOptimistic', () => {
     // Real usage: the base keeps identity across renders until it truly changes.
     const base = [1]
     const add = (() => {
-      const [, fn] = runner.run(() =>
-        useOptimistic<number[], number>(base, (s, a) => [...s, a]),
-      )
+      const [, fn] = runner.run(() => useOptimistic<number[], number>(base, (s, a) => [...s, a]))
       return fn
     })()
     add(2)
     add(3)
-    const [state2] = runner.run(() =>
-      useOptimistic<number[], number>(base, (s, a) => [...s, a]),
-    )
+    const [state2] = runner.run(() => useOptimistic<number[], number>(base, (s, a) => [...s, a]))
     expect(state2).toEqual([1, 2, 3])
   })
 
   test('overlay clears when passthrough changes (real update landed)', () => {
     const runner = createHookRunner()
     const base1 = [1]
-    const [, add] = runner.run(() =>
-      useOptimistic<number[], number>(base1, (s, a) => [...s, a]),
-    )
+    const [, add] = runner.run(() => useOptimistic<number[], number>(base1, (s, a) => [...s, a]))
     add(99)
     expect(
-      runner.run(() =>
-        useOptimistic<number[], number>(base1, (s, a) => [...s, a]),
-      )[0],
+      runner.run(() => useOptimistic<number[], number>(base1, (s, a) => [...s, a]))[0],
     ).toEqual([1, 99])
     // Parent re-renders with the real (server-confirmed) value — new reference:
     const base2 = [1, 99]
-    const [state3] = runner.run(() =>
-      useOptimistic<number[], number>(base2, (s, a) => [...s, a]),
-    )
+    const [state3] = runner.run(() => useOptimistic<number[], number>(base2, (s, a) => [...s, a]))
     expect(state3).toEqual([1, 99]) // overlay discarded, not [1,99,99]
   })
 
@@ -718,9 +697,7 @@ describe('useReducer 3rd arg (init function)', () => {
 
   test('standard 2-arg still works', () => {
     const runner = createHookRunner()
-    const [state] = runner.run(() =>
-      useReducer((s: number, a: number) => s + a, 5),
-    )
+    const [state] = runner.run(() => useReducer((s: number, a: number) => s + a, 5))
     expect(state).toBe(5)
   })
 })
@@ -1070,8 +1047,20 @@ describe('useSyncExternalStore re-subscribe', () => {
     const runner = createHookRunner()
     let listener: (() => void) | null = null
     let unsubCount = 0
-    const sub1 = (cb: () => void) => { listener = cb; return () => { unsubCount++; listener = null } }
-    const sub2 = (cb: () => void) => { listener = cb; return () => { unsubCount++; listener = null } }
+    const sub1 = (cb: () => void) => {
+      listener = cb
+      return () => {
+        unsubCount++
+        listener = null
+      }
+    }
+    const sub2 = (cb: () => void) => {
+      listener = cb
+      return () => {
+        unsubCount++
+        listener = null
+      }
+    }
     let val = 1
 
     runner.run(() => useSyncExternalStore(sub1, () => val))
@@ -1089,7 +1078,9 @@ describe('useSyncExternalStore unmount cleanup', () => {
   test('unsubscribes on component unmount', () => {
     const el = container()
     let unsubbed = false
-    const subscribe = (_cb: () => void) => () => { unsubbed = true }
+    const subscribe = (_cb: () => void) => () => {
+      unsubbed = true
+    }
 
     const Comp = () => {
       useSyncExternalStore(subscribe, () => 1)
@@ -1113,7 +1104,10 @@ describe('useActionState async transitions', () => {
 
     const [, dispatch] = runner.run(() =>
       useActionState(
-        (_s: number, _p: number) => new Promise<number>((r) => { resolveFn = r }),
+        (_s: number, _p: number) =>
+          new Promise<number>((r) => {
+            resolveFn = r
+          }),
         0,
       ),
     )
@@ -1171,13 +1165,20 @@ describe('PureComponent additional', () => {
 describe('hook count tracking', () => {
   test('_hookCount is tracked between renders', () => {
     const runner = createHookRunner()
-    runner.run(() => { useState(0); useState(0) })
+    runner.run(() => {
+      useState(0)
+      useState(0)
+    })
     expect(runner.ctx._hookCount).toBe(2)
   })
 
   test('_hookCount updates on re-render', () => {
     const runner = createHookRunner()
-    runner.run(() => { useState(0); useState(0); useState(0) })
+    runner.run(() => {
+      useState(0)
+      useState(0)
+      useState(0)
+    })
     expect(runner.ctx._hookCount).toBe(3)
   })
 })
@@ -1187,7 +1188,10 @@ describe('hook count tracking', () => {
 describe('memo per-instance cache', () => {
   test('separate instances have separate caches', () => {
     let callCount = 0
-    const Inner = (props: { x: number }) => { callCount++; return h('span', null, String(props.x)) }
+    const Inner = (props: { x: number }) => {
+      callCount++
+      return h('span', null, String(props.x))
+    }
     const Memoized = memo(Inner)
 
     const runner1 = createHookRunner()
@@ -1235,7 +1239,7 @@ describe('act async', () => {
   test('handles async callback', async () => {
     let resolved = false
     await act(async () => {
-      await new Promise(r => setTimeout(r, 10))
+      await new Promise((r) => setTimeout(r, 10))
       resolved = true
     })
     expect(resolved).toBe(true)
@@ -1258,7 +1262,19 @@ describe('StrictMode / Profiler edge cases', () => {
   test('Profiler with onRender callback', () => {
     const el = container()
     let called = false
-    mount(h(Profiler as any, { id: 'p', onRender: () => { called = true } }, h('span', null, 'child')), el)
+    mount(
+      h(
+        Profiler as any,
+        {
+          id: 'p',
+          onRender: () => {
+            called = true
+          },
+        },
+        h('span', null, 'child'),
+      ),
+      el,
+    )
     expect(el.textContent).toBe('child')
   })
 })
@@ -1482,7 +1498,9 @@ describe('wrapCompatComponent cleanup', () => {
 
     const Comp = () => {
       useEffect(() => {
-        return () => { cleanupRan = true }
+        return () => {
+          cleanupRan = true
+        }
       }, [])
       return h('div', null, 'cleanup')
     }
@@ -1499,7 +1517,9 @@ describe('wrapCompatComponent cleanup', () => {
     const el = container()
     let unsubCount = 0
     // Use a stable subscribe function identity so re-renders don't trigger unsub
-    const stableSub = (_cb: () => void) => () => { unsubCount++ }
+    const stableSub = (_cb: () => void) => () => {
+      unsubCount++
+    }
 
     const Comp = () => {
       useSyncExternalStore(stableSub, () => 1)
@@ -1552,7 +1572,9 @@ describe('layout effect cleanup on unmount', () => {
 
     const Comp = () => {
       useLayoutEffect(() => {
-        return () => { cleanupRan = true }
+        return () => {
+          cleanupRan = true
+        }
       }, [])
       return h('div', null, 'layout')
     }

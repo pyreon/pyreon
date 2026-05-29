@@ -150,10 +150,28 @@ const SKIP_PROPS = new Set(['key', 'ref'])
 const EVENT_RE = /^on[A-Z]/
 // Events delegated to the container — must match runtime DELEGATED_EVENTS set
 const DELEGATED_EVENTS = new Set([
-  'click', 'dblclick', 'contextmenu', 'focusin', 'focusout', 'input',
-  'change', 'keydown', 'keyup', 'mousedown', 'mouseup', 'mousemove',
-  'mouseover', 'mouseout', 'pointerdown', 'pointerup', 'pointermove',
-  'pointerover', 'pointerout', 'touchstart', 'touchend', 'touchmove',
+  'click',
+  'dblclick',
+  'contextmenu',
+  'focusin',
+  'focusout',
+  'input',
+  'change',
+  'keydown',
+  'keyup',
+  'mousedown',
+  'mouseup',
+  'mousemove',
+  'mouseover',
+  'mouseout',
+  'pointerdown',
+  'pointerup',
+  'pointermove',
+  'pointerover',
+  'pointerout',
+  'touchstart',
+  'touchend',
+  'touchmove',
   'submit',
 ])
 
@@ -284,7 +302,8 @@ function forEachChild(node: N, cb: (child: N) => void): void {
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]!
     // Skip metadata fields for speed
-    if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range') continue
+    if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range')
+      continue
     const val = node[key]
     if (Array.isArray(val)) {
       for (let j = 0; j < val.length; j++) {
@@ -857,8 +876,7 @@ export function detectDynamicCollapsibleShape(
         const isLitStr = (n: unknown): n is { type: 'StringLiteral'; value: string } => {
           const x = n as { type?: string; value?: unknown }
           return (
-            x?.type === 'StringLiteral' ||
-            (x?.type === 'Literal' && typeof x.value === 'string')
+            x?.type === 'StringLiteral' || (x?.type === 'Literal' && typeof x.value === 'string')
           )
         }
         if (isLitStr(expr.consequent) && isLitStr(expr.alternate)) {
@@ -984,7 +1002,8 @@ export function transformJSX_JS(
     const keys = Object.keys(node)
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]!
-      if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range') continue
+      if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range')
+        continue
       const val = node[key]
       if (Array.isArray(val)) {
         for (let j = 0; j < val.length; j++) {
@@ -1079,8 +1098,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces =
-      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     needsCollapse = true
     if (!collapseRuleKeys.has(site.ruleKey)) {
@@ -1118,10 +1136,9 @@ export function transformJSX_JS(
     // `{ "onClick": (<sliced expr>), … }` — each handler expression is
     // re-emitted verbatim from its source span (paren-wrapped so an
     // arrow / sequence expr stays a single argument).
-    const handlerObj =
-      `{ ${handlers
-        .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
-        .join(', ')} }`
+    const handlerObj = `{ ${handlers
+      .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
+      .join(', ')} }`
     const call =
       `__rsCollapseH(${JSON.stringify(site.templateHtml)}, ` +
       `${JSON.stringify(site.lightClass)}, ${JSON.stringify(site.darkClass)}, ` +
@@ -1129,8 +1146,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces =
-      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     needsCollapse = true
     needsCollapseH = true
@@ -1225,10 +1241,9 @@ export function transformJSX_JS(
     // handlers parameter, no loop allocation).
     let call: string
     if (handlers.length > 0) {
-      const handlerObj =
-        `{ ${handlers
-          .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
-          .join(', ')} }`
+      const handlerObj = `{ ${handlers
+        .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
+        .join(', ')} }`
       call =
         `__rsCollapseDynH(${JSON.stringify(truthySite.templateHtml)}, ` +
         `${JSON.stringify(classes)}, ` +
@@ -1247,8 +1262,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces =
-      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     // Union BOTH value's rule bundles into the per-module injection.
     // De-dupe by ruleKey (the FNV-1a hash from the resolver) so two
@@ -1288,8 +1302,7 @@ export function transformJSX_JS(
     const start = node.start as number
     const end = node.end as number
     const parent = findParent(node)
-    const needsBraces =
-      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     needsCollapse = true
     if (!collapseRuleKeys.has(site.ruleKey)) {
@@ -1300,10 +1313,7 @@ export function transformJSX_JS(
   }
 
   function maybeHoist(node: N): string | null {
-    if (
-      (node.type === 'JSXElement' || node.type === 'JSXFragment') &&
-      isStaticJSXNode(node)
-    ) {
+    if ((node.type === 'JSXElement' || node.type === 'JSXFragment') && isStaticJSXNode(node)) {
       const name = `_$h${hoistIdx++}`
       const text = code.slice(node.start as number, node.end as number)
       hoists.push({ name, text })
@@ -1322,9 +1332,7 @@ export function transformJSX_JS(
     const start = expr.start as number
     const end = expr.end as number
     const sliced = sliceExpr(expr)
-    const text = expr.type === 'ObjectExpression'
-      ? `() => (${sliced})`
-      : `() => ${sliced}`
+    const text = expr.type === 'ObjectExpression' ? `() => (${sliced})` : `() => ${sliced}`
     replacements.push({ start, end, text })
     lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
   }
@@ -1360,7 +1368,8 @@ export function transformJSX_JS(
     const tagName = jsxTagName(node)
     if (tagName !== 'For') return
     const hasBy = jsxAttrs(node).some(
-      (p: N) => p.type === 'JSXAttribute' && p.name?.type === 'JSXIdentifier' && p.name.name === 'by',
+      (p: N) =>
+        p.type === 'JSXAttribute' && p.name?.type === 'JSXIdentifier' && p.name.name === 'by',
     )
     if (!hasBy) {
       warn(
@@ -1392,8 +1401,7 @@ export function transformJSX_JS(
    */
   function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
     const tagName = jsxTagName(parentElement)
-    const isComponent =
-      tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
     if (!isComponent) return
     const arg = attr.argument
     if (!arg) return
@@ -1437,7 +1445,12 @@ export function transformJSX_JS(
         const inner = expr.type === 'ObjectExpression' ? `(${sliced})` : sliced
         replacements.push({ start, end, text: `_rp(() => ${inner})` })
         needsRpImport = true
-        lens(start, end, 'reactive-prop', 'live prop — signal reads here are tracked into the component')
+        lens(
+          start,
+          end,
+          'reactive-prop',
+          'live prop — signal reads here are tracked into the component',
+        )
       }
     } else {
       hoistOrWrap(expr)
@@ -1707,7 +1720,11 @@ export function transformJSX_JS(
       // Tight: only a DIRECT JSX element/fragment initializer (optionally
       // parenthesized) — conditionals/calls go the existing reactive/text
       // paths and must not be reclassified here.
-      if ((node.kind === 'const' || node.kind === 'let') && decl.id?.type === 'Identifier' && decl.init) {
+      if (
+        (node.kind === 'const' || node.kind === 'let') &&
+        decl.id?.type === 'Identifier' &&
+        decl.init
+      ) {
         let initNode = decl.init
         while (initNode?.type === 'ParenthesizedExpression') initNode = initNode.expression
         if (initNode?.type === 'JSXElement' || initNode?.type === 'JSXFragment') {
@@ -1727,7 +1744,10 @@ export function transformJSX_JS(
         }
         // Direct prop read OR transitive (references another prop-derived var)
         if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
-          propDerivedVars.set(decl.id.name, { start: decl.init.start as number, end: decl.init.end as number })
+          propDerivedVars.set(decl.id.name, {
+            start: decl.init.start as number,
+            end: decl.init.end as number,
+          })
         }
       }
     }
@@ -1737,18 +1757,24 @@ export function transformJSX_JS(
    *  Called inline during the walk when entering a function. */
   function maybeRegisterComponentProps(node: N): void {
     if (
-      (node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') &&
+      (node.type === 'FunctionDeclaration' ||
+        node.type === 'ArrowFunctionExpression' ||
+        node.type === 'FunctionExpression') &&
       (node.params?.length ?? 0) > 0
     ) {
       const parent = findParent(node)
       // Skip callback functions (arguments to calls like .map, .filter)
-      if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)) return
+      if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node))
+        return
       const firstParam = node.params[0]
       if (firstParam?.type === 'Identifier') {
         let hasJSX = false
         function checkJSX(n: N): void {
           if (hasJSX) return
-          if (n.type === 'JSXElement' || n.type === 'JSXFragment') { hasJSX = true; return }
+          if (n.type === 'JSXElement' || n.type === 'JSXFragment') {
+            hasJSX = true
+            return
+          }
           forEachChildFast(n, checkJSX)
         }
         forEachChildFast(node, checkJSX)
@@ -1866,8 +1892,10 @@ export function transformJSX_JS(
         if (Array.isArray(stmts)) {
           for (const s of stmts) {
             if (s.type === 'VariableDeclaration') declNames(s)
-            else if (s.type === 'FunctionDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
-            else if (s.type === 'ClassDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+            else if (s.type === 'FunctionDeclaration' && s.id?.type === 'Identifier')
+              out.push(s.id.name)
+            else if (s.type === 'ClassDeclaration' && s.id?.type === 'Identifier')
+              out.push(s.id.name)
           }
         }
       }
@@ -1887,11 +1915,15 @@ export function transformJSX_JS(
         !shadowed.has(node.name)
       ) {
         if (parent) {
-          if (parent.type === 'MemberExpression' && parent.property === node && !parent.computed) { /* skip */ }
-          else if (parent.type === 'VariableDeclarator' && parent.id === node) { /* skip */ }
-          else if (parent.type === 'Property' && parent.key === node && !parent.computed) { /* skip */ }
-          else if (parent.type === 'Property' && parent.shorthand) { /* skip */ }
-          else if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
+          if (parent.type === 'MemberExpression' && parent.property === node && !parent.computed) {
+            /* skip */
+          } else if (parent.type === 'VariableDeclarator' && parent.id === node) {
+            /* skip */
+          } else if (parent.type === 'Property' && parent.key === node && !parent.computed) {
+            /* skip */
+          } else if (parent.type === 'Property' && parent.shorthand) {
+            /* skip */
+          } else if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
             idents.push({ start: nodeStart, end: nodeEnd, name: node.name })
           }
         } else if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
@@ -1949,7 +1981,12 @@ export function transformJSX_JS(
     // Prop-derived variable reference
     if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
       const parent = findParent(node)
-      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) {
+      if (
+        parent &&
+        parent.type === 'MemberExpression' &&
+        parent.property === node &&
+        !parent.computed
+      ) {
         // This is a property name position, not a reference — fall through
       } else {
         return true
@@ -1958,7 +1995,12 @@ export function transformJSX_JS(
     // Signal variable reference — treated as dynamic (will be auto-called)
     if (node.type === 'Identifier' && isActiveSignal(node.name)) {
       const parent = findParent(node)
-      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) {
+      if (
+        parent &&
+        parent.type === 'MemberExpression' &&
+        parent.property === node &&
+        !parent.computed
+      ) {
         // Property name position — not a reference
       } else if (parent && parent.type === 'CallExpression' && parent.callee === node) {
         // Already being called: signal() — don't double-flag
@@ -1984,7 +2026,13 @@ export function transformJSX_JS(
     }
     if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
       const parent = findParent(node)
-      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return false
+      if (
+        parent &&
+        parent.type === 'MemberExpression' &&
+        parent.property === node &&
+        !parent.computed
+      )
+        return false
       return true
     }
     let found = false
@@ -2011,12 +2059,16 @@ export function transformJSX_JS(
 
   function walkNode(node: N): void {
     // ── Component function detection (was pass 1) ──
-    const isFunction = node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression'
+    const isFunction =
+      node.type === 'FunctionDeclaration' ||
+      node.type === 'ArrowFunctionExpression' ||
+      node.type === 'FunctionExpression'
     let scopeShadows: string[] | null = null
     if (isFunction) {
       // Track callback nesting for prop-derived var exclusion
       const parent = findParent(node)
-      const isCallbackArg = parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)
+      const isCallbackArg =
+        parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)
       if (isCallbackArg) _callbackDepth++
       // Register component props (only for non-callback functions with JSX)
       maybeRegisterComponentProps(node)
@@ -2067,7 +2119,8 @@ export function transformJSX_JS(
     // Restore callback depth after leaving function
     if (isFunction) {
       const parent = findParent(node)
-      if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)) _callbackDepth--
+      if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node))
+        _callbackDepth--
     }
     // Restore signal shadowing
     if (scopeShadows) for (const name of scopeShadows) shadowedSignals.delete(name)
@@ -2137,10 +2190,7 @@ export function transformJSX_JS(
     // before any collapsed site mounts, so the sheet is populated
     // without a prior runtime mount of the real component.
     const inj = collapseRules
-      .map(
-        (r) =>
-          `__rsSheet.injectRules(${JSON.stringify(r.rules)},${JSON.stringify(r.ruleKey)});`,
-      )
+      .map((r) => `__rsSheet.injectRules(${JSON.stringify(r.rules)},${JSON.stringify(r.ruleKey)});`)
       .join('')
     // Only import the helpers actually emitted into this module — keeps
     // the bundle bytes per-feature and tree-shakable. needsCollapse
@@ -2180,7 +2230,11 @@ export function transformJSX_JS(
         if (isRoot) continue
         return true
       }
-      if (attr.type === 'JSXAttribute' && attr.name?.type === 'JSXIdentifier' && attr.name.name === 'key')
+      if (
+        attr.type === 'JSXAttribute' &&
+        attr.name?.type === 'JSXIdentifier' &&
+        attr.name.name === 'key'
+      )
         return true
     }
     return false
@@ -2233,13 +2287,17 @@ export function transformJSX_JS(
     let needsApplyPropsImport = false
     let needsMountSlotImport = false
 
-    function nextVar(): string { return `__e${varIdx++}` }
+    function nextVar(): string {
+      return `__e${varIdx++}`
+    }
     function nextDisp(): string {
       const name = `__d${dispIdx++}`
       disposerNames.push(name)
       return name
     }
-    function nextTextVar(): string { return `__t${varIdx++}` }
+    function nextTextVar(): string {
+      return `__t${varIdx++}`
+    }
 
     function resolveElementVar(accessor: string, hasDynamic: boolean): string {
       if (accessor === '__root') return '__root'
@@ -2299,13 +2357,22 @@ export function transformJSX_JS(
     function staticAttrToHtml(exprNode: N, htmlAttrName: string): string | null {
       if (!isStatic(exprNode)) return null
       // String literal
-      if ((exprNode.type === 'Literal' || exprNode.type === 'StringLiteral') && typeof exprNode.value === 'string')
+      if (
+        (exprNode.type === 'Literal' || exprNode.type === 'StringLiteral') &&
+        typeof exprNode.value === 'string'
+      )
         return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.value)}"`
       // Numeric literal
-      if ((exprNode.type === 'Literal' || exprNode.type === 'NumericLiteral') && typeof exprNode.value === 'number')
+      if (
+        (exprNode.type === 'Literal' || exprNode.type === 'NumericLiteral') &&
+        typeof exprNode.value === 'number'
+      )
         return ` ${htmlAttrName}="${exprNode.value}"`
       // Boolean true
-      if ((exprNode.type === 'Literal' || exprNode.type === 'BooleanLiteral') && exprNode.value === true)
+      if (
+        (exprNode.type === 'Literal' || exprNode.type === 'BooleanLiteral') &&
+        exprNode.value === true
+      )
         return ` ${htmlAttrName}`
       return '' // false/null/undefined → omit
     }
@@ -2492,7 +2559,12 @@ export function transformJSX_JS(
       return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
     }
 
-    function emitDynamicAttr(_expr: string, exprNode: N, htmlAttrName: string, varName: string): void {
+    function emitDynamicAttr(
+      _expr: string,
+      exprNode: N,
+      htmlAttrName: string,
+      varName: string,
+    ): void {
       const { expr, isReactive } = unwrapAccessor(exprNode)
       if (!isReactive) {
         bindLines.push(attrSetter(htmlAttrName, varName, expr))
@@ -2553,19 +2625,29 @@ export function transformJSX_JS(
     }
 
     function tryEmitSpecialAttr(attr: N, attrName: string, varName: string): boolean {
-      if (attrName === 'ref') { emitRef(attr, varName); return true }
-      if (EVENT_RE.test(attrName)) { emitEventListener(attr, attrName, varName); return true }
+      if (attrName === 'ref') {
+        emitRef(attr, varName)
+        return true
+      }
+      if (EVENT_RE.test(attrName)) {
+        emitEventListener(attr, attrName, varName)
+        return true
+      }
       return false
     }
 
     function attrInitializerToHtml(attr: N, htmlAttrName: string, varName: string): string {
       if (!attr.value) return ` ${htmlAttrName}`
       // JSX string attribute: class="foo"
-      if (attr.value.type === 'StringLiteral' || (attr.value.type === 'Literal' && typeof attr.value.value === 'string'))
+      if (
+        attr.value.type === 'StringLiteral' ||
+        (attr.value.type === 'Literal' && typeof attr.value.value === 'string')
+      )
         return ` ${htmlAttrName}="${escapeHtmlAttr(attr.value.value)}"`
       if (attr.value.type === 'JSXExpressionContainer') {
         const expr = attr.value.expression
-        if (expr && expr.type !== 'JSXEmptyExpression') return emitAttrExpression(expr, htmlAttrName, varName)
+        if (expr && expr.type !== 'JSXEmptyExpression')
+          return emitAttrExpression(expr, htmlAttrName, varName)
       }
       return ''
     }
@@ -2595,13 +2677,19 @@ export function transformJSX_JS(
     }
 
     function emitReactiveTextChild(
-      expr: string, exprNode: N, varName: string,
-      parentRef: string, childNodeIdx: number, needsPlaceholder: boolean,
+      expr: string,
+      exprNode: N,
+      varName: string,
+      parentRef: string,
+      childNodeIdx: number,
+      needsPlaceholder: boolean,
     ): string {
       const tVar = nextTextVar()
       bindLines.push(`const ${tVar} = document.createTextNode("")`)
       if (needsPlaceholder) {
-        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
+        bindLines.push(
+          `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
+        )
       } else {
         bindLines.push(`${varName}.appendChild(${tVar})`)
       }
@@ -2647,13 +2735,18 @@ export function transformJSX_JS(
     }
 
     function emitStaticTextChild(
-      expr: string, varName: string,
-      parentRef: string, childNodeIdx: number, needsPlaceholder: boolean,
+      expr: string,
+      varName: string,
+      parentRef: string,
+      childNodeIdx: number,
+      needsPlaceholder: boolean,
     ): string {
       if (needsPlaceholder) {
         const tVar = nextTextVar()
         bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
-        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
+        bindLines.push(
+          `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
+        )
         return '<!>'
       }
       bindLines.push(`${varName}.textContent = ${expr}`)
@@ -2666,7 +2759,8 @@ export function transformJSX_JS(
       | { kind: 'expression'; expression: N }
 
     function classifyJsxChild(
-      child: N, out: FlatChild[],
+      child: N,
+      out: FlatChild[],
       elemIdxRef: { value: number },
       recurse: (kids: N[]) => void,
     ): void {
@@ -2682,7 +2776,8 @@ export function transformJSX_JS(
       }
       if (child.type === 'JSXExpressionContainer') {
         const expr = child.expression
-        if (expr && expr.type !== 'JSXEmptyExpression') out.push({ kind: 'expression', expression: expr })
+        if (expr && expr.type !== 'JSXEmptyExpression')
+          out.push({ kind: 'expression', expression: expr })
         return
       }
       if (child.type === 'JSXFragment') recurse(jsxChildren(child))
@@ -2698,7 +2793,10 @@ export function transformJSX_JS(
       return flatList
     }
 
-    function analyzeChildren(flatChildren: FlatChild[]): { useMixed: boolean; useMultiExpr: boolean } {
+    function analyzeChildren(flatChildren: FlatChild[]): {
+      useMixed: boolean
+      useMultiExpr: boolean
+    } {
       const hasElem = flatChildren.some((c) => c.kind === 'element')
       const hasText = flatChildren.some((c) => c.kind === 'text')
       const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
@@ -2710,8 +2808,7 @@ export function transformJSX_JS(
       // template content, breaking source-order rendering for shapes
       // like `<p>foo {x()} bar</p>` (rendered "foo  barX" instead of
       // "foo X bar"). Discovered by Phase B2's whitespace tests.
-      const present =
-        (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0)
+      const present = (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0)
       return { useMixed: present > 1, useMultiExpr: exprCount > 1 }
     }
 
@@ -2728,16 +2825,23 @@ export function transformJSX_JS(
     function elementHasDynamic(node: N): boolean {
       if (jsxAttrs(node).some(attrIsDynamic)) return true
       if (!isSelfClosing(node)) {
-        return jsxChildren(node).some((c: N) =>
-          c.type === 'JSXExpressionContainer' && c.expression && c.expression.type !== 'JSXEmptyExpression',
+        return jsxChildren(node).some(
+          (c: N) =>
+            c.type === 'JSXExpressionContainer' &&
+            c.expression &&
+            c.expression.type !== 'JSXEmptyExpression',
         )
       }
       return false
     }
 
     function processOneChild(
-      child: FlatChild, varName: string, parentRef: string,
-      useMixed: boolean, useMultiExpr: boolean, childNodeIdx: number,
+      child: FlatChild,
+      varName: string,
+      parentRef: string,
+      useMixed: boolean,
+      useMultiExpr: boolean,
+      childNodeIdx: number,
     ): string | null {
       if (child.kind === 'text') return escapeHtmlText(child.text)
       if (child.kind === 'element') {
@@ -2770,7 +2874,14 @@ export function transformJSX_JS(
           'reactive',
           'live — this text re-renders whenever its signals change',
         )
-        return emitReactiveTextChild(expr, child.expression, varName, parentRef, childNodeIdx, needsPlaceholder)
+        return emitReactiveTextChild(
+          expr,
+          child.expression,
+          varName,
+          parentRef,
+          childNodeIdx,
+          needsPlaceholder,
+        )
       }
       lens(
         cx.start as number,
@@ -2788,7 +2899,14 @@ export function transformJSX_JS(
       let html = ''
       let childNodeIdx = 0
       for (const child of flatChildren) {
-        const childHtml = processOneChild(child, varName, parentRef, useMixed, useMultiExpr, childNodeIdx)
+        const childHtml = processOneChild(
+          child,
+          varName,
+          parentRef,
+          useMixed,
+          useMultiExpr,
+          childNodeIdx,
+        )
         if (childHtml === null) return null
         html += childHtml
         childNodeIdx++
@@ -2878,7 +2996,11 @@ export function transformJSX_JS(
 
     // Auto-call signal variables: replace bare `x` with `x()` in the expression.
     // Only applies to identifiers that are NOT already being called (not `x()`).
-    if (signalVars.size > 0 && signalVars.size > shadowedSignals.size && referencesSignalVar(expr)) {
+    if (
+      signalVars.size > 0 &&
+      signalVars.size > shadowedSignals.size &&
+      referencesSignalVar(expr)
+    ) {
       result = autoCallSignals(result, expr)
     }
 
@@ -2889,14 +3011,16 @@ export function transformJSX_JS(
   function referencesSignalVar(node: N): boolean {
     if (node.type === 'Identifier' && isActiveSignal(node.name)) {
       const parent = findParent(node)
-      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return false
-      // signal.X(...) — operating on the signal object (calling a method).
-      // Mirrors the same narrow skip in findSignalIdents below.
       if (
         parent &&
         parent.type === 'MemberExpression' &&
-        parent.object === node
-      ) {
+        parent.property === node &&
+        !parent.computed
+      )
+        return false
+      // signal.X(...) — operating on the signal object (calling a method).
+      // Mirrors the same narrow skip in findSignalIdents below.
+      if (parent && parent.type === 'MemberExpression' && parent.object === node) {
         const grand = findParent(parent)
         if (grand && grand.type === 'CallExpression' && grand.callee === parent) return false
       }
@@ -2975,7 +3099,8 @@ export function transformJSX_JS(
       if (Array.isArray(stmts)) {
         for (const s of stmts) {
           if (s.type === 'VariableDeclaration') declNames(s)
-          else if (s.type === 'FunctionDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+          else if (s.type === 'FunctionDeclaration' && s.id?.type === 'Identifier')
+            out.push(s.id.name)
           else if (s.type === 'ClassDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
         }
       }
@@ -3005,7 +3130,13 @@ export function transformJSX_JS(
       if (node.type === 'Identifier' && isActiveSignal(node.name) && !shadowed.has(node.name)) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
-        if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return
+        if (
+          parent &&
+          parent.type === 'MemberExpression' &&
+          parent.property === node &&
+          !parent.computed
+        )
+          return
         // Skip when the identifier is the OBJECT of a member access AND
         // the result is being CALLED (signal.set(...), signal.peek(),
         // signal.update(...)). The user is invoking a method on the
@@ -3019,11 +3150,7 @@ export function transformJSX_JS(
         // `signal({a:1})` followed by `signal.a` reads the signal's
         // value's property (see "signal as member expression object IS
         // auto-called" test).
-        if (
-          parent &&
-          parent.type === 'MemberExpression' &&
-          parent.object === node
-        ) {
+        if (parent && parent.type === 'MemberExpression' && parent.object === node) {
           const grand = findParent(parent)
           if (grand && grand.type === 'CallExpression' && grand.callee === parent) return
         }
@@ -3052,7 +3179,7 @@ export function transformJSX_JS(
     let lastPos = start
     for (const id of idents) {
       parts.push(code.slice(lastPos, id.end))
-      parts.push('()')  // auto-call
+      parts.push('()') // auto-call
       lastPos = id.end
     }
     parts.push(code.slice(lastPos, start + text.length))
@@ -3063,8 +3190,20 @@ export function transformJSX_JS(
 // ─── Module-scope constants and helpers ─────────────────────────────────────
 
 const VOID_ELEMENTS = new Set([
-  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
-  'link', 'meta', 'param', 'source', 'track', 'wbr',
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 ])
 
 const JSX_TO_HTML_ATTR: Record<string, string> = {
@@ -3091,12 +3230,21 @@ const DOM_PROPS = new Set([
 ])
 
 const STATEFUL_CALLS = new Set([
-  'signal', 'computed', 'effect', 'batch',
+  'signal',
+  'computed',
+  'effect',
+  'batch',
   'createSelector',
-  'createContext', 'createReactiveContext',
-  'useContext', 'useRef', 'createRef',
-  'useForm', 'useQuery', 'useMutation',
-  'defineStore', 'useStore',
+  'createContext',
+  'createReactiveContext',
+  'useContext',
+  'useRef',
+  'createRef',
+  'useForm',
+  'useQuery',
+  'useMutation',
+  'defineStore',
+  'useStore',
 ])
 
 function isStatefulCall(node: N): boolean {
@@ -3121,7 +3269,13 @@ function isSelectorCall(node: N): boolean {
 }
 
 function isChildrenExpression(node: N, expr: string): boolean {
-  if (node.type === 'MemberExpression' && !node.computed && node.property?.type === 'Identifier' && node.property.name === 'children') return true
+  if (
+    node.type === 'MemberExpression' &&
+    !node.computed &&
+    node.property?.type === 'Identifier' &&
+    node.property.name === 'children'
+  )
+    return true
   if (node.type === 'Identifier' && node.name === 'children') return true
   if (expr.endsWith('.children') || expr === 'children') return true
   return false
@@ -3184,7 +3338,10 @@ function isStaticJSXNode(node: N): boolean {
     return (node.children ?? []).every(isStaticChild)
   }
   if (node.type === 'JSXElement') {
-    return isStaticAttrs(node.openingElement?.attributes ?? []) && (node.children ?? []).every(isStaticChild)
+    return (
+      isStaticAttrs(node.openingElement?.attributes ?? []) &&
+      (node.children ?? []).every(isStaticChild)
+    )
   }
   return false
 }
@@ -3193,7 +3350,11 @@ function isStaticAttrs(attrs: N[]): boolean {
   return attrs.every((prop: N) => {
     if (prop.type !== 'JSXAttribute') return false
     if (!prop.value) return true
-    if (prop.value.type === 'StringLiteral' || (prop.value.type === 'Literal' && typeof prop.value.value === 'string')) return true
+    if (
+      prop.value.type === 'StringLiteral' ||
+      (prop.value.type === 'Literal' && typeof prop.value.value === 'string')
+    )
+      return true
     if (prop.value.type === 'JSXExpressionContainer') {
       const expr = prop.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return true
@@ -3217,7 +3378,13 @@ function isStaticChild(child: N): boolean {
 
 function isStatic(node: N): boolean {
   if (node.type === 'Literal') return true
-  if (node.type === 'StringLiteral' || node.type === 'NumericLiteral' || node.type === 'BooleanLiteral' || node.type === 'NullLiteral') return true
+  if (
+    node.type === 'StringLiteral' ||
+    node.type === 'NumericLiteral' ||
+    node.type === 'BooleanLiteral' ||
+    node.type === 'NullLiteral'
+  )
+    return true
   if (node.type === 'TemplateLiteral' && (node.expressions?.length ?? 0) === 0) return true
   // Note: `undefined` is an Identifier in ESTree, not a keyword literal.
   // It is NOT treated as static — it goes through the dynamic attr path.
@@ -3225,16 +3392,42 @@ function isStatic(node: N): boolean {
 }
 
 const PURE_CALLS = new Set([
-  'Math.max', 'Math.min', 'Math.abs', 'Math.floor', 'Math.ceil', 'Math.round',
-  'Math.pow', 'Math.sqrt', 'Math.random', 'Math.trunc', 'Math.sign',
-  'Number.parseInt', 'Number.parseFloat', 'Number.isNaN', 'Number.isFinite',
-  'parseInt', 'parseFloat', 'isNaN', 'isFinite',
-  'String.fromCharCode', 'String.fromCodePoint',
-  'Object.keys', 'Object.values', 'Object.entries', 'Object.assign',
-  'Object.freeze', 'Object.create',
-  'Array.from', 'Array.isArray', 'Array.of',
-  'JSON.stringify', 'JSON.parse',
-  'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
+  'Math.max',
+  'Math.min',
+  'Math.abs',
+  'Math.floor',
+  'Math.ceil',
+  'Math.round',
+  'Math.pow',
+  'Math.sqrt',
+  'Math.random',
+  'Math.trunc',
+  'Math.sign',
+  'Number.parseInt',
+  'Number.parseFloat',
+  'Number.isNaN',
+  'Number.isFinite',
+  'parseInt',
+  'parseFloat',
+  'isNaN',
+  'isFinite',
+  'String.fromCharCode',
+  'String.fromCodePoint',
+  'Object.keys',
+  'Object.values',
+  'Object.entries',
+  'Object.assign',
+  'Object.freeze',
+  'Object.create',
+  'Array.from',
+  'Array.isArray',
+  'Array.of',
+  'JSON.stringify',
+  'JSON.parse',
+  'encodeURIComponent',
+  'decodeURIComponent',
+  'encodeURI',
+  'decodeURI',
   'Date.now',
 ])
 
@@ -3254,18 +3447,36 @@ const PURE_CALLS = new Set([
  */
 const PURE_PRIMITIVE_METHODS = new Set([
   // Number prototype
-  'toFixed', 'toExponential', 'toPrecision',
+  'toFixed',
+  'toExponential',
+  'toPrecision',
   // Shared (Number + String + Boolean) — toString/valueOf always pure
-  'toString', 'valueOf',
+  'toString',
+  'valueOf',
   // String prototype (immutable returns)
-  'toUpperCase', 'toLowerCase', 'toLocaleUpperCase', 'toLocaleLowerCase',
-  'trim', 'trimStart', 'trimEnd',
-  'slice', 'substring', 'substr',
-  'charAt', 'charCodeAt', 'codePointAt',
-  'padStart', 'padEnd', 'repeat',
-  'normalize', 'concat',
-  'startsWith', 'endsWith', 'includes',
-  'indexOf', 'lastIndexOf',
+  'toUpperCase',
+  'toLowerCase',
+  'toLocaleUpperCase',
+  'toLocaleLowerCase',
+  'trim',
+  'trimStart',
+  'trimEnd',
+  'slice',
+  'substring',
+  'substr',
+  'charAt',
+  'charCodeAt',
+  'codePointAt',
+  'padStart',
+  'padEnd',
+  'repeat',
+  'normalize',
+  'concat',
+  'startsWith',
+  'endsWith',
+  'includes',
+  'indexOf',
+  'lastIndexOf',
   'at',
 ])
 
@@ -3274,7 +3485,12 @@ function isPureStaticCall(node: N): boolean {
   let name = ''
   if (callee?.type === 'Identifier') {
     name = callee.name
-  } else if (callee?.type === 'MemberExpression' && !callee.computed && callee.object?.type === 'Identifier' && callee.property?.type === 'Identifier') {
+  } else if (
+    callee?.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.object?.type === 'Identifier' &&
+    callee.property?.type === 'Identifier'
+  ) {
     name = `${callee.object.name}.${callee.property.name}`
   }
   if (!PURE_CALLS.has(name)) return false

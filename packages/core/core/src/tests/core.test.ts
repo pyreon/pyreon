@@ -982,7 +982,7 @@ describe('lifecycle hooks', () => {
 
 describe('edge cases', () => {
   test('h() with empty children array', () => {
-    const node = h('div', null, )
+    const node = h('div', null)
     expect(node.children).toEqual([])
   })
 

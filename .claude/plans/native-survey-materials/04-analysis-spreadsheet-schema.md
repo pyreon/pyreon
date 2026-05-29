@@ -9,59 +9,60 @@
 ## Tab 1: Responses
 
 One row per completed response. Columns split into:
+
 - **Metadata** (provenance, not for analysis)
 - **Raw answers** (verbatim or numeric inputs)
 - **Codes** (analyst-derived; the math operates on these)
 
 ### Metadata columns (A-H)
 
-| Col | Header | Type | Source |
-|---|---|---|---|
-| A | `respondent_id` | string | Auto-generated (R001, R002, ...) |
-| B | `interviewer` | string | Live-call interviewer name; "async" for self-administered |
-| C | `interview_date` | date | YYYY-MM-DD |
-| D | `format` | enum | live / async |
-| E | `segment` | enum | A / B / C (per recruitment doc) |
-| F | `name_or_anon` | string | "Anna Lee (Acme)" or "anonymous" per quote-attribution permission |
-| G | `quote_permission` | enum | full / anonymized / none |
-| H | `followup_consent` | enum | yes / maybe / no |
+| Col | Header             | Type   | Source                                                            |
+| --- | ------------------ | ------ | ----------------------------------------------------------------- |
+| A   | `respondent_id`    | string | Auto-generated (R001, R002, ...)                                  |
+| B   | `interviewer`      | string | Live-call interviewer name; "async" for self-administered         |
+| C   | `interview_date`   | date   | YYYY-MM-DD                                                        |
+| D   | `format`           | enum   | live / async                                                      |
+| E   | `segment`          | enum   | A / B / C (per recruitment doc)                                   |
+| F   | `name_or_anon`     | string | "Anna Lee (Acme)" or "anonymous" per quote-attribution permission |
+| G   | `quote_permission` | enum   | full / anonymized / none                                          |
+| H   | `followup_consent` | enum   | yes / maybe / no                                                  |
 
 ### Raw answer columns (I-T)
 
-| Col | Header | Type | From |
-|---|---|---|---|
-| I | `q1_mobile_situation` | text | Q1 raw response |
-| J | `q2_pain_point` | text | Q2 raw response |
-| K | `q3_uikit_score` | number 1-10 | Q3 |
-| L | `q3b_uikit_reasoning` | text | Q3 follow-up |
-| M | `q4_headline_adopt` | enum | "definitely yes" / "probably yes" / "maybe" / "probably no" / "definitely no" / "N/A" |
-| N | `q4b_tip_condition` | text | Q4 follow-up |
-| O | `q5_time_pressure` | enum | "wait" / "ship-and-migrate" / "ship-and-stay" / "ship-elsewhere" |
-| P | `q5b_alt_framework` | text | The framework named in Q5b |
-| Q | `q6_dealbreakers` | enum (multi) | OTA / eco / hot / none |
-| R | `q7_vs_cmp` | enum | "PMTC" / "CMP" / "depends" / "neither" |
-| S | `q8_vs_skip` | enum | "no-switch" / "skip-yes" / "skip-evaluated-no" / "skip-using" |
-| T | `q9_desktop` | enum | "blocker" / "nice" / "noprio" |
-| U | `q10_counterfactual` | enum | RN / Flutter / CMP / Skip / Capacitor / Tauri / Native / Hire / Other |
-| V | `q11_contribute` | enum | "yes" / "conditional" / "no" |
-| W | `q12_advocacy` | enum | "now" / "conditional" / "no" |
+| Col | Header                | Type         | From                                                                                  |
+| --- | --------------------- | ------------ | ------------------------------------------------------------------------------------- |
+| I   | `q1_mobile_situation` | text         | Q1 raw response                                                                       |
+| J   | `q2_pain_point`       | text         | Q2 raw response                                                                       |
+| K   | `q3_uikit_score`      | number 1-10  | Q3                                                                                    |
+| L   | `q3b_uikit_reasoning` | text         | Q3 follow-up                                                                          |
+| M   | `q4_headline_adopt`   | enum         | "definitely yes" / "probably yes" / "maybe" / "probably no" / "definitely no" / "N/A" |
+| N   | `q4b_tip_condition`   | text         | Q4 follow-up                                                                          |
+| O   | `q5_time_pressure`    | enum         | "wait" / "ship-and-migrate" / "ship-and-stay" / "ship-elsewhere"                      |
+| P   | `q5b_alt_framework`   | text         | The framework named in Q5b                                                            |
+| Q   | `q6_dealbreakers`     | enum (multi) | OTA / eco / hot / none                                                                |
+| R   | `q7_vs_cmp`           | enum         | "PMTC" / "CMP" / "depends" / "neither"                                                |
+| S   | `q8_vs_skip`          | enum         | "no-switch" / "skip-yes" / "skip-evaluated-no" / "skip-using"                         |
+| T   | `q9_desktop`          | enum         | "blocker" / "nice" / "noprio"                                                         |
+| U   | `q10_counterfactual`  | enum         | RN / Flutter / CMP / Skip / Capacitor / Tauri / Native / Hire / Other                 |
+| V   | `q11_contribute`      | enum         | "yes" / "conditional" / "no"                                                          |
+| W   | `q12_advocacy`        | enum         | "now" / "conditional" / "no"                                                          |
 
 ### Code columns (X-AG) — analyst-derived
 
 These are the load-bearing columns. The coding scheme from the survey doc lives here.
 
-| Col | Header | Formula | Definition |
-|---|---|---|---|
-| X | `code_A_adopt` | `=IF(OR(M="definitely yes", M="probably yes"), AND(NOT(Q includes deal-breaker)), false)` | A = yes/probably-yes + no deal-breaker |
-| Y | `code_A_cond` | `=IF(M="maybe", true, false)` AND named condition in N | A-cond = maybe with named condition |
-| Z | `code_R` | `=IF(OR(M="definitely no", M="probably no"), true, false)` | R = no/probably-no |
-| AA | `code_R_time` | `=IF(O="ship-and-stay", true, false)` | R-time = would adopt later but ship-and-stay |
-| AB | `code_R_eco` | `=IF(Q includes "eco", true, false)` | R-eco = RN ecosystem is deal-breaker |
-| AC | `code_R_OTA` | `=IF(Q includes "OTA", true, false)` | R-OTA = OTA is deal-breaker |
-| AD | `code_CMP_prefer` | `=IF(R="CMP", true, false)` | CMP-prefer = picks CMP head-to-head |
-| AE | `code_Skip_prefer` | `=IF(S="skip-yes", true, false)` | Skip-prefer = would consider Swift source |
-| AF | `code_Native_real` | `=IF(AND(K>=8, R="PMTC"), true, false)` | Native-real = high UIKit-importance + PMTC-prefers over CMP |
-| AG | `code_contribute` | `=IF(V="yes", true, false)` | Contribute-yes = would contribute |
+| Col | Header             | Formula                                                                                   | Definition                                                  |
+| --- | ------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| X   | `code_A_adopt`     | `=IF(OR(M="definitely yes", M="probably yes"), AND(NOT(Q includes deal-breaker)), false)` | A = yes/probably-yes + no deal-breaker                      |
+| Y   | `code_A_cond`      | `=IF(M="maybe", true, false)` AND named condition in N                                    | A-cond = maybe with named condition                         |
+| Z   | `code_R`           | `=IF(OR(M="definitely no", M="probably no"), true, false)`                                | R = no/probably-no                                          |
+| AA  | `code_R_time`      | `=IF(O="ship-and-stay", true, false)`                                                     | R-time = would adopt later but ship-and-stay                |
+| AB  | `code_R_eco`       | `=IF(Q includes "eco", true, false)`                                                      | R-eco = RN ecosystem is deal-breaker                        |
+| AC  | `code_R_OTA`       | `=IF(Q includes "OTA", true, false)`                                                      | R-OTA = OTA is deal-breaker                                 |
+| AD  | `code_CMP_prefer`  | `=IF(R="CMP", true, false)`                                                               | CMP-prefer = picks CMP head-to-head                         |
+| AE  | `code_Skip_prefer` | `=IF(S="skip-yes", true, false)`                                                          | Skip-prefer = would consider Swift source                   |
+| AF  | `code_Native_real` | `=IF(AND(K>=8, R="PMTC"), true, false)`                                                   | Native-real = high UIKit-importance + PMTC-prefers over CMP |
+| AG  | `code_contribute`  | `=IF(V="yes", true, false)`                                                               | Contribute-yes = would contribute                           |
 
 ---
 
@@ -164,14 +165,14 @@ weighted differently.
 For the eventual decision memo, capture verbatims that anchor the analysis.
 A row per quote-worthy statement (NOT one per respondent).
 
-| Col | Header | Type |
-|---|---|---|
-| A | `respondent_id` | string (FK to Responses tab) |
-| B | `attribution` | enum (full / anonymized / no-quote) |
-| C | `topic_code` | enum (Q1-Q12 + bonus) |
-| D | `verbatim` | text (the exact quote) |
-| E | `analyst_note` | text (why it's significant) |
-| F | `approval_status` | enum (pending / approved / rejected) — for quote-attribution workflow |
+| Col | Header            | Type                                                                  |
+| --- | ----------------- | --------------------------------------------------------------------- |
+| A   | `respondent_id`   | string (FK to Responses tab)                                          |
+| B   | `attribution`     | enum (full / anonymized / no-quote)                                   |
+| C   | `topic_code`      | enum (Q1-Q12 + bonus)                                                 |
+| D   | `verbatim`        | text (the exact quote)                                                |
+| E   | `analyst_note`    | text (why it's significant)                                           |
+| F   | `approval_status` | enum (pending / approved / rejected) — for quote-attribution workflow |
 
 The decision memo cites Tab 3 quotes by `respondent_id`; the approval column
 tracks whether the named quote has been re-confirmed for publication.
@@ -182,16 +183,16 @@ tracks whether the named quote has been re-confirmed for publication.
 
 Day-to-day tracking of outreach. Distinct from the analysis tabs.
 
-| Col | Header |
-|---|---|
-| A | candidate_id |
-| B | segment (A/B/C) |
-| C | name |
-| D | org |
-| E | channel (email / Twitter / forum / referral) |
-| F | outreach_date |
-| G | status (pending / declined / scheduled / completed) |
-| H | notes |
+| Col | Header                                              |
+| --- | --------------------------------------------------- |
+| A   | candidate_id                                        |
+| B   | segment (A/B/C)                                     |
+| C   | name                                                |
+| D   | org                                                 |
+| E   | channel (email / Twitter / forum / referral)        |
+| F   | outreach_date                                       |
+| G   | status (pending / declined / scheduled / completed) |
+| H   | notes                                               |
 
 Review weekly: are segments tracking to target (10-15 / 5-10 / 5-8)? If not,
 adjust outreach weights.

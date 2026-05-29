@@ -72,7 +72,8 @@ const table = useTable(() => ({
     {
       name: 'useTable',
       kind: 'hook',
-      signature: '<TData extends RowData>(options: () => TableOptions<TData>) => Computed<Table<TData>>',
+      signature:
+        '<TData extends RowData>(options: () => TableOptions<TData>) => Computed<Table<TData>>',
       summary:
         'Create a reactive TanStack Table instance. Options are passed as a function so reactive signals (data, columns, sorting state) can be read inside and the table updates automatically when they change. Returns a Computed<Table<T>> — read it inside JSX expression thunks or effects to track state changes. Internal state management uses a version counter to force re-notification even when the table reference is the same object.',
       example: `const table = useTable(() => ({
@@ -92,14 +93,15 @@ const table = useTable(() => ({
         'Passing options as a plain object instead of a function — signal reads are not tracked and the table never updates when data changes',
         'Reading `table` without calling it — `table` is a Computed, you must call `table()` to get the Table instance',
         'Forgetting getCoreRowModel() — TanStack Table requires at least getCoreRowModel in options or it throws',
-        'Using `.map()` on rows instead of `<For>` — loses Pyreon\'s keyed reconciliation and fine-grained DOM updates',
+        "Using `.map()` on rows instead of `<For>` — loses Pyreon's keyed reconciliation and fine-grained DOM updates",
       ],
       seeAlso: ['flexRender'],
     },
     {
       name: 'flexRender',
       kind: 'function',
-      signature: '<TData extends RowData, TValue>(component: Renderable<TValue>, props: TValue) => unknown',
+      signature:
+        '<TData extends RowData, TValue>(component: Renderable<TValue>, props: TValue) => unknown',
       summary:
         'Render a TanStack Table column definition template (header, cell, or footer). Handles strings, numbers, functions (component functions or render functions), and VNodes. Returns the rendered output or null for undefined/null inputs. Use in JSX to render column definitions provided by TanStack Table.',
       example: `// Header:

@@ -20,12 +20,7 @@ import * as path from 'node:path'
 import { lint, allRules } from '@pyreon/lint'
 
 import { collectFirstPartySourceFiles } from '../utils/walk'
-import type {
-  Finding,
-  FindingCategory,
-  GateResult,
-  Severity,
-} from '../types'
+import type { Finding, FindingCategory, GateResult, Severity } from '../types'
 
 const mapLintSeverity = (s: string): Severity | null => {
   if (s === 'error') return 'error'
@@ -78,9 +73,7 @@ export interface LintGateOptions {
   fix?: boolean | undefined
 }
 
-export const runLintGate = async (
-  opts: LintGateOptions,
-): Promise<GateResult> => {
+export const runLintGate = async (opts: LintGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
 

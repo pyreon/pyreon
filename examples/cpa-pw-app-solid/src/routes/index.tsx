@@ -1,15 +1,15 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 export const meta = {
-  title: "Pyreon Zero",
-  description: "The signal-based meta-framework. Build fast, stay fast.",
+  title: 'Pyreon Zero',
+  description: 'The signal-based meta-framework. Build fast, stay fast.',
 }
 
 export default function Home() {
   useHead({
-    title: "Pyreon Zero — The Signal-Based Meta-Framework",
-    meta: [{ name: "description", content: meta.description }],
+    title: 'Pyreon Zero — The Signal-Based Meta-Framework',
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   return (
@@ -145,7 +145,7 @@ export default function Home() {
           </div>
           <h3>Font & Image Optimization</h3>
           <p>
-            Automatic Google Fonts inlining, font-display swap, and an <code>{"<Image>"}</code>{" "}
+            Automatic Google Fonts inlining, font-display swap, and an <code>{'<Image>'}</code>{' '}
             component with lazy loading and blur-up placeholders.
           </p>
         </div>

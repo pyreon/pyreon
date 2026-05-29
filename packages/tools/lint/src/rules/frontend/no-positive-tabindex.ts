@@ -20,7 +20,8 @@ export const noPositiveTabindex: Rule = {
   meta: {
     id: 'pyreon/no-positive-tabindex',
     category: 'frontend',
-    description: 'Disallow a positive `tabIndex` — it breaks natural keyboard focus order. Use 0 or -1.',
+    description:
+      'Disallow a positive `tabIndex` — it breaks natural keyboard focus order. Use 0 or -1.',
     severity: 'warn',
     fixable: true,
     optIn: true,

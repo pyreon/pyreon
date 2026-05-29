@@ -27,9 +27,7 @@ const CHANGESET_DIR = join(import.meta.dirname, '..', '.changeset')
 // trailing severity word.
 const MAJOR_LINE = /^(\s*['"]?[^:'"]+['"]?\s*:\s*)major\s*$/gm
 
-const files = readdirSync(CHANGESET_DIR).filter(
-  (f) => f.endsWith('.md') && f !== 'README.md',
-)
+const files = readdirSync(CHANGESET_DIR).filter((f) => f.endsWith('.md') && f !== 'README.md')
 
 let touched = 0
 for (const f of files) {
@@ -46,9 +44,7 @@ for (const f of files) {
 
 if (touched > 0) {
   // oxlint-disable-next-line no-console
-  console.log(
-    `[cap-bumps] capped ${touched} changeset(s) at minor (0.x policy)`,
-  )
+  console.log(`[cap-bumps] capped ${touched} changeset(s) at minor (0.x policy)`)
 } else {
   // oxlint-disable-next-line no-console
   console.log('[cap-bumps] no major bumps to cap — clean')

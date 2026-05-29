@@ -6,12 +6,7 @@ import {
   regenerateLlmsFullTxt,
   regenerateLlmsTxt,
 } from '../../../../../scripts/gen-docs-core'
-import {
-  findManifests,
-  formatLineDiff,
-  renderLlmsFullSection,
-  renderLlmsTxtLine,
-} from '../index'
+import { findManifests, formatLineDiff, renderLlmsFullSection, renderLlmsTxtLine } from '../index'
 import type { PackageManifest } from '../types'
 
 // Unit coverage for scripts/gen-docs.ts. Lives in @pyreon/manifest
@@ -34,9 +29,9 @@ describe('renderLlmsTxtLine', () => {
   })
 
   it('appends peerDeps in `(peer: a, b)` form when present', () => {
-    expect(
-      renderLlmsTxtLine({ ...minimalManifest, peerDeps: ['@pyreon/runtime-dom'] }),
-    ).toBe('- @pyreon/x — does things (peer: @pyreon/runtime-dom)')
+    expect(renderLlmsTxtLine({ ...minimalManifest, peerDeps: ['@pyreon/runtime-dom'] })).toBe(
+      '- @pyreon/x — does things (peer: @pyreon/runtime-dom)',
+    )
 
     expect(
       renderLlmsTxtLine({ ...minimalManifest, peerDeps: ['@pyreon/core', '@pyreon/reactivity'] }),
@@ -63,9 +58,9 @@ describe('renderLlmsTxtLine', () => {
   })
 
   it('handles empty arrays identically to missing fields', () => {
-    expect(
-      renderLlmsTxtLine({ ...minimalManifest, peerDeps: [], gotchas: [] }),
-    ).toBe('- @pyreon/x — does things')
+    expect(renderLlmsTxtLine({ ...minimalManifest, peerDeps: [], gotchas: [] })).toBe(
+      '- @pyreon/x — does things',
+    )
   })
 
   it('teases the labeled-gotcha note (not the label itself) for `{label, note}` form', () => {
@@ -210,11 +205,7 @@ describe('findManifests', () => {
   })
 
   it('throws when a manifest file has no default export', async () => {
-    writeManifest(
-      'core',
-      'broken',
-      `export const manifest = { name: '@pyreon/broken' }`,
-    )
+    writeManifest('core', 'broken', `export const manifest = { name: '@pyreon/broken' }`)
     await expect(findManifests(tmpRoot)).rejects.toThrow(/has no default export/)
   })
 
@@ -377,11 +368,7 @@ describe('renderLlmsFullSection', () => {
   it('mixes bare strings and labeled objects in one gotchas array', () => {
     const out = renderLlmsFullSection({
       ...base,
-      gotchas: [
-        'first (bare)',
-        { label: 'Custom', note: 'second (labeled)' },
-        'third (bare)',
-      ],
+      gotchas: ['first (bare)', { label: 'Custom', note: 'second (labeled)' }, 'third (bare)'],
       longExample: `code`,
     })
     expect(out).toContain('> **Note**: first (bare)')
@@ -623,10 +610,7 @@ describe('regenerateLlmsFullTxt', () => {
 })
 
 describe('regenerateApiReferenceTs', () => {
-  function mkManifest(
-    name: string,
-    api: PackageManifest['api'] = [],
-  ): PackageManifest {
+  function mkManifest(name: string, api: PackageManifest['api'] = []): PackageManifest {
     return {
       name,
       tagline: 't',
@@ -659,9 +643,7 @@ describe('regenerateApiReferenceTs', () => {
       "  'core/h': { signature: 'h', example: 'h' },",
       '}',
     ].join('\n')
-    const result = regenerateApiReferenceTs(before, [
-      { path: '/flow', manifest },
-    ])
+    const result = regenerateApiReferenceTs(before, [{ path: '/flow', manifest }])
     expect(result.missingEntries).toEqual([])
     expect(result.changedLines).toBe(1)
     // Old entry replaced
@@ -686,9 +668,7 @@ describe('regenerateApiReferenceTs', () => {
       "  'reactivity/signal': { signature: 's', example: 'e' },",
       '}',
     ].join('\n')
-    const result = regenerateApiReferenceTs(before, [
-      { path: '/x', manifest },
-    ])
+    const result = regenerateApiReferenceTs(before, [{ path: '/x', manifest }])
     expect(result.missingEntries).toEqual([])
     expect(result.changedLines).toBe(0)
     expect(result.contents).toBe(before)
@@ -716,13 +696,9 @@ describe('regenerateApiReferenceTs', () => {
       '  // <gen-docs:api-reference:end @pyreon/flow>',
       '}',
     ].join('\n')
-    const first = regenerateApiReferenceTs(before, [
-      { path: '/flow', manifest },
-    ])
+    const first = regenerateApiReferenceTs(before, [{ path: '/flow', manifest }])
     expect(first.changedLines).toBe(1)
-    const second = regenerateApiReferenceTs(first.contents, [
-      { path: '/flow', manifest },
-    ])
+    const second = regenerateApiReferenceTs(first.contents, [{ path: '/flow', manifest }])
     expect(second.changedLines).toBe(0)
     expect(second.contents).toBe(first.contents)
   })
@@ -771,9 +747,7 @@ describe('regenerateApiReferenceTs', () => {
       '  // <gen-docs:api-reference:end @pyreon/empty>',
       '}',
     ].join('\n')
-    const result = regenerateApiReferenceTs(before, [
-      { path: '/empty', manifest },
-    ])
+    const result = regenerateApiReferenceTs(before, [{ path: '/empty', manifest }])
     expect(result.changedLines).toBe(1)
     expect(result.contents).not.toContain("'empty/stale'")
     // Both markers still present so the package remains opt-in.

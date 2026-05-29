@@ -2,14 +2,7 @@ import { Col, Container, Row } from '@pyreon/coolgrid'
 import { useQuery } from '@pyreon/query'
 import { fetchKpis } from './data/api'
 import type { Kpi } from './data/types'
-import {
-  KpiCard,
-  KpiDelta,
-  KpiLabel,
-  KpiValue,
-  Skeleton,
-  SkeletonValue,
-} from './styled'
+import { KpiCard, KpiDelta, KpiLabel, KpiValue, Skeleton, SkeletonValue } from './styled'
 
 const SLOTS = [0, 1, 2, 3] as const
 

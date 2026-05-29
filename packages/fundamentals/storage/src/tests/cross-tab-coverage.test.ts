@@ -48,4 +48,3 @@ describe('cross-tab sync — edge cases', () => {
     expect(sig()).toBe('value')
   })
 })
-

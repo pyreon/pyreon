@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -125,7 +124,6 @@
   **Policy: only ports that show measurably better under Pyreon's runtime
   were kept.** Two upstream changes were measured neutral/worse here and
   deliberately reverted:
-
   - `styler.hashUpdate` 4-char unroll — measured +1.6% short / +2.1% long
     under Bun (both inside the ±2% JIT noise band). Reverted to the simple
     single-char loop.
@@ -137,7 +135,6 @@
   **Measured wins** (paired before/after micro-bench via
   `bun scripts/perf/port-vitus-labs-bench.ts`, Bun 1.3.13, 3 warmup + 7
   timed runs, report median):
-
   - `styler.CSSResult._staticResolved` cache (8 repeats): **+85.3%**
   - `attrs.removeUndefinedProps` (10-prop input): **+77.4%**
   - `unistyle.shouldNormalize` (5-key static): **+66.0%**
@@ -151,7 +148,6 @@
   - `styler.splitRules charCodeAt vs str[i]`: **+8.0%**
 
   Plus 6 structural cleanups (no perf claim, allocation reductions only):
-
   - `styler.globalStyle` length-check vs `.trim()`
   - `unistyle.normalizeTheme` / `transformTheme` for-in (drops
     Object.entries tuple-array allocations)
@@ -164,7 +160,6 @@
 
   **Behavioural lock-in tests** (ported from vitus-labs `60fc25c1`, 8 new
   specs in `@pyreon/styler`):
-
   - `CSSResult._isDynamic` memoization: populate-on-first / cache-on-
     subsequent (values-mutation sentinel) / nested-propagation.
   - `CSSResult._staticResolved` cache: populate-on-first / cache-hit-via-
@@ -173,7 +168,6 @@
     signals, not React refs).
 
   **Bisect-verified-with-restore**:
-
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
 calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
@@ -186,7 +180,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   per-function structural wins, not a real-app headline number.
 
   **Verification**:
-
   - 1832 tests pass: styler 425 (+8 lock-ins) + unistyle 240 + rocketstyle
     290 + attrs 89 + coolgrid 106 + elements 463 + hooks 219.
   - Browser smokes: elements 16, styler 12, rocketstyle 12, unistyle 6,
@@ -254,7 +247,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   the build-resolved class is byte-for-byte the client-mounted class.
 
   New public surface (all additive):
-
   - `@pyreon/styler` — `StyleSheet.getStyleRules()` (raw SSR rule
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
@@ -342,7 +334,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -356,7 +347,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -402,7 +392,7 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 
   **No runtime or API change** — purely additive doc metadata. `gen-docs --check` in sync; lint **0 errors** (303 pre-existing warnings, same class as prior PRs); typecheck clean (styler + mcp); styler 410 tests, manifest 135 all green; new `manifest-snapshot.test.ts` (5 specs) locks the rendered bullet/section/api-reference shape + foot-gun-catalog assertions locally; `check-manifest-depth` passes (styler enters at port-grade density, intentionally NOT added to `LOCKED` — visible migration backlog, not yet flagship).
 
-  **Authoring note for the next ui-system migration**: `@pyreon/manifest`'s `renderStringLiteral` serializer escapes backtick + `${` when emitting MCP entries into `api-reference.ts`, but does NOT escape literal backslashes. A `summary`/`mistakes` string whose RESOLVED value contains a literal `\` (e.g. from over-escaped nested `` \`…\``` code spans) emits `\\\ `` → the raw backtick prematurely closes the generated template literal → `api-reference.ts` parse error. Keep manifest prose backslash-free: use plain single-backtick code spans for identifiers, never nested backtick-in-backtick escapes; `${`-in-prose is fine (serializer-escaped, round-trips). Documented in `.claude/rules/anti-patterns.md`.
+  **Authoring note for the next ui-system migration**: `@pyreon/manifest`'s `renderStringLiteral` serializer escapes backtick + `${` when emitting MCP entries into `api-reference.ts`, but does NOT escape literal backslashes. A `summary`/`mistakes` string whose RESOLVED value contains a literal `\` (e.g. from over-escaped nested ``\`…\``` code spans) emits `\\\`` → the raw backtick prematurely closes the generated template literal → `api-reference.ts` parse error. Keep manifest prose backslash-free: use plain single-backtick code spans for identifiers, never nested backtick-in-backtick escapes; `${`-in-prose is fine (serializer-escaped, round-trips). Documented in `.claude/rules/anti-patterns.md`.
 
 - Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838)]:
   - @pyreon/reactivity@0.19.0
@@ -425,7 +415,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **Bug class.** Pyreon's reactive-prop contract is that `<Comp prop={signal()}>` compiles to `h(Comp, { prop: _rp(() => signal()) })` and `mount.ts:makeReactiveProps` converts `_rp`-branded thunks into property GETTERS on the props object. Any prop-pipeline step that VALUE-COPIES `props[key]` (plain assignment, spread, or `Object.assign`) fires the getter at HOC setup time — outside any tracking scope — and stores the resolved value as a static data property. Every downstream JSX accessor reading `props.x` then sees the captured-once value, never re-subscribing to the underlying signal.
 
   **Two layers of fix:**
-
   1. **Compiler-level (closes the bug class for all consumers, including user code).** Both the JS compiler (`src/jsx.ts`) and the Rust native binary (`native/src/lib.rs`) now wrap component-JSX spread arguments with the new `_wrapSpread(...)` helper from `@pyreon/core`. `<Comp {...source}>` compiles to `jsx(Comp, { ..._wrapSpread(source) })` — `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks, so the JS-level spread carries function values (no getters fire), and `makeReactiveProps` converts them back to getters on the consumer side. Fast path: when `source` has no getter descriptors, `_wrapSpread` returns the source unchanged — zero overhead for the 99% of spread sources that don't carry reactive props. Lowercase-tag (DOM) spreads route through the template path's `_applyProps` (already reactive) and skip the wrap.
 
   2. **Framework-level (closes every observed leak site in shipped packages):**
@@ -437,7 +426,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
      - `@pyreon/runtime-dom` — `applyProps` in `props.ts` detects getter descriptors and wraps the write in `renderEffect`.
 
   **Bisect-verified at TWO layers:**
-
   - **Unit / browser**: `packages/ui-system/rocketstyle/src/__tests__/reactive-props-preservation.test.ts` (9 specs) + the new `rocketstyle.browser.test.tsx` spec covering the full pipeline. Reverting any of the 4 leak-site fixes individually fails the relevant spec with `expected 'count: 1' to be 'count: 0'`.
   - **Real-Chromium e2e**: `e2e/ui-showcase-regression.spec.ts:793 — signal-driven prop on Button updates the DOM on flip` exercises a rocketstyle Button with a `title={\`count: \${count()}\`}` prop fed by a signal. Reverting the compiler-level fix (`packages/core/compiler/src/jsx.ts`+`native/src/lib.rs`+ rebuilding the Rust binary) → spec fails with`unexpected value "count: 0"` after click — proving the spread reactivity contract holds end-to-end through the entire prop pipeline (rocketstyle attrs HOC → styler buildProps → Element Wrapper → runtime-dom applyProps).
 
@@ -472,7 +460,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - [#258](https://github.com/pyreon/pyreon/pull/258) [`a05c4ba`](https://github.com/pyreon/pyreon/commit/a05c4bab713f5168acd56eb233520102735bd80a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Performance rearchitecture: reactive theme/mode/dimension switching via computed (not effect).
-
   - **styler**: `DynamicStyled` uses one `computed()` per component (not `effect()`) to track theme + mode + dimension signals. The resolve itself runs `runUntracked()` to prevent exponential cascade. String-equality memoization eliminates redundant DOM updates. Per-definition WeakMap cache (Tier 2) skips resolve entirely for repeated identical inputs.
   - **styler**: `ThemeContext` is a `createReactiveContext<Theme>`. `useThemeAccessor()` returns the raw accessor for tracking inside computeds.
   - **ui-core**: `PyreonUI` nested `inversed` prop inherits parent mode reactively — inner section automatically flips when outer mode changes.
@@ -509,7 +496,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   tests never exercised the hot paths those packages were built for.
 
   `@pyreon/styler`:
-
   - `src/__tests__/styler.browser.test.tsx` (8 tests): `styled('div')\`…\``mounts into real DOM with the generated`pyr-_`class; Chromium
 resolves the authored styles (color/padding) via the injected
 stylesheet; function interpolations resolve per-render against props
@@ -521,7 +507,6 @@ CSS rules are queryable via`document.styleSheets`.
     `bun run test` skips `*.browser.test.*` files.
 
   `@pyreon/unistyle`:
-
   - `src/__tests__/unistyle.browser.test.tsx` (6 tests): `enrichTheme`
     attaches sorted breakpoints + media helpers to `theme.__PYREON__`; an
     inline `@media (min-width: …)` rule that styler emits is actually
@@ -539,7 +524,6 @@ CSS rules are queryable via`document.styleSheets`.
 
   Bisect-verified (two rounds — light flip + load-bearing hot-path
   revert):
-
   - styler (light): changed `KeyframesResult` name prefix from `pyr-kf-`
     to `broken-` — keyframes test failed. Restored, 8/8 passed.
   - styler (load-bearing): no-op'd `this.sheet.insertRule(...)` in

@@ -245,7 +245,10 @@ describe('schema-driven defineStore — valibot (TypedSchemaAdapter / Tier A.1)'
   })
 
   it('async safeParseAsync passed by mistake throws at defineStore-time', () => {
-    const AsyncSchema = valibotSchema<{ name: string }>(v.object({ name: v.string() }), v.safeParseAsync)
+    const AsyncSchema = valibotSchema<{ name: string }>(
+      v.object({ name: v.string() }),
+      v.safeParseAsync,
+    )
     expect(() =>
       defineStore('valibot-user-4', {
         schema: AsyncSchema,
@@ -262,7 +265,9 @@ describe('schema-driven defineStore — arktype (TypedSchemaAdapter / Tier A.1)'
     name: 'string > 0',
     age: 'number',
   })
-  const UserSchema = arktypeSchema<{ name: string; age: number }>(UserType as unknown as (data: unknown) => unknown)
+  const UserSchema = arktypeSchema<{ name: string; age: number }>(
+    UserType as unknown as (data: unknown) => unknown,
+  )
 
   it('exposes per-field signals from arktype schema', () => {
     const useUser = defineStore('ark-user-1', {
@@ -576,19 +581,14 @@ describe('schema-driven defineStore — update', () => {
   it('filters an array (covers "remove item")', () => {
     const useS = defineStore('update-2', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & { store: { items: { (): typeof initial.items } } }
-    s.update('items', (items) =>
-      (items as typeof initial.items).filter((x) => x.id !== 1),
-    )
+    s.update('items', (items) => (items as typeof initial.items).filter((x) => x.id !== 1))
     expect(s.store.items()).toEqual([{ id: 2, label: 'two' }])
   })
 
   it('appends to an array (covers "add item")', () => {
     const useS = defineStore('update-3', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & { store: { items: { (): typeof initial.items } } }
-    s.update('items', (items) => [
-      ...(items as typeof initial.items),
-      { id: 3, label: 'three' },
-    ])
+    s.update('items', (items) => [...(items as typeof initial.items), { id: 3, label: 'three' }])
     expect(s.store.items()).toHaveLength(3)
     expect(s.store.items()[2]).toEqual({ id: 3, label: 'three' })
   })

@@ -6,14 +6,39 @@ import type { Customer, Datum, Kpi, Order, OrderCategory, OrderStatus } from './
  */
 
 const FIRST_NAMES = [
-  'Aisha', 'Ben', 'Chiara', 'Dmitri', 'Elena', 'Felix', 'Gabriela',
-  'Hiroshi', 'Ines', 'Jonas', 'Kira', 'Luca', 'Mei', 'Niko',
-  'Olive', 'Priya', 'Quinn', 'Rafael', 'Sora', 'Tomas',
+  'Aisha',
+  'Ben',
+  'Chiara',
+  'Dmitri',
+  'Elena',
+  'Felix',
+  'Gabriela',
+  'Hiroshi',
+  'Ines',
+  'Jonas',
+  'Kira',
+  'Luca',
+  'Mei',
+  'Niko',
+  'Olive',
+  'Priya',
+  'Quinn',
+  'Rafael',
+  'Sora',
+  'Tomas',
 ] as const
 
 const LAST_NAMES = [
-  'Aldridge', 'Brennan', 'Castellano', 'Diaz', 'Eriksson',
-  'Fontaine', 'Greene', 'Hartwell', 'Iwasaki', 'Janowski',
+  'Aldridge',
+  'Brennan',
+  'Castellano',
+  'Diaz',
+  'Eriksson',
+  'Fontaine',
+  'Greene',
+  'Hartwell',
+  'Iwasaki',
+  'Janowski',
 ] as const
 
 const CATEGORIES: OrderCategory[] = ['apparel', 'electronics', 'home', 'books', 'beauty']

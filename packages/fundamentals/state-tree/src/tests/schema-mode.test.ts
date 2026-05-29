@@ -356,13 +356,12 @@ describe('schema-mode model — chainable views/actions', () => {
     const User = model({
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
-    })
-      .actions((self) => ({
-        rename: (next: string) =>
-          (self.patch as (p: Partial<{ name: string; age: number }>) => void)({
-            name: next,
-          }),
-      }))
+    }).actions((self) => ({
+      rename: (next: string) =>
+        (self.patch as (p: Partial<{ name: string; age: number }>) => void)({
+          name: next,
+        }),
+    }))
     const u = User.create() as ReturnType<typeof User.create> & {
       name: { (): string }
       rename: (n: string) => void
@@ -394,28 +393,20 @@ describe('schema-mode model — reserved mutation-helper names', () => {
   it('throws when schema field is `deepPatch` / `update` / `reset`', () => {
     for (const name of ['deepPatch', 'update', 'reset'] as const) {
       const S = zodSchema(
-        z.object({ [name]: z.string() }) as unknown as z.ZodType<
-          Record<string, string>
-        >,
+        z.object({ [name]: z.string() }) as unknown as z.ZodType<Record<string, string>>,
       )
       const M = model({ schema: S, initial: { [name]: 'oops' } })
-      expect(() => M.create()).toThrow(
-        /collides with a reserved mutation helper/,
-      )
+      expect(() => M.create()).toThrow(/collides with a reserved mutation helper/)
     }
   })
 
   it('throws when an .actions() factory tries to define a reserved name', () => {
     const Schema = zodSchema(z.object({ count: z.number() }))
-    const Bad = model({ schema: Schema, initial: { count: 0 } }).actions(
-      () => ({
-        // `set` would shadow the installed schema-mode helper.
-        set: () => {},
-      }),
-    )
-    expect(() => Bad.create()).toThrow(
-      /collides with a reserved schema-mode mutation helper/,
-    )
+    const Bad = model({ schema: Schema, initial: { count: 0 } }).actions(() => ({
+      // `set` would shadow the installed schema-mode helper.
+      set: () => {},
+    }))
+    expect(() => Bad.create()).toThrow(/collides with a reserved schema-mode mutation helper/)
   })
 
   it('plain mode (no schema) allows actions named `set` / `reset` — no collision', () => {
@@ -483,9 +474,9 @@ describe('schema-mode model — deepPatch (nested merge)', () => {
     const m = M.create() as ReturnType<typeof M.create> & {
       deepPatch: (p: { prefs?: { theme?: string } }) => void
     }
-    expect(() =>
-      m.deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } }),
-    ).toThrow(/Schema validation failed.*deepPatch/)
+    expect(() => m.deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } })).toThrow(
+      /Schema validation failed.*deepPatch/,
+    )
   })
 
   it('REPLACES class instances (Date) — does not recurse into prototype-bearing objects', () => {
@@ -546,10 +537,7 @@ describe('schema-mode model — update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       count: { (): number }
-      update: (
-        key: 'count' | 'items' | 'prefs',
-        fn: (current: unknown) => unknown,
-      ) => void
+      update: (key: 'count' | 'items' | 'prefs', fn: (current: unknown) => unknown) => void
     }
     m.update('count', (n) => (n as number) + 1)
     expect(m.count()).toBe(1)
@@ -559,14 +547,9 @@ describe('schema-mode model — update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       items: { (): typeof initial.items }
-      update: (
-        key: 'count' | 'items' | 'prefs',
-        fn: (current: unknown) => unknown,
-      ) => void
+      update: (key: 'count' | 'items' | 'prefs', fn: (current: unknown) => unknown) => void
     }
-    m.update('items', (items) =>
-      (items as typeof initial.items).filter((x) => x.id !== 1),
-    )
+    m.update('items', (items) => (items as typeof initial.items).filter((x) => x.id !== 1))
     expect(m.items()).toEqual([{ id: 2, label: 'two' }])
   })
 
@@ -574,15 +557,9 @@ describe('schema-mode model — update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       items: { (): typeof initial.items }
-      update: (
-        key: 'count' | 'items' | 'prefs',
-        fn: (current: unknown) => unknown,
-      ) => void
+      update: (key: 'count' | 'items' | 'prefs', fn: (current: unknown) => unknown) => void
     }
-    m.update('items', (items) => [
-      ...(items as typeof initial.items),
-      { id: 3, label: 'three' },
-    ])
+    m.update('items', (items) => [...(items as typeof initial.items), { id: 3, label: 'three' }])
     expect(m.items()).toHaveLength(3)
     expect(m.items()[2]).toEqual({ id: 3, label: 'three' })
   })
@@ -591,10 +568,7 @@ describe('schema-mode model — update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       prefs: { (): typeof initial.prefs }
-      update: (
-        key: 'count' | 'items' | 'prefs',
-        fn: (current: unknown) => unknown,
-      ) => void
+      update: (key: 'count' | 'items' | 'prefs', fn: (current: unknown) => unknown) => void
     }
     m.update('prefs', (prefs) => ({
       ...(prefs as typeof initial.prefs),
@@ -606,15 +580,10 @@ describe('schema-mode model — update (single-field transformer)', () => {
   it('validates the transformed result + throws on schema failure', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
-      update: (
-        key: 'count' | 'items' | 'prefs',
-        fn: (current: unknown) => unknown,
-      ) => void
+      update: (key: 'count' | 'items' | 'prefs', fn: (current: unknown) => unknown) => void
     }
     // count is z.number().nonnegative() — negative violates the schema
-    expect(() => m.update('count', () => -1)).toThrow(
-      /Schema validation failed.*update/,
-    )
+    expect(() => m.update('count', () => -1)).toThrow(/Schema validation failed.*update/)
   })
 
   it('onValidationError suppresses throw + state unchanged', () => {
@@ -628,10 +597,7 @@ describe('schema-mode model — update (single-field transformer)', () => {
     })
     const m = M.create() as ReturnType<typeof M.create> & {
       count: { (): number }
-      update: (
-        key: 'count' | 'items' | 'prefs',
-        fn: (current: unknown) => unknown,
-      ) => void
+      update: (key: 'count' | 'items' | 'prefs', fn: (current: unknown) => unknown) => void
     }
     m.update('count', () => -1)
     expect(errors.length).toBe(1)
@@ -643,19 +609,15 @@ describe('schema-mode model — update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial }).actions((self) => ({
       async asyncIncrement() {
         await Promise.resolve()
-        ;(
-          self.update as (
-            key: 'count',
-            fn: (c: unknown) => unknown,
-          ) => void
-        )('count', (n) => (n as number) + 1)
+        ;(self.update as (key: 'count', fn: (c: unknown) => unknown) => void)(
+          'count',
+          (n) => (n as number) + 1,
+        )
         await Promise.resolve()
-        ;(
-          self.update as (
-            key: 'count',
-            fn: (c: unknown) => unknown,
-          ) => void
-        )('count', (n) => (n as number) + 1)
+        ;(self.update as (key: 'count', fn: (c: unknown) => unknown) => void)(
+          'count',
+          (n) => (n as number) + 1,
+        )
       },
     }))
     const m = M.create() as ReturnType<typeof M.create> & {

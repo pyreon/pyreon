@@ -40,10 +40,7 @@ export const devGuardWarnings: Rule = {
       if (expr.type === 'ChainExpression') return exprResolvesToDevFlag(expr.expression)
       if (isDevFlag(expr)) return true
       // `import.meta.env.DEV === true` / `true === import.meta.env.DEV`
-      if (
-        expr.type === 'BinaryExpression' &&
-        (expr.operator === '===' || expr.operator === '==')
-      ) {
+      if (expr.type === 'BinaryExpression' && (expr.operator === '===' || expr.operator === '==')) {
         return exprResolvesToDevFlag(expr.left) || exprResolvesToDevFlag(expr.right)
       }
       return false
@@ -143,10 +140,7 @@ export const devGuardWarnings: Rule = {
         return containsDevGuard(test.left) || containsDevGuard(test.right)
       }
       // `flag === true` or `true === flag` — common after `?? === true` shape.
-      if (
-        test.type === 'BinaryExpression' &&
-        (test.operator === '===' || test.operator === '==')
-      ) {
+      if (test.type === 'BinaryExpression' && (test.operator === '===' || test.operator === '==')) {
         return isDevFlag(test.left) || isDevFlag(test.right)
       }
       return false
@@ -163,7 +157,9 @@ export const devGuardWarnings: Rule = {
       const c = node.consequent
       const isReturn =
         c?.type === 'ReturnStatement' ||
-        (c?.type === 'BlockStatement' && c.body.length === 1 && c.body[0]?.type === 'ReturnStatement')
+        (c?.type === 'BlockStatement' &&
+          c.body.length === 1 &&
+          c.body[0]?.type === 'ReturnStatement')
       if (!isReturn) return false
       // Bundler-agnostic: `if (process.env.NODE_ENV === 'production') return`
       if (isProductionCheck(t)) return true

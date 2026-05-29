@@ -43,7 +43,6 @@
   **1. HIGH — race condition in sentinel opt-out under concurrent `Promise.all`** (`@pyreon/reactivity` + `@pyreon/zero` + `@pyreon/vite-plugin`).
 
   The env-var dance pattern (`process.env.PYREON_SINGLE_INSTANCE = 'silent'` / capture+restore) used by `ssrLoadModuleQuiet`, SSG-plugin's built-handler import, and rocketstyle-collapse's nested-SSR resolver was race-prone under `Promise.all` of N opt-out scopes:
-
   1. Call A: captures `prev=undefined`, sets `'silent'`
   2. Call B: captures `prev='silent'` (post-A's write), sets `'silent'`
   3. A's `finally` deletes env (prev was undefined)
@@ -52,7 +51,6 @@
   Effect: the sentinel was silently disabled for the entire dev / SSG / collapse-resolver process lifetime. Bisect-verified with a focused reproducer; the leak fires with 5 concurrent scopes in `renderSsr`.
 
   **Fix**: `@pyreon/reactivity` ships two new exports:
-
   - `withSilent(fn): Promise<T>` — async refcount-based scope. Increments `silentDepth` on the sentinel state, awaits the fn, decrements in `finally`. Order-independent under concurrency.
   - `withSilentSync(fn): T` — sync variant.
 
@@ -111,7 +109,6 @@
   ```
 
   TWO module instances of `@pyreon/core`:
-
   1. **`runtime-server/lib`** resolves `@pyreon/core` → `src/component.ts` (Vite uses the `bun` condition for transitive deps under aliased packages — zero aliases runtime-server).
   2. **`head/lib`** resolves `@pyreon/core` → `lib/index.js` (Vite's `[package entry]` path ignores the `bun` condition for some import chains).
 
@@ -148,7 +145,6 @@
   ## Diagnostic instrumentation used to find this
 
   Three iterations of `process.stderr.write` injection into `node_modules/@pyreon/core/lib/index.js`:
-
   1. Module-load tag (caught one module instance load)
   2. `setCurrentHooks` + `runWithHooks` chronology trace (revealed setCurrentHooks NEVER fired on the warning-emitting instance)
   3. Warning-emit site stack capture (revealed the cross-module `runWithHooks(.../src/component.ts:34) ← LIB` interleave)
@@ -204,8 +200,8 @@
 
   ```ts
   // vite.config.ts
-  import pyreon from "@pyreon/vite-plugin";
-  export default { plugins: [pyreon()] }; // that's it
+  import pyreon from '@pyreon/vite-plugin'
+  export default { plugins: [pyreon()] } // that's it
   ```
 
   ```bash
@@ -216,7 +212,6 @@
   No `activateReactiveDevtools()` call, no `startLpihPolling()` call, no `PYREON_LPIH_CACHE` env var, no `.pyreon-lpih.json` config — the plugin wires all three layers automatically.
 
   **New options surface:**
-
   - `pyreon({ lpih: false })` — opt out (e.g. wiring `startLpihPolling()` manually from a non-browser runtime)
   - `pyreon({ lpih: { intervalMs: 500 } })` — slower poll for low-CPU environments
   - `pyreon({ lpih: { cachePath: '/abs/path.json' } })` — override the default `<projectRoot>/.pyreon-lpih.json`
@@ -228,7 +223,6 @@
   **Wire format**: browser POSTs `{ fires: [{ file, line, count, kind, lastFire, rate1s }] }` — byte-identical to the on-disk format `@pyreon/reactivity/lpih`'s `writeLpihCache` produces. The server-side `writeLpihCacheFile` re-validates shape (rejects bodies missing the `fires` array) before atomic-renaming to disk; a buggy or malicious client can't corrupt the file the LSP reads.
 
   **Exposed surface** (`@internal`, for tests):
-
   - `resolveLpihCachePath(projectRoot)` — returns `<projectRoot>/.pyreon-lpih.json`
   - `writeLpihCacheFile(path, body)` — atomic-rename writer with shape validation
   - `buildLpihClientScript(intervalMs)` — generates the `<script type="module">` body
@@ -236,7 +230,6 @@
   **Bisect-verified-with-restore**: disabling both the `configureServer` LPIH gate AND the `transformIndexHtml` gate fails 7 of the 23 new R1 tests (registration + injection + interval + custom-path); restored → 23/23 (and 142/142 full vite-plugin suite). No `TEMP BISECT` remnants.
 
   Test coverage (23 new specs in `lpih-auto-bridge.test.ts`):
-
   - `resolveLpihCachePath` (2) — projectRoot → cache path resolution
   - `writeLpihCacheFile` (5) — successful write, overwrite (atomic rename), malformed JSON rejection, shape-missing-fires rejection, no tmp leftovers
   - `buildLpihClientScript` (6) — `<script type="module">` shape, interval embedding, imports, POST shape, beforeunload cleanup, payload shape
@@ -250,7 +243,6 @@
 - [#785](https://github.com/pyreon/pyreon/pull/785) [`b8fb31c`](https://github.com/pyreon/pyreon/commit/b8fb31cf1a59578fc33f27d539695d2bc164b2f1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: build-time `__sourceLocation` injection now covers `computed()` and `effect()` calls (R8 — extension of R4). Previously only `signal()` got the build-time literal; `computed()` and `effect()` still paid the runtime `new Error().stack` capture cost (~2.2 µs per creation when devtools is active).
 
   Three forms covered by the extended `injectSignalNames`:
-
   - `const x = signal(...)` → `signal(..., { name: "x", __sourceLocation: {...} })`
   - `const d = computed(() => ...)` → `computed(..., { name: "d", __sourceLocation: {...} })`
   - `effect(() => ...)` (unbound) → `effect(..., { __sourceLocation: {...} })` (no `name` — anonymous effects have no binding to derive from)
@@ -258,7 +250,6 @@
   Unbound `signal()` / `computed()` are left untouched (rare anonymous patterns). The unbound-effect pass uses negative lookbehind `(?<![\w$.])` to skip member-access (`obj.effect()`) and identifier-suffix (`sideEffect()`) false-positives.
 
   `@pyreon/reactivity` exposes the matching surface on the runtime side:
-
   - `ComputedOptions<T>` gains an `@internal __sourceLocation` field; `computed()` threads it through to both internal paths (`computedLazy` / `computedWithEquals`), preferring it over `_captureCallerLocation(2)` in `_rdRegister`
   - new `EffectOptions` interface with the same `@internal __sourceLocation` field; `effect(fn, options?)` accepts the second arg
 
@@ -274,7 +265,7 @@
 
   ```ts
   // User source:
-  const count = signal(0);
+  const count = signal(0)
 
   // Runtime, when devtools active:
   // 1. new Error() + parse stack → ~2.2µs cost per creation
@@ -285,13 +276,13 @@
 
   ```ts
   // User source (unchanged):
-  const count = signal(0);
+  const count = signal(0)
 
   // Vite-transformed source (dev mode):
   const count = signal(0, {
-    name: "count",
-    __sourceLocation: { file: "app.tsx", line: 5, col: 14 },
-  });
+    name: 'count',
+    __sourceLocation: { file: 'app.tsx', line: 5, col: 14 },
+  })
 
   // Runtime, when devtools active:
   // 1. Read options.__sourceLocation → ~0ns cost
@@ -299,12 +290,10 @@
   ```
 
   **`@pyreon/reactivity`**:
-
   - `SignalOptions.__sourceLocation?: { file, line, col }` — new optional field (marked `@internal`, not part of the public API surface). When present, the runtime uses it directly and skips `_captureCallerLocation()` entirely.
   - 2 new tests proving the injected option is preferred over stack capture + the fallback still works when the option is absent.
 
   **`@pyreon/vite-plugin`**:
-
   - Extended `injectSignalNames` to ALSO inject `__sourceLocation` alongside the existing `name` field. Same regex, same transform pass — additive change.
   - New helpers `_computeLineStarts(code)` + `_offsetToLineCol(offset, starts)` — O(N) precompute + O(log N) per-signal binary search. Avoids O(N²) when many signals share a file.
   - The injected `file` is Vite's resolved module ID (absolute path) — the same path the runtime would have parsed from `new Error().stack`, so byte-identical behavior except for cost.
@@ -313,12 +302,10 @@
   **Known limitation**: module-scope signals (`export const x = signal(0)`) get rewritten to `__hmr_signal()` first by the existing HMR injection pass. The location injection runs after and naturally skips them (regex matches `signal(` not `__hmr_signal(`). Module-scope signals still pay the runtime stack-capture cost. Function-scope signals (the dominant pattern in real Pyreon apps — signals declared inside components) get the full benefit. Module-scope follow-up tracked.
 
   **Tests** (+17 new across 2 packages, 481 total green):
-
   - `@pyreon/reactivity`: 362 (+2 — injected-location-preferred + stack-fallback-when-absent)
   - `@pyreon/vite-plugin`: 119 (+15 — line-starts utility, offset-to-line-col, 6 injection scenarios, existing-options skip, non-signal skip, multiline args)
 
   **Performance**:
-
   - Runtime cost (devtools active, function-scope signal): **0 ns** stack capture (was ~2.2 µs)
   - Build-time cost: ~10 µs per signal call site (one regex match + one binary search + ~80 bytes of literal output) — invisible on real-world builds
   - Bundle-budget impact: 0 (transform happens in dev-mode-only Vite plugin code path; no production bundle growth)
@@ -349,8 +336,8 @@
   **3. String-region false-positives in `injectSignalNames` (medium impact)** — the regexes `(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(` (R4+R8 bound) and `(?<![\w$.])effect\(` (R8 unbound) matched anywhere in source text, including INSIDE string literals / template literals / comments. User code like:
 
   ```ts
-  const docs = `effect(() => x)`;
-  throw new Error("effect() must be called inside a component");
+  const docs = `effect(() => x)`
+  throw new Error('effect() must be called inside a component')
   // TODO: replace effect(() => log()) with watch()
   ```
 
@@ -359,7 +346,6 @@
   Fix: new `_maskStringsAndComments(code)` pre-pass produces a same-length copy of `code` with strings/comments blanked to spaces (newlines preserved so line numbers don't shift). Regexes run against the masked version; args extraction reads from the original. Template-literal `${...}` interpolations are PRESERVED as code (their bodies can contain real `signal()` calls worth catching). Bisect-verified: disabling the masking pre-pass fails 5 of the new false-positive guard tests.
 
   Test counts:
-
   - vite-plugin: 154 → 173 (+19): 11 `_maskStringsAndComments` unit tests, 6 false-positive guards, 1 top-level-await structural test, 1 rename-failure tmp cleanup test
   - reactivity: 377/377 unchanged (foundation tmp-leak fix doesn't add tests; bisect-verified structurally by reading the diff)
 
@@ -382,7 +368,6 @@
   ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
 
   **Code:**
-
   - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
     interpolated `fullPath` raw into emitted JS. Path is developer-
     controlled (project's own filesystem scan), but a quote / backslash
@@ -406,7 +391,6 @@
     depth refuse the dangerous identifiers.
 
   **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
-
   - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
     `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
     caps. Pre-filter is a SCAN before the precise AST walker; losing
@@ -427,7 +411,6 @@
     formatting matchable.
 
   **Workflows (`.github/workflows/`):**
-
   - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
     `permissions: contents: read` block. Both workflows are read-only
     (perf records artifacts; audit reports findings).
@@ -443,7 +426,6 @@
   ### Dismissed via API (20 false positives / won't fix)
 
   **True false positives (9):**
-
   - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
     "MAX_PASSES" as if it contained "password". Log is about
     effect-flush pass count.
@@ -464,7 +446,6 @@
     arbitrary paths.
 
   **Won't fix (internal dev tooling, not security boundaries):**
-
   - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
     (`pyreon context`, `create-zero`), build-time Vite plugin
     (`icons-plugin`), internal scripts (`check-bundle-budgets`,
@@ -485,7 +466,6 @@
     the actual supply-chain guarantee.
 
   ### Remaining (cannot be closed by a code PR)
-
   - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
     squash-merge with self-review by maintainer doesn't count.
     Project-policy issue, not code.
@@ -497,7 +477,6 @@
     infra work, out of scope.
 
   ### Validation
-
   - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
   - `@pyreon/compiler` 1257/1257 tests pass
   - `@pyreon/vite-plugin` 104/104 tests pass
@@ -543,13 +522,11 @@
 
   `COUNTERS.md` gains 7 new entries (6 counters + the `theme.initRef*` pair).
   Each documents:
-
   - Exact source file
   - "Healthy number looks like" description (the diagnostic semantics)
   - The leak-class label + originating PR
 
   `catalog-drift.test.ts` `INSTRUMENTED_PACKAGE_ROOTS` adds 3 new entries:
-
   - `packages/tools/solid-compat/src`
   - `packages/tools/svelte-compat/src`
   - `packages/tools/vite-plugin/src`
@@ -560,7 +537,6 @@
   emit) enforces the link going forward.
 
   ### Validation
-
   - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
     zero skip):
     - `@pyreon/zero` 953/954
@@ -587,7 +563,6 @@
 
   Four per-instance caches accumulated entries for the lifetime of a
   `vite dev` session, with no eviction path for deleted/renamed files:
-
   - `signalExportRegistry: Map<moduleId, Set<signalName>>` — populated
     by `prescanSignalExports` + `scanSignalExports` on every transform.
   - `resolveCache: Map<\`${importer}::${source}\`, resolvedId>`—
@@ -608,7 +583,6 @@ populated by`resolveImportedSignals`.
 
   Subscribe to Vite's `watchChange(id, change)` hook (native API for
   filesystem events). On `'delete'` events, evict:
-
   1. `signalExportRegistry.delete(normalizedId)`
   2. `islandRegistry.delete(id)` (and `.delete(normalizedId)` if they
      differ) — covers both shapes the registry might be populated with.
@@ -632,7 +606,6 @@ populated by`resolveImportedSignals`.
 
   `packages/tools/vite-plugin/src/tests/cache-eviction-on-delete.test.ts`
   (5 specs):
-
   1. **signalExportRegistry entry evicted on delete** — populates
      the registry via transform, fires delete, asserts entry gone.
   2. **resolveCache entries pointing at deleted file evicted** —
@@ -652,7 +625,6 @@ populated by`resolveImportedSignals`.
   pass.
 
   ### Validation
-
   - `@pyreon/vite-plugin` 104/104 tests pass (+5 new regression specs)
   - Lint + typecheck clean
   - No public-API surface change — `watchChange` is a Vite plugin hook,
@@ -710,7 +682,6 @@ populated by`resolveImportedSignals`.
   the build-resolved class is byte-for-byte the client-mounted class.
 
   New public surface (all additive):
-
   - `@pyreon/styler` — `StyleSheet.getStyleRules()` (raw SSR rule
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
@@ -780,7 +751,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   `@pyreon/svelte-compat` is the fifth compat layer (alongside
   react / preact / vue / solid). It shims the Svelte APIs code actually
   `import`s, backed by Pyreon's signal-based reactive engine:
-
   - **`svelte/store`** — `writable`, `readable`, `derived` (single +
     array, sync + async/cleanup forms), `get`, `readonly`. Store contract
     (`subscribe(run, invalidate?) → unsubscribe`, lazy
@@ -833,7 +803,7 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **Before (v1, PR [#585](https://github.com/pyreon/pyreon/issues/585))** — explicit `chunk` prop required:
 
   ```tsx
-  <Defer chunk={() => import("./ConfirmModal")} when={open}>
+  <Defer chunk={() => import('./ConfirmModal')} when={open}>
     {(Modal) => <Modal onClose={() => setOpen(false)} />}
   </Defer>
   ```
@@ -841,17 +811,16 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **After (this PR)** — inline children, compiler does the chunking:
 
   ```tsx
-  import { Modal } from "./ConfirmModal";
+  import { Modal } from './ConfirmModal'
 
-  <Defer when={open}>
+  ;<Defer when={open}>
     <Modal />
-  </Defer>;
+  </Defer>
   ```
 
   The compiler (`@pyreon/compiler`'s new `transformDeferInline`) detects `<Defer>` JSX with no `chunk` prop and a single bare component child, looks up that component's import, rewrites the JSX to use an explicit `chunk={() => import('./path')}` prop, and removes the static import so Rolldown actually emits a separate chunk.
 
   ## v1 scope (this PR)
-
   - Single Defer JSX element per file (multiple Defers in one file each get their own transform pass — works fine)
   - Child must be a single self-closing component element with **no props** (`<Modal />` ✓; `<Modal title="hi" />` falls back to the explicit form)
   - Named or default imports only — renamed imports (`{ Modal as M }`) and namespace imports (`* as M`) bail with a warning, user falls back to explicit form
@@ -861,7 +830,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   When the transform bails on any of the above, the user sees a soft warning at compile time. The `<Defer>` element is left unchanged; runtime then errors at chunk-load time because `chunk` is missing, prompting the user to use the explicit form.
 
   ## What's NOT in this PR
-
   - Closure capture (passing `count` signals or local state to the inline child) — requires prop-extraction analysis
   - Rust compiler implementation — JS fallback only
   - HMR for the synthetic chunk module — relies on Rolldown's standard dynamic-import HMR
@@ -872,7 +840,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   The transform runs in `@pyreon/vite-plugin`'s `transform()` hook BEFORE `transformJSX()`. By the time the JSX→runtime transform sees the source, the inline form has already been rewritten into the explicit chunk-prop form. No special-casing in the runtime, no new VNode shape, no new bundler hook — just AST rewriting before the existing pipeline.
 
   Verified via 13 unit tests (`@pyreon/compiler/src/tests/defer-inline.test.ts`) covering:
-
   - Basic rewrites: named/default imports, on="visible" / when={signal} triggers, props preservation
   - Bail-outs: chunk already provided, binding used elsewhere, child not imported, child has props, multiple children, syntax errors
   - Multi-Defer files: two independent Defers in one file get rewritten independently
@@ -1032,12 +999,10 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents
@@ -1068,7 +1033,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -1082,7 +1046,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -1091,7 +1054,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -1108,7 +1070,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

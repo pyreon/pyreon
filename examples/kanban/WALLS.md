@@ -11,14 +11,14 @@ This file covers **W18-W23**.
 
 ## Status
 
-| Wall | Severity | Status in this PR |
-| --- | --- | --- |
-| W18 | medium | **Fixed** — `useSortable({ groupId, onCrossListDrop, onCrossListReceive })` opt-in |
-| W19 | low | **Fixed** — Zero plugin auto-injects entry script (`config.entryClient`) |
-| W20 | low | **Covered by existing rule** `pyreon/no-map-in-jsx` (test extended for the reactive-accessor shape) |
-| W21 | medium | **Fixed by W23 patch** — bisect-verified in `w21-for-computed-indirection.browser.test.ts` |
-| W22 | medium | **Documented** — For JSDoc + ForProps.children JSDoc carry the canonical fix pattern |
-| W23 | P0 | **Fixed** — `runUntracked` suspends `_innerEffectCollector` (root-cause fix in `tracking.ts`) |
+| Wall | Severity | Status in this PR                                                                                   |
+| ---- | -------- | --------------------------------------------------------------------------------------------------- |
+| W18  | medium   | **Fixed** — `useSortable({ groupId, onCrossListDrop, onCrossListReceive })` opt-in                  |
+| W19  | low      | **Fixed** — Zero plugin auto-injects entry script (`config.entryClient`)                            |
+| W20  | low      | **Covered by existing rule** `pyreon/no-map-in-jsx` (test extended for the reactive-accessor shape) |
+| W21  | medium   | **Fixed by W23 patch** — bisect-verified in `w21-for-computed-indirection.browser.test.ts`          |
+| W22  | medium   | **Documented** — For JSDoc + ForProps.children JSDoc carry the canonical fix pattern                |
+| W23  | P0       | **Fixed** — `runUntracked` suspends `_innerEffectCollector` (root-cause fix in `tracking.ts`)       |
 
 ---
 
@@ -39,12 +39,16 @@ per-instance isolation (backward compat).
 
 ```tsx
 const a = useSortable({
-  items: colA, by: c => c.id, onReorder: setColA,
+  items: colA,
+  by: (c) => c.id,
+  onReorder: setColA,
   groupId: 'kanban',
-  onCrossListDrop: item => setColA(colA().filter(c => c.id !== item.id)),
+  onCrossListDrop: (item) => setColA(colA().filter((c) => c.id !== item.id)),
 })
 const b = useSortable({
-  items: colB, by: c => c.id, onReorder: setColB,
+  items: colB,
+  by: (c) => c.id,
+  onReorder: setColB,
   groupId: 'kanban',
   onCrossListReceive: (item, index) => {
     const next = [...colB.peek()]
@@ -210,7 +214,7 @@ with a 30-line test (`packages/core/runtime-dom/src/tests/w23-child-effect-loss.
 ```tsx
 effect(() => {
   const t = filterTerm() // module-level shared signal
-  const c = board.columns().find(x => x.id === props.columnId)?.cards.length ?? 0
+  const c = board.columns().find((x) => x.id === props.columnId)?.cards.length ?? 0
   console.log(`[parallel] term=${t} cards=${c}`)
 })
 ```
@@ -271,6 +275,7 @@ getter/setter functions. Reference:
 `packages/core/reactivity/src/{tracking,effect}.ts`.
 
 **Bisect-verified** at the unit + integration layers:
+
 - Unit test `runtime-dom/src/tests/w23-child-effect-loss.browser.test.tsx`
   fails with `runUntracked` reverted to only-suspend-`activeEffect`.
 - Real-Chromium kanban smoke (`bun /tmp/kanban-full-e2e.mjs`) — multi-

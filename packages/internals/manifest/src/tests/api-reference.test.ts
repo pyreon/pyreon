@@ -245,8 +245,20 @@ describe('renderApiReferenceBlock', () => {
   it('emits indented TS object-literal entries joined by blank lines', () => {
     const m = mk({
       api: [
-        { name: 'createFlow', kind: 'function', signature: 'createFlow(): FlowInstance', summary: 'Create.', example: 'const f = createFlow()' },
-        { name: 'useFlow', kind: 'hook', signature: 'useFlow(): FlowInstance', summary: 'Hook form.', example: 'const f = useFlow()' },
+        {
+          name: 'createFlow',
+          kind: 'function',
+          signature: 'createFlow(): FlowInstance',
+          summary: 'Create.',
+          example: 'const f = createFlow()',
+        },
+        {
+          name: 'useFlow',
+          kind: 'hook',
+          signature: 'useFlow(): FlowInstance',
+          summary: 'Hook form.',
+          example: 'const f = useFlow()',
+        },
       ],
     })
     expect(renderApiReferenceBlock(m)).toBe(
@@ -280,7 +292,7 @@ describe('renderApiReferenceBlock', () => {
     expect(block).toContain('example: `line 1\nline 2`,')
   })
 
-  it("uses a template literal for strings containing a single quote", () => {
+  it('uses a template literal for strings containing a single quote', () => {
     const m = mk({
       api: [
         {

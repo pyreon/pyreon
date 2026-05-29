@@ -12,10 +12,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import {
-  detectPyreonPatterns,
-  hasPyreonPatterns,
-} from '@pyreon/compiler'
+import { detectPyreonPatterns, hasPyreonPatterns } from '@pyreon/compiler'
 
 import type { Finding, GateResult } from '../types'
 import { collectFirstPartySourceFiles } from '../utils/walk'

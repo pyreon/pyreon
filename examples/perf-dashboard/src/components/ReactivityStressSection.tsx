@@ -21,7 +21,14 @@
  *   scopeDispose-10k      → effectRun: 10_000 initial, 0 after dispose
  *                           scope teardown completeness (leaked effects = cascade)
  */
-import { computed, effect, effectScope, signal, type Computed, type Signal } from '@pyreon/reactivity'
+import {
+  computed,
+  effect,
+  effectScope,
+  signal,
+  type Computed,
+  type Signal,
+} from '@pyreon/reactivity'
 import { Accent, GhostButton, Row, Section, SectionTitle } from './atoms'
 import { themeSignal } from '../App'
 
@@ -104,9 +111,10 @@ if (typeof window !== 'undefined') {
         }
       })
       // Drive `writes` cascades. Each write fires `subscribers` effects.
-      for (let i = 1; i <= writes; i++) sig.set(i)
-      // Force `sink` to escape — prevents dead-code elimination of the
-      // entire effect body if V8 proves `sink` is never read.
+      for (let i = 1; i <= writes; i++)
+        sig.set(i)
+        // Force `sink` to escape — prevents dead-code elimination of the
+        // entire effect body if V8 proves `sink` is never read.
       ;(globalThis as { __pyreon_perf_sink__?: number }).__pyreon_perf_sink__ = sink
       status.set(`effectFanout subs=${subscribers} writes=${writes}`)
     },

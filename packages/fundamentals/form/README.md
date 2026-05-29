@@ -79,15 +79,15 @@ function EmailInput() {
 
 ## `useForm(options)`
 
-| Option           | Type                                         | Description                                                             |
-| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
-| `initialValues`  | `TValues`                                    | Required when using the value-form. Drives field keys + types.          |
-| `fields`         | `FieldDefinition[]`                          | Required when using the composable form. Drives `TValues` via inference. |
-| `onSubmit`       | `(values: TValues) => void \| Promise<void>` | Submit handler — receives validated values                              |
-| `validators`     | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators; signature `(value, allValues) => string \| undefined` |
-| `schema`         | `SchemaValidateFn<TValues>`                  | Whole-form schema validator (from `@pyreon/validation` adapters)         |
-| `validateOn`     | `'blur' \| 'change' \| 'submit'`             | When to validate. **Default: `'blur'`**                                   |
-| `debounceMs`     | `number`                                     | Debounce delay for validators (especially async)                         |
+| Option          | Type                                         | Description                                                                 |
+| --------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
+| `initialValues` | `TValues`                                    | Required when using the value-form. Drives field keys + types.              |
+| `fields`        | `FieldDefinition[]`                          | Required when using the composable form. Drives `TValues` via inference.    |
+| `onSubmit`      | `(values: TValues) => void \| Promise<void>` | Submit handler — receives validated values                                  |
+| `validators`    | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators; signature `(value, allValues) => string \| undefined` |
+| `schema`        | `SchemaValidateFn<TValues>`                  | Whole-form schema validator (from `@pyreon/validation` adapters)            |
+| `validateOn`    | `'blur' \| 'change' \| 'submit'`             | When to validate. **Default: `'blur'`**                                     |
+| `debounceMs`    | `number`                                     | Debounce delay for validators (especially async)                            |
 
 Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touched`, `dirty`), form-level signals (`isSubmitting`, `isValidating`, `submitCount`, `submitError`), computed accessors (`isValid()`, `isDirty()`, `values()`, `errors()`), and handlers (`handleSubmit`, `register`, `validate`, `reset`, `setFieldValue`, `setFieldError`, `setErrors`, `clearErrors`, `resetField`).
 
@@ -116,18 +116,18 @@ const f = useField(form, 'email')
 
 Returns `UseFieldResult<T>`:
 
-| Property      | Type                                            | Description                                  |
-| ------------- | ----------------------------------------------- | -------------------------------------------- |
-| `value`       | `Signal<T>`                                     | Field value                                  |
-| `error`       | `Signal<ValidationError>`                       | `string \| undefined`                        |
-| `touched`     | `Signal<boolean>`                               | True after first blur                        |
-| `dirty`       | `Signal<boolean>`                               | True when value differs from initial         |
-| `hasError`    | `Computed<boolean>`                             | True when an error string exists             |
-| `showError`   | `Computed<boolean>`                             | True when `touched()` AND `hasError()`       |
-| `setValue`    | `(v: T) => void`                                | Programmatic set                             |
-| `setTouched`  | `(b: boolean) => void`                          | Mark touched                                 |
-| `reset`       | `() => void`                                    | Reset to field's initial value               |
-| `register`    | `() => FieldRegisterProps<T>`                   | Spreadable input props                       |
+| Property     | Type                          | Description                            |
+| ------------ | ----------------------------- | -------------------------------------- |
+| `value`      | `Signal<T>`                   | Field value                            |
+| `error`      | `Signal<ValidationError>`     | `string \| undefined`                  |
+| `touched`    | `Signal<boolean>`             | True after first blur                  |
+| `dirty`      | `Signal<boolean>`             | True when value differs from initial   |
+| `hasError`   | `Computed<boolean>`           | True when an error string exists       |
+| `showError`  | `Computed<boolean>`           | True when `touched()` AND `hasError()` |
+| `setValue`   | `(v: T) => void`              | Programmatic set                       |
+| `setTouched` | `(b: boolean) => void`        | Mark touched                           |
+| `reset`      | `() => void`                  | Reset to field's initial value         |
+| `register`   | `() => FieldRegisterProps<T>` | Spreadable input props                 |
 
 `showError` is the right gate for displaying error messages — it stays silent until the user has blurred at least once, even when `validateOn: 'change'`.
 
@@ -178,7 +178,7 @@ const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.is
 ## `FormProvider` / `useFormContext()` / `<Form>` / `<Submit>`
 
 ```tsx
-<FormProvider form={form}>
+;<FormProvider form={form}>
   <DeepInputs />
 </FormProvider>
 

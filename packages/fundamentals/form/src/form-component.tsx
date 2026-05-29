@@ -44,11 +44,11 @@ export const Form: ComponentFn<FormProps<Record<string, unknown>>> = (props) => 
   // Sync disabled/readOnly props to form signals
   const syncDisabled = () => {
     const v = props.disabled
-    props.of.disabled.set(typeof v === 'function' ? v() : v ?? false)
+    props.of.disabled.set(typeof v === 'function' ? v() : (v ?? false))
   }
   const syncReadOnly = () => {
     const v = props.readOnly
-    props.of.readOnly.set(typeof v === 'function' ? v() : v ?? false)
+    props.of.readOnly.set(typeof v === 'function' ? v() : (v ?? false))
   }
 
   // If accessor, track reactively

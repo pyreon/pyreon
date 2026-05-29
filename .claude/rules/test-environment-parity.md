@@ -207,6 +207,7 @@ The marker tells `@pyreon/{react,preact,vue,solid}-compat`'s `jsx()` runtime to 
 **The e2e test layer is required to catch the genuine bug shape.** PR #427's `e2e/cpa-app-compat.shared.ts` runs against the cpa-app-compat fixtures with real router state — when a navigation re-fires `RouterView`'s effect inside the wrapper, the loader's `provide(LoaderDataContext, ...)` lands in a stale context stack and `useLoaderData()` reads `undefined`. Bisect-verified by removing `nativeCompat(RouterView)` from `packages/core/router/src/components.tsx`: the cpa-app posts test fails with `<main>` empty.
 
 **Pattern for any contract that depends on Pyreon's setup frame surviving across re-runs**:
+
 - **Unit layer**: prove the structural / identity contract (function identity, prop shape, marker presence). Fast, focused per-package.
 - **E2E layer**: prove the runtime contract under real-app reactivity (signal click, loader-populated route, signal-driven re-render). Slower, cross-package, real-shape.
 

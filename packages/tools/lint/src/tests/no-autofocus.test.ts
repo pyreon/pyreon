@@ -96,9 +96,7 @@ describe('pyreon/no-autofocus (frontend, fixable)', () => {
   it('autofix removes the attribute leaving no leftover double space', () => {
     const source = `function App() { return <input autoFocus className="x" /> }`
     const result = lint(source)
-    const diag = result.diagnostics.find(
-      (d) => d.ruleId === 'pyreon/no-autofocus',
-    )
+    const diag = result.diagnostics.find((d) => d.ruleId === 'pyreon/no-autofocus')
     expect(diag?.fix).toBeDefined()
     expect(diag?.fix?.replacement).toBe('')
     const fixed = applyFixes(source, result.diagnostics)

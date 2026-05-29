@@ -13,7 +13,8 @@ import Styled from './styled'
  * responsive max-width.
  */
 
-const DEV_PROPS: Record<string, string> = process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'container' } : {}
+const DEV_PROPS: Record<string, string> =
+  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'container' } : {}
 
 const Component: ElementType<['containerWidth']> = (props) => {
   const [own, rest] = splitProps(props, ['children', 'component', 'css', 'width'])

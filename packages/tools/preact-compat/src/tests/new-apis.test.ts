@@ -582,8 +582,10 @@ describe('toChildArray', () => {
     })
 
     test('function wrapping nested arrays still flattens', () => {
-      const wrapped = (() =>
-        [pyreonH('a', null), [pyreonH('b', null), pyreonH('c', null)]]) as unknown as VNodeChild
+      const wrapped = (() => [
+        pyreonH('a', null),
+        [pyreonH('b', null), pyreonH('c', null)],
+      ]) as unknown as VNodeChild
       expect(toChildArray(wrapped)).toHaveLength(3)
     })
 

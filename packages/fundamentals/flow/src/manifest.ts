@@ -9,8 +9,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/flow',
   title: 'Flow Diagrams',
-  tagline:
-    'Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs',
+  tagline: 'Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs',
   description:
     'Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout via lazy-loaded elkjs. No D3 dependency. Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.',
   category: 'browser',
@@ -123,11 +122,11 @@ await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing
 // force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
       mistakes: [
-        'Forgetting to declare `@pyreon/runtime-dom` in consumer app deps — flow\'s JSX emits `_tpl()` which needs runtime-dom imports',
+        "Forgetting to declare `@pyreon/runtime-dom` in consumer app deps — flow's JSX emits `_tpl()` which needs runtime-dom imports",
         'Reading `NodeComponentProps.data` / `.selected` / `.dragging` as plain values — all three are REACTIVE ACCESSORS: `props.data()`, `props.selected()`, `props.dragging()`',
         'Calling `props.data()` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, `effect`, or `computed`',
         'Adding `[key: string]: unknown` index signature to your node data interface — no longer needed now that `createFlow` is generic. Pass `createFlow<MyData>(...)` instead',
-        'Setting `LayoutOptions.direction` (or `layerSpacing`, or `edgeRouting`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are namespaced under ELK\'s layered / tree pipelines and silently ignored by the geometric algorithms. Dev-mode `console.warn` fires when this happens',
+        "Setting `LayoutOptions.direction` (or `layerSpacing`, or `edgeRouting`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are namespaced under ELK's layered / tree pipelines and silently ignored by the geometric algorithms. Dev-mode `console.warn` fires when this happens",
         'Missing `<Flow nodeTypes={{ key: Component }}>` registration — `node.type` strings dispatch to that map, unregistered types fall through to the default renderer',
         'Using `createFlow` inside a component body without `onUnmount(() => flow.dispose())` — prefer `useFlow` which auto-disposes',
         "Using `direction: 'row'` on flow's containing Element layout — Pyreon `Element` accepts `'inline'` / `'rows'` / `'reverseInline'` / `'reverseRows'`, not CSS flex-direction values like `'row'` or `'column'`",
@@ -140,7 +139,7 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
       signature:
         '<TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>',
       summary:
-        'Component-scoped wrapper around `createFlow` — identical shape plus an implicit `onUnmount(() => flow.dispose())`. Prefer inside component bodies; use `createFlow` directly only for flows owned outside the component tree (app stores, singletons, SSR-shared state) where you\'ll dispose at the correct lifecycle point yourself.',
+        "Component-scoped wrapper around `createFlow` — identical shape plus an implicit `onUnmount(() => flow.dispose())`. Prefer inside component bodies; use `createFlow` directly only for flows owned outside the component tree (app stores, singletons, SSR-shared state) where you'll dispose at the correct lifecycle point yourself.",
       example: `// Component-scoped flow — auto-disposes when the component unmounts.
 // Identical shape to createFlow, plus an implicit onUnmount(() => flow.dispose()).
 const MyDiagram = () => {
@@ -194,7 +193,8 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
     {
       name: 'Background',
       kind: 'component',
-      signature: '(props: { variant?: "dots" | "lines"; gap?: number; color?: string }) => VNodeChild',
+      signature:
+        '(props: { variant?: "dots" | "lines"; gap?: number; color?: string }) => VNodeChild',
       summary:
         'Dot or line grid background inside a `<Flow>`. Place as a direct child. `variant` defaults to `"dots"`, `gap` controls pattern spacing, `color` sets the pattern color. Renders as an SVG pattern at the back of the z-order.',
       example: `<Flow instance={flow}>

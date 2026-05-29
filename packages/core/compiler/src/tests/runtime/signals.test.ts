@@ -18,10 +18,9 @@ import { compileAndMount } from './harness'
 describe('compiler-runtime — signals', () => {
   it('signal in text position is reactive', async () => {
     const name = signal('alice')
-    const { container, unmount } = compileAndMount(
-      `<div><span id="s">{name()}</span></div>`,
-      { name },
-    )
+    const { container, unmount } = compileAndMount(`<div><span id="s">{name()}</span></div>`, {
+      name,
+    })
     expect(container.querySelector('#s')!.textContent).toBe('alice')
     name.set('bob')
     await flush()
@@ -69,10 +68,9 @@ describe('compiler-runtime — signals', () => {
     const a = signal(2)
     const b = signal(3)
     const sum = computed(() => a() + b())
-    const { container, unmount } = compileAndMount(
-      `<div><span id="s">{sum()}</span></div>`,
-      { sum },
-    )
+    const { container, unmount } = compileAndMount(`<div><span id="s">{sum()}</span></div>`, {
+      sum,
+    })
     expect(container.querySelector('#s')!.textContent).toBe('5')
     a.set(10)
     await flush()
@@ -82,10 +80,9 @@ describe('compiler-runtime — signals', () => {
 
   it('explicit accessor wrapper preserves reactivity', async () => {
     const x = signal('hi')
-    const { container, unmount } = compileAndMount(
-      `<div><span id="s">{() => x()}</span></div>`,
-      { x },
-    )
+    const { container, unmount } = compileAndMount(`<div><span id="s">{() => x()}</span></div>`, {
+      x,
+    })
     expect(container.querySelector('#s')!.textContent).toBe('hi')
     x.set('hey')
     await flush()

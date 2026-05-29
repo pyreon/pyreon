@@ -15,34 +15,60 @@ bun add @pyreon/meta
 ```ts
 import {
   // Reactivity (re-exported via @pyreon/store)
-  signal, computed, effect, batch,
+  signal,
+  computed,
+  effect,
+  batch,
 
   // State management
-  defineStore, resetAllStores,
+  defineStore,
+  resetAllStores,
 
   // Data fetching
-  QueryClient, QueryClientProvider, useQuery, useMutation,
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useMutation,
 
   // Forms
-  useForm, useField, useFieldArray, FormProvider,
-  zodSchema, zodField,
+  useForm,
+  useField,
+  useFieldArray,
+  FormProvider,
+  zodSchema,
+  zodField,
 
   // i18n
-  createI18n, I18nProvider, useI18n, Trans,
+  createI18n,
+  I18nProvider,
+  useI18n,
+  Trans,
 
   // Styling
-  styled, css, keyframes,
-  PyreonUI, useMode,
+  styled,
+  css,
+  keyframes,
+  PyreonUI,
+  useMode,
 
   // Hooks
-  useHover, useFocus, useBreakpoint,
+  useHover,
+  useFocus,
+  useBreakpoint,
 
   // Layout primitives
-  Element, Text, List, Overlay, Portal,
-  Container, Row, Col,
+  Element,
+  Text,
+  List,
+  Overlay,
+  Portal,
+  Container,
+  Row,
+  Col,
 
   // Misc
-  toast, Toaster,
+  toast,
+  Toaster,
   useUrlState,
   useStorage,
 } from '@pyreon/meta'
@@ -52,46 +78,46 @@ import {
 
 ### Fundamentals
 
-| Source | Highlights |
-|---|---|
-| `@pyreon/store` | `defineStore`, `signal`, `computed`, `effect`, `batch`, `addStorePlugin`, `resetStore`, `resetAllStores` |
-| `@pyreon/form` | `useForm`, `useField`, `useFieldArray`, `useFormContext`, `useFormState`, `useWatch`, `FormProvider` |
-| `@pyreon/validation` | `zodSchema`, `zodField`, `SchemaAdapter`, `ValidationIssue` |
-| `@pyreon/query` | `QueryClient`, `QueryClientProvider`, `useQuery`, `useMutation`, `useInfiniteQuery`, `useIsFetching`, `useIsMutating`, `useQueryClient` |
-| `@pyreon/table` | `useTable`, `flexRender` |
-| `@pyreon/virtual` | `useVirtualizer`, `useWindowVirtualizer` |
-| `@pyreon/i18n` | `createI18n`, `I18nProvider`, `useI18n`, `Trans` |
-| `@pyreon/feature` | `defineFeature`, `reference` |
-| `@pyreon/state-tree` | `model`, `getSnapshot`, `applySnapshot`, `applyPatch`, `onPatch`, `addMiddleware`, `resetHook`, `resetAllHooks` |
-| `@pyreon/machine` | `createMachine` |
-| `@pyreon/permissions` | `createPermissions`, `PermissionsProvider`, `usePermissions` |
-| `@pyreon/hotkeys` | `useHotkey`, `useHotkeyScope` |
-| `@pyreon/storage` | `useStorage`, `useCookie`, `useIndexedDB`, `useMemoryStorage`, `createStorage` |
-| `@pyreon/charts` | `Chart` |
-| `@pyreon/flow` | `createFlow`, `Flow`, `Background`, `MiniMap`, `Controls`, `Handle`, `Panel`, `Position`, `computeLayout`, `flowStyles`, `NodeResizer`, `NodeToolbar` |
-| `@pyreon/code` | `createEditor`, `CodeEditor`, `DiffEditor`, `TabbedEditor` |
-| `@pyreon/rx` | `rx` (namespace — filter/map/pipe/debounce/throttle/… 37 fns) |
-| `@pyreon/toast` | `toast`, `Toaster` |
-| `@pyreon/url-state` | `useUrlState`, `setUrlRouter` |
-| `@pyreon/dnd` | `useDraggable`, `useDroppable`, `useSortable`, `useFileDrop`, `useDragMonitor` |
-| `@pyreon/document` | `createDocument`, `render`, `download`, `isDocNode`, `registerRenderer`, `unregisterRenderer` (builder + render API; format chunks stay lazy) |
+| Source                | Highlights                                                                                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/store`       | `defineStore`, `signal`, `computed`, `effect`, `batch`, `addStorePlugin`, `resetStore`, `resetAllStores`                                              |
+| `@pyreon/form`        | `useForm`, `useField`, `useFieldArray`, `useFormContext`, `useFormState`, `useWatch`, `FormProvider`                                                  |
+| `@pyreon/validation`  | `zodSchema`, `zodField`, `SchemaAdapter`, `ValidationIssue`                                                                                           |
+| `@pyreon/query`       | `QueryClient`, `QueryClientProvider`, `useQuery`, `useMutation`, `useInfiniteQuery`, `useIsFetching`, `useIsMutating`, `useQueryClient`               |
+| `@pyreon/table`       | `useTable`, `flexRender`                                                                                                                              |
+| `@pyreon/virtual`     | `useVirtualizer`, `useWindowVirtualizer`                                                                                                              |
+| `@pyreon/i18n`        | `createI18n`, `I18nProvider`, `useI18n`, `Trans`                                                                                                      |
+| `@pyreon/feature`     | `defineFeature`, `reference`                                                                                                                          |
+| `@pyreon/state-tree`  | `model`, `getSnapshot`, `applySnapshot`, `applyPatch`, `onPatch`, `addMiddleware`, `resetHook`, `resetAllHooks`                                       |
+| `@pyreon/machine`     | `createMachine`                                                                                                                                       |
+| `@pyreon/permissions` | `createPermissions`, `PermissionsProvider`, `usePermissions`                                                                                          |
+| `@pyreon/hotkeys`     | `useHotkey`, `useHotkeyScope`                                                                                                                         |
+| `@pyreon/storage`     | `useStorage`, `useCookie`, `useIndexedDB`, `useMemoryStorage`, `createStorage`                                                                        |
+| `@pyreon/charts`      | `Chart`                                                                                                                                               |
+| `@pyreon/flow`        | `createFlow`, `Flow`, `Background`, `MiniMap`, `Controls`, `Handle`, `Panel`, `Position`, `computeLayout`, `flowStyles`, `NodeResizer`, `NodeToolbar` |
+| `@pyreon/code`        | `createEditor`, `CodeEditor`, `DiffEditor`, `TabbedEditor`                                                                                            |
+| `@pyreon/rx`          | `rx` (namespace — filter/map/pipe/debounce/throttle/… 37 fns)                                                                                         |
+| `@pyreon/toast`       | `toast`, `Toaster`                                                                                                                                    |
+| `@pyreon/url-state`   | `useUrlState`, `setUrlRouter`                                                                                                                         |
+| `@pyreon/dnd`         | `useDraggable`, `useDroppable`, `useSortable`, `useFileDrop`, `useDragMonitor`                                                                        |
+| `@pyreon/document`    | `createDocument`, `render`, `download`, `isDocNode`, `registerRenderer`, `unregisterRenderer` (builder + render API; format chunks stay lazy)         |
 
 ### UI system
 
-| Source | Highlights |
-|---|---|
-| `@pyreon/styler` | `styled`, `css`, `keyframes`, `createGlobalStyle` |
-| `@pyreon/hooks` | 20+ hooks — `useBreakpoint`, `useHover`, `useFocus`, `useFocusTrap`, `useClickOutside`, `useElementSize`, `useIntersection`, `useInterval`, `useTimeout`, `useDebouncedValue`, `useDebouncedCallback`, `useThrottledCallback`, `useMediaQuery`, `useColorScheme`, `useReducedMotion`, `useScrollLock`, `useMergedRef`, `useToggle`, `useKeyboard`, `useWindowResize` |
-| `@pyreon/elements` | `Element`, `Text`, `List`, `Overlay`, `Portal`, `Iterator` |
-| `@pyreon/unistyle` | `makeItResponsive`, `normalizeTheme`, `sortBreakpoints` |
-| `@pyreon/coolgrid` | `Container`, `Row`, `Col` |
-| `@pyreon/kinetic` | `kinetic`, `useAnimationEnd`, `useTransitionState` |
-| `@pyreon/kinetic-presets` | `createFade`, `createSlide`, `createScale`, `createRotate`, `createBlur` |
-| `@pyreon/attrs` | `attrs` |
-| `@pyreon/rocketstyle` | `rocketstyle` |
-| `@pyreon/ui-core` | `PyreonUI`, `useMode` (consumer-app surface; framework-internal utilities omitted) |
-| `@pyreon/document-primitives` | `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`, `extractDocNode`, `createDocumentExport`, `DocumentPreview`, `documentTheme` |
-| `@pyreon/connector-document` | `extractDocumentTree`, `resolveStyles`, `DocumentMarker`, `ExtractOptions`, `ResolvedStyles` |
+| Source                        | Highlights                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/styler`              | `styled`, `css`, `keyframes`, `createGlobalStyle`                                                                                                                                                                                                                                                                                                                    |
+| `@pyreon/hooks`               | 20+ hooks — `useBreakpoint`, `useHover`, `useFocus`, `useFocusTrap`, `useClickOutside`, `useElementSize`, `useIntersection`, `useInterval`, `useTimeout`, `useDebouncedValue`, `useDebouncedCallback`, `useThrottledCallback`, `useMediaQuery`, `useColorScheme`, `useReducedMotion`, `useScrollLock`, `useMergedRef`, `useToggle`, `useKeyboard`, `useWindowResize` |
+| `@pyreon/elements`            | `Element`, `Text`, `List`, `Overlay`, `Portal`, `Iterator`                                                                                                                                                                                                                                                                                                           |
+| `@pyreon/unistyle`            | `makeItResponsive`, `normalizeTheme`, `sortBreakpoints`                                                                                                                                                                                                                                                                                                              |
+| `@pyreon/coolgrid`            | `Container`, `Row`, `Col`                                                                                                                                                                                                                                                                                                                                            |
+| `@pyreon/kinetic`             | `kinetic`, `useAnimationEnd`, `useTransitionState`                                                                                                                                                                                                                                                                                                                   |
+| `@pyreon/kinetic-presets`     | `createFade`, `createSlide`, `createScale`, `createRotate`, `createBlur`                                                                                                                                                                                                                                                                                             |
+| `@pyreon/attrs`               | `attrs`                                                                                                                                                                                                                                                                                                                                                              |
+| `@pyreon/rocketstyle`         | `rocketstyle`                                                                                                                                                                                                                                                                                                                                                        |
+| `@pyreon/ui-core`             | `PyreonUI`, `useMode` (consumer-app surface; framework-internal utilities omitted)                                                                                                                                                                                                                                                                                   |
+| `@pyreon/document-primitives` | `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`, `extractDocNode`, `createDocumentExport`, `DocumentPreview`, `documentTheme`                                                     |
+| `@pyreon/connector-document`  | `extractDocumentTree`, `resolveStyles`, `DocumentMarker`, `ExtractOptions`, `ResolvedStyles`                                                                                                                                                                                                                                                                         |
 
 ## Bundle hygiene
 

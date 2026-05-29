@@ -124,11 +124,7 @@ describe('compiler-runtime — control flow (h() form)', () => {
     // both `() => boolean` accessor AND raw boolean (for static cases +
     // signal auto-call edge case).
     const { container, unmount } = mountInBrowser(
-      h(
-        'div',
-        { id: 'root' },
-        h(Show, { when: true, children: h('span', { id: 'x' }, 'on') }),
-      ),
+      h('div', { id: 'root' }, h(Show, { when: true, children: h('span', { id: 'x' }, 'on') })),
     )
     expect(container.querySelector('#x')).not.toBeNull()
     unmount()

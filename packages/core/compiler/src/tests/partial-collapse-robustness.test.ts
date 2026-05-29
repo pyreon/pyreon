@@ -15,24 +15,84 @@ import { parseSync } from 'oxc-parser'
 import { describe, expect, it } from 'vitest'
 import { rocketstyleCollapseKey, transformJSX } from '../jsx'
 
-const SITE = { templateHtml: '<button><span>Save</span></button>', lightClass: 'L', darkClass: 'D', rules: ['.L{}'], ruleKey: 'b' }
+const SITE = {
+  templateHtml: '<button><span>Save</span></button>',
+  lightClass: 'L',
+  darkClass: 'D',
+  rules: ['.L{}'],
+  ruleKey: 'b',
+}
 const opt = (sites: Record<string, typeof SITE>) => ({
-  collapseRocketstyle: { candidates: new Set(['Button']), sites: new Map(Object.entries(sites)), mode: { name: 'useMode', source: '@pyreon/ui-core' } },
+  collapseRocketstyle: {
+    candidates: new Set(['Button']),
+    sites: new Map(Object.entries(sites)),
+    mode: { name: 'useMode', source: '@pyreon/ui-core' },
+  },
 })
-const reparses = (c: string): boolean => { try { return !(parseSync('o.tsx', c).errors?.length) } catch { return false } }
+const reparses = (c: string): boolean => {
+  try {
+    return !parseSync('o.tsx', c).errors?.length
+  } catch {
+    return false
+  }
+}
 
 const CASES: Array<[string, string, Record<string, string>]> = [
-  ['multi-handler', `const x = <Button state="primary" onClick={a} onPointerEnter={b}>Save</Button>`, { state: 'primary' }],
-  ['arrow-with-commas', `const x = <Button state="primary" onClick={() => f(a, b, c)}>Save</Button>`, { state: 'primary' }],
-  ['ternary-handler', `const x = <Button state="primary" onClick={cond ? h1 : h2}>Save</Button>`, { state: 'primary' }],
-  ['nested-braces-handler', `const x = <Button state="primary" onClick={() => { const o = {a:1}; g(o) }}>Save</Button>`, { state: 'primary' }],
-  ['signal-closure-handler', `const x = <Button state="primary" onClick={() => s.set(s() + 1)}>Save</Button>`, { state: 'primary' }],
-  ['jsx-in-handler-body', `const x = <Button state="primary" onClick={() => render(<i/>)}>Save</Button>`, { state: 'primary' }],
-  ['template-literal-in-handler', `const x = <Button state="primary" onClick={() => log(\`v=\${y}\`)}>Save</Button>`, { state: 'primary' }],
-  ['dynamic-non-handler-prop-bails', `const x = <Button state={dyn} onClick={h}>Save</Button>`, { state: 'primary' }],
-  ['spread-bails', `const x = <Button state="primary" {...rest} onClick={h}>Save</Button>`, { state: 'primary' }],
-  ['onClick-undefined', `const x = <Button state="primary" onClick={undefined}>Save</Button>`, { state: 'primary' }],
-  ['key-miss-no-collapse', `const x = <Button state="primary" onClick={h}>Save</Button>`, { size: 'x' }],
+  [
+    'multi-handler',
+    `const x = <Button state="primary" onClick={a} onPointerEnter={b}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'arrow-with-commas',
+    `const x = <Button state="primary" onClick={() => f(a, b, c)}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'ternary-handler',
+    `const x = <Button state="primary" onClick={cond ? h1 : h2}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'nested-braces-handler',
+    `const x = <Button state="primary" onClick={() => { const o = {a:1}; g(o) }}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'signal-closure-handler',
+    `const x = <Button state="primary" onClick={() => s.set(s() + 1)}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'jsx-in-handler-body',
+    `const x = <Button state="primary" onClick={() => render(<i/>)}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'template-literal-in-handler',
+    `const x = <Button state="primary" onClick={() => log(\`v=\${y}\`)}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'dynamic-non-handler-prop-bails',
+    `const x = <Button state={dyn} onClick={h}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'spread-bails',
+    `const x = <Button state="primary" {...rest} onClick={h}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'onClick-undefined',
+    `const x = <Button state="primary" onClick={undefined}>Save</Button>`,
+    { state: 'primary' },
+  ],
+  [
+    'key-miss-no-collapse',
+    `const x = <Button state="primary" onClick={h}>Save</Button>`,
+    { size: 'x' },
+  ],
 ]
 
 describe('Round 8 — partial-collapse emit is robust (never throws / never emits broken JS)', () => {

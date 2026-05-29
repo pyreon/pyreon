@@ -216,10 +216,10 @@ export function clusterPathsByLocale(
   for (const variantsByLocale of byUnPrefixed.values()) {
     // Pick the default-locale variant as canonical when present;
     // otherwise the first variant inserted.
-    const canonical
-      = variantsByLocale.get(defaultLocale)
-        ?? variantsByLocale.get(null)
-        ?? [...variantsByLocale.values()][0]!
+    const canonical =
+      variantsByLocale.get(defaultLocale) ??
+      variantsByLocale.get(null) ??
+      [...variantsByLocale.values()][0]!
     out.push({ canonical, variantsByLocale })
   }
   return out
@@ -346,9 +346,9 @@ function isI18nRoutingConfig(value: unknown): value is I18nRoutingConfig {
   if (value == null || typeof value !== 'object') return false
   const v = value as Record<string, unknown>
   return (
-    Array.isArray(v.locales)
-    && v.locales.every((l: unknown) => typeof l === 'string')
-    && typeof v.defaultLocale === 'string'
+    Array.isArray(v.locales) &&
+    v.locales.every((l: unknown) => typeof l === 'string') &&
+    typeof v.defaultLocale === 'string'
   )
 }
 

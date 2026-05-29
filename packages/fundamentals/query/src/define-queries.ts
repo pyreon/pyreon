@@ -18,16 +18,15 @@ import { useQuery } from './use-query'
  * ```
  */
 export function defineQueries<
-  T extends Record<
-    string,
-    () => QueryObserverOptions<any, any, any, any, QueryKey>
-  >,
+  T extends Record<string, () => QueryObserverOptions<any, any, any, any, QueryKey>>,
 >(
   queries: T,
 ): {
   [K in keyof T]: UseQueryResult<
     T[K] extends () => QueryObserverOptions<infer TData, any, any, any, any> ? TData : unknown,
-    T[K] extends () => QueryObserverOptions<any, infer TError, any, any, any> ? TError : DefaultError
+    T[K] extends () => QueryObserverOptions<any, infer TError, any, any, any>
+      ? TError
+      : DefaultError
   >
 } {
   const result: Record<string, UseQueryResult<unknown>> = {}

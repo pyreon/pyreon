@@ -49,10 +49,8 @@
 
   --violet: #a78bfa;
 
-  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system,
-    'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo,
-    monospace;
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
   --radius-sm: 3px;
   --radius: 4px;

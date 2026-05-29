@@ -149,12 +149,8 @@ describe('filterByCategory', () => {
       '@pyreon/hooks',
       '@pyreon/toast',
     ])
-    expect([...filterByCategory(full, WS, 'ui-system', ROOT)].sort()).toEqual([
-      '@pyreon/styler',
-    ])
-    expect([...filterByCategory(full, WS, 'tools', ROOT)].sort()).toEqual([
-      '@pyreon/lint',
-    ])
+    expect([...filterByCategory(full, WS, 'ui-system', ROOT)].sort()).toEqual(['@pyreon/styler'])
+    expect([...filterByCategory(full, WS, 'tools', ROOT)].sort()).toEqual(['@pyreon/lint'])
   })
 
   it('returns empty for a category with no affected packages', () => {
@@ -167,7 +163,16 @@ describe('filterByCategory', () => {
     // category's prefix test. The `examples` pseudo-category (below) is the
     // one place example apps ARE selected.
     const result = new Set<string>()
-    for (const cat of ['core', 'fundamentals', 'ui-system', 'tools', 'zero', 'internals', 'native', 'ui']) {
+    for (const cat of [
+      'core',
+      'fundamentals',
+      'ui-system',
+      'tools',
+      'zero',
+      'internals',
+      'native',
+      'ui',
+    ]) {
       for (const name of filterByCategory(full, WS, cat, ROOT)) {
         result.add(name)
       }
@@ -190,17 +195,13 @@ describe('filterByCategory', () => {
 
   it('safely ignores names that are not in the workspace set', () => {
     const stale = new Set(['@pyreon/does-not-exist', '@pyreon/core'])
-    expect([...filterByCategory(stale, WS, 'core', ROOT)]).toEqual([
-      '@pyreon/core',
-    ])
+    expect([...filterByCategory(stale, WS, 'core', ROOT)]).toEqual(['@pyreon/core'])
   })
 })
 
 describe('computeAffectedFlags', () => {
   it('null changed (diff failed) → --filter=* regardless of category', () => {
-    expect(computeAffectedFlags({ changed: null, workspaces: WS, root: ROOT })).toBe(
-      '--filter=*',
-    )
+    expect(computeAffectedFlags({ changed: null, workspaces: WS, root: ROOT })).toBe('--filter=*')
     expect(
       computeAffectedFlags({
         changed: null,
@@ -251,9 +252,7 @@ describe('computeAffectedFlags', () => {
     // workspace) → fundamentals cell gets the package; every other cell
     // is empty (gracefully skipped at the bun-run layer).
     const changed = ['packages/fundamentals/toast/src/index.ts']
-    expect(
-      computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT }),
-    ).toBe('')
+    expect(computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT })).toBe('')
     expect(
       computeAffectedFlags({
         changed,
@@ -286,9 +285,7 @@ describe('computeAffectedFlags', () => {
     // example. With a category filter, each cell sees ONLY its own slice.
     const changed = ['packages/core/reactivity/src/signal.ts']
 
-    expect(
-      computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT }),
-    ).toBe(
+    expect(computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT })).toBe(
       '--filter=@pyreon/core --filter=@pyreon/reactivity --filter=@pyreon/runtime-dom',
     )
     expect(
@@ -316,9 +313,7 @@ describe('computeAffectedFlags', () => {
       }),
     ).toBe('--filter=@pyreon/lint')
     // No 'zero' workspace in this fake set → empty (gracefully skipped)
-    expect(
-      computeAffectedFlags({ changed, workspaces: WS, category: 'zero', root: ROOT }),
-    ).toBe('')
+    expect(computeAffectedFlags({ changed, workspaces: WS, category: 'zero', root: ROOT })).toBe('')
   })
 
   it('without --category, output matches the existing no-category contract (backward-compat)', () => {

@@ -1,6 +1,6 @@
-import { useHead } from "@pyreon/head"
+import { useHead } from '@pyreon/head'
 
-export const meta = { title: "Account settings" }
+export const meta = { title: 'Account settings' }
 
 export default function AccountSettings() {
   useHead({ title: meta.title })

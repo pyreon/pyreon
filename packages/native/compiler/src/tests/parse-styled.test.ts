@@ -78,10 +78,7 @@ describe('parse-styled — static CSS body', () => {
         border-radius: 8px;
       \`
     `)
-    expect(styles[0]?.properties.map((p) => p.name)).toEqual([
-      'background-color',
-      'border-radius',
-    ])
+    expect(styles[0]?.properties.map((p) => p.name)).toEqual(['background-color', 'border-radius'])
   })
 })
 

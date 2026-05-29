@@ -56,23 +56,23 @@ const error = signal('')
 const submitted = signal('')
 
 const validate = () => {
-  if (!email()) return error.set('Email is required')
-  if (!email().includes('@')) return error.set('Invalid email')
-  error.set('')
-  submitted.set('Submitted: ' + email())
+if (!email()) return error.set('Email is required')
+if (!email().includes('@')) return error.set('Invalid email')
+error.set('')
+submitted.set('Submitted: ' + email())
 }
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('input', {
-    placeholder: 'Email',
-    value: email,
-    onInput: (e) => email.set(e.target.value),
-    style: { padding: '6px 12px', border: '1px solid #ddd', borderRadius: '4px', width: '200px' },
-  }),
-  h('button', { onClick: validate, style: { marginLeft: '8px' } }, 'Submit'),
-  h('div', { style: { color: 'red', fontSize: '13px', marginTop: '4px' } }, () => error()),
-  h('div', { style: { color: 'green', fontSize: '13px', marginTop: '4px' } }, () => submitted()),
+h('input', {
+placeholder: 'Email',
+value: email,
+onInput: (e) => email.set(e.target.value),
+style: { padding: '6px 12px', border: '1px solid #ddd', borderRadius: '4px', width: '200px' },
+}),
+h('button', { onClick: validate, style: { marginLeft: '8px' } }, 'Submit'),
+h('div', { style: { color: 'red', fontSize: '13px', marginTop: '4px' } }, () => error()),
+h('div', { style: { color: 'green', fontSize: '13px', marginTop: '4px' } }, () => submitted()),
 )
 mount(ui, app)
 </Playground>
@@ -591,13 +591,13 @@ const readOnly = signal(false)
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
-    h('label', {}, h('input', { type: 'checkbox', onInput: () => disabled.update(v => !v) }), ' Disabled'),
-    h('label', {}, h('input', { type: 'checkbox', onInput: () => readOnly.update(v => !v) }), ' ReadOnly'),
-  ),
-  h('input', { value: name, onInput: (e) => name.set(e.target.value), disabled: disabled, readOnly: readOnly, style: { padding: '6px', marginBottom: '4px', width: '200px' } }),
-  h('input', { value: email, onInput: (e) => email.set(e.target.value), disabled: disabled, readOnly: readOnly, style: { padding: '6px', width: '200px' } }),
-  h('div', { style: { marginTop: '8px', fontSize: '13px' } }, () => 'Values: ' + name() + ', ' + email()),
+h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+h('label', {}, h('input', { type: 'checkbox', onInput: () => disabled.update(v => !v) }), ' Disabled'),
+h('label', {}, h('input', { type: 'checkbox', onInput: () => readOnly.update(v => !v) }), ' ReadOnly'),
+),
+h('input', { value: name, onInput: (e) => name.set(e.target.value), disabled: disabled, readOnly: readOnly, style: { padding: '6px', marginBottom: '4px', width: '200px' } }),
+h('input', { value: email, onInput: (e) => email.set(e.target.value), disabled: disabled, readOnly: readOnly, style: { padding: '6px', width: '200px' } }),
+h('div', { style: { marginTop: '8px', fontSize: '13px' } }, () => 'Values: ' + name() + ', ' + email()),
 )
 mount(ui, app)
 </Playground>
@@ -985,10 +985,10 @@ The selector is **load-bearing** on a large form. Without a selector, `useFormSt
 
 Real-world impact on a 10k-field form:
 
-| Journey | `form.formStateScan.fieldsRead` |
-| --- | --- |
-| `formStateRead-10k` (no selector) | 10000 |
-| `formStateReadSelector-10k` (returns `s.isValid`) | **0** |
+| Journey                                           | `form.formStateScan.fieldsRead` |
+| ------------------------------------------------- | ------------------------------- |
+| `formStateRead-10k` (no selector)                 | 10000                           |
+| `formStateReadSelector-10k` (returns `s.isValid`) | **0**                           |
 
 Use selectors aggressively — submit-button gates, dirty indicators, validation badges all want narrow subscriptions. The atomic computeds are shared across all `useFormState()` calls on the same form via a per-form `WeakMap` cache. Reference: PR #483.
 

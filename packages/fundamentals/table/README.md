@@ -77,9 +77,9 @@ function UserTable() {
 
 Create a reactive table instance. **Options are a function** — read signals (data, columns, sorting state) inside and the table updates automatically.
 
-| Parameter | Type                          | Description                                   |
-| --------- | ----------------------------- | --------------------------------------------- |
-| `options` | `() => TableOptions<TData>`   | Function returning TanStack `TableOptions`    |
+| Parameter | Type                        | Description                                |
+| --------- | --------------------------- | ------------------------------------------ |
+| `options` | `() => TableOptions<TData>` | Function returning TanStack `TableOptions` |
 
 Returns `Computed<Table<TData>>` — **call it** to get the instance: `table().getRowModel()`.
 
@@ -102,8 +102,7 @@ const table = useTable(() => ({
     pagination: pagination(),
   },
   onSortingChange: (u) => sorting.set(typeof u === 'function' ? u(sorting.peek()) : u),
-  onPaginationChange: (u) =>
-    pagination.set(typeof u === 'function' ? u(pagination.peek()) : u),
+  onPaginationChange: (u) => pagination.set(typeof u === 'function' ? u(pagination.peek()) : u),
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
   getPaginationRowModel: getPaginationRowModel(),

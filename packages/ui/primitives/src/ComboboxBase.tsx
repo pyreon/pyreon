@@ -70,8 +70,14 @@ export interface ComboboxState {
 
 export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
   const [own] = splitProps(props, [
-    'value', 'defaultValue', 'onChange', 'options', 'multiple',
-    'placeholder', 'disabled', 'children',
+    'value',
+    'defaultValue',
+    'onChange',
+    'options',
+    'multiple',
+    'placeholder',
+    'disabled',
+    'children',
   ])
 
   const [selected, setSelected] = useControllableState<string | string[]>({
@@ -99,7 +105,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     if (opt?.disabled) return
 
     if (own.multiple) {
-      const current = Array.isArray(selected()) ? selected() as string[] : []
+      const current = Array.isArray(selected()) ? (selected() as string[]) : []
       const next = current.includes(value)
         ? current.filter((v) => v !== value)
         : [...current, value]
@@ -113,7 +119,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
 
   function remove(value: string) {
     if (!own.multiple) return
-    const current = Array.isArray(selected()) ? selected() as string[] : []
+    const current = Array.isArray(selected()) ? (selected() as string[]) : []
     const next = current.filter((v) => v !== value)
     setSelected(next)
   }
@@ -137,7 +143,10 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     const opts = filtered()
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      if (!isOpen()) { isOpen.set(true); return }
+      if (!isOpen()) {
+        isOpen.set(true)
+        return
+      }
       highlightedIndex.set(Math.min(highlightedIndex() + 1, opts.length - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
@@ -165,10 +174,17 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
 
   const state: ComboboxState = {
     query,
-    setQuery: (q) => { query.set(q); highlightedIndex.set(0); if (!isOpen()) isOpen.set(true) },
+    setQuery: (q) => {
+      query.set(q)
+      highlightedIndex.set(0)
+      if (!isOpen()) isOpen.set(true)
+    },
     isOpen,
     open: () => isOpen.set(true),
-    close: () => { isOpen.set(false); query.set('') },
+    close: () => {
+      isOpen.set(false)
+      query.set('')
+    },
     toggle: () => isOpen.set(!isOpen()),
     filtered,
     highlightedIndex,

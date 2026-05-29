@@ -23,14 +23,12 @@ const Box = element
     },
   }))
 
-const Title = element
-  .attrs({ tag: 'h3' })
-  .theme((t) => ({
-    fontFamily: t.fontFamily.base,
-    fontSize: t.fontSize.large,
-    fontWeight: 600,
-    marginBottom: t.space.xSmall,
-  }))
+const Title = element.attrs({ tag: 'h3' }).theme((t) => ({
+  fontFamily: t.fontFamily.base,
+  fontSize: t.fontSize.large,
+  fontWeight: 600,
+  marginBottom: t.space.xSmall,
+}))
 
 const Subtitle = text.theme((t) => ({
   fontSize: t.fontSize.base,
@@ -44,13 +42,11 @@ const Note = text.theme((t) => ({
   marginBottom: t.space.medium,
 }))
 
-const BulletList = element
-  .attrs({ tag: 'ul', direction: 'rows', gap: 8 })
-  .theme((t) => ({
-    listStyle: 'disc',
-    paddingLeft: t.space.large,
-    margin: t.space.reset,
-  }))
+const BulletList = element.attrs({ tag: 'ul', direction: 'rows', gap: 8 }).theme((t) => ({
+  listStyle: 'disc',
+  paddingLeft: t.space.large,
+  margin: t.space.reset,
+}))
 
 const BulletItem = element.attrs({ tag: 'li' }).theme((t) => ({
   fontSize: t.fontSize.base,

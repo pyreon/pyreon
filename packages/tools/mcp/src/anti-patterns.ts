@@ -198,9 +198,7 @@ export function formatAntiPatterns(
     parts.push('')
     for (const entry of catEntries) {
       const tag =
-        entry.detectorCodes.length > 0
-          ? ` \`[detector: ${entry.detectorCodes.join(' / ')}]\``
-          : ''
+        entry.detectorCodes.length > 0 ? ` \`[detector: ${entry.detectorCodes.join(' / ')}]\`` : ''
       parts.push(`- **${entry.name}**${tag}: ${entry.description}`)
     }
     parts.push('')
@@ -261,9 +259,7 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
     parts.push('')
     for (const entry of catEntries) {
       const tag =
-        entry.detectorCodes.length > 0
-          ? ` \`[detector: ${entry.detectorCodes.join(' / ')}]\``
-          : ''
+        entry.detectorCodes.length > 0 ? ` \`[detector: ${entry.detectorCodes.join(' / ')}]\`` : ''
       parts.push(`- **${entry.name}**${tag} — ${indexHook(entry.description)}`)
     }
     parts.push('')

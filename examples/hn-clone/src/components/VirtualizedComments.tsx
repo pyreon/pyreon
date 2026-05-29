@@ -17,11 +17,7 @@ interface FlatComment {
  * via `@pyreon/virtual` — the DOM only renders visible rows, no matter
  * how deeply nested or how many total comments.
  */
-function flatten(
-  comments: Comment[],
-  out: FlatComment[] = [],
-  baseLevel = 0,
-): FlatComment[] {
+function flatten(comments: Comment[], out: FlatComment[] = [], baseLevel = 0): FlatComment[] {
   for (const c of comments) {
     out.push({
       id: c.id,
@@ -73,9 +69,7 @@ export default function VirtualizedComments(props: VirtualizedCommentsProps) {
         class="virt-scroll"
         style="height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px"
       >
-        <div
-          style={() => `height: ${virt.totalSize()}px; width: 100%; position: relative`}
-        >
+        <div style={() => `height: ${virt.totalSize()}px; width: 100%; position: relative`}>
           {() =>
             virt.virtualItems().map((row) => {
               const c = flat[row.index]

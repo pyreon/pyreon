@@ -96,8 +96,7 @@ function _peek(this: SignalFn<unknown>) {
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
   if (Object.is(this._v, newValue)) return
-  if (process.env.NODE_ENV !== 'production')
-    _countSink.__pyreon_count__?.('reactivity.signalWrite')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
   // Dev-only bounded ring buffer of recent writes — attached to error
@@ -251,9 +250,7 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
     // `injectSignalLocations` rewrites `signal(0)` to
     // `signal(0, { __sourceLocation: {...} })` at transform time so most
     // dev-mode signals never pay the stack-capture cost.
-    const loc = options?.__sourceLocation
-      ? options.__sourceLocation
-      : _captureCallerLocation(1)
+    const loc = options?.__sourceLocation ? options.__sourceLocation : _captureCallerLocation(1)
     _rdRegister(read, 'signal', read, null, read.label, loc)
   }
 

@@ -1,10 +1,12 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from 'vitest'
 import { buildMetaTags } from '../meta'
 
 // Mock @pyreon/head to capture useHead calls without requiring HeadProvider
 const useHeadCalls: unknown[] = []
 vi.mock('@pyreon/head', () => ({
-  useHead: (input: unknown) => { useHeadCalls.push(input) },
+  useHead: (input: unknown) => {
+    useHeadCalls.push(input)
+  },
 }))
 
 describe('buildMetaTags', () => {
@@ -75,7 +77,9 @@ describe('buildMetaTags', () => {
       tags: ['pyreon', 'framework'],
     })
 
-    expect(tags.meta.find((m) => m.property === 'article:published_time')?.content).toBe('2026-01-15')
+    expect(tags.meta.find((m) => m.property === 'article:published_time')?.content).toBe(
+      '2026-01-15',
+    )
     expect(tags.meta.find((m) => m.property === 'article:author')?.content).toBe('Vit')
     const articleTags = tags.meta.filter((m) => m.property === 'article:tag')
     expect(articleTags.length).toBe(2)
@@ -129,7 +133,9 @@ describe('buildMetaTags', () => {
     expect(alternates.find((a) => a.hreflang === 'en')?.href).toBe('https://example.com/about')
     expect(alternates.find((a) => a.hreflang === 'de')?.href).toBe('https://example.com/de/about')
     expect(alternates.find((a) => a.hreflang === 'cs')?.href).toBe('https://example.com/cs/about')
-    expect(alternates.find((a) => a.hreflang === 'x-default')?.href).toBe('https://example.com/about')
+    expect(alternates.find((a) => a.hreflang === 'x-default')?.href).toBe(
+      'https://example.com/about',
+    )
   })
 
   it('adds og:locale:alternate for non-current locales', () => {

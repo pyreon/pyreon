@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/store',
   title: 'State Management',
-  tagline:
-    'Global state management — Pinia-inspired composition stores returning StoreApi<T>',
+  tagline: 'Global state management — Pinia-inspired composition stores returning StoreApi<T>',
   description:
     'Composition-style global state management built on @pyreon/reactivity signals. Stores are singletons identified by string ID — the setup function runs once, returning signals (auto-tracked as state), computeds (pass-through), and functions (auto-wrapped as actions with onAction interception). The returned StoreApi provides batch patching, mutation subscription, action hooks, reset, and dispose. For concurrent SSR, setStoreRegistryProvider() swaps the store map to an AsyncLocalStorage-backed provider so each request gets isolated state.',
   category: 'universal',
@@ -69,7 +68,8 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
     {
       name: 'defineStore',
       kind: 'function',
-      signature: '<T extends Record<string, unknown>>(id: string, setup: () => T) => () => StoreApi<T>',
+      signature:
+        '<T extends Record<string, unknown>>(id: string, setup: () => T) => () => StoreApi<T>',
       summary:
         'Define a composition-style store. The setup function runs once per store ID, returning an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with `.store` (user state/actions), `.patch()`, `.subscribe()`, `.onAction()`, `.reset()`, and `.dispose()`. Stores are singletons — calling the hook twice with the same ID returns the same instance.',
       example: `const useCounter = defineStore('counter', () => {
@@ -100,7 +100,7 @@ patch({ count: 42 })`,
       signature:
         '<S, U extends Record<string, unknown> = {}>(id: string, config: SchemaStoreConfig<S, U>) => () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>',
       summary:
-        "Schema-driven `defineStore` overload. Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape.",
+        'Schema-driven `defineStore` overload. Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape.',
       example: `import { zodSchema } from '@pyreon/validation'
 import { defineStore, computed } from '@pyreon/store'
 import { z } from 'zod'
@@ -131,10 +131,10 @@ u.store.age.set(-1)                         // direct write — bypasses validat
         '**Top-level fields only get signals.** Nested objects (e.g. `prefs: { theme: "light" }`) remain as VALUES inside the parent signal. To mutate a nested field: `patch({ prefs: { ...store.prefs(), theme: "dark" } })`. Recursive signal-ization is NOT supported — would require library-specific schema introspection',
         '**Async validators are unsupported.** If the schema validator returns a Promise, `defineStore` throws at definition-time. Use `@pyreon/form` for async refinements, or validate manually before calling `.set()`',
         '**`initial` is validated ONCE at defineStore-time.** A bad initial throws immediately (fail-fast). The PARSED initial (defaults applied, transforms run) is what gets written to signals — `z.string().default("Alice")` with `initial: { name: undefined }` yields `store.name() === "Alice"`',
-        '**Reserved StoreApi keys can\'t be schema fields.** `set` is reserved on the returned API. A schema with `set: z.string()` throws at defineStore-time. Rename the schema field',
+        "**Reserved StoreApi keys can't be schema fields.** `set` is reserved on the returned API. A schema with `set: z.string()` throws at defineStore-time. Rename the schema field",
         '**setup() return-value collision with schema fields throws.** If your setup returns `{ name: ... }` but `name` is also a schema field, defineStore throws. Schema field signals always live on `store` at the top level — actions/computeds named identically would silently overwrite them, so the check is strict',
         '**`patch((s) => ...)` (functional form) skips validation.** The functional patch receives raw signals and is an explicit escape hatch. Use object form `patch({ key: value })` for validated writes',
-        "**`onValidationError` callback suppresses the throw.** When set, validation failures invoke the callback with `{ issues, op }` and skip the write — state stays at its previous value. Without the callback, the same failure throws. Choose the mode that matches your UX (e.g. callback → show toast; throw → developer-time error boundary)",
+        '**`onValidationError` callback suppresses the throw.** When set, validation failures invoke the callback with `{ issues, op }` and skip the write — state stays at its previous value. Without the callback, the same failure throws. Choose the mode that matches your UX (e.g. callback → show toast; throw → developer-time error boundary)',
       ],
       seeAlso: ['SchemaStoreApi', 'SchemaStoreConfig', 'SchemaStoreContext', 'StoreApi'],
     },
@@ -156,14 +156,15 @@ u.update('items', items => items.filter(x => x.id !== 1))  // transform single f
         'Using `patch({ prefs: { theme: "dark" } })` expecting other `prefs` keys to survive — `patch` is SHALLOW, the whole `prefs` object is replaced. Use `deepPatch` for nested-object merging',
         '`deepPatch` REPLACES arrays / class instances / Dates — it only recurses into PLAIN objects. To merge an array, use `update` with a callback',
         'Using `update` for multi-field changes — it transforms ONE top-level field at a time. For multi-field updates, use `patch` / `deepPatch` / `set`',
-        'Expecting `update`\'s transformer to receive a strongly-typed value — current signature passes `unknown`. Cast at the call site (`(n as number) + 1`); future versions will infer from the schema',
+        "Expecting `update`'s transformer to receive a strongly-typed value — current signature passes `unknown`. Cast at the call site (`(n as number) + 1`); future versions will infer from the schema",
       ],
       seeAlso: ['defineStore (schema mode)', 'DeepPartial', 'StoreApi'],
     },
     {
       name: 'DeepPartial',
       kind: 'type',
-      signature: 'type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T',
+      signature:
+        'type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T',
       summary:
         'Recursive partial — every property optional at every depth. Used by `SchemaStoreApi.deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics.',
       example: `// State { count: number; prefs: { theme: string; density: string } }
@@ -184,7 +185,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
       signature:
         'interface SchemaStoreConfig<S, U> { schema: S; initial: InferSchema<S>; setup?: (ctx: SchemaStoreContext<InferSchema<S>>) => U; onValidationError?: (issues: SchemaIssue[], op: "set" | "patch" | "init") => void }',
       summary:
-        "Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render).",
+        'Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render).',
       example: `defineStore('user', {
   schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
   initial: { name: '', age: 0 },

@@ -12,34 +12,101 @@ const PRESET_CATEGORIES: Array<{ name: string; items: string[] }> = [
   {
     name: 'Fades',
     items: [
-      'fade', 'fadeUp', 'fadeDown', 'fadeLeft', 'fadeRight',
-      'fadeUpBig', 'fadeDownBig', 'fadeLeftBig', 'fadeRightBig',
-      'fadeScale', 'fadeUpLeft', 'fadeUpRight', 'fadeDownLeft', 'fadeDownRight',
+      'fade',
+      'fadeUp',
+      'fadeDown',
+      'fadeLeft',
+      'fadeRight',
+      'fadeUpBig',
+      'fadeDownBig',
+      'fadeLeftBig',
+      'fadeRightBig',
+      'fadeScale',
+      'fadeUpLeft',
+      'fadeUpRight',
+      'fadeDownLeft',
+      'fadeDownRight',
     ],
   },
   {
     name: 'Slides',
-    items: ['slideUp', 'slideDown', 'slideLeft', 'slideRight', 'slideUpBig', 'slideDownBig', 'slideLeftBig', 'slideRightBig'],
+    items: [
+      'slideUp',
+      'slideDown',
+      'slideLeft',
+      'slideRight',
+      'slideUpBig',
+      'slideDownBig',
+      'slideLeftBig',
+      'slideRightBig',
+    ],
   },
   {
     name: 'Scales',
-    items: ['scaleIn', 'scaleOut', 'scaleUp', 'scaleDown', 'scaleInUp', 'scaleInDown', 'scaleInLeft', 'scaleInRight'],
+    items: [
+      'scaleIn',
+      'scaleOut',
+      'scaleUp',
+      'scaleDown',
+      'scaleInUp',
+      'scaleInDown',
+      'scaleInLeft',
+      'scaleInRight',
+    ],
   },
   {
     name: 'Zooms',
-    items: ['zoomIn', 'zoomOut', 'zoomInUp', 'zoomInDown', 'zoomInLeft', 'zoomInRight', 'zoomOutUp', 'zoomOutDown', 'zoomOutLeft', 'zoomOutRight'],
+    items: [
+      'zoomIn',
+      'zoomOut',
+      'zoomInUp',
+      'zoomInDown',
+      'zoomInLeft',
+      'zoomInRight',
+      'zoomOutUp',
+      'zoomOutDown',
+      'zoomOutLeft',
+      'zoomOutRight',
+    ],
   },
   {
     name: 'Flips',
-    items: ['flipX', 'flipY', 'flipXReverse', 'flipYReverse', 'flipDiagonal', 'flipDiagonalReverse'],
+    items: [
+      'flipX',
+      'flipY',
+      'flipXReverse',
+      'flipYReverse',
+      'flipDiagonal',
+      'flipDiagonalReverse',
+    ],
   },
   {
     name: 'Rotations',
-    items: ['rotateIn', 'rotateInReverse', 'rotateInUp', 'rotateInDown', 'spinIn', 'spinInReverse', 'scaleRotateIn', 'newspaperIn'],
+    items: [
+      'rotateIn',
+      'rotateInReverse',
+      'rotateInUp',
+      'rotateInDown',
+      'spinIn',
+      'spinInReverse',
+      'scaleRotateIn',
+      'newspaperIn',
+    ],
   },
   {
     name: 'Bounce & Spring',
-    items: ['bounceIn', 'bounceInUp', 'bounceInDown', 'bounceInLeft', 'bounceInRight', 'springIn', 'popIn', 'rubberIn', 'squishX', 'squishY'],
+    items: [
+      'bounceIn',
+      'bounceInUp',
+      'bounceInDown',
+      'bounceInLeft',
+      'bounceInRight',
+      'springIn',
+      'popIn',
+      'rubberIn',
+      'squishX',
+      'squishY',
+    ],
   },
   {
     name: 'Blur',
@@ -48,7 +115,16 @@ const PRESET_CATEGORIES: Array<{ name: string; items: string[] }> = [
   { name: 'Puff', items: ['puffIn', 'puffOut'] },
   {
     name: 'Clip Path',
-    items: ['clipTop', 'clipBottom', 'clipLeft', 'clipRight', 'clipCircle', 'clipCenter', 'clipDiamond', 'clipCorner'],
+    items: [
+      'clipTop',
+      'clipBottom',
+      'clipLeft',
+      'clipRight',
+      'clipCircle',
+      'clipCenter',
+      'clipDiamond',
+      'clipCorner',
+    ],
   },
   {
     name: 'Perspective',
@@ -141,10 +217,12 @@ export function AnimationsGalleryDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 12px">Preset Gallery</Title>
+      <Title size="h2" style="margin-bottom: 12px">
+        Preset Gallery
+      </Title>
       <Paragraph style="margin-bottom: 16px">
-        All <strong>{totalCount} presets</strong> from `@pyreon/kinetic-presets` in one place.
-        Click any cell to toggle, or use category headers to expand/collapse and toggle a whole group.
+        All <strong>{totalCount} presets</strong> from `@pyreon/kinetic-presets` in one place. Click
+        any cell to toggle, or use category headers to expand/collapse and toggle a whole group.
       </Paragraph>
       <Button state="primary" onClick={toggleAll} style="margin-bottom: 24px;">
         Toggle ALL presets

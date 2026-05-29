@@ -10,6 +10,7 @@ signal (B).
 
 After A is written ONCE (triggering the For's effect to re-run), the
 child's effect:
+
 - DOES fire on the first A.set (initial re-run).
 - Does NOT fire on subsequent A.set.
 - Does NOT fire on B.set.
@@ -77,12 +78,14 @@ test('child effect loses subscription after For re-run', () => {
 ## What to bisect against
 
 Likely candidates:
+
 1. PR #490 `runUntracked` wrap in `mountFor`'s child mount work
 2. Any later mountFor refactor that touches the child-effect lifecycle
 3. The EffectScope-ownership chain established when mounting a component
    inside `mountFor`'s `runUntracked`
 
 The kanban example surfaces this via the add → delete sequence:
+
 - Add card → For's source fires → For's effect re-runs to mount the new
   card (works once)
 - Delete card → For's source fires → For's effect doesn't re-run; CardItem's

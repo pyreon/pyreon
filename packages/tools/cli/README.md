@@ -44,7 +44,7 @@ pyreon doctor --format text|json|gha   # explicit format (alternative to --json 
 
 - Per-finding penalty: `error = 10`, `warning = 3`, `info = 1` points.
 - Per-category subscore: `max(0, 100 - sum(penalties))`.
-- Overall: mean of *included* category subscores (categories with no gate coverage drop out).
+- Overall: mean of _included_ category subscores (categories with no gate coverage drop out).
 - Grades: `A ≥ 90`, `B ≥ 80`, `C ≥ 70`, `D ≥ 60`, `F` otherwise.
 
 The opt-in best-practice `@pyreon/lint` rules (frontend a11y/CLS, query/rx/i18n/router/form/storage library usage) route into an **advisory** category — scored + displayed in its own bar but never enters the overall mean. Opinionated ≠ broken; advisory findings don't tank the objective grade and don't break `--ci`.
@@ -64,7 +64,15 @@ The opt-in best-practice `@pyreon/lint` rules (frontend a11y/CLS, query/rx/i18n/
   "score": 92,
   "grade": "A",
   "categories": [
-    { "category": "correctness", "score": 87, "errors": 1, "warnings": 1, "infos": 0, "grade": "B", "included": true }
+    {
+      "category": "correctness",
+      "score": 87,
+      "errors": 1,
+      "warnings": 1,
+      "infos": 0,
+      "grade": "B",
+      "included": true
+    }
   ],
   "findings": [
     {
@@ -77,7 +85,9 @@ The opt-in best-practice `@pyreon/lint` rules (frontend a11y/CLS, query/rx/i18n/
       "fix": "import { signal } from \"@pyreon/reactivity\""
     }
   ],
-  "gates": [/* meta.elapsedMs + meta.skipped per gate */],
+  "gates": [
+    /* meta.elapsedMs + meta.skipped per gate */
+  ],
   "totals": { "errors": 1, "warnings": 1, "infos": 0 },
   "elapsedMs": 2300,
   "timestamp": "2026-05-14T12:00:00.000Z"

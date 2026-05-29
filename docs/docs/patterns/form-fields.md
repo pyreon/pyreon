@@ -1,5 +1,5 @@
 ---
-title: "Form fields"
+title: 'Form fields'
 summary: "Use field() + useForm({ fields: [...] }) + useField('name') inside <Form>."
 seeAlso: [controllable-state]
 ---
@@ -14,12 +14,8 @@ Define fields with `field()` (pure data — name + default + validator), compose
 import { field, useForm, useField, Form, Submit } from '@pyreon/form'
 
 // 1. Field definitions — pure data, no rendering opinion.
-const email = field('email', '', (v) =>
-  !v.includes('@') ? 'Invalid email' : undefined,
-)
-const password = field('password', '', (v) =>
-  v.length < 8 ? 'Too short' : undefined,
-)
+const email = field('email', '', (v) => (!v.includes('@') ? 'Invalid email' : undefined))
+const password = field('password', '', (v) => (v.length < 8 ? 'Too short' : undefined))
 const confirm = field('confirmPassword', '', (v, all) =>
   v !== all.password ? 'Must match password' : undefined,
 )
@@ -45,7 +41,7 @@ function EmailInput() {
 }
 
 // 4. Render. <Form> provides context + binds onSubmit. <Submit> auto-disables.
-<Form of={form}>
+;<Form of={form}>
   <EmailInput />
   <PasswordInput />
   <ConfirmInput />
@@ -71,8 +67,8 @@ The old API (everything in `useForm({ initialValues, validators })`) is still su
 ```tsx
 // BROKEN — destructures the field state and loses signal identity
 function EmailInput() {
-  const { value, error } = useField('email')   // value is now the signal itself, not reactive
-  return <input value={value()} />              // never updates
+  const { value, error } = useField('email') // value is now the signal itself, not reactive
+  return <input value={value()} /> // never updates
 }
 
 // FIX — keep the field object, call signals inside reactive scopes
@@ -84,8 +80,10 @@ function EmailInput() {
 
 ```tsx
 // BROKEN — validator reads props.X at setup, captures the initial value
-const passwordField = field('password', '', (v) =>
-  v.length < props.minLength ? 'Too short' : undefined,    // props.minLength is undefined
+const passwordField = field(
+  'password',
+  '',
+  (v) => (v.length < props.minLength ? 'Too short' : undefined), // props.minLength is undefined
 )
 ```
 

@@ -1,4 +1,4 @@
-import { redirect } from "@pyreon/router"
+import { redirect } from '@pyreon/router'
 
 /**
  * Regression fixture for `redirect(url, 308)` — verifies the SSR handler
@@ -6,7 +6,7 @@ import { redirect } from "@pyreon/router"
  * Paired with `e2e/cpa-dash.spec.ts` permanent-redirect spec.
  */
 export async function loader(): Promise<never> {
-  redirect("/login", 308)
+  redirect('/login', 308)
 }
 
 export default function PermanentRedirectFixture() {

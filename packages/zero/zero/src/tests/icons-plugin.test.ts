@@ -117,7 +117,12 @@ describe('componentNameFromSetKey', () => {
 describe('generateNamedIconSetsSource', () => {
   it('emits a namespaced component + type PER set, one createNamedIcon import', () => {
     const src = generateNamedIconSetsSource([
-      { key: 'ui', files: ['check.svg', 'arrow-left.svg'], mode: 'inline', importDir: './icons/ui' },
+      {
+        key: 'ui',
+        files: ['check.svg', 'arrow-left.svg'],
+        mode: 'inline',
+        importDir: './icons/ui',
+      },
       { key: 'brand', files: ['logo.svg'], mode: 'image', importDir: './icons/brand' },
     ])
     // one shared import
@@ -153,9 +158,9 @@ describe('iconsPlugin — dir/sets XOR validation', () => {
   })
 
   it('throws when BOTH dir and sets are given', () => {
-    expect(() =>
-      iconsPlugin({ dir: './icons', sets: { ui: { dir: './ui' } } } as never),
-    ).toThrow(/EXACTLY ONE/)
+    expect(() => iconsPlugin({ dir: './icons', sets: { ui: { dir: './ui' } } } as never)).toThrow(
+      /EXACTLY ONE/,
+    )
   })
 
   it('accepts the single-set form', () => {

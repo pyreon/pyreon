@@ -65,9 +65,10 @@ const attrsComponent: InitAttrsComponent = (options) => {
 
     const filteredProps = needsFiltering ? omit(props, options.filterAttrs) : props
 
-    const finalProps = process.env.NODE_ENV !== 'production'
-      ? { ...filteredProps, 'data-attrs': componentName }
-      : filteredProps
+    const finalProps =
+      process.env.NODE_ENV !== 'production'
+        ? { ...filteredProps, 'data-attrs': componentName }
+        : filteredProps
 
     return RenderComponent(finalProps)
   }

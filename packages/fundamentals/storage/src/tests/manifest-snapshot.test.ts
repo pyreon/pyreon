@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — storage snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/storage — Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB. Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/storage — Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB. Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

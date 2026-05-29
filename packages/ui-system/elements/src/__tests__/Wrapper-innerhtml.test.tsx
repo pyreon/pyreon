@@ -131,7 +131,9 @@ describe('Wrapper — dangerouslySetInnerHTML forwarding (real h() + mount)', ()
       h(Element, {
         tag: 'button',
         'data-testid': 'innerhtml-button',
-        dangerouslySetInnerHTML: { __html: '<span data-marker="real-h-button-label">click me</span>' },
+        dangerouslySetInnerHTML: {
+          __html: '<span data-marker="real-h-button-label">click me</span>',
+        },
       }),
       root,
     )

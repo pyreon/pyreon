@@ -15,7 +15,8 @@ export const requireImgAlt: Rule = {
   meta: {
     id: 'pyreon/require-img-alt',
     category: 'frontend',
-    description: 'Require an `alt` attribute on every `<img>` element (alt="" is valid for decorative images).',
+    description:
+      'Require an `alt` attribute on every `<img>` element (alt="" is valid for decorative images).',
     severity: 'error',
     fixable: false,
     optIn: true,

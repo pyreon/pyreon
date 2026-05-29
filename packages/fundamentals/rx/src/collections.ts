@@ -192,9 +192,7 @@ export function last<T>(source: ReadableSignal<T[]> | T[], n: number): any {
  * const head = rx.first(items) // Computed<number | undefined>
  * ```
  */
-export function first<T>(
-  source: ReadableSignal<T[]>,
-): ReturnType<typeof computed<T | undefined>>
+export function first<T>(source: ReadableSignal<T[]>): ReturnType<typeof computed<T | undefined>>
 export function first<T>(source: T[]): T | undefined
 export function first<T>(source: ReadableSignal<T[]> | T[]): any {
   return reactive(source, (arr: T[]) => arr[0])
@@ -213,7 +211,9 @@ export function compact<T>(
 ): ReturnType<typeof computed<T[]>>
 export function compact<T>(source: (T | null | undefined | false | 0 | '')[]): T[]
 export function compact<T>(
-  source: ReadableSignal<(T | null | undefined | false | 0 | '')[]> | (T | null | undefined | false | 0 | '')[],
+  source:
+    | ReadableSignal<(T | null | undefined | false | 0 | '')[]>
+    | (T | null | undefined | false | 0 | '')[],
 ): any {
   return reactive(source, (arr: any[]) => arr.filter(Boolean))
 }
@@ -276,10 +276,7 @@ export function takeWhile<T>(
   source: ReadableSignal<T[]>,
   predicate: (item: T, index: number) => boolean,
 ): ReturnType<typeof computed<T[]>>
-export function takeWhile<T>(
-  source: T[],
-  predicate: (item: T, index: number) => boolean,
-): T[]
+export function takeWhile<T>(source: T[], predicate: (item: T, index: number) => boolean): T[]
 export function takeWhile<T>(
   source: ReadableSignal<T[]> | T[],
   predicate: (item: T, index: number) => boolean,
@@ -307,10 +304,7 @@ export function dropWhile<T>(
   source: ReadableSignal<T[]>,
   predicate: (item: T, index: number) => boolean,
 ): ReturnType<typeof computed<T[]>>
-export function dropWhile<T>(
-  source: T[],
-  predicate: (item: T, index: number) => boolean,
-): T[]
+export function dropWhile<T>(source: T[], predicate: (item: T, index: number) => boolean): T[]
 export function dropWhile<T>(
   source: ReadableSignal<T[]> | T[],
   predicate: (item: T, index: number) => boolean,

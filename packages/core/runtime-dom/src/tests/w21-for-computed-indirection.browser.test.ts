@@ -19,9 +19,7 @@ describe('W21 — For accessor reads through a sibling computed()', () => {
     type Card = { id: string; title: string }
     type Column = { id: string; cards: Card[] }
 
-    const columns = signal<Column[]>([
-      { id: 'todo', cards: [{ id: 'c1', title: 'first' }] },
-    ])
+    const columns = signal<Column[]>([{ id: 'todo', cards: [{ id: 'c1', title: 'first' }] }])
 
     function ColumnView(props: { columnId: string }) {
       const column = computed<Column | undefined>(() =>
@@ -34,8 +32,7 @@ describe('W21 — For accessor reads through a sibling computed()', () => {
         h(For as never, {
           each: () => column()?.cards ?? [],
           by: (c: Card) => c.id,
-          children: (c: Card) =>
-            h('span', { 'data-card': c.id }, c.title),
+          children: (c: Card) => h('span', { 'data-card': c.id }, c.title),
         }),
       )
     }
@@ -88,8 +85,7 @@ describe('W21 — For accessor reads through a sibling computed()', () => {
         h(For as never, {
           each: () => column()?.cards ?? [],
           by: (c: Card) => c.id,
-          children: (c: Card) =>
-            h('span', { 'data-card': c.id }, c.title),
+          children: (c: Card) => h('span', { 'data-card': c.id }, c.title),
         }),
       )
     }
@@ -106,12 +102,10 @@ describe('W21 — For accessor reads through a sibling computed()', () => {
     )
 
     expect(
-      container.querySelector('[data-col="todo"]')!.querySelectorAll('[data-card]')
-        .length,
+      container.querySelector('[data-col="todo"]')!.querySelectorAll('[data-card]').length,
     ).toBe(1)
     expect(
-      container.querySelector('[data-col="doing"]')!.querySelectorAll('[data-card]')
-        .length,
+      container.querySelector('[data-col="doing"]')!.querySelectorAll('[data-card]').length,
     ).toBe(1)
 
     // Add a card to todo — outer For's source identity changes (new
@@ -127,8 +121,7 @@ describe('W21 — For accessor reads through a sibling computed()', () => {
       { id: 'doing', cards: [{ id: 'c2', title: 'second' }] },
     ])
     expect(
-      container.querySelector('[data-col="todo"]')!.querySelectorAll('[data-card]')
-        .length,
+      container.querySelector('[data-col="todo"]')!.querySelectorAll('[data-card]').length,
     ).toBe(2)
 
     // Delete c1 from todo — this is the second mutation, which was the
@@ -138,8 +131,7 @@ describe('W21 — For accessor reads through a sibling computed()', () => {
       { id: 'doing', cards: [{ id: 'c2', title: 'second' }] },
     ])
     expect(
-      container.querySelector('[data-col="todo"]')!.querySelectorAll('[data-card]')
-        .length,
+      container.querySelector('[data-col="todo"]')!.querySelectorAll('[data-card]').length,
     ).toBe(1)
     expect(
       container.querySelector('[data-col="todo"]')!.querySelector('[data-card="c3"]'),

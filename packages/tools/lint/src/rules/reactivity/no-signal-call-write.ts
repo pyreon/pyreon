@@ -49,8 +49,7 @@ export const noSignalCallWrite: Rule = {
         if (!node.arguments || node.arguments.length === 0) return
 
         context.report({
-          message:
-            `\`${callee.name}(value)\` does NOT write the signal — \`signal()\` is the read-only callable surface and ignores its arguments. Use \`${callee.name}.set(value)\` or \`${callee.name}.update((prev) => …)\`.`,
+          message: `\`${callee.name}(value)\` does NOT write the signal — \`signal()\` is the read-only callable surface and ignores its arguments. Use \`${callee.name}.set(value)\` or \`${callee.name}.update((prev) => …)\`.`,
           span: getSpan(node),
         })
       },

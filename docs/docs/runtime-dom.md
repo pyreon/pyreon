@@ -66,11 +66,11 @@ const input = signal('')
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
-    h('input', { placeholder: 'Add item', value: input, onInput: (e) => input.set(e.target.value) }),
-    h('button', { onClick: () => { if (input()) { items.update(i => [...i, input()]); input.set('') } } }, 'Add'),
-  ),
-  h('ul', {}, () => items().map(item => h('li', {}, item))),
+h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+h('input', { placeholder: 'Add item', value: input, onInput: (e) => input.set(e.target.value) }),
+h('button', { onClick: () => { if (input()) { items.update(i => [...i, input()]); input.set('') } } }, 'Add'),
+),
+h('ul', {}, () => items().map(item => h('li', {}, item))),
 )
 mount(ui, app)
 </Playground>

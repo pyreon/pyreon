@@ -334,9 +334,7 @@ async function main(): Promise<void> {
 
   // Measure all in parallel — Bun.build is async and CPU-light per call.
   const results: BundleResult[] = await Promise.all(packages.map(measurePackage))
-  const measured = results
-    .filter((r) => !r.failed)
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const measured = results.filter((r) => !r.failed).sort((a, b) => a.name.localeCompare(b.name))
   const failures = results
     .filter((r) => r.failed)
     .map((r) => ({ name: r.name, error: r.error ?? 'unknown' }))
@@ -346,9 +344,7 @@ async function main(): Promise<void> {
   if (updateMode) {
     if (failures.length > 0) {
       // eslint-disable-next-line no-console
-      console.error(
-        `✗ Cannot regenerate budgets — ${failures.length} package(s) failed to bundle:`,
-      )
+      console.error(`✗ Cannot regenerate budgets — ${failures.length} package(s) failed to bundle:`)
       for (const f of failures) {
         // eslint-disable-next-line no-console
         console.error(`  ${f.name}: ${f.error.split('\n')[0]}`)
@@ -360,7 +356,7 @@ async function main(): Promise<void> {
       process.exit(1)
     }
     const budgets: Record<string, unknown> = {
-      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review.',
+      _doc: "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree — this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review.",
       _units: 'bytes (gzipped)',
     }
     for (const r of measured) {

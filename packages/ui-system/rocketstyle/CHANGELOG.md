@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -157,7 +156,6 @@
   **Policy: only ports that show measurably better under Pyreon's runtime
   were kept.** Two upstream changes were measured neutral/worse here and
   deliberately reverted:
-
   - `styler.hashUpdate` 4-char unroll — measured +1.6% short / +2.1% long
     under Bun (both inside the ±2% JIT noise band). Reverted to the simple
     single-char loop.
@@ -169,7 +167,6 @@
   **Measured wins** (paired before/after micro-bench via
   `bun scripts/perf/port-vitus-labs-bench.ts`, Bun 1.3.13, 3 warmup + 7
   timed runs, report median):
-
   - `styler.CSSResult._staticResolved` cache (8 repeats): **+85.3%**
   - `attrs.removeUndefinedProps` (10-prop input): **+77.4%**
   - `unistyle.shouldNormalize` (5-key static): **+66.0%**
@@ -183,7 +180,6 @@
   - `styler.splitRules charCodeAt vs str[i]`: **+8.0%**
 
   Plus 6 structural cleanups (no perf claim, allocation reductions only):
-
   - `styler.globalStyle` length-check vs `.trim()`
   - `unistyle.normalizeTheme` / `transformTheme` for-in (drops
     Object.entries tuple-array allocations)
@@ -196,7 +192,6 @@
 
   **Behavioural lock-in tests** (ported from vitus-labs `60fc25c1`, 8 new
   specs in `@pyreon/styler`):
-
   - `CSSResult._isDynamic` memoization: populate-on-first / cache-on-
     subsequent (values-mutation sentinel) / nested-propagation.
   - `CSSResult._staticResolved` cache: populate-on-first / cache-hit-via-
@@ -205,7 +200,6 @@
     signals, not React refs).
 
   **Bisect-verified-with-restore**:
-
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
 calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
@@ -218,7 +212,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   per-function structural wins, not a real-app headline number.
 
   **Verification**:
-
   - 1832 tests pass: styler 425 (+8 lock-ins) + unistyle 240 + rocketstyle
     290 + attrs 89 + coolgrid 106 + elements 463 + hooks 219.
   - Browser smokes: elements 16, styler 12, rocketstyle 12, unistyle 6,
@@ -241,7 +234,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   The dimension-prop memo's previous cap of 32 was sized for the E2 perf-
   dashboard reference workload — true for that specific benchmark, NOT
   true for any real app with:
-
   - Data tables where every cell has a `(state, size, variant)` derived
     from row data
   - Design systems with many named tokens crossed with size/variant axes
@@ -276,7 +268,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
 
   `packages/ui-system/rocketstyle/src/__tests__/memo-cap.test.ts` ships
   3 specs:
-
   - 64 unique tuples warm-pass must have ZERO cold resolves (cap ≥ 64)
   - 100 unique tuples warm-pass must have ZERO cold resolves (cap ≥ 100)
   - 200 unique tuples — control: still evicts (cap < 200), guards
@@ -289,7 +280,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
   3/3 pass.
 
   ## Surfaces updated
-
   - `packages/ui-system/rocketstyle/src/rocketstyle.ts` — `RS_MEMO_CAP`
     32 → 128 + rationale comment
   - `packages/ui-system/rocketstyle/src/__tests__/memo-cap.test.ts` —
@@ -373,7 +363,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
   **Bug class.** Pyreon's reactive-prop contract is that `<Comp prop={signal()}>` compiles to `h(Comp, { prop: _rp(() => signal()) })` and `mount.ts:makeReactiveProps` converts `_rp`-branded thunks into property GETTERS on the props object. Any prop-pipeline step that VALUE-COPIES `props[key]` (plain assignment, spread, or `Object.assign`) fires the getter at HOC setup time — outside any tracking scope — and stores the resolved value as a static data property. Every downstream JSX accessor reading `props.x` then sees the captured-once value, never re-subscribing to the underlying signal.
 
   **Two layers of fix:**
-
   1. **Compiler-level (closes the bug class for all consumers, including user code).** Both the JS compiler (`src/jsx.ts`) and the Rust native binary (`native/src/lib.rs`) now wrap component-JSX spread arguments with the new `_wrapSpread(...)` helper from `@pyreon/core`. `<Comp {...source}>` compiles to `jsx(Comp, { ..._wrapSpread(source) })` — `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks, so the JS-level spread carries function values (no getters fire), and `makeReactiveProps` converts them back to getters on the consumer side. Fast path: when `source` has no getter descriptors, `_wrapSpread` returns the source unchanged — zero overhead for the 99% of spread sources that don't carry reactive props. Lowercase-tag (DOM) spreads route through the template path's `_applyProps` (already reactive) and skip the wrap.
 
   2. **Framework-level (closes every observed leak site in shipped packages):**
@@ -385,7 +374,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
      - `@pyreon/runtime-dom` — `applyProps` in `props.ts` detects getter descriptors and wraps the write in `renderEffect`.
 
   **Bisect-verified at TWO layers:**
-
   - **Unit / browser**: `packages/ui-system/rocketstyle/src/__tests__/reactive-props-preservation.test.ts` (9 specs) + the new `rocketstyle.browser.test.tsx` spec covering the full pipeline. Reverting any of the 4 leak-site fixes individually fails the relevant spec with `expected 'count: 1' to be 'count: 0'`.
   - **Real-Chromium e2e**: `e2e/ui-showcase-regression.spec.ts:793 — signal-driven prop on Button updates the DOM on flip` exercises a rocketstyle Button with a `title={\`count: \${count()}\`}` prop fed by a signal. Reverting the compiler-level fix (`packages/core/compiler/src/jsx.ts`+`native/src/lib.rs`+ rebuilding the Rust binary) → spec fails with`unexpected value "count: 0"` after click — proving the spread reactivity contract holds end-to-end through the entire prop pipeline (rocketstyle attrs HOC → styler buildProps → Element Wrapper → runtime-dom applyProps).
 
@@ -444,7 +432,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
 ### Patch Changes
 
 - [#258](https://github.com/pyreon/pyreon/pull/258) [`a05c4ba`](https://github.com/pyreon/pyreon/commit/a05c4bab713f5168acd56eb233520102735bd80a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Performance rearchitecture: reactive theme/mode/dimension switching via computed (not effect).
-
   - **styler**: `DynamicStyled` uses one `computed()` per component (not `effect()`) to track theme + mode + dimension signals. The resolve itself runs `runUntracked()` to prevent exponential cascade. String-equality memoization eliminates redundant DOM updates. Per-definition WeakMap cache (Tier 2) skips resolve entirely for repeated identical inputs.
   - **styler**: `ThemeContext` is a `createReactiveContext<Theme>`. `useThemeAccessor()` returns the raw accessor for tracking inside computeds.
   - **ui-core**: `PyreonUI` nested `inversed` prop inherits parent mode reactively — inner section automatically flips when outer mode changes.
@@ -488,7 +475,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
   `@pyreon/rocketstyle` (`src/__tests__/rocketstyle.browser.test.tsx`,
   6 tests). Wraps a real `ComponentFn` (not `'div' as any`), matching
   production rocketstyle usage (Element/Text bases).
-
   - `.theme()` mounts and Chromium computes the authored color/padding
     via styler; emits a `pyr-*` class.
   - `state` prop swaps the resolved `$rocketstyle` theme.
@@ -507,7 +493,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
   `@pyreon/coolgrid` (`src/__tests__/coolgrid.browser.test.tsx`, 7 tests).
   Wraps in `PyreonUI` (deprecated `<Provider>` from @pyreon/unistyle
   replaced).
-
   - Container mounts with `display: flex; flex-direction: column`.
   - Col size=6/12 → ~50% of Row; two size=6 Cols sum to ~100%
     side-by-side.
@@ -523,7 +508,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
 
   `@pyreon/connector-document`
   (`src/__tests__/connector-document.browser.test.tsx`, 5 tests).
-
   - **Path A strict**: component body throws; if `extractDocumentTree`
     falls through to Path B and invokes the component, the test fails
     with the throw. Passing proves Path A reads `_documentProps` off
@@ -541,7 +525,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
     Node-only dep leaks).
 
   Bisect-verified (load-bearing hot-path revert per suite):
-
   - **rocketstyle**: (a) emptied dimension theme merge → 3/6 failed
     (state, variant, modifier). (b) Static-returned `mode` in `useTheme`
     → 2/6 failed (reactive mode swap, m-callback dark-mode test).

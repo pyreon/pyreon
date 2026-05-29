@@ -33,16 +33,24 @@ export function AnimationsGroupDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Group (Key-Based Lists)</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Group (Key-Based Lists)
+      </Title>
       <Paragraph style="margin-bottom: 24px">
         Animate items entering and leaving a list with stable keys.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">List</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        List
+      </Title>
       <div style="margin-bottom: 24px;">
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-          <Button state="primary" onClick={addItem}>Add</Button>
-          <Button state="secondary" onClick={shuffle}>Shuffle</Button>
+          <Button state="primary" onClick={addItem}>
+            Add
+          </Button>
+          <Button state="secondary" onClick={shuffle}>
+            Shuffle
+          </Button>
         </div>
         <GroupList style="display: flex; flex-direction: column; gap: 8px; max-width: 320px;">
           {() =>
@@ -65,7 +73,9 @@ export function AnimationsGroupDemo() {
         </GroupList>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Toast Notifications (auto-dismiss)</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Toast Notifications (auto-dismiss)
+      </Title>
       <div style="margin-bottom: 24px;">
         <Button state="primary" onClick={addToast} style="margin-bottom: 12px;">
           Show Toast

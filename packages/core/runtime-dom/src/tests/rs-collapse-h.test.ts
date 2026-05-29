@@ -199,13 +199,13 @@ describe('_rsCollapseH (happy-dom unit) — PR 2 partial-collapse runtime', () =
         () => isDark(),
         { onPointerEnter: () => enters++ },
         (root) => {
-          ;(query(root, 'span')).textContent = 'child'
+          query(root, 'span').textContent = 'child'
           return null
         },
       ),
     )
     expect(el.className).toBe('rsh-cb')
-    expect((query(el, 'span')).textContent).toBe('child')
+    expect(query(el, 'span').textContent).toBe('child')
     fire(el, 'pointerenter')
     expect(enters).toBe(1)
   })

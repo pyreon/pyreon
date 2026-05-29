@@ -106,8 +106,7 @@ export const noQuerySelectorCastInTest: Rule = {
         } else if (ann.type === 'TSUnionType' && Array.isArray(ann.types)) {
           // `HTMLY | null` — accept if ANY member is HTMLXxxElement.
           isHtmlCast = ann.types.some(
-            (t) =>
-              t.type === 'TSTypeReference' && isHtmlElementName(t.typeName?.name),
+            (t) => t.type === 'TSTypeReference' && isHtmlElementName(t.typeName?.name),
           )
         }
         if (!isHtmlCast) return
@@ -119,9 +118,7 @@ export const noQuerySelectorCastInTest: Rule = {
         // optional-ness — see PR #963's latent-bug fixes).
         const hasNullUnion =
           ann.type === 'TSUnionType' &&
-          ann.types?.some(
-            (t) => t.type === 'TSNullKeyword' || t.type === 'TSUndefinedKeyword',
-          )
+          ann.types?.some((t) => t.type === 'TSNullKeyword' || t.type === 'TSUndefinedKeyword')
         const helper = hasNullUnion ? 'queryOptional' : 'query'
 
         context.report({

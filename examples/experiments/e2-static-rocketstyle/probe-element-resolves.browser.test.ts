@@ -70,10 +70,7 @@ describe('probe — residual styler.resolve from non-rocketstyle styled wrappers
       h(
         PyreonUI,
         { theme, mode: 'light' as const },
-        h('div', null, [
-          h(Element, { tag: 'div' }, 'one'),
-          h(Element, { tag: 'div' }, 'two'),
-        ]),
+        h('div', null, [h(Element, { tag: 'div' }, 'one'), h(Element, { tag: 'div' }, 'two')]),
       ) as unknown as VNodeChild,
       root,
     )
@@ -86,9 +83,7 @@ describe('probe — residual styler.resolve from non-rocketstyle styled wrappers
     }
 
     // oxlint-disable-next-line no-console
-    console.warn(
-      `[probe-el] TWO Elements (same shape) mount: ${JSON.stringify(delta, null, 2)}`,
-    )
+    console.warn(`[probe-el] TWO Elements (same shape) mount: ${JSON.stringify(delta, null, 2)}`)
 
     dispose()
     root.remove()
@@ -105,10 +100,7 @@ describe('probe — residual styler.resolve from non-rocketstyle styled wrappers
       h(
         PyreonUI,
         { theme, mode: 'light' as const },
-        h('div', null, [
-          h(Text, null, 'one'),
-          h(Text, null, 'two'),
-        ]),
+        h('div', null, [h(Text, null, 'one'), h(Text, null, 'two')]),
       ) as unknown as VNodeChild,
       root,
     )
@@ -121,9 +113,7 @@ describe('probe — residual styler.resolve from non-rocketstyle styled wrappers
     }
 
     // oxlint-disable-next-line no-console
-    console.warn(
-      `[probe-el] TWO Texts mount: ${JSON.stringify(delta, null, 2)}`,
-    )
+    console.warn(`[probe-el] TWO Texts mount: ${JSON.stringify(delta, null, 2)}`)
 
     dispose()
     root.remove()

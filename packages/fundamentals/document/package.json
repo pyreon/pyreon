@@ -40,6 +40,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
@@ -58,9 +62,5 @@
     "exceljs": "^4.4.0",
     "pdfmake": "^0.3.7",
     "pptxgenjs": "^4.0.1"
-  },
-  "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
   }
 }

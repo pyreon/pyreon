@@ -1,6 +1,6 @@
 ---
-title: "Keyed list rendering"
-summary: "Use <For each={items} by={i => i.id}> — never .map() in JSX, never key on <For>."
+title: 'Keyed list rendering'
+summary: 'Use <For each={items} by={i => i.id}> — never .map() in JSX, never key on <For>.'
 seeAlso: [signal-writes]
 ---
 
@@ -13,7 +13,7 @@ Render dynamic lists with `<For>` from `@pyreon/core`, keyed by a stable identif
 ```tsx
 import { For } from '@pyreon/core'
 
-<For each={todos()} by={(todo) => todo.id}>
+;<For each={todos()} by={(todo) => todo.id}>
   {(todo) => <li>{() => todo.text}</li>}
 </For>
 ```
@@ -35,7 +35,11 @@ Key rules:
 
 ```tsx
 // BROKEN — remounts the full list on every update
-<ul>{todos().map((t) => <li>{t.text}</li>)}</ul>
+<ul>
+  {todos().map((t) => (
+    <li>{t.text}</li>
+  ))}
+</ul>
 ```
 
 ```tsx

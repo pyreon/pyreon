@@ -90,8 +90,7 @@ export const runAuditLeakClassesGate = async (
     const parsed = _parseAuditLeakClassesOutput(out, opts.cwd)
     findings.push(...parsed.findings)
     total = parsed.total
-  }
-  catch (err) {
+  } catch (err) {
     findings.push({
       category: 'architecture',
       severity: 'error',

@@ -12,5 +12,4 @@
 
 import type { DoctorReport } from '../types'
 
-export const renderJson = (report: DoctorReport): string =>
-  JSON.stringify(report, null, 2)
+export const renderJson = (report: DoctorReport): string => JSON.stringify(report, null, 2)

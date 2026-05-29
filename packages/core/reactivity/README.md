@@ -14,8 +14,16 @@ bun add @pyreon/reactivity
 
 ```ts
 import {
-  signal, computed, effect, batch, onCleanup, watch, untrack,
-  createStore, createResource, effectScope,
+  signal,
+  computed,
+  effect,
+  batch,
+  onCleanup,
+  watch,
+  untrack,
+  createStore,
+  createResource,
+  effectScope,
 } from '@pyreon/reactivity'
 
 const count = signal(0)
@@ -31,7 +39,10 @@ batch(() => {
   count.set(2) // subscribers fire once, with doubled = 4
 })
 
-watch(() => count(), (next, prev) => console.log(`${prev} → ${next}`))
+watch(
+  () => count(),
+  (next, prev) => console.log(`${prev} → ${next}`),
+)
 
 const store = createStore({ todos: [{ text: 'Learn Pyreon', done: false }] })
 store.todos[0].done = true // fine-grained update, no immer
@@ -43,10 +54,10 @@ dispose()
 
 ```ts
 const x = signal(0)
-x()           // read (subscribes if inside a tracked scope)
-x.set(1)      // write
-x.update(n => n + 1)
-x.peek()      // read without subscribing
+x() // read (subscribes if inside a tracked scope)
+x.set(1) // write
+x.update((n) => n + 1)
+x.peek() // read without subscribing
 ```
 
 Signals are **callable functions**, not `.value` getters (Vue) and not `[state, setState]` tuples (React). Calling the signal as a function is the read; `signal(5)` does NOT set the value — it reads and discards the argument. Dev mode warns; the `@pyreon/lint` rule `signal-write-as-call` flags it statically.
@@ -91,12 +102,12 @@ batch(() => {
 
 ```ts
 const store = createStore({ count: 0, todos: [{ text: 'a', done: false }] })
-store.count++              // notifies
+store.count++ // notifies
 store.todos[0].done = true // deep — notifies
 
 const shallow = shallowReactive({ user: { name: 'a' } })
 shallow.user = { name: 'b' } // notifies
-shallow.user.name = 'c'      // does NOT notify (shallow)
+shallow.user.name = 'c' // does NOT notify (shallow)
 
 const raw = markRaw(thirdPartyClassInstance) // skip proxy
 ```
@@ -108,14 +119,17 @@ const raw = markRaw(thirdPartyClassInstance) // skip proxy
 ## Resources
 
 ```ts
-const user = createResource(() => userId(), async (id) => {
-  const r = await fetch(`/api/users/${id}`)
-  return r.json()
-})
+const user = createResource(
+  () => userId(),
+  async (id) => {
+    const r = await fetch(`/api/users/${id}`)
+    return r.json()
+  },
+)
 
-user.data()      // T | undefined
-user.loading()   // boolean
-user.error()     // Error | undefined
+user.data() // T | undefined
+user.loading() // boolean
+user.error() // Error | undefined
 user.refetch()
 ```
 
@@ -164,7 +178,9 @@ The `@pyreon/compiler` auto-promotes the natural JSX shape `class={() => isSelec
 ```ts
 import { cell } from '@pyreon/reactivity'
 const c = cell(0)
-c.get(); c.set(1); c.subscribe(listener)
+c.get()
+c.set(1)
+c.subscribe(listener)
 ```
 
 `cell()` is a class-based primitive with a single-listener fast path and one allocation per cell. It is **not** callable and **does not** participate in effect tracking — use it only for cross-cutting state where the signal-tracking overhead would be wasteful.
@@ -172,14 +188,20 @@ c.get(); c.set(1); c.subscribe(listener)
 ## Debugging
 
 ```ts
-import { setErrorHandler, inspectSignal, onSignalUpdate, why, getReactiveTrace } from '@pyreon/reactivity'
+import {
+  setErrorHandler,
+  inspectSignal,
+  onSignalUpdate,
+  why,
+  getReactiveTrace,
+} from '@pyreon/reactivity'
 
 setErrorHandler((err, source) => reportToSentry(err, { tag: source }))
 
 const count = signal(0, { name: 'count' })
 onSignalUpdate(count, (next, prev) => console.log('count', prev, '→', next))
 inspectSignal(count) // { name, value, subscribers: number }
-why(count)           // print dependency graph for this signal
+why(count) // print dependency graph for this signal
 ```
 
 `activate/deactivate/getReactiveGraph/getReactiveFires` form the **opt-in** bridge consumed by the Pyreon devtools — zero cost until activated, gated by `process.env.NODE_ENV !== 'production'`, tree-shaken in production.

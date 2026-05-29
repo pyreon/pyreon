@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — validation snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/validation — Schema adapters for Pyreon forms — Zod, Valibot, ArkType. All three schema libraries are optional peer dependencies. Install only the one you use — the adapters are tree-shaken per import path (\`@pyreon/validation/zod\`, \`@pyreon/validation/valibot\`, \`@pyreon/validation/arktype\`)."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/validation — Schema adapters for Pyreon forms — Zod, Valibot, ArkType. All three schema libraries are optional peer dependencies. Install only the one you use — the adapters are tree-shaken per import path (\`@pyreon/validation/zod\`, \`@pyreon/validation/valibot\`, \`@pyreon/validation/arktype\`)."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

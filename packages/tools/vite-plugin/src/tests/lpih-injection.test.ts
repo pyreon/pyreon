@@ -12,11 +12,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import pyreonPlugin from '../index'
-import {
-  _computeLineStarts,
-  _maskStringsAndComments,
-  _offsetToLineCol,
-} from '../index'
+import { _computeLineStarts, _maskStringsAndComments, _offsetToLineCol } from '../index'
 
 type ConfigHook = (
   userConfig: Record<string, unknown>,
@@ -35,7 +31,11 @@ async function runTransform(code: string, id: string): Promise<{ code: string } 
   const transformHook = plugin.transform as (
     this: {
       warn: (msg: string) => void
-      resolve: (id: string, importer?: string, options?: { skipSelf: boolean }) => Promise<{ id: string } | null>
+      resolve: (
+        id: string,
+        importer?: string,
+        options?: { skipSelf: boolean },
+      ) => Promise<{ id: string } | null>
     },
     code: string,
     id: string,
@@ -54,9 +54,7 @@ const ctx = { transform: runTransform }
 
 // Helper: extract the FIRST `__sourceLocation` literal from transformed code.
 function extractLoc(code: string): { file: string; line: number; col: number } | null {
-  const m = code.match(
-    /__sourceLocation: \{ file: ("(?:[^"\\]|\\.)*"), line: (\d+), col: (\d+) \}/,
-  )
+  const m = code.match(/__sourceLocation: \{ file: ("(?:[^"\\]|\\.)*"), line: (\d+), col: (\d+) \}/)
   if (!m) return null
   return {
     file: JSON.parse(m[1] ?? '"?"'),
@@ -242,9 +240,7 @@ export function App() {
     // Targeted assertion — the unbound effect call must NOT have a name field
     // (the bound `const s = signal(...)` line DOES have `name: "s"`, hence
     // a global "no name:" check would false-fire).
-    expect(result!.code).not.toMatch(
-      /effect\(\(\) => \{ console\.log\(s\(\)\) \}, \{ name:/,
-    )
+    expect(result!.code).not.toMatch(/effect\(\(\) => \{ console\.log\(s\(\)\) \}, \{ name:/)
   })
 
   it('injects different lines for signal + computed + effect on different lines', async () => {
@@ -291,9 +287,7 @@ export function App() {
     const result = await ctx.transform(code, 'app.tsx')
     // computed() with existing options — skip. (The signal() above WILL
     // inject; just don't touch the computed.)
-    expect(result!.code).not.toContain(
-      'computed(() => s(), { equals: Object.is }, {',
-    )
+    expect(result!.code).not.toContain('computed(() => s(), { equals: Object.is }, {')
   })
 
   it('skips effect() that already has 2 args (existing options)', async () => {
@@ -436,7 +430,7 @@ describe('_maskStringsAndComments', () => {
     expect(masked.includes('effect(')).toBe(false)
   })
 
-  it('handles escape sequences in template literals (`\\`` doesn\'t end)', () => {
+  it("handles escape sequences in template literals (`\\`` doesn't end)", () => {
     const code = 'const x = `with \\`effect(\\` inside`'
     const masked = _maskStringsAndComments(code)
     expect(masked.includes('effect(')).toBe(false)

@@ -42,8 +42,8 @@ export default function FlowRoute() {
         <HeaderText>
           <FlowTitle>Flow Editor</FlowTitle>
           <FlowLead>
-            Drag nodes to rearrange. Edit the JSON on the right to mutate the graph from text.
-            Both views read and write the SAME signal-backed flow instance.
+            Drag nodes to rearrange. Edit the JSON on the right to mutate the graph from text. Both
+            views read and write the SAME signal-backed flow instance.
           </FlowLead>
         </HeaderText>
       </Header>
@@ -75,7 +75,10 @@ export default function FlowRoute() {
                 }
               }}
             />
-            <Panel position="top-right" style="font-size: 11px; color: #64748b; padding: 6px 10px; background: rgba(255,255,255,0.85); border-radius: 6px; border: 1px solid #e2e8f0">
+            <Panel
+              position="top-right"
+              style="font-size: 11px; color: #64748b; padding: 6px 10px; background: rgba(255,255,255,0.85); border-radius: 6px; border: 1px solid #e2e8f0"
+            >
               {() => `zoom ${(flow.instance.zoom() * 100).toFixed(0)}%`}
             </Panel>
           </Flow>

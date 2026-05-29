@@ -21,13 +21,13 @@ Journey catalog: each example exports a `journeys` object from `src/journeys.ts`
 
 Exit codes (so CI can classify failures):
 
-| Code | Meaning |
-| --- | --- |
-| 0 | success |
-| 1 | argv / config (unknown app, unknown journey) |
-| 2 | server didn't start / didn't respond |
-| 3 | browser navigation or journey threw |
-| 4 | harness not installed (example forgot `install()` in its entry) |
+| Code | Meaning                                                         |
+| ---- | --------------------------------------------------------------- |
+| 0    | success                                                         |
+| 1    | argv / config (unknown app, unknown journey)                    |
+| 2    | server didn't start / didn't respond                            |
+| 3    | browser navigation or journey threw                             |
+| 4    | harness not installed (example forgot `install()` in its entry) |
 
 **Preview mode warning**: prod builds tree-shake the counter emit call tree, so counters stay at zero even though `install()` still runs. Use `--mode dev` for meaningful numbers. `--mode preview` is useful for bundle-size and boot-time comparisons, not counter measurement.
 
@@ -84,15 +84,15 @@ What it does:
 
 Exit codes:
 
-| Code | Meaning |
-| --- | --- |
-| 0 | no leak — slope within threshold |
-| 1 | argv / config problem |
-| 2 | server didn't start |
-| 3 | browser navigation or journey threw |
-| 4 | `performance.memory` unavailable (need Chrome / Chromium) |
-| 5 | `globalThis.gc` unavailable (`--expose-gc` not honored) |
-| 6 | LEAK DETECTED — slope exceeds threshold |
+| Code | Meaning                                                   |
+| ---- | --------------------------------------------------------- |
+| 0    | no leak — slope within threshold                          |
+| 1    | argv / config problem                                     |
+| 2    | server didn't start                                       |
+| 3    | browser navigation or journey threw                       |
+| 4    | `performance.memory` unavailable (need Chrome / Chromium) |
+| 5    | `globalThis.gc` unavailable (`--expose-gc` not honored)   |
+| 6    | LEAK DETECTED — slope exceeds threshold                   |
 
 **Intentionally NOT a required CI gate.** Heap-growth is environmentally noisy (background GC, JIT warmup, allocator fragmentation) — false positives would erode the gate's credibility. Use cases:
 

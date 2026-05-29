@@ -44,11 +44,7 @@ export function ProductGrid() {
     <>
       <Filters>
         {CATEGORIES.map((cat) => (
-          <FilterChip
-            type="button"
-            $active={filter() === cat}
-            onClick={() => filter.set(cat)}
-          >
+          <FilterChip type="button" $active={filter() === cat} onClick={() => filter.set(cat)}>
             {() => (cat === 'all' ? i18n.t('shop:filterAll') : i18n.t(`category:${cat}`))}
           </FilterChip>
         ))}
@@ -60,22 +56,12 @@ export function ProductGrid() {
             <ProductCard>
               <ProductImage>{product.emoji}</ProductImage>
               <ProductBody>
-                <ProductCategory>
-                  {() => i18n.t(`category:${product.category}`)}
-                </ProductCategory>
-                <ProductTitle>
-                  {() => i18n.t(`product:${product.id}.title`)}
-                </ProductTitle>
+                <ProductCategory>{() => i18n.t(`category:${product.category}`)}</ProductCategory>
+                <ProductTitle>{() => i18n.t(`product:${product.id}.title`)}</ProductTitle>
                 <ProductDesc>{() => i18n.t(`product:${product.id}.desc`)}</ProductDesc>
                 <ProductFooter>
                   <ProductPrice>
-                    {() =>
-                      formatPrice(
-                        product.priceUsd,
-                        cart.store.currency(),
-                        i18n.locale(),
-                      )
-                    }
+                    {() => formatPrice(product.priceUsd, cart.store.currency(), i18n.locale())}
                   </ProductPrice>
                   <AddButton type="button" onClick={() => cart.store.addToCart(product.id)}>
                     {() => i18n.t('shop:addToCart')}

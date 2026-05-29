@@ -1,6 +1,6 @@
 ---
-title: "Reactive context"
-summary: "Use createReactiveContext for live values; never destructure context return."
+title: 'Reactive context'
+summary: 'Use createReactiveContext for live values; never destructure context return.'
 seeAlso: [signal-writes]
 ---
 
@@ -23,7 +23,7 @@ const ConfigCtx = createContext<{ apiUrl: string }>({ apiUrl: '' })
 provide(ConfigCtx, { apiUrl: '/api' })
 
 // Consumer
-const { apiUrl } = useContext(ConfigCtx)    // destructure is fine — value is static
+const { apiUrl } = useContext(ConfigCtx) // destructure is fine — value is static
 ```
 
 ### Reactive context — `createReactiveContext`
@@ -62,7 +62,7 @@ const ModeCtx = createReactiveContext('light')
 provide(ModeCtx, () => mode())
 
 function Consumer() {
-  const { mode: currentMode } = useContext(ModeCtx)   // typeof is `() => T`, destructure fails
+  const { mode: currentMode } = useContext(ModeCtx) // typeof is `() => T`, destructure fails
   // Even if destructure worked, currentMode would be a static copy.
 }
 ```
@@ -70,7 +70,7 @@ function Consumer() {
 ```tsx
 // BROKEN — passes a plain value to a reactive context
 const mode = signal('light')
-provide(ModeCtx, mode())    // reads ONCE at provide time
+provide(ModeCtx, mode()) // reads ONCE at provide time
 // All consumers see 'light' forever, even when mode changes to 'dark'
 ```
 

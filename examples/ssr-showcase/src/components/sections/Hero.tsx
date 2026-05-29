@@ -19,37 +19,31 @@ const Wrapper = element
     color: t.color.light.base,
   }))
 
-const Heading = element
-  .attrs({ tag: 'h1' })
-  .theme((t) => ({
-    fontFamily: t.fontFamily.base,
-    fontSize: { xs: t.fontSize.xxLarge, md: t.fontSize.xxxLarge },
-    fontWeight: 300,
-    margin: t.space.reset,
-    textAlign: 'center',
-    zIndex: 1,
-  }))
+const Heading = element.attrs({ tag: 'h1' }).theme((t) => ({
+  fontFamily: t.fontFamily.base,
+  fontSize: { xs: t.fontSize.xxLarge, md: t.fontSize.xxxLarge },
+  fontWeight: 300,
+  margin: t.space.reset,
+  textAlign: 'center',
+  zIndex: 1,
+}))
 
-const Subtitle = element
-  .attrs({ tag: 'p' })
-  .theme((t) => ({
-    fontFamily: t.fontFamily.base,
-    fontSize: { xs: t.fontSize.medium, md: t.fontSize.large },
-    fontWeight: 300,
-    marginTop: t.space.medium,
-    maxWidth: { xs: '100%', md: 640 },
-    textAlign: 'center',
-    zIndex: 1,
-  }))
+const Subtitle = element.attrs({ tag: 'p' }).theme((t) => ({
+  fontFamily: t.fontFamily.base,
+  fontSize: { xs: t.fontSize.medium, md: t.fontSize.large },
+  fontWeight: 300,
+  marginTop: t.space.medium,
+  maxWidth: { xs: '100%', md: 640 },
+  textAlign: 'center',
+  zIndex: 1,
+}))
 
-const BgImage = element
-  .attrs({ tag: 'span' })
-  .theme(() => ({
-    position: 'absolute',
-    inset: 0,
-    opacity: 0.25,
-    zIndex: 0,
-  }))
+const BgImage = element.attrs({ tag: 'span' }).theme(() => ({
+  position: 'absolute',
+  inset: 0,
+  opacity: 0.25,
+  zIndex: 0,
+}))
 
 type Props = {
   heading: string

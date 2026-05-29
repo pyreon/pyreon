@@ -1,16 +1,16 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { posts } from "../lib/posts"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
+import { posts } from '../lib/posts'
 
 export const meta = {
-  title: "Blog",
-  description: "A statically-rendered Pyreon Zero blog.",
+  title: 'Blog',
+  description: 'A statically-rendered Pyreon Zero blog.',
 }
 
 export default function Home() {
   useHead({
     title: meta.title,
-    meta: [{ name: "description", content: meta.description }],
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   // Show the 5 most recent posts on the homepage
@@ -19,7 +19,9 @@ export default function Home() {
   return (
     <>
       <h1>Blog</h1>
-      <p>Recent writing, statically rendered. Subscribe via <a href="/api/rss">RSS</a>.</p>
+      <p>
+        Recent writing, statically rendered. Subscribe via <a href="/api/rss">RSS</a>.
+      </p>
 
       <ul class="post-list">
         {recent.map((post) => (

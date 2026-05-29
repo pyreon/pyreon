@@ -19,9 +19,7 @@ import { renderToString } from '..'
 describe('SSR — _rp-wrapped component props are resolved (makeReactiveProps wired into runtime-server)', () => {
   it('resolves `_rp(() => string)` to the string when interpolated in component-emitted HTML', async () => {
     const Link = (props: { to: string }) => h('a', { href: `#${props.to}` }, 'go')
-    const html = await renderToString(
-      h(Link, { to: _rp(() => '/about') as unknown as string }),
-    )
+    const html = await renderToString(h(Link, { to: _rp(() => '/about') as unknown as string }))
     expect(html).toBe('<a href="#/about">go</a>')
     expect(html).not.toContain('=>')
   })
@@ -33,9 +31,7 @@ describe('SSR — _rp-wrapped component props are resolved (makeReactiveProps wi
     const Inner = (props: { to: string }) => h('a', { href: props.to }, 'x')
     const Outer = (props: { path: string }) =>
       h(Inner, { to: _rp(() => props.path) as unknown as string })
-    const html = await renderToString(
-      h(Outer, { path: _rp(() => '/store') as unknown as string }),
-    )
+    const html = await renderToString(h(Outer, { path: _rp(() => '/store') as unknown as string }))
     expect(html).toBe('<a href="/store">x</a>')
   })
 
@@ -49,10 +45,11 @@ describe('SSR — _rp-wrapped component props are resolved (makeReactiveProps wi
     // normalization (typeof === 'function' ? each() : each) fixes both shapes.
     type Item = { id: number; name: string }
     const Page = () => {
-      const items = () => [
-        { id: 1, name: 'a' },
-        { id: 2, name: 'b' },
-      ] as Item[]
+      const items = () =>
+        [
+          { id: 1, name: 'a' },
+          { id: 2, name: 'b' },
+        ] as Item[]
       const forProps = {
         each: _rp(items) as unknown as () => Item[],
         by: (r: Item) => r.id,
@@ -87,8 +84,7 @@ describe('SSR — _rp-wrapped component props are resolved (makeReactiveProps wi
     // a plain function on `props.class` so the runtime can call it. The SSR
     // attribute renderer already invokes function-typed attribute values, so
     // the result still hits the rendered HTML — but we lock the contract in.
-    const Wrapper = (props: { class: () => string }) =>
-      h('div', { class: props.class }, 'x')
+    const Wrapper = (props: { class: () => string }) => h('div', { class: props.class }, 'x')
     const html = await renderToString(h(Wrapper, { class: () => 'foo' }))
     expect(html).toBe('<div class="foo">x</div>')
   })

@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — i18n snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation. \`@pyreon/i18n\` includes JSX components (Trans, I18nProvider, useI18n) and depends on \`@pyreon/core\`. \`@pyreon/i18n/core\` is framework-agnostic with only \`@pyreon/reactivity\` as a dependency — use it for backends and edge workers."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation. \`@pyreon/i18n\` includes JSX components (Trans, I18nProvider, useI18n) and depends on \`@pyreon/core\`. \`@pyreon/i18n/core\` is framework-agnostic with only \`@pyreon/reactivity\` as a dependency — use it for backends and edge workers."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

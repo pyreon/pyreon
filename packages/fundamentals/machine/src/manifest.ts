@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/machine',
   title: 'State Machines',
-  tagline:
-    'Reactive state machines — constrained signals with type-safe transitions',
+  tagline: 'Reactive state machines — constrained signals with type-safe transitions',
   description:
     'Lightweight state machine library built on Pyreon signals. A machine is a constrained signal — it can only hold values from the configured state set and can only transition between them via named events. Guards enable conditional transitions with optional payloads. There is no built-in context or side-effect system — use existing Pyreon signals alongside the machine for data and effects. The machine reads like a signal and subscribes like one, making it natural in JSX and reactive scopes.',
   category: 'universal',
@@ -84,7 +83,8 @@ const Status = () => (
     {
       name: 'createMachine',
       kind: 'function',
-      signature: '<S extends string, E extends string>(config: MachineConfig<S, E>) => Machine<S, E>',
+      signature:
+        '<S extends string, E extends string>(config: MachineConfig<S, E>) => Machine<S, E>',
       summary:
         'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects.',
       example: `const traffic = createMachine({

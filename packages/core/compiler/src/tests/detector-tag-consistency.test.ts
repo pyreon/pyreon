@@ -49,9 +49,7 @@ type CompilerCode = (typeof COMPILER_CODES)[number]
 // WITHOUT the `pyreon/` prefix (the tag convention strips it for
 // readability). Add the rule ID here when documenting a new lint rule
 // in anti-patterns.md.
-const LINT_RULE_DETECTORS = [
-  'storage-signal-v-forwarding',
-] as const
+const LINT_RULE_DETECTORS = ['storage-signal-v-forwarding'] as const
 
 function readAntiPatterns(): string {
   return readFileSync(ANTI_PATTERNS_PATH, 'utf8')

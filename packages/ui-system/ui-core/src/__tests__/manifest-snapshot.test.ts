@@ -19,9 +19,6 @@ describe('gen-docs — ui-core snapshot', () => {
 
   it('renders MCP api-reference entries for every api[] item', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).sort()).toEqual([
-      'ui-core/PyreonUI',
-      'ui-core/useMode',
-    ])
+    expect(Object.keys(record).sort()).toEqual(['ui-core/PyreonUI', 'ui-core/useMode'])
   })
 })

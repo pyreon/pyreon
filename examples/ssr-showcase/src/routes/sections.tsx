@@ -9,12 +9,23 @@
  * visual regression safety net.
  */
 
-import { BadgeGrid, CardGrid, Callout, Hero, InversedPanel, LogoGrid, TimelineList } from '../components/sections'
+import {
+  BadgeGrid,
+  CardGrid,
+  Callout,
+  Hero,
+  InversedPanel,
+  LogoGrid,
+  TimelineList,
+} from '../components/sections'
 
 export default function SectionsPage() {
   return (
     <>
-      <Hero heading="Sections Showcase" subtitle="A reference page that exercises every pattern we keep breaking — responsive theme objects, hover states, inversed mode, SSR hydration, grid layouts, images." />
+      <Hero
+        heading="Sections Showcase"
+        subtitle="A reference page that exercises every pattern we keep breaking — responsive theme objects, hover states, inversed mode, SSR hydration, grid layouts, images."
+      />
       <Callout />
       <LogoGrid />
       <BadgeGrid />

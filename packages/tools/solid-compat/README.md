@@ -36,30 +36,30 @@ render(() => <Counter />, document.getElementById('app')!)
 
 ## Subpath exports
 
-| Subpath                                | Surface                                                                                       |
-| -------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `@pyreon/solid-compat`                 | Full Solid surface — see API table below                                                       |
-| `@pyreon/solid-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
-| `@pyreon/solid-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
+| Subpath                                | Surface                                           |
+| -------------------------------------- | ------------------------------------------------- |
+| `@pyreon/solid-compat`                 | Full Solid surface — see API table below          |
+| `@pyreon/solid-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`) |
+| `@pyreon/solid-compat/jsx-dev-runtime` | Dev variant — same runtime                        |
 
 ## API surface
 
-| Category         | Exports                                                                                       |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| Signals          | `createSignal`, `createMemo`, `createEffect`, `createComputed` (alias), `createRenderEffect`, `createRoot`, `on`, `batch`, `untrack` |
-| Lifecycle        | `onMount`, `onCleanup`                                                                         |
-| Props            | `mergeProps`, `splitProps`, `children`                                                         |
-| Context          | `createContext`, `useContext`                                                                  |
-| Owner            | `getOwner`, `runWithOwner`                                                                     |
-| Resources        | `createResource` (with `pending` / `loading` / `latest` / `state` / `error`)                  |
-| Stores           | `createStore`, `reconcile`, `unwrap`, `produce`                                                |
-| Transitions      | `startTransition`, `useTransition`                                                             |
-| Selectors        | `createSelector`                                                                               |
-| Iteration        | `<For>`, `<Index>`, `mapArray`, `indexArray`                                                   |
-| Control flow     | `<Show>`, `<Switch>`, `<Match>`, `<Dynamic>`, `<Portal>`, `<ErrorBoundary>`, `<Suspense>`     |
-| Observables      | `observable`, `from`                                                                           |
-| Misc             | `lazy`, `createDeferred`, `createReaction`, `catchError`, `createUniqueId`, `DEV`              |
-| Render           | `render(code, element)`, `hydrate(code, element)`                                              |
+| Category     | Exports                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Signals      | `createSignal`, `createMemo`, `createEffect`, `createComputed` (alias), `createRenderEffect`, `createRoot`, `on`, `batch`, `untrack` |
+| Lifecycle    | `onMount`, `onCleanup`                                                                                                               |
+| Props        | `mergeProps`, `splitProps`, `children`                                                                                               |
+| Context      | `createContext`, `useContext`                                                                                                        |
+| Owner        | `getOwner`, `runWithOwner`                                                                                                           |
+| Resources    | `createResource` (with `pending` / `loading` / `latest` / `state` / `error`)                                                         |
+| Stores       | `createStore`, `reconcile`, `unwrap`, `produce`                                                                                      |
+| Transitions  | `startTransition`, `useTransition`                                                                                                   |
+| Selectors    | `createSelector`                                                                                                                     |
+| Iteration    | `<For>`, `<Index>`, `mapArray`, `indexArray`                                                                                         |
+| Control flow | `<Show>`, `<Switch>`, `<Match>`, `<Dynamic>`, `<Portal>`, `<ErrorBoundary>`, `<Suspense>`                                            |
+| Observables  | `observable`, `from`                                                                                                                 |
+| Misc         | `lazy`, `createDeferred`, `createReaction`, `catchError`, `createUniqueId`, `DEV`                                                    |
+| Render       | `render(code, element)`, `hydrate(code, element)`                                                                                    |
 
 ## Drop-in compat mode
 
@@ -77,8 +77,8 @@ export default { plugins: [pyreon({ compat: 'solid' })] }
 {
   "compilerOptions": {
     "jsx": "preserve",
-    "jsxImportSource": "@pyreon/solid-compat"
-  }
+    "jsxImportSource": "@pyreon/solid-compat",
+  },
 }
 ```
 

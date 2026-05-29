@@ -74,31 +74,28 @@ export function actorVersion(fetcher: FakeFetcher): {
   getCurrent: () => UserData | null
   flush: () => Promise<void>
 } {
-  const a = actor<ActorState, Msg>(
-    { current: null, requestId: 0 },
-    (state, msg) => {
-      if (msg.type === 'select') {
-        const next: ActorState = {
-          current: state.current,
-          requestId: state.requestId + 1,
-        }
-        // Side effect: kick off the fetch with the new requestId baked in.
-        // When it resolves, send a `fetched` message with that id.
-        msg.fetcher(msg.id, msg.delayMs).then((data) => {
-          a.send({ type: 'fetched', requestId: next.requestId, data })
-        })
-        return next
+  const a = actor<ActorState, Msg>({ current: null, requestId: 0 }, (state, msg) => {
+    if (msg.type === 'select') {
+      const next: ActorState = {
+        current: state.current,
+        requestId: state.requestId + 1,
       }
-      if (msg.type === 'fetched') {
-        // STRUCTURAL CHECK: ignore responses for outdated requests.
-        // The reducer ALWAYS sees the current `state.requestId`, so a stale
-        // response (with msg.requestId < state.requestId) can never sneak in.
-        if (msg.requestId !== state.requestId) return state
-        return { current: msg.data, requestId: state.requestId }
-      }
-      return state
-    },
-  )
+      // Side effect: kick off the fetch with the new requestId baked in.
+      // When it resolves, send a `fetched` message with that id.
+      msg.fetcher(msg.id, msg.delayMs).then((data) => {
+        a.send({ type: 'fetched', requestId: next.requestId, data })
+      })
+      return next
+    }
+    if (msg.type === 'fetched') {
+      // STRUCTURAL CHECK: ignore responses for outdated requests.
+      // The reducer ALWAYS sees the current `state.requestId`, so a stale
+      // response (with msg.requestId < state.requestId) can never sneak in.
+      if (msg.requestId !== state.requestId) return state
+      return { current: msg.data, requestId: state.requestId }
+    }
+    return state
+  })
   return {
     selectUser: (id, delayMs) => a.send({ type: 'select', id, delayMs, fetcher }),
     getCurrent: () => a.getState().current,

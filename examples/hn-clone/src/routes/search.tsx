@@ -2,21 +2,9 @@ import { useQuery } from '@pyreon/query'
 import { useHead } from '@pyreon/head'
 import { useUrlState } from '@pyreon/url-state'
 import { useI18n } from '@pyreon/i18n'
-import {
-  useDebouncedValue,
-  useEventListener,
-  useFocus,
-  usePrevious,
-} from '@pyreon/hooks'
+import { useDebouncedValue, useEventListener, useFocus, usePrevious } from '@pyreon/hooks'
 import { signal, computed } from '@pyreon/reactivity'
-import {
-  filter,
-  search as rxSearch,
-  groupBy,
-  take,
-  uniqBy,
-  count,
-} from '@pyreon/rx'
+import { filter, search as rxSearch, groupBy, take, uniqBy, count } from '@pyreon/rx'
 import StoryRow from '../components/StoryRow'
 import { fetchFeed, type Story } from '../lib/api'
 
@@ -61,9 +49,7 @@ export default function SearchPage() {
   const query = useQuery(() => ({
     queryKey: ['search-corpus', 'news'],
     queryFn: async () => {
-      const pages = await Promise.all(
-        [1, 2, 3, 4, 5].map((p) => fetchFeed('news', p)),
-      )
+      const pages = await Promise.all([1, 2, 3, 4, 5].map((p) => fetchFeed('news', p)))
       return pages.flat()
     },
     staleTime: 5 * 60 * 1000,
@@ -86,8 +72,7 @@ export default function SearchPage() {
   const sorted = computed<Story[]>(() => {
     const arr = (onlyStories as never as () => Story[])()
     const mode = sortMode()
-    if (mode === 'points')
-      return [...arr].sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
+    if (mode === 'points') return [...arr].sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
     if (mode === 'recent') return [...arr].sort((a, b) => b.time - a.time)
     return arr
   })
@@ -96,18 +81,13 @@ export default function SearchPage() {
   const finalResults = take(sorted as never, 50)
 
   // `groupBy(source, key)` — facet hits by domain for the sidebar.
-  const domainFacets = groupBy(
-    hits as never,
-    (s: Story) => s.domain ?? 'no-domain',
-  )
+  const domainFacets = groupBy(hits as never, (s: Story) => s.domain ?? 'no-domain')
 
   // `uniqBy(source, key)` + `count(source)` — distinct authors. We pass a
   // key-extractor function; rx supports `KeyOf<T>` for nested keys but a
   // function is the most explicit form for non-trivial types.
   const uniqueAuthors = uniqBy(
-    computed<Story[]>(() =>
-      (hits as never as () => Story[])().filter((s) => s.user),
-    ) as never,
+    computed<Story[]>(() => (hits as never as () => Story[])().filter((s) => s.user)) as never,
     ((s: Story) => s.user ?? '') as never,
   )
   const uniqueAuthorCount = count(uniqueAuthors as never)
@@ -122,9 +102,7 @@ export default function SearchPage() {
     } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       const first = (finalResults as never as () => Story[])()[0]
       if (first) {
-        window.location.href = first.url.startsWith('http')
-          ? first.url
-          : `/item/${first.id}`
+        window.location.href = first.url.startsWith('http') ? first.url : `/item/${first.id}`
       }
     }
   })
@@ -151,8 +129,8 @@ export default function SearchPage() {
             return (
               <>
                 <span>
-                  {t(n === 1 ? 'search.results_one' : 'search.results_other', { n })}{' '}
-                  / {totalHits} total · {authorCount} authors
+                  {t(n === 1 ? 'search.results_one' : 'search.results_other', { n })} / {totalHits}{' '}
+                  total · {authorCount} authors
                 </span>
                 {() =>
                   focused() ? (
@@ -200,8 +178,7 @@ export default function SearchPage() {
       <div class="search-results">
         {() => {
           if (query.isPending()) return <div class="feed-state">{t('feed.loading')}</div>
-          if (query.isError())
-            return <div class="feed-state error">{String(query.error())}</div>
+          if (query.isError()) return <div class="feed-state error">{String(query.error())}</div>
           const results = ((finalResults as never as () => Story[])() ?? []) as Story[]
           if (debouncedQ() && results.length === 0) {
             const prev = previousQ()

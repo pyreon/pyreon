@@ -38,8 +38,7 @@ function gotchaParts(g: Gotcha): { label: string; note: string } {
  * ```
  */
 export function renderLlmsTxtLine(m: PackageManifest): string {
-  const peerSuffix =
-    m.peerDeps && m.peerDeps.length > 0 ? ` (peer: ${m.peerDeps.join(', ')})` : ''
+  const peerSuffix = m.peerDeps && m.peerDeps.length > 0 ? ` (peer: ${m.peerDeps.join(', ')})` : ''
   // Teaser uses the first gotcha's `note` text regardless of form —
   // the `label` is a heading cue for llms-full blockquotes, not for
   // the one-line bullet.
@@ -115,9 +114,7 @@ export function renderLlmsFullSection(m: PackageManifest): string {
   // sentence; everyone else gets `## header → code block` directly.
   const prose = (m.description ?? '').trim()
 
-  const parts = prose
-    ? [header, '', prose, '', codeBlock]
-    : [header, '', codeBlock]
+  const parts = prose ? [header, '', prose, '', codeBlock] : [header, '', codeBlock]
   if (blockquotes.length > 0) {
     parts.push('', blockquotes.join('\n>\n'))
   }

@@ -90,9 +90,7 @@ function isIIFE(node: any): boolean {
   if (!node || node.type !== 'CallExpression') return false
   let callee = node.callee
   if (callee?.type === 'ParenthesizedExpression') callee = callee.expression
-  return (
-    callee?.type === 'ArrowFunctionExpression' || callee?.type === 'FunctionExpression'
-  )
+  return callee?.type === 'ArrowFunctionExpression' || callee?.type === 'FunctionExpression'
 }
 
 /**
@@ -261,8 +259,7 @@ export const noImperativeEffectOnCreate: Rule = {
         if (!found) return
 
         context.report({
-          message:
-            `\`effect()\` at component body level contains ${found.label} — imperative work belongs in \`onMount\`. Pyreon's \`effect()\` runs synchronously per instance during component setup; per-instance imperative work (DOM access, IO, scheduling) accumulates O(N) at mount under load (cf. PR #268). Wrap the imperative call in \`onMount(() => { ... })\` and keep \`effect()\` for pure signal-tracking subscriptions.`,
+          message: `\`effect()\` at component body level contains ${found.label} — imperative work belongs in \`onMount\`. Pyreon's \`effect()\` runs synchronously per instance during component setup; per-instance imperative work (DOM access, IO, scheduling) accumulates O(N) at mount under load (cf. PR #268). Wrap the imperative call in \`onMount(() => { ... })\` and keep \`effect()\` for pure signal-tracking subscriptions.`,
           span: getSpan(node),
         })
       },

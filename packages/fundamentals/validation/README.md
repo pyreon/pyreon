@@ -61,9 +61,7 @@ useForm({
   validators: {
     email: zodField(z.string().email('Invalid email')),
   },
-  schema: zodSchema(
-    z.object({ email: z.string().email(), password: z.string().min(8) }),
-  ),
+  schema: zodSchema(z.object({ email: z.string().email(), password: z.string().min(8) })),
   onSubmit: (values) => {
     /* ... */
   },
@@ -168,15 +166,15 @@ Nested paths like `address.city` become dot-separated string keys in the output 
 
 ## Types
 
-| Type                          | Description                                                       |
-| ----------------------------- | ----------------------------------------------------------------- |
-| `ValidationIssue`             | `{ path: string; message: string }` — normalized issue            |
-| `SchemaAdapter<TSchema>`      | Generic schema adapter factory type                               |
-| `FieldAdapter<TSchema>`       | Generic field adapter factory type                                |
-| `TypedSchemaAdapter<TValues>` | Adapter returned by `zodSchema` — preserves inferred value types  |
-| `SchemaValidateFn<TValues>`   | Re-exported from `@pyreon/form` — `(values) => Record<key, error>` |
+| Type                          | Description                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `ValidationIssue`             | `{ path: string; message: string }` — normalized issue                        |
+| `SchemaAdapter<TSchema>`      | Generic schema adapter factory type                                           |
+| `FieldAdapter<TSchema>`       | Generic field adapter factory type                                            |
+| `TypedSchemaAdapter<TValues>` | Adapter returned by `zodSchema` — preserves inferred value types              |
+| `SchemaValidateFn<TValues>`   | Re-exported from `@pyreon/form` — `(values) => Record<key, error>`            |
 | `ValidateFn<T>`               | Re-exported from `@pyreon/form` — `(value, allValues) => string \| undefined` |
-| `ValidationError`             | Re-exported from `@pyreon/form` — `string \| undefined`           |
+| `ValidationError`             | Re-exported from `@pyreon/form` — `string \| undefined`                       |
 
 ## Gotchas
 

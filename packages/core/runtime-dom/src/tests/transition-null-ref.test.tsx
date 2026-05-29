@@ -29,12 +29,16 @@ describe('Transition — null-ref handling (W14 follow-up)', () => {
     // appear: true path queues applyEnter — the inner div takes one
     // microtask to commit.
     mount(
-      h(Transition, {
-        show: () => show(),
-        appear: true,
-        enterFrom: 'opacity-0',
-        enterTo: 'opacity-100',
-      } as never, h('div', { class: 'modal' }, 'hello')),
+      h(
+        Transition,
+        {
+          show: () => show(),
+          appear: true,
+          enterFrom: 'opacity-0',
+          enterTo: 'opacity-100',
+        } as never,
+        h('div', { class: 'modal' }, 'hello'),
+      ),
       container,
     )
 

@@ -30,12 +30,17 @@ const fruits = [
 export function ElementsDemo() {
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 24px">Elements (low-level primitives)</Title>
+      <Title size="h2" style="margin-bottom: 24px">
+        Elements (low-level primitives)
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        `@pyreon/elements` provides three foundational primitives: Element (3-slot layout), Text (typography), List (data-driven rendering).
+        `@pyreon/elements` provides three foundational primitives: Element (3-slot layout), Text
+        (typography), List (data-driven rendering).
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">Element — three-slot layout</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Element — three-slot layout
+      </Title>
       <Paragraph style="margin-bottom: 12px; font-size: 13px;">
         beforeContent | children | afterContent — flex layout with alignment props.
       </Paragraph>
@@ -62,7 +67,9 @@ export function ElementsDemo() {
         </div>
       </Element>
 
-      <Title size="h3" style="margin-bottom: 12px">Nested Element composition</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Nested Element composition
+      </Title>
       <Paragraph style="margin-bottom: 12px; font-size: 13px;">
         Elements can be nested freely. Outer rows wrap inner Elements with their own slots.
       </Paragraph>
@@ -86,44 +93,67 @@ export function ElementsDemo() {
                 {i}
               </span>
             }
-            afterContent={
-              <span style="font-size: 11px; color: #6b7280;">12 min ago</span>
-            }
+            afterContent={<span style="font-size: 11px; color: #6b7280;">12 min ago</span>}
           >
             <div style="flex: 1;">Activity item {i}</div>
           </Element>
         ))}
       </Element>
 
-      <Title size="h3" style="margin-bottom: 12px">Element direction variants</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Element direction variants
+      </Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
-        <Element tag="div" direction="inline" gap={8} alignY="center" block style="padding: 12px; background: #eff6ff; border-radius: 6px;">
+        <Element
+          tag="div"
+          direction="inline"
+          gap={8}
+          alignY="center"
+          block
+          style="padding: 12px; background: #eff6ff; border-radius: 6px;"
+        >
           <span>direction="inline"</span>
           <span style="background: white; padding: 2px 6px; border-radius: 4px;">A</span>
           <span style="background: white; padding: 2px 6px; border-radius: 4px;">B</span>
           <span style="background: white; padding: 2px 6px; border-radius: 4px;">C</span>
         </Element>
-        <Element tag="div" direction="rows" gap={8} block style="padding: 12px; background: #eff6ff; border-radius: 6px;">
+        <Element
+          tag="div"
+          direction="rows"
+          gap={8}
+          block
+          style="padding: 12px; background: #eff6ff; border-radius: 6px;"
+        >
           <span>direction="rows"</span>
-          <span style="background: white; padding: 2px 6px; border-radius: 4px; align-self: start;">A</span>
-          <span style="background: white; padding: 2px 6px; border-radius: 4px; align-self: start;">B</span>
+          <span style="background: white; padding: 2px 6px; border-radius: 4px; align-self: start;">
+            A
+          </span>
+          <span style="background: white; padding: 2px 6px; border-radius: 4px; align-self: start;">
+            B
+          </span>
         </Element>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Text — semantic typography</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Text — semantic typography
+      </Title>
       <div style="margin-bottom: 24px;">
-        <Text tag="h4" style="margin-bottom: 8px;">A heading via Text tag="h4"</Text>
+        <Text tag="h4" style="margin-bottom: 8px;">
+          A heading via Text tag="h4"
+        </Text>
         <Text tag="p">Standard paragraph via Text component.</Text>
         <Text tag="strong">Strong/bold text</Text>
         {' • '}
         <Text tag="em">Emphasized italic</Text>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">List — data-driven rendering</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        List — data-driven rendering
+      </Title>
       <Paragraph style="margin-bottom: 12px; font-size: 13px;">
-        Renders `data` array through a `component` prop. Each item receives positional
-        metadata as props: <code>first</code>, <code>last</code>, <code>odd</code>,
-        <code>even</code>, <code>position</code>, <code>index</code>.
+        Renders `data` array through a `component` prop. Each item receives positional metadata as
+        props: <code>first</code>, <code>last</code>, <code>odd</code>,<code>even</code>,{' '}
+        <code>position</code>, <code>index</code>.
       </Paragraph>
       <ul style="list-style: none; padding: 0; max-width: 400px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
         <List data={fruits} component={FruitItem} />

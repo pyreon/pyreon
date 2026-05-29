@@ -48,10 +48,10 @@ effect(() => { opacity.set(visible() ? 1 : 0) })
 
 const app = document.getElementById('app')
 const ui = h('div', {},
-  h('button', { onClick: () => visible.update(v => !v) }, () => visible() ? 'Hide' : 'Show'),
-  h('div', { style: () => ({ opacity: opacity(), transition: 'opacity 0.3s ease', padding: '12px', marginTop: '8px', background: '#f0f0f0', borderRadius: '6px' }) },
-    'Animated content',
-  ),
+h('button', { onClick: () => visible.update(v => !v) }, () => visible() ? 'Hide' : 'Show'),
+h('div', { style: () => ({ opacity: opacity(), transition: 'opacity 0.3s ease', padding: '12px', marginTop: '8px', background: '#f0f0f0', borderRadius: '6px' }) },
+'Animated content',
+),
 )
 mount(ui, app)
 </Playground>

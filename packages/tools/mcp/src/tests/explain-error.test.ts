@@ -112,9 +112,7 @@ describe('analyzeReactiveTrace heuristics', () => {
   })
 
   it('type-flip when value shape changes (array → nullish)', () => {
-    const trace: TraceEntry[] = [
-      { name: 'items', prev: 'Array(3)', next: 'null', timestamp: 1 },
-    ]
+    const trace: TraceEntry[] = [{ name: 'items', prev: 'Array(3)', next: 'null', timestamp: 1 }]
     const f = analyzeReactiveTrace(trace, 'items.map is not a function')
     expect(f.some((x) => x.code === 'type-flip')).toBe(true)
   })
@@ -142,9 +140,7 @@ describe('buildErrorDossier', () => {
     },
     phase: 'render',
     component: 'UserCard',
-    reactiveTrace: [
-      { name: 'user', prev: 'User {id, name}', next: 'null', timestamp: 5 },
-    ],
+    reactiveTrace: [{ name: 'user', prev: 'User {id, name}', next: 'null', timestamp: 5 }],
   }
 
   it('includes summary, reactive run-up, and suspected cause sections', () => {

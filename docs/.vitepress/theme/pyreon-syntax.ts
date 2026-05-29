@@ -86,7 +86,12 @@ function makeTheme(p: Palette, type: 'dark' | 'light'): ThemeRegistrationRaw {
         settings: { foreground: p.string },
       },
       {
-        scope: ['constant.numeric', 'constant.language', 'constant.character', 'keyword.other.unit'],
+        scope: [
+          'constant.numeric',
+          'constant.language',
+          'constant.character',
+          'keyword.other.unit',
+        ],
         settings: { foreground: p.number },
       },
       {

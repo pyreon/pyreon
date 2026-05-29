@@ -155,7 +155,7 @@ diagnose({
 // ctx.reactiveTrace is the high-signal field`,
       mistakes: [
         'Passing only an error string — that is what `diagnose` is for. `explain_error` wants the structured report (phase, component, props, reactiveTrace) to be worth more than `diagnose`',
-        "Expecting it to apply a fix — it returns a dossier + suspected cause only. Repair is human-gated by construction (the tool has no write capability)",
+        'Expecting it to apply a fix — it returns a dossier + suspected cause only. Repair is human-gated by construction (the tool has no write capability)',
         'Capturing the report in production — `reactiveTrace` is dev-only (tree-shaken in prod), so the highest-signal section will be empty. Capture in dev',
       ],
       seeAlso: ['diagnose', 'validate', 'get_anti_patterns'],
@@ -198,7 +198,7 @@ get_pattern({})
       signature:
         "tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string",
       summary:
-        'Browse the anti-patterns catalog from `.claude/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: `{ name }` → the single matching entry\\\'s full body (cheapest); `{ category }` → full bodies for one category; `{ full: true }` → entire catalog (≈14K, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.',
+        "Browse the anti-patterns catalog from `.claude/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: `{ name }` → the single matching entry\\'s full body (cheapest); `{ category }` → full bodies for one category; `{ full: true }` → entire catalog (≈14K, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.",
       example: `get_anti_patterns()
 // → compact index (~3.3K): titles + detector tags + one-line hooks
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
@@ -227,7 +227,7 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
       signature:
         "tool: audit_test_environment({ minRisk?: 'high' | 'medium' | 'low'; limit?: number }) → AuditReport",
       summary:
-        'Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197\\\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real `h()` calls + `@pyreon/core` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change.',
+        "Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197\\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real `h()` calls + `@pyreon/core` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change.",
       example: `audit_test_environment({ minRisk: 'medium', limit: 10 })
 // → grouped report with HIGH / MEDIUM / LOW sections`,
       seeAlso: ['get_browser_smoke_status', 'audit_islands'],
@@ -237,7 +237,7 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
       kind: 'constant',
       signature: 'tool: audit_islands({ json?: boolean }) → IslandAuditReport',
       summary:
-        'Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks `packages/` + `examples/` and runs five detectors that auto-registry can\\\'t reach (manual `hydrateIslands({...})` for non-Vite consumers / library authors) AND PR G\\\'s per-file `island-never-with-registry-entry` detector misses (it only catches the same-file shape): `duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the `pyreon doctor --check-islands` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping `--json` and grepping `findings.length > 0`.',
+        "Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks `packages/` + `examples/` and runs five detectors that auto-registry can\\'t reach (manual `hydrateIslands({...})` for non-Vite consumers / library authors) AND PR G\\'s per-file `island-never-with-registry-entry` detector misses (it only catches the same-file shape): `duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the `pyreon doctor --check-islands` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping `--json` and grepping `findings.length > 0`.",
       example: `audit_islands({})
 // → markdown-grouped report with one section per finding code
 
@@ -249,13 +249,11 @@ audit_islands({ json: true })
   gotchas: [
     {
       label: 'Project-context caching',
-      note:
-        'Each `createServer()` instance maintains its own cached context (routes, components, islands). The cache auto-resets when `process.cwd()` changes between tool invocations, so the same server can operate across multiple projects in one session.',
+      note: 'Each `createServer()` instance maintains its own cached context (routes, components, islands). The cache auto-resets when `process.cwd()` changes between tool invocations, so the same server can operate across multiple projects in one session.',
     },
     {
       label: 'Manifest-driven',
-      note:
-        '`get_api` reads `api-reference.ts`, which is generated from each package\\\'s `manifest.ts`. The marker-pair protocol (`<gen-docs:api-reference:start @pyreon/<name>>`) lets some packages be generated and others stay hand-written during incremental migration.',
+      note: "`get_api` reads `api-reference.ts`, which is generated from each package\\'s `manifest.ts`. The marker-pair protocol (`<gen-docs:api-reference:start @pyreon/<name>>`) lets some packages be generated and others stay hand-written during incremental migration.",
     },
   ],
 })

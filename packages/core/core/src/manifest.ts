@@ -256,7 +256,7 @@ const getMode = useContext(ModeCtx)    // reactive: returns () => T`,
       mistakes: [
         '`{cond() ? <A /> : <B />}` — works but less efficient than `<Show>` for signal-driven conditions',
         '`<Show when={items().length}>` — works (truthy check), but be explicit: `<Show when={items().length > 0}>`',
-        '`<Show when={signal}>` (bare reference) — relies on the compiler\'s signal auto-call to rewrite to `when={signal()}`. Works defensively but use `when={() => signal()}` for explicit accessor semantics across the entire reactive lifecycle.',
+        "`<Show when={signal}>` (bare reference) — relies on the compiler's signal auto-call to rewrite to `when={signal()}`. Works defensively but use `when={() => signal()}` for explicit accessor semantics across the entire reactive lifecycle.",
       ],
       seeAlso: ['Switch', 'Match', 'For'],
     },
@@ -386,8 +386,7 @@ cx(["a", ["b", { c: true }]])            // nested arrays
     {
       name: 'splitProps',
       kind: 'function',
-      signature:
-        'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
+      signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
       summary:
         'Split a props object into two parts: the picked keys and the rest. Both halves preserve signal reactivity — reads through either half still track the original reactive prop getters. This is the Pyreon replacement for `const { x, ...rest } = props` destructuring, which captures values once and loses reactivity.',
       example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
@@ -450,7 +449,8 @@ cx(["a", ["b", { c: true }]])            // nested arrays
     {
       name: 'mapArray',
       kind: 'function',
-      signature: 'mapArray<T, U>(list: () => T[], mapFn: (item: T, index: () => number) => U): () => U[]',
+      signature:
+        'mapArray<T, U>(list: () => T[], mapFn: (item: T, index: () => number) => U): () => U[]',
       summary:
         'Low-level reactive array mapping used internally by `<For>`. Maps a reactive array signal through a transform function, caching results per item identity. Prefer `<For>` in JSX — use `mapArray` only when you need a reactive derived array outside of rendering.',
       example: `const items = signal([1, 2, 3])
@@ -495,7 +495,7 @@ export const RouterView = nativeCompat(function RouterView(props) {
       seeAlso: ['isNativeCompat', 'NATIVE_COMPAT_MARKER'],
       mistakes: [
         'Forgetting to mark a new framework JSX export — under compat mode, the component\'s `provide()` / `onMount()` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.',
-        'Marking user-app components — only `@pyreon/*` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that\'s how they get re-render-on-state-change semantics).',
+        "Marking user-app components — only `@pyreon/*` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).",
       ],
     },
     {
@@ -527,7 +527,7 @@ return wrapCompatComponent(type)(props)`,
       signature:
         'type ExtractProps<T> = /* matches up to 4 overloads, unions the props */ T extends ComponentFn<infer P> ? P : T',
       summary:
-        "Extracts the props type from a `ComponentFn`. Passes through unchanged if `T` is not a `ComponentFn`. **Multi-overload aware** — matches up to 4 call signatures and produces the UNION of their first-argument types. Critical for multi-overload primitives (Iterator, List, Element) whose loosest overload is last; without overload-aware extraction, HOC wrapping (`rocketstyle()`, `attrs()`) silently downgraded their public prop surface. Single-overload functions still work — the union of 4 copies of the same props type dedupes back to the single shape.",
+        'Extracts the props type from a `ComponentFn`. Passes through unchanged if `T` is not a `ComponentFn`. **Multi-overload aware** — matches up to 4 call signatures and produces the UNION of their first-argument types. Critical for multi-overload primitives (Iterator, List, Element) whose loosest overload is last; without overload-aware extraction, HOC wrapping (`rocketstyle()`, `attrs()`) silently downgraded their public prop surface. Single-overload functions still work — the union of 4 copies of the same props type dedupes back to the single shape.',
       example: `function Iterator<T extends SimpleValue>(p: { data: T[]; valueName?: string }): VNodeChild
 function Iterator<T extends ObjectValue>(p: { data: T[]; component: ComponentFn<T> }): VNodeChild
 type Props = ExtractProps<typeof Iterator>
@@ -544,7 +544,7 @@ type Props = ExtractProps<typeof Iterator>
       kind: 'type',
       signature: 'type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>',
       summary:
-        'Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component\'s own props. The resulting component accepts both sets of props.',
+        "Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component's own props. The resulting component accepts both sets of props.",
       example: `function withLogger<P>(Wrapped: ComponentFn<P>): HigherOrderComponent<{ logLevel?: string }, P> {
   return (props) => {
     console.log(\`[\${props.logLevel ?? "info"}] Rendering\`)

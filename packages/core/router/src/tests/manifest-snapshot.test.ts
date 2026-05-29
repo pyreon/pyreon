@@ -7,7 +7,9 @@ import routerManifest from '../manifest'
 
 describe('gen-docs — router snapshot', () => {
   it('renders @pyreon/router to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(`"- @pyreon/router — hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`)
+    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(
+      `"- @pyreon/router — hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`,
+    )
   })
 
   it('renders @pyreon/router to its expected llms-full.txt section — full body snapshot', () => {

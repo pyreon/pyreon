@@ -349,6 +349,5 @@ export function restoreContextStack<T>(snapshot: ContextSnapshot, fn: () => T): 
 // `restoreContextStack` splice fix above.
 setSnapshotCapture({
   capture: () => captureContextStack(),
-  restore: <T>(snap: unknown, fn: () => T): T =>
-    restoreContextStack(snap as ContextSnapshot, fn),
+  restore: <T>(snap: unknown, fn: () => T): T => restoreContextStack(snap as ContextSnapshot, fn),
 })

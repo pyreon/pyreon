@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/i18n',
   title: 'Internationalization',
-  tagline:
-    'Reactive i18n with async namespace loading, plurals, interpolation',
+  tagline: 'Reactive i18n with async namespace loading, plurals, interpolation',
   description:
     'Signal-based internationalization for Pyreon. `createI18n` returns a reactive `t(key, values?)` function with `{{name}}` interpolation and `_one`/`_other` plural suffixes. Namespace lazy loading deduplicates concurrent requests. Two entry points: `@pyreon/i18n` (full — includes JSX `Trans` component, `I18nProvider`, `useI18n`) and `@pyreon/i18n/core` (framework-agnostic — only `createI18n`, `interpolate`, `resolvePluralCategory`, types). The `/core` entry transitively depends only on `@pyreon/reactivity` with zero JSX, making it suitable for backend translation pipelines, edge workers, and non-Pyreon frontends.',
   category: 'universal',

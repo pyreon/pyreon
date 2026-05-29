@@ -114,12 +114,19 @@ export function RocketstyleDemo() {
 
   return (
     <div>
-      <Title size="h2" style="margin-bottom: 12px">Rocketstyle (raw API)</Title>
+      <Title size="h2" style="margin-bottom: 12px">
+        Rocketstyle (raw API)
+      </Title>
       <Paragraph style="margin-bottom: 24px">
-        `@pyreon/rocketstyle` is the multi-dimensional styling engine powering all of `@pyreon/ui-components`. Here are standalone components built directly with `.theme()`, `.states()`, `.sizes()`, `.styles()` on top of `@pyreon/elements` — no `el`/`txt`/`list` wrappers.
+        `@pyreon/rocketstyle` is the multi-dimensional styling engine powering all of
+        `@pyreon/ui-components`. Here are standalone components built directly with `.theme()`,
+        `.states()`, `.sizes()`, `.styles()` on top of `@pyreon/elements` — no `el`/`txt`/`list`
+        wrappers.
       </Paragraph>
 
-      <Title size="h3" style="margin-bottom: 12px">Rocketstyle Badge — all states</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Rocketstyle Badge — all states
+      </Title>
       <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px;">
         <RsBadge>default</RsBadge>
         <RsBadge state="success">success</RsBadge>
@@ -128,14 +135,18 @@ export function RocketstyleDemo() {
         <RsBadge state="info">info</RsBadge>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">All sizes</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        All sizes
+      </Title>
       <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 24px;">
         <RsBadge size="small">small</RsBadge>
         <RsBadge size="medium">medium</RsBadge>
         <RsBadge size="large">large</RsBadge>
       </div>
 
-      <Title size="h3" style="margin-bottom: 12px">Reactive dimension props</Title>
+      <Title size="h3" style="margin-bottom: 12px">
+        Reactive dimension props
+      </Title>
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
         <Button
           state="secondary"
@@ -200,7 +211,9 @@ export function RocketstyleDemo() {
         Reactive: {state() ?? 'default'}/{size()}
       </RsBadge>
 
-      <Title size="h3" style="margin-top: 32px; margin-bottom: 12px">Rocketstyle Button</Title>
+      <Title size="h3" style="margin-top: 32px; margin-bottom: 12px">
+        Rocketstyle Button
+      </Title>
       <div style="display: flex; gap: 8px; align-items: center;">
         <RsButton size="small">small</RsButton>
         <RsButton size="medium">medium</RsButton>

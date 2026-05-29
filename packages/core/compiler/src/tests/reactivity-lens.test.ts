@@ -29,9 +29,7 @@ function sliceFinding(code: string, f: ReactivityFinding): string {
   // Re-derive the byte slice from line/col for a human-readable assertion.
   const lines = code.split('\n')
   const line = lines[f.line - 1] ?? ''
-  return f.endLine === f.line
-    ? line.slice(f.column, f.endColumn)
-    : line.slice(f.column)
+  return f.endLine === f.line ? line.slice(f.column, f.endColumn) : line.slice(f.column)
 }
 
 describe('reactivity-lens — additive contract (kill-criterion a)', () => {
@@ -147,10 +145,9 @@ describe('reactivity-lens — footgun merge (existing detectPyreonPatterns)', ()
     for (let i = 1; i < findings.length; i++) {
       const prev = findings[i - 1]!
       const cur = findings[i]!
-      expect(
-        prev.line < cur.line ||
-          (prev.line === cur.line && prev.column <= cur.column),
-      ).toBe(true)
+      expect(prev.line < cur.line || (prev.line === cur.line && prev.column <= cur.column)).toBe(
+        true,
+      )
     }
   })
 })

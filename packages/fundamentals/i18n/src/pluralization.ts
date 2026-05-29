@@ -18,7 +18,6 @@ export function resolvePluralCategory(
   // either hits a user-supplied rule fn or allocates an `Intl.PluralRules`.
   if (__DEV__) _countSink.__pyreon_count__?.('i18n.pluralResolve')
 
-
   // Custom rules take priority
   if (customRules?.[locale]) {
     return customRules[locale](count)

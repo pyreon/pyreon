@@ -70,11 +70,7 @@ export const i18nPreferTransForRichJsx: Rule = {
             hasElementChild = true
             continue
           }
-          if (
-            !tContainer &&
-            child.type === 'JSXExpressionContainer' &&
-            isTCall(child.expression)
-          ) {
+          if (!tContainer && child.type === 'JSXExpressionContainer' && isTCall(child.expression)) {
             tContainer = child
           }
         }

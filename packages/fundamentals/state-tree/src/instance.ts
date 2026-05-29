@@ -200,9 +200,10 @@ export function createInstance(
     if (!isSchemaMode && isModelDef(defaultValue)) {
       // Plain-mode nested model — instantiate from caller's snapshot for
       // this key (or empty for defaults).
-      const nestedInitial = (hasCallerOverride && typeof callerOverride === 'object'
-        ? (callerOverride as Record<string, unknown>)
-        : {})
+      const nestedInitial =
+        hasCallerOverride && typeof callerOverride === 'object'
+          ? (callerOverride as Record<string, unknown>)
+          : {}
       const nestedInstance = createInstance(defaultValue._config, nestedInitial)
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(nestedInstance)
@@ -216,11 +217,7 @@ export function createInstance(
       })
     } else {
       // Plain leaf OR schema-mode field.
-      const value = isSchemaMode
-        ? defaultValue
-        : hasCallerOverride
-          ? callerOverride
-          : defaultValue
+      const value = isSchemaMode ? defaultValue : hasCallerOverride ? callerOverride : defaultValue
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(value)
       if (!isSchemaMode) initialSnapshotForReset[key] = value
@@ -377,10 +374,7 @@ export function createInstance(
   // Same collision rule. Each action is wrapped in `runAction` so middleware
   // sees every call (sync OR async — `runAction` awaits Promise returns).
   for (const factory of config.actionFactories) {
-    const rawActions = factory(self) as Record<
-      string,
-      (...args: unknown[]) => unknown
-    >
+    const rawActions = factory(self) as Record<string, (...args: unknown[]) => unknown>
     for (const [key, actionFn] of Object.entries(rawActions)) {
       checkReserved(key, 'actions')
       instance[key] = (...args: unknown[]) => runAction(meta, key, actionFn, args)

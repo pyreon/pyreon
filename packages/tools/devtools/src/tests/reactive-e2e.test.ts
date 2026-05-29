@@ -81,10 +81,7 @@ function reactiveHook(): ReactiveHook {
   const container = document.createElement('div')
   document.body.appendChild(container)
   // First mount installs window.__PYREON_DEVTOOLS__ (incl. `.reactive`).
-  dispose = mount(
-    h('div', null, 'app'),
-    container,
-  )
+  dispose = mount(h('div', null, 'app'), container)
   const dt = window.__PYREON_DEVTOOLS__
   if (!dt) throw new Error('__PYREON_DEVTOOLS__ not installed by mount()')
   const r = dt.reactive

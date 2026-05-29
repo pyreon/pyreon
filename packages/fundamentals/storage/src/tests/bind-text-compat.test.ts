@@ -31,7 +31,7 @@ interface SignalLike<T> {
   _v: T
 }
 
-const internal = <T,>(sig: unknown): SignalLike<T> => sig as SignalLike<T>
+const internal = <T>(sig: unknown): SignalLike<T> => sig as SignalLike<T>
 
 describe('storage signals — _bindText / _bindDirect compat (`_v` forwarding)', () => {
   afterEach(() => {

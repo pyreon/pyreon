@@ -162,7 +162,7 @@ The 7 platform packages (`@pyreon/compiler-darwin-arm64`, `darwin-x64`, `linux-x
 
 Do this **once** (any maintainer with `@pyreon` publish rights):
 
-1. **Build the 7 binaries without publishing.** GitHub → Actions → `release-native.yml` → *Run workflow*, set input `publish: false`. The build matrix produces all 7 `pyreon-compiler-<triple>.node` artifacts (the publish job is gated off). Download all 7 artifacts.
+1. **Build the 7 binaries without publishing.** GitHub → Actions → `release-native.yml` → _Run workflow_, set input `publish: false`. The build matrix produces all 7 `pyreon-compiler-<triple>.node` artifacts (the publish job is gated off). Download all 7 artifacts.
 2. **Stage + print the publish commands.** Run `bun scripts/bootstrap-native-publish.ts <downloaded-artifacts-dir>` — it copies each binary into the matching `packages/core/compiler/npm/<short>/pyreon-compiler.node`, runs the >100 KB sanity check, and prints the exact per-package publish command. It does **not** publish anything itself.
 3. **Publish each, manually.** Confirm the account first (`npm whoami` → must have `@pyreon` rights), then run the printed command for each of the 7:
    ```

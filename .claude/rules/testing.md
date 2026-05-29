@@ -63,9 +63,7 @@ test.beforeEach(async ({ page, context }) => {
   // propagates to every new page (including tabs opened mid-test), so the
   // suppression covers `page2 = await context.newPage()` too — per-page
   // routes registered on `page` alone would miss tab 2.
-  await context.route('**/@vite/client*', (route) =>
-    route.fulfill({ status: 204, body: '' }),
-  )
+  await context.route('**/@vite/client*', (route) => route.fulfill({ status: 204, body: '' }))
   // ... rest of setup
 })
 ```

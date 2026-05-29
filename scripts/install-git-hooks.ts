@@ -194,9 +194,7 @@ function main(): void {
       // every `bun install`, so clutter-free is the contract.
       return
     case 'installed':
-      console.log(
-        '[pyreon] git hooks installed (.githooks/) — pre-push validation enabled.',
-      )
+      console.log('[pyreon] git hooks installed (.githooks/) — pre-push validation enabled.')
       console.log('[pyreon] bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify.')
       return
     case 'preserved-user-override':

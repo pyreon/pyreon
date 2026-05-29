@@ -52,7 +52,7 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
     if (closeOnOverlay && e.target === e.currentTarget) own.onClose?.()
   }
 
-  return (() => {
+  return () => {
     if (!own.open) return null
 
     return (
@@ -68,5 +68,5 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
         </div>
       </Portal>
     )
-  })
+  }
 }

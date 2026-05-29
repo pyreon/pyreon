@@ -32,12 +32,9 @@ type DeferTrigger = { when: () => boolean } | { on: 'visible' | 'idle' }
  * @internal Exported for tests; not part of the stable public API.
  */
 export function _setupIdleTrigger(startLoad: () => void): () => void {
-  const ric = (
-    globalThis as { requestIdleCallback?: (cb: () => void) => number }
-  ).requestIdleCallback
-  const cic = (
-    globalThis as { cancelIdleCallback?: (id: number) => void }
-  ).cancelIdleCallback
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void) => number })
+    .requestIdleCallback
+  const cic = (globalThis as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback
   if (typeof ric === 'function') {
     const id = ric(startLoad)
     return () => cic?.(id)
@@ -175,10 +172,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
       .chunk()
       .then((mod) => {
         // Accept both ES-module-default and bare ComponentFn shapes.
-        const Comp =
-          typeof mod === 'function'
-            ? mod
-            : (mod as { default: ComponentFn<P> }).default
+        const Comp = typeof mod === 'function' ? mod : (mod as { default: ComponentFn<P> }).default
         if (process.env.NODE_ENV !== 'production' && typeof Comp !== 'function') {
           // oxlint-disable-next-line no-console
           console.warn(
@@ -250,11 +244,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     // independently testable. onMount keeps the browser-API access
     // out of the SSR path.
     onMount(() =>
-      _setupVisibleTrigger(
-        containerRef.current,
-        startLoad,
-        props.rootMargin ?? '200px',
-      ),
+      _setupVisibleTrigger(containerRef.current, startLoad, props.rootMargin ?? '200px'),
     )
     // Cast renderContent to VNodeChildAccessor — its inferred return type
     // is `VNodeChild` (broader than the accessor's `atom | atom[]`) because

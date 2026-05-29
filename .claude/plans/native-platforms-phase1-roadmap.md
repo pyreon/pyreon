@@ -12,11 +12,11 @@
 
 Phase 1 has **three workstream chains**, runnable in parallel:
 
-| Chain | Scope | Effort |
-|---|---|---|
-| **A — Compositional gaps** | 4 PRs closing the TodoMVC walkthrough's in-Phase-1 gaps (two-way binding, keyboard handlers, array mutation, object-in-array updates) | 4-6 weeks |
-| **B — Widget bindings** | 10 PRs each adding one iOS widget binding (TextField / Toggle / Checkbox / Slider / Picker / etc.) | 6-10 weeks |
-| **C — Platform abstractions** | 3 PRs implementing the first cross-platform abstraction (`@pyreon/storage` shape per #802 spec) + a follow-on for `@pyreon/deep-links` | 4-8 weeks |
+| Chain                         | Scope                                                                                                                                  | Effort     |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **A — Compositional gaps**    | 4 PRs closing the TodoMVC walkthrough's in-Phase-1 gaps (two-way binding, keyboard handlers, array mutation, object-in-array updates)  | 4-6 weeks  |
+| **B — Widget bindings**       | 10 PRs each adding one iOS widget binding (TextField / Toggle / Checkbox / Slider / Picker / etc.)                                     | 6-10 weeks |
+| **C — Platform abstractions** | 3 PRs implementing the first cross-platform abstraction (`@pyreon/storage` shape per #802 spec) + a follow-on for `@pyreon/deep-links` | 4-8 weeks  |
 
 **Phase 1 finish line**: TodoMVC compiles + runs on iOS simulator end-to-end. All 10 widget bindings ship. `@pyreon/storage` works as the reference cross-platform abstraction. Real-Chromium-style fidelity test passes for 3+ rocketstyle components (not just the counter button from Phase 0 PR 8).
 
@@ -55,6 +55,7 @@ Falls back to the verbose `Binding(get:set:)` shape when the pattern doesn't mat
 **Deliverable**: every form-input widget binding emits idiomatic SwiftUI Binding shape.
 
 **Validation**:
+
 - Unit tests for each binding pattern + each fallback case
 - Round-trip: TodoMVC's `<TextField value={draft} onInput={...}>` emits `TextField("…", text: $draft)` exactly
 
@@ -68,17 +69,18 @@ Falls back to the verbose `Binding(get:set:)` shape when the pattern doesn't mat
 
 **Per-key emission table**:
 
-| Pyreon pattern | Swift emit | Kotlin emit |
-|---|---|---|
-| `e.key === 'Enter' && X()` | `.onSubmit { X() }` | `keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { X() })` |
-| `e.key === 'Escape' && X()` | `.onExitCommand { X() }` (macOS) / iOS no clean equivalent — fall back to `// pyreon-native-skip` warn | platform-specific dismiss handler |
-| `e.key === 'Tab' && X()` | Tab handling is automatic in SwiftUI; emit `// PMTC: Tab handling is automatic on iOS — handler dropped` comment | `Modifier.focusable() + focusOrder` (defer to Phase 2) |
+| Pyreon pattern              | Swift emit                                                                                                       | Kotlin emit                                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `e.key === 'Enter' && X()`  | `.onSubmit { X() }`                                                                                              | `keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { X() })` |
+| `e.key === 'Escape' && X()` | `.onExitCommand { X() }` (macOS) / iOS no clean equivalent — fall back to `// pyreon-native-skip` warn           | platform-specific dismiss handler                                                                                    |
+| `e.key === 'Tab' && X()`    | Tab handling is automatic in SwiftUI; emit `// PMTC: Tab handling is automatic on iOS — handler dropped` comment | `Modifier.focusable() + focusOrder` (defer to Phase 2)                                                               |
 
 For Phase 1, **only Enter is fully supported**. Other keys emit a warning + skip the handler. Real apps rarely need Escape/Tab handling on mobile; this is acceptable for TodoMVC.
 
 **Deliverable**: TodoMVC's `onKeyDown={(e) => e.key === 'Enter' && addTodo()}` emits `.onSubmit { addTodo() }` on Swift + `keyboardActions = ...` on Kotlin.
 
 **Validation**:
+
 - Unit tests per key + per platform
 - Round-trip: TodoMVC submit-on-enter works in iOS simulator
 
@@ -96,19 +98,20 @@ The TodoMVC walkthrough surfaced the design decision: **faithful spread emission
 
 **Patterns to recognize + emit**:
 
-| Pyreon pattern | Swift emit | Kotlin emit |
-|---|---|---|
-| `X.set([...X(), value])` | `X.append(value)` | `X.add(value)` (requires `mutableStateListOf`) |
-| `X.set([value, ...X()])` | `X.insert(value, at: 0)` | `X.add(0, value)` |
-| `X.set(X().filter(<predicate>))` | `X.removeAll(where: <predicate>)` | `X.removeAll(<predicate>)` |
+| Pyreon pattern                                        | Swift emit                                                           | Kotlin emit                                                                           |
+| ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `X.set([...X(), value])`                              | `X.append(value)`                                                    | `X.add(value)` (requires `mutableStateListOf`)                                        |
+| `X.set([value, ...X()])`                              | `X.insert(value, at: 0)`                                             | `X.add(0, value)`                                                                     |
+| `X.set(X().filter(<predicate>))`                      | `X.removeAll(where: <predicate>)`                                    | `X.removeAll(<predicate>)`                                                            |
 | `X.set(X().map(t => t.id === id ? {...t, F: V} : t))` | `if let idx = X.firstIndex(where: { $0.id == id }) { X[idx].F = V }` | `val idx = X.indexOfFirst { it.id == id }; if (idx >= 0) X[idx] = X[idx].copy(F = V)` |
-| Any other shape | Faithful spread fallback (current behavior) | Faithful spread fallback |
+| Any other shape                                       | Faithful spread fallback (current behavior)                          | Faithful spread fallback                                                              |
 
 **Companion compiler change**: when the compiler detects a `signal<T[]>(...)` declaration whose array is mutated in-place (via the patterns above), the Kotlin emit switches from `mutableStateOf(listOf())` to `mutableStateListOf<T>()` for per-element observability. Same source compiles to either depending on whether mutation patterns are detected. **Swift behavior is unchanged** (Swift's `@State var X: [T]` already supports in-place mutation with proper re-render).
 
 **Deliverable**: TodoMVC's `addTodo`/`remove`/`clearCompleted`/`toggle` emit idiomatic Swift/Kotlin mutations.
 
 **Validation**:
+
 - Unit tests per pattern
 - Round-trip: TodoMVC array mutations work correctly in iOS simulator
 - Perf comparison: Kotlin `mutableStateListOf` path vs faithful-spread path on a 1k-row list — assert per-row recompose count drops from O(N) to O(1) on single-row mutations
@@ -126,6 +129,7 @@ The TodoMVC walkthrough surfaced the design decision: **faithful spread emission
 **Deliverable**: TodoMVC compiles, builds, runs in iOS simulator. Add todo, toggle done, filter, delete, clear completed — all work.
 
 **Validation** — extends Phase 0 PR 4's validation pattern:
+
 - ✅ `./scripts/build.sh && xcodebuild ... build` exits 0
 - ✅ App launches in iOS simulator
 - ✅ Type a todo, submit on Enter, see it appear
@@ -146,18 +150,18 @@ The PMTC plan names "10 native widget bindings" as Phase 1's widget surface. Eac
 
 ### The 10 widgets
 
-| # | Widget | SwiftUI primitive | Phase 0 status |
-|---|---|---|---|
-| 1 | `<VStack>` / `<View>` | `VStack` | covered (Phase 0 fixture pipeline) |
-| 2 | `<HStack>` | `HStack` | NOT covered — Phase 1 |
-| 3 | `<Text>` | `Text` | covered |
-| 4 | `<Button>` | `Button` | covered |
-| 5 | `<TextField>` | `TextField` | Phase 1 (needs A1) |
-| 6 | `<Image>` | `Image` | Phase 1 |
-| 7 | `<ScrollView>` | `ScrollView` | Phase 1 |
-| 8 | `<List>` (sectioned) | `List` | Phase 1 (distinct from `<For>` — uses platform list chrome) |
-| 9 | `<Toggle>` (Switch) | `Toggle` | Phase 1 (needs A1) |
-| 10 | `<StatusBar>` | `.statusBarHidden(...)` etc. | Phase 1 |
+| #   | Widget                | SwiftUI primitive            | Phase 0 status                                              |
+| --- | --------------------- | ---------------------------- | ----------------------------------------------------------- |
+| 1   | `<VStack>` / `<View>` | `VStack`                     | covered (Phase 0 fixture pipeline)                          |
+| 2   | `<HStack>`            | `HStack`                     | NOT covered — Phase 1                                       |
+| 3   | `<Text>`              | `Text`                       | covered                                                     |
+| 4   | `<Button>`            | `Button`                     | covered                                                     |
+| 5   | `<TextField>`         | `TextField`                  | Phase 1 (needs A1)                                          |
+| 6   | `<Image>`             | `Image`                      | Phase 1                                                     |
+| 7   | `<ScrollView>`        | `ScrollView`                 | Phase 1                                                     |
+| 8   | `<List>` (sectioned)  | `List`                       | Phase 1 (distinct from `<For>` — uses platform list chrome) |
+| 9   | `<Toggle>` (Switch)   | `Toggle`                     | Phase 1 (needs A1)                                          |
+| 10  | `<StatusBar>`         | `.statusBarHidden(...)` etc. | Phase 1                                                     |
 
 **Not in Phase 1** (deferred to Phase 2+): `<Touchable>` (gesture handling), `<DatePicker>`, `<Picker>`, `<Slider>`, `<TabView>`, `<NavigationStack>` (Phase 3 router work), `<TabBar>`, `<Drawer>`, `<Sheet>` (modal presentation).
 
@@ -211,6 +215,7 @@ The platform abstractions spec (#802) defines the package shape. Chain C ships t
 **Deliverable**: the compiler's manifest-resolver is generic. The first abstraction (C2) doesn't require compiler changes — it just adds a manifest entry.
 
 **Validation**:
+
 - Unit tests with a synthetic test-only manifest
 - The compiler emits the right shape for a synthetic `useTestThing()` call
 - The missing-implementation error message matches the spec
@@ -243,6 +248,7 @@ The platform abstractions spec (#802) defines the package shape. Chain C ships t
 **Deliverable**: TodoMVC's `useStorage<Todo[]>('pyreon-todomvc:todos', [])` works end-to-end on iOS simulator. Todos persist across app restarts.
 
 **Validation**:
+
 - C1's compiler resolver correctly substitutes the iOS binding
 - TodoMVC iOS app reads/writes UserDefaults via the binding
 - Manifest schema gate (per #802) passes for the new manifest
@@ -260,6 +266,7 @@ The platform abstractions spec (#802) defines the package shape. Chain C ships t
 **Scope**: second reference implementation following the C2 pattern. Validates that the manifest mechanism scales beyond one consumer.
 
 **Per-platform shapes**:
+
 - iOS: `.onOpenURL` SwiftUI modifier + Universal Links entitlement
 - Android: `Intent.ACTION_VIEW` + intent-filter in AndroidManifest
 - Web: pairs with existing `@pyreon/router`
@@ -321,14 +328,14 @@ The platform abstractions spec (#802) defines the package shape. Chain C ships t
 
 ## Phase 1 completion checklist
 
-| Checkpoint | Closed by | Status |
-|---|---|---|
-| TodoMVC compiles + runs on iOS simulator (add/toggle/filter/delete/clear) | A1+A2+A3+A4 | open |
-| 10 widget bindings ship | B1-B10 | open |
-| First cross-platform abstraction works end-to-end (storage) | C1+C2 | open |
-| Real-Chromium-style fidelity test passes for ≥3 rocketstyle components | extends Phase 0 PR 8 | open |
-| At least 50 cumulative compiler tests pass (currently 14 from PR #794) | implicit across all chains | open |
-| No regressions: every Phase 0 spec / fixture / criterion still green | CI | open |
+| Checkpoint                                                                | Closed by                  | Status |
+| ------------------------------------------------------------------------- | -------------------------- | ------ |
+| TodoMVC compiles + runs on iOS simulator (add/toggle/filter/delete/clear) | A1+A2+A3+A4                | open   |
+| 10 widget bindings ship                                                   | B1-B10                     | open   |
+| First cross-platform abstraction works end-to-end (storage)               | C1+C2                      | open   |
+| Real-Chromium-style fidelity test passes for ≥3 rocketstyle components    | extends Phase 0 PR 8       | open   |
+| At least 50 cumulative compiler tests pass (currently 14 from PR #794)    | implicit across all chains | open   |
+| No regressions: every Phase 0 spec / fixture / criterion still green      | CI                         | open   |
 
 When all six close, Phase 1 is **complete**. Next decision: Phase 2 (Android parity) staffing.
 
@@ -336,11 +343,11 @@ When all six close, Phase 1 is **complete**. Next decision: Phase 2 (Android par
 
 ## Effort summary
 
-| Sequencing | Optimistic | Risk-adjusted |
-|---|---|---|
-| 1 contributor (serialized through chain A then B then C) | 16-24 weeks | 20-30 weeks |
-| 2 contributors (A on critical path, B + C in parallel) | 10-16 weeks | 14-20 weeks |
-| 3 contributors (A / B / C all in parallel) | 8-12 weeks | 12-16 weeks |
+| Sequencing                                               | Optimistic  | Risk-adjusted |
+| -------------------------------------------------------- | ----------- | ------------- |
+| 1 contributor (serialized through chain A then B then C) | 16-24 weeks | 20-30 weeks   |
+| 2 contributors (A on critical path, B + C in parallel)   | 10-16 weeks | 14-20 weeks   |
+| 3 contributors (A / B / C all in parallel)               | 8-12 weeks  | 12-16 weeks   |
 
 PMTC plan's "+4-6 months" envelope = 16-24 weeks. **1-contributor serialized hits the upper end optimistically; 2-contributor parallel hits the middle.** Risk-adjusted ranges cover: A2's per-key emit table needing per-key fixes, A3's pattern detection edge cases, B chain widgets exposing per-widget SwiftUI nuances, C2's Codable conformance edge cases.
 
@@ -350,15 +357,15 @@ PMTC plan's "+4-6 months" envelope = 16-24 weeks. **1-contributor serialized hit
 
 Phase 1 staffing should NOT happen until Phase 0's three criteria report results. The Phase 1 design assumes:
 
-| Phase 0 outcome | Phase 1 impact |
-|---|---|
-| Criterion 1 (type mapper ≥90%) PASSES | Chain A1+A3 can rely on the type mapper for prop type translation. **Assumption holds.** |
-| Criterion 1 FAILS (coverage ~60%) | Chain A is much harder — manual annotation needed at many call sites. Phase 1 needs +4-8 weeks to harden the type mapper. |
-| Criterion 2 (counter on iOS simulator) PASSES | Pipeline shape is proven. Chain B can extend without re-deriving. |
-| Criterion 2 FAILS | Phase 1 cannot start. Phase 0 must be debugged and re-spiked. |
-| Criterion 3 (style fidelity <5%) PASSES | Chain B can ship widgets with confidence that rocketstyle composition works. |
-| Criterion 3 FAILS at 10-15% pixel diff | Acceptable — re-tune the threshold per the Phase 0 roadmap's note. Chain B proceeds. |
-| Criterion 3 FAILS at >20% pixel diff | Style emitter has structural problems; Phase 1 needs to extend Phase 0 PRs 7a-7c. |
+| Phase 0 outcome                               | Phase 1 impact                                                                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Criterion 1 (type mapper ≥90%) PASSES         | Chain A1+A3 can rely on the type mapper for prop type translation. **Assumption holds.**                                  |
+| Criterion 1 FAILS (coverage ~60%)             | Chain A is much harder — manual annotation needed at many call sites. Phase 1 needs +4-8 weeks to harden the type mapper. |
+| Criterion 2 (counter on iOS simulator) PASSES | Pipeline shape is proven. Chain B can extend without re-deriving.                                                         |
+| Criterion 2 FAILS                             | Phase 1 cannot start. Phase 0 must be debugged and re-spiked.                                                             |
+| Criterion 3 (style fidelity <5%) PASSES       | Chain B can ship widgets with confidence that rocketstyle composition works.                                              |
+| Criterion 3 FAILS at 10-15% pixel diff        | Acceptable — re-tune the threshold per the Phase 0 roadmap's note. Chain B proceeds.                                      |
+| Criterion 3 FAILS at >20% pixel diff          | Style emitter has structural problems; Phase 1 needs to extend Phase 0 PRs 7a-7c.                                         |
 
 **Don't staff Phase 1 until Phase 0 reports.** If Phase 0 fails any criterion, the answer is "fix Phase 0," not "press on into Phase 1 anyway."
 

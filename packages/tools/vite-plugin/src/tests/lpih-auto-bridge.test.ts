@@ -117,12 +117,10 @@ describe('writeLpihCacheFile', () => {
   it('rejects body without `fires` array', async () => {
     const path = join(root, '.pyreon-lpih.json')
     await expect(writeLpihCacheFile(path, JSON.stringify({}))).rejects.toThrow(/missing `fires`/)
-    await expect(
-      writeLpihCacheFile(path, JSON.stringify({ fires: 'not array' })),
-    ).rejects.toThrow(/missing `fires`/)
-    await expect(writeLpihCacheFile(path, JSON.stringify(null))).rejects.toThrow(
+    await expect(writeLpihCacheFile(path, JSON.stringify({ fires: 'not array' }))).rejects.toThrow(
       /missing `fires`/,
     )
+    await expect(writeLpihCacheFile(path, JSON.stringify(null))).rejects.toThrow(/missing `fires`/)
     expect(existsSync(path)).toBe(false)
   })
 
@@ -144,13 +142,9 @@ describe('writeLpihCacheFile', () => {
     const targetDir = join(root, 'as-dir')
     const fs = await import('node:fs/promises')
     await fs.mkdir(targetDir, { recursive: true })
-    await expect(
-      writeLpihCacheFile(targetDir, JSON.stringify({ fires: [] })),
-    ).rejects.toBeDefined()
+    await expect(writeLpihCacheFile(targetDir, JSON.stringify({ fires: [] }))).rejects.toBeDefined()
     const files = await fs.readdir(root)
-    const tmpFiles = files.filter(
-      (f) => f.startsWith('as-dir.tmp.') || f.includes('.tmp.'),
-    )
+    const tmpFiles = files.filter((f) => f.startsWith('as-dir.tmp.') || f.includes('.tmp.'))
     expect(tmpFiles).toEqual([])
   })
 })
@@ -325,7 +319,11 @@ describe('LPIH configureServer — middleware registration', () => {
       (c: unknown[]) => c[0] === '/__pyreon_lpih__',
     )
     const handler = lpihCall![1] as (
-      req: { method: string; on: (ev: string, cb: (chunk: string) => void) => void; destroy: () => void },
+      req: {
+        method: string
+        on: (ev: string, cb: (chunk: string) => void) => void
+        destroy: () => void
+      },
       res: { statusCode: number; end: () => void },
     ) => void
 
@@ -351,9 +349,7 @@ describe('LPIH configureServer — middleware registration', () => {
     })
 
     const payload = JSON.stringify({
-      fires: [
-        { file: '/a.tsx', line: 5, count: 3, kind: 'signal', lastFire: 100, rate1s: 1.5 },
-      ],
+      fires: [{ file: '/a.tsx', line: 5, count: 3, kind: 'signal', lastFire: 100, rate1s: 1.5 }],
     })
     handlers.data!(payload)
     handlers.end!()
@@ -376,7 +372,11 @@ describe('LPIH configureServer — middleware registration', () => {
       (c: unknown[]) => c[0] === '/__pyreon_lpih__',
     )
     const handler = lpihCall![1] as (
-      req: { method: string; on: (ev: string, cb: (chunk: string) => void) => void; destroy: () => void },
+      req: {
+        method: string
+        on: (ev: string, cb: (chunk: string) => void) => void
+        destroy: () => void
+      },
       res: { statusCode: number; end: () => void },
     ) => void
 

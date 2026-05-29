@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Reactive code editor — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages',
   description:
-    'Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco\'s ~2.5MB). `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.',
+    "Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.",
   category: 'browser',
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
@@ -71,8 +71,7 @@ await loadLanguage('python')
     {
       name: 'createEditor',
       kind: 'function',
-      signature:
-        '(config: EditorConfig) => EditorInstance',
+      signature: '(config: EditorConfig) => EditorInstance',
       summary:
         'Create a reactive editor instance. `editor.value` is a writable Signal<string> — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, onChange, and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`.',
       example: `const editor = createEditor({
@@ -94,7 +93,7 @@ editor.insert('code')
       mistakes: [
         'Forgetting to declare @pyreon/runtime-dom in consumer app deps — <CodeEditor> JSX emits _tpl() which needs runtime-dom',
         'Hand-rolling the applyingFromExternal/applyingFromEditor flag pattern — use bindEditorToSignal instead',
-        'Calling editor methods before mount — they no-op safely but changes don\'t persist',
+        "Calling editor methods before mount — they no-op safely but changes don't persist",
         'Setting both vim: true and emacs: true — emacs wins',
       ],
       seeAlso: ['CodeEditor', 'bindEditorToSignal', 'loadLanguage'],
@@ -102,8 +101,7 @@ editor.insert('code')
     {
       name: 'bindEditorToSignal',
       kind: 'function',
-      signature:
-        '<T>(options: BindEditorToSignalOptions<T>) => EditorBinding',
+      signature: '<T>(options: BindEditorToSignalOptions<T>) => EditorBinding',
       summary:
         'Two-way binding between an editor instance and an external Signal<T> (or SignalLike<T>). Replaces the recurring loop-prevention flag-pair boilerplate. Round-trips through user-supplied `serialize`/`parse` functions. Internal flags break the format-on-input race; parse failures call `onParseError` and leave the external state at its last valid value. Returns `{ dispose }` for cleanup.',
       example: `const data = signal<Doc>({ name: 'Alice', count: 1 })
@@ -119,7 +117,7 @@ const binding = bindEditorToSignal({
 // binding.dispose() on unmount`,
       mistakes: [
         'Forgetting to call binding.dispose() on unmount — leaks both effects',
-        'Non-deterministic serialize() — if serialize(parse(text)) varies on each call, the helper dispatches redundant writes that fight the user\'s typing',
+        "Non-deterministic serialize() — if serialize(parse(text)) varies on each call, the helper dispatches redundant writes that fight the user's typing",
         'Returning a non-null value from parse() for malformed input — return null on failure, or throw',
         'Using bindEditorToSignal AND a manual editor.value.set() loop — defeats loop prevention',
       ],

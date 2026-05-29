@@ -62,8 +62,8 @@ export default function ResumeRoute() {
         <HeaderText>
           <ResumeTitle>Resume Builder</ResumeTitle>
           <ResumeLead>
-            Edit on the left — the preview on the right uses the SAME document-primitives tree
-            that gets exported. No duplicated layout, no separate template for the print version.
+            Edit on the left — the preview on the right uses the SAME document-primitives tree that
+            gets exported. No duplicated layout, no separate template for the print version.
           </ResumeLead>
         </HeaderText>
         <ResetButton type="button" onClick={() => r.store.reset()}>

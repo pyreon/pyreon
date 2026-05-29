@@ -320,7 +320,12 @@ export const PreviewFrame = styled('div')`
   line-height: 1.5;
   overflow: auto;
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     margin: 0 0 8px 0;
   }
   p {
@@ -331,7 +336,8 @@ export const PreviewFrame = styled('div')`
     border-collapse: collapse;
     margin: 8px 0;
   }
-  th, td {
+  th,
+  td {
     padding: 8px 10px;
     text-align: left;
     font-size: 12px;

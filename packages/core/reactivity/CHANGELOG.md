@@ -31,7 +31,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -61,11 +60,11 @@
   ## What
 
   ```ts
-  const isSelected = createSelector(selectedId);
+  const isSelected = createSelector(selectedId)
   // In each row's template:
   const dispose = isSelected.subscribe(row.id, (matches) => {
-    rowEl.className = matches ? "selected" : "";
-  });
+    rowEl.className = matches ? 'selected' : ''
+  })
   ```
 
   Equivalent to `renderEffect(() => updater(selector(key)))` but skips the `renderEffect` machinery entirely: no `deps` array, no `withTracking` / `setDepsCollector`, no `run` closure allocation, no scope `add({ dispose })` wrapper. The selector's source effect stores the user's updater DIRECTLY in a per-key bound bucket and calls it with the resolved boolean (`true` on selection added, `false` on selection removed).
@@ -107,7 +106,6 @@
   **1. HIGH — race condition in sentinel opt-out under concurrent `Promise.all`** (`@pyreon/reactivity` + `@pyreon/zero` + `@pyreon/vite-plugin`).
 
   The env-var dance pattern (`process.env.PYREON_SINGLE_INSTANCE = 'silent'` / capture+restore) used by `ssrLoadModuleQuiet`, SSG-plugin's built-handler import, and rocketstyle-collapse's nested-SSR resolver was race-prone under `Promise.all` of N opt-out scopes:
-
   1. Call A: captures `prev=undefined`, sets `'silent'`
   2. Call B: captures `prev='silent'` (post-A's write), sets `'silent'`
   3. A's `finally` deletes env (prev was undefined)
@@ -116,7 +114,6 @@
   Effect: the sentinel was silently disabled for the entire dev / SSG / collapse-resolver process lifetime. Bisect-verified with a focused reproducer; the leak fires with 5 concurrent scopes in `renderSsr`.
 
   **Fix**: `@pyreon/reactivity` ships two new exports:
-
   - `withSilent(fn): Promise<T>` — async refcount-based scope. Increments `silentDepth` on the sentinel state, awaits the fn, decrements in `finally`. Order-independent under concurrency.
   - `withSilentSync(fn): T` — sync variant.
 
@@ -171,7 +168,6 @@
 - [#785](https://github.com/pyreon/pyreon/pull/785) [`b8fb31c`](https://github.com/pyreon/pyreon/commit/b8fb31cf1a59578fc33f27d539695d2bc164b2f1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: build-time `__sourceLocation` injection now covers `computed()` and `effect()` calls (R8 — extension of R4). Previously only `signal()` got the build-time literal; `computed()` and `effect()` still paid the runtime `new Error().stack` capture cost (~2.2 µs per creation when devtools is active).
 
   Three forms covered by the extended `injectSignalNames`:
-
   - `const x = signal(...)` → `signal(..., { name: "x", __sourceLocation: {...} })`
   - `const d = computed(() => ...)` → `computed(..., { name: "d", __sourceLocation: {...} })`
   - `effect(() => ...)` (unbound) → `effect(..., { __sourceLocation: {...} })` (no `name` — anonymous effects have no binding to derive from)
@@ -179,7 +175,6 @@
   Unbound `signal()` / `computed()` are left untouched (rare anonymous patterns). The unbound-effect pass uses negative lookbehind `(?<![\w$.])` to skip member-access (`obj.effect()`) and identifier-suffix (`sideEffect()`) false-positives.
 
   `@pyreon/reactivity` exposes the matching surface on the runtime side:
-
   - `ComputedOptions<T>` gains an `@internal __sourceLocation` field; `computed()` threads it through to both internal paths (`computedLazy` / `computedWithEquals`), preferring it over `_captureCallerLocation(2)` in `_rdRegister`
   - new `EffectOptions` interface with the same `@internal __sourceLocation` field; `effect(fn, options?)` accepts the second arg
 
@@ -193,31 +188,28 @@
 
   ```ts
   // Before (foundation PR):
-  import { startLpihPolling } from "@pyreon/reactivity/lpih";
-  startLpihPolling("/tmp/pyreon-lpih.json", 250);
+  import { startLpihPolling } from '@pyreon/reactivity/lpih'
+  startLpihPolling('/tmp/pyreon-lpih.json', 250)
   // + set PYREON_LPIH_CACHE=/tmp/pyreon-lpih.json on the LSP
 
   // Now (zero config):
-  import { startLpihPolling } from "@pyreon/reactivity/lpih";
-  startLpihPolling(); // writes to <cwd>/.pyreon-lpih.json
+  import { startLpihPolling } from '@pyreon/reactivity/lpih'
+  startLpihPolling() // writes to <cwd>/.pyreon-lpih.json
   // LSP auto-discovers; no env var needed
   ```
 
   **`@pyreon/reactivity/lpih`**:
-
   - `writeLpihCache(path?)` — `path` is now optional, defaults to `getDefaultLpihCachePath()` (which returns `<cwd>/.pyreon-lpih.json`)
   - `startLpihPolling(path?, intervalMs?)` — same default; throws synchronously if no default can be resolved AND no path given (better than silently never writing)
   - New export `getDefaultLpihCachePath(): string | null` — returns the resolved path or null in environments without `process.cwd()` (web workers, etc.)
   - New export `LPIH_DEFAULT_FILENAME = '.pyreon-lpih.json'` — canonical filename constant
 
   **`@pyreon/lint`** LSP:
-
   - `_resolveLpihCachePath(filePath)` — new helper that resolves the cache path for a given source file. Priority: `PYREON_LPIH_CACHE` env (explicit override) → `<project-root>/.pyreon-lpih.json` discovered by walking up to nearest `package.json` (zero-config default) → `undefined` (LPIH inactive)
   - `_findProjectRoot(filePath, maxDepth?)` — memoized walk-up helper. Caches results per-file for the LSP-process lifetime; cleared on `_resetOpenDocuments()`. Synchronous (one `existsSync` per level, typically <10 levels = negligible cost).
   - `_LPIH_DEFAULT_FILENAME` — exported constant locked to `.pyreon-lpih.json` (matches `@pyreon/reactivity/lpih`'s `LPIH_DEFAULT_FILENAME` — a drift gate test in `lsp-lpih.test.ts` validates the agreement).
 
   **Discovery priority** (matches across writer + reader):
-
   1. `PYREON_LPIH_CACHE` env var on the LSP (explicit override) — unchanged
   2. `<project-root>/.pyreon-lpih.json` (auto-discovered) — new default
   3. No cache → LPIH inactive (degrades to static Reactivity-Lens hints only) — unchanged
@@ -232,10 +224,10 @@
 
   ```tsx
   function App() {
-    const count = signal(0); // 🔥 signal fired 240×
-    const doubled = computed(() => count() * 2); // 🔥 derived fired 240×
-    effect(() => console.log(doubled())); // 🔥 effect fired 241×
-    return <div>{count()}</div>;
+    const count = signal(0) // 🔥 signal fired 240×
+    const doubled = computed(() => count() * 2) // 🔥 derived fired 240×
+    effect(() => console.log(doubled())) // 🔥 effect fired 241×
+    return <div>{count()}</div>
   }
   ```
 
@@ -268,8 +260,8 @@
 - [#780](https://github.com/pyreon/pyreon/pull/780) [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: sustained-rate hint via EWMA. Inlay-hint labels now show both cumulative fire count AND current fires/second when active — making hot-path debugging visible at a glance.
 
   ```tsx
-  const count = signal(0); // 🔥 signal fired 240× (12/s) — active
-  const stable = signal(0); // 🔥 signal fired 240×          — idle
+  const count = signal(0) // 🔥 signal fired 240× (12/s) — active
+  const stable = signal(0) // 🔥 signal fired 240×          — idle
   ```
 
   **Why**: cumulative count alone can't distinguish "this is firing right now" from "this fired a lot a few minutes ago." For hot-path debugging (the LPIH [#1](https://github.com/pyreon/pyreon/issues/1) use case), the user needs to see _current_ rate. Adding a decayed-EWMA rate alongside the cumulative count gives both signals without bloating the label.
@@ -285,14 +277,12 @@
   At steady state of λ fires/sec, `rate1s → λ` (when λ·TAU ≫ 1 — true for any rate worth noticing). On read, decay-to-now applied: a node that stopped firing 1.5s ago shows ≈22% of its peak rate; 3s ago shows ≈5%; 5s ago shows ≈0.7% (below the visibility threshold).
 
   **`@pyreon/reactivity`**:
-
   - `FireSummary.rate1s: number` — new field, decayed to "now" at every `getFireSummaries()` call.
   - `NodeRec.rate1s` — internal per-node EWMA state, updated on every fire.
   - `LPIH_RATE_TAU_MS` — exported constant (1000 ms = 1 second time constant).
   - Bridge `writeLpihCache` now includes `rate1s` in each fire entry's JSON.
 
   **`@pyreon/compiler`**:
-
   - `LPIHFireDatum.rate1s?: number` — optional field; older runtimes that don't emit it produce labels without the rate suffix (backward-compatible).
   - `_LPIH_RATE_VISIBLE_THRESHOLD = 0.5` — rates below this are suppressed (don't show "0.1/s" or "0/s" noise from decayed-dormant nodes).
   - Default label formatter: `signal fired 240× (12/s)` when active, `signal fired 240×` when below threshold or no rate field.
@@ -300,11 +290,9 @@
   - Multiple fires at the same line have their rates summed (consistent with the existing count-summing behavior).
 
   **`@pyreon/lint`**:
-
   - `LPIHCacheEntry.rate1s?: number` — round-trips through the cache; no LSP-side logic change beyond the type extension. The compiler's default formatter picks up the new field automatically.
 
   **Tests** (+12 new across all 3 packages, 2383 total, all green):
-
   - @pyreon/reactivity: 367 (+5 — rate1s captured, rises with bursts, decays after TAU, sums at same location, constant value lock)
   - @pyreon/compiler: 1316 (+7 — threshold-suppress, 1-decimal vs integer rounding, creation-site formatter, line-sum, custom formatter receives rate, missing-field passthrough)
   - @pyreon/lint: 700 (no new tests — rate1s is data-only round-trip through the cache; existing integration tests cover the path)
@@ -321,7 +309,7 @@
 
   ```ts
   // User source:
-  const count = signal(0);
+  const count = signal(0)
 
   // Runtime, when devtools active:
   // 1. new Error() + parse stack → ~2.2µs cost per creation
@@ -332,13 +320,13 @@
 
   ```ts
   // User source (unchanged):
-  const count = signal(0);
+  const count = signal(0)
 
   // Vite-transformed source (dev mode):
   const count = signal(0, {
-    name: "count",
-    __sourceLocation: { file: "app.tsx", line: 5, col: 14 },
-  });
+    name: 'count',
+    __sourceLocation: { file: 'app.tsx', line: 5, col: 14 },
+  })
 
   // Runtime, when devtools active:
   // 1. Read options.__sourceLocation → ~0ns cost
@@ -346,12 +334,10 @@
   ```
 
   **`@pyreon/reactivity`**:
-
   - `SignalOptions.__sourceLocation?: { file, line, col }` — new optional field (marked `@internal`, not part of the public API surface). When present, the runtime uses it directly and skips `_captureCallerLocation()` entirely.
   - 2 new tests proving the injected option is preferred over stack capture + the fallback still works when the option is absent.
 
   **`@pyreon/vite-plugin`**:
-
   - Extended `injectSignalNames` to ALSO inject `__sourceLocation` alongside the existing `name` field. Same regex, same transform pass — additive change.
   - New helpers `_computeLineStarts(code)` + `_offsetToLineCol(offset, starts)` — O(N) precompute + O(log N) per-signal binary search. Avoids O(N²) when many signals share a file.
   - The injected `file` is Vite's resolved module ID (absolute path) — the same path the runtime would have parsed from `new Error().stack`, so byte-identical behavior except for cost.
@@ -360,12 +346,10 @@
   **Known limitation**: module-scope signals (`export const x = signal(0)`) get rewritten to `__hmr_signal()` first by the existing HMR injection pass. The location injection runs after and naturally skips them (regex matches `signal(` not `__hmr_signal(`). Module-scope signals still pay the runtime stack-capture cost. Function-scope signals (the dominant pattern in real Pyreon apps — signals declared inside components) get the full benefit. Module-scope follow-up tracked.
 
   **Tests** (+17 new across 2 packages, 481 total green):
-
   - `@pyreon/reactivity`: 362 (+2 — injected-location-preferred + stack-fallback-when-absent)
   - `@pyreon/vite-plugin`: 119 (+15 — line-starts utility, offset-to-line-col, 6 injection scenarios, existing-options skip, non-signal skip, multiline args)
 
   **Performance**:
-
   - Runtime cost (devtools active, function-scope signal): **0 ns** stack capture (was ~2.2 µs)
   - Build-time cost: ~10 µs per signal call site (one regex match + one binary search + ~80 bytes of literal output) — invisible on real-world builds
   - Bundle-budget impact: 0 (transform happens in dev-mode-only Vite plugin code path; no production bundle growth)
@@ -396,8 +380,8 @@
   **3. String-region false-positives in `injectSignalNames` (medium impact)** — the regexes `(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(` (R4+R8 bound) and `(?<![\w$.])effect\(` (R8 unbound) matched anywhere in source text, including INSIDE string literals / template literals / comments. User code like:
 
   ```ts
-  const docs = `effect(() => x)`;
-  throw new Error("effect() must be called inside a component");
+  const docs = `effect(() => x)`
+  throw new Error('effect() must be called inside a component')
   // TODO: replace effect(() => log()) with watch()
   ```
 
@@ -406,7 +390,6 @@
   Fix: new `_maskStringsAndComments(code)` pre-pass produces a same-length copy of `code` with strings/comments blanked to spaces (newlines preserved so line numbers don't shift). Regexes run against the masked version; args extraction reads from the original. Template-literal `${...}` interpolations are PRESERVED as code (their bodies can contain real `signal()` calls worth catching). Bisect-verified: disabling the masking pre-pass fails 5 of the new false-positive guard tests.
 
   Test counts:
-
   - vite-plugin: 154 → 173 (+19): 11 `_maskStringsAndComments` unit tests, 6 false-positive guards, 1 top-level-await structural test, 1 rename-failure tmp cleanup test
   - reactivity: 377/377 unchanged (foundation tmp-leak fix doesn't add tests; bisect-verified structurally by reading the diff)
 
@@ -458,14 +441,13 @@
       extra: { component: ctx.component, reactiveTrace: ctx.reactiveTrace },
       // e.g. [{ name: 'status', prev: '"idle"', next: '"submitting"' },
       //       { name: 'user',   prev: 'null',    next: 'User {id, …}' }]
-    });
-  });
+    })
+  })
   ```
 
   **New: `getReactiveTrace()` / `clearReactiveTrace()`** (`@pyreon/reactivity`) — read / reset the buffer directly (devtools, test isolation), plus the `ReactiveTraceEntry` type.
 
   Design properties:
-
   - **Zero production cost.** The recorder feeding the buffer sits behind the bundler-agnostic production dead-code gate in `signal.ts` `_set` and tree-shakes out of prod bundles. `reactiveTrace` is simply `undefined` in production. Verified: bundle budgets unchanged (all 54 within budget), perf-harness tree-shake regression passes.
   - **Bounded + leak-safe.** Fixed-size (~50-entry) ring buffer, oldest-evicted, never grows. Stores **truncated string previews** of values — never raw references — so it can't pin large arrays / detached DOM / closures, and is always safe to serialize into a report. Hostile values (throwing getters, cycles, huge strings, BigInt) are handled without throwing.
   - **Distinct from `onSignalUpdate`.** That is opt-in and captures stacks (expensive, for time-travel debugging). This is always-on in dev, deliberately cheap (no stack), and exists specifically to enrich error reports.
@@ -478,7 +460,6 @@
 - [#612](https://github.com/pyreon/pyreon/pull/612) [`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 12 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
 
   **Security (prototype pollution / XSS / DoS)**
-
   - `@pyreon/reactivity` `reconcile()` + `createStore` set trap — a documented "apply an untrusted API response into a store" path (`reconcile(JSON.parse(body), store)`) had no `__proto__`/`constructor`/`prototype` guard. Added on both the write and stale-key-removal passes + defense-in-depth in the proxy set trap.
   - `@pyreon/i18n` `addMessages` — `nestFlatKeys` (dotted-key expansion) ran BEFORE `deepMerge`, so deepMerge's own pollution filter never saw the dotted form; `__proto__.x` walked into `Object.prototype` and wrote onto it. Message JSON is routinely CDN/community-sourced. Guarded.
   - `@pyreon/document` HTML renderer — `language` was interpolated raw into `<html lang="…">` and `styleStr` emitted string values raw into `style="…"`; a CMS/author-supplied value containing `"><script>` broke out → stored XSS. `lang` is now charset-restricted + escaped; style values route through the renderer's existing `sanitizeCss`.
@@ -488,20 +469,17 @@
   - `@pyreon/zero` API-route matcher — dangerous param names from the route pattern guarded (defense-in-depth; consistent with the reconcile / i18n guards).
 
   **Memory leaks**
-
   - `@pyreon/reactivity` `signal._d` — direct-updater disposal nulled an array slot but never compacted, so a long-lived signal (theme/locale/auth, or signals read in `<For>` rows) bound by churning components accumulated one permanent dead slot per ever-mounted binding — an app-lifetime leak that ALSO degraded the signal-write hot path (`notifyDirect` iterated O(total-ever), not O(live)). Switched to a `Set` (same as `_s`): O(1) disposal, O(live) iteration, bounded growth. Proven structurally — `_d.size` stays 0 after 10 000 register/dispose cycles.
   - `@pyreon/dnd` `useSortable` — `itemRef` pushed every pdnd registration onto a shared array and the unmount (`ref(null)`) branch was a no-op, so a churning `<For>` sortable (todo list / kanban — the documented usage) leaked every removed item's draggable/dropTarget registration until the whole sortable unmounted. Now per-key disposal on unmount and re-register.
   - `@pyreon/zero` ISR — a hung revalidation handler pinned its key in the in-flight set forever (`finally` never ran), so the entry could never recover from stale. Background revalidation is now timeout-bounded (`ISRConfig.revalidateTimeoutMs`, default 30 s).
 
   **Correctness / silent-failure**
-
   - `@pyreon/router` `stringifyLoaderData` — the cycle detector used an all-seen `WeakSet` that was never pruned, so a shared (DAG) reference — extremely common, e.g. `{ author: user, lastEditor: user }` from an ORM — falsely threw "circular reference" and 500'd the SSR response. Replaced with true ancestor-path detection (the original code's own comment anticipated exactly this remedy). **Behaviour change (bug fix, strictly more permissive):** payloads that previously 500'd now serialize; real cycles still throw.
   - `@pyreon/server` `processTemplate` — used `String.prototype.replace` with string replacements, so rendered HTML containing literal `$&` / `$$` / `` $` `` / `$'` (prices, code, math) was corrupted by regex-pattern substitution. Switched to function replacements.
   - `@pyreon/i18n` `interpolate` — a serialization failure (circular value, throwing `toString`) was swallowed silently, rendering `{{key}}` to end users with no signal. Now dev-warns (fallback behaviour unchanged).
   - `@pyreon/query` `useSSE` — the reactive effect unconditionally reset `intentionalClose = false`, so an explicit `close()` was silently overridden by any later reactive `url`/`enabled` change. Now respects `intentionalClose` (mirrors `useSubscription`); `reconnect()` is the explicit resume.
 
   **Disclosures (honest scope)**
-
   - **An attempted SWR-swallow fix (surface the empty `.catch` via `__DEV__` warn + `_onError`) was REVERTED from this PR.** Probing empirically proved `revalidateSwrLoaders` is invoked **0 times** even by the canonical `staleWhileRevalidate` nav pattern: `resolveRoute` returns fresh `RouteRecord` objects per resolution, so `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate is never true across navigations — the SWR branch is **dead code**, and the existing "revalidates in background" test's count actually comes from the blocking path running twice. Adding error-surfacing to provably-unreachable code is not hardening (and it dropped router coverage). **The real bug — `staleWhileRevalidate` is effectively non-functional for the nav-away/back case (record-identity-keyed gate)** — is a distinct, significant finding whose correct fix (key the gate by a stable path/loaderKey) is a non-trivial router behaviour change deserving its own focused, aligned PR. Documented in `router/src/tests/loader.test.ts` as a flagged follow-up; deliberately not bundled here (scope/risk).
   - One audit finding (`decodeKeyFromMarker`) was investigated and **dropped as a false positive** — `%2D` never appears in `encodeURIComponent` output, so the manual substitution is uniquely reversible.
   - Z5 (API-route param guard) is defense-in-depth: a string param value assigned to `__proto__` is a silent JS no-op (not exploitable); the guard prevents the real own-prop shadow for `constructor`/`prototype` and matches the repo-wide convention.
@@ -547,7 +525,6 @@
   **Doc-hygiene (same PR, per continuous-learning).** `.claude/rules/testing.md`'s "All packages maintain >95% on all 4 metrics" line was false on both counts; corrected to state the _real enforced contract_ (90% global threshold = the blocking gate; >95% is the aspiration, not a guaranteed invariant) with the reactivity drift as the worked example.
 
   **Known remaining (deliberate, tracked follow-ups — not silently dropped):**
-
   - `tracking.ts` 72-73 (the `cleanupEffect` WeakMap `effectDeps` branch) appears genuinely **unreachable** in the current codebase — both `effect` and `computed` always set a deps-collector around `withTracking`, so `trackSubscriber` never takes the WeakMap path. That is a _suspected-dead-code_ finding that needs its own rigorous reachability proof + removal PR ("understand before changing" / "one concern per PR") — not something to rip out of framework infrastructure inside a coverage PR.
   - `batch.ts` 104-116 (the `MAX_PASSES` infinite-re-enqueue dev guard) is exercised by a test that passes in isolation but is global-batch-state-fragile across the full suite; a deterministic, non-flaky cover for it is a separate hardening task (a flaky test is worse than an uncovered defensive `__DEV__` branch).
   - Other packages were not surveyed for coverage drift in this PR — scope was deliberately bounded to the one package whose gate was RED. A monorepo-wide coverage-drift sweep is a worthwhile separate effort.
@@ -615,7 +592,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -629,7 +605,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -638,7 +613,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms

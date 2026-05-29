@@ -64,8 +64,8 @@ export const initFnNeedsIdempotency: Rule = {
             if (calledNames.has(c.name)) {
               context.report({
                 message:
-                  `Exported \`${c.name}()\` calls \`onMount()\` and is invoked from this module — but no module-level refcount / boolean guard was found. If \`${c.name}\` is called from multiple component renders, each call registers a fresh listener/effect (N components → N listeners). Wrap the setup in a refcount-based guard (`
-                  + `\`let _refCount = 0; … if (_refCount === 0) setup(); _refCount++\`).`,
+                  `Exported \`${c.name}()\` calls \`onMount()\` and is invoked from this module — but no module-level refcount / boolean guard was found. If \`${c.name}\` is called from multiple component renders, each call registers a fresh listener/effect (N components → N listeners). Wrap the setup in a refcount-based guard (` +
+                  `\`let _refCount = 0; … if (_refCount === 0) setup(); _refCount++\`).`,
                 span: getSpan(c.node),
               })
             }
@@ -80,8 +80,8 @@ export const initFnNeedsIdempotency: Rule = {
       // 1. Identify an exported `init*` function declaration whose
       //    body contains `onMount(...)`.
       if (
-        stmt.type === 'ExportNamedDeclaration'
-        && stmt.declaration?.type === 'FunctionDeclaration'
+        stmt.type === 'ExportNamedDeclaration' &&
+        stmt.declaration?.type === 'FunctionDeclaration'
       ) {
         const fn = stmt.declaration
         const name = fn.id?.name as string | undefined
@@ -109,9 +109,9 @@ export const initFnNeedsIdempotency: Rule = {
     function bodyContainsOnMount(body: any): boolean {
       if (!body || typeof body !== 'object') return false
       if (
-        body.type === 'CallExpression'
-        && body.callee?.type === 'Identifier'
-        && body.callee.name === 'onMount'
+        body.type === 'CallExpression' &&
+        body.callee?.type === 'Identifier' &&
+        body.callee.name === 'onMount'
       ) {
         return true
       }
@@ -143,10 +143,7 @@ export const initFnNeedsIdempotency: Rule = {
 
     function collectCalls(node: any): void {
       if (!node || typeof node !== 'object') return
-      if (
-        node.type === 'CallExpression'
-        && node.callee?.type === 'Identifier'
-      ) {
+      if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') {
         const name = node.callee.name as string
         if (/^init[A-Z]/.test(name)) calledNames.add(name)
       }

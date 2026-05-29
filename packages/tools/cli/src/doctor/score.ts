@@ -31,14 +31,7 @@
  * (10+ vs react.doctor's 4).
  */
 
-import type {
-  CategoryScore,
-  Finding,
-  FindingCategory,
-  GateResult,
-  Grade,
-  Severity,
-} from './types'
+import type { CategoryScore, Finding, FindingCategory, GateResult, Grade, Severity } from './types'
 
 const CATEGORIES: FindingCategory[] = [
   'correctness',
@@ -56,8 +49,7 @@ const CATEGORIES: FindingCategory[] = [
 const ADVISORY_CATEGORIES = new Set<FindingCategory>(['best-practices'])
 
 /** True when `category` is advisory (excluded from the overall mean + `--ci`). */
-export const isAdvisoryCategory = (c: FindingCategory): boolean =>
-  ADVISORY_CATEGORIES.has(c)
+export const isAdvisoryCategory = (c: FindingCategory): boolean => ADVISORY_CATEGORIES.has(c)
 
 const SEVERITY_WEIGHTS: Record<Severity, number> = {
   error: 10,

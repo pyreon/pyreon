@@ -85,7 +85,11 @@ export const workItems: WorkItem[] = COMPANIES.slice(0, 8).map((company, i) => (
   company,
   role: ROLES[i % ROLES.length]!,
   date: DATES[i % DATES.length]!,
-  duties: [DUTIES[i % DUTIES.length]!, DUTIES[(i + 3) % DUTIES.length]!, DUTIES[(i + 6) % DUTIES.length]!],
+  duties: [
+    DUTIES[i % DUTIES.length]!,
+    DUTIES[(i + 3) % DUTIES.length]!,
+    DUTIES[(i + 6) % DUTIES.length]!,
+  ],
   imageSeed: `work-${company.replace(/\s+/g, '-').toLowerCase()}`,
 }))
 
@@ -127,12 +131,7 @@ export interface TimelineItem {
   imageSeed: string
 }
 
-const INSTITUTIONS = [
-  'Alpha University',
-  'Beta Institute',
-  'Gamma College',
-  'Delta Academy',
-]
+const INSTITUTIONS = ['Alpha University', 'Beta Institute', 'Gamma College', 'Delta Academy']
 
 const DEGREES = [
   'B.Sc. Computer Science',

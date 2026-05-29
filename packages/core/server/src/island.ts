@@ -193,10 +193,7 @@ export function island<P extends Props = Props>(
  * For anything more complex than JSON, pass an ID and have the island
  * component fetch / restore the rich value on the client.
  */
-function serializeIslandProps(
-  props: Record<string, unknown>,
-  islandName: string,
-): string {
+function serializeIslandProps(props: Record<string, unknown>, islandName: string): string {
   // The `children` key is dropped explicitly (with a dev warning) BEFORE
   // the codec sees them — children carry VNode trees / closures and are
   // never portable, so the dev message about them stays focused.

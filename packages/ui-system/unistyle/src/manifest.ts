@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/unistyle',
   title: 'Responsive CSS Utilities',
-  tagline:
-    'Responsive breakpoints, CSS property mappings, unit utilities, theme enrichment',
+  tagline: 'Responsive breakpoints, CSS property mappings, unit utilities, theme enrichment',
   description:
     'Foundational responsive-style layer that powers every visual package above it (`elements`, `rocketstyle`, `coolgrid`, `kinetic`). `enrichTheme()` merges a partial user theme with the default breakpoints / spacing / unit utilities so the rest of the system has a complete theme to read. `makeItResponsive()` turns a value or per-breakpoint map into the right CSS for the current screen. `createMediaQueries()` builds breakpoint-keyed media queries; `styles()` generates CSS from a theme; `alignContent()` resolves alignment shorthand to flex / grid CSS. The package is the single source of truth for responsive prop semantics across the UI system.',
   category: 'browser',
@@ -117,7 +116,7 @@ makeItResponsive({ value: { xs: 8, md: 16, xl: 24 }, property: 'padding', theme 
       kind: 'function',
       signature: 'styles(theme: Theme): string',
       summary:
-        'Generate the CSS string for a complete theme — colors, spacing, fonts, breakpoints, the works. Used to produce the cascade of CSS variables / global declarations that backs every styled component. Most consumers don\\\'t call this directly; the `PyreonUI` provider invokes it internally on theme mount.',
+        "Generate the CSS string for a complete theme — colors, spacing, fonts, breakpoints, the works. Used to produce the cascade of CSS variables / global declarations that backs every styled component. Most consumers don\\'t call this directly; the `PyreonUI` provider invokes it internally on theme mount.",
       example: `import { styles, enrichTheme } from '@pyreon/unistyle'
 
 const theme = enrichTheme({ colors: { primary: '#3b82f6' } })
@@ -185,13 +184,11 @@ value('garbage', 0) // → { value: 0, unit: 'px' }`,
   gotchas: [
     {
       label: 'Single source for responsive semantics',
-      note:
-        'Every visual package (`elements`, `rocketstyle`, `coolgrid`, `kinetic`) reads breakpoints / spacing / unit conventions from this package. Override defaults via `enrichTheme()` once at the app root rather than per-component.',
+      note: 'Every visual package (`elements`, `rocketstyle`, `coolgrid`, `kinetic`) reads breakpoints / spacing / unit conventions from this package. Override defaults via `enrichTheme()` once at the app root rather than per-component.',
     },
     {
       label: 'CSS property naming',
-      note:
-        'Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.',
+      note: 'Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.',
     },
   ],
 })

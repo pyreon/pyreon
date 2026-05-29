@@ -189,8 +189,8 @@ export function Primitives() {
     <div id="primitives-page">
       <h1>Reactive primitives</h1>
       <p>
-        Live demos for the primitives without e2e coverage before Phase C1.
-        Each section is driven by <code>e2e/primitives.spec.ts</code>.
+        Live demos for the primitives without e2e coverage before Phase C1. Each section is driven
+        by <code>e2e/primitives.spec.ts</code>.
       </p>
       <MatchDemo />
       <SuspenseDemo />

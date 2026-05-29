@@ -1,4 +1,10 @@
-import { escapeXml as escapeHtml, sanitizeColor, sanitizeHref, sanitizeImageSrc, sanitizeStyle } from '../sanitize'
+import {
+  escapeXml as escapeHtml,
+  sanitizeColor,
+  sanitizeHref,
+  sanitizeImageSrc,
+  sanitizeStyle,
+} from '../sanitize'
 import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 function resolveColumn(col: string | TableColumn): TableColumn {

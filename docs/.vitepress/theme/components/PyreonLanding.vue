@@ -24,8 +24,7 @@ const pulseKey = ref(0)
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   const reduce =
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (reduce) return
   timer = setInterval(() => {
     count.value++
@@ -71,10 +70,30 @@ const mechanism = [
 ]
 
 const compat = [
-  { lib: 'React 18+', lines: ['// useState → signal', 'const [c, setC] = useState(0)', 'useEffect(fn, [c])'] },
-  { lib: 'Preact 10', lines: ['// mirrors @preact/signals', 'const c = signal(0)', 'effect(() => log(c.value))'] },
-  { lib: 'Vue 3.4', lines: ['// composition · ref/computed', 'const c = ref(0)', 'const d = computed(() => c.value*2)'] },
-  { lib: 'SolidJS 1.9', lines: ['// createSignal / createEffect', 'const [c, setC] = createSignal(0)', 'createEffect(() => log(c()))'] },
+  {
+    lib: 'React 18+',
+    lines: ['// useState → signal', 'const [c, setC] = useState(0)', 'useEffect(fn, [c])'],
+  },
+  {
+    lib: 'Preact 10',
+    lines: ['// mirrors @preact/signals', 'const c = signal(0)', 'effect(() => log(c.value))'],
+  },
+  {
+    lib: 'Vue 3.4',
+    lines: [
+      '// composition · ref/computed',
+      'const c = ref(0)',
+      'const d = computed(() => c.value*2)',
+    ],
+  },
+  {
+    lib: 'SolidJS 1.9',
+    lines: [
+      '// createSignal / createEffect',
+      'const [c, setC] = createSignal(0)',
+      'createEffect(() => log(c()))',
+    ],
+  },
 ]
 
 const renderModes = [
@@ -87,16 +106,76 @@ const renderModes = [
 
 // Real categories/counts from CLAUDE.md (55 published packages).
 const ecosystem = [
-  { cat: 'core', count: 8, items: ['reactivity', 'core', 'compiler', 'runtime-dom', 'runtime-server', 'router', 'head', 'server'] },
-  { cat: 'fundamentals', count: 22, items: ['store', 'form', 'query', 'i18n', 'storage', 'hooks', 'machine', 'flow', 'rx', '+13 more'] },
-  { cat: 'tools', count: 10, items: ['cli', 'lint', 'mcp', 'vite-plugin', 'typescript', 'storybook', 'react/preact/vue/solid-compat'] },
-  { cat: 'ui-system', count: 11, items: ['ui-core', 'styler', 'unistyle', 'elements', 'attrs', 'rocketstyle', 'coolgrid', 'kinetic', '+3 more'] },
+  {
+    cat: 'core',
+    count: 8,
+    items: [
+      'reactivity',
+      'core',
+      'compiler',
+      'runtime-dom',
+      'runtime-server',
+      'router',
+      'head',
+      'server',
+    ],
+  },
+  {
+    cat: 'fundamentals',
+    count: 22,
+    items: [
+      'store',
+      'form',
+      'query',
+      'i18n',
+      'storage',
+      'hooks',
+      'machine',
+      'flow',
+      'rx',
+      '+13 more',
+    ],
+  },
+  {
+    cat: 'tools',
+    count: 10,
+    items: [
+      'cli',
+      'lint',
+      'mcp',
+      'vite-plugin',
+      'typescript',
+      'storybook',
+      'react/preact/vue/solid-compat',
+    ],
+  },
+  {
+    cat: 'ui-system',
+    count: 11,
+    items: [
+      'ui-core',
+      'styler',
+      'unistyle',
+      'elements',
+      'attrs',
+      'rocketstyle',
+      'coolgrid',
+      'kinetic',
+      '+3 more',
+    ],
+  },
   { cat: 'zero', count: 4, items: ['zero', 'zero-cli', 'create-zero', 'meta'] },
 ]
 
 const footer = [
-  { h: 'Docs', items: ['Getting started', 'Reactivity', 'Zero · full-stack', 'AI · MCP + llms.txt'] },
-  { h: 'Packages', items: ['@pyreon/reactivity', '@pyreon/router', '@pyreon/query', 'All 55 packages'] },
+  {
+    h: 'Docs',
+    items: ['Getting started', 'Reactivity', 'Zero · full-stack', 'AI · MCP + llms.txt'],
+  },
+  {
+    h: 'Packages',
+    items: ['@pyreon/reactivity', '@pyreon/router', '@pyreon/query', 'All 55 packages'],
+  },
   { h: 'Tools', items: ['pyreon CLI', 'pyreon doctor', 'Devtools', 'Lint'] },
   { h: 'Project', items: ['GitHub', 'Changelog', 'Benchmarks', 'RFCs'] },
 ]
@@ -114,9 +193,9 @@ const footer = [
           <span class="px-ember-text">exactly where to fire.</span>
         </h1>
         <p class="px-lede">
-          Fine-grained signal tracking — no virtual DOM, no diffing, no
-          wasted work. When a signal changes, only the nodes that read it
-          run again. Measured, not marketed — honest about the trade-offs.
+          Fine-grained signal tracking — no virtual DOM, no diffing, no wasted work. When a signal
+          changes, only the nodes that read it run again. Measured, not marketed — honest about the
+          trade-offs.
         </p>
         <div class="px-cta">
           <a class="px-btn-primary" href="/docs/getting-started">Get started →</a>
@@ -124,8 +203,8 @@ const footer = [
           <a class="px-link-inline" href="/docs/">↗ docs</a>
         </div>
         <p class="px-honest">
-          Synthetic-benchmark parity with Solid. Real-app head-to-head:
-          we haven't run it, and we won't claim it until we do.
+          Synthetic-benchmark parity with Solid. Real-app head-to-head: we haven't run it, and we
+          won't claim it until we do.
         </p>
       </div>
 
@@ -143,8 +222,8 @@ const footer = [
 <span class="c-fn">setInterval</span>(() =&gt; <span class="c-var">$count</span>.<span class="c-fn">set</span>(<span class="c-var">$count</span>+<span class="c-num">1</span>), <span class="c-num">2600</span>)
 &lt;<span class="c-fn">Counter</span>&gt;{{ '{' }}<span class="c-var">$count</span>{{ '}' }}&lt;/<span class="c-fn">Counter</span>&gt;</pre>
         <p class="px-demo-foot">
-          The wrapping component, the layout, the page — never re-render.
-          Only the digit node is updated.
+          The wrapping component, the layout, the page — never re-render. Only the digit node is
+          updated.
         </p>
       </div>
     </section>
@@ -152,15 +231,16 @@ const footer = [
     <!-- ── 2 · BENCHMARK (real measured numbers) ──────────────── -->
     <section class="px-sec">
       <div class="px-sec-head">
-        <span class="px-mono-label">01 · benchmark · js framework benchmark (chromium / playwright)</span>
+        <span class="px-mono-label"
+          >01 · benchmark · js framework benchmark (chromium / playwright)</span
+        >
         <span class="px-rule" />
       </div>
       <h2 class="px-h2">The measured numbers. Read them as data.</h2>
       <p class="px-sub">
-        Wall-clock milliseconds on the standard js-framework-benchmark
-        suite (Chromium via Playwright, lower = faster). These are
-        synthetic workloads — every framework here optimizes for
-        different real-world shapes. It's a data point, not a verdict.
+        Wall-clock milliseconds on the standard js-framework-benchmark suite (Chromium via
+        Playwright, lower = faster). These are synthetic workloads — every framework here optimizes
+        for different real-world shapes. It's a data point, not a verdict.
       </p>
       <div class="px-bench-grid">
         <div class="px-panel">
@@ -194,11 +274,18 @@ const footer = [
         <div class="px-claim-col">
           <div class="px-claim px-claim--cyan">
             <div class="px-claim-h">METHOD</div>
-            <p>Standard js-framework-benchmark suite, Chromium via Playwright, wall-clock ms — same machine, same run. Re-run it yourself; the config is in the repo.</p>
+            <p>
+              Standard js-framework-benchmark suite, Chromium via Playwright, wall-clock ms — same
+              machine, same run. Re-run it yourself; the config is in the repo.
+            </p>
           </div>
           <div class="px-claim px-claim--ember">
             <div class="px-claim-h">SCOPE</div>
-            <p>We report our own measured numbers and synthetic-benchmark parity with Solid. Real-app head-to-head isn't run yet — we won't claim it until it is. Every framework here is good work by good people.</p>
+            <p>
+              We report our own measured numbers and synthetic-benchmark parity with Solid. Real-app
+              head-to-head isn't run yet — we won't claim it until it is. Every framework here is
+              good work by good people.
+            </p>
           </div>
         </div>
       </div>
@@ -212,8 +299,8 @@ const footer = [
       </div>
       <h2 class="px-h2">Signal reads in. Targeted re-runs out.</h2>
       <p class="px-sub">
-        Four mechanisms, named the way the source names them — the words
-        your profiler will print at 3am.
+        Four mechanisms, named the way the source names them — the words your profiler will print at
+        3am.
       </p>
       <div class="px-grid-4">
         <div
@@ -241,9 +328,8 @@ const footer = [
       </div>
       <h2 class="px-h2">React, Preact, Vue 3, or SolidJS. Pick your dialect.</h2>
       <p class="px-sub">
-        Compatibility layers compile each API down to Pyreon signals.
-        Migrate one component at a time, or just write what your team
-        already speaks.
+        Compatibility layers compile each API down to Pyreon signals. Migrate one component at a
+        time, or just write what your team already speaks.
       </p>
       <div class="px-grid-4">
         <div v-for="col in compat" :key="col.lib" class="px-panel px-compat">
@@ -251,7 +337,9 @@ const footer = [
             <span class="px-compat-lib">{{ col.lib }}</span>
             <span class="px-mono-label">↻ → signals</span>
           </div>
-          <pre class="px-code"><template v-for="(l, j) in col.lines" :key="j"><span :class="l.startsWith('//') ? 'c-cm' : 'c-fg'">{{ l }}</span>
+          <pre
+            class="px-code"
+          ><template v-for="(l, j) in col.lines" :key="j"><span :class="l.startsWith('//') ? 'c-cm' : 'c-fg'">{{ l }}</span>
 </template></pre>
         </div>
       </div>
@@ -265,13 +353,15 @@ const footer = [
       </div>
       <h2 class="px-h2">SSR · SSG · ISR · islands · SPA. One config.</h2>
       <p class="px-sub">
-        Zero is the meta-framework atop Pyreon: file-system routing, API
-        routes, server actions, every render strategy in one config.
+        Zero is the meta-framework atop Pyreon: file-system routing, API routes, server actions,
+        every render strategy in one config.
       </p>
       <div class="px-zero-grid">
         <div class="px-panel">
           <div class="px-mono-label">zero.config.ts</div>
-          <pre class="px-code"><span class="c-kw">export default</span> <span class="c-fn">defineConfig</span>({{ '{' }}
+          <pre
+            class="px-code"
+          ><span class="c-kw">export default</span> <span class="c-fn">defineConfig</span>({{ '{' }}
   <span class="c-var">routes</span>: {{ '{' }}
     <span class="c-str">'/'</span>:         {{ '{' }} render: <span class="c-str">'ssg'</span> {{ '}' }},
     <span class="c-str">'/blog/:id'</span>: {{ '{' }} render: <span class="c-str">'isr'</span>, revalidate: <span class="c-num">60</span> {{ '}' }},
@@ -299,9 +389,8 @@ const footer = [
       </div>
       <h2 class="px-h2">First-class MCP + llms.txt.</h2>
       <p class="px-sub">
-        Every Pyreon project ships a generated llms.txt manifest and an
-        MCP server exposing typed tools. Agents read your actual source —
-        no prompt scaffolding, no scraping.
+        Every Pyreon project ships a generated llms.txt manifest and an MCP server exposing typed
+        tools. Agents read your actual source — no prompt scaffolding, no scraping.
       </p>
       <div class="px-grid-2">
         <div class="px-panel">
@@ -323,7 +412,9 @@ const footer = [
             <span class="px-mono-label">MCP tool call · from your editor's agent</span>
             <span class="pyreon-pill pyreon-pill--ember">typed tools</span>
           </div>
-          <pre class="px-code"><span class="c-fn">→ get_api</span>(<span class="c-str">{ symbol: "createStore" }</span>)
+          <pre
+            class="px-code"
+          ><span class="c-fn">→ get_api</span>(<span class="c-str">{ symbol: "createStore" }</span>)
 <span class="c-cm">← signature, example, mistakes[],</span>
 <span class="c-cm">  seeAlso, addedIn — straight from the</span>
 <span class="c-cm">  package manifest, not a guess.</span></pre>
@@ -339,8 +430,8 @@ const footer = [
       </div>
       <h2 class="px-h2">55 packages. Routing, forms, data, devtools — already there.</h2>
       <p class="px-sub">
-        Everything you'd otherwise stitch together yourself. Every
-        package is signal-aware, type-safe, and tree-shakeable.
+        Everything you'd otherwise stitch together yourself. Every package is signal-aware,
+        type-safe, and tree-shakeable.
       </p>
       <div class="px-grid-3">
         <div v-for="g in ecosystem" :key="g.cat" class="px-panel">
@@ -351,10 +442,8 @@ const footer = [
           </div>
           <div class="px-eco-items">
             <span v-for="(it, j) in g.items" :key="j">
-              <span class="px-eco-ns">@pyreon/</span><span class="px-eco-pkg">{{ it }}</span><span
-                v-if="j < g.items.length - 1"
-                class="px-eco-sep"
-              > · </span>
+              <span class="px-eco-ns">@pyreon/</span><span class="px-eco-pkg">{{ it }}</span
+              ><span v-if="j < g.items.length - 1" class="px-eco-sep"> · </span>
             </span>
           </div>
         </div>

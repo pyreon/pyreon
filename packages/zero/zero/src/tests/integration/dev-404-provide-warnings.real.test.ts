@@ -20,10 +20,19 @@ const FIXTURE_DIR = resolve(import.meta.dirname, 'fixture-provide-warnings')
 const aliasConfig = {
   conditions: ['bun'],
   alias: {
-    '@pyreon/ui-core': resolve(import.meta.dirname, '../../../../../ui-system/ui-core/src/index.ts'),
+    '@pyreon/ui-core': resolve(
+      import.meta.dirname,
+      '../../../../../ui-system/ui-core/src/index.ts',
+    ),
     '@pyreon/styler': resolve(import.meta.dirname, '../../../../../ui-system/styler/src/index.ts'),
-    '@pyreon/unistyle': resolve(import.meta.dirname, '../../../../../ui-system/unistyle/src/index.ts'),
-    '@pyreon/elements': resolve(import.meta.dirname, '../../../../../ui-system/elements/src/index.ts'),
+    '@pyreon/unistyle': resolve(
+      import.meta.dirname,
+      '../../../../../ui-system/unistyle/src/index.ts',
+    ),
+    '@pyreon/elements': resolve(
+      import.meta.dirname,
+      '../../../../../ui-system/elements/src/index.ts',
+    ),
   },
 }
 
@@ -79,19 +88,28 @@ async function probeMode(mode: 'ssr' | 'ssg' | 'spa'): Promise<ProbeResult> {
     const baseUrl = address && typeof address === 'object' ? `http://localhost:${address.port}` : ''
 
     // Warm up so stderr isn't polluted by cold-start Vite chatter.
-    await fetch(`${baseUrl}/`).then((r) => r.text()).catch(() => '')
+    await fetch(`${baseUrl}/`)
+      .then((r) => r.text())
+      .catch(() => '')
     stderrBuffer.length = 0
 
     const res = await fetch(`${baseUrl}/this-route-does-not-exist`)
     const html = await res.text()
 
     const captured = stderrBuffer.join('')
-    const provideWarnings = (captured.match(/\[Pyreon\] [a-zA-Z]+\(\) called outside component setup/g) || [])
-    const effectErrors = (captured.match(/Unhandled effect error/g) || [])
-    const cannotDestructure = (captured.match(/Cannot destructure property/g) || [])
-    const fullWarnings = captured.split('\n').filter((l) =>
-      l.includes('called outside component setup') || l.includes('Unhandled effect error') || l.includes('Cannot destructure'),
-    ).slice(0, 5)
+    const provideWarnings =
+      captured.match(/\[Pyreon\] [a-zA-Z]+\(\) called outside component setup/g) || []
+    const effectErrors = captured.match(/Unhandled effect error/g) || []
+    const cannotDestructure = captured.match(/Cannot destructure property/g) || []
+    const fullWarnings = captured
+      .split('\n')
+      .filter(
+        (l) =>
+          l.includes('called outside component setup') ||
+          l.includes('Unhandled effect error') ||
+          l.includes('Cannot destructure'),
+      )
+      .slice(0, 5)
 
     return {
       mode,
@@ -121,9 +139,14 @@ function assertClean(r: ProbeResult): void {
   expect(r.status, `${r.mode}: should respond with 404`).toBe(404)
   expect(r.pageNotFound, `${r.mode}: should render the user's _404.tsx`).toBe(true)
   expect(r.siteTitle, `${r.mode}: should wrap the 404 in the layout chrome`).toBe(true)
-  expect(r.provideWarnings, `${r.mode}: dev-404 must NOT emit provide() outside setup warnings`).toBe(0)
+  expect(
+    r.provideWarnings,
+    `${r.mode}: dev-404 must NOT emit provide() outside setup warnings`,
+  ).toBe(0)
   expect(r.effectErrors, `${r.mode}: dev-404 must NOT emit Unhandled effect error`).toBe(0)
-  expect(r.cannotDestructure, `${r.mode}: dev-404 must NOT trigger Cannot destructure errors`).toBe(0)
+  expect(r.cannotDestructure, `${r.mode}: dev-404 must NOT trigger Cannot destructure errors`).toBe(
+    0,
+  )
 }
 
 describe('dev-404 — provide() warning storm regression lock (all modes)', () => {

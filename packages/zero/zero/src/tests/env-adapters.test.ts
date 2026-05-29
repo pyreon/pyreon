@@ -23,55 +23,38 @@ function mockParseEnum(allowed: string[]) {
 
 describe('schema() — generic bridge', () => {
   it('validates with custom parse function', () => {
-    const result = validateEnv(
-      { PORT: schema(mockParseNumber) },
-      { PORT: '3000' },
-    )
+    const result = validateEnv({ PORT: schema(mockParseNumber) }, { PORT: '3000' })
     expect(result.PORT).toBe(3000)
   })
 
   it('throws on parse failure', () => {
-    expect(() => validateEnv(
-      { PORT: schema(mockParseNumber) },
-      { PORT: 'abc' },
-    )).toThrow('Expected number')
+    expect(() => validateEnv({ PORT: schema(mockParseNumber) }, { PORT: 'abc' })).toThrow(
+      'Expected number',
+    )
   })
 
   it('throws on missing value', () => {
-    expect(() => validateEnv(
-      { PORT: schema(mockParseNumber) },
-      {},
-    )).toThrow('PORT')
+    expect(() => validateEnv({ PORT: schema(mockParseNumber) }, {})).toThrow('PORT')
   })
 
   it('validates URL', () => {
-    const result = validateEnv(
-      { API: schema(mockParseUrl) },
-      { API: 'https://api.example.com' },
-    )
+    const result = validateEnv({ API: schema(mockParseUrl) }, { API: 'https://api.example.com' })
     expect(result.API).toBe('https://api.example.com')
   })
 
   it('rejects invalid URL', () => {
-    expect(() => validateEnv(
-      { API: schema(mockParseUrl) },
-      { API: 'not-a-url' },
-    )).toThrow('API')
+    expect(() => validateEnv({ API: schema(mockParseUrl) }, { API: 'not-a-url' })).toThrow('API')
   })
 
   it('validates enum', () => {
-    const result = validateEnv(
-      { ENV: schema(mockParseEnum(['dev', 'prod'])) },
-      { ENV: 'prod' },
-    )
+    const result = validateEnv({ ENV: schema(mockParseEnum(['dev', 'prod'])) }, { ENV: 'prod' })
     expect(result.ENV).toBe('prod')
   })
 
   it('rejects invalid enum', () => {
-    expect(() => validateEnv(
-      { ENV: schema(mockParseEnum(['dev', 'prod'])) },
-      { ENV: 'staging' },
-    )).toThrow('Must be one of')
+    expect(() =>
+      validateEnv({ ENV: schema(mockParseEnum(['dev', 'prod'])) }, { ENV: 'staging' }),
+    ).toThrow('Must be one of')
   })
 
   it('works alongside plain defaults', () => {

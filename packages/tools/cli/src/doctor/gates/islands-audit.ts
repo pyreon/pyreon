@@ -25,9 +25,7 @@ export interface IslandsAuditGateOptions {
   cwd: string
 }
 
-export const runIslandsAuditGate = async (
-  opts: IslandsAuditGateOptions,
-): Promise<GateResult> => {
+export const runIslandsAuditGate = async (opts: IslandsAuditGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
   const result = auditIslands(opts.cwd)

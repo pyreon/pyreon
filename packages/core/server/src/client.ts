@@ -140,7 +140,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
           "call's cleanup function. The previous call's listeners / observers / " +
           'timers are now leaked. Wire up cleanup in your entry file:\n' +
           '  const cleanup = hydrateIslands({ ... })\n' +
-          "  if (import.meta.hot) import.meta.hot.dispose(cleanup)  // HMR\n" +
+          '  if (import.meta.hot) import.meta.hot.dispose(cleanup)  // HMR\n' +
           '  // or on SPA route change: cleanup() before re-registering',
       )
     }
@@ -166,7 +166,8 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
           `outer island's tree, or fold them into a single component.`,
       )
       el.setAttribute('data-island-error', 'nested')
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.skipped.nested')
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('island.skipped.nested')
       continue
     }
 
@@ -177,7 +178,8 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     // imported. Skip the missing-loader warning for never-strategy islands;
     // any other strategy without a loader IS a real misconfiguration.
     if (strategy === 'never') {
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.skipped.never')
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('island.skipped.never')
       continue
     }
 
@@ -185,7 +187,8 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     if (!loader) {
       console.warn(`No loader registered for island "${componentId}"`)
       el.setAttribute('data-island-error', 'no-loader')
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.skipped.no-loader')
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('island.skipped.no-loader')
       continue
     }
 
@@ -394,7 +397,10 @@ function scheduleHydration(
       if (strategy.startsWith('interaction(')) {
         const eventsStr = strategy.slice(12, -1).trim()
         const events = eventsStr
-          ? eventsStr.split(',').map((s) => s.trim()).filter(Boolean)
+          ? eventsStr
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
           : DEFAULT_INTERACTION_EVENTS
         return scheduleInteractionHydration(el, hydrate, events)
       }
@@ -470,16 +476,10 @@ function scheduleInteractionHydration(
         // happy-dom — fall back to a plain `Event('submit')` if the
         // global is missing (older happy-dom builds, exotic runtimes).
         const SubmitEventCtor =
-          typeof SubmitEvent === 'function'
-            ? SubmitEvent
-            : (Event as unknown as typeof SubmitEvent)
-        liveTarget.dispatchEvent(
-          new SubmitEventCtor('submit', { bubbles: true, cancelable: true }),
-        )
+          typeof SubmitEvent === 'function' ? SubmitEvent : (Event as unknown as typeof SubmitEvent)
+        liveTarget.dispatchEvent(new SubmitEventCtor('submit', { bubbles: true, cancelable: true }))
       } else {
-        liveTarget.dispatchEvent(
-          new MouseEvent('click', { bubbles: true, cancelable: true }),
-        )
+        liveTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
       }
     })
   }

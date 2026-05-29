@@ -84,9 +84,7 @@ describe('@pyreon/unistyle in real browser', () => {
         color: ${(p.theme as typeof theme).tint};
       `}
     `
-    const { container, unmount } = mountInBrowser(
-      h(Provider, { theme }, h(Themed, { id: 'p' })),
-    )
+    const { container, unmount } = mountInBrowser(h(Provider, { theme }, h(Themed, { id: 'p' })))
     const el = container.querySelector<HTMLElement>('#p')!
     expect(getComputedStyle(el).color).toBe('rgb(0, 200, 0)')
     unmount()
@@ -146,11 +144,7 @@ describe('@pyreon/unistyle in real browser', () => {
     `
 
     const { container, unmount } = mountInBrowser(
-      h(
-        Provider,
-        { theme },
-        h(Padded, { id: 'p', $pad: { pad: ['8px', '32px'] } }),
-      ),
+      h(Provider, { theme }, h(Padded, { id: 'p', $pad: { pad: ['8px', '32px'] } })),
     )
     const el = container.querySelector<HTMLElement>('#p')!
     // xs (always-on) should apply 8px; sm (99999) does not apply.

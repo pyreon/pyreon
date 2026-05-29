@@ -33,9 +33,7 @@ export default definePlaywrightConfig({
   // The spec mutates a committed source file (and restores it) — must not
   // run in parallel with anything sharing that file.
   workers: 1,
-  projects: [
-    { name: 'zero-hmr', testMatch: /zero-hmr\.spec\.ts$/, port: 5201 },
-  ],
+  projects: [{ name: 'zero-hmr', testMatch: /zero-hmr\.spec\.ts$/, port: 5201 }],
   webServer: [
     {
       // Run vite via NODE (not `bun run … dev`): the only proven-reliable

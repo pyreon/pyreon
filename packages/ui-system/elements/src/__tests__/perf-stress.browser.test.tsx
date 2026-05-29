@@ -22,7 +22,10 @@ interface Bench {
   runs: number[]
 }
 
-async function benchmark(N: number, mountFn: (root: Element, i: number) => () => void): Promise<Bench> {
+async function benchmark(
+  N: number,
+  mountFn: (root: Element, i: number) => () => void,
+): Promise<Bench> {
   const { container, unmount: cleanup } = mountInBrowser(h('div', { id: 'bench-root' }))
   const root = container.querySelector('#bench-root')!
 
@@ -64,7 +67,11 @@ describe('Element + stack stress benchmark', () => {
   it('500 Element with css prop (exercises extendCss path)', async () => {
     const bench = await benchmark(500, (root, i) =>
       mount(
-        h(Element, { css: { color: 'red', padding: 8 } as unknown as Record<string, unknown> }, `item-${i}`),
+        h(
+          Element,
+          { css: { color: 'red', padding: 8 } as unknown as Record<string, unknown> },
+          `item-${i}`,
+        ),
         root,
       ),
     )

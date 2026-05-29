@@ -70,9 +70,13 @@ export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<str
  * ```
  */
 // oxlint-disable-next-line no-explicit-any
-export function useForm<TDefs extends FieldDefinition<string, any>[]>(
-  options: { fields: [...TDefs]; onSubmit: (values: InferFieldValues<TDefs>) => void | Promise<void>; schema?: any; validateOn?: 'blur' | 'change' | 'submit'; debounceMs?: number },
-): FormState<InferFieldValues<TDefs>>
+export function useForm<TDefs extends FieldDefinition<string, any>[]>(options: {
+  fields: [...TDefs]
+  onSubmit: (values: InferFieldValues<TDefs>) => void | Promise<void>
+  schema?: any
+  validateOn?: 'blur' | 'change' | 'submit'
+  debounceMs?: number
+}): FormState<InferFieldValues<TDefs>>
 /**
  * Create a form with explicit initial values and validators.
  */
@@ -84,7 +88,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   options: UseFormFieldsOptions<readonly FieldDefinition[]> | UseFormOptions<TValues>,
 ): FormState<TValues> {
   // ── Field-definition overload: translate to legacy format ──────────────
-  if ('fields' in options && Array.isArray(options.fields) && options.fields.length > 0 && isFieldDefinition(options.fields[0])) {
+  if (
+    'fields' in options &&
+    Array.isArray(options.fields) &&
+    options.fields.length > 0 &&
+    isFieldDefinition(options.fields[0])
+  ) {
     const defs = options.fields as readonly FieldDefinition[]
     const initialValues: Record<string, unknown> = {}
     const validators: Record<string, ValidateFn<unknown, Record<string, unknown>>> = {}
@@ -104,12 +113,20 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   // ── Legacy path ───────────────────────────────────────────────────────
   const opts = options as UseFormOptions<Record<string, unknown>>
-  const { initialValues: rawInitialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs } = opts
+  const {
+    initialValues: rawInitialValues,
+    onSubmit,
+    validators,
+    schema: schemaInput,
+    validateOn = 'blur',
+    debounceMs,
+  } = opts
 
   // Resolve initialValues — static object or reactive accessor
-  const initialValues = typeof rawInitialValues === 'function'
-    ? (rawInitialValues as () => Record<string, unknown>)()
-    : rawInitialValues
+  const initialValues =
+    typeof rawInitialValues === 'function'
+      ? (rawInitialValues as () => Record<string, unknown>)()
+      : rawInitialValues
 
   // Extract validator from TypedSchemaAdapter if provided, otherwise use as-is
   const schema = schemaInput && '_infer' in schemaInput ? schemaInput.validator : schemaInput
@@ -596,10 +613,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Memoized register props per field+type combo. Cache value type is
   // the union of both shapes since checkbox returns `FieldRegisterCheckboxProps`
   // and the rest return `FieldRegisterProps<unknown>`.
-  const registerCache = new Map<
-    string,
-    FieldRegisterProps<unknown> | FieldRegisterCheckboxProps
-  >()
+  const registerCache = new Map<string, FieldRegisterProps<unknown> | FieldRegisterCheckboxProps>()
 
   function register<K extends keyof TValues & string>(
     field: K,
@@ -687,7 +701,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       // Only reset if values actually changed
       let changed = false
       for (const [name] of fieldEntries) {
-        if (!structuredEqual((currentInitials as Record<string, unknown>)[name], (next as Record<string, unknown>)[name])) {
+        if (
+          !structuredEqual(
+            (currentInitials as Record<string, unknown>)[name],
+            (next as Record<string, unknown>)[name],
+          )
+        ) {
           changed = true
           break
         }

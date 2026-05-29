@@ -5,7 +5,7 @@ description: How nativeCompat() lets Pyreon framework components compose correct
 
 `nativeCompat()` from `@pyreon/core` is the contract that makes Pyreon framework components — `RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, `Toaster`, and 19 others — work correctly when composed inside an app scaffolded with `--compat=react|preact|vue|solid`.
 
-If you're a Pyreon user just consuming framework components, **you don't need to do anything** — the 24 components ship marked. This page explains what the marker is, why it exists, and when *you* might need to call it on your own helpers.
+If you're a Pyreon user just consuming framework components, **you don't need to do anything** — the 24 components ship marked. This page explains what the marker is, why it exists, and when _you_ might need to call it on your own helpers.
 
 <PackageBadge name="@pyreon/core" href="/docs/core" />
 
@@ -13,13 +13,13 @@ If you're a Pyreon user just consuming framework components, **you don't need to
 
 `@pyreon/{react,preact,vue,solid}-compat` ship a JSX runtime that wraps every component in `wrapCompatComponent`. The wrapper relocates the render context so React/Preact/Vue/Solid-style component bodies — which expect a fresh render frame on every state change — work inside Pyreon's mount pipeline.
 
-This wrapping is *correct* for user-defined components written in the source framework's idiom. It is *broken* for Pyreon framework components that use Pyreon's own setup-frame primitives:
+This wrapping is _correct_ for user-defined components written in the source framework's idiom. It is _broken_ for Pyreon framework components that use Pyreon's own setup-frame primitives:
 
 - `provide(ctx, value)` — pushes onto the global context stack expected to live for the descendant subtree's lifetime
 - `onMount(fn)` / `onUnmount(fn)` — register against the current effect scope
 - `effect(fn)` — subscribes to signals, re-runs on change
 
-Inside the wrapper, the body runs in `runUntracked` *after* the wrapper's own `beginRender(ctx)` has swapped the active render context to the compat layer's. When the body calls `provide()`, the push lands on the global stack, but the wrapper's own `onUnmount` cleanup is what governs when it pops — not the user component's. The result: `provide()` writes get torn down before children mount, `effect()` re-runs lose access to live signals, `onUnmount` callbacks fire in the wrong order.
+Inside the wrapper, the body runs in `runUntracked` _after_ the wrapper's own `beginRender(ctx)` has swapped the active render context to the compat layer's. When the body calls `provide()`, the push lands on the global stack, but the wrapper's own `onUnmount` cleanup is what governs when it pops — not the user component's. The result: `provide()` writes get torn down before children mount, `effect()` re-runs lose access to live signals, `onUnmount` callbacks fire in the wrong order.
 
 ## The marker
 
@@ -63,27 +63,27 @@ The marker uses `Symbol.for(...)` (a registry symbol) so `@pyreon/core` doesn't 
 
 24 framework components carry the marker today, across 13 packages:
 
-| Package | Components |
-|---|---|
-| `@pyreon/core` | `ErrorBoundary` |
-| `@pyreon/runtime-dom` | `Transition`, `TransitionGroup`, `KeepAlive` |
-| `@pyreon/router` | `RouterProvider`, `RouterView`, `RouterLink` |
-| `@pyreon/head` | `HeadProvider` |
-| `@pyreon/query` | `QueryClientProvider`, `QueryErrorResetBoundary` |
-| `@pyreon/i18n` | `I18nProvider` |
-| `@pyreon/form` | `FormProvider`, `Form`, `Submit` |
-| `@pyreon/permissions` | `PermissionsProvider` |
-| `@pyreon/toast` | `Toaster` |
-| `@pyreon/ui-core` | `PyreonUI`, `CoreProvider` |
-| `@pyreon/unistyle` | `UnistyleProvider` |
-| `@pyreon/styler` | `ThemeProvider` |
-| `@pyreon/rocketstyle` | `Provider` |
-| `@pyreon/coolgrid` | `Container`, `Row` |
-| `@pyreon/elements` | `Overlay`, `OverlayContextProvider` |
+| Package               | Components                                       |
+| --------------------- | ------------------------------------------------ |
+| `@pyreon/core`        | `ErrorBoundary`                                  |
+| `@pyreon/runtime-dom` | `Transition`, `TransitionGroup`, `KeepAlive`     |
+| `@pyreon/router`      | `RouterProvider`, `RouterView`, `RouterLink`     |
+| `@pyreon/head`        | `HeadProvider`                                   |
+| `@pyreon/query`       | `QueryClientProvider`, `QueryErrorResetBoundary` |
+| `@pyreon/i18n`        | `I18nProvider`                                   |
+| `@pyreon/form`        | `FormProvider`, `Form`, `Submit`                 |
+| `@pyreon/permissions` | `PermissionsProvider`                            |
+| `@pyreon/toast`       | `Toaster`                                        |
+| `@pyreon/ui-core`     | `PyreonUI`, `CoreProvider`                       |
+| `@pyreon/unistyle`    | `UnistyleProvider`                               |
+| `@pyreon/styler`      | `ThemeProvider`                                  |
+| `@pyreon/rocketstyle` | `Provider`                                       |
+| `@pyreon/coolgrid`    | `Container`, `Row`                               |
+| `@pyreon/elements`    | `Overlay`, `OverlayContextProvider`              |
 
 Internal Provider components (`CoreProvider`, `UnistyleProvider`, `RocketstyleProvider`, `OverlayContextProvider`) are also marked even though they're `@internal` / `@deprecated`. Reason: `PyreonUI`'s JSX body still routes through the active jsx() runtime in compat-mode apps — any unmarked Provider rendered inside `PyreonUI`'s body would get wrapped, swallowing its `provide()` call before reaching descendants.
 
-## When *you* need to mark a component
+## When _you_ need to mark a component
 
 The marker is internal infrastructure for framework components. You only need it for **user-defined Pyreon-flavored helpers** that:
 

@@ -161,9 +161,7 @@ console.log(
 )
 
 if (HAS_SKIP_LABEL) {
-  console.log(
-    '[check-diagnose-catalog] skip-diagnose-catalog label present — bypassing the gate.',
-  )
+  console.log('[check-diagnose-catalog] skip-diagnose-catalog label present — bypassing the gate.')
   process.exit(0)
 }
 
@@ -198,36 +196,26 @@ console.log(
 )
 
 if (headCount > baseCount) {
-  console.log(
-    `[check-diagnose-catalog] OK — catalog grew by ${headCount - baseCount} entry(s).`,
-  )
+  console.log(`[check-diagnose-catalog] OK — catalog grew by ${headCount - baseCount} entry(s).`)
   process.exit(0)
 }
 
 console.error(
   '[check-diagnose-catalog] FAILED — this PR touches framework error-surface code paths',
 )
-console.error(
-  '  but ERROR_PATTERNS did not grow. Every bug fix in a framework subsystem that',
-)
+console.error('  but ERROR_PATTERNS did not grow. Every bug fix in a framework subsystem that')
 console.error(
   '  could surface as a user-visible error is an opportunity to teach the diagnose tool.',
 )
 console.error('')
-console.error(
-  `Either add a new entry to \`ERROR_PATTERNS\` in \`${CATALOG_FILE}\`:`,
-)
+console.error(`Either add a new entry to \`ERROR_PATTERNS\` in \`${CATALOG_FILE}\`:`)
 console.error('')
 console.error('  {')
-console.error("    pattern: /your-error-regex/,")
+console.error('    pattern: /your-error-regex/,')
 console.error("    diagnose: () => ({ cause: '...', fix: '...', fixCode: '...' }),")
 console.error('  },')
 console.error('')
-console.error(
-  'Or, if this PR is genuinely catalog-irrelevant (internal refactor / perf-only /',
-)
-console.error(
-  "type tightening / docs-only change in core), add the 'skip-diagnose-catalog' label",
-)
+console.error('Or, if this PR is genuinely catalog-irrelevant (internal refactor / perf-only /')
+console.error("type tightening / docs-only change in core), add the 'skip-diagnose-catalog' label")
 console.error('to bypass.')
 process.exit(1)

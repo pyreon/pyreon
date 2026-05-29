@@ -53,9 +53,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  */
 export default definePlaywrightConfig({
   timeout: 60_000,
-  projects: [
-    { name: 'ssg-i18n', testMatch: /ssg-i18n\.spec\.ts$/, port: 5199 },
-  ],
+  projects: [{ name: 'ssg-i18n', testMatch: /ssg-i18n\.spec\.ts$/, port: 5199 }],
   webServer: [
     {
       // Build the i18n dist, then serve via the directory-rewriting static

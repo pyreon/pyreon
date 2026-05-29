@@ -24,9 +24,9 @@ export default defineConfig({
   plugins: [
     pyreon({ islands: true }),
     zero({
-      mode: 'ssr',             // 'ssr' | 'ssg' | 'isr' | 'spa'
+      mode: 'ssr', // 'ssr' | 'ssg' | 'isr' | 'spa'
       ssr: { mode: 'stream' }, // 'string' | 'stream'
-      adapter: 'node',         // 'vercel' | 'cloudflare' | 'netlify' | 'node' | 'bun' | 'static'
+      adapter: 'node', // 'vercel' | 'cloudflare' | 'netlify' | 'node' | 'bun' | 'static'
     }),
   ],
 })
@@ -52,7 +52,9 @@ export default function Layout({ children }) {
   return (
     <>
       <Meta title="My App" description="..." />
-      <nav><Link to="/">Home</Link> <Link to="/posts">Posts</Link></nav>
+      <nav>
+        <Link to="/">Home</Link> <Link to="/posts">Posts</Link>
+      </nav>
       <main>{children}</main>
     </>
   )
@@ -61,28 +63,28 @@ export default function Layout({ children }) {
 
 ## File-system routing
 
-| File                       | Role                                                              |
-|----------------------------|-------------------------------------------------------------------|
-| `src/routes/index.tsx`     | `/` — homepage                                                    |
-| `src/routes/about.tsx`     | `/about`                                                          |
-| `src/routes/[id].tsx`      | `/:id` — dynamic param                                            |
-| `src/routes/[...slug].tsx` | `/*` — catch-all                                                  |
-| `src/routes/_layout.tsx`   | Wraps the whole subtree                                           |
-| `src/routes/_404.tsx`      | Not-found page (auto-emitted as `dist/404.html` in SSG)           |
-| `src/routes/_error.tsx`    | Route-level error boundary                                        |
-| `src/routes/_loading.tsx`  | Loader-in-flight component                                        |
-| `src/routes/(group)/x.tsx` | `/x` — group prefix is stripped from the URL                      |
-| `src/routes/api/*.ts`      | API routes — `export function GET / POST / PUT / DELETE / …`      |
+| File                       | Role                                                         |
+| -------------------------- | ------------------------------------------------------------ |
+| `src/routes/index.tsx`     | `/` — homepage                                               |
+| `src/routes/about.tsx`     | `/about`                                                     |
+| `src/routes/[id].tsx`      | `/:id` — dynamic param                                       |
+| `src/routes/[...slug].tsx` | `/*` — catch-all                                             |
+| `src/routes/_layout.tsx`   | Wraps the whole subtree                                      |
+| `src/routes/_404.tsx`      | Not-found page (auto-emitted as `dist/404.html` in SSG)      |
+| `src/routes/_error.tsx`    | Route-level error boundary                                   |
+| `src/routes/_loading.tsx`  | Loader-in-flight component                                   |
+| `src/routes/(group)/x.tsx` | `/x` — group prefix is stripped from the URL                 |
+| `src/routes/api/*.ts`      | API routes — `export function GET / POST / PUT / DELETE / …` |
 
 Each route file may also export `loader`, `meta`, `middleware`, `guard`, `getStaticPaths`, `revalidate`, and `renderMode`.
 
 ## Rendering modes
 
 ```ts
-zero({ mode: 'ssr' })  // server-rendered per request (default)
-zero({ mode: 'ssg' })  // prerender every static path at build time → dist/<path>/index.html
-zero({ mode: 'isr' })  // SSR + in-memory LRU cache, on-demand revalidation
-zero({ mode: 'spa' })  // client-only — single dist/index.html shell
+zero({ mode: 'ssr' }) // server-rendered per request (default)
+zero({ mode: 'ssg' }) // prerender every static path at build time → dist/<path>/index.html
+zero({ mode: 'isr' }) // SSR + in-memory LRU cache, on-demand revalidation
+zero({ mode: 'spa' }) // client-only — single dist/index.html shell
 ```
 
 Per-route override: `export const renderMode = 'ssg'`.
@@ -101,7 +103,9 @@ export const getStaticPaths: GetStaticPaths<{ slug: string }> = async () => {
 export const revalidate = 3600 // optional — build-time ISR (per platform adapter)
 
 export const loader = ({ params }) => fetchPost(params.slug)
-export default function Post() { /* ... */ }
+export default function Post() {
+  /* ... */
+}
 ```
 
 SSG features (all on by default; opt out via `ssg: { ... }`):
@@ -143,7 +147,9 @@ import { faviconPlugin, iconsPlugin, ogImagePlugin, seoPlugin, aiPlugin } from '
 
 // vite.config.ts
 plugins: [
-  zero({ /* ... */ }),
+  zero({
+    /* ... */
+  }),
   iconsPlugin({
     sets: {
       ui: { dir: './src/icons/ui' },
@@ -151,7 +157,13 @@ plugins: [
     },
   }),
   faviconPlugin({ source: './src/favicon.svg' }),
-  ogImagePlugin({ templates: { default: { /* ... */ } } }),
+  ogImagePlugin({
+    templates: {
+      default: {
+        /* ... */
+      },
+    },
+  }),
   seoPlugin({ sitemap: { useSsgPaths: true }, robots: true }),
   aiPlugin(), // generates llms.txt + JSON-LD inference + AI plugin manifest
 ]
@@ -160,7 +172,14 @@ plugins: [
 ## Deploy adapters
 
 ```ts
-import { vercelAdapter, cloudflareAdapter, netlifyAdapter, nodeAdapter, bunAdapter, staticAdapter } from '@pyreon/zero/server'
+import {
+  vercelAdapter,
+  cloudflareAdapter,
+  netlifyAdapter,
+  nodeAdapter,
+  bunAdapter,
+  staticAdapter,
+} from '@pyreon/zero/server'
 
 zero({ adapter: vercelAdapter() })
 // or by string id:
@@ -200,14 +219,14 @@ Routes are duplicated per locale at build time. `prefix-except-default` keeps th
 
 ## Subpath exports (server-only)
 
-| Subpath                       | Notes                                                                                |
-|-------------------------------|--------------------------------------------------------------------------------------|
-| `@pyreon/zero/server`         | `createServer`, `createApp`, `createISRHandler`, adapters, plugins, `vercelRevalidateHandler` |
-| `@pyreon/zero/client`         | `startClient`, `hydrateIslands*` re-exports                                          |
-| `@pyreon/zero/config`         | `defineConfig`, `resolveConfig`                                                      |
-| `@pyreon/zero/env`            | `validateEnv`, `publicEnv`, `schema`                                                 |
-| `@pyreon/zero/middleware`     | Generic `Middleware` helpers                                                         |
-| `@pyreon/zero/testing`        | `createTestContext`, `testMiddleware`, `createTestApiServer`                         |
+| Subpath                   | Notes                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| `@pyreon/zero/server`     | `createServer`, `createApp`, `createISRHandler`, adapters, plugins, `vercelRevalidateHandler` |
+| `@pyreon/zero/client`     | `startClient`, `hydrateIslands*` re-exports                                                   |
+| `@pyreon/zero/config`     | `defineConfig`, `resolveConfig`                                                               |
+| `@pyreon/zero/env`        | `validateEnv`, `publicEnv`, `schema`                                                          |
+| `@pyreon/zero/middleware` | Generic `Middleware` helpers                                                                  |
+| `@pyreon/zero/testing`    | `createTestContext`, `testMiddleware`, `createTestApiServer`                                  |
 
 The main entry (`@pyreon/zero`) re-exports browser-safe pieces only — components, theme, i18n helpers. Server APIs imported from the main entry throw a clear error pointing at the right subpath.
 

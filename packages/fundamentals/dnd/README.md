@@ -85,9 +85,7 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
         ref={itemRef(col.id)}
         class={() => (activeId() === col.id ? 'dragging' : '')}
         style={() =>
-          overId() === col.id && overEdge() === 'top'
-            ? 'border-top: 2px solid blue'
-            : ''
+          overId() === col.id && overEdge() === 'top' ? 'border-top: 2px solid blue' : ''
         }
       >
         {col.name}

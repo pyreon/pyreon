@@ -193,27 +193,40 @@ function toValidator(value: unknown): EnvValidator<unknown> {
   if (typeof value === 'boolean') return bool({ default: value })
   if (typeof value === 'string') return str({ default: value })
 
-  throw new Error(`[Pyreon] Invalid schema value: ${String(value)}. Use a default value, String/Number/Boolean, or a validator like url().`)
+  throw new Error(
+    `[Pyreon] Invalid schema value: ${String(value)}. Use a default value, String/Number/Boolean, or a validator like url().`,
+  )
 }
 
 // ─── Type inference ─────────────────────────────────────────────────────────
 
 /** Schema entry: plain value, constructor, or explicit validator. */
 type SchemaEntry =
-  | string | number | boolean
-  | StringConstructor | NumberConstructor | BooleanConstructor
+  | string
+  | number
+  | boolean
+  | StringConstructor
+  | NumberConstructor
+  | BooleanConstructor
   | EnvValidator<any>
 
 /** Infer the output type from a schema entry. */
 type InferEntry<T> =
-  T extends EnvValidator<infer V> ? V :
-  T extends StringConstructor ? string :
-  T extends NumberConstructor ? number :
-  T extends BooleanConstructor ? boolean :
-  T extends string ? string :
-  T extends number ? number :
-  T extends boolean ? boolean :
-  never
+  T extends EnvValidator<infer V>
+    ? V
+    : T extends StringConstructor
+      ? string
+      : T extends NumberConstructor
+        ? number
+        : T extends BooleanConstructor
+          ? boolean
+          : T extends string
+            ? string
+            : T extends number
+              ? number
+              : T extends boolean
+                ? boolean
+                : never
 
 type InferEnvSchema<T> = {
   [K in keyof T]: InferEntry<T[K]>

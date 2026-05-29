@@ -62,13 +62,28 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     const v = argv[i + 1]
-    if (a === '--app' && v) { args.app = v; i++ }
-    else if (a === '--cycles' && v) { args.cycles = Number(v); i++ }
-    else if (a === '--warmup' && v) { args.warmup = Number(v); i++ }
-    else if (a === '--threshold' && v) { args.thresholdBytesPerCycle = Number(v); i++ }
-    else if (a === '--json' && v) { args.jsonOut = v; i++ }
-    else if (a === '--journeys' && v) { args.journeys = v.split(',').map((s) => s.trim()); i++ }
-    else if (a === '--mode' && (v === 'dev' || v === 'preview')) { args.mode = v; i++ }
+    if (a === '--app' && v) {
+      args.app = v
+      i++
+    } else if (a === '--cycles' && v) {
+      args.cycles = Number(v)
+      i++
+    } else if (a === '--warmup' && v) {
+      args.warmup = Number(v)
+      i++
+    } else if (a === '--threshold' && v) {
+      args.thresholdBytesPerCycle = Number(v)
+      i++
+    } else if (a === '--json' && v) {
+      args.jsonOut = v
+      i++
+    } else if (a === '--journeys' && v) {
+      args.journeys = v.split(',').map((s) => s.trim())
+      i++
+    } else if (a === '--mode' && (v === 'dev' || v === 'preview')) {
+      args.mode = v
+      i++
+    }
   }
   return args as Args
 }
@@ -76,7 +91,9 @@ function parseArgs(argv: string[]): Args {
 async function runOneCycle(page: Page, name: string): Promise<void> {
   const fn = journeys[name]
   if (!fn) {
-    throw new Error(`[leak-sweep] unknown journey "${name}" — not in perf-dashboard's journeys catalog`)
+    throw new Error(
+      `[leak-sweep] unknown journey "${name}" — not in perf-dashboard's journeys catalog`,
+    )
   }
   // The journey functions are typed against the `PageLike` interface
   // (click / fill / waitForSelector / evaluate / reload) — a strict
@@ -94,7 +111,7 @@ async function forceGcTwice(page: Page): Promise<void> {
 
 async function sampleHeap(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const perf = (performance as unknown) as { memory?: { usedJSHeapSize: number } }
+    const perf = performance as unknown as { memory?: { usedJSHeapSize: number } }
     return perf.memory?.usedJSHeapSize ?? 0
   })
 }
@@ -114,7 +131,13 @@ interface JourneyResult {
   failed?: string
 }
 
-async function runJourney(page: Page, journey: string, cycles: number, warmup: number, threshold: number): Promise<JourneyResult> {
+async function runJourney(
+  page: Page,
+  journey: string,
+  cycles: number,
+  warmup: number,
+  threshold: number,
+): Promise<JourneyResult> {
   try {
     // Warmup
     for (let i = 0; i < warmup; i++) {
@@ -172,7 +195,7 @@ async function runJourney(page: Page, journey: string, cycles: number, warmup: n
 
 function fmtKB(bytes: number): string {
   const kb = bytes / 1024
-  if (Math.abs(kb) < 1) return `${(bytes).toFixed(0)}B`
+  if (Math.abs(kb) < 1) return `${bytes.toFixed(0)}B`
   if (Math.abs(kb) < 1024) return `${kb.toFixed(2)}KB`
   return `${(kb / 1024).toFixed(2)}MB`
 }
@@ -191,13 +214,19 @@ function printReport(results: JourneyResult[], threshold: number): void {
 
   console.log()
   console.log('─'.repeat(110))
-  console.log(`  Leak-audit sweep — ${results.length} journey(s), threshold ${fmtKB(threshold)}/cycle`)
+  console.log(
+    `  Leak-audit sweep — ${results.length} journey(s), threshold ${fmtKB(threshold)}/cycle`,
+  )
   console.log('─'.repeat(110))
-  console.log(`  ${'Journey'.padEnd(36)}${'Slope'.padStart(14)}${'R²'.padStart(8)}${'CV'.padStart(10)}${'Start MB'.padStart(12)}${'End MB'.padStart(12)}  Verdict`)
+  console.log(
+    `  ${'Journey'.padEnd(36)}${'Slope'.padStart(14)}${'R²'.padStart(8)}${'CV'.padStart(10)}${'Start MB'.padStart(12)}${'End MB'.padStart(12)}  Verdict`,
+  )
   console.log('─'.repeat(110))
   for (const r of sorted) {
     if (r.failed) {
-      console.log(`  ${r.journey.padEnd(36)}${'  ERROR'.padStart(14)}${''.padStart(8)}${''.padStart(10)}${''.padStart(12)}${''.padStart(12)}  ✗ ${r.failed.slice(0, 60)}`)
+      console.log(
+        `  ${r.journey.padEnd(36)}${'  ERROR'.padStart(14)}${''.padStart(8)}${''.padStart(10)}${''.padStart(12)}${''.padStart(12)}  ✗ ${r.failed.slice(0, 60)}`,
+      )
       continue
     }
     const slopeStr = fmtKB(r.slopeBytesPerCycle).padStart(14)
@@ -207,8 +236,12 @@ function printReport(results: JourneyResult[], threshold: number): void {
     const endStr = fmtMB(r.lastSampleBytes).padStart(12)
     const verdict = r.leakDetected
       ? `🚨 LEAK (${(r.slopeBytesPerCycle / threshold).toFixed(2)}× over)`
-      : r.cv < 0.001 ? '✓ flat' : '✓ ok'
-    console.log(`  ${r.journey.padEnd(36)}${slopeStr}${r2Str}${cvStr}${startStr}${endStr}  ${verdict}`)
+      : r.cv < 0.001
+        ? '✓ flat'
+        : '✓ ok'
+    console.log(
+      `  ${r.journey.padEnd(36)}${slopeStr}${r2Str}${cvStr}${startStr}${endStr}  ${verdict}`,
+    )
   }
   console.log('─'.repeat(110))
 
@@ -217,14 +250,18 @@ function printReport(results: JourneyResult[], threshold: number): void {
   console.log()
   console.log(`  Total journeys: ${results.length}`)
   console.log(`  Leaks detected: ${leaks.length}${leaks.length > 0 ? ' ✗' : ' ✓'}`)
-  console.log(`  Failed to run:  ${failures.length}${failures.length > 0 ? ' ✗ (check journey hooks)' : ' ✓'}`)
+  console.log(
+    `  Failed to run:  ${failures.length}${failures.length > 0 ? ' ✗ (check journey hooks)' : ' ✓'}`,
+  )
   console.log()
 }
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   console.log(`[leak-sweep] app=${args.app} mode=${args.mode}`)
-  console.log(`[leak-sweep] cycles=${args.cycles} warmup=${args.warmup} threshold=${args.thresholdBytesPerCycle} bytes/cycle`)
+  console.log(
+    `[leak-sweep] cycles=${args.cycles} warmup=${args.warmup} threshold=${args.thresholdBytesPerCycle} bytes/cycle`,
+  )
 
   let server
   try {
@@ -252,31 +289,49 @@ async function main(): Promise<void> {
     const checks = await page.evaluate(() => ({
       memory: typeof (performance as unknown as { memory?: unknown }).memory,
       gc: typeof (globalThis as { gc?: unknown }).gc,
-      journey: typeof (window as unknown as { __pyreon_perf_journey?: unknown }).__pyreon_perf_journey,
+      journey: typeof (window as unknown as { __pyreon_perf_journey?: unknown })
+        .__pyreon_perf_journey,
     }))
-    if (checks.memory !== 'object') { console.error('[leak-sweep] performance.memory unavailable'); process.exit(4) }
-    if (checks.gc !== 'function') { console.error('[leak-sweep] globalThis.gc unavailable'); process.exit(4) }
+    if (checks.memory !== 'object') {
+      console.error('[leak-sweep] performance.memory unavailable')
+      process.exit(4)
+    }
+    if (checks.gc !== 'function') {
+      console.error('[leak-sweep] globalThis.gc unavailable')
+      process.exit(4)
+    }
 
     await page.waitForLoadState('networkidle')
     await new Promise((r) => setTimeout(r, 500))
 
     // Enumerate journeys — either user-supplied subset or full catalog from journeys.ts
     const allJourneyNames = Object.keys(journeys)
-    const targetJourneys = args.journeys && args.journeys.length > 0
-      ? args.journeys.filter((j) => allJourneyNames.includes(j))
-      : allJourneyNames
+    const targetJourneys =
+      args.journeys && args.journeys.length > 0
+        ? args.journeys.filter((j) => allJourneyNames.includes(j))
+        : allJourneyNames
     if (targetJourneys.length === 0) {
       console.error('[leak-sweep] no matching journeys found in catalog')
       process.exit(1)
     }
-    console.log(`[leak-sweep] sweeping ${targetJourneys.length} journey(s) from catalog of ${allJourneyNames.length}`)
+    console.log(
+      `[leak-sweep] sweeping ${targetJourneys.length} journey(s) from catalog of ${allJourneyNames.length}`,
+    )
 
     const results: JourneyResult[] = []
     for (let i = 0; i < targetJourneys.length; i++) {
       const j = targetJourneys[i]!
-      process.stdout.write(`[leak-sweep] [${(i + 1).toString().padStart(2)}/${targetJourneys.length}] ${j.padEnd(40)} `)
+      process.stdout.write(
+        `[leak-sweep] [${(i + 1).toString().padStart(2)}/${targetJourneys.length}] ${j.padEnd(40)} `,
+      )
       const start = Date.now()
-      const result = await runJourney(page, j, args.cycles, args.warmup, args.thresholdBytesPerCycle)
+      const result = await runJourney(
+        page,
+        j,
+        args.cycles,
+        args.warmup,
+        args.thresholdBytesPerCycle,
+      )
       const elapsed = ((Date.now() - start) / 1000).toFixed(1)
       if (result.failed) {
         process.stdout.write(`✗ ERROR (${elapsed}s): ${result.failed.slice(0, 50)}\n`)
@@ -297,19 +352,26 @@ async function main(): Promise<void> {
     if (args.jsonOut) {
       mkdirSync(dirname(args.jsonOut), { recursive: true })
       const sha = currentSha()
-      writeFileSync(args.jsonOut, JSON.stringify({
-        generatedAt: new Date().toISOString(),
-        sha,
-        app: args.app,
-        mode: args.mode,
-        cycles: args.cycles,
-        warmup: args.warmup,
-        thresholdBytesPerCycle: args.thresholdBytesPerCycle,
-        totalJourneys: results.length,
-        leaksDetected: results.filter((r) => r.leakDetected).length,
-        failedJourneys: results.filter((r) => r.failed).length,
-        results,
-      }, null, 2))
+      writeFileSync(
+        args.jsonOut,
+        JSON.stringify(
+          {
+            generatedAt: new Date().toISOString(),
+            sha,
+            app: args.app,
+            mode: args.mode,
+            cycles: args.cycles,
+            warmup: args.warmup,
+            thresholdBytesPerCycle: args.thresholdBytesPerCycle,
+            totalJourneys: results.length,
+            leaksDetected: results.filter((r) => r.leakDetected).length,
+            failedJourneys: results.filter((r) => r.failed).length,
+            results,
+          },
+          null,
+          2,
+        ),
+      )
       console.log(`[leak-sweep] JSON written to ${args.jsonOut}`)
     }
 

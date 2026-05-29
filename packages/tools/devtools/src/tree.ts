@@ -1,8 +1,6 @@
 import type { SerializedEntry } from './types'
 
-export function buildMap(
-  entries: SerializedEntry[],
-): Map<string, SerializedEntry> {
+export function buildMap(entries: SerializedEntry[]): Map<string, SerializedEntry> {
   const map = new Map<string, SerializedEntry>()
   for (const entry of entries) {
     map.set(entry.id, entry)
@@ -26,9 +24,7 @@ export function getRoots(entries: SerializedEntry[]): SerializedEntry[] {
  * so it renders correctly regardless of registration order. Insertion
  * order is preserved (the entry list arrives mount-ordered).
  */
-export function getChildren(
-  entries: SerializedEntry[],
-): Map<string, SerializedEntry[]> {
+export function getChildren(entries: SerializedEntry[]): Map<string, SerializedEntry[]> {
   const children = new Map<string, SerializedEntry[]>()
   for (const entry of entries) {
     if (entry.parentId === null) continue

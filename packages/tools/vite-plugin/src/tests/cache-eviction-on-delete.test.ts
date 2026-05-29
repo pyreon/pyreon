@@ -141,9 +141,9 @@ describe('@pyreon/vite-plugin — file-delete cache eviction (watchChange)', () 
 
     // Either the absolute id or its normalized form may have landed
     // in the registry — assert at least one is there.
-    const hasEntry
-      = caches.islandRegistry.has('/test-project/c-island.tsx')
-      || [...caches.islandRegistry.keys()].some((k) => k.includes('c-island'))
+    const hasEntry =
+      caches.islandRegistry.has('/test-project/c-island.tsx') ||
+      [...caches.islandRegistry.keys()].some((k) => k.includes('c-island'))
 
     if (hasEntry) {
       p.watchChange('/test-project/c-island.tsx', { event: 'delete' })
@@ -153,9 +153,7 @@ describe('@pyreon/vite-plugin — file-delete cache eviction (watchChange)', () 
       // If the scanner didn't pick up the island (test fixture too
       // minimal), the watchChange call must still be a no-op without
       // throwing — verifies the defensive path.
-      expect(() =>
-        p.watchChange('/test-project/c-island.tsx', { event: 'delete' }),
-      ).not.toThrow()
+      expect(() => p.watchChange('/test-project/c-island.tsx', { event: 'delete' })).not.toThrow()
     }
   })
 

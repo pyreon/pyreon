@@ -34,9 +34,9 @@ export function HooksDemo() {
     <div>
       <h2>Hooks</h2>
       <p class="desc">
-        34 signal-based hooks across state / DOM / responsive / timing /
-        interaction categories. All SSR-safe + self-cleaning + signal-native
-        (return Signal&lt;T&gt; / accessor objects, never plain values).
+        34 signal-based hooks across state / DOM / responsive / timing / interaction categories. All
+        SSR-safe + self-cleaning + signal-native (return Signal&lt;T&gt; / accessor objects, never
+        plain values).
       </p>
 
       <div class="section">
@@ -74,19 +74,14 @@ export function HooksDemo() {
           Live: <strong data-testid="hooks-live">{() => query() || '(empty)'}</strong>
           {' · '}
           Debounced:{' '}
-          <strong data-testid="hooks-debounced">
-            {() => debouncedQuery() || '(empty)'}
-          </strong>
+          <strong data-testid="hooks-debounced">{() => debouncedQuery() || '(empty)'}</strong>
         </p>
       </div>
 
       <div class="section">
         <h3>useClipboard</h3>
         <div class="row">
-          <button
-            data-testid="hooks-copy"
-            onClick={() => clipboard.copy('Pyreon ❤')}
-          >
+          <button data-testid="hooks-copy" onClick={() => clipboard.copy('Pyreon ❤')}>
             Copy "Pyreon ❤"
           </button>
           <span
@@ -109,10 +104,7 @@ export function HooksDemo() {
         <h3>useOnline</h3>
         <p>
           Network:{' '}
-          <span
-            class={() => (online() ? 'badge green' : 'badge red')}
-            data-testid="hooks-online"
-          >
+          <span class={() => (online() ? 'badge green' : 'badge red')} data-testid="hooks-online">
             {() => (online() ? 'ONLINE' : 'OFFLINE')}
           </span>
         </p>

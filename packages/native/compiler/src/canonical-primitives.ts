@@ -149,11 +149,24 @@ export function resolveSpace(value: number | string): number {
 }
 
 const SPACE_BY_INDEX: Record<number, number> = {
-  0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 32, 8: 40, 9: 48,
+  0: 0,
+  1: 4,
+  2: 8,
+  3: 12,
+  4: 16,
+  5: 20,
+  6: 24,
+  7: 32,
+  8: 40,
+  9: 48,
 }
 
 const SPACE_BY_NAME: Record<string, number> = {
-  xs: 4, sm: 8, md: 12, lg: 16, xl: 24,
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
 }
 
 /**
@@ -249,10 +262,16 @@ export function resolveAlign(
 }
 
 const ALIGN_SWIFT_H: Record<string, string> = {
-  start: '.leading', center: '.center', end: '.trailing', stretch: '.leading',
+  start: '.leading',
+  center: '.center',
+  end: '.trailing',
+  stretch: '.leading',
 }
 const ALIGN_SWIFT_V: Record<string, string> = {
-  start: '.top', center: '.center', end: '.bottom', stretch: '.top',
+  start: '.top',
+  center: '.center',
+  end: '.bottom',
+  stretch: '.top',
 }
 const ALIGN_KOTLIN_H: Record<string, string> = {
   start: 'Alignment.Start',

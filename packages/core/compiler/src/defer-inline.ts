@@ -215,9 +215,7 @@ function analyzeChildElement(node: Node): ChildAnalysis | null {
 /** Filter whitespace-only JSXText nodes (formatting noise between JSX elements). */
 function nonWhitespaceChildren(node: Node): Node[] {
   const children = (node.children as Node[] | undefined) ?? []
-  return children.filter(
-    (c) => !(c.type === 'JSXText' && /^\s*$/.test(c.value as string)),
-  )
+  return children.filter((c) => !(c.type === 'JSXText' && /^\s*$/.test(c.value as string)))
 }
 
 interface DeferMatch {
@@ -230,7 +228,11 @@ interface DeferMatch {
   childrenRange: { start: number; end: number }
 }
 
-function findDeferMatches(program: Node, warnings: DeferInlineWarning[], code: string): DeferMatch[] {
+function findDeferMatches(
+  program: Node,
+  warnings: DeferInlineWarning[],
+  code: string,
+): DeferMatch[] {
   const matches: DeferMatch[] = []
 
   const walk = (node: Node | null | undefined): void => {
@@ -276,7 +278,7 @@ function findDeferMatches(program: Node, warnings: DeferInlineWarning[], code: s
             // Single child but not a component element — bail with a
             // warning. The user might've put an HTML tag, a fragment, or
             // an expression container.
-            const loc = getLoc(code, ((live[0]!.start as number) ?? 0))
+            const loc = getLoc(code, (live[0]!.start as number) ?? 0)
             warnings.push({
               message: `<Defer> inline form requires a single component-element child (capitalised JSX identifier). Use the explicit \`chunk\` prop for any other shape.`,
               line: loc.line,
@@ -452,7 +454,11 @@ function countReferencesOutside(
  * The caller picks `exportName` — for `named`, it's `info.importedName`;
  * for `namespace`, it's the JSX member-expression property.
  */
-function buildChunkAttr(source: string, kind: 'default' | 'named' | 'namespace', exportName: string): string {
+function buildChunkAttr(
+  source: string,
+  kind: 'default' | 'named' | 'namespace',
+  exportName: string,
+): string {
   if (kind === 'default') {
     return ` chunk={() => import('${source}')}`
   }
@@ -467,7 +473,11 @@ function buildChunkAttr(source: string, kind: 'default' | 'named' | 'namespace',
  * unchanged. The render-prop arrow's lexical scope captures whatever
  * was in scope at the call site.
  */
-function buildRenderPropBody(code: string, analysis: ChildAnalysis, childRange: { start: number; end: number }): string {
+function buildRenderPropBody(
+  code: string,
+  analysis: ChildAnalysis,
+  childRange: { start: number; end: number },
+): string {
   const start = childRange.start
   const end = childRange.end
   let body = code.slice(start, end)
@@ -478,7 +488,10 @@ function buildRenderPropBody(code: string, analysis: ChildAnalysis, childRange: 
     const r = analysis.closeNameRange
     body = body.slice(0, r.start - start) + '__C' + body.slice(r.end - start)
   }
-  body = body.slice(0, analysis.openNameRange.start - start) + '__C' + body.slice(analysis.openNameRange.end - start)
+  body =
+    body.slice(0, analysis.openNameRange.start - start) +
+    '__C' +
+    body.slice(analysis.openNameRange.end - start)
   return `{(__C) => ${body}}`
 }
 
@@ -539,10 +552,7 @@ function buildImportRemovalEdit(code: string, info: ImportInfo): Edit {
   }
 }
 
-export function transformDeferInline(
-  code: string,
-  filename = 'input.tsx',
-): DeferInlineResult {
+export function transformDeferInline(code: string, filename = 'input.tsx'): DeferInlineResult {
   const warnings: DeferInlineWarning[] = []
 
   // Fast path — skip parse entirely when no `Defer` mention.
@@ -638,9 +648,7 @@ export function transformDeferInline(
     // named imports it comes from `importInfo.importedName` (handles
     // the renamed-import case). For default imports it's unused.
     const exportName =
-      importInfo.kind === 'namespace'
-        ? m.childAnalysis.propertyName
-        : importInfo.importedName
+      importInfo.kind === 'namespace' ? m.childAnalysis.propertyName : importInfo.importedName
 
     // 1. Insert chunk attribute just before the opening tag's `>`.
     edits.push({

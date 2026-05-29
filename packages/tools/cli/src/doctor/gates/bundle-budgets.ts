@@ -129,9 +129,7 @@ export interface BundleBudgetsGateOptions {
   bun?: string
 }
 
-export const runBundleBudgetsGate = async (
-  opts: BundleBudgetsGateOptions,
-): Promise<GateResult> => {
+export const runBundleBudgetsGate = async (opts: BundleBudgetsGateOptions): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
   const scriptPath = join(opts.cwd, 'scripts/check-bundle-budgets.ts')

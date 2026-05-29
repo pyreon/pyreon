@@ -34,9 +34,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  */
 export default definePlaywrightConfig({
   timeout: 60_000,
-  projects: [
-    { name: 'ssg-subpath', testMatch: /ssg-subpath\.spec\.ts$/, port: 5198 },
-  ],
+  projects: [{ name: 'ssg-subpath', testMatch: /ssg-subpath\.spec\.ts$/, port: 5198 }],
   webServer: [
     {
       // `&&` chain: build the subpath dist, then `vite preview` it (preview

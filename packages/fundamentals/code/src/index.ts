@@ -30,11 +30,7 @@ export { TabbedEditor } from './components/tabbed-editor'
 // Core
 export { createEditor } from './editor'
 // Signal binding
-export type {
-  BindEditorToSignalOptions,
-  EditorBinding,
-  SignalLike,
-} from './bind-signal'
+export type { BindEditorToSignalOptions, EditorBinding, SignalLike } from './bind-signal'
 export { bindEditorToSignal } from './bind-signal'
 export { useEditorSignal } from './use-editor-signal'
 // Languages

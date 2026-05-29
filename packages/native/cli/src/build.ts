@@ -115,7 +115,9 @@ export function build(options: BuildOptions): BuildResult {
     const relPath = relative(sourceAbs, input)
     // foo/bar.tsx → foo/bar.swift (or .kt). Replace path separators
     // with the platform's separator so Windows builds aren't broken.
-    const outPath = join(outAbs, relPath.replace(/\.tsx$/, ext)).split('/').join(sep)
+    const outPath = join(outAbs, relPath.replace(/\.tsx$/, ext))
+      .split('/')
+      .join(sep)
     mkdirSync(dirname(outPath), { recursive: true })
     const packageHeader =
       options.target === 'kotlin' && options.kotlinPackage

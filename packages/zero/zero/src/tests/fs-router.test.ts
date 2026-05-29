@@ -341,7 +341,7 @@ describe('generateRouteModule (real files)', () => {
     expect(code).not.toContain('_pick')
   })
 
-  it('falls back to namespace import when meta isn\'t a literal', () => {
+  it("falls back to namespace import when meta isn't a literal", () => {
     write(
       'computed-meta.tsx',
       `const baseTitle = 'Page'\nexport const loader = async () => ({})\nexport const meta = { title: baseTitle + ' — Site' }\nexport default function P() { return null }`,
@@ -443,10 +443,7 @@ describe('generateMiddlewareModule', () => {
   }
 
   function writeRouteWithoutMiddleware(name: string): void {
-    writeFileSync(
-      join(mwTmp, name),
-      `export default function Page() { return null }\n`,
-    )
+    writeFileSync(join(mwTmp, name), `export default function Page() { return null }\n`)
   }
 
   it('generates middleware imports for route files that export middleware', () => {
@@ -739,8 +736,9 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
       './routes',
     )
     // Single `import * as` for layout — covers both .layout and .loader
-    const namespaceImports = (result.match(/import \* as .* from "\.\/routes\/_layout\.tsx"/g) ?? [])
-      .length
+    const namespaceImports = (
+      result.match(/import \* as .* from "\.\/routes\/_layout\.tsx"/g) ?? []
+    ).length
     expect(namespaceImports).toBe(1)
     // Component reference is mod.layout (not a separate named import)
     expect(result).toMatch(/component: _m\d+\.layout/)

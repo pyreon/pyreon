@@ -76,10 +76,7 @@ export function field<N extends string, T>(
  * ```
  */
 export type InferFieldValues<T extends readonly FieldDefinition<string, unknown>[]> = {
-  [F in T[number] as F extends FieldDefinition<infer N, any> ? N : never]: F extends FieldDefinition<
-    string,
-    infer V
-  >
-    ? V
-    : never
+  [F in T[number] as F extends FieldDefinition<infer N, any>
+    ? N
+    : never]: F extends FieldDefinition<string, infer V> ? V : never
 }

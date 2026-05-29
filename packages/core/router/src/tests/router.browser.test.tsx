@@ -64,9 +64,7 @@ describe('router in real browser', () => {
 
   it('mounts the initial route and renders its component', async () => {
     const router = createRouter({ routes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     expect(container.querySelector('#home')?.textContent).toBe('Home Page')
     unmount()
@@ -74,9 +72,7 @@ describe('router in real browser', () => {
 
   it('router.push() updates both the DOM and location.hash', async () => {
     const router = createRouter({ routes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     await router.push('/about')
     await flush()
@@ -89,9 +85,7 @@ describe('router in real browser', () => {
 
   it('resolves dynamic :params from the URL', async () => {
     const router = createRouter({ routes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     await router.push('/user/42')
     await flush()
@@ -141,9 +135,7 @@ describe('router in real browser', () => {
     // `await router.push()` resolves once the DOM state is live (but
     // before the animation finishes, which would block 200-300ms).
     const router = createRouter({ routes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
     expect(container.querySelector('#home')).not.toBeNull()
 
     // Sanity: Chromium exposes the API this test exercises.
@@ -162,9 +154,7 @@ describe('router in real browser', () => {
 
   it('popstate (browser back/forward) navigates', async () => {
     const router = createRouter({ routes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     await router.push('/about')
     await flush()
@@ -189,11 +179,7 @@ describe('router in real browser', () => {
       return h('span', { id: 'badge' }, () => (isAbout() ? 'on-about' : 'off-about'))
     }
     const { container, unmount } = mountInBrowser(
-      h(
-        RouterProvider,
-        { router },
-        h('div', null, h(ActiveBadge, {}), h(RouterView, {})),
-      ),
+      h(RouterProvider, { router }, h('div', null, h(ActiveBadge, {}), h(RouterView, {}))),
     )
     expect(container.querySelector('#badge')?.textContent).toBe('off-about')
 
@@ -214,13 +200,10 @@ describe('router in real browser', () => {
         path: '/protected',
         component: About,
         beforeEnter: () => false,
-
       },
     ]
     const router = createRouter({ routes: guardedRoutes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
     expect(container.querySelector('#home')).not.toBeNull()
 
     await router.push('/protected')
@@ -239,14 +222,11 @@ describe('router in real browser', () => {
         path: '/old',
         component: About,
         beforeEnter: () => '/new',
-
       },
       { path: '/new', component: Redirected },
     ]
     const router = createRouter({ routes: guardRedirect, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     await router.push('/old')
     await flush()
@@ -262,9 +242,7 @@ describe('router in real browser', () => {
       { path: '/target', component: Target },
     ]
     const router = createRouter({ routes: redirRoutes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
     await router.push('/source')
     await flush()
     expect(container.querySelector('#tgt')?.textContent).toBe('Target')
@@ -288,13 +266,10 @@ describe('router in real browser', () => {
           seen.push('loader')
           return { user: 'Alice' }
         },
-
       },
     ]
     const router = createRouter({ routes: loaderRoutes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
     await router.push('/profile')
     await flush()
 
@@ -314,9 +289,7 @@ describe('router in real browser', () => {
       { path: '/search', component: Search },
     ]
     const router = createRouter({ routes: searchRoutes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
     await router.push('/search?q=hello')
     await flush()
     expect(container.querySelector('#q')?.textContent).toBe('q=hello')
@@ -333,9 +306,7 @@ describe('router in real browser', () => {
       { path: '/user/:id', component: User, name: 'user' },
     ]
     const router = createRouter({ routes: namedRoutes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     await router.push({ name: 'user', params: { id: '7' } })
     await flush()
@@ -351,9 +322,7 @@ describe('router in real browser', () => {
       { path: '*', component: NotFound },
     ]
     const router = createRouter({ routes: wildcardRoutes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
     await router.push('/totally/does/not/exist')
     await flush()
     expect(container.querySelector('#nf')).not.toBeNull()
@@ -398,9 +367,7 @@ describe('router in real browser', () => {
     //   1. Final destination resolves correctly.
     //   2. `window.onunhandledrejection` fires zero times.
     const router = createRouter({ routes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     // Don't await — fire all three before any has settled.
     const p1 = router.push('/about')
@@ -427,9 +394,7 @@ describe('router in real browser', () => {
     // splits their code paths can't silently regress one without the
     // other.
     const router = createRouter({ routes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
     expect(container.querySelector('#home')).not.toBeNull()
 
     await router.replace('/about')
@@ -475,9 +440,7 @@ describe('router in real browser', () => {
       { path: '/about', component: InstrumentedAbout },
     ]
     const router = createRouter({ routes: localRoutes, mode: 'hash' })
-    const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(RouterView, {})),
-    )
+    const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
 
     // Sanity: starting at /, About is not yet mounted.
     expect(aboutMountCount).toBe(0)

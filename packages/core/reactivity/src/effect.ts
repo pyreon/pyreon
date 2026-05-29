@@ -159,10 +159,7 @@ function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
   }
 }
 
-export function effect(
-  fn: () => (() => void) | void,
-  options?: EffectOptions,
-): Effect {
+export function effect(fn: () => (() => void) | void, options?: EffectOptions): Effect {
   // Dev-mode warning for async effect callbacks (audit bug #1). The
   // tracking context is the synchronous frame around `fn()`'s top half;
   // anything after the first `await` runs detached, so signal reads on

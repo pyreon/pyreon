@@ -119,7 +119,6 @@
   dropped bug is structurally impossible.
 
   Removes the per-package workarounds added in [#722](https://github.com/pyreon/pyreon/issues/722):
-
   - `packages/core/head/vl-tools.config.mjs` — deleted (no more
     `external: ['@pyreon/head/context']` rule needed)
   - source self-package imports reverted to relative `./context` in
@@ -128,7 +127,6 @@
   - `vitest.shared.ts` `@pyreon/head/context` alias removed
 
   Kept (legitimate, not workarounds):
-
   - `./context` sub-export in `package.json` — public API surface; users
     can still `import { HeadContext } from '@pyreon/head/context'`
   - bundle-level regression test, **rewritten** to assert the new (and
@@ -137,7 +135,6 @@
     against any future regression (e.g. downgrade of the build tool).
 
   Verified empirically:
-
   - `lib/context.js : createContext = 2` (THE source of truth)
   - `lib/{index,provider,use-head,ssr}.js : createContext = 0` (each)
   - `lib/_chunks/use-head-*.js : createContext = 0`
@@ -161,7 +158,6 @@
   **Why dev / source-mode tests didn't catch it:** every existing test ran under the `bun` condition where ESM gives us one `HeadContext` for free. The bug is structurally invisible until you load `lib/*.js`. The new `tests/context-identity.test.ts` is the bundle-level gate that locks the contract going forward — see below.
 
   **Fix.** Three coordinated changes:
-
   1. **New `./context` sub-export in `package.json`** — gives `HeadContext` a stable runtime address (`lib/context.js`) every sub-bundle can resolve to.
 
   2. **New `vl-tools.config.mjs`** with `build.external: ['@pyreon/head/context']` — tells rolldown to NOT inline the specifier in any sub-entry's bundle; emit `import { HeadContext } from "@pyreon/head/context"` verbatim instead. At runtime, every importer (every `lib/*.js`) resolves to the same `lib/context.js` module instance → one Symbol → cross-bundle `useContext` lookups work.
@@ -171,7 +167,6 @@
   Companion vitest alias in `vitest.shared.ts` so the self-package import resolves to `src/context.ts` under the `bun` condition during dev / test (same pattern as the other 14 sub-path aliases there).
 
   **Coverage.** New `tests/context-identity.test.ts` — 11 structural assertions on the built `lib/`:
-
   - `lib/context.js` is the SINGLE bundle that calls `createContext()` (the source of truth for the Symbol)
   - `lib/index.js`, `lib/provider.js`, `lib/use-head.js`, `lib/ssr.js` each have ZERO `createContext` references (it.each, 4 specs)
   - All 4 non-context sub-bundles emit `from "@pyreon/head/context"` external imports (it.each, 4 specs)
@@ -198,13 +193,11 @@
   `HeadProvider`'s context resolution was `props.context ?? createHeadContext()` — it ALWAYS allocated a fresh ctx when no explicit prop was passed, even when an outer `HeadContext` was already in scope. That defeated the documented composition `renderWithHead(h(HeadProvider, null, h(App)))` AND, structurally, the entire `@pyreon/zero` SSG/SSR pipeline (whose `createApp` mounts `h(HeadProvider, null, …)` unconditionally). Every `useHead()` call in the subtree wrote tags into the inner ctx; `renderWithHead` resolved the outer ctx and produced an **empty `<head>` string**. Static SSG output shipped with no `<title>`/`<meta>`/JSON-LD/OG tags — social scrapers and non-JS crawlers saw nothing; client hydration eventually populated `document.head` so the bug stayed invisible to standard browser inspection.
 
   Fix:
-
   - Resolution order is now `props.context ?? useContext(HeadContext) ?? createHeadContext()` — explicit prop wins (documented SSR / opt-out-isolation pattern), otherwise the outer `HeadContext` in scope is inherited (the missing rule), otherwise a fresh ctx is auto-created (preserves CSR-root behavior).
   - Documented JSDoc + manifest summary + `docs/docs/head.md` "Context resolution" section + CLAUDE.md bug-class note.
   - `nativeCompat(HeadProvider)` unchanged — compat-mode marker still relevant.
 
   Backward compatibility:
-
   - Apps that always passed `context={someCtx}` explicitly are unaffected (explicit prop still wins).
   - Apps that mounted ONE root `<HeadProvider>` are unaffected (no outer ctx → fresh ctx auto-create path).
   - Apps that nested `<HeadProvider>` and **relied on the inner one being isolated** now share the outer registry by default; that was almost always the unintended pre-fix behavior (the inner shadowed and the outer's lookup returned empty). Apps that genuinely need isolation pass `context={createHeadContext()}` explicitly.
@@ -236,7 +229,6 @@
   **What this adds.** A new opt-in `speculationRules?: SpeculationRules` field on `UseHeadInput` (plus exported `SpeculationRules` / `SpeculationRule` / `SpeculationEagerness` types). It auto-wraps the object as a single `<script type="speculationrules">` tag — supported browsers prefetch or fully prerender the next document(s) for near-instant navigation; unsupported browsers ignore it (no polyfill). Both `source: 'list'` (explicit URLs) and `source: 'document'` (CSS-selector predicate — the Qwik "prefetch by intent" shape) are typed. **Zero runtime JS, opt-in (nothing emitted unless called), SSR + client for free** (rides the existing head pipeline, including its `</script>`-breakout escaper), deduplicated by a single key. No default behavior change.
 
   **Run as a bounded spike with kill-criteria fixed first** (the codebase's own Tier-2 methodology), shipped only because both load-bearing criteria passed:
-
   1. **Correctness & SSR-safety — ✅ 0 defects.** 7 unit specs: SSR single-block emission + valid-JSON round-trip, CSR `document.head` sync, key dedup (innermost wins, never two blocks), reactive regen on signal change, `document`-source predicate round-trip, opt-in absence, and XSS-safety (`/x</script><b>pwn` URL → escaped, JSON still parses back to the original).
   2. **Real-Chromium browser acceptance — ✅.** A `*.browser.test.tsx` spec asserts in real Chromium: the script lands in `<head>`, `HTMLScriptElement.type === 'speculationrules'`, the body is valid JSON that round-trips, and Chromium raises **zero** speculation-rules parse errors. (Whether Chromium then prefetches/prerenders is browser-discretionary + headless-flag-dependent and is **intentionally not asserted** — the framework's contract is "emit a correct, valid declarative hint", same as `<link rel=prefetch>`. The docs + manifest mistakes state this explicitly; no measured-TTI claim is made.)
   3. **Net value over existing prefetch — qualitatively yes, honestly framed.** `RouterLink prefetch=intent` warms loader _data_ for in-app client-side nav; Speculation Rules warm the _document_ at the platform level for full navigations — a strictly additional, complementary capability the framework didn't expose. Not overclaimed as a guaranteed perf win.
@@ -266,7 +258,6 @@
   is a definitional false positive). Errors **987 → 86**.
 
   **Detector precision (false positives are the antithesis of objective):**
-
   - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
     tracked signal binding — no longer flags `input.value` / `cell.value` /
     `o.value` (17 FPs; bisect-verified).
@@ -280,7 +271,6 @@
 
   **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
   these — cross-function/method guards aren't lexically traceable):
-
   - `@pyreon/head` `createNewTag` — added `typeof document` guard.
   - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
   - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
@@ -511,7 +501,6 @@
 ### Minor Changes
 
 - ### @pyreon/router
-
   - `go(n)` and `forward()` for history navigation
   - Named `replace()` — navigate by route name
   - Optional params (`:id?`) with compile-time type inference
@@ -526,14 +515,12 @@
   - Stale-while-revalidate loaders
 
   ### @pyreon/head
-
   - Cached resolve with dirty flag (30M+ ops/sec cached path)
   - Single-pass HTML escaping (regex + lookup table)
   - DOM element tracking via Map (avoids querySelectorAll per sync)
   - 7-9.5x faster SSR serialization than Unhead (Vue/Nuxt)
 
   ### @pyreon/server
-
   - Pre-compiled template splits at handler creation (17x faster on real templates)
   - Pre-built client entry tag avoids per-request string construction
   - `buildScriptsFast` skips array allocation
@@ -561,7 +548,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -575,7 +561,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -584,7 +569,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -603,7 +587,6 @@
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option

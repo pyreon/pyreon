@@ -8,7 +8,7 @@ vi.mock('@pyreon/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@pyreon/core')>()
   return {
     ...original,
-    useContext: vi.fn(() => (() => ({}))),
+    useContext: vi.fn(() => () => ({})),
   }
 })
 

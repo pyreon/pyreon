@@ -221,11 +221,9 @@ describe('compat-mode resolveId — framework-importer carve-out', () => {
 
   it('STILL redirects @pyreon/core/jsx-runtime when no importer (entry point)', async () => {
     const plugin = bootstrap({ compat: 'react' })
-    const resolved = await callResolveId(
-      plugin,
-      '@pyreon/core/jsx-runtime',
-      { '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts' },
-    )
+    const resolved = await callResolveId(plugin, '@pyreon/core/jsx-runtime', {
+      '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts',
+    })
     expect(resolved).toBe('/abs/react-compat/jsx-runtime.ts')
   })
 

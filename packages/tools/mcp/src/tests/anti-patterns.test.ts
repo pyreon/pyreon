@@ -40,9 +40,7 @@ describe('parseAntiPatterns — real repo file', () => {
   })
 
   it('parses single-code detector tags on known entries', () => {
-    const forMissingBy = entries.find((e) =>
-      e.detectorCodes.includes('for-missing-by'),
-    )
+    const forMissingBy = entries.find((e) => e.detectorCodes.includes('for-missing-by'))
     expect(forMissingBy).toBeDefined()
     expect(forMissingBy!.category).toBe('jsx')
     expect(forMissingBy!.name).toContain('by')

@@ -116,7 +116,8 @@ export const sections: Section[] = [
   {
     path: '/flow',
     label: 'Flow Editor',
-    tagline: 'Visual node editor with bidirectional JSON sidebar — drag the canvas or edit the JSON, both sync in real time',
+    tagline:
+      'Visual node editor with bidirectional JSON sidebar — drag the canvas or edit the JSON, both sync in real time',
     features: ['flow', 'code', 'store'],
     available: true,
     group: 'visual',
@@ -124,7 +125,8 @@ export const sections: Section[] = [
   {
     path: '/dnd',
     label: 'Drag & Drop',
-    tagline: 'Three drag-and-drop scenarios — sortable list, draggable card → drop zone, file drop with type filtering',
+    tagline:
+      'Three drag-and-drop scenarios — sortable list, draggable card → drop zone, file drop with type filtering',
     features: ['dnd'],
     available: true,
     group: 'visual',

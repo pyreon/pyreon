@@ -142,7 +142,7 @@ export function mountChild(
     const source: () => unknown[] =
       typeof initialEach === 'function'
         ? (initialEach as () => unknown[])
-        : (() => props.each as unknown as unknown[])
+        : () => props.each as unknown as unknown[]
     const prevDepth = _elementDepth
     _elementDepth = 0
     const cleanup = mountFor(
@@ -308,7 +308,11 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   if (isSvg) _svgDepth++
   if (isMathml) _mathmlDepth++
 
-  if (process.env.NODE_ENV !== 'production' && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (vnode.children?.length ?? 0) > 0 &&
+    VOID_ELEMENTS.has(vnode.type as string)
+  ) {
     console.warn(
       `[Pyreon] <${vnode.type as string}> is a void element and cannot have children. ` +
         'Children passed to void elements will be ignored by the browser.',

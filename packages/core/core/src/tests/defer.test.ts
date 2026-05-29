@@ -196,9 +196,11 @@ describe('_setupIdleTrigger', () => {
     cic: (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback,
   }
   afterEach(() => {
-    if (orig.ric === undefined) delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback
+    if (orig.ric === undefined)
+      delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback
     else (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = orig.ric
-    if (orig.cic === undefined) delete (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback
+    if (orig.cic === undefined)
+      delete (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback
     else (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback = orig.cic
   })
 
@@ -211,9 +213,7 @@ describe('_setupIdleTrigger', () => {
       return 42
     }
     let cancelledId: number | null = null
-    ;(globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback = (
-      id: number,
-    ): void => {
+    ;(globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback = (id: number): void => {
       cancelledId = id
     }
     const startLoad = () => {}
@@ -263,15 +263,20 @@ describe('_setupIdleTrigger', () => {
 describe('_setupVisibleTrigger', () => {
   const origObs = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver
   afterEach(() => {
-    if (origObs === undefined) delete (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver
+    if (origObs === undefined)
+      delete (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver
     else (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = origObs
   })
 
   test('loads immediately when el is null', () => {
     let loaded = false
-    const teardown = _setupVisibleTrigger(null, () => {
-      loaded = true
-    }, '200px')
+    const teardown = _setupVisibleTrigger(
+      null,
+      () => {
+        loaded = true
+      },
+      '200px',
+    )
     expect(loaded).toBe(true)
     expect(typeof teardown).toBe('function')
   })
@@ -281,9 +286,13 @@ describe('_setupVisibleTrigger', () => {
     // Pass a stub element; without the global the trigger should bail early.
     const stubEl = {} as unknown as HTMLElement
     let loaded = false
-    _setupVisibleTrigger(stubEl, () => {
-      loaded = true
-    }, '200px')
+    _setupVisibleTrigger(
+      stubEl,
+      () => {
+        loaded = true
+      },
+      '200px',
+    )
     expect(loaded).toBe(true)
   })
 
@@ -336,9 +345,13 @@ describe('_setupVisibleTrigger', () => {
     ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = StubObserver
     let loaded = false
     const stubEl = {} as unknown as HTMLElement
-    _setupVisibleTrigger(stubEl, () => {
-      loaded = true
-    }, '0px')
+    _setupVisibleTrigger(
+      stubEl,
+      () => {
+        loaded = true
+      },
+      '0px',
+    )
 
     // Simulate non-intersecting entry — should NOT fire.
     captured!(

@@ -7,7 +7,9 @@ import manifest from '../manifest'
 
 describe('gen-docs — toast snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/toast — Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y (peer: @pyreon/runtime-dom). Unlike most Pyreon packages, toast uses a module-level signal store — \`toast()\` works from event handlers, effects, or any non-component code. The \`<Toaster />\` component reads from this shared store."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
+      `"- @pyreon/toast — Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y (peer: @pyreon/runtime-dom). Unlike most Pyreon packages, toast uses a module-level signal store — \`toast()\` works from event handlers, effects, or any non-component code. The \`<Toaster />\` component reads from this shared store."`,
+    )
   })
 
   it('renders to llms-full.txt section', () => {

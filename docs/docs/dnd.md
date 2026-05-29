@@ -38,24 +38,24 @@ const items = signal(['Apple', 'Banana', 'Cherry', 'Date'])
 const dragIndex = signal(-1)
 
 const move = (from, to) => {
-  if (from === to) return
-  const arr = [...items()]
-  const [m] = arr.splice(from, 1)
-  arr.splice(to, 0, m)
-  items.set(arr)
+if (from === to) return
+const arr = [...items()]
+const [m] = arr.splice(from, 1)
+arr.splice(to, 0, m)
+items.set(arr)
 }
 
 const app = document.getElementById('app')
 const ui = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
-  () => items().map((item, i) =>
-    h('div', {
-      draggable: 'true',
-      style: { padding: '8px 12px', background: '#e3f2fd', border: '1px solid #90caf9', borderRadius: '4px', cursor: 'move' },
-      onDragStart: () => dragIndex.set(i),
-      onDragOver: (e) => e.preventDefault(),
-      onDrop: (e) => { e.preventDefault(); move(dragIndex(), i); dragIndex.set(-1) },
-    }, '☰ ' + item),
-  ),
+() => items().map((item, i) =>
+h('div', {
+draggable: 'true',
+style: { padding: '8px 12px', background: '#e3f2fd', border: '1px solid #90caf9', borderRadius: '4px', cursor: 'move' },
+onDragStart: () => dragIndex.set(i),
+onDragOver: (e) => e.preventDefault(),
+onDrop: (e) => { e.preventDefault(); move(dragIndex(), i); dragIndex.set(-1) },
+}, '☰ ' + item),
+),
 )
 mount(ui, app)
 </Playground>
@@ -73,7 +73,7 @@ function DraggableCard(props: { card: Card }) {
   })
 
   return (
-    <div ref={(r) => el = r} class={isDragging() ? 'opacity-50' : ''}>
+    <div ref={(r) => (el = r)} class={isDragging() ? 'opacity-50' : ''}>
       {props.card.title}
     </div>
   )
@@ -87,7 +87,7 @@ function DropZone(props: { onDrop: (data: DragData) => void }) {
   })
 
   return (
-    <div ref={(r) => el = r} class={isOver() ? 'bg-blue-50' : ''}>
+    <div ref={(r) => (el = r)} class={isOver() ? 'bg-blue-50' : ''}>
       Drop here
     </div>
   )
@@ -107,8 +107,8 @@ let handleEl: HTMLElement | null = null
 const { isDragging } = useDraggable({
   element: () => cardEl,
   data: { id: card.id, type: 'card' },
-  handle: () => handleEl,        // optional drag handle
-  disabled: () => isLocked(),    // reactive disable
+  handle: () => handleEl, // optional drag handle
+  disabled: () => isLocked(), // reactive disable
   onDragStart: () => highlight(),
   onDragEnd: () => unhighlight(),
 })
@@ -116,19 +116,19 @@ const { isDragging } = useDraggable({
 
 ### Options
 
-| Option       | Type                                 | Default | Description                           |
-| ------------ | ------------------------------------ | ------- | ------------------------------------- |
-| `element`    | `() => HTMLElement \| null`          | —       | Element getter (required)             |
-| `data`       | `T \| (() => T)`                     | —       | Data to transfer on drag (required)   |
-| `handle`     | `() => HTMLElement \| null`          | —       | Optional drag handle element          |
-| `disabled`   | `boolean \| (() => boolean)`         | `false` | Whether dragging is disabled          |
-| `onDragStart`| `() => void`                         | —       | Called when drag starts               |
-| `onDragEnd`  | `() => void`                         | —       | Called when drag ends (drop or cancel)|
+| Option        | Type                         | Default | Description                            |
+| ------------- | ---------------------------- | ------- | -------------------------------------- |
+| `element`     | `() => HTMLElement \| null`  | —       | Element getter (required)              |
+| `data`        | `T \| (() => T)`             | —       | Data to transfer on drag (required)    |
+| `handle`      | `() => HTMLElement \| null`  | —       | Optional drag handle element           |
+| `disabled`    | `boolean \| (() => boolean)` | `false` | Whether dragging is disabled           |
+| `onDragStart` | `() => void`                 | —       | Called when drag starts                |
+| `onDragEnd`   | `() => void`                 | —       | Called when drag ends (drop or cancel) |
 
 ### Result
 
-| Property     | Type          | Description                        |
-| ------------ | ------------- | ---------------------------------- |
+| Property     | Type            | Description                           |
+| ------------ | --------------- | ------------------------------------- |
 | `isDragging` | `() => boolean` | Whether this element is being dragged |
 
 ## useDroppable
@@ -151,20 +151,20 @@ const { isOver } = useDroppable({
 
 ### Options
 
-| Option        | Type                           | Default | Description                      |
-| ------------- | ------------------------------ | ------- | -------------------------------- |
-| `element`     | `() => HTMLElement \| null`    | —       | Element getter (required)        |
-| `data`        | `T \| (() => T)`               | —       | Data to attach to drop target    |
-| `canDrop`     | `(sourceData: DragData) => boolean` | —  | Filter what can be dropped       |
-| `onDragEnter` | `(sourceData: DragData) => void` | —     | Called when a draggable enters    |
-| `onDragLeave` | `() => void`                   | —       | Called when a draggable leaves    |
-| `onDrop`      | `(sourceData: DragData) => void` | —     | Called on drop                   |
+| Option        | Type                                | Default | Description                    |
+| ------------- | ----------------------------------- | ------- | ------------------------------ |
+| `element`     | `() => HTMLElement \| null`         | —       | Element getter (required)      |
+| `data`        | `T \| (() => T)`                    | —       | Data to attach to drop target  |
+| `canDrop`     | `(sourceData: DragData) => boolean` | —       | Filter what can be dropped     |
+| `onDragEnter` | `(sourceData: DragData) => void`    | —       | Called when a draggable enters |
+| `onDragLeave` | `() => void`                        | —       | Called when a draggable leaves |
+| `onDrop`      | `(sourceData: DragData) => void`    | —       | Called on drop                 |
 
 ### Result
 
-| Property | Type             | Description                              |
-| -------- | ---------------- | ---------------------------------------- |
-| `isOver` | `() => boolean`  | Whether something is dragged over target |
+| Property | Type            | Description                              |
+| -------- | --------------- | ---------------------------------------- |
+| `isOver` | `() => boolean` | Whether something is dragged over target |
 
 ## useSortable
 
@@ -206,22 +206,22 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
 
 ### Options
 
-| Option      | Type                                    | Default      | Description                              |
-| ----------- | --------------------------------------- | ------------ | ---------------------------------------- |
-| `items`     | `() => T[]`                             | —            | Reactive list of items (required)        |
-| `by`        | `(item: T) => string \| number`         | —            | Key extractor, matches `<For by>` (required) |
-| `onReorder` | `(items: T[]) => void`                  | —            | Called with reordered items (required)    |
-| `axis`      | `'vertical' \| 'horizontal'`           | `'vertical'` | Sort axis                                |
+| Option      | Type                            | Default      | Description                                  |
+| ----------- | ------------------------------- | ------------ | -------------------------------------------- |
+| `items`     | `() => T[]`                     | —            | Reactive list of items (required)            |
+| `by`        | `(item: T) => string \| number` | —            | Key extractor, matches `<For by>` (required) |
+| `onReorder` | `(items: T[]) => void`          | —            | Called with reordered items (required)       |
+| `axis`      | `'vertical' \| 'horizontal'`    | `'vertical'` | Sort axis                                    |
 
 ### Result
 
-| Property       | Type                              | Description                                   |
-| -------------- | --------------------------------- | --------------------------------------------- |
-| `containerRef` | `(el: HTMLElement) => void`       | Attach to the scroll container                |
-| `itemRef`      | `(key) => (el: HTMLElement) => void` | Attach to each sortable item              |
-| `activeId`     | `() => string \| number \| null`  | Key of the currently dragging item            |
-| `overId`       | `() => string \| number \| null`  | Key of the item being hovered over            |
-| `overEdge`     | `() => DropEdge \| null`         | Closest edge: `'top'`/`'bottom'` or `'left'`/`'right'` |
+| Property       | Type                                 | Description                                            |
+| -------------- | ------------------------------------ | ------------------------------------------------------ |
+| `containerRef` | `(el: HTMLElement) => void`          | Attach to the scroll container                         |
+| `itemRef`      | `(key) => (el: HTMLElement) => void` | Attach to each sortable item                           |
+| `activeId`     | `() => string \| number \| null`     | Key of the currently dragging item                     |
+| `overId`       | `() => string \| number \| null`     | Key of the item being hovered over                     |
+| `overEdge`     | `() => DropEdge \| null`             | Closest edge: `'top'`/`'bottom'` or `'left'`/`'right'` |
 
 ### Features
 
@@ -257,20 +257,20 @@ const { isOver, isDraggingFiles } = useFileDrop({
 
 ### Options
 
-| Option     | Type                         | Default | Description                                |
-| ---------- | ---------------------------- | ------- | ------------------------------------------ |
-| `element`  | `() => HTMLElement \| null`  | —       | Element getter (required)                  |
-| `onDrop`   | `(files: File[]) => void`   | —       | Called with filtered files (required)       |
+| Option     | Type                         | Default | Description                                       |
+| ---------- | ---------------------------- | ------- | ------------------------------------------------- |
+| `element`  | `() => HTMLElement \| null`  | —       | Element getter (required)                         |
+| `onDrop`   | `(files: File[]) => void`    | —       | Called with filtered files (required)             |
 | `accept`   | `string[]`                   | —       | MIME types (`'image/*'`) or extensions (`'.pdf'`) |
-| `maxFiles` | `number`                     | —       | Maximum number of files                    |
-| `disabled` | `boolean \| (() => boolean)` | `false` | Whether drop is disabled                   |
+| `maxFiles` | `number`                     | —       | Maximum number of files                           |
+| `disabled` | `boolean \| (() => boolean)` | `false` | Whether drop is disabled                          |
 
 ### Result
 
-| Property          | Type             | Description                                |
-| ----------------- | ---------------- | ------------------------------------------ |
-| `isOver`          | `() => boolean`  | Files are dragged over this element        |
-| `isDraggingFiles` | `() => boolean`  | Files are being dragged anywhere on page   |
+| Property          | Type            | Description                              |
+| ----------------- | --------------- | ---------------------------------------- |
+| `isOver`          | `() => boolean` | Files are dragged over this element      |
+| `isDraggingFiles` | `() => boolean` | Files are being dragged anywhere on page |
 
 ## useDragMonitor
 
@@ -294,18 +294,18 @@ const { isDragging, dragData } = useDragMonitor({
 
 ### Options
 
-| Option       | Type                                        | Default | Description                     |
-| ------------ | ------------------------------------------- | ------- | ------------------------------- |
-| `canMonitor` | `(data: DragData) => boolean`               | —       | Filter which drags to monitor   |
-| `onDragStart`| `(data: DragData) => void`                  | —       | Called on any drag start         |
-| `onDrop`     | `(source: DragData, target: DragData) => void` | —   | Called on any drop               |
+| Option        | Type                                           | Default | Description                   |
+| ------------- | ---------------------------------------------- | ------- | ----------------------------- |
+| `canMonitor`  | `(data: DragData) => boolean`                  | —       | Filter which drags to monitor |
+| `onDragStart` | `(data: DragData) => void`                     | —       | Called on any drag start      |
+| `onDrop`      | `(source: DragData, target: DragData) => void` | —       | Called on any drop            |
 
 ### Result
 
-| Property    | Type                      | Description                           |
-| ----------- | ------------------------- | ------------------------------------- |
-| `isDragging`| `() => boolean`           | Whether any element is being dragged  |
-| `dragData`  | `() => DragData \| null`  | Data of the currently dragging element|
+| Property     | Type                     | Description                            |
+| ------------ | ------------------------ | -------------------------------------- |
+| `isDragging` | `() => boolean`          | Whether any element is being dragged   |
+| `dragData`   | `() => DragData \| null` | Data of the currently dragging element |
 
 ## Accessibility
 

@@ -1,7 +1,8 @@
 import { el } from '../../factory'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 
-const MultiSelect = el.config({ name: 'MultiSelect', component: ComboboxBase })
+const MultiSelect = el
+  .config({ name: 'MultiSelect', component: ComboboxBase })
   .attrs({ multiple: true })
   .theme((t) => ({
     width: '100%',

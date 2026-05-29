@@ -16,7 +16,9 @@ import queryManifest from '../manifest'
 
 describe('gen-docs — query snapshot', () => {
   it('renders @pyreon/query to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(queryManifest)).toMatchInlineSnapshot(`"- @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE). \`useQuery\` / \`useInfiniteQuery\` / \`useQueries\` / \`useSuspenseQuery\` take options as a FUNCTION (not an object) so \`queryKey\` and other fields can read Pyreon signals. TanStack core uses an object; Pyreon wraps so changing a tracked signal re-runs the observer options and refetches automatically."`)
+    expect(renderLlmsTxtLine(queryManifest)).toMatchInlineSnapshot(
+      `"- @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE). \`useQuery\` / \`useInfiniteQuery\` / \`useQueries\` / \`useSuspenseQuery\` take options as a FUNCTION (not an object) so \`queryKey\` and other fields can read Pyreon signals. TanStack core uses an object; Pyreon wraps so changing a tracked signal re-runs the observer options and refetches automatically."`,
+    )
   })
 
   it('renders @pyreon/query to its expected llms-full.txt section — full body snapshot', () => {

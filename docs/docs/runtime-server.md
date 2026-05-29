@@ -1152,9 +1152,12 @@ When rendering `<For>` lists during SSR, each item now includes a key marker com
 
 ```html
 <!--pyreon-for-->
-<!--k:apple--><li>apple</li>
-<!--k:banana--><li>banana</li>
-<!--k:cherry--><li>cherry</li>
+<!--k:apple-->
+<li>apple</li>
+<!--k:banana-->
+<li>banana</li>
+<!--k:cherry-->
+<li>cherry</li>
 <!--/pyreon-for-->
 ```
 

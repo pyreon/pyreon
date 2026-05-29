@@ -20,11 +20,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { parseSync } from 'oxc-parser'
-import {
-  detectElementChildCollapsibleShape,
-  rocketstyleCollapseKey,
-  transformJSX,
-} from '../jsx'
+import { detectElementChildCollapsibleShape, rocketstyleCollapseKey, transformJSX } from '../jsx'
 
 const SITE = {
   // Resolver bakes the FULL subtree (root class stripped) — the child
@@ -79,7 +75,8 @@ function elemKey(tag: string, src: string): string {
 
 describe('compiler — element-child collapse emission', () => {
   it('emits the UNCHANGED __rsCollapse for a static-element-child site', () => {
-    const inner = '<Progress state="primary" size="medium"><div style="width:60%;height:100%" /></Progress>'
+    const inner =
+      '<Progress state="primary" size="medium"><div style="width:60%;height:100%" /></Progress>'
     const src = `const x = ${inner}`
     const key = elemKey('Progress', inner)
     const { code } = transformJSX(src, 'App.tsx', collapseOpt(['Progress'], { [key]: SITE }))
@@ -123,11 +120,7 @@ describe('compiler — element-child collapse emission', () => {
     const src = `const x = ${inner}`
     // Build a bogus site under SOME key; the detector won't produce this
     // key, so no collapse.
-    const { code } = transformJSX(
-      src,
-      'C.tsx',
-      collapseOpt(['Card'], { someKey: SITE }),
-    )
+    const { code } = transformJSX(src, 'C.tsx', collapseOpt(['Card'], { someKey: SITE }))
     expect(code).not.toContain('__rsCollapse(')
   })
 

@@ -16,13 +16,13 @@ bun add @pyreon/ui-core @pyreon/core @pyreon/styler
 import { PyreonUI, useMode } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
 
-<PyreonUI theme={theme} mode="system">
+;<PyreonUI theme={theme} mode="system">
   <App />
 </PyreonUI>
 
 // In any descendant:
 function ModeAware() {
-  const mode = useMode()              // "light" | "dark" — reactive
+  const mode = useMode() // "light" | "dark" — reactive
   return <span>Current mode: {mode}</span>
 }
 ```
@@ -33,9 +33,9 @@ Single provider that replaces the previous trio of theme / mode / config provide
 
 ```tsx
 <PyreonUI
-  theme={theme}                       // Theme object (breakpoints, rootSize, custom keys)
-  mode="light"                        // "light" | "dark" | "system" — also accepts () => mode
-  inversed                            // Flip mode for a nested section (dark sidebar in light app)
+  theme={theme} // Theme object (breakpoints, rootSize, custom keys)
+  mode="light" // "light" | "dark" | "system" — also accepts () => mode
+  inversed // Flip mode for a nested section (dark sidebar in light app)
 >
   <App />
 </PyreonUI>
@@ -72,7 +72,7 @@ Pyreon uses `@pyreon/styler` directly — `config` is a thin facade exposed for 
 
 ```ts
 const transform = compose(toUpperCase, trim, normalize)
-transform('  hello  ')  // 'HELLO'
+transform('  hello  ') // 'HELLO'
 ```
 
 ### `render(value)` — flexible value/element renderer
@@ -80,9 +80,9 @@ transform('  hello  ')  // 'HELLO'
 Handles components, primitives, arrays, null. Useful when authoring helper components that accept a polymorphic content prop.
 
 ```ts
-render('hello')           // 'hello'
-render(MyComponent)       // MyComponent({})
-render(null)              // null
+render('hello') // 'hello'
+render(MyComponent) // MyComponent({})
+render(null) // null
 ```
 
 ### `isEmpty(value)` / `isEqual(a, b)`
@@ -90,10 +90,10 @@ render(null)              // null
 Type-safe checks. `isEmpty` returns `true` for `null`, `undefined`, `{}`, `[]`, and non-object primitives. `isEqual` performs a deep structural compare.
 
 ```ts
-isEmpty({})           // true
-isEmpty([])           // true
-isEmpty({ a: 1 })     // false
-isEqual({a:1}, {a:1}) // true
+isEmpty({}) // true
+isEmpty([]) // true
+isEmpty({ a: 1 }) // false
+isEqual({ a: 1 }, { a: 1 }) // true
 ```
 
 ### `omit(obj, keys)` / `pick(obj, keys)`
@@ -101,11 +101,11 @@ isEqual({a:1}, {a:1}) // true
 Object key filtering. Accept nullable inputs. **`omit()` also accepts a pre-built `Set<string>`** for hot paths where the same key list is reused across many calls (used by rocketstyle to avoid per-mount Set allocation):
 
 ```ts
-omit({ a:1, b:2, c:3 }, ['b'])      // { a:1, c:3 }
-pick({ a:1, b:2, c:3 }, ['a','b'])  // { a:1, b:2 }
+omit({ a: 1, b: 2, c: 3 }, ['b']) // { a:1, c:3 }
+pick({ a: 1, b: 2, c: 3 }, ['a', 'b']) // { a:1, b:2 }
 
-const omitSet = new Set(['b','c'])
-omit({ a:1, b:2, c:3 }, omitSet)    // { a:1 }
+const omitSet = new Set(['b', 'c'])
+omit({ a: 1, b: 2, c: 3 }, omitSet) // { a:1 }
 ```
 
 ### `set(obj, path, value)` / `get(obj, path, default?)`
@@ -114,9 +114,9 @@ Nested property access by dot/bracket path. **`set` blocks prototype pollution**
 
 ```ts
 const o = {}
-set(o, 'a.b.c', 42)               // { a: { b: { c: 42 } } }
-get(o, 'a.b.c')                   // 42
-get(o, 'a.x', 'default')          // 'default'
+set(o, 'a.b.c', 42) // { a: { b: { c: 42 } } }
+get(o, 'a.b.c') // 42
+get(o, 'a.x', 'default') // 'default'
 ```
 
 ### `merge(...objects)` — left-to-right deep merge
@@ -124,7 +124,7 @@ get(o, 'a.x', 'default')          // 'default'
 Only plain objects are recursed; arrays are replaced wholesale. Prototype-pollution keys are blocked.
 
 ```ts
-merge({ a: { x: 1 } }, { a: { y: 2 } })  // { a: { x: 1, y: 2 } }
+merge({ a: { x: 1 } }, { a: { y: 2 } }) // { a: { x: 1, y: 2 } }
 ```
 
 ### `throttle(fn, ms)`
@@ -150,9 +150,9 @@ Standard "hoist non-React statics" copy — used by HOC factories so wrapped com
 ```ts
 import { HTML_TAGS, HTML_TEXT_TAGS, HTMLTags, HTMLTextTags } from '@pyreon/ui-core'
 
-HTML_TAGS         // array of 100+ valid HTML tag names
-HTML_TEXT_TAGS    // text-content tags: h1-h6, p, span, strong, em, ...
-type Tag = HTMLTags        // narrowed union type
+HTML_TAGS // array of 100+ valid HTML tag names
+HTML_TEXT_TAGS // text-content tags: h1-h6, p, span, strong, em, ...
+type Tag = HTMLTags // narrowed union type
 type TextTag = HTMLTextTags
 ```
 
@@ -162,11 +162,17 @@ Used by `@pyreon/elements` to constrain the `tag` prop and by the styler's `as` 
 
 ```ts
 import type {
-  BreakpointKeys, Breakpoints,
+  BreakpointKeys,
+  Breakpoints,
   CoreContextValue,
-  HTMLElementAttrs, HTMLTagAttrsByTag, HTMLTags, HTMLTextTags,
+  HTMLElementAttrs,
+  HTMLTagAttrsByTag,
+  HTMLTags,
+  HTMLTextTags,
   IsEmpty,
-  PyreonUIProps, ThemeMode, ThemeModeInput,
+  PyreonUIProps,
+  ThemeMode,
+  ThemeModeInput,
   Render,
 } from '@pyreon/ui-core'
 ```

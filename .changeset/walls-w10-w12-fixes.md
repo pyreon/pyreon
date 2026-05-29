@@ -1,6 +1,6 @@
 ---
-"@pyreon/form": patch
-"@pyreon/charts": patch
+'@pyreon/form': patch
+'@pyreon/charts': patch
 ---
 
 Fix two DX walls surfaced by #942's HN-clone audit:

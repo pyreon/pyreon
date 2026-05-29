@@ -59,7 +59,9 @@ describe('kinetic(tag).transition — SSR / initially-hidden (TransitionRenderer
       to: 'opacity-100',
     })
     const html = await renderToString(
-      h(FadeSection, { show: () => false },
+      h(
+        FadeSection,
+        { show: () => false },
         h('h2', null, 'Work Experience'),
         h('p', null, 'real content for SEO + social scrapers'),
       ),
@@ -74,9 +76,7 @@ describe('kinetic(tag).transition — SSR / initially-hidden (TransitionRenderer
       .enterClass({ from: 'translate-y-4', to: 'translate-y-0' })
       .leaveClass({ to: 'is-hidden opacity-0' })
     const html = await renderToString(
-      h(Panel, { show: () => false },
-        h('div', null, 'panel content'),
-      ),
+      h(Panel, { show: () => false }, h('div', null, 'panel content')),
     )
     expect(html).toContain('is-hidden opacity-0')
     expect(html).toContain('panel content')
@@ -94,9 +94,7 @@ describe('kinetic(tag).transition — SSR / initially-hidden (TransitionRenderer
       .enterTo({ opacity: 1, transform: 'translateY(0)' })
       .enterTransition('all 300ms ease-out')
     const html = await renderToString(
-      h(FadeUpDiv, { show: () => false },
-        h('h1', null, 'preset-shaped hidden state'),
-      ),
+      h(FadeUpDiv, { show: () => false }, h('h1', null, 'preset-shaped hidden state')),
     )
     expect(html).toContain('preset-shaped hidden state')
     expect(html).toContain('opacity: 0')
@@ -106,9 +104,7 @@ describe('kinetic(tag).transition — SSR / initially-hidden (TransitionRenderer
   it('initially-visible (show=true) renders normally — unchanged behaviour', async () => {
     const FadeDiv = kinetic('div').leaveClass({ to: 'is-hidden' })
     const html = await renderToString(
-      h(FadeDiv, { show: () => true },
-        h('main', null, 'visible from the start'),
-      ),
+      h(FadeDiv, { show: () => true }, h('main', null, 'visible from the start')),
     )
     expect(html).toContain('visible from the start')
     // leaveTo must NOT leak onto the initially-visible render.
@@ -122,7 +118,9 @@ describe('kinetic(tag).transition — SSR / initially-hidden (TransitionRenderer
       to: 'opacity-100 translate-y-0',
     })
     const html = await renderToString(
-      h(RevealSection, { show: () => false, id: 'resume-section' },
+      h(
+        RevealSection,
+        { show: () => false, id: 'resume-section' },
         h('p', null, 'work history goes here'),
       ),
     )
@@ -145,13 +143,11 @@ describe('kinetic(tag).stagger() — SSR / initially-hidden (TransitionItem per 
       })
       .stagger({ interval: 80 })
     const html = await renderToString(
-      h(StaggerList, { show: () => false },
-        [
-          h('li', { key: 'h' }, 'Heading'),
-          h('li', { key: 't' }, 'tagline content'),
-          h('li', { key: 's' }, 'social icons row'),
-        ],
-      ),
+      h(StaggerList, { show: () => false }, [
+        h('li', { key: 'h' }, 'Heading'),
+        h('li', { key: 't' }, 'tagline content'),
+        h('li', { key: 's' }, 'social icons row'),
+      ]),
     )
     expect(html).toContain('Heading')
     expect(html).toContain('tagline content')
@@ -168,9 +164,10 @@ describe('kinetic(tag).stagger() — SSR / initially-hidden (TransitionItem per 
       .leaveClass({ to: 'is-hidden' })
       .stagger({ interval: 50 })
     const html = await renderToString(
-      h(StaggerList, { show: () => true },
-        [h('li', { key: 'a' }, 'item-a'), h('li', { key: 'b' }, 'item-b')],
-      ),
+      h(StaggerList, { show: () => true }, [
+        h('li', { key: 'a' }, 'item-a'),
+        h('li', { key: 'b' }, 'item-b'),
+      ]),
     )
     expect(html).toContain('item-a')
     expect(html).toContain('item-b')
@@ -188,7 +185,9 @@ describe('kinetic(tag).collapse() — SSR / initially-hidden (CollapseRenderer)'
     // a 0-height box, no slot-collapse) while always rendering inner content.
     const Accordion = kinetic('div').collapse()
     const html = await renderToString(
-      h(Accordion, { show: () => false },
+      h(
+        Accordion,
+        { show: () => false },
         h('div', { class: 'panel-body' }, 'accordion panel content for SEO'),
       ),
     )
@@ -203,9 +202,7 @@ describe('kinetic(tag).collapse() — SSR / initially-hidden (CollapseRenderer)'
   it('initially-visible collapse (show=true) renders content normally', async () => {
     const Accordion = kinetic('section').collapse()
     const html = await renderToString(
-      h(Accordion, { show: () => true },
-        h('p', null, 'expanded content'),
-      ),
+      h(Accordion, { show: () => true }, h('p', null, 'expanded content')),
     )
     expect(html).toContain('expanded content')
     // height: 'auto' is the entered-state hint

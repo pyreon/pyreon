@@ -1,6 +1,6 @@
 ---
-title: "Router setup"
-summary: "createRouter with typed routes, named navigation, loaders, and RouterView."
+title: 'Router setup'
+summary: 'createRouter with typed routes, named navigation, loaders, and RouterView.'
 seeAlso: [signal-writes, reactive-context]
 ---
 
@@ -21,7 +21,7 @@ const router = createRouter({
       name: 'user',
       component: UserPage,
       loader: async ({ params }) => api.fetchUser(params.id),
-      loaderKey: ({ params }) => `user-${params.id}`,  // for cache identity
+      loaderKey: ({ params }) => `user-${params.id}`, // for cache identity
     },
     { path: '/admin', name: 'admin', component: Admin, guard: adminOnly },
   ],
@@ -32,7 +32,9 @@ function App() {
     <RouterProvider router={router}>
       <nav>
         <RouterLink name="home">Home</RouterLink>
-        <RouterLink name="user" params={{ id: '42' }}>User 42</RouterLink>
+        <RouterLink name="user" params={{ id: '42' }}>
+          User 42
+        </RouterLink>
       </nav>
       <RouterView />
     </RouterProvider>
@@ -45,8 +47,8 @@ For typed named navigation, constrain the `Router` generic:
 ```ts
 const router = createRouter<'home' | 'user' | 'admin'>({ routes })
 
-router.push({ name: 'home' })        // ok
-router.push({ name: 'typo' })        // TS error at compile time
+router.push({ name: 'home' }) // ok
+router.push({ name: 'typo' }) // TS error at compile time
 ```
 
 ## Key APIs
@@ -68,7 +70,7 @@ Pyreon's router is context-based + signal-driven. Routes are resolved into `Sign
 
 ```tsx
 // BROKEN — mutating window.location directly bypasses the router
-window.location.pathname = '/user/42'  // full page reload, loses SPA state
+window.location.pathname = '/user/42' // full page reload, loses SPA state
 
 // Correct:
 router.push({ name: 'user', params: { id: '42' } })
@@ -76,7 +78,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 ```tsx
 // BROKEN — useRoute() called at module scope
-const route = useRoute()   // hooks require an active component setup context
+const route = useRoute() // hooks require an active component setup context
 
 // Correct: call inside a component body
 function UserPage() {
@@ -88,7 +90,7 @@ function UserPage() {
 ```tsx
 // BROKEN — router.push inside the render body triggers infinite loops
 function Redirect() {
-  router.push({ name: 'home' })   // renders, pushes, renders, pushes…
+  router.push({ name: 'home' }) // renders, pushes, renders, pushes…
   return null
 }
 

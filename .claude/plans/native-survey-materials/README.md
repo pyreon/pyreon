@@ -6,12 +6,12 @@
 
 ## Files
 
-| File | What it is | Who reads it |
-|---|---|---|
-| [`01-survey-form.md`](./01-survey-form.md) | Interview script for live (30-45 min video) calls | Interviewers |
-| [`02-survey-form-async.md`](./02-survey-form-async.md) | Self-administered form (15-20 min) — paste into Tally / Typeform / Google Forms verbatim | Survey-tool admin |
-| [`03-recruitment-templates.md`](./03-recruitment-templates.md) | Copy-paste outreach emails / DMs / forum posts for the 3 respondent segments | Recruiter |
-| [`04-analysis-spreadsheet-schema.md`](./04-analysis-spreadsheet-schema.md) | Spreadsheet column schema + threshold formulas + segment cross-tab + decision-memo template | Analyst |
+| File                                                                       | What it is                                                                                  | Who reads it      |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------- |
+| [`01-survey-form.md`](./01-survey-form.md)                                 | Interview script for live (30-45 min video) calls                                           | Interviewers      |
+| [`02-survey-form-async.md`](./02-survey-form-async.md)                     | Self-administered form (15-20 min) — paste into Tally / Typeform / Google Forms verbatim    | Survey-tool admin |
+| [`03-recruitment-templates.md`](./03-recruitment-templates.md)             | Copy-paste outreach emails / DMs / forum posts for the 3 respondent segments                | Recruiter         |
+| [`04-analysis-spreadsheet-schema.md`](./04-analysis-spreadsheet-schema.md) | Spreadsheet column schema + threshold formulas + segment cross-tab + decision-memo template | Analyst           |
 
 ## How to run the survey (operational checklist)
 
@@ -55,25 +55,27 @@ Public posts (forum / Twitter public) are last-resort — only if direct outreac
 
 Per the source design ([`native-platforms-user-survey.md`](../native-platforms-user-survey.md) §Cost):
 
-| Line item | Low estimate | High estimate |
-|---|---|---|
-| Honoraria (25 × $50) | $1,250 | $1,500 |
-| Survey tool (Tally free OR Typeform paid) | $0 | $59/mo × 1 |
-| Calendly | $0 | $0 (free tier) |
-| Interviewer time (12 live × 45min + prep) | 15 hrs of non-engineering time | 25 hrs |
-| Analysis time | 5 hrs | 10 hrs |
-| **Total cash** | **~$1,250** | **~$1,560** |
+| Line item                                 | Low estimate                   | High estimate  |
+| ----------------------------------------- | ------------------------------ | -------------- |
+| Honoraria (25 × $50)                      | $1,250                         | $1,500         |
+| Survey tool (Tally free OR Typeform paid) | $0                             | $59/mo × 1     |
+| Calendly                                  | $0                             | $0 (free tier) |
+| Interviewer time (12 live × 45min + prep) | 15 hrs of non-engineering time | 25 hrs         |
+| Analysis time                             | 5 hrs                          | 10 hrs         |
+| **Total cash**                            | **~$1,250**                    | **~$1,560**    |
 
 Engineering time cost is zero. Total: **1 part-time non-engineering owner for 4-5 weeks**.
 
 ## Honesty about what this directory IS and ISN'T
 
 **IS**:
+
 - Operational artifacts that turn the design doc into a runnable survey
 - Copy-paste templates that don't require interpretation
 - Spreadsheet schema that operationalizes the decision thresholds
 
 **ISN'T**:
+
 - A commitment to actually run the survey (that decision is still open per the open-work index)
 - A guarantee about response rate or signal quality (the [survey design's "Honest read of survey limits"](../native-platforms-user-survey.md#honest-read-of-survey-limits) still applies)
 - An update to the Phase 1 staffing decision (the survey hasn't run; this directory just lets it run)

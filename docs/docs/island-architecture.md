@@ -36,14 +36,14 @@ Rule of thumb: if you'd write `<App />` and hydrate the whole tree under it, use
 
 ## Decision tree — which strategy?
 
-| Strategy        | Use when                                                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Strategy        | Use when                                                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `'load'`        | Above-the-fold interactive content the user is meant to interact with on first paint (header CTAs, hero buttons, primary forms). |
-| `'idle'`        | Above-the-fold but non-critical (typeahead search, analytics widgets, share buttons) — let the browser settle first.            |
-| `'visible'`     | Below-the-fold content (comment threads, related-posts widgets) — only hydrate when the user scrolls to it.                     |
-| `'interaction'` | Interactive but NOT visible until the user reaches for them (modals, dropdowns, command palettes, search overlays).             |
-| `'media(...)'`  | Mobile-only or desktop-only components (mobile menu, desktop sidebar). Pair with `(min-width: …)` / `(max-width: …)`.           |
-| `'never'`       | Render-only on the server, ship zero client JS (badges, static labels, server-rendered "live" data that never re-renders).      |
+| `'idle'`        | Above-the-fold but non-critical (typeahead search, analytics widgets, share buttons) — let the browser settle first.             |
+| `'visible'`     | Below-the-fold content (comment threads, related-posts widgets) — only hydrate when the user scrolls to it.                      |
+| `'interaction'` | Interactive but NOT visible until the user reaches for them (modals, dropdowns, command palettes, search overlays).              |
+| `'media(...)'`  | Mobile-only or desktop-only components (mobile menu, desktop sidebar). Pair with `(min-width: …)` / `(max-width: …)`.            |
+| `'never'`       | Render-only on the server, ship zero client JS (badges, static labels, server-rendered "live" data that never re-renders).       |
 
 Choosing wrong has user-visible consequences:
 
@@ -203,13 +203,13 @@ pyreon doctor --check-islands         # human-readable output
 pyreon doctor --check-islands --json  # CI-pipeable JSON
 ```
 
-| Finding code                 | Catches                                                                                                                                       |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `duplicate-name`             | Two `island()` declarations with the same `name`. Runtime hydrates only the FIRST loader; second fails silently.                              |
-| `never-with-registry-entry`  | A `hydrate: 'never'` island that's also in the client registry — defeats the zero-JS goal.                                                    |
-| `registry-mismatch`          | A `hydrateIslands({ X })` entry where `X` has no matching `island()` declaration anywhere. Catches typos / removed islands / forgotten imports. |
-| `nested-island`              | An `island()` whose loader-imported file ALSO contains an `island()` call. Outer's `hydrateRoot` would replace the inner subtree.             |
-| `dead-island`                | An `island()` declared in a file that no other source imports. The component never reaches a rendered tree.                                   |
+| Finding code                | Catches                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `duplicate-name`            | Two `island()` declarations with the same `name`. Runtime hydrates only the FIRST loader; second fails silently.                                |
+| `never-with-registry-entry` | A `hydrate: 'never'` island that's also in the client registry — defeats the zero-JS goal.                                                      |
+| `registry-mismatch`         | A `hydrateIslands({ X })` entry where `X` has no matching `island()` declaration anywhere. Catches typos / removed islands / forgotten imports. |
+| `nested-island`             | An `island()` whose loader-imported file ALSO contains an `island()` call. Outer's `hydrateRoot` would replace the inner subtree.               |
+| `dead-island`               | An `island()` declared in a file that no other source imports. The component never reaches a rendered tree.                                     |
 
 Wire it into CI by piping `--json` and grepping `findings.length > 0` to gate the merge.
 
@@ -218,8 +218,8 @@ Wire it into CI by piping `--json` and grepping `findings.length > 0` to gate th
 The same five detectors are exposed via the `audit_islands` MCP tool — AI coding assistants (Claude Code, Cursor, etc.) call it before writing island code to surface project-wide issues.
 
 ```ts
-audit_islands({})              // markdown-grouped report
-audit_islands({ json: true })  // machine-readable findings
+audit_islands({}) // markdown-grouped report
+audit_islands({ json: true }) // machine-readable findings
 ```
 
 ### MCP `validate` tool — per-snippet detector

@@ -156,7 +156,20 @@ describe('Wrapper component', () => {
   // tripped runtime-dom's void-element warning. Wrapper now drops the slot
   // entirely for void tags.
   describe('void HTML elements drop the children slot', () => {
-    const VOID_TAGS = ['hr', 'input', 'img', 'br', 'area', 'base', 'col', 'embed', 'link', 'source', 'track', 'wbr'] as const
+    const VOID_TAGS = [
+      'hr',
+      'input',
+      'img',
+      'br',
+      'area',
+      'base',
+      'col',
+      'embed',
+      'link',
+      'source',
+      'track',
+      'wbr',
+    ] as const
 
     for (const tag of VOID_TAGS) {
       it(`omits children for <${tag}>`, () => {

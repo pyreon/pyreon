@@ -12,10 +12,10 @@ bun add @pyreon/i18n @pyreon/core @pyreon/reactivity
 
 ## Two entry points
 
-| Entry              | Use when                                             | Includes                                                                |
-| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| `@pyreon/i18n`     | Pyreon UI app — you want the JSX components          | `createI18n`, `Trans`, `I18nProvider`, `useI18n`, `parseRichText`, types |
-| `@pyreon/i18n/core` | Backend / edge / non-JSX runtime                     | `createI18n`, `interpolate`, `resolvePluralCategory`, types only         |
+| Entry               | Use when                                    | Includes                                                                 |
+| ------------------- | ------------------------------------------- | ------------------------------------------------------------------------ |
+| `@pyreon/i18n`      | Pyreon UI app — you want the JSX components | `createI18n`, `Trans`, `I18nProvider`, `useI18n`, `parseRichText`, types |
+| `@pyreon/i18n/core` | Backend / edge / non-JSX runtime            | `createI18n`, `interpolate`, `resolvePluralCategory`, types only         |
 
 The `/core` entry transitively depends ONLY on `@pyreon/reactivity` — zero JSX, zero `@pyreon/core`. Use it for backend translation pipelines, edge workers, non-Pyreon frontends, or any context where you don't need the `<Trans>` JSX component. Both entries return identical `I18nInstance` objects, so switching later is non-breaking.
 
@@ -56,28 +56,28 @@ i18n.t('items', { count: 1 }) // '1 item' (fallback to en)
 
 ## `createI18n(options)`
 
-| Option              | Type                                                      | Description                                              |
-| ------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
-| `locale`            | `string`                                                  | Initial locale (e.g. `'en'`)                             |
-| `fallbackLocale`    | `string`                                                  | Locale to try when key is missing in active locale        |
-| `messages`          | `Record<string, TranslationDictionary>`                   | Static messages, keyed by locale                          |
-| `loader`            | `(locale, namespace) => Promise<TranslationDictionary?>`  | Async namespace loader                                    |
-| `defaultNamespace`  | `string`                                                  | Default namespace for `t()` (default: `'common'`)        |
-| `pluralRules`       | `Record<string, (count: number) => string>`               | Custom plural rules; defaults to `Intl.PluralRules`      |
-| `onMissingKey`      | `(locale, key, namespace?) => string \| undefined`        | Missing-key handler — log, report, or supply a fallback   |
+| Option             | Type                                                     | Description                                             |
+| ------------------ | -------------------------------------------------------- | ------------------------------------------------------- |
+| `locale`           | `string`                                                 | Initial locale (e.g. `'en'`)                            |
+| `fallbackLocale`   | `string`                                                 | Locale to try when key is missing in active locale      |
+| `messages`         | `Record<string, TranslationDictionary>`                  | Static messages, keyed by locale                        |
+| `loader`           | `(locale, namespace) => Promise<TranslationDictionary?>` | Async namespace loader                                  |
+| `defaultNamespace` | `string`                                                 | Default namespace for `t()` (default: `'common'`)       |
+| `pluralRules`      | `Record<string, (count: number) => string>`              | Custom plural rules; defaults to `Intl.PluralRules`     |
+| `onMissingKey`     | `(locale, key, namespace?) => string \| undefined`       | Missing-key handler — log, report, or supply a fallback |
 
 Returns `I18nInstance`:
 
-| Property                              | Type                                              | Description                          |
-| ------------------------------------- | ------------------------------------------------- | ------------------------------------ |
-| `t(key, values?)`                     | `(string, InterpolationValues?) => string`        | Translate; reads locale reactively   |
-| `locale`                              | `Signal<string>`                                  | Current locale, writable             |
-| `loadNamespace(ns, locale?)`          | `(string, string?) => Promise<void>`              | Load a namespace; deduped per-request |
-| `isLoading`                           | `Computed<boolean>`                               | True while any namespace is loading  |
-| `loadedNamespaces`                    | `Computed<Set<string>>`                           | Namespaces loaded for current locale |
-| `exists(key)`                         | `(string) => boolean`                             | Check key existence                  |
-| `addMessages(locale, messages, ns?)`  | `Function`                                        | Add messages at runtime (deep-merge) |
-| `availableLocales`                    | `Computed<string[]>`                              | Locales with any registered messages |
+| Property                             | Type                                       | Description                           |
+| ------------------------------------ | ------------------------------------------ | ------------------------------------- |
+| `t(key, values?)`                    | `(string, InterpolationValues?) => string` | Translate; reads locale reactively    |
+| `locale`                             | `Signal<string>`                           | Current locale, writable              |
+| `loadNamespace(ns, locale?)`         | `(string, string?) => Promise<void>`       | Load a namespace; deduped per-request |
+| `isLoading`                          | `Computed<boolean>`                        | True while any namespace is loading   |
+| `loadedNamespaces`                   | `Computed<Set<string>>`                    | Namespaces loaded for current locale  |
+| `exists(key)`                        | `(string) => boolean`                      | Check key existence                   |
+| `addMessages(locale, messages, ns?)` | `Function`                                 | Add messages at runtime (deep-merge)  |
+| `availableLocales`                   | `Computed<string[]>`                       | Locales with any registered messages  |
 
 ## Namespaces + lazy loading
 

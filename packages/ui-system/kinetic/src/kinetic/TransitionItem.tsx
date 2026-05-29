@@ -102,7 +102,12 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   const unmount = props.unmount ?? true
   const timeout = props.timeout ?? 5000
   const reducedMotion = useReducedMotion()
-  const { stage, ref: stateRef, shouldMount, complete } = useTransitionState({
+  const {
+    stage,
+    ref: stateRef,
+    shouldMount,
+    complete,
+  } = useTransitionState({
     show: props.show,
     appear,
   })

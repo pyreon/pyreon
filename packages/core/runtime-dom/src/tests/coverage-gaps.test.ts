@@ -2648,7 +2648,9 @@ describe('Transition — safetyTimer false branches via real 5.1s waits', () => 
         show: visible,
         name: 'st-enter',
         appear: true,
-        onAfterEnter: () => { afterEnterCount++ },
+        onAfterEnter: () => {
+          afterEnterCount++
+        },
         children: h('div', { id: 'st-enter' }, 'content'),
       }),
       el,
@@ -2678,7 +2680,9 @@ describe('Transition — safetyTimer false branches via real 5.1s waits', () => 
       h(Transition, {
         show: visible,
         name: 'st-leave',
-        onAfterLeave: () => { afterLeaveCount++ },
+        onAfterLeave: () => {
+          afterLeaveCount++
+        },
         children: h('div', { id: 'st-leave' }, 'content'),
       }),
       el,
@@ -2774,9 +2778,7 @@ describe('Transition — component child warning (line 228)', () => {
 
     await new Promise<void>((r) => queueMicrotask(r))
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Transition child is a component'),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Transition child is a component'))
     warnSpy.mockRestore()
     el.remove()
   })

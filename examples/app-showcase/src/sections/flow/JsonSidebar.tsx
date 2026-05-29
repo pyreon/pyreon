@@ -4,13 +4,7 @@ import { onMount } from '@pyreon/core'
 import type { FlowEdge, FlowNode } from '@pyreon/flow'
 import type { WorkflowNodeData } from './data/types'
 import { useFlowEditor } from './store'
-import {
-  ParseError,
-  ParseOk,
-  SidebarColumn,
-  SidebarEditorFrame,
-  SidebarLabel,
-} from './styled'
+import { ParseError, ParseOk, SidebarColumn, SidebarEditorFrame, SidebarLabel } from './styled'
 
 /**
  * Shape of the flow state we round-trip through the JSON editor.
@@ -113,7 +107,9 @@ export function JsonSidebar() {
     <SidebarColumn>
       <SidebarLabel>
         <span>Graph as JSON</span>
-        <span>{() => `${flow.instance.nodes().length} nodes · ${flow.instance.edges().length} edges`}</span>
+        <span>
+          {() => `${flow.instance.nodes().length} nodes · ${flow.instance.edges().length} edges`}
+        </span>
       </SidebarLabel>
       <SidebarEditorFrame>
         <CodeEditor instance={editor} />

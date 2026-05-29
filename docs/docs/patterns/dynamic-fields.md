@@ -1,6 +1,6 @@
 ---
-title: "Dynamic form arrays — useFieldArray"
-summary: "Stable keys for <For by> via .key, never the array index."
+title: 'Dynamic form arrays — useFieldArray'
+summary: 'Stable keys for <For by> via .key, never the array index.'
 seeAlso: [form-fields, keyed-lists]
 ---
 

@@ -30,10 +30,7 @@ describe('optimizeBreakpointDeltas', () => {
     })
 
     it('emits empty string when a later breakpoint adds no deltas', () => {
-      const out = optimizeBreakpointDeltas([
-        'color: red; padding: 0;',
-        'color: red; padding: 0;',
-      ])
+      const out = optimizeBreakpointDeltas(['color: red; padding: 0;', 'color: red; padding: 0;'])
       expect(out[0]).toBe('color: red; padding: 0;')
       expect(out[1]).toBe('')
     })
@@ -79,10 +76,7 @@ describe('optimizeBreakpointDeltas', () => {
     })
 
     it('keeps differently-shaped nested blocks across breakpoints', () => {
-      const out = optimizeBreakpointDeltas([
-        '&:hover { color: red; }',
-        '&:hover { color: blue; }',
-      ])
+      const out = optimizeBreakpointDeltas(['&:hover { color: red; }', '&:hover { color: blue; }'])
       expect(out[0]).toContain('&:hover { color: red; }')
       // Different inner text → not deduped
       expect(out[1]).toContain('&:hover { color: blue; }')
@@ -105,10 +99,7 @@ describe('optimizeBreakpointDeltas', () => {
     })
 
     it('keeps shorthand and longhand decls separately (no shorthand modeling)', () => {
-      const out = optimizeBreakpointDeltas([
-        'padding: 1rem;',
-        'padding-top: 0;',
-      ])
+      const out = optimizeBreakpointDeltas(['padding: 1rem;', 'padding-top: 0;'])
       // Different `prop` keys → both retained
       expect(out[0]).toBe('padding: 1rem;')
       expect(out[1]).toBe('padding-top: 0;')

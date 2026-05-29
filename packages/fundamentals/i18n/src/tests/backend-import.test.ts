@@ -62,7 +62,10 @@ let fixtureDir: string
 
 beforeEach(() => {
   // Use a unique fixture per test so parallel runs don't collide.
-  fixtureDir = resolve('/tmp', `pyreon-i18n-be-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+  fixtureDir = resolve(
+    '/tmp',
+    `pyreon-i18n-be-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  )
   mkdirSync(fixtureDir, { recursive: true })
 
   // Minimal package.json — bun needs ONE to recognize the dir.
@@ -119,7 +122,10 @@ afterEach(() => {
  * can assert on the outcome. Fails the test runner with a clear
  * message if `bun` itself isn't available on the runner.
  */
-function runInFixture(scriptName: string, scriptSource: string): {
+function runInFixture(
+  scriptName: string,
+  scriptSource: string,
+): {
   status: number | null
   stdout: string
   stderr: string

@@ -1,10 +1,10 @@
-import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { type Invoice, invoiceTotal, listInvoices } from "../../../lib/db"
+import { signal } from '@pyreon/reactivity'
+import { onMount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
+import { type Invoice, invoiceTotal, listInvoices } from '../../../lib/db'
 
-export const meta = { title: "Invoices" }
+export const meta = { title: 'Invoices' }
 
 export default function Invoices() {
   useHead({ title: meta.title })

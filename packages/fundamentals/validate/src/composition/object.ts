@@ -55,7 +55,9 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
         // ctx push (field schemas accumulate into the same path-aware
         // issues array).
         const fieldCtx = { issues: ctx.issues, path: ctx.path }
-        const validate = (fieldSchema as unknown as { _internalCompiledFor: (c: ParseCtx) => (i: unknown, c: ParseCtx) => unknown })
+        const validate = fieldSchema as unknown as {
+          _internalCompiledFor: (c: ParseCtx) => (i: unknown, c: ParseCtx) => unknown
+        }
         // Cheap: call the field's compiled validator directly. We
         // emulate the parse flow but share the parent ctx so paths +
         // issues are merged.
@@ -77,11 +79,7 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
  * paths + issues merge into one place. Internal to ObjectSchema (and
  * ArraySchema below).
  */
-function runFieldValidator<T>(
-  schema: Schema<T>,
-  input: unknown,
-  parentCtx: ParseCtx,
-): unknown {
+function runFieldValidator<T>(schema: Schema<T>, input: unknown, parentCtx: ParseCtx): unknown {
   // Standard Schema's validate respects modifiers (optional/nullable/
   // default) via the prelude in `_getCompiled`. We invoke through that
   // path by reading the schema's `~standard.validate` which exists on

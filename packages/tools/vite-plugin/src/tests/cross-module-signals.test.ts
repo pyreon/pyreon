@@ -281,10 +281,7 @@ export const Use = () => PI`,
       `import { signal } from "@pyreon/core"
 export const real = signal(0)`,
     )
-    writeFile(
-      'src/barrel.ts',
-      `export { real } from "./source"`,
-    )
+    writeFile('src/barrel.ts', `export { real } from "./source"`)
 
     const plugin = bootstrap()
     await runBuildStart(plugin)

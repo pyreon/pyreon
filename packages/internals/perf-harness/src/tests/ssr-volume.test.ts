@@ -31,8 +31,7 @@ afterEach(() => {
   _disable()
 })
 
-const Row = ({ label }: { label: string }) =>
-  h('li', null, h('span', null, label))
+const Row = ({ label }: { label: string }) => h('li', null, h('span', null, label))
 
 describe('SSR counter scaling', () => {
   it('1k-row list: counters scale linearly with row count', async () => {

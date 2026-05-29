@@ -7,11 +7,7 @@
  * `@pyreon/reactivity` (`lpih-source-location.test.ts`).
  */
 import { describe, expect, it } from 'vitest'
-import {
-  firesToCreationSiteFindings,
-  type LPIHFireDatum,
-  mergeFireDataIntoFindings,
-} from '../lpih'
+import { firesToCreationSiteFindings, type LPIHFireDatum, mergeFireDataIntoFindings } from '../lpih'
 import { analyzeReactivity } from '../reactivity-lens'
 import type { ReactivityFinding } from '../reactivity-lens'
 
@@ -45,32 +41,20 @@ describe('mergeFireDataIntoFindings — basic shape', () => {
 
   it('passes findings through unchanged when no fires match the file', () => {
     const findings = [finding('reactive', 5, 'live')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('other.tsx', 5, 3, 'signal')],
-      'app.tsx',
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('other.tsx', 5, 3, 'signal')], 'app.tsx')
     expect(out[0]?.detail).toBe('live') // not enriched
   })
 
   it('enriches a matching reactive finding with the fire count + kind', () => {
     const findings = [finding('reactive', 5, 'live')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 5, 240, 'signal')],
-      'app.tsx',
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('app.tsx', 5, 240, 'signal')], 'app.tsx')
     expect(out[0]?.detail).toBe('live — signal fired 240×')
   })
 
   it('does NOT mutate the input findings', () => {
     const findings = [finding('reactive', 5, 'live')]
     const before = findings[0]?.detail
-    mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 5, 240, 'signal')],
-      'app.tsx',
-    )
+    mergeFireDataIntoFindings(findings, [fire('app.tsx', 5, 240, 'signal')], 'app.tsx')
     expect(findings[0]?.detail).toBe(before) // unchanged
   })
 })
@@ -78,51 +62,31 @@ describe('mergeFireDataIntoFindings — basic shape', () => {
 describe('mergeFireDataIntoFindings — span-kind filtering', () => {
   it('skips footgun findings (not runtime-active reactive reads)', () => {
     const findings = [finding('footgun', 5, 'props destructured')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 5, 5, 'signal')],
-      'app.tsx',
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('app.tsx', 5, 5, 'signal')], 'app.tsx')
     expect(out[0]?.detail).toBe('props destructured') // unchanged
   })
 
   it('skips hoisted-static findings', () => {
     const findings = [finding('hoisted-static', 5, 'hoisted')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 5, 5, 'signal')],
-      'app.tsx',
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('app.tsx', 5, 5, 'signal')], 'app.tsx')
     expect(out[0]?.detail).toBe('hoisted')
   })
 
   it('skips static-text findings', () => {
     const findings = [finding('static-text', 5, 'baked')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 5, 5, 'signal')],
-      'app.tsx',
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('app.tsx', 5, 5, 'signal')], 'app.tsx')
     expect(out[0]?.detail).toBe('baked')
   })
 
   it('enriches reactive-prop kinds', () => {
     const findings = [finding('reactive-prop', 7, 'reactive prop')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 7, 12, 'signal')],
-      'app.tsx',
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('app.tsx', 7, 12, 'signal')], 'app.tsx')
     expect(out[0]?.detail).toBe('reactive prop — signal fired 12×')
   })
 
   it('enriches reactive-attr kinds', () => {
     const findings = [finding('reactive-attr', 9, 'live attr')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 9, 3, 'derived')],
-      'app.tsx',
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('app.tsx', 9, 3, 'derived')], 'app.tsx')
     expect(out[0]?.detail).toBe('live attr — derived fired 3×')
   })
 })
@@ -132,10 +96,7 @@ describe('mergeFireDataIntoFindings — aggregation', () => {
     const findings = [finding('reactive', 5, 'live')]
     const out = mergeFireDataIntoFindings(
       findings,
-      [
-        fire('app.tsx', 5, 10, 'signal'),
-        fire('app.tsx', 5, 30, 'signal'),
-      ],
+      [fire('app.tsx', 5, 10, 'signal'), fire('app.tsx', 5, 30, 'signal')],
       'app.tsx',
     )
     expect(out[0]?.detail).toBe('live — signal fired 40×')
@@ -186,12 +147,9 @@ describe('mergeFireDataIntoFindings — file-normalization', () => {
 describe('mergeFireDataIntoFindings — custom format', () => {
   it('uses formatDetail when provided', () => {
     const findings = [finding('reactive', 5, 'live')]
-    const out = mergeFireDataIntoFindings(
-      findings,
-      [fire('app.tsx', 5, 42, 'signal')],
-      'app.tsx',
-      { formatDetail: (d, f) => `${d} [${f.count}]` },
-    )
+    const out = mergeFireDataIntoFindings(findings, [fire('app.tsx', 5, 42, 'signal')], 'app.tsx', {
+      formatDetail: (d, f) => `${d} [${f.count}]`,
+    })
     expect(out[0]?.detail).toBe('live [42]')
   })
 })
@@ -203,10 +161,7 @@ describe('firesToCreationSiteFindings — synthetic creation-site hints', () => 
 
   it('produces one finding per unique line', () => {
     const out = firesToCreationSiteFindings(
-      [
-        fire('app.tsx', 5, 100, 'signal'),
-        fire('app.tsx', 8, 50, 'derived'),
-      ],
+      [fire('app.tsx', 5, 100, 'signal'), fire('app.tsx', 8, 50, 'derived')],
       'app.tsx',
     )
     expect(out).toHaveLength(2)
@@ -218,10 +173,7 @@ describe('firesToCreationSiteFindings — synthetic creation-site hints', () => 
 
   it('aggregates multiple fires on the same line', () => {
     const out = firesToCreationSiteFindings(
-      [
-        fire('app.tsx', 5, 100, 'signal'),
-        fire('app.tsx', 5, 50, 'signal'),
-      ],
+      [fire('app.tsx', 5, 100, 'signal'), fire('app.tsx', 5, 50, 'signal')],
       'app.tsx',
     )
     expect(out).toHaveLength(1)
@@ -230,10 +182,7 @@ describe('firesToCreationSiteFindings — synthetic creation-site hints', () => 
 
   it('skips fires from other files', () => {
     const out = firesToCreationSiteFindings(
-      [
-        fire('app.tsx', 5, 100, 'signal'),
-        fire('other.tsx', 5, 50, 'signal'),
-      ],
+      [fire('app.tsx', 5, 100, 'signal'), fire('other.tsx', 5, 50, 'signal')],
       'app.tsx',
     )
     expect(out).toHaveLength(1)
@@ -241,10 +190,7 @@ describe('firesToCreationSiteFindings — synthetic creation-site hints', () => 
   })
 
   it('uses live-fire kind for the synthetic finding', () => {
-    const out = firesToCreationSiteFindings(
-      [fire('app.tsx', 5, 100, 'signal')],
-      'app.tsx',
-    )
+    const out = firesToCreationSiteFindings([fire('app.tsx', 5, 100, 'signal')], 'app.tsx')
     expect(out[0]?.kind).toBe('live-fire')
   })
 
@@ -271,11 +217,9 @@ describe('firesToCreationSiteFindings — synthetic creation-site hints', () => 
   })
 
   it('honors custom formatDetail', () => {
-    const out = firesToCreationSiteFindings(
-      [fire('app.tsx', 5, 42, 'signal')],
-      'app.tsx',
-      { formatDetail: (_, f) => `🔥 ${f.count}` },
-    )
+    const out = firesToCreationSiteFindings([fire('app.tsx', 5, 42, 'signal')], 'app.tsx', {
+      formatDetail: (_, f) => `🔥 ${f.count}`,
+    })
     expect(out[0]?.detail).toBe('🔥 42')
   })
 })
@@ -288,9 +232,7 @@ describe('end-to-end — analyzeReactivity + merge', () => {
 }`
     const { findings } = analyzeReactivity(code, 'app.tsx')
     // The reactive {count()} span is on line 3.
-    const reactiveFinding = findings.find(
-      (f) => f.kind === 'reactive' && f.line === 3,
-    )
+    const reactiveFinding = findings.find((f) => f.kind === 'reactive' && f.line === 3)
     expect(reactiveFinding).toBeDefined()
     const enriched = mergeFireDataIntoFindings(
       findings,
@@ -395,8 +337,7 @@ describe('rate1s — label formatting', () => {
       [{ file: 'app.tsx', line: 5, count: 100, kind: 'signal', rate1s: 7.5 }],
       'app.tsx',
       {
-        formatDetail: (d, f) =>
-          `${d} [rate=${f.rate1s?.toFixed(1) ?? 'n/a'}]`,
+        formatDetail: (d, f) => `${d} [rate=${f.rate1s?.toFixed(1) ?? 'n/a'}]`,
       },
     )
     expect(out[0]?.detail).toBe('live [rate=7.5]')

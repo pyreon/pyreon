@@ -280,10 +280,7 @@ describe('StyleSheet -- at-rule splitting', () => {
       const className = `pyr-${hash('font-size: 1rem;')}`
 
       el.sheet?.insertRule(`.${className}{font-size: 1rem;}`, 0)
-      el.sheet?.insertRule(
-        `@media (min-width: 768px){.${className}{font-size: 1.5rem;}}`,
-        1,
-      )
+      el.sheet?.insertRule(`@media (min-width: 768px){.${className}{font-size: 1.5rem;}}`, 1)
 
       const s = new StyleSheet()
       expect(s.has(className)).toBe(true)

@@ -26,15 +26,27 @@ const parses = (o: string): boolean => {
 }
 
 const VALID: Array<[string, string]> = [
-  ['basic', `import { Modal } from './M'\nfunction C(){ const o=signal(0); return <Defer when={o()}><Modal title="hi"/></Defer> }`],
+  [
+    'basic',
+    `import { Modal } from './M'\nfunction C(){ const o=signal(0); return <Defer when={o()}><Modal title="hi"/></Defer> }`,
+  ],
   ['passthrough', `function C(){ return <div>{x}</div> }`],
   ['no-children', `function C(){ return <Defer when={a}></Defer> }`],
-  ['multi-child', `import {A,B} from './x'\nfunction C(){ return <Defer when={c}><A/><B/></Defer> }`],
+  [
+    'multi-child',
+    `import {A,B} from './x'\nfunction C(){ return <Defer when={c}><A/><B/></Defer> }`,
+  ],
   ['expr-child', `function C(){ return <Defer when={c}>{val}</Defer> }`],
-  ['nested-defer', `import {A} from './x'\nfunction C(){ return <Defer when={a}><Defer when={b}><A/></Defer></Defer> }`],
+  [
+    'nested-defer',
+    `import {A} from './x'\nfunction C(){ return <Defer when={a}><Defer when={b}><A/></Defer></Defer> }`,
+  ],
   ['text-child', `function C(){ return <Defer when={c}>plain text</Defer> }`],
   ['self-closing', `function C(){ return <Defer when={c}/> }`],
-  ['spread-child', `import {A} from './x'\nfunction C(p){ return <Defer when={c}><A {...p}/></Defer> }`],
+  [
+    'spread-child',
+    `import {A} from './x'\nfunction C(p){ return <Defer when={c}><A {...p}/></Defer> }`,
+  ],
   ['comment-child', `function C(){ return <Defer when={c}>{/* x */}</Defer> }`],
 ]
 

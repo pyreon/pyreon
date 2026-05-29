@@ -1,10 +1,6 @@
 import { useForm } from '@pyreon/form'
 import { zodSchema } from '@pyreon/validation'
-import {
-  COMPANY_SIZE_LABELS,
-  type ProfileValues,
-  profileSchema,
-} from './schema'
+import { COMPANY_SIZE_LABELS, type ProfileValues, profileSchema } from './schema'
 import {
   FieldError,
   FieldGroup,
@@ -67,9 +63,7 @@ export function ProfileStep() {
             placeholder="Aisha Aldridge"
             value={fields.fullName.value()}
             $invalid={fields.fullName.touched() && fields.fullName.error() !== undefined}
-            onInput={(e: Event) =>
-              fields.fullName.setValue((e.target as HTMLInputElement).value)
-            }
+            onInput={(e: Event) => fields.fullName.setValue((e.target as HTMLInputElement).value)}
             onBlur={() => fields.fullName.setTouched()}
           />
           <FieldError>
@@ -85,9 +79,7 @@ export function ProfileStep() {
             placeholder="Senior engineer"
             value={fields.jobTitle.value()}
             $invalid={fields.jobTitle.touched() && fields.jobTitle.error() !== undefined}
-            onInput={(e: Event) =>
-              fields.jobTitle.setValue((e.target as HTMLInputElement).value)
-            }
+            onInput={(e: Event) => fields.jobTitle.setValue((e.target as HTMLInputElement).value)}
             onBlur={() => fields.jobTitle.setTouched()}
           />
           <FieldError>

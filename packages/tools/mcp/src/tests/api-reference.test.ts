@@ -471,8 +471,16 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/store — manifest-driven region', () => {
-    it.each(['store/defineStore', 'store/addStorePlugin', 'store/setStoreRegistryProvider', 'store/resetStore', 'store/resetAllStores'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'store/defineStore',
+      'store/addStorePlugin',
+      'store/setStoreRegistryProvider',
+      'store/resetStore',
+      'store/resetAllStores',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('defineStore documents composition stores', () => {
       expect(API_REFERENCE['store/defineStore']?.notes).toContain('composition')
@@ -480,8 +488,17 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/state-tree — manifest-driven region', () => {
-    it.each(['state-tree/model', 'state-tree/getSnapshot', 'state-tree/applySnapshot', 'state-tree/onPatch', 'state-tree/applyPatch', 'state-tree/addMiddleware'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'state-tree/model',
+      'state-tree/getSnapshot',
+      'state-tree/applySnapshot',
+      'state-tree/onPatch',
+      'state-tree/applyPatch',
+      'state-tree/addMiddleware',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('model documents structured reactive state', () => {
       expect(API_REFERENCE['state-tree/model']?.notes).toContain('model')
@@ -489,8 +506,14 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/permissions — manifest-driven region', () => {
-    it.each(['permissions/createPermissions', 'permissions/PermissionsProvider', 'permissions/usePermissions'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'permissions/createPermissions',
+      'permissions/PermissionsProvider',
+      'permissions/usePermissions',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('createPermissions documents reactive callable', () => {
       expect(API_REFERENCE['permissions/createPermissions']?.notes).toContain('callable')
@@ -499,7 +522,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/machine — manifest-driven region', () => {
     it.each(['machine/createMachine'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('createMachine documents type-safe transitions', () => {
       expect(API_REFERENCE['machine/createMachine']?.notes).toContain('transition')
@@ -507,8 +532,16 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/i18n — manifest-driven region', () => {
-    it.each(['i18n/createI18n', 'i18n/I18nProvider', 'i18n/useI18n', 'i18n/Trans', 'i18n/interpolate'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'i18n/createI18n',
+      'i18n/I18nProvider',
+      'i18n/useI18n',
+      'i18n/Trans',
+      'i18n/interpolate',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('createI18n documents two entry points', () => {
       expect(API_REFERENCE['i18n/createI18n']?.notes).toContain('locale')
@@ -516,8 +549,15 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/storage — manifest-driven region', () => {
-    it.each(['storage/useStorage', 'storage/useCookie', 'storage/useIndexedDB', 'storage/createStorage'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'storage/useStorage',
+      'storage/useCookie',
+      'storage/useIndexedDB',
+      'storage/createStorage',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('useStorage documents cross-tab sync', () => {
       expect(API_REFERENCE['storage/useStorage']?.notes).toContain('syncs across browser tabs')
@@ -526,7 +566,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/toast — manifest-driven region', () => {
     it.each(['toast/toast', 'toast/Toaster'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('toast documents imperative API', () => {
       expect(API_REFERENCE['toast/toast']?.notes).toContain('toast')
@@ -535,7 +577,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/rx — manifest-driven region', () => {
     it.each(['rx/rx', 'rx/pipe', 'rx/filter'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('rx namespace documents Signal overloading', () => {
       expect(API_REFERENCE['rx/rx']?.notes).toContain('Signal')
@@ -544,7 +588,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/table — manifest-driven region', () => {
     it.each(['table/useTable', 'table/flexRender'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('useTable documents options-as-function contract', () => {
       expect(API_REFERENCE['table/useTable']?.notes).toContain('Computed<Table<T>>')
@@ -553,7 +599,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/virtual — manifest-driven region', () => {
     it.each(['virtual/useVirtualizer', 'virtual/useWindowVirtualizer'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('useVirtualizer documents reactive virtualItems', () => {
       expect(API_REFERENCE['virtual/useVirtualizer']?.notes).toContain('virtualItems')
@@ -562,7 +610,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/feature — manifest-driven region', () => {
     it.each(['feature/defineFeature', 'feature/reference'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('defineFeature documents composing 5 packages', () => {
       expect(API_REFERENCE['feature/defineFeature']?.notes).toContain('@pyreon/query')
@@ -570,8 +620,17 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/code — manifest-driven region', () => {
-    it.each(['code/createEditor', 'code/bindEditorToSignal', 'code/CodeEditor', 'code/DiffEditor', 'code/loadLanguage', 'code/minimapExtension'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'code/createEditor',
+      'code/bindEditorToSignal',
+      'code/CodeEditor',
+      'code/DiffEditor',
+      'code/loadLanguage',
+      'code/minimapExtension',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('createEditor documents writable Signal<string> value', () => {
       expect(API_REFERENCE['code/createEditor']?.notes).toContain('writable Signal<string>')
@@ -579,8 +638,15 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/document — manifest-driven region', () => {
-    it.each(['document/render', 'document/createDocument', 'document/Document', 'document/download'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'document/render',
+      'document/createDocument',
+      'document/Document',
+      'document/download',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('render documents lazy-loaded heavy renderers', () => {
       expect(API_REFERENCE['document/render']?.notes).toContain('lazy-loaded')
@@ -588,9 +654,14 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/hotkeys — manifest-driven region', () => {
-    it.each(['hotkeys/useHotkey', 'hotkeys/useHotkeyScope', 'hotkeys/registerHotkey'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
-    })
+    it.each(['hotkeys/useHotkey', 'hotkeys/useHotkeyScope', 'hotkeys/registerHotkey'])(
+      'exposes %s',
+      (key) => {
+        const e = API_REFERENCE[key]
+        expect(e).toBeDefined()
+        expect(e!.signature).toBeTruthy()
+      },
+    )
     it('useHotkey documents mod alias + form element filtering', () => {
       expect(API_REFERENCE['hotkeys/useHotkey']?.notes).toContain('mod')
     })
@@ -598,7 +669,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/url-state — manifest-driven region', () => {
     it.each(['url-state/useUrlState', 'url-state/setUrlRouter'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('useUrlState documents auto type coercion + SSR safety', () => {
       expect(API_REFERENCE['url-state/useUrlState']?.notes).toContain('SSR-safe')
@@ -607,7 +680,9 @@ describe('api-reference', () => {
 
   describe('@pyreon/charts — manifest-driven region', () => {
     it.each(['charts/useChart', 'charts/Chart'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('useChart documents lazy loading', () => {
       expect(API_REFERENCE['charts/useChart']?.notes).toContain('Lazy-loads')
@@ -615,8 +690,17 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/validation — manifest-driven region', () => {
-    it.each(['validation/zodSchema', 'validation/zodField', 'validation/valibotSchema', 'validation/valibotField', 'validation/arktypeSchema', 'validation/arktypeField'])('exposes %s', (key) => {
-      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    it.each([
+      'validation/zodSchema',
+      'validation/zodField',
+      'validation/valibotSchema',
+      'validation/valibotField',
+      'validation/arktypeSchema',
+      'validation/arktypeField',
+    ])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]
+      expect(e).toBeDefined()
+      expect(e!.signature).toBeTruthy()
     })
     it('zodSchema documents duck-typing', () => {
       expect(API_REFERENCE['validation/zodSchema']?.notes).toContain('Duck-typed')

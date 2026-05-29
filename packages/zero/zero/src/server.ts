@@ -13,77 +13,80 @@
 
 // ─── Server entry ───────────────────────────────────────────────────────────
 
-export type { CreateAppOptions } from "./app";
-export { createApp } from "./app";
-export type { CreateServerOptions } from "./entry-server";
-export { createServer } from "./entry-server";
+export type { CreateAppOptions } from './app'
+export { createApp } from './app'
+export type { CreateServerOptions } from './entry-server'
+export { createServer } from './entry-server'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-export { defineConfig, resolveConfig } from "./config";
+export { defineConfig, resolveConfig } from './config'
 
 // ─── File-system routing ────────────────────────────────────────────────────
 
 export type { GenerateRouteModuleOptions, GetStaticPaths } from './fs-router'
 export {
-	filePathToUrlPath,
-	generateMiddlewareModule,
-	generateRouteModule,
-	parseFileRoutes,
-	scanRouteFiles,
+  filePathToUrlPath,
+  generateMiddlewareModule,
+  generateRouteModule,
+  parseFileRoutes,
+  scanRouteFiles,
 } from './fs-router'
 
 // ─── ISR ────────────────────────────────────────────────────────────────────
 
-export type { ISRCacheEntry, ISRStore } from "./isr";
-export { createISRHandler, createMemoryStore } from "./isr";
+export type { ISRCacheEntry, ISRStore } from './isr'
+export { createISRHandler, createMemoryStore } from './isr'
 
 // ─── Vercel revalidate handler (M3.1) ───────────────────────────────────────
 
-export type { VercelRevalidateHandlerOptions } from "./vercel-revalidate-handler";
+export type { VercelRevalidateHandlerOptions } from './vercel-revalidate-handler'
 export {
-	_resetVercelRevalidateHandlerCache,
-	vercelRevalidateHandler,
-} from "./vercel-revalidate-handler";
+  _resetVercelRevalidateHandlerCache,
+  vercelRevalidateHandler,
+} from './vercel-revalidate-handler'
 
 // ─── Adapters ───────────────────────────────────────────────────────────────
 
 export {
-	bunAdapter,
-	cloudflareAdapter,
-	netlifyAdapter,
-	nodeAdapter,
-	resolveAdapter,
-	staticAdapter,
-	vercelAdapter,
-} from "./adapters";
+  bunAdapter,
+  cloudflareAdapter,
+  netlifyAdapter,
+  nodeAdapter,
+  resolveAdapter,
+  staticAdapter,
+  vercelAdapter,
+} from './adapters'
 
 // ─── 404 ────────────────────────────────────────────────────────────────────
 
-export { render404Page } from "./not-found";
+export { render404Page } from './not-found'
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
-export { compose, getContext } from "./middleware";
+export { compose, getContext } from './middleware'
 
 // ─── Vite plugins ───────────────────────────────────────────────────────────
 
-export { zeroPlugin as default, getZeroPluginConfig } from "./vite-plugin";
-export type { FaviconPluginConfig, FaviconLocaleConfig } from "./favicon";
-export { faviconPlugin, faviconLinks } from "./favicon";
-export type { IconsPluginConfig, IconSetConfig, NamedSetInput } from "./icons-plugin";
-export { iconsPlugin, iconNameFromFile, scanIconDir, generateIconSetSource, generateNamedIconSetsSource, componentNameFromSetKey } from "./icons-plugin";
-export type { SeoPluginConfig, SitemapConfig, RobotsConfig } from "./seo";
-export { seoPlugin, generateSitemap, generateRobots, jsonLd, seoMiddleware } from "./seo";
-export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from "./og-image";
-export { ogImagePlugin, ogImagePath } from "./og-image";
-export type { AiPluginConfig, InferJsonLdOptions } from "./ai";
-export { aiPlugin, inferJsonLd, generateLlmsTxt, generateLlmsFullTxt } from "./ai";
+export { zeroPlugin as default, getZeroPluginConfig } from './vite-plugin'
+export type { FaviconPluginConfig, FaviconLocaleConfig } from './favicon'
+export { faviconPlugin, faviconLinks } from './favicon'
+export type { IconsPluginConfig, IconSetConfig, NamedSetInput } from './icons-plugin'
+export {
+  iconsPlugin,
+  iconNameFromFile,
+  scanIconDir,
+  generateIconSetSource,
+  generateNamedIconSetsSource,
+  componentNameFromSetKey,
+} from './icons-plugin'
+export type { SeoPluginConfig, SitemapConfig, RobotsConfig } from './seo'
+export { seoPlugin, generateSitemap, generateRobots, jsonLd, seoMiddleware } from './seo'
+export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from './og-image'
+export { ogImagePlugin, ogImagePath } from './og-image'
+export type { AiPluginConfig, InferJsonLdOptions } from './ai'
+export { aiPlugin, inferJsonLd, generateLlmsTxt, generateLlmsFullTxt } from './ai'
 
 // ─── I18n server-only ───────────────────────────────────────────────────────
 
-export {
-	createLocaleContext,
-	detectLocaleFromHeader,
-	i18nRouting,
-} from "./i18n-routing";
+export { createLocaleContext, detectLocaleFromHeader, i18nRouting } from './i18n-routing'

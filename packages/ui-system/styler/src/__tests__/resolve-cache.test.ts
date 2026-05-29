@@ -14,7 +14,9 @@ import { normalizeCSS, resolve } from '../resolve'
  */
 
 describe('Tier 2: resolve cache correctness', () => {
-  const strings = Object.assign(['background-color: ', ';'] as unknown as TemplateStringsArray, { raw: ['background-color: ', ';'] })
+  const strings = Object.assign(['background-color: ', ';'] as unknown as TemplateStringsArray, {
+    raw: ['background-color: ', ';'],
+  })
   const values = [(props: any) => props.$rocketstyle?.backgroundColor ?? 'transparent']
   const theme = { colors: { primary: '#3b82f6' } }
 
@@ -44,15 +46,21 @@ describe('Tier 2: resolve cache correctness', () => {
 
   it('same $rocketstyle but different $rocketstate produces different CSS when state-dependent', () => {
     // Interpolation that reads $rocketstate
-    const stateStrings = Object.assign(['opacity: ', ';'] as unknown as TemplateStringsArray, { raw: ['opacity: ', ';'] })
-    const stateValues = [(props: any) => props.$rocketstate?.disabled ? '0.5' : '1']
+    const stateStrings = Object.assign(['opacity: ', ';'] as unknown as TemplateStringsArray, {
+      raw: ['opacity: ', ';'],
+    })
+    const stateValues = [(props: any) => (props.$rocketstate?.disabled ? '0.5' : '1')]
 
     const rs = { backgroundColor: 'red' }
     const state1 = { disabled: false }
     const state2 = { disabled: true }
 
-    const css1 = normalizeCSS(resolve(stateStrings, stateValues, { $rocketstyle: rs, $rocketstate: state1, theme }))
-    const css2 = normalizeCSS(resolve(stateStrings, stateValues, { $rocketstyle: rs, $rocketstate: state2, theme }))
+    const css1 = normalizeCSS(
+      resolve(stateStrings, stateValues, { $rocketstyle: rs, $rocketstate: state1, theme }),
+    )
+    const css2 = normalizeCSS(
+      resolve(stateStrings, stateValues, { $rocketstyle: rs, $rocketstate: state2, theme }),
+    )
 
     expect(css1).toContain('opacity: 1;')
     expect(css2).toContain('opacity: 0.5;')

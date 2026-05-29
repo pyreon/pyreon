@@ -255,9 +255,8 @@ type Stores =
   | Readable<unknown>
   | [Readable<unknown>, ...Array<Readable<unknown>>]
   | Array<Readable<unknown>>
-type StoresValues<T> = T extends Readable<infer U>
-  ? U
-  : { [K in keyof T]: T[K] extends Readable<infer U> ? U : never }
+type StoresValues<T> =
+  T extends Readable<infer U> ? U : { [K in keyof T]: T[K] extends Readable<infer U> ? U : never }
 
 /**
  * Svelte-compatible `derived`. Supports both the sync form
@@ -292,7 +291,11 @@ export function derived<S extends Stores, T>(
       const input = (single ? values[0] : values) as StoresValues<S>
       if (isAsync) {
         cleanup = (
-          fn as (v: StoresValues<S>, s: (x: T) => void, u: (f: Updater<T>) => void) => Unsubscriber | void
+          fn as (
+            v: StoresValues<S>,
+            s: (x: T) => void,
+            u: (f: Updater<T>) => void,
+          ) => Unsubscriber | void
         )(input, set, update)
       } else {
         set((fn as (v: StoresValues<S>) => T)(input))
@@ -442,12 +445,9 @@ export function getAllContexts<T extends Map<unknown, unknown> = Map<unknown, un
  * current component's `on<Type>` / `on:<type>` prop with a CustomEvent
  * (mirrors how the sibling compat layers map child events to props).
  */
-export function createEventDispatcher<EventMap extends Record<string, unknown> = Record<string, unknown>>(): <
-  Type extends keyof EventMap & string,
->(
-  type: Type,
-  detail?: EventMap[Type],
-) => boolean {
+export function createEventDispatcher<
+  EventMap extends Record<string, unknown> = Record<string, unknown>,
+>(): <Type extends keyof EventMap & string>(type: Type, detail?: EventMap[Type]) => boolean {
   const ctx = getCurrentCtx()
   const props = (ctx?.props ?? {}) as Record<string, unknown>
   return (type, detail) => {

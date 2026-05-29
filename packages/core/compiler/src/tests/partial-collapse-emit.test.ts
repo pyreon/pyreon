@@ -63,7 +63,8 @@ describe('compiler — partial-collapse emission (on*-handler-only)', () => {
 
   it('peels multiple handlers verbatim (arrow stays one arg via parens)', () => {
     const key = rocketstyleCollapseKey('Button', { state: 'primary' }, 'Go')
-    const src = 'const x = <Button state="primary" onClick={a} onPointerEnter={() => b(1)}>Go</Button>'
+    const src =
+      'const x = <Button state="primary" onClick={a} onPointerEnter={() => b(1)}>Go</Button>'
     const { code } = transformJSX(src, 'M.tsx', collapseOpt(['Button'], { [key]: SITE }))
     expect(code).toContain('{ "onClick": (a), "onPointerEnter": (() => b(1)) }')
     expect(code).toContain('__rsCollapseH(')

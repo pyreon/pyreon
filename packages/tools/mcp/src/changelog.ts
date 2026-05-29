@@ -308,10 +308,7 @@ export function compareVersions(a: string, b: string): number {
  * via the `empty` flag. Returns all entries in file order (newest first)
  * that satisfy `compareVersions(entry.version, sinceVersion) > 0`.
  */
-export function filterSince(
-  entries: ChangelogEntry[],
-  sinceVersion: string,
-): ChangelogEntry[] {
+export function filterSince(entries: ChangelogEntry[], sinceVersion: string): ChangelogEntry[] {
   return entries.filter((e) => compareVersions(e.version, sinceVersion) > 0)
 }
 
@@ -353,7 +350,10 @@ export function formatChangelog(
       )
     }
     const ceremonial = changelog.entries.length
-    const versions = changelog.entries.slice(0, 3).map((e) => e.version).join(', ')
+    const versions = changelog.entries
+      .slice(0, 3)
+      .map((e) => e.version)
+      .join(', ')
     return (
       `# ${changelog.packageName} — no substantive changes\n\n` +
       `CHANGELOG.md has ${ceremonial} version entr${ceremonial === 1 ? 'y' : 'ies'} ` +
@@ -423,9 +423,7 @@ export function formatChangelogIndex(registry: ChangelogRegistry): string {
   for (const name of names) {
     const cl = registry.byName.get(name)!
     const latest = cl.entries.find((e) => !e.empty)
-    const summary = latest
-      ? `latest substantive: v${latest.version}`
-      : 'ceremonial bumps only'
+    const summary = latest ? `latest substantive: v${latest.version}` : 'ceremonial bumps only'
     parts.push(`- **${name}** — ${summary}`)
   }
 
