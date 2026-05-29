@@ -192,7 +192,20 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     }
   }
 
+  // Cancel any pending reconnect timer. Called before (re)connecting and
+  // before scheduling a fresh reconnect, so a stale timer can never fire a
+  // spurious extra connect() after the EventSource has already been
+  // re-established (reactive url change, manualReconnect, or a rapid error).
+  function clearReconnect(): void {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
+
   function connect(): void {
+    // A connect supersedes any pending reconnect — drop the orphan timer.
+    clearReconnect()
     // Clean up existing connection
     if (es) {
       removeListeners(es)
@@ -240,6 +253,9 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     const delay = baseDelay * 2 ** reconnectAttempts
     reconnectAttempts++
 
+    // Clear a prior pending timer before overwriting the handle (a rapid
+    // second error would otherwise orphan the first timer).
+    clearReconnect()
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       if (!intentionalClose && isEnabled()) {
@@ -250,10 +266,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
 
   function close(): void {
     intentionalClose = true
-    if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
+    clearReconnect()
     if (es) {
       removeListeners(es)
       es.close()
