@@ -714,3 +714,39 @@ describe('useSubscription', () => {
     unmount()
   })
 })
+
+describe('useSubscription — pending reconnect timer is not orphaned (Class I)', () => {
+  beforeEach(() => {
+    mockInstances = []
+  })
+
+  it('reconnect while a reconnect timer is pending cancels the stale timer (no spurious extra connect)', async () => {
+    const client = makeClient()
+    let sub: UseSubscriptionResult | null = null
+    const unmount = withProvider(client, () => {
+      sub = useSubscription({
+        url: 'wss://example.com/ws',
+        onMessage: noop,
+        reconnectDelay: 10,
+      })
+    })
+    expect(mockInstances).toHaveLength(1)
+
+    // Socket drops → schedules a reconnect (timer pending, fires in ~10ms).
+    lastMockWS()._simulateClose()
+
+    // Before that timer fires, an explicit reconnect re-establishes the socket
+    // NOW (same shape as a reactive url/enabled change re-running connect()).
+    sub!.reconnect()
+    expect(mockInstances).toHaveLength(2)
+
+    // Wait well past the original reconnect delay.
+    await new Promise((r) => setTimeout(r, 50))
+
+    // Post-fix: connect() cleared the pending timer → still 2 sockets.
+    // Pre-fix: the orphan timer fired a spurious 3rd connect → length 3.
+    expect(mockInstances).toHaveLength(2)
+
+    unmount()
+  })
+})

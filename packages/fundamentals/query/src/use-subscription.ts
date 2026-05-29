@@ -88,8 +88,21 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     return typeof options.enabled === 'function' ? options.enabled() : options.enabled
   }
 
+  // Cancel any pending reconnect timer. Called before (re)connecting and
+  // before scheduling a fresh reconnect, so a stale timer can never fire a
+  // spurious extra connect() after the socket has already been re-established
+  // (reactive url/enabled change, manualReconnect, or a rapid second close).
+  function clearReconnect(): void {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
+
   function connect(): void {
     if (typeof WebSocket === 'undefined') return
+    // A connect supersedes any pending reconnect — drop the orphan timer.
+    clearReconnect()
     if (ws) {
       // Close BEFORE nulling handlers — a queued message arriving between
       // null-assignment and close() would fire a null handler and crash.
@@ -155,6 +168,9 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     const delay = baseDelay * 2 ** reconnectAttempts
     reconnectAttempts++
 
+    // Clear a prior pending timer before overwriting the handle (a rapid
+    // second close/error would otherwise orphan the first timer).
+    clearReconnect()
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       if (!intentionalClose && isEnabled()) {
@@ -173,10 +189,7 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
   function close(): void {
     if (typeof WebSocket === 'undefined') return
     intentionalClose = true
-    if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
+    clearReconnect()
     if (ws) {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close()
