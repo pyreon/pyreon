@@ -524,6 +524,15 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
       )
       .join('\n  ')
   }
+  // Phase 4: `const can = usePermissions([...])` → an @State PyreonPermissions
+  // seeded with the literal grant keys. Reads are method calls
+  // (`can.can("x")`), so no field-read rewrite — plain method emit on Swift.
+  if (d.kind === 'permissions') {
+    const seed = d.grants.length
+      ? `[${d.grants.map((g) => JSON.stringify(g)).join(', ')}]`
+      : ''
+    return `@State private var ${swiftIdent(d.name)} = PyreonPermissions(${seed})`
+  }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable

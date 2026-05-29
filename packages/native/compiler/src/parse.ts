@@ -475,7 +475,36 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useOnline') {
     return { kind: 'network-status', name }
   }
+  // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
+  // @pyreon/permissions. The array of literal grant keys seeds the native
+  // PyreonPermissions container. Always succeeds (no bail): a bare
+  // `usePermissions()` or a non-literal arg yields an empty grant set and the
+  // emit produces a default-constructed container.
+  if (calleeName === 'usePermissions') {
+    return { kind: 'permissions', name, grants: tryExtractStringArray(init.arguments?.[0]) }
+  }
   return null
+}
+
+/**
+ * Phase 4 — pull literal string elements out of an array argument
+ * (`['a', 'b']`). Used to seed `usePermissions`' initial grant set. Returns
+ * the string-literal entries; a missing / non-array / non-literal argument
+ * yields an empty array so the caller never bails.
+ */
+function tryExtractStringArray(arg: AnyNode | undefined): string[] {
+  if (!arg || arg.type !== 'ArrayExpression') return []
+  const out: string[] = []
+  for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
+    if (
+      el &&
+      (el.type === 'Literal' || el.type === 'StringLiteral') &&
+      typeof el.value === 'string'
+    ) {
+      out.push(el.value)
+    }
+  }
+  return out
 }
 
 /**

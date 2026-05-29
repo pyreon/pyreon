@@ -179,6 +179,22 @@ export type DeclIR =
    * where `const { id } = useParams()` referenced an undeclared `id`.
    */
   | { kind: 'params-destructure'; params: { key: string; local: string }[] }
+  /**
+   * Phase 4 — permission set via `usePermissions(['posts.edit', 'posts.*'])`
+   * from `@pyreon/permissions` (the native subset). Emits the PyreonPermissions
+   * reactive container the runtime ports ship:
+   *   Swift  → @State private var can = PyreonPermissions(["posts.edit", "posts.*"])
+   *   Kotlin → val can = remember { PyreonPermissions(setOf("posts.edit", "posts.*")) }
+   *
+   * `grants` carries the literal initial grant keys captured from the array
+   * argument (string literals only; a non-array / non-literal arg yields an
+   * empty set — `usePermissions` never bails). Reads are METHOD CALLS
+   * (`can.can("x")` / `cannot` / `all` / `any` / `grant` / `revoke` / `set`),
+   * so unlike useFetch / useForm there is NO `.value` field-read rewrite —
+   * the methods read the underlying reactive set internally and return a
+   * plain Bool / Void on both targets.
+   */
+  | { kind: 'permissions'; name: string; grants: string[] }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
