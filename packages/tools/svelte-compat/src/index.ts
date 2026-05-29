@@ -329,12 +329,17 @@ export function onMount(fn: () => CleanupFn | void): void {
   if (ctx) {
     const idx = getHookIndex()
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = true
       // Svelte's onMount may return a cleanup that runs on destroy. The
       // shared jsx-runtime schedules pendingEffects post-render but never
       // invokes their stored cleanup on unmount, so wire it explicitly
       // into unmountCallbacks (runs in the wrapper's onUnmount).
       let cleanup: CleanupFn | undefined
+      const unmountCb = () => {
+        if (cleanup) cleanup()
+      }
+      // Store the cleanup callback in the hook slot (was `true`) so it can be
+      // re-pushed after a parent re-render resets `ctx.unmountCallbacks`.
+      ctx.hooks[idx] = unmountCb
       ctx.pendingEffects.push({
         fn: () => {
           const c = fn()
@@ -344,9 +349,18 @@ export function onMount(fn: () => CleanupFn | void): void {
         deps: undefined,
         cleanup: undefined,
       })
-      ctx.unmountCallbacks.push(() => {
-        if (cleanup) cleanup()
-      })
+      ctx.unmountCallbacks.push(unmountCb)
+    } else {
+      // Re-render of a preserved child: the wrapper reset
+      // `ctx.unmountCallbacks = []` (jsx-runtime.ts:172), dropping this hook's
+      // cleanup. Re-push it so it still runs on final unmount — the lifecycle
+      // sibling of the #739 `writable.subscribe` re-push. `includes()` guards
+      // against a double-push within the same render.
+      const stored = ctx.hooks[idx]
+      if (typeof stored === 'function') {
+        const cb = stored as () => void
+        if (!ctx.unmountCallbacks.includes(cb)) ctx.unmountCallbacks.push(cb)
+      }
     }
     return
   }
@@ -359,8 +373,18 @@ export function onDestroy(fn: () => void): void {
   if (ctx) {
     const idx = getHookIndex()
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = true
+      // Store the callback in the hook slot (was `true`) so it survives a
+      // parent re-render that resets `ctx.unmountCallbacks` (see onMount).
+      ctx.hooks[idx] = fn
       ctx.unmountCallbacks.push(fn)
+    } else {
+      // Re-render: re-push the dropped destroy callback (the #739 lifecycle
+      // sibling) so it still fires on final unmount.
+      const stored = ctx.hooks[idx]
+      if (typeof stored === 'function') {
+        const cb = stored as () => void
+        if (!ctx.unmountCallbacks.includes(cb)) ctx.unmountCallbacks.push(cb)
+      }
     }
     return
   }
