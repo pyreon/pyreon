@@ -177,6 +177,10 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   selectedNodes: Computed<string[]>
   /** Selected edge ids — computed */
   selectedEdges: Computed<string[]>
+  /** Node id → node lookup map — computed, O(1) access (rebuilt once per `nodes()` change) */
+  nodeMap: Computed<Map<string, FlowNode<TData>>>
+  /** Edge id → edge lookup map — computed, O(1) access (rebuilt once per `edges()` change) */
+  edgeMap: Computed<Map<string, FlowEdge>>
   /** Container dimensions — updated by the Flow component via ResizeObserver */
   containerSize: Signal<{ width: number; height: number }>
 
