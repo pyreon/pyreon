@@ -61,9 +61,23 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
      *  so the symbol must exist now even with no-op behaviour. */
     public val params: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
 
+    /** Phase 3 (loaders) — per-route loaded data, keyed by full path. A
+     *  route's loader stores its result here on navigation; `useLoaderData()`
+     *  reads the current path's entry. Type-erased (`Any?`) because payloads
+     *  are per-route. Empty until a loader harness populates it (the harness
+     *  emit is a follow-up — this is the runtime contract it targets). */
+    public val loaderData: MutableState<Map<String, Any?>> = mutableStateOf(emptyMap())
+
     /** Top-of-stack path. Mirrors `router.currentRoute().path` on the web side. */
     public val currentPath: String
         get() = path.value.lastOrNull() ?: "/"
+
+    /** Store a route's loaded data under its path. Called by the compiler's
+     *  loader harness; idempotent overwrite. Mutating `loaderData` triggers
+     *  Compose recomposition for observers reading `useLoaderData()`. */
+    public fun setLoaderData(path: String, value: Any?) {
+        loaderData.value = loaderData.value + (path to value)
+    }
 
     /** Push a new path onto the stack. Matches `router.push(path)` on the web side. */
     public fun push(path: String) {

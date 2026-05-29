@@ -69,3 +69,26 @@ public fun useParams(): Map<String, String> {
     val router = LocalPyreonRouter.current
     return router?.params?.value ?: emptyMap()
 }
+
+/**
+ * Read the current route's loaded data. Mirrors `@pyreon/router`'s
+ * `useLoaderData()` hook.
+ *
+ * The router's `loaderData` store is type-erased (`Map<String, Any?>`) because
+ * loader payloads are per-route; this hook casts the current path's entry to
+ * the caller's expected [T] (via `reified`). Returns null when no data is
+ * stored for the current path, the cast fails, or the call is outside a
+ * [RouterProvider] tree — the defensive default matching the web side.
+ *
+ * Compiler emit (a follow-up to this runtime contract):
+ * ```tsx
+ * const user = useLoaderData<User>()
+ * ↓
+ * val user = useLoaderData<User>()
+ * ```
+ */
+@Composable
+public inline fun <reified T> useLoaderData(): T? {
+    val router = LocalPyreonRouter.current ?: return null
+    return router.loaderData.value[router.currentPath] as? T
+}

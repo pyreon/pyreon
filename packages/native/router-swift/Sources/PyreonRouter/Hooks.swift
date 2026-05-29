@@ -64,3 +64,24 @@ public func useNavigate(router: PyreonRouter?) -> (String) -> Void {
 public func useParams(router: PyreonRouter?) -> [String: String] {
     router?.params ?? [:]
 }
+
+/// Read the current route's loaded data. Mirrors `@pyreon/router`'s
+/// `useLoaderData()` hook.
+///
+/// The router's `loaderData` store is type-erased (`[String: Any]`) because
+/// loader payloads are per-route; this hook casts the current path's entry to
+/// the caller's expected `T`. Returns nil when no data is stored for the
+/// current path, the cast fails, or the router is absent — the defensive
+/// default matching the web side's missing-data behaviour.
+///
+/// Compiler emit (a follow-up to this runtime contract):
+/// ```tsx
+/// const user = useLoaderData<User>()
+/// ↓
+/// let user: User? = useLoaderData(router: pyreonRouter)
+/// ```
+@available(iOS 17.0, macOS 14.0, *)
+public func useLoaderData<T>(router: PyreonRouter?) -> T? {
+    guard let router else { return nil }
+    return router.loaderData[router.currentPath] as? T
+}

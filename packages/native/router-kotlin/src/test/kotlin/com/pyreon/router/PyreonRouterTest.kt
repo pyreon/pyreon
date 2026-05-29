@@ -96,6 +96,17 @@ fun main() {
         expectEq(router.params.value["id"], "123", "params reads back")
     }
 
+    runTest("loaderData stores per-path and reads back") {
+        val router = PyreonRouter(initialPath = listOf("/users/7"))
+        expectEq(router.loaderData.value, emptyMap(), "loaderData starts empty")
+
+        router.setLoaderData("/users/7", "Ada")
+        expectEq(router.loaderData.value[router.currentPath], "Ada", "reads current-path entry")
+        // A typed cast at the read site mirrors useLoaderData<T>()'s `as? T`.
+        expectEq(router.loaderData.value[router.currentPath] as? String, "Ada", "typed cast round-trips")
+        expectEq(router.loaderData.value["/other"] as? String, null, "missing path → null")
+    }
+
     // matchPath — route pattern matching (mirrors Swift runtime + web).
 
     runTest("matchPath literal match / mismatch") {
@@ -157,5 +168,5 @@ fun main() {
         expectEq(PyreonRouter.matchPath("/", "/"), emptyMap(), "root")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${17} test(s) passed")
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${18} test(s) passed")
 }
