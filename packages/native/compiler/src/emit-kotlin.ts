@@ -59,6 +59,12 @@ let _fetchNames: Set<string> = new Set()
  * all of them as @Observable properties, so it needs no rewrite.
  */
 let _formNames: Set<string> = new Set()
+/**
+ * Phase 4: every `useOnline()` decl name in scope. A `net.isOnline` read emits
+ * with a trailing `.value` (Compose `MutableState`); Swift exposes it as a
+ * plain @Observable property, so it needs no rewrite.
+ */
+let _netStatusNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
 /**
@@ -198,6 +204,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
+  _netStatusNames = new Set()
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
@@ -235,6 +242,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'fetch') _fetchNames.add(d.name)
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
+    if (d.kind === 'network-status') _netStatusNames.add(d.name)
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
@@ -286,6 +294,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
+  _netStatusNames = new Set()
   _routerRoutes = new Map()
   return lines.join('\n')
 }
@@ -393,6 +402,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           .join(', ')})`
       : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${seed}) }`
+  }
+  // Phase 4: `const net = useOnline()` → a remembered PyreonNetworkStatus.
+  if (d.kind === 'network-status') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonNetworkStatus() }`
   }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
@@ -747,6 +760,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           e.property === 'isSubmitting')
       ) {
         return `${kotlinIdent(e.object.name)}.${e.property}.value`
+      }
+      // Phase 4: a useOnline decl's `isOnline` is Compose MutableState (`.value`).
+      if (
+        e.object.kind === 'identifier' &&
+        _netStatusNames.has(e.object.name) &&
+        e.property === 'isOnline'
+      ) {
+        return `${kotlinIdent(e.object.name)}.isOnline.value`
       }
       return `${emitKotlinExpr(e.object, indent)}.${kotlinIdent(e.property)}`
     }

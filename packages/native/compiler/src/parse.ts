@@ -451,6 +451,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useForm') {
     return { kind: 'form', name, initialValues: tryExtractFormInitialValues(init.arguments?.[0]) }
   }
+  // Phase 4 — `useOnline()` from @pyreon/hooks → the PyreonNetworkStatus
+  // reactive connectivity container. No arguments.
+  if (calleeName === 'useOnline') {
+    return { kind: 'network-status', name }
+  }
   return null
 }
 

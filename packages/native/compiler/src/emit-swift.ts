@@ -444,6 +444,11 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
       : ''
     return `@State private var ${swiftIdent(d.name)} = PyreonForm(${seed})`
   }
+  // Phase 4: `const net = useOnline()` → an @State PyreonNetworkStatus. The
+  // `net.isOnline` read is a plain @Observable property (no rewrite on Swift).
+  if (d.kind === 'network-status') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonNetworkStatus()`
+  }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable

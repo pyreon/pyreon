@@ -154,6 +154,17 @@ export type DeclIR =
    * is a derived `Bool` getter — a plain read on both targets (no `.value`).
    */
   | { kind: 'form'; name: string; initialValues: { key: string; value: string }[] }
+  /**
+   * Phase 4 — connectivity flag via `useOnline()` from `@pyreon/hooks` (the
+   * native subset). Emits the PyreonNetworkStatus reactive container:
+   *   Swift  → @State private var net = PyreonNetworkStatus()
+   *   Kotlin → val net = remember { PyreonNetworkStatus() }
+   *
+   * `useOnline()` takes no arguments. The reactive read is `net.isOnline` —
+   * a plain @Observable property on Swift, a Compose `MutableState` (`.value`)
+   * on Kotlin (same field-read rewrite as useForm's MutableState fields).
+   */
+  | { kind: 'network-status'; name: string }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
