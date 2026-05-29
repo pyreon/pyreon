@@ -461,6 +461,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       .map((p) => `val ${kotlinIdent(p.local)} = useParams()[${JSON.stringify(p.key)}] ?: ""`)
       .join('\n  ')
   }
+  // Phase 4: `const can = usePermissions([...])` → a remembered
+  // PyreonPermissions seeded with the literal grant keys. Reads are method
+  // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
+  if (d.kind === 'permissions') {
+    const seed = d.grants.length
+      ? `setOf(${d.grants.map((g) => JSON.stringify(g)).join(', ')})`
+      : ''
+    return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`
+  }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
   // `LocalPyreonRouter.current` directly via CompositionLocal — no
