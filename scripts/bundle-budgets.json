@@ -9,6 +9,7 @@
   "@pyreon/connector-document": 2304,
   "@pyreon/coolgrid": 2304,
   "@pyreon/core": 5376,
+  "@pyreon/create-multiplatform": 5376,
   "@pyreon/create-zero": 14848,
   "@pyreon/dnd": 2816,
   "@pyreon/document": 2816,
