@@ -173,7 +173,7 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   if (!tpl) {
     tpl = document.createElement('template')
     tpl.innerHTML = html
-    // LRU eviction — drop the oldest entry once we hit the cap. Map
+    // FIFO eviction — drop the oldest entry once we hit the cap. Map
     // iteration is insertion-order so the first key is always the
     // oldest. delete() is O(1).
     if (_tplCache.size >= TPL_CACHE_MAX) {
@@ -181,12 +181,17 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
       if (oldest !== undefined) _tplCache.delete(oldest)
     }
     _tplCache.set(html, tpl)
-  } else {
-    // LRU touch — re-insert moves to most-recent position so frequently
-    // used templates survive eviction.
-    _tplCache.delete(html)
-    _tplCache.set(html, tpl)
   }
+  // Cache-HIT is now a no-op (no LRU touch). The cache-HIT path was previously
+  // `delete + set` to re-insert at the most-recent position — 2 Map ops per
+  // call, dominating the hot path for templates instantiated thousands of times
+  // (a js-framework-benchmark `create 10,000 rows` paid 20,000 Map ops just for
+  // LRU bookkeeping). Switching to FIFO means a frequently-used template
+  // inserted early gets evicted before a rarely-used template inserted later —
+  // but ONLY when the cache is full (cap 1024). No realistic app approaches
+  // 1024 distinct compiled templates; if one does, the worst case is occasional
+  // re-parse on eviction (a few ms one-time), which is far cheaper than 2 Map
+  // ops on every single template instantiation.
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }
