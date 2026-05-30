@@ -5,8 +5,8 @@
  * `.claude/rules/anti-patterns.md` "Memory Leak Classes" section. The
  * script ships 4 detectors (Class A / C / D / I) that are too
  * context-dependent for a per-file lint rule but tractable as an
- * advisory project-wide scan. See #748 (the audit script PR) and the
- * leak-class taxonomy (#746) for the full story.
+ * advisory project-wide scan. See `.claude/rules/anti-patterns.md` for
+ * the full leak-class taxonomy.
  *
  * **Severity mapping**: every audit finding maps to severity `'info'`
  * by design. The audit is advisory — false positives are expected,

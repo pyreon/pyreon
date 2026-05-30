@@ -174,8 +174,8 @@ async function executeAction(action: RegisteredAction, req: Request): Promise<Re
   }
 
   // Execute the user-supplied action handler. Surface errors to server
-  // logs via `console.error` — the cloud adapter audit (PR #755) found
-  // this same swallow-error pattern hiding production crashes from
+  // logs via `console.error` — the cloud-adapter audit found this
+  // same swallow-error pattern hiding production crashes from
   // operators. Without it, a CMS-triggered action that crashed inside
   // the user's handler returned a generic 500 to the client AND
   // logged nothing on the server side, so the operator couldn't
