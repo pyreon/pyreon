@@ -1,5 +1,3 @@
-// @pyreon/core — component model, VNode types, lifecycle hooks
-
 import { registerSingleton } from '@pyreon/reactivity'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/core
