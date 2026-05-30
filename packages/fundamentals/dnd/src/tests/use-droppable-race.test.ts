@@ -36,7 +36,7 @@ describe('useDroppable — deferred setup bails after unmount (Class D race guar
     const e = effect(() => {
       useDroppable({
         element: () => document.createElement('div'),
-        accepts: (_data) => true,
+        canDrop: () => true,
       })
     })
     e.dispose()
@@ -55,7 +55,7 @@ describe('useDroppable — deferred setup bails after unmount (Class D race guar
     const e = effect(() => {
       useDroppable({
         element: () => document.createElement('div'),
-        accepts: (_data) => true,
+        canDrop: () => true,
       })
     })
     await flush()
