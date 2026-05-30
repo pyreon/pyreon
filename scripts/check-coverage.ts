@@ -69,12 +69,6 @@ interface FloorExemption {
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   // ── Statement < 90 ──────────────────────────────────────────────────
-  '@pyreon/lint': {
-    currentStatements: 85,
-    currentBranches: 75,
-    reason:
-      'PR #323 cleanup raised statements 65 → 85 (actual 86.18%) and branches 55 → 75 (actual 80.61%). Below 90/85 — needs further work on rule-edge-case branches.',
-  },
   '@pyreon/vue-compat': {
     currentStatements: 94,
     currentBranches: 84,
