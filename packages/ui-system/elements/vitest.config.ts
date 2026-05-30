@@ -16,10 +16,15 @@ export default defineNodeConfig({
   // happy-dom-only DOM event branches and ref-callback paths are
   // legitimately harder to cover; tracked via
   // BELOW_FLOOR_EXEMPTIONS for branches < 80.
+  // Overlay positioning is browser-layout-dependent (viewport-fit
+  // calcs need real DOMRect + scroll metrics). Exercised by
+  // elements.browser.test.tsx + ui-showcase e2e — excluded from
+  // node-side unit coverage.
+  coverageExclude: ['src/Overlay/positioning.ts'],
   coverageThresholds: {
-    statements: 90,
+    statements: 94,
     branches: 76,
     functions: 84,
-    lines: 89,
+    lines: 94,
   },
 })
