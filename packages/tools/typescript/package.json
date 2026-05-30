@@ -16,6 +16,7 @@
     "base.json",
     "app.json",
     "lib.json",
+    "global.d.ts",
     "README.md",
     "LICENSE"
   ],
@@ -23,7 +24,8 @@
   "exports": {
     ".": "./base.json",
     "./app": "./app.json",
-    "./lib": "./lib.json"
+    "./lib": "./lib.json",
+    "./globals": "./global.d.ts"
   },
   "publishConfig": {
     "access": "public"

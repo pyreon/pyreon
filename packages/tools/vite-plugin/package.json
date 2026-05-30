@@ -50,6 +50,12 @@
     "vite": "^8.0.14"
   },
   "peerDependencies": {
+    "@pyreon/runtime-dom": "workspace:^",
     "vite": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/runtime-dom": {
+      "optional": false
+    }
   }
 }

@@ -38,16 +38,26 @@ export { EMPTY_PROPS, Fragment, h } from './h'
 export type {
   AnchorAttributes,
   ButtonAttributes,
+  ChangeEvent,
+  ClipboardEvent,
   CSSProperties,
+  DragEvent,
+  FocusEvent,
   FormAttributes,
+  FormEvent,
   ImgAttributes,
   InputAttributes,
+  KeyboardEvent,
+  MouseEvent,
+  PointerEvent,
   PyreonHTMLAttributes,
   SelectAttributes,
   StyleValue,
   SvgAttributes,
   TargetedEvent,
   TextareaAttributes,
+  TouchEvent,
+  WheelEvent,
 } from './jsx-runtime'
 export type { DeferProps } from './defer'
 export { Defer } from './defer'
