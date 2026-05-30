@@ -518,6 +518,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonClipboard(${id}Ctx, ${id}Scope) }`,
     ].join('\n  ')
   }
+  // Phase 4 follow-up: `const scheme = useColorScheme()` →
+  // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
+  // Compose's `isSystemInDarkTheme()` is a `@Composable` function
+  // (lives in `androidx.compose.foundation`) — no runtime port
+  // needed. Returns the same `"light" | "dark"` string shape Swift
+  // emits so cross-platform comparisons work identically.
+  if (d.kind === 'color-scheme') {
+    return `val ${kotlinIdent(d.name)} = if (isSystemInDarkTheme()) "dark" else "light"`
+  }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
   // `LocalPyreonRouter.current` directly via CompositionLocal — no

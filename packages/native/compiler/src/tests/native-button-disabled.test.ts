@@ -81,6 +81,7 @@ describe('Round-1 audit fix — <Button disabled={...}> emit (Swift + Kotlin)', 
         `export function App() { return <Button disabled={true} onPress={() => {}}>Save</Button> }`,
         { target: 'kotlin' },
       ).code
+      // Post-#1090: empty `() => {}` body emits `{ }` not `{ "" }`.
       expect(out).toContain('Button(onClick = { }, enabled = false)')
     })
 
