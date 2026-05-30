@@ -476,17 +476,27 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // a `Context`; PyreonClipboard captures it at CONSTRUCTION time so
   // the call-site signature matches Swift's one-for-one.
   //
-  // TWO-line emit: `LocalContext.current` is a @Composable read, but
-  // `remember { … }`'s lambda is a plain (non-Composable) `() -> T`,
-  // so reading the Local INSIDE the lambda is a compile error. We
-  // hoist the read into a local `val ${name}Ctx` that the lambda
-  // captures. Same shape Compose users hand-write for any
-  // context-dependent stateful holder.
+  // THREE-line emit (Round-1 audit follow-up — scope-leak fix):
+  //   1. `val ${name}Ctx = LocalContext.current` — Local reads can't
+  //      live inside `remember { … }`'s lambda (it's non-Composable).
+  //      Hoist to a sibling val.
+  //   2. `val ${name}Scope = rememberCoroutineScope()` — the
+  //      composition-bound coroutine scope. PyreonClipboard's 2s
+  //      reset coroutine launches on this scope; when the composable
+  //      leaves composition, `rememberCoroutineScope()` auto-cancels
+  //      its scope, which interrupts any in-flight `delay(2000)` and
+  //      prevents the `_copied = false` write from firing post-
+  //      unmount. Pre-fix PyreonClipboard built its own
+  //      `CoroutineScope(Dispatchers.IO)` with no parent Job — a real
+  //      leak under repeated remount.
+  //   3. `val ${name} = remember { PyreonClipboard(ctx, scope) }` —
+  //      same shape as before, just with the scope passed in.
   if (d.kind === 'clipboard') {
     const id = kotlinIdent(d.name)
     return [
       `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonClipboard(${id}Ctx) }`,
+      `val ${id}Scope = rememberCoroutineScope()`,
+      `val ${id} = remember { PyreonClipboard(${id}Ctx, ${id}Scope) }`,
     ].join('\n  ')
   }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
