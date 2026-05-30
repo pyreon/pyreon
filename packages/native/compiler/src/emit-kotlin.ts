@@ -976,6 +976,14 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Show') return emitKotlinShow(e, indent)
   if (tag === 'Transition') return emitKotlinTransition(e, indent)
   if (tag === 'TransitionGroup') return emitKotlinTransitionGroup(e, indent)
+  // Phase 5 — walled tags. Mirror of the Swift dispatcher entry.
+  // Compose has no equivalent for Suspense / ErrorBoundary / KeepAlive
+  // either; previously these emitted FAKE composables (`Suspense(…) {}`)
+  // that swiftc/kotlinc reject as unresolved. Graceful emit: a Box {}
+  // wrapping the children + a leading comment surfacing the limitation.
+  if (tag === 'Suspense' || tag === 'ErrorBoundary' || tag === 'KeepAlive') {
+    return emitKotlinWalledTagAsChildren(e, indent, tag)
+  }
   if (tag === 'Text') return emitKotlinText(e, indent)
   if (tag === 'Button') return emitKotlinButton(e, indent)
   if (tag === 'TextField') return emitKotlinTextField(e, indent)
@@ -1195,6 +1203,39 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  * are ignored — Compose drives animation through its own system, not CSS
  * classes. Mirror of the SwiftUI `.transition`-on-a-show-gate shape.
  */
+/**
+ * Phase 5 — graceful emit for walled tags (Suspense / ErrorBoundary /
+ * KeepAlive). Compose has no native equivalent for any of these:
+ *   - Suspense: no async-render-suspend mechanism
+ *   - ErrorBoundary: no render-time try/catch around composables
+ *   - KeepAlive: no built-in state-cache across unmount
+ *
+ * Mirror of `emitSwiftWalledTagAsChildren`. Emits a `Box { … }`
+ * (Compose's neutral container) wrapping the children + a leading
+ * comment naming the limitation. Happy path renders the inner
+ * content; fallback/cache behaviour is inert until a runtime-model
+ * design lands.
+ */
+function emitKotlinWalledTagAsChildren(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+  tag: 'Suspense' | 'ErrorBoundary' | 'KeepAlive',
+): string {
+  const inner = ' '.repeat(indent + 2)
+  const body = e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n')
+  const p = ' '.repeat(indent)
+  const limitation =
+    tag === 'Suspense'
+      ? 'no async-render-suspend on Compose'
+      : tag === 'ErrorBoundary'
+        ? 'no render-time try/catch on Compose'
+        : 'no native state-cache across unmount on Compose'
+  return (
+    `// [Pyreon] <${tag}> unsupported on Android — rendering children only (${limitation}); fallback / cache behaviour inert.\n` +
+    `${p}Box {\n${body}\n${p}}`
+  )
+}
+
 function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>

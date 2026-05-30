@@ -1070,6 +1070,20 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Show') return emitSwiftShow(e, indent)
   if (tag === 'Transition') return emitSwiftTransition(e, indent)
   if (tag === 'TransitionGroup') return emitSwiftTransitionGroup(e, indent)
+  // Phase 5 — walled tags. SwiftUI has no equivalent for these three:
+  //   - <Suspense fallback>:   no async-render-suspend mechanism
+  //   - <ErrorBoundary fallback>: no render-time try/catch
+  //   - <KeepAlive>:           no state-cache across unmount
+  // Previously these emitted FAKE identifiers (Suspense(fallback: …) {})
+  // that don't exist in SwiftUI → cryptic "unresolved identifier" at
+  // swiftc time. The graceful behaviour is to emit just the children
+  // (the happy path: the inner content always renders) + a leading
+  // comment surfacing the limitation at code-read time. The
+  // fallback / cache behaviour is inert until a runtime-model design
+  // lands (tracked in the multiplatform plan as Phase 5 frontier).
+  if (tag === 'Suspense' || tag === 'ErrorBoundary' || tag === 'KeepAlive') {
+    return emitSwiftWalledTagAsChildren(e, indent, tag)
+  }
   if (tag === 'Text') return emitSwiftText(e, indent)
   if (tag === 'Button') return emitSwiftButton(e, indent)
   if (tag === 'TextField') return emitSwiftTextField(e, indent)
@@ -1383,6 +1397,40 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
  * conditional itself can't carry the value-driver — it isn't stable across
  * the flip). Mirrors the Compose `AnimatedVisibility` shape.
  */
+/**
+ * Phase 5 — graceful emit for walled tags (Suspense / ErrorBoundary /
+ * KeepAlive). SwiftUI has no native equivalent for any of these:
+ *   - Suspense needs an async-render-suspend mechanism
+ *   - ErrorBoundary needs render-time try/catch
+ *   - KeepAlive needs a state-cache across unmount
+ *
+ * Instead of emitting a FAKE `Suspense(fallback: …) { … }` identifier
+ * (no such SwiftUI type → cryptic "unresolved identifier" at swiftc),
+ * we wrap the children in a single `Group { … }` (the SwiftUI-idiomatic
+ * neutral container) and prefix a comment naming the limitation. The
+ * happy path renders the inner content; the fallback / cache behaviour
+ * is inert until a runtime-model design lands.
+ */
+function emitSwiftWalledTagAsChildren(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+  tag: 'Suspense' | 'ErrorBoundary' | 'KeepAlive',
+): string {
+  const inner = ' '.repeat(indent + 2)
+  const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')
+  const p = ' '.repeat(indent)
+  const limitation =
+    tag === 'Suspense'
+      ? 'no async-render-suspend on SwiftUI'
+      : tag === 'ErrorBoundary'
+        ? 'no render-time try/catch on SwiftUI'
+        : 'no native state-cache across unmount on SwiftUI'
+  return (
+    `// [Pyreon] <${tag}> unsupported on iOS — rendering children only (${limitation}); fallback / cache behaviour inert.\n` +
+    `${p}Group {\n${body}\n${p}}`
+  )
+}
+
 function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
