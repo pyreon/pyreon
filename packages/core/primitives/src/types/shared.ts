@@ -103,9 +103,9 @@ export interface ChildrenProp {
  * The passthrough keeps the canonical surface minimal AND lets real
  * apps use standard HTML hooks unmodified.
  *
- * Phase D2's e2e gate (PR #951) is the consumer that surfaced this
- * gap; the gate's `data-testid="todo-app"` was silently dropped by
- * the previous primitive impls.
+ * The e2e gate's `data-testid="todo-app"` was silently dropped by
+ * earlier impls that omitted passthrough — the gap that motivated this
+ * surface.
  */
 export interface HtmlPassthroughProps {
   // Mapped key types make TS accept ANY `data-`/`aria-`-prefixed key
