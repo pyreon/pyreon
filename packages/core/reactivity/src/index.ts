@@ -1,5 +1,3 @@
-// @pyreon/reactivity — signals-based reactive primitives
-
 import { registerSingleton } from './singleton-sentinel'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/reactivity

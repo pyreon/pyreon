@@ -98,7 +98,7 @@ export function onCleanup(fn: () => void): void {
 // can suspend it in lock-step with `activeEffect`. effect.ts only manipulates
 // it through the imported getter/setter — keeps the auto-cleanup chain
 // disconnected from work that explicitly opted out of the outer reactive
-// context (W23 from kanban audit, PR #982).
+// context (W23 from kanban audit).
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
@@ -163,7 +163,7 @@ export function effect(
   fn: () => (() => void) | void,
   options?: EffectOptions,
 ): Effect {
-  // Dev-mode warning for async effect callbacks (audit bug #1). The
+  // Dev-mode warning for async effect callbacks. The
   // tracking context is the synchronous frame around `fn()`'s top half;
   // anything after the first `await` runs detached, so signal reads on
   // the back side aren't tracked and the effect won't re-run when those

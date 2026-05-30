@@ -64,7 +64,7 @@ function trackWithLocalDeps<T>(deps: Set<() => void>[], effect: () => void, fn: 
 }
 
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
-  // Dev warning for async computed callbacks (audit bug #1 — extension).
+  // Dev warning for async computed callbacks.
   // `computed(async () => …)` returns `Computed<Promise<T>>`, which silently
   // breaks every consumer that expects `Computed<T>`. There's no scenario
   // where async makes sense here — the recompute fires synchronously and

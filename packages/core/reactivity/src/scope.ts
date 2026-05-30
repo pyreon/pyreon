@@ -1,6 +1,3 @@
-// EffectScope — auto-tracks effects created during a component's setup
-// and disposes them all at once when the component unmounts.
-
 export class EffectScope {
   private _effects: { dispose(): void }[] | null = null
   private _active = true
@@ -85,7 +82,6 @@ export function setCurrentScope(scope: EffectScope | null): void {
   _currentScope = scope
 }
 
-/** Create a new EffectScope. */
 export function effectScope(): EffectScope {
   return new EffectScope()
 }

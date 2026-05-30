@@ -12,12 +12,11 @@
  * instance has its own `let _foo = ...` at module scope → producers
  * and consumers land on DIFFERENT copies → silent data corruption.
  *
- * Real bug class fixed by [PR #855](https://github.com/pyreon/pyreon/pull/855):
- * `@pyreon/core`'s `_current` lifecycle hook tracker was duplicated under
- * Vite SSR dev → every `provide()` call produced `[Pyreon] onUnmount()
- * called outside component setup` warnings because the `_current` set by
- * one module-instance's `runWithHooks` was invisible to the other
- * module-instance's `onUnmount`.
+ * Real example: `@pyreon/core`'s `_current` lifecycle hook tracker
+ * duplicated under Vite SSR dev → every `provide()` call produced
+ * `[Pyreon] onUnmount() called outside component setup` warnings because
+ * the `_current` set by one module-instance's `runWithHooks` was
+ * invisible to the other module-instance's `onUnmount`.
  *
  * ## Pattern
  *
@@ -33,10 +32,10 @@
  *
  * ## Why a helper
  *
- * PR #855 inlined the `Symbol.for(...) ?? init; if (!g[KEY]) g[KEY] = …`
- * pattern into 5 places in `@pyreon/core`. Across 30+ at-risk state vars
- * in 15+ packages, that boilerplate would balloon. `defineCrossModuleState`
- * is the one-liner replacement.
+ * Without this helper, the `Symbol.for(...) ?? init; if (!g[KEY]) g[KEY] = …`
+ * pattern would be inlined at every at-risk state-var site. Across 30+
+ * at-risk state vars in 15+ packages, that boilerplate balloons quickly.
+ * `defineCrossModuleState` is the one-liner replacement.
  *
  * @example
  * // Replace:

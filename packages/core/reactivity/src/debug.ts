@@ -17,13 +17,10 @@ interface SignalUpdateEvent {
   signal: Signal<unknown>
   /** Signal name (from options or label) */
   name: string | undefined
-  /** Previous value */
   prev: unknown
-  /** New value */
   next: unknown
   /** Stack trace at the point of the .set() / .update() call */
   stack: string
-  /** Timestamp */
   timestamp: number
 }
 

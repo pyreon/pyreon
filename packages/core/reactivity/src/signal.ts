@@ -12,7 +12,6 @@ export interface SignalDebugInfo<T> {
   name: string | undefined
   /** Current value (same as peek()) */
   value: T
-  /** Number of active subscribers */
   subscriberCount: number
 }
 
@@ -48,7 +47,6 @@ export interface Signal<T> {
    * stored as a regular own property on the signal function.
    */
   label: string | undefined
-  /** Returns a snapshot of the signal's debug info (value, name, subscriber count). */
   debug(): SignalDebugInfo<T>
 }
 
@@ -82,7 +80,6 @@ interface SignalFn<T> {
   set(value: T): void
   update(fn: (current: T) => T): void
   subscribe(listener: () => void): () => void
-  /** Register a direct updater — lighter than subscribe; O(1) set-based disposal. */
   direct(updater: () => void): () => void
   label: string | undefined
   debug(): SignalDebugInfo<T>

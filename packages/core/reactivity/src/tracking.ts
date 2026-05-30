@@ -1,5 +1,3 @@
-// Global subscriber tracking context
-
 import { enqueuePendingNotification, isBatching } from './batch'
 
 let activeEffect: (() => void) | null = null
@@ -137,9 +135,9 @@ export function _restoreActiveEffect(): void {
 // Without suspending the collector in `runUntracked`, child component
 // effects created inside `mountFor`'s `runUntracked` wrap (around
 // child mounts) would be auto-registered as inner effects of the For's
-// effect — and disposed on the For's NEXT re-run. That's W23 from the
-// kanban audit (PR #982): after the For source signal first re-fires,
-// child component effects silently lose every subscription they had.
+// effect — and disposed on the For's NEXT re-run (W23 from the kanban
+// audit): after the For source signal first re-fires, child component
+// effects silently lose every subscription they had.
 //
 // Untyped here (`unknown[]`) to avoid a circular dep with effect.ts. The
 // consumer is effect.ts which knows the real `Effect[]` shape.
