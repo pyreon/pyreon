@@ -1,14 +1,16 @@
 name: Native Device Build
 
-# Real-toolchain BUILD gate for the emitted native apps — the step BEYOND
-# `native-validate.yml` (which does `swiftc -parse` / `kotlinc` typecheck on
-# the emitted fragments). This compiles the FULL example apps — PMTC-emitted
-# code + the host shell + the real SwiftUI / Jetpack Compose dependencies —
-# on actual Xcode (iOS Simulator SDK) and Gradle/Android toolchains. It is
-# the prerequisite for the launch-and-render UI smoke (follow-up: a 2.2
-# XCUITest / instrumented test that boots a Simulator/Emulator and asserts
-# the home route renders via the `data-testid → accessibilityIdentifier /
-# testTag` the compiler already emits).
+# Real-toolchain BUILD + UI-SMOKE gate for the emitted native apps — the
+# step BEYOND `native-validate.yml` (which does `swiftc -parse` / `kotlinc`
+# typecheck on the emitted fragments). This compiles the FULL example apps
+# — PMTC-emitted code + the host shell + the real SwiftUI / Jetpack Compose
+# dependencies — on actual Xcode (iOS Simulator SDK) and Gradle/Android
+# toolchains, AND (Phase 2.2) boots an iOS Simulator + runs an XCUITest
+# that asserts the root view renders by querying the `accessibilityIdentifier`
+# emitted from the canonical `data-testid` (see `examples/native-todomvc-ios/
+# iosUITests/PyreonTodoMVCUITests.swift`). The Android-side Compose
+# instrumented test is the next follow-up — pairs with the BUILD step
+# below; needs an emulator-runner action.
 #
 # ## Why this is OPT-IN ONLY (label / dispatch), never automatic
 #
@@ -81,10 +83,11 @@ jobs:
         run: xcodegen generate
 
       - name: Build app for the iOS Simulator
-        # Build only (no Simulator boot / UI test yet — that's the 2.2
-        # follow-up). `CODE_SIGNING_ALLOWED=NO` because a Simulator build
-        # needs no provisioning profile. `generic/platform=iOS Simulator`
-        # avoids pinning a specific device/runtime name.
+        # Build only — proves the emitted Swift links against real
+        # SwiftUI. The launch-and-render UI smoke is the NEXT step.
+        # `CODE_SIGNING_ALLOWED=NO` because a Simulator build needs no
+        # provisioning profile. `generic/platform=iOS Simulator` avoids
+        # pinning a specific device/runtime name.
         working-directory: examples/native-todomvc-ios
         run: |
           set -o pipefail
@@ -93,6 +96,36 @@ jobs:
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
+        # The Phase-2.2 deliverable from the plan: BOOT the Simulator,
+        # install the app, run an XCUITest that asserts the root view
+        # (accessibilityIdentifier=todo-app, emitted from the canonical
+        # `data-testid` in src/TodoApp.tsx) renders.
+        #
+        # Unlike the BUILD step's `generic/...` destination, `test`
+        # needs a CONCRETE Simulator device to run on. iPhone 15 is a
+        # default device on macos-15 runners (iOS 17+ runtime preinstalled
+        # per GH Actions runner-images docs). If the device name changes
+        # in a future macos-* runner image, swap the `name=iPhone 15`
+        # below for whatever `xcrun simctl list devices available` shows.
+        #
+        # The PyreonTodoMVC scheme (defined explicitly in project.yml)
+        # wires the PyreonTodoMVCUITests target into the `test` action,
+        # so this single `xcodebuild test` invocation builds + installs
+        # the app, boots the Simulator, and runs the UITest bundle in
+        # one shot. The xcpretty pipe is optional but keeps the log
+        # readable — falls back to raw xcodebuild output if not present.
+        working-directory: examples/native-todomvc-ios
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project PyreonTodoMVC.xcodeproj \
+            -scheme PyreonTodoMVC \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
