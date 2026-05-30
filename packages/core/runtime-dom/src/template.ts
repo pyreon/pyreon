@@ -65,10 +65,14 @@ export function createTemplate<T>(
  *
  * @param source - A signal (anything with `._v` and `.direct`)
  * @param node - The Text node to update
+ * @param caller - Optional explicit caller for the slow path. Compiler emits
+ *   this for MemberExpression callees like `row.label()` so the slow path
+ *   preserves `this` if `source` turns out to be a method. Fast path ignores it.
  */
 export function _bindText(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   node: Text,
+  caller?: () => unknown,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
   // Fast path: source has .direct() (signal or computed)
@@ -81,8 +85,9 @@ export function _bindText(
     textUpdate()
     return source.direct(textUpdate)
   }
-  // Fallback: source is a plain callable (e.g. store getter, createMachine) — use renderEffect
-  const fn = source as unknown as () => unknown
+  // Fallback: bare callable. Use caller if compiler provided one (preserves
+  // `this` for member-expression sources); otherwise call source directly.
+  const fn = caller ?? (source as unknown as () => unknown)
   return renderEffect(() => {
     const v = fn()
     const next = v == null || v === false ? '' : String(v as string | number)
@@ -107,10 +112,14 @@ export function _bindText(
  *
  * @param source - A signal (anything with `._v` and `.direct`)
  * @param updater - Function that reads `source._v` and applies the DOM update
+ * @param caller - Optional explicit caller for the slow path. Compiler emits
+ *   this for MemberExpression callees like `row.label()` so the slow path
+ *   preserves `this` if `source` turns out to be a method. Fast path ignores it.
  */
 export function _bindDirect(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   updater: (value: unknown) => void,
+  caller?: () => unknown,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindDirect')
   // Fast path: source has .direct() (signal or computed)
@@ -118,8 +127,9 @@ export function _bindDirect(
     updater(source._v)
     return source.direct(() => updater(source._v))
   }
-  // Fallback: plain callable — use renderEffect
-  const fn = source as unknown as () => unknown
+  // Fallback: bare callable. Use caller if compiler provided one (preserves
+  // `this` for member-expression sources); otherwise call source directly.
+  const fn = caller ?? (source as unknown as () => unknown)
   return renderEffect(() => updater(fn()))
 }
 

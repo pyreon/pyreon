@@ -2310,7 +2310,24 @@ export function transformJSX_JS(
       return '' // false/null/undefined → omit
     }
 
-    function tryDirectSignalRef(exprNode: N): string | null {
+    /**
+     * Detect a zero-arg signal-like call shape suitable for the `_bindText` /
+     * `_bindDirect` fast path. Returns `{ ref, isMember }` where:
+     *   - `ref`: the source-text reference (e.g. `count` or `row.label`)
+     *   - `isMember`: true iff the callee is a MemberExpression chain. The
+     *     emitter uses this to pass an explicit `caller` 3rd arg so the
+     *     runtime's slow path can preserve `this` if `source` turns out
+     *     to be a method.
+     *
+     * Accepted shapes:
+     *   - Bare identifier: `count()` — must NOT be a known active signal
+     *     for the MemberExpression form (a tracked signal would suggest a
+     *     method call like `count.peek()`, which is intentionally untracked
+     *     and would defeat the binding).
+     *   - Non-computed MemberExpression chain: `row.label()`, `data.user.name()`.
+     *     Computed access (`row[k]()`) bails — the key is dynamic.
+     */
+    function tryDirectSignalRef(exprNode: N): { ref: string; isMember: boolean } | null {
       let inner = exprNode
       if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') {
         inner = inner.body
@@ -2318,7 +2335,23 @@ export function transformJSX_JS(
       if (inner.type !== 'CallExpression') return null
       if ((inner.arguments?.length ?? 0) > 0) return null
       const callee = inner.callee
-      if (callee?.type === 'Identifier') return sliceExpr(callee)
+      if (!callee) return null
+      // Bare identifier — the existing fast path. Caller emits 2-arg form.
+      if (callee.type === 'Identifier') return { ref: sliceExpr(callee), isMember: false }
+      // MemberExpression chain — widening. Walk the chain, bail on any
+      // computed access. Root identifier must NOT be a tracked active
+      // signal (would imply a method call on a signal, e.g. `count.peek()`).
+      if (callee.type === 'MemberExpression') {
+        let cur: N = callee
+        while (cur.type === 'MemberExpression') {
+          if (cur.computed) return null
+          if (cur.property?.type !== 'Identifier') return null
+          cur = cur.object
+        }
+        if (cur.type !== 'Identifier') return null
+        if (isActiveSignal(cur.name)) return null
+        return { ref: sliceExpr(callee), isMember: true }
+      }
       return null
     }
 
@@ -2516,7 +2549,8 @@ export function transformJSX_JS(
               : DOM_PROPS.has(htmlAttrName)
                 ? `(v) => { ${varName}.${htmlAttrName} = v }`
                 : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
-        bindLines.push(`const ${d} = _bindDirect(${directRef}, ${updater})`)
+        const callerArg = directRef.isMember ? `, () => ${directRef.ref}()` : ''
+        bindLines.push(`const ${d} = _bindDirect(${directRef.ref}, ${updater}${callerArg})`)
         return
       }
       // Selector-ternary auto-promotion: `selector(k) ? a : b` becomes
@@ -2609,7 +2643,8 @@ export function transformJSX_JS(
       if (directRef) {
         needsBindTextImport = true
         const d = nextDisp()
-        bindLines.push(`const ${d} = _bindText(${directRef}, ${tVar})`)
+        const callerArg = directRef.isMember ? `, () => ${directRef.ref}()` : ''
+        bindLines.push(`const ${d} = _bindText(${directRef.ref}, ${tVar}${callerArg})`)
         return needsPlaceholder ? '<!>' : ''
       }
       // Selector-ternary auto-promotion (companion to the className

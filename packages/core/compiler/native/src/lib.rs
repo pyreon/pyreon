@@ -3799,7 +3799,12 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str) -> Option<String
     }
 }
 
-fn try_direct_signal_ref(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
+/// Returns `(ref, is_member)` for a zero-arg signal-like call shape suitable
+/// for the `_bindText` / `_bindDirect` fast path. Mirrors the JS path's
+/// `tryDirectSignalRef`. See that function's JSDoc for the accepted shapes
+/// and `is_member` semantics. `is_member: true` tells the emitter to pass an
+/// explicit `caller` 3rd arg so the runtime's slow path preserves `this`.
+fn try_direct_signal_ref(expr: &Expression, ctx: &mut Ctx) -> Option<(String, bool)> {
     let mut inner = expr;
     // Unwrap concise arrow: () => signal()
     if let Expression::ArrowFunctionExpression(arrow) = inner {
@@ -3813,10 +3818,33 @@ fn try_direct_signal_ref(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
         if !call.arguments.is_empty() {
             return None;
         }
+        // Bare identifier: count() — existing fast path. Emit 2-arg form.
         if let Expression::Identifier(_) = &call.callee {
             // Use raw slice — NOT slice_expr — to avoid auto-calling the callee.
             // _bindText needs the signal FUNCTION reference, not its called value.
-            return Some(slice_span(call.callee.span(), ctx));
+            return Some((slice_span(call.callee.span(), ctx), false));
+        }
+        // Non-computed MemberExpression chain: row.label(), data.user.name().
+        // Walk the chain, bail on any computed access. Root identifier must
+        // NOT be a tracked active signal (would imply count.peek() etc).
+        if let Expression::StaticMemberExpression(_) = &call.callee {
+            let mut cur: &Expression = &call.callee;
+            loop {
+                match cur {
+                    Expression::StaticMemberExpression(m) => {
+                        cur = &m.object;
+                    }
+                    Expression::ComputedMemberExpression(_) => return None,
+                    _ => break,
+                }
+            }
+            if let Expression::Identifier(id) = cur {
+                if is_active_signal(id.name.as_str(), ctx) {
+                    return None;
+                }
+                return Some((slice_span(call.callee.span(), ctx), true));
+            }
+            return None;
         }
         return None;
     }
@@ -3904,7 +3932,7 @@ fn emit_dynamic_attr(
         ),
     );
     let direct_ref = try_direct_signal_ref(expr_node, ctx);
-    if let Some(ref signal_name) = direct_ref {
+    if let Some((signal_name, is_member)) = direct_ref {
         tb.needs_bind_direct = true;
         let d = tb.next_disp();
         let updater = if html_attr_name == "class" {
@@ -3925,8 +3953,15 @@ fn emit_dynamic_attr(
                 var_name, html_attr_name
             )
         };
-        tb.bind_lines
-            .push(format!("const {} = _bindDirect({}, {})", d, signal_name, updater));
+        let caller_arg = if is_member {
+            format!(", () => {}()", signal_name)
+        } else {
+            String::new()
+        };
+        tb.bind_lines.push(format!(
+            "const {} = _bindDirect({}, {}{})",
+            d, signal_name, updater, caller_arg
+        ));
         return;
     }
     // Selector-ternary auto-promotion: `selector(k) ? a : b` becomes
@@ -4079,11 +4114,18 @@ fn emit_reactive_text_child(
             .push(format!("{}.appendChild({})", var_name, t_var));
     }
     let direct_ref = try_direct_signal_ref(expr_node, ctx);
-    if let Some(signal_name) = direct_ref {
+    if let Some((signal_name, is_member)) = direct_ref {
         tb.needs_bind_text = true;
         let d = tb.next_disp();
-        tb.bind_lines
-            .push(format!("const {} = _bindText({}, {})", d, signal_name, t_var));
+        let caller_arg = if is_member {
+            format!(", () => {}()", signal_name)
+        } else {
+            String::new()
+        };
+        tb.bind_lines.push(format!(
+            "const {} = _bindText({}, {}{})",
+            d, signal_name, t_var, caller_arg
+        ));
     } else if let Some(sel) = try_direct_selector_ternary(expr_node, ctx) {
         // Selector-ternary auto-promotion for text children — companion
         // to className path (PR #898). See `try_direct_selector_ternary`.
