@@ -1,6 +1,6 @@
 # Multi-Platform Pyreon
 
-> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental**. The full **15-primitive canonical vocabulary** now spans all three targets: every primitive has a real web DOM runtime, every primitive emits typecheck-clean SwiftUI (iOS), and the Jetpack Compose (Android) emit is completing via the P2.2 series (layout + content + Modal). Validation today is **compile-time** (`swiftc -parse` / `kotlinc` against Compose stubs); an **opt-in** real-toolchain build gate (the `native-device` workflow) additionally compiles the full example apps on real Xcode/Gradle. End-to-end Simulator/Emulator **launch-and-render** is the next milestone.
+> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental**. The full **15-primitive canonical vocabulary** spans all three targets — every primitive has a real web DOM runtime AND emits typecheck-clean SwiftUI + Jetpack Compose. Validation today runs at three layers: **(1) compile-time** (`swiftc -parse` / `kotlinc` against Compose stubs on every PR), **(2) real-toolchain BUILD** of the full example apps via the opt-in `native-device` workflow (real Xcode / Gradle on macos-15 / ubuntu-latest CI runners), and **(3) launch-and-render UI smokes** (XCUITest on iOS Simulator + Compose-instrumented-test on Android Emulator) that boot the apps and assert the root view renders by querying the `data-testid` PMTC emits as `accessibilityIdentifier` / `testTag`. All three layers run on opt-in via the `native-device` label; promote to required once green across a few nightly runs.
 
 ## The pitch
 
@@ -227,12 +227,12 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 
 | Step | Scope | Status |
 |------|-------|--------|
-| Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate landed (opt-in); launch-and-render next |
+| Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate + iOS XCUITest + Android Compose-instrumented-test landed (opt-in `native-device` label); promote to required once green across nightly runs |
 | Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
-| Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`) | ✅ guards, nested routes, `useParams` destructure, and the `loaderData`/`useLoaderData` runtime landed; loader **auto-emit** (blocked — see note) + typed `useParams<T>` planned |
-| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` as per-service native runtime ports (runtime + emit) | ✅ all four runtimes + their compiler emit landed; validation + the remaining services planned |
-| Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the rest need a native primitive (SwiftUI/Compose have no error-boundary / suspend) — planned |
-| DX | `pyreon create-multiplatform` scaffold, asset pipeline | ⏳ planned |
+| Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`) | ✅ guards, nested routes, `useParams` destructure, and the `loaderData`/`useLoaderData` runtime landed; loader **auto-emit** (blocked — see note) + **global** `beforeEach`/`afterEach` guards + `throw redirect()` from loaders/guards planned |
+| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` as per-service native runtime ports (runtime + emit) | ✅ all five runtimes + their compiler emit landed; `useColorScheme`, `useValidation` planned |
+| Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the three walled tags emit a **graceful pass-through** (children render inside `Group {…}`/`Box {…}`, fallback/cache behaviour inert, comment surfaces the limitation) — no broken build, but a true Suspense/ErrorBoundary/KeepAlive runtime needs a Pyreon-async-context + view-modifier intercept + state-cache design that's not local emit work |
+| DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline (planned) | 🟡 scaffold landed (`bunx create-multiplatform <name>`); asset/SF-Symbols pipeline planned |
 
 > **Loader auto-emit is intentionally deferred, not forgotten.** The
 > `loaderData` / `useLoaderData` *runtime* contract is landed, but the
@@ -350,16 +350,28 @@ Kotlin runtime the emitted code drives):
   `isOnline` flag (real `NWPathMonitor` on iOS; the Compose side takes the
   app's connectivity callback). `net.isOnline` reads plainly on SwiftUI,
   `.value` on Compose.
+- **`useClipboard`** → a `PyreonClipboard` container with a `copy(text)`
+  method + a reactive `copied: Bool` flag that auto-resets to false ~2s
+  after each copy (matches the web `@pyreon/hooks` contract). Wraps
+  `UIPasteboard.general.string` on iOS and the system `ClipboardManager`
+  on Android. Reads are plain method calls + a plain Bool/Boolean field
+  — no `.value` rewrite. Kotlin emit is a two-line shape — `val cbCtx =
+  LocalContext.current` hoisted out of the `remember { … }` lambda (the
+  lambda is non-Composable; `LocalContext.current` can't be read inside
+  it) + `val cb = remember { PyreonClipboard(cbCtx) }`.
+  v1 supports the single-binding shape `const cb = useClipboard()`; the
+  destructure form `const { copy, copied } = useClipboard()` is a
+  documented follow-up.
 
-> Status: `useFetch`, `useForm`, `usePermissions`, and `useOnline` are all
-> **landed** end-to-end (runtime port + compiler emit). Validation and the
-> remaining services are planned.
+> Status: `useFetch`, `useForm`, `usePermissions`, `useOnline`, and
+> `useClipboard` are all **landed** end-to-end (runtime port + compiler
+> emit). `useColorScheme` and `useValidation` reachability planned.
 
 ## Verifiable today (compile contract)
 
 - **Web**: `@pyreon/runtime-dom` renders any Pyreon JSX. Full ecosystem available.
-- **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated` produces typecheck-clean Swift (verified via `swiftc -parse` in the `native-validate` CI). The **opt-in** `native-device` workflow additionally runs `xcodegen` + `xcodebuild` to compile the full example app on a real Xcode/Simulator SDK. End-to-end Simulator launch-and-render is the next step.
-- **Android**: `pyreon-native build --target=android --source=./src --out=./generated` produces typecheck-clean Kotlin (verified via `kotlinc + Compose stubs`). The same opt-in `native-device` workflow runs `gradle assembleDebug` against the real Android toolchain. End-to-end emulator launch-and-render is the next step.
+- **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated` produces typecheck-clean Swift (verified via `swiftc -parse` in the `native-validate` CI). The **opt-in** `native-device` workflow additionally runs `xcodegen` + `xcodebuild` to compile the full example app on a real Xcode/Simulator SDK, then `xcodebuild test` boots the iPhone 15 Simulator + runs `PyreonTodoMVCUITests` to assert `accessibilityIdentifier("todo-app")` renders within 30s.
+- **Android**: `pyreon-native build --target=android --source=./src --out=./generated` produces typecheck-clean Kotlin (verified via `kotlinc + Compose stubs`). The same opt-in `native-device` workflow runs `gradle assembleDebug` against the real Android toolchain, then boots a Pixel-6 emulator (API 33, google_apis, x86_64, via `reactivecircus/android-emulator-runner`) + runs `gradle connectedCheck` which executes `TodoAppInstrumentedTest`'s `composeRule.onNodeWithTag("todo-app").assertIsDisplayed()`.
 
 The runtime packages exist, with one reactive container per data/service hook:
 
