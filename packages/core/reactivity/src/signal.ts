@@ -207,11 +207,35 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
 }
 
 /**
+ * Shared prototype-like object for all signal callables. Methods live here
+ * (one allocation total) instead of being copied onto every signal instance
+ * (6 method assignments per signal). Per-signal cost drops from 6 own-prop
+ * assignments to a single `Object.setPrototypeOf` call.
+ *
+ * `Object.setPrototypeOf(fn, proto)` is generally discouraged because it
+ * triggers V8 hidden-class transitions — but here every signal goes through
+ * the SAME setPrototypeOf call with the SAME proto object, so all signals
+ * share one hidden class and stay monomorphic at method-call sites.
+ *
+ * Methods use `this` binding — they work via the prototype chain because
+ * `signal.set(x)` resolves `set` by walking `read → SignalProto → set`.
+ */
+const SignalProto = {
+  peek: _peek,
+  set: _set,
+  update: _update,
+  subscribe: _subscribe,
+  direct: _directFn,
+  debug: _debug,
+}
+
+/**
  * Create a reactive signal.
  *
  * Only 1 closure is allocated (the read function). State is stored as
- * properties on the function object (_v, _s) and methods (peek, set,
- * update, subscribe) are shared across all signals — not per-signal closures.
+ * properties on the function object (_v, _s, _d) and methods are shared
+ * via the SignalProto prototype — not per-signal closures or per-instance
+ * property assignments.
  */
 export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   if (process.env.NODE_ENV !== 'production')
@@ -231,15 +255,12 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
     return read._v
   }) as unknown as SignalFn<T>
 
+  // Single setPrototypeOf instead of 6 per-instance method assignments.
+  // All signals share SignalProto → monomorphic call sites for method dispatch.
+  Object.setPrototypeOf(read, SignalProto)
   read._v = initialValue
   read._s = null
   read._d = null
-  read.peek = _peek as () => T
-  read.set = _set as (value: T) => void
-  read.update = _update as (fn: (current: T) => T) => void
-  read.subscribe = _subscribe as (listener: () => void) => () => void
-  read.direct = _directFn as (updater: () => void) => () => void
-  read.debug = _debug as () => SignalDebugInfo<T>
   read.label = options?.name
 
   if (process.env.NODE_ENV !== 'production') {
