@@ -1,0 +1,10 @@
+# Generated output from `pyreon-native build` — not committed; produced
+# at build time so the source-of-truth is always `src/*.tsx`.
+generated/*
+!generated/.gitkeep
+
+# Xcode project files — generated from project.yml via xcodegen, not
+# committed. Run `./scripts/xcode-setup.sh` to (re)generate.
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/

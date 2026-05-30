@@ -5,12 +5,15 @@
   "description": "PRIVATE / EXPERIMENTAL — PMTC router demo. Canonical source for the multiplatform routing story (R1.3). Web sibling at native-router-demo-web/ imports from this iOS path directly.",
   "license": "MIT",
   "scripts": {
+    "build": "./scripts/build.sh",
+    "xcode": "./scripts/xcode-setup.sh",
     "lint": "echo '[native-router-demo-ios] no TS lint surface; skipping'",
     "test": "echo '[native-router-demo-ios] no test surface; PMTC emit covered by @pyreon/native-compiler tests'",
     "typecheck": "echo '[native-router-demo-ios] no TS typecheck surface'"
   },
   "devDependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
     "@pyreon/primitives": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*"
