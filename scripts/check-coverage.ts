@@ -87,12 +87,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'PR #323 cleanup raised statements 75 → 85 (actual 88.96%). Branches at 80 (actual 81.36%). Both below floor — needs more wrapper / hook tests.',
   },
-  '@pyreon/zero': {
-    currentStatements: 85,
-    currentBranches: 75,
-    reason:
-      'PR #323 cleanup raised statements 60 → 85 (actual 87.33%) and branches 50 → 75 (actual 79.41%). Meta-framework with build-time / server-runtime surface — most code is integration-tier.',
-  },
   '@pyreon/create-zero': {
     currentStatements: 85,
     currentBranches: 80,

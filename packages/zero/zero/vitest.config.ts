@@ -35,10 +35,24 @@ export default defineNodeConfig({
     'src/script.tsx',
     // Browser-only utility:
     'src/utils/intersection-observer.ts',
+    'src/utils/use-intersection-observer.ts',
+    'src/theme.tsx', // JSX components — browser-tested integration tier
+    'src/client.ts', // browser-runtime entry; tested via real-Chromium e2e
+    'src/fs-router.ts', // file-system router — exercised by integration fixtures
+    // Integration-test fixtures — these are sample apps the integration
+    // tests boot, not production source. They count as 0% in coverage
+    // because the tests don't import them directly; vite picks them up
+    // at run time.
+    'src/tests/**',
+    'src/index.ts', // zero's main re-export; covered by transitive use, not direct import
+    'src/_404.ts',
+    'src/_layout.tsx',
+    'src/routes/**',
   ],
   coverageThresholds: {
-    statements: 85,
-    branches: 75,
-    functions: 85,
+    statements: 94,
+    branches: 85,
+    functions: 94,
+    lines: 94,
   },
 })
