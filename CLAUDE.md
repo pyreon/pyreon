@@ -1424,6 +1424,16 @@ Install (~25s, bun install only — postinstall bootstrap SKIPPED via PYREON_BOO
 
 **Don't undo by accident**: when adding a new job to `ci.yml`, ask "does this read `packages/*/lib/`?" — if yes, `needs: bootstrap`; if no, `needs: install` + `restore-bootstrap: 'false'` on the composite. Getting that wrong is a one-line revert when CI fails; getting it CONFIDENTLY wrong (flipping a lib-needing job to `needs: install` and not noticing it passed for the wrong reason because the test didn't exercise the bug) is the more expensive failure mode.
 
+## Coverage thresholds — integration-tier reframing
+
+`@pyreon/zero` and `@pyreon/lint` ship with large `coverageExclude` lists. This is INTENTIONAL — both packages have substantial integration-tier surface (real-Vite plugins, browser-runtime entries, dep-gated opt-in lint rules) whose coverage gap can't be closed by Node-side vitest without inventing fake fixtures. The exclusions document the boundary explicitly.
+
+When auditing one of these packages and seeing "low coverage of X.ts" — check whether X.ts is in the exclude list first. If it is, the actual coverage gate is:
+- For `@pyreon/zero`: real-Chromium e2e (`e2e/ssr-showcase*`, `e2e/zero-hmr.spec.ts`) + verify-modes (`scripts/verify-modes.ts`) for SSG/SSR build artifacts
+- For `@pyreon/lint` rule files: dedicated `src/tests/<rule>.test.ts` covering the canonical AST shapes; the gap in the package-level number is in defensive AST helpers for shapes that need real consumer-project ASTs
+
+If you raise a threshold by ADDING exclusions, the gate gets weaker for those files going forward — adding new uncovered branches inside an excluded file won't fail CI. Mitigation: when an exclusion lets a threshold rise, add a CLAUDE.md note OR a per-package README section documenting the trade-off so future contributors don't unknowingly drop production logic into the excluded zone.
+
 ## pyreon doctor — unified project health audit
 
 `pyreon doctor` is the single entry point for every gate Pyreon ships. PR 1 (#570) extracted a `Finding[]` / `GateResult` shape from the standalone scripts; PR 2 (#XXX) added the aggregator, 0-100 score formula, and beautiful CLI output. Modeled after [react.doctor](https://www.react.doctor/) — banner + per-category bars + top-N findings.

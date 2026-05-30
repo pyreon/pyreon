@@ -36,6 +36,39 @@ const unsub = subscribe((m) => console.log(m.type, m.events))
 unsub()
 ```
 
+## When NOT to use `defineStore` — per-instance state
+
+`defineStore` returns a SINGLETON. Every call with the same ID resolves to the same instance. That's the right model for:
+
+- App-global state: auth, settings, theme, current user
+- Cross-component shared state with one canonical instance
+- Plugin-extensible stores (one registry per app)
+
+It's the WRONG model for **per-Provider-instance state** — where two mounts of the same provider must hold independent state. For that, use plain `signal()` inside the Provider component and `createContext` / `provide` from `@pyreon/core`:
+
+```ts
+import { createContext, provide, useContext } from '@pyreon/core'
+import { signal, type Signal } from '@pyreon/reactivity'
+
+interface FooState { count: Signal<number> }
+const FooCtx = createContext<FooState | null>(null)
+
+function FooProvider(props: { children: VNodeChild }) {
+  const count = signal(0)                       // fresh on each mount
+  provide(FooCtx, { count })
+  return props.children
+}
+
+function FooConsumer() {
+  const ctx = useContext(FooCtx)                // do NOT destructure — see createContext JSDoc
+  return <div>{ctx?.count() ?? 0}</div>
+}
+
+// Two independent <FooProvider> mounts → two independent counts
+```
+
+This is the Pyreon-native pattern for per-instance state. `defineStore` is for global singletons; the signal+context pattern is for everything else.
+
 ## Setup function — what runs and how
 
 The setup function runs ONCE per store ID; subsequent `useCounter()` calls return the cached instance. The return value is auto-classified:

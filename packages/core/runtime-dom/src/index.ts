@@ -58,11 +58,27 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 
 /**
  * Mount a VNode tree into a container element.
- * Clears the container first, then mounts the given child.
- * Returns an `unmount` function that removes everything and disposes effects.
+ * Clears the container's existing content first (`container.innerHTML = ''`),
+ * then mounts the given child.
+ *
+ * Returns an `unmount` function that:
+ *   1. Disposes all reactive effects + lifecycle hooks registered during mount.
+ *   2. Removes the root mounted nodes from the container.
+ *
+ * **Caveats (read before asserting on post-unmount DOM):**
+ * - `unmount()` does NOT reset the container to its pre-mount state.
+ *   If your test asserts `container.textContent === ''` post-unmount,
+ *   the assertion can fail for shapes that leave structural anchor
+ *   comments (For/Suspense markers, fragment boundaries). The framework
+ *   contract is "the mounted subtree's roots are removed and reactive
+ *   work stops" — not "the container becomes pristine."
+ * - For cleanup-sensitive tests, run `container.innerHTML = ''` AFTER
+ *   `unmount()` if you need a guaranteed-empty container.
  *
  * @example
  * const unmount = mount(h("div", null, "Hello Pyreon"), document.getElementById("app")!)
+ * // later:
+ * unmount()
  */
 export function mount(root: VNodeChild, container: Element): () => void {
   if (process.env.NODE_ENV !== 'production' && container == null) {
