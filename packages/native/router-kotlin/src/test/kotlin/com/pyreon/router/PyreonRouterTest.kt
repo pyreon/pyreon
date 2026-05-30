@@ -277,5 +277,60 @@ fun main() {
         expectEq(afterCount, 0, "afterEach did NOT fire on blocked push")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${29} test(s) passed")
+    // Throw-redirect pattern — router.redirect(path) inside a guard.
+
+    runTest("redirect outside guard acts like replace") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        router.redirect("/login")
+        expectEq(router.path.value, listOf("/login"), "outside-guard redirect == replace")
+    }
+
+    runTest("redirect from guard sets target + blocks original") {
+        val router = PyreonRouter()
+        router.beforeEachGuards.add { path ->
+            if (path != "/login") {
+                router.redirect("/login")
+                false
+            } else {
+                true
+            }
+        }
+        router.push("/profile")
+        expectEq(router.currentPath, "/login", "redirect target wins")
+    }
+
+    runTest("redirect target itself is allowed (no infinite recursion)") {
+        val router = PyreonRouter()
+        var guardCalls = 0
+        router.beforeEachGuards.add { path ->
+            guardCalls += 1
+            if (path == "/admin") {
+                router.redirect("/login")
+                false
+            } else {
+                true
+            }
+        }
+        router.push("/admin")
+        expectEq(guardCalls, 1, "guard fired ONCE — nested redirect skipped re-check")
+        expectEq(router.currentPath, "/login", "ended at redirect target")
+    }
+
+    runTest("redirect from guard skips afterEach") {
+        val router = PyreonRouter()
+        val afterCalls = mutableListOf<String>()
+        router.afterEachHooks.add { p -> afterCalls.add(p) }
+        router.beforeEachGuards.add { path ->
+            if (path == "/admin") {
+                router.redirect("/login")
+                false
+            } else {
+                true
+            }
+        }
+        router.push("/admin")
+        expectEq(afterCalls.toList(), emptyList(), "no afterEach fires for redirect case")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${33} test(s) passed")
 }

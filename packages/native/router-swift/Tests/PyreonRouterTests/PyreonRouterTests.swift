@@ -371,4 +371,70 @@ final class PyreonRouterTests: XCTestCase {
         router.push("/blocked")
         XCTAssertEqual(afterCount, 0)
     }
+
+    // MARK: - Throw-redirect pattern
+
+    /// `router.redirect("/login")` from outside a guard behaves
+    /// identically to `replace("/login")`.
+    func testRedirectOutsideGuardActsLikeReplace() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        router.redirect("/login")
+        XCTAssertEqual(router.path, ["/login"])
+    }
+
+    /// Canonical "throw redirect" pattern: beforeEach detects auth-
+    /// deny, calls `router.redirect("/login")`, returns false to
+    /// block the original navigation. End state: path becomes /login.
+    func testRedirectFromGuardSetsTargetAndBlocksOriginal() throws {
+        var router: PyreonRouter!
+        router = PyreonRouter()
+        router.beforeEachGuards.append { path in
+            if path != "/login" {
+                router.redirect("/login")
+                return false
+            }
+            return true
+        }
+        router.push("/profile")
+        XCTAssertEqual(router.currentPath, "/login")
+    }
+
+    /// Re-entry protection: the redirect target is NOT itself blocked
+    /// by the SAME guard (no infinite recursion).
+    func testRedirectTargetItselfIsAllowedByGuard() throws {
+        var router: PyreonRouter!
+        router = PyreonRouter()
+        var guardCalls = 0
+        router.beforeEachGuards.append { path in
+            guardCalls += 1
+            if path == "/admin" {
+                router.redirect("/login")
+                return false
+            }
+            return true
+        }
+        router.push("/admin")
+        // Guard fires ONCE — the nested redirect skips re-checking.
+        XCTAssertEqual(guardCalls, 1)
+        XCTAssertEqual(router.currentPath, "/login")
+    }
+
+    /// `redirect` from a guard skips the OUTER afterEach (outer push
+    /// blocked) AND the inner replace's afterEach (re-entry skip).
+    /// Net: zero afterEach fires for the redirect case.
+    func testRedirectFromGuardSkipsAfterEach() throws {
+        var router: PyreonRouter!
+        router = PyreonRouter()
+        var afterCalls: [String] = []
+        router.afterEachHooks.append { p in afterCalls.append(p) }
+        router.beforeEachGuards.append { path in
+            if path == "/admin" {
+                router.redirect("/login")
+                return false
+            }
+            return true
+        }
+        router.push("/admin")
+        XCTAssertEqual(afterCalls, [])
+    }
 }
