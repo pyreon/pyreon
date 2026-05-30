@@ -1229,7 +1229,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
-    // W19 (kanban audit) — user runs `zero build` against an SPA-only
+    // W19 — user runs `zero build` against an SPA-only
     // project that has no `src/entry-server.ts`. As of v0.25.2 the CLI
     // skips the server build for `mode: 'spa'` AND when entry-server.ts
     // is absent; this pattern catches older zero-cli versions or apps
@@ -1244,7 +1244,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
-    // W18 (kanban audit) — user pairs only one half of the cross-list
+    // W18 — user pairs only one half of the cross-list
     // dnd contract. `groupId` is the opt-in; the destination must
     // provide `onCrossListReceive`, the source must provide
     // `onCrossListDrop`. Without one half, items appear duplicated

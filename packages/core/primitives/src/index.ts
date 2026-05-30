@@ -1,8 +1,5 @@
-// @pyreon/primitives — canonical multi-platform UI primitives.
-//
-// One semantic vocabulary that compiles to DOM (web), SwiftUI (iOS),
-// and Compose (Android). Designed for "fundamentally the easiest DX,
-// don't copy anyone."
+// Canonical multi-platform UI primitives — one semantic vocabulary that
+// compiles to DOM (web), SwiftUI (iOS), and Compose (Android).
 //
 // ## How this package works per target
 //

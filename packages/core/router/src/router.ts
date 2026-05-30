@@ -805,7 +805,7 @@ export function createRouter<TNames extends string = string>(
           // Surface it like every other loader error (dev warn + the
           // user-supplied onError hook) WITHOUT acting on the return
           // value. This path was dead code until the SWR prune fix
-          // (#617) made `revalidateSwrLoaders` actually run for the
+          // made `revalidateSwrLoaders` actually run for the
           // nav-away/back case.
           if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console

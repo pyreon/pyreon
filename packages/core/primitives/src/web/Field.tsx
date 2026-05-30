@@ -41,8 +41,7 @@ export const Field = (props: FieldProps): VNode => {
   // tracks the signal via Pyreon's `_activeEffect` mechanism, so
   // subsequent signal writes refire the effect → write back to
   // `input.value`. Without this fix, `signal.set('')` after the user
-  // types via Playwright's `field.fill()` doesn't clear the input
-  // (#951 gap #2).
+  // types via Playwright's `field.fill()` doesn't clear the input.
   const getValue = (): string => {
     const v = props.value
     if (typeof v === 'function') return (v as () => string)()

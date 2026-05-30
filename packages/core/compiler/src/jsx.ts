@@ -766,8 +766,8 @@ export interface DynamicCollapsibleProp {
  * bite after the `on*`-handler partial-collapse).
  *
  * Mirrors `detectPartialCollapsibleShape`'s "extend the bail catalogue
- * with ONE relaxation" pattern (see that detector's docstring + `PR 1`
- * `_rsCollapseDyn` runtime helper, PR #765). The single relaxation: a
+ * with ONE relaxation" pattern (see that detector's docstring +
+ * `_rsCollapseDyn` runtime helper). The single relaxation: a
  * `JSXExpressionContainer` wrapping a `ConditionalExpression` whose
  * `consequent` AND `alternate` are BOTH `StringLiteral` is acceptable as
  * a "ternary-of-two-literals" dynamic prop — captured as a {@link DynamicCollapsibleProp}
@@ -1153,8 +1153,8 @@ export function transformJSX_JS(
    * resolver pre-renders both via the existing SSR pipeline; if both
    * lookups succeed AND the structural template is byte-identical
    * across values, emit `__rsCollapseDyn(html, [classes...], () =>
-   * cond ? 0 : 1, () => __pyrMode() === "dark")` — the PR 1 runtime
-   * helper (#765) dispatches across `(value × mode)` with a stride-2
+   * cond ? 0 : 1, () => __pyrMode() === "dark")` — the runtime helper
+   * dispatches across `(value × mode)` with a stride-2
    * value-major class layout.
    *
    * Conservative discipline:
@@ -2612,8 +2612,8 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _bindText(${directRef}, ${tVar})`)
         return needsPlaceholder ? '<!>' : ''
       }
-      // Selector-ternary auto-promotion (companion to className path —
-      // PR #898). `<td>{() => sel(k) ? 'X' : 'Y'}</td>` becomes
+      // Selector-ternary auto-promotion (companion to the className
+      // path). `<td>{() => sel(k) ? 'X' : 'Y'}</td>` becomes
       // `sel.subscribe(k, (m) => { tVar.data = m ? 'X' : 'Y' })` — the
       // effect-free per-key fast path. See `tryDirectSelectorTernary` for
       // the bail catalog. Reuses the same detector as the attr path.
