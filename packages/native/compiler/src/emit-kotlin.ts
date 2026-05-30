@@ -470,6 +470,25 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`
   }
+  // Phase 4: `const cb = useClipboard()` → a remembered PyreonClipboard.
+  // Reads are method calls (`cb.copy("hi")`) + a Boolean field
+  // (`cb.copied`) — no `.value` rewrite. Compose's clipboard API needs
+  // a `Context`; PyreonClipboard captures it at CONSTRUCTION time so
+  // the call-site signature matches Swift's one-for-one.
+  //
+  // TWO-line emit: `LocalContext.current` is a @Composable read, but
+  // `remember { … }`'s lambda is a plain (non-Composable) `() -> T`,
+  // so reading the Local INSIDE the lambda is a compile error. We
+  // hoist the read into a local `val ${name}Ctx` that the lambda
+  // captures. Same shape Compose users hand-write for any
+  // context-dependent stateful holder.
+  if (d.kind === 'clipboard') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonClipboard(${id}Ctx) }`,
+    ].join('\n  ')
+  }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
   // `LocalPyreonRouter.current` directly via CompositionLocal — no

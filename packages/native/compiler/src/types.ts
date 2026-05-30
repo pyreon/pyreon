@@ -195,6 +195,27 @@ export type DeclIR =
    * plain Bool / Void on both targets.
    */
   | { kind: 'permissions'; name: string; grants: string[] }
+  /**
+   * Phase 4 — clipboard service via `const clipboard = useClipboard()`
+   * from `@pyreon/hooks`. Emits the PyreonClipboard reactive wrapper
+   * the runtime ports ship:
+   *   Swift  → @State private var clipboard = PyreonClipboard()
+   *   Kotlin → val clipboard = remember { PyreonClipboard() }
+   *
+   * `useClipboard()` takes no arguments. Reads are method calls
+   * (`clipboard.copy("hi")` + `clipboard.copied` field read), so unlike
+   * useFetch / useForm there is NO `.value` field-read rewrite — the
+   * methods read the underlying reactive flag internally. The `copied`
+   * field reads as a plain Bool / Boolean property on both targets
+   * (auto-resets to false ~2s after each copy — matches the web
+   * @pyreon/hooks contract).
+   *
+   * V1 supports the single-binding form `const cb = useClipboard()`
+   * only. Destructure form `const { copy, copied } = useClipboard()`
+   * is a documented follow-up — needs the per-key rewrite logic that
+   * `params-destructure` uses.
+   */
+  | { kind: 'clipboard'; name: string }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
