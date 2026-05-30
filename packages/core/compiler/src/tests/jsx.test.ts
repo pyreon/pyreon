@@ -735,9 +735,65 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('<td class=\\"id\\"></td><td></td>')
     // className uses _bindDirect (single-signal cls())
     expect(result).toContain('_bindDirect(cls,')
-    // String(row.id) has args → combined _bind; row.label() is property access → _bind
-    expect(result).toContain('.data = String(row.id)')
+    // String(row.id) — pure coercion call with non-signal arg → static emit
+    // (textContent = ... assigned ONCE at row mount; no _bind chain). Matches
+    // the hand-tuned reference template in examples/benchmark/src/impl/pyreon-tpl.ts.
+    expect(result).toContain('textContent = String(row.id)')
+    // row.label() — member-expression call still goes through _bind here in
+    // isolation (a separate PR widens member-expr to _bindText). Verify the
+    // expression survives in the emitted code.
     expect(result).toContain('row.label()')
+  })
+
+  test('PURE_COERCIONS: String(row.id) routes to static textContent (no _bind)', () => {
+    // Pure coercion globals (String/Number/Boolean) with non-signal args are
+    // referentially transparent and route to emitStaticTextChild — saves the
+    // _bind chain on every per-row template instantiation.
+    const result = t('const a = () => <td>{String(row.id)}</td>')
+    expect(result).toContain('textContent = String(row.id)')
+    expect(result).not.toContain('_bind')
+  })
+
+  test('PURE_COERCIONS: Number and Boolean route to static (parallel to String)', () => {
+    const num = t('const a = () => <td>{Number(row.value)}</td>')
+    expect(num).toContain('textContent = Number(row.value)')
+    expect(num).not.toContain('_bind')
+
+    const bool = t('const a = () => <td>{Boolean(row.active)}</td>')
+    expect(bool).toContain('textContent = Boolean(row.active)')
+    expect(bool).not.toContain('_bind')
+  })
+
+  test('PURE_COERCIONS: signal in arg stays reactive (String(count()))', () => {
+    // The pure-coercion gate falls through to recurse — a signal call inside
+    // the arg makes the OVERALL expression dynamic, preserving reactivity.
+    const result = t('const count = signal(0); const a = () => <td>{String(count())}</td>')
+    expect(result).toContain('_bind(')
+    expect(result).toContain('String(count())')
+    expect(result).not.toContain('textContent = String')
+  })
+
+  test('PURE_COERCIONS: props access in arg stays reactive (String(props.x))', () => {
+    // Props access in arg → dynamic via recurse → preserves reactive _bind.
+    const result = t('const a = (props) => <td>{String(props.x)}</td>')
+    expect(result).toContain('_bind(')
+    expect(result).toContain('String(props.x)')
+    expect(result).not.toContain('textContent = String')
+  })
+
+  test('PURE_COERCIONS: spread arg bails (String(...args))', () => {
+    // Spread elements bail — can't statically know cardinality / dynamism.
+    const result = t('const a = () => <td>{String(...args)}</td>')
+    expect(result).toContain('_bind(')
+    expect(result).not.toContain('textContent = String')
+  })
+
+  test('PURE_COERCIONS: non-coercion identifier callee unchanged (fetch(...))', () => {
+    // Only String/Number/Boolean are in the allowlist. fetch() and arbitrary
+    // user calls stay dynamic.
+    const result = t('const a = () => <td>{fetch(row.url)}</td>')
+    expect(result).toContain('_bind(')
+    expect(result).not.toContain('textContent = fetch')
   })
 
   test('handles multiple expression children', () => {

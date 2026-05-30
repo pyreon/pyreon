@@ -1939,7 +1939,19 @@ export function transformJSX_JS(
   function _isDynamicImpl(node: N): boolean {
     // Call expression (non-pure)
     if (node.type === 'CallExpression') {
-      if (!isPureStaticCall(node)) return true
+      if (isPureStaticCall(node)) {
+        // Pure static (all args are literals) — entire call is static, no recurse needed.
+      } else if (isPureCoercionCall(node)) {
+        // Pure coercion (String/Number/Boolean as global) — the FUNCTION is
+        // referentially transparent. Whether the CALL is dynamic depends on
+        // its arguments. Fall through to the recurse-into-children logic:
+        //   String(row.id)        → arg is a captured ref → not dynamic
+        //   String(count())       → arg contains a signal call → dynamic
+        //   String(props.x)       → arg accesses props → dynamic
+        // No early `return true` here.
+      } else {
+        return true
+      }
     }
     if (node.type === 'TaggedTemplateExpression') return true
     // Props access
@@ -3279,4 +3291,30 @@ function isPureStaticCall(node: N): boolean {
   }
   if (!PURE_CALLS.has(name)) return false
   return (node.arguments ?? []).every((arg: N) => arg.type !== 'SpreadElement' && isStatic(arg))
+}
+
+/**
+ * Pure-coercion globals (`String`, `Number`, `Boolean`) — referentially
+ * transparent functions whose result depends ONLY on their argument. Unlike
+ * `isPureStaticCall` (which requires all args to be `isStatic` literals),
+ * this only checks the CALLEE shape. The argument's dynamism is handled by
+ * `_isDynamicImpl`'s recurse-into-children logic — so `String(row.id)` is
+ * not dynamic (captured row ref), `String(count())` IS dynamic (signal call
+ * in arg), `String(props.x)` IS dynamic (props access).
+ *
+ * Shadowing risk (user has `function String(x) {...}` in scope): same as
+ * existing PURE_CALLS entries like `parseInt`, `isNaN` — we trust the global
+ * name. A user-shadowed name would still be analyzed correctly by the recurse
+ * (their function's arg-evaluation determines dynamism); the only true
+ * miss is a non-pure user function with no reactive args — vanishingly rare.
+ */
+function isPureCoercionCall(node: N): boolean {
+  const callee = node.callee
+  if (callee?.type !== 'Identifier') return false
+  const name = callee.name
+  if (name !== 'String' && name !== 'Number' && name !== 'Boolean') return false
+  const args = node.arguments ?? []
+  if (args.length > 1) return false
+  if (args.length === 1 && args[0].type === 'SpreadElement') return false
+  return true
 }
