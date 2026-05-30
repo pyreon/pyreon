@@ -4,7 +4,6 @@ import type { IndexedDBOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 import { wrapBaseSignal } from './wrap-base-signal'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // ─── Database management ─────────────────────────────────────────────────────
 
@@ -118,7 +117,7 @@ export function useIndexedDB<T>(
         }
       })
       .catch((err) => {
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           // oxlint-disable-next-line no-console
           console.warn(`[Pyreon] IndexedDB "${key}" init failed, using default:`, err)
         }

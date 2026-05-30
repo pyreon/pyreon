@@ -7,7 +7,6 @@ import { useChart } from './use-chart'
 
 // Bare `process.env.NODE_ENV !== 'production'` — bundler-agnostic library
 // convention used by React/Vue/Solid. See .claude/rules/anti-patterns.md.
-const __DEV__ = process.env.NODE_ENV !== 'production'
 
 /**
  * Handler type that bridges our duck-typed ChartEventParams with
@@ -82,7 +81,7 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
 
   return () => {
     const err = chart.error()
-    if (err && __DEV__) {
+    if (err && process.env.NODE_ENV !== 'production') {
       // Dev-only: inline error display so the user can see the problem
       // without opening devtools. In production we keep the empty div
       // to avoid leaking internals; the console.error above still fires.

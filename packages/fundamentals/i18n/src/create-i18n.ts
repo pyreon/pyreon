@@ -3,7 +3,6 @@ import { interpolate } from './interpolation'
 import { resolvePluralCategory } from './pluralization'
 import type { I18nInstance, I18nOptions, InterpolationValues, TranslationDictionary } from './types'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
@@ -188,7 +187,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // ~1:1 with `i18n.t` (plus an extra hit when the plural-suffix branch
     // probes both `key_one` and the resolved key). A future cache will
     // diverge: `i18n.lookupKey` will plateau while `i18n.t` keeps growing.
-    if (__DEV__) _countSink.__pyreon_count__?.('i18n.lookupKey')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey')
     const nsMap = store.get(loc)
     if (!nsMap) return undefined
     const dict = nsMap.get(namespace)
@@ -222,7 +221,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
       if (pluralResult === undefined && fallbackLocale) {
         // Fires when the user-locale missed AND we're consulting fallbackLocale.
         // Should be ~0 in well-translated apps; growing = missing translations.
-        if (__DEV__) _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
         pluralResult = lookupKey(fallbackLocale, namespace, pluralKey)
       }
 
@@ -234,7 +233,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // Standard lookup: current locale → fallback locale
     let result = lookupKey(currentLocale, namespace, keyPath)
     if (result === undefined && fallbackLocale) {
-      if (__DEV__) _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
       result = lookupKey(fallbackLocale, namespace, keyPath)
     }
 
@@ -259,7 +258,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // the density of localized text on the page. Pair with
     // `i18n.lookupKey` and `i18n.interpolate` for the per-call cost
     // breakdown.
-    if (__DEV__) _countSink.__pyreon_count__?.('i18n.t')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.t')
     return resolveTranslation(key, values)
   }
 
@@ -282,7 +281,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // a concurrent load short-circuits via `pendingPromises`. Growing across
     // route navigations to the SAME namespace = leak (something is clearing
     // the loaded set between navigations).
-    if (__DEV__) _countSink.__pyreon_count__?.('i18n.namespaceLoad')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.namespaceLoad')
 
     pendingLoads.update((n) => n + 1)
 

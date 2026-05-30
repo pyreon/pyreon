@@ -1,6 +1,5 @@
 import type { PluralRules } from './types'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
@@ -16,7 +15,7 @@ export function resolvePluralCategory(
 ): string {
   // One per `t()` call with a `count` value. Pure overhead: every call
   // either hits a user-supplied rule fn or allocates an `Intl.PluralRules`.
-  if (__DEV__) _countSink.__pyreon_count__?.('i18n.pluralResolve')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.pluralResolve')
 
 
   // Custom rules take priority

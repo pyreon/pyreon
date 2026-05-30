@@ -10,7 +10,6 @@ import type {
 import { MutationObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -87,7 +86,7 @@ export function useMutation<
   options: MutationOptions<TData, TError, TVariables, TContext>,
 ): UseMutationResult<TData, TError, TVariables, TContext> {
   // Mount-N baseline. One emit per useMutation hook call.
-  if (__DEV__) _countSink.__pyreon_count__?.('query.useMutation')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useMutation')
 
   const client = useQueryClient()
   const { invalidates, ...coreOptions } = options
@@ -101,7 +100,7 @@ export function useMutation<
         // Per invalidateQueries call from useMutation({ invalidates }). Counter
         // grows with mutationCount × invalidates.length. Each call fans out
         // to matching queries in the cache and triggers their observerNotify.
-        if (__DEV__) _countSink.__pyreon_count__?.('query.invalidate')
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.invalidate')
         client.invalidateQueries({ queryKey: key })
       }
       userOnSuccess?.(data, variables, onMutateResult, context)
