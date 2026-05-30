@@ -11,7 +11,8 @@ export default defineNodeConfig({
   // `coolgrid.browser.test.tsx` (Playwright Chromium). PR #323 finding.
   coverageExclude: ['src/Col/styled.ts', 'src/Row/styled.ts', 'src/Container/styled.ts'],
   coverageThresholds: {
-    statements: 90,
+    statements: 94,
+    lines: 94,
     branches: 90,
     functions: 90,
   },

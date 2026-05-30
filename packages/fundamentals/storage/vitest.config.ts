@@ -5,5 +5,5 @@ export default defineNodeConfig({
   environment: 'happy-dom',
   // Branch threshold lowered: isBrowser()/typeof indexedDB checks
   // always evaluate to true in happy-dom, making SSR branches uncoverable.
-  coverageThresholds: { branches: 85 },
+  coverageThresholds: { statements: 94, lines: 94, branches: 85 },
 })
