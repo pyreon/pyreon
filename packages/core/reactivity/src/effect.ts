@@ -186,12 +186,21 @@ export function effect(
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
-  // Capture the external (core-context) snapshot at SETUP time. Reactive
-  // re-runs restore it before invoking fn, so provider lookups stay correct
-  // even when the global context stack has been destructively truncated by
-  // mountReactive's restoreContextStack cleanup. See `_bind` for the full
-  // rationale.
-  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+  // Capture the external (core-context) snapshot AND the hook reference at
+  // SETUP. Reactive re-runs restore it before invoking fn, so provider lookups
+  // stay correct even when the global context stack has been destructively
+  // truncated by mountReactive's restoreContextStack cleanup. See `_bind` for
+  // the full rationale. `cap` is a stable closure capture for the lifetime of
+  // this effect (matches setup-time semantics; runtime hook null-out doesn't
+  // affect already-set-up effects).
+  const cap = _snapshotCapture
+  const snapshot = cap ? cap.capture() : null
+  // Pre-build the restore-wrapping closure ONCE at setup (mirrors
+  // `renderEffect`'s `trackedFn`). The previous per-re-run `() => restore(...)`
+  // allocation fired on every non-first effect run; this reuses one closure.
+  // When no snapshot (or no hook), re-runs use `fn` directly — no wrapper.
+  const fnToRunReplay: () => void =
+    snapshot !== null && cap ? () => cap.restore(snapshot, fn) : fn
   let disposed = false
   let isFirstRun = true
   let cleanup: (() => void) | undefined
@@ -259,12 +268,9 @@ export function effect(
       // stack is still intact — call fn directly to avoid pushing the
       // captured snapshot a redundant second time. Subsequent re-runs
       // happen AFTER mountReactive's cleanup has truncated the stack, so
-      // they need the snapshot restored to find provider frames.
-      const fnToRun =
-        isFirstRun || snapshot === null || _snapshotCapture === null
-          ? fn
-          : () => (_snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
-      cleanup = withTracking(run, fnToRun) || undefined
+      // they need the snapshot restored — use the cached `fnToRunReplay`
+      // closure built once at setup (no per-re-run allocation).
+      cleanup = withTracking(run, isFirstRun ? fn : fnToRunReplay) || undefined
       _cleanupCollector = null
       if (collected.length > 0) cleanups = collected
       setDepsCollector(null)
@@ -353,21 +359,28 @@ export function _bind(fn: () => void): () => void {
   const deps: Set<() => void>[] = []
   let disposed = false
 
-  // Capture external (core-context) snapshot at SETUP time. Re-runs restore
-  // it before invoking fn, so signal-driven re-runs see the same provider
-  // chain that was active when the binding was first set up — even if the
-  // global context stack has been destructively truncated by mountReactive's
-  // restoreContextStack cleanup in the meantime.
-  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+  // Capture the snapshot AND the hook reference at SETUP. Re-runs use the
+  // captured `cap` const, not the module-level `_snapshotCapture` — same shape
+  // as `renderEffect` (line 434-437): the per-re-run dual check collapses to a
+  // single direct dispatch. `cap` is a stable closure capture for the lifetime
+  // of this binding; runtime `setSnapshotCapture(null)` (a test-only / extreme-
+  // edge scenario) doesn't disturb it, matching setup-time semantics (the
+  // binding's provider chain is fixed at setup, not re-evaluated every fire).
+  const cap = _snapshotCapture
+  const snapshot = cap ? cap.capture() : null
 
-  const run = () => {
-    if (disposed) return
-    if (snapshot !== null && _snapshotCapture) {
-      _snapshotCapture.restore(snapshot, fn)
-    } else {
-      fn()
-    }
-  }
+  // Pre-pick the run body at setup so re-runs do disposed-check + direct
+  // dispatch only — no per-fire branch on `snapshot !== null && _snapshotCapture`.
+  const run: () => void =
+    snapshot !== null && cap
+      ? () => {
+          if (disposed) return
+          cap.restore(snapshot, fn)
+        }
+      : () => {
+          if (disposed) return
+          fn()
+        }
 
   // First run: track deps so we know what to unsubscribe on dispose. We
   // intentionally call `fn` directly (not `run`) here — the synchronous
