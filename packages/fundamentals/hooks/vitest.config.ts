@@ -5,5 +5,5 @@ export default defineNodeConfig({
   environment: 'happy-dom',
   // Branch threshold lowered: typeof window/navigator checks always
   // evaluate to true in happy-dom, making SSR branches uncoverable.
-  coverageThresholds: { branches: 75 },
+  coverageThresholds: { statements: 94, branches: 75, lines: 94 },
 })
