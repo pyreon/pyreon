@@ -234,4 +234,61 @@ final class PyreonRouterTests: XCTestCase {
         let user: LoadedUser? = useLoaderData(router: nil)
         XCTAssertNil(user)
     }
+
+    // MARK: - loaderData LRU bound (Round-1 audit fix — Class C unbounded cache)
+
+    /// Normal usage under the cap leaves all entries in place — the LRU
+    /// bound only fires when adding a NEW key would push the count past
+    /// the limit. Confirms the happy path isn't broken.
+    func testLoaderDataUnderCapKeepsAllEntries() throws {
+        let router = PyreonRouter()
+        for i in 0..<10 {
+            router.setLoaderData("/path/\(i)", "value-\(i)")
+        }
+        XCTAssertEqual(router.loaderData.count, 10)
+        // All 10 keys still present.
+        for i in 0..<10 {
+            XCTAssertNotNil(router.loaderData["/path/\(i)"])
+        }
+    }
+
+    /// Past the cap, adding a NEW key evicts the OLDEST insertion. The
+    /// count stays pinned at the cap; the new key is present; the very
+    /// first key inserted is gone.
+    func testLoaderDataAtCapEvictsOldestOnNewKey() throws {
+        let router = PyreonRouter()
+        // Fill to cap + 1 — one eviction triggered.
+        for i in 0...PyreonRouter.MAX_LOADER_ENTRIES {
+            router.setLoaderData("/path/\(i)", "value-\(i)")
+        }
+        XCTAssertEqual(router.loaderData.count, PyreonRouter.MAX_LOADER_ENTRIES)
+        // The first key inserted (/path/0) was evicted; the last
+        // (/path/<MAX>) is present.
+        XCTAssertNil(router.loaderData["/path/0"])
+        XCTAssertNotNil(router.loaderData["/path/\(PyreonRouter.MAX_LOADER_ENTRIES)"])
+    }
+
+    /// Repeated heavy use across hundreds of distinct paths stays pinned
+    /// at the cap — the bug class this fix exists to close. Pre-fix the
+    /// count would equal 500 (unbounded growth).
+    func testLoaderDataStaysBoundedUnderHeavyNavigation() throws {
+        let router = PyreonRouter()
+        for i in 0..<500 {
+            router.setLoaderData("/p/\(i)", i)
+        }
+        XCTAssertEqual(router.loaderData.count, PyreonRouter.MAX_LOADER_ENTRIES)
+    }
+
+    /// Re-storing the SAME path (a re-navigation to a previously-visited
+    /// route after its loader re-ran) is an in-place value swap — it
+    /// does NOT count as a new insertion, so it never evicts. The
+    /// count stays at exactly 1 across many overwrites.
+    func testLoaderDataOverwriteDoesNotEvict() throws {
+        let router = PyreonRouter()
+        for v in 0..<100 {
+            router.setLoaderData("/same-path", v)
+        }
+        XCTAssertEqual(router.loaderData.count, 1)
+        XCTAssertEqual(router.loaderData["/same-path"] as? Int, 99)
+    }
 }

@@ -168,5 +168,54 @@ fun main() {
         expectEq(PyreonRouter.matchPath("/", "/"), emptyMap(), "root")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${18} test(s) passed")
+    // Round-1 audit fix — loaderData LRU bound (Class C unbounded cache).
+    // Pre-fix the map grew monotonically across navigations; cap is 50.
+
+    runTest("loaderData under cap keeps all entries") {
+        val router = PyreonRouter()
+        for (i in 0 until 10) {
+            router.setLoaderData("/path/$i", "value-$i")
+        }
+        expectEq(router.loaderData.value.size, 10, "all 10 entries present")
+        for (i in 0 until 10) {
+            expectEq(router.loaderData.value["/path/$i"], "value-$i", "entry $i still there")
+        }
+    }
+
+    runTest("loaderData at cap evicts oldest on new key") {
+        val router = PyreonRouter()
+        for (i in 0..PyreonRouter.MAX_LOADER_ENTRIES) {
+            router.setLoaderData("/path/$i", "value-$i")
+        }
+        expectEq(router.loaderData.value.size, PyreonRouter.MAX_LOADER_ENTRIES, "pinned at cap")
+        // The first key inserted (/path/0) is evicted; the last is present.
+        expect(router.loaderData.value["/path/0"] == null, "oldest key /path/0 was evicted")
+        expect(
+            router.loaderData.value["/path/${PyreonRouter.MAX_LOADER_ENTRIES}"] != null,
+            "newest key still present",
+        )
+    }
+
+    runTest("loaderData stays bounded under heavy navigation") {
+        val router = PyreonRouter()
+        for (i in 0 until 500) {
+            router.setLoaderData("/p/$i", i)
+        }
+        expectEq(
+            router.loaderData.value.size,
+            PyreonRouter.MAX_LOADER_ENTRIES,
+            "bounded at cap even after 500 distinct paths",
+        )
+    }
+
+    runTest("loaderData overwrite of same key does not evict") {
+        val router = PyreonRouter()
+        for (v in 0 until 100) {
+            router.setLoaderData("/same-path", v)
+        }
+        expectEq(router.loaderData.value.size, 1, "only one entry across 100 overwrites")
+        expectEq(router.loaderData.value["/same-path"], 99, "latest value won")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${22} test(s) passed")
 }
