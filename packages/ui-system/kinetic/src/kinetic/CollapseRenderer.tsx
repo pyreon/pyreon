@@ -174,8 +174,8 @@ const CollapseRenderer = ({
   // inner `<Show when={false}>` → empty wrapper in the prerendered HTML.
   // Bad for SEO / social scrapers / accessibility / no-JS.
   //
-  // Mirrors the fix shape applied to `<Transition>` (PR #717), the
-  // `TransitionRenderer` and `TransitionItem` (this PR). Ecosystem norm:
+  // Mirrors the fix shape applied to `<Transition>`,
+  // `TransitionRenderer`, and `TransitionItem`. Ecosystem norm:
   // content is structural, animation is visual.
   //
   // For initially-hidden Collapses, the inner content always renders —

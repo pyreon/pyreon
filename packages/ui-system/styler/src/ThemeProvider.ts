@@ -21,8 +21,8 @@ type Theme = DefaultTheme & Record<string, unknown>
 /**
  * Reactive theme context. Consumers get `() => Theme` from useContext.
  *
- * The DIFFERENCE from PR #258: styled components read the theme accessor
- * inside a COMPUTED (not an effect). The computed tracks theme + mode +
+ * Styled components read the theme accessor inside a COMPUTED (not an
+ * effect). The computed tracks theme + mode +
  * dimensions simultaneously, and the resolve itself runs untracked.
  * This gives reactive theme/mode/dimension switching with:
  * - Zero per-component effect()

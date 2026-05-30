@@ -97,8 +97,8 @@ const Component = (props: LooseProps) => {
   // an object), and the fallthrough `renderChild(function)` calls
   // `render(function, props)` which interprets the function as a component
   // function — wrong shape, lost per-item metadata. Resolving eagerly here
-  // keeps every downstream branch correct. Mirrors the kinetic Stagger /
-  // TransitionItem fix (PR #731 + parallel top-level fixes).
+  // keeps every downstream branch correct. Mirrors the kinetic
+  // Stagger / TransitionItem fix.
   const children = typeof rawChildren === 'function'
     ? (rawChildren as () => VNodeChild)()
     : rawChildren

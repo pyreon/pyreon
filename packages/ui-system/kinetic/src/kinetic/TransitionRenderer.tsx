@@ -150,8 +150,8 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
   // `useIntersection`) without structural content for SEO / social scrapers
   // / accessibility tools / no-JS users.
   //
-  // Mirrors the same fix shape applied to the top-level `<Transition>` in
-  // PR #717. Ecosystem norm (Framer Motion / react-transition-group / react-
+  // Mirrors the fix shape applied to the top-level `<Transition>`.
+  // Ecosystem norm (Framer Motion / react-transition-group / react-
   // spring): content is structural, animation is visual.
   const wasInitiallyShown = props.show()
   if (wasInitiallyShown) {

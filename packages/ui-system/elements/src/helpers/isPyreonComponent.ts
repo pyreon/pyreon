@@ -55,13 +55,12 @@
  * (intent: re-evaluate on signal change). The naming convention is the
  * same one JSX itself uses to differentiate component vs host element.
  *
- * Reference: regression reports on 0.24.3 / PR #839 — `resolveSlot` called
- * any function-valued slot bare, crashing real consumers (bokisch.com
- * SSG build: `Prerendered 0 page(s) + 404.html`) that used the
+ * Before this check, `resolveSlot` called any function-valued slot
+ * bare, crashing real consumers that used the
  * `beforeContent={Component}` shorthand documented since the original
- * Element API. The marker check rescued framework-factory components but
- * missed user-authored bare components; this Tier-2 convention check
- * closes the residual gap for hook-using bare components.
+ * Element API. The marker check (Tier 1) rescues framework-factory
+ * components; this Tier-2 convention check closes the residual gap
+ * for user-authored hook-using bare components.
  */
 export function isPyreonComponent(value: unknown): boolean {
   if (typeof value !== 'function') return false

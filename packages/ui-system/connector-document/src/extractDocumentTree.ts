@@ -99,7 +99,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     //       fixtures that hand-construct vnodes with `_documentProps`
     //       baked in. Cheapest path; tried first.
     //
-    //   (C) **Hoisted-attrs fast path (T3.1, PR #321)** — when the
+    //   (C) **Hoisted-attrs fast path (T3.1)** — when the
     //       component is a real rocketstyle primitive, it exposes
     //       `__rs_attrs` (the accumulated `.attrs()` callback chain)
     //       as a typed static. We run the chain DIRECTLY with the
@@ -120,8 +120,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     // hardcode `_documentProps` directly on the JSX vnode — a pattern
     // that pre-dates the attrs HOC. (C) is the real-world path. (B)
     // is what (C) replaced — kept so non-rocketstyle fixtures still
-    // work. See PR #197 for the original metadata-drop bug and
-    // PR #321 (T3.1) for the architectural fast path.
+    // work.
     //
     // **Function values in _documentProps are resolved at this
     // point** — primitives like DocDocument can store accessor

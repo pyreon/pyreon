@@ -152,8 +152,8 @@ const rocketComponent: RocketComponent = (options) => {
   // skip the entire CSS resolve pipeline. On miss they compute fresh
   // and store the result.
   //
-  // Why this matters: B-FINDING.md (PR #342) showed every Button mount
-  // fires 22 styler.resolve calls even when the styler-sheet cache hits
+  // Why this matters: pre-memo, every Button mount fired 22
+  // styler.resolve calls even when the styler-sheet cache hit
   // — the cache catches at the LAST step (insert dedup), but the resolve
   // pipeline still runs to compute the hash. Stable accessor identities
   // mean the styler's classCache hits earlier and the resolves don't run.
@@ -167,10 +167,10 @@ const rocketComponent: RocketComponent = (options) => {
   // workload only and thrashed at higher cardinalities — measured 45%
   // cache-miss rate (888/2000 lookups) on a 60-unique-tuple Button
   // mount loop, 46% wall-clock regression vs the cap-fits-workload
-  // case. The rs-precompute spike (closed PR #761, results live on
-  // `spike/rocketstyle-precompute`) bisect-verified that raising the cap
-  // 32 → 128 zeroes the cold-resolves counter for that 60-tuple
-  // workload at zero implementation cost. Memory: ~12KB per definition
+  // case. Raising the cap 32 → 128 zeroes the cold-resolves counter
+  // for that 60-tuple workload at zero implementation cost (the
+  // rs-precompute spike's bisect on `spike/rocketstyle-precompute`).
+  // Memory: ~12KB per definition
   // per theme at 128 entries × ~100 bytes per entry — negligible vs
   // the 46% runtime win.
   type RsMemoEntry = { readonly rocketstyle: object; readonly rocketstate: object }
