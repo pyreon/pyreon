@@ -60,6 +60,19 @@ public final class PyreonClipboard {
 
     public init() {}
 
+    /// Round-2 audit fix (Class I — orphaned Task timer): cancel any
+    /// in-flight reset Task when this Clipboard is deallocated. Pre-
+    /// fix, if a SwiftUI view holding `@State PyreonClipboard()` was
+    /// dismissed during the 2-second reset window, the Task ran to
+    /// completion (~2s of `Task.sleep` waste; the body's
+    /// `self?.copied = false` becomes a silent no-op via `weak self`
+    /// — no crash, but resource waste). The deinit explicitly
+    /// cancels the Task so the sleep interrupts immediately on
+    /// disposal.
+    deinit {
+        resetTask?.cancel()
+    }
+
     /// Write `text` to the system clipboard and flip `copied` to true
     /// for ~2s. Cancels any pending reset from a prior copy so the
     /// flag stays true for the full 2s window after the LATEST copy.

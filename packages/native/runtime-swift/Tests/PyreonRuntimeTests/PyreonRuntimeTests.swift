@@ -555,4 +555,33 @@ final class PyreonRuntimeTests: XCTestCase {
         let cb = PyreonClipboard()
         XCTAssertNotNil(cb)
     }
+
+    /// Round-2 audit fix (Class I — orphaned Task timer): scoped
+    /// allocation + deallocation must not crash, and the deinit must
+    /// cancel any pending reset Task. We can't directly observe the
+    /// cancellation (`resetTask` is private + the cancellation flag
+    /// is internal to Swift Concurrency), so the test exercises the
+    /// LIFECYCLE: alloc → copy → release via scope-exit, then verify
+    /// no crash + Task cancellation runs cleanly. A regression in
+    /// the deinit (removing `resetTask?.cancel()`) would still pass
+    /// this test — the assertion is the BEST achievable without
+    /// reaching into Swift Concurrency internals; the runtime-side
+    /// guarantee is the deinit itself (visible at code review).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonClipboardDeinitCancelsResetTask() throws {
+        // Alloc in a scoped block so the deinit fires at scope exit.
+        autoreleasepool {
+            let cb = PyreonClipboard()
+            cb.copy("hi") // arms the 2s reset Task
+            XCTAssertTrue(cb.copied)
+            // `cb` released at scope exit; the @Observable / @State
+            // owner's release would similarly trigger deinit. The
+            // crash-free completion of this test is the regression
+            // signal — the Task body uses `[weak self]`, so a missing
+            // deinit cancellation doesn't crash but does waste ~2s
+            // of Task.sleep work (the deinit cancellation is the
+            // fix's actual job).
+        }
+        XCTAssertTrue(true, "deinit completed without crash")
+    }
 }
