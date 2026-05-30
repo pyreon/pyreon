@@ -113,7 +113,7 @@ describe('runReactPatternsGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('--fix mode against an in-scope first-party file with React patterns writes changes (L60-74)', async () => {
+  it('--fix mode rewrites className → class on first-party file + emits auto-fixed info findings (L60-74)', async () => {
     const cwd = makeTmpDir()
     const file = 'packages/core/app/src/App.tsx'
     writeFile(
@@ -123,11 +123,16 @@ describe('runReactPatternsGate', () => {
     )
     const result = await runReactPatternsGate({ cwd, fix: true })
     assertShape(result, 'react-patterns')
-    // At least exercises the fix-mode branch end-to-end with a real
-    // first-party file. If migrateReactCode rewrote anything, the
-    // disk content reflects the change.
+    // The migration MUST rewrite className → class on disk
     const after = fs.readFileSync(path.join(cwd, file), 'utf-8')
-    expect(typeof after).toBe('string')
+    expect(after).toContain('class="hello"')
+    expect(after).not.toContain('className="hello"')
+    // The fix-mode branch must surface auto-fixed-* info findings
+    const autoFixed = result.findings.filter((f) =>
+      f.code.startsWith('react-patterns/auto-fixed-'),
+    )
+    expect(autoFixed.length).toBeGreaterThan(0)
+    expect(autoFixed[0]!.severity).toBe('info')
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
@@ -185,26 +190,27 @@ describe('runIslandsAuditGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('maps audit findings to GateResult shape via SEVERITY_BY_CODE (L36-54)', async () => {
+  it('maps duplicate-name finding to GateResult shape via SEVERITY_BY_CODE (L36-54)', async () => {
     const cwd = makeTmpDir()
-    // Plant 2 islands with the SAME name → 'duplicate-name' finding.
+    // Plant 2 islands with the SAME name in the same file (same-file
+    // detection is the simplest reliable shape — cross-file requires
+    // scanner walk traversal).
     writeFile(
       cwd,
-      'packages/core/foo/src/A.tsx',
-      `import { island } from '@pyreon/server'\nexport const X = island(() => import('./inner'), { name: 'Dup', hydrate: 'load' })\n`,
-    )
-    writeFile(
-      cwd,
-      'packages/core/foo/src/B.tsx',
-      `import { island } from '@pyreon/server'\nexport const Y = island(() => import('./inner2'), { name: 'Dup', hydrate: 'load' })\n`,
+      'packages/core/foo/src/islands.tsx',
+      `import { island } from '@pyreon/server'\nexport const X = island(() => import('./inner-x'), { name: 'Dup', hydrate: 'load' })\nexport const Y = island(() => import('./inner-y'), { name: 'Dup', hydrate: 'load' })\n`,
     )
     const result = await runIslandsAuditGate({ cwd })
     assertShape(result, 'islands-audit')
-    // Either the auditIslands scanner picked up findings → for-loop body
-    // ran, OR it didn't because the synthetic structure doesn't match
-    // the scanner's discovery shape. Both outcomes prove the adapter
-    // doesn't throw.
-    expect(Array.isArray(result.findings)).toBe(true)
+    // The for-loop body in islands-audit.ts MUST run — assert at least one
+    // duplicate-name finding surfaces and carries the SEVERITY_BY_CODE
+    // mapping (error severity).
+    const dup = result.findings.filter(
+      (f) => f.code === 'islands-audit/duplicate-name',
+    )
+    expect(dup.length).toBeGreaterThan(0)
+    expect(dup[0]!.severity).toBe('error')
+    expect(dup[0]!.category).toBe('architecture')
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 })
@@ -236,14 +242,15 @@ describe('runAuditTestsGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('emits findings for files containing mock-vnode patterns (L46-58)', async () => {
+  it('emits mock-vnode finding for test files with heavy literal patterns (L46-58)', async () => {
     const cwd = makeTmpDir()
-    // Plant a test file with mock-vnode shapes: many literal-construction
-    // calls + a vnode() helper + zero real h() imports. The compiler's
-    // auditTestEnvironment scans test files under packages/ — see
-    // packages/core/compiler/src/test-audit.ts.
-    const heavyMock = Array.from({ length: 20 }, (_, i) =>
-      `const v${i} = { type: 'div', props: {}, children: [] }`,
+    // The auditTestEnvironment scanner (packages/core/compiler/src/test-audit.ts)
+    // classifies a test file as risky when it contains many mock-vnode literals
+    // + a vnode() helper + zero real h() imports. Plant exactly that shape so
+    // the for-loop body in audit-tests.ts L46-58 executes and surfaces a finding.
+    const heavyMock = Array.from(
+      { length: 20 },
+      (_, i) => `const v${i} = { type: 'div', props: {}, children: [] }`,
     ).join('\n')
     writeFile(
       cwd,
@@ -252,10 +259,12 @@ describe('runAuditTestsGate', () => {
     )
     const result = await runAuditTestsGate({ cwd, minRisk: 'low' })
     assertShape(result, 'audit-tests')
-    // At minRisk='low' every risk-level finding surfaces — body of L46-58 must run.
-    // If the test fixture produces zero findings (because the scanner's heuristics
-    // disagree about the shape), the assert is informational rather than failing.
-    expect(Array.isArray(result.findings)).toBe(true)
+    // The for-loop body MUST emit at least one audit-tests/mock-vnode-* finding.
+    const mockFindings = result.findings.filter((f) =>
+      f.code.startsWith('audit-tests/mock-vnode-'),
+    )
+    expect(mockFindings.length).toBeGreaterThan(0)
+    expect(mockFindings[0]!.category).toBe('testing')
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 })
