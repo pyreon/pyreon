@@ -110,12 +110,11 @@ const Component: PyreonElement = (props) => {
   // enclosing mountReactive effect, and the slot re-renders on signal change.
   // Static VNodes / strings / null pass through unchanged to `render()`.
   //
-  // **Component vs accessor discriminator** (regression fix for the
-  // 0.24.3 → 0.24.4 follow-up — see #839 for the original reactive-slot fix):
+  // **Component vs accessor discriminator** —
   // `beforeContent={Header}` (component-reference shorthand) and
   // `content={() => <X />}` (reactive accessor) are BOTH `typeof === 'function'`.
-  // PR #839 called both bare, which crashed component shorthands the moment a
-  // rocketstyle / attrs HOC ran `removeUndefinedProps(undefined)` on the
+  // Calling both bare crashes component shorthands the moment a
+  // rocketstyle / attrs HOC runs `removeUndefinedProps(undefined)` on the
   // un-supplied props (`TypeError: Cannot convert undefined or null to object`).
   //
   // Discriminator: framework components carry one of two markers attached by

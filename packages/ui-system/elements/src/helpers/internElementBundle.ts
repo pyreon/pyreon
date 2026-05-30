@@ -2,7 +2,7 @@
  * Module-scope intern cache for `$element` bundles passed to Wrapper's styled
  * component. Same primitive prop tuple → same object identity, so the styler's
  * `elClassCache` (added 2026-Q2 alongside this) hits and skips the resolve
- * pipeline. Analogous to `@pyreon/rocketstyle`'s dimension-prop memo (PR #344)
+ * pipeline. Analogous to `@pyreon/rocketstyle`'s dimension-prop memo
  * but at the layer below — covers non-rocketstyle Element / Wrapper / Text usage
  * AND the residual styled wrappers under any rocketstyle component.
  *

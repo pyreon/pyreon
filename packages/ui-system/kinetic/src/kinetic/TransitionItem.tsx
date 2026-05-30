@@ -191,9 +191,8 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   // `show: () => false`), each per-item TransitionItem hit this and
   // dropped its child — full list missing from prerendered HTML.
   //
-  // Mirrors the fix in `<Transition>` (PR #717) and `TransitionRenderer`
-  // (same PR as this). Ecosystem norm: content is structural, animation
-  // is visual.
+  // Mirrors the fix in `<Transition>` and `TransitionRenderer`.
+  // Ecosystem norm: content is structural, animation is visual.
   const wasInitiallyShown = props.show()
   if (wasInitiallyShown) {
     return (

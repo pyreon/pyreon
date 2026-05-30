@@ -137,9 +137,9 @@ const createStyledComponent = (
     // `staticComponentCache` (and `_hot*` caches) ALSO survive that path —
     // so consumers continue to receive the stale className regardless. The
     // companion fix to wire `onSheetClear` and reset both caches is tracked
-    // separately (see PR #561). This optimization is correct under the
-    // existing cache lifetime contract; the HMR-staleness issue is broader
-    // than the VNode cache.
+    // separately. This optimization is correct under the existing cache
+    // lifetime contract; the HMR-staleness issue is broader than the VNode
+    // cache.
     const cachedEmptyVNode = h(
       tag as string,
       staticClassName ? { class: staticClassName } : {},
@@ -208,7 +208,7 @@ const createStyledComponent = (
   // string>` per `$element` to avoid wrong-cache hits when childFix differs.
   // Element-layer interning (see `@pyreon/elements` Element/component.tsx)
   // gives `$element` stable identity across mounts, which is what makes this
-  // cache fire — analogous to PR #344's rocketstyle dimension memo.
+  // cache fire — analogous to rocketstyle's dimension-prop memo.
   const elClassCache = new WeakMap<object, Map<unknown, string>>()
 
   // DYNAMIC PATH: uses computed() for reactive class derivation.
@@ -325,9 +325,9 @@ const createStyledComponent = (
     const finalProps = buildProps(rawProps, className, isDOM, customFilter)
 
     // Reactive path: lightweight renderEffect that reads the pre-computed
-    // class string and toggles classList. This is NOT the old PR #258
-    // approach — the expensive resolve() already happened inside the
-    // computed. This renderEffect only does: read string → compare → toggle.
+    // class string and toggles classList. The expensive resolve() already
+    // happened inside the computed — this renderEffect only does: read
+    // string → compare → toggle.
     if (cssClass) {
       let el: Element | null = null
       let currentClassName = className

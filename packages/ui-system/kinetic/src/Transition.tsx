@@ -118,7 +118,7 @@ const Transition = (props: TransitionProps): VNode | null => {
   })
 
   // Unwrap the compiler's `() => x` accessor wrap — see `resolveChildren`
-  // jsdoc. Parallel to `TransitionItem`'s fix (PR #731). Without this,
+  // jsdoc. Parallel to `TransitionItem`'s fix. Without this,
   // `props.children.props` reads `function.props` (undefined), the merged
   // ref is missing the child's own ref, and the downstream `cloneVNode`
   // calls produce `{type: undefined}` → `<undefined>` DOM tags.
@@ -253,9 +253,8 @@ const Transition = (props: TransitionProps): VNode | null => {
   // factories (fadeUp, blurInUp, slideLeft, …) populate `enterStyle` as
   // the hidden state but may not set `leaveToStyle`. Without this
   // fallback, preset users SSR-render VISIBLE → flash-on-hydration.
-  // (PR #717 shipped this branch with `leaveToStyle` alone; the class
-  // picker already had the `enterFrom` fallback. This commit aligns the
-  // style picker so both halves match.)
+  // The class picker already had the `enterFrom` fallback; the style
+  // picker mirrors it so both halves match.
   const hiddenClass = props.leaveTo ?? props.enterFrom
   const hiddenStyle = props.leaveToStyle ?? props.enterStyle
   const childClass = childProps.class
