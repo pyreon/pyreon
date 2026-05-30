@@ -483,6 +483,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'usePermissions') {
     return { kind: 'permissions', name, grants: tryExtractStringArray(init.arguments?.[0]) }
   }
+  // Phase 4 — `const clipboard = useClipboard()` from `@pyreon/hooks` →
+  // the PyreonClipboard reactive wrapper. No arguments. V1 supports
+  // the single-binding form only (the destructure shape
+  // `const { copy, copied } = useClipboard()` is a documented
+  // follow-up — needs the per-key rewrite that `params-destructure`
+  // uses).
+  if (calleeName === 'useClipboard') {
+    return { kind: 'clipboard', name }
+  }
   return null
 }
 

@@ -533,6 +533,13 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
       : ''
     return `@State private var ${swiftIdent(d.name)} = PyreonPermissions(${seed})`
   }
+  // Phase 4: `const cb = useClipboard()` → an @State PyreonClipboard.
+  // Reads are method calls (`cb.copy("hi")`) + a Bool field
+  // (`cb.copied`), so no `.value` rewrite — Swift exposes both as
+  // plain properties on the @Observable container.
+  if (d.kind === 'clipboard') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonClipboard()`
+  }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable
