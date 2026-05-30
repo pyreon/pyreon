@@ -516,6 +516,36 @@ async function resolvePaths(
  * @internal Exposed via `_internal.writeFileAtomic` for unit tests.
  */
 let _atomicSeq = 0
+
+/**
+ * Dedup mkdir calls across the per-path render loop. Concurrent workers
+ * (PR D, default 4) often mkdir the SAME directory (sibling paths under
+ * `/blog/`, `/docs/`, etc.). Without dedup, every path makes its own
+ * mkdir(dirname, { recursive: true }) call — N filesystem syscalls for
+ * N paths even when they share parent directories.
+ *
+ * `mkdirOnce` returns a cached Promise per directory string. First call
+ * launches the mkdir; concurrent callers await the SAME Promise. After
+ * resolution the Promise stays cached — subsequent paths skip the mkdir
+ * entirely (Map.get is O(1)).
+ *
+ * Cache is per-build: cleared at the start of each `closeBundle` via
+ * `_resetMkdirCache()` so a `vite build --watch` cycle that deletes
+ * `dist/` between builds doesn't try to skip a now-needed mkdir.
+ */
+const _mkdirCache = new Map<string, Promise<void>>()
+async function mkdirOnce(dir: string): Promise<void> {
+  let p = _mkdirCache.get(dir)
+  if (!p) {
+    p = mkdir(dir, { recursive: true }).then(() => undefined)
+    _mkdirCache.set(dir, p)
+  }
+  await p
+}
+function _resetMkdirCache(): void {
+  _mkdirCache.clear()
+}
+
 async function writeFileAtomic(target: string, content: string | Uint8Array): Promise<void> {
   const tmp = `${target}.tmp.${process.pid}.${++_atomicSeq}`
   try {
@@ -958,6 +988,11 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       if (config.mode !== 'ssg') return
       if (isInnerBuild) return
 
+      // Per-build mkdir dedup — `dist/` may have been wiped between builds
+      // (vite build --watch + manual clean, CI pipelines, etc.), so cache
+      // entries from a prior build are unsafe to reuse.
+      _resetMkdirCache()
+
       const ssrOutDir = join(distDir, '.zero-ssg-server')
       const indexHtmlPath = join(distDir, 'index.html')
 
@@ -1199,7 +1234,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                 errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
                 return
               }
-              await mkdir(dirname(filePath), { recursive: true })
+              await mkdirOnce(dirname(filePath))
               await writeFile(filePath, renderMetaRefreshHtml(result.to), 'utf-8')
             }
             return
@@ -1209,13 +1244,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 
           const filePath = resolveOutputPath(distDir, p)
 
-          // Path-traversal guard — same as @pyreon/server's prerender.
+          // Path-traversal guard — same as @pyreon's server's prerender.
           if (!isInsideDist(distDir, filePath)) {
             errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
             return
           }
 
-          await mkdir(dirname(filePath), { recursive: true })
+          await mkdirOnce(dirname(filePath))
           await writeFile(filePath, html, 'utf-8')
           pages++
           writtenPaths.push(p)
@@ -1243,7 +1278,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                   errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
                   return
                 }
-                await mkdir(dirname(filePath), { recursive: true })
+                await mkdirOnce(dirname(filePath))
                 await writeFile(filePath, fallbackHtml, 'utf-8')
                 pages++
               }

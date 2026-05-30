@@ -159,6 +159,16 @@ export function argvHasPortFlag(argv: readonly string[] = process.argv): boolean
  *   plugins: [pyreon(), zero()],
  * }
  */
+/**
+ * Dev-mode template cache (module-level — shared across plugin instances
+ * within the same Node process). `index.html` rarely changes during a dev
+ * session, but `renderSsr` re-reads + transforms it per SSR request. Cache
+ * the raw file content; `handleHotUpdate` invalidates it on file change.
+ * `transformIndexHtml` is NOT cached — its output may carry per-request
+ * timestamps / nonces injected by other plugins.
+ */
+let _indexHtmlCache: string | null = null;
+
 export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	const config = resolveConfig(userConfig);
 	let routesDir: string;
@@ -171,6 +181,16 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 		configResolved(resolvedConfig) {
 			root = resolvedConfig.root;
 			routesDir = `${root}/src/routes`;
+		},
+
+		handleHotUpdate(ctx) {
+			// Invalidate cached index.html when the file itself OR any of its
+			// imported deps change. Vite calls this per-file change; we filter
+			// to just `<root>/index.html`. Cache stays warm across all other
+			// HMR updates (user code, deps, etc.).
+			if (ctx.file === `${root}/index.html`) {
+				_indexHtmlCache = null;
+			}
 		},
 
 		/**
@@ -781,8 +801,12 @@ async function renderSsr(
 	}>;
 
 	// Read + transform index.html (Vite injects the HMR client / JSX prelude).
-	let template = await readFile(join(root, "index.html"), "utf-8");
-	template = await server.transformIndexHtml(originalUrl, template);
+	// Cache the raw file content across requests; handleHotUpdate invalidates
+	// on file change. Saves a disk read per SSR request in dev mode.
+	if (_indexHtmlCache === null) {
+		_indexHtmlCache = await readFile(join(root, "index.html"), "utf-8");
+	}
+	let template = await server.transformIndexHtml(originalUrl, _indexHtmlCache);
 
 	// Framework modules load through Vite's SSR module graph so user code (which
 	// imports the same packages) shares a single module instance — otherwise two
