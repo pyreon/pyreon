@@ -99,6 +99,12 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'CLI scaffolder. PR1/PR2/PR3 added 31 structural tests covering parseArgs + resolveFeatures + the full scaffold pipeline via real-disk snapshots (actual statements 89.04%, branches 81.39%, functions 70.45%). Uncovered branches are per-adapter file copies, binary-file path in template-engine, env.example append, and compat-shim deps — exercised at the bin level but not snapshot-locked. args.ts + prompts.ts + index.ts excluded since they need a TTY mock; resolveFeatures is the testable core and IS covered via features.test.ts.',
   },
+  '@pyreon/cli': {
+    currentStatements: 94,
+    currentBranches: 80,
+    reason:
+      'cov-94 series raised statements 85 → 94 (actual 94.23%) — above floor. Branches at 80 (actual 82.8%) still 5pt below 85 floor — remaining branches are in render/text.ts opt-in TTY/color gating, doctor.ts argv-parsing flag combos, and lint config-diagnostics edge cases.',
+  },
   '@pyreon/kinetic': {
     currentStatements: 88,
     currentBranches: 80,
