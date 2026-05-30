@@ -44,7 +44,7 @@ describe('Phase 4 — useClipboard() native emit', () => {
     expect(out).not.toContain('cb.copied.value')
   })
 
-  it('Kotlin: hoisted LocalContext + remember { PyreonClipboard(ctx) }, method calls + plain Boolean read', () => {
+  it('Kotlin: hoisted LocalContext + rememberCoroutineScope + PyreonClipboard, method calls + plain Boolean read', () => {
     const out = transform(
       `
       export function Copy() {
@@ -59,10 +59,13 @@ describe('Phase 4 — useClipboard() native emit', () => {
       `,
       { target: 'kotlin' },
     ).code
-    // Two-line emit: hoisted Context + remembered container.
+    // THREE-line emit (Round-1 scope-leak fix): hoisted Context +
+    // hoisted CoroutineScope (composition-bound) + remembered container.
     expect(out).toContain('val cbCtx = LocalContext.current')
-    expect(out).toContain('val cb = remember { PyreonClipboard(cbCtx) }')
-    // Method call passes only the text — context is captured at construction.
+    expect(out).toContain('val cbScope = rememberCoroutineScope()')
+    expect(out).toContain('val cb = remember { PyreonClipboard(cbCtx, cbScope) }')
+    // Method call passes only the text — context AND scope are
+    // captured at construction.
     expect(out).toContain('cb.copy("hi")')
     expect(out).not.toContain('cb.copy(LocalContext.current')
     expect(out).not.toContain('cb.copy(cbCtx')
@@ -96,8 +99,10 @@ describe('Phase 4 — useClipboard() native emit', () => {
       { target: 'kotlin' },
     ).code
     expect(kotlin).toContain('val aCtx = LocalContext.current')
-    expect(kotlin).toContain('val a = remember { PyreonClipboard(aCtx) }')
+    expect(kotlin).toContain('val aScope = rememberCoroutineScope()')
+    expect(kotlin).toContain('val a = remember { PyreonClipboard(aCtx, aScope) }')
     expect(kotlin).toContain('val bCtx = LocalContext.current')
-    expect(kotlin).toContain('val b = remember { PyreonClipboard(bCtx) }')
+    expect(kotlin).toContain('val bScope = rememberCoroutineScope()')
+    expect(kotlin).toContain('val b = remember { PyreonClipboard(bCtx, bScope) }')
   })
 })
