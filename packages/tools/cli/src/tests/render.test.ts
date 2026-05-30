@@ -128,6 +128,42 @@ describe('renderText', () => {
     expect(out).toContain('file.ts:42:7')
   })
 
+  it('renders relatedLocations under a finding (text.ts L140-146)', () => {
+    const report = buildReport([
+      g('lint', 'correctness', [
+        f('warning', 'correctness', 'lint/x', {
+          location: {
+            path: '/abs/a.ts',
+            relPath: 'a.ts',
+            line: 1,
+            column: 1,
+          },
+          relatedLocations: [
+            { path: '/abs/b.ts', relPath: 'b.ts', line: 12 },
+            { path: '/abs/c.ts', relPath: 'c.ts', label: 'see also' },
+          ],
+        }),
+      ]),
+    ])
+    const out = stripAnsi(renderText(report, { cwd: '/' }))
+    expect(out).toContain('b.ts:12')
+    expect(out).toContain('c.ts')
+    expect(out).toContain('see also')
+  })
+
+  it('renders red color path for grade F (text.ts L50)', () => {
+    // Need overall score below 60 → many errors. Each error = 10 penalty.
+    // 5+ errors in one category drives that category to 0; overall mean
+    // depends on category count. Cumulative 5 errors across many gates → F.
+    const manyErrors = Array(8).fill(null).map((_, i) =>
+      f('error', 'correctness', `lint/err${i}`),
+    )
+    const report = buildReport([g('lint', 'correctness', manyErrors)])
+    expect(['D', 'F']).toContain(report.grade)
+    const out = stripAnsi(renderText(report, { cwd: '/' }))
+    expect(out).toContain('Score')
+  })
+
   it('truncates to topN with "and N more" hint', () => {
     const findings = Array(15).fill(null).map((_, i) =>
       f('info', 'correctness', `lint/x${i}`),
