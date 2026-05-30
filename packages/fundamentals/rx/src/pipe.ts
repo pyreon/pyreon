@@ -2,7 +2,6 @@ import { computed } from '@pyreon/reactivity'
 import type { ReadableSignal } from './types'
 import { isSignal } from './types'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -78,7 +77,7 @@ export function pipe(source: any, ...fns: Array<(v: any) => any>): any {
   // structural win of pipe vs separate-call composition is "1 computed
   // vs N computeds" — the diff between this counter and
   // `rx.transform.signal` summed across the same chain proves it.
-  if (__DEV__) _countSink.__pyreon_count__?.('rx.pipe')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('rx.pipe')
   if (isSignal(source)) {
     return computed(() => {
       let val = (source as ReadableSignal<any>)()

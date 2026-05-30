@@ -12,7 +12,6 @@ import type {
 import { InfiniteQueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -67,7 +66,7 @@ export function useInfiniteQuery<
   >,
 ): UseInfiniteQueryResult<TQueryFnData, TError> {
   // Mount-N baseline — pairs with useQuery / useSuspenseQuery on the same name.
-  if (__DEV__) _countSink.__pyreon_count__?.('query.useQuery')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
   const observer = new InfiniteQueryObserver<
@@ -99,7 +98,7 @@ export function useInfiniteQuery<
   } = {}
 
   const unsub = observer.subscribe((r) => {
-    if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
       if (slots.result) slots.result.set(r)
       if (slots.data) slots.data.set(r.data)
@@ -118,7 +117,7 @@ export function useInfiniteQuery<
   })
 
   effect(() => {
-    if (__DEV__) _countSink.__pyreon_count__?.('query.setOptions')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
     observer.setOptions(options())
   })
 

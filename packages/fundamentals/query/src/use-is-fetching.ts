@@ -4,7 +4,6 @@ import { signal } from '@pyreon/reactivity'
 import type { MutationFilters, QueryFilters } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -26,7 +25,7 @@ export function useIsFetching(filters?: QueryFilters): Signal<number> {
     // the cache, so the counter grows with cacheEvents × cacheSize. High
     // values indicate the global counter is the dominant cost on update-heavy
     // pages.
-    if (__DEV__) _countSink.__pyreon_count__?.('query.isFetchingScan')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.isFetchingScan')
     count.set(client.isFetching(filters))
   })
   onUnmount(() => unsub())
@@ -48,7 +47,7 @@ export function useIsMutating(filters?: MutationFilters): Signal<number> {
   const unsub = client.getMutationCache().subscribe(() => {
     // Same scan-shape as useIsFetching but on the mutation cache. Same counter
     // — the dominant cost is the cache walk, not the cache type.
-    if (__DEV__) _countSink.__pyreon_count__?.('query.isFetchingScan')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.isFetchingScan')
     count.set(client.isMutating(filters))
   })
   onUnmount(() => unsub())

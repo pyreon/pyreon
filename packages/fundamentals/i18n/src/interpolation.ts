@@ -2,7 +2,6 @@ import type { InterpolationValues } from './types'
 
 const INTERPOLATION_RE = /\{\{(\s*\w+\s*)\}\}/g
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
@@ -15,7 +14,7 @@ export function interpolate(template: string, values?: InterpolationValues): str
   // Per actual regex run — fast-path early-return above means this counter
   // only fires when interpolation work happens (template has `{{` and values
   // were provided).
-  if (__DEV__) _countSink.__pyreon_count__?.('i18n.interpolate')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.interpolate')
   return template.replace(INTERPOLATION_RE, (_, key: string) => {
     const trimmed = key.trim()
     const value = values[trimmed]
@@ -29,7 +28,7 @@ export function interpolate(template: string, values?: InterpolationValues): str
       // placeholder is correct, but swallowing silently leaves the
       // developer with `{{name}}` rendered to end users and zero signal
       // pointing at the cause. Surface it in dev.
-      if (__DEV__) {
+      if (process.env.NODE_ENV !== 'production') {
         // oxlint-disable-next-line no-console
         console.warn(
           `[Pyreon i18n] interpolation value for "${trimmed}" is not serializable — rendering the raw placeholder. Pass a string/number, or pre-serialize the value.`,

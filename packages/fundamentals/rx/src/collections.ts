@@ -2,7 +2,6 @@ import { computed } from '@pyreon/reactivity'
 import type { KeyOf, ReadableSignal } from './types'
 import { isSignal, resolveKey } from './types'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 // Globalthis sink (no @pyreon/perf-harness import) so this file stays
@@ -19,13 +18,13 @@ function reactive<TIn, TOut>(
   if (isSignal(source)) {
     // Signal input → allocate a tracked computed. Counter pairs with
     // `rx.transform.raw` for the signal-vs-raw distribution diagnostic.
-    if (__DEV__) _countSink.__pyreon_count__?.('rx.transform.signal')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('rx.transform.signal')
     return computed(() => fn((source as ReadableSignal<any>)())) as any
   }
   // Raw array input → direct call, no computed. A spike in this counter
   // means consumers passed resolved values where signals were expected
   // (no reactive update, the result becomes stale).
-  if (__DEV__) _countSink.__pyreon_count__?.('rx.transform.raw')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('rx.transform.raw')
   return fn(source) as any
 }
 

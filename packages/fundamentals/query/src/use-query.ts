@@ -10,7 +10,6 @@ import type {
 import { QueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -54,7 +53,7 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
   // of 9. The wasted-allocation scaling that showed up as 20070 signalWrite
   // in queryNotify-10k goes away — the subscribe callback only writes to
   // materialized slots.
-  if (__DEV__) _countSink.__pyreon_count__?.('query.useQuery')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
   const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
@@ -83,7 +82,7 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
 
   // Subscribe synchronously — data flows before mount (correct for SSR pre-population).
   const unsub = observer.subscribe((r) => {
-    if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.observerNotify')
     // Only write to materialized slots. Apps that don't read a field never
     // materialize its signal, so its branch here is a `null`-check no-op.
     // batch() coalesces the writes that DO happen into one notification flush.
@@ -102,7 +101,7 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
 
   // Track reactive options: when signals inside options() change, update the observer.
   effect(() => {
-    if (__DEV__) _countSink.__pyreon_count__?.('query.setOptions')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
     observer.setOptions(options())
   })
 
