@@ -439,7 +439,7 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
         return `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
       }
       // Phase 2.5: non-native types use @PyreonAppStorage from
-      // @pyreon/native-runtime-swift (PR #885) — collapses the previous
+      // @pyreon/native-runtime-swift — collapses the previous
       // 14-line @AppStorage(Data) + Codable bridge to one line. Same
       // UserDefaults backing, same Binding<T> projection via `$name`,
       // same silent-fallback failure semantics.
@@ -1075,7 +1075,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'TextField') return emitSwiftTextField(e, indent)
   if (tag === 'Checkbox') return emitSwiftCheckbox(e, indent)
   // Phase B — canonical multi-platform primitives (@pyreon/primitives).
-  // Per the architectural plan (#893), these route through dedicated
+  // Per the architectural plan, these route through dedicated
   // emit functions BEFORE the generic-tag fallthrough so each maps to
   // its idiomatic SwiftUI shape (props → modifier chains; canonical
   // `onPress` → `action:`; tokens → resolved CGFloats).
@@ -1157,7 +1157,7 @@ function emitSwiftCheckbox(
  *
  * Placeholder: takes from the `placeholder` attr if present, else `""`.
  *
- * Without G1 (#834 baseline emit): `TextField(value: draft, placeholder: "...")`
+ * Without G1 (baseline emit): `TextField(value: draft, placeholder: "...")`
  *   — syntactically valid Swift but binding is one-way (the typed text
  *   doesn't propagate back to the signal). User-typed text would be
  *   silently dropped on every change.

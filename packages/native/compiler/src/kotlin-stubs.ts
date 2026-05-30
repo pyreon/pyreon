@@ -252,7 +252,7 @@ fun Switch(
 // The compiler emit now calls rememberPyreonStorage<T>(key, default)
 // for non-native useStorage<T> types — collapses the previous 4-line
 // Saver inline boilerplate to one line at the call site. The full
-// implementation lives in @pyreon/native-runtime-kotlin (PR #887);
+// implementation lives in @pyreon/native-runtime-kotlin;
 // here we stub just enough surface for kotlinc to typecheck the emit.
 //
 // Real apps depend on @pyreon/native-runtime-kotlin to get the real

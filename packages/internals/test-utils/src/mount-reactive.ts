@@ -95,7 +95,7 @@ export interface MountAndExpectOnceResult extends MountReactiveResult {
  * *inside an outer reactive thunk* somewhere up the tree, causing
  * the runtime to re-instantiate the component (and its entire
  * subtree) on every signal change. Concretely, this is the resume
- * builder bug from PR #191:
+ * builder bug:
  *
  * ```tsx
  * // BAD — re-mounts ResumeTemplate on every keystroke
