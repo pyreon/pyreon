@@ -619,6 +619,31 @@ fn is_pure_static_call(call: &CallExpression) -> bool {
     })
 }
 
+/// Pure-coercion globals (String/Number/Boolean) — referentially transparent
+/// functions whose result depends ONLY on their argument. Unlike
+/// `is_pure_static_call` (requires all args be literals), only checks the
+/// CALLEE shape. The argument's dynamism is handled by the recurse in
+/// `is_dynamic_impl`. Mirrors the JS path's `isPureCoercionCall`.
+fn is_pure_coercion_call(call: &CallExpression) -> bool {
+    let id = match &call.callee {
+        Expression::Identifier(id) => id,
+        _ => return false,
+    };
+    let name = id.name.as_str();
+    if name != "String" && name != "Number" && name != "Boolean" {
+        return false;
+    }
+    if call.arguments.len() > 1 {
+        return false;
+    }
+    if let Some(arg) = call.arguments.first() {
+        if matches!(arg, Argument::SpreadElement(_)) {
+            return false;
+        }
+    }
+    true
+}
+
 fn is_stateful_call_expr(expr: &Expression) -> bool {
     if let Expression::CallExpression(call) = expr {
         if let Expression::Identifier(id) = &call.callee {
@@ -1027,10 +1052,16 @@ fn is_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
 fn is_dynamic_impl(expr: &Expression, ctx: &mut Ctx) -> bool {
     match expr {
         Expression::CallExpression(call) => {
-            if !is_pure_static_call(call) {
+            if is_pure_static_call(call) {
+                // Pure static call (all literal args) — fall through to recurse.
+            } else if is_pure_coercion_call(call) {
+                // Pure coercion (String/Number/Boolean as global) — the
+                // FUNCTION is referentially transparent. Whether the CALL is
+                // dynamic depends on its arguments. Fall through to the
+                // recurse logic; mirrors JS path's isPureCoercionCall.
+            } else {
                 return true;
             }
-            // Pure static call — fall through to check args
         }
         Expression::TaggedTemplateExpression(_) => return true,
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => return false,
