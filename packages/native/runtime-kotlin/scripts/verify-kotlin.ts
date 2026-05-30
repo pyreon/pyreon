@@ -168,16 +168,105 @@ object Json {
 }
 `
 
+// PyreonClipboard-specific stubs — Android Context + ClipboardManager
+// + ContextCompat + kotlinx.coroutines. PyreonClipboard.kt is the only
+// runtime file pulling in these surfaces (verified via grep against
+// all 6 runtime files), so the stubs are gated behind `--service=
+// PyreonClipboard` to keep the other services' verify runs fast.
+const ANDROID_CONTENT_STUBS = `package android.content
+
+open class Context {
+  open fun getApplicationContext(): Context = this
+}
+
+class ClipData {
+  companion object {
+    @Suppress("UNUSED_PARAMETER")
+    fun newPlainText(label: CharSequence, text: CharSequence): ClipData = ClipData()
+  }
+}
+
+interface ClipboardManager {
+  @Suppress("UNUSED_PARAMETER")
+  fun setPrimaryClip(clip: ClipData)
+}
+`
+
+const ANDROIDX_CORE_CONTENT_STUBS = `package androidx.core.content
+
+import android.content.Context
+
+object ContextCompat {
+  @Suppress("UNUSED_PARAMETER")
+  fun <T : Any> getSystemService(context: Context, serviceClass: Class<T>): T? = null
+}
+`
+
+const KOTLINX_COROUTINES_STUBS = `package kotlinx.coroutines
+
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
+
+interface CoroutineContextElement : CoroutineContext.Element
+abstract class CoroutineDispatcher : CoroutineContext.Element {
+  override val key: CoroutineContext.Key<*> get() = Key
+  companion object Key : CoroutineContext.Key<CoroutineDispatcher>
+}
+
+object Dispatchers {
+  val IO: CoroutineDispatcher = object : CoroutineDispatcher() {}
+  val Main: CoroutineDispatcher = object : CoroutineDispatcher() {}
+  val Unconfined: CoroutineDispatcher = object : CoroutineDispatcher() {}
+  val Default: CoroutineDispatcher = object : CoroutineDispatcher() {}
+}
+
+interface Job {
+  fun cancel()
+}
+
+@Suppress("UNUSED_PARAMETER")
+class CoroutineScope(context: CoroutineContext = EmptyCoroutineContext)
+
+// Real kotlinx.coroutines: \`launch\` is an EXTENSION function on
+// CoroutineScope whose block has a CoroutineScope receiver — \`fun
+// CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit)\`.
+// Stubbing it as a member function with a plain \`suspend () -> Unit\`
+// block makes kotlinc reject \`scope.launch { delay(...); ... }\`
+// because the trailing-closure lambda type doesn't match. Mirror
+// the real shape (extension + CoroutineScope receiver) so the call
+// site resolves.
+@Suppress("UNUSED_PARAMETER")
+fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job {
+  // Stub no-op — tests should NOT depend on the body actually
+  // running (the 2s reset timing is covered by Swift's
+  // PyreonRuntimeTests). delay() in the body is also stubbed as
+  // a no-op so the body would complete instantly if it did run.
+  return object : Job { override fun cancel() {} }
+}
+
+@Suppress("UNUSED_PARAMETER")
+suspend fun delay(timeMillis: Long) { /* no-op stub */ }
+`
+
 const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-kotlin-runtime-verify-'))
 
 try {
   const composeRuntimePath = join(tempDir, 'ComposeRuntime.kt')
   const kotlinxSerializationPath = join(tempDir, 'KotlinxSerialization.kt')
   const kotlinxSerializationJsonPath = join(tempDir, 'KotlinxSerializationJson.kt')
+  // Per-service Android/coroutines stubs (Clipboard-only)
+  const androidContentPath = join(tempDir, 'AndroidContent.kt')
+  const androidxCoreContentPath = join(tempDir, 'AndroidxCoreContent.kt')
+  const kotlinxCoroutinesPath = join(tempDir, 'KotlinxCoroutines.kt')
 
   writeFileSync(composeRuntimePath, COMPOSE_RUNTIME_STUBS, 'utf8')
   writeFileSync(kotlinxSerializationPath, KOTLINX_SERIALIZATION_STUBS, 'utf8')
   writeFileSync(kotlinxSerializationJsonPath, KOTLINX_SERIALIZATION_JSON_STUBS, 'utf8')
+  if (SERVICE === 'PyreonClipboard') {
+    writeFileSync(androidContentPath, ANDROID_CONTENT_STUBS, 'utf8')
+    writeFileSync(androidxCoreContentPath, ANDROIDX_CORE_CONTENT_STUBS, 'utf8')
+    writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
+  }
 
   const jarPath = join(tempDir, 'pyreon-runtime.jar')
 
@@ -195,12 +284,21 @@ try {
   //   - typecheck-only mode: NO `-include-runtime`, output goes to a
   //     `.class` dir (not a JAR), smoke test source SKIPPED. Pure
   //     type-check pass. ~3-5x faster.
+  // PyreonClipboard-only stub sources (Android Context + ContextCompat
+  // + kotlinx.coroutines). Other services don't need these; passing
+  // them unconditionally would just bloat the compile.
+  const clipboardStubs =
+    SERVICE === 'PyreonClipboard'
+      ? [androidContentPath, androidxCoreContentPath, kotlinxCoroutinesPath]
+      : []
+
   const kotlincArgs = typecheckOnly
     ? [
         '-d', tempDir,
         composeRuntimePath,
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
+        ...clipboardStubs,
         SOURCE_FILE,
       ]
     : [
@@ -209,6 +307,7 @@ try {
         composeRuntimePath,
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
+        ...clipboardStubs,
         SOURCE_FILE,
         TEST_FILE,
       ]
