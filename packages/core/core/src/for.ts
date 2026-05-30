@@ -27,7 +27,7 @@ export interface ForProps<T> {
    * value at first mount, not a live accessor. For reactivity-on-prop-
    * change, pass an ID via `children` and let the child look up its own
    * data from the store inside JSX accessors. See the For docstring for
-   * the canonical pattern (W22 from kanban audit).
+   * the canonical pattern (W22).
    */
   children: (item: T) => VNode | NativeItem
   /**
@@ -45,7 +45,7 @@ export interface ForProps<T> {
  * mutations (swap, sort, filter) are O(n) key scan + O(k) DOM moves where k
  * is the number of actually displaced entries.
  *
- * ## Reactive children pattern (W22 from kanban audit)
+ * ## Reactive children pattern (W22)
  *
  * The `children: (item) => VNode` callback runs ONCE per new key when the
  * entry is first mounted. The `item` it receives is the THEN-CURRENT value
