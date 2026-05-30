@@ -92,6 +92,43 @@ export type TargetedEvent<T extends Element, E extends Event = Event> = E & {
   readonly currentTarget: T
 }
 
+// ─── React-style event type aliases ──────────────────────────────────────────
+// These exist purely to ease migration from React/Preact. Each is a
+// `TargetedEvent<T>` constrained to a specific DOM Event subtype.
+// Prefer the DOM-native names (`Event`, `SubmitEvent`, `KeyboardEvent`, etc.)
+// in new code — these aliases are a compat affordance, not the canonical
+// Pyreon convention.
+
+/** Generic input change — fires on every value change on inputs/textareas/selects. */
+export type ChangeEvent<T extends Element = HTMLElement> = TargetedEvent<T, Event>
+
+/** Form submission — `<form onSubmit={(e: FormEvent<HTMLFormElement>) => …}>`. */
+export type FormEvent<T extends Element = HTMLElement> = TargetedEvent<T, SubmitEvent>
+
+/** Focus / blur events. */
+export type FocusEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.FocusEvent>
+
+/** Keyboard events — `onKeyDown` / `onKeyUp` / `onKeyPress`. */
+export type KeyboardEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.KeyboardEvent>
+
+/** Mouse events — `onClick` / `onMouseEnter` / etc. */
+export type MouseEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.MouseEvent>
+
+/** Pointer events — `onPointerDown` / `onPointerMove` / etc. */
+export type PointerEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.PointerEvent>
+
+/** Drag-and-drop events — `onDragStart` / `onDragOver` / `onDrop` / etc. */
+export type DragEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.DragEvent>
+
+/** Touch events. */
+export type TouchEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.TouchEvent>
+
+/** Clipboard events — `onCopy` / `onPaste` / `onCut`. */
+export type ClipboardEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.ClipboardEvent>
+
+/** Wheel events — `onWheel`. */
+export type WheelEvent<T extends Element = HTMLElement> = TargetedEvent<T, globalThis.WheelEvent>
+
 /** Common HTML attributes accepted by all Pyreon elements */
 export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   // Identity

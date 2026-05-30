@@ -492,7 +492,15 @@ export function _isTruthyEnv(v: string | undefined): boolean {
 }
 const isTruthyEnv = _isTruthyEnv
 
-export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
+// Return type is widened to `Plugin<any>` so the plugin remains
+// assignable to consumer `UserConfig.plugins` arrays that may be typed
+// against a different Vite version (e.g. vitest's bundled Vite types
+// vs. our peer-declared vite ≥8). Without the explicit `any`, consumers
+// on older vitest versions get a Plugin<vite8> vs Plugin<vite6/7> type
+// mismatch at the seam and need an `as never` cast at the call site.
+// Runtime is identical — the Plugin shape itself hasn't changed across
+// vite 5/6/7/8 for the hooks we implement.
+export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any> {
   const ssrConfig = options?.ssr
   const compat = options?.compat
   // Default islands support to enabled — the prescan is cheap and the virtual
