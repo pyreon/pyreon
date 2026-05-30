@@ -433,7 +433,26 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // The createRouter() routes config is dropped — routes are wired
   // by the host via `NavHost { composable("/path") { ... } }`.
   if (d.kind === 'router') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonRouter() }`
+    // Round-2 follow-up: when `createRouter({ beforeEach: [fn] })` /
+    // `afterEach: [fn]` is configured, emit a `remember { … }`
+    // block that constructs the router AND adds each guard fn ref
+    // (as `::fnName` member ref) before returning. Without guards,
+    // falls through to the bare init.
+    const hasGuards =
+      (d.beforeEach !== undefined && d.beforeEach.length > 0) ||
+      (d.afterEach !== undefined && d.afterEach.length > 0)
+    if (!hasGuards) {
+      return `val ${kotlinIdent(d.name)} = remember { PyreonRouter() }`
+    }
+    const inner: string[] = ['PyreonRouter().apply {']
+    for (const fn of d.beforeEach ?? []) {
+      inner.push(`    beforeEachGuards.add(::${kotlinIdent(fn)})`)
+    }
+    for (const fn of d.afterEach ?? []) {
+      inner.push(`    afterEachHooks.add(::${kotlinIdent(fn)})`)
+    }
+    inner.push('  }')
+    return `val ${kotlinIdent(d.name)} = remember { ${inner.join('\n  ')} }`
   }
   // Phase 4: `const x = useFetch<T>('/url')` → a remembered PyreonFetch<T>.
   // The LaunchedEffect harness that runs it is emitted by emitKotlinComponent.

@@ -291,4 +291,84 @@ final class PyreonRouterTests: XCTestCase {
         XCTAssertEqual(router.loaderData.count, 1)
         XCTAssertEqual(router.loaderData["/same-path"] as? Int, 99)
     }
+
+    // MARK: - Global beforeEach / afterEach guards (Round-2 follow-up)
+
+    /// Empty guard chain → push behaves as before (path appends; no
+    /// observable side effects from guards).
+    func testGuardsEmptyChainDoesNotInterfere() throws {
+        let router = PyreonRouter()
+        router.push("/a")
+        XCTAssertEqual(router.path, ["/a"])
+    }
+
+    /// Single beforeEach guard returning true → navigation proceeds.
+    func testBeforeEachAllowsWhenTrue() throws {
+        let router = PyreonRouter()
+        router.beforeEachGuards.append { _ in true }
+        router.push("/allowed")
+        XCTAssertEqual(router.path, ["/allowed"])
+    }
+
+    /// Single beforeEach guard returning false → push is BLOCKED;
+    /// path stays untouched.
+    func testBeforeEachBlocksWhenFalse() throws {
+        let router = PyreonRouter()
+        router.beforeEachGuards.append { _ in false }
+        router.push("/blocked")
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/")
+    }
+
+    /// Replace is also gated by beforeEach.
+    func testBeforeEachBlocksReplace() throws {
+        let router = PyreonRouter(initialPath: ["/start"])
+        router.beforeEachGuards.append { _ in false }
+        router.replace("/blocked")
+        XCTAssertEqual(router.path, ["/start"])
+    }
+
+    /// Multiple beforeEach: AND chain. Any one false → blocked.
+    func testBeforeEachChainsAndBlocksOnAnyFalse() throws {
+        let router = PyreonRouter()
+        router.beforeEachGuards.append { _ in true }
+        router.beforeEachGuards.append { _ in false }
+        router.beforeEachGuards.append { _ in true }
+        router.push("/blocked")
+        XCTAssertEqual(router.path, [])
+    }
+
+    /// beforeEach receives the candidate path so guards can decide
+    /// per-route — `path-based` auth gating is the canonical use.
+    func testBeforeEachReceivesCandidatePath() throws {
+        let router = PyreonRouter()
+        var seen: [String] = []
+        router.beforeEachGuards.append { p in seen.append(p); return true }
+        router.push("/users")
+        router.push("/users/42")
+        XCTAssertEqual(seen, ["/users", "/users/42"])
+    }
+
+    /// afterEach runs AFTER the path commits — guards can read
+    /// `router.currentPath` and see the new value.
+    func testAfterEachRunsAfterPathCommit() throws {
+        let router = PyreonRouter()
+        var observed: [String] = []
+        router.afterEachHooks.append { committed in observed.append(committed) }
+        router.push("/a")
+        router.push("/b")
+        XCTAssertEqual(observed, ["/a", "/b"])
+        XCTAssertEqual(router.currentPath, "/b")
+    }
+
+    /// afterEach is NOT called when beforeEach blocks (push aborted
+    /// before commit).
+    func testAfterEachSkippedWhenBlocked() throws {
+        let router = PyreonRouter()
+        router.beforeEachGuards.append { _ in false }
+        var afterCount = 0
+        router.afterEachHooks.append { _ in afterCount += 1 }
+        router.push("/blocked")
+        XCTAssertEqual(afterCount, 0)
+    }
 }

@@ -102,7 +102,30 @@ export type DeclIR =
    * expected `{ routes: [{ path, component }, ...] }` shape). In that
    * case the emit falls back to the C4 bare-instance shape — back-compat.
    */
-  | { kind: 'router'; name: string; routes?: RouteIR[] }
+  | {
+      kind: 'router'
+      name: string
+      routes?: RouteIR[]
+      /**
+       * Global router-level guards: `beforeEach: [fn]` / `afterEach: [fn]`
+       * on the createRouter config. Each entry is an IDENTIFIER REF
+       * (function name captured at parse time, like `authGuard`). The
+       * runtime PyreonRouter's `push`/`replace` chains beforeEach (any
+       * returning false blocks the navigation), then runs afterEach
+       * fan-out after the path commits.
+       *
+       * Conservative shape: identifier refs only. Inline arrow bodies
+       * (`beforeEach: [(p) => isAuthed()]`) are silently dropped from
+       * the array (would need the arrow-emit + closure-capture machinery
+       * that per-route boolean guards already use). Closure form is a
+       * documented follow-up.
+       *
+       * Undefined when the config has no such field OR all entries
+       * were dropped (back-compat).
+       */
+      beforeEach?: string[]
+      afterEach?: string[]
+    }
   /**
    * Router hook binding via `useNavigate()` or `useParams()` from
    * `@pyreon/router`. Phase C4 maps these directly to the native

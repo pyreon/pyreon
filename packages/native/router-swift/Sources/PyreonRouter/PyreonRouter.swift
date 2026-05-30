@@ -63,6 +63,20 @@ public final class PyreonRouter {
     @ObservationIgnored
     private var loaderDataOrder: [String] = []
 
+    /// Global router-level guards (`beforeEach: [fn]` on createRouter).
+    /// Each is `(path: String) -> Bool` — return `false` to BLOCK the
+    /// navigation. Chains: if ANY guard returns false, the navigation
+    /// is dropped. Runs BEFORE the `push`/`replace` mutates the path.
+    /// PMTC-emitted apps configure these from `createRouter({
+    /// beforeEach: [authGuard, logGuard] })` config.
+    public var beforeEachGuards: [(String) -> Bool] = []
+
+    /// Global router-level afterEach hooks (`afterEach: [fn]` on
+    /// createRouter). Each is `(path: String) -> Void` — runs AFTER
+    /// the path commits. Fan-out (no short-circuit); side effects
+    /// only. Typical use: analytics, page-view logging.
+    public var afterEachHooks: [(String) -> Void] = []
+
     /// Construct with an initial path stack. Most apps pass `[]`
     /// (NavigationStack starts at its root view) or `["/"]` for an
     /// explicit root segment.
@@ -70,21 +84,47 @@ public final class PyreonRouter {
         self.path = initialPath
     }
 
+    /// Run the beforeEach chain against `candidate`; any false →
+    /// navigation BLOCKED. Returns true iff every guard allowed.
+    /// Internal helper called by push/replace.
+    private func allowNavigation(to candidate: String) -> Bool {
+        for guardFn in beforeEachGuards {
+            if !guardFn(candidate) { return false }
+        }
+        return true
+    }
+
+    /// Run the afterEach fan-out for `committed`. Side effects only;
+    /// no short-circuit. Internal helper called by push/replace.
+    private func runAfterEach(_ committed: String) {
+        for hook in afterEachHooks { hook(committed) }
+    }
+
     /// Push a new path onto the stack. Matches `router.push(path)`
     /// on the web side — animates the iOS NavigationStack forward.
+    ///
+    /// Round-2 follow-up: chains `beforeEachGuards` (any false →
+    /// no-op) before the path mutation, fans out `afterEachHooks`
+    /// after the commit.
     public func push(_ path: String) {
+        if !allowNavigation(to: path) { return }
         self.path.append(path)
+        runAfterEach(path)
     }
 
     /// Replace the top-of-stack path. Matches `router.replace(path)`
     /// on the web side — useful for auth redirects so the previous
     /// page isn't in the back stack.
+    ///
+    /// Round-2 follow-up: same guard chain as `push`.
     public func replace(_ path: String) {
+        if !allowNavigation(to: path) { return }
         if self.path.isEmpty {
             self.path.append(path)
         } else {
             self.path[self.path.count - 1] = path
         }
+        runAfterEach(path)
     }
 
     /// Pop the top-of-stack path. Matches `router.back()` on the web

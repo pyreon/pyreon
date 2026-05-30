@@ -217,5 +217,65 @@ fun main() {
         expectEq(router.loaderData.value["/same-path"], 99, "latest value won")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${22} test(s) passed")
+    // Round-2 follow-up — global beforeEach / afterEach guards.
+
+    runTest("beforeEach allows when true") {
+        val router = PyreonRouter()
+        router.beforeEachGuards.add { _ -> true }
+        router.push("/allowed")
+        expectEq(router.path.value, listOf("/allowed"), "path advanced")
+    }
+
+    runTest("beforeEach blocks when false") {
+        val router = PyreonRouter()
+        router.beforeEachGuards.add { _ -> false }
+        router.push("/blocked")
+        expectEq(router.path.value, emptyList(), "path NOT mutated when blocked")
+    }
+
+    runTest("beforeEach blocks replace too") {
+        val router = PyreonRouter(initialPath = listOf("/start"))
+        router.beforeEachGuards.add { _ -> false }
+        router.replace("/blocked")
+        expectEq(router.path.value, listOf("/start"), "replace also gated")
+    }
+
+    runTest("beforeEach AND-chains; any false blocks") {
+        val router = PyreonRouter()
+        router.beforeEachGuards.add { _ -> true }
+        router.beforeEachGuards.add { _ -> false }
+        router.beforeEachGuards.add { _ -> true }
+        router.push("/blocked")
+        expectEq(router.path.value, emptyList(), "AND chain blocked")
+    }
+
+    runTest("beforeEach receives the candidate path") {
+        val router = PyreonRouter()
+        val seen = mutableListOf<String>()
+        router.beforeEachGuards.add { p -> seen.add(p); true }
+        router.push("/users")
+        router.push("/users/42")
+        expectEq(seen.toList(), listOf("/users", "/users/42"), "guard sees each candidate")
+    }
+
+    runTest("afterEach runs after the path commits") {
+        val router = PyreonRouter()
+        val observed = mutableListOf<String>()
+        router.afterEachHooks.add { committed -> observed.add(committed) }
+        router.push("/a")
+        router.push("/b")
+        expectEq(observed.toList(), listOf("/a", "/b"), "afterEach fan-out")
+        expectEq(router.currentPath, "/b", "current path is the latest commit")
+    }
+
+    runTest("afterEach skipped when blocked") {
+        val router = PyreonRouter()
+        router.beforeEachGuards.add { _ -> false }
+        var afterCount = 0
+        router.afterEachHooks.add { _ -> afterCount += 1 }
+        router.push("/blocked")
+        expectEq(afterCount, 0, "afterEach did NOT fire on blocked push")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${29} test(s) passed")
 }
