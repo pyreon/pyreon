@@ -344,7 +344,7 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
  * structural property of the monorepo (workspace layout), not the package
  * name — so it's robust against renames.
  */
-function isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>): boolean {
+export function _isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>): boolean {
   // Strip query strings (e.g. `?vue&type=script`) to get the bare path.
   const queryIdx = id.indexOf('?')
   const filePath = queryIdx === -1 ? id : id.slice(0, queryIdx)
@@ -387,7 +387,7 @@ function isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>): boolean
  * Return the Pyreon compat target for an import specifier, or undefined if
  * the import should not be redirected.
  */
-function getCompatTarget(compat: CompatFramework | undefined, id: string): string | undefined {
+export function _getCompatTarget(compat: CompatFramework | undefined, id: string): string | undefined {
   if (!compat) return undefined
   const aliased = COMPAT_ALIASES[compat][id]
   if (aliased) return aliased
@@ -839,12 +839,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         compat &&
         (id === '@pyreon/core/jsx-runtime' || id === '@pyreon/core/jsx-dev-runtime') &&
         importer &&
-        isPyreonWorkspaceFile(importer, pyreonWorkspaceDirCache)
+        _isPyreonWorkspaceFile(importer, pyreonWorkspaceDirCache)
       ) {
         return // let Vite resolve to the real `@pyreon/core/jsx-runtime`
       }
 
-      const target = getCompatTarget(compat, id)
+      const target = _getCompatTarget(compat, id)
       if (!target) return
 
       // Vite 8 resolves the "bun" condition natively via resolve.conditions.
@@ -1063,7 +1063,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
           if (isAssetRequest(url)) return next()
 
           try {
-            await handleSsrRequest(server, ssrConfig.entry, url, req, res, next)
+            await _handleSsrRequest(server, ssrConfig.entry, url, req, res, next)
           } catch (err) {
             server.ssrFixStacktrace(err as Error)
             next(err)
@@ -1086,7 +1086,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   }
 }
 
-async function handleSsrRequest(
+export async function _handleSsrRequest(
   server: ViteDevServer,
   entry: string,
   url: string,
@@ -1349,7 +1349,7 @@ const SIGNAL_PREFIX_RE =
 const EXPORT_COMPONENT_RE =
   /export\s+(?:default\s+)?(?:function\s+([A-Z]\w*)|const\s+([A-Z]\w*)\s*[=:])/
 
-function skipStringLiteral(code: string, start: number, quote: string): number {
+export function _skipStringLiteral(code: string, start: number, quote: string): number {
   let j = start + 1
   while (j < code.length) {
     if (code[j] === '\\') {
@@ -1362,7 +1362,7 @@ function skipStringLiteral(code: string, start: number, quote: string): number {
   return j
 }
 
-function extractBalancedArgs(code: string, start: number): string | null {
+export function _extractBalancedArgs(code: string, start: number): string | null {
   let depth = 1
   for (let i = start; i < code.length; i++) {
     const ch = code[i]
@@ -1371,7 +1371,7 @@ function extractBalancedArgs(code: string, start: number): string | null {
       depth--
       if (depth === 0) return code.slice(start, i)
     } else if (ch === '"' || ch === "'" || ch === '`') {
-      i = skipStringLiteral(code, i, ch)
+      i = _skipStringLiteral(code, i, ch)
     }
   }
   return null
@@ -1388,7 +1388,7 @@ function braceDepthAt(code: string, pos: number): number {
     if (ch === '{') depth++
     else if (ch === '}') depth--
     else if (ch === '"' || ch === "'" || ch === '`') {
-      i = skipStringLiteral(code, i, ch)
+      i = _skipStringLiteral(code, i, ch)
     }
   }
   return depth
@@ -1407,7 +1407,7 @@ function rewriteSignals(code: string, moduleId: string): string {
   let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code)
   while (m !== null) {
     const argsStart = m.index + m[0].length
-    const args = extractBalancedArgs(code, argsStart)
+    const args = _extractBalancedArgs(code, argsStart)
     if (args === null) {
       m = SIGNAL_PREFIX_RE.exec(code)
       continue // unbalanced — skip
@@ -1521,7 +1521,7 @@ function injectSignalNames(code: string, moduleId: string): string {
   let m: RegExpExecArray | null = reBound.exec(masked)
   while (m !== null) {
     const argsStart = m.index + m[0].length
-    const args = extractBalancedArgs(code, argsStart)
+    const args = _extractBalancedArgs(code, argsStart)
     if (args !== null && !hasMultipleArgs(args)) {
       matches.push({
         start: argsStart,
@@ -1543,7 +1543,7 @@ function injectSignalNames(code: string, moduleId: string): string {
   while (m !== null) {
     if (!covered.has(m.index)) {
       const argsStart = m.index + m[0].length
-      const args = extractBalancedArgs(code, argsStart)
+      const args = _extractBalancedArgs(code, argsStart)
       if (args !== null && !hasMultipleArgs(args)) {
         matches.push({
           start: argsStart,
@@ -1893,7 +1893,7 @@ function autoImportCanonicalPrimitives(
   // The mask preserves positions (replaces with spaces) so existing-
   // import detection later in this function still aligns with the
   // original source for the splice.
-  const masked = maskCommentsAndStrings(code)
+  const masked = _maskCommentsAndStrings(code)
 
   // Build alternation matching all configured names — single regex pass.
   const allNames = Array.from(nameToSource.keys())
@@ -1912,7 +1912,7 @@ function autoImportCanonicalPrimitives(
   // Use the MASKED source so JSDoc example imports
   // (`// import { Stack, ... } from '...'`) don't false-positive as
   // real imports.
-  const alreadyInScope = collectImportedNames(masked)
+  const alreadyInScope = _collectImportedNames(masked)
 
   // Detect same-module top-level declarations that shadow the
   // canonical names — `export function Stack(...)`, `function Stack`,
@@ -2013,7 +2013,7 @@ function autoImportCanonicalPrimitives(
  *   - line comments  `// ... newline`
  *   - block comments `/* ... *​/`
  */
-function maskCommentsAndStrings(code: string): string {
+export function _maskCommentsAndStrings(code: string): string {
   const out: string[] = new Array(code.length)
   let i = 0
   const n = code.length
@@ -2045,7 +2045,7 @@ function maskCommentsAndStrings(code: string): string {
 }
 
 /** Collect every name imported via `import { ... }` / `import X` / `import * as X`. */
-function collectImportedNames(code: string): Set<string> {
+export function _collectImportedNames(code: string): Set<string> {
   const out = new Set<string>()
   // Named imports: `import { A, B as C } from '...'`
   const namedRe = /import\s*(?:type\s+)?\{([^}]+)\}\s*from\s*['"][^'"]+['"]/g

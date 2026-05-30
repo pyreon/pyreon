@@ -75,12 +75,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'PR #323 cleanup raised statements 65 → 85 (actual 86.18%) and branches 55 → 75 (actual 80.61%). Below 90/85 — needs further work on rule-edge-case branches.',
   },
-  '@pyreon/vite-plugin': {
-    currentStatements: 85,
-    currentBranches: 80,
-    reason:
-      'PR #323 cleanup raised statements 0 (hidden) → 85 (actual 87.5%). Branches at 80 (actual 81.18%). Both below floor — gap is in cross-module signal resolution edge cases.',
-  },
   '@pyreon/vue-compat': {
     currentStatements: 85,
     currentBranches: 80,
