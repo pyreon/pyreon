@@ -239,6 +239,33 @@ describe('StyleSheet', () => {
       warnSpy.mockRestore()
     })
 
+    it('injectRules is idempotent by key (second call with same key is a no-op)', () => {
+      const local = new StyleSheet()
+      const before = local.ruleCountForTest()
+      local.injectRules(['.pyr-test-a{color:red}', '.pyr-test-b{color:blue}'], 'inject-k1')
+      const afterFirst = local.ruleCountForTest()
+      expect(afterFirst).toBeGreaterThanOrEqual(before)
+      // Second call with same key — bails immediately, no extra rules inserted.
+      local.injectRules(['.pyr-test-a{color:red}', '.pyr-test-b{color:blue}'], 'inject-k1')
+      expect(local.ruleCountForTest()).toBe(afterFirst)
+    })
+
+    it('injectRules silently tolerates malformed rules in dev (logs warn)', () => {
+      const local = new StyleSheet()
+      const realSheet = (local as unknown as { sheet: CSSStyleSheet | null }).sheet
+      if (!realSheet) return
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      // Inject an obviously malformed rule via insertRule mock that throws
+      const proto = Object.getPrototypeOf(realSheet) as { insertRule: () => number }
+      const insertSpy = vi.spyOn(proto, 'insertRule').mockImplementation(() => {
+        throw new SyntaxError('bad collapsed rule')
+      })
+      local.injectRules(['malformed not valid CSS'], 'inject-bad')
+      expect(warnSpy.mock.calls.some((c) => String(c[0]).includes('injectRules'))).toBe(true)
+      insertSpy.mockRestore()
+      warnSpy.mockRestore()
+    })
+
     it('uses bundler-agnostic process.env.NODE_ENV — vitest sets NODE_ENV !== "production"', () => {
       // Smoke test the gate itself: vitest must set process.env.NODE_ENV to
       // a non-production value for the regression test above to be meaningful.
