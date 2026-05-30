@@ -62,9 +62,9 @@ export interface ReactiveFire {
   ts: number
 }
 
-// Exact structural mirror of @pyreon/runtime-dom's `PyreonReactiveDevtools`
-// (Foundation PR #703). Keep these in lockstep — the page-hook consumes
-// this shape and a framework version skew would break the bridge.
+// Exact structural mirror of @pyreon/runtime-dom's `PyreonReactiveDevtools`.
+// Keep these in lockstep — the page-hook consumes this shape and a
+// framework version skew would break the bridge.
 export interface ReactiveDevtools {
   activate(): void
   deactivate(): void

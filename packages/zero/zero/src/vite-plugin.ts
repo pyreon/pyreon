@@ -174,7 +174,7 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 		},
 
 		/**
-		 * W19 from kanban audit — auto-inject the client entry script
+		 * W19 — auto-inject the client entry script
 		 * before `<!--pyreon-scripts-->` so users don't have to remember
 		 * to add `<script type="module" src="/src/entry-client.ts">` to
 		 * `index.html` by hand.
@@ -508,12 +508,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				// matches Next.js / Remix / Astro convention).
 				//
 				// Apply the default UNLESS Vite's CLI was invoked with
-				// `--port`/`-p` (in which case the CLI flag must win — see
-				// memory: vite cli port doesnt override plugin). PR #579
-				// proved this empirically: returning `server: { port: 3000 }`
-				// unconditionally clobbered `vite --port 517N --strictPort`
-				// in the e2e playwright config and every webServer timed
-				// out. argv detection here lets the CLI win at the source.
+				// `--port`/`-p` (in which case the CLI flag must win).
+				// Returning `server: { port: 3000 }` unconditionally
+				// clobbered `vite --port 517N --strictPort` in the e2e
+				// playwright config — every webServer timed out. argv
+				// detection here lets the CLI win at the source.
 				//
 				// Precedence (CLI > user vite.config > zero({port}) > 3000):
 				//   1. `vite --port N` → argvHasPortFlag() === true → plugin
@@ -898,8 +897,8 @@ async function renderSsr(
  * `///app/app/dashboard` (prefix `'/app'` + path `'/app/dashboard'`). After
  * `path.split('/').filter(Boolean)` those became `['app', 'app', 'dashboard']`
  * — which can't match a real `/app/dashboard` request — so dev-server returned
- * 404 for every nested-layout route. Re-enables PR #411 specs that rely on
- * `/app/*` routing.
+ * 404 for every nested-layout route. Re-enables the nested-layout specs
+ * that rely on `/app/*` routing.
  */
 function flattenRoutePatterns(
 	routes: Array<{ path?: string; children?: unknown[] }>,

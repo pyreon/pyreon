@@ -194,7 +194,7 @@ export interface ZeroConfig {
    * Path to the client-side entry module that mounts the app. Auto-
    * injected as `<script type="module" src="${entryClient}">` before
    * the `<!--pyreon-scripts-->` placeholder in `index.html` so users
-   * don't have to manually wire it (W19 from kanban audit).
+   * don't have to manually wire it (W19).
    *
    * Default: `/src/entry-client.ts`. Set to `false` to disable auto-
    * injection (the user is responsible for adding a `<script>` tag).
