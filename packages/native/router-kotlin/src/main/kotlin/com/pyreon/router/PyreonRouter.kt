@@ -74,9 +74,27 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
 
     /** Store a route's loaded data under its path. Called by the compiler's
      *  loader harness; idempotent overwrite. Mutating `loaderData` triggers
-     *  Compose recomposition for observers reading `useLoaderData()`. */
+     *  Compose recomposition for observers reading `useLoaderData()`.
+     *
+     *  Round-1 audit fix: applies an LRU bound (cap = `MAX_LOADER_ENTRIES`,
+     *  matches the web router's prefetch-cache convention) to prevent
+     *  unbounded growth across many navigations. Pre-fix the map grew
+     *  monotonically — every visited path retained its loader payload
+     *  forever, anti-pattern Class C (unbounded cache).
+     *
+     *  Update semantics: re-storing an existing key NEVER evicts (it's
+     *  an in-place value swap, not a fresh insertion). Eviction only
+     *  fires when adding a NEW key would exceed the cap — the oldest
+     *  entry (the `+` operator on a `mapOf`-backed Map preserves
+     *  insertion order via the default LinkedHashMap impl) is dropped. */
     public fun setLoaderData(path: String, value: Any?) {
-        loaderData.value = loaderData.value + (path to value)
+        val current = loaderData.value
+        if (path !in current && current.size >= MAX_LOADER_ENTRIES) {
+            val oldest = current.keys.first()
+            loaderData.value = current.filterKeys { it != oldest } + (path to value)
+        } else {
+            loaderData.value = current + (path to value)
+        }
     }
 
     /** Push a new path onto the stack. Matches `router.push(path)` on the web side. */
@@ -119,6 +137,12 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
     }
 
     public companion object {
+        /** Round-1 audit fix: LRU bound for `loaderData`. 50 mirrors the
+         *  web router's prefetch-cache cap — empirically large enough
+         *  for normal app navigation patterns (tab-bar apps, deep flows)
+         *  without retaining hundreds of stale payloads. */
+        public const val MAX_LOADER_ENTRIES: Int = 50
+
         /**
          * R1.2 — match an incoming path against a pattern, extracting
          * named params. Returns the params map on match, null on miss.

@@ -53,6 +53,16 @@ public final class PyreonRouter {
     /// follow-up — this is the runtime contract it targets).
     public var loaderData: [String: Any] = [:]
 
+    /// Round-1 audit fix: insertion-order parallel-array for the LRU
+    /// bound on `loaderData`. Swift's `Dictionary` is UNORDERED (unlike
+    /// Kotlin's default `mapOf`-backed LinkedHashMap), so `loaderData.keys.first`
+    /// returns an arbitrary key — not the oldest insertion. To evict
+    /// the OLDEST entry deterministically we track insertion order
+    /// explicitly. Internal to the LRU machinery; not part of the
+    /// public contract.
+    @ObservationIgnored
+    private var loaderDataOrder: [String] = []
+
     /// Construct with an initial path stack. Most apps pass `[]`
     /// (NavigationStack starts at its root view) or `["/"]` for an
     /// explicit root segment.
@@ -89,9 +99,39 @@ public final class PyreonRouter {
     /// harness the compiler emits; idempotent overwrite. Mutating `loaderData`
     /// triggers SwiftUI observation so views reading `useLoaderData()`
     /// re-render when the data arrives.
+    ///
+    /// Round-1 audit fix: applies an LRU bound (cap = `Self.MAX_LOADER_ENTRIES`,
+    /// matches the web router's prefetch-cache convention) to prevent
+    /// unbounded growth across many navigations. Pre-fix this dictionary
+    /// grew monotonically — every visited path retained its loader payload
+    /// forever, anti-pattern Class C (unbounded cache).
+    ///
+    /// Update semantics: re-storing an existing key NEVER evicts (it's an
+    /// in-place value swap, not a fresh insertion). Eviction only fires
+    /// when adding a NEW key would exceed the cap — the oldest entry
+    /// (Swift dictionaries preserve insertion order since Swift 5) is
+    /// dropped.
     public func setLoaderData(_ path: String, _ value: Any) {
+        if loaderData[path] == nil {
+            // NEW key: cap-evict the oldest insertion first, then track
+            // this path as the newest.
+            if loaderData.count >= Self.MAX_LOADER_ENTRIES, !loaderDataOrder.isEmpty {
+                let oldest = loaderDataOrder.removeFirst()
+                loaderData.removeValue(forKey: oldest)
+            }
+            loaderDataOrder.append(path)
+        }
+        // Existing keys: pure in-place swap. The order tracker is not
+        // touched — re-storing doesn't reset recency, matching the
+        // "overwrite doesn't evict" Kotlin contract one-for-one.
         loaderData[path] = value
     }
+
+    /// LRU bound for `loaderData`. 50 mirrors the web router's
+    /// prefetch-cache cap — empirically large enough for normal app
+    /// navigation patterns (tab-bar apps, deep flows) without retaining
+    /// hundreds of stale payloads.
+    static let MAX_LOADER_ENTRIES: Int = 50
 
     /// Clear the entire path stack — navigates back to the root view.
     /// Matches the web-side pattern of calling `router.replace('/')`
