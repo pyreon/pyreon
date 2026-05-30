@@ -270,8 +270,8 @@ export abstract class Schema<T> {
    * `getMeta(schema)` or `useField` in `@pyreon/form`. Schema-aware
    * UI surfaces use this to drive labels + i18n.
    *
-   * Mirrors PR #952's `withField(schema, meta)` standalone helper.
-   * Both produce identical output — the chainable method is sugar.
+   * Mirrors the `withField(schema, meta)` standalone helper —
+   * both produce identical output; the chainable method is sugar.
    */
   field(meta: FieldMeta): this {
     const existing = (this as { [META_SLOT]?: FieldMeta })[META_SLOT]

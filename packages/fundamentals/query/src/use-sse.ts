@@ -101,7 +101,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   const status = signal<SSEStatus>('disconnected')
   const error = signal<Event | null>(null)
   // Seed the lastEventId from `initialLastEventId` so consumers can resume
-  // a stream across remount (audit bug #3). EventSource has no API to set
+  // a stream across remount. EventSource has no API to set
   // a Last-Event-ID header on the FIRST connection — server cooperation
   // (URL query param) is required. The seed makes the value available
   // immediately so the consumer's `url` function can read it.

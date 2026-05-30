@@ -175,7 +175,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
    * configured AND the field has no per-field validator. Without this,
    * schema-only forms with `validateOn: 'blur'` would silently skip
    * blur-time validation — the schema only fires in `validate()` on
-   * submit (#942 W10).
+   * submit (W10).
    *
    * Deliberately does NOT touch other fields' errors. Blur validates the
    * field that was blurred; surprising the user with errors on fields
@@ -211,7 +211,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Declared up-front so per-field auto-revalidation effects (set up in the
   // loop below) can read it. Each `handleSubmit()` increments it; the
   // change-mode trigger fires once `submitCount > 0` so users see live
-  // error correction after the first failed submit (audit bug #2).
+  // error correction after the first failed submit.
   const submitCount = signal(0)
 
   // Track current initial values (mutable for setInitialValues)
@@ -391,7 +391,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // skip blur-time validation — `validateField` is a no-op when
           // there's no `validators[name]`, and the schema only fires
           // inside `validate()` on submit. That made `validateOn: 'blur'`
-          // a lie for schema-only forms (#942 W10).
+          // a lie for schema-only forms (W10).
           //
           // Fix: when a schema is configured AND there's no per-field
           // validator for this field, run the schema and apply ONLY this

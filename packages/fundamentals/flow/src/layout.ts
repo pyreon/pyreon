@@ -40,13 +40,11 @@ function warnIgnoredOptions(algorithm: LayoutAlgorithm, options: LayoutOptions):
   // bundler-agnostic library convention. Used by React, Vue, Preact, Solid,
   // MobX, Redux, and every other major published JS library.
   //
-  // **Why this pattern, not `import.meta.env.DEV`** (the previous reference
-  // implementation): `import.meta.env.DEV` is Vite/Rolldown-only. In a Pyreon
-  // library shipped to a Next.js (Webpack), esbuild, Rollup, Parcel, or Bun
-  // app, `import.meta.env.DEV` is `undefined` and dev warnings never fire —
-  // even in development. PR #200 introduced `import.meta.env.DEV` to fix the
-  // broken `typeof process` compound; that direction was right for app code
-  // but wrong for library code.
+  // **Why this pattern, not `import.meta.env.DEV`**: that flag is
+  // Vite/Rolldown-only. In a Pyreon library shipped to a Next.js
+  // (Webpack), esbuild, Rollup, Parcel, or Bun app, `import.meta.env.DEV`
+  // is `undefined` and dev warnings never fire — even in development.
+  // It's a fine choice for app code, but wrong for library code.
   //
   // **Why this pattern, not `typeof process !== 'undefined' && ...`** (the
   // first broken pattern): the `typeof process` guard isn't replaced by Vite,
