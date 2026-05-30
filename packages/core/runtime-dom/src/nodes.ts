@@ -776,7 +776,7 @@ export function mountFor<T>(
     // re-runs For, runCleanup() disposes ALL inner effects, and
     // handleIncrementalUpdate skips re-mount on key match — leaving the
     // subtree's inner effects gone forever. Reproduced by the
-    // `<For>`-shaped test in fanout-repro.test.tsx; deferred from PR #490.
+    // `<For>`-shaped test in fanout-repro.test.tsx.
     runUntracked(() => {
       if (n === 0) {
         handleFastClear(liveParent)

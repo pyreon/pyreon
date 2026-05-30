@@ -1,5 +1,3 @@
-// @pyreon/runtime-dom — surgical signal-to-DOM renderer (no virtual DOM)
-
 import { registerSingleton } from '@pyreon/reactivity'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-dom
