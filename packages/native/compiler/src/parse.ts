@@ -1110,7 +1110,56 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
     if (ir) children.push(ir)
   }
 
+  // Round-1 audit fix: surface diagnostic warnings for primitives
+  // missing their REQUIRED prop. Pre-fix, omitting (e.g.) `<Icon>`'s
+  // `name` or `<Image>`'s `src` silently fell through to the generic
+  // emit, producing unbuildable native code (`Icon(size: "lg")` — no
+  // such SwiftUI type, no such Compose composable). Users got cryptic
+  // `swiftc` / `kotlinc` errors with no Pyreon-side signal.
+  //
+  // The emit shape is UNCHANGED here (generic fallthrough remains; a
+  // proper safe-fallback emit is a larger follow-up). What changes is
+  // that the parser now NAMES the missing prop in `result.warnings`,
+  // so consumers (CLI, IDE, build scripts) can surface it. Failing
+  // loud BEFORE swiftc/kotlinc is the diagnostic-quality win.
+  warnIfMissingRequiredProp(tag, attrs, ctx)
+
   return { kind: 'jsx-element', tag, attrs, children }
+}
+
+/**
+ * Round-1 audit helper: when a canonical primitive is used without
+ * its required prop, push a clear warning naming the tag + the
+ * missing prop into `ctx.warnings`. The emit path is unchanged; this
+ * is diagnostic-only.
+ *
+ * Scoped to the 3 most-hit shapes the audit found:
+ *   - `<Icon>` without `name`   (Swift SF Symbols / Compose Icon both need it)
+ *   - `<Image>` without `src`   (no image without a source)
+ *   - `<Link>` without `to`     (no navigation target = broken nav)
+ *
+ * `<Field>` without `value` is deliberately NOT warned here — the
+ * existing parse path bails to undeclared for non-signal value and
+ * the emit produces a generic fall-through; a clean warning there
+ * needs the signal-name set which isn't available at parse time
+ * (lives in the emit context). Tracked as a separate follow-up.
+ */
+function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx): void {
+  const hasAttr = (name: string): boolean =>
+    attrs.some((a) => a.kind === 'attr' && a.name === name)
+  if (tag === 'Icon' && !hasAttr('name')) {
+    ctx.warnings.push(
+      "<Icon> requires a `name` prop (e.g. `<Icon name=\"star\"/>`). Without it the emit falls through to generic and produces an unbuildable `Icon(…)` literal on both Swift and Kotlin.",
+    )
+  } else if (tag === 'Image' && !hasAttr('src')) {
+    ctx.warnings.push(
+      '<Image> requires a `src` prop (e.g. `<Image src="/a.png"/>`). Without it the emit falls through to generic and produces an unbuildable `Image(…)` / `AsyncImage(…)` call with no source.',
+    )
+  } else if (tag === 'Link' && !hasAttr('to')) {
+    ctx.warnings.push(
+      '<Link> requires a `to` prop (e.g. `<Link to="/users"/>`). Without it the nav target is missing on both targets — emit falls through to generic.',
+    )
+  }
 }
 
 function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
