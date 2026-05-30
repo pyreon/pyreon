@@ -1134,12 +1134,49 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   )
   const labelText = extractStaticText(e.children)
   const action = handler ? emitKotlinAction(handler.handler, indent) : '{}'
+  // Round-1 audit fix: `disabled={true}` was SILENTLY dropped — Button
+  // stayed enabled regardless of the prop. Compose's idiomatic disable
+  // shape is the `enabled = <bool>` constructor argument (inverse of
+  // `disabled`, defaulting to true).
+  const enabledArg = kotlinEnabledArg(e)
+  const buttonArgs = enabledArg ? `onClick = ${action}, ${enabledArg}` : `onClick = ${action}`
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
-    return `Button(onClick = ${action}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
+    return `Button(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `Button(onClick = ${action}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `Button(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Round-1 audit fix shared helper: resolve `disabled={…}` to a Compose
+ * `enabled = <inverse-bool>` argument string. Returns the empty string
+ * when the attr is absent or literal `false` (default-enabled, no arg
+ * needed).
+ *
+ * Shapes:
+ *   - `disabled` (boolean shorthand)         → `enabled = false`
+ *   - `disabled={true}` / `disabled={false}` → `enabled = false` / ''
+ *   - `disabled={signalOrExpr}`              → `enabled = !<expr>`
+ *
+ * Note the inverse: Compose's `enabled` is the OPPOSITE of Pyreon's
+ * `disabled` (matching SwiftUI's `.disabled()` modifier semantically
+ * AND HTML's `<input disabled>` attribute), so a signal-bound case
+ * negates the expression with `!`.
+ */
+function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'disabled',
+  )
+  if (!attr) return ''
+  if (attr.value.kind === 'literal') {
+    if (attr.value.value === false) return ''
+    return 'enabled = false'
+  }
+  // Signal-bound / expression — negate to convert Pyreon's `disabled`
+  // semantic to Compose's `enabled`. `emitKotlinSignalRead` handles
+  // signal-name membership + plain-identifier emit.
+  return `enabled = !${emitKotlinSignalRead(attr.value)}`
 }
 
 function emitKotlinAction(handler: ExprIR, indent: number): string {

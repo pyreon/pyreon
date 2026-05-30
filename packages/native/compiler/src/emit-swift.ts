@@ -1296,15 +1296,52 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   )
   const labelText = extractStaticText(e.children)
   const action = handler ? emitSwiftAction(handler.handler, indent) : '{}'
+  // Round-1 audit fix: `disabled={true}` / `disabled={signal}` was
+  // SILENTLY dropped — Button stayed enabled regardless of the prop.
+  // SwiftUI's idiomatic disable shape is `.disabled(<bool>)` modifier.
+  // Skip when absent or literal `false` (default-enabled).
+  const disabledModifier = swiftDisabledModifier(e)
+  let result: string
   if (labelText !== null) {
-    return `Button(${JSON.stringify(labelText)}) ${action}`
+    result = `Button(${JSON.stringify(labelText)}) ${action}`
+  } else {
+    // Complex content; emit Button { action } label: { content }.
+    const pad = ' '.repeat(indent + 2)
+    const contentLines = e.children
+      .map((c) => pad + emitSwiftChild(c, indent + 2))
+      .join('\n')
+    result = `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }
-  // Complex content; emit Button { action } label: { content }.
-  const pad = ' '.repeat(indent + 2)
-  const contentLines = e.children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
-  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
+}
+
+/**
+ * Round-1 audit fix shared helper: resolve a `disabled={…}` attr to a
+ * SwiftUI `.disabled(<bool-expr>)` modifier suffix. Returns the empty
+ * string when the attr is absent or a literal `false` (default-enabled).
+ *
+ * Shapes recognized:
+ *   - `disabled` (boolean shorthand)         → `.disabled(true)`
+ *   - `disabled={true}` / `disabled={false}` → `.disabled(true)` / ''
+ *   - `disabled={signalOrExpr}`              → `.disabled(<emitted-expr>)`
+ *
+ * Symmetric with `<Field>`'s existing `disabled` handling.
+ */
+function swiftDisabledModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'disabled',
+  )
+  if (!attr) return ''
+  // Boolean-shorthand `<Button disabled>` (no value) parses as attr-with
+  // literal `true` (consistent with HTML `<input disabled>`).
+  if (attr.value.kind === 'literal') {
+    if (attr.value.value === false) return ''
+    return '.disabled(true)'
+  }
+  // Signal-bound / expression form → emit the expression, wrap in
+  // `.disabled(...)`. `emitSwiftSignalRead` handles signal-name
+  // membership + plain-identifier vs `.value`-rewrite distinction.
+  return `.disabled(${emitSwiftSignalRead(attr.value)})`
 }
 
 function emitSwiftAction(handler: ExprIR, indent: number): string {
