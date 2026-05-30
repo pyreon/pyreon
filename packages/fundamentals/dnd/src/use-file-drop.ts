@@ -3,7 +3,7 @@ import {
   monitorForExternal,
 } from '@atlaskit/pragmatic-drag-and-drop/external/adapter'
 import { containsFiles, getFiles } from '@atlaskit/pragmatic-drag-and-drop/external/file'
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { batch, onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseFileDropOptions {
   /** Element getter for the drop zone. */
@@ -100,8 +100,12 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
         onDragEnter: () => isOver.set(true),
         onDragLeave: () => isOver.set(false),
         onDrop: ({ source }) => {
-          isOver.set(false)
-          isDraggingFiles.set(false)
+          // batch() so onDrop subscribers don't get notified twice
+          // (isOver + isDraggingFiles) per file-drop event.
+          batch(() => {
+            isOver.set(false)
+            isDraggingFiles.set(false)
+          })
 
           let files = getFiles({ source })
 

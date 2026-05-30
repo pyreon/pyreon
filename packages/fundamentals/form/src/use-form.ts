@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { computed, effect, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import type { FieldDefinition, InferFieldValues } from './field'
 import { isFieldDefinition } from './field'
 import type {
@@ -526,13 +526,18 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       e.preventDefault()
     }
 
-    submitError.set(undefined)
-    submitCount.update((n) => n + 1)
-
-    // Mark all fields as touched
-    for (const [name] of fieldEntries) {
-      fields[name].touched.set(true)
-    }
+    // Batch the submit-prep writes: submitError + submitCount + every
+    // field.touched. Without batch(), each field's touched.set(true)
+    // notifies every subscriber to that field separately — N field
+    // panels re-render N times each. Batching collapses to a single
+    // effect flush after every signal has been updated.
+    batch(() => {
+      submitError.set(undefined)
+      submitCount.update((n) => n + 1)
+      for (const [name] of fieldEntries) {
+        fields[name].touched.set(true)
+      }
+    })
 
     const valid = await validate()
     if (!valid) return
@@ -550,11 +555,16 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   const reset = () => {
     clearAllTimers()
-    for (const [name] of fieldEntries) {
-      fields[name].reset()
-    }
-    submitCount.set(0)
-    submitError.set(undefined)
+    // Batch the reset writes: every field's reset() touches multiple
+    // signals (value/error/touched/dirty), then submitCount + submitError.
+    // Without batch(), N-field form fires 4N+2 separate notify cycles.
+    batch(() => {
+      for (const [name] of fieldEntries) {
+        fields[name].reset()
+      }
+      submitCount.set(0)
+      submitError.set(undefined)
+    })
   }
 
   const setFieldValue = <K extends keyof TValues>(field: K, value: TValues[K]) => {
