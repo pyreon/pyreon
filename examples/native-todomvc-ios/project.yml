@@ -84,3 +84,57 @@ targets:
           SWIFT_OPTIMIZATION_LEVEL: -Onone
         Release:
           SWIFT_OPTIMIZATION_LEVEL: -O
+
+  # Phase-2.2 launch-and-render smoke. Asserts the app boots on the
+  # iOS Simulator and the root view (`accessibilityIdentifier=todo-app`,
+  # emitted from `data-testid` on the canonical TodoApp source) renders.
+  # See `iosUITests/PyreonTodoMVCUITests.swift`.
+  PyreonTodoMVCUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: iosUITests
+        type: group
+
+    # Depends on the app target so `xcodebuild test` builds + installs
+    # PyreonTodoMVC first, then runs the UITest bundle against it.
+    dependencies:
+      - target: PyreonTodoMVC
+
+    settings:
+      base:
+        # Distinct bundle id (Apple's rule: every target needs its own).
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTodoMVCUITests
+        # `TEST_TARGET_NAME` tells xcodebuild which app this UITest
+        # bundle exercises (mirror of Xcode's "Target Application"
+        # dropdown). Without it, `xcodebuild test` reports
+        # `Testing failed: PyreonTodoMVCUITests encountered an error
+        # (Failed to determine application path)`.
+        TEST_TARGET_NAME: PyreonTodoMVC
+        # Simulator runs need no provisioning profile — same setting
+        # the BUILD step in native-device.yml passes via the CLI.
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: '5.0'
+
+# Explicit scheme so `xcodebuild -scheme PyreonTodoMVC test` (the
+# command run by the workflow's test step) reliably picks up the
+# UITest target. Without this, xcodegen auto-generates schemes per
+# target — `xcodebuild test -scheme PyreonTodoMVC` would build only
+# the app target and skip the UITest. The `gatherCoverageData: false`
+# keeps the gate fast (coverage hooks aren't useful for a smoke).
+schemes:
+  PyreonTodoMVC:
+    build:
+      targets:
+        PyreonTodoMVC: all
+        PyreonTodoMVCUITests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - PyreonTodoMVCUITests
+    run:
+      config: Debug
