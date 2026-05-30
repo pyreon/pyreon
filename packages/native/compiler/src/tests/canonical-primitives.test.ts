@@ -449,6 +449,26 @@ describe('Phase B — <Field> emit', () => {
     expect(out).toContain('keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)')
     expect(out).toContain('keyboardActions = KeyboardActions(onDone =')
   })
+
+  // Phase-1 verification gap: the bare signal-bound shape (no
+  // onChangeText) used to silently fall through to `emitKotlinGeneric`
+  // → literal `Field(value = sig)`, which is not a valid Compose
+  // composable. Swift's `emitSwiftField` already auto-binds via SwiftUI's
+  // `$sig` for the same shape; these tests lock in Kotlin parity.
+  // Bisect-verified: reverting the `onChangeText`-optional branch in
+  // emitKotlinField produces the literal `Field(value = draft)` and the
+  // Kotlin assertion fails.
+  it('Kotlin: bare <Field value={draft}/> (no onChangeText) auto-binds via { draft = it } (Swift parity)', () => {
+    const out = tx(`<Field value={draft}/>`, 'kotlin')
+    expect(out).toContain('TextField(value = draft, onValueChange = { draft = it })')
+    expect(out).not.toContain('Field(value = draft)') // no literal-tag fall-through
+  })
+
+  it('Swift: bare <Field value={draft}/> (no onChangeText) auto-binds via SwiftUI $draft', () => {
+    const out = tx(`<Field value={draft}/>`, 'swift')
+    expect(out).toContain('TextField("", text: $draft)')
+    expect(out).not.toContain('Field(value: draft)') // no literal-tag fall-through
+  })
 })
 
 describe('Phase B — <Button onPress> (canonical event name)', () => {

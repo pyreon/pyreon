@@ -1685,22 +1685,36 @@ function emitKotlinField(
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
+  // Canonical Pyreon `<Field>` event is `onChangeText` (event name
+  // `'changetext'`) — distinct from web's overloaded `onChange`.
+  // G1 contract: when present, the user's arrow callback is threaded
+  // verbatim with arrow-param preservation, producing the idiomatic
+  // shape `onValueChange = { t -> sig = t }` (NOT auto-derived).
   const onChangeText = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'changetext',
   )
+  // Signal-bound `value` is the contract that distinguishes the
+  // specialized emit from the generic fallback. `onChangeText` is
+  // OPTIONAL: when absent, auto-bind via `{ sig = it }` (mirrors
+  // Swift's `emitSwiftField`, which similarly auto-binds via SwiftUI's
+  // `$sig` binding). Previously the function required `onChangeText`,
+  // making the bare `<Field value={sig}/>` shape fall through to
+  // `emitKotlinGeneric` and emit a literal `Field(value = sig)` — no
+  // such Compose composable, so the generated code was unbuildable.
   if (
     !valueAttr ||
     valueAttr.value.kind !== 'identifier' ||
-    !_signalNames.has(valueAttr.value.name) ||
-    !onChangeText
+    !_signalNames.has(valueAttr.value.name)
   ) {
     return emitKotlinGeneric(e, indent)
   }
   const sig = kotlinIdent(valueAttr.value.name)
-  const onChange = emitKotlinAction(onChangeText.handler, indent + 2)
+  const onValueChange = onChangeText
+    ? emitKotlinAction(onChangeText.handler, indent + 2)
+    : `{ ${sig} = it }`
 
-  const args: string[] = [`value = ${sig}`, `onValueChange = ${onChange}`]
+  const args: string[] = [`value = ${sig}`, `onValueChange = ${onValueChange}`]
 
   const placeholderAttr = readStaticAttrKotlin(e, 'placeholder')
   if (typeof placeholderAttr === 'string') {
