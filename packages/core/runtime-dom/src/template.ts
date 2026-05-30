@@ -127,7 +127,7 @@ export function _bindDirect(
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
 //
-// LRU bound (audit bug #5): typical apps emit a small bounded set of unique
+// LRU bound: typical apps emit a small bounded set of unique
 // HTML strings (one per JSX element tree the compiler hoists), so the cache
 // stays in the dozens-to-hundreds in practice. But an app that constructs
 // JSX from user input (or compiles many large dynamic templates) could grow
@@ -389,7 +389,7 @@ export function _rsCollapseDyn(
  * gap (`.claude/plans/open-work-2026-q3.md` → #1 dynamic-prop bucket
  * = 15.4% of all real-corpus sites; the strict no-handler subset was
  * only 0.2% measured; this helper unlocks the handler-combined slice
- * that was bailed by `tryDynamicCollapse` in PR #767 by design).
+ * that `tryDynamicCollapse` bails by design).
  *
  * Combines {@link _rsCollapseDyn}'s value-major class dispatch with
  * {@link _rsCollapseH}'s handler re-attachment. Handlers are orthogonal
