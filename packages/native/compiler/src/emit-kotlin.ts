@@ -388,7 +388,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const typeStr = kotlinType(d.type, ctx, d.name)
 
     // Phase 2.5: non-native storage types use rememberPyreonStorage<T>
-    // from @pyreon/native-runtime-kotlin (PR #887) — collapses the
+    // from @pyreon/native-runtime-kotlin — collapses the
     // previous 4-line Saver boilerplate to one line at the call site.
     // Same MutableState<T> projection, same `by` delegate, but with
     // a pluggable backend (InMemoryBackend default, DataStoreBackend
@@ -1744,7 +1744,7 @@ function emitKotlinField(
  * `onCheckedChange` callback explicitly because Kotlin has no
  * property-wrapper bindings — the handler must write back to the
  * signal manually. The user-supplied `onChange` is threaded through
- * with arrow-param preservation (#920).
+ * with arrow-param preservation.
  */
 function emitKotlinToggle(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,

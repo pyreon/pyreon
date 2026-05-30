@@ -3,7 +3,7 @@
 //   - Swift: a `ViewModifier` struct attached via `.modifier(...)`
 //   - Kotlin: a `Modifier` chain attached via `.modifier(...)`
 //
-// Per the PMTC chosen-direction plan (#764) §"Same styles":
+// Per the PMTC chosen-direction plan §"Same styles":
 // `styled()` is a description-of-styling — the IR captures the
 // declarative shape; per-target emitters render it idiomatically.
 //

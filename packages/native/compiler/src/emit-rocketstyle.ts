@@ -3,7 +3,7 @@
 // per-target idiomatic ViewModifier (Swift) / Modifier function
 // (Kotlin) parameterised by the live dimension values.
 //
-// Per the PMTC chosen-direction plan (#764) §"Same dimensions":
+// Per the PMTC chosen-direction plan §"Same dimensions":
 // rocketstyle's compile-time-collapsible matrix IS the load-bearing
 // shape that justifies a native target — every other framework can
 // already do styled(); none has the multi-dimensional collapse.
