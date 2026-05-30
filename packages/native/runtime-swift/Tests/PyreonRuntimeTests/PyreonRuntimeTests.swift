@@ -488,4 +488,71 @@ final class PyreonRuntimeTests: XCTestCase {
         net.stop() // must not crash
         XCTAssertTrue(net.isOnline)
     }
+
+    // MARK: - PyreonClipboard
+    //
+    // Round-2 audit fix: PyreonClipboard.swift had ZERO test coverage
+    // despite shipping in #1066 (PMTC emit) + had a real bug — it
+    // imported UIKit unconditionally, breaking `swift build` on
+    // macOS (Package.swift declares both iOS 17 + macOS 14). Same PR
+    // adds the `#if canImport(UIKit)` / AppKit fallback that makes
+    // the build cross-platform. These tests structurally guarantee
+    // both targets stay buildable AND lock the public state-machine
+    // surface (`copied` / `copy` / `reset`).
+
+    /// Fresh clipboard reports `copied == false`.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonClipboardInitialState() throws {
+        let cb = PyreonClipboard()
+        XCTAssertFalse(cb.copied)
+    }
+
+    /// `copy(_:)` synchronously flips `copied = true`. The 2-second
+    /// auto-reset is asynchronous (Task-based) and not exercised
+    /// here — that would need `XCTestExpectation` waiting for the
+    /// Task, making the test slow + flaky. The reset-on-explicit-call
+    /// path below verifies the state machine without the async
+    /// dependency.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonClipboardCopySetsCopiedTrue() throws {
+        let cb = PyreonClipboard()
+        cb.copy("hi")
+        XCTAssertTrue(cb.copied)
+    }
+
+    /// `reset()` returns `copied` to false + cancels any pending
+    /// auto-reset Task. Idempotent (safe to call multiple times).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonClipboardResetClearsCopied() throws {
+        let cb = PyreonClipboard()
+        cb.copy("hi")
+        XCTAssertTrue(cb.copied)
+        cb.reset()
+        XCTAssertFalse(cb.copied)
+        cb.reset()
+        XCTAssertFalse(cb.copied)
+    }
+
+    /// Back-to-back copies keep `copied = true` (the second copy
+    /// cancels the first reset Task, then arms its own). Real apps
+    /// rely on this — quick double-copy must not flicker the
+    /// "Copied!" feedback off.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonClipboardBackToBackCopyKeepsCopiedTrue() throws {
+        let cb = PyreonClipboard()
+        cb.copy("first")
+        cb.copy("second")
+        XCTAssertTrue(cb.copied)
+    }
+
+    /// Public initializer takes no args (Swift's shape differs from
+    /// Kotlin's `PyreonClipboard(context, scope)` intentionally:
+    /// UIPasteboard.general / NSPasteboard.general is a process
+    /// singleton, so no context-injection is needed on Apple
+    /// platforms). Structural lock against a future signature drift.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonClipboardNoArgInit() throws {
+        let cb = PyreonClipboard()
+        XCTAssertNotNil(cb)
+    }
 }
