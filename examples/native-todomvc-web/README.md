@@ -25,16 +25,19 @@ bun run preview  # serve dist/ via vite preview
 | File | Purpose |
 |---|---|
 | `index.html` | Bootstrap shell — mounts `#app` + loads `entry-client.tsx`. |
-| `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call. |
-| `src/TodoApp.tsx` | TodoMVC implementation using canonical `@pyreon/primitives` JSX vocab + explicit imports. |
+| `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call — `import { TodoApp } from '../../native-todomvc-ios/src/TodoApp'`. |
 
-## Why a separate `TodoApp.tsx` vs the literal same file as native?
+The canonical source lives at [`../native-todomvc-ios/src/TodoApp.tsx`](../native-todomvc-ios/src/TodoApp.tsx) — **the same file** Android reads via `scripts/build.sh` and iOS reads via xcodegen. Three targets, one `.tsx`. Web has no local copy; `entry-client.tsx` resolves it by relative-path import.
 
-The canonical primitive vocabulary (`<Stack>`, `<Inline>`, `<Field>`, `<Button>`, `<Press>`, `<Text>` from `@pyreon/primitives`) needs to be **in lexical scope** for the web TypeScript build — JSX bare references like `<Stack>` compile to `h(Stack, ...)` which requires the symbol resolvable. The native sources skip these imports because the PMTC compiler resolves bare JSX tags via its `canonical-primitives.ts` table at compile time and emits SwiftUI/Kotlin directly; the imports would be no-ops there (treated as type-only).
+## Shared-source contract (Phase E3 — landed)
 
-The native sources kept zero `@pyreon/primitives` imports to keep their surface minimal. The web sibling has near-identical TodoApp.tsx logic with explicit imports added at the top.
+`src/entry-client.tsx` imports `TodoApp` from `../../native-todomvc-ios/src/TodoApp` — the SAME `.tsx` file Android compiles. This is "the literal same file across all three targets" the PMTC arc claims:
 
-**The "literally same .tsx file across all three targets" claim is a Phase D2 follow-up** — it requires a `@pyreon/vite-plugin` JSX-auto-import pass that injects `import { Stack, ... } from '@pyreon/primitives'` for every bare canonical-tag reference. Until that ships, web has its own copy with the imports added. The logic is identical; the only delta is the import header.
+- **Web** — Vite + `@pyreon/runtime-dom` resolves the import + the canonical primitives (`<Stack>`, `<Field>`, etc.) auto-import from `@pyreon/primitives` (web runtimes).
+- **iOS** — `pyreon-native build --target=ios` compiles the same `.tsx` to SwiftUI via PMTC's `canonical-primitives.ts` table (no `import` lines needed; the compiler resolves bare JSX tags).
+- **Android** — same `.tsx`, same compile pass, `--target=android` emits to Compose.
+
+Verified at `examples/native-todomvc-android/scripts/build.sh` (compiles `../../native-todomvc-ios/src/TodoApp.tsx`) + the verify-modes `native-todomvc-web × spa` cell (proves the web build emits expected HTML from the import).
 
 ## Canonical `<Toggle>` — semantic split across platforms
 
@@ -49,7 +52,6 @@ The non-signal value path (PR #970) routes through SwiftUI's `Binding(get:set:)`
 ## What's NOT in Phase D
 
 - **Real-Chromium e2e gate** (Playwright spec asserting click → DOM updates). Verify-modes catches the build emits content; the runtime click contract is a follow-up.
-- **JSX-auto-import vite plugin** that would let the web sibling share the literal same `.tsx` file as native. Documented above.
 - **Native counter-ios `<Press>` migration** — the existing native counter scaffold doesn't use canonical primitives yet.
 
 ## Privacy
