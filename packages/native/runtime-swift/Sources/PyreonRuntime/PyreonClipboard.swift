@@ -28,7 +28,25 @@
 
 import Foundation
 import Observation
+
+// Round-2 audit fix: PyreonClipboard.swift used to import UIKit
+// unconditionally, but the SPM Package.swift declares BOTH iOS 17
+// AND macOS 14 platforms. UIKit isn't on macOS — `swift build`
+// failed with "no such module 'UIKit'" on every macOS CI / local
+// `swift test`. The other 8 PyreonRuntime files use only
+// Foundation + SwiftUI + Observation + Network (all cross-platform);
+// Clipboard was the lone offender.
+//
+// Conditional import: keep iOS UIPasteboard; macOS falls back to
+// AppKit's NSPasteboard (the equivalent system clipboard). The
+// reactive state machine (`copied` flag + reset Task) is fully
+// cross-platform — only the actual write needs to branch on the
+// host UI framework.
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Observable reactive clipboard wrapper — the SwiftUI half of `useClipboard`.
 @available(iOS 17.0, macOS 14.0, *)
@@ -45,8 +63,21 @@ public final class PyreonClipboard {
     /// Write `text` to the system clipboard and flip `copied` to true
     /// for ~2s. Cancels any pending reset from a prior copy so the
     /// flag stays true for the full 2s window after the LATEST copy.
+    ///
+    /// Per-platform clipboard backing:
+    /// - iOS / iPadOS / visionOS / Catalyst → `UIPasteboard.general`
+    /// - macOS (AppKit) → `NSPasteboard.general` (clears then sets the
+    ///   .string type — the standard macOS clipboard convention)
+    /// - other targets (Linux Foundation, etc.) → no-op for the
+    ///   actual write; the `copied` state flip still fires so views
+    ///   bound to it behave consistently (tests run without crashing).
     public func copy(_ text: String) {
+        #if canImport(UIKit)
         UIPasteboard.general.string = text
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
         copied = true
         resetTask?.cancel()
         resetTask = Task { [weak self] in
