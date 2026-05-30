@@ -34,9 +34,9 @@ let batchDepth = 0
 //     finished propagating. Effect read stale values; subsequent cascade
 //     re-enqueues were dropped by Set.add idempotency.
 //   - Splitting recomputes from effects fixes this: all computed recomputes
-//     settle before any effect runs. The cascade-asymmetry contract from
-//     PR #381 is preserved (effects still fire once per batched change),
-//     AND deep-cascade correctness is added (effects always read settled
+//     settle before any effect runs. The cascade-asymmetry contract is
+//     preserved (effects still fire once per batched change), AND
+//     deep-cascade correctness is added (effects always read settled
 //     values).
 //   - Multi-pass effect drain unblocks ErrorBoundary's "re-fire after
 //     dispatching from inside own run" pattern without breaking the
@@ -142,12 +142,12 @@ export function batch(fn: () => void): void {
           }
         }
       } finally {
-        // Clear ALWAYS — even if a notify threw mid-iteration. Without this,
-        // the unflushed remainder leaks into the next batch and refires
-        // (audit bug #19). Effects wrap their callbacks in try/catch
-        // internally so this is rarely reachable in practice, but raw
-        // signal subscribers (signal.subscribe) and lower-level consumers
-        // can throw straight through, and a future refactor that swallows
+        // Clear ALWAYS — even if a notify threw mid-iteration. Without
+        // this, the unflushed remainder leaks into the next batch and
+        // refires. Effects wrap their callbacks in try/catch internally
+        // so this is rarely reachable in practice, but raw signal
+        // subscribers (signal.subscribe) and lower-level consumers can
+        // throw straight through, and a future refactor that swallows
         // less aggressively would silently regress without this guard.
         pendingRecomputes.clear()
         pendingEffects.clear()
@@ -161,11 +161,6 @@ export function batch(fn: () => void): void {
 
 export function isBatching(): boolean {
   return batchDepth > 0
-}
-
-export function enquePendingNotificationDeprecated(): void {
-  // Kept as a comment placeholder — actual export is below. (Empty body to
-  // keep this file's exports list stable across the refactor.)
 }
 
 export function enqueuePendingNotification(notify: () => void): void {
