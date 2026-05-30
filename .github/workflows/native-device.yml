@@ -151,3 +151,42 @@ jobs:
       - name: Build debug APK
         working-directory: examples/native-todomvc-android
         run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Enable KVM for emulator
+        # `reactivecircus/android-emulator-runner` requires KVM
+        # acceleration. ubuntu-latest GitHub-hosted runners support
+        # nested virtualization but `/dev/kvm` needs explicit user
+        # permissions to be readable by the runner user.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Compose instrumented test on Android Emulator (Phase 2.2 launch-and-render smoke)
+        # The Phase-2.2 counterpart to the iOS XCUITest step: BOOT an
+        # Android Emulator, install the app, run the Compose test
+        # asserting the root composable (testTag=todo-app, emitted from
+        # the canonical `data-testid` in the SHARED src/TodoApp.tsx)
+        # renders.
+        #
+        # `reactivecircus/android-emulator-runner` is the standard GH
+        # Actions emulator-runner. API 33 + google_apis target + x86_64
+        # is the canonical fast-boot combination (default-image,
+        # Google-suggested, no Play services overhead). `disable-animations`
+        # cuts test-flake from transitional animations interfering with
+        # the assertion timing.
+        #
+        # `connectedCheck` (NOT `connectedAndroidTest`) runs every
+        # connected-device test task — both library unit tests and
+        # instrumented tests — and is the conventional umbrella task
+        # for CI.
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            cd examples/native-todomvc-android
+            gradle connectedCheck --no-daemon --stacktrace
