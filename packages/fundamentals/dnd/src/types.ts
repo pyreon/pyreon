@@ -73,7 +73,7 @@ export interface UseSortableOptions<T> {
    * from list A onto list B fire). When omitted (the default), each
    * sortable is a private universe — drops from other sortables are
    * rejected. Use `groupId` for Trello / Notion / Linear board layouts
-   * (W18 from kanban audit).
+   * (W18).
    *
    * The callback `onCrossListDrop` is invoked on the SOURCE sortable
    * when an item is dragged out to a sibling group sortable. Wire it

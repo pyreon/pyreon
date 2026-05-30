@@ -48,7 +48,7 @@ function renderNode(node: DocNode): string {
   switch (node.type) {
     case 'document': {
       // Document metadata is populated from DocDocument's
-      // _documentProps via extractDocumentTree (PR #197 D1).
+      // _documentProps via extractDocumentTree.
       // Title goes in <title>, author goes in
       // <meta name="author">, subject goes in <meta name="description">
       // (the closest semantic HTML equivalent — DOCX's "subject"

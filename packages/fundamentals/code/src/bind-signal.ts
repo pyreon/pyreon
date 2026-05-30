@@ -91,10 +91,9 @@ export interface EditorBinding {
  * })
  * ```
  *
- * The pattern was hand-rolled in PR #191 (resume builder), PR #192
- * (flow editor), and would have been needed in every future
- * consumer that wanted bidirectional editor binding. The helper
- * compresses it to:
+ * Pre-helper, the pattern was hand-rolled in every consumer that
+ * wanted bidirectional editor binding (resume builder, flow editor,
+ * …). The helper compresses it to:
  *
  * ```ts
  * const binding = bindEditorToSignal({

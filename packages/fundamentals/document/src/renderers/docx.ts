@@ -550,8 +550,8 @@ export const docxRenderer: DocumentRenderer = {
 
     // Document metadata — `node` is the root document DocNode and
     // its props were populated by extractDocumentTree from
-    // DocDocument's `_documentProps` (which now supports both
-    // plain strings and reactive accessors via PR #197 D1).
+    // DocDocument's `_documentProps` (supports both plain strings
+    // and reactive accessors).
     //
     // The `docx` library writes these to the .docx file's
     // `docProps/core.xml` metadata sheet (the OOXML CoreProperties

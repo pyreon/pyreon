@@ -14,9 +14,8 @@ import type { signal } from '@pyreon/reactivity'
  *   - Forwards the internal `_v` field via getter so the compiler's
  *     `_bindText(wrapper, textNode)` fast path reads the live value.
  *     Without this, the binding writes `String(undefined)` → `''` on
- *     initial render AND every subscriber notification (the bug class
- *     fixed in PR #546 and now caught by the
- *     `pyreon/storage-signal-v-forwarding` lint rule).
+ *     initial render AND every subscriber notification — the bug class
+ *     caught by the `pyreon/storage-signal-v-forwarding` lint rule.
  *
  * The wrapper is RETURNED as `signal()` minus the methods callers
  * typically OVERRIDE (`.set`, `.update`, `.remove`, plus any factory-

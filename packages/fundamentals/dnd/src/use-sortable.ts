@@ -18,7 +18,7 @@ let _sortableCounter = 0
 
 // Module-level registry of live sortable instances — used to dispatch
 // cross-list drop notifications from the destination back to the source
-// (W18 from kanban audit). Keyed by sortableId.
+// (W18). Keyed by sortableId.
 const _sortableRegistry = new Map<
   string,
   {
@@ -37,7 +37,7 @@ const _sortableRegistry = new Map<
  * - Axis constraint (vertical/horizontal)
  * - Keyboard reordering (Alt+Arrow keys)
  * - Optional cross-list `groupId` for Trello/Notion/Linear board layouts
- *   (W18 from kanban audit) — share the same `groupId` between two
+ *   (W18) — share the same `groupId` between two
  *   sortable instances and items can be dragged between them. The
  *   source's `onCrossListDrop(item)` removes; the destination's
  *   `onCrossListReceive(item, index)` inserts.

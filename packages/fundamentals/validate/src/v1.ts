@@ -2,9 +2,9 @@
  * `@pyreon/validate` v1 validator — chainable + function-comp namespace.
  *
  * This is the new validator runtime. The DX layer (`withField`,
- * `parseReactive`, `formatErrors`) from PR #952 remains unchanged in
- * the same package — Pyreon-validate schemas implement Standard Schema
- * natively, so the DX helpers work on them directly.
+ * `parseReactive`, `formatErrors`) lives in the same package — Pyreon-
+ * validate schemas implement Standard Schema natively, so the DX
+ * helpers work on them directly.
  *
  * v1 surface: primitives (string/number/boolean/literal/enum) +
  * composition (object/array) + modifiers (optional/nullable/default/

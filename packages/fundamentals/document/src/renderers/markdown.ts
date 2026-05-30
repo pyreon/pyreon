@@ -33,7 +33,7 @@ function renderNode(node: DocNode): string {
   switch (node.type) {
     case 'document': {
       // Document metadata is populated from DocDocument's
-      // _documentProps via extractDocumentTree (PR #197 D1).
+      // _documentProps via extractDocumentTree.
       // Markdown has no native metadata format, but YAML
       // frontmatter is the convention used by Jekyll, Hugo,
       // Astro, MDX, Pandoc, etc. — emit it when ANY metadata
