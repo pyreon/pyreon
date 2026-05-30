@@ -448,12 +448,67 @@ describe('JSX transform — edge cases', () => {
     expect(t('<div>{items().map(x => x)}</div>')).toContain('() =>')
   })
 
-  test('does not emit _bindText for method calls (preserves this context)', () => {
-    // value.toLocaleString() — property access must NOT use _bindText
-    // because detaching the method loses `this` context
+  test('emits _bindText with safe `caller` 3rd arg for member-expression callees', () => {
+    // Member-expression callee uses _bindText fast path (matches the
+    // signal-like shape, e.g. `row.label()`). The 3-arg form passes an
+    // explicit caller closure that the runtime's slow path uses to
+    // preserve `this` when source turns out to be a method.
     const result = t('<div><p>{value.toLocaleString()}</p></div>')
-    expect(result).not.toContain('_bindText(value.toLocaleString,')
-    expect(result).toContain('_bind')
+    expect(result).toContain('_bindText(value.toLocaleString,')
+    expect(result).toContain(', () => value.toLocaleString())')
+  })
+
+  test('member-expression _bindText: For-row idiom row.label() emits fast path with caller', () => {
+    // Canonical For-row idiom — matches hand-tuned pyreon-tpl.ts bench template.
+    const result = t('const a = () => <div>{row.label()}</div>')
+    expect(result).toContain('_bindText(row.label,')
+    expect(result).toContain(', () => row.label())')
+  })
+
+  test('member-expression _bindText: nested chain data.user.name() emits fast path', () => {
+    const result = t('const a = () => <div>{data.user.name()}</div>')
+    expect(result).toContain('_bindText(data.user.name,')
+    expect(result).toContain(', () => data.user.name())')
+  })
+
+  test('member-expression _bindDirect: attribute binding row.cls() uses fast path with caller', () => {
+    // Element must have children for the compiler to emit _tpl + per-prop
+    // bindings (self-closing elements take a different shorter path).
+    const result = t('const a = () => <div class={row.cls()}>x</div>')
+    expect(result).toContain('_bindDirect(row.cls,')
+    expect(result).toContain(', () => row.cls())')
+  })
+
+  test('bare-identifier _bindText: regression — count() emits 2-arg form (no caller)', () => {
+    // Existing fast path; caller would be redundant alloc for the signal case.
+    const result = t('const count = signal(0); const a = () => <div>{count()}</div>')
+    expect(result).toMatch(/_bindText\(count, __t\d+\)/)
+    expect(result).not.toContain('() => count())')
+  })
+
+  test('member-expression _bindText: bails on computed access row[key]()', () => {
+    // Computed access means the key is dynamic — fast path is unsafe (the
+    // reference could be different each evaluation). Fall back to _bind.
+    const result = t('const a = () => <div>{row[key]()}</div>')
+    expect(result).not.toContain('_bindText(')
+    expect(result).toContain('_bind(')
+  })
+
+  test('member-expression _bindText: bails when root identifier IS a tracked signal (count.peek())', () => {
+    // count.peek() is intentionally untracked; emitting _bindText would
+    // create a tracking subscription contradicting user intent.
+    const result = t('const count = signal(0); const a = () => <div>{count.peek()}</div>')
+    expect(result).not.toContain('_bindText(count.peek,')
+    expect(result).toContain('_bind(')
+  })
+
+  test('member-expression _bindText: bails on chained call count().toLocaleString()', () => {
+    // The outer callee is a MemberExpression whose `object` is a CallExpression
+    // (count()), not a chain of identifiers — chain walk hits a non-Identifier
+    // and bails. Falls back to _bind so the chain re-evaluates each fire.
+    const result = t('const count = signal(0); const a = () => <div>{() => count().toLocaleString()}</div>')
+    expect(result).not.toContain('_bindText(')
+    expect(result).toContain('_bind(')
   })
 
   test('toLocaleString on signal read preserves this context', () => {

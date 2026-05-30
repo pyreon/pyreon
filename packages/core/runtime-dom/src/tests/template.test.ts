@@ -87,6 +87,50 @@ describe('_bindText', () => {
     expect(node.data).toBe('x')
   })
 
+  test('caller arg preserves `this` for non-signal method sources (slow path)', () => {
+    // Compiler-emitted shape for `<div>{obj.method()}</div>` where `obj` is
+    // not a tracked signal: _bindText(obj.method, t, () => obj.method()).
+    // The slow path must call through the caller closure, NOT the bare
+    // source — otherwise `this` is lost. Without the caller arg, `fn()`
+    // would invoke obj.method as a bare function and lose access to obj.
+    const obj = {
+      label: 'hello',
+      describe() {
+        // Method using `this` — would break if called bare via `_bindText(obj.describe, ...)`.
+        return this.label
+      },
+    }
+    const node = document.createTextNode('')
+    // Source = bare method reference (no .direct → slow path); caller = thunk preserves `this`.
+    const dispose = _bindText(
+      obj.describe as unknown as Parameters<typeof _bindText>[0],
+      node,
+      () => obj.describe(),
+    )
+    expect(node.data).toBe('hello')
+    dispose()
+  })
+
+  test('caller arg ignored on fast path (signal source)', () => {
+    // When source IS a signal, .direct fast path fires and caller is ignored
+    // — proven by the source._v read producing the right value without ever
+    // invoking caller. (Caller is provided but should never run.)
+    const s = signal('signal-value')
+    const node = document.createTextNode('')
+    let callerInvoked = false
+    const caller = () => {
+      callerInvoked = true
+      return s()
+    }
+    const dispose = _bindText(s, node, caller)
+    expect(node.data).toBe('signal-value')
+    expect(callerInvoked).toBe(false)
+    s.set('updated')
+    expect(node.data).toBe('updated')
+    expect(callerInvoked).toBe(false)
+    dispose()
+  })
+
   test('null value renders as empty string', () => {
     const s = signal<string | null>('text')
     const node = document.createTextNode('')
