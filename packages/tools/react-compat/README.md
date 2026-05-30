@@ -114,6 +114,25 @@ export default { plugins: [pyreon({ compat: 'react' })] }
 - **The DOM is fully replaced on re-render in the compat layer** — there's no VDOM diffing. Pre-captured `elementHandle()` references in tests will point at detached nodes; always re-query the DOM after a state change.
 - **`version`** reports `19.0.0-pyreon` — code that gates on React 19 keeps working; code that asserts equality won't match.
 
+## Third-party React hook library compatibility
+
+`@pyreon/react-compat` re-implements React's PUBLIC hook surface (`useState`, `useEffect`, `useReducer`, `useMemo`, `useRef`, etc.). Third-party hook libraries that build on these PUBLIC hooks generally work.
+
+**What works:**
+- Libraries that compose only `useState` + `useEffect` + `useReducer` + `useMemo` + `useRef` + `useCallback` — e.g. ad-hoc form hooks, simple input controllers, debounce/throttle hooks.
+- Libraries with a vanilla / framework-agnostic core: `zustand/vanilla`, `xstate`, `nanostores` — call them imperatively from a Pyreon component body, subscribe via `effect()` or `useEffect`.
+- Libraries that use `useSyncExternalStore` for SSR-safe external-store subscription (Pyreon's react-compat ships `useSyncExternalStore` — verify on a per-library basis).
+
+**What's known to NOT work (and why):**
+- **`zustand/react` `useStore`** — relies on React's internal scheduler + concurrent-mode primitives that Pyreon's compat layer doesn't shim. Use `zustand/vanilla`'s `createStore` directly and subscribe via `effect()` instead.
+- **`react-aria` hooks** — many depend on React's `useId` semantics + React-internal portal context that don't map 1:1. Some primitives work; the heavier composables (`useOverlay`, `useFocusScope`) often don't.
+- **`@xyflow/react`** — uses React-internal store wiring (`useReactFlow`, `useStore` from `zustand/react`) that doesn't survive the compat boundary. Use the framework-agnostic `@xyflow/svelte` patterns + Pyreon-native primitives instead, or wait for a `@pyreon/flow` adapter (which exists but isn't 1:1).
+- **`virtua` and other virtual-list libs that subscribe via `useSyncExternalStore` to a store updated by `useLayoutEffect`** — Pyreon's layout-effect timing isn't identical to React's commit phase; observable timing differences can break the scroll-state contract.
+
+**Rule of thumb:** if the library only uses React's PUBLIC hooks (no `useSyncExternalStore` + custom-scheduler tricks, no React internals), it has a reasonable chance of working. If it has a `/vanilla` or `/core` framework-agnostic entry, prefer that — it's the supported integration path for any non-React reactive framework.
+
+If you hit a library that should work but doesn't, file an issue with a minimal repro — many gaps are fixable by adding the matching shim to `@pyreon/react-compat`.
+
 ## Documentation
 
 Full docs: [docs.pyreon.dev/docs/react-compat](https://docs.pyreon.dev/docs/react-compat) (or `docs/docs/react-compat.md` in this repo).

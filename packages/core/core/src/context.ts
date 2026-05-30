@@ -32,6 +32,40 @@ export interface ReactiveContext<T> extends Context<() => T> {
   readonly [REACTIVE_BRAND]: T
 }
 
+/**
+ * Create a context for prop-drilling-free value sharing down the component tree.
+ *
+ * **⚠ FOOTGUN: Don't destructure getter-backed values from the context.**
+ *
+ * Many Pyreon ecosystem libraries (rocketstyle, ui-core, theme providers,
+ * custom providers built with `signal` + plain objects) pass context values
+ * whose properties are GETTERS — `ctx.searchValue` fires the getter and
+ * returns the live signal value. Destructuring (`const { searchValue } = ctx`)
+ * calls the getter ONCE and freezes the resolved value into a plain variable
+ * — the binding is no longer reactive, and downstream reads see stale data.
+ *
+ * **Wrong (freezes the value):**
+ * ```ts
+ * const { searchValue } = useContext(SearchCtx)
+ * return <div>{searchValue}</div>  // never updates
+ * ```
+ *
+ * **Right (keep the reference, access lazily):**
+ * ```ts
+ * const ctx = useContext(SearchCtx)
+ * return <div>{ctx.searchValue}</div>  // re-reads the getter on each render
+ * ```
+ *
+ * **Better — use `createReactiveContext`** when the value is meant to change.
+ * It returns `() => T`, forcing consumers to call the accessor and making
+ * the destructure trap structurally impossible.
+ *
+ * @example
+ * const ThemeCtx = createContext<{ get mode(): 'light' | 'dark' }>({ get mode() { return 'light' } })
+ * // Inside a component:
+ * const ctx = useContext(ThemeCtx)        // ✓ reactive
+ * const { mode } = useContext(ThemeCtx)   // ✗ frozen — destructure trap
+ */
 export function createContext<T>(defaultValue: T): Context<T> {
   return { id: Symbol('PyreonContext'), defaultValue }
 }
@@ -158,6 +192,42 @@ export function useContext<T>(context: Context<T>): T {
  * Provide a context value for the current component's subtree.
  * Must be called during component setup (like onMount/onUnmount).
  * Automatically cleaned up when the component unmounts.
+ *
+ * **Migration from `<Ctx.Provider value={…}>` (removed in 0.25):**
+ *
+ * Pyreon does NOT ship a `<Context.Provider>` JSX shim. The replacement
+ * is to call `provide()` inside a Provider component's setup. The cleanup
+ * is automatic (registered via `onUnmount(removeContextFrame(frame))`),
+ * but the semantics differ from React in two important ways:
+ *
+ * 1. **Setup runs once.** Pyreon components don't re-run on prop changes,
+ *    so `provide(ctx, props.value)` captures the value at mount. For
+ *    reactive context values, use `createReactiveContext` + pass an
+ *    accessor: `provide(ReactiveCtx, () => signal())`.
+ *
+ * 2. **No JSX shim is intentional.** Adding `<Ctx.Provider>` would lead
+ *    consumers to expect React-identical behavior (re-render on prop
+ *    change, value-prop being a plain value). The explicit `provide()`
+ *    call makes the setup-time semantics visible.
+ *
+ * ```ts
+ * // ✗ Old (0.24 and earlier — no longer works):
+ * // <ThemeCtx.Provider value={theme}>{children}</ThemeCtx.Provider>
+ *
+ * // ✓ New (0.25+) — static value:
+ * function ThemeProvider({ theme, children }: { theme: Theme; children: VNodeChild }) {
+ *   provide(ThemeCtx, theme)
+ *   return children
+ * }
+ *
+ * // ✓ New (0.25+) — reactive value:
+ * const ThemeCtx = createReactiveContext<Theme>(defaultTheme)
+ * function ThemeProvider({ children }: { children: VNodeChild }) {
+ *   const themeSignal = signal(defaultTheme)
+ *   provide(ThemeCtx, () => themeSignal())
+ *   return children
+ * }
+ * ```
  *
  * @example
  * const ThemeProvider = ({ children }: { children: VNodeChild }) => {

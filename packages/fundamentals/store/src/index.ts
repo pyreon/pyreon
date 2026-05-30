@@ -16,7 +16,32 @@
  *   store.increment()   // call action
  *   patch({ count: 5 }) // batch-update
  *
- * Stores are singletons — the setup function runs once per store id.
+ * Stores are GLOBAL SINGLETONS — `defineStore(id, setup)` returns a hook
+ * that ALWAYS resolves the same instance regardless of where it's called
+ * from. The setup function runs once per store id; subsequent calls return
+ * the same `StoreApi`.
+ *
+ * **⚠ When you DON'T want a singleton:**
+ *
+ * For per-Provider-instance state (the React Context pattern), use the
+ * Pyreon-native shape with plain `signal()` + `createContext` instead of
+ * defineStore:
+ *
+ * ```ts
+ * // ✓ Per-instance — each <FooProvider> mount creates a fresh signal
+ * const FooCtx = createContext<{ count: Signal<number> } | null>(null)
+ *
+ * function FooProvider(props: { children: VNodeChild }) {
+ *   const count = signal(0)
+ *   provide(FooCtx, { count })
+ *   return props.children
+ * }
+ * ```
+ *
+ * The defineStore singleton model is the right fit for app-global state
+ * (auth, settings, theme), NOT for per-component-tree state where two
+ * mounts of the same provider must hold independent state.
+ *
  * Call `resetStore(id)` or `resetAllStores()` to clear the registry
  * (useful for testing or HMR).
  *
