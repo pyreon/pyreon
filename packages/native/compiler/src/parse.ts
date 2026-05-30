@@ -262,6 +262,19 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         const decl = tryDeclFromVarDeclarator(declarator, ctx)
         if (decl) decls.push(decl)
       }
+    } else if (stmt.type === 'FunctionDeclaration' && stmt.id?.name) {
+      // Round-1 audit fix: previously the body walker only handled
+      // `const fn = () => …`. The function-declaration form
+      // `function del() {}` was silently dropped — the decl never
+      // landed in `_functionNames`, so later `del()` calls in event
+      // handlers emitted as `{ del }` (closure RETURNING the function
+      // reference) instead of `{ del() }`. Same shape, same emit,
+      // same fix as the const-arrow form via tryFunctionDecl (which
+      // already accepts both shapes since FunctionDeclaration carries
+      // the same `.params` / `.returnType` / `.body` API).
+      const fnName = stmt.id.name as string
+      const decl = tryFunctionDecl(fnName, stmt, ctx)
+      if (decl) decls.push(decl)
     } else if (stmt.type === 'ReturnStatement' && stmt.argument) {
       returnExpr = parseExpr(stmt.argument, ctx)
     }

@@ -1186,6 +1186,18 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     // `{ draft = t }` which leaves `t` unresolved). Kotlin lambdas
     // expose the single param as `it` by default; named params via
     // `name -> body`. Multi-param: `(a, b) -> body`.
+    //
+    // Round-1 audit fix (mirror of emitSwiftAction): empty arrow body
+    // `() => {}` parses to `body: { kind: 'literal', value: '' }`.
+    // Without this branch the emit is `{ "" }` — a lambda RETURNING
+    // an empty String, which violates Compose's `() -> Unit` onClick
+    // contract. Emit a truly empty lambda instead. Only applies to
+    // zero-param arrows (a parameterized arrow with empty body is
+    // exceedingly unusual and would still need its `param ->`
+    // syntactic position).
+    if (handler.body.kind === 'literal' && handler.body.value === '' && handler.params.length === 0) {
+      return '{ }'
+    }
     if (handler.params.length === 0) {
       return `{ ${emitKotlinExpr(handler.body, indent)} }`
     }

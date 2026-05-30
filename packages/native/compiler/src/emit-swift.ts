@@ -1347,6 +1347,15 @@ function swiftDisabledModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
 function emitSwiftAction(handler: ExprIR, indent: number): string {
   // Strip outer arrow if present — Button takes a closure body directly.
   if (handler.kind === 'arrow') {
+    // Round-1 audit fix: empty arrow body `() => {}` parses (see
+    // parse.ts ArrowFunctionExpression) to `body: { kind: 'literal',
+    // value: '' }`. Without this branch the emit is `{ "" }` — a
+    // closure RETURNING an empty String, which is a type error in
+    // Swift's `() -> Void` action slot (`Button("X") { "" }` would
+    // fail swiftc). Emit a truly empty closure instead.
+    if (handler.body.kind === 'literal' && handler.body.value === '') {
+      return '{ }'
+    }
     return `{ ${emitSwiftExpr(handler.body, indent)} }`
   }
   // Resolve the handler to a function-typed identifier if it is one,
