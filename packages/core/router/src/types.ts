@@ -456,6 +456,15 @@ export interface RouterInstance extends Router {
   _currentRoute: Computed<ResolvedRoute>
   _componentCache: Map<RouteRecord, ComponentFn>
   _loadingSignal: Signal<number>
+  /**
+   * PR-S8: dev-only counter — bumped by `_hmrSwap` after a successful
+   * component cache swap. `RouterView`'s `depthEntry` computed
+   * subscribes to it alongside `_loadingSignal` so a swap forces a
+   * re-emit without leaking into the navigation-loading counter
+   * (`useTransition()`). `undefined` in production builds where
+   * `_hmrSwap` itself is undefined.
+   */
+  _hmrTick?: Signal<number>
   _resolve(rawPath: string): ResolvedRoute
   _scrollPositions: Map<string, number>
   _scrollBehavior: RouterOptions['scrollBehavior']
@@ -496,9 +505,9 @@ export interface RouterInstance extends Router {
    * Dev-only HMR coordinator. Given a hot-updated module's id and the FRESH
    * module namespace Vite handed `import.meta.hot.accept`, swaps the new
    * component into every matched record whose lazy `_hmrId` equals `id`,
-   * then bumps `_loadingSignal` so `RouterView` re-renders ONLY that subtree
-   * in place — no page reload, so `__pyreon_hmr_registry__` (module-scope
-   * signal values) survives and `__hmr_signal` restores them.
+   * then bumps `_hmrTick` (PR-S8) so `RouterView` re-renders ONLY that
+   * subtree in place — no page reload, so `__pyreon_hmr_registry__`
+   * (module-scope signal values) survives and `__hmr_signal` restores them.
    *
    * Using the namespace Vite passed (not a re-run of the lazy thunk)
    * sidesteps the stale-`?t=` trap: the dynamic-import thunk lives in the

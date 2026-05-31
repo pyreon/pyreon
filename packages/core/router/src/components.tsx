@@ -152,6 +152,14 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
       // Subscribe to `_loadingSignal` so lazy resolution wakes this
       // computed up — when the cache fills, we re-emit with comp set.
       router._loadingSignal()
+      // PR-S8: subscribe to `_hmrTick` (dev-only — undefined in prod)
+      // so a successful HMR swap forces a re-emit. Pre-PR-S8 the HMR
+      // swap bumped `_loadingSignal` directly with `+ 1` and never
+      // paired a `- 1`, leaving `useTransition()` stuck `true` for the
+      // page lifetime. Now HMR uses its own counter and the navigation
+      // counter stays clean. The `?.()` optional-call gracefully no-ops
+      // in prod where `_hmrTick` is undefined (no HMR there).
+      router._hmrTick?.()
       const errored = router._erroredChunks.has(rec)
       if (errored) return { rec, comp: null, errored: true, route }
       const cached = router._componentCache.get(rec)
