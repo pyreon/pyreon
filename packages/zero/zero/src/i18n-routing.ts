@@ -218,13 +218,35 @@ export function expandRoutesForLocales(
     return routes
   }
 
+  // PR-S10: locale-major loop ordering. Pre-fix the outer loop was
+  // route-major (`for route in routes { for locale in locales }`),
+  // producing output sorted by route → locale: `/about, /de/about,
+  // /cs/about, /contact, /de/contact, /cs/contact`. Locale-major
+  // produces `/about, /contact, /de/about, /de/contact, /cs/about,
+  // /cs/contact` — all default-locale routes first, then each
+  // non-default locale's full subtree together. Stable + predictable:
+  // a route addition only affects its own block, and per-locale
+  // grouping makes the output easier to scan during debugging. The
+  // route-tree builder doesn't care about order, so this is safe.
   const expanded: FileRoute[] = []
-  for (const route of routes) {
-    for (const locale of locales) {
+  for (const locale of locales) {
+    for (const route of routes) {
       // For prefix-except-default, the default locale uses the ORIGINAL
       // urlPath / dirPath / depth — no prefix applied.
+      //
+      // PR-S10: shallow-clone the route even on the default-locale
+      // pass. Pre-fix `expanded.push(route)` shared the input reference
+      // — a downstream consumer mutating `route.urlPath` (or any flat
+      // field) would corrupt the original `routes` array, breaking any
+      // subsequent call. Real-world surface: SSG plugin and Vite-plugin
+      // BOTH call `expandRoutesForLocales` against the same `routes`
+      // input; one mutating the other's view is a class of cross-build
+      // corruption. Shallow clone is sufficient because every FileRoute
+      // field is a primitive or a stable (immutable-treated) object
+      // (the `exports` field is a boolean-flags + literal-values record
+      // that no consumer mutates).
       if (strategy === 'prefix-except-default' && locale === defaultLocale) {
-        expanded.push(route)
+        expanded.push({ ...route })
         continue
       }
 
