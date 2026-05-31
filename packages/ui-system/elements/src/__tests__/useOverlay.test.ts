@@ -55,7 +55,10 @@ vi.mock('@pyreon/reactivity', () => {
   }
   // No-op stub — real sentinel throws on duplicate-load detection.
   const registerSingleton = () => {}
-  return { signal, setSnapshotCapture, defineCrossModuleState, registerSingleton }
+  // batch() passthrough — signal mock doesn't batch notifications;
+  // see sibling Overlay.test.ts for rationale.
+  const batch = <T,>(fn: () => T): T => fn()
+  return { signal, batch, setSnapshotCapture, defineCrossModuleState, registerSingleton }
 })
 
 vi.mock('@pyreon/core', async (importOriginal) => {

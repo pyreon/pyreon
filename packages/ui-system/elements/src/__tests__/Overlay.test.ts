@@ -63,7 +63,11 @@ vi.mock('@pyreon/reactivity', () => {
   // duplicate-load; tests don't need detection and we only care about
   // satisfying the import.
   const registerSingleton = () => {}
-  return { signal, setSnapshotCapture, defineCrossModuleState, registerSingleton }
+  // batch() is a notification-batching helper — runs fn() synchronously
+  // and returns the result. Test mock can pass-through since signal mock
+  // doesn't actually batch notifications.
+  const batch = <T,>(fn: () => T): T => fn()
+  return { signal, batch, setSnapshotCapture, defineCrossModuleState, registerSingleton }
 })
 
 // onMount / onUnmount are no-ops outside a renderer

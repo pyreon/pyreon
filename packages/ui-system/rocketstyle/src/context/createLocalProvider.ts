@@ -1,5 +1,5 @@
 import { provide } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import type { PseudoProps } from '../types/pseudo'
 import type { ComponentFn } from '../types/utils'
 import { localContext } from './localContext'
@@ -35,8 +35,14 @@ const createLocalProvider = (WrappedComponent: ComponentFn<any>) => {
         if (onMouseEnter) onMouseEnter(e)
       },
       onMouseLeave: (e: MouseEvent) => {
-        hover.set(false)
-        pressed.set(false)
+        // batch() so consumers reading both hover + pressed (the common
+        // styled-component case — pseudo-state CSS depends on both) get
+        // notified once per mouseleave, not twice. Fires on every
+        // mouseleave on every rocketstyle-styled component → hot.
+        batch(() => {
+          hover.set(false)
+          pressed.set(false)
+        })
         if (onMouseLeave) onMouseLeave(e)
       },
       onMouseDown: (e: MouseEvent) => {

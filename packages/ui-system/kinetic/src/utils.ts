@@ -1,11 +1,23 @@
 import type { Ref, VNode } from '@pyreon/core'
 import type { CSSProperties } from './types'
 
+// LRU-bounded class-string split cache. Class C leak prevention: the
+// pre-#PR shape was an unbounded Map keyed by className strings — every
+// unique input held a parsed result forever. Real-app inputs are
+// finite (user-config kinetic classes are stable per definition), but
+// HMR cycles, dynamic theme generation, and A/B-tested variants can
+// produce unbounded growth. Cap matches @pyreon/styler's classCache.
+const SPLIT_CACHE_MAX = 128
 const splitCache = new Map<string, string[]>()
 const splitClasses = (classes: string): string[] => {
   let cached = splitCache.get(classes)
   if (!cached) {
     cached = classes.split(/\s+/).filter(Boolean)
+    if (splitCache.size >= SPLIT_CACHE_MAX) {
+      // Map iteration order = insertion order; first key = oldest.
+      const oldest = splitCache.keys().next().value
+      if (oldest !== undefined) splitCache.delete(oldest)
+    }
     splitCache.set(classes, cached)
   }
   return cached

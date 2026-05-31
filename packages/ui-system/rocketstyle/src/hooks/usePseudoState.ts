@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import type { PseudoActions, PseudoState } from '../types/pseudo'
 
 type UsePseudoState = ({
@@ -51,8 +51,13 @@ const usePseudoState: UsePseudoState = ({
       if (onMouseEnter) onMouseEnter(e)
     },
     onMouseLeave: (e) => {
-      hover.set(false)
-      pressed.set(false)
+      // batch() so consumers reading both hover + pressed get notified
+      // once per mouseleave, not twice. Hot path — fires on every
+      // mouseleave on every component that uses usePseudoState.
+      batch(() => {
+        hover.set(false)
+        pressed.set(false)
+      })
       if (onMouseLeave) onMouseLeave(e)
     },
     onMouseDown: (e) => {
