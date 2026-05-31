@@ -106,13 +106,17 @@ describe('mountReactive: <Show> inside <For> under batched signal toggles', () =
         for (const f of flags) f.set(true)
         await flush()
 
-        // **Bug fires here**: pre-fix the framework throws NotFoundError
-        // inside mountReactive's setup, the entire reactive subtree is
-        // lost, and the count drops to 0. The CONTRACT assertion is
-        // "should be 100"; today the framework returns 0, so `it.fails`
-        // is the correct marker. When the real fix lands, this
-        // assertion will pass and the test will fail — signal to flip
-        // the marker.
+        // REGRESSION LOCK for the closure-captured-`parent` bug class
+        // (fixed in PR #776 — `mountReactive` now reads
+        // `marker.parentNode ?? parent` at each effect run, so the live
+        // parent is used after `mountFor`'s frag-then-move). Pre-fix
+        // shape: framework throws NotFoundError inside `mountReactive`'s
+        // setup, the entire reactive subtree is lost, count drops to 0.
+        // Sibling lock: `mountKeyedList` (#783, same bug class, different
+        // primitive) — see `keyed-array-in-for-batched-toggle.browser.test.ts`.
+        // Anti-pattern catalog entry: "Closure-captured `parent` in a
+        // reactive mount loop becomes stale after a sibling reconciler
+        // moves the markers" in `.claude/rules/anti-patterns.md`.
         expect(container.querySelectorAll('div[data-id]')).toHaveLength(100)
       } finally {
         unmount()
