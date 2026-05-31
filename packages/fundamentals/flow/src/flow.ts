@@ -217,11 +217,13 @@ export function createFlow<TData = Record<string, unknown>>(
   }
 
   function removeEdge(id: string): void {
-    edges.update((eds) => eds.filter((e) => e.id !== id))
-    selectedEdgeIds.update((set) => {
-      const next = new Set(set)
-      next.delete(id)
-      return next
+    batch(() => {
+      edges.update((eds) => eds.filter((e) => e.id !== id))
+      selectedEdgeIds.update((set) => {
+        const next = new Set(set)
+        next.delete(id)
+        return next
+      })
     })
   }
 

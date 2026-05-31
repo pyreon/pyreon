@@ -1,5 +1,5 @@
 import { monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { batch, onCleanup, signal } from '@pyreon/reactivity'
 import type { DragData } from './types'
 
 export interface UseDragMonitorOptions {
@@ -51,13 +51,20 @@ export function useDragMonitor(options?: UseDragMonitorOptions): UseDragMonitorR
   const cleanup = monitorForElements({
     ...(canMonitorFn ? { canMonitor: canMonitorFn } : {}),
     onDragStart: ({ source }) => {
-      isDragging.set(true)
-      dragData.set(source.data as DragData)
+      // batch() so subscribers to isDragging + dragData get notified once,
+      // not twice. Drag events fire frequently; doubling subscriber work
+      // per event compounds visibly on UIs with many drag-monitor consumers.
+      batch(() => {
+        isDragging.set(true)
+        dragData.set(source.data as DragData)
+      })
       options?.onDragStart?.(source.data as DragData)
     },
     onDrop: ({ source, location }) => {
-      isDragging.set(false)
-      dragData.set(null)
+      batch(() => {
+        isDragging.set(false)
+        dragData.set(null)
+      })
       const targetData = location.current.dropTargets[0]?.data ?? {}
       options?.onDrop?.(source.data as DragData, targetData as DragData)
     },
