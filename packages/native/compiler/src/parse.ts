@@ -1222,6 +1222,60 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
       '<Link> requires a `to` prop (e.g. `<Link to="/users"/>`). Without it the nav target is missing on both targets — emit falls through to generic.',
     )
   }
+  // Round-2 follow-up: warn on silent-no-op shapes (props that ARE
+  // accepted in the type system but currently produce zero emit on
+  // both targets). Each of these used to silently drop the prop with
+  // no diagnostic — users wrote them assuming they worked.
+
+  // <Press> without onPress → emit a clickable element with empty
+  // action. Real-user trap: the element looks interactive but does
+  // nothing on tap.
+  if (tag === 'Press' && !attrs.some((a) => a.kind === 'event' && a.name === 'press')) {
+    ctx.warnings.push(
+      '<Press> without an `onPress` handler emits a no-op clickable element on both targets (button with empty action / Box with no-op clickable modifier). Add `onPress={fn}` or use the plain primitive directly.',
+    )
+  }
+
+  // <Link prefetch=…> — accepted in the web type, silently dropped
+  // on native (no equivalent for SwiftUI NavigationLink or Compose
+  // navigation). Warn so users know it's a web-only optimization.
+  if (tag === 'Link' && hasAttr('prefetch')) {
+    ctx.warnings.push(
+      '<Link prefetch={…}> is silently ignored on native targets — prefetch is a web-only optimization. The link still renders + navigates correctly; the hint just has no effect on iOS/Android.',
+    )
+  }
+
+  // <Stack align=…> / <Inline align=…> / <Layer align=…> with an
+  // UNKNOWN literal value silently falls back to the default
+  // alignment. Warn for the 4 most common typo shapes.
+  if (tag === 'Stack' || tag === 'Inline' || tag === 'Layer') {
+    const alignAttr = attrs.find(
+      (a) => a.kind === 'attr' && a.name === 'align',
+    ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+    if (alignAttr && alignAttr.value.kind === 'literal') {
+      const v = alignAttr.value.value
+      if (typeof v === 'string') {
+        // Canonical accepted values per canonical-primitives.ts
+        // resolveAlign: 'start' / 'center' / 'end' / 'stretch'
+        // (and the per-axis variants Layer uses).
+        const validAligns = new Set([
+          'start',
+          'center',
+          'end',
+          'stretch',
+          'top',
+          'bottom',
+          'leading',
+          'trailing',
+        ])
+        if (!validAligns.has(v)) {
+          ctx.warnings.push(
+            `<${tag} align="${v}"> uses an unrecognized align value — silently falls back to the default alignment on both targets. Accepted: start / center / end / stretch (plus top/bottom/leading/trailing for <Layer>).`,
+          )
+        }
+      }
+    }
+  }
 }
 
 function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
