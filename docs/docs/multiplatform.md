@@ -229,17 +229,20 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 |------|-------|--------|
 | Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate + iOS XCUITest + Android Compose-instrumented-test landed (opt-in `native-device` label); promote to required once green across nightly runs |
 | Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
-| Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`) | ✅ guards, nested routes, `useParams` destructure, and the `loaderData`/`useLoaderData` runtime landed; loader **auto-emit** (blocked — see note) + **global** `beforeEach`/`afterEach` guards + `throw redirect()` from loaders/guards planned |
-| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` as per-service native runtime ports (runtime + emit) | ✅ all five runtimes + their compiler emit landed; `useColorScheme`, `useValidation` planned |
+| Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`), **global** `beforeEach`/`afterEach` guards, **throw-redirect** pattern | ✅ guards, nested routes, `useParams` destructure, `loaderData`/`useLoaderData` runtime, **global guards** (#1108), and **`router.redirect()` re-entry-safe throw-pattern** (#1109) all landed; loader **auto-emit** (blocked — see note) is the only remaining router-parity gap |
+| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed end-to-end — `useFetch`, `useForm`, `usePermissions`, `useOnline`, `useClipboard`, plus **`useColorScheme`** (#1103 — no runtime port needed; SwiftUI + Compose ship the primitive directly). `useValidation` planned |
+| Compiler diagnostics | Surface silent-drop shapes as parser warnings instead of failing-silent at runtime | ✅ Round-1 (#1094 — `Icon`/`Image`/`Link` missing required props) + Round-2 (#1099 — `Press` without `onPress`, `Link prefetch={…}` on native, `Stack/Inline/Layer align="<typo>"`) landed; both routes ship as `result.warnings`, emit shape unchanged |
 | Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the three walled tags emit a **graceful pass-through** (children render inside `Group {…}`/`Box {…}`, fallback/cache behaviour inert, comment surfaces the limitation) — no broken build, but a true Suspense/ErrorBoundary/KeepAlive runtime needs a Pyreon-async-context + view-modifier intercept + state-cache design that's not local emit work |
 | DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline (planned) | 🟡 scaffold landed (`bunx create-multiplatform <name>`); asset/SF-Symbols pipeline planned |
 
 > **Loader auto-emit is intentionally deferred, not forgotten.** The
-> `loaderData` / `useLoaderData` *runtime* contract is landed, but the
-> compiler can't auto-emit a route's `loader` body: unlike `useFetch<T>` it
-> carries no decode-type generic, and real loaders are arbitrary async
-> (`async ({ params }) => fetchUser(params.id)`) — neither compiles to a
-> typed native fetch. Apps populate `loaderData` from native code today;
+> `loaderData` / `useLoaderData` *runtime* contract is landed (and
+> populating it from a guard or `beforeEach` works today via the
+> `router.redirect()` throw-pattern below), but the compiler can't
+> auto-emit a route's `loader` body: unlike `useFetch<T>` it carries no
+> decode-type generic, and real loaders are arbitrary async (`async ({
+> params }) => fetchUser(params.id)`) — neither compiles to a typed
+> native fetch. Apps populate `loaderData` from native code today;
 > auto-emit awaits a typed-loader design.
 
 ## Native routing
@@ -262,6 +265,8 @@ const router = createRouter({
     ] },
     { path: '*',            component: NotFound },        // wildcard 404
   ],
+  beforeEach: [requireAuth],                              // global guards run before every nav
+  afterEach: [logAnalytics],                              // global hooks fire after every nav
 })
 return <RouterProvider router={router}><RouterView /></RouterProvider>
 ```
@@ -321,9 +326,55 @@ back, typed, by the current route. The runtime contract is landed; see the
 loader-auto-emit note in the roadmap for why the compiler doesn't yet
 populate it automatically.
 
-> Status: path matching, redirects, wildcard 404, **guards**, **nested
-> routes**, **`useParams` destructuring**, and the **loader-data runtime**
-> are all **landed**. Loader auto-emit and typed `useParams<T>` are planned.
+**Global guards** (`beforeEach` / `afterEach`) — pass arrays of
+identifier-referenced guard/hook functions on the `createRouter({ ... })`
+config. The parser extracts the identifiers (inline arrow bodies + non-
+array forms are silently dropped — a documented follow-up); the emit
+configures the router via a Swift closure-init / Kotlin `apply { }` block.
+At runtime, `push` / `replace` wrap the navigation in the guard chain —
+any guard returning `false` blocks the navigation, then every `afterEach`
+hook fires after a successful commit:
+
+```tsx
+const requireAuth = (path: string) => isAuthed() || path === '/login'
+const logAnalytics = (path: string) => trackPageView(path)
+
+const router = createRouter({
+  routes,
+  beforeEach: [requireAuth],   // any → false blocks the nav
+  afterEach: [logAnalytics],   // all fire after successful commit
+})
+```
+
+Falls back to bare init when no guards are configured (back-compat —
+existing apps need no changes).
+
+**Throw-redirect pattern** (`router.redirect(path)`) — the native
+equivalent of web's `throw redirect("/login")` from a loader/guard,
+without the guard-return-type redesign. Inside a `beforeEach`,
+`router.redirect(path)` queues a `replace` AND returns false-equivalent
+short-circuit semantics; an internal `_inGuard` re-entry flag prevents
+the redirect's own navigation from infinite-recursing through the same
+guard chain:
+
+```swift
+router.beforeEachGuards.append { path in
+    if !isAuthed() && path != "/login" {
+        router.redirect("/login")  // queues replace, re-entry-safe
+        return false               // blocks the original push
+    }
+    return true
+}
+```
+
+Same shape on Kotlin (`router.beforeEachGuards.add { path -> … }`). The
+runtime addition is ~30 LOC per target; no compiler changes.
+
+> Status: path matching, redirects, wildcard 404, **per-route guards**,
+> **nested routes**, **`useParams` destructuring**, the **loader-data
+> runtime**, **global `beforeEach` / `afterEach` guards** (#1108), and
+> the **`router.redirect()` throw-pattern** (#1109) are all **landed**.
+> Loader auto-emit and typed `useParams<T>` are planned.
 
 ## Native data & services
 
@@ -353,19 +404,60 @@ Kotlin runtime the emitted code drives):
 - **`useClipboard`** → a `PyreonClipboard` container with a `copy(text)`
   method + a reactive `copied: Bool` flag that auto-resets to false ~2s
   after each copy (matches the web `@pyreon/hooks` contract). Wraps
-  `UIPasteboard.general.string` on iOS and the system `ClipboardManager`
-  on Android. Reads are plain method calls + a plain Bool/Boolean field
+  `UIPasteboard.general.string` on iOS (cross-platform UIKit/AppKit —
+  #1096 split out the macOS `NSPasteboard` path so the Swift runtime
+  builds on both Apple platforms) and the system `ClipboardManager` on
+  Android. Reads are plain method calls + a plain Bool/Boolean field
   — no `.value` rewrite. Kotlin emit is a two-line shape — `val cbCtx =
   LocalContext.current` hoisted out of the `remember { … }` lambda (the
   lambda is non-Composable; `LocalContext.current` can't be read inside
-  it) + `val cb = remember { PyreonClipboard(cbCtx) }`.
-  v1 supports the single-binding shape `const cb = useClipboard()`; the
-  destructure form `const { copy, copied } = useClipboard()` is a
-  documented follow-up.
+  it) + `val cb = remember { PyreonClipboard(cbCtx) }`. The Swift
+  container's `deinit` now cancels the in-flight reset Task (#1107 —
+  Class I leak fix) so a view that disappears mid-copy doesn't leak a
+  pending 2-second timer. v1 supports the single-binding shape `const cb
+  = useClipboard()`; the destructure form `const { copy, copied } =
+  useClipboard()` is a documented follow-up.
+- **`useColorScheme()`** → returns `"light"` | `"dark"` reactively from
+  the platform's preferred-color-scheme channel. **No runtime port
+  needed** — both SwiftUI (`@Environment(\.colorScheme)`) and Compose
+  (`isSystemInDarkTheme()`) ship the primitive directly, so PMTC emit is
+  a thin per-target wrapper: Swift injects `@Environment(\.colorScheme)
+  private var pyreonColorScheme` on the View struct + a computed `private
+  var <name>: String { pyreonColorScheme == .dark ? "dark" : "light" }`;
+  Kotlin emits `val <name> = if (isSystemInDarkTheme()) "dark" else
+  "light"` inline. Same `"light" | "dark"` string contract the web hook
+  uses — `scheme === 'dark'` works identically across all three targets
+  (#1103).
 
-> Status: `useFetch`, `useForm`, `usePermissions`, `useOnline`, and
-> `useClipboard` are all **landed** end-to-end (runtime port + compiler
-> emit). `useColorScheme` and `useValidation` reachability planned.
+> Status: `useFetch`, `useForm`, `usePermissions`, `useOnline`,
+> `useClipboard`, and `useColorScheme` are all **landed** end-to-end
+> (runtime port + compiler emit — except `useColorScheme`, which is
+> emit-only because the platform primitive is enough). `useValidation`
+> reachability planned.
+
+### Consuming compiler diagnostics
+
+The parser warnings introduced by Round-1 (#1094 — `Icon` / `Image` /
+`Link` missing required props) and Round-2 (#1099 — `Press` without
+`onPress`, native `Link prefetch={…}`, `Stack/Inline/Layer
+align="<typo>"`) flow through the same `result.warnings` channel as
+every other parse warning. Read them programmatically from the
+compiler:
+
+```ts
+import { transform } from '@pyreon/native-compiler'
+
+const { code, warnings } = transform(source, { target: 'swift' })
+for (const w of warnings) console.warn(w)
+```
+
+The shipped surface today is the `pyreon-native build` CLI, which
+aggregates warnings per file and prints them to stderr as
+`[pyreon-native] N warning(s):` after each build. There is **no
+Vite-plugin / LSP / editor-diagnostic surfacer yet** — that's an
+explicit Phase 6 DX follow-up. The package is `@pyreon/native-compiler`
+(private / workspace-only); consumers using `transform()` directly are
+the path until a public published API lands.
 
 ## Verifiable today (compile contract)
 
@@ -376,7 +468,7 @@ Kotlin runtime the emitted code drives):
 The runtime packages exist, with one reactive container per data/service hook:
 
 - `@pyreon/native-runtime-swift` — `@PyreonAppStorage` + `PyreonStorage`, `PyreonFetch<T>`, `PyreonForm`, `PyreonPermissions`, `PyreonNetworkStatus` (`@Observable` containers)
-- `@pyreon/native-runtime-kotlin` — `rememberPyreonStorage` + the same `PyreonFetch` / `PyreonForm` / `PyreonPermissions` / `PyreonNetworkStatus` containers (Compose `MutableState`)
+- `@pyreon/native-runtime-kotlin` — `rememberPyreonStorage` + the same `PyreonFetch` / `PyreonForm` / `PyreonPermissions` / `PyreonNetworkStatus` / `PyreonClipboard` containers (Compose `MutableState`); PR #1104 closed the last untested service by adding the Kotlin `PyreonClipboard` test suite, bringing every container to parity test coverage
 - `@pyreon/native-router-{swift,kotlin}` — `PyreonRouter` (path stack, `matchPath`, `params`, `loaderData`) + `useNavigate` / `useParams` / `useLoaderData` hooks
 
 ## Reference
@@ -384,6 +476,6 @@ The runtime packages exist, with one reactive container per data/service hook:
 - Compiler source: `packages/native/compiler/src/` — `emit-swift.ts` / `emit-kotlin.ts` per-target emit; `canonical-primitives.ts` shared name maps + token resolution
 - Native runtime packages: `packages/native/runtime-swift/`, `packages/native/runtime-kotlin/`
 - Web runtime: `packages/core/primitives/src/web/` — all 15 canonical primitives
-- Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/`
+- Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo-ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
 - Real-device build gate: `.github/workflows/native-device.yml` (opt-in via the `native-device` label / dispatch)
 - CLAUDE.md "PMTC Multi-Target Architecture" section — agent-context summary of the layered model + roadmap
