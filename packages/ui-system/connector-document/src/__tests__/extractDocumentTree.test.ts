@@ -1,4 +1,5 @@
 import { h } from '@pyreon/core'
+import type { VNode } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import type { DocumentMarker } from '../extractDocumentTree'
 import { extractDocumentTree } from '../extractDocumentTree'
