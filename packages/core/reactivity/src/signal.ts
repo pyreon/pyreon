@@ -219,6 +219,16 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
  *
  * Methods use `this` binding — they work via the prototype chain because
  * `signal.set(x)` resolves `set` by walking `read → SignalProto → set`.
+ *
+ * `SignalProto`'s own `[[Prototype]]` is set to `Function.prototype` so the
+ * full chain is `read → SignalProto → Function.prototype → Object.prototype`.
+ * Without this step, a bare object literal's prototype is `Object.prototype`
+ * — every signal would lose `instanceof Function === true` (the read fn was
+ * a real function before SignalProto landed). Consumers across the ecosystem
+ * (perf-harness, devtools, third-party libs, user code) discriminate signals
+ * from plain values via `x instanceof Function`; restoring the Function-
+ * prototype link keeps that contract intact while preserving the monomorphic
+ * shared-proto allocation win.
  */
 const SignalProto = {
   peek: _peek,
@@ -228,6 +238,7 @@ const SignalProto = {
   direct: _directFn,
   debug: _debug,
 }
+Object.setPrototypeOf(SignalProto, Function.prototype)
 
 /**
  * Create a reactive signal.
