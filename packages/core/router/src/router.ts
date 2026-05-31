@@ -550,6 +550,20 @@ export function createRouter<TNames extends string = string>(
 
   const componentCache = new Map<RouteRecord, ComponentFn>()
   const loadingSignal = signal(0)
+  // PR-S8: separate tick signal for HMR-driven cache invalidation. Pre-fix
+  // `_hmrSwap` bumped `loadingSignal` with `+ 1` and never paired a `- 1`
+  // — the counter stayed > 0 forever, so `loading: () => loadingSignal() > 0`
+  // (i.e. `useTransition()`) was STUCK at `true` for the lifetime of the
+  // page after the first HMR swap. The bug class: a navigation-loading
+  // signal is for navigation lifecycle (paired start/end counters);
+  // hijacking it for "force re-emit the depthEntry computed" is a category
+  // confusion. The fix: a dedicated `_hmrTick` signal that `depthEntry`
+  // subscribes to alongside `_loadingSignal`. HMR bumps `_hmrTick` and
+  // leaves `_loadingSignal` alone — no leak into the navigation counter.
+  // Initial value `0`; integer increment per swap (counter, not counter
+  // value, so wrap-around never matters in practice — even at one HMR/sec
+  // continuous it'd take 68 years to overflow Number.MAX_SAFE_INTEGER).
+  const hmrTick = signal(0)
 
   // ── Navigation ────────────────────────────────────────────────────────────
 
@@ -1082,6 +1096,11 @@ export function createRouter<TNames extends string = string>(
     _currentRoute: currentRoute,
     _componentCache: componentCache,
     _loadingSignal: loadingSignal,
+    // PR-S8: dev-only — undefined in prod (no HMR there). `depthEntry`
+    // in components.tsx subscribes to this alongside `_loadingSignal` so
+    // a swap forces a re-emit. See `loadingSignal` decl above for the bug
+    // class.
+    _hmrTick: hmrTick,
     _scrollPositions: new Map(),
     _scrollBehavior: scrollBehavior,
     _viewDepth: 0,
@@ -1297,11 +1316,16 @@ export function createRouter<TNames extends string = string>(
               router._erroredChunks.delete(record)
               changed = true
             }
-            // Bump `_loadingSignal` so `RouterView`'s `depthEntry` computed
-            // re-emits; its `equals` compares `comp` identity, so only the
+            // PR-S8: bump `_hmrTick` (NOT `_loadingSignal`) so
+            // `RouterView`'s `depthEntry` computed re-emits without
+            // leaking into the navigation counter. Pre-fix `_loadingSignal
+            // .update((n) => n + 1)` here was never paired with a `n - 1`,
+            // so `loading() > 0` was stuck `true` forever after the first
+            // HMR swap (`useTransition()` stuck on for the page lifetime).
+            // `depthEntry`'s `equals` compares `comp` identity, so only the
             // depth whose component actually changed re-renders — every
             // other depth (layout, siblings) stays mounted, signals intact.
-            if (changed) loadingSignal.update((n) => n + 1)
+            if (changed) hmrTick.update((n) => n + 1)
             return changed
           },
         }

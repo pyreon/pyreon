@@ -794,6 +794,105 @@ describe('router.loading', () => {
     expect(loadingWhileLoader).toBe(true)
     expect(router.loading()).toBe(false)
   })
+
+  // ─── PR-S8: HMR loadingSignal leak ─────────────────────────────────────
+  //
+  // Bug class: Pattern C (async cleanup race — counter incremented but
+  // never decremented). Pre-PR-S8 `_hmrSwap` bumped `_loadingSignal.update
+  // ((n) => n + 1)` to force `RouterView`'s `depthEntry` computed to
+  // re-emit after the component cache swap — but never paired a `- 1`,
+  // so `router.loading()` (i.e. `useTransition()`) stayed `true` forever
+  // after the first HMR swap. Visible to users via permanent loading
+  // indicators / disabled transition-pending UI.
+  //
+  // Fix: a dedicated `_hmrTick` signal that `depthEntry` subscribes to
+  // independently. HMR bumps the tick, navigation bumps `_loadingSignal`,
+  // the two never interfere.
+
+  test('PR-S8: _hmrSwap does NOT leak into _loadingSignal (router.loading stays false)', async () => {
+    // The bug: pre-PR-S8 a single _hmrSwap call bumped loadingSignal
+    // from 0 → 1 with no paired decrement, leaving router.loading() === true
+    // forever. The fix routes HMR through _hmrTick instead.
+    //
+    // Test shape: synchronous run before any awaits. createRouter
+    // populates the matched chain synchronously for the initial url;
+    // _hmrSwap reads `currentRoute().matched` which contains the lazy
+    // record carrying _hmrId. We don't await isReady because that drives
+    // the lazy load through navigation lifecycle, which IS bracketed by
+    // `_loadingSignal.update(+1)` / (-1) pairs that would mask the bug
+    // we're checking (the +1 stays asymmetric only on HMR, not nav).
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: lazy(async () => ({ default: Home }), { hmrId: '/index.tsx' }) as unknown as typeof Home,
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    // matched chain is populated synchronously by createRouter for the
+    // initial url. Skipping isReady() keeps `_loadingSignal` at 0 since
+    // no navigation cycle ran.
+    expect(router.currentRoute().matched.length).toBeGreaterThan(0)
+    expect(router.loading()).toBe(false)
+    expect(router._loadingSignal()).toBe(0)
+
+    // Simulate an HMR swap — this is what @pyreon/vite-plugin's
+    // injected `import.meta.hot.accept` handler calls.
+    expect(router._hmrSwap).toBeDefined()
+    const swapped = router._hmrSwap!('/index.tsx', { default: About })
+    expect(swapped).toBe(true)
+
+    // CRITICAL: loading must STILL be false after the swap.
+    // Pre-PR-S8 this would be `true` and stay `true` for the page lifetime.
+    expect(router._loadingSignal()).toBe(0)
+    expect(router.loading()).toBe(false)
+    // The hmr tick correctly accumulated.
+    expect(router._hmrTick!()).toBe(1)
+  })
+
+  test('PR-S8: _hmrTick is a separate counter from _loadingSignal', () => {
+    const router = createRouter({
+      routes: [{ path: '/', component: Home }],
+      url: '/',
+    }) as RouterInstance
+
+    // Both exist as Signal<number> (dev-only — _hmrTick is undefined in prod)
+    expect(typeof router._loadingSignal).toBe('function')
+    expect(typeof router._hmrTick).toBe('function')
+    expect(router._loadingSignal()).toBe(0)
+    expect(router._hmrTick!()).toBe(0)
+
+    // They are NOT the same signal — bumping one doesn't change the other.
+    router._hmrTick!.update((n) => n + 1)
+    expect(router._hmrTick!()).toBe(1)
+    expect(router._loadingSignal()).toBe(0)
+  })
+
+  test('PR-S8: multiple HMR swaps don\'t accumulate in _loadingSignal', async () => {
+    // Stress test: pre-PR-S8 every HMR swap added 1 to _loadingSignal,
+    // so the count grew unboundedly across edit sessions. Even with the
+    // fix, asserting "many swaps → 0" is the strongest signal that the
+    // bridge stays clean.
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: lazy(async () => ({ default: Home }), { hmrId: '/index.tsx' }) as unknown as typeof Home,
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+    expect(router.currentRoute().matched.length).toBeGreaterThan(0)
+
+    for (let i = 0; i < 10; i++) {
+      router._hmrSwap!('/index.tsx', { default: i % 2 === 0 ? Home : About })
+    }
+
+    // After 10 swaps, _loadingSignal stays at 0.
+    // Pre-PR-S8 this would be 10.
+    expect(router._loadingSignal()).toBe(0)
+    expect(router.loading()).toBe(false)
+    // But _hmrTick correctly accumulated.
+    expect(router._hmrTick!()).toBe(10)
+  })
 })
 
 // ─── Circular redirect detection ─────────────────────────────────────────────
