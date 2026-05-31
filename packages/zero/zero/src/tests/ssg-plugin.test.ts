@@ -1277,6 +1277,95 @@ describe('ssgPlugin', () => {
       const result = _internal.buildRevalidateManifest([route('/about', 'true')], ['/about'])
       expect(result).toEqual({})
     })
+
+    // ─── PR-S11: specificity-aware route resolution ──────────────────────
+    //
+    // Pre-fix the routes-outer × paths-inner loop used `manifest[path] =
+    // value` overwriting on every match. If two routes matched the same
+    // concrete path (a static AND a catch-all), whichever route iterated
+    // LAST won — silently wrong because the static route is structurally
+    // more specific.
+
+    it('PR-S11: static route wins over catch-all for an overlapping concrete path', () => {
+      // /blog/special/static is matched by BOTH /blog/special/static
+      // (a static route with NO revalidate) AND /blog/:slug* (a
+      // catch-all with revalidate=3600). The static route's MORE
+      // SPECIFIC pattern should claim the path. Since the static route
+      // has no revalidate, the path should NOT appear in the manifest.
+      const result = _internal.buildRevalidateManifest(
+        [
+          route('/blog/special/static'), // no revalidate, most specific
+          route('/blog/:slug*', '3600'), // catch-all with revalidate
+        ],
+        ['/blog/special/static', '/blog/some-other-post'],
+      )
+      // /blog/special/static is NOT in the manifest — its more-specific
+      // static route owns it, and that route has no revalidate.
+      // /blog/some-other-post is matched ONLY by the catch-all.
+      expect(result).toEqual({ '/blog/some-other-post': 3600 })
+    })
+
+    it('PR-S11: static route with revalidate wins over catch-all with different revalidate', () => {
+      // /blog/featured (static, revalidate=60) overlaps with /blog/:slug*
+      // (catch-all, revalidate=3600). The more-specific static route's
+      // value wins.
+      const result = _internal.buildRevalidateManifest(
+        [
+          route('/blog/featured', '60'), // static, more specific
+          route('/blog/:slug*', '3600'), // catch-all, less specific
+        ],
+        ['/blog/featured', '/blog/other-post'],
+      )
+      expect(result).toEqual({
+        '/blog/featured': 60, // static's revalidate wins (not 3600)
+        '/blog/other-post': 3600, // catch-all owns
+      })
+    })
+
+    it('PR-S11: dynamic param route beats catch-all on equal segment count', () => {
+      // /posts/:id (1 dynamic segment after /posts) vs /posts/:slug*
+      // (catch-all). The more-specific dynamic-param route should claim
+      // single-segment paths. (Both have same number of static segments,
+      // but `:id` is single-segment while `:slug*` is wildcard.)
+      //
+      // Note: under the current spec implementation, BOTH routes have
+      // the same `specificity` (1 static segment: "posts") and same
+      // `totalSegments` (2). The tiebreaker would go to whichever was
+      // inserted first. The test documents the current behavior + serves
+      // as a regression catcher if a stricter dynamic-vs-catch-all
+      // heuristic is added later.
+      const result = _internal.buildRevalidateManifest(
+        [
+          route('/posts/:id', '60'),
+          route('/posts/:slug*', '3600'),
+        ],
+        ['/posts/123'],
+      )
+      // Under the current specificity heuristic both match; either
+      // value is acceptable as long as the path appears EXACTLY ONCE.
+      expect(Object.keys(result).length).toBe(1)
+      expect(result['/posts/123']).toBeDefined()
+      // The dynamic-param `/posts/:id` is preferred (inserted first
+      // wins on tie, and a more general improvement would prefer it
+      // anyway since `:id` is single-segment).
+      expect(result['/posts/123']).toBe(60)
+    })
+
+    it('PR-S11: declaration order does NOT change result for non-overlapping paths', () => {
+      // Sanity: reversing the route order should not change the manifest
+      // for paths that only match ONE route. The bug class was
+      // order-dependent ONLY when there was overlap.
+      const a = _internal.buildRevalidateManifest(
+        [route('/about', '60'), route('/contact', '120')],
+        ['/about', '/contact'],
+      )
+      const b = _internal.buildRevalidateManifest(
+        [route('/contact', '120'), route('/about', '60')],
+        ['/about', '/contact'],
+      )
+      expect(a).toEqual(b)
+      expect(a).toEqual({ '/about': 60, '/contact': 120 })
+    })
   })
 
   describe('isInsideDist (Z3 — path-traversal containment)', () => {

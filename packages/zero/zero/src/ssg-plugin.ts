@@ -861,30 +861,80 @@ export function buildRevalidateManifest(
   writtenPaths: readonly string[],
 ): Record<string, number | false> {
   const manifest: Record<string, number | false> = {}
+
+  // PR-S11: per-path most-specific-route resolution. Pre-fix the loop
+  // was routes-outer × paths-inner, with `manifest[concretePath] = value`
+  // overwriting on every match. If a concrete path like `/blog/special`
+  // matched BOTH a static route (`/blog/special`) AND a catch-all
+  // (`/blog/:slug*`), whichever route was iterated LAST won — silently
+  // wrong because the static route is structurally more specific and
+  // should claim the path.
+  //
+  // The fix inverts the loop: iterate writtenPaths outer, find ALL
+  // matching candidate routes, sort by specificity (more-static-segments
+  // wins, then more-total-segments wins), take the top one. Only the
+  // most-specific route's revalidateLiteral lands in the manifest.
+  // Routes with no revalidate literal still WIN if they're the most
+  // specific — that's the correct semantic: a static `/blog/special`
+  // with NO revalidate export should keep `/blog/special` OUT of the
+  // revalidate manifest entirely (the catch-all's revalidate doesn't
+  // claim a path the catch-all doesn't actually own at runtime).
+
+  // Pre-compile each route's matcher + specificity once.
+  interface Candidate {
+    matcher: (concrete: string) => boolean
+    revalidate: number | false | null
+    specificity: number
+    totalSegments: number
+  }
+  const candidates: Candidate[] = []
   for (const route of fileRoutes) {
     if (route.isLayout || route.isError || route.isLoading || route.isNotFound) continue
     const literal = route.exports?.revalidateLiteral
-    if (literal === undefined) continue
-    let parsed: unknown
-    try {
-      // The literal text is a number (`60`, `3600`) or boolean
-      // (`false`). JSON.parse handles both. Other values (`true`,
-      // strings, objects) aren't valid `revalidate` shapes — skip
-      // silently rather than throw.
-      parsed = JSON.parse(literal)
-    } catch {
-      continue
-    }
-    if (typeof parsed !== 'number' && parsed !== false) continue
-    const value = parsed as number | false
-    const matcher = compileUrlPatternMatcher(route.urlPath)
-    for (const concretePath of writtenPaths) {
-      if (matcher(concretePath)) {
-        manifest[concretePath] = value
+    let revalidate: number | false | null = null
+    if (literal !== undefined) {
+      try {
+        const parsed = JSON.parse(literal)
+        if (typeof parsed === 'number' || parsed === false) revalidate = parsed as number | false
+      } catch {
+        // skip — non-literal expressions can't be parsed at build time
       }
+    }
+    const segs = pathSegmentsOf(route.urlPath)
+    const staticSegs = segs.filter((s) => !s.includes(':') && !s.includes('*')).length
+    candidates.push({
+      matcher: compileUrlPatternMatcher(route.urlPath),
+      revalidate,
+      specificity: staticSegs,
+      totalSegments: segs.length,
+    })
+  }
+
+  for (const concretePath of writtenPaths) {
+    let best: Candidate | null = null
+    for (const c of candidates) {
+      if (!c.matcher(concretePath)) continue
+      if (
+        !best ||
+        c.specificity > best.specificity ||
+        (c.specificity === best.specificity && c.totalSegments > best.totalSegments)
+      ) {
+        best = c
+      }
+    }
+    // Only emit when the most-specific route HAS a revalidate literal.
+    // If the deepest match has none, the catch-all's value doesn't
+    // claim a path it doesn't structurally own.
+    if (best && best.revalidate !== null) {
+      manifest[concretePath] = best.revalidate
     }
   }
   return manifest
+}
+
+/** Split a urlPath into segments (filter blanks). */
+function pathSegmentsOf(urlPath: string): string[] {
+  return urlPath.split('/').filter((s) => s.length > 0)
 }
 
 /**
