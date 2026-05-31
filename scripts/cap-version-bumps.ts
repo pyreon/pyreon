@@ -40,7 +40,7 @@
  * and PR #1137 for the root-cause investigation of the cascade.
  */
 
-import { execSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -81,14 +81,34 @@ interface BumpDowngrade {
   rewrittenTo: string
 }
 
-/** Get the pre-bump version of a package.json from git show HEAD~. */
+/**
+ * Get the pre-bump version of a package.json from git show HEAD~.
+ *
+ * Uses spawnSync with argv form (not execSync with string interpolation)
+ * so the path is passed as a separate argument — no shell, no
+ * meta-character escaping concerns. Defensive against the
+ * "Shell command built from environment values" class even though
+ * walkPackageJsons only sees filesystem paths the repo itself owns.
+ */
 function getPreVersion(pkgJsonRelPath: string): string | null {
+  // Defense-in-depth: reject anything that doesn't look like a
+  // plain `<dir>/<dir>/.../package.json` under the repo. Belt + brace.
+  if (
+    pkgJsonRelPath.includes('..') ||
+    pkgJsonRelPath.startsWith('/') ||
+    !pkgJsonRelPath.endsWith('package.json')
+  ) {
+    return null
+  }
+  const result = spawnSync('git', ['show', `HEAD~:${pkgJsonRelPath}`], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    shell: false,
+  })
+  if (result.status !== 0 || result.error) return null
   try {
-    const content = execSync(
-      `git show HEAD~:${pkgJsonRelPath}`,
-      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-    )
-    const pkg = JSON.parse(content)
+    const pkg = JSON.parse(result.stdout)
     return pkg.version ?? null
   } catch {
     return null
