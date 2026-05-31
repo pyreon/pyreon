@@ -100,6 +100,15 @@
           ".test."
         ]
       }
+    ],
+    "pyreon/no-module-signal-in-server-package": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/zero/src/i18n-routing.ts",
+          "packages/zero/zero/src/theme.tsx"
+        ]
+      }
     ]
   }
 }

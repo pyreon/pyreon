@@ -420,3 +420,122 @@ describe('pyreon/dev-guard-warnings (architecture)', () => {
 // - pyreon/rx-prefer-pipe + pyreon/no-redundant-role — opt-in dep-gated rules
 //   that short-circuit via isProjectDependency() in tmpdir tests. Tested via
 //   real-app integration in examples/, not synthetic fixtures.
+
+describe('pyreon/no-module-signal-in-server-package (architecture, PR-S7)', () => {
+  const serverFile = '/abs/packages/zero/zero/src/foo.ts'
+  const runtimeServerFile = '/abs/packages/core/runtime-server/src/foo.ts'
+  const coreServerFile = '/abs/packages/core/server/src/foo.ts'
+  const clientFile = '/abs/packages/core/reactivity/src/foo.ts'
+
+  it('flags `export const x = signal(...)` in @pyreon/zero src', () => {
+    const r = lintFile(
+      serverFile,
+      `import { signal } from '@pyreon/reactivity'
+export const localeSignal = signal('en')`,
+      allRules,
+      cfg(),
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(1)
+  })
+
+  it('flags `const x = signal(...)` (non-export) in @pyreon/runtime-server src', () => {
+    const r = lintFile(
+      runtimeServerFile,
+      `import { signal } from '@pyreon/reactivity'
+const localeSignal = signal('en')`,
+      allRules,
+      cfg(),
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(1)
+  })
+
+  it('flags `computed(...)` in @pyreon/core/server src', () => {
+    const r = lintFile(
+      coreServerFile,
+      `import { computed, signal } from '@pyreon/reactivity'
+const base = signal('en')
+export const derived = computed(() => base())`,
+      allRules,
+      cfg(),
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(2)
+  })
+
+  it('does NOT flag `signal()` inside a function body (per-call allocation)', () => {
+    const r = lintFile(
+      serverFile,
+      `import { signal } from '@pyreon/reactivity'
+export function useLocale() {
+  const s = signal('en')
+  return s
+}`,
+      allRules,
+      cfg(),
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(0)
+  })
+
+  it('does NOT flag module signals OUTSIDE server packages (e.g. reactivity src)', () => {
+    const r = lintFile(
+      clientFile,
+      `import { signal } from '@pyreon/reactivity'
+export const counter = signal(0)`,
+      allRules,
+      cfg(),
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(0)
+  })
+
+  it('does NOT flag module signals in test files inside server packages', () => {
+    const r = lintFile(
+      '/abs/packages/zero/zero/src/tests/foo.test.ts',
+      `import { signal } from '@pyreon/reactivity'
+export const fixture = signal('en')`,
+      allRules,
+      cfg(),
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(0)
+  })
+
+  it('respects exemptPaths option', () => {
+    const exemptConfig: LintConfig = {
+      ...cfg(),
+      rules: {
+        ...cfg().rules,
+        'pyreon/no-module-signal-in-server-package': [
+          'error',
+          { exemptPaths: ['packages/zero/zero/src/foo.ts'] },
+        ],
+      },
+    }
+    const r = lintFile(
+      serverFile,
+      `import { signal } from '@pyreon/reactivity'
+export const localeSignal = signal('en')`,
+      allRules,
+      exemptConfig,
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(0)
+  })
+
+  it('respects additionalPaths option (opt in a new package)', () => {
+    const extendedConfig: LintConfig = {
+      ...cfg(),
+      rules: {
+        ...cfg().rules,
+        'pyreon/no-module-signal-in-server-package': [
+          'error',
+          { additionalPaths: ['packages/extra/foo/src/'] },
+        ],
+      },
+    }
+    const r = lintFile(
+      '/abs/packages/extra/foo/src/bar.ts',
+      `import { signal } from '@pyreon/reactivity'
+export const someState = signal('x')`,
+      allRules,
+      extendedConfig,
+    )
+    expect(find(r, 'pyreon/no-module-signal-in-server-package').length).toBe(1)
+  })
+})
