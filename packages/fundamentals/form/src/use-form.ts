@@ -268,6 +268,13 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // Initialize validation version
     validationVersions[name] = 0
 
+    // The 3 `errorSig.set(...)` calls below are in MUTUALLY EXCLUSIVE
+    // branches (validator success, validator threw, no validator
+    // configured) — at most ONE fires per invocation. The lint rule
+    // counts function-scope total writes, not per-branch fan-out, so
+    // it can't see the discriminator. Wrapping in batch() would add
+    // overhead with zero benefit (batch of 1 write is a no-op).
+    // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     const runValidation = async (value: TValues[typeof name]) => {
       const fieldValidator = validators?.[name]
       if (fieldValidator) {
@@ -408,10 +415,16 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         }
       },
       reset: () => {
-        valueSig.set(initial as TValues[typeof name])
-        errorSig.set(undefined)
-        touchedSig.set(false)
-        dirtySig.set(false)
+        // batch() so consumers reading multiple per-field signals
+        // (e.g. a UI binding both error + dirty for "show validation
+        // hint") get notified once per field-reset, not four times.
+        // Fires per-field on form.reset() and explicit reverts.
+        batch(() => {
+          valueSig.set(initial as TValues[typeof name])
+          errorSig.set(undefined)
+          touchedSig.set(false)
+          dirtySig.set(false)
+        })
         clearTimeout(debounceTimers[name])
       },
     } as FieldState<TValues[typeof name]>
@@ -453,10 +466,15 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     try {
       const allValues = getValues()
 
-      // Clear all errors before re-validating
-      for (const [name] of fieldEntries) {
-        fields[name].error.set(undefined)
-      }
+      // Clear all errors before re-validating. batch() collapses the
+      // N error-signal writes into a single notify cycle — any
+      // form-level computed reading the error map (or a button bound
+      // to formState.isValid) re-runs once per validate(), not N times.
+      batch(() => {
+        for (const [name] of fieldEntries) {
+          fields[name].error.set(undefined)
+        }
+      })
 
       if (process.env.NODE_ENV !== 'production')
         // One emission per submit. The N async tasks span across
@@ -494,16 +512,20 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       )
 
       // Run schema-level validator — only set schema errors for fields
-      // that don't already have a field-level error (field-level wins)
+      // that don't already have a field-level error (field-level wins).
+      // batch() so N schema-error applies notify subscribers once per
+      // schema validation, not N times.
       if (schema) {
         try {
           const schemaErrors = await schema(allValues)
-          for (const [name] of fieldEntries) {
-            const schemaError = schemaErrors[name]
-            if (schemaError !== undefined && fields[name].error.peek() === undefined) {
-              fields[name].error.set(schemaError)
+          batch(() => {
+            for (const [name] of fieldEntries) {
+              const schemaError = schemaErrors[name]
+              if (schemaError !== undefined && fields[name].error.peek() === undefined) {
+                fields[name].error.set(schemaError)
+              }
             }
-          }
+          })
         } catch (err) {
           // Schema validator threw — set as submitError rather than losing it
           submitError.set(err)
@@ -678,15 +700,21 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // ── setInitialValues: update initials + reset fields ──────────────────
   const setInitialValues = (newValues: Partial<TValues>) => {
     Object.assign(currentInitials, newValues)
-    for (const [name] of fieldEntries) {
-      if (name in newValues) {
-        const val = (newValues as Record<string, unknown>)[name] as TValues[typeof name]
-        fields[name].value.set(val)
-        fields[name].error.set(undefined)
-        fields[name].touched.set(false)
-        fields[name].dirty.set(false)
+    // batch() so 4×N signal writes (per matching field) notify
+    // subscribers once — typical use is async-prefill (loader data
+    // landing post-mount), where un-batched the form re-renders 4×
+    // per field instead of once.
+    batch(() => {
+      for (const [name] of fieldEntries) {
+        if (name in newValues) {
+          const val = (newValues as Record<string, unknown>)[name] as TValues[typeof name]
+          fields[name].value.set(val)
+          fields[name].error.set(undefined)
+          fields[name].touched.set(false)
+          fields[name].dirty.set(false)
+        }
       }
-    }
+    })
   }
 
   // ── Reactive initialValues accessor watcher ───────��─────────────────
