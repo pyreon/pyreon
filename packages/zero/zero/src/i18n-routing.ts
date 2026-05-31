@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
 import { createContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { Plugin } from 'vite'
@@ -8,45 +7,47 @@ import type { FileRoute } from './types'
 // context) — pre-fix the dev middleware set a module-level `localeSignal`
 // per request, which races between concurrent SSR requests (the last writer
 // wins; both requests' renders read the second locale). The fix tracks the
-// locale per-request via `AsyncLocalStorage` — the dev middleware wraps the
-// rest of the request in `_localeAls.run(perRequestStore, next)` so every
-// async hop downstream (Vite middleware chain, ssrLoadModule, Pyreon handler,
-// render) sees the right locale store. Bare reads (no ALS context) fall
-// back to the module signal — preserves the CSR contract where the module
-// signal IS reactive and `setLocale()` flips it for in-app navigation.
+// locale per-request via `AsyncLocalStorage` — but the ALS instance lives
+// in `i18n-routing-als.ts` (server-only) because importing
+// `node:async_hooks` at module scope would pull the Node-only module into
+// the CLIENT bundle (this file is client-safe — it's exported from
+// `@pyreon/zero`'s main entry via `useLocale` / `setLocale`). The bug
+// surfaced in PR #1125 first cut: ssr-showcase e2e specs broke because
+// browsers can't load `node:async_hooks`.
 //
-// AsyncLocalStorage works because Node tracks async control flow (promises,
-// callbacks, microtasks). The Vite middleware chain + Pyreon handler chain
-// + render all run inside the `.run()` callback's async graph, so
-// `_localeAls.getStore()` returns the right value from any nested async
-// frame. The store is GC'd when the request completes — no leak.
-interface LocaleStore {
+// The setter-pattern bridge: the server-only `i18n-routing-als.ts` module
+// (imported only by the `i18nRouting()` Vite plugin in `server.ts`)
+// registers an ALS-backed `LocaleStore | undefined` reader via
+// `_setLocaleStoreReader`. On the server, the reader returns the per-
+// request ALS store; on the client (no ALS module loaded), the reader
+// stays as the no-op default → `useLocale()` falls back to the module
+// signal. Same shape `match.ts` uses for `_setDefaultChromeLayout`
+// (cross-module setter to avoid an import cycle / pull a Node-only dep
+// into the browser bundle).
+export interface LocaleStore {
   get(): string
   set(value: string): void
 }
-const _localeAls = new AsyncLocalStorage<LocaleStore>()
-function _currentLocaleStore(): LocaleStore | undefined {
-  return _localeAls.getStore()
-}
+type LocaleStoreReader = () => LocaleStore | undefined
+let _readLocaleStore: LocaleStoreReader = () => undefined
 
 /**
- * @internal — direct ALS access for regression tests. Not part of the
- * public API surface. The middleware uses this internally to scope
- * the per-request locale store; tests use it to simulate concurrent
- * SSR requests without going through the Vite middleware chain.
+ * @internal — server-only bridge. The Vite plugin (`i18nRouting()`)
+ * imports the server-only ALS module on plugin load, which calls this
+ * to register a reader that returns the per-request ALS store. The
+ * client never imports the ALS module → the reader stays at the
+ * no-op default → `useLocale()` reads the module signal (the CSR
+ * contract, fully reactive).
+ *
+ * Not part of the public API. Exported only so the server-only
+ * `i18n-routing-als.ts` module can wire itself up.
  */
-export function _runWithLocale<T>(
-  initial: string,
-  fn: () => T | Promise<T>,
-): T | Promise<T> {
-  let value = initial
-  const store: LocaleStore = {
-    get: () => value,
-    set: (v) => {
-      value = v
-    },
-  }
-  return _localeAls.run(store, fn)
+export function _setLocaleStoreReader(reader: LocaleStoreReader): void {
+  _readLocaleStore = reader
+}
+
+function _currentLocaleStore(): LocaleStore | undefined {
+  return _readLocaleStore()
 }
 
 // ─── Localized routing ─────────────────────────────────────────────────────
@@ -484,7 +485,16 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
     // hooks (useLocale, setLocale) for client-side use.
     configResolved() {},
 
-    configureServer(server) {
+    async configureServer(server) {
+      // PR-S7 hardening (post PR #1125 first cut): lazy-import the
+      // server-only ALS module. Top-level `import 'node:async_hooks'`
+      // would pull it into the CLIENT bundle (this file is exported
+      // from `@pyreon/zero`'s main entry via `useLocale` / `setLocale`).
+      // configureServer runs only on the Vite dev server (Node), so
+      // dynamic import here is safe and Vite never bundles the chain
+      // for the browser.
+      const { _runInLocaleStore } = await import('./i18n-routing-als')
+
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '/'
 
@@ -542,7 +552,7 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
           },
         }
         localeSignal.set(locale)
-        _localeAls.run(perRequestStore, () => {
+        _runInLocaleStore(perRequestStore, () => {
           next()
         })
       })

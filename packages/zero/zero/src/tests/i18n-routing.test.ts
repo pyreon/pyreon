@@ -171,7 +171,8 @@ describe('useLocale', () => {
 
 describe('PR-S7: useLocale per-request isolation', () => {
   it('concurrent renders with different locales do NOT cross-contaminate', async () => {
-    const { useLocale, _runWithLocale } = await import('../i18n-routing')
+    const { useLocale } = await import('../i18n-routing')
+    const { _runWithLocale } = await import('../i18n-routing-als')
 
     // Two concurrent "requests" — each runs in its own ALS context with a
     // different locale. The fact that one starts before the other finishes
@@ -223,9 +224,8 @@ describe('PR-S7: useLocale per-request isolation', () => {
   })
 
   it('useLocale inside ALS context ignores subsequent module-signal writes', async () => {
-    const { useLocale, localeSignal, _runWithLocale } = await import(
-      '../i18n-routing'
-    )
+    const { useLocale, localeSignal } = await import('../i18n-routing')
+    const { _runWithLocale } = await import('../i18n-routing-als')
 
     const result = await _runWithLocale('de', async () => {
       // Simulate a parallel request stomping the module signal
@@ -241,9 +241,8 @@ describe('PR-S7: useLocale per-request isolation', () => {
   })
 
   it('setLocale inside ALS context updates the per-request store', async () => {
-    const { useLocale, setLocale, _runWithLocale } = await import(
-      '../i18n-routing'
-    )
+    const { useLocale, setLocale } = await import('../i18n-routing')
+    const { _runWithLocale } = await import('../i18n-routing-als')
 
     const config = { locales: ['en', 'de', 'cs'], defaultLocale: 'en' }
     const result = await _runWithLocale('en', async () => {
