@@ -464,12 +464,31 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
   }
 }
 
+/**
+ * @internal — exposed for unit testing the PR-S3 truncation fix.
+ * Not part of the public API surface; callers should not rely on this export.
+ */
+export function _parseCookiesForTesting(header: string | undefined): Record<string, string> {
+  return parseCookies(header)
+}
+
 function parseCookies(header: string | undefined): Record<string, string> {
   if (!header) return {}
   const result: Record<string, string> = {}
   for (const pair of header.split(';')) {
-    const [key, value] = pair.trim().split('=')
-    if (key && value) result[key] = decodeURIComponent(value)
+    const trimmed = pair.trim()
+    // PR-S3: split on FIRST `=` only. The old `split('=')` then destructure
+    // `[key, value]` truncated any cookie value containing `=` — every base64
+    // session ID (e.g. `session=abc=` padding), every JWT (`xxx.yyy.zzz=`
+    // is rare but `eyJ...=` padding common). Today only the locale cookie
+    // is read, but the helper is a latent footgun for any future auth /
+    // session cookie consumer. Mirrors `parseQuery` in
+    // packages/core/router/src/match.ts:51-59.
+    const idx = trimmed.indexOf('=')
+    if (idx <= 0) continue // missing or empty key (`=value` or just `name`)
+    const key = trimmed.slice(0, idx)
+    const value = trimmed.slice(idx + 1)
+    if (value) result[key] = decodeURIComponent(value)
   }
   return result
 }
