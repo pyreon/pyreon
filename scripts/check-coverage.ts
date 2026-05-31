@@ -119,10 +119,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'CSS-in-JS engine. Statements at floor (actual 93.85%); branches at 84.04% — just below the 85 branch floor. Small follow-up to test sheet-split edge cases.',
   },
   '@pyreon/document': {
-    currentStatements: 90,
+    currentStatements: 94,
     currentBranches: 80,
     reason:
-      'Universal document renderer. Statements at floor (actual 94.34%); branches at 80.67% — many format-specific branches in PDF/DOCX renderers run only with real binary fixtures.',
+      'Universal document renderer. Statements lifted 90 → 94 (cov-94 bulk-thresholds, PR #1075; actual 94.34%). Branches at 80.67% — many format-specific branches in PDF/DOCX renderers run only with real binary fixtures.',
   },
 }
 
