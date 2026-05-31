@@ -26,6 +26,7 @@ import {
   computed,
   defineStore,
   resetAllStores,
+  resetStore,
   type StoreApi,
   type StorePlugin,
 } from '@pyreon/store'
@@ -632,5 +633,61 @@ describe('schema-driven defineStore — update', () => {
     expect(errors[0]!.op).toBe('patch')
     // State unchanged when validation fails
     expect(s.store.count()).toBe(0)
+  })
+})
+
+// ─── schema-store + resetStore (audit #3 regression) ────────────────────────
+//
+// Closure-pinned cache survives registry reset.
+//
+// Pre-fix: the schema-mode factory cached `apiRef` in module-closure scope
+// and short-circuited (`if (apiRef) return apiRef`) BEFORE querying the
+// registry. After `resetStore(id)` dropped the inner from the registry, the
+// next `useStore()` returned the SAME wrapper still bound to the disposed
+// inner — every mutation routed through dead bindings (silent data loss);
+// the rebuilt fresh inner stayed unreachable. The setup-fn pipeline already
+// handled this correctly because its `useStore()` queries `getRegistry()`
+// on every call.
+//
+// Fix: detect inner-identity flip via `useInner()` (cheap Map lookup) and
+// rebuild the wrapper only when stale. Identity stability is preserved —
+// repeated calls within the SAME inner instance still return the SAME
+// wrapper (Spec B guards against accidentally over-fixing by just dropping
+// the cache).
+describe('schema-driven defineStore — resetStore (audit #3 regression)', () => {
+  it('Spec A — resetStore(id) re-runs setup with fresh initial state (no stale wrapper)', () => {
+    const useUser = defineStore('reset-regression-1', {
+      schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
+      initial: { name: 'Alice', age: 30 },
+    })
+    const before = useUser()
+    before.patch({ name: 'mutated', age: 999 })
+    expect(before.store.name()).toBe('mutated')
+    expect(before.store.age()).toBe(999)
+
+    // Drop the inner from the registry. The wrapper's apiRef is now bound
+    // to a disposed inner; the next useUser() call MUST rebuild against a
+    // fresh inner re-run from the original `initial`.
+    resetStore('reset-regression-1')
+
+    const after = useUser()
+    expect(after.store.name()).toBe('Alice')
+    expect(after.store.age()).toBe(30)
+  })
+
+  it('Spec B — identity stability preserved across calls within same inner instance', () => {
+    // Guards against accidentally over-fixing the bug by dropping the cache
+    // entirely. Multiple calls without an intervening resetStore must
+    // return the SAME wrapper (matches the singleton-semantics contract
+    // for the setup-fn pipeline).
+    const useUser = defineStore('reset-regression-2', {
+      schema: zodSchema(z.object({ name: z.string() })),
+      initial: { name: 'A' },
+    })
+    const a = useUser()
+    const b = useUser()
+    const c = useUser()
+    expect(a).toBe(b)
+    expect(b).toBe(c)
   })
 })
