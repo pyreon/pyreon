@@ -7,7 +7,7 @@
  * is coordinated through the overlay context.
  */
 
-import { signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import { throttle } from '@pyreon/ui-core'
 import { value } from '@pyreon/unistyle'
 import { IS_DEVELOPMENT } from '../utils'
@@ -210,8 +210,13 @@ const useOverlay = ({
   }
 
   const hideContent = () => {
-    active.set(false)
-    isContentLoaded.set(false)
+    // batch() so subscribers reading both active + isContentLoaded
+    // (e.g. the overlay shell + the content portal) get notified once
+    // per close, not twice. Fires on every overlay dismiss path.
+    batch(() => {
+      active.set(false)
+      isContentLoaded.set(false)
+    })
     onClose?.()
     ctx.setUnblocked?.()
   }
@@ -247,8 +252,15 @@ const useOverlay = ({
       getAncestorOffset(),
     )
 
-    if (result.resolvedAlignX) innerAlignX.set(result.resolvedAlignX)
-    if (result.resolvedAlignY) innerAlignY.set(result.resolvedAlignY)
+    // batch() so the resolved-align writes notify subscribers once
+    // per recompute, not twice. Position recomputes on scroll/resize
+    // (throttled but still frequent) and on every viewport change.
+    if (result.resolvedAlignX || result.resolvedAlignY) {
+      batch(() => {
+        if (result.resolvedAlignX) innerAlignX.set(result.resolvedAlignX)
+        if (result.resolvedAlignY) innerAlignY.set(result.resolvedAlignY)
+      })
+    }
 
     return result.pos
   }
