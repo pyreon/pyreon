@@ -275,6 +275,40 @@ describe('resolveRoute — edge cases', () => {
     expect(r.params.rest).toBe('api/reference/types')
   })
 
+  // Splat captureSplat fast path: when no segment contains '%', the
+  // builder concatenates directly without allocating an intermediate array
+  // or calling decodeURIComponent. This pair of tests locks both branches
+  // — single-segment + multi-segment clean paths exercise the fast path;
+  // %-encoded segments exercise the slow path. Both must produce
+  // byte-identical output regardless of which branch fires. If anyone
+  // breaks this in pursuit of more aggressive optimization, these tests
+  // surface the regression before it ships.
+  test('splat captureSplat fast path — clean multi-segment path', () => {
+    const splatRoutes: RouteRecord[] = [{ path: '/files/:path*', component: Home }]
+    const r = resolveRoute('/files/docs/2024/report.pdf', splatRoutes)
+    expect(r.params.path).toBe('docs/2024/report.pdf')
+  })
+
+  test('splat captureSplat fast path — single trailing segment', () => {
+    const splatRoutes: RouteRecord[] = [{ path: '/files/:path*', component: Home }]
+    const r = resolveRoute('/files/readme.txt', splatRoutes)
+    expect(r.params.path).toBe('readme.txt')
+  })
+
+  test('splat captureSplat slow path — %-encoded segments decoded', () => {
+    const splatRoutes: RouteRecord[] = [{ path: '/files/:path*', component: Home }]
+    // Mixed clean + encoded: 'docs' clean, 'my%20file.txt' encoded, 'v1' clean
+    const r = resolveRoute('/files/docs/my%20file.txt/v1', splatRoutes)
+    expect(r.params.path).toBe('docs/my file.txt/v1')
+  })
+
+  test('splat captureSplat slow path — all-encoded segments', () => {
+    const splatRoutes: RouteRecord[] = [{ path: '/files/:path*', component: Home }]
+    const r = resolveRoute('/files/a%2Fb/c%20d/e%26f', splatRoutes)
+    // Each segment is decoded independently and joined with '/'
+    expect(r.params.path).toBe('a/b/c d/e&f')
+  })
+
   test('caches compiled routes (same reference gives same result)', () => {
     const r1 = resolveRoute('/about', routes)
     const r2 = resolveRoute('/about', routes)
