@@ -160,6 +160,104 @@ describe('useLocale', () => {
   })
 })
 
+// ─── PR-S7: per-request locale ALS — concurrent SSR isolation ──────────────
+//
+// Bug class: Pattern A (module-global state in server context). Pre-fix the
+// dev middleware set the module-level `localeSignal` per request — two
+// concurrent SSR requests with different locales would race the writes and
+// the later-arriving render would see the wrong locale. Fix: per-request
+// `AsyncLocalStorage` store. The module signal becomes the CSR contract +
+// a best-effort fallback; server reads always go through ALS.
+
+describe('PR-S7: useLocale per-request isolation', () => {
+  it('concurrent renders with different locales do NOT cross-contaminate', async () => {
+    const { useLocale, _runWithLocale } = await import('../i18n-routing')
+
+    // Two concurrent "requests" — each runs in its own ALS context with a
+    // different locale. The fact that one starts before the other finishes
+    // exercises the race: pre-PR-S7 the module signal would carry the last
+    // writer's value and both `useLocale()` calls would read 'cs' (the
+    // last set), defeating the per-request isolation.
+    const promiseDE = _runWithLocale('de', async () => {
+      // Give the other request a chance to start
+      await new Promise((r) => setTimeout(r, 5))
+      const locale = useLocale()
+      // Another await to span the second request's locale write
+      await new Promise((r) => setTimeout(r, 5))
+      const locale2 = useLocale()
+      return { first: locale, second: locale2 }
+    })
+
+    const promiseCS = _runWithLocale('cs', async () => {
+      await new Promise((r) => setTimeout(r, 2))
+      const locale = useLocale()
+      await new Promise((r) => setTimeout(r, 5))
+      const locale2 = useLocale()
+      return { first: locale, second: locale2 }
+    })
+
+    const [resultDE, resultCS] = await Promise.all([promiseDE, promiseCS])
+
+    // Each request's useLocale() returned ITS OWN locale on every call —
+    // ALS propagates through awaits so the locale snapshot stays stable
+    // for the duration of the request, regardless of what other concurrent
+    // requests are doing.
+    expect(resultDE.first).toBe('de')
+    expect(resultDE.second).toBe('de')
+    expect(resultCS.first).toBe('cs')
+    expect(resultCS.second).toBe('cs')
+  })
+
+  it('useLocale outside ALS context falls back to module signal', async () => {
+    const { useLocale, localeSignal } = await import('../i18n-routing')
+
+    // Bare call (no ALS context) → reads module signal
+    expect(useLocale()).toBe(localeSignal())
+
+    // Module signal write is visible
+    localeSignal.set('xx')
+    expect(useLocale()).toBe('xx')
+
+    // Cleanup for downstream tests
+    localeSignal.set('en')
+  })
+
+  it('useLocale inside ALS context ignores subsequent module-signal writes', async () => {
+    const { useLocale, localeSignal, _runWithLocale } = await import(
+      '../i18n-routing'
+    )
+
+    const result = await _runWithLocale('de', async () => {
+      // Simulate a parallel request stomping the module signal
+      localeSignal.set('xx')
+      // Our ALS-scoped useLocale still returns 'de'
+      return useLocale()
+    })
+
+    expect(result).toBe('de')
+
+    // Cleanup
+    localeSignal.set('en')
+  })
+
+  it('setLocale inside ALS context updates the per-request store', async () => {
+    const { useLocale, setLocale, _runWithLocale } = await import(
+      '../i18n-routing'
+    )
+
+    const config = { locales: ['en', 'de', 'cs'], defaultLocale: 'en' }
+    const result = await _runWithLocale('en', async () => {
+      const before = useLocale()
+      setLocale('de', config)
+      const after = useLocale()
+      return { before, after }
+    })
+
+    expect(result.before).toBe('en')
+    expect(result.after).toBe('de')
+  })
+})
+
 describe('i18nRouting plugin', () => {
   it('returns a Vite plugin with correct name', async () => {
     const { i18nRouting: routing } = await import('../i18n-routing')

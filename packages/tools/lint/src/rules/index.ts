@@ -9,6 +9,7 @@ import { noCircularImport } from './architecture/no-circular-import'
 import { noCrossLayerImport } from './architecture/no-cross-layer-import'
 import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
+import { noModuleSignalInServerPackage } from './architecture/no-module-signal-in-server-package'
 import { noProcessDevGate } from './architecture/no-process-dev-gate'
 import { noQuerySelectorCastInTest } from './architecture/no-querySelector-cast-in-test'
 import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
@@ -150,12 +151,13 @@ export const allRules: Rule[] = [
   noWindowInSsr,
   noMismatchRisk,
   preferRequestContext,
-  // Architecture (7)
+  // Architecture (8)
   noCircularImport,
   noDeepImport,
   noCrossLayerImport,
   devGuardWarnings,
   noErrorWithoutPrefix,
+  noModuleSignalInServerPackage,
   noProcessDevGate,
   noQuerySelectorCastInTest,
   requireBrowserSmokeTest,
@@ -254,6 +256,7 @@ export {
   noMissingCleanup,
   noMissingFallback,
   noMissingForBy,
+  noModuleSignalInServerPackage,
   noMountInEffect,
   noMutateStoreState,
   noNestedEffect,

@@ -1,7 +1,53 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { Plugin } from 'vite'
 import type { FileRoute } from './types'
+
+// PR-S7: per-request locale store. Pattern A (module-global state in server
+// context) — pre-fix the dev middleware set a module-level `localeSignal`
+// per request, which races between concurrent SSR requests (the last writer
+// wins; both requests' renders read the second locale). The fix tracks the
+// locale per-request via `AsyncLocalStorage` — the dev middleware wraps the
+// rest of the request in `_localeAls.run(perRequestStore, next)` so every
+// async hop downstream (Vite middleware chain, ssrLoadModule, Pyreon handler,
+// render) sees the right locale store. Bare reads (no ALS context) fall
+// back to the module signal — preserves the CSR contract where the module
+// signal IS reactive and `setLocale()` flips it for in-app navigation.
+//
+// AsyncLocalStorage works because Node tracks async control flow (promises,
+// callbacks, microtasks). The Vite middleware chain + Pyreon handler chain
+// + render all run inside the `.run()` callback's async graph, so
+// `_localeAls.getStore()` returns the right value from any nested async
+// frame. The store is GC'd when the request completes — no leak.
+interface LocaleStore {
+  get(): string
+  set(value: string): void
+}
+const _localeAls = new AsyncLocalStorage<LocaleStore>()
+function _currentLocaleStore(): LocaleStore | undefined {
+  return _localeAls.getStore()
+}
+
+/**
+ * @internal — direct ALS access for regression tests. Not part of the
+ * public API surface. The middleware uses this internally to scope
+ * the per-request locale store; tests use it to simulate concurrent
+ * SSR requests without going through the Vite middleware chain.
+ */
+export function _runWithLocale<T>(
+  initial: string,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  let value = initial
+  const store: LocaleStore = {
+    get: () => value,
+    set: (v) => {
+      value = v
+    },
+  }
+  return _localeAls.run(store, fn)
+}
 
 // ─── Localized routing ─────────────────────────────────────────────────────
 //
@@ -477,10 +523,28 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
         ;(req as any).__locale = locale
         ;(req as any).__localeContext = createLocaleContext(locale, url, config)
 
-        // Update the module-level signal so useLocale() returns the correct value
+        // PR-S7: wrap the remainder of the request in a per-request locale
+        // ALS context so `useLocale()` reads the right value from any
+        // downstream async frame (Vite middleware chain, ssrLoadModule,
+        // Pyreon handler, render). The store is a tiny get/set object — no
+        // signal allocation per request, no subscriber bookkeeping (server
+        // renders snapshot once). A best-effort module-signal write also
+        // fires so any code path that DIDN'T flow through the ALS context
+        // (rare — direct render outside the middleware) still sees the
+        // current locale. Pre-fix this module write WAS the bug: two
+        // concurrent requests with different locales would race the writes
+        // and the second-arriving render would see the wrong locale.
+        let storeValue = locale
+        const perRequestStore: LocaleStore = {
+          get: () => storeValue,
+          set: (v) => {
+            storeValue = v
+          },
+        }
         localeSignal.set(locale)
-
-        next()
+        _localeAls.run(perRequestStore, () => {
+          next()
+        })
       })
     },
   }
@@ -520,15 +584,30 @@ function parseCookies(header: string | undefined): Record<string, string> {
 /** @internal Context for the current locale. */
 export const LocaleCtx = createContext<string>('en')
 
-/** Current locale signal — set by the server middleware or client-side detection. */
+/**
+ * Current locale signal — set by client-side detection / `setLocale()`.
+ *
+ * **Server-side note (PR-S7).** Under concurrency, this module-level signal
+ * is NOT the source of truth — the i18n middleware writes a per-request
+ * `LocaleStore` into `AsyncLocalStorage` and `useLocale()` prefers that
+ * store. The module signal is updated as a best-effort fallback for code
+ * paths that don't flow through the ALS context (rare), but reading it
+ * directly from a server context is racy and discouraged. Use `useLocale()`
+ * everywhere — it does the right thing in both environments.
+ *
+ * Client-side (single-threaded), the module signal is fully authoritative
+ * and reactive: components reading it inside an effect / computed / JSX
+ * accessor subscribe to it normally.
+ */
 export const localeSignal = signal('en')
 
 /**
- * Read the current locale reactively.
+ * Read the current locale.
  *
- * Returns the locale signal value directly — reactive in both SSR and CSR.
- * The server middleware sets `localeSignal` per-request, and client-side
- * `setLocale()` updates it as well.
+ * Returns the per-request locale on the server (via `AsyncLocalStorage` —
+ * see PR-S7 in `_localeAls` above) or the module signal in the browser /
+ * non-ALS contexts. Reactive on the client; snapshot on the server (render
+ * is one-shot — there's no re-rendering on locale changes mid-request).
  *
  * @example
  * ```tsx
@@ -536,6 +615,11 @@ export const localeSignal = signal('en')
  * ```
  */
 export function useLocale(): string {
+  // PR-S7: server context — per-request ALS store wins over module signal.
+  // Falls back to module signal when no ALS context (client, plain test
+  // harness without middleware, etc.).
+  const perRequest = _currentLocaleStore()
+  if (perRequest) return perRequest.get()
   return localeSignal()
 }
 
@@ -551,6 +635,15 @@ export function setLocale(
   locale: string,
   config: I18nRoutingConfig,
 ): void {
+  // PR-S7: in server context with an active ALS store, update the
+  // per-request store so subsequent `useLocale()` calls in this request
+  // see the new value. Falls through to the module signal write below
+  // for client-side updates AND as a best-effort fallback when no ALS
+  // is active.
+  const perRequest = _currentLocaleStore()
+  if (perRequest) {
+    perRequest.set(locale)
+  }
   localeSignal.set(locale)
 
   // Persist to cookie
