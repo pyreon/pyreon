@@ -273,13 +273,23 @@ function makeFlatEntry(
   if (hasOptional) {
     while (minSegs > 0 && segments[minSegs - 1]?.isOptional) minSegs--
   }
+  // `meta` is shared across every navigation that resolves through this
+  // FlattenedRoute (dynamic routes like `/posts/[id]` see the SAME meta
+  // object identity for /posts/42 and /posts/99 — that's the cache that
+  // makes resolveRoute O(1)). Freezing it makes user mutation throw in
+  // strict-mode modules instead of silently polluting the cache. Without
+  // this, `(props as any).meta.scrollBehavior = 'top'` in a component
+  // mutates the global cache permanently for every future navigation to
+  // this route AND every sibling resolving through the same chain. The
+  // framework itself never writes to `route.meta` — only reads — so the
+  // freeze is purely a user-mutation safety net.
   return {
     segments,
     segmentCount: segments.length,
     matchedChain: chain,
     isStatic,
     staticPath: isStatic ? `/${segments.map((s) => s.raw).join('/')}` : null,
-    meta,
+    meta: Object.freeze(meta) as RouteMeta,
     firstSegment: getFirstSegment(segments),
     hasSplat: segments.some((s) => s.isSplat),
     isWildcard,
@@ -1008,7 +1018,12 @@ function mergeMeta(matched: RouteRecord[]): RouteMeta {
   for (const record of matched) {
     if (record.meta) Object.assign(meta, record.meta)
   }
-  return meta
+  // Match the freeze-on-construction contract enforced in `makeFlatEntry`
+  // so the not-found-fallback path can't silently leak a mutable meta
+  // when the rest of the system promises immutability. Same rationale —
+  // user code calling `(props as any).meta.x = ...` should throw
+  // consistently regardless of which resolver path produced the meta.
+  return Object.freeze(meta) as RouteMeta
 }
 
 /** Build a path string from a named route's pattern and params */

@@ -742,6 +742,23 @@ describe('diagnoseError', () => {
     expect(result!.related).toContain('window')
   })
 
+  // R2 — frozen ResolvedRoute.meta mutation (per @pyreon/router 0.x:
+  // `route.meta` is reference-stable across navigations through the
+  // same FlattenedRoute AND frozen at flatten time; writing through
+  // it throws this TypeError in strict mode). Catalog entry teaches
+  // the canonical fix: per-navigation state in your own store /
+  // context, NOT through route.meta.
+  test('diagnoses frozen ResolvedRoute.meta mutation', () => {
+    const result = diagnoseError(
+      "Cannot assign to read only property 'viewedAt' of object '#<Object>'",
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('frozen')
+    expect(result!.cause).toContain('viewedAt')
+    expect(result!.fix).toContain('route.meta')
+    expect(result!.fixCode).toContain('signal')
+  })
+
   test('returns null for unknown errors', () => {
     expect(diagnoseError('Something completely unrelated happened')).toBeNull()
     expect(diagnoseError('')).toBeNull()
