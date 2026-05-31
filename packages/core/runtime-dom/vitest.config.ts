@@ -14,5 +14,5 @@ export default defineNodeConfig({
   // - nodes.ts: keyed diff !entry path (735-736) requires a specific
   //   interleaved reorder + insertion pattern in the LIS algorithm
   // All are covered by the real-browser Playwright smoke tests.
-  coverageThresholds: { branches: 88 },
+  coverageThresholds: { statements: 94, lines: 94, branches: 88 },
 })
