@@ -157,6 +157,17 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
   // without a second double-render (deterministic by construction).
   const cache = new Map<string, ResolvedCollapse | null>()
 
+  // Serialize all `resolve()` calls. The Vite `transform` hook runs in
+  // parallel across files (audit #7), so two concurrent `resolve()` calls
+  // would interleave their renderToString invocations against the SAME
+  // singleton styler sheet — A's rules pollute B's `getStyleRules()` slice
+  // and vice versa. The chain forces strict FIFO ordering; combined with
+  // the `sheet.resetSSRBuffer()` call at the head of every `doResolve`
+  // (audit #8), each render-pair sees a fresh capture buffer.
+  // `.then(success, failure)` pair: a single rejected resolve must not
+  // poison the chain for subsequent calls.
+  let resolveChain: Promise<unknown> = Promise.resolve()
+
   async function load(spec: string): Promise<Record<string, unknown>> {
     // The nested Vite SSR server loads its own copy of @pyreon/* packages for
     // the SSR snapshot. This is a legitimate dual-load — the outer process has
@@ -186,57 +197,85 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
     )
   }
 
-  return {
-    async resolve(input) {
-      const ck = JSON.stringify([
-        input.component,
-        input.props,
-        input.childrenText,
-        input.childTree ?? null,
-        input.config.provider,
-        input.config.theme,
-      ])
-      if (cache.has(ck)) return cache.get(ck) ?? null
-      try {
-        if (!server) return null
-        const rs = await load('@pyreon/runtime-server')
-        const core = await load('@pyreon/core')
-        const styler = await load('@pyreon/styler')
-        const prov = await load(input.config.provider.source)
-        const thm = await load(input.config.theme.source)
-        const comp = await load(input.component.source)
-        const renderToString = rs.renderToString as (n: unknown) => Promise<string>
-        const h = core.h as (t: unknown, p: unknown, ...c: unknown[]) => unknown
-        const Provider = prov[input.config.provider.name]
-        const themeVal = thm[input.config.theme.name]
-        const Component = comp[input.component.name]
-        const sheet = styler.sheet as { getStyleRules(): readonly string[] }
-        if (typeof Component !== 'function' || Provider == null || themeVal == null) {
-          cache.set(ck, null)
-          return null
-        }
-        // Element-child sites carry a structured `childTree` — rebuild
-        // the real child VNodes via `h()` so the SSR render bakes the
-        // full subtree HTML (byte-faithful to a real mount because the
-        // tree was normalized with the compiler's own `cleanJsxText`).
-        // Full / dynamic sites use `childrenText` as a plain string.
-        const childArgs: unknown[] = input.childTree
-          ? buildChildVNodes(input.childTree, h)
-          : input.childrenText
-            ? [input.childrenText]
-            : []
-        const node = (mode: string) =>
-          h(Provider, { theme: themeVal, mode }, h(Component, input.props, ...childArgs))
-        const lightHtml = await renderToString(node('light'))
-        const darkHtml = await renderToString(node('dark'))
-        const rules = sheet.getStyleRules().slice()
-        const result = deriveCollapse(lightHtml, darkHtml, rules)
-        cache.set(ck, result)
-        return result
-      } catch {
+  async function doResolve(input: ResolveInput): Promise<ResolvedCollapse | null> {
+    const ck = JSON.stringify([
+      input.component,
+      input.props,
+      input.childrenText,
+      input.childTree ?? null,
+      input.config.provider,
+      input.config.theme,
+    ])
+    // Cache-hit fast path: short-circuit BEFORE touching the sheet, so
+    // repeat lookups don't clobber an in-flight neighbouring resolve's
+    // buffer. The chain serialization already guarantees ordering for
+    // in-flight calls; a cache hit is observably free either way.
+    if (cache.has(ck)) return cache.get(ck) ?? null
+    try {
+      if (!server) return null
+      const rs = await load('@pyreon/runtime-server')
+      const core = await load('@pyreon/core')
+      const styler = await load('@pyreon/styler')
+      const prov = await load(input.config.provider.source)
+      const thm = await load(input.config.theme.source)
+      const comp = await load(input.component.source)
+      const renderToString = rs.renderToString as (n: unknown) => Promise<string>
+      const h = core.h as (t: unknown, p: unknown, ...c: unknown[]) => unknown
+      const Provider = prov[input.config.provider.name]
+      const themeVal = thm[input.config.theme.name]
+      const Component = comp[input.component.name]
+      const sheet = styler.sheet as {
+        getStyleRules(): readonly string[]
+        resetSSRBuffer(): void
+      }
+      if (typeof Component !== 'function' || Provider == null || themeVal == null) {
         cache.set(ck, null)
         return null
       }
+      // Reset the SSR rule-capture buffer IMMEDIATELY BEFORE the render
+      // pair (audit #8). Sheet identity invariant: `ssrLoadModule` caches
+      // by spec, so every `load('@pyreon/styler')` returns the SAME module
+      // namespace and hence the SAME singleton sheet — reset + getStyleRules
+      // target the same instance by construction. The chain serialization
+      // (`resolveChain` above) ensures no other in-flight `doResolve` can
+      // append between this reset and the `getStyleRules()` capture below.
+      sheet.resetSSRBuffer()
+      // Element-child sites carry a structured `childTree` — rebuild
+      // the real child VNodes via `h()` so the SSR render bakes the
+      // full subtree HTML (byte-faithful to a real mount because the
+      // tree was normalized with the compiler's own `cleanJsxText`).
+      // Full / dynamic sites use `childrenText` as a plain string.
+      const childArgs: unknown[] = input.childTree
+        ? buildChildVNodes(input.childTree, h)
+        : input.childrenText
+          ? [input.childrenText]
+          : []
+      const node = (mode: string) =>
+        h(Provider, { theme: themeVal, mode }, h(Component, input.props, ...childArgs))
+      const lightHtml = await renderToString(node('light'))
+      const darkHtml = await renderToString(node('dark'))
+      const rules = sheet.getStyleRules().slice()
+      const result = deriveCollapse(lightHtml, darkHtml, rules)
+      cache.set(ck, result)
+      return result
+    } catch {
+      cache.set(ck, null)
+      return null
+    }
+  }
+
+  return {
+    resolve(input) {
+      // Chain every call through `resolveChain` so the resets + renders
+      // run in strict FIFO. `.then(success, failure)` pair: an upstream
+      // rejection must not poison the chain — both branches route through
+      // a fresh `doResolve`, so the next caller always gets a real result.
+      const next = resolveChain.then(
+        () => doResolve(input),
+        () => doResolve(input),
+      )
+      resolveChain = next
+      return next
     },
     async dispose() {
       const s = server
