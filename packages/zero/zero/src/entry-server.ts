@@ -7,8 +7,18 @@ import { createActionMiddleware, getRegisteredActions } from "./actions";
 import type { ApiRouteEntry } from "./api-routes";
 import { createApiMiddleware } from "./api-routes";
 import { createApp } from "./app";
+import { createISRHandler } from "./isr";
 import { render404Page } from "./not-found";
-import type { RouteMiddlewareEntry, ZeroConfig } from "./types";
+import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
+
+// PR-S5: drift gate. Every value in `RenderMode` must have an
+// explicit case in `wireRenderMode()` below. Adding `'edge'` to
+// `RenderMode` without a case here will fail typecheck on the
+// `_unreachable` assertion — catches the typed-but-unimplemented bug
+// class (D) at compile time. The test
+// `entry-server.test.ts:exhaustive RenderMode handling` is the runtime
+// regression lock for the same gate.
+type _AssertExhaustive<T extends never> = T;
 
 // ─── Server entry factory ───────────────────────────────────────────────────
 
@@ -163,7 +173,7 @@ export function createServer(options: CreateServerOptions) {
 		...(config.base && config.base !== "/" ? { base: config.base } : {}),
 	});
 
-	const handler = createHandler({
+	const baseHandler = createHandler({
 		App,
 		routes: options.routes,
 		middleware: allMiddleware,
@@ -171,6 +181,13 @@ export function createServer(options: CreateServerOptions) {
 		...(options.template ? { template: options.template } : {}),
 		...(options.clientEntry ? { clientEntry: options.clientEntry } : {}),
 	});
+
+	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-
+	// wired surface from inception — apps that set it got SSR behavior
+	// silently, with `config.isr` ignored and no signal pointing at the
+	// cause (Pattern D from the audit). The wireRenderMode helper makes
+	// the dispatch explicit + drift-tested.
+	const handler = wireRenderMode(config.mode ?? "ssr", baseHandler, config);
 
 	// M1.2 — Runtime SSR 404 routes through the router (PR L5).
 	// When a URL doesn't match any leaf, @pyreon/router's resolveRoute
@@ -215,6 +232,55 @@ export function createServer(options: CreateServerOptions) {
 
 		return handler(req);
 	};
+}
+
+// ─── Render-mode dispatcher (PR-S5) ─────────────────────────────────────────
+
+type RequestHandler = (req: Request) => Promise<Response>;
+
+/**
+ * Wrap the base SSR handler with the runtime layer for the configured
+ * `RenderMode`. Exhaustive switch — adding a new RenderMode value
+ * without a case fails typecheck on `_AssertExhaustive<mode>`.
+ *
+ * Modes:
+ * - `'ssr'` — pass-through (base handler renders per request).
+ * - `'isr'` — wrap with `createISRHandler` (stale-while-revalidate LRU
+ *   cache, default `revalidate: 60` seconds, override via `config.isr`).
+ * - `'ssg'` — pass-through at runtime; dist HTML served by the host. The
+ *   handler is only invoked when an SSG'd app falls back to dynamic
+ *   SSR for a path the build didn't enumerate (mixed-mode escape hatch).
+ * - `'spa'` — pass-through. SPA mode renders an empty shell on the
+ *   server; the SSR handler is what produces that shell.
+ *
+ * @internal exported for entry-server.test.ts drift gate
+ */
+export function wireRenderMode(
+	mode: RenderMode,
+	baseHandler: RequestHandler,
+	config: ZeroConfig,
+): RequestHandler {
+	switch (mode) {
+		case "isr": {
+			// PR-S5: default `revalidate: 60` if the user enabled ISR but
+			// didn't provide config.isr — beats silently falling back to
+			// SSR (which is what the pre-PR-S5 code did).
+			const isrConfig = config.isr ?? { revalidate: 60 };
+			return createISRHandler(baseHandler, isrConfig);
+		}
+		case "ssr":
+		case "ssg":
+		case "spa":
+			return baseHandler;
+		default: {
+			// Exhaustiveness check: if a new RenderMode value is added to
+			// types.ts without a case here, this assertion fails typecheck
+			// (Type 'X' is not assignable to type 'never').
+			const _unreachable: _AssertExhaustive<typeof mode> = mode;
+			void _unreachable;
+			return baseHandler;
+		}
+	}
 }
 
 /** Walk the route tree looking for any record with a `notFoundComponent`. */

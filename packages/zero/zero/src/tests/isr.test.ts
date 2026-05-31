@@ -635,6 +635,237 @@ describe('createISRHandler', () => {
       expect(map.has('/x')).toBe(true)
     })
   })
+
+  // ─── PR-S5: lifecycle hygiene regressions ───────────────────────────────
+
+  describe('PR-S5 — lifecycle hygiene', () => {
+    it('null revalidateRequest DELETES the entry instead of leaving it forever-stale', async () => {
+      // Pre-fix the entry stayed stale indefinitely — every subsequent
+      // request triggered revalidate → returned null → bail → stale
+      // served again, an infinite-stale loop the auth-gated use case
+      // (return null to skip revalidation for logged-in users)
+      // explicitly hits.
+      let renderCount = 0
+      const inner = vi.fn(async () => {
+        renderCount++
+        return new Response(`<html>v${renderCount}</html>`, {
+          headers: { 'content-type': 'text/html' },
+        })
+      })
+      const h = createISRHandler(inner, {
+        revalidate: 0.01, // 10ms TTL
+        revalidateRequest: () => null, // user opts out of revalidation
+      })
+
+      // First request: MISS, renders v1
+      const res1 = await h(new Request('http://localhost/auth'))
+      expect(res1.headers.get('x-isr-cache')).toBe('MISS')
+      expect(await res1.text()).toBe('<html>v1</html>')
+
+      // Wait past TTL
+      await new Promise((r) => setTimeout(r, 20))
+
+      // Second request: STALE serves v1, kicks off revalidate
+      const res2 = await h(new Request('http://localhost/auth'))
+      expect(res2.headers.get('x-isr-cache')).toBe('STALE')
+
+      // Give the (synchronous null-return) revalidate time to delete
+      await new Promise((r) => setTimeout(r, 10))
+
+      // Third request: was MISS (entry deleted), renders v2 fresh.
+      // Pre-fix this would be STALE again forever (v1 retained).
+      const res3 = await h(new Request('http://localhost/auth'))
+      expect(res3.headers.get('x-isr-cache')).toBe('MISS')
+      expect(await res3.text()).toBe('<html>v2</html>')
+    })
+
+    it('revalidate timeout ABORTS the inner handler via AbortSignal', async () => {
+      // Pre-fix the Promise.race rejected on timeout but the inner
+      // handler kept running — DB queries, network calls, etc. all
+      // continued in the background. The AbortController fix passes
+      // `signal` into the default revalidate Request so the handler
+      // can observe abort and cancel its work.
+      let aborted = false
+      const inner = vi.fn(async (req: Request) => {
+        // Listen for abort — the test asserts this fires.
+        req.signal.addEventListener('abort', () => {
+          aborted = true
+        })
+        // Hang past the timeout (50ms) so the timer wins the race.
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        return new Response('<html>never-arrives</html>', {
+          headers: { 'content-type': 'text/html' },
+        })
+      })
+      const h = createISRHandler(inner, {
+        revalidate: 0.01, // 10ms TTL
+        revalidateTimeoutMs: 50, // shorter than the hang
+      })
+
+      // Populate cache (first call uses TTL but doesn't hang here)
+      inner.mockImplementationOnce(
+        async () =>
+          new Response('<html>seed</html>', {
+            headers: { 'content-type': 'text/html' },
+          }),
+      )
+      await h(new Request('http://localhost/slow'))
+
+      // Wait past TTL
+      await new Promise((r) => setTimeout(r, 20))
+
+      // STALE serves the seed, kicks off revalidate (the hanging one)
+      await h(new Request('http://localhost/slow'))
+
+      // Wait past timeout
+      await new Promise((r) => setTimeout(r, 80))
+
+      // The signal MUST have fired abort on timeout
+      expect(aborted).toBe(true)
+    })
+
+    it('revalidateNow bumps epoch BEFORE delete — racing revalidation cannot re-populate', async () => {
+      // Pre-fix race: revalidate() in flight, revalidateNow() called
+      // mid-flight → store.delete fires → revalidate's store.set lands
+      // AFTER the delete → cache is re-populated with the data we
+      // tried to invalidate. The epoch bump in revalidateNow flips
+      // the snapshot the in-flight revalidate captured at start; the
+      // post-render epoch guard skips store.set when it doesn't match.
+      let resolveRevalidate: (() => void) | undefined
+      const handlerGate = new Promise<void>((r) => {
+        resolveRevalidate = r
+      })
+      let callCount = 0
+      const inner = vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          // First call (seed) returns immediately
+          return new Response('<html>seed</html>', {
+            headers: { 'content-type': 'text/html' },
+          })
+        }
+        // Second call (the racing revalidate) waits for the gate
+        await handlerGate
+        return new Response('<html>racing-revalidate</html>', {
+          headers: { 'content-type': 'text/html' },
+        })
+      })
+      const h = createISRHandler(inner, { revalidate: 0.01 })
+
+      // Seed the cache
+      await h(new Request('http://localhost/race'))
+      await new Promise((r) => setTimeout(r, 20))
+
+      // STALE response — kicks off racing revalidate, which now hangs
+      // on the gate
+      const stale = await h(new Request('http://localhost/race'))
+      expect(stale.headers.get('x-isr-cache')).toBe('STALE')
+
+      // CMS webhook fires while revalidate is hanging — invalidate
+      const result = await h.revalidateNow('/race')
+      expect(result).toEqual({ dropped: true })
+
+      // Now release the racing revalidate — it will complete and TRY
+      // to store.set, but the epoch guard skips it
+      resolveRevalidate?.()
+      await new Promise((r) => setTimeout(r, 30))
+
+      // Set up the next render to produce DIFFERENT content so we
+      // can prove the racing revalidate's content didn't land
+      inner.mockImplementationOnce(
+        async () =>
+          new Response('<html>post-webhook</html>', {
+            headers: { 'content-type': 'text/html' },
+          }),
+      )
+
+      // Next request MUST be a MISS (the racing revalidate's
+      // re-populate was skipped by the epoch guard) and serves the
+      // fresh post-webhook render. Pre-fix this would HIT the
+      // racing-revalidate content.
+      const fresh = await h(new Request('http://localhost/race'))
+      expect(fresh.headers.get('x-isr-cache')).toBe('MISS')
+      expect(await fresh.text()).toBe('<html>post-webhook</html>')
+    })
+
+    it('revalidateAll bumps every known key epoch — concurrent in-flight revalidations cannot re-populate', async () => {
+      // Same race as revalidateNow but applied to every key.
+      const callCounts: Record<string, number> = { '/a': 0, '/b': 0 }
+      let aResolve: (() => void) | undefined
+      let bResolve: (() => void) | undefined
+      const aGate = new Promise<void>((r) => {
+        aResolve = r
+      })
+      const bGate = new Promise<void>((r) => {
+        bResolve = r
+      })
+
+      const inner = vi.fn(async (req: Request) => {
+        const path = new URL(req.url).pathname
+        callCounts[path] = (callCounts[path] ?? 0) + 1
+        const count = callCounts[path]!
+        // First call per path (seed) returns immediately
+        if (count === 1) {
+          return new Response(`<html>seed-${path.slice(1)}</html>`, {
+            headers: { 'content-type': 'text/html' },
+          })
+        }
+        // Second call per path (the racing revalidation) hangs on the
+        // gate so we can synchronize revalidateAll with the race
+        if (path === '/a') {
+          await aGate
+          return new Response('<html>race-a</html>', {
+            headers: { 'content-type': 'text/html' },
+          })
+        }
+        await bGate
+        return new Response('<html>race-b</html>', {
+          headers: { 'content-type': 'text/html' },
+        })
+      })
+
+      const h = createISRHandler(
+        // Cast because `inner` is `Mock` but createISRHandler accepts
+        // (req: Request) => Promise<Response>; both match structurally
+        inner as unknown as (req: Request) => Promise<Response>,
+        { revalidate: 0.01, revalidateTimeoutMs: 5000 },
+      )
+
+      // Seed both
+      await h(new Request('http://localhost/a'))
+      await h(new Request('http://localhost/b'))
+      await new Promise((r) => setTimeout(r, 20))
+
+      // STALE responses kick off racing revalidates for both
+      await h(new Request('http://localhost/a'))
+      await h(new Request('http://localhost/b'))
+
+      // Purge all while both racing revalidates hang
+      await h.revalidateAll()
+
+      // Release both racing revalidates
+      aResolve?.()
+      bResolve?.()
+      await new Promise((r) => setTimeout(r, 30))
+
+      // Next renders return fresh content — proves racing revalidates'
+      // store.set calls were skipped by the per-key epoch guard
+      inner.mockImplementation(async (req: Request) => {
+        const p = new URL(req.url).pathname
+        return new Response(`<html>fresh-${p.slice(1)}</html>`, {
+          headers: { 'content-type': 'text/html' },
+        })
+      })
+
+      const a = await h(new Request('http://localhost/a'))
+      expect(a.headers.get('x-isr-cache')).toBe('MISS')
+      expect(await a.text()).toBe('<html>fresh-a</html>')
+
+      const b = await h(new Request('http://localhost/b'))
+      expect(b.headers.get('x-isr-cache')).toBe('MISS')
+      expect(await b.text()).toBe('<html>fresh-b</html>')
+    })
+  })
 })
 
 // ─── PR-S4: extended isCacheable + responseFilter (cross-user header leak) ──
