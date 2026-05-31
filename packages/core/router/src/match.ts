@@ -356,6 +356,168 @@ interface RouteIndex {
   dynamicFirst: FlattenedRoute[]
   /** Wildcard/catch-all routes */
   wildcards: FlattenedRoute[]
+  /**
+   * PR-S9: pre-built trie of `notFoundComponent`-bearing records keyed by
+   * their full URL path. `findNotFoundFallback` walks the trie by URL
+   * segment instead of scanning every route on every 404 (O(URL segments)
+   * vs O(routes-in-tree)). Mirrors the existing `staticMap` / `_indexCache`
+   * caching strategy — built once per `RouteRecord[]` identity, cached
+   * via WeakMap.
+   */
+  notFoundTrie: NotFoundTrieNode
+}
+
+// ─── PR-S9: notFoundComponent trie ──────────────────────────────────────────
+//
+// Pre-fix `findNotFoundFallback` walked the entire route tree on every 404,
+// re-doing path-prefix checks and chain accumulation for every record. With
+// N notFoundComponent-bearing records, lookup was O(N) and constant-factor
+// heavy (string ops per record). Real apps with deeply-nested i18n × dynamic
+// route trees can have dozens of such records.
+//
+// The trie indexes records by URL-path segments at build time. A URL like
+// `/de/posts/unknown` walks the trie in 3 steps: root → "de" → "posts" →
+// no further match → return deepest-seen layout-or-page entry. Each step is
+// O(1) (Map lookup + tracking the deepest entry seen). Total: O(URL
+// segments), independent of route-tree size.
+//
+// Two parallel tracks per node:
+// - `layout`: the deepest layout-record (record with children) carrying a
+//   notFoundComponent that applies at this prefix.
+// - `page`: the deepest page-record (record without children) carrying a
+//   notFoundComponent — used only for the layout-less synthetic-chrome
+//   fallback (see findNotFoundFallback's pageBest path).
+//
+// Specificity tiebreaker (used in `findNotFoundFallback` for ties at the
+// same depth) is preserved by tracking both `chain.length` (depth) and
+// `segmentCount` (specificity).
+interface NotFoundEntry {
+  record: RouteRecord
+  chain: RouteRecord[]
+  fullPath: string
+  depth: number
+  specificity: number
+}
+interface NotFoundTrieNode {
+  layout: NotFoundEntry | null
+  page: NotFoundEntry | null
+  children: Map<string, NotFoundTrieNode>
+}
+
+function makeTrieNode(): NotFoundTrieNode {
+  return { layout: null, page: null, children: new Map() }
+}
+
+function insertNotFoundEntry(root: NotFoundTrieNode, entry: NotFoundEntry, isLayout: boolean): void {
+  const segments = pathSegments(entry.fullPath)
+  let node = root
+  for (const seg of segments) {
+    let next = node.children.get(seg)
+    if (!next) {
+      next = makeTrieNode()
+      node.children.set(seg, next)
+    }
+    node = next
+  }
+  // Tiebreaker: deeper chain wins; on tie, more specific path wins.
+  if (isLayout) {
+    const existing = node.layout
+    if (
+      !existing ||
+      entry.depth > existing.depth ||
+      (entry.depth === existing.depth && entry.specificity > existing.specificity)
+    ) {
+      node.layout = entry
+    }
+  } else {
+    const existing = node.page
+    if (
+      !existing ||
+      entry.depth > existing.depth ||
+      (entry.depth === existing.depth && entry.specificity > existing.specificity)
+    ) {
+      node.page = entry
+    }
+  }
+}
+
+function pathSegments(fullPath: string): string[] {
+  if (fullPath === '' || fullPath === '/') return []
+  return fullPath.split('/').filter((s) => s.length > 0)
+}
+
+function buildNotFoundTrie(routes: RouteRecord[]): NotFoundTrieNode {
+  const root = makeTrieNode()
+  function walk(records: RouteRecord[], parentChain: RouteRecord[], parentPath: string): void {
+    for (const r of records) {
+      const rawPath = typeof r.path === 'string' ? r.path : ''
+      const fullPath = rawPath.startsWith('/')
+        ? rawPath
+        : `${parentPath}/${rawPath}`.replace(/\/+/g, '/')
+      const chain = [...parentChain, r]
+      if (typeof r.notFoundComponent === 'function') {
+        const isLayout = Array.isArray(r.children) && r.children.length > 0
+        const entry: NotFoundEntry = {
+          record: r,
+          chain,
+          fullPath,
+          depth: chain.length,
+          specificity: countSegments(fullPath),
+        }
+        insertNotFoundEntry(root, entry, isLayout)
+      }
+      if (Array.isArray(r.children)) walk(r.children, chain, fullPath)
+    }
+  }
+  walk(routes, [], '')
+  return root
+}
+
+/**
+ * Walk the trie by URL segments. At each step, track the deepest layout
+ * entry seen — that's our best layout fallback. Stop when the URL path
+ * runs out OR no further child exists. The returned entry is the deepest
+ * layout that applies at any prefix of `urlPath`.
+ *
+ * The trie naturally encodes the path-prefix semantics: an entry at path
+ * `/de` lives at depth 1 in the trie, so URL `/de/unknown` traverses
+ * root → "de" → "unknown" (no match), passing through the `/de` layout
+ * entry at the `de` node. Root entries live at the trie root, applying
+ * to every URL. `/encyclopedia` traverses root → "encyclopedia" (no
+ * match), seeing only the root entry — no false `/de` match.
+ */
+function findInTrie(
+  trie: NotFoundTrieNode,
+  urlPath: string,
+): { layout: NotFoundEntry | null; page: NotFoundEntry | null } {
+  let bestLayout: NotFoundEntry | null = trie.layout
+  let bestPage: NotFoundEntry | null = trie.page
+  let node = trie
+  const segments = pathSegments(urlPath)
+  for (const seg of segments) {
+    const next = node.children.get(seg)
+    if (!next) break
+    node = next
+    if (node.layout) {
+      if (
+        !bestLayout ||
+        node.layout.depth > bestLayout.depth ||
+        (node.layout.depth === bestLayout.depth && node.layout.specificity > bestLayout.specificity)
+      ) {
+        bestLayout = node.layout
+      }
+    }
+    if (node.page) {
+      if (
+        !bestPage ||
+        node.page.depth > bestPage.depth ||
+        (node.page.depth === bestPage.depth && node.page.specificity > bestPage.specificity)
+      ) {
+        bestPage = node.page
+      }
+    }
+  }
+  return { layout: bestLayout, page: bestPage }
 }
 
 const _indexCache = new WeakMap<RouteRecord[], RouteIndex>()
@@ -409,7 +571,13 @@ function buildRouteIndex(routes: RouteRecord[], compiled: CompiledRoute[]): Rout
     indexFlatRoute(f, staticMap, segmentMap, dynamicFirst, wildcards)
   }
 
-  const index: RouteIndex = { staticMap, segmentMap, dynamicFirst, wildcards }
+  // PR-S9: build the notFoundComponent trie at the same step. Walking
+  // the route tree once for both the segmentMap AND the notFoundTrie is
+  // cheaper than two separate walks; the trie is empty (root with no
+  // children + no entries) when no record carries `notFoundComponent`.
+  const notFoundTrie = buildNotFoundTrie(routes)
+
+  const index: RouteIndex = { staticMap, segmentMap, dynamicFirst, wildcards, notFoundTrie }
   _indexCache.set(routes, index)
   return index
 }
@@ -679,7 +847,7 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
   // regular pages. Without this, SSG/SSR returns `matched: []` and the
   // caller has to render the not-found component standalone, losing
   // layout wrapping.
-  const nfb = findNotFoundFallback(routes, cleanPath)
+  const nfb = findNotFoundFallback(routes, cleanPath, index.notFoundTrie)
   if (nfb) {
     return {
       path: cleanPath,
@@ -716,87 +884,36 @@ const SYNTHETIC_NOT_FOUND_PATH = '__pyreon_not_found_leaf__'
  *
  * Returns `null` when no record has `notFoundComponent`.
  */
-function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteRecord[] | null {
-  let best: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } | null = null
-  // Second-pass fallback: collect the BEST page-level notFoundComponent
-  // (no children) in case the layout pass finds nothing. Applies to the
-  // layout-less single-page-app case where `_404.tsx` is emitted without
-  // a parent `_layout.tsx`. The layout pass intentionally skips this
-  // shape (page records have no `<RouterView />` to wrap the leaf); the
-  // synthetic default-chrome layout fills that gap below.
-  let pageBest: {
-    record: RouteRecord
-    depth: number
-    specificity: number
-    fullPath: string
-  } | null = null
+function findNotFoundFallback(
+  _routes: RouteRecord[],
+  urlPath: string,
+  trie: NotFoundTrieNode,
+): RouteRecord[] | null {
+  // PR-S9: O(URL segments) trie lookup. Replaces the previous full
+  // route-tree walk (O(routes-in-tree) per 404, with constant-factor
+  // string ops per record). The trie is built once at `buildRouteIndex`
+  // time and cached via `_indexCache` (WeakMap keyed on `routes`
+  // identity). On large i18n × dynamic-route trees this drops 404
+  // resolution from "scan every route" to "walk N segments of the URL".
+  //
+  // The trie's `layout` / `page` tracks at each node preserve the same
+  // tiebreaker semantics as the old walk: deeper chain wins, ties go to
+  // more specific (more-segments) paths.
+  const { layout, page } = findInTrie(trie, urlPath)
 
-  function walk(records: RouteRecord[], parentChain: RouteRecord[], parentPath: string): void {
-    for (const r of records) {
-      const rawPath = typeof r.path === 'string' ? r.path : ''
-      // fs-router emits absolute paths for nested routes (e.g. `/de/about`);
-      // relative paths inherit parent's path via concat. Mirror flattenOne's
-      // logic so synthesised paths track real URL prefixes.
-      const fullPath = rawPath.startsWith('/')
-        ? rawPath
-        : `${parentPath}/${rawPath}`.replace(/\/+/g, '/')
-      const chain = [...parentChain, r]
-
-      // Filter to LAYOUT records (records with non-empty `children`).
-      // fs-router attaches `notFoundComponent` to BOTH the parent layout
-      // AND every page record under that layout. Page records have no
-      // `<RouterView />` to render the synthetic leaf at the next depth,
-      // so picking a page as the fallback parent produces a chain
-      // `[Layout, Page, syntheticLeaf]` where `Page` swallows the leaf.
-      // Filtering to records with children ensures the synthetic leaf
-      // lands at a depth a `<RouterView />` will actually render.
-      const isLayout = Array.isArray(r.children) && r.children.length > 0
-
-      if (typeof r.notFoundComponent === 'function') {
-        const applies = pathPrefixApplies(fullPath, urlPath)
-        if (applies) {
-          // Prefer (a) the deepest record (longest chain), then (b) the
-          // most specific path-prefix when chains tie. Specificity =
-          // number of path segments in `fullPath`. `/` has 0; `/de` has 1.
-          const specificity = countSegments(fullPath)
-          if (isLayout) {
-            if (
-              !best ||
-              chain.length > best.depth ||
-              (chain.length === best.depth && specificity > best.specificity)
-            ) {
-              best = { chain, record: r, depth: chain.length, specificity }
-            }
-          } else if (
-            !pageBest ||
-            chain.length > pageBest.depth ||
-            (chain.length === pageBest.depth && specificity > pageBest.specificity)
-          ) {
-            pageBest = { record: r, depth: chain.length, specificity, fullPath }
-          }
-        }
-      }
-
-      if (Array.isArray(r.children)) {
-        walk(r.children, chain, fullPath)
-      }
-    }
-  }
-
-  walk(routes, [], '')
-
-  if (best) {
-    // TypeScript widening: `best` is inferred as `null` inside the closure
-    // when not narrowed, even though we asserted it's non-null above.
-    const found: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } =
-      best
-
+  // Layout pass — preferred over page-level fallback. fs-router attaches
+  // `notFoundComponent` to BOTH the parent layout AND every page record
+  // under that layout. The trie distinguishes the two via `isLayout`
+  // at insert time (records with non-empty `children`). Layout matches
+  // produce a chain `[...ancestors, syntheticLeaf]` where the synthetic
+  // leaf renders the notFoundComponent inside the layout's
+  // `<RouterView />`.
+  if (layout) {
     const syntheticLeaf: RouteRecord = {
       path: SYNTHETIC_NOT_FOUND_PATH,
-      component: found.record.notFoundComponent as RouteComponent,
+      component: layout.record.notFoundComponent as RouteComponent,
     }
-
-    return [...found.chain, syntheticLeaf]
+    return [...layout.chain, syntheticLeaf]
   }
 
   // Layout-less fallback. The user has a page-level `notFoundComponent`
@@ -815,34 +932,19 @@ function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteReco
   // from `@pyreon/router` that triggers components.tsx's side effects),
   // we fall back to returning null — the standalone-render path in the
   // SSG plugin / runtime handler picks up from there.
-  if (pageBest && _defaultChromeLayout) {
-    const found: {
-      record: RouteRecord
-      depth: number
-      specificity: number
-      fullPath: string
-    } = pageBest
-
+  if (page && _defaultChromeLayout) {
     const syntheticChromeLayout: RouteRecord = {
-      path: found.fullPath,
+      path: page.fullPath,
       component: _defaultChromeLayout,
     }
     const syntheticLeaf: RouteRecord = {
       path: SYNTHETIC_NOT_FOUND_PATH,
-      component: found.record.notFoundComponent as RouteComponent,
+      component: page.record.notFoundComponent as RouteComponent,
     }
     return [syntheticChromeLayout, syntheticLeaf]
   }
 
   return null
-}
-
-/** Check whether `prefixPath` is a path-prefix of `urlPath` at segment boundaries. */
-function pathPrefixApplies(prefixPath: string, urlPath: string): boolean {
-  if (prefixPath === '/' || prefixPath === '') return true
-  if (urlPath === prefixPath) return true
-  // Require a `/` boundary after the prefix to avoid `/de` matching `/encyclopedia`.
-  return urlPath.startsWith(`${prefixPath}/`)
 }
 
 /** Count `/`-separated path segments. `/` → 0; `/de` → 1; `/de/about` → 2. */
