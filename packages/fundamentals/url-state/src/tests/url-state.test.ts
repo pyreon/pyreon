@@ -1,4 +1,4 @@
-import { effect } from '@pyreon/reactivity'
+import { effect, effectScope } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setUrlRouter, useUrlState } from '../index'
 
@@ -185,6 +185,41 @@ describe('useUrlState', () => {
       page.set(2)
       expect(spy).toHaveBeenCalled()
       spy.mockRestore()
+    })
+
+    it('uses pushState for repeated-array params when replace: false', () => {
+      const spy = vi.spyOn(history, 'pushState')
+      const tags = useUrlState('tags', [] as string[], {
+        replace: false,
+        arrayFormat: 'repeat',
+      })
+      tags.set(['a', 'b'])
+      expect(spy).toHaveBeenCalled()
+      spy.mockRestore()
+    })
+
+    it('popstate cleanup runs when the owning scope stops', () => {
+      const removeSpy = vi.spyOn(window, 'removeEventListener')
+      const scope = effectScope()
+      scope.runInScope(() => {
+        useUrlState('page', 1)
+      })
+      // The hook's internal effect's onCleanup body fires on scope.stop(),
+      // covering the removeListener + clearTimeout pair (use-url-state.ts L180-181).
+      scope.stop()
+      expect(
+        removeSpy.mock.calls.some((c) => c[0] === 'popstate'),
+      ).toBe(true)
+      removeSpy.mockRestore()
+    })
+
+    it('getUrlRouter reads back the configured router', async () => {
+      const { getUrlRouter } = await import('../url')
+      const router = { replace: vi.fn() }
+      setUrlRouter(router)
+      expect(getUrlRouter()).toBe(router)
+      setUrlRouter(null)
+      expect(getUrlRouter()).toBeNull()
     })
   })
 

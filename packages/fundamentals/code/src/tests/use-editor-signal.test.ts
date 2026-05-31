@@ -2,6 +2,7 @@
  * Tests for `useEditorSignal` hook — ensures automatic disposal
  * on component unmount.
  */
+import { runWithHooks } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import { createEditor } from '../editor'
@@ -83,6 +84,39 @@ describe('useEditorSignal', () => {
     expect(signalValue.value).toBe(3)
 
     binding.dispose()
+  })
+
+  it('hook invoked inside lifecycle context auto-disposes on unmount', async () => {
+    const data = signal<TestData>({ name: 'Alice', value: 1 })
+    const editor = createEditor({ value: SERIALIZE(data()) })
+
+    // runWithHooks gives useEditorSignal the lifecycle context it needs;
+    // onUnmount registrations land on hooks.unmount. This is the path that
+    // exercises useEditorSignal directly (the other tests use
+    // bindEditorToSignal as a stand-in).
+    const { hooks } = runWithHooks(() => {
+      useEditorSignal({
+        editor,
+        signal: data,
+        serialize: SERIALIZE,
+        parse: PARSE,
+      })
+      return null
+    }, {})
+
+    // Binding is live — external write propagates.
+    data.set({ name: 'Bob', value: 2 })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(JSON.parse(editor.value()).name).toBe('Bob')
+
+    // Fire unmount → useEditorSignal's registered cleanup disposes the binding.
+    expect(hooks.unmount?.length).toBeGreaterThan(0)
+    hooks.unmount?.forEach((fn) => fn())
+
+    // Post-dispose: external writes no longer reach the editor.
+    data.set({ name: 'Carol', value: 3 })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(JSON.parse(editor.value()).name).toBe('Bob') // unchanged
   })
 
   it('hook handles parse errors without crashing', async () => {

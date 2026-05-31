@@ -101,10 +101,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Foundational primitives. Statements at floor (actual 90.24%); branches at 79.83% — Overlay\\\'s SSR / happy-dom-only event-handler branches are legitimately harder to cover.',
   },
   '@pyreon/code': {
-    currentStatements: 90,
+    currentStatements: 94,
     currentBranches: 70,
     reason:
-      'Code editor (CodeMirror integration). Branches at 73.87% — uncovered branches are CodeMirror lifecycle handlers that need real editor instances.',
+      'Code editor (CodeMirror integration). Statements lifted 90 → 94 (cov-94 series, PR #1072). Branches at 73.87% — uncovered branches are CodeMirror lifecycle handlers that need real editor instances.',
   },
   '@pyreon/hooks': {
     currentStatements: 94,
