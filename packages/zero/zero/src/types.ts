@@ -179,6 +179,37 @@ export interface ISRConfig {
    * }
    */
   revalidateRequest?: (req: Request) => Request | null
+
+  /**
+   * PR-S4: response filter — final-say override for whether a render's
+   * response can be cached. Receives the freshly-rendered Response;
+   * returns it (cache + serve) or `null` (bypass cache — pass through
+   * to client with `x-isr-cache: BYPASS`).
+   *
+   * Wraps the built-in `isCacheable` check. Pyreon's defaults disqualify:
+   *   - Non-2xx status codes (transient errors / redirects)
+   *   - Responses carrying `Set-Cookie` (per-user state)
+   *   - `Cache-Control: private | no-store | no-cache` (RFC 7234)
+   *   - `Vary: Cookie | Authorization` without an explicit `cacheKey`
+   *   - Any `Authorization` response header
+   *
+   * Use this when your default-disqualifier matches your needs but a
+   * specific page needs explicit opt-in (or opt-out). Returning a NEW
+   * Response with stripped headers also works — the cache stores the
+   * returned shape.
+   *
+   * @example
+   * ```ts
+   * isr: {
+   *   responseFilter: (res) => {
+   *     // Only cache fully-public marketing pages
+   *     if (res.headers.get('x-page-type') !== 'marketing') return null
+   *     return res
+   *   }
+   * }
+   * ```
+   */
+  responseFilter?: (res: Response) => Response | null
 }
 
 // ─── Zero config ─────────────────────────────────────────────────────────────

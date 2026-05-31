@@ -636,3 +636,175 @@ describe('createISRHandler', () => {
     })
   })
 })
+
+// ─── PR-S4: extended isCacheable + responseFilter (cross-user header leak) ──
+//
+// Bug: previous isCacheable only checked status + Set-Cookie. Responses
+// carrying Cache-Control: private / Vary: Cookie / Authorization were
+// happily cached and replayed to OTHER users via the default
+// pathname-only cacheKey. Cross-user data leak.
+//
+// Fix: extended isCacheable to disqualify per RFC 7234 directives +
+// added responseFilter hook for final-say override.
+//
+// Bisect-verify: revert isr.ts:isCacheable → these tests fail.
+
+describe('PR-S4: isCacheable extended HTTP-cache-directive checks', () => {
+  function mkResponse(html: string, headers: Record<string, string> = {}) {
+    return vi.fn(async () => new Response(html, { headers: { 'content-type': 'text/html', ...headers } }))
+  }
+
+  it('refuses to cache Cache-Control: private (was: cached + leaked across users)', async () => {
+    const inner = mkResponse('<html>private</html>', { 'cache-control': 'private, max-age=300' })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const r1 = await handler(new Request('http://x/'))
+    expect(r1.headers.get('x-isr-cache')).toBe('BYPASS')
+
+    const r2 = await handler(new Request('http://x/'))
+    expect(r2.headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses to cache Cache-Control: no-store', async () => {
+    const inner = mkResponse('<html>nostore</html>', { 'cache-control': 'no-store' })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses to cache Cache-Control: no-cache', async () => {
+    const inner = mkResponse('<html>nc</html>', { 'cache-control': 'no-cache' })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses to cache response with Authorization header', async () => {
+    const inner = mkResponse('<html>auth</html>', { authorization: 'Bearer token-abc' })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses to cache Vary: Cookie WITHOUT explicit cacheKey (cross-user leak)', async () => {
+    const inner = mkResponse('<html>v</html>', { vary: 'Cookie' })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const r1 = await handler(new Request('http://x/'))
+    const r2 = await handler(new Request('http://x/'))
+
+    expect(r1.headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(r2.headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('ALLOWS Vary: Cookie WHEN explicit cacheKey is configured (user opted into per-cookie keying)', async () => {
+    const inner = mkResponse('<html>v</html>', { vary: 'Cookie' })
+    const handler = createISRHandler(inner, {
+      revalidate: 60,
+      cacheKey: (req) => `${new URL(req.url).pathname}::${req.headers.get('cookie') ?? 'anon'}`,
+    })
+
+    const r1 = await handler(new Request('http://x/', { headers: { cookie: 'session=abc' } }))
+    const r2 = await handler(new Request('http://x/', { headers: { cookie: 'session=abc' } }))
+
+    expect(r1.headers.get('x-isr-cache')).toBe('MISS')
+    expect(r2.headers.get('x-isr-cache')).toBe('HIT')
+    expect(inner).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses to cache Vary: * (wildcard varies on everything)', async () => {
+    const inner = mkResponse('<html>w</html>', { vary: '*' })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('ALLOWS public-cacheable response (no disqualifying headers)', async () => {
+    const inner = mkResponse('<html>public</html>', { 'cache-control': 'public, max-age=3600' })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const r1 = await handler(new Request('http://x/'))
+    const r2 = await handler(new Request('http://x/'))
+
+    expect(r1.headers.get('x-isr-cache')).toBe('MISS')
+    expect(r2.headers.get('x-isr-cache')).toBe('HIT')
+    expect(inner).toHaveBeenCalledTimes(1)
+  })
+
+  it('case-insensitive directive matching (Cache-Control: PRIVATE / Vary: COOKIE)', async () => {
+    const inner1 = mkResponse('<html>uc</html>', { 'cache-control': 'PRIVATE' })
+    const h1 = createISRHandler(inner1, { revalidate: 60 })
+    expect((await h1(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+
+    const inner2 = mkResponse('<html>uc</html>', { vary: 'COOKIE' })
+    const h2 = createISRHandler(inner2, { revalidate: 60 })
+    expect((await h2(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+  })
+})
+
+describe('PR-S4: responseFilter — final-say override', () => {
+  function mkResponse(html: string, headers: Record<string, string> = {}) {
+    return vi.fn(async () => new Response(html, { headers: { 'content-type': 'text/html', ...headers } }))
+  }
+
+  it('filter returning null bypasses cache even when default-cacheable', async () => {
+    const inner = mkResponse('<html>x</html>', { 'cache-control': 'public, max-age=3600' })
+    const handler = createISRHandler(inner, {
+      revalidate: 60,
+      responseFilter: () => null,
+    })
+
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect((await handler(new Request('http://x/'))).headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('filter receives the original Response', async () => {
+    const inner = mkResponse('<html>x</html>', { 'x-page-type': 'marketing' })
+    const seen: string[] = []
+    const handler = createISRHandler(inner, {
+      revalidate: 60,
+      responseFilter: (res) => {
+        seen.push(res.headers.get('x-page-type') ?? 'none')
+        return res
+      },
+    })
+
+    await handler(new Request('http://x/'))
+    expect(seen).toEqual(['marketing'])
+  })
+
+  it('filter allows opting INTO caching that would otherwise be refused', async () => {
+    // Vary: Cookie without cacheKey is normally refused. responseFilter
+    // can override by stripping the Vary header.
+    const inner = mkResponse('<html>shared</html>', { vary: 'Cookie' })
+    const handler = createISRHandler(inner, {
+      revalidate: 60,
+      responseFilter: (res) => {
+        const newHeaders = new Headers(res.headers)
+        newHeaders.delete('vary')
+        return new Response(res.body, {
+          status: res.status,
+          headers: newHeaders,
+        })
+      },
+    })
+
+    const r1 = await handler(new Request('http://x/'))
+    const r2 = await handler(new Request('http://x/'))
+
+    expect(r1.headers.get('x-isr-cache')).toBe('MISS')
+    expect(r2.headers.get('x-isr-cache')).toBe('HIT')
+    expect(inner).toHaveBeenCalledTimes(1)
+  })
+})
