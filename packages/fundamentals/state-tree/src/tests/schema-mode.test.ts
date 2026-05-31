@@ -122,6 +122,37 @@ describe('schema-mode model — zod (TypedSchemaAdapter / Tier A.1)', () => {
     ).toThrow(/Schema validation failed/)
   })
 
+  it('onValidationError suppresses create()-time throw + falls back to parsed initial', () => {
+    const errors: { op: string }[] = []
+    const User = model({
+      schema: UserSchema,
+      initial: { name: 'Alice', age: 30 },
+      onValidationError: (_issues, op) => {
+        errors.push({ op })
+      },
+    })
+    const u = User.create({ name: '', age: 30 }) as ReturnType<typeof User.create> & {
+      name: { (): string }
+      age: { (): number }
+    }
+    expect(errors.length).toBe(1)
+    expect(errors[0]!.op).toBe('init')
+    expect(u.name()).toBe('Alice')
+    expect(u.age()).toBe(30)
+  })
+
+  it('create()-time validation re-throws when no parsed initial fallback exists', () => {
+    const errors: { op: string }[] = []
+    const User = model({
+      schema: UserSchema,
+      onValidationError: (_issues, op) => {
+        errors.push({ op })
+      },
+    })
+    expect(() => User.create({ name: '', age: 30 })).toThrow(/Schema validation failed/)
+    expect(errors.length).toBe(1)
+  })
+
   it('direct signal write bypasses validation (documented escape hatch)', () => {
     const User = model({
       schema: UserSchema,
