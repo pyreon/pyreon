@@ -489,6 +489,62 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertTrue(net.isOnline)
     }
 
+    /// Double-`stop()` after a `start()` is a safe no-op — the second call
+    /// must NOT touch the already-cancelled `NWPathMonitor` (post-fix the
+    /// `_started` flag guards the body; the second call early-returns
+    /// without re-cancelling). Lifecycle hardening regression — audit
+    /// finding "monitor lifecycle not fully guarded against double-stop".
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusDoubleStopIsNoop() throws {
+        let net = PyreonNetworkStatus()
+        net.start()
+        XCTAssertTrue(net.isMonitoring)
+        net.stop()
+        XCTAssertFalse(net.isMonitoring)
+        net.stop() // must not crash, must not double-cancel
+        XCTAssertFalse(net.isMonitoring) // lifecycle flag stable across double-stop
+        XCTAssertTrue(net.isOnline) // initial value preserved
+    }
+
+    /// Double-`start()` is idempotent — the second call must NOT spin a
+    /// second `NWPathMonitor`. Reactive state is preserved across the
+    /// no-op call.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusDoubleStartIsNoop() throws {
+        let net = PyreonNetworkStatus(isOnline: false)
+        XCTAssertFalse(net.isMonitoring)
+        net.start()
+        XCTAssertTrue(net.isMonitoring)
+        net.start() // idempotent — no second monitor
+        XCTAssertTrue(net.isMonitoring) // still monitoring (single instance)
+        XCTAssertFalse(net.isOnline) // initial value preserved
+        net.stop() // cleanup
+        XCTAssertFalse(net.isMonitoring)
+    }
+
+    /// `start() → stop() → start()` cycle works — `stop()` fully resets the
+    /// lifecycle flag so a subsequent `start()` spins a fresh monitor (not
+    /// blocked by stale `_started` state). Bisect-verified: removing the
+    /// `_started = false` reset in `stop()` makes the second `start()` a
+    /// silent no-op and `isMonitoring` stays true through what should be
+    /// the off-cycle.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusStartStopStartCycle() throws {
+        let net = PyreonNetworkStatus()
+        net.start()
+        XCTAssertTrue(net.isMonitoring)
+        net.stop()
+        XCTAssertFalse(net.isMonitoring) // bisect lock — would fail if stop() didn't reset
+        net.start() // must succeed (not blocked by stale _started flag)
+        XCTAssertTrue(net.isMonitoring)
+        net.update(false) // proves the instance is still functional
+        XCTAssertFalse(net.isOnline)
+        net.stop()
+        XCTAssertFalse(net.isMonitoring)
+        net.stop() // double-stop tail — still safe, still off
+        XCTAssertFalse(net.isMonitoring)
+    }
+
     // MARK: - PyreonClipboard
     //
     // Round-2 audit fix: PyreonClipboard.swift had ZERO test coverage
