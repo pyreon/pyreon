@@ -416,7 +416,7 @@ export const B = island(() => import('./X'), { name: 'B', hydrate: 'load' })`
         // The lookup MUST use the resolveId-returned id, NOT the
         // virtual:-prefixed user-facing import path.
         expect(lookups).toContain(ISLANDS_REGISTRY_ID)
-        expect(lookups).not.toContain(` ${ISLANDS_REGISTRY_IMPORT}`)
+        expect(lookups).not.toContain(`${String.fromCharCode(0)}${ISLANDS_REGISTRY_IMPORT}`)
       })
     })
 
