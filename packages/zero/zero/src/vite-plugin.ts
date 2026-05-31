@@ -891,7 +891,14 @@ async function renderSsr(
 	const status = resolved.isNotFound === true ? 404 : 200;
 
 	return runtimeServer.runWithRequestContext(async () => {
-		const app = core.h(App as Parameters<typeof core.h>[0], null);
+		// PR-S1: App is router-AGNOSTIC; supply the per-request RouterProvider
+		// at this call site (mirrors production `createHandler`). See
+		// `app.ts:createApp` comment for the full rationale.
+		const app = core.h(
+			routerPkg.RouterProvider as Parameters<typeof core.h>[0],
+			{ router: routerInst },
+			core.h(App as Parameters<typeof core.h>[0], null),
+		);
 
 		const { html: appHtml, head } = await headSsr.renderWithHead(app);
 		const loaderData = routerPkg.serializeLoaderData(

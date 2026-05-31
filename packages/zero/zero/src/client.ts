@@ -1,7 +1,7 @@
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
-import { hydrateLoaderData } from '@pyreon/router'
+import { hydrateLoaderData, RouterProvider } from '@pyreon/router'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { createApp } from './app'
 
@@ -100,7 +100,10 @@ export function startClient(options: StartClientOptions) {
     hydrateLoaderData(router as never, ssrLoaderData as Record<string, unknown>)
   }
 
-  const vnode = h(App, null)
+  // PR-S1: App is router-AGNOSTIC; supply the RouterProvider at this call
+  // site (mirrors server createHandler / dev renderSsr / SSG renderPath).
+  // See app.ts:createApp for the full rationale.
+  const vnode = h(RouterProvider, { router }, h(App, null))
 
   // ── Mount vs hydrate ───────────────────────────────────────────────────────
   // Ignore comment nodes (Vite injects <!--app-html-->) — only real DOM
