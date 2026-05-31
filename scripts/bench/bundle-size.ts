@@ -49,17 +49,45 @@ function formatBytes(bytes: number): string {
 
 // ─── Packages to measure ────────────────────────────────────────────────────
 
-const PACKAGES: { name: string; entry: string }[] = [
+interface PackageSpec {
+  name: string
+  entry: string
+  /**
+   * Esbuild platform target. Defaults to 'browser' — applies to runtime
+   * packages users ship in their client bundles. Server-side packages
+   * (the compiler is a build-time tool, never browser-shipped) use 'node'
+   * so node-builtin externals are auto-resolved without extra rules.
+   */
+  platform?: 'browser' | 'node'
+  /**
+   * Extra external patterns beyond `node:*` / `bun:*`. `@pyreon/compiler`
+   * pulls in `oxc-parser` which has a `wasm.js` branch importing
+   * `@oxc-parser/binding-wasm32-wasi` (a separate package not installed
+   * in the workspace — the JS fallback exists only for browser/Bun fallback
+   * paths). Externalizing the oxc binding packages lets the bundle
+   * measurement complete cleanly while reflecting "what users actually
+   * ship" (the native binding is loaded by @pyreon/compiler at runtime
+   * via createRequire, NOT bundled with consumer apps).
+   */
+  external?: string[]
+}
+
+const PACKAGES: PackageSpec[] = [
   { name: '@pyreon/reactivity', entry: 'packages/core/reactivity/src/index.ts' },
   { name: '@pyreon/core', entry: 'packages/core/core/src/index.ts' },
   { name: '@pyreon/runtime-dom', entry: 'packages/core/runtime-dom/src/index.ts' },
-  { name: '@pyreon/compiler', entry: 'packages/core/compiler/src/index.ts' },
+  {
+    name: '@pyreon/compiler',
+    entry: 'packages/core/compiler/src/index.ts',
+    platform: 'node',
+    external: ['oxc-parser', '@oxc-parser/*', 'typescript'],
+  },
   { name: '@pyreon/router', entry: 'packages/core/router/src/index.ts' },
 ]
 
 // ─── Bundle + measure ───────────────────────────────────────────────────────
 
-async function measurePackage(pkg: { name: string; entry: string }): Promise<SizeEntry> {
+async function measurePackage(pkg: PackageSpec): Promise<SizeEntry> {
   const entryPath = resolve(ROOT, pkg.entry)
   const tmpDir = mkdtempSync(join(tmpdir(), 'pyreon-bench-'))
   const outFile = join(tmpDir, 'bundle.js')
@@ -69,12 +97,14 @@ async function measurePackage(pkg: { name: string; entry: string }): Promise<Siz
       entryPoints: [entryPath],
       bundle: true,
       format: 'esm',
-      platform: 'browser',
+      platform: pkg.platform ?? 'browser',
       outfile: outFile,
       minify: true,
       treeShaking: true,
-      // Mark all external deps (node builtins, third-party)
-      external: ['node:*', 'bun:*'],
+      // Mark all external deps (node builtins, third-party). Per-package
+      // `external` adds to the base set (oxc bindings for the compiler,
+      // etc.).
+      external: ['node:*', 'bun:*', ...(pkg.external ?? [])],
       // Resolve workspace packages using bun condition
       conditions: ['bun'],
       logLevel: 'silent',

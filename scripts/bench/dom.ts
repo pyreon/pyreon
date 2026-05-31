@@ -26,8 +26,14 @@ const server = serve({
   },
 })
 
+// Headless by default — no display server needed in CI, and `bench:dom` is a
+// non-interactive benchmark runner (the visible-window mode was a debugging
+// holdover that broke headless-only environments at `page.click('#run')` —
+// the default 30s actionability timeout fires before #run becomes clickable
+// when no display can render it, with the stack trace mislabeled as the
+// next pending operation `waitForFunction`).
 const browser = await chromium.launch({
-  headless: false,
+  headless: true,
   args: [
     '--disable-background-timer-throttling',
     '--disable-backgrounding-occluded-windows',
@@ -46,8 +52,14 @@ await page.goto(`http://localhost:${PORT}`)
 
 // Click "Run Benchmarks" and wait for completion
 await page.click('#run')
+// Playwright signature: waitForFunction(pageFunction, arg?, options?).
+// Passing `{ timeout }` as the 2nd arg treats it as the page-function
+// ARGUMENT, not options — Playwright then falls back to the 30s default
+// timeout, which is too short for the multi-framework benchmark suite
+// (typically 60-180s wall-clock). The 3-arg form below is correct.
 await page.waitForFunction(
   () => (document.getElementById('status') as HTMLElement)?.textContent === 'Done ✓',
+  undefined,
   { timeout: 5 * 60 * 1000 }, // 5 min max
 )
 

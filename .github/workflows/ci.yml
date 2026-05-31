@@ -37,9 +37,24 @@ on:
 # - push:main    → group `ci-refs/heads/main`, cancel:false → running protected, pending coalesced to latest HEAD.
 # - merge_group  → unique queue ref per attempt, cancel:false → each merge-queue run completes (the queue requires it).
 # - pull_request → per-PR ref, cancel:true → newest commit on the PR wins (unchanged).
+#
+# **YAML interpolation gotcha** — a bare `${{ github.event_name == 'pull_request' }}`
+# interpolates to the literal string "true" or "false". YAML then re-parses
+# `cancel-in-progress: false` as the BOOLEAN false (good), BUT `cancel-in-
+# progress: true` as boolean true… and crucially, **GitHub's runner has been
+# observed to treat the string-interpolated form as truthy even when it
+# evaluates to `false`** (empirical: every push:main run cancelled at the
+# pending stage despite the expression evaluating to `false`). The
+# documented workaround is the explicit ternary `&& true || false` — forces
+# the expression to return a JSON-native boolean that the runner's
+# concurrency engine reads correctly.
+#
+# Bisect-verifiable: revert to the bare comparison → push:main runs cancel
+# at the pending stage (never run any jobs); apply the ternary → push:main
+# runs progress to completion.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && true || false }}
 
 permissions:
   contents: read
