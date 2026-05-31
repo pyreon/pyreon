@@ -97,7 +97,7 @@ const renderSsrEntrySource = (locales: readonly string[] = []): string => {
 import { routes } from "virtual:zero/routes"
 import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
-import { getRedirectInfo, serializeLoaderData, stringifyLoaderData } from "@pyreon/router"
+import { getRedirectInfo, RouterProvider, serializeLoaderData, stringifyLoaderData } from "@pyreon/router"
 import { runWithRequestContext } from "@pyreon/runtime-server"
 import { createApp } from "@pyreon/zero/server"
 
@@ -175,7 +175,10 @@ export default async function renderPath(path, options) {
   }
 
   return runWithRequestContext(async () => {
-    const app = h(App, null)
+    // PR-S1: App is router-AGNOSTIC; supply the per-request RouterProvider
+    // at this call site (mirrors production createHandler + dev renderSsr).
+    // See app.ts:createApp comment for the full rationale.
+    const app = h(RouterProvider, { router }, h(App, null))
     const { html: appHtml, head } = await renderWithHead(app)
 
     // Inject styler's <style data-pyreon-styler="..."> tag into the head

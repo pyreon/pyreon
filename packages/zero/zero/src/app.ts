@@ -2,7 +2,7 @@ import type { ComponentFn, Props } from '@pyreon/core'
 import { Fragment, h } from '@pyreon/core'
 import { HeadProvider } from '@pyreon/head'
 import type { RouteRecord } from '@pyreon/router'
-import { createRouter, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, RouterView } from '@pyreon/router'
 
 // ─── App assembly ────────────────────────────────────────────────────────────
 
@@ -72,15 +72,29 @@ export function createApp(options: CreateAppOptions) {
   }
   const Layout = hasLayoutInRoutes ? DefaultLayout : (options.layout ?? DefaultLayout)
 
+  // App is router-AGNOSTIC. The RouterProvider lives at the CALL SITE
+  // (createHandler in production SSR, renderSsr in dev, renderPath in SSG)
+  // because the router is per-request. Wrapping it inside App would close
+  // over the build-time `router` (created above at module-init in
+  // `entry-server.ts:createServer`'s one-shot `createApp` call); the
+  // outer per-request RouterProvider from `createHandler` would then
+  // be SHADOWED by App's inner one, and `useContext(RouterContext)`
+  // inside `RouterView` / `useLoaderData()` would always read the
+  // build-time router. Symptoms in production:
+  //   - SSR HTML ships with empty loader sections (loaders write to
+  //     the per-request router; readers see the build-time router)
+  //   - Concurrent requests cross-contaminate via the shared build-time
+  //     `_loaderData` Map (Map persists across the closure's lifetime)
+  // Dev `renderSsr` (vite-plugin.ts) and SSG `renderPath` (ssg-plugin.ts)
+  // mask the bug by calling `createApp` PER REQUEST — the build-time
+  // router is fresh each time. Production `createServer` calls
+  // `createApp` ONCE at module init, so the bug is production-only.
+  // Fix: drop the inner RouterProvider; every caller supplies its own.
   function App() {
     return h(
       HeadProvider,
       null,
-      h(
-        RouterProvider as ComponentFn<Props>,
-        { router },
-        h(Layout, null, h(RouterView as ComponentFn<Props>, null)),
-      ),
+      h(Layout, null, h(RouterView as ComponentFn<Props>, null)),
     )
   }
 
