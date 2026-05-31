@@ -260,8 +260,9 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // typecheck stays green on the TS side (TS accepts `function App(props)`
   // as `props: any`), but native emit produces unbound references that
   // `swiftc` / `kotlinc` reject with cryptic errors. Surface it loud at
-  // the parser layer so the diagnostic names the component.
-  warnIfUntypedPropsParam(name, fn.params as AnyNode[] | undefined, propsParamName, ctx)
+  // the parser layer so the diagnostic names the component. Skips
+  // bodies that never reference the param (legitimate no-props shape).
+  warnIfUntypedPropsParam(name, fn.params as AnyNode[] | undefined, propsParamName, body, ctx)
 
   const decls: DeclIR[] = []
   let returnExpr: ExprIR | null = null
@@ -340,16 +341,26 @@ function parseProps(
  *   - there's NO type annotation on the parameter
  *   - the parser captured the parameter name (so the omission isn't an
  *     unrelated bail like "no params")
+ *   - the body actually references `<paramName>.X` somewhere reachable
+ *     (closure / event handler / JSX expression — all count). A
+ *     component with NO `props.X` reference at all is the legitimate
+ *     no-props shape; warning there would be a false positive.
  *
- * Skips when the body of the component never references `props.X` (a
- * component with no props at all is a legitimate untyped shape). We
- * detect this by walking the function body once for any
- * `MemberExpression` whose object's name matches the param.
+ * Body scan: stack-based walker (no recursion) iterating every node's
+ * own properties for any `MemberExpression` whose `object` is an
+ * `Identifier` matching the param. TS type-only layers (`as any`,
+ * `satisfies T`, `!`, parens) wrap the props identifier but their
+ * inner `MemberExpression.object` still resolves to the same
+ * Identifier — the walker hits them transparently because it descends
+ * into every child property. A literal `(props as any).whatever`
+ * therefore DOES fire (the silent-drop problem is identical when the
+ * field name can't be enumerated against an annotation).
  */
 function warnIfUntypedPropsParam(
   componentName: string,
   params: AnyNode[] | undefined,
   propsParamName: string | undefined,
+  body: AnyNode[] | undefined,
   ctx: ParseCtx,
 ): void {
   if (!params || params.length === 0 || !propsParamName) return
@@ -358,9 +369,80 @@ function warnIfUntypedPropsParam(
   // Annotated → handled by parseProps. Only the no-annotation shape is
   // the silent-drop case we warn about here.
   if (firstParam.typeAnnotation) return
+  // Body never references `<propsParamName>.X` → legitimate no-props
+  // shape, suppress the warning.
+  if (!body || !bodyReferencesPropsParam(body, propsParamName)) return
   ctx.warnings.push(
     `Component ${componentName} has an untyped \`${propsParamName}\` parameter — type-annotate it (e.g. \`function ${componentName}(${propsParamName}: { title: string })\`) so PMTC can rewrite \`${propsParamName}.X\` references. Without the annotation, the parser cannot enumerate fields and member accesses silently drop.`,
   )
+}
+
+/**
+ * Stack-based walker over a function body. Returns true if any
+ * `MemberExpression` exists whose `object` (after unwrapping TS
+ * type-only layers + parens) is an `Identifier` with name === paramName.
+ * Descends into every child property regardless of node type —
+ * closures, JSX expressions, conditionals all count as "reachable" by
+ * design: the rewriter would emit unbound references for `props.X`
+ * inside any of them. No new dep; uses a worklist to avoid recursion.
+ *
+ * Unwrap shapes recognised at the MemberExpression's object slot:
+ *   - `ParenthesizedExpression` (`(props).x`)
+ *   - `TSAsExpression`          (`(props as any).x` — common escape hatch)
+ *   - `TSSatisfiesExpression`   (`(props satisfies X).x`)
+ *   - `TSNonNullExpression`     (`props!.x`)
+ *   - `TSTypeAssertion`         (`(<any>props).x` — legacy form)
+ * Each layer carries its inner expression on `.expression`. Composes:
+ * `((props as any) satisfies Y).x` reaches the bare `Identifier`.
+ */
+function bodyReferencesPropsParam(body: AnyNode[], paramName: string): boolean {
+  const worklist: AnyNode[] = [...body]
+  while (worklist.length > 0) {
+    const node = worklist.pop()
+    if (!node || typeof node !== 'object') continue
+    if (node.type === 'MemberExpression') {
+      const root = unwrapTypeLayers(node.object)
+      if (root?.type === 'Identifier' && root.name === paramName) {
+        return true
+      }
+    }
+    // Push every child node value onto the worklist. AST nodes carry
+    // their children in own enumerable properties — arrays of nodes
+    // (e.g. `body`, `arguments`, `params`) AND single-node properties
+    // (e.g. `object`, `argument`, `expression`). Primitive values
+    // (strings, numbers, booleans) are skipped by the typeof guard at
+    // the top of the loop.
+    for (const key in node) {
+      // Skip the `type` discriminator + oxc's position fields — none
+      // carry child AST nodes, and skipping them saves work.
+      if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range') {
+        continue
+      }
+      const value = node[key]
+      if (Array.isArray(value)) {
+        for (const item of value) worklist.push(item)
+      } else if (value && typeof value === 'object') {
+        worklist.push(value)
+      }
+    }
+  }
+  return false
+}
+
+/** Strip TS type-only wrappers + parens to reach the underlying expression. */
+function unwrapTypeLayers(node: AnyNode | undefined): AnyNode | undefined {
+  let current = node
+  while (
+    current &&
+    (current.type === 'ParenthesizedExpression' ||
+      current.type === 'TSAsExpression' ||
+      current.type === 'TSSatisfiesExpression' ||
+      current.type === 'TSNonNullExpression' ||
+      current.type === 'TSTypeAssertion')
+  ) {
+    current = current.expression
+  }
+  return current
 }
 
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */

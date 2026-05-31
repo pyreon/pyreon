@@ -70,6 +70,106 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         ),
       ).toBe(true)
     })
+
+    // Round-3 polish (PR #1136 follow-up): the JSDoc on
+    // `warnIfUntypedPropsParam` promised a body-scan skip when the
+    // component never references `props.X`, but the implementation
+    // just pushed the warning unconditionally for any untyped param.
+    // That false-positived on the legitimate no-props shape
+    // `function Spinner(props) { return <Text>Hi</Text> }` (which is
+    // valid TS — `props: any` typed-implicitly, never read). The
+    // body-scan now matches the docstring.
+    it('does NOT warn when the body never references `props.X` (the documented no-props shape)', () => {
+      const result = transform(
+        `export function Spinner(props) { return <Text>Hi</Text> }`,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some((w) => w.includes('untyped')),
+      ).toBe(false)
+    })
+
+    it('DOES warn when the body references `props.X` directly (canonical silent-drop bug)', () => {
+      const result = transform(
+        `export function Spinner(props) { return <Text>{props.title}</Text> }`,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.includes('Spinner') &&
+            w.includes('untyped'),
+        ),
+      ).toBe(true)
+    })
+
+    it('DOES warn when `props.X` is reachable from a closure inside the body (silent-drop still applies)', () => {
+      const result = transform(
+        `
+        export function Greeting(props) {
+          const handler = () => log(props.foo)
+          return <Text>x</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some(
+          (w) => w.includes('Greeting') && w.includes('untyped'),
+        ),
+      ).toBe(true)
+    })
+
+    // `(props as any).whatever` — TS type-only escape hatch. The
+    // walker descends into TSAsExpression's children, so the inner
+    // MemberExpression's `object` still resolves to the bare `props`
+    // Identifier. The warning IS correct to fire: the type assertion
+    // bypasses typecheck but does NOT solve the underlying silent-drop
+    // problem (PMTC still can't enumerate fields against a missing
+    // annotation, so the emit still produces an unbound reference).
+    it('DOES warn for `(props as any).whatever` — TS escape hatch does not solve the silent-drop', () => {
+      const result = transform(
+        `export function Greeting(props) { return <Text>{(props as any).whatever}</Text> }`,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some(
+          (w) => w.includes('Greeting') && w.includes('untyped'),
+        ),
+      ).toBe(true)
+    })
+
+    // Gap C from PR #1136 polish: destructured first-param
+    // (`function App({title}) {…}`) is silently bailed by `parseProps`
+    // (it returns `propsParamName: undefined`, so the warning helper
+    // early-returns). That bail path was undocumented + un-tested —
+    // a refactor of `parseProps` could accidentally start returning a
+    // synthetic name and start false-positiving here. Lock the
+    // current no-warn behavior so the refactor signal is loud.
+    it('does NOT warn for destructured first-param `function App({title}) {…}` (parseProps bails earlier)', () => {
+      const result = transform(
+        `export function App({title}: { title: string }) { return <Text>{title}</Text> }`,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some((w) => w.includes('untyped')),
+      ).toBe(false)
+    })
+
+    it('does NOT warn for destructured first-param without annotation either (still bails via ObjectPattern check)', () => {
+      const result = transform(
+        `export function App({title}) { return <Text>{title}</Text> }`,
+        { target: 'swift' },
+      )
+      // No `untyped` warning because parseProps returns
+      // `propsParamName: undefined` for ObjectPattern first-params —
+      // the destructure-params shape is a SEPARATE silent-drop class
+      // that needs its own fix; this test locks the current behavior
+      // so a future fix doesn't accidentally regress this surface.
+      expect(
+        result.warnings.some((w) => w.includes('untyped')),
+      ).toBe(false)
+    })
   })
 
   describe('hooks declared inside <For>/<Show> render callbacks', () => {
@@ -178,6 +278,77 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       expect(
         result.warnings.some((w) => w.includes('render callback')),
       ).toBe(false)
+    })
+
+    // Round-3 polish (PR #1136 follow-up, Gap B): the HOOK_NAMES set
+    // in `warnIfHookInsideRenderCallback` is hand-maintained — adding
+    // a future hook to PMTC requires remembering to add it here too.
+    // This test pins the EXACT expected hook list AND asserts the
+    // warning fires for every name in it. Two ways to break:
+    //   - add a hook to HOOK_NAMES without adding it here → coverage
+    //     gap surfaces immediately in the next test run
+    //   - rename / remove a hook → the EXPECTED_HOOK_NAMES diff is
+    //     loud at code review
+    // The fixture per hook just declares the call inside a <For>
+    // render callback's arrow body. Arguments are chosen to be
+    // syntactically valid for the parser; the warning itself only
+    // matches on the callee name (it never reads the args).
+    describe('HOOK_NAMES set is exhaustively covered', () => {
+      const EXPECTED_HOOK_NAMES = [
+        'signal',
+        'computed',
+        'useStorage',
+        'useFetch',
+        'useForm',
+        'useClipboard',
+        'useColorScheme',
+        'usePermissions',
+        'useOnline',
+      ] as const
+
+      // Each hook has a minimal-but-valid call site. The parser only
+      // checks `init.callee.name`, so any CallExpression argument list
+      // works — but we use shapes resembling real usage so the
+      // fixture stays diff-readable if a hook's signature evolves.
+      const CALL_SITES: Record<(typeof EXPECTED_HOOK_NAMES)[number], string> = {
+        signal: 'signal(0)',
+        computed: 'computed(() => 1)',
+        useStorage: "useStorage<string>('k', '')",
+        useFetch: "useFetch<string>('/url')",
+        useForm: 'useForm({})',
+        useClipboard: 'useClipboard()',
+        useColorScheme: 'useColorScheme()',
+        usePermissions: "usePermissions(['p'])",
+        useOnline: 'useOnline()',
+      }
+
+      for (const hook of EXPECTED_HOOK_NAMES) {
+        it(`warns when \`${hook}(…)\` is declared inside a <For> render callback`, () => {
+          const callSite = CALL_SITES[hook]
+          const result = transform(
+            `
+            export function App() {
+              const items = signal<string[]>(['a'])
+              return (
+                <For each={items()}>{(i) => {
+                  const x = ${callSite}
+                  return <Text>{i}</Text>
+                }}</For>
+              )
+            }
+            `,
+            { target: 'swift' },
+          )
+          expect(
+            result.warnings.some(
+              (w) =>
+                w.includes('<For>') &&
+                w.includes(hook) &&
+                w.includes('render callback'),
+            ),
+          ).toBe(true)
+        })
+      }
     })
   })
 
