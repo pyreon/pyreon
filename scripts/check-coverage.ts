@@ -106,6 +106,12 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'Code editor (CodeMirror integration). Statements lifted 90 → 94 (cov-94 series, PR #1072). Branches at 73.87% — uncovered branches are CodeMirror lifecycle handlers that need real editor instances.',
   },
+  '@pyreon/compiler': {
+    currentStatements: 90,
+    currentBranches: 84,
+    reason:
+      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader, exercised at build time only) + event-names.ts (DOM-event remap table — data constants only exercised when matching event handlers appear in compiled JSX). Post-exclude functions=98.12%, lines=96.29%, statements=92.53%, branches=84% — branches 1pt below the 85 floor due to scattered compiler-edge-case branches in jsx.ts (~3000-statement file). Statements threshold is the global 90 default. Lifting branches is a dedicated multi-PR effort.',
+  },
   '@pyreon/hooks': {
     currentStatements: 94,
     currentBranches: 75,
