@@ -467,7 +467,29 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // framework. The createRouter() routes config is dropped — routes
   // are wired by the host via `.navigationDestination(for:)`.
   if (d.kind === 'router') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonRouter()`
+    // Round-2 follow-up: when `createRouter({ beforeEach: [fn] })` /
+    // `afterEach: [fn]` is configured, emit a closure-init that
+    // constructs the router AND appends each guard fn ref before
+    // returning. Without guards, falls through to the bare init.
+    const hasGuards =
+      (d.beforeEach !== undefined && d.beforeEach.length > 0) ||
+      (d.afterEach !== undefined && d.afterEach.length > 0)
+    if (!hasGuards) {
+      return `@State private var ${swiftIdent(d.name)} = PyreonRouter()`
+    }
+    const lines: string[] = [
+      '{',
+      '    let r = PyreonRouter()',
+    ]
+    for (const fn of d.beforeEach ?? []) {
+      lines.push(`    r.beforeEachGuards.append(${swiftIdent(fn)})`)
+    }
+    for (const fn of d.afterEach ?? []) {
+      lines.push(`    r.afterEachHooks.append(${swiftIdent(fn)})`)
+    }
+    lines.push('    return r')
+    lines.push('  }()')
+    return `@State private var ${swiftIdent(d.name)}: PyreonRouter = ${lines.join('\n  ')}`
   }
   // C4: router hook — `const navigate = useNavigate()` →
   // `private var navigate: (String) -> Void { useNavigate(router:

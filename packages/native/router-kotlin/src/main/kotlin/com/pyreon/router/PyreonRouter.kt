@@ -97,23 +97,56 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
         }
     }
 
-    /** Push a new path onto the stack. Matches `router.push(path)` on the web side. */
+    /** Global router-level guards (`beforeEach: [fn]` on createRouter).
+     *  Each is `(path: String) -> Boolean` — return `false` to BLOCK
+     *  the navigation. Chains: if ANY guard returns false, the
+     *  navigation is dropped. Runs BEFORE `push`/`replace` mutates
+     *  the path. PMTC-emitted apps configure these from
+     *  `createRouter({ beforeEach: [authGuard, logGuard] })` config. */
+    public val beforeEachGuards: MutableList<(String) -> Boolean> = mutableListOf()
+
+    /** Global router-level afterEach hooks (`afterEach: [fn]` on
+     *  createRouter). Each is `(path: String) -> Unit` — runs AFTER
+     *  the path commits. Fan-out (no short-circuit); side effects
+     *  only. Typical use: analytics, page-view logging. */
+    public val afterEachHooks: MutableList<(String) -> Unit> = mutableListOf()
+
+    /** Run the beforeEach chain against `candidate`; any false →
+     *  navigation BLOCKED. Returns true iff every guard allowed. */
+    private fun allowNavigation(candidate: String): Boolean {
+        for (guardFn in beforeEachGuards) {
+            if (!guardFn(candidate)) return false
+        }
+        return true
+    }
+
+    /** Push a new path onto the stack. Matches `router.push(path)` on the web side.
+     *
+     *  Round-2 follow-up: chains `beforeEachGuards` (any false →
+     *  no-op) before the path mutation, fans out `afterEachHooks`
+     *  after the commit. */
     public fun push(path: String) {
+        if (!allowNavigation(path)) return
         this.path.value = this.path.value + path
+        for (hook in afterEachHooks) hook(path)
     }
 
     /**
      * Replace the top-of-stack path. Matches `router.replace(path)`
      * on the web side — useful for auth redirects so the previous
      * page isn't in the back stack.
+     *
+     * Round-2 follow-up: same guard chain as `push`.
      */
     public fun replace(path: String) {
+        if (!allowNavigation(path)) return
         val current = this.path.value
         this.path.value = if (current.isEmpty()) {
             listOf(path)
         } else {
             current.dropLast(1) + path
         }
+        for (hook in afterEachHooks) hook(path)
     }
 
     /**

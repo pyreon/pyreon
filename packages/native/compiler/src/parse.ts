@@ -444,9 +444,17 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // routes arg → undefined `routes` → emit falls back to C4 bare-instance.
   if (calleeName === 'createRouter') {
     const routes = tryExtractRoutes(init.arguments?.[0], ctx)
-    return routes !== null
-      ? { kind: 'router', name, routes }
-      : { kind: 'router', name }
+    // Global guards — beforeEach / afterEach arrays on the router
+    // config. Captures IDENTIFIER REFS only (conservative shape);
+    // inline arrow bodies are dropped here, same as per-route
+    // beforeEnter bails non-arrow-expression shapes.
+    const beforeEach = tryExtractGuardRefArray(init.arguments?.[0], 'beforeEach')
+    const afterEach = tryExtractGuardRefArray(init.arguments?.[0], 'afterEach')
+    const decl: DeclIR = { kind: 'router', name }
+    if (routes !== null) decl.routes = routes
+    if (beforeEach.length > 0) decl.beforeEach = beforeEach
+    if (afterEach.length > 0) decl.afterEach = afterEach
+    return decl
   }
   if (calleeName === 'useNavigate') {
     return { kind: 'router-hook', name, hook: 'navigate' }
@@ -603,6 +611,39 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   )
   if (!routesProp) return null
   return parseRouteArray(routesProp.value, ctx)
+}
+
+/**
+ * Global-guards helper — extracts identifier refs from a `beforeEach: [fn1, fn2]`
+ * / `afterEach: [fn1]` field on the createRouter config. Returns an empty
+ * array if the field is absent / non-array / contains no identifier refs
+ * (each silently dropped). Conservative: only IDENTIFIER REFS land in
+ * the result; inline arrow bodies and member expressions are dropped
+ * because they'd need closure-emit + capture machinery the per-route
+ * boolean-guard shape doesn't carry into this PR.
+ */
+function tryExtractGuardRefArray(arg: AnyNode | undefined, key: string): string[] {
+  if (!arg || arg.type !== 'ObjectExpression') return []
+  const props = arg.properties as AnyNode[] | undefined
+  if (!props) return []
+  const prop = props.find(
+    (p) =>
+      p?.type === 'Property' &&
+      p?.key?.type === 'Identifier' &&
+      p?.key?.name === key,
+  )
+  if (!prop) return []
+  const value = prop.value as AnyNode | undefined
+  if (!value || value.type !== 'ArrayExpression') return []
+  const out: string[] = []
+  for (const el of (value.elements as AnyNode[] | undefined) ?? []) {
+    if (el?.type === 'Identifier' && typeof el.name === 'string') {
+      out.push(el.name as string)
+    }
+    // Non-identifier elements (arrow expressions, member access, etc.)
+    // are silently dropped — closure-emit is a documented follow-up.
+  }
+  return out
 }
 
 /**
