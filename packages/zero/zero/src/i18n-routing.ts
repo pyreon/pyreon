@@ -538,12 +538,22 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
         // downstream async frame (Vite middleware chain, ssrLoadModule,
         // Pyreon handler, render). The store is a tiny get/set object — no
         // signal allocation per request, no subscriber bookkeeping (server
-        // renders snapshot once). A best-effort module-signal write also
-        // fires so any code path that DIDN'T flow through the ALS context
-        // (rare — direct render outside the middleware) still sees the
-        // current locale. Pre-fix this module write WAS the bug: two
-        // concurrent requests with different locales would race the writes
-        // and the second-arriving render would see the wrong locale.
+        // renders snapshot once).
+        //
+        // **No `localeSignal.set(locale)` here** (was the original bug
+        // PR-S7's first cut left in as "best effort" for callers that
+        // didn't flow through the ALS context). Module-signal writes
+        // RACE across concurrent SSR requests — request A writes 'en',
+        // request B writes 'de' before A's deferred reader fires, A's
+        // deferred reader sees 'de'. The ALS store is the authoritative
+        // SSR source; the module signal is CSR-only (set by client-side
+        // `setLocale()`, read as the fallback when no ALS context is
+        // active — which on the client is single-threaded so no race).
+        // Removing the write trades "deferred SSR readers see whichever
+        // request wrote the signal last" for "deferred SSR readers see
+        // the signal's CSR-set value (or initial default)". The latter
+        // is predictable and race-free; the former was a silent
+        // cross-request contamination.
         let storeValue = locale
         const perRequestStore: LocaleStore = {
           get: () => storeValue,
@@ -551,7 +561,6 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
             storeValue = v
           },
         }
-        localeSignal.set(locale)
         _runInLocaleStore(perRequestStore, () => {
           next()
         })

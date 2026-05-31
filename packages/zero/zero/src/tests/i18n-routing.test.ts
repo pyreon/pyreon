@@ -265,6 +265,140 @@ describe('i18nRouting plugin', () => {
   })
 })
 
+// ─── Audit #1 follow-up: the middleware must NOT write to localeSignal ─────
+//
+// PR-S7's first cut closed the IN-ALS race via `_runInLocaleStore`, but
+// left a "best effort" `localeSignal.set(locale)` in the middleware so
+// DEFERRED readers (effects scheduled inside a request but resolving
+// after the ALS unwinds, post-render hooks, island serialization that
+// outlives `runWithRequestContext`) could fall back to the module signal.
+// That fallback is racy by construction — two concurrent requests with
+// different locales race on the same module-global, and "last writer
+// wins" for any deferred reader regardless of WHICH request scheduled
+// the deferred work.
+//
+// Audit #1 (post v0.25.1 framework audit) identified this as a real
+// surviving race. Fix: drop the module-signal write entirely. The ALS
+// store is the authoritative SSR source. Deferred fallback callers now
+// see the signal's CSR-set value (or initial default) — predictable +
+// race-free, vs the previous "fresh but cross-request-contaminated".
+
+describe('Audit #1: i18nRouting middleware does NOT write to module localeSignal', () => {
+  // Build a tiny Connect-style server stub that records the middleware
+  // registered via `server.middlewares.use(...)` so we can invoke it
+  // directly without booting Vite.
+  type Mid = (
+    req: { url?: string; headers: Record<string, string | undefined> },
+    res: { writeHead: (s: number, h: Record<string, string>) => void; end: () => void },
+    next: () => void,
+  ) => void
+  function makeStubServer(): { server: unknown; getMid: () => Mid } {
+    let registered: Mid | null = null
+    const server = {
+      middlewares: {
+        use(mid: Mid) {
+          registered = mid
+        },
+      },
+    }
+    return {
+      server,
+      getMid: () => {
+        if (!registered) throw new Error('middleware was not registered')
+        return registered
+      },
+    }
+  }
+  function invoke(mid: Mid, url: string): Promise<void> {
+    return new Promise((resolve) => {
+      const req = { url, headers: {} }
+      const res = {
+        writeHead: () => {},
+        end: () => resolve(),
+      }
+      mid(req, res, () => resolve())
+    })
+  }
+
+  it('a single request through the middleware leaves localeSignal at its prior value', async () => {
+    const { i18nRouting: routing, localeSignal } = await import('../i18n-routing')
+    const plugin = routing({ locales: ['en', 'de', 'cs'], defaultLocale: 'en' }) as Plugin
+    // Reset the module signal to a known sentinel that the request locale
+    // would otherwise overwrite. Using 'xx' instead of 'en' so the test
+    // catches both "wrote the request locale" AND "wrote the default
+    // locale" regressions.
+    localeSignal.set('xx')
+    const { server, getMid } = makeStubServer()
+    // configureServer is `async` in the source — await it.
+    await (plugin.configureServer as (s: unknown) => Promise<void> | void)?.call(plugin, server)
+    await invoke(getMid(), '/de/about')
+    expect(localeSignal()).toBe('xx')
+    localeSignal.set('en') // cleanup for downstream tests
+  })
+
+  it('concurrent middleware invocations with different locales leave localeSignal unchanged', async () => {
+    const { i18nRouting: routing, localeSignal } = await import('../i18n-routing')
+    const plugin = routing({ locales: ['en', 'de', 'cs'], defaultLocale: 'en' }) as Plugin
+    localeSignal.set('xx')
+    const { server, getMid } = makeStubServer()
+    await (plugin.configureServer as (s: unknown) => Promise<void> | void)?.call(plugin, server)
+    const mid = getMid()
+    // Two concurrent requests with different locales — pre-fix EACH would
+    // write the module signal, racing on the same module-global. Post-fix
+    // NEITHER writes, so the sentinel survives both invocations.
+    await Promise.all([invoke(mid, '/de/about'), invoke(mid, '/cs/about')])
+    expect(localeSignal()).toBe('xx')
+    localeSignal.set('en') // cleanup
+  })
+
+  it('concurrent requests STILL get correct per-request locale via the ALS store (regression — fix must not break PR-S7)', async () => {
+    const { i18nRouting: routing, useLocale, localeSignal } = await import('../i18n-routing')
+    const plugin = routing({ locales: ['en', 'de', 'cs'], defaultLocale: 'en' }) as Plugin
+    localeSignal.set('xx')
+    const { server, getMid } = makeStubServer()
+    await (plugin.configureServer as (s: unknown) => Promise<void> | void)?.call(plugin, server)
+    const mid = getMid()
+    // Capture useLocale() FROM INSIDE each request's middleware-wrapped
+    // chain, which runs inside the per-request ALS store. The captured
+    // values must reflect each request's URL locale, NOT the other
+    // request's locale (race) AND NOT the module-signal sentinel 'xx'.
+    const captured: { req: string; got: string }[] = []
+    const captureMid =
+      (label: string) =>
+      (req: { url?: string; headers: Record<string, string | undefined> }, res: unknown, next: () => void) => {
+        captured.push({ req: label, got: useLocale() })
+        next()
+      }
+    const runAndCapture = (url: string, label: string): Promise<void> =>
+      new Promise((resolve) => {
+        const req = { url, headers: {} }
+        const res = {
+          writeHead: () => {},
+          end: () => resolve(),
+        }
+        // The i18n middleware chains to next() inside the ALS store; we
+        // pass a "next" that itself invokes our capture middleware so the
+        // useLocale() read happens IN the ALS scope.
+        mid(req, res, () => {
+          captureMid(label)(req, res, () => resolve())
+        })
+      })
+    await Promise.all([
+      runAndCapture('/de/about', 'de-req'),
+      runAndCapture('/cs/about', 'cs-req'),
+    ])
+    // Each request observed its own locale; no contamination.
+    const de = captured.find((c) => c.req === 'de-req')
+    const cs = captured.find((c) => c.req === 'cs-req')
+    expect(de?.got).toBe('de')
+    expect(cs?.got).toBe('cs')
+    // Module signal stayed at the sentinel — proves the in-ALS reads
+    // went through the per-request store, not the module signal.
+    expect(localeSignal()).toBe('xx')
+    localeSignal.set('en') // cleanup
+  })
+})
+
 // ─── PR H — expandRoutesForLocales ─────────────────────────────────────────
 
 describe('expandRoutesForLocales', () => {
