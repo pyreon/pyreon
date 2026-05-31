@@ -11,8 +11,9 @@ export default defineNodeConfig({
   // onCleanup callbacks from @pyreon/reactivity only execute inside
   // reactive component scopes — unreachable in unit tests.
   coverageThresholds: {
-    statements: 90,
+    statements: 94,
     branches: 85,
-    functions: 89,
+    functions: 94,
+    lines: 94,
   },
 })
