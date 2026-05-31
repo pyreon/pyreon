@@ -173,6 +173,18 @@ export function createISRHandler(
       )
   const revalidating = new Set<string>()
   const revalidateMs = config.revalidate * 1000
+
+  // PR-S5: per-key epoch counter for the revalidateNow / in-flight
+  // revalidation race. revalidateNow() bumps the epoch BEFORE
+  // delete()-ing — a revalidation that started before the bump captures
+  // the old epoch and skips its store.set() when it sees the epoch has
+  // changed. Without this, the in-flight revalidation could re-populate
+  // the cache AFTER revalidateNow() deleted, defeating the invalidation.
+  const _keyEpoch = new Map<string, number>()
+  const _currentEpoch = (key: string): number => _keyEpoch.get(key) ?? 0
+  const _bumpEpoch = (key: string): void => {
+    _keyEpoch.set(key, _currentEpoch(key) + 1)
+  }
   // Bounded background-revalidation timeout. Without it, a handler that
   // hangs forever leaves its key permanently in `revalidating` (the
   // `finally` that clears it never runs), so EVERY later request for
@@ -269,6 +281,16 @@ export function createISRHandler(
     // hundreds of pending timer closures + rejection callbacks before
     // they self-clear.
     let timeoutId: ReturnType<typeof setTimeout> | undefined
+    // PR-S5: per-revalidation AbortController. The timeout now ABORTS the
+    // inner handler instead of just rejecting the Promise.race — without
+    // this, a hung handler kept running after the race rejected, holding
+    // request resources + memory indefinitely.
+    const controller = new AbortController()
+    // PR-S5: snapshot the key's epoch at start. If revalidateNow /
+    // revalidateAll bumps the epoch mid-revalidation, our store.set() is
+    // skipped — the invalidator's intent (this key MUST miss next time)
+    // wins over a re-populating revalidation that started before the bump.
+    const startEpoch = _currentEpoch(key)
     try {
       // Default: forward the original request shape (headers + method)
       // so the re-render sees the same auth context as the user's read.
@@ -281,25 +303,41 @@ export function createISRHandler(
       if (typeof config.revalidateRequest === 'function') {
         const custom = config.revalidateRequest(originalReq)
         if (custom === null) {
+          // PR-S5: when the user opts to skip revalidation for this
+          // entry, DELETE the stale entry so the next live request hits
+          // a fresh MISS rather than serving stale content forever.
+          // Pre-fix the entry stayed stale indefinitely — every subsequent
+          // request triggered revalidate → null → bail → stale served
+          // again, an infinite-stale loop.
+          await store.delete?.(key)
           revalidating.delete(key)
           return
         }
-        req = custom
+        // PR-S5: re-construct with the abort signal — the user's custom
+        // Request doesn't carry our controller's signal otherwise.
+        req = new Request(custom.url, {
+          method: custom.method,
+          headers: custom.headers,
+          body: custom.body,
+          signal: controller.signal,
+        })
       } else {
         req = new Request(url.href, {
           method: 'GET',
           headers: originalReq.headers,
+          signal: controller.signal,
         })
       }
       // Bound the revalidation so a hung handler can't pin `key` in
-      // `revalidating` forever (which would freeze the entry stale).
+      // `revalidating` forever. PR-S5: abort the inner handler via the
+      // AbortController so its loaders / DB queries actually stop.
       const res = await Promise.race([
         handler(req),
         new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(
-            () => reject(new Error('[Pyreon ISR] revalidation timeout')),
-            REVALIDATE_TIMEOUT_MS,
-          )
+          timeoutId = setTimeout(() => {
+            controller.abort()
+            reject(new Error('[Pyreon ISR] revalidation timeout'))
+          }, REVALIDATE_TIMEOUT_MS)
         }),
       ])
       // Never overwrite a good stale entry with a bad re-render
@@ -307,8 +345,13 @@ export function createISRHandler(
       // PR-S4: also disqualify per RFC 7234 cache directives + apply
       // responseFilter as the final-say override. Filter runs BEFORE
       // body consumption so the user can re-construct a Response.
+      // PR-S5: epoch guard — skip store.set() if revalidateNow /
+      // revalidateAll bumped the epoch while we were running. Without
+      // this, an in-flight revalidation started before the invalidator
+      // would re-populate the cache AFTER the delete, defeating the
+      // invalidation's intent.
       const finalRes = config.responseFilter ? (config.responseFilter(res) ?? null) : res
-      if (finalRes !== null && isCacheable(finalRes)) {
+      if (finalRes !== null && isCacheable(finalRes) && _currentEpoch(key) === startEpoch) {
         const html = await finalRes.text()
         const headers: Record<string, string> = {}
         finalRes.headers.forEach((v, k) => {
@@ -423,6 +466,17 @@ export function createISRHandler(
   const isrHandler = fetch as ISRHandler
 
   isrHandler.revalidateNow = async (key: string) => {
+    // PR-S5: bump the epoch BEFORE touching the store so any
+    // in-flight revalidation that started before this call AND lands
+    // its store.set() AFTER it skips the write (epoch-guard fires in
+    // revalidate()). Pre-fix shape: revalidateNow read existed → store
+    // delete; meanwhile a parallel revalidate's handler(req) completed
+    // and called store.set(key, ...) AFTER our delete. Cache returned
+    // to populated with the SAME data we tried to invalidate — the
+    // CMS-webhook caller saw `dropped: true` but the next request
+    // served stale-thought-fresh content. Epoch bump first means the
+    // racing revalidation's snapshot is now stale and the guard skips.
+    _bumpEpoch(key)
     // Get-then-delete so we can return an accurate `dropped` flag. The
     // store's `delete` doesn't return whether anything existed, so the
     // precheck is the only way to distinguish "actually dropped" from
@@ -457,6 +511,17 @@ export function createISRHandler(
         '[Pyreon ISR] revalidateAll() called against a store that does not implement `clear()`. The default in-memory store supports this; external stores (Redis/KV/etc.) must opt in by implementing `ISRStore.clear()`.',
       )
     }
+    // PR-S5: bump epochs for every IN-FLIGHT revalidation AND every
+    // key we've ever bumped before, so any racing store.set lands
+    // with a stale snapshot and the epoch guard skips it. The
+    // `revalidating` Set is the authoritative source of "what's about
+    // to write" — `_currentEpoch` is a pure read that doesn't seed
+    // the map, so `_keyEpoch.keys()` alone misses every key that has
+    // never been individually invalidated. The union (revalidating ∪
+    // _keyEpoch.keys) covers both: in-flight reads-pending-write +
+    // history of prior revalidateNow targets.
+    for (const key of revalidating) _bumpEpoch(key)
+    for (const key of _keyEpoch.keys()) _bumpEpoch(key)
     await store.clear()
     // Drop every in-flight revalidation flag — fresh requests should
     // re-render rather than waiting on stale resolve callbacks pointing
