@@ -54,4 +54,67 @@ describe('useInfiniteScroll', () => {
     ref(container2)
     expect(container2.children.length).toBe(1)
   })
+
+  it('handleIntersect fires onLoadMore + updates triggered when sentinel intersects', () => {
+    let captured: ((entries: IntersectionObserverEntry[]) => void) | null = null
+    const RealIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = class MockIO {
+      constructor(cb: (entries: IntersectionObserverEntry[]) => void) {
+        captured = cb
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver
+
+    try {
+      const onLoadMore = vi.fn()
+      const { ref, triggered } = useInfiniteScroll(onLoadMore)
+      ref(document.createElement('div'))
+      expect(captured).not.toBeNull()
+
+      captured!([{ isIntersecting: true } as IntersectionObserverEntry])
+      expect(triggered()).toBe(true)
+      expect(onLoadMore).toHaveBeenCalledTimes(1)
+
+      captured!([{ isIntersecting: false } as IntersectionObserverEntry])
+      expect(triggered()).toBe(false)
+      expect(onLoadMore).toHaveBeenCalledTimes(1)
+
+      // Empty entries → early return.
+      captured!([])
+      expect(onLoadMore).toHaveBeenCalledTimes(1)
+    } finally {
+      globalThis.IntersectionObserver = RealIO
+    }
+  })
+
+  it('skips onLoadMore when loading() is true or hasMore() is false', () => {
+    let captured: ((entries: IntersectionObserverEntry[]) => void) | null = null
+    const RealIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = class MockIO {
+      constructor(cb: (entries: IntersectionObserverEntry[]) => void) {
+        captured = cb
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver
+
+    try {
+      const onLoadMore = vi.fn()
+      const { ref } = useInfiniteScroll(onLoadMore, { loading: () => true })
+      ref(document.createElement('div'))
+      captured!([{ isIntersecting: true } as IntersectionObserverEntry])
+      expect(onLoadMore).not.toHaveBeenCalled()
+
+      const onLoadMore2 = vi.fn()
+      const { ref: ref2 } = useInfiniteScroll(onLoadMore2, { hasMore: () => false })
+      ref2(document.createElement('div'))
+      captured!([{ isIntersecting: true } as IntersectionObserverEntry])
+      expect(onLoadMore2).not.toHaveBeenCalled()
+    } finally {
+      globalThis.IntersectionObserver = RealIO
+    }
+  })
 })
