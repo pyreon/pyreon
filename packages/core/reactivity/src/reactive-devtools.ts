@@ -185,11 +185,6 @@ interface NodeRec {
   pendingErr?: Error | undefined
   /** skipFrames from the deferred capture — needed by the lazy parser. */
   pendingSkip?: number | undefined
-  /**
-   * EWMA-tracked fire rate (~fires/sec, 1s time constant). Updated on
-   * every fire; decayed to "now" at read time. See `FireSummary.rate1s`.
-   */
-  rate1s: number
 }
 
 let _active = false
@@ -458,7 +453,6 @@ export function _rdRegister(
     loc: isDeferred ? undefined : (loc as SourceLocation | undefined),
     pendingErr: isDeferred ? (loc as DeferredLocation).err : undefined,
     pendingSkip: isDeferred ? (loc as DeferredLocation).skipFrames : undefined,
-    rate1s: 0,
   })
   if (sub) _subId.set(sub, id)
   _finalizer.register(node, id)
@@ -484,6 +478,16 @@ export function _rdRegister(
  * devtools client attaches — old fires age out naturally as new ones
  * arrive.
  *
+ * **Deferred-EWMA contract.** The expensive EWMA rate (`Math.exp` per
+ * fire) used to be maintained eagerly here — fine when devtools was
+ * opt-in, structurally inappropriate now that recording is always-on
+ * in `__DEV__`. A 60Hz animation signal would burn 60 `Math.exp` calls
+ * per second whether or not a devtools panel was attached. The rate is
+ * now reconstructed at read time in `getFireSummaries` from the bounded
+ * ring buffer (same recurrence-unfold equivalence — see the comment on
+ * the reconstruction loop). Capture stays bump-counter + ring-write
+ * only: no float ops, no branches per fire.
+ *
  * @internal
  */
 export function _rdRecordFire(node: object): void {
@@ -496,20 +500,6 @@ export function _rdRecordFire(node: object): void {
       : Date.now()
   if (rec) {
     rec.fires++
-    // EWMA rate update — decay the prior estimate by exp(-dt/TAU), then
-    // add 1 for this fire. At steady state of λ fires/sec, rate1s
-    // converges to ≈ λ when λ·TAU ≫ 1. For TAU=1000ms, that means
-    // "fires per second" in the natural sense.
-    if (rec.lastFire !== null) {
-      const dt = ts - rec.lastFire
-      const decay = Math.exp(-dt / LPIH_RATE_TAU_MS)
-      rec.rate1s = rec.rate1s * decay + 1
-    } else {
-      // First-ever fire: a single isolated fire reads as "1 fire/s" until
-      // the decay-at-read brings it down. Caller can interpret 1.0 as
-      // "at least one recent fire."
-      rec.rate1s = 1
-    }
     rec.lastFire = ts
   }
   if (_fireBuf === null) _fireBuf = new Array<ReactiveFire>(FIRE_CAP)
@@ -596,6 +586,30 @@ export function getFireSummaries(): FireSummary[] {
     typeof performance !== 'undefined' && typeof performance.now === 'function'
       ? performance.now()
       : Date.now()
+  // Build a one-pass per-id EWMA accumulator from the ring buffer. The
+  // pre-deferred algorithm maintained `rec.rate1s` incrementally on every
+  // fire via the recurrence `r_n = r_{n-1} * exp(-dt/TAU) + 1`; unfolded,
+  // that's `sum over i of exp(-(t_n - t_i) / TAU)`. Decaying-at-read to
+  // `now` then yields `sum over i of exp(-(now - t_i) / TAU)` — which is
+  // exactly what this loop computes by summing `exp(-(now - ts) / TAU)`
+  // over every fire timestamp for the id. Mathematically identical to the
+  // pre-fix value (within FP rounding), modulo fires older than the
+  // 512-entry ring buffer's window — fires older than ~5×TAU contribute
+  // <0.7% of their original weight, and 512 fires in <5s implies >100Hz
+  // (the only regime where buffer eviction can matter); structurally
+  // bounded undercount in the extreme case, identical at typical rates.
+  const ratesById = new Map<number, number>()
+  if (_fireBuf !== null && _fireCount > 0) {
+    const visible = _fireCount <= FIRE_CAP ? _fireCount : FIRE_CAP
+    const start = _fireCount <= FIRE_CAP ? 0 : _fireCount % FIRE_CAP
+    for (let i = 0; i < visible; i++) {
+      const e = _fireBuf[(start + i) % FIRE_CAP]
+      if (!e) continue
+      const contrib = Math.exp(-(nowTs - e.ts) / LPIH_RATE_TAU_MS)
+      const prev = ratesById.get(e.id)
+      ratesById.set(e.id, (prev ?? 0) + contrib)
+    }
+  }
   for (const rec of _byId.values()) {
     if (!rec.ref.deref()) continue
     // Resolve deferred loc on demand. `_resolveLoc` returns undefined
@@ -604,13 +618,7 @@ export function getFireSummaries(): FireSummary[] {
     const loc = _resolveLoc(rec)
     if (!loc) continue
     const k = `${loc.file}:${loc.line}:${loc.col}`
-    // Decay rate1s to "now" — a node that hasn't fired in 5×TAU shows
-    // ≈0.7% of its steady-state rate; in 10×TAU, basically 0. This is
-    // what makes "stopped firing" visible in the editor.
-    const decayedRate =
-      rec.lastFire !== null
-        ? rec.rate1s * Math.exp(-(nowTs - rec.lastFire) / LPIH_RATE_TAU_MS)
-        : 0
+    const decayedRate = ratesById.get(rec.id) ?? 0
     const existing = byKey.get(k)
     if (existing) {
       existing.count += rec.fires
