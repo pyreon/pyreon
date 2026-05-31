@@ -47,9 +47,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
-    "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/vitest-config": "workspace:*"
   },

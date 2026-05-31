@@ -50,16 +50,11 @@
     "@pyreon/ui-core": "workspace:^"
   },
   "devDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/elements": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
-    "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
-    "@pyreon/styler": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
-    "@pyreon/ui-core": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.7",
     "@vitus-labs/tools-rolldown": "^2.5.0"
