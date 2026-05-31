@@ -56,7 +56,7 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
   }

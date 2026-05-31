@@ -42,9 +42,11 @@
     "@vitest/browser-playwright": "^4.1.7"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:^",
     "@pyreon/elements": "workspace:^",
-    "@pyreon/hooks": "workspace:^",
+    "@pyreon/hooks": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^"
   }

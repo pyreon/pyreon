@@ -41,12 +41,12 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
-  },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

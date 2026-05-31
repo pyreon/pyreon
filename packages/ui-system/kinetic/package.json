@@ -51,7 +51,7 @@
   "engines": {
     "node": ">= 22"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^"

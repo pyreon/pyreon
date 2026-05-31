@@ -63,8 +63,6 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-server": "workspace:^"
   },
   "devDependencies": {
@@ -79,5 +77,9 @@
     "@pyreon/runtime-server": {
       "optional": true
     }
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

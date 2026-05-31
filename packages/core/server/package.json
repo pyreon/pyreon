@@ -48,11 +48,8 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:^",
     "@pyreon/head": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/router": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/runtime-server": "workspace:^"
   },
   "devDependencies": {
@@ -61,5 +58,10 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser": "^4.1.7",
     "@vitest/browser-playwright": "^4.1.7"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
   }
 }

@@ -41,7 +41,7 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@pyreon/reactivity": "workspace:^"
   }
 }

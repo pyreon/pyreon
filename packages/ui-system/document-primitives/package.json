@@ -42,7 +42,6 @@
   },
   "dependencies": {
     "@pyreon/connector-document": "workspace:^",
-    "@pyreon/core": "workspace:^",
     "@pyreon/document": "workspace:^",
     "@pyreon/elements": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
@@ -61,5 +60,8 @@
   },
   "engines": {
     "node": ">= 22"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^"
   }
 }

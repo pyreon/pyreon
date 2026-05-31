@@ -52,7 +52,9 @@
     "node": ">= 22"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:^",
     "@pyreon/document": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^"
   }
 }

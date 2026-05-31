@@ -37,10 +37,8 @@
   },
   "dependencies": {
     "@pyreon/coolgrid": "workspace:^",
-    "@pyreon/core": "workspace:^",
     "@pyreon/elements": "workspace:^",
     "@pyreon/hooks": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/styler": "workspace:^",
     "@pyreon/ui-core": "workspace:^",
@@ -55,5 +53,9 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.7"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

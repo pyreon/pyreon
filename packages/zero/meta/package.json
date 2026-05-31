@@ -56,7 +56,6 @@
     "@pyreon/machine": "workspace:^",
     "@pyreon/permissions": "workspace:^",
     "@pyreon/query": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/rx": "workspace:^",
     "@pyreon/state-tree": "workspace:^",
@@ -73,5 +72,8 @@
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
   }
 }

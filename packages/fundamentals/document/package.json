@@ -57,7 +57,7 @@
     "pdfmake": "^0.3.7",
     "pptxgenjs": "^4.0.1"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
   }

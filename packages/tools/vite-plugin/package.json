@@ -43,14 +43,14 @@
   },
   "dependencies": {
     "@pyreon/compiler": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
+    "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*",
     "vite": "^8.0.14"
   },
   "peerDependencies": {
+    "@pyreon/runtime-dom": "workspace:^",
     "vite": ">=8.0.0"
   }
 }
