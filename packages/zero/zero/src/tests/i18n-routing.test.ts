@@ -2,6 +2,7 @@ import type { Plugin } from 'vite'
 import { describe, expect, it } from 'vitest'
 import { parseFileRoutes } from '../fs-router'
 import {
+  _parseCookiesForTesting,
   buildLocalePath,
   createLocaleContext,
   detectLocaleFromHeader,
@@ -576,5 +577,74 @@ describe('expandRoutesForLocales — validation guards (PR L2)', () => {
         defaultLocale: 'en',
       }),
     ).not.toThrow()
+  })
+})
+
+// ─── PR-S3: parseCookies truncation regression ──────────────────────────────
+//
+// Bug: `pair.trim().split('=')` then destructure `[key, value]` took only
+// the first two array elements — any cookie value containing `=` (every
+// base64-encoded session ID, every JWT) got silently truncated to the
+// portion BEFORE the second `=`. Today only the locale cookie is read so
+// impact is bounded, but the shared parser is a latent footgun.
+//
+// Fix: split on FIRST `=` only via `indexOf('=') + slice`. Matches the
+// working pattern in packages/core/router/src/match.ts:51-59 (`parseQuery`).
+//
+// Bisect-verify: revert i18n-routing.ts:parseCookies to the old destructure
+// shape → these tests fail (each value-with-`=` test asserts the FULL value
+// survived; the broken parser returns a truncated value).
+describe('PR-S3: parseCookies — values containing `=` are preserved end-to-end', () => {
+  it('preserves base64 padding (session ID with trailing `==`)', () => {
+    const cookies = _parseCookiesForTesting('session=YWJjZGVmZ2g=')
+    expect(cookies.session).toBe('YWJjZGVmZ2g=')
+  })
+
+  it('preserves base64 padding (full `==` suffix)', () => {
+    const cookies = _parseCookiesForTesting('session=YWJjZGVmZ2hpamtsbW5vcA==')
+    expect(cookies.session).toBe('YWJjZGVmZ2hpamtsbW5vcA==')
+  })
+
+  it('preserves JWT-shaped values (multiple `.` and trailing `=`)', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.signature='
+    const cookies = _parseCookiesForTesting(`token=${jwt}`)
+    expect(cookies.token).toBe(jwt)
+  })
+
+  it('preserves a value containing multiple `=` chars', () => {
+    const cookies = _parseCookiesForTesting('opaque=a=b=c=d=e')
+    expect(cookies.opaque).toBe('a=b=c=d=e')
+  })
+
+  it('parses adjacent cookies without bleeding values across the `;` boundary', () => {
+    const cookies = _parseCookiesForTesting('locale=en; session=abc=def=ghi; foo=bar')
+    expect(cookies.locale).toBe('en')
+    expect(cookies.session).toBe('abc=def=ghi')
+    expect(cookies.foo).toBe('bar')
+  })
+
+  it('decodes URL-encoded values that contain `=` after decode', () => {
+    // Value `a=b` URL-encoded becomes `a%3Db`. After split-on-`=`, then
+    // decodeURIComponent, the original `a=b` is restored. This test
+    // documents the contract (decode happens AFTER split, so encoded `=`
+    // in value position is safe regardless of the split-on-first-`=` fix).
+    const cookies = _parseCookiesForTesting('value=a%3Db')
+    expect(cookies.value).toBe('a=b')
+  })
+
+  it('handles empty / malformed entries gracefully', () => {
+    const cookies = _parseCookiesForTesting('=novalue; valid=ok; ; novalue2=')
+    // `=novalue` → key is empty, skipped
+    // `valid=ok` → valid
+    // ` ` (empty after split) → skipped
+    // `novalue2=` → value is empty, skipped (matches original behavior)
+    expect(cookies.valid).toBe('ok')
+    expect(cookies['']).toBeUndefined()
+    expect(cookies.novalue2).toBeUndefined()
+  })
+
+  it('returns empty object for missing header', () => {
+    expect(_parseCookiesForTesting(undefined)).toEqual({})
+    expect(_parseCookiesForTesting('')).toEqual({})
   })
 })
