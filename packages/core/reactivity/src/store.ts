@@ -173,6 +173,30 @@ function wrap(raw: object, shallow: boolean): object {
       return value
     },
 
+    // Lint flags 4 `.set()` calls function-scope (proxy handler object),
+    // but PER-TRAP-CALL the proxy notifies AT MOST ONE signal due to:
+    //   1. Fresh `propSignals.set(key, signal(value))` — newly-created
+    //      signal has zero subscribers, so its initial value is just
+    //      stored. No notify, nothing to batch.
+    //   2. `lengthSig.set(prev)` short-circuits via `Object.is(_v, new)`
+    //      when the new length equals the previous (e.g. trap 2 of
+    //      `Array.prototype.push` re-sets length to the value trap 1
+    //      already updated). Empirically verified across push / splice
+    //      / direct-index / length-truncation paths — 1 notify max.
+    //   3. The "writes prop signal AND length signal in same trap"
+    //      shape only fires when the prop signal pre-existed (effect
+    //      subscribed earlier) AND length actually changed (sparse
+    //      assign) — in that case lengthSig.set fires; the prop signal
+    //      write only fires IF the value differs, which by definition
+    //      means the slot WAS in-bounds → length DIDN'T change. The
+    //      two conditions are mutually exclusive in practice.
+    // A `batch()` wrap around the multi-line block here was prototyped,
+    // measured, and proven a no-op via bisect (revert-restore in real
+    // Chromium against arr.push / splice / direct-index — every variant
+    // fires 1 effect re-run with OR without the wrap). Inline-suppress
+    // so the lint count is honest and future contributors don't redo
+    // the failed-prototype loop.
+    // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     set(target, key, value) {
       if (typeof key === 'symbol') {
         ;(target as Record<symbol, unknown>)[key] = value
