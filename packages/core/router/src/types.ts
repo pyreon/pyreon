@@ -68,7 +68,20 @@ export interface ResolvedRoute<
   hash: string
   /** All matched records from root to leaf (one per nesting level) */
   matched: RouteRecord[]
-  meta: RouteMeta
+  /**
+   * Pre-merged route metadata for the resolved chain.
+   *
+   * **Frozen — do not mutate.** This object is shared across every
+   * navigation that resolves through the same FlattenedRoute (in
+   * particular, dynamic routes like `/posts/[id]` see the SAME meta
+   * object identity for /posts/42 and /posts/99 — that's the cache that
+   * keeps `resolveRoute` O(1)). Mutation would silently pollute the
+   * cache for every future navigation; `Object.freeze` makes such
+   * mutation throw in strict mode (every module file is strict by
+   * default). To carry per-navigation state, attach it to your own
+   * store / context — never write through `route.meta`.
+   */
+  meta: Readonly<RouteMeta>
   /**
    * Validated search params — populated when the matched route has `validateSearch`.
    * Contains the typed result of `validateSearch(query)`. Use `useValidatedSearch()`
