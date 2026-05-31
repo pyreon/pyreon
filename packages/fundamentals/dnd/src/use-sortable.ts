@@ -6,7 +6,7 @@ import {
   type Edge,
   extractClosestEdge,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { batch, onCleanup, signal } from '@pyreon/reactivity'
 import type { DropEdge, UseSortableOptions, UseSortableResult } from './types'
 
 const SORT_KEY = '__pyreon_sortable_key'
@@ -186,9 +186,14 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
             const sourceInstance = _sortableRegistry.get(sourceSortableId)
             sourceInstance?.onCrossListDrop?.(item)
           }
-          activeId.set(null)
-          overId.set(null)
-          overEdge.set(null)
+          // batch() the 3-signal reset so subscribers reading any of
+          // activeId/overId/overEdge get notified once per drop, not
+          // three times. Fires on every container-level drop.
+          batch(() => {
+            activeId.set(null)
+            overId.set(null)
+            overEdge.set(null)
+          })
         },
       }),
     )
@@ -283,9 +288,13 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
           onDragStart: () => activeId.set(key),
           onDrop: () => {
             queueMicrotask(() => {
-              activeId.set(null)
-              overId.set(null)
-              overEdge.set(null)
+              // batch() — same 3-signal reset shape as the container
+              // onDrop above. Per-item drops fire this branch.
+              batch(() => {
+                activeId.set(null)
+                overId.set(null)
+                overEdge.set(null)
+              })
             })
           },
         }),
@@ -356,9 +365,14 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     for (const cleanup of itemCleanups.values()) cleanup()
     itemCleanups.clear()
     _sortableRegistry.delete(sortableId)
-    activeId.set(null)
-    overId.set(null)
-    overEdge.set(null)
+    // batch() the final 3-signal reset so any subscriber that survives
+    // the dispose order (unusual but possible — e.g. an external store
+    // holding refs) sees one notify, not three.
+    batch(() => {
+      activeId.set(null)
+      overId.set(null)
+      overEdge.set(null)
+    })
   })
 
   return { containerRef, itemRef, activeId, overId, overEdge }
