@@ -153,6 +153,132 @@ describe('pyreon/no-unbatched-updates (reactivity)', () => {
     const r = lintFile(ts, code, allRules, cfg())
     expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
   })
+
+  it('does NOT flag when wrapped in batch()', () => {
+    const code = `function f() { batch(() => { a.set(1); b.set(2); c.set(3) }) }`
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  // BISECT-LOCKED false-positive cases — each of these REPRESENTS a shape
+  // the previous function-scope-sum heuristic incorrectly flagged.
+
+  it('does NOT flag 3 sets in mutually-exclusive if/else-if/else branches (form runValidation shape)', () => {
+    const code = `function f() {
+      if (a) { x.set(1) }
+      else if (b) { x.set(2) }
+      else { x.set(3) }
+    }`
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('does NOT flag 3 sets in mutually-exclusive switch cases', () => {
+    const code = `function f(k) {
+      switch (k) {
+        case 'a': x.set(1); break
+        case 'b': x.set(2); break
+        case 'c': x.set(3); break
+      }
+    }`
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('does NOT flag sets in try/catch (mutually exclusive on throw path)', () => {
+    const code = `async function f() {
+      try { const result = await fn(); a.set(result) }
+      catch (err) { a.set(undefined); b.set(err) }
+    }`
+    // try-max=1, catch-max=2 → max-of-mutex=2 → not flagged.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('DOES flag 3 sets in a SINGLE branch (real batch candidate)', () => {
+    const code = `function f() {
+      if (cond) {
+        a.set(1)
+        b.set(2)
+        c.set(3)
+      }
+    }`
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
+  })
+
+  it('DOES flag 3 sets in a loop body (per-iteration batch candidate)', () => {
+    const code = `function f(items) {
+      for (const x of items) {
+        a.set(x.a)
+        b.set(x.b)
+        c.set(x.c)
+      }
+    }`
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
+  })
+
+  it('does NOT flag 2 mutex sets + 1 sequential (max-path = 2)', () => {
+    const code = `function f() {
+      if (cond) { a.set(1) } else { b.set(2) }
+      c.set(3)
+    }`
+    // if/else max = 1 (only one arm fires) + c.set sequential = 2.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('DOES flag 1 mutex set + 2 sequential (max-path = 3)', () => {
+    const code = `function f() {
+      if (cond) { a.set(1) } else { b.set(2) }
+      c.set(3)
+      d.set(4)
+    }`
+    // if/else max = 1, sequential c + d = 2 → total max-path = 3.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
+  })
+
+  it('does NOT count nested-function sets in the outer scope', () => {
+    const code = `function f() {
+      const handler = () => { a.set(1); b.set(2); c.set(3) }
+      d.set(4)
+    }`
+    // Outer f() has 1 set (d.set). Inner handler has 3 sets — flagged
+    // in its own scope, but the outer f() should NOT also be flagged.
+    const r = lintFile(ts, code, allRules, cfg())
+    // Only the inner arrow gets flagged (1 finding, not 2).
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(1)
+  })
+
+  it('does NOT flag short-circuit a && b.set() shapes', () => {
+    const code = `function f() {
+      a && x.set(1)
+      b && x.set(2)
+      c && x.set(3)
+    }`
+    // Each sig-write is gated; at most ONE fires reliably per call,
+    // but each is a separate sequential statement so they DO sum.
+    // Actually: each ExpressionStatement holds a LogicalExpression
+    // (a && x.set(1)). LogicalExpression takes MAX(left, right) = 1.
+    // 3 such statements summed = 3 → flagged.
+    // This is correct: 3 writes can all fire (when all of a/b/c are
+    // truthy) in one execution path.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
+  })
+
+  it('treats ternary arms as mutually-exclusive (1-set per arm not flagged)', () => {
+    const code = `function f() {
+      cond1 ? a.set(1) : b.set(2)
+      cond2 ? a.set(3) : b.set(4)
+    }`
+    // Two ternary statements, each MAX(1, 1) = 1. Total max-path = 2.
+    // Not flagged. (Without ternary-as-mutex this would be 4 sets → flagged.)
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
 })
 
 describe('pyreon/use-by-not-key (jsx)', () => {
