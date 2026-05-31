@@ -337,7 +337,14 @@ const MATRIX: Cell[] = [
 
 // ─── Per-cell harness ───────────────────────────────────────────────────────
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+// `import.meta.url` is the standard ESM property — defined in both Bun
+// (CLI path: `bun scripts/scaffold-smoke.ts ...`) AND under test loaders
+// (vitest's vite-node). Using `URL('..', import.meta.url)` works
+// everywhere and survives type-checking in both the script's own
+// tsconfig and the test package's tsconfig — which Bun's non-standard
+// `import.meta.dir` does NOT (it lacks a TS declaration in the test
+// pkg's lib-set, so importing this module from a test fails typecheck).
+const REPO_ROOT = new URL('..', import.meta.url).pathname
 const SCAFFOLDER = join(REPO_ROOT, 'packages/zero/create-zero/src/index.ts')
 
 function runScaffolder(cell: Cell, cwd: string): void {
@@ -477,8 +484,59 @@ async function waitForUrl(read: () => string, timeoutMs: number): Promise<string
 interface CellResult {
   name: string
   ok: boolean
+  skipped?: boolean
+  /** If `skipped`, a short string explaining why (surfaces in the summary). */
+  skipReason?: string
   error?: string
   durationMs: number
+}
+
+/**
+ * Detect the release-PR branch.
+ *
+ * The changesets/action opens a "chore: version packages" PR from the
+ * `changeset-release/<target>` branch (default `changeset-release/main`).
+ * That branch's `package.json` files carry the FRESHLY-BUMPED versions
+ * that the release workflow would publish on merge — but they aren't on
+ * npm yet (the merge IS what publishes them).
+ *
+ * Isolated cells (today: `cpa-smoke-monorepo-vercel`) run `bun install`
+ * from the SCAFFOLDED project root, which resolves `@pyreon/*` deps via
+ * the npm registry — not via Pyreon's outer workspace. The scaffolder
+ * pins `@pyreon/*` to `^${PYREON_VERSION}` (see
+ * `packages/zero/create-zero/src/generators/package-json.ts`), reading
+ * its own `package.json` version. On the release-PR branch that becomes
+ * `^0.<next>.0` → `bun install` fails with
+ * "No version matching ^0.<next>.0 found … (but package exists)" for
+ * every framework package, because npm only has the previous published
+ * version.
+ *
+ * That failure is structural — the release PR can't satisfy a gate that
+ * asserts published-version installability for versions the same PR is
+ * the act of publishing. Auto-skip isolated cells on the release branch
+ * with a clear, logged reason. Non-isolated cells keep running — they
+ * install from REPO_ROOT (workspace path) and don't need npm.
+ *
+ * Override `PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE=1` exists for local
+ * reproduction without faking the branch name.
+ */
+function isReleasePR(): { skip: boolean; reason: string } {
+  if (process.env['PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE'] === '1') {
+    return {
+      skip: true,
+      reason: 'PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE=1 set (local override)',
+    }
+  }
+  // GitHub Actions sets GITHUB_HEAD_REF to the PR's source branch on
+  // pull_request / pull_request_target events. On push events it's empty.
+  const headRef = process.env['GITHUB_HEAD_REF'] ?? ''
+  if (headRef.startsWith('changeset-release/')) {
+    return {
+      skip: true,
+      reason: `running on changesets release PR branch "${headRef}" — bumped @pyreon/* versions are not yet on npm`,
+    }
+  }
+  return { skip: false, reason: '' }
 }
 
 async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult> {
@@ -486,6 +544,24 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
   // doesn't conflict with Pyreon's outer workspace discovery. Non-isolated
   // cells go under examples/ so @pyreon/* deps resolve to local source.
   const isolated = cell.isolated === true
+
+  // Auto-skip isolated cells on the changesets release PR — see
+  // `isReleasePR` doc for the structural rationale.
+  if (isolated) {
+    const release = isReleasePR()
+    if (release.skip) {
+      console.log(`\n──── ${cell.name} ─────────────────────────────────────────`)
+      console.log(`⊘ SKIPPED — ${release.reason}`)
+      return {
+        name: cell.name,
+        ok: true,
+        skipped: true,
+        skipReason: release.reason,
+        durationMs: 0,
+      }
+    }
+  }
+
   const parentDir = isolated ? mkdtempSync(join(tmpdir(), 'cpa-smoke-')) : join(REPO_ROOT, 'examples')
   const projectDir = join(parentDir, cell.name)
   const start = Date.now()
@@ -550,13 +626,18 @@ async function main(): Promise<void> {
   }
 
   const failures = results.filter((r) => !r.ok)
+  const skipped = results.filter((r) => r.skipped === true)
   const totalMs = results.reduce((sum, r) => sum + r.durationMs, 0)
 
   console.log('\n──── Summary ───────────────────────────────────────────────')
-  console.log(`Total: ${(totalMs / 1000).toFixed(1)}s across ${results.length} cell(s)`)
+  console.log(
+    `Total: ${(totalMs / 1000).toFixed(1)}s across ${results.length} cell(s) (${skipped.length} skipped)`,
+  )
   for (const r of results) {
-    const status = r.ok ? '✓' : '✗'
-    console.log(`  ${status} ${r.name}${r.error ? ` — ${r.error}` : ''}`)
+    // ⊘ = skipped (auto-bypass per scripted contract); ✓ = ran + passed; ✗ = failed.
+    const status = r.skipped ? '⊘' : r.ok ? '✓' : '✗'
+    const detail = r.skipped ? ` — SKIPPED (${r.skipReason})` : r.error ? ` — ${r.error}` : ''
+    console.log(`  ${status} ${r.name}${detail}`)
   }
 
   if (failures.length > 0) {
@@ -565,4 +646,17 @@ async function main(): Promise<void> {
   }
 }
 
-await main()
+// Re-export the release-PR detector so unit tests can exercise it
+// without triggering the full matrix via module-eval side effects.
+// `isReleasePR` is already defined above (see its doc block for the
+// chicken-and-egg rationale).
+export { isReleasePR }
+
+// Only execute the matrix when invoked directly (`bun
+// scripts/scaffold-smoke.ts ...`), NOT when imported from a test
+// (`import { isReleasePR } from '.../scripts/scaffold-smoke'`).
+// `import.meta.main` is Bun's idiomatic equivalent of Python's
+// `__name__ == '__main__'` — true only for the entry-point module.
+if (import.meta.main) {
+  await main()
+}
