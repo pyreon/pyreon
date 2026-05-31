@@ -41,9 +41,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
