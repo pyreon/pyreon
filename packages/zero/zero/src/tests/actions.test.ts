@@ -25,7 +25,9 @@ describe('defineAction', () => {
   it('returns a callable with actionId', () => {
     const action = defineAction(async () => 42)
     expect(typeof action).toBe('function')
-    expect(action.actionId).toMatch(/^action_[a-f0-9]+$/)
+    // PR-S2: full UUID (128 bits). Previously sliced to 32 bits, which gave
+    // birthday-collision probability at ~65k actions.
+    expect(action.actionId).toMatch(/^action_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)
   })
 })
 
@@ -198,11 +200,14 @@ describe('defineAction — server-side execution', () => {
   })
 })
 
-function mockCtx(path: string, method: string, body?: string) {
+function mockCtx(path: string, method: string, body?: string, headers?: Record<string, string>) {
   const url = new URL(`http://localhost${path}`)
+  const reqHeaders: Record<string, string> = {}
+  if (body) reqHeaders['Content-Type'] = 'application/json'
+  if (headers) Object.assign(reqHeaders, headers)
   const req = new Request(url.toString(), {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: reqHeaders,
     body: body ?? undefined,
   })
   return {
@@ -213,3 +218,113 @@ function mockCtx(path: string, method: string, body?: string) {
     locals: {},
   }
 }
+
+// ─── PR-S2: server-action security regression ────────────────────────────────
+//
+// Bisect-verify: revert actions.ts:70 + the Origin check → these tests fail
+// (collision test fails by finding duplicates within 1k IDs; CSRF tests fail
+// by accepting the cross-origin POST).
+
+describe('PR-S2: defineAction full-UUID regression (no collision in 1k samples)', () => {
+  beforeEach(() => {
+    _resetActions()
+  })
+
+  it('generates collision-free IDs across 1000 actions', () => {
+    const ids = new Set<string>()
+    for (let i = 0; i < 1000; i++) {
+      const a = defineAction(async () => i)
+      expect(ids.has(a.actionId)).toBe(false)
+      ids.add(a.actionId)
+    }
+    expect(ids.size).toBe(1000)
+  })
+})
+
+describe('PR-S2: createActionMiddleware CSRF baseline (Origin / Referer same-origin check)', () => {
+  beforeEach(() => {
+    _resetActions()
+  })
+
+  it('ALLOWS same-origin POST (Origin === request.url origin)', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(
+      `/_zero/actions/${action.actionId}`,
+      'POST',
+      'null',
+      { Origin: 'http://localhost' },
+    )
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(200)
+    const body = await res!.json()
+    expect(body).toEqual({ ok: true })
+  })
+
+  it('REJECTS cross-origin POST without corsOrigins opt-in (403)', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(
+      `/_zero/actions/${action.actionId}`,
+      'POST',
+      'null',
+      { Origin: 'https://malicious.test' },
+    )
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(403)
+    const body = (await res!.json()) as { error: string; origin: string }
+    expect(body.error).toContain('Origin not allowed')
+    expect(body.origin).toBe('https://malicious.test')
+  })
+
+  it('ALLOWS cross-origin POST when origin matches corsOrigins opt-in', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware({ corsOrigins: ['https://admin.example.com'] })
+    const ctx = mockCtx(
+      `/_zero/actions/${action.actionId}`,
+      'POST',
+      'null',
+      { Origin: 'https://admin.example.com' },
+    )
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(200)
+  })
+
+  it('REJECTS cross-origin POST when origin does NOT match any corsOrigins entry', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware({ corsOrigins: ['https://admin.example.com'] })
+    const ctx = mockCtx(
+      `/_zero/actions/${action.actionId}`,
+      'POST',
+      'null',
+      { Origin: 'https://other.example.com' },
+    )
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(403)
+  })
+
+  it('ALLOWS POST with no Origin / Referer (server-to-server, integration tests)', async () => {
+    // Same-origin browser fetch() without credentials AND server-to-server
+    // tooling (curl, integration tests) often omit Origin. The CSRF baseline
+    // is "did this come from a browser tab on an attacker's origin?" — not
+    // "is this an authenticated user?" That's the auth layer's job.
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null')
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(200)
+  })
+
+  it('Referer header used when Origin is absent (older browsers / form POSTs)', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(
+      `/_zero/actions/${action.actionId}`,
+      'POST',
+      'null',
+      { Referer: 'https://malicious.test/some/page' },
+    )
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(403)
+  })
+})

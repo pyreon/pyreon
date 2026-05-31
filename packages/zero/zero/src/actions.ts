@@ -67,7 +67,14 @@ const actionRegistry = new Map<string, RegisteredAction>()
  * const result = await createPost({ title: 'Hello', body: '...' })
  */
 export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> {
-  const id = `action_${crypto.randomUUID().slice(0, 8)}`
+  // Full 128-bit UUID — was previously sliced to 32 bits (`.slice(0, 8)`),
+  // which gave birthday-collision probability at ~65k actions. Action IDs
+  // are bundled into client JS (the `callable` closure captures `id` as a
+  // string literal), so any collision causes one action to be silently
+  // routed to another's handler at the `/_zero/actions/<id>` endpoint.
+  // 128 bits matches the same UUID space the registry already used —
+  // just no longer truncated.
+  const id = `action_${crypto.randomUUID()}`
 
   actionRegistry.set(id, { id, handler: handler as ActionHandler })
 
@@ -118,13 +125,45 @@ export function _resetActions(): void {
 
 // ─── Server handler ──────────────────────────────────────────────────────────
 
+export interface CreateActionMiddlewareOptions {
+  /**
+   * Origins (scheme + host + optional port) allowed to POST to
+   * `/_zero/actions/*` cross-origin. Default: same-origin only.
+   *
+   * Each entry is matched as a STARTS-WITH against the request's
+   * `Origin` / `Referer` header. Example: `['https://admin.example.com']`
+   * allows POSTs from any URL under that origin.
+   *
+   * Without this opt-in, any cross-origin POST is rejected with HTTP 403.
+   * This is the CSRF baseline: a malicious origin that a logged-in user
+   * visits can otherwise POST to any defined action (action IDs are in
+   * the client bundle and trivially discoverable).
+   */
+  corsOrigins?: readonly string[]
+}
+
 /**
  * Create a middleware that handles action requests at `/_zero/actions/*`.
  * Mount this before the SSR handler in the server entry.
+ *
+ * **Security baseline**: every cross-origin POST is rejected with HTTP 403
+ * by default. Use `corsOrigins` to opt in to specific cross-origin callers.
+ * Without this check, any malicious origin a logged-in user visits can
+ * forge POSTs to any defined action (CSRF).
+ *
+ * This is **defense in depth** for the basic case. For higher assurance:
+ *   1. Set `SameSite=Strict` (or `Lax`) on your auth cookies
+ *   2. Wire your auth middleware BEFORE `createActionMiddleware()` so the
+ *      action handler can read authenticated user state.
+ *   3. Per-session CSRF tokens + encrypted action IDs (Next.js-style)
+ *      are tracked as follow-up work.
  */
-export function createActionMiddleware(): (
+export function createActionMiddleware(
+  options?: CreateActionMiddlewareOptions,
+): (
   ctx: MiddlewareContext,
 ) => Response | undefined | Promise<Response | undefined> {
+  const corsOrigins = options?.corsOrigins ?? []
   return async (ctx: MiddlewareContext) => {
     if (!ctx.path.startsWith('/_zero/actions/')) return
 
@@ -137,6 +176,40 @@ export function createActionMiddleware(): (
 
     if (ctx.req.method !== 'POST') {
       return Response.json({ error: 'Method not allowed' }, { status: 405 })
+    }
+
+    // ── CSRF baseline: Origin / Referer same-origin check ────────────────────
+    // Without this, any malicious origin a logged-in user visits can forge
+    // POSTs to /_zero/actions/<id>. Action IDs are bundled in client JS
+    // so they are trivially discoverable via DevTools / source inspection.
+    //
+    // Algorithm:
+    //   - If neither Origin nor Referer is present → ALLOW. Same-origin
+    //     fetch() / form submit without credentials AND server-to-server
+    //     tools (curl, integration tests) often omit Origin; rejecting
+    //     here would break legitimate usage. The auth layer is responsible
+    //     for the "is this a logged-in user?" check; the CSRF baseline is
+    //     "did this request come from a browser tab on an attacker's origin?".
+    //   - If Origin/Referer is present → require it to start with the
+    //     request's own origin OR one of the opt-in `corsOrigins` entries.
+    //   - Otherwise → 403.
+    const headerOrigin = ctx.req.headers.get('origin') ?? ctx.req.headers.get('referer')
+    if (headerOrigin) {
+      const reqUrl = new URL(ctx.req.url)
+      const sameOrigin = headerOrigin.startsWith(reqUrl.origin)
+      const allowedCrossOrigin = corsOrigins.some((o) => headerOrigin.startsWith(o))
+      if (!sameOrigin && !allowedCrossOrigin) {
+        return Response.json(
+          {
+            error:
+              'Server action rejected: Origin not allowed. ' +
+              'Cross-origin POSTs to /_zero/actions/* require an explicit ' +
+              '`corsOrigins` entry in createActionMiddleware().',
+            origin: headerOrigin,
+          },
+          { status: 403 },
+        )
+      }
     }
 
     return executeAction(action, ctx.req)

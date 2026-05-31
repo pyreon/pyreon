@@ -2,6 +2,8 @@ import type { ComponentFn } from "@pyreon/core";
 import type { RouteRecord } from "@pyreon/router";
 import type { Middleware, MiddlewareContext } from "@pyreon/server";
 import { createHandler } from "@pyreon/server";
+import type { CreateActionMiddlewareOptions } from "./actions";
+import { createActionMiddleware, getRegisteredActions } from "./actions";
 import type { ApiRouteEntry } from "./api-routes";
 import { createApiMiddleware } from "./api-routes";
 import { createApp } from "./app";
@@ -27,6 +29,19 @@ export interface CreateServerOptions {
 	clientEntry?: string;
 	/** Component to render when no route matches (from _404.tsx). */
 	notFoundComponent?: ComponentFn;
+	/**
+	 * Options forwarded to the auto-wired `createActionMiddleware`.
+	 *
+	 * PR-S2: `createServer` auto-wires server actions whenever any
+	 * `defineAction()` call has registered (detected via the module-level
+	 * registry). Use `actions: { corsOrigins: [...] }` to opt in to
+	 * cross-origin POSTs to `/_zero/actions/*`; without it, cross-origin
+	 * POSTs are rejected with HTTP 403 (CSRF baseline).
+	 *
+	 * Pass `actions: false` to disable the auto-wire entirely (e.g. when
+	 * mounting the middleware manually elsewhere in the chain).
+	 */
+	actions?: CreateActionMiddlewareOptions | false;
 }
 
 /**
@@ -107,6 +122,24 @@ export function createServer(options: CreateServerOptions) {
 	// API routes run first — they short-circuit before SSR
 	if (options.apiRoutes?.length) {
 		allMiddleware.push(createApiMiddleware(options.apiRoutes));
+	}
+
+	// PR-S2: Auto-wire server actions when any defineAction() has run.
+	// Sits between API routes and route middleware so action endpoints
+	// short-circuit before the routing layer touches the path. Default
+	// CSRF baseline: same-origin POSTs only; opt in to cross-origin via
+	// `options.actions.corsOrigins`. Pass `actions: false` to disable
+	// the auto-wire (and mount manually elsewhere).
+	//
+	// Detection via the module-level `actionRegistry` size. Because
+	// `defineAction()` is called at module load (at the top of route
+	// files), by the time `createServer` runs all actions are registered.
+	if (options.actions !== false && getRegisteredActions().size > 0) {
+		allMiddleware.push(
+			createActionMiddleware(
+				typeof options.actions === 'object' ? options.actions : undefined,
+			),
+		);
 	}
 
 	// Per-route middleware runs next
