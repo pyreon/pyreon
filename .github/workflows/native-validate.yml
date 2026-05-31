@@ -149,7 +149,8 @@ jobs:
         # Phase 2 typecheck-clean feature set. Counter only covers
         # `signal → @State`; TodoMVC covers the 12 Phase 2 PRs that
         # took the emit from `swiftc -parse` PARSE_OK to
-        # `swiftc -typecheck` clean (open-work-2026-q3.md "Tier 1.5").
+        # `swiftc -typecheck` clean — the Phase 2 typecheck-clean
+        # closure (PRs #853/#854/#857/#859/#860/#861/#864/#866/#868/#871/#872/#874).
         #
         # CI uses `swiftc -parse` (not `-typecheck`) for the same
         # reason as Counter: Linux swift toolchain doesn't ship

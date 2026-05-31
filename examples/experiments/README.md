@@ -1,6 +1,6 @@
 # Experiments
 
-Bounded prototypes that answer ONE yes/no question about a possible architectural or algorithmic change to Pyreon. Tracking: [`.claude/plans/open-work-2026-q3.md`](../../.claude/plans/open-work-2026-q3.md) (P3 section lists which experiments have run and which are open).
+Bounded prototypes that answer ONE yes/no question about a possible architectural or algorithmic change to Pyreon. Each experiment ships with its own `RESULTS.md` carrying the verdict (GRADUATE / KILL / DEFER); see the per-directory READMEs for what's run vs what's open.
 
 ## Layout
 

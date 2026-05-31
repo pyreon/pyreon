@@ -671,7 +671,7 @@ export interface CollapsibleHandler {
 
 /**
  * Partial-collapse detector — PR 1 of the partial-collapse spec
- * (`.claude/plans/open-work-2026-q3.md` → #1). The `on*`-handler-only
+ * (`CLAUDE.md` ("Compile-time rocketstyle collapse") collapse-tail). The `on*`-handler-only
  * subset the bail-reason census measured at 7.8% of all
  * `@pyreon/ui-components` call sites (`collapse-bail-census.test.ts`).
  *
@@ -761,7 +761,7 @@ export interface DynamicCollapsibleProp {
 
 /**
  * Dynamic-prop partial-collapse detector — PR 2 of the dynamic-prop
- * partial-collapse build (`.claude/plans/open-work-2026-q3.md` → #1
+ * partial-collapse build (`CLAUDE.md` "Compile-time rocketstyle collapse";
  * dynamic-prop bucket = 15.3% of all real-corpus sites; the next-bigger
  * bite after the `on*`-handler partial-collapse).
  *
