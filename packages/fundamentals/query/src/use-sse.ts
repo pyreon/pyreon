@@ -175,9 +175,15 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   }
 
   function handleError(event: Event): void {
-    status.set('error')
-    error.set(event)
-    readyState.set(es?.readyState ?? EventSource.CLOSED)
+    // batch() so consumers reading any 2 of {status, error, readyState}
+    // (typical: a UI showing connection state + error message) get
+    // notified once per error event, not three times. Fires on every
+    // EventSource error.
+    batch(() => {
+      status.set('error')
+      error.set(event)
+      readyState.set(es?.readyState ?? EventSource.CLOSED)
+    })
     options.onError?.(event)
 
     // EventSource auto-reconnects for transient errors, but if readyState is CLOSED
@@ -226,8 +232,15 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
       })
       readyState.set(EventSource.CONNECTING)
     } catch {
-      status.set('error')
-      readyState.set(EventSource.CLOSED)
+      // batch() the EventSource-construction-failure path: 3 sets fire
+      // sequentially (status('connecting') from before the try, then
+      // status('error') + readyState(CLOSED) here in catch). Without
+      // batch, a subscriber bound to both status + readyState gets
+      // notified twice per failed connect. Hot path on flaky networks.
+      batch(() => {
+        status.set('error')
+        readyState.set(EventSource.CLOSED)
+      })
       scheduleReconnect()
       return
     }
