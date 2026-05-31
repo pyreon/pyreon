@@ -68,7 +68,7 @@
     "check-manifest-depth": "bun scripts/check-manifest-depth.ts",
     "check-mcp-docs": "bun scripts/check-mcp-docs.ts",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && bun scripts/cap-version-bumps.ts",
     "release": "bun run --filter='./packages/*/*' build && bun run scripts/publish.ts"
   },
   "devDependencies": {
