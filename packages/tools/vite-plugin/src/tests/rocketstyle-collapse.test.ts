@@ -415,7 +415,7 @@ describe('audit #7+#8: resolver serialization + per-site buffer isolation', () =
     expect(ruleInAnotInC.length).toBeGreaterThan(0)
     expect(ruleInBnotInC.length).toBeGreaterThan(0)
 
-    // FNV keys are derived from `rules.join(' ')` — if accumulation
+    // FNV keys are derived from `rules.join('\u0000')` — if accumulation
     // were broken, B's key would be hash(A ∪ B') ≠ A's key but ALSO
     // ≠ what an isolated B-capture would produce. Under the fix, each
     // key is a function of THAT site's rules only, so they remain
