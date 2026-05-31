@@ -435,6 +435,30 @@ Kotlin runtime the emitted code drives):
 > emit-only because the platform primitive is enough). `useValidation`
 > reachability planned.
 
+### Consuming compiler diagnostics
+
+The parser warnings introduced by Round-1 (#1094 — `Icon` / `Image` /
+`Link` missing required props) and Round-2 (#1099 — `Press` without
+`onPress`, native `Link prefetch={…}`, `Stack/Inline/Layer
+align="<typo>"`) flow through the same `result.warnings` channel as
+every other parse warning. Read them programmatically from the
+compiler:
+
+```ts
+import { transform } from '@pyreon/native-compiler'
+
+const { code, warnings } = transform(source, { target: 'swift' })
+for (const w of warnings) console.warn(w)
+```
+
+The shipped surface today is the `pyreon-native build` CLI, which
+aggregates warnings per file and prints them to stderr as
+`[pyreon-native] N warning(s):` after each build. There is **no
+Vite-plugin / LSP / editor-diagnostic surfacer yet** — that's an
+explicit Phase 6 DX follow-up. The package is `@pyreon/native-compiler`
+(private / workspace-only); consumers using `transform()` directly are
+the path until a public published API lands.
+
 ## Verifiable today (compile contract)
 
 - **Web**: `@pyreon/runtime-dom` renders any Pyreon JSX. Full ecosystem available.
