@@ -1,4 +1,5 @@
 import { batch } from '../batch'
+import { computed } from '../computed'
 import { onSignalUpdate } from '../debug'
 import { effect } from '../effect'
 import { signal } from '../signal'
@@ -371,6 +372,52 @@ describe('signal', () => {
       s.set(2)
       expect(firstRuns).toBe(2)
       expect(secondRuns).toBe(1)
+    })
+  })
+
+  // Regression guard: when SignalProto landed as a bare `{ ... }` object
+  // literal, its `[[Prototype]]` was Object.prototype — chains became
+  // `read → SignalProto → Object.prototype` instead of the prior
+  // `read → Function.prototype → Object.prototype`. Every signal silently
+  // lost `instanceof Function === true`, breaking every ecosystem consumer
+  // that uses that check to discriminate signals from plain values
+  // (perf-harness, devtools, third-party libs, user code). Fix:
+  // `Object.setPrototypeOf(SignalProto, Function.prototype)` restores the
+  // chain link without giving up the monomorphic shared-proto allocation
+  // win. Both signal AND computed are covered (computed uses SignalProto).
+  describe('signal callables remain instanceof Function (regression)', () => {
+    test('signal(x) instanceof Function === true', () => {
+      const s = signal(0)
+      expect(typeof s).toBe('function')
+      expect(s instanceof Function).toBe(true)
+    })
+
+    test('computed(...) instanceof Function === true', () => {
+      const s = signal(0)
+      const c = computed(() => s() * 2)
+      expect(typeof c).toBe('function')
+      expect(c instanceof Function).toBe(true)
+    })
+
+    test('signal proto chain reaches Function.prototype', () => {
+      const s = signal(0)
+      // Walk the chain: read → SignalProto → Function.prototype.
+      const signalProto = Object.getPrototypeOf(s)
+      expect(signalProto).not.toBe(null)
+      const protoOfProto = Object.getPrototypeOf(signalProto)
+      // SignalProto's [[Prototype]] must be Function.prototype, not
+      // Object.prototype. This is the load-bearing line of the fix.
+      expect(protoOfProto).toBe(Function.prototype)
+    })
+
+    test('signal methods still resolve via prototype chain (monomorphic-shape preserved)', () => {
+      const s = signal(0)
+      // Sanity: the fix must NOT break method dispatch.
+      s.set(5)
+      expect(s()).toBe(5)
+      s.update((n) => n + 1)
+      expect(s()).toBe(6)
+      expect(s.peek()).toBe(6)
     })
   })
 })
