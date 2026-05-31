@@ -1279,6 +1279,124 @@ describe('ssgPlugin', () => {
     })
   })
 
+  // ─── PR-S13: mkdirOnce cache reset contract ─────────────────────────────
+  //
+  // The cache holds resolved-mkdir Promises keyed by absolute path. Reusing
+  // entries across builds is unsafe when `dist/` has been wiped between
+  // builds (vite build --watch, CI pipelines). The closeBundle handler
+  // resets the cache at START (line ~1007) AND in a FINALLY block (line
+  // ~1630, PR-S13) — defense-in-depth so a crash mid-render-loop leaves
+  // a clean state for the next build.
+  //
+  // The finally wiring itself is integration-level (requires a full SSG
+  // round-trip to exercise the crash path); these unit tests cover the
+  // cache primitive's contract that the finally wiring relies on.
+
+  describe('mkdirOnce cache (PR-S13)', () => {
+    const { mkdtempSync, rmSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+
+    it('deduplicates mkdir per directory string (cache size grows once per unique path)', async () => {
+      const root = mkdtempSync(path.join(tmpdir(), 'pyreon-mkdir-cache-'))
+      try {
+        const dir = path.join(root, 'a/b/c')
+        _internal._resetMkdirCache()
+        expect(_internal._peekMkdirCacheSize()).toBe(0)
+
+        await _internal.mkdirOnce(dir)
+        expect(_internal._peekMkdirCacheSize()).toBe(1)
+
+        // Second call hits the cache — size stays at 1.
+        // (mkdirOnce is async so each call returns a fresh outer Promise
+        // wrapping the cached inner Promise; we assert via cache size,
+        // not Promise identity.)
+        await _internal.mkdirOnce(dir)
+        expect(_internal._peekMkdirCacheSize()).toBe(1)
+
+        // Different directory creates a new entry.
+        const otherDir = path.join(root, 'x/y/z')
+        await _internal.mkdirOnce(otherDir)
+        expect(_internal._peekMkdirCacheSize()).toBe(2)
+      } finally {
+        _internal._resetMkdirCache()
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
+
+    it('_resetMkdirCache() clears every entry', async () => {
+      const root = mkdtempSync(path.join(tmpdir(), 'pyreon-mkdir-reset-'))
+      try {
+        _internal._resetMkdirCache()
+        await _internal.mkdirOnce(path.join(root, 'a'))
+        await _internal.mkdirOnce(path.join(root, 'b'))
+        await _internal.mkdirOnce(path.join(root, 'c'))
+        expect(_internal._peekMkdirCacheSize()).toBe(3)
+
+        _internal._resetMkdirCache()
+        expect(_internal._peekMkdirCacheSize()).toBe(0)
+      } finally {
+        _internal._resetMkdirCache()
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
+
+    it('repopulates after reset (cache count returns to expected after each cycle)', async () => {
+      const root = mkdtempSync(path.join(tmpdir(), 'pyreon-mkdir-repopulate-'))
+      try {
+        const dir = path.join(root, 'a/b')
+        _internal._resetMkdirCache()
+
+        // First build: populate
+        await _internal.mkdirOnce(dir)
+        expect(_internal._peekMkdirCacheSize()).toBe(1)
+
+        // Reset clears the cache
+        _internal._resetMkdirCache()
+        expect(_internal._peekMkdirCacheSize()).toBe(0)
+
+        // Second build (post-reset): cache is empty + repopulates fresh.
+        // This is the contract the closeBundle finally-block reset
+        // preserves: even if a build crashed mid-render, the next
+        // build starts with an empty cache and rebuilds it from
+        // scratch (no stale Promise pointing at a wiped dist/).
+        await _internal.mkdirOnce(dir)
+        expect(_internal._peekMkdirCacheSize()).toBe(1)
+      } finally {
+        _internal._resetMkdirCache()
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
+
+    it('closeBundle structure: finally-block reset is present (regression catcher)', () => {
+      // Source-level check that the closeBundle handler has the
+      // PR-S13 finally-block. A regression that removes the finally
+      // would leave the cache populated across a crashed build —
+      // hard to test integration-side without driving a full SSG
+      // round-trip, but trivial to assert at the source level.
+      //
+      // The discriminator: the closeBundle body is wrapped in
+      // `try { ... } finally { _resetMkdirCache() }`. We look for the
+      // exact pattern of a finally-block that calls `_resetMkdirCache()`
+      // — that pattern doesn't exist pre-PR-S13.
+      const { readFileSync } = require('node:fs')
+      const { join: pathJoin } = require('node:path')
+      const src = readFileSync(
+        pathJoin(__dirname, '..', 'ssg-plugin.ts'),
+        'utf-8',
+      )
+
+      // Match `} finally {\n` followed (within a small window) by
+      // `_resetMkdirCache()`. The `[\s\S]{0,800}` non-greedy bound
+      // covers the block body + comment without over-matching the
+      // unrelated `try { ... } finally { delete process.env[...] }`
+      // pattern at line ~1067.
+      const finallyResetRe = /\}\s*finally\s*\{[\s\S]{0,800}?_resetMkdirCache\(\)/g
+      const matches = src.match(finallyResetRe) ?? []
+      expect(matches.length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
   describe('isInsideDist (Z3 — path-traversal containment)', () => {
     it('accepts paths inside the dist root and the root itself', () => {
       expect(_internal.isInsideDist('/app/dist', '/app/dist/about/index.html')).toBe(true)
