@@ -489,6 +489,176 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertTrue(net.isOnline)
     }
 
+    /// Double-`stop()` after a `start()` is a safe no-op — the second call
+    /// must NOT touch the already-cancelled `NWPathMonitor` (post-fix the
+    /// `_started` flag guards the body; the second call early-returns
+    /// without re-cancelling). Lifecycle hardening regression — audit
+    /// finding "monitor lifecycle not fully guarded against double-stop".
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusDoubleStopIsNoop() throws {
+        let net = PyreonNetworkStatus()
+        net.start()
+        XCTAssertTrue(net.isMonitoring)
+        net.stop()
+        XCTAssertFalse(net.isMonitoring)
+        net.stop() // must not crash, must not double-cancel
+        XCTAssertFalse(net.isMonitoring) // lifecycle flag stable across double-stop
+        XCTAssertTrue(net.isOnline) // initial value preserved
+    }
+
+    /// Double-`start()` is idempotent — the second call must NOT spin a
+    /// second `NWPathMonitor`. Reactive state is preserved across the
+    /// no-op call.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusDoubleStartIsNoop() throws {
+        let net = PyreonNetworkStatus(isOnline: false)
+        XCTAssertFalse(net.isMonitoring)
+        net.start()
+        XCTAssertTrue(net.isMonitoring)
+        net.start() // idempotent — no second monitor
+        XCTAssertTrue(net.isMonitoring) // still monitoring (single instance)
+        XCTAssertFalse(net.isOnline) // initial value preserved
+        net.stop() // cleanup
+        XCTAssertFalse(net.isMonitoring)
+    }
+
+    /// `start() → stop() → start()` cycle works — `stop()` fully resets the
+    /// lifecycle flag so a subsequent `start()` spins a fresh monitor (not
+    /// blocked by stale `_started` state). Bisect-verified: removing the
+    /// `_started = false` reset in `stop()` makes the second `start()` a
+    /// silent no-op and `isMonitoring` stays true through what should be
+    /// the off-cycle.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusStartStopStartCycle() throws {
+        let net = PyreonNetworkStatus()
+        net.start()
+        XCTAssertTrue(net.isMonitoring)
+        net.stop()
+        XCTAssertFalse(net.isMonitoring) // bisect lock — would fail if stop() didn't reset
+        net.start() // must succeed (not blocked by stale _started flag)
+        XCTAssertTrue(net.isMonitoring)
+        net.update(false) // proves the instance is still functional
+        XCTAssertFalse(net.isOnline)
+        net.stop()
+        XCTAssertFalse(net.isMonitoring)
+        net.stop() // double-stop tail — still safe, still off
+        XCTAssertFalse(net.isMonitoring)
+    }
+
+    /// `update(_:)` is INDEPENDENT of the `start()` / `stop()` lifecycle —
+    /// it writes `isOnline` regardless of `_started` state. Intentional
+    /// contract — lets external callers seed an initial value before
+    /// `start()` (e.g. a SwiftUI parent passing a last-known value down)
+    /// AND lets tests simulate updates without spinning a real
+    /// `NWPathMonitor`. A future "tidy" refactor that gates `update()` on
+    /// `_started` would silently regress the public contract; this test
+    /// pins it.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusUpdateBeforeStartWrites() throws {
+        let net = PyreonNetworkStatus(isOnline: true)
+        XCTAssertFalse(net.isMonitoring) // never started
+        net.update(false) // must write regardless of lifecycle
+        XCTAssertFalse(net.isOnline)
+        net.update(true)
+        XCTAssertTrue(net.isOnline)
+        XCTAssertFalse(net.isMonitoring) // lifecycle untouched
+    }
+
+    /// `update(_:)` after `stop()` STILL works — `stop()` doesn't lock
+    /// the public setter. Companion to `UpdateBeforeStartWrites`:
+    /// `update` is a lifecycle-independent state-mutator, never a
+    /// monitor-gated callback. A refactor that adds a `guard _started`
+    /// to `update` would silently regress the contract; this test pins it.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusUpdateAfterStopWrites() throws {
+        let net = PyreonNetworkStatus(isOnline: true)
+        net.start()
+        XCTAssertTrue(net.isMonitoring)
+        net.stop()
+        XCTAssertFalse(net.isMonitoring) // lifecycle off
+        net.update(false) // must still write — stop() doesn't lock the setter
+        XCTAssertFalse(net.isOnline)
+        net.update(true)
+        XCTAssertTrue(net.isOnline)
+        XCTAssertFalse(net.isMonitoring) // lifecycle still off
+    }
+
+    /// `isMonitoring` is documented as "Not observable for SwiftUI
+    /// re-render — wrap in your own `@Observable` if you need to gate UI
+    /// on monitoring state itself." This test enforces that contract by
+    /// running `withObservationTracking` over a read of `isMonitoring`
+    /// and asserting the change-handler does NOT fire when `start()`
+    /// flips the backing `_started` flag.
+    ///
+    /// The contract is structurally enforced at three layers:
+    /// 1. `_started` is `@ObservationIgnored` (writes don't notify trackers)
+    /// 2. `isMonitoring` is a computed property over `_started` (reads
+    ///    don't register on the Observable property registry — there is
+    ///    no stored property named `isMonitoring` for the macro to track)
+    /// 3. This test (the runtime proof — if either #1 or #2 regresses,
+    ///    the change-handler will fire and the XCTFail will hit)
+    ///
+    /// A future refactor that flips `_started` to a stored observable
+    /// property OR replaces `isMonitoring` with a stored property would
+    /// trigger the handler and fail this test.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusIsMonitoringIsNotObservable() throws {
+        let net = PyreonNetworkStatus()
+        // ObservationFlag is a tiny class so the onChange closure can
+        // mutate it under Swift 6 Sendable rules (var-capture from a
+        // `@Sendable` closure is rejected; reference-type access is OK
+        // because the tracker is single-shot and runs on the same actor
+        // as the writer here).
+        let flag = ObservationFlag()
+        // withObservationTracking installs a single-shot tracker: when
+        // ANY property READ inside the access block is later WRITTEN,
+        // the onChange closure fires exactly once. Reading `isMonitoring`
+        // should register NO observation (the macro doesn't see _started
+        // as observable AND isMonitoring is a computed property — no
+        // synthesized storage for the macro to hook).
+        withObservationTracking {
+            _ = net.isMonitoring
+        } onChange: {
+            flag.fired = true
+        }
+        net.start() // flips _started — would fire handler if observable
+        net.stop()
+        XCTAssertFalse(
+            flag.fired,
+            "isMonitoring must NOT be SwiftUI-observable — the documented contract is " +
+            "'wrap in your own @Observable if you need to gate UI on monitoring state itself'. " +
+            "A regression here means a future refactor flipped _started to observable OR " +
+            "replaced isMonitoring's computed getter with stored property — both break the " +
+            "documented contract. See PyreonNetworkStatus.swift `_started` (must be " +
+            "@ObservationIgnored) AND `isMonitoring` (must be `var isMonitoring: Bool { _started }`, " +
+            "NEVER a stored property)."
+        )
+    }
+
+    /// Companion sanity check — `isOnline` IS observable (it's the whole
+    /// point of the @Observable annotation). Without this control, the
+    /// `IsMonitoringIsNotObservable` test could pass trivially against
+    /// a broken withObservationTracking integration. Pairing the two
+    /// proves the tracker mechanism works AND the isMonitoring contract
+    /// holds.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusIsOnlineIsObservable() throws {
+        let net = PyreonNetworkStatus(isOnline: true)
+        let flag = ObservationFlag()
+        withObservationTracking {
+            _ = net.isOnline
+        } onChange: {
+            flag.fired = true
+        }
+        net.update(false) // flips isOnline — MUST fire the handler
+        XCTAssertTrue(
+            flag.fired,
+            "isOnline MUST be SwiftUI-observable — this is the whole point " +
+            "of @Observable on PyreonNetworkStatus. If this regresses, the " +
+            "useOnline() compiler emit's SwiftUI re-render contract is broken."
+        )
+    }
+
     // MARK: - PyreonClipboard
     //
     // Round-2 audit fix: PyreonClipboard.swift had ZERO test coverage
@@ -584,4 +754,16 @@ final class PyreonRuntimeTests: XCTestCase {
         }
         XCTAssertTrue(true, "deinit completed without crash")
     }
+}
+
+/// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
+/// (Swift 6 mode) can mutate it. Reference-type mutation through a
+/// closure-captured `let` binding is Sendable-clean. Used only by the
+/// `IsMonitoringIsNotObservable` / `IsOnlineIsObservable` test pair
+/// where var-capture would trip `#SendableClosureCaptures` warnings.
+/// Marked `@unchecked Sendable` because `Bool` IS Sendable; the class
+/// wrapper is the only thing that needs the brand. Tests run
+/// single-threaded so atomicity is not a concern.
+final class ObservationFlag: @unchecked Sendable {
+    var fired: Bool = false
 }

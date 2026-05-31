@@ -68,18 +68,42 @@ public class PyreonNetworkStatus(isOnline: Boolean = true) {
      * Keeping the platform source injected keeps this file Android-SDK-free
      * (kotlinc-stub compatible); a `ConnectivityManager` convenience overload
      * is a Phase-2+ Android-CI follow-up.
+     *
+     * Idempotent — a second call while already running is a no-op (the
+     * existing platform callback keeps driving `isOnline`); the supplied
+     * [register] is NOT invoked a second time.
      */
     public fun start(register: ((Boolean) -> Unit) -> (() -> Unit)) {
-        if (unregister != null) return // idempotent — already monitoring
+        if (started) return // idempotent — already monitoring
+        started = true
         unregister = register { online -> update(online) }
     }
 
-    /** Stop live monitoring and release the platform callback. No-op when not
-     * started. */
+    /** Stop live monitoring and release the platform callback. Safe to call
+     * when not started (no-op) AND safe to call twice — the second call
+     * early-returns on [started] without invoking the (possibly already-
+     * released) unregister thunk. The [started] flag is the source of truth:
+     * a future refactor that nils [unregister] for any other reason can't
+     * accidentally release an unstarted one. */
     public fun stop() {
+        if (!started) return
+        started = false
         unregister?.invoke()
         unregister = null
     }
 
+    /** True iff the instance is currently monitoring connectivity (between a
+     * matched [start] / [stop] pair). Useful for Compose debug views and
+     * assertions; cheap to read (single Boolean). Not Compose-reactive — wrap
+     * in your own `mutableStateOf` if you need to gate UI on monitoring
+     * state itself. */
+    public val isMonitoring: Boolean get() = started
+
+    /** Lifecycle flag — true iff a [start] has been matched by no [stop] yet.
+     * Decoupled from [unregister] (which is nullable for other reasons:
+     * pre-start state) to give [start] / [stop] an explicit single-bit
+     * invariant that survives future refactors. Guards against double-start
+     * AND double-stop. */
+    private var started: Boolean = false
     private var unregister: (() -> Unit)? = null
 }
