@@ -253,6 +253,16 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // is captured.
   const { props, propsParamName } = parseProps(fn.params as AnyNode[] | undefined, ctx)
 
+  // Round-3 audit fix: an untyped `props` parameter (no `: { … }`
+  // annotation) means `props` array stays empty. Member rewrites for
+  // `props.X` references inside the body silently fail — the rewriter
+  // doesn't know which props exist and which type each has. The
+  // typecheck stays green on the TS side (TS accepts `function App(props)`
+  // as `props: any`), but native emit produces unbound references that
+  // `swiftc` / `kotlinc` reject with cryptic errors. Surface it loud at
+  // the parser layer so the diagnostic names the component.
+  warnIfUntypedPropsParam(name, fn.params as AnyNode[] | undefined, propsParamName, ctx)
+
   const decls: DeclIR[] = []
   let returnExpr: ExprIR | null = null
 
@@ -315,9 +325,65 @@ function parseProps(
   }
 }
 
+/**
+ * Round-3 audit fix: warn when a component declares a `props` parameter
+ * without a type annotation. The parser captures `propsParamName` so
+ * `props.X` member rewrites STRUCTURALLY work, but with no fields
+ * extracted from the (missing) annotation the rewriter silently drops
+ * everything — `props.title` references compile to unbound identifiers
+ * on the native side.
+ *
+ * Fires only when:
+ *   - the first param IS named `props` (or any identifier) — the
+ *     conventional component shape; destructured params would already
+ *     bail earlier and need a different fix
+ *   - there's NO type annotation on the parameter
+ *   - the parser captured the parameter name (so the omission isn't an
+ *     unrelated bail like "no params")
+ *
+ * Skips when the body of the component never references `props.X` (a
+ * component with no props at all is a legitimate untyped shape). We
+ * detect this by walking the function body once for any
+ * `MemberExpression` whose object's name matches the param.
+ */
+function warnIfUntypedPropsParam(
+  componentName: string,
+  params: AnyNode[] | undefined,
+  propsParamName: string | undefined,
+  ctx: ParseCtx,
+): void {
+  if (!params || params.length === 0 || !propsParamName) return
+  const firstParam = params[0]
+  if (firstParam?.type !== 'Identifier') return
+  // Annotated → handled by parseProps. Only the no-annotation shape is
+  // the silent-drop case we warn about here.
+  if (firstParam.typeAnnotation) return
+  ctx.warnings.push(
+    `Component ${componentName} has an untyped \`${propsParamName}\` parameter — type-annotate it (e.g. \`function ${componentName}(${propsParamName}: { title: string })\`) so PMTC can rewrite \`${propsParamName}.X\` references. Without the annotation, the parser cannot enumerate fields and member accesses silently drop.`,
+  )
+}
+
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
+  // Round-3 audit fix: `const { copy, copied } = useClipboard()` is the
+  // documented destructure form, but the parser ONLY supports the
+  // single-binding shape today (`const cb = useClipboard()`). Pre-fix
+  // the destructure form silently produced ZERO decl — the rewriter
+  // dropped every `copy` / `copied` reference downstream with no
+  // diagnostic, leaving authors confused about why their clipboard
+  // code was inert. Warn at the destructure site so the path forward
+  // is obvious.
+  if (
+    node.id?.type === 'ObjectPattern' &&
+    init?.type === 'CallExpression' &&
+    (init.callee?.name as string | undefined) === 'useClipboard'
+  ) {
+    ctx.warnings.push(
+      'useClipboard() destructure form (`const { copy, copied } = useClipboard()`) is not yet supported on native — use the single-binding shape `const cb = useClipboard(); cb.copy(...)` / `cb.copied()` instead. The destructure shape silently produces no declaration and downstream references emit unbound. Tracked as a Phase-4 follow-up.',
+    )
+    return null
+  }
   // `const { id } = useParams()` / `const { id: userId } = useParams<{...}>()`
   // — destructured router params. The ObjectPattern id has no `.name`, so this
   // must run BEFORE the name-based bail below (otherwise the decl is silently
@@ -705,6 +771,14 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
         const v = p.value
         if (v?.type === 'ArrowFunctionExpression' && v.body && v.body.type !== 'BlockStatement') {
           guard = parseExpr(v.body, ctx)
+        } else if (v?.type === 'ArrowFunctionExpression' && v.body?.type === 'BlockStatement') {
+          // Round-3 audit fix: a block-body arrow guard silently emits
+          // an UNGUARDED route. Path is captured at this point (we're
+          // inside the `path === '…'` branch's sibling), so name it in
+          // the warning so the path forward is obvious.
+          ctx.warnings.push(
+            `Per-route \`beforeEnter\` guard for ${path !== undefined ? `route "${path}"` : 'a route'} is a block-body arrow — only expression-body arrows (\`() => isAuthed()\`) are extracted; this route emits UNGUARDED. Use the expression-body form or move the logic into a named function called from an expression-body arrow (\`() => checkAccess()\`).`,
+          )
         }
       } else if (key === 'children') {
         // Phase 3 nested routes — recurse into the child array. A non-literal
@@ -1186,7 +1260,69 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
   // loud BEFORE swiftc/kotlinc is the diagnostic-quality win.
   warnIfMissingRequiredProp(tag, attrs, ctx)
 
+  // Round-3 audit fix: when a render callback inside <For>/<Show>
+  // declares a hook (`signal()` / `computed()` / `useStorage()` /
+  // `useFetch()` / `useForm()`), the parser silently drops it — the
+  // ArrowFunctionExpression case in parseExpr only extracts the first
+  // expression/return statement and ignores all the `const` decls
+  // before it. So the hook body never runs at native runtime,
+  // references to its binding emit unbound, and the user has no signal
+  // pointing at the cause. Warn at the For/Show site so the path
+  // forward (lift the decl to the parent component) is obvious.
+  if (tag === 'For' || tag === 'Show') {
+    warnIfHookInsideRenderCallback(tag, node.children as AnyNode[] | undefined, ctx)
+  }
+
   return { kind: 'jsx-element', tag, attrs, children }
+}
+
+/**
+ * Round-3 audit helper: scan a <For>/<Show> child's RAW arrow body
+ * for hook calls. The walker only descends into the arrow's block
+ * statements — nested JSX expressions / nested arrow bodies are left
+ * alone (their hooks would already get flagged on the next pass if
+ * they're inside their own For/Show, and otherwise are legitimate
+ * event-handler closures).
+ */
+function warnIfHookInsideRenderCallback(
+  tag: string,
+  children: AnyNode[] | undefined,
+  ctx: ParseCtx,
+): void {
+  if (!children) return
+  // Set of hook identifiers we recognise as "component-scope only".
+  // Same set the body parser extracts at the top level — if it's here,
+  // it should have been declared in the parent component.
+  const HOOK_NAMES = new Set([
+    'signal',
+    'computed',
+    'useStorage',
+    'useFetch',
+    'useForm',
+    'useClipboard',
+    'useColorScheme',
+    'usePermissions',
+    'useOnline',
+  ])
+  for (const child of children) {
+    if (child?.type !== 'JSXExpressionContainer') continue
+    const expr = child.expression
+    if (expr?.type !== 'ArrowFunctionExpression') continue
+    if (expr.body?.type !== 'BlockStatement') continue
+    for (const stmt of (expr.body.body as AnyNode[] | undefined) ?? []) {
+      if (stmt?.type !== 'VariableDeclaration') continue
+      for (const d of (stmt.declarations as AnyNode[] | undefined) ?? []) {
+        const init = d?.init
+        if (init?.type !== 'CallExpression') continue
+        const callee = init.callee?.name as string | undefined
+        if (callee && HOOK_NAMES.has(callee)) {
+          ctx.warnings.push(
+            `Hook \`${callee}(…)\` declared inside <${tag}> render callback — PMTC only extracts hooks at component-body scope. Lift the declaration to the parent component (above the <${tag}> JSX); the closure inside <${tag}> can reference the lifted binding.`,
+          )
+        }
+      }
+    }
+  }
 }
 
 /**
