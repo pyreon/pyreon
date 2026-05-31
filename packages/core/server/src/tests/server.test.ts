@@ -1228,3 +1228,186 @@ describe('middleware — edge cases', () => {
     expect(receivedSearch).toBe('?foo=bar')
   })
 })
+
+// ─── PR-S6: HTTP method gating + stream 404 status + 405 Allow ──────────────
+//
+// Bug class: Pattern B (incomplete HTTP semantics).
+//
+// 1. Pre-PR-S6 the handler accepted every method (GET, POST, PUT, DELETE,
+//    PATCH, OPTIONS, HEAD, …) and ran the full render pipeline against
+//    every one of them. POST / PUT / DELETE bodies that fell through to
+//    the renderer ran loaders unexpectedly (often with side effects),
+//    returned full HTML, and produced confusing 500s when the client
+//    expected JSON / 204 / 405. The renderer is for HTML — only GET
+//    and HEAD belong here.
+//
+// 2. Stream mode hard-coded `status: 200` regardless of the router's
+//    `isNotFound` flag — the L5 router-driven 404 path worked for
+//    string mode but silently downgraded to 200 for streaming consumers.
+//
+// 3. HEAD requests previously returned a full body — wasteful for
+//    preflight cache probes, and incorrect per HTTP spec (HEAD must
+//    NOT have a body).
+
+describe('createHandler — PR-S6 HTTP method gating', () => {
+  const Home: ComponentFn = () => h('h1', null, 'Home')
+  const routes = [{ path: '/', component: Home }]
+
+  test('GET → 200 with body (baseline)', async () => {
+    const handler = createHandler({ App: Home, routes })
+    const res = await handler(new Request('http://localhost/', { method: 'GET' }))
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('<h1>Home</h1>')
+  })
+
+  test('HEAD → 200 with NO body (same headers as GET)', async () => {
+    const handler = createHandler({ App: Home, routes })
+    const res = await handler(new Request('http://localhost/', { method: 'HEAD' }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toContain('text/html')
+    const text = await res.text()
+    expect(text).toBe('')
+  })
+
+  test('OPTIONS → 204 No Content + Allow header (fallback for unhandled preflight)', async () => {
+    // Middleware (CORS, server actions, API routes) gets first crack at
+    // OPTIONS — the handler's gate only fires when no middleware
+    // short-circuits. So OPTIONS preflight to a route that ONLY renders
+    // HTML gets the canonical 204 + Allow response.
+    const handler = createHandler({ App: Home, routes })
+    const res = await handler(new Request('http://localhost/', { method: 'OPTIONS' }))
+    expect(res.status).toBe(204)
+    expect(res.headers.get('Allow')).toBe('GET, HEAD, OPTIONS')
+    const text = await res.text()
+    expect(text).toBe('')
+  })
+
+  test('POST → 405 Method Not Allowed + Allow header (no loader fires)', async () => {
+    // Pre-fix: POST ran the render pipeline including loaders — side
+    // effects on every misconfigured POST. Now: 405 short-circuit.
+    let loaderFired = false
+    const loaderRoutes = [
+      {
+        path: '/',
+        component: Home,
+        loader: async () => {
+          loaderFired = true
+          return { ok: true }
+        },
+      },
+    ]
+    const handler = createHandler({ App: Home, routes: loaderRoutes })
+    const res = await handler(new Request('http://localhost/', { method: 'POST' }))
+    expect(res.status).toBe(405)
+    expect(res.headers.get('Allow')).toBe('GET, HEAD, OPTIONS')
+    // Critical: the loader did NOT fire — POST short-circuits BEFORE
+    // the render pipeline runs. Pre-fix this would be `true`.
+    expect(loaderFired).toBe(false)
+  })
+
+  test('PUT → 405 + Allow header', async () => {
+    const handler = createHandler({ App: Home, routes })
+    const res = await handler(new Request('http://localhost/', { method: 'PUT' }))
+    expect(res.status).toBe(405)
+    expect(res.headers.get('Allow')).toBe('GET, HEAD, OPTIONS')
+  })
+
+  test('DELETE → 405 + Allow header', async () => {
+    const handler = createHandler({ App: Home, routes })
+    const res = await handler(new Request('http://localhost/', { method: 'DELETE' }))
+    expect(res.status).toBe(405)
+    expect(res.headers.get('Allow')).toBe('GET, HEAD, OPTIONS')
+  })
+
+  test('PATCH → 405 + Allow header', async () => {
+    const handler = createHandler({ App: Home, routes })
+    const res = await handler(new Request('http://localhost/', { method: 'PATCH' }))
+    expect(res.status).toBe(405)
+    expect(res.headers.get('Allow')).toBe('GET, HEAD, OPTIONS')
+  })
+
+  test('middleware that returns a Response runs BEFORE the method gate', async () => {
+    // CRITICAL: server actions, API routes, CORS middleware all return
+    // Response from middleware on non-GET methods. The gate must NOT
+    // pre-empt them — middleware runs first; gate is the fallback when
+    // nothing else handled the method.
+    let mwSawPost = false
+    const mw: Middleware = (ctx) => {
+      if (ctx.req.method === 'POST') {
+        mwSawPost = true
+        return new Response('handled by middleware', { status: 201 })
+      }
+    }
+    const handler = createHandler({ App: Home, routes, middleware: [mw] })
+    const res = await handler(new Request('http://localhost/', { method: 'POST' }))
+    // Middleware short-circuited with 201 — gate never fired
+    expect(res.status).toBe(201)
+    expect(await res.text()).toBe('handled by middleware')
+    expect(mwSawPost).toBe(true)
+    // Crucially: the response is NOT 405 — proves middleware ran first
+    expect(res.headers.get('Allow')).toBeNull()
+  })
+})
+
+describe('createHandler — PR-S6 stream mode 404 status', () => {
+  // Same 404 routes shape as the M1.2 describe block above.
+  const HomePage: ComponentFn = () => h('h1', { 'data-testid': 'home' }, 'Home')
+  const NotFound: ComponentFn = () => h('h1', { 'data-testid': 'not-found' }, 'Page Not Found')
+  const Layout: ComponentFn = () =>
+    h(
+      'div',
+      { 'data-testid': 'layout' },
+      h('nav', { 'data-testid': 'nav' }, 'NAV'),
+      h(RouterView, {}),
+    )
+  const routes = [
+    {
+      path: '/',
+      component: Layout,
+      notFoundComponent: NotFound,
+      children: [{ path: '/', component: HomePage }],
+    },
+  ]
+
+  test('stream mode: unmatched URL emits HTTP 404 (not 200)', async () => {
+    // Pre-PR-S6 stream mode hard-coded `status: 200` — the L5
+    // router-driven 404 path worked for string mode but silently
+    // downgraded to 200 for streaming consumers.
+    const handler = createHandler({ App: RouterView, routes, mode: 'stream' })
+    const res = await handler(
+      new Request('http://localhost/this-page-does-not-exist'),
+    )
+    expect(res.status).toBe(404)
+    // Body still streams — it's a chrome-wrapped 404 HTML.
+    const text = await res.text()
+    expect(text).toContain('data-testid="not-found"')
+    expect(text).toContain('data-testid="layout"')
+  })
+
+  test('stream mode: matched URL still emits 200', async () => {
+    const handler = createHandler({ App: RouterView, routes, mode: 'stream' })
+    const res = await handler(new Request('http://localhost/'))
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).toContain('data-testid="home"')
+  })
+
+  test('stream mode: HEAD returns headers + status but NO body', async () => {
+    const handler = createHandler({ App: RouterView, routes, mode: 'stream' })
+    const res = await handler(new Request('http://localhost/', { method: 'HEAD' }))
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).toBe('')
+  })
+
+  test('stream mode: HEAD against unmatched URL emits 404 + NO body', async () => {
+    const handler = createHandler({ App: RouterView, routes, mode: 'stream' })
+    const res = await handler(
+      new Request('http://localhost/missing', { method: 'HEAD' }),
+    )
+    expect(res.status).toBe(404)
+    const text = await res.text()
+    expect(text).toBe('')
+  })
+})

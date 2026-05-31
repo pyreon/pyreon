@@ -137,6 +137,35 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       if (result instanceof Response) return result
     }
 
+    // ── PR-S6: HTTP method gating ───────────────────────────────────────────
+    // Middleware (API routes, server actions, user middleware) gets first
+    // crack at any method — middleware that handles its own POST / PUT /
+    // DELETE / OPTIONS preflight short-circuits above. Anything that
+    // FALLS THROUGH to this point is bound for the SSR render pipeline,
+    // which only renders HTML for GET / HEAD. The gate here rejects
+    // other methods with HTTP 405 + `Allow` (so misconfigured POST /
+    // PUT clients get a useful response — instead of pre-PR-S6 where
+    // loaders fired on POST and produced confusing 500s on side-effect
+    // expectations), AND handles bare OPTIONS with 204 + `Allow` so
+    // generic OPTIONS probes don't fall through to render.
+    //
+    // HEAD is allowed through — the renderer runs normally and the
+    // response is body-stripped at the bottom. Loaders still fire so
+    // preflight cache-warming works. Standard HTTP semantic.
+    const method = req.method
+    if (method !== 'GET' && method !== 'HEAD') {
+      if (method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: { Allow: 'GET, HEAD, OPTIONS' },
+        })
+      }
+      return new Response(null, {
+        status: 405,
+        headers: { Allow: 'GET, HEAD, OPTIONS' },
+      })
+    }
+
     // ── Per-request router ────────────────────────────────────────────────────
     const router = createRouter({ routes, mode: 'history', url: path })
 
@@ -163,6 +192,14 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // their post-resolve enqueues are skipped instead of buffering work
           // for a consumer that already hung up. Closes the AbortSignal wire
           // end-to-end (renderToStream gained `{ signal }` in #745).
+          // PR-S6: read `isNotFound` synchronously here (before streaming
+          // starts) so the stream response carries the right HTTP status.
+          // The flag is set by router.resolve in the per-request createRouter
+          // above, so it's authoritative by this point — pre-PR-S6 streaming
+          // always emitted status 200, defeating the L5 router-driven 404
+          // path for streaming consumers.
+          const streamResolved = router.currentRoute() as { isNotFound?: boolean }
+          const streamStatus = streamResolved?.isNotFound === true ? 404 : 200
           return renderStreamResponse(
             app,
             router,
@@ -171,6 +208,8 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             ctx.headers,
             req.signal,
             suspenseTimeoutMs,
+            streamStatus,
+            method === 'HEAD',
           )
         }
 
@@ -196,6 +235,13 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         // chrome-wrapped 404 HTML.
         const resolved = router.currentRoute() as { isNotFound?: boolean }
         const status = resolved?.isNotFound === true ? 404 : 200
+        // PR-S6: HEAD requests must return the same headers + status
+        // as the corresponding GET but with NO body. The renderer ran
+        // (loaders fire, head/scripts compute, status decided) and the
+        // body is stripped here. Matches the standard HTTP semantic.
+        if (method === 'HEAD') {
+          return new Response(null, { status, headers: ctx.headers })
+        }
         return new Response(fullHtml, { status, headers: ctx.headers })
       } catch (err) {
         // `redirect()` thrown from a loader — convert to a real HTTP redirect
@@ -234,6 +280,17 @@ async function renderStreamResponse(
   extraHeaders: Headers,
   signal?: AbortSignal,
   suspenseTimeoutMs?: number,
+  // PR-S6: status decided by the caller (`router.currentRoute().isNotFound`
+  // resolved synchronously at handler time, before streaming starts). Defaults
+  // to 200 for source-compatible callers. Pre-PR-S6 the stream response
+  // hard-coded `status: 200`, defeating the L5 router-driven 404 path.
+  status: number = 200,
+  // PR-S6: HEAD requests must NOT have a body. The render still runs
+  // (loaders fire, head/scripts compute) but the stream isn't connected
+  // to the response. Returning `new Response(null, …)` short-circuits
+  // body production entirely — saves the body-buffering cost and matches
+  // the standard HTTP semantic.
+  isHead: boolean = false,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
   const scripts = buildScriptsFast(clientEntryTag, loaderData)
@@ -294,8 +351,17 @@ async function renderStreamResponse(
     },
   })
 
+  // PR-S6: HEAD short-circuits body production — the stream wasn't
+  // attached, the response carries headers + status only.
+  if (isHead) {
+    return new Response(null, {
+      status,
+      headers: extraHeaders,
+    })
+  }
+
   return new Response(stream, {
-    status: 200,
+    status,
     headers: extraHeaders,
   })
 }
