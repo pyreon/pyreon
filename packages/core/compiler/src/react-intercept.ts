@@ -1277,6 +1277,31 @@ const ERROR_PATTERNS: ErrorPattern[] = [
 mount(() => <RouterProvider router={router}><App /></RouterProvider>, root)`,
     }),
   },
+  {
+    // R2 — `ResolvedRoute.meta` is reference-stable + frozen (cached
+    // per FlattenedRoute; dynamic-route nav `/posts/42` and `/posts/99`
+    // share the SAME meta object identity). User code that does
+    // `(route.meta as any).x = …` to stash per-navigation state now
+    // throws this TypeError in strict mode (every Pyreon module file
+    // is strict). The captured property name varies by user code, so
+    // the regex captures it. Common code paths hit by this:
+    // - navigation guards: `to.meta.requireRecheck = true` in a guard
+    // - components: `route.meta.cached = …` to memoize per-route
+    // - middleware: assignments to `ctx.route.meta.*`
+    // Fix shape: never write THROUGH route.meta. Put per-navigation
+    // state in your own store / context / signal.
+    pattern: /Cannot assign to read only property '(\w+)' of object '#<Object>'/,
+    diagnose: (m) => ({
+      cause: `Attempted to write '${m[1]}' to a frozen object. If this came from \`route.meta.${m[1]} = …\` or similar, ResolvedRoute.meta is frozen and shared across every navigation through the same matched route — mutation would silently poison the cache, so the framework freezes it at flatten time.`,
+      fix: "Don't write through `route.meta`. Move the per-navigation state to your own store, context, or signal. If you need a route-specific default, define `meta` on the route record itself (read-only by design) and read it via `useRoute().meta.X`.",
+      fixCode: `// BAD — throws TypeError, meta is frozen + shared across navigations:
+// (route.meta as any).viewedAt = Date.now()
+
+// GOOD — per-navigation state in your own store:
+const viewedAt = signal<number | null>(null)
+onBeforeRouteEnter(() => { viewedAt.set(Date.now()) })`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
