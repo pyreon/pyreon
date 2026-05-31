@@ -360,6 +360,66 @@ export const B = island(() => import('./X'), { name: 'B', hydrate: 'load' })`
       })
     })
 
+    // Regression guard for the audit finding: PR-S12's transform-hook
+    // invalidation called `getModuleById(\`\\0${ISLANDS_REGISTRY_IMPORT}\`)`
+    // = `\\0virtual:pyreon/islands-registry`. But `resolveId` returns
+    // `ISLANDS_REGISTRY_ID = '\\0pyreon/islands-registry'` (no `virtual:`
+    // prefix). The lookup ALWAYS missed → `invalidateModule` never fired
+    // → PR-S12's stated bug ("new island silently fails to hydrate until
+    // a manual full reload") shipped UNFIXED. Single-character fix: use
+    // the same constant that `resolveId` returns.
+    //
+    // This test stubs `_devServer.moduleGraph.getModuleById` and asserts
+    // the EXACT id string the transform hook hands it on an
+    // invalidation-triggering change. Bisect-verified: reverting the fix
+    // back to `\`\\0${ISLANDS_REGISTRY_IMPORT}\`` makes the assertion
+    // fail with the wrong id string.
+    it('HMR invalidation passes the resolveId-returned id (not a constructed virtual: string)', () => {
+      writeFile(
+        'src/islands.tsx',
+        `import { island } from '@pyreon/server'
+export const A = island(() => import('./X'), { name: 'A', hydrate: 'load' })`,
+      )
+      const plugin = bootstrap()
+      return runBuildStart(plugin).then(() => {
+        const lookups: string[] = []
+        const stubServer = {
+          moduleGraph: {
+            getModuleById(id: string) {
+              lookups.push(id)
+              // Return undefined — the transform hook just checks `if (mod)`,
+              // so this exercises the lookup path without needing to fake
+              // a real ModuleNode.
+              return undefined
+            },
+          },
+          watcher: { on() {} },
+          ws: { send() {} },
+          middlewares: { use() {} },
+        }
+        ;(plugin.configureServer as unknown as (s: unknown) => void).call(
+          {},
+          stubServer,
+        )
+
+        // Trigger an island-declaration change — this is what PR-S12's
+        // invalidation path is supposed to fire on.
+        const transformHook = plugin.transform as unknown as (
+          this: unknown,
+          code: string,
+          id: string,
+        ) => unknown
+        const newCode = `import { island } from '@pyreon/server'
+export const B = island(() => import('./X'), { name: 'B', hydrate: 'load' })`
+        transformHook.call({}, newCode, join(root, 'src/islands.tsx'))
+
+        // The lookup MUST use the resolveId-returned id, NOT the
+        // virtual:-prefixed user-facing import path.
+        expect(lookups).toContain(ISLANDS_REGISTRY_ID)
+        expect(lookups).not.toContain(` ${ISLANDS_REGISTRY_IMPORT}`)
+      })
+    })
+
     it('HMR: identical content does NOT invalidate (no spurious refreshes)', () => {
       // The change-detection contract: rescanning the SAME content
       // shouldn't trigger an invalidation. The transform hook fires
