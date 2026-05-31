@@ -1,4 +1,5 @@
 import { h } from '@pyreon/core'
+import type { VNode } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import type { DocumentMarker } from '../extractDocumentTree'
 import { extractDocumentTree } from '../extractDocumentTree'
@@ -525,6 +526,29 @@ describe('extractDocumentTree — T3.1 hoisted-attrs fast path', () => {
 
     // Two extractions, zero component invocations.
     expect(callCount).toBe(0)
+  })
+
+  it('wraps a non-_documentType component that returns a string in a document node', () => {
+    // Component WITHOUT _documentType marker that returns a primitive → hits
+    // extractNode's `return [result]` branch (string at L234, number at L235).
+    // The outer extractDocumentTree wraps the loose children in a document node.
+    const StringFn = (_props: Record<string, unknown>) => 'plain text'
+    const r1 = extractDocumentTree(h(StringFn as any, {}))
+    expect(r1.type).toBe('document')
+    expect(r1.children).toEqual(['plain text'])
+
+    const NumberFn = (_props: Record<string, unknown>) => 42 as unknown as VNode
+    const r2 = extractDocumentTree(h(NumberFn as any, {}))
+    expect(r2.type).toBe('document')
+    expect(r2.children).toEqual(['42'])
+  })
+
+  it('wraps a DOM element with no text children in an empty document node', () => {
+    // span with no children → extractChildren returns []; L243 takes the
+    // empty branch and returns null; outer wraps as `{type:'document', children:[]}`.
+    const result = extractDocumentTree(h('span', {}))
+    expect(result.type).toBe('document')
+    expect(result.children).toEqual([])
   })
 
   it('falls back to Path B (full component invocation) when __rs_attrs is absent', () => {

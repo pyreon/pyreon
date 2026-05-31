@@ -4,4 +4,5 @@ export default defineNodeConfig({
   category: 'ui',
   environment: 'happy-dom',
   excludeBrowserTests: true,
+  coverageThresholds: { statements: 94, functions: 94, lines: 94 },
 })
