@@ -9,32 +9,138 @@ interface ScopeInfo {
 }
 
 /**
+ * Detect statements that ALWAYS terminate the enclosing function (return
+ * or throw on every path). Used by `maxPathSets` BlockStatement walking
+ * to short-circuit subsequent-statement summing: code AFTER an always-
+ * returning statement is mutually exclusive with the early-exit path,
+ * not additive.
+ *
+ * Closes the false-positive class where `function f() { if (cond) { x.set(1); return }; y.set(2); z.set(3) }`
+ * was over-counted at 3 — the if-consequent's `return` prevents reaching
+ * `y.set(2)` / `z.set(3)`, so true max-path is `max(1, 2) = 2`.
+ */
+function alwaysReturns(node: any): boolean {
+  if (!node || typeof node !== 'object') return false
+  switch (node.type) {
+    case 'ReturnStatement':
+    case 'ThrowStatement':
+      return true
+    case 'BlockStatement':
+      return (node.body as any[]).some((s: any) => alwaysReturns(s))
+    case 'IfStatement':
+      return alwaysReturns(node.consequent) && !!node.alternate && alwaysReturns(node.alternate)
+    case 'TryStatement': {
+      if (node.finalizer && alwaysReturns(node.finalizer)) return true
+      const tryReturns = alwaysReturns(node.block)
+      const handlerReturns = !node.handler || alwaysReturns(node.handler.body)
+      return tryReturns && handlerReturns
+    }
+    default:
+      return false
+  }
+}
+
+/**
  * Count the MAXIMUM `.set()` calls that can fire on ANY SINGLE execution
  * path through `node`. Branching constructs (if / else / switch / try-catch
  * / ternary / logical-and-or) take MAX across mutually-exclusive arms.
  * Sequential statements sum. Nested functions are NOT counted — they
  * become their own execution paths handled by their own scope.
  *
- * This is the precision delta over the previous "sum every `.set()` in
- * the function" heuristic: a function with `if (x) a.set(1); else b.set(2)`
- * has max-path = 1 (only one arm fires), not 2.
+ * **Early-return awareness** in `BlockStatement` walking: when a statement
+ * always-returns on one arm (e.g. `if (cond) { ...; return }`), subsequent
+ * statements are reachable ONLY via the OTHER arm. The walker splits paths
+ * (`pathA = sum-so-far + early-exit-sets`, `pathB = sum-so-far + sets-on-continuation`)
+ * and takes MAX, not sum.
  *
  * False positives surfaced by the old shape that motivated the rewrite:
  * - `@pyreon/form` `runValidation` — 3 `errorSig.set()` calls in 3
  *   mutually exclusive branches (validator success / threw / no validator).
  *   Old rule: 3 → flagged. New rule: max-path = 1 → silent.
+ * - `@pyreon/query` `use-subscription.ts` `connect()` — !isEnabled early
+ *   return + try-catch catch-returns. Real max-path = 2, walker pre-early-
+ *   return summed to 3 → flagged. With early-return aware walker: 2 → silent.
  * - `@pyreon/reactivity` `createStore` proxy `set` trap — multiple
  *   `.set()` calls but per-trap-call only one fires (mutex by signal
- *   identity / Object.is dedup). Old rule: 4 → flagged. New rule: still
- *   counts because they're sequential at the syntax level — flagged at
- *   that layer with an inline-suppression rationale (the actual runtime
- *   invariant is application-specific).
+ *   identity / Object.is dedup). Walker counts because they're sequential
+ *   at the syntax level — flagged at that layer with an inline-suppression
+ *   rationale (the actual runtime invariant is application-specific).
  */
 function maxPathSets(node: any): number {
   if (!node || typeof node !== 'object') return 0
   switch (node.type) {
-    case 'BlockStatement':
-      return (node.body as any[]).reduce((sum: number, stmt: any) => sum + maxPathSets(stmt), 0)
+    case 'BlockStatement': {
+      // Walk statements. Track two contributions:
+      //   - `cumulative`: max-path through the "continuation" — statements
+      //     that fall through to the next iteration.
+      //   - `branchMax`: max across already-taken early-exit paths (each
+      //     of those paths ends with return/throw, so it doesn't contribute
+      //     to `cumulative`'s ongoing sum).
+      // Final block contribution: max(cumulative, branchMax).
+      const stmts = node.body as any[]
+      let cumulative = 0
+      let branchMax = 0
+      for (const stmt of stmts) {
+        // Early-exit `if`: consequent always-returns. Subsequent statements
+        // reachable ONLY when the if-test is false (fallthrough).
+        if (
+          stmt.type === 'IfStatement' &&
+          alwaysReturns(stmt.consequent) &&
+          !stmt.alternate
+        ) {
+          // Path A — take the if (early exit): sum-so-far + sets in consequent
+          branchMax = Math.max(branchMax, cumulative + maxPathSets(stmt.consequent))
+          // Path B — fall through: cumulative unchanged (the if contributes 0)
+          continue
+        }
+        // Early-exit `if/else` where consequent always-returns + alternate doesn't.
+        if (
+          stmt.type === 'IfStatement' &&
+          alwaysReturns(stmt.consequent) &&
+          stmt.alternate &&
+          !alwaysReturns(stmt.alternate)
+        ) {
+          branchMax = Math.max(branchMax, cumulative + maxPathSets(stmt.consequent))
+          cumulative += maxPathSets(stmt.alternate)
+          continue
+        }
+        // Symmetric: alternate always-returns + consequent doesn't.
+        if (
+          stmt.type === 'IfStatement' &&
+          stmt.alternate &&
+          alwaysReturns(stmt.alternate) &&
+          !alwaysReturns(stmt.consequent)
+        ) {
+          branchMax = Math.max(branchMax, cumulative + maxPathSets(stmt.alternate))
+          cumulative += maxPathSets(stmt.consequent)
+          continue
+        }
+        // Early-exit `try-catch` where catch always-returns (try-success
+        // path continues; throw-path early-exits via catch's return).
+        if (
+          stmt.type === 'TryStatement' &&
+          stmt.handler &&
+          alwaysReturns(stmt.handler.body) &&
+          !alwaysReturns(stmt.block)
+        ) {
+          // Throw path: try-body sets (up to throw, conservatively all of
+          // them) + catch sets + early-exit.
+          const tryMax = maxPathSets(stmt.block)
+          const catchMax = maxPathSets(stmt.handler.body)
+          const finallyMax = maxPathSets(stmt.finalizer)
+          branchMax = Math.max(branchMax, cumulative + tryMax + catchMax + finallyMax)
+          // Success path: try sets + finally + continue.
+          cumulative += tryMax + finallyMax
+          continue
+        }
+        // Regular sequential statement.
+        cumulative += maxPathSets(stmt)
+        // If THIS statement always-returns unconditionally, subsequent
+        // statements are dead — stop walking.
+        if (alwaysReturns(stmt)) break
+      }
+      return Math.max(cumulative, branchMax)
+    }
     case 'ExpressionStatement':
       return maxPathSets(node.expression)
     case 'CallExpression':

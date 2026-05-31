@@ -279,6 +279,106 @@ describe('pyreon/no-unbatched-updates (reactivity)', () => {
     const r = lintFile(ts, code, allRules, cfg())
     expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
   })
+
+  // EARLY-RETURN AWARENESS — separates the if-early-exit branch from
+  // subsequent sequential statements (the two paths are mutually
+  // exclusive at runtime).
+
+  it('does NOT flag `if (cond) return` early-exit + 2 sequential sets', () => {
+    const code = `function f() {
+      if (cond) { a.set(1); return }
+      b.set(2)
+      c.set(3)
+    }`
+    // Path A: take if → 1 set, return. Path B: skip if → 0 + b.set + c.set = 2.
+    // Max = 2, not flagged.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('DOES flag `if (cond) return` early-exit + 3 sequential sets (continuation max-path = 3)', () => {
+    const code = `function f() {
+      if (cond) { a.set(1); return }
+      b.set(2)
+      c.set(3)
+      d.set(4)
+    }`
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
+  })
+
+  it('does NOT flag SSE connect() shape: !enabled early exit + 1 set + try-catch (catch returns with 1 set)', () => {
+    // Distilled from @pyreon/query use-subscription.ts connect():
+    //   - if (!isEnabled()) { status.set('disconnected'); return }
+    //   - status.set('connecting')
+    //   - try { ws = new WebSocket(...) } catch { status.set('error'); ...; return }
+    const code = `function connect() {
+      if (!isEnabled()) { status.set('disconnected'); return }
+      status.set('connecting')
+      try { connect2() }
+      catch { status.set('error'); scheduleReconnect(); return }
+      ws.onopen = (e) => { batch(() => { status.set('connected') }) }
+    }`
+    // Path A: !isEnabled → 1 set, return
+    // Path B: enabled + try succeeds → 1 (status 'connecting') + 0 (try-body) = 1
+    // Path C: enabled + try throws → 1 (status 'connecting') + 0 (try-body) + 1 (catch) = 2
+    // Max = 2, not flagged.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('DOES flag SSE-connect-style with 3 sequential sets in catch path', () => {
+    const code = `function connect() {
+      status.set('connecting')
+      try { connect2() }
+      catch { status.set('error'); readyState.set(0); error.set(e); return }
+    }`
+    // Path A: try succeeds → 1
+    // Path B: try throws → 1 + 3 = 4
+    // Max = 4, flagged.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
+  })
+
+  it('does NOT flag throw-statement early exit + 2 sequential sets', () => {
+    const code = `function f() {
+      if (cond) { a.set(1); throw new Error('x') }
+      b.set(2)
+      c.set(3)
+    }`
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('does NOT flag if/else where consequent returns (alternate continues)', () => {
+    const code = `function f() {
+      if (cond) { a.set(1); return }
+      else { b.set(2) }
+      c.set(3)
+    }`
+    // Path A: if-consequent → 1, return.
+    // Path B: alternate → b.set + c.set = 2.
+    // Max = 2, not flagged.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBe(0)
+  })
+
+  it('handles nested early-return: if-then-inner-if-return', () => {
+    const code = `function f() {
+      if (cond1) {
+        if (cond2) { a.set(1); return }
+        b.set(2)
+      }
+      c.set(3)
+      d.set(4)
+    }`
+    // Path A: cond1 + cond2 → a.set + return = 1
+    // Path B: cond1 + !cond2 → b.set + c.set + d.set = 3
+    // Path C: !cond1 → c.set + d.set = 2
+    // Max = 3, flagged.
+    const r = lintFile(ts, code, allRules, cfg())
+    expect(find(r, 'pyreon/no-unbatched-updates').length).toBeGreaterThan(0)
+  })
 })
 
 describe('pyreon/use-by-not-key (jsx)', () => {
