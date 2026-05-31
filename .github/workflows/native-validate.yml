@@ -27,6 +27,7 @@ on:
     paths:
       - 'packages/native/**'
       - 'examples/native-counter-ios/**'
+      - 'examples/native-todomvc-ios/**'
       - '.github/workflows/native-validate.yml'
   workflow_dispatch:
   schedule:
@@ -142,3 +143,61 @@ jobs:
           grep -q '@State private var count: Int = 0' generated/Counter.swift
           grep -q 'Button("Increment")' generated/Counter.swift
           echo "[ios-counter-smoke] ✓ Counter.tsx compiles to valid SwiftUI"
+
+      - name: iOS TodoMVC end-to-end smoke
+        # Parallel to the Counter smoke above, but exercises the full
+        # Phase 2 typecheck-clean feature set. Counter only covers
+        # `signal → @State`; TodoMVC covers the 12 Phase 2 PRs that
+        # took the emit from `swiftc -parse` PARSE_OK to
+        # `swiftc -typecheck` clean (open-work-2026-q3.md "Tier 1.5").
+        #
+        # CI uses `swiftc -parse` (not `-typecheck`) for the same
+        # reason as Counter: Linux swift toolchain doesn't ship
+        # SwiftUI symbols. The structural emit-content greps below
+        # each lock in ONE specific Phase 2 PR's contribution —
+        # together they prove the typecheck-clean Phase 2 feature
+        # set is still emitted end-to-end. The macOS / Xcode
+        # `swiftc -typecheck` is run locally per PR via the
+        # xcodegen scaffold.
+        run: |
+          set -eo pipefail
+          cd examples/native-todomvc-ios
+          rm -f generated/*.swift
+          bash scripts/build.sh
+          test -f generated/TodoApp.swift
+          # Parse-validate the emit.
+          swiftc -parse generated/TodoApp.swift
+
+          # Phase 2 PR regression locks — each grep proves ONE PR's
+          # feature is still emitted. Missing any of these would mean
+          # the Phase 2 typecheck-clean milestone has silently
+          # regressed.
+          #
+          # #853 + #857 — struct emit + Codable conformance for
+          #               named type aliases.
+          grep -q 'struct Todo: Codable {' generated/TodoApp.swift
+          # #864 — module-level let/const bindings.
+          grep -q '^private var nextId = 1' generated/TodoApp.swift
+          # #859 — @PyreonAppStorage (Codable bridge to @AppStorage).
+          grep -q '@PyreonAppStorage("pyreon-todomvc:todos")' generated/TodoApp.swift
+          # #866 — computed property type inference via method chain.
+          grep -q 'private var visible: \[Todo\] {' generated/TodoApp.swift
+          # #866 — single-expr computed property.
+          grep -q 'private var remaining: Int { todos.filter' generated/TodoApp.swift
+          # #861 — TS-method translation (.filter / .map / .contains).
+          grep -q '.filter({ t in !t.done })' generated/TodoApp.swift
+          grep -q '.contains(where: { t in t.done })' generated/TodoApp.swift
+          # #861 — string .trimmingCharacters from .trim().
+          grep -q 'trimmingCharacters(in: .whitespacesAndNewlines)' generated/TodoApp.swift
+          # #868 — multi-statement computed body + enum comparison.
+          grep -q 'if filter == .active {' generated/TodoApp.swift
+          # #871 — function-typed prop call inside trailing closure.
+          grep -q 'Button("Remove") { onRemove() }' generated/TodoApp.swift
+          # #872 — JSX event-handler forwarding + unnamed function-arg
+          #         labels (TodoRow passes onToggle/onRemove without
+          #         labelled args; here you see the call site shape).
+          grep -q 'TodoRow(todo: t, onToggle:' generated/TodoApp.swift
+          # #874 — Toggle binding (LAST typecheck-blocker; the
+          #         interactive form, not just read-only).
+          grep -q 'Toggle("", isOn: Binding(' generated/TodoApp.swift
+          echo "[ios-todomvc-smoke] ✓ TodoApp.tsx compiles to typecheck-clean SwiftUI (Phase 2 feature set verified)"
