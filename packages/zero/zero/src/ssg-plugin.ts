@@ -1044,8 +1044,19 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // Per-build mkdir dedup — `dist/` may have been wiped between builds
       // (vite build --watch + manual clean, CI pipelines, etc.), so cache
       // entries from a prior build are unsafe to reuse.
+      //
+      // PR-S13: also reset in `finally` (see end of this function). The
+      // start-of-build reset gives a fresh state for THIS build; the
+      // finally reset gives clean state for the NEXT build even if THIS
+      // one crashes mid-render. Defense-in-depth — without the finally,
+      // a thrown exception mid-render-loop leaves the cache populated;
+      // subsequent vite-build-watch cycles that fall through some
+      // pre-`closeBundle` short-circuit (e.g. a build error abort) would
+      // reuse stale entries. Pattern A from the audit campaign: module-
+      // global state with eviction-on-success-only.
       _resetMkdirCache()
 
+      try {
       const ssrOutDir = join(distDir, '.zero-ssg-server')
       const indexHtmlPath = join(distDir, 'index.html')
 
@@ -1654,6 +1665,20 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // oxlint-disable-next-line no-console
         console.error(`[zero:ssg] Failed to prerender "${errPath}":`, error)
       }
+      } finally {
+        // PR-S13: ensure the per-build mkdir cache is cleared even if the
+        // render loop above throws. The cache holds resolved-mkdir
+        // Promises keyed by absolute path; entries point at directories
+        // that `dist/`-wipe between builds (vite build --watch, CI
+        // pipelines) would invalidate. Pre-PR-S13 the start-of-build
+        // reset handled the common case, but a crash here left the cache
+        // populated for any subsequent in-process consumer. The finally
+        // reset is defense-in-depth — symmetric with the start-of-build
+        // reset above and structurally analogous to PR I's
+        // `try { ... } finally { delete process.env[SSG_BUILD_FLAG] }`
+        // pattern (lines 1037 / 1067).
+        _resetMkdirCache()
+      }
     },
   } satisfies Plugin
 }
@@ -1682,4 +1707,11 @@ export const _internal = {
   assertNoPathCollisions,
   writeFileAtomic,
   buildLocaleSummary,
+  // PR-S13: expose mkdirOnce + _resetMkdirCache so the cache-reset
+  // contract is unit-testable. The closeBundle finally-block wiring is
+  // integration-level (requires a full SSG round-trip to exercise the
+  // crash path) — these exports cover the cache primitives' contract.
+  mkdirOnce,
+  _resetMkdirCache,
+  _peekMkdirCacheSize: () => _mkdirCache.size,
 }
