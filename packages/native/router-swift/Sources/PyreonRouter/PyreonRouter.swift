@@ -77,6 +77,16 @@ public final class PyreonRouter {
     /// only. Typical use: analytics, page-view logging.
     public var afterEachHooks: [(String) -> Void] = []
 
+    /// Re-entry flag for the redirect pattern. When a beforeEach guard
+    /// calls `router.replace("/login")` (the canonical "throw redirect"
+    /// shape on native — see `redirect(_:)` below), the inner `replace`
+    /// would otherwise re-run the guard chain and recurse infinitely.
+    /// `_inGuard` is set true while a guard chain is running; any nested
+    /// `push`/`replace` SKIPS its own guard chain (and afterEach fan-
+    /// out — fired by the outer level).
+    @ObservationIgnored
+    private var _inGuard: Bool = false
+
     /// Construct with an initial path stack. Most apps pass `[]`
     /// (NavigationStack starts at its root view) or `["/"]` for an
     /// explicit root segment.
@@ -86,8 +96,12 @@ public final class PyreonRouter {
 
     /// Run the beforeEach chain against `candidate`; any false →
     /// navigation BLOCKED. Returns true iff every guard allowed.
-    /// Internal helper called by push/replace.
+    /// Internal helper called by push/replace. Sets `_inGuard` so
+    /// `router.replace`/`router.redirect` calls from inside a guard
+    /// don't recurse through the chain.
     private func allowNavigation(to candidate: String) -> Bool {
+        _inGuard = true
+        defer { _inGuard = false }
         for guardFn in beforeEachGuards {
             if !guardFn(candidate) { return false }
         }
@@ -105,8 +119,18 @@ public final class PyreonRouter {
     ///
     /// Round-2 follow-up: chains `beforeEachGuards` (any false →
     /// no-op) before the path mutation, fans out `afterEachHooks`
-    /// after the commit.
+    /// after the commit. Nested push/replace calls from inside a
+    /// guard (the redirect pattern) skip the guard chain via
+    /// `_inGuard`.
     public func push(_ path: String) {
+        if _inGuard {
+            // Re-entry from a guard's redirect — bypass the guard
+            // chain (the guard is the active gate; the nested
+            // mutation IS the chain's outcome) and the afterEach
+            // fan-out (the outer level fires it).
+            self.path.append(path)
+            return
+        }
         if !allowNavigation(to: path) { return }
         self.path.append(path)
         runAfterEach(path)
@@ -116,8 +140,19 @@ public final class PyreonRouter {
     /// on the web side — useful for auth redirects so the previous
     /// page isn't in the back stack.
     ///
-    /// Round-2 follow-up: same guard chain as `push`.
+    /// Round-2 follow-up: same guard chain as `push`. Re-entry-safe
+    /// for the redirect pattern (`router.replace("/login")` from
+    /// inside a beforeEach guard).
     public func replace(_ path: String) {
+        if _inGuard {
+            // Re-entry from a guard's redirect — skip the chain.
+            if self.path.isEmpty {
+                self.path.append(path)
+            } else {
+                self.path[self.path.count - 1] = path
+            }
+            return
+        }
         if !allowNavigation(to: path) { return }
         if self.path.isEmpty {
             self.path.append(path)
@@ -125,6 +160,32 @@ public final class PyreonRouter {
             self.path[self.path.count - 1] = path
         }
         runAfterEach(path)
+    }
+
+    /// "Throw redirect" — the canonical native equivalent of the
+    /// web router's `throw redirect("/login")` pattern. A beforeEach
+    /// guard that wants to redirect (vs just block) calls
+    /// `router.redirect("/login")` then returns `false`:
+    ///
+    ///     router.beforeEachGuards.append { path in
+    ///         if !isAuthed() && path != "/login" {
+    ///             router.redirect("/login")
+    ///             return false  // block the current navigation
+    ///         }
+    ///         return true
+    ///     }
+    ///
+    /// Implementation is a thin wrapper around `replace` — the
+    /// `_inGuard` flag breaks the recursion so the inner replace
+    /// doesn't re-run the guard chain (which would infinite-loop
+    /// or block the redirect itself).
+    public func redirect(_ path: String) {
+        // Delegate to replace. When called from inside a guard,
+        // `_inGuard` is true → the inner replace skips its own
+        // guard chain. When called from outside (e.g. an event
+        // handler that wants to "redirect" with no back-stack
+        // entry), behaves identically to `replace`.
+        self.replace(path)
     }
 
     /// Pop the top-of-stack path. Matches `router.back()` on the web

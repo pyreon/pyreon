@@ -111,21 +111,46 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
      *  only. Typical use: analytics, page-view logging. */
     public val afterEachHooks: MutableList<(String) -> Unit> = mutableListOf()
 
+    /** Re-entry flag for the redirect pattern. When a beforeEach
+     *  guard calls `router.replace("/login")` (the canonical "throw
+     *  redirect" shape on native — see `redirect(_)` below), the
+     *  inner replace would otherwise re-run the guard chain and
+     *  recurse infinitely. `_inGuard` is set true while a guard
+     *  chain is running; any nested push/replace SKIPS its own
+     *  guard chain (and afterEach fan-out — fired by the outer
+     *  level). */
+    private var _inGuard: Boolean = false
+
     /** Run the beforeEach chain against `candidate`; any false →
-     *  navigation BLOCKED. Returns true iff every guard allowed. */
+     *  navigation BLOCKED. Returns true iff every guard allowed.
+     *  Sets `_inGuard` so router.replace/redirect calls from inside
+     *  a guard don't recurse through the chain. */
     private fun allowNavigation(candidate: String): Boolean {
-        for (guardFn in beforeEachGuards) {
-            if (!guardFn(candidate)) return false
+        _inGuard = true
+        try {
+            for (guardFn in beforeEachGuards) {
+                if (!guardFn(candidate)) return false
+            }
+            return true
+        } finally {
+            _inGuard = false
         }
-        return true
     }
 
     /** Push a new path onto the stack. Matches `router.push(path)` on the web side.
      *
      *  Round-2 follow-up: chains `beforeEachGuards` (any false →
      *  no-op) before the path mutation, fans out `afterEachHooks`
-     *  after the commit. */
+     *  after the commit. Nested push/replace from inside a guard
+     *  (the redirect pattern) skips the guard chain via `_inGuard`. */
     public fun push(path: String) {
+        if (_inGuard) {
+            // Re-entry from a guard's redirect — bypass the guard
+            // chain (guard is the active gate) AND the afterEach
+            // fan-out (the outer level fires it).
+            this.path.value = this.path.value + path
+            return
+        }
         if (!allowNavigation(path)) return
         this.path.value = this.path.value + path
         for (hook in afterEachHooks) hook(path)
@@ -136,9 +161,21 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
      * on the web side — useful for auth redirects so the previous
      * page isn't in the back stack.
      *
-     * Round-2 follow-up: same guard chain as `push`.
+     * Round-2 follow-up: same guard chain as `push`. Re-entry-safe
+     * for the redirect pattern (`router.replace("/login")` from
+     * inside a beforeEach guard).
      */
     public fun replace(path: String) {
+        if (_inGuard) {
+            // Re-entry from a guard's redirect — skip the chain.
+            val current = this.path.value
+            this.path.value = if (current.isEmpty()) {
+                listOf(path)
+            } else {
+                current.dropLast(1) + path
+            }
+            return
+        }
         if (!allowNavigation(path)) return
         val current = this.path.value
         this.path.value = if (current.isEmpty()) {
@@ -147,6 +184,31 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
             current.dropLast(1) + path
         }
         for (hook in afterEachHooks) hook(path)
+    }
+
+    /** "Throw redirect" — the canonical native equivalent of the web
+     *  router's `throw redirect("/login")` pattern. A beforeEach
+     *  guard that wants to redirect (vs just block) calls
+     *  `router.redirect("/login")` then returns `false`:
+     *
+     *      router.beforeEachGuards.add { path ->
+     *          if (!isAuthed() && path != "/login") {
+     *              router.redirect("/login")
+     *              false  // block the current navigation
+     *          } else {
+     *              true
+     *          }
+     *      }
+     *
+     *  Thin wrapper around `replace`; the `_inGuard` flag breaks
+     *  the recursion so the inner replace doesn't re-run the guard
+     *  chain (which would block the redirect itself). */
+    public fun redirect(path: String) {
+        // Delegate to replace. When called from inside a guard,
+        // `_inGuard` is true → the inner replace skips its own
+        // chain. When called from outside, behaves identically to
+        // `replace`.
+        this.replace(path)
     }
 
     /**
