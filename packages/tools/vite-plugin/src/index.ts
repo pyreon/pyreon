@@ -915,10 +915,19 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // returns whether anything changed; on a change, we look up the
       // virtual module in Vite's module graph and invalidate it so the
       // next request triggers a fresh `load` hook.
+      //
+      // **Look up by ISLANDS_REGISTRY_ID, not a constructed
+      // `\0${ISLANDS_REGISTRY_IMPORT}` string.** Vite stores virtual modules
+      // under the id returned by `resolveId` — here that's
+      // `'\0pyreon/islands-registry'` (no `virtual:` prefix). A lookup of
+      // `'\0virtual:pyreon/islands-registry'` always misses → invalidation
+      // never fires → PR-S12's stated bug ("the new island silently fails to
+      // hydrate until a manual reload") shipped UNFIXED. Single-character
+      // fix: use the same constant `resolveId` returns.
       if (islandsEnabled) {
         const changed = scanIslandDeclarations(code, id, islandRegistry)
         if (changed && _devServer) {
-          const mod = _devServer.moduleGraph.getModuleById(`\0${ISLANDS_REGISTRY_IMPORT}`)
+          const mod = _devServer.moduleGraph.getModuleById(ISLANDS_REGISTRY_ID)
           if (mod) _devServer.moduleGraph.invalidateModule(mod)
         }
       }
