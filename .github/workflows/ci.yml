@@ -826,6 +826,33 @@ jobs:
       - name: Check sideEffects + source-map exclusion
         run: bun run check-distribution
 
+  # ── Check client-bundle node-import leak ──────────────────────────────
+  # PR-S7 (#1125) first cut shipped a regression: i18n-routing.ts (exported
+  # from @pyreon/zero's CLIENT-SAFE main entry) added a top-level
+  # `import { AsyncLocalStorage } from 'node:async_hooks'`. The browser
+  # couldn't resolve it, hydration broke, ssr-showcase e2e failed on
+  # "counter doesn't increment" + "theme toggle silent". The fix split
+  # the ALS into a server-only module loaded lazily.
+  #
+  # This gate prevents recurrence: walks every documented client-safe
+  # package's main entry source transitively (following relative imports
+  # within the package) and fails if ANY reachable file has a `node:*`
+  # static import. Catches the bug class at CI time before it ships.
+  #
+  # See scripts/check-client-bundle-node-imports.ts.
+  check-client-bundle-node-imports:
+    name: Check Client Bundle Node Imports
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Verify no node:* imports leak into client-safe packages
+        run: bun run check-client-bundle-node-imports
+
   # ── Check doc claims: numeric drift gate ──────────────────────────────
   # Asserts every numeric claim in human-written docs (hooks count in
   # README/manifest/CLAUDE.md, docs page count in CLAUDE.md) matches the
