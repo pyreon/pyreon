@@ -615,6 +615,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // is resolved relative to the file where the call was written.
   const islandRegistry = new Map<string, IslandDecl[]>()
 
+  // PR-S12: dev-server reference captured in `configureServer`. Used by
+  // the transform hook to invalidate the `virtual:pyreon/islands-registry`
+  // virtual module when an island declaration changes (add / remove /
+  // rename). Without this, the next dev request gets the STALE registry
+  // and the new island silently fails to hydrate until a manual reload.
+  let _devServer: ViteDevServer | undefined
+
   return {
     name: 'pyreon',
     enforce: 'pre',
@@ -901,7 +908,20 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // HMR: when a user adds/renames/removes an island() call, the
       // virtual:pyreon/islands-registry module needs to reflect it on the
       // next dev-server module reload.
-      if (islandsEnabled) scanIslandDeclarations(code, id, islandRegistry)
+      // PR-S12: invalidate the virtual registry module when declarations
+      // change. Pre-fix the scan updated the registry but Vite kept
+      // serving the cached virtual module — the new island silently
+      // failed to hydrate until a manual full reload. Now: the scan
+      // returns whether anything changed; on a change, we look up the
+      // virtual module in Vite's module graph and invalidate it so the
+      // next request triggers a fresh `load` hook.
+      if (islandsEnabled) {
+        const changed = scanIslandDeclarations(code, id, islandRegistry)
+        if (changed && _devServer) {
+          const mod = _devServer.moduleGraph.getModuleById(`\0${ISLANDS_REGISTRY_IMPORT}`)
+          if (mod) _devServer.moduleGraph.invalidateModule(mod)
+        }
+      }
 
       // ── JSX auto-import for canonical primitives ───────────────────────
       // Phase D2 — auto-inject `import { Stack, ... } from
@@ -1040,6 +1060,11 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
     // ── SSR dev middleware ───────────────────────────────────────────────────
     configureServer(server: ViteDevServer) {
+      // PR-S12: capture the dev server reference for transform-time
+      // virtual-module invalidation. Reset to undefined when the server
+      // is replaced (next configureServer call).
+      _devServer = server
+
       // Generate .pyreon/context.json for AI tools on dev server start
       generateProjectContext(projectRoot)
 
@@ -2211,7 +2236,7 @@ function scanIslandDeclarations(
   code: string,
   filePath: string,
   registry: Map<string, IslandDecl[]>,
-): void {
+): boolean {
   // `[\s\S]` lets the options block span multiple lines. The lazy `?` after
   // the options block prevents over-matching when several `island()` calls
   // appear in the same file.
@@ -2229,17 +2254,58 @@ function scanIslandDeclarations(
     if (!nameMatch) continue // can't auto-register without a name
     const hydrateMatch = /(?:^|[\s,{])hydrate\s*:\s*['"]([^'"]+)['"]/.exec(optsBlock)
     const hydrate = hydrateMatch ? hydrateMatch[1]! : 'load'
-    const loaderAbsPath = importPath.startsWith('.')
+    // PR-S12: Windows path normalization. `pathJoin` uses native
+    // separators — on Windows that's `\`. The emitted `loaderAbsPath`
+    // goes into a JSON string in `renderIslandsRegistry`, then into
+    // `import('${path}')` in the generated registry module. Vite's
+    // resolver expects FORWARD slashes regardless of OS, so backslash
+    // paths fail to resolve. `normalizeModuleId` already does the
+    // forward-slash conversion (its body is `id.replace(/\\/g, '/')`),
+    // so applying it to the resolved path before storage closes the
+    // Windows-dev gap.
+    const rawAbsPath = importPath.startsWith('.')
       ? resolveRelative(filePath, importPath)
       : importPath
+    const loaderAbsPath = normalizeModuleId(rawAbsPath)
     decls.push({ name: nameMatch[1]!, hydrate, loaderAbsPath })
   }
+  // PR-S12: return whether the registry actually changed so the caller
+  // can decide whether to invalidate downstream consumers (the
+  // `virtual:pyreon/islands-registry` virtual module). Without change
+  // detection, every transform call would invalidate the virtual module
+  // even when no island declarations changed — slow and noisy.
+  const key = normalizeModuleId(filePath)
+  const existing = registry.get(key)
+  const changed = !islandDeclsEqual(existing, decls.length > 0 ? decls : undefined)
   if (decls.length > 0) {
-    registry.set(normalizeModuleId(filePath), decls)
+    registry.set(key, decls)
   } else {
     // Clean up if file no longer declares islands (e.g. after edit)
-    registry.delete(normalizeModuleId(filePath))
+    registry.delete(key)
   }
+  return changed
+}
+
+/** PR-S12: structural equality check for IslandDecl arrays. */
+function islandDeclsEqual(
+  a: IslandDecl[] | undefined,
+  b: IslandDecl[] | undefined,
+): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i]!
+    const bi = b[i]!
+    if (
+      ai.name !== bi.name ||
+      ai.hydrate !== bi.hydrate ||
+      ai.loaderAbsPath !== bi.loaderAbsPath
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 /**
