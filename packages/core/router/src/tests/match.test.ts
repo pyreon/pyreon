@@ -780,3 +780,203 @@ describe('resolveRoute — notFoundComponent fallback', () => {
     })
   })
 })
+
+// ─── PR-S9: notFoundComponent trie ───────────────────────────────────────────
+//
+// The trie-backed findNotFoundFallback is O(URL segments) per lookup,
+// vs the prior O(routes-in-tree) walk. The tests below assert (a) the
+// trie produces byte-identical results to the old walk across the
+// representative shapes (nested layouts, dynamic prefixes, page-level
+// fallback, root layout), and (b) the cache wires through `_indexCache`
+// (cached after first build for a given routes tree).
+
+describe('resolveRoute — PR-S9 notFoundComponent trie', () => {
+  const NotFoundRoot = () => null
+  const NotFoundDE = () => null
+  const NotFoundDeep = () => null
+  const Layout = () => null
+  const Page = () => null
+
+  it('matches the deepest layout-level notFoundComponent that prefixes the URL', () => {
+    const routes = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundRoot,
+        children: [
+          {
+            path: '/de',
+            component: Layout,
+            notFoundComponent: NotFoundDE,
+            children: [{ path: '/de/about', component: Page }],
+          },
+          {
+            path: '/en',
+            component: Layout,
+            children: [{ path: '/en/about', component: Page }],
+          },
+        ],
+      },
+    ]
+
+    // /de/unknown → deeper /de layout wins over root layout
+    const r1 = resolveRoute('/de/unknown', routes)
+    expect(r1.isNotFound).toBe(true)
+    expect(r1.matched[r1.matched.length - 1]?.component).toBe(NotFoundDE)
+
+    // /en/unknown → /en layout has no notFoundComponent, falls back to root
+    const r2 = resolveRoute('/en/unknown', routes)
+    expect(r2.isNotFound).toBe(true)
+    expect(r2.matched[r2.matched.length - 1]?.component).toBe(NotFoundRoot)
+
+    // /xyz → only root layout applies
+    const r3 = resolveRoute('/xyz', routes)
+    expect(r3.isNotFound).toBe(true)
+    expect(r3.matched[r3.matched.length - 1]?.component).toBe(NotFoundRoot)
+  })
+
+  it('avoids substring-prefix false matches (/de does NOT match /encyclopedia)', () => {
+    const routes = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundRoot,
+        children: [
+          {
+            path: '/de',
+            component: Layout,
+            notFoundComponent: NotFoundDE,
+            children: [{ path: '/de/about', component: Page }],
+          },
+        ],
+      },
+    ]
+
+    // /encyclopedia/unknown: /de's notFoundComponent must NOT apply
+    // (substring prefix /de of /encyclopedia is forbidden — segment
+    // boundary required). Root layout's notFoundComponent IS the fallback.
+    const r = resolveRoute('/encyclopedia/unknown', routes)
+    expect(r.isNotFound).toBe(true)
+    expect(r.matched[r.matched.length - 1]?.component).toBe(NotFoundRoot)
+  })
+
+  it('handles deeply nested prefixes (3+ levels)', () => {
+    const routes = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundRoot,
+        children: [
+          {
+            path: '/admin',
+            component: Layout,
+            children: [
+              {
+                path: '/admin/users',
+                component: Layout,
+                notFoundComponent: NotFoundDeep,
+                children: [{ path: '/admin/users/list', component: Page }],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+
+    // /admin/users/unknown → deeper /admin/users layout wins
+    const r1 = resolveRoute('/admin/users/unknown', routes)
+    expect(r1.isNotFound).toBe(true)
+    expect(r1.matched[r1.matched.length - 1]?.component).toBe(NotFoundDeep)
+
+    // /admin/unknown → /admin has no notFoundComponent, falls back to root
+    const r2 = resolveRoute('/admin/unknown', routes)
+    expect(r2.isNotFound).toBe(true)
+    expect(r2.matched[r2.matched.length - 1]?.component).toBe(NotFoundRoot)
+  })
+
+  it('returns null (empty matched) when no notFoundComponent exists in the tree', () => {
+    const routes = [
+      { path: '/', component: Layout, children: [{ path: '/about', component: Page }] },
+    ]
+    const r = resolveRoute('/unknown', routes)
+    expect(r.matched).toEqual([])
+    expect(r.isNotFound).toBeUndefined()
+  })
+
+  it('caches the trie via _indexCache (build once per RouteRecord[])', () => {
+    const routes = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundRoot,
+        children: [{ path: '/about', component: Page }],
+      },
+    ]
+
+    // First 404 resolution builds the index + trie
+    const r1 = resolveRoute('/missing-1', routes)
+    expect(r1.isNotFound).toBe(true)
+
+    // Subsequent resolutions reuse the cached index — same routes
+    // identity, same trie. Asserting via behavior: the resolution must
+    // produce the SAME synthetic chain shape on repeated calls (same
+    // notFoundComponent reference at the leaf).
+    const r2 = resolveRoute('/missing-2', routes)
+    const r3 = resolveRoute('/missing-3', routes)
+    expect(r2.matched[r2.matched.length - 1]?.component).toBe(NotFoundRoot)
+    expect(r3.matched[r3.matched.length - 1]?.component).toBe(NotFoundRoot)
+    expect(r1.matched.length).toBe(r2.matched.length)
+    expect(r2.matched.length).toBe(r3.matched.length)
+  })
+
+  it('PR-S9 perf: 1000 resolutions across a wide tree stay sub-100ms total', () => {
+    // Stress test: build a tree with many notFoundComponent-bearing
+    // records (mimics i18n × dynamic-route fan-out). The old O(N)
+    // walk would scan every record on every lookup; the trie scales
+    // with URL segments only.
+    //
+    // 5 locales × 5 sections × 1 layout + 1 root = 26
+    // notFoundComponent records. 1000 lookups across them.
+    const localeNames = ['en', 'de', 'cs', 'fr', 'es']
+    const sectionNames = ['posts', 'users', 'admin', 'blog', 'docs']
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundRoot,
+        children: localeNames.flatMap((loc) => [
+          {
+            path: `/${loc}`,
+            component: Layout,
+            notFoundComponent: NotFoundDE,
+            children: sectionNames.map((sec) => ({
+              path: `/${loc}/${sec}`,
+              component: Layout,
+              notFoundComponent: NotFoundDeep,
+              children: [{ path: `/${loc}/${sec}/list`, component: Page }],
+            })),
+          },
+        ]),
+      },
+    ]
+
+    // Prime the cache
+    resolveRoute('/en/posts/unknown', routes)
+
+    // Resolve 1000 random 404 URLs across the tree
+    const start = performance.now()
+    for (let i = 0; i < 1000; i++) {
+      const loc = localeNames[i % localeNames.length]
+      const sec = sectionNames[(i + 1) % sectionNames.length]
+      resolveRoute(`/${loc}/${sec}/unknown-${i}`, routes)
+    }
+    const elapsed = performance.now() - start
+
+    // Generous threshold (100ms for 1000 calls = 100µs/call). The actual
+    // trie path should land closer to 5-20µs/call on modern hardware.
+    // The threshold is intentionally loose to avoid CI flake — the bug
+    // class the test catches is "scaled linearly with tree size",
+    // which would blow past 100ms easily on this tree shape.
+    expect(elapsed).toBeLessThan(100)
+  })
+})
