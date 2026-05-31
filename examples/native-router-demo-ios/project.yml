@@ -1,0 +1,101 @@
+# XcodeGen project spec — turns this directory into an iOS Xcode
+# project without committing the .xcodeproj's brittle binary format.
+#
+# Usage:
+#   xcodegen generate   (run from this directory)
+#   open PyreonRouterDemo.xcodeproj
+#
+# Or one-command:
+#   ./scripts/xcode-setup.sh && open PyreonRouterDemo.xcodeproj
+#
+# Mirror of `examples/native-counter-ios/project.yml` — same xcodegen
+# pattern + same Pyreon → Swift compile preBuildScript. The only
+# differences: project name + bundle id + generated-output filename.
+
+name: PyreonRouterDemo
+
+options:
+  bundleIdPrefix: com.pyreon
+  deploymentTarget:
+    iOS: '17.0'
+
+# Pre-build script — runs the Pyreon compile loop BEFORE Swift
+# compilation. Without this, you'd have to remember to run
+# `./scripts/build.sh` manually before every Xcode build. The script
+# is idempotent — re-running it just overwrites `generated/`.
+preBuildScripts:
+  - script: |
+      # Run from the project directory regardless of how Xcode invokes us.
+      cd "${SRCROOT}"
+      bash scripts/build.sh
+    name: '[Pyreon] Compile .tsx → generated/RouterApp.swift'
+    runOnlyWhenInstalling: false
+    basedOnDependencyAnalysis: false
+
+# The single iOS app target. SwiftUI-only — no AppDelegate, no
+# storyboards. Hosts the compiler-emitted RouterApp + HomePage +
+# AboutPage + UserPage + the navigation-dispatch shell.
+targets:
+  PyreonRouterDemo:
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: ios
+        type: group
+      - path: generated
+        type: group
+        # `optional: true` — `generated/` may not exist before the first
+        # build (it's gitignored). xcodegen tolerates the missing dir;
+        # the preBuildScript creates it.
+        optional: true
+
+    # Depends on the @pyreon/native-router-swift package (the runtime
+    # PyreonRouter / RouterProvider / NavigationLink helpers). Local
+    # SPM package reference — same shape native-todomvc-ios uses for
+    # its runtime deps.
+    dependencies:
+      - package: PyreonRouter
+
+    info:
+      path: ios/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: '6.0'
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: 0.0.1
+        CFBundleVersion: '1'
+        LSRequiresIPhoneOS: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities:
+          - armv7
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonRouterDemo
+        ENABLE_BITCODE: NO
+        SWIFT_VERSION: '5.0'
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
+
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+
+# Local SPM package reference — the @pyreon/native-router-swift
+# package lives in the monorepo at packages/native/router-swift.
+# xcodegen resolves the relative path to an SPM dependency.
+packages:
+  PyreonRouter:
+    path: ../../packages/native/router-swift

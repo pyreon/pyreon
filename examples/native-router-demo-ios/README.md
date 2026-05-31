@@ -17,11 +17,30 @@ ONE `.tsx` source compiles to a **navigation-functional** app on all three targe
 
 ## Run
 
+### Web (real-Chromium e2e via Playwright)
+
 ```bash
-# Web (real-Chromium e2e via Playwright)
 cd ../native-router-demo-web
 bun run dev
 # → http://localhost:5203
 ```
 
-iOS / Android: PMTC compile validated via `@pyreon/native-compiler` test suite. Actual Xcode / Gradle scaffolds are follow-up work (deferred — TodoMVC-style scripts/build.sh + project.yml).
+### iOS (Xcode + Simulator)
+
+The full host shell is now wired (post-#1099-era follow-up). One-command setup:
+
+```bash
+brew install xcodegen   # one-time
+cd examples/native-router-demo-ios
+./scripts/xcode-setup.sh   # compile RouterApp.tsx → generated/*.swift + regenerate xcodeproj
+open PyreonRouterDemo.xcodeproj
+# ⌘+R to run in the iOS Simulator
+```
+
+Inside Xcode, the project's `preBuildScript` re-runs `build.sh` on every build — so edits to `src/RouterApp.tsx` are picked up automatically.
+
+The host wraps `RouterApp()` (from `generated/RouterApp.swift`, produced by `pyreon-native build --target=ios`) inside a minimal SwiftUI `@main` app. Depends on `@pyreon/native-router-swift` (the runtime `PyreonRouter` + `RouterProvider` + `NavigationLink` helpers) — wired as a local SPM package in `project.yml`.
+
+### Android
+
+Not yet scaffolded. The shared `src/RouterApp.tsx` source compiles to typecheck-clean Kotlin/Compose today (verified by `@pyreon/native-compiler`'s `validate-kotlin` gate); only the host shell + Gradle wiring is missing. Same pattern as `examples/native-todomvc-android/` would apply.

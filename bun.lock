@@ -560,6 +560,7 @@
       "version": "0.0.0",
       "devDependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/native-cli": "workspace:*",
         "@pyreon/primitives": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
