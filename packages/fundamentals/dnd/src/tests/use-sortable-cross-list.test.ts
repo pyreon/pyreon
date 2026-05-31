@@ -48,7 +48,6 @@ describe('useSortable — cross-list onDrop (per-item handler)', () => {
     let resultA: any, resultB: any
     const eA = effect(() => {
       resultA = useSortable<Item>({
-        element: () => document.createElement('div'),
         items: () => itemsA,
         by: (i) => i.id,
         onReorder: () => {},
@@ -58,7 +57,6 @@ describe('useSortable — cross-list onDrop (per-item handler)', () => {
     })
     const eB = effect(() => {
       resultB = useSortable<Item>({
-        element: () => document.createElement('div'),
         items: () => itemsB,
         by: (i) => i.id,
         onReorder: () => {},
@@ -125,7 +123,6 @@ describe('useSortable — cross-list onDrop (per-item handler)', () => {
     let result: any
     const e = effect(() => {
       result = useSortable<Item>({
-        element: () => document.createElement('div'),
         items: () => [{ id: 'x' }, { id: 'y' }],
         by: (i) => i.id,
         onReorder: () => {},
@@ -166,7 +163,6 @@ describe('useSortable — cross-list onDrop (per-item handler)', () => {
     let result: any
     const e = effect(() => {
       result = useSortable<Item>({
-        element: () => document.createElement('div'),
         items: () => [{ id: 'x' }],
         by: (i) => i.id,
         onReorder: () => {},
