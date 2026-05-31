@@ -3,7 +3,6 @@
  * enter/leave diff machinery against a manually-driven reactive
  * children accessor.
  */
-import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import TransitionGroup from '../TransitionGroup'
