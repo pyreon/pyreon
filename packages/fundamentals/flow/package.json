@@ -42,9 +42,6 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^",
     "elkjs": "^0.11.1"
   },
   "devDependencies": {
@@ -54,5 +51,10 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.7",
     "@vitus-labs/tools-lint": "^2.5.0"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
   }
 }

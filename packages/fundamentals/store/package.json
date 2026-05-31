@@ -56,7 +56,9 @@
     "zod": "^4.4.3"
   },
   "dependencies": {
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/validation": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
   }
 }

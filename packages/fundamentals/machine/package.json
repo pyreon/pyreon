@@ -46,7 +46,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.5.0"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@pyreon/reactivity": "workspace:^"
   }
 }

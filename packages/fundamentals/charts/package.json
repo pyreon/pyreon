@@ -60,10 +60,8 @@
     "echarts": "^6.1.0"
   },
   "peerDependencies": {
-    "echarts": ">=5.6.0"
-  },
-  "dependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "echarts": ">=5.6.0"
   }
 }

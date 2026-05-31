@@ -172,12 +172,9 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@pyreon/core": "workspace:^",
     "@pyreon/head": "workspace:^",
     "@pyreon/meta": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/router": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/server": "workspace:^",
     "@pyreon/vite-plugin": "workspace:^",
@@ -190,6 +187,9 @@
     "sharp": "^0.34.5"
   },
   "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
     "sharp": "^0.33.0"
   },
   "peerDependenciesMeta": {

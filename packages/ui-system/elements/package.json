@@ -53,9 +53,11 @@
     "node": ">= 22"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
     "@pyreon/ui-core": "workspace:^",
     "@pyreon/unistyle": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }
