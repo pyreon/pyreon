@@ -113,10 +113,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       '35+ signal hooks. Statements lifted 90 → 94 (cov-94 series, PR #1074). Branches at 78.04% — several hooks have early-return guards (typeof window, etc.) whose negative branch only fires in SSR.',
   },
   '@pyreon/styler': {
-    currentStatements: 90,
+    currentStatements: 94,
     currentBranches: 80,
     reason:
-      'CSS-in-JS engine. Statements at floor (actual 93.85%); branches at 84.04% — just below the 85 branch floor. Small follow-up to test sheet-split edge cases.',
+      'CSS-in-JS engine. Statements lifted 90 → 94 (cov-94 series, PR #1081). Branches at 84.04% — just below the 85 branch floor; small follow-up to test sheet-split edge cases.',
   },
   '@pyreon/document': {
     currentStatements: 90,
