@@ -648,3 +648,114 @@ describe('PR-S3: parseCookies — values containing `=` are preserved end-to-end
     expect(_parseCookiesForTesting('')).toEqual({})
   })
 })
+
+// ─── PR-S10: expandRoutesForLocales clone + locale-major ordering ──────────
+//
+// Pre-fix shape:
+// 1. `expanded.push(route)` on the default-locale path shared the input
+//    FileRoute reference. A downstream consumer mutating any flat field
+//    on the returned route would corrupt the original `routes` input —
+//    causing subsequent calls (Vite plugin + SSG plugin both call
+//    `expandRoutesForLocales` against the same input) to see corrupted
+//    data.
+// 2. Route-major loop ordering produced output sorted by route → locale,
+//    making a route addition reshuffle the entire output block-by-block.
+//    Locale-major output groups each locale's routes together (default
+//    first), which is more predictable for debugging and stable under
+//    additions.
+
+describe('PR-S10: expandRoutesForLocales shallow-clone + locale-major', () => {
+  const config = {
+    locales: ['en', 'de', 'cs'],
+    defaultLocale: 'en',
+    strategy: 'prefix-except-default' as const,
+  }
+  const parse = (files: string[]): FileRoute[] => parseFileRoutes(files)
+
+  it('default-locale routes are SHALLOW-CLONED (not shared references)', () => {
+    const routes = parse(['about.tsx', 'contact.tsx'])
+    const expanded = expandRoutesForLocales(routes, config)
+    const defaultRoutes = expanded.filter((r) => r.urlPath === '/about' || r.urlPath === '/contact')
+
+    // Every default-locale output must NOT share a reference with input
+    for (const out of defaultRoutes) {
+      const input = routes.find((r) => r.filePath === out.filePath)
+      expect(input).toBeDefined()
+      expect(out).not.toBe(input)
+    }
+  })
+
+  it('mutating an expanded route does NOT affect the input routes', () => {
+    const routes = parse(['about.tsx'])
+    const originalUrlPath = routes[0]!.urlPath // '/about'
+
+    const expanded = expandRoutesForLocales(routes, config)
+    const defaultRoute = expanded.find((r) => r.urlPath === '/about')!
+
+    // Downstream mutation simulating a buggy consumer
+    ;(defaultRoute as unknown as { urlPath: string }).urlPath = '/mutated'
+
+    // Input routes must be unchanged
+    expect(routes[0]!.urlPath).toBe(originalUrlPath)
+    expect(routes[0]!.urlPath).toBe('/about')
+  })
+
+  it('two successive calls produce isolated output (no cross-call corruption)', () => {
+    const routes = parse(['about.tsx'])
+
+    const first = expandRoutesForLocales(routes, config)
+    const second = expandRoutesForLocales(routes, config)
+
+    // The two expansions must be value-equal but reference-distinct
+    expect(first.length).toBe(second.length)
+    for (let i = 0; i < first.length; i++) {
+      // Same shape
+      expect(first[i]!.urlPath).toBe(second[i]!.urlPath)
+      expect(first[i]!.filePath).toBe(second[i]!.filePath)
+      // Distinct references (each call produces its own clones)
+      expect(first[i]).not.toBe(second[i])
+    }
+  })
+
+  it('locale-major ordering: all default-locale routes first, then each non-default locale together', () => {
+    const routes = parse(['about.tsx', 'contact.tsx', 'index.tsx'])
+    const expanded = expandRoutesForLocales(routes, config)
+
+    // Expected order under locale-major + prefix-except-default:
+    //   en: /, /about, /contact   (default — kept unprefixed, INPUT order preserved within block)
+    //   de: /de, /de/about, /de/contact
+    //   cs: /cs, /cs/about, /cs/contact
+    //
+    // Pre-PR-S10 route-major produced:
+    //   /, /de, /cs, /about, /de/about, /cs/about, /contact, /de/contact, /cs/contact
+    //
+    // The new ordering is locale-major (all `en` routes first, then `de`, then `cs`).
+    const urlPaths = expanded.map((r) => r.urlPath)
+    const enBlock = urlPaths.slice(0, 3)
+    const deBlock = urlPaths.slice(3, 6)
+    const csBlock = urlPaths.slice(6, 9)
+
+    // EN block: all unprefixed (default locale, no prefix)
+    expect(enBlock.every((p) => !p.startsWith('/de/') && !p.startsWith('/cs/'))).toBe(true)
+    // DE block: all `/de/...` (and `/de` for index)
+    expect(deBlock.every((p) => p === '/de' || p.startsWith('/de/'))).toBe(true)
+    // CS block: all `/cs/...` (and `/cs` for index)
+    expect(csBlock.every((p) => p === '/cs' || p.startsWith('/cs/'))).toBe(true)
+  })
+
+  it('no-op short-circuit (empty locales) returns input unchanged', () => {
+    const routes = parse(['about.tsx'])
+    const expanded = expandRoutesForLocales(routes, { locales: [], defaultLocale: 'en' })
+    expect(expanded).toBe(routes)
+  })
+
+  it('no-op short-circuit (only default locale under prefix-except-default) returns input unchanged', () => {
+    const routes = parse(['about.tsx'])
+    const expanded = expandRoutesForLocales(routes, {
+      locales: ['en'],
+      defaultLocale: 'en',
+      strategy: 'prefix-except-default',
+    })
+    expect(expanded).toBe(routes)
+  })
+})
