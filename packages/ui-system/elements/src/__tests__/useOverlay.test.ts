@@ -4,7 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('@pyreon/reactivity', () => {
+// Partial mock — see sibling Overlay.test.ts for the full rationale.
+// Uses importOriginal so every export NOT in the override set passes
+// through to the real `@pyreon/reactivity` (batch, watch, runUntracked,
+// computed, effect, untrack, onCleanup, future additions). Pre-refactor
+// this was a fully-handcrafted mock listing 5 exports explicitly; every
+// new export silently broke tests with `No "X" export is defined on
+// the "@pyreon/reactivity" mock`.
+vi.mock('@pyreon/reactivity', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+
   const signal = <T>(initial: T) => {
     let value = initial
     const s = (() => value) as (() => T) & {
@@ -34,16 +43,8 @@ vi.mock('@pyreon/reactivity', () => {
     return s
   }
 
-  // See sibling Overlay.test.ts mock: `@pyreon/core` imports
-  // `setSnapshotCapture` and calls it at module load to install the
-  // reactive-effect context-snapshot DI hook. The mock provides a no-op
-  // so the `@pyreon/core` import doesn't throw "No 'setSnapshotCapture'
-  // export is defined on the '@pyreon/reactivity' mock."
   const setSnapshotCapture = () => {}
-  // `@pyreon/core`'s 5 module-state files call `defineCrossModuleState` at
-  // module load (the duplicate-module-instance hardening from #855).
-  // Forward to the real helper shape so the mocked core modules behave
-  // identically to production. See sibling Overlay.test.ts for full rationale.
+  const registerSingleton = () => {}
   const defineCrossModuleState = <T extends object>(key: string, init: () => T): T => {
     const symKey = Symbol.for(key)
     const host = globalThis as Record<symbol, unknown>
@@ -53,12 +54,8 @@ vi.mock('@pyreon/reactivity', () => {
     host[symKey] = state
     return state
   }
-  // No-op stub — real sentinel throws on duplicate-load detection.
-  const registerSingleton = () => {}
-  // batch() passthrough — signal mock doesn't batch notifications;
-  // see sibling Overlay.test.ts for rationale.
-  const batch = <T,>(fn: () => T): T => fn()
-  return { signal, batch, setSnapshotCapture, defineCrossModuleState, registerSingleton }
+
+  return { ...actual, signal, setSnapshotCapture, registerSingleton, defineCrossModuleState }
 })
 
 vi.mock('@pyreon/core', async (importOriginal) => {

@@ -7,7 +7,31 @@ import { describe, expect, it, vi } from 'vitest'
 // [getter, setter]. We mock signal() to return a simple tuple.
 // ---------------------------------------------------------------------------
 
-vi.mock('@pyreon/reactivity', () => {
+// Partial mock — uses importOriginal so every export NOT in the override
+// set passes through to the real `@pyreon/reactivity` (batch, watch,
+// runUntracked, computed, effect, untrack, onCleanup, future additions).
+// Pre-refactor this was a fully-handcrafted mock listing 5 exports
+// explicitly; every new export silently broke tests with `No "X" export
+// is defined on the "@pyreon/reactivity" mock` — exactly what surfaced
+// when batch() was added to useOverlay.tsx.
+//
+// The 4 overrides:
+// - `signal` → value-storage stub with no-op subscribe/direct. Tests
+//   assert synchronous read-after-write; real subscriber machinery
+//   would couple test state to FinalizationRegistry + the always-on
+//   _rdRegister devtools path, polluting across `it()` blocks.
+// - `setSnapshotCapture` → no-op. `@pyreon/core/context.ts` calls it
+//   at module load to install the reactive-effect context-snapshot DI
+//   hook; mocked tests don't drive real reactive scoping.
+// - `registerSingleton` → no-op. Real sentinel throws on duplicate-load
+//   detection; tests just need to satisfy the import.
+// - `defineCrossModuleState` → re-implements the same shape (Symbol.for
+//   keyed globalThis hosting) so the 5 `@pyreon/core` module-state files
+//   work identically to production (duplicate-module-instance hardening
+//   from #855).
+vi.mock('@pyreon/reactivity', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+
   const signal = <T>(initial: T) => {
     let value = initial
     const s = (() => value) as (() => T) & {
@@ -37,19 +61,8 @@ vi.mock('@pyreon/reactivity', () => {
     return s
   }
 
-  // No-op: `@pyreon/core/context.ts` calls `setSnapshotCapture(...)` at
-  // module load to install the reactive-effect context-snapshot DI hook.
-  // Mocked tests don't drive real reactive scoping, so accept the call
-  // and discard. Required since `@pyreon/core` imports `setSnapshotCapture`
-  // from `@pyreon/reactivity` — without this stub the mock factory throws
-  // "No 'setSnapshotCapture' export is defined on the '@pyreon/reactivity' mock."
   const setSnapshotCapture = () => {}
-  // `@pyreon/core`'s 5 module-state files (lifecycle / component / context /
-  // telemetry / props) call `defineCrossModuleState` at module load to host
-  // their state on `globalThis` under `Symbol.for` keys (the
-  // duplicate-module-instance hardening from #855). Forward to the real
-  // helper shape — first-call-creates, subsequent-finds-existing — so the
-  // mocked core modules behave identically to production.
+  const registerSingleton = () => {}
   const defineCrossModuleState = <T extends object>(key: string, init: () => T): T => {
     const symKey = Symbol.for(key)
     const host = globalThis as Record<symbol, unknown>
@@ -59,15 +72,8 @@ vi.mock('@pyreon/reactivity', () => {
     host[symKey] = state
     return state
   }
-  // Mock the singleton sentinel as a no-op. The real one throws on
-  // duplicate-load; tests don't need detection and we only care about
-  // satisfying the import.
-  const registerSingleton = () => {}
-  // batch() is a notification-batching helper — runs fn() synchronously
-  // and returns the result. Test mock can pass-through since signal mock
-  // doesn't actually batch notifications.
-  const batch = <T,>(fn: () => T): T => fn()
-  return { signal, batch, setSnapshotCapture, defineCrossModuleState, registerSingleton }
+
+  return { ...actual, signal, setSnapshotCapture, registerSingleton, defineCrossModuleState }
 })
 
 // onMount / onUnmount are no-ops outside a renderer
