@@ -182,15 +182,65 @@ export function createISRHandler(
   // overridable via ISRConfig.revalidateTimeoutMs.
   const REVALIDATE_TIMEOUT_MS = Math.max(1, config.revalidateTimeoutMs ?? 30_000)
 
-  // Only 2xx, cookie-free responses may be cached. Caching a transient
-  // 5xx/3xx/404 and replaying it as a 200 for the whole revalidate
-  // window is a self-inflicted outage / cache-poisoning bug. Caching a
-  // `Set-Cookie` response and replaying it to every visitor leaks one
-  // user's session/CSRF cookie cross-user — not covered by the
-  // documented "ISR-without-cacheKey is for non-personalized pages"
-  // caveat (that caveat is about key variance, not header stripping).
+  // PR-S4: extended cacheability check — was previously
+  // `2xx + no Set-Cookie` only. The old check missed RFC 7234 directives
+  // that explicitly signal a response is not safe to cache, AND missed
+  // headers that prove per-user content (Authorization, Vary: Cookie
+  // without an explicit cacheKey). Caching ANY of these and replaying
+  // them to other users via a default `cacheKey: url.pathname` leaks
+  // private data across user sessions.
+  //
+  // Disqualifiers (any one trips → not cacheable):
+  //   1. Non-2xx status (transient errors / redirects)
+  //   2. Set-Cookie present (per-user session state)
+  //   3. Cache-Control: private | no-store | no-cache (RFC 7234)
+  //   4. Vary: Cookie | Authorization, AND no explicit cacheKey (the
+  //      response varies per cookie/auth → can't share across users)
+  //   5. Authorization response header (auth-gated content)
+  //
+  // `hasCacheKey` is set at handler-init time (config.cacheKey !== undefined).
+  // When the user supplied a cacheKey, they're opting into per-user caching
+  // (the auth-incompatibility caveat in ISRConfig.cacheKey JSDoc applies),
+  // so Vary: Cookie is fine — they're keying by cookie themselves.
+  const hasCacheKey = typeof config.cacheKey === 'function'
+
   function isCacheable(res: Response): boolean {
-    return res.status >= 200 && res.status < 300 && !res.headers.has('set-cookie')
+    if (res.status < 200 || res.status >= 300) return false
+    if (res.headers.has('set-cookie')) return false
+
+    // Cache-Control directives — case-insensitive directive matching.
+    // The Vary spec uses comma-separated tokens; same for Cache-Control.
+    const cc = res.headers.get('cache-control')?.toLowerCase() ?? ''
+    if (cc.includes('private') || cc.includes('no-store') || cc.includes('no-cache')) {
+      return false
+    }
+
+    // Authorization response header — present only when an auth challenge
+    // OR auth-bearing token is being communicated. Either way, per-user.
+    if (res.headers.has('authorization')) return false
+
+    // Vary: Cookie / Vary: Authorization → response varies per-user.
+    // Safe when user opted into per-user caching via `cacheKey`; otherwise
+    // sharing across users via `pathname`-only key is a leak.
+    if (!hasCacheKey) {
+      const vary = res.headers.get('vary')?.toLowerCase() ?? ''
+      // Match whole tokens to avoid false-positives on field names like
+      // `Vary: Accept-Cookie-Format` (hypothetical but defensive).
+      const varyTokens = vary.split(',').map((t) => t.trim())
+      if (varyTokens.includes('cookie') || varyTokens.includes('authorization') || varyTokens.includes('*')) {
+        if (__DEV__) {
+          console.warn(
+            '[Pyreon ISR] Response has `Vary: Cookie` (or Authorization / *) ' +
+              'but no `cacheKey` is configured — refusing to cache to prevent ' +
+              'cross-user data leak. Supply `cacheKey: (req) => ...` keyed on the ' +
+              'cookie identity to enable per-user caching for this page.',
+          )
+        }
+        return false
+      }
+    }
+
+    return true
   }
   // M1.1 — cache-key derivation. Default keys by pathname only (the
   // pre-M1 behaviour). User-supplied `cacheKey` opts in to varying
@@ -254,10 +304,14 @@ export function createISRHandler(
       ])
       // Never overwrite a good stale entry with a bad re-render
       // (5xx/3xx) or poison it with a Set-Cookie response.
-      if (isCacheable(res)) {
-        const html = await res.text()
+      // PR-S4: also disqualify per RFC 7234 cache directives + apply
+      // responseFilter as the final-say override. Filter runs BEFORE
+      // body consumption so the user can re-construct a Response.
+      const finalRes = config.responseFilter ? (config.responseFilter(res) ?? null) : res
+      if (finalRes !== null && isCacheable(finalRes)) {
+        const html = await finalRes.text()
         const headers: Record<string, string> = {}
-        res.headers.forEach((v, k) => {
+        finalRes.headers.forEach((v, k) => {
           headers[k] = v
         })
         await store.set(key, { html, headers, timestamp: Date.now() })
@@ -315,7 +369,27 @@ export function createISRHandler(
     // transient error / redirect / Set-Cookie response is passed
     // through verbatim with its ORIGINAL status + headers and is NOT
     // stored, so it can't be replayed as a 200 to later visitors.
-    const res = await handler(req)
+    const rawRes = await handler(req)
+
+    // PR-S4: apply responseFilter BEFORE consuming the body so the user
+    // can re-construct a Response with `res.body` (otherwise the body
+    // stream is locked once res.text() runs). Filter returning null →
+    // skip cache entirely; non-null result becomes the response we
+    // cache + serve.
+    const res = config.responseFilter ? (config.responseFilter(rawRes) ?? null) : rawRes
+    if (res === null) {
+      const html = await rawRes.text()
+      const headers: Record<string, string> = {}
+      rawRes.headers.forEach((v, k) => {
+        headers[k] = v
+      })
+      return new Response(html, {
+        status: rawRes.status,
+        statusText: rawRes.statusText,
+        headers: { ...headers, 'x-isr-cache': 'BYPASS' },
+      })
+    }
+
     const html = await res.text()
     const headers: Record<string, string> = {}
     res.headers.forEach((v, k) => {
