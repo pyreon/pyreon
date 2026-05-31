@@ -237,7 +237,7 @@ When the survey completes, the artifacts to produce:
 1. **A new doc**: `.claude/plans/native-platforms-user-survey-results.md` — anonymized aggregate findings, per-code response counts, recommendation (staff Phase 1 / re-survey / don't staff).
 2. **An update to**: `.claude/plans/native-platforms.md` — appends a "Market validation results" section with the headline finding.
 3. **An update to**: `.claude/plans/native-platforms-competitors.md` — adjusts the Scenario 1/2/3 likelihood based on actual evidence.
-4. **A go/no-go recommendation in**: `open-work-2026-q3.md` — Phase 1 staffing line item updates from "TBD pending Phase 0 + survey" to "STAFF" / "RESURVEY" / "DON'T STAFF".
+4. **A go/no-go recommendation surfaced in `CLAUDE.md`** under the PMTC section — Phase 1 staffing line moves from "TBD pending Phase 0 + survey" to "STAFF" / "RESURVEY" / "DON'T STAFF".
 
 ---
 

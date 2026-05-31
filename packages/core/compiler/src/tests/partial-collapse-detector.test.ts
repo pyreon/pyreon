@@ -1,5 +1,5 @@
 /**
- * PR 1 of the partial-collapse spec (`.claude/plans/open-work-2026-q3.md`
+ * PR 1 of the partial-collapse spec (`CLAUDE.md` ("Compile-time rocketstyle collapse")
  * → #1). The shared `on*`-handler-only detector — the build STARTED, not
  * just measured. The bail-reason census (`collapse-bail-census.test.ts`)
  * proved 7.8% of all `@pyreon/ui-components` call sites bail SOLELY on

@@ -263,7 +263,7 @@ export function _rsCollapse(
 
 /**
  * Compiler-emitted PARTIALLY-collapsed rocketstyle call site — PR 2 of
- * the partial-collapse build (`.claude/plans/open-work-2026-q3.md` → #1).
+ * the partial-collapse build (`CLAUDE.md` ("Compile-time rocketstyle collapse") collapse-tail).
  *
  * Identical to {@link _rsCollapse} (one `_tpl` cloneNode, dual-emit
  * reactive class, no remount on mode swap) PLUS it re-attaches the
@@ -314,8 +314,8 @@ export function _rsCollapseH(
 /**
  * Compiler-emitted DYNAMIC-prop collapsed rocketstyle call site — PR 1
  * of the dynamic-prop partial-collapse build (next bite after the
- * `on*`-handler partial-collapse `_rsCollapseH`, `.claude/plans/open-work-2026-q3.md`
- * → #1 dynamic-prop bucket = 15.3% of all real-corpus sites).
+ * `on*`-handler partial-collapse `_rsCollapseH`, `CLAUDE.md` ("Compile-time rocketstyle collapse")
+ *  dynamic-prop bucket = 15.3% of all real-corpus sites).
  *
  * Generalises {@link _rsCollapse}'s 2-class (light/dark) dispatch to an
  * N-class dispatch for sites where one dimension prop is an enumerable
@@ -401,7 +401,7 @@ export function _rsCollapseDyn(
 /**
  * Compiler-emitted DYNAMIC-prop + HANDLER collapsed rocketstyle call
  * site — closes the largest remaining real-corpus dynamic-collapse
- * gap (`.claude/plans/open-work-2026-q3.md` → #1 dynamic-prop bucket
+ * gap (`CLAUDE.md` ("Compile-time rocketstyle collapse")  dynamic-prop bucket
  * = 15.4% of all real-corpus sites; the strict no-handler subset was
  * only 0.2% measured; this helper unlocks the handler-combined slice
  * that `tryDynamicCollapse` bails by design).

@@ -20,7 +20,7 @@
 // only ONE dimension actually varies a property — keeps the structure
 // honest. The compile-time COLLAPSE (resolving the live prop values
 // at SSR/build time and emitting a single concrete .background(…))
-// is the P0 win described in `.claude/plans/open-work-2026-q3.md`,
+// is the P0 win described in `.claude/plans/CLAUDE.md ("Compile-time rocketstyle collapse")`,
 // not in scope for this Phase 0 shape PR.
 
 import type { StyleProperty, StyleValue } from './emit-style'

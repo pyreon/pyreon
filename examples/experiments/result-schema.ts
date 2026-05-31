@@ -5,7 +5,8 @@
  * `results/<sha>.json`. The shared `bun run perf:diff` tool (from
  * `@pyreon/perf-harness`) compares two such files and CI posts the delta.
  *
- * Tracking: `.claude/plans/open-work-2026-q3.md` (P3 section).
+ * Each experiment lives under `examples/experiments/<name>/` and ships
+ * a `RESULTS.md` capturing the verdict (GRADUATE / KILL / DEFER).
  */
 
 /** A single wall-clock measurement series with median + p90 + sample count. */

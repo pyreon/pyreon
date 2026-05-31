@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { _rsCollapseDyn, mount } from '../index'
 
 // PR 1 of the dynamic-prop partial-collapse build (next bite after the
-// on*-handler partial-collapse `_rsCollapseH`, open-work-2026-q3.md #1
+// on*-handler partial-collapse `_rsCollapseH`, CLAUDE.md ("Compile-time rocketstyle collapse") #1
 // dynamic-prop bucket = 15.3% of all real-corpus sites). Proves only
 // what `_rsCollapseDyn` owns:
 //   1. ONE `_tpl()` cloneNode whose class is reactively bound to BOTH

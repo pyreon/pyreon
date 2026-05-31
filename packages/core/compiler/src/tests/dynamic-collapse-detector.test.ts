@@ -1,5 +1,5 @@
 /**
- * PR 2 of the dynamic-prop partial-collapse build (`.claude/plans/open-work-2026-q3.md`
+ * PR 2 of the dynamic-prop partial-collapse build (`CLAUDE.md` ("Compile-time rocketstyle collapse")
  * → #1 dynamic-prop bucket = 15.3% of all real-corpus sites; the
  * next-bigger bite after the just-shipped `on*`-handler partial-collapse
  * via `detectPartialCollapsibleShape` + `_rsCollapseH` + emit).
