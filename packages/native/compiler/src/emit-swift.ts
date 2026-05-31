@@ -110,6 +110,15 @@ let _functionNames: Set<string> = new Set()
  */
 let _usesRouter = false
 /**
+ * Per-component: set to true when the component declares `useColorScheme`.
+ * When set, the View struct gains `@Environment(\.colorScheme) private
+ * var pyreonColorScheme: ColorScheme` so the computed property emit can
+ * read it. Same constraint as @Environment(\.pyreonRouter) — env reads
+ * aren't available at stored-let init time, hence the computed-property
+ * wrapper.
+ */
+let _usesColorScheme = false
+/**
  * C5.2: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitSwiftComponent` from the
  * `kind: 'router'` decls that carry routes. `emitSwiftRouterProvider`
@@ -293,6 +302,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
+  // Same shape for useColorScheme — set during decl-pass if any
+  // `kind: 'color-scheme'` binding is present.
+  _usesColorScheme = false
   // C5.2: reset router-routes map. Populated during decl-pass for
   // each `kind: 'router'` decl with a non-undefined routes array.
   _routerRoutes = new Map()
@@ -338,6 +350,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 3: `const { id } = useParams()` reads via useParams(router:),
     // so the View needs the @Environment(\.pyreonRouter) injection.
     if (d.kind === 'params-destructure') _usesRouter = true
+    // Phase 4 follow-up: useColorScheme reads SwiftUI's
+    // @Environment(\.colorScheme), so the View needs the injection.
+    if (d.kind === 'color-scheme') _usesColorScheme = true
   }
   const lines: string[] = []
   // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
@@ -372,6 +387,17 @@ function emitSwiftComponent(c: ComponentIR): string {
   if (_usesRouter) {
     lines.push(
       `  @Environment(\\.pyreonRouter) private var pyreonRouter: PyreonRouter?`,
+    )
+  }
+  // Phase 4 follow-up: useColorScheme injection. SwiftUI's
+  // `@Environment(\.colorScheme)` is the system-supplied "light"
+  // or "dark" appearance — no runtime port needed (the platform
+  // ships the primitive). Each useColorScheme decl's computed
+  // property reads `pyreonColorScheme` to derive the "light"/"dark"
+  // string.
+  if (_usesColorScheme) {
+    lines.push(
+      `  @Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme`,
     )
   }
   for (const d of c.decls) {
@@ -561,6 +587,17 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // plain properties on the @Observable container.
   if (d.kind === 'clipboard') {
     return `@State private var ${swiftIdent(d.name)} = PyreonClipboard()`
+  }
+  // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
+  // property reading the View's @Environment(\.colorScheme) injection
+  // (added at the component-emit level via _usesColorScheme). Returns
+  // a `"light" | "dark"` string for parity with the web hook so
+  // cross-platform code reading `scheme === 'dark'` works on all
+  // three targets. Computed (not stored let) because @Environment
+  // isn't readable at stored-property-init time — same constraint
+  // the router hooks document.
+  if (d.kind === 'color-scheme') {
+    return `private var ${swiftIdent(d.name)}: String { pyreonColorScheme == .dark ? "dark" : "light" }`
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases

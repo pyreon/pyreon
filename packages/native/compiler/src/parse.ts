@@ -513,6 +513,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }
   }
+  // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
+  // → platform-native dark-mode read. No arguments. NO runtime port
+  // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
+  // (isSystemInDarkTheme()) ship the primitive. Emit returns the
+  // same `"light" | "dark"` string shape the web hook uses.
+  if (calleeName === 'useColorScheme') {
+    return { kind: 'color-scheme', name }
+  }
   return null
 }
 

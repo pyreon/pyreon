@@ -239,6 +239,24 @@ export type DeclIR =
    * `params-destructure` uses.
    */
   | { kind: 'clipboard'; name: string }
+  /**
+   * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
+   * from `@pyreon/hooks`. Maps to platform-native "is dark mode
+   * active" reads — NO runtime port needed (both SwiftUI and Compose
+   * ship the primitive):
+   *
+   *   Swift  → @Environment(\.colorScheme) private var pyreonColorScheme
+   *            + private var ${name}: String { pyreonColorScheme == .dark ? "dark" : "light" }
+   *   Kotlin → val ${name} = if (isSystemInDarkTheme()) "dark" else "light"
+   *
+   * Returns the same `"light" | "dark"` string shape the web hook
+   * uses, so cross-platform code reading `scheme === 'dark'` works
+   * identically. `useColorScheme()` takes no arguments. The Swift
+   * shape uses a computed property because @Environment isn't
+   * readable at stored-let init time (same constraint the router
+   * hooks document).
+   */
+  | { kind: 'color-scheme'; name: string }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
