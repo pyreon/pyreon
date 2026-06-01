@@ -62,7 +62,7 @@ function makeCapture(): {
 
 describe('createLocalProvider — descriptor preservation contract', () => {
   it('does NOT fire getter descriptors on unrelated props at HOC entry', () => {
-    const { Receiver, captured } = makeCapture() as any
+    const { Receiver } = makeCapture() as any
     const { props, reads } = instrument(
       {},
       {
