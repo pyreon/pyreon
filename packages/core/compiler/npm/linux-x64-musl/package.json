@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/compiler-linux-x64-musl",
-  "version": "0.26.2",
+  "version": "0.26.3",
   "description": "Linux x64 musl prebuilt native binary for @pyreon/compiler",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/compiler#readme",
   "bugs": {

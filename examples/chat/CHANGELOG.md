@@ -1,5 +1,26 @@
 # chat
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [[`44cc6b9`](https://github.com/pyreon/pyreon/commit/44cc6b9b657363ffdb5aaa52880fa4c8c7ef66b0)]:
+  - @pyreon/runtime-dom@0.26.3
+  - @pyreon/core@0.26.3
+  - @pyreon/head@0.26.3
+  - @pyreon/reactivity@0.26.3
+  - @pyreon/router@0.26.3
+  - @pyreon/runtime-server@0.26.3
+  - @pyreon/form@0.26.3
+  - @pyreon/hooks@0.26.3
+  - @pyreon/query@0.26.3
+  - @pyreon/state-tree@0.26.3
+  - @pyreon/storage@0.26.3
+  - @pyreon/toast@0.26.3
+  - @pyreon/url-state@0.26.3
+  - @pyreon/virtual@0.26.3
+  - @pyreon/zero@0.26.3
+
 ## 0.0.4
 
 ### Patch Changes
