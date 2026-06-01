@@ -399,15 +399,36 @@ function mountComponent(
     _mountingStack!.push(compId)
   }
 
-  // Merge vnode.children into props.children if not already set
+  // Merge vnode.children into props.children if not already set.
+  //
+  // Descriptor-copy preserves getter-shaped reactive props (the
+  // compiler-emitted `_rp(() => signal())` wrappers later converted to
+  // getters by `makeReactiveProps`). A plain `{ ...vnode.props,
+  // children: ... }` spread fires every getter on `vnode.props` at
+  // this line and stores the resolved value as a static data property
+  // — breaking signal-driven reactivity for every prop the component
+  // reads in a tracking scope. This is the bug class root for any
+  // framework or user-land component called via the canonical
+  // `h(Comp, props, ...children)` JSX-compiled shape with reactive
+  // props. The sibling fix in `@pyreon/elements` (Element / Text /
+  // Content `buildSpreadProps`) routes children through props so this
+  // branch is skipped for that path; this fix closes the bug class for
+  // every other caller too.
   const children = vnode.children ?? []
-  const rawProps =
-    children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
-      ? {
-          ...vnode.props,
-          children: children.length === 1 ? children[0] : children,
-        }
-      : vnode.props
+  let rawProps: Record<string, unknown>
+  if (
+    children.length > 0 &&
+    (vnode.props as Record<string, unknown>).children === undefined
+  ) {
+    rawProps = {}
+    const descriptors = Object.getOwnPropertyDescriptors(vnode.props)
+    for (const key of Object.keys(descriptors)) {
+      Object.defineProperty(rawProps, key, descriptors[key]!)
+    }
+    rawProps.children = children.length === 1 ? children[0] : children
+  } else {
+    rawProps = vnode.props as Record<string, unknown>
+  }
 
   // Convert compiler-emitted () => expr wrappers into getter properties.
   // This makes component props reactive — reading props.state inside an
