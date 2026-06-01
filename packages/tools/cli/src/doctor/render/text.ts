@@ -7,16 +7,9 @@
  *   3. Top-N findings with severity icon, code, location, message, fix
  *   4. Footer: skipped gates, totals, elapsed, run hints
  *
- * Colors degrade gracefully — see `ansi.ts:colorEnabled`.
+ * Colors degrade gracefully — see `@pyreon/ansi:colorEnabled`.
  */
 
-import type {
-  CategoryScore,
-  DoctorReport,
-  Finding,
-  Grade,
-  Severity,
-} from '../types'
 import {
   bold,
   cyan,
@@ -27,7 +20,14 @@ import {
   hyperlink,
   red,
   yellow,
-} from './ansi'
+} from '@pyreon/ansi'
+import type {
+  CategoryScore,
+  DoctorReport,
+  Finding,
+  Grade,
+  Severity,
+} from '../types'
 import { isAdvisoryCategory } from '../score'
 
 const BAR_WIDTH = 12
