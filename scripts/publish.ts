@@ -125,6 +125,31 @@ function resolveWorkspaceDeps(
 const failed: string[] = []
 const published: string[] = []
 const skipped: string[] = []
+/**
+ * Packages that 404'd on `npm publish` because they don't exist on npm
+ * yet — the OIDC trusted-publisher chicken-and-egg constraint:
+ * `id-token`-based publish requires the package to already exist on npm
+ * with a Trusted Publisher attached. The very first publish of any new
+ * scoped package can't go through OIDC and must be bootstrapped
+ * manually with a classic npm token.
+ *
+ * Tracked SEPARATELY from `failed` so the release pipeline can:
+ *   1. continue publishing the other packages cleanly,
+ *   2. exit 0 (so changesets-action's `outputs.published === 'true'`
+ *      gate fires, the umbrella `v<version>` tag pushes, and
+ *      `release-native.yml` runs to publish native compiler binaries),
+ *   3. surface the bootstrap-needed packages as a clear, actionable
+ *      WARNING — not a release-blocking error.
+ *
+ * This is the systemic fix to the cascade failure observed on PR #1153's
+ * release: 3 new packages (@pyreon/validate, @pyreon/primitives,
+ * @pyreon/create-multiplatform) needed first-publish bootstrap, the
+ * old behavior exited 1 on the first 404 → blocked the umbrella tag →
+ * blocked release-native.yml → native binaries stuck at 0.24.2 on npm
+ * even though the local source is at 0.26.x. Categorizing 404-on-PUT
+ * as "needs manual bootstrap" (not a real failure) breaks the cascade.
+ */
+const needsBootstrap: string[] = []
 
 // ── Phase 1 — resolve + validate EVERY manifest. No `npm publish`
 // happens here. Skip logic (private / stub / already-published) is
@@ -244,14 +269,48 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of plan) {
     if (otp) args.push(`--otp=${otp}`)
     if (dryRun) args.push('--dry-run')
     if (tag) args.push('--tag', tag)
+    // `pipe` (not `inherit`) so we can categorize npm errors as
+    // "first-publish needs bootstrap" vs real failures. The captured
+    // stderr is forwarded verbatim so the user still sees npm's full
+    // output in CI logs (no loss of diagnostic info).
     const result = Bun.spawnSync(args, {
       cwd: dirPath,
-      stdout: 'inherit',
-      stderr: 'inherit',
+      stdout: 'pipe',
+      stderr: 'pipe',
     })
+    const stdoutText = new TextDecoder().decode(result.stdout)
+    const stderrText = new TextDecoder().decode(result.stderr)
+    // Forward npm's output so CI logs / interactive runs still show it.
+    if (stdoutText) process.stdout.write(stdoutText)
+    if (stderrText) process.stderr.write(stderrText)
+
     if (result.exitCode !== 0) {
-      console.error(`❌ Failed to publish ${pkg.name}`)
-      failed.push(pkg.name)
+      // Categorize: is this an OIDC trusted-publisher chicken-and-egg
+      // 404 (the package doesn't exist on npm yet) vs a real publish
+      // failure (auth, network, validation, transient registry error)?
+      //
+      // The 404-on-PUT signature: npm returns
+      //   "npm error 404 Not Found - PUT https://registry.npmjs.org/@scope/pkg"
+      //   "could not be found or you do not have permission to access it"
+      // ONLY when the package doesn't exist AND OIDC can't create it
+      // (Trusted Publisher must be configured per-package on npmjs.com).
+      //
+      // First-publish bootstrap is a maintainer task (classic npm token
+      // + manual trusted-publisher setup); it should NOT block the rest
+      // of the release. Other failures (5xx, auth, etc.) DO block — they
+      // indicate a real registry or workflow problem worth halting on.
+      const is404NeedsBootstrap =
+        /npm (error|ERR!) 404 Not Found - PUT/i.test(stderrText) &&
+        /could not be found or you do not have permission to access/i.test(stderrText)
+      if (is404NeedsBootstrap) {
+        console.warn(
+          `⚠️  ${pkg.name} not on npm yet — needs manual bootstrap (classic npm token publish + Trusted Publisher setup on npmjs.com). Skipping; release continues.`,
+        )
+        needsBootstrap.push(pkg.name)
+      } else {
+        console.error(`❌ Failed to publish ${pkg.name}`)
+        failed.push(pkg.name)
+      }
     } else {
       // Create the local git tag for this package@version. changesets/action
       // parses every `New tag: …` line below, populates outputs.published +
@@ -286,8 +345,33 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of plan) {
 }
 
 console.log(
-  `\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}`,
+  `\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}, Needs bootstrap: ${needsBootstrap.length}`,
 )
+
+// `needsBootstrap` is non-blocking — surface as a WARNING so the
+// maintainer sees the actionable list, but exit 0 (or fall through to
+// the real-failure check below). This keeps the umbrella tag step
+// firing → release-native.yml runs → native binaries publish, even
+// when a brand-new package needs manual bootstrap.
+if (needsBootstrap.length > 0) {
+  console.warn(`\n⚠️  Needs manual bootstrap (NOT release-blocking):`)
+  for (const name of needsBootstrap) {
+    console.warn(`   - ${name}`)
+  }
+  console.warn(
+    '\n   For each: from the package directory run `bun publish --access=public`',
+  )
+  console.warn(
+    '   with a classic npm token, then add a Trusted Publisher on npmjs.com',
+  )
+  console.warn(
+    '   (GitHub Actions → pyreon/pyreon → release.yml, no environment).',
+  )
+  console.warn(
+    '   Subsequent publishes go through OIDC like the rest of the suite.',
+  )
+}
+
 if (failed.length > 0) {
   console.error(`\n❌ Failed packages: ${failed.join(', ')}`)
   process.exit(1)
