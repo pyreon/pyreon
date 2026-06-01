@@ -1,5 +1,73 @@
 # @pyreon/state-tree
 
+## 0.26.0
+
+### Minor Changes
+
+- [#910](https://github.com/pyreon/pyreon/pull/910) [`814dd46`](https://github.com/pyreon/pyreon/commit/814dd4649c83f044ef5754b73fdc20e4e037524d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/state-tree` re-architected to mirror MobX-State-Tree's chainable `.views().actions()` shape, with first-class **schema validation** and **async actions out of the box**.
+
+  ## BREAKING CHANGE
+
+  The single-config form `model({ state, views, actions })` is **REMOVED**. Use the chainable form:
+
+  ```ts
+  // Before
+  model({
+    state: { count: 0 },
+    views: (self) => ({ doubled: () => self.count() * 2 }),
+    actions: (self) => ({ inc: () => self.count.update((n) => n + 1) }),
+  });
+
+  // After
+  model({ state: { count: 0 } })
+    .views((self) => ({ doubled: () => self.count() * 2 }))
+    .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }));
+  ```
+
+  Migration is mechanical: `state` stays inside `model(...)`; `views` and `actions` keys move to chained `.views(...)` / `.actions(...)` calls verbatim. Behavior of each factory is unchanged. Empty `views: () => ({})` can be dropped.
+
+  ## What's new
+
+  ### Schema mode — `model({ schema, initial? })`
+
+  Accepts a `TypedSchemaAdapter` (`zodSchema(...)` / `valibotSchema(...)` / `arktypeSchema(...)`) OR a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Field types inferred end-to-end; every write validated through the schema.
+
+  Schema-mode instances expose **five validated mutation helpers** with bare names matching `@pyreon/store`'s `SchemaStoreApi`:
+
+  ```ts
+  u.set({ ...full }); // full replace, validated
+  u.patch({ name: "Bob" }); // shallow merge, validated
+  u.deepPatch({ prefs: { theme: "dark" } }); // recursive merge — keeps siblings
+  u.update("items", (items) => items.filter((x) => x.id !== id)); // transform one field
+  u.reset(); // restore parsed initial
+  ```
+
+  Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
+
+  **Reserved-name check** — in schema mode, schema field names AND chained `.views()` / `.actions()` keys cannot collide with `set` / `patch` / `deepPatch` / `update` / `reset`. The runtime throws at `.create()` time with a clear error naming the colliding key. Plain mode (no schema) has no installed helpers, so user actions named `reset` / `set` etc. still work in plain models.
+
+  ### Chainable `.views()` / `.actions()`
+
+  Each call returns a NEW `ModelDefinition` (immutable builder). Subsequent factories see prior views + actions via `self`. Order semantics: views run before actions in the lifecycle.
+
+  ### Async actions — out of the box
+
+  Actions can be `async`; the runtime detects Promise returns and propagates them through the middleware chain. No `flow()` / `yield` wrapper. Middleware that wants completion does `await next(call)`.
+
+  ## Step 0 — helper extraction (`@pyreon/validation` patch)
+
+  Moved schema-detection helpers from `@pyreon/store` to `@pyreon/validation` so both `@pyreon/store` (schema mode) and `@pyreon/state-tree` (schema mode) share them. New module: `packages/fundamentals/validation/src/schema.ts` exporting `extractParseFn`, `wrapStandardSchema`, `isPyreonAdapter`, `isStandardSchema`, `formatIssues`, `InferSchema<S>`, `SchemaIssue`, `SchemaParseResult<T>`, `StandardSchemaShape<T>`, `PyreonAdapterShape<T>`. `@pyreon/store` now imports from validation.
+
+  ## Why patch on store (not minor)
+
+  The store change is purely an internal refactor — helpers moved out, public API unchanged. All 130 existing store tests pass without modification. Bundle shrinks slightly (helpers move out, validation grows by the same amount). Tagged as `patch` rather than `minor` because no consumer-visible surface changed.
+
+### Patch Changes
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`0fd9852`](https://github.com/pyreon/pyreon/commit/0fd98527ff7ea8a06ef0b470a2a6e84fcd9eba81), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`814dd46`](https://github.com/pyreon/pyreon/commit/814dd4649c83f044ef5754b73fdc20e4e037524d)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/validation@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

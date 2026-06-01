@@ -1,5 +1,433 @@
 # @pyreon/zero
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1115](https://github.com/pyreon/pyreon/pull/1115) [`c2d0f34`](https://github.com/pyreon/pyreon/commit/c2d0f34578624f7284842f4f8558e613e969053d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): ISR cross-user header leak — extend isCacheable + add responseFilter (PR 4)
+
+  **Bug**: ISR's `isCacheable` checked ONLY status code + presence of `Set-Cookie`. Responses carrying `Cache-Control: private | no-store | no-cache`, `Authorization`, or `Vary: Cookie | Authorization` were happily cached and replayed to OTHER users via the default `cacheKey: url.pathname`. Cross-user data leak — an auth-gated page rendered for user Alice could be served from cache to user Bob.
+
+  **Why security-shaped**: the default `cacheKey: url.pathname` makes this trivially exploitable. RFC 7234 explicitly lists these directives as "do not share across users"; honoring them is table-stakes for any HTTP cache.
+
+  **Fixes**:
+
+  1. **Extended `isCacheable` checks** (defense in depth at both cache-miss + revalidate sites):
+     - `Cache-Control: private | no-store | no-cache` → refuse
+     - `Authorization` response header → refuse
+     - `Vary: Cookie | Authorization | *` without explicit `cacheKey` → refuse (with dev warning)
+     - `Vary: Cookie | Authorization` WITH explicit `cacheKey` → ALLOW (user opted into per-cookie keying)
+     - Case-insensitive directive matching throughout
+  2. **New `responseFilter?: (res: Response) => Response | null` config** — final-say override. Returns `null` to bypass cache, or a NEW Response to cache instead. Runs BEFORE body consumption so re-construction with `res.body` works.
+
+  **Bisect-verified**: 12 new regression tests in `isr.test.ts`; 9 fail with reverted source (`expected 'MISS' to be 'BYPASS'` across all the Cache-Control / Vary / Authorization disqualifiers). Restored → 1017/1018 zero tests pass.
+
+  The remaining items from the audit's ISR cluster (auto-wire `mode: 'isr'`, AbortController for revalidation timeout, get-then-delete race, null-revalidate forever-stale) are bundled into **PR 5** (week-2 SSR correctness sprint) per the campaign plan.
+
+- [#1112](https://github.com/pyreon/pyreon/pull/1112) [`537f0a5`](https://github.com/pyreon/pyreon/commit/537f0a5e326a6cc37dd95dd978b474c9a51867e6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero)!: drop internal RouterProvider from `createApp` — fixes production SSR loader-data drop + cross-request data leak (S1)
+
+  **Bug (production SSR only)**: `createServer` calls `createApp({ routes })` ONCE at module init. The returned `App` wrapped itself in `<RouterProvider router={buildTimeRouter}>`. `createHandler` then wraps a SECOND time with the per-request router. `useContext` picks the innermost frame → every `RouterView` / `useLoaderData()` consumer reads the **build-time** router, not the per-request one.
+
+  **Symptoms**:
+
+  - SSR HTML ships with empty loader sections (loaders write to per-request router; readers see build-time router)
+  - Concurrent requests cross-contaminate via the shared build-time `_loaderData` Map (request-specific data crosses users)
+
+  **Why undetected**: dev `renderSsr` calls `createApp` per-request (masks the bug). SSG `renderPath` calls per-path (masks). Tests passed bare components to `createHandler` (bypassed `createApp`). Only production `createServer` exposed the bug.
+
+  **Fix**: `App` is now router-agnostic. The per-request `RouterProvider` lives at every call site:
+
+  - `createHandler` (production SSR) — unchanged
+  - `renderSsr` (dev) — now wraps with `routerInst`
+  - `renderPath` (SSG) — now wraps with the per-path router
+  - `startClient` (browser) — now wraps with the client router
+
+  **Breaking change**: `createApp` still returns `{ App, router }` for back-compat, but consumers must no longer rely on `App`'s internal RouterProvider — every call site must wrap with `<RouterProvider router={...}>` explicitly. The four shipped call sites are already updated.
+
+  Bisect-verified by 2 new regression tests in `app.test.ts`: (1) `loader data reaches RouterView in production SSR via createApp→createHandler`; (2) `concurrent requests with different loaders do NOT cross-contaminate`. Both fail with the source reverted (`expected '...' to contain 'value:loader-output'` / `'who:alice'`).
+
+  125/125 e2e tests pass (main + ssg-i18n + ssg-subpath). 1007/1008 zero unit tests pass (1 pre-existing skip). Typecheck + lint clean.
+
+- [#1113](https://github.com/pyreon/pyreon/pull/1113) [`5ee742a`](https://github.com/pyreon/pyreon/commit/5ee742aa8a83e66664220494dc0e20a3bb16d8b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero)!: server actions security baseline — full UUID + CSRF Origin check + auto-wire (S2)
+
+  **Bug (security-critical)**: `defineAction()` IDs were `crypto.randomUUID().slice(0, 8)` (32 bits → birthday collision at ~65k actions). The `/_zero/actions/<id>` endpoint accepted any POST with **no Origin / Referer check, no CSRF token, no SameSite enforcement**. Action IDs are bundled in client JS (trivially discoverable via DevTools). **Any malicious origin a logged-in Pyreon user visits could POST to any defined action** — classic CSRF.
+
+  Compounded by: `createActionMiddleware` was NEVER auto-wired by `createServer()`. The endpoint just 404'd for users who didn't manually wire — but those who DID wire it got insecure-by-default.
+
+  **Fixes (in this PR)**:
+
+  1. **Full 128-bit UUID** for action IDs ([actions.ts:70](packages/zero/zero/src/actions.ts#L70)). Matches the registry's UUID space — was just truncated.
+  2. **Same-origin Origin/Referer check** by default. Cross-origin POSTs are rejected with HTTP 403. Opt in to specific cross-origin callers via `corsOrigins: ['https://admin.example.com']`. Algorithm:
+     - No Origin/Referer → ALLOW (server-to-server, curl, integration tests — the auth layer's job to gate on user identity).
+     - Origin/Referer present → require same-origin OR an entry in `corsOrigins`.
+     - Otherwise → 403.
+  3. **Auto-wire** `createActionMiddleware()` in `createServer()` when any `defineAction()` has registered (detected via the module-level registry size). Sits between API routes and route middleware. Pass `actions: false` to opt out, or `actions: { corsOrigins: [...] }` to configure.
+
+  **Breaking change**: Cross-origin POSTs to action endpoints now require explicit `corsOrigins` opt-in. Same-origin POSTs (the common case) work unchanged. Matches Astro Actions / SvelteKit csrf / Next Server Actions defaults.
+
+  **Out of scope for this PR** (separate follow-up):
+
+  - Per-session CSRF token + double-submit cookie pattern
+  - Encrypted action IDs tied to session (Next.js-style)
+  - Progressive-enhancement `<Form>` component
+
+  Bisect-verified: 4 of 8 new tests fail with source reverted (`expected 'action_6faddc85' to match /full-UUID-shape/`; `expected 200 to be 403` on 3 cross-origin REJECT tests). Restored → 1012/1013 zero tests pass (1 pre-existing skip + 8 new). Typecheck + lint clean. 115 e2e green.
+
+### Patch Changes
+
+- [#989](https://github.com/pyreon/pyreon/pull/989) [`cbef2e7`](https://github.com/pyreon/pyreon/commit/cbef2e7b016da3ac515099f9f403807baeeb4589) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Chat audit (T4.3) — fix W24 (dev 404 handler shadowed user `/api/*`
+  middleware) + document W25 (passing `computed<T>` as a child prop).
+
+  **W24**: `@pyreon/zero`'s dev 404 handler at
+  `packages/zero/zero/src/vite-plugin.ts:364` caught BOTH HTML requests
+  AND wildcard-Accept requests (`*/*`) for any unmatched path, including
+  `/api/*`. When a user plugin registered its own dev API middleware
+  (via `configureServer`) AFTER zero in the plugin array — the typical
+  order — Zero's 404 handler ran first (Vite registers middlewares in
+  plugin-array order) and shadowed the user's handler for requests sent
+  with `Accept: */*` (curl, `fetch()` default). The user's middleware
+  NEVER ran for those paths.
+
+  Fix: the 404 handler now skips paths starting with `/api/`, so user
+  middleware registered after Zero is no longer shadowed regardless of
+  plugin order. The existing dev API-route dispatcher at line ~277
+  already handles fs-router `src/routes/api/*` paths; anything else
+  under `/api/*` falls through to user middleware OR to Vite's terminal
+  404 — both correct outcomes. `enforce: 'pre'` doesn't help because
+  `configureServer` hooks fire in plugin-array order independent of
+  `enforce`.
+
+  Bisect-verified: revert the path-skip → `examples/chat`'s
+  `/api/history/general` returns 404 (smoke fails with `messages
+visible: 0`); restored → 200 + history loads + 60 messages render.
+  The chat audit example is the canonical test case (no prior audit
+  hit this — only the streaming-primitive surface area surfaces it).
+
+  **W25** is doc-only — when passing a `computed<T>()` declaration to
+  a child as a JSX prop, the compiler auto-calls the variable
+  (yielding the value, not an accessor), so the child's type signature
+  should be the value type `T` not `() => T`. Documented in
+  `examples/chat/WALLS.md` with the canonical call-site shape
+  (`<Comp prop={visible()} />`).
+
+- [#927](https://github.com/pyreon/pyreon/pull/927) [`5602146`](https://github.com/pyreon/pyreon/commit/5602146b7ccac45d3d9ee0b752b00a5f702821e9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - T4.2 — User-walls audit + three DX fixes shipped together.
+
+  ## What
+
+  Built a Hacker News clone from scratch using `create-pyreon-app` to find real
+  DX friction. Documented 8 walls in `examples/hn-clone/WALLS.md` + fixed the
+  three highest-leverage ones in source:
+
+  ### W4 (BLOCKER) — `_error.tsx` template now exposes the actual error in DEV
+
+  The scaffold's default error boundary route used to render a generic "Something
+  went wrong" page with **zero information** about what threw — no message in
+  the rendered output, no `console.error`, no stack trace. A misuse of any
+  framework API surfaced as a silent 500 page, undebuggable without bisecting.
+
+  **Fix** in `packages/zero/create-zero/templates/app/src/routes/_error.tsx`:
+
+  - Now accepts `error?: unknown` prop (the framework already passes it).
+  - Calls `console.error("[Pyreon] route error boundary caught:", err)` so the
+    browser devtools / `page.on('pageerror')` listeners see the error.
+  - In `import.meta.env.DEV` mode, renders the error message + full stack trace
+    inline in a styled `<details>` block. Production builds keep the generic
+    message (no internal leakage) but still log to console.
+
+  This is the single biggest DX improvement in this PR. Cost me ~15 minutes
+  debugging a 3-character typo; would cost a non-fluent user hours.
+
+  ### W1 (HIGH) — Scaffold no longer leaves dangling `app.store.X` refs
+
+  When scaffolding with `--features` excluding `store`, the layout template's
+  `useAppStore` import + `const app = useAppStore()` line were stripped but
+  the next two lines were left behind:
+
+  ```ts
+  // scaffold output — broken
+  const sidebarOpen = app.store.sidebarOpen; // app is undefined
+  const toggleSidebar = app.store.toggleSidebar; // app is undefined
+  ```
+
+  These threw `ReferenceError` at render time, the error was caught by the
+  framework's (then-silent) error boundary, and the dev server returned an
+  empty body. Combined with W4, this was completely undebuggable.
+
+  **Fix** in `packages/zero/create-zero/src/scaffold.ts`:
+
+  - Added two regexes that strip `const X = useAppStore()` AND
+    `const X = app.store.X` lines from the body.
+  - Fixed the existing import-strip regex which only matched single-quoted
+    paths (template uses double quotes).
+
+  ### W6 — Internal `use-intersection-observer` no longer warns about itself
+
+  The framework's own `useIntersectionObserver` helper (used by
+  `<Link prefetch="viewport">`) registered `onUnmount(...)` INSIDE the
+  `onMount(...)` body, which trips the "onUnmount() called outside component
+  setup" dev warning. This warning fired on every page load — eroding the
+  warning system's signal-to-noise: real bugs hid behind the constant noise.
+
+  **Fix** in `packages/zero/zero/src/utils/use-intersection-observer.ts`:
+
+  - Switched from `onUnmount(cleanup)` inside `onMount` to `return cleanup`
+    from `onMount`. Pyreon supports this cleanup-return shape and it stays
+    synchronous w.r.t. the setup phase, so no warning.
+
+  ## What also landed
+
+  `examples/hn-clone/` — a real HN clone built from scratch using the scaffold:
+
+  - 7 routes (top / new / ask / show / jobs / item / user) with the public
+    HNPWA API
+  - 3 shared components (`StoryRow`, `FeedPage`, `CommentTree`)
+  - HN-style CSS, all server-side prerendered for the 5 static routes
+  - `WALLS.md` — 412-line live-narration of every friction point hit while
+    building, with severity + fix suggestions for the 8 walls and 5
+    architectural recommendations for the open-work plan
+
+  ## Walls deliberately NOT fixed in this PR
+
+  5 of 8 walls remain — flagged for follow-up:
+
+  - **W2** (HIGH): `mode: 'ssg'` in dev produces client-only rendering with
+    no warning. The dev startup banner labels routes "SSR" misleadingly.
+  - **W3** (LOW): file deletions under `src/routes/` need dev restart.
+  - **W5** (MEDIUM): `useTypedSearchParams` returns `[get, set]` tuple in a
+    signal-first framework — inconsistent with other `use*` accessors.
+  - **W7** (MEDIUM): SSG build output duplicates `dist/client` into
+    `dist/output/client` + prints confusing "Skipping SSG" log after success.
+  - **W8** (HIGH, architectural): SSG + `useQuery` = shell-only prerender.
+    Content sites silently ship "Loading…" to crawlers. Needs either doctor
+    check, scaffold update, or doc page on data-layer choice.
+
+  The three fixes in this PR are the immediately-fixable, high-leverage,
+  low-blast-radius ones. The other 5 need design / scope decisions before
+  implementation.
+
+  ## Tests
+
+  - `@pyreon/zero` — 998 tests pass, 1 skipped (no regressions)
+  - `examples/hn-clone` — all 7 routes render correctly in real Chromium
+  - W4 verified: `/throw` test route surfaces "Intentional test error..."
+    message + stack in the rendered body + `console.error`
+  - W1 verified: scaffold output of `create-pyreon-app w1-test-2 --features
+query` has zero `app.store.` or `useAppStore` references
+  - W6 verified: `page.on('console')` warning capture returns empty on every
+    page load (previously: one warning per page)
+
+- [#1147](https://github.com/pyreon/pyreon/pull/1147) [`95663b9`](https://github.com/pyreon/pyreon/commit/95663b943be3f02f61fce7b7532df8c2efa153b4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): remove racy `localeSignal.set(locale)` from the i18nRouting middleware
+
+  PR-S7's first cut closed the IN-ALS race via `_runInLocaleStore` but left a "best effort" `localeSignal.set(locale)` in the dev middleware so DEFERRED readers (effects scheduled inside a request but resolving after the ALS unwinds, post-render hooks, island serialization that outlives `runWithRequestContext`) could fall back to the module signal.
+
+  That fallback was racy by construction: two concurrent SSR requests with different locales raced on the same module-global, and "last writer wins" for any deferred reader regardless of which request scheduled the deferred work. A request rendering /en/posts could see `useLocale() === 'de'` from an effect scheduled mid-render that resolved after a concurrent /de/posts request's middleware fired.
+
+  The author of PR-S7 acknowledged it in the comment ("Pre-fix this module write WAS the bug") but kept the write for back-compat with non-ALS callers. Identified in the post v0.25.1 framework audit as the remaining surviving race.
+
+  **Fix**: drop the module-signal write entirely. The ALS store is the authoritative SSR source. Deferred fallback callers now see the signal's CSR-set value (or initial default) — predictable + race-free, vs the previous "fresh but cross-request-contaminated". The client-side `setLocale()` write still updates the signal (single-threaded, no race on the client). `useLocale()` semantics unchanged: ALS-active → per-request value (race-free); ALS-inactive → module signal (CSR or stale default).
+
+  No public API surface change. The middleware's behavior change is internal-only — any deferred SSR reader that previously observed a contaminated locale now observes the signal's last CSR-set value (typically `'en'` on a server with no client-side `setLocale()` calls). User code that intentionally read `useLocale()` from a deferred SSR context was already broken under concurrency; the fix surfaces that explicitly instead of silently corrupting it.
+
+  Bisect-verified-with-restore: 3 new regression specs in `packages/zero/zero/src/tests/i18n-routing.test.ts` under "Audit [#1](https://github.com/pyreon/pyreon/issues/1): i18nRouting middleware does NOT write to module localeSignal":
+
+  1. Single request leaves `localeSignal` at the prior sentinel value.
+  2. Concurrent requests with different locales leave `localeSignal` at the prior sentinel.
+  3. Concurrent requests STILL get correct per-request locale via the ALS store (regression — fix must not break PR-S7).
+
+  Restoring the `localeSignal.set(locale)` line fails all 3 specs (the third with `expected 'cs' to be 'xx'` — proving cross-request contamination of the module signal). Removing the line → 76/76 i18n-routing specs green + 1069/1069 zero suite green.
+
+- [#982](https://github.com/pyreon/pyreon/pull/982) [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Kanban audit (T4.2) — close all 6 walls (W18-W23).
+
+  **W23 — P0 reactivity bug fix** (`@pyreon/reactivity`). `runUntracked`
+  now suspends `_innerEffectCollector` in lock-step with `activeEffect`.
+  Child component effects created inside `mountFor`'s `runUntracked` wrap
+  (PR [#490](https://github.com/pyreon/pyreon/issues/490)) were auto-registered as inner effects of the For's outer
+  effect, then silently disposed on the For's next re-run — breaking
+  every effect-derived subscription in the child subtree on the first
+  source-signal mutation. Was a SHOWSTOPPER for any Trello/Notion/Linear/
+  spreadsheet-shaped app. Bisect-verified.
+
+  **W21 — incidentally fixed by W23 patch.** For-with-computed-indirection
+  shapes (nested inside outer For-with-mutating-source) now propagate
+  correctly.
+
+  **W22 — documented** (`@pyreon/core`). `For` JSDoc + `ForProps.children`
+  JSDoc now carry the canonical fix pattern (pass ID, child reads its own
+  data from store).
+
+  **W18 — cross-list groupId** (`@pyreon/dnd`). `useSortable` accepts an
+  optional `groupId` — two instances with the same `groupId` share a drop
+  universe via `onCrossListDrop(item)` (source removes) +
+  `onCrossListReceive(item, index)` (destination inserts). No `groupId`
+  keeps per-instance isolation (backward compat).
+
+  **W19 — auto-inject entry-client** (`@pyreon/zero`). `transformIndexHtml`
+  hook injects `<script type="module" src="${entryClient}">` before
+  `<!--pyreon-scripts-->` automatically. Configurable via
+  `zero({ entryClient: '/src/main.ts' })` or `entryClient: false` to opt
+  out. Default `/src/entry-client.ts`.
+
+  **W20 — already covered** by existing `pyreon/no-map-in-jsx` rule —
+  test extended for the reactive-accessor shape `{() => items().map(...)}`.
+
+  Closes the kanban example end-to-end. Full add → delete → filter →
+  multi-mutation → reload sequence is green in real-Chromium e2e.
+
+- [#1114](https://github.com/pyreon/pyreon/pull/1114) [`f911be8`](https://github.com/pyreon/pyreon/commit/f911be8f4ac99f3bcecb35d93d765b8fb1ae4ca0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): parseCookies preserves values containing `=` (JWTs / base64 sessions) — S3
+
+  **Bug**: `parseCookies` (used by the i18n middleware to read the locale cookie) did `pair.trim().split('=')` then destructured `[key, value]` — taking only the first two elements of an N-element split. Any cookie value containing `=` (every base64-encoded session ID's `=` padding, every JWT, any URL-encoded `=` in value position) got silently truncated.
+
+  **Today's impact is bounded**: only the locale cookie is currently read via this helper. But the shared parser is a latent footgun for any future auth / session cookie consumer; the same parsing function copy-pasted into user middleware would silently corrupt every JWT it touched.
+
+  **Fix**: split on the FIRST `=` only via `indexOf('=') + slice`. Matches the working pattern in `packages/core/router/src/match.ts:51-59` (`parseQuery`). Exposes the helper as `_parseCookiesForTesting` (internal, not part of public API) so the regression suite can exercise the parser directly.
+
+  Audited all `split('=')` destructure patterns in `packages/zero/zero/src/`, `packages/core/server/src/`, `packages/core/router/src/` — only the just-fixed instance exists. A `pyreon/no-truncating-split-destructure` lint rule to prevent recurrence is tracked as a follow-up in the [audit-fix campaign plan](.claude/plans/jaunty-herding-kazoo.md) (PR 3 has the rule on its docket; deferred to keep this PR scope tight).
+
+  8 new regression tests in `i18n-routing.test.ts` covering: base64 padding, multi-`=` values, JWT-shaped tokens, multi-cookie boundary safety, URL-encoded value decode, empty / malformed entries, missing header. All 8 fail with source reverted; restored → 1013/1014 zero tests pass (1 pre-existing skip).
+
+- [#960](https://github.com/pyreon/pyreon/pull/960) [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix 4 more framework DX walls surfaced by deep-audit of the HN-clone ([#942](https://github.com/pyreon/pyreon/issues/942)) — all bisect-verified at the unit level.
+
+  **W13 — `@pyreon/zero/client` strips URL query string on SPA cold-start.**
+  `startClient` called `router.replace(router.currentRoute().path)` to kick
+  off the loader pipeline, but `currentRoute().path` is the pathname ONLY
+  (query + hash stripped by `resolveRoute`). The `router.replace(pathname)`
+  then wrote the bare URL via `history.replaceState`, silently dropping any
+  query params present on the initial-load URL. Direct-link sharing of
+  `/search?q=react` was broken on cold-start — `useUrlState('q')` /
+  `useTypedSearchParams` read empty `window.location.search` and fell back
+  to defaults. Fix: pass the FULL URL (pathname + search + hash) instead.
+
+  **W14 — `@pyreon/hotkeys` sequential combos (`'g t'`) didn't work.**
+  CLAUDE.md documented vim/Gmail-style `g t` / `g n` combos but the
+  implementation only split on `+`. So `'g t'` parsed as a single key
+  literal `'g t'` (with space) that could never match a keystroke. Fix:
+  `registerHotkey` now splits the shortcut on whitespace into a sequence
+  of sub-combos. Each non-first combo is recorded as `entry.sequence[]`
+  and matched against subsequent keystrokes within a 1-second timeout
+  window. Three-step sequences (`a b c`) and combos with modifiers
+  (`ctrl+k p`) both work. 9 new specs cover the contract.
+
+  **W16 — `@pyreon/runtime-dom`'s `<Transition>` crashed with null ref**
+  when wrapped inside `<Portal>`/`<Show>`/other reactive wrappers. The
+  `appear: true` path queued `applyEnter(ref.current as HTMLElement)`
+  in a microtask, but the child commit could be one or more microtasks
+  behind. `applyEnter(null)` → `el.classList.remove(...)` → "Cannot read
+  properties of null (reading 'classList')". Fix: `safeApplyEnter`
+  retries up to 16 microtasks for the ref to populate before silently
+  giving up. Bisect-verified spec.
+
+  **W17 — `@pyreon/feature`'s `feature.useForm()` didn't invalidate the
+  list query after submit.** `useForm`'s `onSubmit` called `http.create()`
+  / `http.update()` DIRECTLY, bypassing the `useCreate()` / `useUpdate()`
+  mutation pipeline that wires `client.invalidateQueries` in `onSuccess`.
+  So after the form submitted, the list view didn't refetch and the UI
+  silently failed to show the new/updated item until manual reload. Fix:
+  `useForm`'s onSubmit now invalidates `queryKeyBase` (and the per-id key
+  in edit mode), matching the behaviour of `useCreate()` / `useUpdate()`.
+  96 feature tests still pass.
+
+  Discovered by deep-auditing every interactive flow in the HN-clone
+  (`[#942](https://github.com/pyreon/pyreon/issues/942)`) with Playwright. Each is bisect-verified — revert the source
+  fix → the new test fails; restore → it passes.
+
+- [#1101](https://github.com/pyreon/pyreon/pull/1101) [`52c1298`](https://github.com/pyreon/pyreon/commit/52c1298e0a2be04bd62b35f43416ecb9bb16b451) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(zero): dev-mode renderSsr index.html cache + SSG mkdir dedup
+
+  Two independent zero-package optimizations:
+
+  **1. `vite-plugin.ts` — cache index.html across dev SSR requests.** `renderSsr` re-read + transformed `index.html` from disk on every dev request. The raw file rarely changes during a dev session; cache it at module level and invalidate via `handleHotUpdate` when the file actually changes. `transformIndexHtml` is NOT cached (its output may carry per-request timestamps/nonces from other plugins). Saves a disk read per dev SSR request (~0.5-2ms/request — perceptible on multi-page apps with fast navigation).
+
+  **2. `ssg-plugin.ts` — dedup `mkdir` across the SSG render loop.** Concurrent workers (default 4) often mkdir the SAME directory (sibling paths under `/blog/`, `/docs/`, etc.). New `mkdirOnce(dir)` helper caches the Promise per directory; first call launches mkdir, concurrent callers await the SAME Promise. After resolution the Promise stays cached — subsequent paths skip mkdir entirely. Cache reset at start of each `closeBundle` so a `vite build --watch` cycle that wipes `dist/` between builds doesn't reuse stale entries. For a 1000-page site with N shared parent dirs, saves up to N-1 mkdir syscalls per build.
+
+  No bench harness available for zero (server/build code, not browser runtime); changes are structural with documented expected impact. 1005/1006 zero tests pass (1 pre-existing skip); typecheck + lint clean.
+
+- [#1129](https://github.com/pyreon/pyreon/pull/1129) [`9ef3922`](https://github.com/pyreon/pyreon/commit/9ef3922a1849aa36aa012284aae6922cdf1715cd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `expandRoutesForLocales` shallow-clones every output + locale-major loop ordering (PR-S10)
+
+  Two correctness improvements to the i18n route expansion path:
+
+  **1. Shallow-clone the default-locale routes.** Pre-fix `expanded.push(route)` on the `prefix-except-default` default-locale pass shared the input `FileRoute` reference. A downstream consumer mutating any flat field on the returned route (e.g. a build tool that sets `route._buildId = ...`) would corrupt the original `routes` input. Real-world hazard: `expandRoutesForLocales` is called by BOTH `vite-plugin.ts`'s virtual-route module load AND `ssg-plugin.ts`'s pre-render path expansion — both pass the SAME `routes` array. One mutating the other's view is a class of cross-build corruption.
+
+  The non-default locale path was already correct (it spreads `{ ...route, urlPath, dirPath, depth }`). The default-locale path now does the same minimal `{ ...route }` shallow clone. Shallow is sufficient: every FileRoute field is a primitive or a stable (immutable-treated) object — the only nested field is `exports`, which is a boolean-flags + literal-values record that no consumer mutates.
+
+  **2. Locale-major loop ordering.** Pre-fix the outer loop was route-major (`for route in routes { for locale in locales }`), producing output sorted by route → locale: `/about, /de/about, /cs/about, /contact, /de/contact, /cs/contact`. Locale-major (`for locale in locales { for route in routes }`) produces `/about, /contact, /de/about, /de/contact, /cs/about, /cs/contact` — all default-locale routes first, then each non-default locale's full subtree together. More predictable for debugging and stable under route additions (a new route inserts into its own locale block instead of fanning across the whole output). The route-tree builder doesn't depend on ordering, so this is safe.
+
+  **Regression coverage**: 6 new tests in `i18n-routing.test.ts` under the `PR-S10: expandRoutesForLocales shallow-clone + locale-major` describe block (shallow-clone identity, mutation-doesn't-affect-input, two-calls-isolated, locale-major-ordering, empty-locales no-op, single-default-locale no-op). Bisect-verified: reverting `i18n-routing.ts` fails 4 of 6 with documented error messages; restored → 73/73 i18n tests + 1028/1029 zero tests pass.
+
+  **No public API change**: function signature unchanged; output is `FileRoute[]` shallow-cloned from input. Behavioral observable change is the ordering (consumers that asserted output order — none of which exist in the monorepo — would notice).
+
+- [#1133](https://github.com/pyreon/pyreon/pull/1133) [`a27d7db`](https://github.com/pyreon/pyreon/commit/a27d7db43509c02b29ec59af18e5da18d7d57d41) Thanks [@vitbokisch](https://github.com/vitbokisch)! - ISR lifecycle hygiene (PR-S5) — wire `mode: 'isr'` + AbortController + revalidation race fix + null-revalidate forever-stale fix
+
+  Four ISR correctness bugs bundled because they share the same surface (`isr.ts` revalidate path + `entry-server.ts` mode dispatch) and the same fix shape (lifecycle hygiene). Splitting into four PRs would add review overhead with no gain.
+
+  **1. `mode: 'isr'` was typed-but-not-wired** (Pattern D from the audit). `RenderMode` accepted `'isr'` and `ISRConfig` was fully exported, but `createServer` never inspected `config.mode` — apps that configured `mode: 'isr'` silently got plain SSR behavior with `config.isr` ignored and no signal pointing at the cause. The new `wireRenderMode(mode, baseHandler, config)` makes the dispatch explicit and exhaustive: `'isr'` wraps with `createISRHandler` (with a `revalidate: 60` default when `config.isr` is absent); `'ssr'` / `'spa'` / `'ssg'` pass-through. A compile-time `_AssertExhaustive` assertion fails typecheck if a new `RenderMode` value is added without a case, AND a runtime drift test in `entry-server.test.ts` enumerates the known modes to lock the behavior.
+
+  **2. Revalidation timeout did NOT abort the inner handler** (Pattern C). The pre-fix `Promise.race([handler(req), setTimeout-reject])` rejected the race promise on timeout but the inner handler kept running — DB queries, network calls, etc. all continued in the background, pinning request resources. Now an `AbortController` is created per revalidation, passed into the default revalidate Request as `signal`, and `controller.abort()` fires on timeout so handlers observing the signal can cancel their work.
+
+  **3. `revalidateNow()` had a get-then-delete race with concurrent in-flight revalidation** (Pattern C). Pre-fix: revalidate() in flight → revalidateNow() reads `existed` and calls `store.delete(key)` → meanwhile the revalidate's `handler(req)` completes and calls `store.set(key, ...)` AFTER our delete → cache is RE-POPULATED with the data we just tried to invalidate. The CMS-webhook caller saw `{ dropped: true }` but the next request served stale-thought-fresh content. Fix: per-key epoch counter (`_keyEpoch`). `revalidate()` snapshots `startEpoch` at entry, then checks `_currentEpoch(key) === startEpoch` before `store.set` — if `revalidateNow` (or `revalidateAll`) bumped the epoch mid-revalidation, the racing write is skipped. `revalidateNow` bumps the epoch BEFORE touching the store; `revalidateAll` bumps every in-flight key AND every previously-bumped key (the union of `revalidating ∪ _keyEpoch.keys()`).
+
+  **4. `revalidateRequest: () => null` left the entry forever-stale** (Pattern B — incomplete semantics). The auth-gated opt-out use case (return `null` to skip revalidation for logged-in users) used to bail without touching the cache — so every subsequent request triggered revalidate → null → bail → stale-served → loop forever. Fix: when `revalidateRequest` returns `null`, `store.delete(key)` runs before the bail so the next request MISSes and re-renders fresh.
+
+  **Regression coverage**: 4 new ISR tests + 10 new entry-server tests (7 `wireRenderMode` + 3 `createServer` integration). All bisect-verified — reverting `isr.ts` + `entry-server.ts` to the pre-fix state fails 12 of the new tests with the documented error messages; restoring passes all 42.
+
+  **No public API change**: `wireRenderMode` is `@internal` (exported only for the drift gate). The `mode: 'isr'` config field now behaves as documented.
+
+- [#1125](https://github.com/pyreon/pyreon/pull/1125) [`3ebd25f`](https://github.com/pyreon/pyreon/commit/3ebd25fbdd06f8d9f473e8a9281bce27effca209) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Per-request locale via `AsyncLocalStorage` + new lint rule `pyreon/no-module-signal-in-server-package` (PR-S7)
+
+  **Pattern A from the deep-audit campaign** — module-global state in server context. The `@pyreon/zero` `localeSignal` was a module-level `signal('en')` that the dev i18n middleware wrote per-request via `localeSignal.set(locale)`. Server packages are concurrent — two simultaneous SSR requests with different locales (say `/de/about` + `/cs/about`) race the writes; the later-arriving render's `useLocale()` reads the wrong locale because the module signal is single-instance per process.
+
+  **The fix** (Pattern A canonical shape):
+
+  1. **Per-request locale store via `AsyncLocalStorage`**: a new `_localeAls = new AsyncLocalStorage<LocaleStore>()` tracks the locale per-request. The middleware wraps the rest of the request in `_localeAls.run(perRequestStore, next)` — `AsyncLocalStorage` propagates through async hops (Vite middleware chain, ssrLoadModule, Pyreon handler, render), so every downstream `useLocale()` call reads the right store.
+  2. **`useLocale()` prefers the ALS store**: server context reads from `_localeAls.getStore()` if present, falls back to the module signal for non-ALS contexts (client, plain test harness without middleware).
+  3. **`setLocale()` writes to the ALS store** when one is active, otherwise writes the module signal (CSR contract).
+  4. **Module signal stays exported** as a CSR contract + best-effort fallback. The browser is single-threaded — the module signal is fully authoritative there. On the server it's now a fallback, not the source of truth.
+
+  **New lint rule `pyreon/no-module-signal-in-server-package`** (architecture, error) catches the bug class at edit time. Flags `export const X = signal(...)` (or `computed(...)`) at module scope in source files matching the server-package roots (`packages/zero/zero/src/`, `packages/core/server/src/`, `packages/core/runtime-server/src/`). Detects both `signal` and `computed` calls; ignores nested-function-scope signals (per-call allocation = no race). Test files and configurable `exemptPaths` directories are skipped. `additionalPaths` option extends the default set for out-of-tree consumers. No auto-fix — the right shape depends on the call site (ALS vs context vs closure capture).
+
+  **Regression coverage**: 4 new tests in `i18n-routing.test.ts` under `PR-S7: useLocale per-request isolation` (concurrent-request isolation, ALS-precedence, ALS-ignores-module-signal-writes, setLocale-writes-to-ALS); bisect-verified — reverting `i18n-routing.ts` fails 3 of 4 (the 4th is a fallback sanity check that passes either way). 7 new tests in `rule-batch-2.test.ts` for the lint rule (top-level + non-export + computed + nested-function-skip + non-server-package-skip + test-file-skip + exemptPaths + additionalPaths). All 71 zero i18n tests pass; all 903 lint package tests pass.
+
+  **Monorepo audit** found one additional Pattern A instance (`@pyreon/zero/src/theme.tsx` — `theme` + `_osPrefersDark` module signals). Exempted in `.pyreonlintrc.json` with a follow-up audit note — the theme system currently has `setSSRThemeDefault` set at server startup, so the race doesn't materialize today, but a future PR should refactor it to per-request ALS for consistency.
+
+  **No public API change**: `useLocale` / `setLocale` / `localeSignal` keep their existing signatures. The `_runWithLocale` ALS helper is `@internal` (exported only for regression tests).
+
+- [#1132](https://github.com/pyreon/pyreon/pull/1132) [`eaa36d7`](https://github.com/pyreon/pyreon/commit/eaa36d720210e8bed9676692fcb819c063dd91c6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `closeBundle` resets `_mkdirCache` in a finally block (defense-in-depth) (PR-S13)
+
+  **Pattern A from the deep-audit campaign** — module-global state with eviction-on-success-only. Pre-PR-S13 `_resetMkdirCache()` was called at the START of `closeBundle` — fresh state for THIS build. But if the render loop threw mid-build, the cache stayed populated for any subsequent in-process consumer (e.g. another SSG plugin instance, a test harness running multiple builds in the same Node process). The next build's start-of-build reset would catch it in the common case, but a build that aborts BEFORE reaching `closeBundle` (e.g. a build error in a prior plugin) leaves the cache dirty.
+
+  **The fix**: wrap the entire `closeBundle` body in `try { ... } finally { _resetMkdirCache() }`. Symmetric with the start-of-build reset (already present pre-PR-S13) — defense in depth so the cache is guaranteed clean after EVERY build attempt, regardless of crash. Structurally analogous to PR I's `try { ... } finally { delete process.env[SSG_BUILD_FLAG] }` pattern that wraps the inner SSR sub-build.
+
+  The mkdirOnce cache exists to deduplicate concurrent `fs.mkdir` calls during the per-path write loop (with `concurrency: 4` (PR D) up to 4 paths can ask for the same dist subdirectory concurrently). Stale entries are unsafe because `dist/` may have been wiped between builds (CI pipelines, `vite build --watch` + manual clean) and the resolved Promise would point at a no-longer-existing directory creation.
+
+  **Regression coverage**: 4 new tests in `ssg-plugin.test.ts` under the `mkdirOnce cache (PR-S13)` describe block — 3 contract tests for the cache primitive (`deduplicates per directory string`, `_resetMkdirCache() clears every entry`, `repopulates after reset`) + 1 source-level regression catcher (`closeBundle structure: finally-block reset is present`) that asserts the `try { ... } finally { _resetMkdirCache() }` pattern appears in the source. Bisect-verified: reverting `ssg-plugin.ts` fails all 4 tests (3 because the new `_internal` exports are missing, 1 because the source-level pattern is absent); restored → 115 ssg-plugin tests + 1026 zero tests pass.
+
+  The source-level test is the load-bearing regression catcher — the contract tests cover the cache primitive's behavior; a regression that removes the finally block would leave the cache primitive correct but the closeBundle wiring broken. The source pattern check catches the wiring regression directly.
+
+  **No public API change**: `_mkdirCache` / `mkdirOnce` / `_resetMkdirCache` are internal. The new `_internal` exports (`mkdirOnce`, `_resetMkdirCache`, `_peekMkdirCacheSize`) are `@internal` testing surface only.
+
+- [#1130](https://github.com/pyreon/pyreon/pull/1130) [`c19018d`](https://github.com/pyreon/pyreon/commit/c19018ddad0577c82caaa63414ceea6e792d5244) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `buildRevalidateManifest` resolves each concrete path to its most-specific route (PR-S11)
+
+  Pre-fix `buildRevalidateManifest` iterated routes outer × paths inner, setting `manifest[concretePath] = value` on every match. If two routes matched the same concrete path (a static route AND a catch-all), whichever route iterated LAST won — silently wrong because the static route is structurally more specific and should claim the path.
+
+  **Real-world hazard**: a route tree with `/blog/special/static.tsx` (static, no revalidate export) alongside `/blog/[...slug].tsx` (catch-all, `revalidate = 3600`) would map `/blog/special/static` to `3600` in the revalidate manifest — even though the static route owns that path at runtime. The adapter (Vercel / Cloudflare / Netlify ISR) would then attempt to revalidate the path via the catch-all's TTL, but the runtime router serves the static page instead. Result: stale-vs-fresh confusion, or the adapter ignores the revalidation entirely.
+
+  **The fix**: invert the loop direction. For each concrete path, find ALL matching candidate routes, sort by specificity (more static segments wins, more total segments breaks ties), pick the top one, and ONLY emit its `revalidateLiteral` (if any) into the manifest. If the most-specific match has no revalidate export, the path is OMITTED from the manifest — the catch-all's TTL doesn't claim a path it doesn't structurally own.
+
+  Candidate matchers + specificities are precomputed once per `buildRevalidateManifest` call (linear in route count). Per-path resolution is `O(routes)` worst case but with cheap predicate-and-arithmetic ops. For typical SSG sites with ~50 routes and ~1000 written paths, this is microseconds total.
+
+  **Regression coverage**: 4 new tests in `ssg-plugin.test.ts` under the `buildRevalidateManifest (PR I)` describe block (static-wins-over-catchall, static-revalidate-wins-over-catchall-revalidate, dynamic-vs-catchall-tiebreaker, declaration-order-independence). Bisect-verified: reverting `ssg-plugin.ts` fails 3 of 4 with documented assertions; the 4th is a sanity test that passes either way (no overlapping paths). Restored → 115 ssg-plugin tests + 1026 zero tests pass.
+
+  **No public API change**: function signature unchanged; the manifest shape (`Record<string, number | false>`) is byte-identical. The observable change is the per-path resolution semantics — apps relying on the (wrong) last-route-wins behavior would notice, but that behavior was never documented or expected.
+
+- Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`448073c`](https://github.com/pyreon/pyreon/commit/448073c3066bda0e54c71d85cf6bcfebc148a6f0), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e), [`dcc81a9`](https://github.com/pyreon/pyreon/commit/dcc81a98f237a46487b3a331e748423359edc7f3), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`06d66e9`](https://github.com/pyreon/pyreon/commit/06d66e976ad3e5da9777e61eb0f09c70f7b2b871), [`9275a00`](https://github.com/pyreon/pyreon/commit/9275a00f72f071edfeb66584516e093b074b6986), [`434b83f`](https://github.com/pyreon/pyreon/commit/434b83f202060c3a517e67e1ebf4d147369a69c8), [`f54cec8`](https://github.com/pyreon/pyreon/commit/f54cec8f13dffb7fdeceb05021005e342bb856a9), [`f8fbb3b`](https://github.com/pyreon/pyreon/commit/f8fbb3b240fd8aab94900b97e9bab6be3d822b28), [`4204f49`](https://github.com/pyreon/pyreon/commit/4204f49f1dad0997b77fd6a9a90d047f8621010d), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08), [`3ed3134`](https://github.com/pyreon/pyreon/commit/3ed31342e04e0c59b71240ef2b7af0038d70dddb), [`04cb153`](https://github.com/pyreon/pyreon/commit/04cb153ea454dd86d365ccbac5fd8d764aa8be01), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/vite-plugin@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

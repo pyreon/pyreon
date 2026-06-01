@@ -1,5 +1,49 @@
 # @pyreon/core
 
+## 0.26.0
+
+### Patch Changes
+
+- [#982](https://github.com/pyreon/pyreon/pull/982) [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Kanban audit (T4.2) — close all 6 walls (W18-W23).
+
+  **W23 — P0 reactivity bug fix** (`@pyreon/reactivity`). `runUntracked`
+  now suspends `_innerEffectCollector` in lock-step with `activeEffect`.
+  Child component effects created inside `mountFor`'s `runUntracked` wrap
+  (PR [#490](https://github.com/pyreon/pyreon/issues/490)) were auto-registered as inner effects of the For's outer
+  effect, then silently disposed on the For's next re-run — breaking
+  every effect-derived subscription in the child subtree on the first
+  source-signal mutation. Was a SHOWSTOPPER for any Trello/Notion/Linear/
+  spreadsheet-shaped app. Bisect-verified.
+
+  **W21 — incidentally fixed by W23 patch.** For-with-computed-indirection
+  shapes (nested inside outer For-with-mutating-source) now propagate
+  correctly.
+
+  **W22 — documented** (`@pyreon/core`). `For` JSDoc + `ForProps.children`
+  JSDoc now carry the canonical fix pattern (pass ID, child reads its own
+  data from store).
+
+  **W18 — cross-list groupId** (`@pyreon/dnd`). `useSortable` accepts an
+  optional `groupId` — two instances with the same `groupId` share a drop
+  universe via `onCrossListDrop(item)` (source removes) +
+  `onCrossListReceive(item, index)` (destination inserts). No `groupId`
+  keeps per-instance isolation (backward compat).
+
+  **W19 — auto-inject entry-client** (`@pyreon/zero`). `transformIndexHtml`
+  hook injects `<script type="module" src="${entryClient}">` before
+  `<!--pyreon-scripts-->` automatically. Configurable via
+  `zero({ entryClient: '/src/main.ts' })` or `entryClient: false` to opt
+  out. Default `/src/entry-client.ts`.
+
+  **W20 — already covered** by existing `pyreon/no-map-in-jsx` rule —
+  test extended for the reactive-accessor shape `{() => items().map(...)}`.
+
+  Closes the kanban example end-to-end. Full add → delete → filter →
+  multi-mutation → reload sequence is green in real-Chromium e2e.
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
+  - @pyreon/reactivity@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

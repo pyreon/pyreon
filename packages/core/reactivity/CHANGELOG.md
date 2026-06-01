@@ -1,5 +1,156 @@
 # @pyreon/reactivity
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1091](https://github.com/pyreon/pyreon/pull/1091) [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(reactivity): share signal methods via prototype — drop 6 per-instance property assignments
+
+  `signal()` used to assign all 6 methods (peek/set/update/subscribe/direct/debug) as own properties on every signal instance — 6 property writes per signal allocation. Replaced with a shared `SignalProto` object and a single `Object.setPrototypeOf(read, SignalProto)` call. Methods are now resolved via prototype chain.
+
+  All signals share the same prototype → monomorphic call sites at every `signal.method()` invocation. V8 hidden classes stay stable across signals.
+
+  Per-signal alloc cost: 6 method assignments + 3 state writes + 1 label write → 1 setPrototypeOf + 3 state writes + 1 label write.
+
+  bench:fair (2 confirmation runs vs post-merge main baseline):
+
+  | Test                      | Pyreon (compiled)       | Verdict                                               |
+  | ------------------------- | ----------------------- | ----------------------------------------------------- |
+  | create 1k                 | 12.90 → 10.50ms (−19%)  | 5-way tie → **OUTRIGHT LEADER**                       |
+  | replace all rows          | 11.90 → 10.50ms (−12%)  | co-leader → still tied (was 17% behind Vue pre-merge) |
+  | create 10k                | 124.25 → 113.80ms (−8%) | held outright                                         |
+  | partial/select/swap/clear | within ±3% noise        | held                                                  |
+
+  457/457 reactivity + 531 core + 683 runtime-dom + 543 router + 5 other downstream packages (3,241 tests total) pass with no failures.
+
+### Patch Changes
+
+- [#1052](https://github.com/pyreon/pyreon/pull/1052) [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(reactivity): cache `effect` / `_bind` re-run dispatch at setup (match `renderEffect`)
+
+  `renderEffect` already pre-builds its tracked-fn closure at setup so re-runs skip the `snapshot !== null && _snapshotCapture` branch and the module-level read. `effect` and `_bind` did this work on every re-run — `effect` allocated a fresh `() => restore(snapshot, fn)` closure per non-first run; `_bind` re-evaluated the dual conditional every fire.
+
+  Both now mirror `renderEffect`: the hook reference and snapshot are captured at setup, the dispatch closure is built once, and re-runs do a disposed-check + direct call. Behaviorally identical (457/457 reactivity tests pass, including the snapshot-capture-restore branch test). `bench:fair` against the post-[#1051](https://github.com/pyreon/pyreon/issues/1051) baseline shows no regression across the 7 js-framework-benchmark rows; absolute delta is within the bench's between-run noise (~±5%), so this is framed as a consistency / structural micro-opt, not a measured percentage win.
+
+- [#982](https://github.com/pyreon/pyreon/pull/982) [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Kanban audit (T4.2) — close all 6 walls (W18-W23).
+
+  **W23 — P0 reactivity bug fix** (`@pyreon/reactivity`). `runUntracked`
+  now suspends `_innerEffectCollector` in lock-step with `activeEffect`.
+  Child component effects created inside `mountFor`'s `runUntracked` wrap
+  (PR [#490](https://github.com/pyreon/pyreon/issues/490)) were auto-registered as inner effects of the For's outer
+  effect, then silently disposed on the For's next re-run — breaking
+  every effect-derived subscription in the child subtree on the first
+  source-signal mutation. Was a SHOWSTOPPER for any Trello/Notion/Linear/
+  spreadsheet-shaped app. Bisect-verified.
+
+  **W21 — incidentally fixed by W23 patch.** For-with-computed-indirection
+  shapes (nested inside outer For-with-mutating-source) now propagate
+  correctly.
+
+  **W22 — documented** (`@pyreon/core`). `For` JSDoc + `ForProps.children`
+  JSDoc now carry the canonical fix pattern (pass ID, child reads its own
+  data from store).
+
+  **W18 — cross-list groupId** (`@pyreon/dnd`). `useSortable` accepts an
+  optional `groupId` — two instances with the same `groupId` share a drop
+  universe via `onCrossListDrop(item)` (source removes) +
+  `onCrossListReceive(item, index)` (destination inserts). No `groupId`
+  keeps per-instance isolation (backward compat).
+
+  **W19 — auto-inject entry-client** (`@pyreon/zero`). `transformIndexHtml`
+  hook injects `<script type="module" src="${entryClient}">` before
+  `<!--pyreon-scripts-->` automatically. Configurable via
+  `zero({ entryClient: '/src/main.ts' })` or `entryClient: false` to opt
+  out. Default `/src/entry-client.ts`.
+
+  **W20 — already covered** by existing `pyreon/no-map-in-jsx` rule —
+  test extended for the reactive-accessor shape `{() => items().map(...)}`.
+
+  Closes the kanban example end-to-end. Full add → delete → filter →
+  multi-mutation → reload sequence is green in real-Chromium e2e.
+
+- [#918](https://github.com/pyreon/pyreon/pull/918) [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(reactive-devtools): close LPIH capture caveat from [#913](https://github.com/pyreon/pyreon/issues/913) via deferred `.stack` parsing
+
+  The PR-[#913](https://github.com/pyreon/pyreon/issues/913)-followup caveat ("`_captureCallerLocation` stays gated on `_active` — pre-activate signals lack runtime-captured `loc`") is closed: `_captureCallerLocation` is now always-on in `__DEV__` with a two-phase cost model.
+
+  **At capture time** (every dev signal/computed/effect creation): a single cheap `new Error()` allocation (~0.14µs in V8/Bun — stack is captured but NOT formatted). For 10k signals that's ~1.4ms total, invisible.
+
+  **At read time** (rare — only when a devtools consumer actually inspects a node): `getReactiveGraph()` / `getFireSummaries()` resolves the deferred handle on demand and memoizes the result on the `NodeRec`. The Error becomes GC-eligible after first resolve.
+
+  Most user signals additionally pay 0µs at capture because `@pyreon/vite-plugin`'s `injectSignalLocations` rewrites `signal(0)` → `signal(0, { __sourceLocation })` at build time, short-circuiting the runtime capture path entirely.
+
+  Verified end-to-end against `examples/perf-dashboard`: 477/477 (100%) of pre-existing signals get `loc` populated when devtools attaches AFTER mount; the activate-after-creation user workflow + LPIH editor inlay-hint surfaces work uniformly with no eager-`.stack` cost. Production unchanged — the entire instrumentation chain still tree-shakes to dead code under `NODE_ENV=production`.
+
+  Internal-only changes; no public API impact. `_captureCallerLocation` now returns a `DeferredLocation` handle instead of a `SourceLocation`, but it's exported under `@internal` and consumed only by framework code via `_rdRegister` (which transparently handles both shapes).
+
+- [#913](https://github.com/pyreon/pyreon/pull/913) [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(reactive-devtools): always-register in `__DEV__` so the Foundation surfaces a populated graph when devtools attaches AFTER mount
+
+  Pre-fix, `_rdRegister` and `_rdRecordFire` early-returned on `!_active`. The opt-in design meant that signals/computeds/effects created BEFORE the devtools panel opened were never recorded — the live registry was empty by the time `activateReactiveDevtools()` fired. The Signals / Graph / Effects / Profiler tabs showed empty bodies against any real-world app (e.g. perf-dashboard's 958-element / 477-signal app, captured 0 / 0 / 0 / 0 in a controlled 4-scenario experiment).
+
+  This change inverts the gating: `_rdRegister` and `_rdRecordFire` always run in `__DEV__` (the caller-side `process.env.NODE_ENV !== 'production'` gate is unchanged — production still tree-shakes the entire call chain to dead code). `_active` is now a READ gate: `getReactiveGraph()` / `getReactiveFires()` / `getFireSummaries()` return empty when no client has attached, so non-attached consumers see nothing even though the registry is populated.
+
+  Behavioural changes:
+
+  - A devtools panel opened AFTER the app mounts now sees the full live graph immediately on `activate()` — matches user expectation and fixes the empty-tabs UX.
+  - `deactivateReactiveDevtools()` no longer clears the registry. The registry tracks the LIVE app state, which a subsequent `activate()` should still see (matches a "close + reopen panel" workflow). Clearing on deactivate would re-create the same bug at the close/reopen boundary.
+  - Added `__resetReactiveDevtoolsForTesting()` (internal) for cross-test isolation. Production `deactivate()` only flips the read gate.
+  - `_captureCallerLocation` stays gated on `_active` — stack parsing (~2.2µs/call) is the expensive part, and build-time-injected loc (via `@pyreon/vite-plugin`) is free and always-on, so most dev signals get loc anyway.
+
+  Cost in `__DEV__`: a `Map.set` + `WeakRef` + `WeakMap.set` + `finalizer.register` per node (~hundreds of ns) and a counter bump + bounded ring-buffer append per fire (~ns). Production is unchanged (every entry point is dead-coded by the caller-side `NODE_ENV` gate).
+
+  Companion change in `@pyreon/devtools`'s `scripts/verify-extension.ts`: the step-4 reactive-graph assertion is now a hard `fail()` instead of an informational `info()` line. This was the gap that allowed PR [#900](https://github.com/pyreon/pyreon/issues/900)'s first verification to pass while shipping a broken Foundation against real-world apps — closed by the same PR that fixes the underlying bug.
+
+  Verified end-to-end with a 4-scenario controlled experiment against `examples/perf-dashboard` (958 components, 477 live signals/computeds/effects, 112 dependency edges):
+
+  | Scenario                                 | Nodes | Edges | Fires | Components |
+  | ---------------------------------------- | ----: | ----: | ----: | ---------: |
+  | A. activate BEFORE mount                 |   477 |   112 |    16 |        958 |
+  | B. activate AFTER mount (no interaction) |   477 |   112 |    16 |        958 |
+  | C. activate AFTER mount + app activity   |   477 |   112 |    22 |        958 |
+  | D. pre-activate (reload workaround)      |   477 |   112 |    16 |        958 |
+
+  Pre-fix every scenario was `0 / 0 / 0`. Bisect-verified by reverting the `_active` early-returns: broken state reproduces `0 / 0 / 0` across all four scenarios; restoring brings them back to the post-fix numbers above.
+
+- [#1149](https://github.com/pyreon/pyreon/pull/1149) [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(reactivity): defer `_rdRecordFire` EWMA from always-on capture path to read-time reconstruction
+
+  `_rdRecordFire` runs on every signal write / computed recompute / effect run in `__DEV__`, regardless of whether a devtools panel is attached. Pre-fix it maintained an incremental EWMA via `Math.exp(-dt/TAU)` on every fire, plus a `rec.rate1s` field on each `NodeRec`. A 60Hz animation signal in dev burned 60 `Math.exp` calls per second when devtools was closed — multiplicatively worse than the per-creation `_rdRegister` overhead (already deferred per `[deferred-parse-for-always-on-capture]`).
+
+  The naive fix ("restore `if (!_active) return`") would break the attach-after-mount workflow that PR [#913](https://github.com/pyreon/pyreon/issues/913) deliberately enabled — the panel needs to see fires that happened BEFORE it opened. Identified in the post v0.25.1 framework audit as the remaining always-on cost.
+
+  **Fix**: move EWMA computation from capture to read time. The pre-existing fire ring buffer (`_fireBuf`, 512 entries) already stores per-fire `(id, ts)` pairs. `getFireSummaries()` now builds a per-id EWMA accumulator in one pass over the buffer at read time — only when devtools is active (the function is `_active`-gated). The incremental recurrence `r_n = r_{n-1} * exp(-dt/TAU) + 1` unfolds to `sum_i exp(-(t_n - t_i) / TAU)`; decay-to-now then yields `sum_i exp(-(now - t_i) / TAU)` — exactly what the read-time loop computes. **Mathematically identical to the pre-fix value** within FP rounding, modulo fires evicted by the 512-entry ring buffer window (fires older than ~5×TAU contribute <0.7% of their weight, and 512 fires in <5s implies >100Hz — structurally bounded undercount at extreme rates, identical at typical rates).
+
+  Capture path is now `rec.fires++` + ring-buffer write only — zero float ops, zero branches per fire.
+
+  ## API contract
+
+  Unchanged on the public surface:
+
+  - `FireSummary.rate1s` field preserved.
+  - `getFireSummaries()` returns the same shape.
+  - `getReactiveGraph()` / `getReactiveFires()` unchanged.
+
+  Internal-only changes:
+
+  - `NodeRec.rate1s` field removed (no longer needed — rate is reconstructed at read time).
+  - `_rdRecordFire` body simplified.
+
+  Verified consumer surfaces still work: `@pyreon/compiler` (1429 specs), `@pyreon/lint` (921 specs), `@pyreon/vite-plugin` (252 specs) — all read `FireSummary.rate1s` via LPIH integration; all green post-fix.
+
+  ## Bisect-verify
+
+  3 new structural specs in `packages/core/reactivity/src/tests/rdrecord-fire-microbench.test.ts` that count `Math.exp` calls during fire capture (via patched-prototype interception). Each asserts the capture path makes ZERO calls to `Math.exp`. Reverting the EWMA block inside `_rdRecordFire` fails the specs with `AssertionError: expected 999 to be +0` (1000 fires = 999 EWMA decays, one skipped on the first-fire `lastFire === null` branch) and `AssertionError: expected 9900 to be +0` (10000 fires - 100 first-fires = 9900). Restoring → 3/3 microbench specs green, 464/464 reactivity green, all 23 `LPIH — rate1s EWMA tracking` specs in `lpih-source-location.test.ts` still pass (proving the read-time reconstruction is mathematically equivalent).
+
+- [#1142](https://github.com/pyreon/pyreon/pull/1142) [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(reactivity): restore `signal instanceof Function === true` (regression introduced by SignalProto shared-proto allocation)
+
+  When the `SignalProto` shared-allocation optimization landed, `SignalProto` was declared as a bare object literal `{ peek, set, update, ... }`. An object literal's `[[Prototype]]` is `Object.prototype`, so `Object.setPrototypeOf(read, SignalProto)` produced the chain `read → SignalProto → Object.prototype`. The read function used to have `Function.prototype` as its `[[Prototype]]` (every function does), so the result was: **every signal silently lost `instanceof Function === true`** (was `true` pre-optimization, became `false`).
+
+  This is a silent breaking change across the ecosystem. Consumers using `x instanceof Function` to discriminate signals from plain values include perf-harness, devtools, the framework's own compiler helpers, third-party libraries, and user code. All of them silently flipped to the opposite branch.
+
+  **Fix**: one line — `Object.setPrototypeOf(SignalProto, Function.prototype)` after the SignalProto declaration. Restores the full chain `read → SignalProto → Function.prototype → Object.prototype`. The monomorphic shared-proto allocation win is preserved (still one shared proto object; still one `setPrototypeOf` per signal).
+
+  Surfaced by an audit of all framework commits since v0.25.1 (sequential 7-agent workflow). Bisect-verified: reverting the new `setPrototypeOf` line makes 2 of 4 regression specs fail with `AssertionError: expected false to be true` for `s instanceof Function` and `AssertionError: expected {} to be [Function]` for the prototype-chain check. Restoring the line returns the suite to 461/461 green.
+
+  Regression coverage in `packages/core/reactivity/src/tests/signal.test.ts` — 4 specs covering `signal instanceof Function`, `computed instanceof Function`, the prototype-chain shape, and a sanity check that method dispatch through the chain still works.
+
 ## 0.25.1
 
 ### Patch Changes

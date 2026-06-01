@@ -1,5 +1,110 @@
 # @pyreon/router
 
+## 0.26.0
+
+### Patch Changes
+
+- [#1127](https://github.com/pyreon/pyreon/pull/1127) [`06d66e9`](https://github.com/pyreon/pyreon/commit/06d66e976ad3e5da9777e61eb0f09c70f7b2b871) Thanks [@vitbokisch](https://github.com/vitbokisch)! - HMR coordinator no longer leaks into `_loadingSignal` (PR-S8)
+
+  **Pattern C from the deep-audit campaign** (async cleanup race — counter incremented but never decremented). Pre-PR-S8 the dev-only `_hmrSwap` coordinator bumped `_loadingSignal.update((n) => n + 1)` after each successful component-cache swap to force `RouterView`'s `depthEntry` computed to re-emit. But the bump was never paired with a `n - 1` — so `loading() > 0` (i.e. `useTransition()` / `router.loading()`) was STUCK `true` for the page lifetime after the first HMR swap. Visible to users via permanently-active loading indicators or always-pending transition states in dev.
+
+  Originally surfaced in PR [#783](https://github.com/pyreon/pyreon/issues/783)-era HMR work; the asymmetry was hidden because nothing read `loadingSignal` after the bump in test environments. Real-app development sessions saw the bug after the first edit.
+
+  **The fix**: a dedicated `_hmrTick` signal that `depthEntry` subscribes to alongside `_loadingSignal`. HMR bumps `_hmrTick`; navigation bumps `_loadingSignal`; the two never interfere. The category-confusion fix is structural — a navigation-loading signal is for navigation lifecycle (paired start/end counters), repurposing it for "force re-emit a downstream computed" was the original mistake.
+
+  New `RouterInstance._hmrTick?: Signal<number>` field — optional because production builds tree-shake `_hmrSwap` (which is the only writer); `depthEntry` reads via `router._hmrTick?.()` to no-op gracefully in prod. `depthEntry`'s subscription order is `_loadingSignal()` then `_hmrTick?.()` — both subscriptions track for re-emission triggers.
+
+  **Regression coverage**: 3 new tests in `router.loading` describe block in `router.test.ts` (`_hmrSwap does NOT leak into _loadingSignal`, `_hmrTick is a separate counter from _loadingSignal`, `multiple HMR swaps don't accumulate in _loadingSignal`). Bisect-verified: reverting `router.ts` + `components.tsx` + `types.ts` to the pre-fix state fails all 3 with the documented error messages. Restored → 546/546 router tests pass.
+
+  **No public API change**: `_hmrTick` is `@internal` (prefixed with `_`, same convention as `_loadingSignal` / `_hmrSwap`). `RouterView`'s public behavior is unchanged. Production builds are byte-identical except for the new tree-shaken-out HMR coordinator.
+
+- [#1049](https://github.com/pyreon/pyreon/pull/1049) [`9275a00`](https://github.com/pyreon/pyreon/commit/9275a00f72f071edfeb66584516e093b074b6986) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(router): reuse the cached FlattenedRoute meta on dynamic-route navigations
+
+  `resolveRoute` pre-computes each route's merged `meta` once at flatten time (cached in the WeakMap-keyed route index). The static and wildcard fast paths already reuse it, but the two dynamic-route paths re-ran `mergeMeta(matched)` — a fresh object allocation plus a per-record `Object.assign` loop — on every navigation to a dynamic route (the most common case: `/posts/:id`, `/user/:id`).
+
+  `MatchResult` now carries the cached `f.meta`, so the dynamic paths reuse it like the others. Behavior-preserving (the value is byte-identical — it's the same merge). Bisect-verified: two navigations to the same dynamic route now return the SAME `meta` object identity (`tests/meta-cache.test.ts`); pre-fix each allocated a fresh `mergeMeta` result. 522/522 existing router tests pass.
+
+- [#1144](https://github.com/pyreon/pyreon/pull/1144) [`434b83f`](https://github.com/pyreon/pyreon/commit/434b83f202060c3a517e67e1ebf4d147369a69c8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(router): freeze `ResolvedRoute.meta` at flatten time to prevent silent cache corruption
+
+  `resolveRoute` caches each `FlattenedRoute`'s pre-merged `meta` object once at flatten time — the static, wildcard, and dynamic fast paths all return the SAME `f.meta` object identity across every navigation that resolves through the same FlattenedRoute. This is the cache that keeps resolution O(1) (and was extended to the dynamic path in the recent `meta-cache` PR — `/posts/42` and `/posts/99` now share one meta object).
+
+  The cache identity is what makes the design fast — but it also turns any user code that does `(props as any).meta.x = …` (the natural shape for "stash some per-navigation state here") into a permanent cache-poisoning bug. The mutation silently survives every future navigation to the same route AND every sibling navigating through the same parent chain. The footgun was not surfaced anywhere — `ResolvedRoute.meta` was typed `RouteMeta` (mutable), and the JSDoc said nothing about identity stability.
+
+  **Fix**:
+
+  - `Object.freeze` the cached meta in `makeFlatEntry` so mutation throws `TypeError` in strict mode (every Pyreon module file is strict).
+  - Mirror the freeze in `mergeMeta` (used by the not-found-fallback path) so the contract is consistent regardless of which resolver path produced the meta.
+  - Type-side: tighten `ResolvedRoute.meta` to `Readonly<RouteMeta>` + JSDoc documenting the identity-stability and per-navigation-state guidance ("attach to your own store / context — never write through `route.meta`").
+
+  The framework never writes to `route.meta` — only reads — so the freeze is purely a user-mutation safety net. Verified by typechecking every downstream package (`@pyreon/zero`, `@pyreon/server`, `@pyreon/head`, `@pyreon/core`) — none broke under `Readonly<RouteMeta>`.
+
+  Surfaced by an audit of all framework commits since v0.25.1 (sequential 7-agent workflow).
+
+  Bisect-verified-with-restore: 3 new regression specs in `meta-cache.test.ts` (`meta is frozen at flatten time (cache-mutation safety)` describe block) — `Object.isFrozen(meta)`, `mutation throws TypeError`, `cache stays uncorrupted after a thrown mutation attempt`. Reverting just the two `Object.freeze` lines fails all 3 specs, and the last one (`expected 1 to be undefined`) is the load-bearing proof of real cache corruption — a write on `/posts/42`'s meta leaks onto `/posts/99`'s meta. Restoring → 555/555 green.
+
+- [#1128](https://github.com/pyreon/pyreon/pull/1128) [`f54cec8`](https://github.com/pyreon/pyreon/commit/f54cec8f13dffb7fdeceb05021005e342bb856a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `findNotFoundFallback` now uses a pre-built prefix trie — O(URL segments) per 404 lookup instead of O(routes-in-tree) (PR-S9)
+
+  Pre-fix `findNotFoundFallback` walked the entire route tree on every 404, re-doing path-prefix checks and chain accumulation for every record. With N notFoundComponent-bearing records, lookup was O(N) and constant-factor heavy (string ops per record). Real i18n × dynamic-route apps with deeply-nested layouts can have dozens of such records — and the walk fires per request (and per render in dev).
+
+  **The fix**: a prefix trie of notFoundComponent records, built once at `buildRouteIndex` time and cached via `_indexCache` (WeakMap keyed on `RouteRecord[]` identity, same pattern as `staticMap`). Lookup walks the URL by segment, descending the trie in O(URL segments) and tracking the deepest layout-best and page-best entries along the way.
+
+  **Implementation details:**
+
+  - New `NotFoundTrieNode` with two parallel tracks per node: `layout` (record with children) and `page` (record without children — used only for layout-less synthetic-chrome fallback). Matches the layout/page distinction the old walk made.
+  - Specificity tiebreaker preserved: deeper chain wins; ties go to more specific (more-segments) paths. Encoded as `depth` + `specificity` fields on each trie entry.
+  - Path-prefix semantics naturally encoded by the trie structure: `/de` lives at depth 1 (segment `"de"`), so URL `/de/unknown` traverses root → "de" → no match, passing through the `/de` entry. URL `/encyclopedia` traverses root → "encyclopedia" → no match, never seeing the `/de` entry. No more substring-prefix false positives, and no more `startsWith` string comparisons per record.
+  - `pathPrefixApplies` helper is gone — its responsibility moved to the trie's structural prefix semantics.
+  - `findNotFoundFallback` signature gained a `trie: NotFoundTrieNode` parameter (called by `resolveRoute` after `buildRouteIndex`). The function body collapsed from 100+ lines to ~30 lines.
+
+  **Regression coverage**: 6 new tests in `match.test.ts` under `resolveRoute — PR-S9 notFoundComponent trie` describe block, asserting the trie produces byte-identical results to the old walk across the representative shapes (deepest-prefix wins; substring-prefix doesn't false-match; 3-level nesting; empty tree → null; cache reuse). Plus 1 perf assertion (1000 lookups across a 26-record tree stay sub-100ms — generous threshold, the trie typically lands at 5-20µs/call).
+
+  **No public API change**: the trie + caching are internal. `RouteIndex.notFoundTrie` is a new `@internal` field; no consumer references it. Behavioral contract is preserved (all 543 existing router tests pass unchanged).
+
+- [#1145](https://github.com/pyreon/pyreon/pull/1145) [`f8fbb3b`](https://github.com/pyreon/pyreon/commit/f8fbb3b240fd8aab94900b97e9bab6be3d822b28) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(router): `captureSplat` fast path — wildcard route resolution +24%
+
+  `captureSplat` (called for `:path*` splat routes) previously allocated
+  a fresh `string[]`, pushed `decodeSafe(segment)` per part, and joined
+  with `'/'`. The intermediate array + per-segment function-call
+  overhead dominated wildcard match cost.
+
+  Now builds the joined string directly via concatenation, with an
+  inlined `indexOf('%')` per-segment decode check that skips
+  `decodeURIComponent` on clean paths (the overwhelming majority of
+  real URLs). No allocation, no per-segment function call, no array
+  round-trip.
+
+  Companion lazy `params` initialization in `matchFlattened`: starts as
+  `null` and materializes on first param write, so candidates that fail
+  on a static-segment mismatch don't pay the `{}` allocation cost.
+
+  Both changes are semantic-equivalent — no public API change, no
+  behavior change on URL decoding (existing `%`-encoded tests pass
+  plus 4 new regression tests covering clean + encoded splat paths).
+  552 → 556 router tests, all green.
+
+  **Measured impact** (microbench, 50-route table, 7 trials × 1s, median):
+
+  | Test                   | Before      | After       | Δ          |
+  | ---------------------- | ----------- | ----------- | ---------- |
+  | static `/` (fast path) | 27.5M ops/s | 27.4M ops/s | flat       |
+  | dynamic 1-param        | 8.00M       | 7.95M       | flat       |
+  | dynamic 2-params       | 6.04M       | 5.98M       | flat       |
+  | nested 3-deep          | 5.59M       | 5.67M       | flat       |
+  | **wildcard 4-segment** | **4.28M**   | **5.29M**   | **+23.6%** |
+
+  Public bench (`scripts/bench/core/router.ts`) confirms the win
+  holds across 10 / 50 / 200-route tables (+25-27% on wildcard rows;
+  all other rows flat).
+
+  Bisect-verified: reverting `captureSplat` only → wildcard drops back
+  to 4.30M baseline; restoring → climbs to 5.29M. Static and dynamic
+  rows unaffected in both states.
+
+- Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

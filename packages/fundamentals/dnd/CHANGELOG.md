@@ -1,5 +1,78 @@
 # @pyreon/dnd
 
+## 0.26.0
+
+### Patch Changes
+
+- [#1051](https://github.com/pyreon/pyreon/pull/1051) [`a164b67`](https://github.com/pyreon/pyreon/commit/a164b6729081ab40af6401a00caabbb442061d37) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(dnd): guard deferred pdnd setup against a mount→unmount race (`useDraggable`/`useDroppable`/`useFileDrop`)
+
+  These hooks defer their pragmatic-drag-and-drop registration to a `queueMicrotask(setup)` so the element ref is populated, while registering `onCleanup` synchronously. If the hook unmounted BEFORE the microtask ran (fast `<Show>`/conditional toggle, keyed-list churn), `onCleanup` fired with the cleanup still undefined (a no-op) — then the microtask ran `setup()` and registered pdnd anyway. That registration (plus its document-level listeners) was created after cleanup already ran, so it leaked for the page lifetime.
+
+  A `disposed` flag is now set in `onCleanup`; `setup()` bails if disposed. Bisect-verified (`tests/use-draggable-race.test.ts`): disposing before the deferred setup runs registers pdnd 0 times post-fix vs 1 pre-fix; a normal mount still registers once. 116/116 dnd tests pass. (`useSortable` already registered synchronously and was unaffected.)
+
+- [#1117](https://github.com/pyreon/pyreon/pull/1117) [`fd3422c`](https://github.com/pyreon/pyreon/commit/fd3422cfec1d48c8b382f8512ed44f8256887931) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(form,dnd): batch() 6 multi-signal write sites surfaced by `pyreon/no-unbatched-updates`
+
+  Lint follow-up to PR [#1110](https://github.com/pyreon/pyreon/issues/1110) (fundamentals R2/R3/R4 batch audit) — six sites in `use-form.ts` + `use-sortable.ts` were missed by the manual audit but caught by the `pyreon/no-unbatched-updates` lint rule.
+
+  Each `batch()` wrap collapses N notify cycles to 1 per event:
+
+  - **`@pyreon/form` `use-form.ts`** (4 sites):
+    - `field.reset()` — 4 signal writes per call (value / error / touched / dirty).
+    - `validate()` clear-all-errors loop — N writes per validate.
+    - `validate()` schema-error apply loop — N writes per validate.
+    - `setInitialValues()` per-field loop — 4×N writes per call (typical use is async-prefill landing post-mount).
+  - **`@pyreon/dnd` `use-sortable.ts`** (3 sites):
+    - Container `onDrop` reset (activeId/overId/overEdge) — 3 writes per drop.
+    - Per-item `onDrop` reset in `queueMicrotask` — 3 writes per drop.
+    - `onCleanup` final reset — 3 writes per sortable dispose.
+
+  Bisect-proven via a real `@pyreon/reactivity` synthetic harness: 4 un-batched signal writes fire 4 effect re-runs; 4 batched writes fire 1. The optimization is observable subscriber-side; consumers reading 2+ form fields together (typical for validation hints) see one re-render per `field.reset()` instead of four.
+
+  Also documents one lint false positive (`runValidation` — 3 `errorSig.set()` calls in 3 mutually exclusive branches) with an inline `pyreon-lint-disable-next-line` + rationale comment. The lint rule counts function-scope total writes, not per-branch fan-out.
+
+  Lint count: `@pyreon/form` 4→0 (+1 documented exemption), `@pyreon/dnd` 3→0.
+
+- [#982](https://github.com/pyreon/pyreon/pull/982) [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Kanban audit (T4.2) — close all 6 walls (W18-W23).
+
+  **W23 — P0 reactivity bug fix** (`@pyreon/reactivity`). `runUntracked`
+  now suspends `_innerEffectCollector` in lock-step with `activeEffect`.
+  Child component effects created inside `mountFor`'s `runUntracked` wrap
+  (PR [#490](https://github.com/pyreon/pyreon/issues/490)) were auto-registered as inner effects of the For's outer
+  effect, then silently disposed on the For's next re-run — breaking
+  every effect-derived subscription in the child subtree on the first
+  source-signal mutation. Was a SHOWSTOPPER for any Trello/Notion/Linear/
+  spreadsheet-shaped app. Bisect-verified.
+
+  **W21 — incidentally fixed by W23 patch.** For-with-computed-indirection
+  shapes (nested inside outer For-with-mutating-source) now propagate
+  correctly.
+
+  **W22 — documented** (`@pyreon/core`). `For` JSDoc + `ForProps.children`
+  JSDoc now carry the canonical fix pattern (pass ID, child reads its own
+  data from store).
+
+  **W18 — cross-list groupId** (`@pyreon/dnd`). `useSortable` accepts an
+  optional `groupId` — two instances with the same `groupId` share a drop
+  universe via `onCrossListDrop(item)` (source removes) +
+  `onCrossListReceive(item, index)` (destination inserts). No `groupId`
+  keeps per-instance isolation (backward compat).
+
+  **W19 — auto-inject entry-client** (`@pyreon/zero`). `transformIndexHtml`
+  hook injects `<script type="module" src="${entryClient}">` before
+  `<!--pyreon-scripts-->` automatically. Configurable via
+  `zero({ entryClient: '/src/main.ts' })` or `entryClient: false` to opt
+  out. Default `/src/entry-client.ts`.
+
+  **W20 — already covered** by existing `pyreon/no-map-in-jsx` rule —
+  test extended for the reactive-accessor shape `{() => items().map(...)}`.
+
+  Closes the kanban example end-to-end. Full add → delete → filter →
+  multi-mutation → reload sequence is green in real-Chromium e2e.
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

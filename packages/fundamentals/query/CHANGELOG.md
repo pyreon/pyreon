@@ -1,5 +1,36 @@
 # @pyreon/query
 
+## 0.26.0
+
+### Patch Changes
+
+- [#1050](https://github.com/pyreon/pyreon/pull/1050) [`ec869c0`](https://github.com/pyreon/pyreon/commit/ec869c0fa7eefd16901daf382ff273b60350fe66) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(query): cancel pending reconnect timer before reconnecting (`useSubscription` + `useSSE`)
+
+  Both `useSubscription` (WebSocket) and `useSSE` (EventSource) scheduled a reconnect via `setTimeout` whose handle was only cleared in `close()`. A pending reconnect timer was NOT cleared before `connect()` / `scheduleReconnect()` re-established the connection — so a stale timer fired a spurious extra `connect()` after the socket was already back. Triggers: a reactive `url`/`enabled` change re-running `connect()` while a reconnect was pending; `reconnect()` (manualReconnect) called with a timer pending; or a rapid second close/error overwriting the timer handle and orphaning the first. Each orphan timer also pinned its closure for up to `reconnectDelay * 2^attempts` ms.
+
+  Both files now clear the pending timer at the top of `connect()` and before scheduling a new one (`clearReconnect()` helper; `close()` delegates to it). Bisect-verified: with a reconnect pending, calling `reconnect()` then waiting past the delay produces no extra socket (`tests/subscription.test.tsx` — pre-fix 3 sockets, post-fix 2). 152/152 query tests pass.
+
+- [#1124](https://github.com/pyreon/pyreon/pull/1124) [`2d9acff`](https://github.com/pyreon/pyreon/commit/2d9acff27e9fd3c51468e98505a6a2334e2b5384) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(query): batch() 2 hot multi-signal write sites in `@pyreon/query`'s SSE adapter
+
+  Two sites in `use-sse.ts` were firing 2-3 separate notify cycles per error event when subscribers commonly read 2+ of the signals together (typical: a UI showing connection state + error message + readyState).
+
+  - **`handleError`** — 3 sequential writes (`status`, `error`, `readyState`) per SSE error. Wrapped in `batch()`: subscribers get notified once per error, not three times. Hot on flaky networks.
+  - **`connect` catch branch** — 2 sequential writes (`status`, `readyState`) on EventSource construction failure. Wrapped in `batch()`: same shape.
+
+  Bisect-proven via real `@pyreon/reactivity` harness:
+
+  ```
+  UN-batched 3 writes → effect re-runs: 3 (expected: 3)
+  Batched   3 writes → effect re-runs: 1 (expected: 1)
+  PROVED: batch() reduces 3 SSE state writes → 1 notify
+  ```
+
+  Caught by `pyreon/no-unbatched-updates` lint rule. `@pyreon/query`'s 3rd flagged site (`use-subscription.ts` `connect`) is a walker precision gap caused by early-return semantics — its real max-path is 2 writes, not 3 (the rule sums mutually-exclusive `!isEnabled` + catch branches). Fix lands in a follow-up rule precision PR.
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

@@ -1,5 +1,28 @@
 # @pyreon/i18n
 
+## 0.26.0
+
+### Patch Changes
+
+- [#942](https://github.com/pyreon/pyreon/pull/942) [`a470388`](https://github.com/pyreon/pyreon/commit/a470388ea2184afec824f9da900b98c5d90f2ded) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createI18n({ messages })` now applies the same flat-key expansion that
+  `addMessages()` does (W9). Previously, dotted keys in the INITIAL messages
+  loop were stored verbatim — so `createI18n({ messages: { en: { 'nav.top':
+'top' } } })` stored the value un-nested, and `t('nav.top')` split on `.`,
+  missed, and fell back to returning the key as the value. The bug was
+  invisible because `addMessages()` (the runtime API called dynamically)
+  DID nest flat keys; only the canonical initialization shape was broken.
+
+  Discovered during the HN-clone walls audit — every `t()` call in the UI
+  returned its key verbatim. Fixed by calling `nestFlatKeys(dict)` in the
+  initial-messages loop, matching `addMessages` behavior. Four regression
+  specs added to `tests/hardening.test.ts` (F6 describe block) covering
+  flat-only, mixed flat+nested, non-dotted passthrough, and merge-survival
+  shapes.
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes
