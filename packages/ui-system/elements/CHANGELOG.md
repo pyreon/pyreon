@@ -1,5 +1,13 @@
 # @pyreon/elements
 
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/ui-core@0.26.1
+  - @pyreon/unistyle@0.26.1
+
 ## 0.26.0
 
 ### Patch Changes

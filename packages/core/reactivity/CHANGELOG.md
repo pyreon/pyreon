@@ -1,5 +1,7 @@
 # @pyreon/reactivity
 
+## 0.26.1
+
 ## 0.26.0
 
 ### Minor Changes

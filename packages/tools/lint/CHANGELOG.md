@@ -1,5 +1,12 @@
 # @pyreon/lint
 
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.26.1
+
 ## 0.26.0
 
 ### Minor Changes

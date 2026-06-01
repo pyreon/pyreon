@@ -1,5 +1,17 @@
 # @pyreon/zero
 
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/head@0.26.1
+  - @pyreon/router@0.26.1
+  - @pyreon/runtime-server@0.26.1
+  - @pyreon/server@0.26.1
+  - @pyreon/vite-plugin@0.26.1
+  - @pyreon/meta@0.26.1
+
 ## 0.26.0
 
 ### Minor Changes

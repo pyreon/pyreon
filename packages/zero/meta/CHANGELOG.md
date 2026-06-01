@@ -1,5 +1,44 @@
 # @pyreon/meta
 
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies [[`a15d542`](https://github.com/pyreon/pyreon/commit/a15d542328f3034b359abb55f4575614fc2b44eb), [`487f1aa`](https://github.com/pyreon/pyreon/commit/487f1aa56e3b10746366f17deff2f4ba4cae827b), [`5af2864`](https://github.com/pyreon/pyreon/commit/5af28641ab1ad31a0c3feaf1c6a95163e83935d3)]:
+  - @pyreon/attrs@0.26.1
+  - @pyreon/rocketstyle@0.26.1
+  - @pyreon/styler@0.26.1
+  - @pyreon/charts@0.26.1
+  - @pyreon/code@0.26.1
+  - @pyreon/dnd@0.26.1
+  - @pyreon/document@0.26.1
+  - @pyreon/feature@0.26.1
+  - @pyreon/flow@0.26.1
+  - @pyreon/form@0.26.1
+  - @pyreon/hooks@0.26.1
+  - @pyreon/hotkeys@0.26.1
+  - @pyreon/i18n@0.26.1
+  - @pyreon/machine@0.26.1
+  - @pyreon/permissions@0.26.1
+  - @pyreon/query@0.26.1
+  - @pyreon/rx@0.26.1
+  - @pyreon/state-tree@0.26.1
+  - @pyreon/storage@0.26.1
+  - @pyreon/store@0.26.1
+  - @pyreon/table@0.26.1
+  - @pyreon/toast@0.26.1
+  - @pyreon/url-state@0.26.1
+  - @pyreon/validation@0.26.1
+  - @pyreon/virtual@0.26.1
+  - @pyreon/connector-document@0.26.1
+  - @pyreon/coolgrid@0.26.1
+  - @pyreon/document-primitives@0.26.1
+  - @pyreon/elements@0.26.1
+  - @pyreon/kinetic-presets@0.26.1
+  - @pyreon/kinetic@0.26.1
+  - @pyreon/ui-core@0.26.1
+  - @pyreon/unistyle@0.26.1
+
 ## 0.26.0
 
 ### Patch Changes
