@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*",
-    "vite": "^8.0.14"
+    "vite": "^8.0.16"
   },
   "peerDependencies": {
     "@pyreon/runtime-dom": "workspace:^",

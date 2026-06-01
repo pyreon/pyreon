@@ -56,8 +56,8 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser": "^4.1.7",
-    "@vitest/browser-playwright": "^4.1.7"
+    "@vitest/browser": "^4.1.8",
+    "@vitest/browser-playwright": "^4.1.8"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
