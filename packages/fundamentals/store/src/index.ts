@@ -491,11 +491,30 @@ function defineSchemaStore(
   })
 
   // ── Validated `set` + `patch` wrappers ──────────────────────────────────
+  let cachedInner: StoreApi<Record<string, unknown>> | null = null
   let apiRef: SchemaStoreApi<Record<string, unknown>> | null = null
 
   return function useSchemaStore(): SchemaStoreApi<Record<string, unknown>> {
-    if (apiRef) return apiRef
+    // Identity-stability + reset-safety. `useInner()` is a cheap registry
+    // lookup that returns the SAME `StoreApi` identity until `resetStore(id)`
+    // (or `resetAllStores()`) drops the entry; the next call then rebuilds
+    // the inner via setup. The closure-cached `apiRef` wrapper must rebuild
+    // whenever the inner identity flips — otherwise the wrapper survives
+    // wrapping a disposed inner and every mutation routes through dead
+    // bindings (silent data loss). This is the "closure-pinned cache
+    // survives registry reset" leak class (Class C variant); audit #3
+    // follow-up. Pre-fix the early `if (apiRef) return apiRef` short-
+    // circuited BEFORE querying the registry, so resetStore was invisible
+    // to schema-mode stores. Just-drop-cache would break the
+    // identity-stability contract enforced by the "returns the same
+    // StoreApi instance across multiple useStore() calls" spec — multiple
+    // calls within the SAME inner instance must return the SAME wrapper.
     const inner = useInner() as StoreApi<Record<string, unknown>>
+    if (inner !== cachedInner) {
+      cachedInner = inner
+      apiRef = null
+    }
+    if (apiRef) return apiRef
     const innerPatch = inner.patch.bind(inner)
 
     apiRef = {
