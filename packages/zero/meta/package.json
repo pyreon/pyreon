@@ -75,5 +75,8 @@
   },
   "peerDependencies": {
     "@pyreon/reactivity": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -35,5 +35,8 @@
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
