@@ -173,23 +173,31 @@ describe('signal', () => {
       expect(calls3).toBe(2) // still active
     })
 
-    test('direct updater is removed from the set after disposal', () => {
+    test('direct updater is removed after disposal (single-subscriber inline slot)', () => {
+      // With the two-tier storage (PR: bindText single-subscriber fast
+      // path), a single subscribe lives in the `_d1` inline slot — the
+      // `_d` Set is NEVER allocated unless a second subscriber arrives.
+      // Disposal clears `_d1` to null — no memory leak, no dead-slot
+      // accumulation, no Set allocation.
       const s = signal(0)
       let calls = 0
       const dispose = s.direct(() => {
         calls++
       })
 
-      // Internal `_d` is a Set (not an unbounded array — see signal.ts).
-      const internal = s as unknown as { _d: Set<() => void> | null }
-      expect(internal._d).not.toBeNull()
-      expect(internal._d!.size).toBe(1)
+      const internal = s as unknown as {
+        _d: Set<() => void> | null
+        _d1: (() => void) | null
+      }
+      expect(internal._d).toBeNull() // Set NOT allocated — inline slot only
+      expect(internal._d1).not.toBeNull()
       s.set(1)
       expect(calls).toBe(1)
 
       dispose()
-      // O(1) removal — the slot is GONE, not nulled-and-retained.
-      expect(internal._d!.size).toBe(0)
+      // O(1) removal — the inline slot is cleared.
+      expect(internal._d1).toBeNull()
+      expect(internal._d).toBeNull()
       s.set(2)
       expect(calls).toBe(1) // disposed updater not invoked
     })
@@ -225,30 +233,72 @@ describe('signal', () => {
       expect(calls).toBe(1)
     })
 
-    test('direct updater set initializes lazily', () => {
+    test('direct updater storage initializes lazily', () => {
+      // Single-subscriber path uses the `_d1` inline slot; `_d` Set is
+      // never allocated for the common case (one binding per signal).
       const s = signal(0)
-      const internal = s as unknown as { _d: Set<() => void> | null }
+      const internal = s as unknown as {
+        _d: Set<() => void> | null
+        _d1: (() => void) | null
+      }
       expect(internal._d).toBeNull()
+      expect(internal._d1).toBeNull()
       s.direct(() => {})
+      expect(internal._d).toBeNull() // Set still not allocated
+      expect(internal._d1).not.toBeNull()
+    })
+
+    test('promotes from inline slot to Set on second subscriber', () => {
+      // The fast-path inline slot covers ONE subscriber. A second
+      // subscribe promotes both into a fresh `_d` Set and clears `_d1`.
+      // Subsequent subscribes/disposes use the Set path.
+      const s = signal(0)
+      const internal = s as unknown as {
+        _d: Set<() => void> | null
+        _d1: (() => void) | null
+      }
+      const dispose1 = s.direct(() => {})
+      expect(internal._d).toBeNull()
+      expect(internal._d1).not.toBeNull()
+      // Second subscribe → promotion
+      const dispose2 = s.direct(() => {})
+      expect(internal._d1).toBeNull()
       expect(internal._d).not.toBeNull()
+      expect(internal._d!.size).toBe(2)
+      // Dispose one → Set still has the other
+      dispose1()
       expect(internal._d!.size).toBe(1)
+      // Dispose remaining → Set is empty (note: the Set is NOT
+      // deallocated; future churn stays on the Set path).
+      dispose2()
+      expect(internal._d!.size).toBe(0)
     })
 
     test('churned direct bindings do not accumulate (no unbounded growth)', () => {
       // Regression for the array-form leak: a long-lived signal whose
       // direct bindings register+dispose repeatedly (e.g. <For> rows
-      // re-mounting) must keep `_d` bounded to the LIVE set, not grow
+      // re-mounting) must keep storage bounded to the LIVE set, not grow
       // one permanent dead slot per ever-registered binding.
+      //
+      // With the two-tier storage, this churn never even ALLOCATES the
+      // `_d` Set — each iteration uses the `_d1` inline slot which is
+      // cleared on dispose. Even cheaper than the Set-only shape.
       const s = signal(0)
-      const internal = s as unknown as { _d: Set<() => void> | null }
+      const internal = s as unknown as {
+        _d: Set<() => void> | null
+        _d1: (() => void) | null
+      }
       for (let i = 0; i < 10_000; i++) {
         const dispose = s.direct(() => {})
         dispose()
       }
-      expect(internal._d!.size).toBe(0)
-      // One live binding survives → notify cost is O(live), not O(10_000).
+      // No Set ever allocated — storage stays at the inline-slot tier.
+      expect(internal._d).toBeNull()
+      expect(internal._d1).toBeNull()
+      // One live binding survives in the inline slot.
       const dispose = s.direct(() => {})
-      expect(internal._d!.size).toBe(1)
+      expect(internal._d1).not.toBeNull()
+      expect(internal._d).toBeNull()
       dispose()
     })
   })

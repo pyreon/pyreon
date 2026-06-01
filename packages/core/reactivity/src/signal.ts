@@ -74,7 +74,9 @@ interface SignalFn<T> {
   _v: T
   /** @internal subscriber set (lazily allocated by trackSubscriber) */
   _s: Set<() => void> | null
-  /** @internal direct updater set — compiler-emitted DOM updaters (lazily allocated) */
+  /** @internal direct updater single-subscriber fast slot — first subscriber lives here */
+  _d1: (() => void) | null
+  /** @internal direct updater Set — allocated on PROMOTION from `_d1` (≥2 subscribers) */
   _d: Set<() => void> | null
   peek(): T
   set(value: T): void
@@ -143,11 +145,23 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
   //
   // Short-circuit when already inside a batch so we don't wrap redundantly.
   if (isBatching()) {
-    if (this._d) notifyDirect(this._d)
+    if (this._d1) enqueuePendingNotification(this._d1)
+    else if (this._d) notifyDirect(this._d)
     if (this._s) notifySubscribers(this._s)
   } else {
     batch(() => {
-      if (this._d) notifyDirect(this._d)
+      // Single-subscriber fast path: most signals have exactly ONE direct
+      // updater (per-row label binding via `_bindText`, per-row classname
+      // via `createSelector.subscribe`, etc.). Stored inline in `_d1` —
+      // no Set allocation, no Set iteration, no iterator allocation per
+      // notify. Promotes to `_d` Set only on 2nd subscribe.
+      //
+      // Route the inline call through `enqueuePendingNotification` so the
+      // batch's dedup Set covers it the same way it covers `notifyDirect`'s
+      // multi-subscriber path — critical for diamond-graph dedup (see the
+      // batch-wrapping rationale above).
+      if (this._d1) enqueuePendingNotification(this._d1)
+      else if (this._d) notifyDirect(this._d)
       if (this._s) notifySubscribers(this._s)
     })
   }
@@ -167,18 +181,61 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
  * Register a direct updater — lighter than subscribe().
  * Used by compiler-emitted _bindText/_bindDirect for zero-overhead DOM bindings.
  *
- * Backed by a `Set` (same as `_s`), NOT a flat array. The array form
+ * Two-tier storage:
+ *
+ *  1. **Single-subscriber inline slot `_d1`** — first subscriber stored
+ *     directly on the signal as a single field. No Set allocation, no
+ *     iteration overhead. This is the steady-state shape for ~all
+ *     per-row label/class bindings inside `<For>` rows — 10k rows = 10k
+ *     signals each with exactly 1 `_bindText` subscriber.
+ *  2. **Promotion to `_d: Set` on second subscribe** — when a second
+ *     subscriber arrives, `_d1` is migrated into a fresh Set + the new
+ *     subscriber is added. From that point on, the signal uses the Set
+ *     path (same as before).
+ *
+ * Disposal is O(1) in both shapes:
+ *  - Inline shape: `if (_d1 === updater) _d1 = null` — no memory leak
+ *    (one slot, cleared on dispose).
+ *  - Set shape: `_d.delete(updater)` — standard Set semantics.
+ *
+ * **Why not flat array (the previously-rejected form)**: the array form
  * disposed by nulling the slot (`arr[idx] = null`) but never compacted —
- * so a long-lived signal (theme/locale/auth, or a signal read inside
- * `<For>` rows) bound by churning components accumulated one permanent
- * dead slot per ever-mounted binding. That is an app-lifetime memory
- * leak AND degrades the signal-write hot path: `notifyDirect` iterated
- * O(total-ever-registered), not O(live). A Set bounds growth to the live
- * set and keeps disposal + iteration O(live); the "Set.delete overhead"
- * the array form optimised for is negligible against an unbounded array.
+ * so a long-lived signal (theme/locale/auth) bound by churning components
+ * accumulated one permanent dead slot per ever-mounted binding. That was
+ * an app-lifetime memory leak. The current two-tier shape avoids this:
+ * `_d1` is single-slot (no leak by construction); `_d` is a Set (no
+ * leak; standard semantics).
+ *
+ * **Why not always Set**: Set allocation is ~96 bytes + the per-call cost
+ * of `set.add` / Set iterator allocation per notify. For ~10k single-
+ * subscriber signals (the benchmark's per-row label shape) this is
+ * ~960KB heap + 10k Set construction operations + ~50µs of iterator
+ * overhead per partial-update cycle. Inline slot eliminates all of that
+ * for the dominant case.
  */
 function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
-  if (!this._d) this._d = new Set()
+  // Tier 1: empty signal → inline-slot the single subscriber.
+  if (this._d1 === null && this._d === null) {
+    this._d1 = updater
+    const self = this
+    return () => {
+      // Disposer must defend against PROMOTION: if a 2nd subscriber
+      // arrived BEFORE this dispose runs, `_d1` was migrated into
+      // `_d` Set and `_d1` is null. Check both tiers so the original
+      // first-subscriber is removed regardless of which tier it now
+      // lives in.
+      if (self._d1 === updater) self._d1 = null
+      else if (self._d) self._d.delete(updater)
+    }
+  }
+  // Tier 2: ≥1 subscriber already present. If only `_d1` is set,
+  // promote it into a fresh Set before adding the new entry.
+  if (this._d === null) {
+    const first = this._d1!
+    this._d = new Set()
+    this._d.add(first)
+    this._d1 = null
+  }
   const set = this._d
   set.add(updater)
   return () => {
@@ -271,6 +328,7 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   Object.setPrototypeOf(read, SignalProto)
   read._v = initialValue
   read._s = null
+  read._d1 = null
   read._d = null
   read.label = options?.name
 
