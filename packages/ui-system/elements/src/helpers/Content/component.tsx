@@ -9,11 +9,10 @@
  * paths in `Element` keep `content={() => <X />}` reactivity intact
  * (mirrors the `resolveSlot` helper in `Element/component.tsx`).
  */
-import { h, splitProps } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import type { ComponentFn, VNodeChildAtom } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { IS_DEVELOPMENT } from '../../utils'
-import { buildSpreadProps } from '../buildSpreadProps'
 import { internElementBundle } from '../internElementBundle'
 import { isPyreonComponent } from '../isPyreonComponent'
 import Styled from './styled'
@@ -75,17 +74,17 @@ const Component = (props: Partial<Props>) => {
     extraStyles: own.extendCss,
   })
 
-  // Use `h(Styled, buildSpreadProps(rest, {..., children}))` instead of
-  // JSX spread `<Styled ... {...rest}>` so compiler-emitted reactive
-  // props survive end-to-end.
+  // Use `h(Styled, mergeProps(rest, {..., children}))` instead of JSX
+  // spread `<Styled ... {...rest}>` so compiler-emitted reactive props
+  // survive end-to-end. `mergeProps` from `@pyreon/core` preserves
+  // getter-shaped descriptors via `Object.defineProperty`.
   //
-  // Children go into the override (not h's third arg) so `mount.ts`
-  // doesn't run `{...vnode.props, children: ...}` to merge them — that
-  // JS spread fires every getter on vnode.props and would defeat the
-  // descriptor preservation. See `helpers/buildSpreadProps.ts` JSDoc.
+  // Children go into the override (not h's third arg) so mount's
+  // children-merge step skips this vnode — one descriptor-copy hop
+  // instead of two.
   return h(
     Styled,
-    buildSpreadProps(rest as Record<string, unknown>, {
+    mergeProps(rest as Record<string, unknown>, {
       as: own.tag,
       $contentType: own.contentType,
       $element: stylingProps,

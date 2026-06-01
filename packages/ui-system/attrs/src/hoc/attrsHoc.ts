@@ -1,6 +1,7 @@
+import { mergeProps } from '@pyreon/core'
 import type { Configuration } from '../types/configuration'
 import type { ComponentFn } from '../types/utils'
-import { calculateChainOptions, mergeDescriptors, removeUndefinedProps } from '../utils/attrs'
+import { calculateChainOptions, removeUndefinedProps } from '../utils/attrs'
 
 export type AttrsStyleHOC = ({
   attrs,
@@ -58,18 +59,33 @@ const createAttrsHOC: AttrsStyleHOC = ({ attrs, priorityAttrs }) => {
       const finalAttrs = hasAttrs
         ? calculateAttrs([
             prioritizedAttrs
-              ? mergeDescriptors(prioritizedAttrs, filteredProps)
+              ? mergeProps(prioritizedAttrs, filteredProps)
               : filteredProps,
           ])
         : null
 
       // 3. Merge: priority < normal attrs < explicit props (last wins).
-      // `mergeDescriptors` (not spread) so the explicit-props level keeps
-      // any getter-shaped reactive props live all the way to the wrapped
-      // component. `prioritizedAttrs` and `finalAttrs` always come from
-      // freshly-constructed object literals (in user `.attrs()` callbacks),
-      // so they carry no getters — descriptor-copy is a no-op cost there.
-      const finalProps = mergeDescriptors(prioritizedAttrs, finalAttrs, filteredProps)
+      // Use canonical `mergeProps` from @pyreon/core (not spread) so the
+      // explicit-props level keeps any getter-shaped reactive props live
+      // all the way to the wrapped component. `prioritizedAttrs` and
+      // `finalAttrs` always come from freshly-constructed object literals
+      // (in user `.attrs()` callbacks), so they carry no getters —
+      // descriptor-copy is a no-op cost there.
+      //
+      // `mergeProps` does NOT accept null/undefined sources (unlike the
+      // legacy `mergeDescriptors` it replaces). `prioritizedAttrs` is
+      // null when no priorityAttrs are configured; `finalAttrs` is null
+      // when no attrs are configured. Filter null sources at the call
+      // site — the `hasAnyChain` short-circuit above guarantees at least
+      // one is non-null.
+      const finalProps =
+        prioritizedAttrs && finalAttrs
+          ? mergeProps(prioritizedAttrs, finalAttrs, filteredProps)
+          : prioritizedAttrs
+            ? mergeProps(prioritizedAttrs, filteredProps)
+            : finalAttrs
+              ? mergeProps(finalAttrs, filteredProps)
+              : filteredProps
 
       return WrappedComponent(finalProps)
     }

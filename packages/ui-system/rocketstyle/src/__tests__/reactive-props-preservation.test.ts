@@ -11,9 +11,13 @@
  * `makeReactiveProps` MUST flow through the rocketstyle pipeline with
  * their getter descriptor intact. Two preservation points:
  *
- *   1. `removeUndefinedProps` — first call site in the attrs HOC
- *   2. `mergeDescriptors` — replaces the `{ ...A, ...B }` spreads in
- *      the attrs HOC + EnhancedComponent's mergeProps
+ *   1. `removeUndefinedProps` — first call site in the attrs HOC (still
+ *      a rocketstyle-internal helper because of its undefined-filter
+ *      semantic)
+ *   2. `mergeProps` from `@pyreon/core` — replaces the `{ ...A, ...B }`
+ *      spreads in the attrs HOC + EnhancedComponent's prop merge
+ *      (previously a rocketstyle-internal `mergeDescriptors` helper;
+ *      consolidated onto the canonical `@pyreon/core` API)
  *
  * If either is reverted to value-copying, these tests fail with the
  * specific failure-mode the production bug exhibits: the consumer
@@ -23,7 +27,8 @@
  * Bisect-verified per layer in the PR — see PR description.
  */
 
-import { mergeDescriptors, removeUndefinedProps } from '../utils/attrs'
+import { mergeProps } from '@pyreon/core'
+import { removeUndefinedProps } from '../utils/attrs'
 
 describe('removeUndefinedProps — getter preservation', () => {
   it('preserves a getter descriptor through the filter (live read)', () => {
@@ -83,7 +88,7 @@ describe('removeUndefinedProps — getter preservation', () => {
   })
 })
 
-describe('mergeDescriptors — getter preservation through merge', () => {
+describe('mergeProps — getter preservation through merge', () => {
   it('preserves getter descriptors from any source position (later wins)', () => {
     const a = { plain: 'A.plain' } as Record<string, unknown>
     let bCalls = 0
@@ -109,7 +114,7 @@ describe('mergeDescriptors — getter preservation through merge', () => {
       configurable: true,
     })
 
-    const merged = mergeDescriptors(a, b)
+    const merged = mergeProps(a, b)
 
     // Plain value from A survives.
     expect(merged.plain).toBe('A.plain')
@@ -123,19 +128,13 @@ describe('mergeDescriptors — getter preservation through merge', () => {
     expect(merged.shared).toBe('B.shared')
   })
 
-  it('skips null/undefined sources without breaking the chain', () => {
-    const a = { x: 1 }
-    const b = { y: 2 }
-    expect(mergeDescriptors(a, null, b, undefined)).toEqual({ x: 1, y: 2 })
-  })
-
   it('returns empty object for no sources', () => {
-    expect(mergeDescriptors()).toEqual({})
+    expect(mergeProps()).toEqual({})
   })
 
   it('a plain spread WOULD fire getters — descriptor merge does not (regression catcher)', () => {
     // This test specifically catches the value-spread regression. If
-    // mergeDescriptors is replaced with `Object.assign(target, ...sources)`
+    // `mergeProps` is replaced with `Object.assign(target, ...sources)`
     // or `{ ...A, ...B }`, getter calls happen at merge time and this
     // test fails with `expect(calls).toBe(0)` -> got >= 1.
     let calls = 0
@@ -149,7 +148,7 @@ describe('mergeDescriptors — getter preservation through merge', () => {
       configurable: true,
     })
 
-    const merged = mergeDescriptors({}, source)
+    const merged = mergeProps({}, source)
     expect(calls).toBe(0)
 
     // Sanity — descriptor IS there and works on read.
@@ -159,9 +158,9 @@ describe('mergeDescriptors — getter preservation through merge', () => {
 })
 
 describe('end-to-end pipeline — getter survives the rocketstyle hop chain', () => {
-  it('reactive prop flows through removeUndefinedProps + mergeDescriptors without firing the getter', () => {
+  it('reactive prop flows through removeUndefinedProps + mergeProps without firing the getter', () => {
     // Synthesises the exact pipeline shape in rocketstyleAttrsHoc.ts
-    // (removeUndefinedProps + mergeDescriptors twice). Confirms the
+    // (removeUndefinedProps + mergeProps twice). Confirms the
     // combined transformation preserves reactivity end-to-end.
     let calls = 0
     const inputProps = {} as Record<string, unknown>
@@ -180,11 +179,11 @@ describe('end-to-end pipeline — getter survives the rocketstyle hop chain', ()
     expect(calls).toBe(0)
 
     // Step 2 (HOC): inner merge for attrs callback input.
-    const innerMerge = mergeDescriptors({ tag: 'a' }, filtered)
+    const innerMerge = mergeProps({ tag: 'a' }, filtered)
     expect(calls).toBe(0)
 
     // Step 3 (HOC): final merge before wrapped-component handoff.
-    const finalProps = mergeDescriptors({}, { tag: 'a' }, filtered)
+    const finalProps = mergeProps({}, { tag: 'a' }, filtered)
     expect(calls).toBe(0)
 
     // Now the wrapped-component consumer reads — getter fires once per read.

@@ -1,9 +1,8 @@
-import { provide } from '@pyreon/core'
+import { mergeProps, provide } from '@pyreon/core'
 import { batch, signal } from '@pyreon/reactivity'
 import { omit } from '@pyreon/ui-core'
 import type { PseudoProps } from '../types/pseudo'
 import type { ComponentFn } from '../types/utils'
-import { mergeDescriptors } from '../utils/attrs'
 import { localContext } from './localContext'
 
 type Props = PseudoProps & Record<string, any>
@@ -45,7 +44,8 @@ const HOC_OWN_KEYS = new Set([
  * inside the event closures (so event-handler property descriptors fire
  * at mouse-event time, not at HOC setup); use `omit()` (descriptor-copy
  * from `@pyreon/ui-core`) to build the rest-props object and
- * `mergeDescriptors` to assemble the final props passed downstream.
+ * `mergeProps` (from `@pyreon/core`) to assemble the final props passed
+ * downstream.
  *
  * Same contract PR #584 established for the outer attrs / styled HOCs.
  * createLocalProvider was missed by that sweep — it sits between
@@ -137,11 +137,16 @@ const createLocalProvider = (WrappedComponent: ComponentFn<any>) => {
 
     // Build the rest-props object via descriptor-copy (omit() from
     // @pyreon/ui-core preserves getter descriptors). Then merge with our
-    // event handlers and the resolved $rocketstate using mergeDescriptors
-    // — the events + $rocketstate layers are static data so their data
-    // descriptors override any same-named getters on restProps.
+    // event handlers and the resolved $rocketstate using canonical
+    // `mergeProps` from @pyreon/core — the events + $rocketstate layers
+    // are static data so their data descriptors override any same-named
+    // getters on restProps. All three sources are non-null at this site
+    // (omit always returns an object; events and $rocketstate are
+    // freshly-constructed literals).
     const restProps = omit(props, HOC_OWN_KEYS)
-    const finalProps = mergeDescriptors(restProps, events, { $rocketstate: updatedState })
+    const finalProps = mergeProps(restProps as Record<string, unknown>, events, {
+      $rocketstate: updatedState,
+    })
 
     return WrappedComponent(finalProps)
   }

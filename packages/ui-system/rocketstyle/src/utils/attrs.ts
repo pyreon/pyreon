@@ -34,34 +34,6 @@ export const removeUndefinedProps: RemoveUndefinedProps = (props) => {
 }
 
 // --------------------------------------------------------
-// merge descriptors
-// --------------------------------------------------------
-/**
- * Like `Object.assign(target, ...sources)` but copies own property
- * DESCRIPTORS instead of reading + writing values. Later sources
- * override earlier ones (same semantics as spread / Object.assign).
- *
- * Required for reactive-prop preservation through the rocketstyle
- * pipeline: a plain `{ ...A, ...B }` spread fires every getter on A
- * and B and stores the resolved value, breaking the reactive
- * subscription. This helper copies descriptors so getters survive
- * the merge.
- */
-export const mergeDescriptors = (
-  ...sources: ReadonlyArray<Record<string, any> | null | undefined>
-): Record<string, any> => {
-  const result: Record<string, any> = {}
-  for (const source of sources) {
-    if (!source) continue
-    const descriptors = Object.getOwnPropertyDescriptors(source)
-    for (const key of Object.keys(descriptors)) {
-      Object.defineProperty(result, key, descriptors[key]!)
-    }
-  }
-  return result
-}
-
-// --------------------------------------------------------
 // pick styled props
 // --------------------------------------------------------
 /** Picks only the props whose keys exist in the dimension keywords lookup and have truthy values. */

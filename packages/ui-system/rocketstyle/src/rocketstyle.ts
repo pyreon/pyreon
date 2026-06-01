@@ -1,3 +1,4 @@
+import { mergeProps } from '@pyreon/core'
 import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
 import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS } from './constants'
@@ -12,7 +13,6 @@ import type { ComponentFn } from './types/utils'
 import {
   calculateChainOptions,
   calculateStylingAttrs,
-  mergeDescriptors,
   pickStyledAttrs,
 } from './utils/attrs'
 import { chainOptions, chainOrOptions, chainReservedKeyOptions } from './utils/chaining'
@@ -137,7 +137,7 @@ const rocketComponent: RocketComponent = (options) => {
   const ALL_PSEUDO_KEYS = PSEUDO_AND_META_KEYS as unknown as string[]
   // Static portion of omit keys — PSEUDO_KEYS + filterAttrs + 'pseudo' are definition-scoped.
   // RESERVED_STYLING_PROPS_KEYS is dimension-dependent but also cached per definition.
-  // 'pseudo' is included here so we can skip the destructuring spread of mergeProps.
+  // 'pseudo' is included here so we can skip the destructuring spread of mergedProps.
   const STATIC_OMIT_KEYS = ['pseudo', ...PSEUDO_KEYS, ...(options.filterAttrs ?? [])]
   // Pre-built Set for omit() — avoids per-call Set allocation. Built once the
   // dimension-dependent reserved keys are known (first mount), then reused.
@@ -436,20 +436,22 @@ const rocketComponent: RocketComponent = (options) => {
       _omitSetCache.set(RESERVED_STYLING_PROPS_KEYS, omitSet)
     }
 
-    // Merge localCtx + props via descriptor-copy so reactive getter
-    // props on `props` (compiler-emitted `_rp(() => signal())` wrappers
-    // converted to getters by `makeReactiveProps`) survive the merge.
-    // A plain `{ ...localCtx, ...props }` spread would fire every getter
-    // and collapse to static values, defeating reactivity for any
-    // downstream JSX accessor reading `props.x`.
-    const mergeProps = localCtx ? mergeDescriptors(localCtx, props) : props
+    // Merge localCtx + props via canonical `mergeProps` from @pyreon/core
+    // so reactive getter props on `props` (compiler-emitted `_rp(() =>
+    // signal())` wrappers converted to getters by `makeReactiveProps`)
+    // survive the merge. A plain `{ ...localCtx, ...props }` spread would
+    // fire every getter and collapse to static values, defeating
+    // reactivity for any downstream JSX accessor reading `props.x`.
+    const mergedProps = localCtx
+      ? mergeProps(localCtx as Record<string, unknown>, props as Record<string, unknown>)
+      : props
 
     // omit() preserves descriptors (since ui-core's omit was updated to
     // copy descriptors), so reactive getters carry through to finalProps.
-    const finalProps = omit(mergeProps as Record<string, unknown>, omitSet) as Record<string, any>
+    const finalProps = omit(mergedProps as Record<string, unknown>, omitSet) as Record<string, any>
 
     if (options.passProps) {
-      const passed = pick(mergeProps, options.passProps)
+      const passed = pick(mergedProps, options.passProps)
       // Copy descriptors so any reactive getters in passProps survive.
       // Plain `finalProps[k] = passed[k]` would fire getters at setup time
       // AND silently fail when finalProps[k] is already a getter-only

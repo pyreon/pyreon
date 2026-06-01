@@ -2,7 +2,7 @@
 /**
  * Regression specs for the mount.ts:404-410 children-merge spread bug
  * class. This is the structural root the sibling fix in `@pyreon/elements`
- * (Element / Text / Content `buildSpreadProps`) addressed for those three
+ * (Element / Text / Content `mergeProps` from `@pyreon/core`) addressed for those three
  * components by routing children THROUGH props (so the buggy branch is
  * skipped). This fix replaces the JS-level `{ ...vnode.props, children: ... }`
  * spread with a descriptor-copy via `Object.getOwnPropertyDescriptors` +
