@@ -1,4 +1,5 @@
 import { mergeProps } from '@pyreon/core'
+import { SizedMap } from '@pyreon/sized-map'
 import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
 import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS } from './constants'
@@ -174,7 +175,7 @@ const rocketComponent: RocketComponent = (options) => {
   // per theme at 128 entries × ~100 bytes per entry — negligible vs
   // the 46% runtime win.
   type RsMemoEntry = { readonly rocketstyle: object; readonly rocketstate: object }
-  const _rsMemo = new WeakMap<object, Map<string, RsMemoEntry>>()
+  const _rsMemo = new WeakMap<object, SizedMap<string, RsMemoEntry>>()
   const RS_MEMO_CAP = 128
 
   // --------------------------------------------------------
@@ -331,10 +332,12 @@ const rocketComponent: RocketComponent = (options) => {
         key += '|' + (v === undefined ? '' : v ? '1' : '0')
       }
 
-      // Cache lookup
+      // Cache lookup. SizedMap with lru:true does the touch-on-read
+      // internally, so the get() hit path no longer needs the explicit
+      // delete + re-set.
       let themeMemo = _rsMemo.get(theme as object)
       if (!themeMemo) {
-        themeMemo = new Map()
+        themeMemo = new SizedMap({ maxEntries: RS_MEMO_CAP, lru: true })
         _rsMemo.set(theme as object, themeMemo)
       }
 
@@ -342,9 +345,6 @@ const rocketComponent: RocketComponent = (options) => {
       if (cached) {
         if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('rocketstyle.dimensionMemo.hit')
-        // LRU touch: move to end so eviction targets oldest unused entry
-        themeMemo.delete(key)
-        themeMemo.set(key, cached)
         return cached
       }
 
@@ -409,11 +409,7 @@ const rocketComponent: RocketComponent = (options) => {
         pseudo: { ...localPseudo, ...propPseudo },
       }
 
-      // LRU eviction at cap — drop the oldest (first-inserted) entry.
-      if (themeMemo.size >= RS_MEMO_CAP) {
-        const oldestKey = themeMemo.keys().next().value
-        if (oldestKey !== undefined) themeMemo.delete(oldestKey)
-      }
+      // SizedMap.set handles cap-enforced LRU eviction internally.
       const entry: RsMemoEntry = { rocketstyle, rocketstate }
       themeMemo.set(key, entry)
       return entry

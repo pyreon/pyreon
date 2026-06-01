@@ -1,3 +1,4 @@
+import { SizedMap } from '@pyreon/sized-map'
 import type { ISRConfig } from './types'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
@@ -66,25 +67,19 @@ export interface ISRStore<E = ISRCacheEntry> {
 export function createMemoryStore<E = ISRCacheEntry>(opts: {
   maxEntries?: number
 } = {}): ISRStore<E> {
-  const cache = new Map<string, E>()
-  const maxEntries = Math.max(1, opts.maxEntries ?? 1000)
+  // SizedMap in LRU-on-read mode mirrors the original delete + re-set
+  // touch the docstring above promises (frequently-read entries survive
+  // eviction). `set` handles cap-enforced eviction internally.
+  const cache = new SizedMap<string, E>({
+    maxEntries: opts.maxEntries ?? 1000,
+    lru: true,
+  })
   return {
     get(key) {
-      const entry = cache.get(key)
-      if (entry !== undefined) {
-        cache.delete(key)
-        cache.set(key, entry)
-      }
-      return entry
+      return cache.get(key)
     },
     set(key, entry) {
-      if (cache.has(key)) cache.delete(key)
       cache.set(key, entry)
-      while (cache.size > maxEntries) {
-        const oldest = cache.keys().next().value
-        if (oldest === undefined) break
-        cache.delete(oldest)
-      }
     },
     delete(key) {
       cache.delete(key)

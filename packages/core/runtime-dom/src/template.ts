@@ -1,5 +1,6 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
+import { SizedMap } from '@pyreon/sized-map'
 import { mountChild } from './mount'
 import { _bindEvent } from './props'
 
@@ -137,22 +138,23 @@ export function _bindDirect(
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
 //
-// LRU bound: typical apps emit a small bounded set of unique
+// FIFO bound: typical apps emit a small bounded set of unique
 // HTML strings (one per JSX element tree the compiler hoists), so the cache
 // stays in the dozens-to-hundreds in practice. But an app that constructs
 // JSX from user input (or compiles many large dynamic templates) could grow
 // this unbounded — every unique string holds a parsed <template> alive.
 //
-// Map preserves insertion order; on overflow we evict the OLDEST entry (the
-// least-recently-inserted). Common HTML strings hit the cache before
-// eviction; pathological inputs cycle through the cap without leaking.
+// SizedMap in FIFO mode (default, `lru: false`) — get() does NOT touch
+// ordering, so the cache-HIT hot path is a single Map lookup with no
+// recency bookkeeping. See the _tpl docstring below for why touch-on-read
+// was deliberately rejected here (would dominate the hot path on
+// templates instantiated thousands of times).
 //
 // 1024 chosen as a balance: ~1024 unique templates × ~1KB parsed = ~1MB
 // worst case — well within memory budget for any realistic app, and
 // generous enough that no real codebase will hit the cap. Apps that
 // genuinely need a different cap can swap their own _tpl wrapper.
-const TPL_CACHE_MAX = 1024
-const _tplCache = new Map<string, HTMLTemplateElement>()
+const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 })
 
 /**
  * Compiler-emitted template instantiation.
@@ -183,13 +185,8 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   if (!tpl) {
     tpl = document.createElement('template')
     tpl.innerHTML = html
-    // FIFO eviction — drop the oldest entry once we hit the cap. Map
-    // iteration is insertion-order so the first key is always the
-    // oldest. delete() is O(1).
-    if (_tplCache.size >= TPL_CACHE_MAX) {
-      const oldest = _tplCache.keys().next().value
-      if (oldest !== undefined) _tplCache.delete(oldest)
-    }
+    // SizedMap.set() handles FIFO eviction internally — drops the
+    // oldest entry once we hit the cap.
     _tplCache.set(html, tpl)
   }
   // Cache-HIT is now a no-op (no LRU touch). The cache-HIT path was previously
