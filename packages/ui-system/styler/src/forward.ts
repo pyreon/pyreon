@@ -256,16 +256,43 @@ export const buildProps = (
 ): Record<string, any> => {
   const result: Record<string, any> = {}
 
-  // Merge generated + user className. Reading `rawProps.class` /
-  // `.className` synchronously is fine — `class` is consumed at this
-  // boundary (merged with the generated class), never forwarded
-  // reactively. The string we write is consumed by the DOM at apply
-  // time, not stored as a getter.
-  const userCls = rawProps.class || rawProps.className
-  if (generatedCls) {
-    result.class = userCls ? `${generatedCls} ${userCls}` : generatedCls
-  } else if (userCls) {
-    result.class = userCls
+  // Merge generated + user className.
+  //
+  // **Reactive contract** — when the user passes a signal-driven class
+  // (`class={() => variant()}` via the compiler's `_rp(() => …)`
+  // wrapping → `makeReactiveProps` getter descriptor), value-reading
+  // `rawProps.class` here fires the getter ONCE at setup time, captures
+  // the snapshot, and merges it into a STATIC string. Downstream
+  // `applyProp` then sees a plain string and writes it once; the DOM
+  // never updates on signal change.
+  //
+  // Detect getter-shaped class / className and wrap the merge in a
+  // getter that re-reads + re-composes on every access. The string we
+  // emit then carries the reactive subscription through to applyProp,
+  // which DOES re-fire its renderEffect on getter access via the
+  // descriptor it sees here. Static (data-descriptor) class still
+  // takes the simple value-merge fast path.
+  const classDesc =
+    Object.getOwnPropertyDescriptor(rawProps, 'class') ??
+    Object.getOwnPropertyDescriptor(rawProps, 'className')
+  if (classDesc?.get) {
+    const getUserCls = classDesc.get
+    Object.defineProperty(result, 'class', {
+      enumerable: true,
+      configurable: true,
+      get() {
+        const uc = getUserCls.call(rawProps)
+        if (generatedCls) return uc ? `${generatedCls} ${uc}` : generatedCls
+        return uc ?? ''
+      },
+    })
+  } else {
+    const userCls = rawProps.class || rawProps.className
+    if (generatedCls) {
+      result.class = userCls ? `${generatedCls} ${userCls}` : generatedCls
+    } else if (userCls) {
+      result.class = userCls
+    }
   }
 
   // Helper: copy a prop's OWN descriptor (preserves getters) into result.
