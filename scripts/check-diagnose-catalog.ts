@@ -63,6 +63,23 @@ const BASE_REF = RAW_BASE_REF
 const HAS_SKIP_LABEL = process.env['HAS_SKIP_LABEL'] === 'true'
 
 /**
+ * Auto-skip the gate on changesets-action's auto-generated "version
+ * packages" PR — its branch is always `changeset-release/<base-branch>`
+ * (e.g. `changeset-release/main`). These PRs touch sensitive paths
+ * (CHANGELOGs + package.json version bumps under `packages/core/*`)
+ * but never introduce new error surfaces; requiring a manual label
+ * on every release PR is friction with no benefit.
+ *
+ * Same allowlist regex shape as BASE_REF — defense in depth against
+ * attacker-influenceable env values. `HEAD_REF` is supplied by CI from
+ * `github.event.pull_request.head.ref`. If env is unset / unsafe we
+ * silently treat as "not a release PR" (the normal gate logic runs).
+ */
+const RAW_HEAD_REF = process.env['HEAD_REF'] || ''
+const HEAD_REF = /^[a-zA-Z0-9._/-]+$/.test(RAW_HEAD_REF) ? RAW_HEAD_REF : ''
+const IS_RELEASE_PR = HEAD_REF.startsWith('changeset-release/')
+
+/**
  * `git diff` / `git show` runner. Uses `execFileSync` (no shell parsing)
  * with discrete argv so even an unexpected character in a sanitized value
  * can't be interpreted as a shell metacharacter — defense in depth on top
@@ -159,6 +176,13 @@ if (!touchesSensitivePaths(files)) {
 console.log(
   `[check-diagnose-catalog] Sensitive paths touched (${SENSITIVE_PATTERNS.filter((p) => files.some((f) => f.startsWith(p))).join(', ')}).`,
 )
+
+if (IS_RELEASE_PR) {
+  console.log(
+    `[check-diagnose-catalog] Branch \`${HEAD_REF}\` is the changesets-action release PR — auto-skipping the gate (version bumps + CHANGELOGs never grow the error catalog).`,
+  )
+  process.exit(0)
+}
 
 if (HAS_SKIP_LABEL) {
   console.log(
