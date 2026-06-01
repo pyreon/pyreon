@@ -1,5 +1,13 @@
 # @pyreon/cli
 
+## 0.26.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.26.2
+  - @pyreon/lint@0.26.2
+
 ## 0.26.1
 
 ### Patch Changes

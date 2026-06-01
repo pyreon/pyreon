@@ -1,5 +1,7 @@
 # @pyreon/svelte-compat
 
+## 0.26.2
+
 ## 0.17.0
 
 ### Patch Changes
