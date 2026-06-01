@@ -177,3 +177,119 @@ describe('attrsHoc — real h() round-trip', () => {
     expect(result.props.ref).toBe(refObj)
   })
 })
+
+// --------------------------------------------------------
+// attrsHoc — reactive-prop descriptor preservation
+// --------------------------------------------------------
+//
+// Contract: when the compiler emits `<Comp prop={signal()}>` it produces
+// `h(Comp, { prop: _rp(() => signal()) })`. `mount.ts` then runs
+// `makeReactiveProps` which converts each `_rp`-branded function into a
+// property GETTER on the props object. Any HOC in the chain that
+// VALUE-COPIES the prop (`result[key] = props[key]`) fires the getter
+// and stores the resolved value — collapsing the live subscription to a
+// one-shot snapshot. Downstream code never re-reads the signal; the DOM
+// stops updating.
+//
+// The fix uses `Object.getOwnPropertyDescriptors` + `Object.defineProperty`
+// in `removeUndefinedProps` and `mergeDescriptors`. These tests assert
+// getter identity is preserved through every spread/merge point —
+// bisect-verifiable by reverting either helper to plain value-copy
+// (the regression shape from PR #793 that this fix repairs).
+describe('attrsHoc — reactive-prop descriptor preservation', () => {
+  const Capture = (props: any) => ({ type: 'div', props, children: null, key: null })
+
+  const withGetter = <T,>(base: Record<string, unknown>, key: string, getValue: () => T) => {
+    Object.defineProperty(base, key, {
+      get: getValue,
+      enumerable: true,
+      configurable: true,
+    })
+    return base
+  }
+
+  it('removeUndefinedProps preserves a getter-shaped prop without firing it', () => {
+    let fires = 0
+    const props = withGetter({}, 'href', () => {
+      fires++
+      return `/url-${fires}`
+    })
+
+    const hoc = createAttrsHOC({ attrs: [], priorityAttrs: [] })
+    const Enhanced = hoc(Capture as any)
+    const result = Enhanced(props) as any
+
+    // Fast path (no chain) → only removeUndefinedProps fires. fires === 0
+    // proves it didn't fire the getter at copy time.
+    expect(fires).toBe(0)
+    const descriptor = Object.getOwnPropertyDescriptor(result.props, 'href')
+    expect(typeof descriptor?.get).toBe('function')
+    expect(descriptor?.value).toBeUndefined()
+
+    // Subsequent reads through the descriptor fire the getter live —
+    // proves the subscription survives the HOC pipeline.
+    expect(result.props.href).toBe('/url-1')
+    expect(result.props.href).toBe('/url-2')
+  })
+
+  it('preserves getter descriptor through the full attrs + priorityAttrs merge', () => {
+    let fires = 0
+    const props = withGetter({}, 'href', () => {
+      fires++
+      return `/live-${fires}`
+    })
+
+    const hoc = createAttrsHOC({
+      attrs: [(_p: any) => ({ label: 'from-attrs' })],
+      priorityAttrs: [(_p: any) => ({ 'data-priority': 'yes' })],
+    })
+    const Enhanced = hoc(Capture as any)
+    const result = Enhanced(props) as any
+
+    // The full merge path (priority → attrs → filteredProps) ran. `href`
+    // is in filteredProps (highest-precedence layer, last wins) — MUST
+    // still be a getter at the receiver, not a captured value.
+    expect(fires).toBe(0)
+    const descriptor = Object.getOwnPropertyDescriptor(result.props, 'href')
+    expect(typeof descriptor?.get).toBe('function')
+
+    // Static layers (from object-literal callbacks) come through as data
+    // descriptors — that's fine, they carry no getters.
+    expect(result.props.label).toBe('from-attrs')
+    expect(result.props['data-priority']).toBe('yes')
+
+    // The getter still fires live on every read at the receiver.
+    expect(result.props.href).toBe('/live-1')
+    expect(result.props.href).toBe('/live-2')
+  })
+
+  it('preserves getter at the .attrs() callback argument site', () => {
+    let attrsCbReads = 0
+    const props = withGetter({}, 'href', () => '/x')
+    const hoc = createAttrsHOC({
+      attrs: [
+        (p: any) => {
+          // Reading p.href inside the .attrs() callback IS expected to
+          // fire the getter — this is the contract for live-read
+          // .attrs() chains. The bug would manifest as p.href being a
+          // captured snapshot instead of a live read.
+          if (p.href !== undefined) attrsCbReads++
+          return { 'data-from-attrs': p.href ?? 'no-href' }
+        },
+      ],
+      priorityAttrs: [],
+    })
+    const Enhanced = hoc(Capture as any)
+    const result = Enhanced(props) as any
+
+    // The .attrs() callback received `mergeDescriptors(prioritized,
+    // filteredProps)` (when priority is set) OR `filteredProps` directly
+    // (when not). In either case, the callback's `p.href` must be a live
+    // getter read.
+    expect(attrsCbReads).toBe(1)
+    expect(result.props['data-from-attrs']).toBe('/x')
+
+    // Receiver still sees the live getter.
+    expect(result.props.href).toBe('/x')
+  })
+})
