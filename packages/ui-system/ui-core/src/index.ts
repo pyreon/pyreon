@@ -16,10 +16,12 @@ import { HTML_TAGS, HTML_TEXT_TAGS } from './html'
 import type { IsEmpty } from './isEmpty'
 import isEmpty from './isEmpty'
 import isEqual from './isEqual'
+import { isPyreonComponent } from './isPyreonComponent'
 import type { PyreonUIProps, ThemeMode, ThemeModeInput } from './PyreonUI'
 import { PyreonUI, useMode } from './PyreonUI'
 import type { Render } from './render'
 import render from './render'
+import { resolveSlot } from './resolveSlot'
 import type { BreakpointKeys, Breakpoints } from './types'
 import useStableValue from './useStableValue'
 import { get, merge, omit, pick, set, throttle } from './utils'
@@ -52,12 +54,14 @@ export {
   init,
   isEmpty,
   isEqual,
+  isPyreonComponent,
   merge,
   omit,
   Provider,
   PyreonUI,
   pick,
   render,
+  resolveSlot,
   set,
   throttle,
   useMode,

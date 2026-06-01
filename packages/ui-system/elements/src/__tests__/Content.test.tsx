@@ -5,14 +5,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Mocks
 // ---------------------------------------------------------------------------
 const mocks = vi.hoisted(() => ({
-  render: vi.fn((children: unknown) => children),
+  resolveSlot: vi.fn((children: unknown) => children),
 }))
 
+// `Content` now consumes the canonical `resolveSlot` helper from
+// `@pyreon/ui-core` (the slot-resolution discriminator + `render()` call
+// previously inlined in `Content/component.tsx` were extracted there in
+// the consolidation PR). The mock targets `resolveSlot` so the test still
+// observes the children → ui-core-slot-pipeline forwarding.
 vi.mock('@pyreon/ui-core', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
-    render: mocks.render,
+    resolveSlot: mocks.resolveSlot,
   }
 })
 
@@ -76,18 +81,19 @@ describe('Content component', () => {
     expect(result.props['data-pyr-element']).toBe('after')
   })
 
-  it('passes children through render() when the slot accessor is invoked', () => {
+  it('passes children through resolveSlot() when the slot accessor is invoked', () => {
     // Content wraps its children in a reactive accessor `() => resolveSlot(...)`
-    // — render() is no longer called synchronously at component setup. The
-    // accessor is invoked by the runtime when the JSX child position mounts;
+    // — the slot pipeline is no longer called synchronously at component setup.
+    // The accessor is invoked by the runtime when the JSX child position mounts;
     // here we invoke it directly to assert the wiring. The
-    // function-unwrap-then-render shape is what keeps `content={() => <X/>}`
-    // slot reactivity working (see Element-slot-reactivity.browser.test.tsx).
+    // function-unwrap-then-render shape (now centralized in `@pyreon/ui-core`'s
+    // `resolveSlot`) is what keeps `content={() => <X/>}` slot reactivity
+    // working (see Element-slot-reactivity.browser.test.tsx).
     const children = 'Some text'
     const result = asVNode(Content({ children }))
     expect(typeof result.props.children).toBe('function')
     ;(result.props.children as () => unknown)()
-    expect(mocks.render).toHaveBeenCalledWith(children)
+    expect(mocks.resolveSlot).toHaveBeenCalledWith(children)
   })
 
   it('spreads remaining props to Styled', () => {
@@ -112,7 +118,7 @@ describe('Content component (production mode)', () => {
     // Re-mock @pyreon/ui-core after resetModules
     vi.doMock('@pyreon/ui-core', async (importOriginal) => {
       const actual = (await importOriginal()) as Record<string, unknown>
-      return { ...actual, render: (children: unknown) => children }
+      return { ...actual, resolveSlot: (children: unknown) => children }
     })
 
     const { default: ContentProd } = await import('../helpers/Content/component')
