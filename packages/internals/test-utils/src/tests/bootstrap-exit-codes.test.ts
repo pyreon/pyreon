@@ -37,11 +37,15 @@ import { resolve } from 'node:path'
 const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..', '..', '..')
 const BOOTSTRAP = resolve(REPO_ROOT, 'scripts', 'bootstrap.ts')
 
-function runBootstrap(env: Record<string, string | undefined>): {
+function runBootstrap(
+  env: Record<string, string | undefined>,
+  opts: { timeoutMs?: number } = {},
+): {
   status: number | null
   stdout: string
   stderr: string
 } {
+  const timeoutMs = opts.timeoutMs ?? 60_000
   // Pass through PATH and HOME so `bun` resolves correctly. Override or
   // delete `npm_lifecycle_event` based on the test case.
   //
@@ -71,7 +75,14 @@ function runBootstrap(env: Record<string, string | undefined>): {
     cwd: REPO_ROOT,
     env: finalEnv,
     encoding: 'utf-8',
-    timeout: 60_000,
+    // Default 60s is enough for FORCE_FAIL specs (which exit via
+    // process.exit(1) BEFORE Phase E1 / git-hooks-install runs). Specs
+    // that flow through to Phase E1 (the new contract-decoupling
+    // branch, which exits 0 implicitly after the warning) hit the
+    // git-hooks-install execSync at the bottom of bootstrap.ts —
+    // that's slow on CI's cold-cache git operations. Override per
+    // call via the second arg below.
+    timeout: timeoutMs,
   })
   return {
     status: result.status,
@@ -180,12 +191,28 @@ describe('scripts/bootstrap.ts exit-code policy', () => {
   // We clear PYREON_BOOTSTRAP_FORCE_FAIL (which would inject a fake
   // still-dirty entry) so the postcondition stays clean.
   describe('contract-decoupling fix (buildThrew but postcondition passes)', () => {
-    it('exits 0 under postinstall when subprocess throws but every originally-dirty package built', () => {
-      const result = runBootstrap({
-        npm_lifecycle_event: 'postinstall',
-        PYREON_BOOTSTRAP_FORCE_FAIL: undefined,
-        PYREON_BOOTSTRAP_FORCE_BUILD_THREW: '1',
-      })
+    // Per-spec timeout override — mirrors the FORCE_FAIL specs (line 88
+    // and below). The default 60s `runBootstrap` timeout was tuned for
+    // local hardware; CI's cold-cache dirty-detection walk over ~80
+    // packages can exceed it on contended runners. Bumping to 90s
+    // matches the pattern used for every other spec in this file that
+    // spawns the real script. Vitest test-level timeout (the outer
+    // arg `{ timeout: 90_000 }`) must be at least as large as the
+    // subprocess spawnSync timeout the helper uses (60s) plus margin
+    // for the vitest overhead, hence 90s.
+    it('exits 0 under postinstall when subprocess throws but every originally-dirty package built', { timeout: 150_000 }, () => {
+      const result = runBootstrap(
+        {
+          npm_lifecycle_event: 'postinstall',
+          PYREON_BOOTSTRAP_FORCE_FAIL: undefined,
+          PYREON_BOOTSTRAP_FORCE_BUILD_THREW: '1',
+        },
+        // 120s subprocess timeout (vs default 60s). This branch flows
+        // through to Phase E1 / git-hooks-install, which is slow on
+        // CI's cold-cache git operations. Vitest's outer timeout above
+        // must be at least subprocess timeout + framework overhead.
+        { timeoutMs: 120_000 },
+      )
       // Contract met → install succeeds.
       expect(result.status).toBe(0)
       // Loud warning surfaces the other-package error so the user
@@ -207,12 +234,15 @@ describe('scripts/bootstrap.ts exit-code policy', () => {
       expect(result.stderr).not.toContain('[bootstrap] ✗ Build failure')
     })
 
-    it('exits 0 under standalone (no npm_lifecycle_event) when subprocess throws but every originally-dirty package built', () => {
-      const result = runBootstrap({
-        npm_lifecycle_event: undefined,
-        PYREON_BOOTSTRAP_FORCE_FAIL: undefined,
-        PYREON_BOOTSTRAP_FORCE_BUILD_THREW: '1',
-      })
+    it('exits 0 under standalone (no npm_lifecycle_event) when subprocess throws but every originally-dirty package built', { timeout: 150_000 }, () => {
+      const result = runBootstrap(
+        {
+          npm_lifecycle_event: undefined,
+          PYREON_BOOTSTRAP_FORCE_FAIL: undefined,
+          PYREON_BOOTSTRAP_FORCE_BUILD_THREW: '1',
+        },
+        { timeoutMs: 120_000 },
+      )
       // Standalone / CI invocations also benefit from the split — the
       // contract is the same regardless of invocation mode.
       expect(result.status).toBe(0)
