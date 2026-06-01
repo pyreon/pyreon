@@ -30,5 +30,8 @@
   "devDependencies": {
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
