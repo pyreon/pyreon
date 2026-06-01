@@ -1,5 +1,7 @@
 # @pyreon/validate
 
+## 0.26.2
+
 ## 0.26.0
 
 ### Minor Changes

@@ -1,5 +1,7 @@
 # @pyreon/primitives
 
+## 0.26.2
+
 ## 0.1.0
 
 ### Patch Changes
