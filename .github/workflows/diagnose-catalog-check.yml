@@ -45,5 +45,12 @@ jobs:
       - name: Verify catalog growth (or skip-label)
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          # HEAD_REF lets the script auto-skip the gate on
+          # `changeset-release/*` branches — the changesets-action's
+          # auto-generated "version packages" PRs touch sensitive paths
+          # (CHANGELOGs + package.json version bumps under packages/core/*)
+          # but never introduce new error surface. Auto-skip removes the
+          # need to manually label every release PR.
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-diagnose-catalog') }}
         run: bun scripts/check-diagnose-catalog.ts
