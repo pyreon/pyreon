@@ -36,10 +36,10 @@
   "devDependencies": {
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser": "^4.1.7",
-    "@vitest/browser-playwright": "^4.1.7",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/browser": "^4.1.8",
+    "@vitest/browser-playwright": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.8",
     "happy-dom": "^20.9.0",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.8"
   }
 }

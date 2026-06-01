@@ -178,7 +178,7 @@
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/server": "workspace:^",
     "@pyreon/vite-plugin": "workspace:^",
-    "vite": "^8.0.14"
+    "vite": "^8.0.16"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
@@ -190,7 +190,7 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0 || ^0.34.0"
   },
   "peerDependenciesMeta": {
     "sharp": {

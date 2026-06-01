@@ -47,7 +47,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.7",
+    "@vitest/browser-playwright": "^4.1.8",
     "happy-dom": "^20.9.0"
   },
   "peerDependencies": {
