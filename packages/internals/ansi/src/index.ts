@@ -54,7 +54,7 @@
 
 // ANSI control codes. ESC (char 27 / 0x1B) + open-bracket (CSI) for
 // SGR codes; ESC + close-bracket-8 for OSC-8 hyperlinks. We build the
-// strings via `String.fromCharCode(27)` rather than `` literals
+// strings via `String.fromCharCode(27)` rather than `\x1b` literals
 // so the source code stays free of non-printable bytes (some editors
 // + lint rules complain about raw ESC).
 const ESC = String.fromCharCode(27)
