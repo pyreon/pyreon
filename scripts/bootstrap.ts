@@ -230,6 +230,21 @@ for (const pkg of packages) {
 // explicitly opted in; otherwise the script behaves normally.
 const forceFail = process.env.PYREON_BOOTSTRAP_FORCE_FAIL === '1'
 
+// `PYREON_BOOTSTRAP_FORCE_BUILD_THREW=1` is a test-only injection point
+// for the contract-decoupling fix: simulates the subprocess emitting a
+// nonzero exit code WITHOUT injecting any postcondition failure. Lets
+// us assert the new behavior where bootstrap exits 0 (with a loud
+// warning) when the broader `bun run --filter='./packages/*/*' build`
+// step errors on OTHER packages but every originally-dirty package
+// built successfully. Implementation: throws inside the build try-block
+// (same shape as PYREON_BOOTSTRAP_FORCE_FAIL) so `buildThrew = true` is
+// set without actually running the multi-minute build. The
+// distinguishing detail is that PYREON_BOOTSTRAP_FORCE_FAIL ALSO
+// injects a synthetic still-dirty entry into the postcondition; this
+// flag does not — so stillDirty stays empty in the test env and we
+// land in the new `else if (buildThrew)` warning branch.
+const forceBuildThrew = process.env.PYREON_BOOTSTRAP_FORCE_BUILD_THREW === '1'
+
 // Build the @pyreon/compiler Rust native binary if cargo is available.
 // Runs on EVERY bootstrap invocation (including the all-fresh fast path
 // below) because the binary's freshness is independent of the lib/ mtime
@@ -259,7 +274,7 @@ if (process.env.PYREON_BOOTSTRAP_SKIP_NATIVE !== '1') {
   }
 }
 
-if (dirty.length === 0 && !forceFail) {
+if (dirty.length === 0 && !forceFail && !forceBuildThrew) {
   // All lib/ dirs exist AND are fresh — instant no-op.
   process.exit(0)
 }
@@ -301,6 +316,16 @@ try {
   if (forceFail) {
     // Test-only injection — see PYREON_BOOTSTRAP_FORCE_FAIL above.
     throw new Error('forced-fail (test only)')
+  }
+  if (forceBuildThrew) {
+    // Test-only injection — see PYREON_BOOTSTRAP_FORCE_BUILD_THREW
+    // above. Skips the real build subprocess (which takes minutes) so
+    // the test can exercise the buildThrew-but-postcondition-pass
+    // branch in seconds. The thrown error flips `buildThrew = true`
+    // below; the postcondition then runs against the (empty in the
+    // test environment) `dirty` array → stillDirty stays empty → we
+    // land in the new `else if (buildThrew)` warning branch.
+    throw new Error('forced-build-threw (test only)')
   }
   // Build packages only (not examples) — examples are never imported by
   // other packages and their build is substantially slower (Vite full
@@ -374,6 +399,21 @@ for (const pkg of dirty) {
   if (result) stillDirty.push(result)
 }
 
+// Test-only: PYREON_BOOTSTRAP_FORCE_FAIL simulates the canonical
+// "contract unmet" failure (postcondition still-dirty). The build
+// short-circuited to throw above, so without this injection
+// `stillDirty` would be empty (no real dirty packages in the test
+// environment) and the script would fall through to the new
+// buildThrew-but-postcondition-pass warning path instead of
+// surfacing the hard-failure path the test exists to gate.
+if (forceFail && stillDirty.length === 0) {
+  stillDirty.push({
+    name: '@pyreon/forced-fail-test-fixture',
+    path: 'packages/internals/forced-fail-test-fixture',
+    reason: 'missing',
+  })
+}
+
 // Single retry pass (gap #3): the original "meta builds before its
 // deps" symptom was hypothesized as a topological-order race in the
 // bun-filter build. PR #435 couldn't reliably reproduce it, but the
@@ -437,10 +477,35 @@ if (stillDirty.length > 0 && !forceFail) {
   }
 }
 
-if (buildThrew || stillDirty.length > 0) {
+// Bootstrap's contract: every ORIGINALLY-DIRTY package now has a fresh
+// lib/. The broader `bun run --filter='./packages/*/*' build` step
+// builds ALL packages, so a single broken non-dirty package (e.g. a
+// package with a stale node_modules entry, a local typecheck error in
+// an unrelated package) makes the subprocess exit nonzero — but does
+// NOT violate the bootstrap's contract for the install.
+//
+// We split the failure paths accordingly:
+//
+//   (1) `stillDirty.length > 0` — REAL failure. The contract is unmet:
+//       at least one package that the install needs lib/ for is still
+//       missing or stale. Exit 1 (subject to PYREON_BOOTSTRAP_SOFT
+//       escape hatch on postinstall).
+//
+//   (2) `buildThrew && stillDirty.length === 0` — contract MET but
+//       other packages errored. Print a loud warning naming the
+//       common causes, then exit 0. The install succeeds; the user
+//       can investigate the other-package errors before they bite
+//       elsewhere.
+//
+// Pre-fix this was `if (buildThrew || stillDirty.length > 0) exit(1)`
+// — the bootstrap aborted `bun install` for every user whenever ANY
+// package's build errored, even when the user didn't care about that
+// package (e.g. an example app's stale node_modules orphan blocking
+// every contributor's install).
+if (stillDirty.length > 0) {
   // oxlint-disable-next-line no-console
   console.error(
-    `\n[bootstrap] ✗ Build failure — ${stillDirty.length}/${dirty.length} package(s) still need rebuild after the build subprocess${buildThrew ? ' (which exited nonzero)' : ''}:`,
+    `\n[bootstrap] ✗ Build failure — ${stillDirty.length}/${dirty.length} package(s) still need rebuild after the build subprocess${buildThrew ? ' (which also exited nonzero)' : ''}:`,
   )
   for (const pkg of stillDirty) {
     // oxlint-disable-next-line no-console
@@ -457,6 +522,42 @@ if (buildThrew || stillDirty.length > 0) {
     )
   }
   if (process.env.PYREON_BOOTSTRAP_SOFT !== '1') process.exit(1)
+} else if (buildThrew) {
+  // Postcondition passed (every originally-dirty package built) but
+  // the broader subprocess errored on OTHER packages. Bootstrap's
+  // contract IS satisfied for the install — the install will succeed.
+  // But surface the other-package error loudly so the user notices it
+  // before they hit a confusing build failure later in unrelated work.
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `\n[bootstrap] ⚠ Build subprocess emitted nonzero exit code but ALL originally-dirty packages built successfully.`,
+  )
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[bootstrap] Bootstrap's contract (lib/ for the ${dirty.length} dirty package(s)) IS satisfied; the install will succeed.`,
+  )
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[bootstrap] However, ONE OR MORE OTHER packages had build errors during the broader \`bun run --filter='./packages/*/*' build\` step.`,
+  )
+  // oxlint-disable-next-line no-console
+  console.warn(`[bootstrap] Common causes:`)
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[bootstrap]   1. Stale \`node_modules/.bun/\` entries from a prior install with different \`overrides\` (fix: rm -rf node_modules && bun install)`,
+  )
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[bootstrap]   2. Local typecheck errors in packages you have edited but not yet committed/installed`,
+  )
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[bootstrap]   3. Genuinely broken package on main (rare; if so check CI status)`,
+  )
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[bootstrap] To diagnose: \`bun run --filter='./packages/*/*' build 2>&1 | grep "Exited with code [^0]"\``,
+  )
 }
 
 // Phase E1: install git hooks via `core.hooksPath`. Idempotent, no-op

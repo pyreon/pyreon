@@ -44,6 +44,13 @@ function runBootstrap(env: Record<string, string | undefined>): {
 } {
   // Pass through PATH and HOME so `bun` resolves correctly. Override or
   // delete `npm_lifecycle_event` based on the test case.
+  //
+  // Default failure-injection: PYREON_BOOTSTRAP_FORCE_FAIL=1 simulates
+  // the canonical "contract unmet" failure (postcondition still-dirty)
+  // — the most common test scenario. Specific tests can override this
+  // via the `env` arg to exercise other branches (e.g. clear it AND set
+  // PYREON_BOOTSTRAP_FORCE_BUILD_THREW=1 to test the new
+  // buildThrew-but-postcondition-pass warning path that exits 0).
   const finalEnv: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
@@ -144,5 +151,75 @@ describe('scripts/bootstrap.ts exit-code policy', () => {
     const result = runBootstrap({ npm_lifecycle_event: undefined })
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('[bootstrap] ✗ Build failure')
+  })
+
+  // ── Contract-decoupling fix: buildThrew but postcondition passes ────────
+  //
+  // The bootstrap's contract is "every ORIGINALLY-DIRTY package now has a
+  // fresh lib/" — not "every package in the workspace built cleanly".
+  // The broader `bun run --filter='./packages/*/*' build` subprocess
+  // builds ALL packages, so a single broken non-dirty package (stale
+  // node_modules orphan, local typecheck error in an unrelated package)
+  // makes the subprocess exit nonzero — but does NOT violate bootstrap's
+  // contract for the install.
+  //
+  // Pre-fix the script exited 1 whenever the subprocess threw, even
+  // when the contract was met. Real-world symptom: a stale @codemirror
+  // entry in node_modules blocked an example app's build → bootstrap
+  // exited 1 → every contributor's `bun install` failed even though
+  // they didn't care about that example.
+  //
+  // Fix: split the failure paths.
+  //   (1) stillDirty.length > 0 → REAL failure, exit 1 (covered by
+  //       the existing specs above).
+  //   (2) buildThrew && stillDirty.length === 0 → contract MET, exit 0
+  //       with a loud warning naming common causes (this spec).
+  //
+  // Injection: PYREON_BOOTSTRAP_FORCE_BUILD_THREW=1 flips `buildThrew`
+  // after the real build returns, WITHOUT affecting the postcondition.
+  // We clear PYREON_BOOTSTRAP_FORCE_FAIL (which would inject a fake
+  // still-dirty entry) so the postcondition stays clean.
+  describe('contract-decoupling fix (buildThrew but postcondition passes)', () => {
+    it('exits 0 under postinstall when subprocess throws but every originally-dirty package built', () => {
+      const result = runBootstrap({
+        npm_lifecycle_event: 'postinstall',
+        PYREON_BOOTSTRAP_FORCE_FAIL: undefined,
+        PYREON_BOOTSTRAP_FORCE_BUILD_THREW: '1',
+      })
+      // Contract met → install succeeds.
+      expect(result.status).toBe(0)
+      // Loud warning surfaces the other-package error so the user
+      // notices it before they hit a confusing build failure later.
+      expect(result.stderr).toContain(
+        '[bootstrap] ⚠ Build subprocess emitted nonzero exit code',
+      )
+      // Names the contract explicitly so the user knows the install
+      // is fine even though they see the warning.
+      expect(result.stderr).toContain(
+        "[bootstrap] Bootstrap's contract",
+      )
+      expect(result.stderr).toContain('IS satisfied')
+      // Names common causes so users can diagnose.
+      expect(result.stderr).toContain('Common causes')
+      expect(result.stderr).toContain('node_modules/.bun/')
+      // Does NOT surface the hard-failure header — that's reserved
+      // for stillDirty > 0.
+      expect(result.stderr).not.toContain('[bootstrap] ✗ Build failure')
+    })
+
+    it('exits 0 under standalone (no npm_lifecycle_event) when subprocess throws but every originally-dirty package built', () => {
+      const result = runBootstrap({
+        npm_lifecycle_event: undefined,
+        PYREON_BOOTSTRAP_FORCE_FAIL: undefined,
+        PYREON_BOOTSTRAP_FORCE_BUILD_THREW: '1',
+      })
+      // Standalone / CI invocations also benefit from the split — the
+      // contract is the same regardless of invocation mode.
+      expect(result.status).toBe(0)
+      expect(result.stderr).toContain(
+        '[bootstrap] ⚠ Build subprocess emitted nonzero exit code',
+      )
+      expect(result.stderr).not.toContain('[bootstrap] ✗ Build failure')
+    })
   })
 })
