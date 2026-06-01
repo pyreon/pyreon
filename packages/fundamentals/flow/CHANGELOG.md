@@ -1,5 +1,20 @@
 # @pyreon/flow
 
+## 0.26.0
+
+### Patch Changes
+
+- [#1046](https://github.com/pyreon/pyreon/pull/1046) [`56eee37`](https://github.com/pyreon/pyreon/commit/56eee37b3f2052bf1caa976218638348b2de6fc6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(flow): O(1) node/edge accessors via `nodeMap`/`edgeMap` — removes the O(N²)-per-drag-frame cliff
+
+  A node drag writes the whole `nodes()` array every pointermove frame, which notifies every node + edge style/class/path thunk (they all subscribe to the one `nodes()` signal). Each thunk's accessor previously did an O(N) `instance.nodes().find()` (edges: 2× O(N) for source/target + O(E) for the edge) → **O(N²) + O(E×(2N+E)) per frame**, contradicting the documented "60fps drag in a 1000-node graph is O(1) per frame" contract.
+
+  `FlowInstance` now exposes `nodeMap` / `edgeMap` — `Computed<Map<id, entry>>` that rebuild once per `nodes()` / `edges()` change. The per-node/per-edge accessors use O(1) `Map.get`, so a drag frame is O(N) total (one map rebuild + N O(1) gets) instead of O(N²). Behavior is unchanged (329/329 existing flow tests pass). Bisect-verified: a 60-node/40-edge drag frame drops from 460 `Array.prototype.find` calls to ~0, and the count no longer scales with graph size (`drag-frame-complexity.test.ts`).
+
+- Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

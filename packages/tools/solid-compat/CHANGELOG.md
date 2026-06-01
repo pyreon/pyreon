@@ -1,5 +1,43 @@
 # @pyreon/solid-compat
 
+## 0.26.0
+
+### Patch Changes
+
+- [#1012](https://github.com/pyreon/pyreon/pull/1012) [`777693e`](https://github.com/pyreon/pyreon/commit/777693e2de169d9f60f3a0d6b1f7ac2c96bc1ba1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(compat): dev-mode perf counters were dead code in Vite browser bundles
+
+  `@pyreon/solid-compat` and `@pyreon/svelte-compat` gated their
+  `@pyreon/perf-harness` counter emits behind
+  `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`.
+  Both packages are browser packages, and Vite does NOT polyfill
+  `process` in browser bundles — so the `typeof process !== 'undefined'`
+  term is statically `false`, the whole `&&` folds to dead code, and the
+  counters (`solid-compat.createResource.staleDiscarded` /
+  `solid-compat.createStore.signalEvicted` /
+  `svelte-compat.subscribe.cachedRePush`) NEVER fired in dev, even with
+  the perf-harness installed. This is the exact `typeof process`-compound
+  bug class `pyreon/no-process-dev-gate` exists to catch.
+
+  Fix: delete the `const __DEV__` alias and inline the bundler-agnostic
+  `process.env.NODE_ENV !== 'production'` gate at every use site (matching
+  `@pyreon/reactivity` and the rest of the monorepo). Every modern bundler
+  replaces `process.env.NODE_ENV` at consumer build time, so the counters
+  now fire in dev and tree-shake to nothing in production. Inlining the
+  gate (rather than re-aliasing) also avoids the `__DEV__`-const
+  tree-shake-resistance documented in `.claude/rules/anti-patterns.md`.
+
+  No production behaviour change — the counters are dev-only diagnostics
+  and the gate folds away in production builds either way.
+
+  Bisect-verified: `pyreon/no-process-dev-gate` flags `origin/main`'s
+  `solid-compat:58` + `svelte-compat:51` (the compound); the fixed files
+  report zero `no-process-dev-gate` findings.
+
+- Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

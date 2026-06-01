@@ -1,5 +1,63 @@
 # @pyreon/feature
 
+## 0.26.0
+
+### Patch Changes
+
+- [#960](https://github.com/pyreon/pyreon/pull/960) [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix 4 more framework DX walls surfaced by deep-audit of the HN-clone ([#942](https://github.com/pyreon/pyreon/issues/942)) — all bisect-verified at the unit level.
+
+  **W13 — `@pyreon/zero/client` strips URL query string on SPA cold-start.**
+  `startClient` called `router.replace(router.currentRoute().path)` to kick
+  off the loader pipeline, but `currentRoute().path` is the pathname ONLY
+  (query + hash stripped by `resolveRoute`). The `router.replace(pathname)`
+  then wrote the bare URL via `history.replaceState`, silently dropping any
+  query params present on the initial-load URL. Direct-link sharing of
+  `/search?q=react` was broken on cold-start — `useUrlState('q')` /
+  `useTypedSearchParams` read empty `window.location.search` and fell back
+  to defaults. Fix: pass the FULL URL (pathname + search + hash) instead.
+
+  **W14 — `@pyreon/hotkeys` sequential combos (`'g t'`) didn't work.**
+  CLAUDE.md documented vim/Gmail-style `g t` / `g n` combos but the
+  implementation only split on `+`. So `'g t'` parsed as a single key
+  literal `'g t'` (with space) that could never match a keystroke. Fix:
+  `registerHotkey` now splits the shortcut on whitespace into a sequence
+  of sub-combos. Each non-first combo is recorded as `entry.sequence[]`
+  and matched against subsequent keystrokes within a 1-second timeout
+  window. Three-step sequences (`a b c`) and combos with modifiers
+  (`ctrl+k p`) both work. 9 new specs cover the contract.
+
+  **W16 — `@pyreon/runtime-dom`'s `<Transition>` crashed with null ref**
+  when wrapped inside `<Portal>`/`<Show>`/other reactive wrappers. The
+  `appear: true` path queued `applyEnter(ref.current as HTMLElement)`
+  in a microtask, but the child commit could be one or more microtasks
+  behind. `applyEnter(null)` → `el.classList.remove(...)` → "Cannot read
+  properties of null (reading 'classList')". Fix: `safeApplyEnter`
+  retries up to 16 microtasks for the ref to populate before silently
+  giving up. Bisect-verified spec.
+
+  **W17 — `@pyreon/feature`'s `feature.useForm()` didn't invalidate the
+  list query after submit.** `useForm`'s `onSubmit` called `http.create()`
+  / `http.update()` DIRECTLY, bypassing the `useCreate()` / `useUpdate()`
+  mutation pipeline that wires `client.invalidateQueries` in `onSuccess`.
+  So after the form submitted, the list view didn't refetch and the UI
+  silently failed to show the new/updated item until manual reload. Fix:
+  `useForm`'s onSubmit now invalidates `queryKeyBase` (and the per-id key
+  in edit mode), matching the behaviour of `useCreate()` / `useUpdate()`.
+  96 feature tests still pass.
+
+  Discovered by deep-auditing every interactive flow in the HN-clone
+  (`[#942](https://github.com/pyreon/pyreon/issues/942)`) with Playwright. Each is bisect-verified — revert the source
+  fix → the new test fails; restore → it passes.
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`fd3422c`](https://github.com/pyreon/pyreon/commit/fd3422cfec1d48c8b382f8512ed44f8256887931), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`ec869c0`](https://github.com/pyreon/pyreon/commit/ec869c0fa7eefd16901daf382ff273b60350fe66), [`2d9acff`](https://github.com/pyreon/pyreon/commit/2d9acff27e9fd3c51468e98505a6a2334e2b5384), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`0fd9852`](https://github.com/pyreon/pyreon/commit/0fd98527ff7ea8a06ef0b470a2a6e84fcd9eba81), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`814dd46`](https://github.com/pyreon/pyreon/commit/814dd4649c83f044ef5754b73fdc20e4e037524d), [`534696a`](https://github.com/pyreon/pyreon/commit/534696ab763a1cd045f822da4cec41bdf08c98be), [`745fd63`](https://github.com/pyreon/pyreon/commit/745fd63c3ce97d0eb7bab37fa85ae40ed8c1c9bd)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/table@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

@@ -1,5 +1,109 @@
 # @pyreon/compiler
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1067](https://github.com/pyreon/pyreon/pull/1067) [`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(compiler+runtime-dom): widen `_bindText`/`_bindDirect` fast path to non-computed MemberExpression callees
+
+  `tryDirectSignalRef` previously accepted ONLY bare-identifier callees (`count()`). The canonical For-row idiom `{() => row.label()}` — exactly what the hand-tuned `examples/benchmark/src/impl/pyreon-tpl.ts` reference template uses — bailed to the full `_bind` chain (~6 allocs: deps array, dispose closure, snapshotCapture, scope.add) instead of the `_bindText` fast path (1 dispose).
+
+  Now widened to non-computed MemberExpression chains (`row.label()`, `data.user.name()`) where the root identifier is NOT a tracked active signal (which would suggest `count.peek()` — intentionally untracked, would defeat the binding). Computed access (`row[key]()`) and chained calls (`count().toLocaleString()`) still bail to `_bind`.
+
+  To keep correctness, `_bindText` and `_bindDirect` gain an optional 3rd `caller?` arg. The compiler emits it for MemberExpression callees: `_bindText(row.label, t, () => row.label())`. The runtime's slow path uses it instead of bare `source()` — preserves `this` if source turns out to be a method (not a signal). Fast path ignores the caller (no perf cost). The 2-arg form remains valid for Identifier callees (backward compatible).
+
+  Both JS and Rust compiler backends implement the widening byte-identically (verified by cross-backend equivalence tests).
+
+  Bisect-verified: revert widening → 4 new compiler tests fail (`_bindText(row.label,` not in `_bind`-only output); restore → 4 pass. Bench:fair shows `replace all` 0.96× and `create 10k` 0.98× directionally, within between-run noise band (untouched Solid moved 0.85–1.02× in the same comparison); no regressions across 165 e2e tests.
+
+- [#1071](https://github.com/pyreon/pyreon/pull/1071) [`76ef68e`](https://github.com/pyreon/pyreon/commit/76ef68efa4daea765ca3eb512be71cc1f7db483c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(compiler): classify `String`/`Number`/`Boolean` as pure coercions — `{String(row.id)}` routes to static `textContent` (no `_bind`)
+
+  The compiler conservatively treated every `CallExpression` as dynamic unless ALL args were literals (`isPureStaticCall`). The canonical For-row idiom `{String(row.id)}` — exactly what `examples/benchmark/src/impl/pyreon-tpl.ts` (the hand-tuned reference) uses — failed the literal-arg test (`row.id` isn't a literal) so emitted the full `_bind` chain per row (`createTextNode` + `appendChild` + `_bind(() => { textNode.data = String(row.id) })`).
+
+  `String`, `Number`, `Boolean` are referentially-transparent globals: their result depends ONLY on the argument. Now classified as pure coercions — the OUTER call no longer triggers an early dynamic-return, and the existing recurse-into-children logic determines dynamism from the args:
+
+  - `String(row.id)` — captured row ref, NOT dynamic → routes to `emitStaticTextChild` (`textContent = String(row.id)` once at row mount)
+  - `String(count())` — signal call in arg, IS dynamic → preserves `_bind` reactivity
+  - `String(props.x)` — props access in arg, IS dynamic → preserves `_bind` reactivity
+  - Spread (`String(...args)`) bails
+
+  Both JS and Rust backends implement byte-identically. Matches the static emit pattern the hand-tuned bench template uses.
+
+  Bisect-verified: revert → 3 "fires" tests fail (`textContent = String(row.id)` not in `_bind`-only output); restore → pass. `bench:fair`: Pyreon `create 1k` 0.97× directionally; other cells within noise band. 1421/1421 compiler tests + 150 e2e green.
+
+### Patch Changes
+
+- [#991](https://github.com/pyreon/pyreon/pull/991) [`ecceb71`](https://github.com/pyreon/pyreon/commit/ecceb710dc442a93818b7d60f38155a9f8cd71b9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - P0 element-child collapse — PR 1 (detector + serializer + measurement).
+
+  Adds `detectStaticElementChild` / `collectStaticChildren` /
+  `serializeStaticChildren` + the `StaticChildNode` type to
+  `@pyreon/compiler`. These recognise the SAFE subset of element-child
+  rocketstyle call sites — children whose ENTIRE subtree is provably
+  static (DOM tag, string-literal props, no `on*` handlers, static
+  text/element children all the way down) — so a later PR's SSR resolver
+  can bake the whole subtree into the existing `_rsCollapse` template with
+  nothing reactive lost.
+
+  **Measurement-only — additive, not yet wired into the emit path.** The
+  collapse emit (`tryRocketstyleCollapse`), runtime (`_rsCollapse`), and
+  plugin scanner are byte-unchanged; all 1378 prior compiler tests pass.
+  The detectors feed `collapse-bail-census.test.ts`, which now reports the
+  go/no-go number for the resolver investment:
+
+  ```
+  element-child STATIC-ADDRESSABLE: 16 (2.8% of all sites)
+  ```
+
+  Of the 52 element-child bail sites in the real corpus (ui-showcase +
+  app-showcase + fundamentals-playground), only 16 are recursively static
+  — the rest wrap components or carry reactivity and correctly bail.
+  Element-child collapse would lift coverage 83.2% → ~86.0%. PR 2 (the
+  resolver structured-children channel) is gated on this number being
+  worth the investment.
+
+  Bisect-verified: stubbing `detectStaticElementChild` to return null
+  drops the census static-addressable count to 0 (assertion fails) and
+  fails the 20-spec detector suite; restored → all green.
+
+- [#998](https://github.com/pyreon/pyreon/pull/998) [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - P0 element-child collapse — PR 2 (resolver wiring + emit).
+
+  Wires PR 1's recursively-static element-child detector into the collapse
+  pipeline so a `<Progress state="primary" size="medium"><div style="…" /></Progress>`
+  shape now actually collapses. **No new runtime helper** — unlike partial
+  (`_rsCollapseH`) and dynamic (`_rsCollapseDyn`), the resolver SSR-renders
+  the REAL component WITH its child subtree and bakes the full output HTML,
+  so the emit is the UNCHANGED `__rsCollapse(...)` and the cloned template
+  already contains the children.
+
+  - **Compiler** (`@pyreon/compiler`): `detectElementChildCollapsibleShape`
+    (literal root props + recursively-static element children → `{ props,
+childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
+    `CollapsibleSite` per element-child site carrying `childTree` +
+    `childrenText = serializeStaticChildren(childTree)`;
+    `tryRocketstyleCollapse` falls through to `tryElementChildCollapse`
+    (key match → unchanged `__rsCollapse`). `StaticChild` / `StaticChildNode`
+    re-exported from the package entry for the resolver.
+  - **Resolver** (`@pyreon/vite-plugin`): `ResolveInput.childTree` channel +
+    `buildChildVNodes(tree, h)` rebuilds the real child VNodes via `h()` so
+    the SSR render bakes the full subtree HTML (byte-faithful — the tree was
+    normalized with the compiler's own `cleanJsxText`). Cache key includes
+    the child tree.
+
+  The element-child site expands to ONE resolution (no per-value fan-out,
+  unlike dynamic's two), so the census trustworthiness invariant becomes
+  `collapsible + 2×dynamic-addressable + 1×element-child-static-addressable
+=== scanner-count`. All 1414 compiler + 207 vite-plugin tests pass.
+
+  Bisect-verified: removing the `|| tryElementChildCollapse` emit arm fails
+  the 2 positive emit specs; stubbing the scan element-child branch fails
+  the 2 site-emission scan specs; restored → all green.
+
+- [#1019](https://github.com/pyreon/pyreon/pull/1019) [`f27477a`](https://github.com/pyreon/pyreon/commit/f27477a681fdc131ea2904940dabb5b8b0e6b9cb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bump `oxc-parser` / `oxc-transform` from `^0.129.0` to `^0.133.0`. Both are
+  runtime dependencies (the compiler's JS-fallback parse path + all 67 lint
+  rules' AST). No AST-shape breakage: compiler suite (1414), lint suite (750),
+  native-compiler (388), and the bundle-budgets import-walker (57 pkgs) all
+  pass unchanged on 0.133.
+
 ## 0.25.1
 
 ### Patch Changes

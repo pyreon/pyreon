@@ -1,5 +1,103 @@
 # @pyreon/lint
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1125](https://github.com/pyreon/pyreon/pull/1125) [`3ebd25f`](https://github.com/pyreon/pyreon/commit/3ebd25fbdd06f8d9f473e8a9281bce27effca209) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Per-request locale via `AsyncLocalStorage` + new lint rule `pyreon/no-module-signal-in-server-package` (PR-S7)
+
+  **Pattern A from the deep-audit campaign** — module-global state in server context. The `@pyreon/zero` `localeSignal` was a module-level `signal('en')` that the dev i18n middleware wrote per-request via `localeSignal.set(locale)`. Server packages are concurrent — two simultaneous SSR requests with different locales (say `/de/about` + `/cs/about`) race the writes; the later-arriving render's `useLocale()` reads the wrong locale because the module signal is single-instance per process.
+
+  **The fix** (Pattern A canonical shape):
+
+  1. **Per-request locale store via `AsyncLocalStorage`**: a new `_localeAls = new AsyncLocalStorage<LocaleStore>()` tracks the locale per-request. The middleware wraps the rest of the request in `_localeAls.run(perRequestStore, next)` — `AsyncLocalStorage` propagates through async hops (Vite middleware chain, ssrLoadModule, Pyreon handler, render), so every downstream `useLocale()` call reads the right store.
+  2. **`useLocale()` prefers the ALS store**: server context reads from `_localeAls.getStore()` if present, falls back to the module signal for non-ALS contexts (client, plain test harness without middleware).
+  3. **`setLocale()` writes to the ALS store** when one is active, otherwise writes the module signal (CSR contract).
+  4. **Module signal stays exported** as a CSR contract + best-effort fallback. The browser is single-threaded — the module signal is fully authoritative there. On the server it's now a fallback, not the source of truth.
+
+  **New lint rule `pyreon/no-module-signal-in-server-package`** (architecture, error) catches the bug class at edit time. Flags `export const X = signal(...)` (or `computed(...)`) at module scope in source files matching the server-package roots (`packages/zero/zero/src/`, `packages/core/server/src/`, `packages/core/runtime-server/src/`). Detects both `signal` and `computed` calls; ignores nested-function-scope signals (per-call allocation = no race). Test files and configurable `exemptPaths` directories are skipped. `additionalPaths` option extends the default set for out-of-tree consumers. No auto-fix — the right shape depends on the call site (ALS vs context vs closure capture).
+
+  **Regression coverage**: 4 new tests in `i18n-routing.test.ts` under `PR-S7: useLocale per-request isolation` (concurrent-request isolation, ALS-precedence, ALS-ignores-module-signal-writes, setLocale-writes-to-ALS); bisect-verified — reverting `i18n-routing.ts` fails 3 of 4 (the 4th is a fallback sanity check that passes either way). 7 new tests in `rule-batch-2.test.ts` for the lint rule (top-level + non-export + computed + nested-function-skip + non-server-package-skip + test-file-skip + exemptPaths + additionalPaths). All 71 zero i18n tests pass; all 903 lint package tests pass.
+
+  **Monorepo audit** found one additional Pattern A instance (`@pyreon/zero/src/theme.tsx` — `theme` + `_osPrefersDark` module signals). Exempted in `.pyreonlintrc.json` with a follow-up audit note — the theme system currently has `setSSRThemeDefault` set at server startup, so the race doesn't materialize today, but a future PR should refactor it to per-request ALS for consistency.
+
+  **No public API change**: `useLocale` / `setLocale` / `localeSignal` keep their existing signatures. The `_runWithLocale` ALS helper is `@internal` (exported only for regression tests).
+
+### Patch Changes
+
+- [#1122](https://github.com/pyreon/pyreon/pull/1122) [`619834c`](https://github.com/pyreon/pyreon/commit/619834ca66940731d85fc8ef0c76898b37d4f8b3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(lint): `pyreon/no-unbatched-updates` now counts max sets per execution path (was: function-scope sum)
+
+  The rule used to sum every `.set()` call in a function and report when the total was ≥3 — but the metric that actually matters for batching is "how many notify cycles can fire on a SINGLE event path." Code with 3 `.set()` calls split across 3 mutually-exclusive branches (if/else-if/else, switch, try/catch) only fires ONE per invocation, yet was incorrectly flagged.
+
+  The walker now treats:
+
+  - **Sequential statements** → SUM
+  - **`IfStatement` consequent / alternate** → MAX
+  - **`SwitchStatement` cases** → MAX
+  - **`TryStatement` try / catch** → MAX (mutually exclusive on throw path), plus finally (always runs)
+  - **Loops** → body's per-iteration cost (one iteration is the batch-relevant unit)
+  - **Ternary / `LogicalExpression`** → MAX (short-circuit)
+  - **Nested functions** → 0 (separate execution paths handled by their own scope)
+
+  Real-corpus impact: the rule flagged 31 sites repo-wide before the fix; 21 after — 10 false positives silenced without missing any real batch candidate. Verified against the canonical false-positive shape (`@pyreon/form` `runValidation` — 3 `errorSig.set()` calls in 3 mutex branches) and the canonical true-positive shape (`setInitialValues` — 4 sets per loop iteration).
+
+  Bisect-verified: reverting the walker → the false-positive shape fires again (matches the bug); restoring → it goes silent while the true-positive shape stays flagged.
+
+  12 new specs in `rule-batch-2.test.ts` lock in the behaviour:
+
+  - 3 false-positive shapes (if/else, switch, try/catch) → not flagged
+  - 4 true-positive shapes (sequential, in-branch, loop body, mixed mutex+sequential summing to ≥3) → flagged
+  - Scope isolation: nested arrow fn doesn't pollute outer scope
+  - batch() wrapper correctly suppresses
+  - Short-circuit + ternary shapes
+
+  Message also clarified: "N signal `.set()` calls can fire on a single execution path" (was: "N signal `.set()` calls without batch()") — names the failure mode the rule is actually catching.
+
+- [#1126](https://github.com/pyreon/pyreon/pull/1126) [`4beab18`](https://github.com/pyreon/pyreon/commit/4beab1809566bc642184775ac19717abdeee316e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(lint): `pyreon/no-unbatched-updates` walker now respects early-return semantics
+
+  Follow-up precision fix to the per-path-max walker shipped previously. The walker summed sequential statements after a conditional `return` / `throw`, even though those statements are unreachable on the early-exit path. Two paths exist: (A) take the early exit, (B) fall through — the walker now takes MAX instead of summing.
+
+  Closes the canonical `@pyreon/query` `use-subscription.ts` `connect()` false positive (PR [#1124](https://github.com/pyreon/pyreon/issues/1124) documented this gap):
+
+  ```ts
+  function connect() {
+    if (typeof WebSocket === 'undefined') return
+    // ...
+    if (!isEnabled()) { status.set('disconnected'); return }  // early exit
+    status.set('connecting')
+    try { ws = new WebSocket(...) }
+    catch { status.set('error'); scheduleReconnect(); return }
+    ws.onopen = (e) => { batch(() => { status.set('connected') }) }
+    // ...
+  }
+  ```
+
+  Real max-path = 2 (status('connecting') + catch's status('error')). Pre-fix walker summed `!isEnabled` early-exit set + main flow set + catch set = 3 → flagged. Post-fix: 2 → silent.
+
+  New `alwaysReturns(node)` helper detects always-returning statements: `ReturnStatement`, `ThrowStatement`, `BlockStatement` with any always-returning member, `IfStatement` with both arms always-returning, `TryStatement` with appropriate try/catch/finally combinations.
+
+  `BlockStatement` walking now uses a 2-track scheme:
+
+  - `cumulative` — sum along the "continuation" (fall-through) path.
+  - `branchMax` — max-so-far across already-taken early-exit paths.
+  - Final block contribution: `max(cumulative, branchMax)`.
+
+  Real-corpus impact:
+
+  - Before this fix: 21 sites (after the per-path-max baseline)
+  - After this fix: **16 sites** — 5 more false positives silenced
+  - vs original function-scope-sum rule: 31 → 16, **15 total false positives silenced** across the precision sequence
+
+  7 new specs in `rule-batch-2.test.ts` cover: early-exit with 2 vs 3+ sequential continuation, real-app SSE connect shape, throw-statement early exit, if/else with consequent-returns, nested early-return composition. Bisect-with-restore proven against the real `use-subscription` shape.
+
+- [#1019](https://github.com/pyreon/pyreon/pull/1019) [`f27477a`](https://github.com/pyreon/pyreon/commit/f27477a681fdc131ea2904940dabb5b8b0e6b9cb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bump `oxc-parser` / `oxc-transform` from `^0.129.0` to `^0.133.0`. Both are
+  runtime dependencies (the compiler's JS-fallback parse path + all 67 lint
+  rules' AST). No AST-shape breakage: compiler suite (1414), lint suite (750),
+  native-compiler (388), and the bundle-budgets import-walker (57 pkgs) all
+  pass unchanged on 0.133.
+- Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`ecceb71`](https://github.com/pyreon/pyreon/commit/ecceb710dc442a93818b7d60f38155a9f8cd71b9), [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e), [`f27477a`](https://github.com/pyreon/pyreon/commit/f27477a681fdc131ea2904940dabb5b8b0e6b9cb), [`76ef68e`](https://github.com/pyreon/pyreon/commit/76ef68efa4daea765ca3eb512be71cc1f7db483c)]:
+  - @pyreon/compiler@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

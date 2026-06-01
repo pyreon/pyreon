@@ -1,5 +1,45 @@
 # @pyreon/meta
 
+## 0.26.0
+
+### Patch Changes
+
+- Updated dependencies [[`448073c`](https://github.com/pyreon/pyreon/commit/448073c3066bda0e54c71d85cf6bcfebc148a6f0), [`a164b67`](https://github.com/pyreon/pyreon/commit/a164b6729081ab40af6401a00caabbb442061d37), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`38cec50`](https://github.com/pyreon/pyreon/commit/38cec50a856ae60abd445ac3a65c5667feb99473), [`56eee37`](https://github.com/pyreon/pyreon/commit/56eee37b3f2052bf1caa976218638348b2de6fc6), [`fd3422c`](https://github.com/pyreon/pyreon/commit/fd3422cfec1d48c8b382f8512ed44f8256887931), [`a470388`](https://github.com/pyreon/pyreon/commit/a470388ea2184afec824f9da900b98c5d90f2ded), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`ec869c0`](https://github.com/pyreon/pyreon/commit/ec869c0fa7eefd16901daf382ff273b60350fe66), [`2d9acff`](https://github.com/pyreon/pyreon/commit/2d9acff27e9fd3c51468e98505a6a2334e2b5384), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`0fd9852`](https://github.com/pyreon/pyreon/commit/0fd98527ff7ea8a06ef0b470a2a6e84fcd9eba81), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`814dd46`](https://github.com/pyreon/pyreon/commit/814dd4649c83f044ef5754b73fdc20e4e037524d), [`534696a`](https://github.com/pyreon/pyreon/commit/534696ab763a1cd045f822da4cec41bdf08c98be), [`421fc21`](https://github.com/pyreon/pyreon/commit/421fc211ca6da19a332ed7dc5b51545181ee58da), [`745fd63`](https://github.com/pyreon/pyreon/commit/745fd63c3ce97d0eb7bab37fa85ae40ed8c1c9bd), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
+  - @pyreon/styler@1.0.0
+  - @pyreon/dnd@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/elements@1.0.0
+  - @pyreon/flow@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/state-tree@1.0.0
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/kinetic@1.0.0
+  - @pyreon/charts@1.0.0
+  - @pyreon/hotkeys@1.0.0
+  - @pyreon/feature@1.0.0
+  - @pyreon/code@1.0.0
+  - @pyreon/table@1.0.0
+  - @pyreon/toast@1.0.0
+  - @pyreon/virtual@1.0.0
+  - @pyreon/document-primitives@1.0.0
+  - @pyreon/document@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/machine@1.0.0
+  - @pyreon/permissions@1.0.0
+  - @pyreon/rx@1.0.0
+  - @pyreon/storage@1.0.0
+  - @pyreon/url-state@1.0.0
+  - @pyreon/connector-document@1.0.0
+  - @pyreon/coolgrid@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/unistyle@1.0.0
+  - @pyreon/attrs@1.0.0
+  - @pyreon/kinetic-presets@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

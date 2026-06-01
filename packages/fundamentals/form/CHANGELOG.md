@@ -1,5 +1,60 @@
 # @pyreon/form
 
+## 0.26.0
+
+### Patch Changes
+
+- [#1117](https://github.com/pyreon/pyreon/pull/1117) [`fd3422c`](https://github.com/pyreon/pyreon/commit/fd3422cfec1d48c8b382f8512ed44f8256887931) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(form,dnd): batch() 6 multi-signal write sites surfaced by `pyreon/no-unbatched-updates`
+
+  Lint follow-up to PR [#1110](https://github.com/pyreon/pyreon/issues/1110) (fundamentals R2/R3/R4 batch audit) — six sites in `use-form.ts` + `use-sortable.ts` were missed by the manual audit but caught by the `pyreon/no-unbatched-updates` lint rule.
+
+  Each `batch()` wrap collapses N notify cycles to 1 per event:
+
+  - **`@pyreon/form` `use-form.ts`** (4 sites):
+    - `field.reset()` — 4 signal writes per call (value / error / touched / dirty).
+    - `validate()` clear-all-errors loop — N writes per validate.
+    - `validate()` schema-error apply loop — N writes per validate.
+    - `setInitialValues()` per-field loop — 4×N writes per call (typical use is async-prefill landing post-mount).
+  - **`@pyreon/dnd` `use-sortable.ts`** (3 sites):
+    - Container `onDrop` reset (activeId/overId/overEdge) — 3 writes per drop.
+    - Per-item `onDrop` reset in `queueMicrotask` — 3 writes per drop.
+    - `onCleanup` final reset — 3 writes per sortable dispose.
+
+  Bisect-proven via a real `@pyreon/reactivity` synthetic harness: 4 un-batched signal writes fire 4 effect re-runs; 4 batched writes fire 1. The optimization is observable subscriber-side; consumers reading 2+ form fields together (typical for validation hints) see one re-render per `field.reset()` instead of four.
+
+  Also documents one lint false positive (`runValidation` — 3 `errorSig.set()` calls in 3 mutually exclusive branches) with an inline `pyreon-lint-disable-next-line` + rationale comment. The lint rule counts function-scope total writes, not per-branch fan-out.
+
+  Lint count: `@pyreon/form` 4→0 (+1 documented exemption), `@pyreon/dnd` 3→0.
+
+- [#945](https://github.com/pyreon/pyreon/pull/945) [`745fd63`](https://github.com/pyreon/pyreon/commit/745fd63c3ce97d0eb7bab37fa85ae40ed8c1c9bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix two DX walls surfaced by [#942](https://github.com/pyreon/pyreon/issues/942)'s HN-clone audit:
+
+  **W10 — `useForm({ schema, validateOn: 'blur' })` now actually validates on blur.**
+  Previously `setTouched()` only ran the per-field `validators[name]` function;
+  the form-level `schema` only fired in `validate()` on submit. So a schema-only
+  form (the canonical zod / valibot / arktype shape) with `validateOn: 'blur'`
+  silently behaved like `'submit'` — the option name lied. Fix: when a schema
+  is configured and the field has no per-field validator, `setTouched()` now
+  runs the schema and applies ONLY this field's resulting error (other fields
+  are left untouched so users aren't surprised with errors on fields they
+  haven't visited). Versioned to discard stale results from interleaved
+  blurs. 5 new specs in `tests/schema-blur.test.tsx`; bisect-verified.
+
+  **W12 — `@pyreon/charts` now fails LOUD when the tslib alias is missing.**
+  ECharts imports `tslib` for TypeScript helpers (`__extends`, `__assign`, …);
+  tslib's CJS factory shape causes the named-helper destructure to read
+  `undefined` unless the consumer's vite.config has the `chartsViteAlias()`
+  alias. Without it, charts silently rendered as empty divs — the error
+  was buried in a signal nobody read, taking ~25 minutes to diagnose.
+  Now: (a) `getCore()` detects the tslib helper name in the error message
+  and rewraps with a prescriptive "Add `chartsViteAlias()` to your
+  vite.config" hint with the actual code snippet, (b) `<Chart>` surfaces
+  the error to `console.error` AND renders an inline error display in dev.
+  5 new specs in `tests/tslib-alias-detection.test.ts`; bisect-verified.
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

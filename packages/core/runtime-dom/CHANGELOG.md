@@ -1,5 +1,78 @@
 # @pyreon/runtime-dom
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1067](https://github.com/pyreon/pyreon/pull/1067) [`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(compiler+runtime-dom): widen `_bindText`/`_bindDirect` fast path to non-computed MemberExpression callees
+
+  `tryDirectSignalRef` previously accepted ONLY bare-identifier callees (`count()`). The canonical For-row idiom `{() => row.label()}` — exactly what the hand-tuned `examples/benchmark/src/impl/pyreon-tpl.ts` reference template uses — bailed to the full `_bind` chain (~6 allocs: deps array, dispose closure, snapshotCapture, scope.add) instead of the `_bindText` fast path (1 dispose).
+
+  Now widened to non-computed MemberExpression chains (`row.label()`, `data.user.name()`) where the root identifier is NOT a tracked active signal (which would suggest `count.peek()` — intentionally untracked, would defeat the binding). Computed access (`row[key]()`) and chained calls (`count().toLocaleString()`) still bail to `_bind`.
+
+  To keep correctness, `_bindText` and `_bindDirect` gain an optional 3rd `caller?` arg. The compiler emits it for MemberExpression callees: `_bindText(row.label, t, () => row.label())`. The runtime's slow path uses it instead of bare `source()` — preserves `this` if source turns out to be a method (not a signal). Fast path ignores the caller (no perf cost). The 2-arg form remains valid for Identifier callees (backward compatible).
+
+  Both JS and Rust compiler backends implement the widening byte-identically (verified by cross-backend equivalence tests).
+
+  Bisect-verified: revert widening → 4 new compiler tests fail (`_bindText(row.label,` not in `_bind`-only output); restore → 4 pass. Bench:fair shows `replace all` 0.96× and `create 10k` 0.98× directionally, within between-run noise band (untouched Solid moved 0.85–1.02× in the same comparison); no regressions across 165 e2e tests.
+
+### Patch Changes
+
+- [#1055](https://github.com/pyreon/pyreon/pull/1055) [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(runtime-dom): drop `_tpl` cache LRU touch on hit — FIFO eviction (zero Map ops on the hot path)
+
+  `_tpl(html, bind)` is compiler-emitted and called per template instantiation — once per row in a list of N rows. The cache previously did `cache.delete(html); cache.set(html, tpl)` on every cache HIT to refresh LRU recency, costing 2 Map ops per instantiation (20k Map ops on a js-framework-benchmark `create 10,000 rows`) for a correctness guarantee that no realistic app needs.
+
+  Cache HIT is now a no-op; cache MISS keeps the eviction-at-cap logic (FIFO instead of LRU). Trade-off: an app with > 1024 distinct compiled templates may pay an occasional re-parse (a few ms one-time) instead of the LRU-protected hot template surviving — but no realistic app approaches 1024 templates, so the swap is pure hot-path win in practice. 681/682 existing runtime-dom tests pass (1 pre-existing skip; no LRU semantic test); typecheck + lint clean.
+
+- [#960](https://github.com/pyreon/pyreon/pull/960) [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix 4 more framework DX walls surfaced by deep-audit of the HN-clone ([#942](https://github.com/pyreon/pyreon/issues/942)) — all bisect-verified at the unit level.
+
+  **W13 — `@pyreon/zero/client` strips URL query string on SPA cold-start.**
+  `startClient` called `router.replace(router.currentRoute().path)` to kick
+  off the loader pipeline, but `currentRoute().path` is the pathname ONLY
+  (query + hash stripped by `resolveRoute`). The `router.replace(pathname)`
+  then wrote the bare URL via `history.replaceState`, silently dropping any
+  query params present on the initial-load URL. Direct-link sharing of
+  `/search?q=react` was broken on cold-start — `useUrlState('q')` /
+  `useTypedSearchParams` read empty `window.location.search` and fell back
+  to defaults. Fix: pass the FULL URL (pathname + search + hash) instead.
+
+  **W14 — `@pyreon/hotkeys` sequential combos (`'g t'`) didn't work.**
+  CLAUDE.md documented vim/Gmail-style `g t` / `g n` combos but the
+  implementation only split on `+`. So `'g t'` parsed as a single key
+  literal `'g t'` (with space) that could never match a keystroke. Fix:
+  `registerHotkey` now splits the shortcut on whitespace into a sequence
+  of sub-combos. Each non-first combo is recorded as `entry.sequence[]`
+  and matched against subsequent keystrokes within a 1-second timeout
+  window. Three-step sequences (`a b c`) and combos with modifiers
+  (`ctrl+k p`) both work. 9 new specs cover the contract.
+
+  **W16 — `@pyreon/runtime-dom`'s `<Transition>` crashed with null ref**
+  when wrapped inside `<Portal>`/`<Show>`/other reactive wrappers. The
+  `appear: true` path queued `applyEnter(ref.current as HTMLElement)`
+  in a microtask, but the child commit could be one or more microtasks
+  behind. `applyEnter(null)` → `el.classList.remove(...)` → "Cannot read
+  properties of null (reading 'classList')". Fix: `safeApplyEnter`
+  retries up to 16 microtasks for the ref to populate before silently
+  giving up. Bisect-verified spec.
+
+  **W17 — `@pyreon/feature`'s `feature.useForm()` didn't invalidate the
+  list query after submit.** `useForm`'s `onSubmit` called `http.create()`
+  / `http.update()` DIRECTLY, bypassing the `useCreate()` / `useUpdate()`
+  mutation pipeline that wires `client.invalidateQueries` in `onSuccess`.
+  So after the form submitted, the list view didn't refetch and the UI
+  silently failed to show the new/updated item until manual reload. Fix:
+  `useForm`'s onSubmit now invalidates `queryKeyBase` (and the per-id key
+  in edit mode), matching the behaviour of `useCreate()` / `useUpdate()`.
+  96 feature tests still pass.
+
+  Discovered by deep-auditing every interactive flow in the HN-clone
+  (`[#942](https://github.com/pyreon/pyreon/issues/942)`) with Playwright. Each is bisect-verified — revert the source
+  fix → the new test fails; restore → it passes.
+
+- Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

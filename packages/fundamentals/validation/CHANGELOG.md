@@ -1,5 +1,148 @@
 # @pyreon/validation
 
+## 0.26.0
+
+### Minor Changes
+
+- [#908](https://github.com/pyreon/pyreon/pull/908) [`0fd9852`](https://github.com/pyreon/pyreon/commit/0fd98527ff7ea8a06ef0b470a2a6e84fcd9eba81) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/store` adds a **schema-driven `defineStore` overload** that derives signals + types from a validation library — works with **every** validation library through two complementary tiers.
+
+  ## API
+
+  ```ts
+  import { zodSchema } from "@pyreon/validation";
+  import { defineStore, computed } from "@pyreon/store";
+  import { z } from "zod";
+
+  const UserSchema = zodSchema(
+    z.object({
+      name: z.string().min(1),
+      age: z.number(),
+    })
+  );
+
+  const useUser = defineStore("user", {
+    schema: UserSchema,
+    initial: { name: "", age: 0 },
+    setup: ({ state, set, patch, reset }) => ({
+      // state.name: Signal<string>   ← inferred from schema
+      // state.age:  Signal<number>
+      greet: computed(() => `Hello, ${state.name()}`),
+    }),
+  });
+
+  const u = useUser();
+  u.store.name(); // Signal<string> read
+  u.store.greet(); // computed
+  u.set({ name: "Alice", age: 30 }); // full replace + validate
+  u.patch({ age: 31 }); // partial merge + validate
+  u.store.age.set(-1); // direct write — bypasses validation (escape hatch)
+  ```
+
+  ## Library support
+
+  **Tier A.1 — First-party adapters** (existing in `@pyreon/validation`, extended in this release with `parse()`):
+
+  - `zodSchema(zSchema)` — Zod (any version)
+  - `valibotSchema(vSchema, v.safeParse)` — Valibot
+  - `arktypeSchema(aType)` — ArkType
+
+  **Tier A.2 — Standard Schema** (auto-detected via `'~standard'`, no adapter needed):
+
+  - Zod 3.24+
+  - Valibot 1.0+
+  - ArkType 2.0+
+  - Effect Schema 0.66+
+  - Any future Standard Schema-compliant library
+
+  **Tier B — User-authored adapter** (any other library, 5-10 lines):
+
+  - yup, joi, ajv, io-ts, runtypes, Superstruct, custom validators
+
+  ## What's new in `@pyreon/validation`
+
+  `TypedSchemaAdapter` gains an optional `parse` method that returns the **coerced parsed value** (not just errors). This is what schema-stores need so that `z.string().default('Alice')` / `z.transform(...)` actually write the transformed value to signals. The existing `validator` field is unchanged — `@pyreon/form` consumers see no behavior change. The three first-party adapters (`zodSchema`, `valibotSchema`, `arktypeSchema`) all gained sync `parse` implementations.
+
+  ## Validation contract
+
+  - **`set(full)` and `patch(partial)` validate.** Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
+  - **Initial is validated once at defineStore-time.** Bad initial throws immediately (fail-fast). Schema defaults + transforms apply.
+  - **Direct signal writes bypass validation.** `store.fieldName.set(v)` is an escape hatch for hot paths (~50-200µs per zod parse). For guaranteed validation, route through `set`/`patch`.
+  - **Async validators are unsupported.** Schemas whose validator returns a Promise are rejected at defineStore-time. Use `@pyreon/form` for async refinements.
+  - **Reserved key check.** Schema fields cannot collide with reserved `StoreApi` method names (`set`, etc.) — throws at construction with named key.
+
+  ## What this PR does NOT do
+
+  - Existing `defineStore(id, setupFn)` API is **unchanged**. Schema mode is a purely additive overload.
+  - No new package dependency (`@pyreon/store` keeps its existing `@pyreon/reactivity`-only dep tree). Schema detection is duck-typed at runtime — `'_infer' in schema` for Tier A.1, `'~standard' in schema` for Tier A.2. The type-level `InferSchema<S>` helper has no runtime cost.
+  - Top-level fields only get signals. Nested objects stay as values inside the parent signal (use `patch({ nested: {...} })` to mutate) — recursive signal-ization would require library-specific introspection.
+
+  ## Test coverage
+
+  27 new specs (cross-library matrix: zod adapter, valibot adapter, arktype adapter, raw zod via Standard Schema, user-authored adapter) covering: type-level inference, per-field signal reads, validated `set`/`patch`, `reset` to parsed initial, schema defaults/transforms, direct-write escape hatch, async-rejection, reserved-key collision, setup/field collision, `onValidationError` suppression, plugin compat, `subscribe` + `onAction` integration, singleton semantics. All 92 existing store tests + all 40 existing validation tests still pass. Bisect-verified-with-restore: disabling the schema-mode dispatch branch fails all 27 new specs; restored → 119/119 green.
+
+### Patch Changes
+
+- [#910](https://github.com/pyreon/pyreon/pull/910) [`814dd46`](https://github.com/pyreon/pyreon/commit/814dd4649c83f044ef5754b73fdc20e4e037524d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/state-tree` re-architected to mirror MobX-State-Tree's chainable `.views().actions()` shape, with first-class **schema validation** and **async actions out of the box**.
+
+  ## BREAKING CHANGE
+
+  The single-config form `model({ state, views, actions })` is **REMOVED**. Use the chainable form:
+
+  ```ts
+  // Before
+  model({
+    state: { count: 0 },
+    views: (self) => ({ doubled: () => self.count() * 2 }),
+    actions: (self) => ({ inc: () => self.count.update((n) => n + 1) }),
+  });
+
+  // After
+  model({ state: { count: 0 } })
+    .views((self) => ({ doubled: () => self.count() * 2 }))
+    .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }));
+  ```
+
+  Migration is mechanical: `state` stays inside `model(...)`; `views` and `actions` keys move to chained `.views(...)` / `.actions(...)` calls verbatim. Behavior of each factory is unchanged. Empty `views: () => ({})` can be dropped.
+
+  ## What's new
+
+  ### Schema mode — `model({ schema, initial? })`
+
+  Accepts a `TypedSchemaAdapter` (`zodSchema(...)` / `valibotSchema(...)` / `arktypeSchema(...)`) OR a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Field types inferred end-to-end; every write validated through the schema.
+
+  Schema-mode instances expose **five validated mutation helpers** with bare names matching `@pyreon/store`'s `SchemaStoreApi`:
+
+  ```ts
+  u.set({ ...full }); // full replace, validated
+  u.patch({ name: "Bob" }); // shallow merge, validated
+  u.deepPatch({ prefs: { theme: "dark" } }); // recursive merge — keeps siblings
+  u.update("items", (items) => items.filter((x) => x.id !== id)); // transform one field
+  u.reset(); // restore parsed initial
+  ```
+
+  Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
+
+  **Reserved-name check** — in schema mode, schema field names AND chained `.views()` / `.actions()` keys cannot collide with `set` / `patch` / `deepPatch` / `update` / `reset`. The runtime throws at `.create()` time with a clear error naming the colliding key. Plain mode (no schema) has no installed helpers, so user actions named `reset` / `set` etc. still work in plain models.
+
+  ### Chainable `.views()` / `.actions()`
+
+  Each call returns a NEW `ModelDefinition` (immutable builder). Subsequent factories see prior views + actions via `self`. Order semantics: views run before actions in the lifecycle.
+
+  ### Async actions — out of the box
+
+  Actions can be `async`; the runtime detects Promise returns and propagates them through the middleware chain. No `flow()` / `yield` wrapper. Middleware that wants completion does `await next(call)`.
+
+  ## Step 0 — helper extraction (`@pyreon/validation` patch)
+
+  Moved schema-detection helpers from `@pyreon/store` to `@pyreon/validation` so both `@pyreon/store` (schema mode) and `@pyreon/state-tree` (schema mode) share them. New module: `packages/fundamentals/validation/src/schema.ts` exporting `extractParseFn`, `wrapStandardSchema`, `isPyreonAdapter`, `isStandardSchema`, `formatIssues`, `InferSchema<S>`, `SchemaIssue`, `SchemaParseResult<T>`, `StandardSchemaShape<T>`, `PyreonAdapterShape<T>`. `@pyreon/store` now imports from validation.
+
+  ## Why patch on store (not minor)
+
+  The store change is purely an internal refactor — helpers moved out, public API unchanged. All 130 existing store tests pass without modification. Bundle shrinks slightly (helpers move out, validation grows by the same amount). Tagged as `patch` rather than `minor` because no consumer-visible surface changed.
+
+- Updated dependencies [[`fd3422c`](https://github.com/pyreon/pyreon/commit/fd3422cfec1d48c8b382f8512ed44f8256887931), [`745fd63`](https://github.com/pyreon/pyreon/commit/745fd63c3ce97d0eb7bab37fa85ae40ed8c1c9bd)]:
+  - @pyreon/form@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

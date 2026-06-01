@@ -1,5 +1,144 @@
 # @pyreon/vite-plugin
 
+## 0.26.0
+
+### Patch Changes
+
+- [#1150](https://github.com/pyreon/pyreon/pull/1150) [`448073c`](https://github.com/pyreon/pyreon/commit/448073c3066bda0e54c71d85cf6bcfebc148a6f0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(styler, vite-plugin): rocketstyle-collapse resolver serializes resolve() + resets SSR buffer per render-pair
+
+  Two entangled bugs in the rocketstyle-collapse pipeline, both surfaced in the post v0.25.1 framework audit (findings [#7](https://github.com/pyreon/pyreon/issues/7) + [#8](https://github.com/pyreon/pyreon/issues/8)). Bundled into one PR because the fix vector is shared.
+
+  ### Bug [#8](https://github.com/pyreon/pyreon/issues/8) — `ssrBuffer` monotonic accumulation
+
+  `StyleSheet.ssrBuffer` is a module-level singleton (`packages/ui-system/styler/src/sheet.ts:44`). `insert()` / `insertKeyframes()` append to it during SSR; `getStyleRules()` returns the full buffer. It was reset only on `reset()` (per-request) or `clearAll()` (HMR) — **never between successive `resolve()` calls in a build**.
+
+  Result: resolving site A populated the buffer with A's rules. Resolving site B then captured `[...A's rules, ...B's rules]`. By the Nth site, the captured payload contained all 1..N sites' rules. The FNV-1a `ruleKey` became unique-per-site, defeating the cross-site `injectedBundles` runtime dedup the design relied on. Inline CSS payload grew O(N²) in collapsed site count.
+
+  ### Bug [#7](https://github.com/pyreon/pyreon/issues/7) — Concurrent `resolve()` cross-contamination
+
+  `createCollapseResolver().resolve()` is async — awaits 4 `ssrLoadModule` + 2 `renderToString`. Vite `transform()` hooks fire in parallel across files. Two concurrent `resolve()` calls shared the SAME singleton sheet. Site A's `renderToString(light)` and site B's `renderToString(light)` interleaved → A's `getStyleRules()` captured rules from B's still-in-flight render → wrong rules cached under A's key. Persisted for the build's lifetime.
+
+  ### Fix — single-flight queue + per-render-pair buffer reset
+
+  Two surgical changes:
+
+  1. **`StyleSheet.resetSSRBuffer()`** (new public method, `sheet.ts`): clears ONLY `ssrBuffer`. Leaves `cache` / `insertCache` / `domRules` / **`injectedBundles`** intact (the cross-site dedup guard MUST survive across resolves).
+
+  2. **Single-flight promise chain + reset-before-renders** (`rocketstyle-collapse.ts`): every `resolve(input)` chains onto a module-level `resolveChain = resolveChain.then(success, failure)`. The body (now extracted as `doResolve`) calls `sheet.resetSSRBuffer()` AFTER the cache-hit short-circuit and BEFORE the light/dark `renderToString` pair. The `.then(success, failure)` shape ensures a single rejected resolve doesn't poison the chain.
+
+  Combined effect: buffer is fresh per pair; concurrent calls observe the reset in strict serial order; cross-site dedup is restored. Wall-clock builds become serial in the resolver (vs the prior pseudo-parallel-but-broken behavior) — acceptable trade-off for build-time correctness; collapse is opt-in and most builds resolve only a handful of distinct sites.
+
+  ### Bisect-verify
+
+  3 new specs in `packages/tools/vite-plugin/src/tests/rocketstyle-collapse.test.ts` (`audit [#7](https://github.com/pyreon/pyreon/issues/7)+[#8](https://github.com/pyreon/pyreon/issues/8): resolver serialization + per-site buffer isolation` describe block):
+
+  **Spec A — sequential, isolates bug [#8](https://github.com/pyreon/pyreon/issues/8)**: resolve 3 distinct sites sequentially. Assert each site's `.rules` array contains ONLY its own classes (no accumulated rules from prior sites). Revert ONLY the `resetSSRBuffer()` call → fails with `AssertionError: expected 0 to be greater than 0` on `expect(ruleInAnotInB.length).toBeGreaterThan(0)` — B's captured rules become a strict superset of A's (the accumulation signature).
+
+  **Spec B — concurrent, isolates bug [#7](https://github.com/pyreon/pyreon/issues/7)**: resolve 2 sites via `Promise.all`. Assert the resulting FNV ruleKeys differ (proves no cross-contamination). Revert ONLY the chain serialization → fails with `AssertionError: expected 'ug96np' not to be 'ug96np' // Object.is equality` on `expect(a.key).not.toBe(b.key)` — concurrent renders interleave against the same singleton sheet, see the merged buffer at the same moment, produce IDENTICAL keys.
+
+  **Spec C — sheet identity proof**: 2 consecutive resolves with unique dimension tuples both produce non-empty `rules.length` AND distinct keys. Only possible if the same singleton sheet survives between resolves (proven indirectly via the behavioral chain — direct `===` check was deliberately omitted because `ssrLoadModule` returns a wrapping module namespace, not the singleton directly).
+
+  Reverting BOTH the reset + the chain fails Specs A and B simultaneously. Restoring → 3/3 audit specs + 255/255 vite-plugin + 428/428 styler + both typechecks clean.
+
+  ### API contract
+
+  - `StyleSheet.resetSSRBuffer()` is a NEW public method on the styler. Internal-use (intended for the rocketstyle-collapse resolver during SSR builds). No breaking changes — it's purely additive.
+  - `CollapseResolver.resolve()` signature unchanged. Behavior change: calls are serialized via an internal chain. Wall-clock latency increases for parallel transforms (N sites → N × render latency), but dedup integrity is guaranteed.
+  - No public API surface changes for end users.
+
+- [#998](https://github.com/pyreon/pyreon/pull/998) [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - P0 element-child collapse — PR 2 (resolver wiring + emit).
+
+  Wires PR 1's recursively-static element-child detector into the collapse
+  pipeline so a `<Progress state="primary" size="medium"><div style="…" /></Progress>`
+  shape now actually collapses. **No new runtime helper** — unlike partial
+  (`_rsCollapseH`) and dynamic (`_rsCollapseDyn`), the resolver SSR-renders
+  the REAL component WITH its child subtree and bakes the full output HTML,
+  so the emit is the UNCHANGED `__rsCollapse(...)` and the cloned template
+  already contains the children.
+
+  - **Compiler** (`@pyreon/compiler`): `detectElementChildCollapsibleShape`
+    (literal root props + recursively-static element children → `{ props,
+childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
+    `CollapsibleSite` per element-child site carrying `childTree` +
+    `childrenText = serializeStaticChildren(childTree)`;
+    `tryRocketstyleCollapse` falls through to `tryElementChildCollapse`
+    (key match → unchanged `__rsCollapse`). `StaticChild` / `StaticChildNode`
+    re-exported from the package entry for the resolver.
+  - **Resolver** (`@pyreon/vite-plugin`): `ResolveInput.childTree` channel +
+    `buildChildVNodes(tree, h)` rebuilds the real child VNodes via `h()` so
+    the SSR render bakes the full subtree HTML (byte-faithful — the tree was
+    normalized with the compiler's own `cleanJsxText`). Cache key includes
+    the child tree.
+
+  The element-child site expands to ONE resolution (no per-value fan-out,
+  unlike dynamic's two), so the census trustworthiness invariant becomes
+  `collapsible + 2×dynamic-addressable + 1×element-child-static-addressable
+=== scanner-count`. All 1414 compiler + 207 vite-plugin tests pass.
+
+  Bisect-verified: removing the `|| tryElementChildCollapse` emit arm fails
+  the 2 positive emit specs; stubbing the scan element-child branch fails
+  the 2 site-emission scan specs; restored → all green.
+
+- [#1143](https://github.com/pyreon/pyreon/pull/1143) [`dcc81a9`](https://github.com/pyreon/pyreon/commit/dcc81a98f237a46487b3a331e748423359edc7f3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(vite-plugin): use the resolveId-returned id (`ISLANDS_REGISTRY_ID`) for HMR invalidation of the islands registry
+
+  PR-S12 introduced transform-hook invalidation of the `virtual:pyreon/islands-registry` module so that adding / renaming / removing an `island()` declaration mid-`vite dev` updates the auto-registry without a manual full reload. The fix used `getModuleById(\`\\0${ISLANDS_REGISTRY_IMPORT}\`)`=`\\0virtual:pyreon/islands-registry`. But `resolveId`returns`ISLANDS_REGISTRY_ID = '\\0pyreon/islands-registry'`(no`virtual:`prefix — Vite stores the virtual module under the id`resolveId`returned). The lookup always missed →`invalidateModule` never fired → **PR-S12's stated bug ("the new island silently fails to hydrate until a manual full reload") shipped UNFIXED.**
+
+  Single-character fix: use the constant `ISLANDS_REGISTRY_ID` that `resolveId` itself returns. Behaviour now matches the documented intent of PR-S12 — adding an `island()` mid-dev invalidates the virtual module and the next request triggers a fresh `load` hook.
+
+  Surfaced by an audit of all framework commits since v0.25.1 (sequential 7-agent workflow).
+
+  Bisect-verified-with-restore: reverting to the wrong-id form fails the new regression spec with `AssertionError: expected [Array(1)] to include '\\u0000pyreon/islands-registry'` (the stub dev server captured the constructed `'\\u0000virtual:pyreon/islands-registry'` instead). Restoring → 252/252 green.
+
+  Regression coverage in `packages/tools/vite-plugin/src/tests/islands-registry.test.ts` (`PR-S12: hardening` describe block) — a stub `_devServer.moduleGraph.getModuleById` records every id passed to it; asserts the constant `ISLANDS_REGISTRY_ID` is among them on an island-declaration-change.
+
+- [#1131](https://github.com/pyreon/pyreon/pull/1131) [`3ed3134`](https://github.com/pyreon/pyreon/commit/3ed31342e04e0c59b71240ef2b7af0038d70dddb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Island registry hardening — Windows path normalization + dev HMR virtual-module invalidation (PR-S12)
+
+  Two correctness gaps in `pyreon({ islands: true })`'s auto-registry path:
+
+  **1. Windows path normalization.** `scanIslandDeclarations` resolved `loaderAbsPath` via `pathJoin(dirname(filePath), importPath)` — which uses the native path separator. On Windows that's `\`. The resolved path goes into a JSON string in `renderIslandsRegistry`, then into `import('${path}')` in the generated registry module. **Vite's resolver expects forward slashes regardless of OS**, so backslash paths fail to resolve and the auto-registry silently breaks on Windows dev. Fix: route the resolved path through `normalizeModuleId` (which already does `id.replace(/\\/g, '/')`) before storage in the registry. The forward-slash convention is then consistent across every OS.
+
+  **2. Dev HMR virtual-module invalidation.** When a user adds, renames, or removes an `island()` call in a `.tsx` / `.jsx` / `.pyreon` file, the transform hook re-scans declarations and updates `islandRegistry`. But the `virtual:pyreon/islands-registry` virtual module's `load` hook is only invoked on the FIRST request — Vite caches the emitted source, so subsequent requests get the STALE registry. The newly-added island silently fails to hydrate until a manual full reload. **Fix**: `scanIslandDeclarations` now returns a boolean indicating whether the registry changed (added/removed/renamed entries). The transform hook captures the dev server reference (`_devServer`) in `configureServer` and invalidates the virtual module via `_devServer.moduleGraph.invalidateModule(...)` when the scan reports a change. Identical-content scans return `false` — no spurious invalidations on every file touch.
+
+  A new internal helper `islandDeclsEqual(a, b)` does structural comparison of `IslandDecl[]` arrays (name + hydrate + loaderAbsPath per entry).
+
+  **Regression coverage**: 4 new tests in `islands-registry.test.ts` under the `PR-S12: hardening` describe block (Windows forward-slash assertion, simulated path normalization, transform-driven registry update, identical-content idempotence). The Windows path test asserts the absence of backslashes in the emitted source — on Linux this is trivially true for any code path, but the test serves as a Windows-shape regression catcher (a regression that re-introduces backslashes would fail on Windows even if Linux CI passes). The HMR invalidation wiring itself can't be unit-tested without a real dev server — the integration smoke is the `examples/islands-showcase` flow.
+
+  **Deferred from this PR**: the regex → AST scanner migration (the third item in the plan). The regex is functional today and migrating to oxc-parser AST visitor is a substantial change (mirroring the `@pyreon/lint/utils/imports.ts` precedent) that warrants its own PR with thorough false-positive coverage. Tracked as a follow-up.
+
+  **No public API change**: the plugin's user-facing surface (`pyreon({ islands: true })` + `hydrateIslandsAuto()`) is unchanged. The internal helper signatures changed (`scanIslandDeclarations` now returns `boolean`), but no external consumer references them.
+
+- [#1137](https://github.com/pyreon/pyreon/pull/1137) [`04cb153`](https://github.com/pyreon/pyreon/commit/04cb153ea454dd86d365ccbac5fd8d764aa8be01) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(vite-plugin): move `@pyreon/runtime-dom` from `peerDependencies` → `dependencies`
+
+  The peer relationship was triggering a `major`-bump cascade across the entire 62-package `fixed` group on every release-PR run. Root cause:
+
+  1. `@pyreon/runtime-dom` minor-bumps (e.g. `0.25.1 → 0.26.0` from `bind-text-member-expr-widen`).
+  2. In 0.x semver, that bump **leaves** the `^0.25.0` range.
+  3. `@changesets/assemble-release-plan`'s peer-dependency-cascade logic (`getDependencyVersionRanges` + `incrementBumpType`) interprets "peer range left" as a breaking change for `@pyreon/vite-plugin` → cascades **MAJOR**.
+  4. `@pyreon/vite-plugin` is in the `fixed` group → `matchFixedConstraint` picks the highest bump (major) and applies it to all 62 group members.
+  5. Major on a 0.x package → **`1.0.0`**.
+
+  Pyreon is explicitly 0.x pre-production-ready; the unintended `1.0.0` cascade contradicted that policy. The `scripts/cap-changeset-bumps.ts` guard catches **explicit** `: major` lines in changeset frontmatter, but the cascade above happens at the release-plan level after changesets are read — outside the script's reach.
+
+  Why moving from `peerDependencies` to `dependencies` is the correct structural fix (not a workaround):
+
+  - `@pyreon/vite-plugin`'s compiled output emits imports targeting `@pyreon/runtime-dom` primitives (`_tpl`, `_bind`, `_rsCollapse`, etc.). Without runtime-dom installed, those imports unresolve and the consumer's build fails. That's the contract of a regular runtime `dependencies` entry, not a peer.
+  - Every Pyreon app already installs `@pyreon/runtime-dom` directly (or transitively via `@pyreon/zero`); the peer requirement added zero practical value over a direct dep.
+  - The peerDep was likely an early design carryover from when vite-plugin was scoped narrower.
+
+  Side effect: vite-plugin's `node_modules` now installs runtime-dom transitively rather than expecting the consumer to provide it. For typical Pyreon apps (which already have runtime-dom in their own dependencies), this is a no-op — npm/pnpm/bun all dedupe to a single hoisted copy.
+
+  Verified end-to-end via `bunx changeset version` against the current 48 pending changesets:
+
+  - Before: all 62 fixed-group packages bumped `0.25.1 → 1.0.0`.
+  - After: bump levels respect the actual changeset declarations — `@pyreon/compiler` → `0.26.0` (minor), `@pyreon/runtime-dom` → `0.26.0` (minor), `@pyreon/vite-plugin` → `0.26.0` (cascaded minor via fixed-group, not major).
+
+  Unblocks PR [#909](https://github.com/pyreon/pyreon/issues/909) (`chore: version packages`) from publishing an unintended 1.0.0.
+
+- Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`ecceb71`](https://github.com/pyreon/pyreon/commit/ecceb710dc442a93818b7d60f38155a9f8cd71b9), [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`f27477a`](https://github.com/pyreon/pyreon/commit/f27477a681fdc131ea2904940dabb5b8b0e6b9cb), [`76ef68e`](https://github.com/pyreon/pyreon/commit/76ef68efa4daea765ca3eb512be71cc1f7db483c), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
+  - @pyreon/compiler@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes

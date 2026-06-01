@@ -1,5 +1,35 @@
 # @pyreon/server
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1121](https://github.com/pyreon/pyreon/pull/1121) [`4204f49`](https://github.com/pyreon/pyreon/commit/4204f49f1dad0997b77fd6a9a90d047f8621010d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - HTTP method gating + stream-mode 404 status + HEAD body-stripping (PR-S6)
+
+  Three correctness gaps in `createHandler`, all instances of Pattern B (incomplete HTTP semantics):
+
+  **1. No method gating.** The pre-fix handler ran the full render pipeline (loaders + SSR + scripts) against every HTTP method — POST / PUT / DELETE / PATCH bodies fell through to renderers that returned HTML and produced confusing 500s when the client expected JSON / 204 / 405. Now: after the middleware pipeline (so API routes / server actions / user middleware still handle their own non-GET methods), the gate rejects unknown methods. `OPTIONS` returns `204 No Content` + `Allow: GET, HEAD, OPTIONS` for fallback preflight; `POST`/`PUT`/`DELETE`/`PATCH` / etc. return `405 Method Not Allowed` + the same `Allow` header. **Loaders no longer fire on POST** — verified by a regression test that asserts `loaderFired === false` after a `POST` request.
+
+  **2. Stream mode hard-coded `status: 200`.** The L5 router-driven 404 path (PR L5) set `isNotFound: true` on `router.currentRoute()` when an unmatched URL resolved through the synthetic `notFoundComponent` chain; string mode read the flag and emitted `404`, but stream mode silently emitted `200`. Now: stream mode reads the same flag synchronously (before streaming starts — the flag is set by `router.resolve` in the per-request `createRouter` above) and threads it into `renderStreamResponse` as a `status` parameter (defaults to `200` for source-compatible callers).
+
+  **3. HEAD returned a full body.** Pre-fix `HEAD` ran the same render pipeline as `GET` and returned the body — wasteful for preflight cache probes and incorrect per HTTP spec. Now: the renderer still runs (loaders fire for preflight cache-warming), but `new Response(null, { status, headers })` short-circuits body production. Stream mode handles HEAD the same way — the stream is never connected to the response.
+
+  **Regression coverage**: 12 new tests across the `PR-S6 HTTP method gating` and `PR-S6 stream mode 404 status` describe blocks. Bisect-verified: reverting `handler.ts` fails 9 of 12 new tests (the 3 passes are baselines — GET status, middleware short-circuit before gate, stream-matched-URL status, all of which would pass either way).
+
+  **Middleware ordering preserved**: API routes, server actions, CORS preflight handlers, and user middleware ALL run BEFORE the method gate — so middleware that handles its own POST / OPTIONS / DELETE short-circuits with its own Response and the gate never fires. The gate is the FALLBACK for unhandled methods.
+
+  **No public API change**: the new `status` and `isHead` parameters on `renderStreamResponse` are internal (default to source-compatible values).
+
+### Patch Changes
+
+- Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`06d66e9`](https://github.com/pyreon/pyreon/commit/06d66e976ad3e5da9777e61eb0f09c70f7b2b871), [`9275a00`](https://github.com/pyreon/pyreon/commit/9275a00f72f071edfeb66584516e093b074b6986), [`434b83f`](https://github.com/pyreon/pyreon/commit/434b83f202060c3a517e67e1ebf4d147369a69c8), [`f54cec8`](https://github.com/pyreon/pyreon/commit/f54cec8f13dffb7fdeceb05021005e342bb856a9), [`f8fbb3b`](https://github.com/pyreon/pyreon/commit/f8fbb3b240fd8aab94900b97e9bab6be3d822b28), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/runtime-server@1.0.0
+
 ## 0.25.1
 
 ### Patch Changes
