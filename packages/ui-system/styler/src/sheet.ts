@@ -503,6 +503,43 @@ export class StyleSheet {
     return this.sheet?.cssRules.length ?? 0
   }
 
+  /**
+   * Clear the SSR rule-capture buffer ONLY. Leaves `cache`,
+   * `insertCache`, `icKeysByClass`, `domRules`, and `injectedBundles`
+   * intact.
+   *
+   * Used by the rocketstyle-collapse build-time resolver to isolate
+   * per-site rule captures between concurrent renders against the
+   * shared singleton sheet (audit #8). Without resetting the buffer
+   * between the resolver's render pairs, the `getStyleRules()` slice
+   * for site N captures `[...site1Rules, ...site2Rules, ..., siteNRules]`
+   * — every FNV key becomes unique per call order, and the cross-site
+   * `injectedBundles` runtime dedup at consumer sites silently breaks
+   * even when the underlying rule bundles are identical.
+   *
+   * Important context — the resolver MUST also pair this with per-test
+   * resolver isolation OR truly-distinct dimension props per render to
+   * actually produce non-empty `getStyleRules()` slices: `insert()`
+   * short-circuits at `cache.has(className)` / `insertCache.get(icKey)`
+   * when a className has been seen, AND cache layers above the styler
+   * (styled.tsx `classCache` / `elClassCache` keyed on rocketstyle's
+   * `$rocketstyle`/`$rocketstate` identity, and rocketstyle's `_rsMemo`)
+   * survive between resolves within a single nested-Vite-SSR lifetime.
+   * A second resolve sharing dimension props with a prior one will hit
+   * the styled-component cache, skip `sheet.insert()` entirely, and
+   * leave the just-reset buffer empty for that className. The fix is
+   * resolver-level isolation (fresh nested Vite SSR per build) plus
+   * this buffer-reset to keep concurrent captures from interleaving.
+   *
+   * Internal-use only — NEVER call this from a request-handling path
+   * (the per-request `reset()` is the correct shape there, since the
+   * request lifecycle is bounded and the styler caches should be
+   * dropped wholesale).
+   */
+  resetSSRBuffer(): void {
+    this.ssrBuffer = []
+  }
+
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
   getStyles(): string {
     if (this.ssrBuffer.length === 0) return ''

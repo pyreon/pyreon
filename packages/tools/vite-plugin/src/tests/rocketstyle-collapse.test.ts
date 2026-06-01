@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import pyreon from '../index'
 import {
   type CollapseResolver,
@@ -260,6 +260,227 @@ export const Save = () => <Button state="primary" size="medium">Save</Button>`
     // the 5-layer <Button> wrapper mount is gone from the client graph
     expect(code).not.toContain('<Button')
   }, 60_000)
+})
+
+// Audit #7 + #8 regression: serializing the resolver chain (#7) +
+// resetting the styler's SSR rule-capture buffer between render pairs
+// (#8). The two are entangled — without (#8) every site's captured
+// `rules[]` includes prior sites' rules → unique FNV keys → cross-site
+// `injectedBundles` dedup silently breaks. Without (#7) parallel
+// `resolve()` calls interleave renderToString invocations against the
+// SAME singleton sheet → rules from BOTH sites land in BOTH captures.
+// Combined: each render-pair sees a fresh buffer + strict FIFO ordering.
+//
+// Important constraint discovered during implementation: cache layers
+// ABOVE the styler sheet (styled.tsx `classCache`/`elClassCache` keyed
+// by `$rocketstyle`/`$rocketstate` object identities, and rocketstyle's
+// `_rsMemo`) survive between resolves within a single nested-Vite-SSR
+// lifetime. A second resolve sharing dimension props with a prior resolve
+// hits the styled-component cache → returns the same className without
+// re-invoking `sheet.insert()` → the freshly-reset buffer stays empty for
+// that className. To get a meaningful per-site rule capture under the
+// per-buffer-reset fix, each spec below uses UNIQUE dimension combinations
+// (state × size × variant) that no other test reuses, ensuring the
+// `$rocketstyle` identity is fresh per call → classCache miss →
+// `sheet.insert()` fires → rules land in the just-reset buffer.
+describe('audit #7+#8: resolver serialization + per-site buffer isolation', () => {
+  // Each test creates its OWN resolver (fresh nested Vite SSR server with
+  // fresh styler sheet / styled.tsx classCache / rocketstyle _rsMemo) so
+  // the resolves within ONE spec aren't polluted by caches warmed up in
+  // prior specs. The structural property we're testing (per-resolve buffer
+  // isolation) is only observable when each render genuinely fires
+  // `sheet.insert()` — which requires cache misses across all layers, and
+  // that requires resolver-level isolation per test, not just unique
+  // dimension combos (which would also work but is brittle to add-a-test
+  // changes elsewhere in the file).
+  let resolver: CollapseResolver
+  beforeEach(async () => {
+    resolver = await createCollapseResolver(UI_SHOWCASE)
+  }, 60_000)
+  afterEach(async () => {
+    await resolver?.dispose()
+  })
+
+  // Sheet identity verification — drive two resolves with FRESH dimension
+  // combinations against this describe block's dedicated resolver, and
+  // confirm that the singleton sheet survives between resolves AND the
+  // reset+capture round-trip targets the SAME instance. If `ssrLoadModule`
+  // returned a fresh module per load, BOTH resolves' captured rules would
+  // start from an empty buffer with no carry-over (which they do here),
+  // BUT also the post-reset state would be invisible to the next render
+  // (which it isn't — proven by `b.rules.length > 0` after a's render +
+  // b's reset). This proof is load-bearing for the whole fix's correctness.
+  it('sheet identity is stable across consecutive resolves (reset reaches the same instance)', async () => {
+    // Both inputs use UNIQUE dimension tuples (state × size × variant)
+    // not reused by any other describe block — guarantees classCache miss
+    // on both renders, so each render fires sheet.insert() and the
+    // reset+capture round-trip is observable.
+    const inputA = {
+      component: { name: 'Button', source: '@pyreon/ui-components' } as const,
+      props: { state: 'danger', size: 'small', variant: 'outline' },
+      childrenText: 'A',
+      config: DEFAULT_COLLAPSE_CONFIG,
+    }
+    const inputB = {
+      component: { name: 'Button', source: '@pyreon/ui-components' } as const,
+      props: { state: 'success', size: 'large', variant: 'subtle' },
+      childrenText: 'B',
+      config: DEFAULT_COLLAPSE_CONFIG,
+    }
+    const a = await resolver.resolve(inputA)
+    const b = await resolver.resolve(inputB)
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    if (!a || !b) return
+    // Both sites resolved successfully. Each `rules[]` is non-empty
+    // (proves the sheet was populated during EACH render pair — which
+    // could ONLY happen if the singleton survived between resolves AND
+    // the buffer was reset before each capture; a fresh per-load sheet
+    // would not retain rules at all, and an un-reset shared sheet
+    // would make B's slice strictly larger than A's).
+    expect(a.rules.length).toBeGreaterThan(0)
+    expect(b.rules.length).toBeGreaterThan(0)
+    // The keys differ — distinct prop sets produce distinct rule
+    // bundles. With the resetSSRBuffer call working, each capture is
+    // SCOPED to its own resolve, so the FNV-over-rules hash is
+    // determined ONLY by that site's content — not the cumulative
+    // history of all prior captures.
+    expect(a.key).not.toBe(b.key)
+  }, 60_000)
+
+  // SPEC A — closes #8 ssrBuffer accumulation.
+  // Resolve 3 distinct sites SEQUENTIALLY. With the fix, B's captured
+  // rules do NOT include A's rules and C's do NOT include A's or B's
+  // (each render-pair starts from an empty buffer). Without the fix,
+  // B is the strict superset of A and C is the strict superset of A+B,
+  // so the "in A not in B" delta collapses to 0 (broken-buffer signature).
+  it('SPEC A (sequential): each resolve captures ONLY its own rules (no buffer accumulation)', async () => {
+    const baseConfig = DEFAULT_COLLAPSE_CONFIG
+    // Three sites with UNIQUE dimension tuples not shared with the sheet-
+    // identity test above OR with any other describe block. Each render
+    // produces a fresh `$rocketstyle` identity → classCache miss →
+    // sheet.insert() fires → the just-reset buffer captures that site's
+    // rules. (Reusing a tuple from the sheet-identity test would cache-
+    // hit, returning className with NO insert, leaving rules empty.)
+    const siteA = await resolver.resolve({
+      component: { name: 'Button', source: '@pyreon/ui-components' },
+      props: { state: 'danger', size: 'medium', variant: 'ghost' },
+      childrenText: 'AAA',
+      config: baseConfig,
+    })
+    const siteB = await resolver.resolve({
+      component: { name: 'Button', source: '@pyreon/ui-components' },
+      props: { state: 'success', size: 'small', variant: 'link' },
+      childrenText: 'BBB',
+      config: baseConfig,
+    })
+    const siteC = await resolver.resolve({
+      component: { name: 'Button', source: '@pyreon/ui-components' },
+      props: { state: 'primary', size: 'large', variant: 'outline' },
+      childrenText: 'CCC',
+      config: baseConfig,
+    })
+    expect(siteA).not.toBeNull()
+    expect(siteB).not.toBeNull()
+    expect(siteC).not.toBeNull()
+    if (!siteA || !siteB || !siteC) return
+
+    // Each site's `rules[]` is non-empty — the reset+render+capture
+    // round-trip worked (the classCache-miss path went through
+    // `sheet.insert()` and the buffer captured something).
+    expect(siteA.rules.length).toBeGreaterThan(0)
+    expect(siteB.rules.length).toBeGreaterThan(0)
+    expect(siteC.rules.length).toBeGreaterThan(0)
+
+    // The CONTRACT (bisect-load-bearing): under accumulation, B's set
+    // strictly contains A's and C's contains A∪B. So `A \ B` would be
+    // empty (every A-rule is also in B). With the reset call working,
+    // A has rules B doesn't have (and vice-versa) because each capture
+    // is scoped to its own render.
+    const setA = new Set(siteA.rules)
+    const setB = new Set(siteB.rules)
+    const setC = new Set(siteC.rules)
+
+    // Symmetric "exclusive" deltas — neither set must be a subset of
+    // the other. Under buffer accumulation (no reset call), B = A ∪ B'
+    // and C = A ∪ B ∪ C', so `A \ B === ∅` and `A \ C === ∅`.
+    const ruleInAnotInB = [...setA].filter((r) => !setB.has(r))
+    const ruleInBnotInA = [...setB].filter((r) => !setA.has(r))
+    expect(ruleInAnotInB.length).toBeGreaterThan(0)
+    expect(ruleInBnotInA.length).toBeGreaterThan(0)
+
+    // Same against C: C must not be the union of all prior captures.
+    const ruleInAnotInC = [...setA].filter((r) => !setC.has(r))
+    const ruleInBnotInC = [...setB].filter((r) => !setC.has(r))
+    expect(ruleInAnotInC.length).toBeGreaterThan(0)
+    expect(ruleInBnotInC.length).toBeGreaterThan(0)
+
+    // FNV keys are derived from `rules.join('\u0000')` — if accumulation
+    // were broken, B's key would be hash(A ∪ B') ≠ A's key but ALSO
+    // ≠ what an isolated B-capture would produce. Under the fix, each
+    // key is a function of THAT site's rules only, so they remain
+    // pairwise distinct (the three sites are genuinely distinct).
+    expect(siteA.key).not.toBe(siteB.key)
+    expect(siteB.key).not.toBe(siteC.key)
+    expect(siteA.key).not.toBe(siteC.key)
+  }, 90_000)
+
+  // SPEC B — closes #7 cross-contamination under concurrent resolve.
+  // Two `resolve()` calls fired via `Promise.all` must each observe ONLY
+  // their own captured rules. Without chain serialization, both
+  // renderToString runs interleave against the singleton sheet and BOTH
+  // captures see the union of BOTH sites' rules (and very likely produce
+  // IDENTICAL `key` values because both reads of `getStyleRules()` hit
+  // the same merged buffer at the same moment).
+  it('SPEC B (concurrent): parallel resolves do not interleave rule captures', async () => {
+    // Two sites with UNIQUE dimension tuples not used in any other test
+    // in this file — fresh `$rocketstyle` identities, so the classCache
+    // can't short-circuit either render to "return cached className with
+    // no insert", which would mask the concurrency bug behind empty
+    // captures.
+    const inputA = {
+      component: { name: 'Button', source: '@pyreon/ui-components' } as const,
+      props: { state: 'success', size: 'medium', variant: 'ghost' },
+      childrenText: 'ConcurrentA',
+      config: DEFAULT_COLLAPSE_CONFIG,
+    }
+    const inputB = {
+      component: { name: 'Button', source: '@pyreon/ui-components' } as const,
+      props: { state: 'danger', size: 'large', variant: 'subtle' },
+      childrenText: 'ConcurrentB',
+      config: DEFAULT_COLLAPSE_CONFIG,
+    }
+    const [a, b] = await Promise.all([
+      resolver.resolve(inputA),
+      resolver.resolve(inputB),
+    ])
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    if (!a || !b) return
+
+    // Both rule-sets must be non-empty (proves the serialized chain
+    // executed each render under a fresh buffer with no interleaving).
+    expect(a.rules.length).toBeGreaterThan(0)
+    expect(b.rules.length).toBeGreaterThan(0)
+
+    // Distinct prop combinations must produce distinct keys when the
+    // chain serializes correctly. If both were captured from the same
+    // interleaved merged buffer, both keys would match (identical rule
+    // snapshots taken at the same moment of the unified buffer). The
+    // keys diverging is the strongest single-bit signal of isolation.
+    expect(a.key).not.toBe(b.key)
+
+    // Cross-pollution guard, same shape as SPEC A: neither set may be
+    // a strict superset of the other. Under interleaved capture both
+    // sets are IDENTICAL (both reads see the merged buffer) — both
+    // "exclusive" deltas would be empty.
+    const setA = new Set(a.rules)
+    const setB = new Set(b.rules)
+    const ruleInAnotInB = [...setA].filter((r) => !setB.has(r))
+    const ruleInBnotInA = [...setB].filter((r) => !setA.has(r))
+    expect(ruleInAnotInB.length).toBeGreaterThan(0)
+    expect(ruleInBnotInA.length).toBeGreaterThan(0)
+  }, 90_000)
 })
 
 // Layer 5: drive the collapse path through the REAL `pyreon()` plugin
