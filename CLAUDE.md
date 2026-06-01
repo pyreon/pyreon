@@ -1617,6 +1617,34 @@ bun run check-manifest-depth --json   # machine-readable
 
 It is a **ratchet, not a target** (same shape as `check-bundle-budgets` / audit-types `EXEMPT_FIELDS`): `LOCKED` records each migrated package's *achieved* `{ minEntries, minWithMistakes }` — counted via the authoritative `findManifests` loader (the same one `get_api` uses), never a source grep. The gate fails only if a locked package drops below its floor. Packages absent from `LOCKED` (i18n, charts, code, dnd, state-tree, validation, …) are the visible migration backlog — intentionally NOT gated, so the gate never flag-days CI on 15 packages at once. Migrating a package = enrich its manifest, then add it to `LOCKED` with the numbers that PR achieves; that addition is the deliberate "at standard now" signal, reviewed in the same PR. CI runs it as a required `Check Manifest Depth` job (~2s, `needs: install`).
 
+## Release Readiness — release-pipeline config drift gate
+
+`scripts/check-release-readiness.ts` + `.github/workflows/release-readiness-check.yml` gate every PR against two configuration invariants that, if violated, would silently break the release pipeline:
+
+1. **`publishConfig.access: "public"` coverage** — every non-private, non-stub `@pyreon/*` package must declare it. `scripts/publish.ts` already passes `--access=public` on the CLI, but the `publishConfig` is the npm-canonical safety net + protects against manual `npm publish` accidentally treating the package as private. PR #1160 closed 4 historical drift sites under `packages/zero/`; this gate prevents the same drift from re-appearing.
+2. **Changeset-group coverage** — every non-private, non-stub `@pyreon/*` package must be in EITHER the `fixed[0]` group in `.changeset/config.json` (synced version trajectory with the rest of the framework — the default for publishable packages) OR the `ignore` array (ships to git only, never to npm). A new package missing from BOTH would silently version-drift on the next release (other packages bump together, this one stays frozen).
+
+Per-platform binary stubs (`@pyreon/compiler-{darwin,linux,win32}-*`) are exempt — they're published by `release-native.yml` not the main script, and they're already in the fixed group.
+
+**Bypass:** `skip-release-readiness` label, intended for cases where a package is INTENTIONALLY outside the fixed group during an early-stage rollout. Use sparingly — the default expectation is that every publishable Pyreon package ships together.
+
+**Why it exists:** PR #1153's release cascade made the abstract risk concrete. 3 new packages (`@pyreon/validate`, `@pyreon/primitives`, `@pyreon/create-multiplatform`) needed first-publish bootstrap; the main release workflow couldn't auto-bootstrap them through OIDC (trusted-publisher chicken-and-egg constraint requires a classic-token first publish). The pre-fix `scripts/publish.ts` then exited 1 on the first 404 → blocked the umbrella `v<version>` tag-push step → blocked `release-native.yml` → 7 native compiler binaries stuck on npm at 0.24.2 while source was at 0.26.x. **This gate catches the underlying configuration drift at PR time, before any release attempt.** Closes the bug class that produced the cascade.
+
+## First-publish OIDC trusted-publisher procedure
+
+For ANY new publishable `@pyreon/*` package, the very first publish to npm CANNOT go through the workflow's OIDC trusted publishing — the trusted-publisher rule lives on the npm-side package metadata, which doesn't exist until the first publish. One-time manual bootstrap procedure:
+
+1. **From a dev machine**, ensure logged into npm with publish rights to `@pyreon`: `npm whoami` then `npm login` if needed.
+2. **Build the package** fresh: `cd packages/<cat>/<pkg> && bun run build`.
+3. **Dry-run pack** to inspect the tarball contents: `npm pack --dry-run` — confirm `lib/**`, `src/**`, `LICENSE`, `README.md`. Nothing else.
+4. **Publish** with `bun publish --access=public`. Use `bun` (not `npm`) — auto-resolves `workspace:*` deps to real versions. 2FA OTP if your npm account has it. NO `--provenance` flag — classic tokens can't sign OIDC provenance; provenance starts with the SECOND publish via CI.
+5. **Add Trusted Publisher** on npmjs.com:
+   - Visit `https://www.npmjs.com/package/@pyreon/<name>/access` → Trusted Publishers → Add publisher
+   - Publisher type: GitHub Actions / Organization: `pyreon` / Repository: `pyreon` / Workflow filename: `release.yml` / Environment name: (leave blank)
+6. **Verify** the next changesets release publishes the package via OIDC — no further manual intervention needed.
+
+`scripts/publish.ts` is hardened against this scenario (since PR #1161): if a future package is added without the manual bootstrap, the release WON'T cascade-fail — the script categorizes the 404 as "needs bootstrap" (non-blocking WARNING) and continues publishing the other packages. The umbrella tag still fires, `release-native.yml` still runs, native binaries publish on schedule. The maintainer sees the bootstrap-needed list at the end of the release log + actionable instructions.
+
 ## Leak Sweep — nightly heap-growth regression gate
 
 `.github/workflows/leak-sweep.yml` drives `scripts/leak-sweep.ts` (#772) across the perf-dashboard journey catalog: ~43 journeys, 15 cycles each, two forced GCs between samples, least-squares regression over the resulting heap series. A non-trivial positive slope flags a journey as leaking. Same surface that surfaced the `<For>`-of-`<Show>` batched-toggle bug fixed in #776, and the `<For>`-of-direct-keyed-array sibling bug fixed in #783 (full discovery chain: #770 leak-audit harness → #772 leak-sweep multi-journey driver → #774 `it.fails()` CONTRACT lock → #776 `mountReactive` root-cause fix → #779 nightly gate → #783 `mountKeyedList` sibling fix → #784 anti-pattern doc entry).
