@@ -1,0 +1,56 @@
+name: Release Readiness
+
+# Structural sanity check on the release pipeline configuration.
+# Catches the two configuration-drift bug classes that historically
+# cascade-broke releases:
+#
+#   1. A new publishable @pyreon/* package missing
+#      `publishConfig.access: "public"` (PR #1160 closed 4 such sites).
+#   2. A new publishable @pyreon/* package missing from the changeset
+#      `fixed` group AND from the `ignore` array (PR #1160 closed 4
+#      such sites — the next release would have version-drifted them
+#      while everything else bumped together).
+#
+# Rationale: PR #1153's release cascade made it clear that subtle
+# config drift causes opaque release failures (publish.ts exits 1 →
+# umbrella tag step skips → release-native.yml never fires → native
+# binaries stuck on npm). This gate catches drift at PR time, before
+# the cascade can happen.
+#
+# Bypass: `skip-release-readiness` label, intended for packages
+# deliberately staying outside the fixed group during early-stage
+# rollout.
+#
+# See `scripts/check-release-readiness.ts` for the policy logic.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-readiness-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Release Readiness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Verify configuration coverage
+        env:
+          HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-release-readiness') }}
+        run: bun scripts/check-release-readiness.ts
