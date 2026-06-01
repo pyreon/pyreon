@@ -1,3 +1,4 @@
+import { SizedMap } from '@pyreon/sized-map'
 import type { LineIndex } from './utils/source'
 
 /**
@@ -10,6 +11,8 @@ import type { LineIndex } from './utils/source'
  * `new AstCache(2048)`.
  */
 const DEFAULT_MAX_ENTRIES = 256
+
+type AstEntry = { program: unknown; lineIndex: LineIndex }
 
 /**
  * LRU-bounded in-memory cache for parsed ASTs keyed by file content hash.
@@ -25,6 +28,11 @@ const DEFAULT_MAX_ENTRIES = 256
  * least-recently-used entry is evicted (`Map` preserves insertion order,
  * so re-inserting on hit moves the entry to the tail).
  *
+ * Implementation note: the LRU eviction is delegated to `@pyreon/sized-map`
+ * (an internal workspace primitive shared across the framework). This
+ * class adds the FNV-1a hash layer on top so callers can key entries by
+ * raw source text without paying the hash cost themselves.
+ *
  * @example
  * ```ts
  * import { AstCache } from "@pyreon/lint"
@@ -38,35 +46,18 @@ const DEFAULT_MAX_ENTRIES = 256
  * ```
  */
 export class AstCache {
-  private cache = new Map<string, { program: unknown; lineIndex: LineIndex }>()
-  private readonly maxEntries: number
+  private readonly cache: SizedMap<string, AstEntry>
 
   constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
-    this.maxEntries = Math.max(1, maxEntries)
+    this.cache = new SizedMap({ maxEntries, lru: true })
   }
 
-  get(sourceText: string): { program: unknown; lineIndex: LineIndex } | undefined {
-    const key = fnv1aHash(sourceText)
-    const value = this.cache.get(key)
-    if (value === undefined) return undefined
-    // Touch — move to tail by re-inserting (Map preserves insertion order).
-    this.cache.delete(key)
-    this.cache.set(key, value)
-    return value
+  get(sourceText: string): AstEntry | undefined {
+    return this.cache.get(fnv1aHash(sourceText))
   }
 
-  set(sourceText: string, value: { program: unknown; lineIndex: LineIndex }): void {
-    const key = fnv1aHash(sourceText)
-    // If already present, refresh position (treat as a recency hit).
-    if (this.cache.has(key)) {
-      this.cache.delete(key)
-    } else if (this.cache.size >= this.maxEntries) {
-      // Evict oldest — Map preserves insertion order, so the FIRST key
-      // returned by .keys() is the least-recently-used.
-      const oldest = this.cache.keys().next().value
-      if (oldest !== undefined) this.cache.delete(oldest)
-    }
-    this.cache.set(key, value)
+  set(sourceText: string, value: AstEntry): void {
+    this.cache.set(fnv1aHash(sourceText), value)
   }
 
   clear(): void {

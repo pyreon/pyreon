@@ -459,6 +459,7 @@ export interface Router<TNames extends string = string> {
 // ─── Internal router instance ─────────────────────────────────────────────────
 
 import type { Computed, Signal } from '@pyreon/reactivity'
+import type { SizedMap } from '@pyreon/sized-map'
 
 export interface RouterInstance extends Router {
   routes: RouteRecord[]
@@ -467,7 +468,7 @@ export interface RouterInstance extends Router {
   _base: string
   _currentPath: Signal<string>
   _currentRoute: Computed<ResolvedRoute>
-  _componentCache: Map<RouteRecord, ComponentFn>
+  _componentCache: SizedMap<RouteRecord, ComponentFn>
   _loadingSignal: Signal<number>
   /**
    * PR-S8: dev-only counter — bumped by `_hmrSwap` after a successful
@@ -504,7 +505,7 @@ export interface RouterInstance extends Router {
   /** Timestamp when the current navigation started — used for pendingMs timing */
   _navigationStartTime: number
   /** Key-based loader cache: cacheKey → { data, timestamp } */
-  _loaderCache: Map<string, { data: unknown; timestamp: number }>
+  _loaderCache: SizedMap<string, { data: unknown; timestamp: number }>
   /**
    * In-flight loader dedup: cacheKey → { promise, signal }.
    * Tracking the signal lets dedup skip an in-flight entry whose signal is

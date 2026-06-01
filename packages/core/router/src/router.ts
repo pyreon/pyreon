@@ -1,5 +1,6 @@
 import { createContext, onUnmount, useContext } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
+import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
 import { getRedirectInfo } from './redirect'
 import { ScrollManager } from './scroll'
@@ -548,7 +549,10 @@ export function createRouter<TNames extends string = string>(
   if (_popstateHandler) window.addEventListener('popstate', _popstateHandler)
   if (_hashchangeHandler) window.addEventListener('hashchange', _hashchangeHandler)
 
-  const componentCache = new Map<RouteRecord, ComponentFn>()
+  // FIFO-bounded — eviction handled by SizedMap.set on overflow. Cap mirrors
+  // _loaderCache (via `maxCacheSize`); both caches grow under the same shape
+  // of pathological input (unbounded distinct route records / loader keys).
+  const componentCache = new SizedMap<RouteRecord, ComponentFn>({ maxEntries: maxCacheSize })
   const loadingSignal = signal(0)
   // PR-S8: separate tick signal for HMR-driven cache invalidation. Pre-fix
   // `_hmrSwap` bumped `loadingSignal` with `+ 1` and never paired a `- 1`
@@ -693,22 +697,14 @@ export function createRouter<TNames extends string = string>(
   }
 
   /**
-   * Bounded set into `_loaderCache`: evicts the oldest entry (insertion-order
-   * FIFO) when the cap is exceeded. The `gcTime` TTL handles staleness, but
-   * without a size cap a long-running SPA navigating across many distinct
-   * loader keys (e.g. `/posts/:id` with hundreds of unique IDs) would
-   * accumulate cache entries indefinitely until manual `invalidateLoader()`
-   * — `_maxCacheSize` was wired through from `RouterOptions.maxCacheSize`
-   * (default 100) but the loader cache write paths never read it. Mirrors
-   * the same pattern used for `_componentCache` in `components.tsx`.
+   * Persist a loader result into `_loaderCache`. SizedMap.set handles the
+   * FIFO eviction internally — the cap is fixed at `maxCacheSize` when
+   * the cache was constructed below. The `gcTime` TTL handles staleness;
+   * this just keeps the cache size bounded under unbounded distinct keys
+   * (`/posts/:id` with hundreds of unique IDs over a long SPA session).
    */
   function loaderCacheSet(key: string, data: unknown): void {
     router._loaderCache.set(key, { data, timestamp: Date.now() })
-    if (router._loaderCache.size > router._maxCacheSize) {
-      // Map iterates in insertion order — first key is oldest
-      const oldest = router._loaderCache.keys().next().value as string | undefined
-      if (oldest !== undefined) router._loaderCache.delete(oldest)
-    }
   }
 
   /**
@@ -1113,7 +1109,7 @@ export function createRouter<TNames extends string = string>(
     _onError: onError,
     _maxCacheSize: maxCacheSize,
     _navigationStartTime: Date.now(),
-    _loaderCache: new Map(),
+    _loaderCache: new SizedMap({ maxEntries: maxCacheSize }),
     _loaderInflight: new Map(),
 
     async push(

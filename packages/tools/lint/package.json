@@ -58,6 +58,7 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/sized-map": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   }
 }

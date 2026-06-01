@@ -586,14 +586,13 @@ function LoaderDataProvider(props: { data: unknown; children: VNodeChild }): VNo
   return props.children
 }
 
-/** Evict oldest cache entries when the component cache exceeds maxCacheSize. */
+/**
+ * Persist a resolved component into the per-router cache. SizedMap.set
+ * handles cap-enforced FIFO eviction internally — the cap is fixed at
+ * `maxCacheSize` when the SizedMap was constructed in router.ts.
+ */
 function cacheSet(router: RouterInstance, record: RouteRecord, comp: ComponentFn): void {
   router._componentCache.set(record, comp)
-  if (router._componentCache.size > router._maxCacheSize) {
-    // Map iterates in insertion order — first key is oldest
-    const oldest = router._componentCache.keys().next().value as RouteRecord
-    router._componentCache.delete(oldest)
-  }
 }
 
 /**

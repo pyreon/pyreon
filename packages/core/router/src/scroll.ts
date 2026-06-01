@@ -1,3 +1,4 @@
+import { SizedMap } from '@pyreon/sized-map'
 import type { ResolvedRoute, RouterOptions } from './types'
 
 /**
@@ -13,7 +14,14 @@ import type { ResolvedRoute, RouterOptions } from './types'
 const MAX_SCROLL_POSITIONS = 100
 
 export class ScrollManager {
-  private readonly _positions = new Map<string, number>()
+  // SizedMap in FIFO mode — the LRU "touch on write" semantic this manager
+  // needs is built into `set`: a key collision unconditionally moves the
+  // entry to the tail. `restore` paths read positions without bumping
+  // recency (a read on back-nav shouldn't make the entry "newer" than the
+  // most recent save), so `lru: false` is correct.
+  private readonly _positions = new SizedMap<string, number>({
+    maxEntries: MAX_SCROLL_POSITIONS,
+  })
   private readonly _behavior: RouterOptions['scrollBehavior']
 
   constructor(behavior: RouterOptions['scrollBehavior'] = 'top') {
@@ -27,14 +35,9 @@ export class ScrollManager {
     // callsite (the `no-window-in-ssr` lint rule can't AST-trace indirect
     // calls from router setup).
     if (typeof window === 'undefined') return
-    // LRU: re-insert moves the entry to newest. Evict oldest when over cap.
-    if (this._positions.has(fromPath)) this._positions.delete(fromPath)
+    // SizedMap.set handles both the recency bump (delete + re-set on
+    // collision) and the cap-enforced eviction internally.
     this._positions.set(fromPath, window.scrollY)
-    while (this._positions.size > MAX_SCROLL_POSITIONS) {
-      const oldest = this._positions.keys().next().value
-      if (oldest === undefined) break
-      this._positions.delete(oldest)
-    }
   }
 
   /** Call after navigation is committed — applies scroll behavior */
