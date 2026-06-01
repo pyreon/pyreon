@@ -1,7 +1,8 @@
 {
   "name": "@pyreon/create-multiplatform",
   "version": "0.0.0",
-  "description": "Scaffold a multiplatform Pyreon app — one src/App.tsx → web + iOS (SwiftUI) + Android (Compose). Invoke as `create-multiplatform`.",
+  "private": true,
+  "description": "Scaffold a multiplatform Pyreon app — one src/App.tsx → web + iOS (SwiftUI) + Android (Compose). Invoke as `create-multiplatform`. NOT YET PUBLISHED — flagged private until the multi-platform story is ready for consumers.",
   "license": "MIT",
   "author": "Vit Bokisch",
   "repository": {
