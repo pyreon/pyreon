@@ -1,5 +1,12 @@
 # @pyreon/head
 
+## 0.26.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/runtime-server@0.26.3
+
 ## 0.26.2
 
 ### Patch Changes

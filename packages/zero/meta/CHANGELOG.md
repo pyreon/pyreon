@@ -1,5 +1,44 @@
 # @pyreon/meta
 
+## 0.26.3
+
+### Patch Changes
+
+- Updated dependencies [[`395d631`](https://github.com/pyreon/pyreon/commit/395d631e958ff71076b18e6d86c57bcc1d60b9c1)]:
+  - @pyreon/elements@0.26.3
+  - @pyreon/charts@0.26.3
+  - @pyreon/code@0.26.3
+  - @pyreon/dnd@0.26.3
+  - @pyreon/document@0.26.3
+  - @pyreon/feature@0.26.3
+  - @pyreon/flow@0.26.3
+  - @pyreon/form@0.26.3
+  - @pyreon/hooks@0.26.3
+  - @pyreon/hotkeys@0.26.3
+  - @pyreon/i18n@0.26.3
+  - @pyreon/machine@0.26.3
+  - @pyreon/permissions@0.26.3
+  - @pyreon/query@0.26.3
+  - @pyreon/rx@0.26.3
+  - @pyreon/state-tree@0.26.3
+  - @pyreon/storage@0.26.3
+  - @pyreon/store@0.26.3
+  - @pyreon/table@0.26.3
+  - @pyreon/toast@0.26.3
+  - @pyreon/url-state@0.26.3
+  - @pyreon/validation@0.26.3
+  - @pyreon/virtual@0.26.3
+  - @pyreon/attrs@0.26.3
+  - @pyreon/connector-document@0.26.3
+  - @pyreon/coolgrid@0.26.3
+  - @pyreon/document-primitives@0.26.3
+  - @pyreon/kinetic-presets@0.26.3
+  - @pyreon/kinetic@0.26.3
+  - @pyreon/rocketstyle@0.26.3
+  - @pyreon/styler@0.26.3
+  - @pyreon/ui-core@0.26.3
+  - @pyreon/unistyle@0.26.3
+
 ## 0.26.2
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @pyreon/store
 
+## 0.26.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/validation@0.26.3
+
 ## 0.26.2
 
 ### Patch Changes
