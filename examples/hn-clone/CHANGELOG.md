@@ -1,5 +1,48 @@
 # hn-clone
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.26.1
+  - @pyreon/head@0.26.1
+  - @pyreon/reactivity@0.26.1
+  - @pyreon/router@0.26.1
+  - @pyreon/runtime-dom@0.26.1
+  - @pyreon/runtime-server@0.26.1
+  - @pyreon/server@0.26.1
+  - @pyreon/charts@0.26.1
+  - @pyreon/code@0.26.1
+  - @pyreon/dnd@0.26.1
+  - @pyreon/document@0.26.1
+  - @pyreon/feature@0.26.1
+  - @pyreon/flow@0.26.1
+  - @pyreon/form@0.26.1
+  - @pyreon/hooks@0.26.1
+  - @pyreon/hotkeys@0.26.1
+  - @pyreon/i18n@0.26.1
+  - @pyreon/machine@0.26.1
+  - @pyreon/permissions@0.26.1
+  - @pyreon/query@0.26.1
+  - @pyreon/rx@0.26.1
+  - @pyreon/state-tree@0.26.1
+  - @pyreon/storage@0.26.1
+  - @pyreon/store@0.26.1
+  - @pyreon/table@0.26.1
+  - @pyreon/toast@0.26.1
+  - @pyreon/url-state@0.26.1
+  - @pyreon/validation@0.26.1
+  - @pyreon/virtual@0.26.1
+  - @pyreon/connector-document@0.26.1
+  - @pyreon/coolgrid@0.26.1
+  - @pyreon/document-primitives@0.26.1
+  - @pyreon/elements@0.26.1
+  - @pyreon/kinetic-presets@0.26.1
+  - @pyreon/kinetic@0.26.1
+  - @pyreon/meta@0.26.1
+  - @pyreon/zero@0.26.1
+
 ## 0.0.2
 
 ### Patch Changes

@@ -1,5 +1,21 @@
 # create-zero
 
+## 0.26.1
+
+### Patch Changes
+
+- [#1155](https://github.com/pyreon/pyreon/pull/1155) [`1779b84`](https://github.com/pyreon/pyreon/commit/1779b84c2719c1e0745ce2630d8940ff3bc25ed0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(create-zero): close file-system-race TOCTOU in .env.example merge
+
+  Previously `existsSync(envPath) ? await readFile(envPath, …) : ''` had
+  a race window where the file could be removed/changed between the
+  existence check and the read. Replaced with try/catch on `readFile`
+  catching `ENOENT` — atomic; no race window. Semantically equivalent
+  for the common case (file exists / file missing). Non-ENOENT errors
+  (permissions, etc.) now propagate explicitly rather than silently
+  becoming empty content.
+
+  Closes CodeQL alert: `js/file-system-race` (high severity, warning level).
+
 ## 0.26.0
 
 ### Patch Changes
