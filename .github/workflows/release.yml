@@ -62,6 +62,16 @@ jobs:
     if: github.ref == 'refs/heads/main'
     name: Release
     runs-on: ubuntu-latest
+    # Accepted-risk job-scoped writes — narrowly required by the publish flow:
+    #   - contents: write — push the `v<version>` git tag + create the
+    #     GitHub Release entry via `gh release create` (line ~212).
+    #   - pull-requests: write — changesets-action opens/updates the
+    #     "chore: version packages" Version PR on changeset-only pushes.
+    #   - id-token: write — OIDC trusted publishing to npm with provenance.
+    # No third-party action calls run between the checkout and the publish
+    # step (other than the pinned-SHA harden-runner audit + the official
+    # setup-bun/setup-node + changesets/action), so the broad write scope
+    # is confined to first-party + audited build steps.
     permissions:
       contents: write
       pull-requests: write
@@ -226,6 +236,11 @@ jobs:
     name: Publish Prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Accepted-risk job-scoped writes — same justification as the
+    # `stable` job above. The prerelease branch publishes a `next` npm
+    # tag (provenance-signed via OIDC) and pushes the snapshot tag /
+    # records the release entry; broad writes are confined to the
+    # publish job, gated by the `refs/heads/release/**` ref check.
     permissions:
       contents: write
       pull-requests: write
