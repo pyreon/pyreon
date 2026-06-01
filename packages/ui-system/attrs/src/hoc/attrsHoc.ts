@@ -1,6 +1,6 @@
 import type { Configuration } from '../types/configuration'
 import type { ComponentFn } from '../types/utils'
-import { calculateChainOptions, removeUndefinedProps } from '../utils/attrs'
+import { calculateChainOptions, mergeDescriptors, removeUndefinedProps } from '../utils/attrs'
 
 export type AttrsStyleHOC = ({
   attrs,
@@ -47,20 +47,29 @@ const createAttrsHOC: AttrsStyleHOC = ({ attrs, priorityAttrs }) => {
         ? calculatePriorityAttrs([filteredProps])
         : null
       // 2. Resolve normal attrs — these see priority + explicit props as input.
+      //
+      // The argument passed INTO `.attrs()` callbacks must preserve getter
+      // descriptors on filteredProps, so any callback that reads a reactive
+      // prop (e.g. `(p) => ({ x: p.someSignalDrivenProp + 1 })`) reads the
+      // live value, not a one-shot snapshot. Plain spread `{ …priority,
+      // …filteredProps }` would fire every getter at this site — that was
+      // the pre-fix shape that silently broke reactivity for direct
+      // `attrs(Component)` consumers.
       const finalAttrs = hasAttrs
         ? calculateAttrs([
             prioritizedAttrs
-              ? { ...prioritizedAttrs, ...filteredProps }
+              ? mergeDescriptors(prioritizedAttrs, filteredProps)
               : filteredProps,
           ])
         : null
 
       // 3. Merge: priority < normal attrs < explicit props (last wins).
-      const finalProps = {
-        ...prioritizedAttrs,
-        ...finalAttrs,
-        ...filteredProps,
-      }
+      // `mergeDescriptors` (not spread) so the explicit-props level keeps
+      // any getter-shaped reactive props live all the way to the wrapped
+      // component. `prioritizedAttrs` and `finalAttrs` always come from
+      // freshly-constructed object literals (in user `.attrs()` callbacks),
+      // so they carry no getters — descriptor-copy is a no-op cost there.
+      const finalProps = mergeDescriptors(prioritizedAttrs, finalAttrs, filteredProps)
 
       return WrappedComponent(finalProps)
     }

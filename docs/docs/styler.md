@@ -7,6 +7,16 @@ description: CSS-in-JS engine for Pyreon with tagged templates, theming, keyfram
 
 <PackageBadge name="@pyreon/styler" href="/docs/styler" />
 
+## Browser Support
+
+The styler emits CSS with **native CSS Nesting** (`&:hover`, `&::before`, nested selectors). Native nesting requires:
+
+- **Chrome / Edge 112+** (April 2023)
+- **Safari 16.5+** (May 2023)
+- **Firefox 117+** (August 2023)
+
+For older browser targets (legacy corporate IT, embedded WebViews, older mobile), run the consumer build through a CSS post-processor that flattens nesting at build time — Vite's [lightningcss](https://vitejs.dev/config/shared-options.html#css-transformer) or PostCSS with [postcss-nesting](https://github.com/csstools/postcss-nesting) both flatten `&:hover` → `.classname:hover` correctly. The styler itself does not transform nesting selectors, so any consumer-side processor that handles native nesting works.
+
 ## Installation
 
 ::: code-group
