@@ -42,6 +42,12 @@ on:
     # native workflows don't queue against each other.
     - cron: '47 5 * * *'
 
+# Read-only default at the workflow level. Each job below grants only
+# `contents: read` — neither the iOS nor Android build needs anything
+# more (no tags pushed, no PR comments posted, no OIDC tokens minted).
+permissions:
+  contents: read
+
 concurrency:
   group: native-device-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -153,10 +159,9 @@ jobs:
 
       - name: Setup Android SDK
         # First-party action for the SDK + build-tools + platform.
-        # Tag-pinned (matches native-validate.yml's setup-swift@v2
-        # convention for community/first-party native actions); pin to a
-        # SHA in a follow-up once the workflow is green.
-        uses: android-actions/setup-android@v3
+        # SHA-pinned per PinnedDependenciesID supply-chain hardening.
+        # android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
 
       - name: Install Gradle via SDKMAN
         # The android example pins AGP 8.7.0 (needs Gradle 8.9+) but ships
@@ -164,9 +169,11 @@ jobs:
         # repo's documented JVM-tool install path (see native-validate.yml's
         # kotlinc step). `set -u` is dropped because sdkman-init.sh
         # references unset internals.
+        # SDKMAN installer pinned by commit SHA per PinnedDependenciesID
+        # (downloadThenRun) — sdkman/sdkman-cli@5.23.0
         run: |
           set -eo pipefail
-          curl -s https://get.sdkman.io | bash > /dev/null
+          curl -s https://raw.githubusercontent.com/sdkman/sdkman-cli/691f976da9d9c723a168051e550e1bf0940519d6/contrib/install.sh | bash > /dev/null
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           sdk install gradle 8.10.2
           echo "$HOME/.sdkman/candidates/gradle/current/bin" >> "$GITHUB_PATH"
@@ -213,7 +220,9 @@ jobs:
         # connected-device test task — both library unit tests and
         # instrumented tests — and is the conventional umbrella task
         # for CI.
-        uses: reactivecircus/android-emulator-runner@v2
+        # SHA-pinned per PinnedDependenciesID supply-chain hardening.
+        # reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a
         with:
           api-level: 33
           target: google_apis

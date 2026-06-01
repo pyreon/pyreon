@@ -35,6 +35,12 @@ on:
     # don't all queue at once.
     - cron: '23 5 * * *'
 
+# Read-only default at the workflow level. The validate job below
+# grants only `contents: read` — it runs swiftc/kotlinc parse +
+# emits no artifacts to git, no PR comments, no tags.
+permissions:
+  contents: read
+
 concurrency:
   group: native-validate-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -66,7 +72,9 @@ jobs:
         # for installing swiftc on Linux runners (the Swift project
         # ships official Linux toolchains). Pinned via the env var so
         # bumping is a one-line change.
-        uses: swift-actions/setup-swift@v2
+        # SHA-pinned per PinnedDependenciesID supply-chain hardening.
+        # swift-actions/setup-swift@v2
+        uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a
         with:
           swift-version: ${{ env.SWIFT_VERSION }}
 
@@ -92,9 +100,11 @@ jobs:
         # tradeoff: lose strict-unbound checking inside this step.
         # Acceptable here because the step is small + every command's
         # exit code is still checked via `-e`/`pipefail`.
+        # SDKMAN installer pinned by commit SHA per PinnedDependenciesID
+        # (downloadThenRun) — sdkman/sdkman-cli@5.23.0
         run: |
           set -eo pipefail
-          curl -s https://get.sdkman.io | bash > /dev/null
+          curl -s https://raw.githubusercontent.com/sdkman/sdkman-cli/691f976da9d9c723a168051e550e1bf0940519d6/contrib/install.sh | bash > /dev/null
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           sdk install kotlin "${{ env.KOTLIN_VERSION }}"
           echo "$HOME/.sdkman/candidates/kotlin/current/bin" >> "$GITHUB_PATH"

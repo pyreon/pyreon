@@ -86,7 +86,14 @@ async function appendEnvExample(config: ProjectConfig): Promise<void> {
   }
 
   const envPath = join(config.targetDir, '.env.example')
-  const existing = existsSync(envPath) ? await readFile(envPath, 'utf-8') : ''
+  let existing = ''
+  try {
+    existing = await readFile(envPath, 'utf-8')
+  } catch (err) {
+    // ENOENT is expected when the file doesn't yet exist — proceed with empty.
+    // Any other error (permissions, etc.) should propagate.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
   const next = existing ? `${existing.trimEnd()}\n\n${lines.join('\n')}` : lines.join('\n')
   await writeFile(envPath, next)
 }

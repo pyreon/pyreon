@@ -54,6 +54,12 @@ on:
     # contend for the same runner pool, and from CodeQL's defaults.
     - cron: '11 4 * * *'
 
+# Read-only default at the workflow level. The sweep job below
+# additionally grants `pull-requests: write` so it can post the
+# sticky leak-sweep comment when run on a labelled PR.
+permissions:
+  contents: read
+
 # Cancel in-flight runs for the same branch when a fresh push lands —
 # stale leak runs against an old commit are pure waste.
 concurrency:
