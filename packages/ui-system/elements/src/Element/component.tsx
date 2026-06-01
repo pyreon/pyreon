@@ -7,12 +7,11 @@
  * skipping children or switching sub-tags accordingly.
  */
 
-import { h, onMount, splitProps } from '@pyreon/core'
+import { h, mergeProps, onMount, splitProps } from '@pyreon/core'
 import type { ComponentFn, VNodeChildAtom } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
-import { buildSpreadProps } from '../helpers/buildSpreadProps'
 import { internElementBundle } from '../helpers/internElementBundle'
 import { isPyreonComponent } from '../helpers/isPyreonComponent'
 import WrapperStyled from '../helpers/Wrapper/styled'
@@ -214,20 +213,18 @@ const Component: PyreonElement = (props) => {
   // return simple/empty element like input or image etc.
   // --------------------------------------------------------
   //
-  // All four return paths below use `h(Comp, buildSpreadProps(rest, {...}))`
+  // All four return paths below use `h(Comp, mergeProps(rest, {...}))`
   // INSTEAD of JSX spread `<Comp {...rest} ...>`. The JSX automatic-runtime
   // lowers spread to `jsx(Comp, { ...rest, ... })` — that object literal is
   // evaluated at JS level and fires EVERY getter on `rest` before `jsx()`
   // ever sees it. Compiler-emitted reactive props (`_rp(() => signal())`
   // converted to getters by `makeReactiveProps`) survive the splitProps
-  // call but die at the JSX spread. `buildSpreadProps` copies own
-  // descriptors via `Object.defineProperty`, then `h()` stores the result
-  // as-is on the vnode (no copy) — getters survive end-to-end into mount.
-  //
-  // See `helpers/buildSpreadProps.ts` JSDoc + the parallel pattern in
-  // `helpers/Wrapper/component.tsx:buildStyledProps`.
+  // call but die at the JSX spread. `mergeProps` (from `@pyreon/core`)
+  // copies own descriptors via `Object.defineProperty`, then `h()` stores
+  // the result as-is on the vnode (no copy) — getters survive end-to-end
+  // into mount.
   if (shouldBeEmpty) {
-    return h(Wrapper, buildSpreadProps(rest as Record<string, unknown>, WRAPPER_PROPS))
+    return h(Wrapper, mergeProps(rest as Record<string, unknown>, WRAPPER_PROPS))
   }
 
   // Simple-Element fast path: no beforeContent / afterContent slots, and no
@@ -240,21 +237,17 @@ const Component: PyreonElement = (props) => {
     .dangerouslySetInnerHTML
   const needsFix = !dangerouslySetInnerHTML && isWebFixNeeded(own.tag)
 
-  // Children are passed via the buildSpreadProps OVERRIDE (not as h's
-  // third arg) for a critical reason: `mount.ts:404-410` merges
-  // `vnode.children` into `vnode.props.children` via a JS object spread
-  // `{...vnode.props, children: ...}` when (a) vnode.children is non-
-  // empty AND (b) vnode.props.children is undefined. That spread fires
-  // every getter on vnode.props, collapsing compiler-emitted reactive
-  // props (`href`/`src`/etc. as getter descriptors) to static values
-  // before the styled component ever sees them — defeating the whole
-  // descriptor-preservation chain. Putting children into the override
-  // makes `vnode.props.children !== undefined` so mount skips the spread
-  // and keeps the descriptors intact.
+  // Children are passed via the mergeProps OVERRIDE (not as h's third
+  // arg) for a critical reason: `mount.ts` merges `vnode.children` into
+  // `vnode.props.children` via descriptor-preserving copy when (a)
+  // vnode.children is non-empty AND (b) vnode.props.children is
+  // undefined. Putting children into the override makes
+  // `vnode.props.children !== undefined` so mount skips that step and
+  // we keep a single descriptor-copy hop instead of two.
   if (isSimpleElement && !needsFix) {
     return h(
       WrapperStyled,
-      buildSpreadProps(rest as Record<string, unknown>, {
+      mergeProps(rest as Record<string, unknown>, {
         ...WRAPPER_DEV_PROPS,
         ref: mergedRef,
         as: own.tag,
@@ -274,7 +267,7 @@ const Component: PyreonElement = (props) => {
   if (isSimpleElement) {
     return h(
       Wrapper,
-      buildSpreadProps(rest as Record<string, unknown>, {
+      mergeProps(rest as Record<string, unknown>, {
         ...WRAPPER_PROPS,
         isInline,
         children: () => resolveSlot(getChildren()),
@@ -334,7 +327,7 @@ const Component: PyreonElement = (props) => {
 
   return h(
     Wrapper,
-    buildSpreadProps(rest as Record<string, unknown>, {
+    mergeProps(rest as Record<string, unknown>, {
       ...WRAPPER_PROPS,
       isInline,
       children: compoundChildren,

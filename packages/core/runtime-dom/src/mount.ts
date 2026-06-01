@@ -13,6 +13,7 @@ import {
   ForSymbol,
   Fragment,
   makeReactiveProps,
+  mergeProps,
   PortalSymbol,
   propagateError,
   reportError,
@@ -411,7 +412,7 @@ function mountComponent(
   // framework or user-land component called via the canonical
   // `h(Comp, props, ...children)` JSX-compiled shape with reactive
   // props. The sibling fix in `@pyreon/elements` (Element / Text /
-  // Content `buildSpreadProps`) routes children through props so this
+  // Content `mergeProps` from `@pyreon/core`) routes children through props so this
   // branch is skipped for that path; this fix closes the bug class for
   // every other caller too.
   const children = vnode.children ?? []
@@ -420,12 +421,15 @@ function mountComponent(
     children.length > 0 &&
     (vnode.props as Record<string, unknown>).children === undefined
   ) {
-    rawProps = {}
-    const descriptors = Object.getOwnPropertyDescriptors(vnode.props)
-    for (const key of Object.keys(descriptors)) {
-      Object.defineProperty(rawProps, key, descriptors[key]!)
-    }
-    rawProps.children = children.length === 1 ? children[0] : children
+    // `mergeProps` from @pyreon/core copies own DESCRIPTORS (not values)
+    // so any reactive getter props on vnode.props survive the merge.
+    // `vnode.props` is always a non-null object at this site (h() never
+    // produces null props; EMPTY_PROPS is the empty-but-non-null
+    // sentinel), so the null-source guard mergeProps lacks (vs the
+    // earlier rocketstyle `mergeDescriptors` helper) is not needed here.
+    rawProps = mergeProps(vnode.props as Record<string, unknown>, {
+      children: children.length === 1 ? children[0] : children,
+    })
   } else {
     rawProps = vnode.props as Record<string, unknown>
   }

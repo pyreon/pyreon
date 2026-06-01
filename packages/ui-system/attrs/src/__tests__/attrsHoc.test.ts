@@ -192,10 +192,11 @@ describe('attrsHoc — real h() round-trip', () => {
 // stops updating.
 //
 // The fix uses `Object.getOwnPropertyDescriptors` + `Object.defineProperty`
-// in `removeUndefinedProps` and `mergeDescriptors`. These tests assert
-// getter identity is preserved through every spread/merge point —
-// bisect-verifiable by reverting either helper to plain value-copy
-// (the regression shape from PR #793 that this fix repairs).
+// in `removeUndefinedProps` (rocketstyle-internal) and `mergeProps`
+// (canonical, from `@pyreon/core`). These tests assert getter identity
+// is preserved through every spread/merge point — bisect-verifiable by
+// reverting either helper to plain value-copy (the regression shape
+// from PR #793 that this fix repairs).
 describe('attrsHoc — reactive-prop descriptor preservation', () => {
   const Capture = (props: any) => ({ type: 'div', props, children: null, key: null })
 
@@ -282,7 +283,7 @@ describe('attrsHoc — reactive-prop descriptor preservation', () => {
     const Enhanced = hoc(Capture as any)
     const result = Enhanced(props) as any
 
-    // The .attrs() callback received `mergeDescriptors(prioritized,
+    // The .attrs() callback received `mergeProps(prioritized,
     // filteredProps)` (when priority is set) OR `filteredProps` directly
     // (when not). In either case, the callback's `p.href` must be a live
     // getter read.

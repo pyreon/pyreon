@@ -16,21 +16,21 @@
  * frozen snapshot — `<a href={_rp(() => url())}>` rendered the initial
  * URL once and never updated.
  *
- * Wrapper was already fixed (`buildStyledProps` + `h()` instead of JSX
- * spread). The bug remained on Element's four spread sites + Text's
- * one + Content's one because those compiled with the same JSX spread
- * shape.
+ * Wrapper was already fixed (descriptor-preserving prop construction
+ * + `h()` instead of JSX spread). The bug remained on Element's four
+ * spread sites + Text's one + Content's one because those compiled
+ * with the same JSX spread shape.
  *
  * FIX (two parts):
- *   1. `buildSpreadProps(rest, overrides)` copies own descriptors via
- *      `Object.defineProperty`, then `h(Comp, result)` stores the
- *      descriptor-preserving object on the vnode as-is.
- *   2. Children are passed via the buildSpreadProps OVERRIDE (not h's
- *      third arg). Otherwise `mount.ts:404-410` runs `{...vnode.props,
- *      children: ...}` to merge h's children into props — that JS
- *      spread fires every getter on vnode.props at runtime, defeating
- *      step 1. With children in the override, `vnode.props.children`
- *      is non-undefined so mount skips the spread.
+ *   1. `mergeProps(rest, overrides)` from `@pyreon/core` copies own
+ *      descriptors via `Object.defineProperty`, then `h(Comp, result)`
+ *      stores the descriptor-preserving object on the vnode as-is.
+ *   2. Children are passed via the mergeProps OVERRIDE (not h's third
+ *      arg). Otherwise `mount.ts` runs the children-merge step to merge
+ *      h's children into props — even though `mount.ts` is now itself
+ *      descriptor-safe, routing children through props skips the extra
+ *      hop. With children in the override, `vnode.props.children` is
+ *      non-undefined so mount short-circuits.
  *
  * Each spec is bisect-load-bearing. Reverting any one component's fix
  * fails its dedicated spec(s) with `expected '/initial' to be '/updated'`.
@@ -97,7 +97,8 @@ describe('reactive prop through Element — JSX spread regression', () => {
     // 'button' is in isWebFixNeeded — it triggers the parent+child Styled
     // two-layer flex fix in Wrapper. The outer Element's JSX spread on
     // `<Wrapper {...rest}>` was the leak site; Wrapper's internal
-    // buildStyledProps is already correct.
+    // descriptor-preserving prop construction (via `mergeProps` from
+    // `@pyreon/core`) is already correct.
     const label = signal('initial')
     const { container } = mountInBrowser(
       h(Element, {
@@ -116,7 +117,7 @@ describe('reactive prop through Element — JSX spread regression', () => {
   })
 
   it('Element compound path (beforeContent + afterContent) forwards reactive prop on outer Wrapper', async () => {
-    // Exercises the final `return h(Wrapper, buildSpreadProps(rest, {...}), beforeContent, content, afterContent)` shape.
+    // Exercises the final `return h(Wrapper, mergeProps(rest, {...}), beforeContent, content, afterContent)` shape.
     const cls = signal('a')
     const { container } = mountInBrowser(
       h(Element, {
