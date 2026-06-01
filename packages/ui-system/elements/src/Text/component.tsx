@@ -5,10 +5,11 @@
  * a static `isText` flag so other components can detect text children.
  */
 
-import { splitProps } from '@pyreon/core'
+import { h, splitProps } from '@pyreon/core'
 import type { PyreonHTMLAttributes, VNodeChild } from '@pyreon/core'
 import type { HTMLTextTags } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
+import { buildSpreadProps } from '../helpers/buildSpreadProps'
 import type { ExtendCss, PyreonComponent } from '../types'
 import Styled from './styled'
 
@@ -47,10 +48,26 @@ const Component: PyreonComponent<Props> & {
   // vitus-labs `804dd0e2`.
   const finalTag = own.paragraph ? 'p' : own.tag
 
-  return (
-    <Styled ref={own.ref} as={finalTag} $text={{ extraStyles: own.css }} {...rest}>
-      {own.children ?? own.label}
-    </Styled>
+  // Use `h(Styled, buildSpreadProps(rest, {..., children}))` instead of
+  // JSX spread `<Styled ... {...rest}>` so compiler-emitted reactive
+  // props (`_rp()` converted to getters by `makeReactiveProps`) survive
+  // end-to-end. JSX spread fires every getter at the JS object-literal
+  // layer; the descriptor-copying helper preserves getters.
+  //
+  // Children MUST go into the buildSpreadProps override (not h's third
+  // arg) — otherwise `mount.ts` runs `{...vnode.props, children: ...}`
+  // to merge h's children into props, and that JS spread fires every
+  // getter on vnode.props, defeating the descriptor preservation. See
+  // `helpers/buildSpreadProps.ts` JSDoc + the parallel pattern in
+  // `Element/component.tsx`.
+  return h(
+    Styled,
+    buildSpreadProps(rest as Record<string, unknown>, {
+      ref: own.ref,
+      as: finalTag,
+      $text: { extraStyles: own.css },
+      children: own.children ?? own.label,
+    }),
   )
 }
 

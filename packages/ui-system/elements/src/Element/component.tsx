@@ -12,6 +12,7 @@ import type { ComponentFn, VNodeChildAtom } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
+import { buildSpreadProps } from '../helpers/buildSpreadProps'
 import { internElementBundle } from '../helpers/internElementBundle'
 import { isPyreonComponent } from '../helpers/isPyreonComponent'
 import WrapperStyled from '../helpers/Wrapper/styled'
@@ -212,8 +213,21 @@ const Component: PyreonElement = (props) => {
   // --------------------------------------------------------
   // return simple/empty element like input or image etc.
   // --------------------------------------------------------
+  //
+  // All four return paths below use `h(Comp, buildSpreadProps(rest, {...}))`
+  // INSTEAD of JSX spread `<Comp {...rest} ...>`. The JSX automatic-runtime
+  // lowers spread to `jsx(Comp, { ...rest, ... })` — that object literal is
+  // evaluated at JS level and fires EVERY getter on `rest` before `jsx()`
+  // ever sees it. Compiler-emitted reactive props (`_rp(() => signal())`
+  // converted to getters by `makeReactiveProps`) survive the splitProps
+  // call but die at the JSX spread. `buildSpreadProps` copies own
+  // descriptors via `Object.defineProperty`, then `h()` stores the result
+  // as-is on the vnode (no copy) — getters survive end-to-end into mount.
+  //
+  // See `helpers/buildSpreadProps.ts` JSDoc + the parallel pattern in
+  // `helpers/Wrapper/component.tsx:buildStyledProps`.
   if (shouldBeEmpty) {
-    return <Wrapper {...rest} {...WRAPPER_PROPS} />
+    return h(Wrapper, buildSpreadProps(rest as Record<string, unknown>, WRAPPER_PROPS))
   }
 
   // Simple-Element fast path: no beforeContent / afterContent slots, and no
@@ -226,82 +240,105 @@ const Component: PyreonElement = (props) => {
     .dangerouslySetInnerHTML
   const needsFix = !dangerouslySetInnerHTML && isWebFixNeeded(own.tag)
 
+  // Children are passed via the buildSpreadProps OVERRIDE (not as h's
+  // third arg) for a critical reason: `mount.ts:404-410` merges
+  // `vnode.children` into `vnode.props.children` via a JS object spread
+  // `{...vnode.props, children: ...}` when (a) vnode.children is non-
+  // empty AND (b) vnode.props.children is undefined. That spread fires
+  // every getter on vnode.props, collapsing compiler-emitted reactive
+  // props (`href`/`src`/etc. as getter descriptors) to static values
+  // before the styled component ever sees them — defeating the whole
+  // descriptor-preservation chain. Putting children into the override
+  // makes `vnode.props.children !== undefined` so mount skips the spread
+  // and keeps the descriptors intact.
   if (isSimpleElement && !needsFix) {
-    return (
-      <WrapperStyled
-        {...rest}
-        {...WRAPPER_DEV_PROPS}
-        ref={mergedRef}
-        as={own.tag}
-        $element={internElementBundle({
+    return h(
+      WrapperStyled,
+      buildSpreadProps(rest as Record<string, unknown>, {
+        ...WRAPPER_DEV_PROPS,
+        ref: mergedRef,
+        as: own.tag,
+        $element: internElementBundle({
           block: own.block,
           direction: wrapperDirection,
           alignX: wrapperAlignX,
           alignY: wrapperAlignY,
           equalCols: own.equalCols,
           extraStyles: own.css,
-        })}
-      >
-        {() => resolveSlot(getChildren())}
-      </WrapperStyled>
+        }),
+        children: () => resolveSlot(getChildren()),
+      }),
     )
   }
 
   if (isSimpleElement) {
-    return (
-      <Wrapper {...rest} {...WRAPPER_PROPS} isInline={isInline}>
-        {() => resolveSlot(getChildren())}
-      </Wrapper>
+    return h(
+      Wrapper,
+      buildSpreadProps(rest as Record<string, unknown>, {
+        ...WRAPPER_PROPS,
+        isInline,
+        children: () => resolveSlot(getChildren()),
+      }),
     )
   }
 
-  return (
-    <Wrapper {...rest} {...WRAPPER_PROPS} isInline={isInline}>
-      {own.beforeContent && (
-        <Content
-          tag={SUB_TAG}
-          contentType="before"
-          parentDirection={wrapperDirection}
-          extendCss={own.beforeContentCss}
-          direction={beforeContentDirection}
-          alignX={beforeContentAlignX}
-          alignY={beforeContentAlignY}
-          equalCols={own.equalCols}
-          gap={own.gap}
-        >
-          {() => resolveSlot(own.beforeContent)}
-        </Content>
-      )}
-
+  const compoundChildren: VNodeChildAtom[] = []
+  if (own.beforeContent) {
+    compoundChildren.push(
       <Content
         tag={SUB_TAG}
-        contentType="content"
+        contentType="before"
         parentDirection={wrapperDirection}
-        extendCss={own.contentCss}
-        direction={contentDirection}
-        alignX={contentAlignX}
-        alignY={contentAlignY}
+        extendCss={own.beforeContentCss}
+        direction={beforeContentDirection}
+        alignX={beforeContentAlignX}
+        alignY={beforeContentAlignY}
         equalCols={own.equalCols}
+        gap={own.gap}
       >
-        {() => resolveSlot(getChildren())}
-      </Content>
+        {() => resolveSlot(own.beforeContent)}
+      </Content>,
+    )
+  }
+  compoundChildren.push(
+    <Content
+      tag={SUB_TAG}
+      contentType="content"
+      parentDirection={wrapperDirection}
+      extendCss={own.contentCss}
+      direction={contentDirection}
+      alignX={contentAlignX}
+      alignY={contentAlignY}
+      equalCols={own.equalCols}
+    >
+      {() => resolveSlot(getChildren())}
+    </Content>,
+  )
+  if (own.afterContent) {
+    compoundChildren.push(
+      <Content
+        tag={SUB_TAG}
+        contentType="after"
+        parentDirection={wrapperDirection}
+        extendCss={own.afterContentCss}
+        direction={afterContentDirection}
+        alignX={afterContentAlignX}
+        alignY={afterContentAlignY}
+        equalCols={own.equalCols}
+        gap={own.gap}
+      >
+        {() => resolveSlot(own.afterContent)}
+      </Content>,
+    )
+  }
 
-      {own.afterContent && (
-        <Content
-          tag={SUB_TAG}
-          contentType="after"
-          parentDirection={wrapperDirection}
-          extendCss={own.afterContentCss}
-          direction={afterContentDirection}
-          alignX={afterContentAlignX}
-          alignY={afterContentAlignY}
-          equalCols={own.equalCols}
-          gap={own.gap}
-        >
-          {() => resolveSlot(own.afterContent)}
-        </Content>
-      )}
-    </Wrapper>
+  return h(
+    Wrapper,
+    buildSpreadProps(rest as Record<string, unknown>, {
+      ...WRAPPER_PROPS,
+      isInline,
+      children: compoundChildren,
+    }),
   )
 }
 
