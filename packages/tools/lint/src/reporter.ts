@@ -1,9 +1,9 @@
-import { bold, cyan, dim, emberCore, emberWarm } from './ansi'
+import { bold, cyan, dim, emberCore, emberWarm } from '@pyreon/ansi'
 import type { LintResult, Severity } from './types'
 
 // Brand status glyphs (handoff \u00A76.5): `\u2717` ember-core (error),
 // `!` ember-warm (warning), `\u2139` cyan (info). Helpers are color-gated
-// (NO_COLOR / FORCE_COLOR / TTY) and 256-color \u2014 see `./ansi`.
+// (NO_COLOR / FORCE_COLOR / TTY) and 256-color \u2014 see `@pyreon/ansi`.
 const SEVERITY_SYMBOL: Record<Severity, string> = {
   error: emberCore('\u2717'),
   warn: emberWarm('!'),

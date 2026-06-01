@@ -1409,6 +1409,14 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
+    "packages/internals/ansi": {
+      "name": "@pyreon/ansi",
+      "version": "0.13.1",
+      "devDependencies": {
+        "@pyreon/vitest-config": "workspace:*",
+        "vitest": "^4.1.8",
+      },
+    },
     "packages/internals/manifest": {
       "name": "@pyreon/manifest",
       "version": "0.13.1",
@@ -1540,6 +1548,7 @@
         "@pyreon/lint": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
       "peerDependencies": {
@@ -1570,6 +1579,7 @@
         "oxc-parser": "^0.133.0",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2689,6 +2699,8 @@
     "@preact/signals-core": ["@preact/signals-core@1.14.2", "", {}, "sha512-RZHdBj9ZF4n40Rp4jS052EHHjBWf96P9oNdXPfhQTovCuWY9iQn3Gq+gOTJSgBO9A/JBuPfMOWsSX/lIU9Pc/A=="],
 
     "@pyreon/ai-reference": ["@pyreon/ai-reference@workspace:examples/ai-reference"],
+
+    "@pyreon/ansi": ["@pyreon/ansi@workspace:packages/internals/ansi"],
 
     "@pyreon/attrs": ["@pyreon/attrs@workspace:packages/ui-system/attrs"],
 
