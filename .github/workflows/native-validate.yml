@@ -100,11 +100,18 @@ jobs:
         # tradeoff: lose strict-unbound checking inside this step.
         # Acceptable here because the step is small + every command's
         # exit code is still checked via `-e`/`pipefail`.
-        # SDKMAN installer pinned by commit SHA per PinnedDependenciesID
-        # (downloadThenRun) — sdkman/sdkman-cli@5.23.0
+        # SDKMAN installer: accepted-risk downloadThenRun (PinnedDependenciesID).
+        # Pinning to a GitHub raw URL is infeasible — SDKMAN moved the install
+        # script off `sdkman-cli/contrib/install.sh` and only serves it from
+        # their own CDN at `get.sdkman.io` (the canonical bootstrap URL).
+        # The previous pinning attempt to a specific sdkman-cli SHA returned
+        # 404 because the file has been removed from the repo. The right
+        # mitigation (if ever needed) is sha256-verifying the downloaded
+        # script before piping to bash — tracked separately, not blocking
+        # this CI gate.
         run: |
           set -eo pipefail
-          curl -s https://raw.githubusercontent.com/sdkman/sdkman-cli/691f976da9d9c723a168051e550e1bf0940519d6/contrib/install.sh | bash > /dev/null
+          curl -s "https://get.sdkman.io" | bash > /dev/null
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           sdk install kotlin "${{ env.KOTLIN_VERSION }}"
           echo "$HOME/.sdkman/candidates/kotlin/current/bin" >> "$GITHUB_PATH"
