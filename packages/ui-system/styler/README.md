@@ -214,7 +214,9 @@ Templates with function interpolations resolve on every render. A class-cache ke
 
 ### CSS nesting passes through
 
-Native CSS nesting is forwarded unchanged — `&:hover`, `&::before`, nested selectors, and `@media` queries work as-is in modern browsers.
+Native CSS nesting is forwarded unchanged — `&:hover`, `&::before`, nested selectors, and `@media` queries work as-is in browsers that support native CSS Nesting.
+
+**Browser baseline**: Chrome/Edge **112+** (Apr 2023), Safari **16.5+** (May 2023), Firefox **117+** (Aug 2023). For older targets, run the consumer build through PostCSS Nesting or Vite's lightningcss (which can flatten `&:hover` down to `.classname:hover` at build time) — the styler itself does not transform nesting selectors, so any consumer-side CSS post-processor that handles native nesting will work.
 
 ```ts
 const Card = styled('div')`
