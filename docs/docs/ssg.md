@@ -79,8 +79,8 @@ export const getStaticPaths: GetStaticPaths<{ id: string }> = async () => {
   return posts.map((p) => ({ params: { id: p.slug } }))
 }
 
-export default function Post({ params }) {
-  return <article>Post {params.id}</article>
+export default function Post(props: { params: { id: string } }) {
+  return <article>Post {props.params.id}</article>
 }
 ```
 
