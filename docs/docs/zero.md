@@ -260,7 +260,7 @@ Throw `redirect(url, status?)` from `@pyreon/router` inside a loader to redirect
 
 ### SSR (Server-Side Rendering)
 
-The default mode. Pages are rendered on the server for every request and hydrated on the client.
+The default mode. Pages are rendered on the server for every request and hydrated on the client. SSR auto-bundles the server handler to `dist/server/entry-server.js` at build time and dispatches to platform adapters (vercel / cloudflare / netlify / node / bun). See the dedicated **[SSR & ISR reference](/docs/ssr)** for the build pipeline, loaders, streaming, runtime caching, the synthetic-vs-user-entry contract, and per-platform deployment.
 
 ```ts
 defineConfig({
