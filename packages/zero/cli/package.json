@@ -3,12 +3,18 @@
   "version": "0.27.0",
   "description": "CLI for Pyreon Zero — dev, build, preview",
   "license": "MIT",
-  "author": "Vit Bokisch",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/cli#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/zero/cli"
   },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
   "bin": {
     "zero": "./bin/zero.js"
   },
@@ -19,9 +25,6 @@
     "LICENSE",
     "README.md"
   ],
-  "type": "module",
-  "sideEffects": false,
-  "main": "./lib/index.js",
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -38,5 +41,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "author": "Vit Bokisch"
 }

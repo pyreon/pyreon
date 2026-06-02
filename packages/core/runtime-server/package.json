@@ -2,22 +2,16 @@
   "name": "@pyreon/runtime-server",
   "version": "0.27.0",
   "description": "SSR/SSG renderer for Pyreon — streaming HTML + static generation",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/runtime-server#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/runtime-server#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/runtime-server"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -30,9 +24,12 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -41,12 +38,15 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

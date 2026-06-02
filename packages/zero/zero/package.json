@@ -1,22 +1,17 @@
 {
   "name": "@pyreon/zero",
   "version": "0.27.0",
-  "description": "Pyreon Zero \u2014 zero-config full-stack framework powered by Pyreon and Vite",
+  "description": "Pyreon Zero — zero-config full-stack framework powered by Pyreon and Vite",
   "license": "MIT",
-  "author": "Vit Bokisch",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/zero#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/zero/zero"
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "src",
-    "!src/tests",
-    "LICENSE",
-    "README.md"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -164,12 +159,31 @@
       "types": "./lib/types/logger.d.ts"
     }
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "!src/tests",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "sharp": "^0.33.0 || ^0.34.0"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@pyreon/head": "workspace:^",
@@ -187,18 +201,8 @@
     "@pyreon/vitest-config": "workspace:*",
     "sharp": "^0.34.5"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^",
-    "sharp": "^0.33.0 || ^0.34.0"
-  },
-  "peerDependenciesMeta": {
-    "sharp": {
-      "optional": true
-    }
-  },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "author": "Vit Bokisch"
 }

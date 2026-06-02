@@ -2,22 +2,16 @@
   "name": "@pyreon/validation",
   "version": "0.27.0",
   "description": "Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType)",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/validation#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/validation#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/validation"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -45,26 +39,18 @@
       "types": "./lib/types/arktype.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
-  },
-  "devDependencies": {
-    "@happy-dom/global-registrator": "^20.9.0",
-    "@pyreon/core": "workspace:^",
-    "@pyreon/manifest": "workspace:*",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^",
-    "@pyreon/vitest-config": "workspace:*",
-    "arktype": "^2.2.0",
-    "valibot": "^1.4.1",
-    "zod": "^4.4.3"
   },
   "peerDependenciesMeta": {
     "zod": {
@@ -79,5 +65,19 @@
   },
   "dependencies": {
     "@pyreon/form": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.9.0",
+    "@pyreon/core": "workspace:^",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
+    "arktype": "^2.2.0",
+    "valibot": "^1.4.1",
+    "zod": "^4.4.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

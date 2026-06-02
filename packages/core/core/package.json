@@ -2,22 +2,16 @@
   "name": "@pyreon/core",
   "version": "0.27.0",
   "description": "Core component model and lifecycle for Pyreon",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/core#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/core"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -40,9 +34,12 @@
       "types": "./lib/types/jsx-dev-runtime.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -51,11 +48,14 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

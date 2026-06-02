@@ -2,30 +2,24 @@
   "name": "@pyreon/mcp",
   "version": "0.27.0",
   "description": "MCP server for Pyreon — AI-powered framework assistance",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/mcp#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/mcp#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/tools/mcp"
   },
-  "bin": {
-    "pyreon-mcp": "./lib/index.js"
-  },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
+  "bin": {
+    "pyreon-mcp": "./lib/index.js"
+  },
   "exports": {
     ".": {
       "bun": "./src/index.ts",
@@ -33,9 +27,12 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -43,6 +40,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -53,7 +53,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "peerDependencies": {
-    "typescript": ">=5.0.0"
+  "publishConfig": {
+    "access": "public"
   }
 }

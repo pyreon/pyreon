@@ -2,22 +2,16 @@
   "name": "@pyreon/charts",
   "version": "0.27.0",
   "description": "Reactive ECharts bridge for Pyreon — lazy loading, signal-driven, Canvas by default",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/charts#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/charts"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -40,9 +34,12 @@
       "types": "./lib/types/vite.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -50,6 +47,11 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "echarts": ">=5.6.0"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
@@ -59,9 +61,7 @@
     "@vitest/browser-playwright": "^4.1.8",
     "echarts": "^6.1.0"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "echarts": ">=5.6.0"
+  "publishConfig": {
+    "access": "public"
   }
 }

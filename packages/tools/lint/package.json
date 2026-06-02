@@ -1,33 +1,25 @@
 {
   "name": "@pyreon/lint",
   "version": "0.27.0",
-  "description": "Pyreon-specific linter \u2014 56 rules for signals, JSX, SSR, performance, router, and architecture",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/lint#readme",
+  "description": "Pyreon-specific linter — 56 rules for signals, JSX, SSR, performance, router, and architecture",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/lint#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/tools/lint"
   },
-  "bin": {
-    "pyreon-lint": "./bin/pyreon-lint.js"
-  },
-  "files": [
-    "bin",
-    "lib",
-    "src",
-    "schema",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
+  "bin": {
+    "pyreon-lint": "./bin/pyreon-lint.js"
+  },
   "exports": {
     ".": {
       "bun": "./src/index.ts",
@@ -40,9 +32,14 @@
     },
     "./package.json": "./package.json"
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "bin",
+    "lib",
+    "src",
+    "schema",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -61,5 +58,8 @@
     "@pyreon/ansi": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

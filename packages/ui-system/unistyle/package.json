@@ -3,18 +3,15 @@
   "version": "0.27.0",
   "description": "Responsive theming and breakpoint utilities for Pyreon",
   "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/ui-system/unistyle#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pyreon/pyreon",
+    "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/ui-system/unistyle"
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "README.md",
-    "LICENSE",
-    "src"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -26,9 +23,13 @@
       "types": "./lib/index.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "README.md",
+    "LICENSE",
+    "src"
+  ],
   "scripts": {
     "prepublish": "bun run build",
     "build": "bun run vl_rolldown_build",
@@ -39,6 +40,14 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "dependencies": {
+    "@pyreon/styler": "workspace:^",
+    "@pyreon/ui-core": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
@@ -51,12 +60,7 @@
   "engines": {
     "node": ">= 22"
   },
-  "dependencies": {
-    "@pyreon/styler": "workspace:^",
-    "@pyreon/ui-core": "workspace:^"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }
