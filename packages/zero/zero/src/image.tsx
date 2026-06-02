@@ -56,6 +56,15 @@ export interface ImageProps {
    *
    * Note: `raw` skips the three-layer API entirely. `useImage` / `createImage`
    * do not apply when `raw: true` — the component returns a bare `<img>`.
+   *
+   * **CLS is still prevented in raw mode.** The `width` + `height` attributes
+   * are always emitted, and modern browsers derive `aspect-ratio` from them
+   * (the UA stylesheet's `aspect-ratio: attr(width) / attr(height)`), so the
+   * box is reserved before the image decodes — even under a `img { height:
+   * auto }` reset. Raw mode deliberately omits an *explicit* `aspect-ratio`
+   * CSS declaration so it can't fight a custom layout (an `inset: 0` fill,
+   * an explicitly-sized absolute box, etc.). The default (non-`raw`)
+   * `<Image>` reserves space via the container's `aspect-ratio` instead.
    */
   raw?: boolean
 }

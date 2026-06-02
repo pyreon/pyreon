@@ -115,6 +115,47 @@ describe('image container style assembly', () => {
   })
 })
 
+// CLS-prevention contract asserted against the REAL `useImage`, not the
+// `buildContainerStyle` copy above. The Lighthouse audit (bokisch.com
+// 0.27.1) flagged CLS from images with no reserved box; the default
+// <Image> prevents it by putting `aspect-ratio` + `max-width` on the
+// container. The copy-based test can't catch a regression in the actual
+// hook — this one can. `priority: true` forces eager, which skips the
+// IntersectionObserver wiring (the only part happy-dom can't drive), so
+// the hook builds `containerStyle` synchronously with no observer.
+describe('image CLS contract — real useImage().containerStyle', () => {
+  it('reserves layout space via aspect-ratio + max-width (default path)', async () => {
+    const { useImage } = await import('../image')
+    const img = useImage({
+      src: '/hero.jpg',
+      alt: 'Hero',
+      width: 460,
+      height: 460,
+      priority: true,
+    })
+    expect(img.aspectRatio).toBe('460 / 460')
+    expect(img.containerStyle).toContain('aspect-ratio: 460 / 460')
+    expect(img.containerStyle).toContain('max-width: 460px')
+    expect(img.containerStyle).toContain('width: 100%')
+    expect(img.containerStyle).toContain('position: relative')
+    expect(img.containerStyle).toContain('overflow: hidden')
+  })
+
+  it('appends caller style after the reserved-box declarations', async () => {
+    const { useImage } = await import('../image')
+    const img = useImage({
+      src: '/h.jpg',
+      alt: '',
+      width: 1200,
+      height: 630,
+      priority: true,
+      style: 'border-radius: 8px',
+    })
+    expect(img.containerStyle).toContain('aspect-ratio: 1200 / 630')
+    expect(img.containerStyle.endsWith('border-radius: 8px')).toBe(true)
+  })
+})
+
 describe('image src/srcSet inView gating', () => {
   function resolveSrc(inView: boolean, src: string): string {
     return inView ? src : ''
