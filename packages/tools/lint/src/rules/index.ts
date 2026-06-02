@@ -21,6 +21,7 @@ import { noUnregisteredField } from './form/no-unregistered-field'
 import { preferFieldArray } from './form/prefer-field-array'
 // Frontend (opt-in best-practice)
 import { anchorIsValid } from './frontend/anchor-is-valid'
+import { colorContrast } from './frontend/color-contrast'
 import { headingOrder } from './frontend/heading-order'
 import { imgRequiresDimensions } from './frontend/img-requires-dimensions'
 import { noAutofocus } from './frontend/no-autofocus'
@@ -206,6 +207,7 @@ export const allRules: Rule[] = [
   noRedundantRole,
   anchorIsValid,
   headingOrder,
+  colorContrast,
   // Query (1) — opt-in, auto-gated on @pyreon/query dependency
   queryOptionsAsFunction,
   // Rx (1) — opt-in, auto-gated on @pyreon/rx dependency
