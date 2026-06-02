@@ -2,22 +2,16 @@
   "name": "@pyreon/storage",
   "version": "0.27.0",
   "description": "Reactive client-side storage for Pyreon — localStorage, sessionStorage, cookies, IndexedDB",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/storage#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/storage#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/storage"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -30,15 +24,21 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
@@ -47,7 +47,7 @@
     "@vitus-labs/tools-lint": "^2.5.0",
     "bun-types": "^1.3.14"
   },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

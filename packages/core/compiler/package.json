@@ -2,22 +2,16 @@
   "name": "@pyreon/compiler",
   "version": "0.27.0",
   "description": "Template and JSX compiler for Pyreon",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/compiler#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/compiler#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/compiler"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -30,9 +24,12 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "build:native": "bun scripts/build-native.ts",
@@ -42,18 +39,12 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
   "dependencies": {
     "magic-string": "^0.30.21",
     "oxc-parser": "^0.133.0"
-  },
-  "optionalDependencies": {
-    "@pyreon/compiler-darwin-arm64": "workspace:^",
-    "@pyreon/compiler-darwin-x64": "workspace:^",
-    "@pyreon/compiler-linux-arm64-gnu": "workspace:^",
-    "@pyreon/compiler-linux-arm64-musl": "workspace:^",
-    "@pyreon/compiler-linux-x64-gnu": "workspace:^",
-    "@pyreon/compiler-linux-x64-musl": "workspace:^",
-    "@pyreon/compiler-win32-x64-msvc": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/core": "workspace:^",
@@ -64,7 +55,16 @@
     "@pyreon/vitest-config": "workspace:*",
     "happy-dom": "^20.9.0"
   },
-  "peerDependencies": {
-    "typescript": ">=5.0.0"
+  "optionalDependencies": {
+    "@pyreon/compiler-darwin-arm64": "workspace:^",
+    "@pyreon/compiler-darwin-x64": "workspace:^",
+    "@pyreon/compiler-linux-arm64-gnu": "workspace:^",
+    "@pyreon/compiler-linux-arm64-musl": "workspace:^",
+    "@pyreon/compiler-linux-x64-gnu": "workspace:^",
+    "@pyreon/compiler-linux-x64-musl": "workspace:^",
+    "@pyreon/compiler-win32-x64-msvc": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

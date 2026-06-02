@@ -2,22 +2,16 @@
   "name": "@pyreon/i18n",
   "version": "0.27.0",
   "description": "Reactive internationalization for Pyreon with async namespace loading",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/i18n#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/i18n#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/i18n"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -40,9 +34,12 @@
       "types": "./lib/types/devtools.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -50,14 +47,17 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

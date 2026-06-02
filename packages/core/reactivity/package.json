@@ -2,22 +2,16 @@
   "name": "@pyreon/reactivity",
   "version": "0.27.0",
   "description": "Signals-based reactivity system for Pyreon",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/reactivity#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/reactivity#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/reactivity"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -35,9 +29,12 @@
       "types": "./lib/types/lpih.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -50,5 +47,8 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

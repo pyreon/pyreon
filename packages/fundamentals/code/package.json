@@ -2,22 +2,16 @@
   "name": "@pyreon/code",
   "version": "0.27.0",
   "description": "Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/code#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/code#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/code"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -30,9 +24,12 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -40,6 +37,11 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.2",
@@ -76,9 +78,7 @@
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/lang-yaml": "^6.1.2"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

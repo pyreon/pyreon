@@ -2,22 +2,16 @@
   "name": "@pyreon/runtime-dom",
   "version": "0.27.0",
   "description": "DOM renderer for Pyreon",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/runtime-dom#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/runtime-dom#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/runtime-dom"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -40,9 +34,12 @@
       "types": "./lib/types/keep-alive-entry.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -52,12 +49,18 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "dependencies": {
+    "@pyreon/sized-map": "workspace:*"
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
-    "@pyreon/sized-map": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.8",
@@ -66,8 +69,7 @@
     "rolldown": "^1.0.3",
     "vite": "^8.0.16"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

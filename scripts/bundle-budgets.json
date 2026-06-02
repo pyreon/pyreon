@@ -40,6 +40,7 @@
   "@pyreon/runtime-server": 4352,
   "@pyreon/rx": 2560,
   "@pyreon/server": 4352,
+  "@pyreon/sized-map": 512,
   "@pyreon/solid-compat": 4864,
   "@pyreon/state-tree": 3328,
   "@pyreon/storage": 3328,

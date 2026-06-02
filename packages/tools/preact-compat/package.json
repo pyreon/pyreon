@@ -2,22 +2,16 @@
   "name": "@pyreon/preact-compat",
   "version": "0.27.0",
   "description": "Preact-compatible API shim for Pyreon — write Preact-style code that runs on Pyreon's reactive engine",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/preact-compat#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/preact-compat#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/tools/preact-compat"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -50,9 +44,12 @@
       "types": "./lib/types/jsx-runtime.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -62,6 +59,11 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/test-utils": "workspace:^",
@@ -69,9 +71,7 @@
     "@vitest/browser-playwright": "^4.1.8",
     "happy-dom": "^20.9.0"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

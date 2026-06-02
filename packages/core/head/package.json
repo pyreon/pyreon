@@ -2,22 +2,16 @@
   "name": "@pyreon/head",
   "version": "0.27.0",
   "description": "Head tag management for Pyreon — works in SSR and CSR",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/head#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/head#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/head"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -50,9 +44,12 @@
       "types": "./lib/types/ssr.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -61,6 +58,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/runtime-server": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@pyreon/runtime-server": "workspace:^"
@@ -73,13 +79,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.8"
   },
-  "peerDependenciesMeta": {
-    "@pyreon/runtime-server": {
-      "optional": true
-    }
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

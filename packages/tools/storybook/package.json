@@ -2,22 +2,16 @@
   "name": "@pyreon/storybook",
   "version": "0.27.0",
   "description": "Storybook renderer for Pyreon — mount, render, and interact with Pyreon components in Storybook",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/storybook#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/storybook#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/tools/storybook"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -41,9 +35,12 @@
     },
     "./package.json": "./package.json"
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -61,5 +58,8 @@
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

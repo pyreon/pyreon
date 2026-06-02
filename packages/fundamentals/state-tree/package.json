@@ -2,22 +2,16 @@
   "name": "@pyreon/state-tree",
   "version": "0.27.0",
   "description": "Structured reactive state tree — composable models with snapshots, patches, and middleware",
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/state-tree#readme",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/state-tree#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/state-tree"
   },
-  "files": [
-    "lib",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -35,15 +29,24 @@
       "types": "./lib/types/devtools.d.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "dependencies": {
+    "@pyreon/validation": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
@@ -55,10 +58,7 @@
     "valibot": "^1.4.1",
     "zod": "^4.4.3"
   },
-  "dependencies": {
-    "@pyreon/validation": "workspace:^"
-  },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+  "publishConfig": {
+    "access": "public"
   }
 }

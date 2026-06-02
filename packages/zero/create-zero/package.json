@@ -3,12 +3,18 @@
   "version": "0.27.0",
   "description": "Create a new Pyreon project — invoke as `create-pyreon-app` (canonical) or `create-zero` (alias)",
   "license": "MIT",
-  "author": "Vit Bokisch",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/create-zero#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/zero/create-zero"
   },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
   "bin": {
     "create-pyreon-app": "./bin/create-pyreon-app.js",
     "create-zero": "./bin/create-zero.js"
@@ -21,9 +27,6 @@
     "LICENSE",
     "README.md"
   ],
-  "type": "module",
-  "sideEffects": false,
-  "main": "./lib/index.js",
   "scripts": {
     "build": "vl_rolldown_build",
     "typecheck": "tsc --noEmit",
@@ -38,5 +41,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "author": "Vit Bokisch"
 }
