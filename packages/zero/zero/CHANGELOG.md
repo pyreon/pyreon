@@ -1,5 +1,60 @@
 # @pyreon/zero
 
+## 0.27.0
+
+### Minor Changes
+
+- [#1183](https://github.com/pyreon/pyreon/pull/1183) [`07233f0`](https://github.com/pyreon/pyreon/commit/07233f0870e3e1f3672bc7d4ca5a1b21c466fa78) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **404 pages now ship `<meta name="robots" content="noindex, nofollow">` by default.**
+
+  The framework knows it's emitting a 404 — `render404Page()` (runtime) and the SSG plugin's per-locale `__renderNotFound` writeFile path (build-time) both go through one boundary. Pre-fix, the `<Meta>` component's default of `'index, follow'` reached `dist/404.html` unmodified because most `_404.tsx` examples don't override the robots meta. Result: search engines indexed and ranked the 404 page, blog-style 404 templates without explicit `<Meta robots="noindex">` leaked thin/canonical-conflict content into the index.
+
+  New shared helper `ensureNoindexMeta(html)` (`packages/zero/zero/src/not-found.ts`) injects the noindex tag into the rendered head IF no `<meta name="robots">` is already present:
+
+  - **User override always wins** — any explicit `<Meta robots="...">` (or hand-written meta in the template) is preserved verbatim. Case-insensitive regex covers single AND double quotes, any attribute order.
+  - **Idempotent** — calling on already-injected HTML returns it unchanged. Safe to re-run.
+  - **Safe on body-only fragments** — when no `</head>` is found, returns the input unchanged rather than emitting a stray meta outside any document structure.
+
+  Wired at TWO emit boundaries:
+
+  - `render404Page()` (runtime — dev SSR + production handler fallback + `handle404`)
+  - SSG plugin's per-locale 404 emit path (`__renderNotFound` → `ensureNoindexMeta(injectIntoTemplate(template, result))` → writeFile)
+
+  Apps that DO want their 404 indexed can opt in with `<Meta robots="index, follow">` in their `_404.tsx` — the framework respects the override.
+
+- [#1181](https://github.com/pyreon/pyreon/pull/1181) [`94d8704`](https://github.com/pyreon/pyreon/commit/94d87048c270699ff8d4fd2946edb56c135c76cf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **ISR `cacheKey` default changed from `url.pathname` to `url.pathname + url.search`** + new dev-mode warning at handler init when no `cacheKey` is configured.
+
+  **Why** — the pre-fix default silently served `/posts?id=42` HTML for `/posts?id=99` requests because both URLs collapsed to the same cache entry `/posts`. Visibly wrong content, structurally invisible to tests that probe one URL per route. M1.1's opt-in `cacheKey` was a band-aid; the unsafe default was the actual bug. The new default matches Next.js ISR + RSC conventions: query strings carry session IDs, pagination state, sort/filter selectors that all affect rendered HTML — they belong in the key.
+
+  **Cookies / Authorization headers are still NOT included by default** — auth-gated content still requires an explicit `cacheKey`. The auth-incompatibility caveat from M1.1 survives, just narrower in scope.
+
+  **One-time dev-mode warning** fires at handler init when `cacheKey` is undefined (gated on bare `process.env.NODE_ENV !== 'production'` so it tree-shakes in production; deduped via WeakSet so a busy CMS doesn't spam logs; per-handler-instance contract). The warning names BOTH trade-offs inline so the fix is one log away:
+
+  - **AUTH-UNSAFE** → `cacheKey: (req) => `${pathname}::${session}`` to vary by user
+  - **HIGH-CARDINALITY** → `cacheKey: (req) => new URL(req.url).pathname` to strip analytics tokens (`utm_*`, `fbclid`, `gclid`)
+
+  **Breaking default change in a minor bump** (pre-1.0 framework convention): apps relying on `pathname`-only caching with high-cardinality URLs will see cache growth proportional to unique query strings. The warning at handler init names the fix. To preserve the pre-fix behavior: `cacheKey: (req) => new URL(req.url).pathname`.
+
+- [#1178](https://github.com/pyreon/pyreon/pull/1178) [`a92b6f6`](https://github.com/pyreon/pyreon/commit/a92b6f64f56760b77f2c254522bfb74e4b2ffb67) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Auto-build the SSR/ISR server handler bundle when `mode: "ssr"` or `mode: "isr"` is set. Previously `vite build` produced only the client bundle and no `dist/server/entry-server.js`, leaving SSR/ISR apps unable to deploy without a manual `vite build --ssr` flag or a hand-written build script. `Adapter.build({ kind: 'ssr', … })` was implemented for all 6 adapters (vercel/cloudflare/netlify/node/bun/static) but never invoked from any production code path.
+
+  The new `ssrPlugin()` (auto-wired into `zeroPlugin()` when `mode === 'ssr' | 'isr'`) closes that gap, mirroring the SSG plugin precedent exactly: `apply: 'build'`, `enforce: 'post'`, per-mode env-flag gate (`PYREON_ZERO_SSR_INNER_BUILD`, distinct from SSG's `PYREON_ZERO_SSG_INNER_BUILD`). When `src/entry-server.ts` exists, that file is the bundle entry (preserves user-authored middleware / mode overrides / actions config). When absent, the plugin synthesizes the canonical `createServer({ routes, routeMiddleware, apiRoutes })` shape and cleans it up after the build. `adapter.build({ kind: 'ssr', … })` is invoked after the bundle lands; adapter throws are logged but not rethrown so the SSR bundle stays usable for hand-deploys.
+
+  Shared infrastructure between SSG and SSR/ISR (env-flag set/clear, atomic-write helpers, mkdir-cache, synthetic-entry materialization) lives in `ssr-build-shared.ts` so the two plugins can never independently drift their cleanup contracts.
+
+  `zeroPlugin()` now returns `[mainPlugin, ssrPlugin]` for SSR/ISR (same shape it already used for SSG). Consumer code `plugins: [pyreon(), zero()]` is unchanged — Vite's plugins array natively accepts nested arrays.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/vite-plugin@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.26.3
 
 ### Patch Changes
