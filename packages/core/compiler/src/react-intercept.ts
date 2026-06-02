@@ -1212,7 +1212,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     diagnose: () => ({
       cause:
         "A <Transition> tried to read .classList on a null element. Usually the ref to the animated child element wasn't assigned by the time applyEnter/applyLeave ran — e.g. the child is itself an async-mounted component, or the Transition wraps something other than a single DOM element.",
-      fix: 'Transition must wrap a single DOM element directly (not a component VNode). If you need a component, wrap the component\'s root DOM element in Transition externally, or expose the ref via forwardRef.',
+      fix: "Transition must wrap a single DOM element directly (not a component VNode). If you need a component, wrap the component's root DOM element in Transition externally, or expose the ref via forwardRef.",
       fixCode:
         '// ✗ Component child — Transition can\'t inject ref\n<Transition show={open}>\n  <MyComponent />\n</Transition>\n\n// ✓ DOM element child\n<Transition show={open}>\n  <div class="modal">...</div>\n</Transition>',
     }),
@@ -1236,8 +1236,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     // that declare a non-SPA mode without the matching entry file.
     pattern: /\[UNRESOLVED_ENTRY\][^\n]*src\/entry-server\.ts/,
     diagnose: () => ({
-      cause:
-        "`zero build` is doing an SSR build pass but `src/entry-server.ts` doesn't exist.",
+      cause: "`zero build` is doing an SSR build pass but `src/entry-server.ts` doesn't exist.",
       fix: "If your app is SPA-only: declare `zero({ mode: 'spa' })` in vite.config.ts AND upgrade `@pyreon/zero-cli` to ≥0.25.2 (where the SSR build pass is skipped for SPA mode). If your app needs SSR/SSG: add `src/entry-server.ts` exporting `createServer(...)` from `@pyreon/zero/server`.",
       fixCode:
         "// vite.config.ts\nimport zero from '@pyreon/zero/server'\nexport default {\n  plugins: [zero({ mode: 'spa' })],\n}",
@@ -1272,7 +1271,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     diagnose: () => ({
       cause:
         'A router hook (useRouter / useNavigate / useParams / useRoute / onBeforeRouteLeave / etc.) was called from a component that is not mounted inside a <RouterProvider>. The router context is provided per-tree, so descendants without a provider get the explicit "no router installed" throw rather than silently no-op.',
-      fix: "Wrap the app root in <RouterProvider router={createRouter({...})}>. For tests, render the unit under <RouterProvider router={...}> with a stub router. For shared components that may render in both routed AND non-routed contexts, accept the navigate callback as a prop instead of calling useNavigate() directly.",
+      fix: 'Wrap the app root in <RouterProvider router={createRouter({...})}>. For tests, render the unit under <RouterProvider router={...}> with a stub router. For shared components that may render in both routed AND non-routed contexts, accept the navigate callback as a prop instead of calling useNavigate() directly.',
       fixCode: `const router = createRouter({ routes })
 mount(() => <RouterProvider router={router}><App /></RouterProvider>, root)`,
     }),
@@ -1300,6 +1299,28 @@ mount(() => <RouterProvider router={router}><App /></RouterProvider>, root)`,
 // GOOD — per-navigation state in your own store:
 const viewedAt = signal<number | null>(null)
 onBeforeRouteEnter(() => { viewedAt.set(Date.now()) })`,
+    }),
+  },
+  {
+    // runtime-dom URL-injection guard. The warning fires when a
+    // javascript:/data: URL is dropped from a URL-bearing attribute
+    // (href/src/action/formaction/poster/cite/data). data:image/* is allowed
+    // on image elements (<img>/<source>/<video> via src/srcset/poster) — this
+    // is why <Image>/<OptimizedImage> blur+color placeholders work; the
+    // post-0.28.0 fix stopped this guard from over-blocking them.
+    pattern: /Blocked unsafe URL in "(\w+)" attribute/,
+    diagnose: (m) => ({
+      cause: `A \`javascript:\` or \`data:\` URL was blocked in the "${m[1]}" attribute to prevent injection. \`data:image/*\` URIs are allowed ONLY on image elements (\`<img>\`/\`<source>\`/\`<video>\` via \`src\`/\`srcset\`/\`poster\`); \`data:text/html\` on \`<iframe>\`/\`<object>\`, scripted SVG (\`<script>\`/\`on*=\`), \`data:\` on \`<a href>\`/\`<form action>\`, and \`javascript:\` anywhere stay blocked.`,
+      fix: 'For an image/placeholder data URI, render it on an <img>/<source>/<video> src/srcset/poster. For everything else use a real URL — the runtime blocks javascript:/data: in URL attributes by design.',
+      fixCode: `// ✓ allowed — image data URI on an image element:
+<img src="data:image/webp;base64,UklGRvoA..." />
+// ✓ allowed — scriptless SVG placeholder:
+<img src="data:image/svg+xml,<svg>...</svg>" />
+
+// ✗ blocked — data: on a navigable element:
+// <a href="data:text/html,..." />
+// ✗ blocked — scripted SVG:
+// <img src="data:image/svg+xml,<svg onload=...>" />`,
     }),
   },
 ]
