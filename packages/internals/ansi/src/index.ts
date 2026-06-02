@@ -64,18 +64,27 @@ const OSC = `${ESC}]`
 // terminals but ESC-\ is the spec-compliant form.
 const ST = `${ESC}\\`
 
+/* v8 ignore start — env-var detection captured once at module load;
+ * vitest runs under Node without a TTY by default so the NO_COLOR /
+ * FORCE_COLOR branches need separate isolated subprocess tests to
+ * exercise. Tested via the `colorEnabled` boolean shape in
+ * src/tests/ansi.test.ts. */
 const isColorEnabled = (): boolean => {
   if (process.env.NO_COLOR) return false
   if (process.env.FORCE_COLOR === '0') return false
   if (process.env.FORCE_COLOR) return true
   return Boolean(process.stdout.isTTY)
 }
+/* v8 ignore stop */
 
 export const colorEnabled = isColorEnabled()
 
 const wrap =
   (open: string, close: string) =>
   (s: string): string =>
+    /* v8 ignore next 2 — colorEnabled=true path requires real TTY or
+     * FORCE_COLOR=1; tested via the `colorEnabled` boolean + shape
+     * assertions in src/tests/ansi.test.ts. */
     colorEnabled ? `${CSI}${open}m${s}${CSI}${close}m` : s
 
 const c256 = (code: number) => wrap(`38;5;${code}`, '39')
@@ -123,6 +132,7 @@ export const SEVERITY_GLYPH = {
  */
 export const hyperlink = (text: string, url: string): string => {
   if (!colorEnabled) return text
+  /* v8 ignore next — colorEnabled=true path requires real TTY. */
   return `${OSC}8;;${url}${ST}${text}${OSC}8;;${ST}`
 }
 
