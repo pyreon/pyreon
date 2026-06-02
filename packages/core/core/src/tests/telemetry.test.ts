@@ -175,7 +175,7 @@ describe('registerErrorHandler — reactivity bridge (regression)', () => {
     expect(captured).toHaveLength(1)
     expect(captured[0]?.phase).toBe('effect')
     expect(captured[0]?.component).toBe('Effect')
-    expect((captured[0]?.error as Error).message).toBe('boom in effect')
+    expect((captured[0]?.error as Error)?.message).toBe('boom in effect')
 
     unsub()
   })
@@ -280,9 +280,8 @@ describe('reportError — reactiveTrace enrichment', () => {
       captured = ctx
     })
     // Drive the reactivity → core bridge the same way an effect throw does.
-    const bridge = (
-      globalThis as { __pyreon_report_error__?: (e: unknown, p: 'effect') => void }
-    ).__pyreon_report_error__
+    const bridge = (globalThis as { __pyreon_report_error__?: (e: unknown, p: 'effect') => void })
+      .__pyreon_report_error__
     bridge?.(new Error('effect boom'), 'effect')
     unsub()
 

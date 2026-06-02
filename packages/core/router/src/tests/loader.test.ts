@@ -1,4 +1,9 @@
-import { hydrateLoaderData, prefetchLoaderData, serializeLoaderData, stringifyLoaderData } from '../loader'
+import {
+  hydrateLoaderData,
+  prefetchLoaderData,
+  serializeLoaderData,
+  stringifyLoaderData,
+} from '../loader'
 import { createRouter, setActiveRouter, useIsActive, useSearchParams } from '../router'
 import { lazy } from '../types'
 import type { RouteRecord, RouterInstance } from '../types'
@@ -84,9 +89,7 @@ describe('loader data serialization — edge cases', () => {
     // a <Link> during an in-flight navigation destroyed the nav's
     // abort capability — subsequent navigations couldn't cancel the
     // first one. Fix: prefetch uses a LOCAL controller.
-    const routes: RouteRecord[] = [
-      { path: '/data', component: Home, loader: async () => 'ok' },
-    ]
+    const routes: RouteRecord[] = [{ path: '/data', component: Home, loader: async () => 'ok' }]
     const router = createRouter({ routes, url: '/' }) as RouterInstance
     const navController = new AbortController()
     router._abortController = navController
@@ -160,7 +163,9 @@ describe('stringifyLoaderData (M2.2)', () => {
     }
     const cyclic: Cyclic = { data: 1 }
     cyclic.self = cyclic
-    expect(() => stringifyLoaderData({ '/posts/1': cyclic })).toThrow(/\[Pyreon\] Loader returned circular reference/)
+    expect(() => stringifyLoaderData({ '/posts/1': cyclic })).toThrow(
+      /\[Pyreon\] Loader returned circular reference/,
+    )
     // The error names the path: `/posts/1.self` (or similar).
     expect(() => stringifyLoaderData({ '/posts/1': cyclic })).toThrow(/\/posts\/1/)
   })
@@ -228,7 +233,9 @@ describe('stringifyLoaderData (M2.2)', () => {
     // Diamond: same node reachable via two paths, no cycle.
     const leaf = { v: 1 }
     const diamond = stringifyLoaderData({ '/d': { left: { leaf }, right: { leaf } } })
-    expect(JSON.parse(diamond)).toEqual({ '/d': { left: { leaf: { v: 1 } }, right: { leaf: { v: 1 } } } })
+    expect(JSON.parse(diamond)).toEqual({
+      '/d': { left: { leaf: { v: 1 } }, right: { leaf: { v: 1 } } },
+    })
   })
 
   test('still throws on a true cycle through a shared-looking path', () => {
@@ -241,7 +248,9 @@ describe('stringifyLoaderData (M2.2)', () => {
     const b: N = { id: 2 }
     a.next = b
     b.next = a // real cycle
-    expect(() => stringifyLoaderData({ '/x': { a, b } })).toThrow(/\[Pyreon\] Loader returned circular reference/)
+    expect(() => stringifyLoaderData({ '/x': { a, b } })).toThrow(
+      /\[Pyreon\] Loader returned circular reference/,
+    )
   })
 
   test('empty record produces empty object JSON', () => {
@@ -720,7 +729,7 @@ describe('router — staleWhileRevalidate', () => {
     // The previously-empty `.catch` swallowed this entirely. Contract:
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error)
-    expect((onError.mock.calls[0]?.[0] as Error).message).toBe('revalidation upstream 503')
+    expect((onError.mock.calls[0]?.[0] as Error)?.message).toBe('revalidation upstream 503')
     // Navigation was NOT cancelled, and the stale value was NOT clobbered
     // by the failed revalidation — it stays valid and on screen.
     expect(router.currentRoute().path).toBe('/data')
@@ -1040,5 +1049,4 @@ describe('router — _loaderInflight aborted-signal dedup', () => {
     expect(invocations).toBe(2)
     expect(router.currentRoute().path).toBe('/data')
   })
-
 })
