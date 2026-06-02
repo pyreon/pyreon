@@ -6,8 +6,8 @@ export default defineNodeConfig({
   excludeBrowserTests: true,
   coverageThresholds: {
     statements: 95,
-    branches: 80,
-    functions: 94,
-    lines: 94,
+    branches: 90,
+    functions: 95,
+    lines: 95,
   },
 })
