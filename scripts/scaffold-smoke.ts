@@ -492,41 +492,48 @@ interface CellResult {
 }
 
 /**
- * Detect the release-PR branch.
- *
- * The changesets/action opens a "chore: version packages" PR from the
- * `changeset-release/<target>` branch (default `changeset-release/main`).
- * That branch's `package.json` files carry the FRESHLY-BUMPED versions
- * that the release workflow would publish on merge — but they aren't on
- * npm yet (the merge IS what publishes them).
+ * Detect when an isolated cell would fail STRUCTURALLY due to the
+ * workspace being ahead of npm.
  *
  * Isolated cells (today: `cpa-smoke-monorepo-vercel`) run `bun install`
  * from the SCAFFOLDED project root, which resolves `@pyreon/*` deps via
  * the npm registry — not via Pyreon's outer workspace. The scaffolder
  * pins `@pyreon/*` to `^${PYREON_VERSION}` (see
  * `packages/zero/create-zero/src/generators/package-json.ts`), reading
- * its own `package.json` version. On the release-PR branch that becomes
- * `^0.<next>.0` → `bun install` fails with
- * "No version matching ^0.<next>.0 found … (but package exists)" for
- * every framework package, because npm only has the previous published
- * version.
+ * its own `package.json` version. If the workspace `create-zero` is at
+ * `0.<X+1>.0` but npm's latest is `0.<X>.<Y>`, the install fails with
+ * "No version matching ^0.<X+1>.0 found … (but package exists)" for
+ * every framework package.
  *
- * That failure is structural — the release PR can't satisfy a gate that
- * asserts published-version installability for versions the same PR is
- * the act of publishing. Auto-skip isolated cells on the release branch
- * with a clear, logged reason. Non-isolated cells keep running — they
- * install from REPO_ROOT (workspace path) and don't need npm.
+ * Two scenarios produce this state:
+ *
+ * 1. **changesets release PR branch** (`changeset-release/*`) — the
+ *    bumped versions are about to be published by the same PR's merge.
+ *    Branch-name detected (cheapest signal, no network).
+ *
+ * 2. **Inter-release dev branches** — between when a version-packages
+ *    PR merges and when its release.yml run successfully publishes,
+ *    the workspace carries the new versions but npm doesn't. Branch-
+ *    name doesn't catch this case (any feature branch may have rebased
+ *    on the merged version-bump). Network-detected by comparing the
+ *    workspace `create-zero` version to npm's latest.
+ *
+ * Both are STRUCTURAL — the test asserts published-version installability
+ * for versions that aren't on npm yet. Skip with a clear, logged reason.
+ * Non-isolated cells keep running — they install from REPO_ROOT (workspace
+ * path) and don't need npm.
  *
  * Override `PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE=1` exists for local
  * reproduction without faking the branch name.
  */
-function isReleasePR(): { skip: boolean; reason: string } {
+function shouldSkipIsolatedCell(): { skip: boolean; reason: string } {
   if (process.env['PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE'] === '1') {
     return {
       skip: true,
       reason: 'PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE=1 set (local override)',
     }
   }
+  // 1. Release-PR branch — cheapest signal, no network.
   // GitHub Actions sets GITHUB_HEAD_REF to the PR's source branch on
   // pull_request / pull_request_target events. On push events it's empty.
   const headRef = process.env['GITHUB_HEAD_REF'] ?? ''
@@ -536,7 +543,71 @@ function isReleasePR(): { skip: boolean; reason: string } {
       reason: `running on changesets release PR branch "${headRef}" — bumped @pyreon/* versions are not yet on npm`,
     }
   }
+  // 2. Workspace ahead of npm — query `npm view @pyreon/create-zero version`
+  // and compare to the local workspace version. Same package the scaffolder
+  // reads its own version from, so it's the right canary.
+  const workspaceVersion = readWorkspaceCreateZeroVersion()
+  if (workspaceVersion) {
+    const npmVersion = fetchLatestNpmVersion('@pyreon/create-zero')
+    if (npmVersion && compareSemver(workspaceVersion, npmVersion) > 0) {
+      return {
+        skip: true,
+        reason: `workspace @pyreon/create-zero is ${workspaceVersion} but npm latest is ${npmVersion} — scaffolder would pin ^${workspaceVersion} which doesn't exist on npm yet`,
+      }
+    }
+  }
   return { skip: false, reason: '' }
+}
+
+function readWorkspaceCreateZeroVersion(): string | null {
+  try {
+    const pkgPath = resolve(REPO_ROOT, 'packages', 'zero', 'create-zero', 'package.json')
+    const data = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string }
+    return data.version ?? null
+  } catch {
+    return null
+  }
+}
+
+function fetchLatestNpmVersion(pkg: string): string | null {
+  // `npm view <pkg> version` prints the latest published version to stdout.
+  // 404 (package missing) → empty stdout + nonzero exit → return null.
+  // Network failure → same. Defensive: if we can't reach npm, fall through
+  // to the runtime install failure rather than spuriously skipping.
+  try {
+    const result = spawnSync('npm', ['view', pkg, 'version'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
+    })
+    if (result.status !== 0) return null
+    const out = result.stdout?.trim() ?? ''
+    return out.length > 0 ? out : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Tiny semver comparator. Returns >0 if a > b, <0 if a < b, 0 if equal.
+ * Only handles the `X.Y.Z[-pre]` shape Pyreon ships. Pre-release tags sort
+ * before their release (`0.27.0-rc.1` < `0.27.0`).
+ */
+function compareSemver(a: string, b: string): number {
+  const parse = (v: string): [number, number, number, string] => {
+    const [core, pre = ''] = v.split('-', 2)
+    const [maj = 0, min = 0, patch = 0] = (core ?? '').split('.').map((n) => Number(n) || 0)
+    return [maj, min, patch, pre]
+  }
+  const [aMaj, aMin, aPatch, aPre] = parse(a)
+  const [bMaj, bMin, bPatch, bPre] = parse(b)
+  if (aMaj !== bMaj) return aMaj - bMaj
+  if (aMin !== bMin) return aMin - bMin
+  if (aPatch !== bPatch) return aPatch - bPatch
+  // Same X.Y.Z: a release sorts after its pre-release.
+  if (aPre === '' && bPre !== '') return 1
+  if (aPre !== '' && bPre === '') return -1
+  return aPre.localeCompare(bPre)
 }
 
 async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult> {
@@ -545,10 +616,10 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
   // cells go under examples/ so @pyreon/* deps resolve to local source.
   const isolated = cell.isolated === true
 
-  // Auto-skip isolated cells on the changesets release PR — see
-  // `isReleasePR` doc for the structural rationale.
+  // Auto-skip isolated cells when the workspace is ahead of npm — see
+  // `shouldSkipIsolatedCell` doc for the structural rationale.
   if (isolated) {
-    const release = isReleasePR()
+    const release = shouldSkipIsolatedCell()
     if (release.skip) {
       console.log(`\n──── ${cell.name} ─────────────────────────────────────────`)
       console.log(`⊘ SKIPPED — ${release.reason}`)
