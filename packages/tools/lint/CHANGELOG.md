@@ -1,5 +1,71 @@
 # @pyreon/lint
 
+## 0.28.0
+
+### Minor Changes
+
+- [#1201](https://github.com/pyreon/pyreon/pull/1201) [`7f446f2`](https://github.com/pyreon/pyreon/commit/7f446f279e344b7db68eaf7c91ddd1a255f89a1f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): `pyreon/color-contrast` rule — flag low-contrast literal-hex pairs (a11y)
+
+  New opt-in frontend accessibility rule. When a style object literal sets BOTH
+  `color` and `background`/`backgroundColor` to LITERAL hex colours, it computes
+  the WCAG 2.1 relative-luminance contrast ratio and warns when it's below AA
+  (4.5:1 for normal text). Catches the exact bokisch.com Lighthouse pairs
+  (`#6b7280` on `[#212121](https://github.com/pyreon/pyreon/issues/212121)` = 3.33:1, `#f8f8f8` on `#06b6d4` = 2.28:1).
+
+  **Scope — literal hex pairs only.** It does NOT resolve theme tokens
+  (`color: t.color.muted`), CSS template strings, `rgb()`/`hsl()`/named colours,
+  or alpha hex. Theme-token contrast (the more common real-world shape) is
+  impossible for a static AST walker — it would need to evaluate the theme object
+  at its definition site. That belongs in a theme-loading audit, not a syntactic
+  lint rule; this covers the hardcoded-hex case it can prove with zero guessing.
+  Documented prominently in the rule's JSDoc.
+
+  Off in `recommended`/`strict`/`app`/`lib`; on in `best-practices`. (87 rules
+  total; frontend category 7 → 8.) `@pyreon/mcp` api-reference regenerated.
+
+- [#1200](https://github.com/pyreon/pyreon/pull/1200) [`cc4b6b6`](https://github.com/pyreon/pyreon/commit/cc4b6b683e1c1450432f97fc708abda067818e2e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): `pyreon/heading-order` rule — flag skipped heading levels (a11y)
+
+  New opt-in frontend accessibility rule. Flags a heading whose level jumps by
+  more than one from the previous heading in the same scope (e.g. `<h1>` followed
+  by `<h3>`, skipping `<h2>`) — the axe-core "heading-order" check. Screen-reader
+  users navigate by the heading outline; skipped levels break it.
+
+  **Function-scoped** so two sibling components in one file each get their own
+  outline (no false positive when component B opens at `<h3>` after component A
+  ended at `<h1>`). Off in `recommended`/`strict`/`app`/`lib`; on in
+  `best-practices`. (87 rules total; frontend category 7 → 8.)
+
+  Limitations (the "80% case"): only literal `<h1>`–`<h6>` in a single file's
+  source order; dynamic-level components (`<Heading level={n}>`) and
+  cross-component document order are out of reach for a static walker.
+  `@pyreon/mcp` api-reference regenerated from the updated manifest.
+
+- [#1198](https://github.com/pyreon/pyreon/pull/1198) [`889cf5a`](https://github.com/pyreon/pyreon/commit/889cf5aec04dd41a37dd4d47edcdad358e23f3a2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: `<OptimizedImage source={img} />` + `pyreon/no-discarded-optimize-fields` lint rule
+
+  Two complementary defenses against the [#1](https://github.com/pyreon/pyreon/issues/1) real-world CLS cause — pulling just
+  `hero.src` off a `?optimize` import onto a raw `<img>`, silently dropping
+  `width` / `height` / `srcset` / `placeholder` / `formats`.
+
+  - **`@pyreon/zero`**: new `<OptimizedImage source={hero} alt="…" />` — a one-prop
+    form of `<Image>` that spreads the WHOLE `?optimize` descriptor, so no field
+    can be forgotten. `<Image {...hero} />` still works; this removes the "did I
+    remember every field?" step. Display props pass through alongside `source`.
+  - **`@pyreon/lint`**: new opt-in, `@pyreon/zero`-dep-gated frontend rule
+    `pyreon/no-discarded-optimize-fields` flags `<img src={x.src}>` where `x` is a
+    `?optimize` import, pointing at `<OptimizedImage>` / `<Image {...x}>`. Off in
+    `recommended`/`strict`/`app`/`lib`; on in `best-practices`. (87 rules total.)
+  - `@pyreon/mcp`: api-reference regenerated from the updated manifests.
+
+  The audit also asked to "brand"/rename the `ProcessedImage` type — intentionally
+  skipped: the type is already named and the lint rule keys off the `?optimize`
+  import query, not the type name, so a rename would be churn with no detection gain.
+
+### Patch Changes
+
+- Updated dependencies [[`1aeb610`](https://github.com/pyreon/pyreon/commit/1aeb610a10ce5069b52b2882a6175a16c16483b3)]:
+  - @pyreon/sized-map@1.0.0
+  - @pyreon/compiler@1.0.0
+
 ## 0.27.1
 
 ### Patch Changes
