@@ -30,10 +30,32 @@ public struct RouteRecord {
     /// Factory producing the View when this route matches. Lazy: a route
     /// that's never visited doesn't pay component-construction cost.
     public let component: () -> AnyView
+    /// Phase A5 — per-route guard. Runs AFTER the global beforeEachGuards
+    /// (when this route is the matched one). Return `false` to BLOCK
+    /// navigation to this route; the navigation is dropped, `path` /
+    /// `params` are NOT updated, `afterEachHooks` do NOT fire.
+    ///
+    /// Use for route-specific access control:
+    /// ```
+    /// RouteRecord(path: "/admin/:section", component: { ... }) { _ in isAdmin() }
+    /// ```
+    ///
+    /// The `_inGuard` re-entry pattern works the same as for global
+    /// guards: `router.redirect("/login")` from inside a per-route
+    /// `beforeEnter` triggers the inner replace bypass.
+    ///
+    /// `nil` (the default) means "no per-route gate" — navigation
+    /// proceeds based on global guards alone.
+    public let beforeEnter: ((String) -> Bool)?
 
-    public init(path: String, component: @escaping () -> AnyView) {
+    public init(
+        path: String,
+        component: @escaping () -> AnyView,
+        beforeEnter: ((String) -> Bool)? = nil,
+    ) {
         self.path = path
         self.component = component
+        self.beforeEnter = beforeEnter
     }
 }
 
@@ -202,11 +224,24 @@ public final class PyreonRouter {
     /// Internal helper called by push/replace. Sets `_inGuard` so
     /// `router.replace`/`router.redirect` calls from inside a guard
     /// don't recurse through the chain.
+    ///
+    /// Phase A5: after global guards pass, runs the MATCHED route's
+    /// `beforeEnter` (if any). Global → per-route ordering matches
+    /// the web router's contract: broader scope first, then route-
+    /// specific gates. A route with no `beforeEnter` skips the
+    /// per-route check.
     private func allowNavigation(to candidate: String) -> Bool {
         _inGuard = true
         defer { _inGuard = false }
         for guardFn in beforeEachGuards {
             if !guardFn(candidate) { return false }
+        }
+        // Phase A5: per-route beforeEnter (runs AFTER global guards).
+        // Only fires when the candidate matches a route AND that route
+        // defines a beforeEnter. Unmatched paths fall through (the
+        // global guards already accepted; no per-route gate to apply).
+        if let resolved = resolve(candidate), let routeGuard = resolved.route.beforeEnter {
+            if !routeGuard(candidate) { return false }
         }
         return true
     }

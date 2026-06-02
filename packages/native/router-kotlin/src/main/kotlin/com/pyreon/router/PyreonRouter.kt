@@ -55,6 +55,29 @@ import androidx.compose.runtime.mutableStateOf
  */
 public class RouteRecord(
     public val path: String,
+    /** Phase A5 — per-route guard. Runs AFTER the global
+     *  [PyreonRouter.beforeEachGuards] (when this route is the matched
+     *  one). Return `false` to BLOCK navigation to this route; the
+     *  navigation is dropped, [PyreonRouter.path] / [PyreonRouter.params]
+     *  are NOT updated, [PyreonRouter.afterEachHooks] do NOT fire.
+     *
+     *  Use for route-specific access control:
+     *  ```
+     *  RouteRecord("/admin/:section", beforeEnter = { _ -> isAdmin() }) {
+     *      AdminPage()
+     *  }
+     *  ```
+     *
+     *  The `_inGuard` re-entry pattern works the same as for global
+     *  guards: `router.redirect("/login")` from inside a per-route
+     *  beforeEnter triggers the inner replace bypass.
+     *
+     *  `null` (the default) means "no per-route gate" — navigation
+     *  proceeds based on global guards alone.
+     *
+     *  Position: declared BEFORE `component` so Kotlin's trailing-lambda
+     *  continues to bind to `component` — the more common shape. */
+    public val beforeEnter: ((String) -> Boolean)? = null,
     public val component: @Composable () -> Unit,
 )
 
@@ -231,6 +254,16 @@ public class PyreonRouter(
         try {
             for (guardFn in beforeEachGuards) {
                 if (!guardFn(candidate)) return false
+            }
+            // Phase A5: per-route beforeEnter (runs AFTER global guards).
+            // Only fires when the candidate matches a route AND that
+            // route defines a beforeEnter. Unmatched paths fall through
+            // (global guards already accepted; no per-route gate to
+            // apply).
+            val resolved = resolve(candidate)
+            if (resolved != null) {
+                val routeGuard = resolved.first.beforeEnter
+                if (routeGuard != null && !routeGuard(candidate)) return false
             }
             return true
         } finally {

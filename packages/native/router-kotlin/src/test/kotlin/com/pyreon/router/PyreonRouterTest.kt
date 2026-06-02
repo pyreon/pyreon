@@ -475,5 +475,93 @@ fun main() {
         // by some catch-all route.
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${47} test(s) passed")
+    // Phase A5 — Per-route beforeEnter guards (closes the rest of CRIT-3)
+    // 2026-06 native readiness audit. RouteRecord gains optional
+    // beforeEnter; allowNavigation runs it AFTER global guards when
+    // the candidate matches.
+
+    runTest("A5 beforeEnter allows when true") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/admin", beforeEnter = { _ -> true }) {},
+        ))
+        router.push("/admin")
+        expectEq(router.currentPath, "/admin", "allowed nav succeeded")
+    }
+
+    runTest("A5 beforeEnter blocks when false") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/admin", beforeEnter = { _ -> false }) {},
+        ))
+        expectEq(router.currentPath, "/", "initial path is /")
+        router.push("/admin")  // blocked
+        expectEq(router.currentPath, "/", "blocked: path unchanged")
+        expectEq(router.params.value, emptyMap(), "params not populated")
+    }
+
+    runTest("A5 beforeEnter receives candidate path") {
+        var receivedPath: String? = null
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/users/:id", beforeEnter = { path ->
+                receivedPath = path
+                true
+            }) {},
+        ))
+        router.push("/users/42")
+        expectEq(receivedPath, "/users/42", "guard received the candidate path")
+    }
+
+    runTest("A5 global guard runs BEFORE per-route") {
+        var globalCalls = 0
+        var perRouteCalls = 0
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/x", beforeEnter = { _ ->
+                perRouteCalls += 1
+                true
+            }) {},
+        ))
+        router.beforeEachGuards.add { _ ->
+            globalCalls += 1
+            false  // block
+        }
+        router.push("/x")
+        expectEq(globalCalls, 1, "global fired once")
+        expectEq(perRouteCalls, 0, "per-route never reached")
+        expectEq(router.currentPath, "/", "blocked at global gate")
+    }
+
+    runTest("A5 beforeEnter does NOT fire for unrelated routes") {
+        var fires = 0
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/admin", beforeEnter = { _ ->
+                fires += 1
+                false
+            }) {},
+        ))
+        router.push("/public")  // doesn't match /admin
+        expectEq(fires, 0, "per-route gate skipped for non-matching path")
+        expectEq(router.currentPath, "/public", "unmatched path passes through")
+    }
+
+    runTest("A5 beforeEnter redirect pattern (re-entry-safe via _inGuard)") {
+        val router = PyreonRouter()
+        router.routes.value = listOf(
+            RouteRecord("/admin", beforeEnter = { _ ->
+                router.redirect("/login")
+                false
+            }) {},
+            RouteRecord("/login") {},
+        )
+        router.push("/admin")
+        expectEq(router.currentPath, "/login", "redirected from per-route gate")
+    }
+
+    runTest("A5 no beforeEnter allows by default (per-route gate is opt-in)") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/about") {},
+        ))
+        router.push("/about")
+        expectEq(router.currentPath, "/about", "no beforeEnter → allow")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${54} test(s) passed")
 }
