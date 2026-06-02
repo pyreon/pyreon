@@ -34,6 +34,9 @@ const skipCondition =
   (!isSwiftcAvailable() && process.env.PYREON_REQUIRE_NATIVE_VALIDATE !== '1')
 
 describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixture', () => {
+  // Phase B5 (native readiness audit 2026-06): added 11-canonical-layout
+  // to exercise the broader canonical-primitive set (Stack/Inline/Heading)
+  // — pre-B5 the loop only covered Text/Button/Show/For. Scout-1 finding.
   const fixtures = [
     '01-stateless.tsx',
     '02-signal.tsx',
@@ -45,6 +48,7 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     '08-string-computed.tsx',
     '09-props.tsx',
     '10-multi-component.tsx',
+    '11-canonical-layout.tsx',
   ] as const
 
   for (const fixture of fixtures) {
