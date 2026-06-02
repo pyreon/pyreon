@@ -13,6 +13,8 @@ export default defineNodeConfig({
     // Build-time / Vite plugins:
     'src/vite-plugin.ts',
     'src/ssg-plugin.ts',
+    'src/ssr-plugin.ts',
+    'src/ssr-build-shared.ts',
     'src/app.ts',
     'src/favicon.ts',
     'src/font.ts',
@@ -50,9 +52,9 @@ export default defineNodeConfig({
     'src/routes/**',
   ],
   coverageThresholds: {
-    statements: 94,
+    statements: 95,
     branches: 85,
-    functions: 94,
-    lines: 94,
+    functions: 95,
+    lines: 95,
   },
 })
