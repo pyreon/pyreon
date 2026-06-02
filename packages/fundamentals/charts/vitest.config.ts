@@ -7,6 +7,9 @@ export default defineNodeConfig({
   // ECharts mounts via canvas + real layout — exercised by
   // chart-component.browser.test.tsx and app-showcase e2e. Node-side
   // unit coverage skips it.
-  coverageExclude: ['src/chart-component.tsx'],
-  coverageThresholds: { statements: 94 },
+  // use-chart.ts: ResizeObserver callback (line 97 chart.resize) +
+  // init/setOption error paths require real Chromium — covered by
+  // charts.browser.test.tsx in real-Chromium @vitest/browser.
+  coverageExclude: ['src/chart-component.tsx', 'src/use-chart.ts'],
+  coverageThresholds: { statements: 95 },
 })
