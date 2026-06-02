@@ -1,5 +1,13 @@
 # @pyreon/state-tree
 
+## 0.27.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/validation@1.0.0
+
 ## 0.26.3
 
 ### Patch Changes
