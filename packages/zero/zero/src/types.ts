@@ -69,20 +69,37 @@ export interface ISRConfig {
   revalidateTimeoutMs?: number
   /**
    * Cache-key derivation function. The default keys cache entries by
-   * `url.pathname` ONLY — query strings, cookies, and headers are
-   * stripped.
+   * `url.pathname + url.search` — query strings carry session IDs,
+   * pagination state, sort/filter selectors that all affect rendered
+   * HTML, so they belong in the key by default. Cookies and headers
+   * are NOT included by default (auth-bearing requests need an
+   * explicit `cacheKey`).
    *
-   * **⚠️ Auth-gated incompatibility.** The default behavior is
-   * unsafe for request-dependent loaders. A loader that reads
-   * `request.headers.get('cookie')` to gate auth will render ONCE
-   * with the first user's cookie, then serve that HTML to every
-   * subsequent user. To use ISR with personalized / auth-gated
-   * pages, supply a `cacheKey` that varies on the auth identifier
-   * (session cookie, user-id header, etc.), OR don't use ISR for
-   * such routes — use SSR instead.
+   * **Default changed from `url.pathname` to `url.pathname + url.search`
+   * in v0.27.** Previously, `/posts?id=42` and `/posts?id=99` shared
+   * the same cache entry — the first request's HTML served the second
+   * user's content. The new default is safe for query-varied content;
+   * see the two trade-offs below for tuning.
+   *
+   * **⚠️ Auth-gated incompatibility — still applies.** The default
+   * does NOT include cookies / Authorization headers. A loader that
+   * reads `request.headers.get('cookie')` to gate auth will render
+   * ONCE with the first user's cookie, then serve that HTML to every
+   * subsequent user (matched only by URL). To use ISR with personalized
+   * / auth-gated pages, supply a `cacheKey` that varies on the auth
+   * identifier (session cookie, user-id header, etc.), OR don't use
+   * ISR for such routes — use SSR instead.
+   *
+   * **⚠️ High-cardinality query params.** Analytics tokens (`utm_*`,
+   * `fbclid`, `gclid`, `mc_eid`) cause cache explosion under the new
+   * default — one entry per click variant. For routes that ignore
+   * query strings entirely, opt back to pathname-only:
+   * `cacheKey: (req) => new URL(req.url).pathname`. A dev-mode warning
+   * fires at handler init when no explicit `cacheKey` is configured
+   * (once per handler instance, never in production).
    *
    * @example
-   * // Vary cache by session cookie:
+   * // Vary cache by session cookie (auth-gated pages):
    * isr: {
    *   revalidate: 60,
    *   cacheKey: (req) => {
@@ -93,7 +110,14 @@ export interface ISRConfig {
    * }
    *
    * @example
-   * // Vary by a query parameter:
+   * // Strip query string entirely (high-cardinality analytics params):
+   * isr: {
+   *   revalidate: 60,
+   *   cacheKey: (req) => new URL(req.url).pathname,
+   * }
+   *
+   * @example
+   * // Vary by a single query parameter (drop the rest):
    * isr: {
    *   revalidate: 60,
    *   cacheKey: (req) => {

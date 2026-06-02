@@ -298,13 +298,31 @@ defineConfig({
   isr: {
     revalidate: 60, // seconds before a cached entry is considered stale
     maxEntries: 1000, // LRU cap on the in-memory cache (default 1000)
-    cacheKey: (req) => new URL(req.url).pathname, // default keys by pathname only
+    // cacheKey defaults to `url.pathname + url.search` — query strings vary the cache.
+    // Cookies are NOT included by default (auth-gated content requires explicit cacheKey).
   },
 })
 ```
 
-::: warning ISR cache key + auth
-The default cache key is `url.pathname` only — query, cookies, and headers are stripped. An auth-gated loader (reading `request.headers.get('cookie')`) renders **once** with the first user's cookie and then serves that HTML to everyone. Supply a `cacheKey` that varies on the session identifier, or use `mode: 'ssr'` for personalized routes.
+::: warning ISR cache key — two trade-offs
+The default cache key is `url.pathname + url.search` — query strings affect the key, cookies and Authorization headers do NOT. Two adjustments depending on your route:
+
+**Auth-gated content** (loader reads `cookie` / `Authorization`): the default is unsafe — the first user's cached HTML serves every other user. Supply a `cacheKey` that varies on the session identifier:
+
+```ts
+cacheKey: (req) => {
+  const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
+  return `${new URL(req.url).pathname}::${session}`
+}
+```
+
+**High-cardinality query params** (analytics tokens like `utm_*`, `fbclid`, `gclid`): the default causes cache explosion (one entry per click variant). For routes that ignore query strings entirely, strip them:
+
+```ts
+cacheKey: (req) => new URL(req.url).pathname
+```
+
+A one-time dev-mode warning fires at handler init when no `cacheKey` is configured — it names both fixes inline. Production builds tree-shake the warning to zero bytes via the standard `process.env.NODE_ENV !== 'production'` gate.
 :::
 
 Build-time ISR (per-route `export const revalidate` + adapter-driven rebuild-on-stale) is a **separate** mechanism documented in [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate).

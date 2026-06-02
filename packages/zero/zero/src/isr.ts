@@ -6,6 +6,19 @@ import type { ISRConfig } from './types'
 const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
+// Module-level dedup for the default-cacheKey dev warning. Keyed on the
+// per-handler `deriveKey` function reference (one per `createISRHandler`
+// call) so each handler instance warns AT MOST once, even under heavy
+// request load. WeakSet so finalized handlers don't pin their derive-key
+// closures alive — the warning state GC's with the handler.
+//
+// Test contract: each `createISRHandler` call produces a FRESH `deriveKey`
+// closure, so per-test isolation is automatic — no reset needed. Tests
+// asserting "warns once" call the same handler twice and count
+// `console.warn` invocations; tests asserting "fresh handlers each warn"
+// just create two handlers.
+const _warnedDefaultCacheKeyHandlers = new WeakSet<(req: Request, url: URL) => string>()
+
 // ─── ISR Cache ───────────────────────────────────────────────────────────────
 
 /** Serialized SSR response cached by the ISR layer (one per cache key). */
@@ -249,14 +262,63 @@ export function createISRHandler(
 
     return true
   }
-  // M1.1 — cache-key derivation. Default keys by pathname only (the
-  // pre-M1 behaviour). User-supplied `cacheKey` opts in to varying
-  // by cookies / query / headers — required for auth-gated pages.
-  // See `ISRConfig.cacheKey` JSDoc for the auth-incompatibility caveat.
+  // Cache-key derivation. Default keys by `pathname + search` — the
+  // safe default that matches Next.js ISR and RSC conventions: query
+  // strings carry session IDs, pagination state, sort/filter selectors
+  // that ALL affect the rendered HTML. A `pathname`-only default
+  // (shipped pre-fix as M1.1) silently served `/posts?id=42` HTML to
+  // `/posts?id=99` requests — visibly wrong content, structurally
+  // invisible to tests that only probe one URL per route.
+  //
+  // Two trade-offs callers should know about (the dev warning below
+  // names both):
+  //   1. **Auth-gated content** — `pathname + search` is still NOT safe
+  //      when the loader reads cookies / Authorization headers. Supply
+  //      `cacheKey: (req) => ...` that includes the session/user
+  //      identifier in the key. See `ISRConfig.cacheKey` JSDoc.
+  //   2. **High-cardinality query params** — analytics tokens
+  //      (`utm_source`, `fbclid`, etc.) cause cache explosion (one
+  //      entry per click variant). Strip them with `cacheKey: (req) =>
+  //      new URL(req.url).pathname` if your route doesn't depend on
+  //      any query params.
   const deriveKey: (req: Request, url: URL) => string
     = typeof config.cacheKey === 'function'
       ? (req, _url) => (config.cacheKey as (r: Request) => string)(req)
-      : (_req, url) => url.pathname
+      : (_req, url) => url.pathname + url.search
+
+  // One-time dev warning when the default cacheKey is in effect. Mirrors
+  // the M2.4 adapter env-var warning pattern: warn ONCE per handler
+  // instance so a busy production CMS doesn't spam logs. The warning
+  // fires regardless of whether the handler ever sees an auth-bearing
+  // request — the goal is to teach the trade-offs at developer time,
+  // not at runtime.
+  // Bare `process.env.NODE_ENV` gate (NOT the file's local `__DEV__`
+  // alias) — folds to dead code under every modern bundler's define
+  // replacement, so the warning string + WeakSet membership check
+  // tree-shake to zero bytes in production. The local `__DEV__` const
+  // shipped pre-fix throughout this file is the documented anti-pattern
+  // (catches bundler reliability gaps in Bun.build / some esbuild
+  // configs); migrating existing call sites is a separate cleanup.
+  // See .claude/rules/anti-patterns.md → "Local `__DEV__` const alias".
+  if (
+    process.env.NODE_ENV !== 'production'
+    && !hasCacheKey
+    && !_warnedDefaultCacheKeyHandlers.has(deriveKey)
+  ) {
+    _warnedDefaultCacheKeyHandlers.add(deriveKey)
+    // oxlint-disable-next-line no-console
+    console.warn(
+      '[Pyreon ISR] No `cacheKey` configured — using default '
+      + '`url.pathname + url.search`. Two caveats:\n'
+      + '  1. AUTH-UNSAFE for loaders that read cookies / Authorization. '
+      + 'Supply `cacheKey: (req) => `${pathname}::${session}`` to vary '
+      + 'by user identifier.\n'
+      + '  2. HIGH-CARDINALITY query params (utm_*, fbclid) cause cache '
+      + 'explosion. Use `cacheKey: (req) => new URL(req.url).pathname` '
+      + 'if your route ignores query strings.\n'
+      + 'See https://docs.pyreon.com/zero#isr-handler-runtime for details.',
+    )
+  }
 
   async function revalidate(url: URL, originalReq: Request) {
     // Re-derive key from the ORIGINAL request so cookies / headers /

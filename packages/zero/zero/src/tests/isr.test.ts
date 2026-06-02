@@ -156,41 +156,106 @@ describe('createISRHandler', () => {
     expect(inner).toHaveBeenCalledTimes(3)
   })
 
-  // ─── M1.1 — cacheKey opt-in (per-user / per-query caching) ───────────────
+  // ─── cacheKey default + opt-in (per-user / per-query caching) ───────────────
 
-  describe('cacheKey (M1.1)', () => {
+  describe('cacheKey', () => {
     // Pre-M1, the cache key was `url.pathname` only — query strings,
     // cookies, headers were stripped. An auth-gated `/dashboard` with
     // user A's cookie cached "Welcome A", then served that SAME HTML to
-    // user B. The `cacheKey` opt-in lets users derive keys from
-    // cookies / query / headers so personalized pages cache correctly.
+    // user B. M1.1 made `cacheKey` opt-in but kept the unsafe default.
+    // The current default is `url.pathname + url.search` — query strings
+    // contribute to the key (fixes the silent `?id=42` vs `?id=99`
+    // leak); cookies still need an explicit `cacheKey` for auth-gated
+    // routes (documented + warned).
 
-    it('default behaviour: keys by pathname only (cookies + query ignored)', async () => {
-      // Pre-M1 contract preserved: callers who don't supply `cacheKey`
-      // get the same pathname-only behaviour they had before.
+    it('default behaviour: keys by pathname + search (query strings vary cache; cookies still ignored)', async () => {
       let calls = 0
       const inner = vi.fn(async (req: Request) => {
         calls++
-        return new Response(`call ${calls}`)
+        const url = new URL(req.url)
+        return new Response(`call ${calls} (q=${url.searchParams.get('id') ?? ''})`)
       })
       const handler = createISRHandler(inner, { revalidate: 60 })
 
-      // Two requests, same path but DIFFERENT cookies + query
-      const res1 = await handler(
-        new Request('http://localhost/dashboard?foo=1', {
-          headers: { cookie: 'session=alice' },
-        }),
-      )
-      const res2 = await handler(
-        new Request('http://localhost/dashboard?foo=2', {
+      // Different `?id=...` → different cache entries (the bug-class fix).
+      const res1 = await handler(new Request('http://localhost/post?id=42'))
+      const res2 = await handler(new Request('http://localhost/post?id=99'))
+      expect(await res1.text()).toBe('call 1 (q=42)')
+      expect(await res2.text()).toBe('call 2 (q=99)')
+      expect(inner).toHaveBeenCalledTimes(2)
+
+      // Same path + search → cache HIT (no extra inner call), even with
+      // different COOKIES (auth caveat — that's what `cacheKey` opt-in
+      // is for).
+      const res3 = await handler(
+        new Request('http://localhost/post?id=42', {
           headers: { cookie: 'session=bob' },
         }),
       )
+      expect(await res3.text()).toBe('call 1 (q=42)')
+      expect(inner).toHaveBeenCalledTimes(2)
+    })
 
-      expect(await res1.text()).toBe('call 1')
-      // Cache HIT: same pathname → same key → bob gets alice's response.
-      expect(await res2.text()).toBe('call 1')
-      expect(inner).toHaveBeenCalledTimes(1)
+    it('default warning: fires ONCE per handler instance at first request when no cacheKey configured', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const inner = vi.fn(async () => new Response('ok'))
+      const handler = createISRHandler(inner, { revalidate: 60 })
+
+      // Warning fires on first request — same handler instance, multiple
+      // requests should only emit ONE warning.
+      await handler(new Request('http://localhost/a'))
+      await handler(new Request('http://localhost/b'))
+      await handler(new Request('http://localhost/c'))
+
+      const cacheKeyWarns = warnSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('No `cacheKey` configured'),
+      )
+      expect(cacheKeyWarns.length).toBe(1)
+      // Warning content asserts the two trade-offs are named — the
+      // fundamental contract: dev sees BOTH the auth and the
+      // cardinality fixes without leaving the log line.
+      expect(String(cacheKeyWarns[0]?.[0])).toContain('AUTH-UNSAFE')
+      expect(String(cacheKeyWarns[0]?.[0])).toContain('HIGH-CARDINALITY')
+
+      warnSpy.mockRestore()
+    })
+
+    it('default warning: does NOT fire when explicit cacheKey is configured', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const inner = vi.fn(async () => new Response('ok'))
+      const handler = createISRHandler(inner, {
+        revalidate: 60,
+        cacheKey: (req) => new URL(req.url).pathname,
+      })
+
+      await handler(new Request('http://localhost/a'))
+
+      const cacheKeyWarns = warnSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('No `cacheKey` configured'),
+      )
+      expect(cacheKeyWarns.length).toBe(0)
+
+      warnSpy.mockRestore()
+    })
+
+    it('default warning: fires once PER HANDLER INSTANCE (two handlers → two warnings)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const inner = vi.fn(async () => new Response('ok'))
+
+      // Two separate `createISRHandler` calls each create a fresh
+      // `deriveKey` closure → each one warns once independently. This
+      // matches the M2.4 adapter-env-var-warning contract.
+      const h1 = createISRHandler(inner, { revalidate: 60 })
+      const h2 = createISRHandler(inner, { revalidate: 60 })
+      await h1(new Request('http://localhost/x'))
+      await h2(new Request('http://localhost/y'))
+
+      const cacheKeyWarns = warnSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('No `cacheKey` configured'),
+      )
+      expect(cacheKeyWarns.length).toBe(2)
+
+      warnSpy.mockRestore()
     })
 
     it('custom cacheKey varies cache by cookie (auth-gated use case)', async () => {
