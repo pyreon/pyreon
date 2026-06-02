@@ -20,11 +20,18 @@ export default defineNodeConfig({
   // calcs need real DOMRect + scroll metrics). Exercised by
   // elements.browser.test.tsx + ui-showcase e2e — excluded from
   // node-side unit coverage.
-  coverageExclude: ['src/Overlay/positioning.ts'],
+  // Text/Content/helpers styled-callback files: theme-callback bodies
+  // run inside `makeItResponsive` during real component mount —
+  // exercised by elements.browser.test.tsx + ui-showcase e2e.
+  coverageExclude: [
+    'src/Overlay/positioning.ts',
+    'src/Text/styled.ts',
+    'src/helpers/Content/styled.ts',
+  ],
   coverageThresholds: {
-    statements: 94,
-    branches: 76,
+    statements: 95,
+    branches: 80,
     functions: 84,
-    lines: 94,
+    lines: 95,
   },
 })
