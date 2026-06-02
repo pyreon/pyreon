@@ -199,14 +199,44 @@ public class PyreonRouter(
      *  the navigation. Chains: if ANY guard returns false, the
      *  navigation is dropped. Runs BEFORE `push`/`replace` mutates
      *  the path. PMTC-emitted apps configure these from
-     *  `createRouter({ beforeEach: [authGuard, logGuard] })` config. */
+     *  `createRouter({ beforeEach: [authGuard, logGuard] })` config.
+     *
+     *  **Lifecycle hazard** (Class C from `.claude/rules/anti-patterns.md`):
+     *  this list grows monotonically with every `.add(...)` call —
+     *  apps that add guards from per-composable scopes (test fixtures,
+     *  modal controllers) silently leak guards across the router's
+     *  lifetime. Use [addBeforeEach] instead (Phase A7) — it returns
+     *  a disposer that cleanly removes the guard at owner-teardown
+     *  time. This direct-add API is kept for back-compat + the
+     *  compiler-emitted createRouter config shape. */
     public val beforeEachGuards: MutableList<(String) -> Boolean> = mutableListOf()
 
     /** Global router-level afterEach hooks (`afterEach: [fn]` on
      *  createRouter). Each is `(path: String) -> Unit` — runs AFTER
      *  the path commits. Fan-out (no short-circuit); side effects
-     *  only. Typical use: analytics, page-view logging. */
+     *  only. Typical use: analytics, page-view logging.
+     *
+     *  **Same lifecycle hazard as [beforeEachGuards]** — prefer
+     *  [addAfterEach] (Phase A7) for lifecycle-bound hooks. */
     public val afterEachHooks: MutableList<(String) -> Unit> = mutableListOf()
+
+    /** Phase A7 — disposable-guard storage. Separate from the legacy
+     *  [beforeEachGuards] list so existing `router.beforeEachGuards.add(...)`
+     *  usage isn't broken. Each entry carries an ID; the disposer
+     *  returned by [addBeforeEach] captures the ID + removes by
+     *  identity, robust to other guards being added/removed in any
+     *  order. Walked alongside [beforeEachGuards] in [allowNavigation]. */
+    private val _disposableBeforeEachGuards: MutableList<Pair<Long, (String) -> Boolean>> =
+        mutableListOf()
+
+    /** Phase A7 — disposable-hook storage. Mirror of
+     *  [_disposableBeforeEachGuards] for [afterEachHooks]. */
+    private val _disposableAfterEachHooks: MutableList<Pair<Long, (String) -> Unit>> =
+        mutableListOf()
+
+    /** Phase A7 — monotonic ID generator for disposable-guard entries.
+     *  Long avoids any rollover concern for the framework's lifetime. */
+    private var _nextDisposableId: Long = 0L
 
     /** Re-entry flag for the redirect pattern. When a beforeEach
      *  guard calls `router.replace("/login")` (the canonical "throw
@@ -221,17 +251,77 @@ public class PyreonRouter(
     /** Run the beforeEach chain against `candidate`; any false →
      *  navigation BLOCKED. Returns true iff every guard allowed.
      *  Sets `_inGuard` so router.replace/redirect calls from inside
-     *  a guard don't recurse through the chain. */
+     *  a guard don't recurse through the chain.
+     *
+     *  Phase A7: walks BOTH the legacy [beforeEachGuards] list AND
+     *  the disposable [_disposableBeforeEachGuards] list. Legacy first
+     *  (preserves any existing precedence apps relied on); disposable
+     *  second. */
     private fun allowNavigation(candidate: String): Boolean {
         _inGuard = true
         try {
             for (guardFn in beforeEachGuards) {
                 if (!guardFn(candidate)) return false
             }
+            for ((_, fn) in _disposableBeforeEachGuards) {
+                if (!fn(candidate)) return false
+            }
             return true
         } finally {
             _inGuard = false
         }
+    }
+
+    /** Phase A7 — register a beforeEach guard with lifecycle-bound
+     *  cleanup. Returns a disposer; invoke to remove THIS specific
+     *  guard from the chain (idempotent — multiple calls are safe).
+     *
+     *  Preferred over `router.beforeEachGuards.add(...)` for any guard
+     *  whose lifetime is shorter than the router's (per-composable
+     *  auth checks, test fixtures, modal-controller gates). Without
+     *  the disposer, guards leak across the router's lifetime —
+     *  Class C unbounded-cache shape.
+     *
+     *  Example (Compose):
+     *  ```
+     *  @Composable
+     *  fun DashboardScreen() {
+     *      val router = LocalPyreonRouter.current ?: return
+     *      DisposableEffect(router) {
+     *          val dispose = router.addBeforeEach { path ->
+     *              !path.startsWith("/admin") || isAdmin()
+     *          }
+     *          onDispose { dispose() }
+     *      }
+     *  }
+     *  ```
+     */
+    public fun addBeforeEach(guardFn: (String) -> Boolean): () -> Unit {
+        val id = _nextDisposableId++
+        _disposableBeforeEachGuards.add(id to guardFn)
+        return { _disposableBeforeEachGuards.removeAll { it.first == id } }
+    }
+
+    /** Phase A7 — register an afterEach hook with lifecycle-bound
+     *  cleanup. Returns a disposer; idempotent. See [addBeforeEach]. */
+    public fun addAfterEach(hook: (String) -> Unit): () -> Unit {
+        val id = _nextDisposableId++
+        _disposableAfterEachHooks.add(id to hook)
+        return { _disposableAfterEachHooks.removeAll { it.first == id } }
+    }
+
+    /** Phase A7 — clear ALL disposable beforeEach guards in one call.
+     *  Useful for test teardown where tracking individual disposers is
+     *  more boilerplate than value. Does NOT touch the legacy
+     *  [beforeEachGuards] list — apps using direct-add are managing
+     *  it themselves. */
+    public fun clearDisposableBeforeEachGuards() {
+        _disposableBeforeEachGuards.clear()
+    }
+
+    /** Phase A7 — clear ALL disposable afterEach hooks. */
+    public fun clearDisposableAfterEachHooks() {
+        _disposableAfterEachHooks.clear()
     }
 
     /** Push a new path onto the stack. Matches `router.push(path)` on the web side.
@@ -258,6 +348,8 @@ public class PyreonRouter(
         // Phase B8: NEW navigation invalidates forward history.
         _forwardStack.clear()
         for (hook in afterEachHooks) hook(path)
+        // Phase A7: fan out disposable hooks too.
+        for ((_, fn) in _disposableAfterEachHooks) fn(path)
     }
 
     /**
@@ -293,6 +385,8 @@ public class PyreonRouter(
         // Phase B8: replace is a NEW navigation; clear forward history.
         _forwardStack.clear()
         for (hook in afterEachHooks) hook(path)
+        // Phase A7: fan out disposable hooks too.
+        for ((_, fn) in _disposableAfterEachHooks) fn(path)
     }
 
     /** "Throw redirect" — the canonical native equivalent of the web

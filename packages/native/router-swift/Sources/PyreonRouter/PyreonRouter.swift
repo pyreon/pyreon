@@ -124,13 +124,40 @@ public final class PyreonRouter {
     /// is dropped. Runs BEFORE the `push`/`replace` mutates the path.
     /// PMTC-emitted apps configure these from `createRouter({
     /// beforeEach: [authGuard, logGuard] })` config.
+    ///
+    /// **Lifecycle hazard** (Class C from `.claude/rules/anti-patterns.md`):
+    /// this array grows monotonically with every `.append(...)` call —
+    /// apps that add guards from per-view scopes (test fixtures, modal
+    /// controllers) silently leak guards across the router's lifetime.
+    /// Use `addBeforeEach(_:)` instead (Phase A7) — it returns a
+    /// disposer that cleanly removes the guard at owner-teardown time.
+    /// This direct-append API is kept for back-compat + the compiler-
+    /// emitted `createRouter` config shape.
     public var beforeEachGuards: [(String) -> Bool] = []
 
     /// Global router-level afterEach hooks (`afterEach: [fn]` on
     /// createRouter). Each is `(path: String) -> Void` — runs AFTER
     /// the path commits. Fan-out (no short-circuit); side effects
     /// only. Typical use: analytics, page-view logging.
+    ///
+    /// **Same lifecycle hazard as `beforeEachGuards`** — prefer
+    /// `addAfterEach(_:)` (Phase A7) for lifecycle-bound hooks.
     public var afterEachHooks: [(String) -> Void] = []
+
+    /// Phase A7 — disposable-guard storage. Separate from the legacy
+    /// `beforeEachGuards` array so existing `router.beforeEachGuards.append(...)`
+    /// usage isn't broken. Each entry carries a UUID; the disposer
+    /// returned by `addBeforeEach` captures the UUID + removes by
+    /// identity, which is robust to other guards being added/removed
+    /// in any order. Walked alongside `beforeEachGuards` in
+    /// `allowNavigation`.
+    @ObservationIgnored
+    private var _disposableBeforeEachGuards: [(id: UUID, fn: (String) -> Bool)] = []
+
+    /// Phase A7 — disposable-hook storage. Mirror of
+    /// `_disposableBeforeEachGuards` for `afterEachHooks`.
+    @ObservationIgnored
+    private var _disposableAfterEachHooks: [(id: UUID, fn: (String) -> Void)] = []
 
     /// Re-entry flag for the redirect pattern. When a beforeEach guard
     /// calls `router.replace("/login")` (the canonical "throw redirect"
@@ -195,19 +222,91 @@ public final class PyreonRouter {
     /// Internal helper called by push/replace. Sets `_inGuard` so
     /// `router.replace`/`router.redirect` calls from inside a guard
     /// don't recurse through the chain.
+    ///
+    /// Phase A7: walks BOTH the legacy `beforeEachGuards` array AND
+    /// the disposable `_disposableBeforeEachGuards` list. Legacy first
+    /// (preserves any existing precedence apps relied on); disposable
+    /// second.
     private func allowNavigation(to candidate: String) -> Bool {
         _inGuard = true
         defer { _inGuard = false }
         for guardFn in beforeEachGuards {
             if !guardFn(candidate) { return false }
         }
+        for entry in _disposableBeforeEachGuards {
+            if !entry.fn(candidate) { return false }
+        }
         return true
     }
 
     /// Run the afterEach fan-out for `committed`. Side effects only;
     /// no short-circuit. Internal helper called by push/replace.
+    ///
+    /// Phase A7: fans out across BOTH the legacy `afterEachHooks` array
+    /// AND the disposable `_disposableAfterEachHooks` list.
     private func runAfterEach(_ committed: String) {
         for hook in afterEachHooks { hook(committed) }
+        for entry in _disposableAfterEachHooks { entry.fn(committed) }
+    }
+
+    /// Phase A7 — register a beforeEach guard with lifecycle-bound
+    /// cleanup. Returns a disposer; call it to remove THIS specific
+    /// guard from the chain (idempotent — multiple calls are safe).
+    ///
+    /// Preferred over `router.beforeEachGuards.append(...)` for any
+    /// guard whose lifetime is shorter than the router's (per-view
+    /// auth checks, test fixtures, modal-controller gates). Without
+    /// the disposer, guards leak across the router's lifetime —
+    /// Class C unbounded-cache shape.
+    ///
+    /// Example (SwiftUI view):
+    ///     struct DashboardView: View {
+    ///         @Environment(\.pyreonRouter) private var router
+    ///         @State private var dispose: (() -> Void)? = nil
+    ///         var body: some View {
+    ///             EmptyView()
+    ///                 .onAppear {
+    ///                     dispose = router?.addBeforeEach { path in
+    ///                         return path.starts(with: "/admin") ? false : true
+    ///                     }
+    ///                 }
+    ///                 .onDisappear { dispose?(); dispose = nil }
+    ///         }
+    ///     }
+    @discardableResult
+    public func addBeforeEach(_ guardFn: @escaping (String) -> Bool) -> () -> Void {
+        let id = UUID()
+        _disposableBeforeEachGuards.append((id, guardFn))
+        return { [weak self] in
+            self?._disposableBeforeEachGuards.removeAll { $0.id == id }
+        }
+    }
+
+    /// Phase A7 — register an afterEach hook with lifecycle-bound
+    /// cleanup. Returns a disposer; idempotent. See `addBeforeEach`.
+    @discardableResult
+    public func addAfterEach(_ hook: @escaping (String) -> Void) -> () -> Void {
+        let id = UUID()
+        _disposableAfterEachHooks.append((id, hook))
+        return { [weak self] in
+            self?._disposableAfterEachHooks.removeAll { $0.id == id }
+        }
+    }
+
+    /// Phase A7 — clear ALL disposable beforeEach guards in one call.
+    /// Useful for test teardown (`override func tearDown()`) where
+    /// tracking individual disposers is more boilerplate than value.
+    /// Does NOT touch the legacy `beforeEachGuards` array — that
+    /// stays as-is (apps using direct-append are managing it
+    /// themselves anyway).
+    public func clearDisposableBeforeEachGuards() {
+        _disposableBeforeEachGuards.removeAll()
+    }
+
+    /// Phase A7 — clear ALL disposable afterEach hooks. Mirror of
+    /// `clearDisposableBeforeEachGuards`.
+    public func clearDisposableAfterEachHooks() {
+        _disposableAfterEachHooks.removeAll()
     }
 
     /// Push a new path onto the stack. Matches `router.push(path)`
