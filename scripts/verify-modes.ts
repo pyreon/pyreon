@@ -639,6 +639,20 @@ const MATRIX: Cell[] = [
       // testid stop co-occurring.
       assertFileContains(join(dist, '404.html'), 'data-testid="nav-home"')
       assertFileContains(join(dist, '404.html'), 'data-testid="nav-about"')
+      // claim-3 from render-modes audit — framework injects
+      // `<meta name="robots" content="noindex, nofollow">` into the
+      // emitted 404.html when the rendered head has no robots meta.
+      // The Meta component's default of `'index, follow'` is correct
+      // for regular pages but actively wrong on a 404 — and most
+      // `_404.tsx` examples don't override it. ssr-showcase's
+      // `_404.ts` is the canonical example: no `<Meta robots=...>`,
+      // so the framework's auto-inject is what reaches dist.
+      // Bisect-verifiable: stub `ensureNoindexMeta` in not-found.ts to
+      // `return html` — this assertion fails.
+      assertFileContains(
+        join(dist, '404.html'),
+        '<meta name="robots" content="noindex, nofollow">',
+      )
     },
   },
   {

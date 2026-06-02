@@ -41,6 +41,7 @@ import {
   mkdirOnce,
   writeFileAtomic,
 } from './ssr-build-shared'
+import { ensureNoindexMeta } from './not-found'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
@@ -1434,7 +1435,15 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               }),
             ])
             if (result) {
-              const html = injectIntoTemplate(template, result)
+              // Inject `<meta name="robots" content="noindex, nofollow">`
+              // BEFORE writing — the framework knows it's emitting a 404,
+              // and `<Meta>`'s default of `'index, follow'` is wrong here.
+              // User override wins: if the rendered head already carries
+              // a `<meta name="robots">` (case-insensitive), the helper
+              // passes the HTML through unchanged. Same helper that
+              // render404Page uses, so the contract is identical across
+              // build-time SSG emit and runtime dev/SSR emit paths.
+              const html = ensureNoindexMeta(injectIntoTemplate(template, result))
               const filePath
                 = locale == null
                   ? join(distDir, '404.html')

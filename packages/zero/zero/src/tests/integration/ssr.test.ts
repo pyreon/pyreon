@@ -318,6 +318,74 @@ describe("render404Page", () => {
 		expect(html).toContain("404");
 		expect(html).not.toContain("<!--pyreon-app-->");
 	});
+
+	// ─── 404 noindex injection — claim-3 from render-modes audit ────────────
+	//
+	// The framework KNOWS it's emitting a 404. The `<Meta>` component
+	// default of `'index, follow'` is correct for regular pages but
+	// actively wrong here. `ensureNoindexMeta` injects the noindex tag
+	// into the rendered head; user override (any explicit robots meta)
+	// wins. See `not-found.ts:ensureNoindexMeta` for the contract.
+
+	it("default 404 carries noindex,nofollow robots meta in the rendered head", async () => {
+		const html = await render404Page(undefined);
+		expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
+		// Sanity — the meta is INSIDE <head>, not floating in <body>
+		const headEndIdx = html.indexOf("</head>");
+		const robotsIdx = html.indexOf('name="robots"');
+		expect(robotsIdx).toBeGreaterThan(-1);
+		expect(robotsIdx).toBeLessThan(headEndIdx);
+	});
+
+	it("custom 404 component with no Meta gets noindex,nofollow auto-injected", async () => {
+		const { h } = await import("@pyreon/core");
+		const Custom = () => h("div", null, "Bare 404 content");
+		const html = await render404Page(Custom);
+		expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
+		expect(html).toContain("Bare 404 content");
+	});
+
+	it("user-supplied robots meta wins (does NOT inject default)", async () => {
+		// User explicitly opts into something different — `<Meta>` might
+		// emit `<meta name="robots" content="noindex, nofollow, noarchive">`
+		// or for some reason `'index, follow'`. Either way, ours stays out.
+		const template =
+			'<!DOCTYPE html><html><head><meta name="robots" content="noindex, nofollow, noarchive"></head><body><!--pyreon-app--></body></html>';
+		const html = await render404Page(undefined, template);
+		expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive">');
+		// Default version (without noarchive) must NOT appear ALSO — the
+		// helper bailed out cleanly without double-injection.
+		const robotsMetaCount = (html.match(/name="robots"/g) ?? []).length;
+		expect(robotsMetaCount).toBe(1);
+	});
+
+	it("user-supplied single-quote robots meta also wins (regex covers both quote styles)", async () => {
+		const template =
+			"<!DOCTYPE html><html><head><meta name='robots' content='all'></head><body><!--pyreon-app--></body></html>";
+		const html = await render404Page(undefined, template);
+		const robotsMetaCount = (html.match(/name=['"]robots['"]/g) ?? []).length;
+		expect(robotsMetaCount).toBe(1);
+		expect(html).toContain("content='all'");
+	});
+
+	it("ensureNoindexMeta is idempotent (calling twice = same output)", async () => {
+		const { ensureNoindexMeta } = await import("../../not-found");
+		const once = ensureNoindexMeta(
+			'<!DOCTYPE html><html><head><title>Bare</title></head><body></body></html>',
+		);
+		const twice = ensureNoindexMeta(once);
+		expect(once).toBe(twice);
+		const robotsMetaCount = (once.match(/name="robots"/g) ?? []).length;
+		expect(robotsMetaCount).toBe(1);
+	});
+
+	it("ensureNoindexMeta is safe on body-only fragments (no </head>)", async () => {
+		const { ensureNoindexMeta } = await import("../../not-found");
+		const fragment = "<div>just a body fragment</div>";
+		// Returns input unchanged — does NOT emit a stray <meta> outside
+		// any document structure.
+		expect(ensureNoindexMeta(fragment)).toBe(fragment);
+	});
 });
 
 function flattenPaths(
