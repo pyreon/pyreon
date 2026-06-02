@@ -466,6 +466,39 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
+  // Native readiness audit (2026-06, CRIT-4): `const data = useLoaderData<T>()`
+  // is currently DROPPED on both targets — PMTC has no emit branch, AND
+  // there's no diagnostic. The runtime `setLoaderData()` infrastructure
+  // ships on PyreonRouter (Swift + Kotlin), but the loader auto-emit
+  // that would WIRE a component-level `useLoaderData<T>()` call to it
+  // is deferred — see docs/docs/multiplatform.md "Loader auto-emit is
+  // intentionally deferred, not forgotten." A developer writing the
+  // call gets a silent-drop: data signal is never populated, component
+  // renders with undefined, no compile error, no runtime error. Warn
+  // at the call site naming the binding so the path forward is obvious.
+  //
+  // Two shapes covered:
+  //   (a) `const data = useLoaderData<User>()`  — Identifier binding
+  //   (b) `const { user } = useLoaderData<{ user: User }>()` — destructure
+  //       (also unsupported until loader auto-emit lands)
+  if (init?.type === 'CallExpression') {
+    const callee = init.callee?.name as string | undefined
+    if (callee === 'useLoaderData') {
+      const bindingDesc =
+        node.id?.type === 'Identifier'
+          ? `\`const ${node.id.name as string} = useLoaderData<T>()\``
+          : node.id?.type === 'ObjectPattern'
+            ? '`const { ... } = useLoaderData<T>()`'
+            : '`useLoaderData<T>()`'
+      ctx.warnings.push(
+        `useLoaderData<T>() declared (${bindingDesc}) but PMTC has no emit for loader data on native targets yet — the runtime PyreonRouter's setLoaderData() is the only way to populate this signal today. Either remove the useLoaderData call and read \`router.loaderData()\` directly via a custom hook, or wait for the loader auto-emit follow-up (tracked as native-readiness Phase B). Reference: docs/docs/multiplatform.md → "Loader auto-emit is intentionally deferred, not forgotten."`,
+      )
+      // Still return null so emit continues as before (silent-drop is
+      // preserved; the warning is purely additive — same shape as the
+      // useClipboard-destructure path above).
+      return null
+    }
+  }
   // `const { id } = useParams()` / `const { id: userId } = useParams<{...}>()`
   // — destructured router params. The ObjectPattern id has no `.name`, so this
   // must run BEFORE the name-based bail below (otherwise the decl is silently
