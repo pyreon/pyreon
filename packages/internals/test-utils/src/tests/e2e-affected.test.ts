@@ -54,7 +54,7 @@ describe('selectSuites', () => {
       '.github/workflows/ci.yml',
       'scripts/e2e-affected.ts',
       'playwright.config.ts',
-      'playwright.zero-hmr.config.ts',
+      'e2e-configs/zero-hmr.config.ts',
       'packages/core/reactivity/src/signal.ts',
       'packages/core/core/src/h.ts',
       'packages/core/runtime-dom/src/mount.ts',

@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test'
  * Targets `examples/ssr-showcase` BUILT under `vite.config.i18n.ts`
  * (with `zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en' } })`)
  * and SERVED via `vite preview` at `http://localhost:5199` — config in
- * `playwright.ssg-i18n.config.ts`.
+ * `e2e-configs/ssg-i18n.config.ts`.
  *
  * Companion to the build-artifact gate `verify-modes ssr-showcase ×
  * ssg-i18n`. The verify-modes cell asserts the EMITTED dist filesystem
