@@ -21,7 +21,7 @@ function sev(entry: unknown): Severity {
 }
 
 describe('opt-in best-practice rule wiring', () => {
-  it('the expected 15 best-practice rules are tagged optIn', () => {
+  it('the expected 16 best-practice rules are tagged optIn', () => {
     expect(new Set(OPT_IN_IDS)).toEqual(
       new Set([
         'pyreon/require-img-alt',
@@ -30,6 +30,7 @@ describe('opt-in best-practice rule wiring', () => {
         'pyreon/prefer-zero-image',
         'pyreon/no-discarded-optimize-fields',
         'pyreon/heading-order',
+        'pyreon/color-contrast',
         'pyreon/no-autofocus',
         'pyreon/no-redundant-role',
         'pyreon/anchor-is-valid',
