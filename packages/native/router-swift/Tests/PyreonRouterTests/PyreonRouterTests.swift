@@ -559,4 +559,92 @@ final class PyreonRouterTests: XCTestCase {
         )
         XCTAssertEqual(router.params, ["id": "42"])
     }
+
+    // MARK: - Phase B8 — forward() + canGoForward + history semantics
+    //
+    // 2026-06 native readiness audit. Closes scout-5's "no forward()"
+    // finding. SwiftUI's NavigationStack doesn't natively support
+    // browser-style forward, so we implement a forward-history stack
+    // that captures paths popped via back() and re-pushes on forward().
+
+    /// `canGoForward` is false by default and stays false until back()
+    /// pops at least one entry.
+    func testCanGoForwardStartsFalse() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        XCTAssertFalse(router.canGoForward)
+        router.push("/about")
+        XCTAssertFalse(router.canGoForward)
+    }
+
+    /// `back()` makes the popped path available via `forward()`.
+    func testBackEnablesForward() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        router.push("/about")
+        XCTAssertEqual(router.currentPath, "/about")
+        router.back()
+        XCTAssertEqual(router.currentPath, "/home")
+        XCTAssertTrue(router.canGoForward)
+        router.forward()
+        XCTAssertEqual(router.currentPath, "/about")
+        XCTAssertFalse(router.canGoForward)  // forward stack consumed
+    }
+
+    /// `forward()` is a no-op when forward stack is empty (no
+    /// back() called yet, or stack already drained).
+    func testForwardIsNoOpWhenEmpty() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        router.forward()  // no-op
+        XCTAssertEqual(router.currentPath, "/home")
+    }
+
+    /// `push()` clears forward history (browser convention — once you
+    /// navigate somewhere new, the old redo branch is gone).
+    func testPushClearsForwardHistory() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        router.push("/a")
+        router.push("/b")
+        router.back()  // back to /a, forward stack = [/b]
+        XCTAssertTrue(router.canGoForward)
+        router.push("/c")  // NEW navigation — clears forward
+        XCTAssertFalse(router.canGoForward)
+    }
+
+    /// `replace()` ALSO clears forward history (same convention).
+    func testReplaceClearsForwardHistory() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        router.push("/a")
+        router.back()
+        XCTAssertTrue(router.canGoForward)
+        router.replace("/b")  // NEW navigation
+        XCTAssertFalse(router.canGoForward)
+    }
+
+    /// `reset()` clears BOTH path AND forward stacks — "blow-away"
+    /// shape (logout, forget everything).
+    func testResetClearsForwardHistory() throws {
+        let router = PyreonRouter(initialPath: ["/a", "/b", "/c"])
+        router.back()  // forward stack = [/c]
+        XCTAssertTrue(router.canGoForward)
+        router.reset()
+        XCTAssertFalse(router.canGoForward)
+        XCTAssertEqual(router.path, [])
+    }
+
+    /// Multiple back()s accumulate forward stack; multiple forward()s
+    /// drain it in reverse order.
+    func testBackBackForwardForwardRestoresOrder() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        router.push("/a")
+        router.push("/b")
+        router.push("/c")
+        XCTAssertEqual(router.path, ["/home", "/a", "/b", "/c"])
+        router.back()  // → ["/home", "/a", "/b"], forward = [/c]
+        router.back()  // → ["/home", "/a"], forward = [/c, /b]
+        XCTAssertEqual(router.currentPath, "/a")
+        router.forward()  // → ["/home", "/a", "/b"], forward = [/c]
+        XCTAssertEqual(router.currentPath, "/b")
+        router.forward()  // → ["/home", "/a", "/b", "/c"], forward = []
+        XCTAssertEqual(router.currentPath, "/c")
+        XCTAssertFalse(router.canGoForward)
+    }
 }

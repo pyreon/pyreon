@@ -83,6 +83,22 @@ public class PyreonRouter(
      */
     public val path: MutableState<List<String>> = mutableStateOf(initialPath)
 
+    /** Phase B8 — forward-history stack. Captures paths popped via
+     *  [back] so a subsequent [forward] can re-push them. Mirrors
+     *  the web router's forward-history semantic.
+     *  [push] / [replace] (NEW navigations) clear this stack — same
+     *  convention as a browser.
+     *
+     *  Not exposed publicly; [canGoForward] is the readable boolean
+     *  for UI components that want to gate a "forward" button. */
+    private var _forwardStack: MutableList<String> = mutableListOf()
+
+    /** Phase B8 — true when there's at least one path in the forward
+     *  stack to navigate to. UI consumers can read this to show /
+     *  disable a "forward" affordance (rare on Android — atypical UX). */
+    public val canGoForward: Boolean
+        get() = _forwardStack.isNotEmpty()
+
     /** Path parameter map for the current route.
      *
      *  Phase A4 (native readiness audit, 2026-06): populated by
@@ -239,6 +255,8 @@ public class PyreonRouter(
         // with the path mutation, so observers see a consistent snapshot
         // (params + path always describe the same route).
         updateParamsFromPath(path)
+        // Phase B8: NEW navigation invalidates forward history.
+        _forwardStack.clear()
         for (hook in afterEachHooks) hook(path)
     }
 
@@ -272,6 +290,8 @@ public class PyreonRouter(
         }
         // Phase A4: same params-after-path contract as `push`.
         updateParamsFromPath(path)
+        // Phase B8: replace is a NEW navigation; clear forward history.
+        _forwardStack.clear()
         for (hook in afterEachHooks) hook(path)
     }
 
@@ -308,13 +328,40 @@ public class PyreonRouter(
     public fun back() {
         val current = this.path.value
         if (current.isEmpty()) return
+        val popped = current.last()
         this.path.value = current.dropLast(1)
+        // Phase B8: push the popped path onto forward stack for a
+        // later forward() to re-navigate.
+        _forwardStack.add(popped)
         // Phase A4: recompute params from the newly-exposed top-of-stack
         // path so observers after a back() see the previous route's
         // values (not stale params from the popped route). When the
         // stack becomes empty, `currentPath` falls back to "/" and the
         // resolver runs against that.
         updateParamsFromPath(currentPath)
+    }
+
+    /** Phase B8 — re-navigate forward through the undo stack. Pops
+     *  the most-recent entry from `_forwardStack` and pushes it back
+     *  onto [path]. No-op when the forward stack is empty (after a
+     *  fresh push/replace that cleared it, or before any [back]).
+     *
+     *  Skips the beforeEach/afterEach + per-route beforeEnter gates
+     *  (forward is replay of an already-allowed navigation; running
+     *  the gates again would be the wrong contract — the user
+     *  already authorized that destination). Still re-resolves params
+     *  from the newly-visible path so views observing `params` see
+     *  the right slot for the restored route (A4 contract).
+     *
+     *  API parity with `@pyreon/router`'s `forward()`. Atypical UX on
+     *  Android (NavHost has no native forward affordance), but the
+     *  model contract matters for cross-platform code that wants to
+     *  wire its own "forward" button or programmatic redo. */
+    public fun forward() {
+        if (_forwardStack.isEmpty()) return
+        val path = _forwardStack.removeAt(_forwardStack.size - 1)
+        this.path.value = this.path.value + path
+        updateParamsFromPath(path)
     }
 
     /**
@@ -324,6 +371,8 @@ public class PyreonRouter(
      */
     public fun reset() {
         this.path.value = emptyList()
+        // Phase B8: reset is "blow-away"; clear forward history too.
+        _forwardStack.clear()
     }
 
     public companion object {

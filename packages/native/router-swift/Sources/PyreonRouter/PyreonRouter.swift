@@ -56,6 +56,23 @@ public final class PyreonRouter {
     /// (push / pop / replace) triggers SwiftUI's navigation animation.
     public var path: [String]
 
+    /// Phase B8 — forward-history stack. Captures paths that were
+    /// popped via `back()` so a subsequent `forward()` can re-push
+    /// them. Mirrors the web router's forward-history semantic.
+    /// `push(_:)` / `replace(_:)` (NEW navigations, NOT triggered by
+    /// `forward()`) clear this stack — same convention as a browser.
+    ///
+    /// Not exposed publicly: this is the implementation detail behind
+    /// `forward()`. `canGoForward` exposes the readable boolean for
+    /// UI components that want to disable a "forward" button.
+    @ObservationIgnored
+    private var _forwardStack: [String] = []
+
+    /// Phase B8 — true when there's at least one path in the forward
+    /// stack to navigate to. UI consumers can read this to show /
+    /// disable a "forward" affordance (rare on iOS — atypical UX).
+    public var canGoForward: Bool { !_forwardStack.isEmpty }
+
     /// Convenience accessor for the top-of-stack path. Mirrors
     /// `router.currentRoute().path` on the web side.
     public var currentPath: String {
@@ -217,6 +234,10 @@ public final class PyreonRouter {
         // with the path mutation, so observers see a consistent snapshot
         // (params + path always describe the same route).
         updateParamsFromPath(path)
+        // Phase B8: a NEW navigation invalidates any forward history.
+        // Same convention as a browser — once the user navigates
+        // somewhere new, you can't "redo" back through the old branch.
+        _forwardStack.removeAll()
         runAfterEach(path)
     }
 
@@ -246,6 +267,8 @@ public final class PyreonRouter {
         }
         // Phase A4: same params-after-path contract as `push`.
         updateParamsFromPath(path)
+        // Phase B8: replace is a NEW navigation; clear forward history.
+        _forwardStack.removeAll()
         runAfterEach(path)
     }
 
@@ -284,10 +307,38 @@ public final class PyreonRouter {
     /// see the previous route's values (not stale params from the
     /// popped route). When the stack becomes empty, `currentPath`
     /// falls back to `"/"` and the resolver runs against that.
+    ///
+    /// Phase B8: pushes the popped path onto `_forwardStack` so a
+    /// later `forward()` can re-navigate to it. Browser-equivalent
+    /// undo/redo semantic.
     public func back() {
         guard !self.path.isEmpty else { return }
-        self.path.removeLast()
+        let popped = self.path.removeLast()
+        _forwardStack.append(popped)
         updateParamsFromPath(currentPath)
+    }
+
+    /// Phase B8 — re-navigate forward through the undo stack. Pops
+    /// the most-recent entry from `_forwardStack` and pushes it back
+    /// onto `path`. No-op when the forward stack is empty (after a
+    /// fresh push/replace that cleared it, or before any back()).
+    ///
+    /// Skips the beforeEach/afterEach + per-route beforeEnter gates
+    /// (forward is replay of an already-allowed navigation; running
+    /// the gates again would be the wrong contract — the user
+    /// already authorized that destination). Still re-resolves params
+    /// from the newly-visible path so views observing `params` see
+    /// the right slot for the restored route (A4 contract).
+    ///
+    /// API parity with `@pyreon/router`'s `forward()`. Atypical UX on
+    /// iOS (NavigationStack has no native forward affordance), but
+    /// the model contract matters for cross-platform code that wants
+    /// to wire its own "forward" button or programmatic redo.
+    public func forward() {
+        guard !_forwardStack.isEmpty else { return }
+        let path = _forwardStack.removeLast()
+        self.path.append(path)
+        updateParamsFromPath(path)
     }
 
     /// Store a route's loaded data under its path. Called by the loader
@@ -331,8 +382,13 @@ public final class PyreonRouter {
     /// Clear the entire path stack — navigates back to the root view.
     /// Matches the web-side pattern of calling `router.replace('/')`
     /// for "logout / forget everything".
+    ///
+    /// Phase B8: also clears the forward history. `reset()` is a
+    /// "blow-away" operation; redoing forward into a stale branch
+    /// after reset would be surprising.
     public func reset() {
         self.path.removeAll()
+        _forwardStack.removeAll()
     }
 
     /// Phase C5.2 — match an incoming path against a pattern, extracting
