@@ -114,7 +114,9 @@ describe('readonly() / shallowReadonly() — write throws', () => {
   it('readonly object throws on delete', () => {
     const r = readonly({ a: 1, b: 2 } as { a?: number; b?: number })
     expect(() => {
-      delete r.a
+      // readonly<T>'s deleteProperty trap throws; the cast bypasses the
+      // type-level readonly so the runtime trap fires.
+      delete (r as { a?: number }).a
     }).toThrow(/readonly/)
   })
 
