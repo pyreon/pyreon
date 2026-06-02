@@ -613,7 +613,23 @@ import hero from './hero.jpg?optimize'
         "Spreading `imagePlugin` output (`{...hero}`) WITHOUT `alt` — `alt` is required for accessibility AND not auto-derived by the plugin. The TypeScript type enforces this",
         "Wrapping `<Image>` in a `<picture>` manually for WebP/AVIF — `formats` already does this via `imagePlugin`. Manual `<picture>` defeats the optimization",
       ],
-      seeAlso: ['useImage', 'createImage', 'ImageProps', 'ImageRenderProps'],
+      seeAlso: ['useImage', 'createImage', 'OptimizedImage', 'ImageProps', 'ImageRenderProps'],
+    },
+    {
+      name: 'OptimizedImage',
+      kind: 'component',
+      signature: '<OptimizedImage source={img} alt={alt} priority={false} />',
+      summary:
+        "One-prop form of `<Image>` for `?optimize` imports. `<Image {...hero} alt=\"…\" />` already works, but spreading by hand makes it easy to drop a field — the #1 real-world CLS cause is pulling just `hero.src` onto a raw `<img>` and losing width / height / srcset / placeholder. `<OptimizedImage source={hero} alt=\"…\" />` takes the whole descriptor as a single prop, so every optimization field reaches `<Image>` by construction. Display props (`alt`, `sizes`, `priority`, `loading`, `class`, `style`, `fit`, `decoding`, `raw`) pass through alongside `source`. The companion opt-in lint rule `pyreon/no-discarded-optimize-fields` flags the discard shape (`<img src={hero.src}>`) and points here.",
+      example: `import { OptimizedImage } from '@pyreon/zero/image'
+import hero from './hero.jpg?optimize'
+
+<OptimizedImage source={hero} alt="Hero" priority />`,
+      mistakes: [
+        'Pulling just `hero.src` onto a raw `<img src={hero.src}>` — that discards width / height / srcset / placeholder / formats (CLS + no responsive images). Pass the whole descriptor: `<OptimizedImage source={hero} />`',
+        'Forgetting `alt` — it is required for accessibility and is NOT part of the `?optimize` descriptor, so `source` alone never supplies it',
+      ],
+      seeAlso: ['Image', 'ProcessedImage', 'useImage'],
     },
     {
       name: 'useImage',

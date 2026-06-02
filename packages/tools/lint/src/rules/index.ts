@@ -23,6 +23,7 @@ import { preferFieldArray } from './form/prefer-field-array'
 import { anchorIsValid } from './frontend/anchor-is-valid'
 import { imgRequiresDimensions } from './frontend/img-requires-dimensions'
 import { noAutofocus } from './frontend/no-autofocus'
+import { noDiscardedOptimizeFields } from './frontend/no-discarded-optimize-fields'
 import { noPositiveTabindex } from './frontend/no-positive-tabindex'
 import { noRedundantRole } from './frontend/no-redundant-role'
 import { preferZeroImage } from './frontend/prefer-zero-image'
@@ -199,6 +200,7 @@ export const allRules: Rule[] = [
   imgRequiresDimensions,
   noPositiveTabindex,
   preferZeroImage,
+  noDiscardedOptimizeFields,
   noAutofocus,
   noRedundantRole,
   anchorIsValid,

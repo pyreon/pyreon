@@ -168,6 +168,48 @@ describe('image three-layer API surface', () => {
     const Custom = createImage(() => null)
     expect(typeof Custom).toBe('function')
   })
+
+  it('exports OptimizedImage as a function', async () => {
+    const mod = await import('../image')
+    expect(typeof mod.OptimizedImage).toBe('function')
+  })
+})
+
+// OptimizedImage's whole reason to exist: spread the ENTIRE `?optimize`
+// descriptor onto <Image> so no field is silently dropped (the #1 CLS
+// cause is pulling just `.src`). This test inspects the returned VNode to
+// prove every descriptor field reaches <Image> — a future "cleanup" that
+// drops a field from the spread fails here.
+describe('OptimizedImage — spreads the full ?optimize descriptor onto <Image>', () => {
+  it('forwards src / srcset / width / height / placeholder / formats (drops nothing)', async () => {
+    const { OptimizedImage, Image } = await import('../image')
+    const descriptor = {
+      src: '/hero-1920.jpg',
+      srcset: '/hero-640.jpg 640w, /hero-1920.jpg 1920w',
+      width: 1920,
+      height: 1080,
+      placeholder: 'data:image/png;base64,AAAA',
+      formats: [{ type: 'image/webp', srcset: '/hero.webp 1920w' }],
+      sources: [{ src: '/hero-640.jpg', width: 640, format: 'jpeg' }],
+    }
+    const vnode = OptimizedImage({
+      source: descriptor as never,
+      alt: 'Hero',
+      priority: true,
+    }) as { type: unknown; props: Record<string, unknown> }
+
+    // Renders an <Image> (not a bare <img>).
+    expect(vnode.type).toBe(Image)
+    // Every descriptor field is present on the forwarded props (these are
+    // static values from the descriptor object, so they read plainly
+    // regardless of the JSX-spread transform).
+    expect(vnode.props.src).toBe('/hero-1920.jpg')
+    expect(vnode.props.srcset).toBe(descriptor.srcset)
+    expect(vnode.props.width).toBe(1920)
+    expect(vnode.props.height).toBe(1080)
+    expect(vnode.props.placeholder).toBe(descriptor.placeholder)
+    expect(vnode.props.formats).toBe(descriptor.formats)
+  })
 })
 
 describe('useImage — real hook (bisect-verifies the inView gating contract)', () => {
