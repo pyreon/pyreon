@@ -80,7 +80,61 @@ theme.remove()    // delete from storage, reset to default`,
         'Reactive signal backed by browser cookies. SSR-readable — on the server, reads from the request cookie header via `setCookieSource()`. Options include `maxAge`, `path`, `domain`, `sameSite`, `secure`. Same `StorageSignal<T>` return type as other hooks.',
       example: `const locale = useCookie('locale', 'en', { maxAge: 365 * 86400, path: '/' })
 locale.set('fr')`,
-      seeAlso: ['useStorage', 'setCookieSource'],
+      mistakes: [
+        'Forgetting `setCookieSource(req.headers.get("cookie"))` on SSR — without it the server-side render starts from `defaultValue`, not the user\'s actual cookie; the page flashes the wrong locale/theme until client-side hydration corrects it.',
+        'Omitting `sameSite` for auth-style cookies — the browser default has tightened across vendors. Be explicit: `sameSite: "lax"` (default for nav) or `"strict"` (login cookies) or `"none"` (cross-origin embeds with `secure: true`).',
+        'Setting `maxAge` in milliseconds — it\'s in SECONDS (matches the HTTP spec). `maxAge: 86400` is one DAY, not one minute.',
+        'Storing > 4KB in a cookie — browsers enforce a ~4KB per-cookie limit. Reach for `useIndexedDB` for large values; cookies are for small server-readable state.',
+      ],
+      seeAlso: ['useStorage', 'setCookieSource', 'useSessionStorage'],
+    },
+    {
+      name: 'useSessionStorage',
+      kind: 'hook',
+      signature: '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+      summary:
+        'Per-tab ephemeral reactive storage. Same shape as `useStorage` but writes go to `sessionStorage` instead of `localStorage` — cleared when the tab closes. NO cross-tab sync (browsers do not fire storage events for sessionStorage). Useful for per-visit filter state, unsaved form drafts that shouldn\'t survive tab close, and any state that should NOT outlive the current browsing session.',
+      example: `const filter = useSessionStorage('list-filter', { query: '', page: 1 })
+filter.set({ query: 'pyreon', page: 1 })
+// → persists for the tab\'s lifetime; gone on close`,
+      mistakes: [
+        'Expecting cross-tab sync — sessionStorage is per-tab by spec. Two tabs on the same page each have their own independent sessionStorage. For shared state across tabs, use `useStorage` (localStorage).',
+        'Treating sessionStorage as "private" — same JavaScript-readable shape as localStorage; do not store secrets there.',
+      ],
+      seeAlso: ['useStorage', 'useMemoryStorage'],
+    },
+    {
+      name: 'useMemoryStorage',
+      kind: 'hook',
+      signature: '<T>(key: string, defaultValue: T) => StorageSignal<T>',
+      summary:
+        'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence.',
+      example: `const draft = useMemoryStorage('draft-id-42', '')
+draft.set('typing...')
+// → reactive, but cleared on reload`,
+      mistakes: [
+        'Reaching for useMemoryStorage when a plain `signal()` would do — if you don\'t need the StorageSignal `.remove()` shape or the cross-storage-backend interchangeability, a plain `signal(defaultValue)` is simpler.',
+        'Expecting persistence — values vanish on reload by design. If persistence is needed, swap to `useStorage` / `useSessionStorage` / `useIndexedDB`.',
+      ],
+      seeAlso: ['useStorage', 'useSessionStorage'],
+    },
+    {
+      name: 'setCookieSource',
+      kind: 'function',
+      signature: 'setCookieSource(source: string | (() => string) | null) => void',
+      summary:
+        'Tell `useCookie` how to read cookies during SSR. Pass the raw cookie header string (or an accessor returning it) at the top of each request handler so server-side renders see the user\'s actual cookies. Pass `null` to clear (typically at request cleanup). The module-level cookie source is per-request-context-isolated via `runWithRequestContext` so concurrent SSR requests do not see each other\'s cookies.',
+      example: `import { setCookieSource } from '@pyreon/storage'
+
+// Inside an SSR handler:
+setCookieSource(request.headers.get('cookie') ?? '')
+const html = await renderToString(<App />)`,
+      mistakes: [
+        'Forgetting to call setCookieSource on SSR — `useCookie` falls back to `defaultValue` on every request, ignoring the user\'s real cookie state. The page hydrates correctly on the client but flashes the default first.',
+        'Passing a stale cookie source after redirect or login — the source is captured once; re-call after any operation that should change the cookie set.',
+        'Calling setCookieSource(null) too early — call it at request CLEANUP (after the response is sent), not before render. Cleaning up mid-render erases the source from later loaders.',
+      ],
+      seeAlso: ['useCookie'],
     },
     {
       name: 'useIndexedDB',
@@ -90,6 +144,12 @@ locale.set('fr')`,
         'Reactive signal backed by IndexedDB for large data. Writes are debounced to avoid excessive I/O. The signal initializes with `defaultValue` synchronously and hydrates from IndexedDB asynchronously — the value updates reactively once the read completes. Silent init error logging in dev mode.',
       example: `const draft = useIndexedDB('article-draft', { title: '', body: '' })
 draft.set({ title: 'New Article', body: 'Content...' })`,
+      mistakes: [
+        'Reading the signal in render and expecting the persisted value on FIRST render — IDB initialization is async. The signal starts at `defaultValue`, then the persisted value flows in on the next tick. UIs that need the persisted value before paint should pair with a synchronous fallback (e.g. `useStorage` for a small marker).',
+        'Storing huge blobs without considering quota — IDB has per-origin quotas (~50% of free disk, browser-dependent). Bumping into the quota throws on `setItem` async; handle with try/catch around `.set()` if the write may exceed.',
+        'Expecting cross-tab sync — IndexedDB does NOT fire storage events. Two tabs writing to the same key will overwrite each other silently. Use `BroadcastChannel` alongside if multi-tab consistency matters.',
+        'Setting the value rapidly in a loop — writes are debounced but unbounded loop assignments still queue. Throttle at the caller for high-frequency mutations.',
+      ],
       seeAlso: ['useStorage', 'useMemoryStorage'],
     },
     {
@@ -104,6 +164,11 @@ draft.set({ title: 'New Article', body: 'Content...' })`,
   removeItem: (key) => localStorage.removeItem(key),
 })
 const secret = useEncrypted('api-key', '')`,
+      mistakes: [
+        'Returning `undefined` from getItem when the key is absent — return `null` (matches the localStorage / sessionStorage contract). `undefined` may be JSON-serialized as the literal string `"undefined"` by some serialize-deserialize pipelines.',
+        'Throwing synchronously from setItem — backend errors should be either logged + swallowed (graceful degradation, the signal still updates) OR propagated via a rejected Promise for async backends. A thrown error breaks the calling `.set()` and leaves the in-memory signal in a state inconsistent with the backend.',
+        'Forgetting that the backend must implement ALL three (`getItem`, `setItem`, `removeItem`) — `.remove()` calls removeItem, and omitting it makes the hook crash on cleanup paths.',
+      ],
       seeAlso: ['useStorage'],
     },
   ],

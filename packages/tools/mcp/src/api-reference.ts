@@ -2521,7 +2521,44 @@ theme.remove()    // delete from storage, reset to default`,
     signature: '<T>(key: string, defaultValue: T, options?: CookieOptions) => StorageSignal<T>',
     example: `const locale = useCookie('locale', 'en', { maxAge: 365 * 86400, path: '/' })
 locale.set('fr')`,
-    notes: 'Reactive signal backed by browser cookies. SSR-readable — on the server, reads from the request cookie header via `setCookieSource()`. Options include `maxAge`, `path`, `domain`, `sameSite`, `secure`. Same `StorageSignal<T>` return type as other hooks. See also: useStorage, setCookieSource.',
+    notes: 'Reactive signal backed by browser cookies. SSR-readable — on the server, reads from the request cookie header via `setCookieSource()`. Options include `maxAge`, `path`, `domain`, `sameSite`, `secure`. Same `StorageSignal<T>` return type as other hooks. See also: useStorage, setCookieSource, useSessionStorage.',
+    mistakes: `- Forgetting \`setCookieSource(req.headers.get("cookie"))\` on SSR — without it the server-side render starts from \`defaultValue\`, not the user's actual cookie; the page flashes the wrong locale/theme until client-side hydration corrects it.
+- Omitting \`sameSite\` for auth-style cookies — the browser default has tightened across vendors. Be explicit: \`sameSite: "lax"\` (default for nav) or \`"strict"\` (login cookies) or \`"none"\` (cross-origin embeds with \`secure: true\`).
+- Setting \`maxAge\` in milliseconds — it's in SECONDS (matches the HTTP spec). \`maxAge: 86400\` is one DAY, not one minute.
+- Storing > 4KB in a cookie — browsers enforce a ~4KB per-cookie limit. Reach for \`useIndexedDB\` for large values; cookies are for small server-readable state.`,
+  },
+
+  'storage/useSessionStorage': {
+    signature: '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+    example: `const filter = useSessionStorage('list-filter', { query: '', page: 1 })
+filter.set({ query: 'pyreon', page: 1 })
+// → persists for the tab's lifetime; gone on close`,
+    notes: `Per-tab ephemeral reactive storage. Same shape as \`useStorage\` but writes go to \`sessionStorage\` instead of \`localStorage\` — cleared when the tab closes. NO cross-tab sync (browsers do not fire storage events for sessionStorage). Useful for per-visit filter state, unsaved form drafts that shouldn't survive tab close, and any state that should NOT outlive the current browsing session. See also: useStorage, useMemoryStorage.`,
+    mistakes: `- Expecting cross-tab sync — sessionStorage is per-tab by spec. Two tabs on the same page each have their own independent sessionStorage. For shared state across tabs, use \`useStorage\` (localStorage).
+- Treating sessionStorage as "private" — same JavaScript-readable shape as localStorage; do not store secrets there.`,
+  },
+
+  'storage/useMemoryStorage': {
+    signature: '<T>(key: string, defaultValue: T) => StorageSignal<T>',
+    example: `const draft = useMemoryStorage('draft-id-42', '')
+draft.set('typing...')
+// → reactive, but cleared on reload`,
+    notes: 'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence. See also: useStorage, useSessionStorage.',
+    mistakes: `- Reaching for useMemoryStorage when a plain \`signal()\` would do — if you don't need the StorageSignal \`.remove()\` shape or the cross-storage-backend interchangeability, a plain \`signal(defaultValue)\` is simpler.
+- Expecting persistence — values vanish on reload by design. If persistence is needed, swap to \`useStorage\` / \`useSessionStorage\` / \`useIndexedDB\`.`,
+  },
+
+  'storage/setCookieSource': {
+    signature: 'setCookieSource(source: string | (() => string) | null) => void',
+    example: `import { setCookieSource } from '@pyreon/storage'
+
+// Inside an SSR handler:
+setCookieSource(request.headers.get('cookie') ?? '')
+const html = await renderToString(<App />)`,
+    notes: `Tell \`useCookie\` how to read cookies during SSR. Pass the raw cookie header string (or an accessor returning it) at the top of each request handler so server-side renders see the user's actual cookies. Pass \`null\` to clear (typically at request cleanup). The module-level cookie source is per-request-context-isolated via \`runWithRequestContext\` so concurrent SSR requests do not see each other's cookies. See also: useCookie.`,
+    mistakes: `- Forgetting to call setCookieSource on SSR — \`useCookie\` falls back to \`defaultValue\` on every request, ignoring the user's real cookie state. The page hydrates correctly on the client but flashes the default first.
+- Passing a stale cookie source after redirect or login — the source is captured once; re-call after any operation that should change the cookie set.
+- Calling setCookieSource(null) too early — call it at request CLEANUP (after the response is sent), not before render. Cleaning up mid-render erases the source from later loaders.`,
   },
 
   'storage/useIndexedDB': {
@@ -2529,6 +2566,10 @@ locale.set('fr')`,
     example: `const draft = useIndexedDB('article-draft', { title: '', body: '' })
 draft.set({ title: 'New Article', body: 'Content...' })`,
     notes: 'Reactive signal backed by IndexedDB for large data. Writes are debounced to avoid excessive I/O. The signal initializes with `defaultValue` synchronously and hydrates from IndexedDB asynchronously — the value updates reactively once the read completes. Silent init error logging in dev mode. See also: useStorage, useMemoryStorage.',
+    mistakes: `- Reading the signal in render and expecting the persisted value on FIRST render — IDB initialization is async. The signal starts at \`defaultValue\`, then the persisted value flows in on the next tick. UIs that need the persisted value before paint should pair with a synchronous fallback (e.g. \`useStorage\` for a small marker).
+- Storing huge blobs without considering quota — IDB has per-origin quotas (~50% of free disk, browser-dependent). Bumping into the quota throws on \`setItem\` async; handle with try/catch around \`.set()\` if the write may exceed.
+- Expecting cross-tab sync — IndexedDB does NOT fire storage events. Two tabs writing to the same key will overwrite each other silently. Use \`BroadcastChannel\` alongside if multi-tab consistency matters.
+- Setting the value rapidly in a loop — writes are debounced but unbounded loop assignments still queue. Throttle at the caller for high-frequency mutations.`,
   },
 
   'storage/createStorage': {
@@ -2540,6 +2581,9 @@ draft.set({ title: 'New Article', body: 'Content...' })`,
 })
 const secret = useEncrypted('api-key', '')`,
     notes: 'Factory for custom storage backends. Pass an object with `getItem`, `setItem`, `removeItem` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer. See also: useStorage.',
+    mistakes: `- Returning \`undefined\` from getItem when the key is absent — return \`null\` (matches the localStorage / sessionStorage contract). \`undefined\` may be JSON-serialized as the literal string \`"undefined"\` by some serialize-deserialize pipelines.
+- Throwing synchronously from setItem — backend errors should be either logged + swallowed (graceful degradation, the signal still updates) OR propagated via a rejected Promise for async backends. A thrown error breaks the calling \`.set()\` and leaves the in-memory signal in a state inconsistent with the backend.
+- Forgetting that the backend must implement ALL three (\`getItem\`, \`setItem\`, \`removeItem\`) — \`.remove()\` calls removeItem, and omitting it makes the hook crash on cleanup paths.`,
   },
   // <gen-docs:api-reference:end @pyreon/storage>
 
@@ -3073,17 +3117,72 @@ Posts.useTable({ columns: ['title', 'author'] })`,
   },
 
   'feature/reference': {
-    signature: '(featureName: string) => ReferenceSchema',
-    example: `const Posts = defineFeature({
+    signature: 'reference(target: { name: string }) => ReferenceSchema',
+    example: `const Users = defineFeature({ name: 'users', schema: { name: 'string' }, api: { baseUrl: '/api/users' } })
+const Posts = defineFeature({
   name: 'posts',
   schema: {
     title: 'string',
-    author: reference('users'),    // FK to users feature
-    category: reference('categories'),
+    author: reference(Users),    // FK to users feature
+    category: reference({ name: 'categories' }),
   },
   api: { baseUrl: '/api/posts' },
 })`,
-    notes: 'Mark a schema field as a foreign key reference to another feature. Used inside defineFeature schema definitions to establish relationships between features. The generated form and table hooks understand reference fields and can render appropriate UI (select dropdowns, linked displays). See also: defineFeature.',
+    notes: `Mark a schema field as a foreign key reference to another feature. Used inside defineFeature schema definitions to establish relationships between features. The generated form and table hooks understand reference fields and can render appropriate UI (select dropdowns, linked displays). The marker is a \`Symbol.for('pyreon:feature:reference')\` property — invisible to JSON.stringify but detected by extractFields() and the validation layer. See also: defineFeature, isReference.`,
+    mistakes: `- Passing a plain string instead of a Feature ref — \`reference("users")\` will not typecheck; pass the Feature object or \`{ name: "users" }\`.
+- Forgetting that the referenced Feature must ALSO be defined via defineFeature — the FK only works end-to-end when both sides are real Features sharing the same QueryClient.
+- Expecting reference() to enforce schema validation at the foreign side — it only marks the field. Cascade behaviour (deleting a user → orphaning posts) is the consumer's concern.`,
+  },
+
+  'feature/isReference': {
+    signature: 'isReference(value: unknown) => value is ReferenceSchema',
+    example: `import { isReference } from '@pyreon/feature'
+
+for (const [key, value] of Object.entries(Posts.schema)) {
+  if (isReference(value)) {
+    console.log(\`\${key} is a foreign key to \${value._featureName}\`)
+  }
+}`,
+    notes: 'Type-guard that returns true if a value is a ReferenceSchema produced by `reference()`. Used internally by `extractFields` to recognise FK fields, and exposed for consumers building custom form/table renderers that need to special-case reference fields (e.g. render a select dropdown instead of a text input). See also: reference, extractFields.',
+    mistakes: `- Trying to detect references via \`instanceof\` — references are symbol-tagged plain objects, not class instances. Always use isReference().
+- Confusing isReference() with Zod's own type guards — isReference checks ONLY for the Pyreon reference marker, not for arbitrary Zod schemas.`,
+  },
+
+  'feature/extractFields': {
+    signature: 'extractFields(schema: unknown) => FieldInfo[]',
+    example: `import { extractFields } from '@pyreon/feature'
+import { z } from 'zod'
+
+const schema = z.object({
+  title: z.string(),
+  views: z.number().optional(),
+  status: z.enum(['draft', 'published']),
+})
+
+const fields = extractFields(schema)
+// [
+//   { name: 'title',  type: 'string', optional: false, label: 'Title' },
+//   { name: 'views',  type: 'number', optional: true,  label: 'Views' },
+//   { name: 'status', type: 'enum',   optional: false, label: 'Status', enumValues: ['draft', 'published'] },
+// ]`,
+    notes: 'Introspect a schema object and return an array of `FieldInfo` describing each field (name, type, optional, label, plus enumValues for enums and referenceTo for references). Duck-types both Zod v3 (`._def.shape` callable) and Zod v4 (`._zod.def.shape` direct) without importing Zod. Used internally by `defineFeature` to build the generated form/table; exposed for consumers building custom UI that needs to enumerate schema fields. See also: defaultInitialValues, defineFeature.',
+    mistakes: `- Calling extractFields on a Pyreon plain-string schema (\`{ title: "string" }\`) instead of a Zod schema — extractFields expects Zod shapes; the plain-string form is interpreted inside defineFeature, not here.
+- Expecting field order to match declaration order in ALL JS engines — relies on Object.keys() insertion order, which V8 / SpiderMonkey / JSC all preserve for string keys but is technically engine-specific.
+- Assuming \`label\` is derived from a docs comment — labels are derived from the field name via humanize-case (\`firstName\` → \`First Name\`). Override by passing a label via your own \`FieldInfo\`.`,
+  },
+
+  'feature/defaultInitialValues': {
+    signature: 'defaultInitialValues(fields: FieldInfo[]) => Record<string, unknown>',
+    example: `import { extractFields, defaultInitialValues } from '@pyreon/feature'
+
+const fields = extractFields(zodSchema)
+const initial = defaultInitialValues(fields)
+// { title: '', views: 0, status: 'draft' }
+
+const form = useForm({ initialValues: initial, ... })`,
+    notes: 'Generate sensible default initial values from extracted field info. Returns `{ stringField: "", numberField: 0, booleanField: false, enumField: <first enumValue>, dateField: "", arrayField: [], objectField: {}, referenceField: null }`. Used by `Posts.useForm()` to seed an empty form when no id is passed (create mode). Exposed for consumers building their own form initial-value seeding logic. See also: extractFields, defineFeature.',
+    mistakes: `- Expecting defaults to come from Zod's \`.default()\` modifier — defaultInitialValues uses the FIELD TYPE only. Zod-level defaults flow through Zod's own parse, not this helper.
+- Using these defaults for create-or-update forms — these are CREATE-mode seeds. For edit mode, fetch the existing record and use those values.`,
   },
   // <gen-docs:api-reference:end @pyreon/feature>
 
@@ -3212,6 +3311,10 @@ if (__DEV__) console.warn('hello')`,
 get_api({ package: 'flow', symbol: 'createFlow' })
 get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })`,
     notes: `Look up any Pyreon API by \`package\` (e.g. \`"flow"\` or \`"@pyreon/flow"\`) and \`symbol\` (e.g. \`"createFlow"\`). Returns the canonical signature, example, foot-gun catalogue, and cross-references — drawn from \`api-reference.ts\`, which is regenerated from each package\'s \`manifest.ts\`. The single agent-facing entry point for "what does this API do and how do I avoid the common mistakes." See also: validate, get_pattern.`,
+    mistakes: `- Passing the package name with a typo or wrong scope — \`get_api({ package: "pyreon-flow", ... })\` returns nothing. Use \`"flow"\` or \`"@pyreon/flow"\`; the tool accepts both.
+- Expecting \`symbol\` to match a method on a returned instance (e.g. \`Posts.useList\`) — only TOP-LEVEL exports are in api-reference. Method-on-instance APIs are documented in the parent symbol's \`summary\` / \`example\`.
+- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (~33 of ~55 packages migrated). Check the docs page or source as a fallback when get_api returns empty.
+- Forgetting that \`summary\` may contain the answer to a follow-up question — read the full body before falling back to \`get_pattern\` / \`validate\` / source diving.`,
   },
 
   'mcp/validate': {
@@ -3223,6 +3326,10 @@ function MyComp(props) {
 }
 \` })`,
     notes: 'Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffect`, `className`, `onChange` on inputs, React-package imports), and `detectPyreonPatterns` flags "using Pyreon wrong" mistakes (`<For>` missing `by`, props destructured at component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs). Diagnostics are merged + sorted by line / column for top-down reading. See also: get_anti_patterns, migrate_react.',
+    mistakes: `- Treating zero diagnostics as "the code is correct" — \`validate\` is a STATIC detector. It catches the documented anti-patterns from \`.claude/rules/anti-patterns.md\` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with \`tsc\` + tests for full coverage.
+- Omitting the \`filename\` arg for path-sensitive detectors — some detectors (e.g. \`pyreon/no-window-in-ssr\` with its \`exemptPaths\` option) need the path to know whether the file is server-only-exempt. Without it the diagnostic may misfire or fail to fire.
+- Running \`validate\` on a snippet that is NOT a full file — detectors expect complete syntax (every \`import\`, every \`function\`). Passing a partial expression yields no diagnostics, which can be mistaken for "clean".
+- Calling \`validate\` after the code is already merged — it's a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.`,
   },
 
   'mcp/migrate_react': {
@@ -3236,6 +3343,10 @@ function Counter() {
 }
 \` })`,
     notes: 'Convert React code to idiomatic Pyreon. Handles `useState` → `signal()`, `useEffect` → `effect()`, `className` → `class`, `onChange` → `onInput`, `useMemo` → `computed()`, React imports → Pyreon imports. Reports per-edit fixable diagnostics so callers can apply or review. See also: validate.',
+    mistakes: `- Expecting the migration to handle every React feature — currently covers the most common hooks/JSX patterns. Class components, Concurrent React APIs, Suspense boundaries, and React-specific libs (react-router, redux) are NOT migrated automatically; the result will flag remaining issues but won't rewrite them.
+- Running \`migrate_react\` on a file that's already mostly Pyreon — it's idempotent against already-migrated code (nothing flagged → nothing changed), so the cost is just the parse pass; safe to re-run.
+- Forgetting that \`useEffect(() => fn, [deps])\` → \`effect(() => fn)\` changes semantics: Pyreon effects auto-track via signal reads, the explicit deps array is dropped. Verify your effects read the same signals the React deps array listed.
+- Trusting the migration to produce idiomatic Pyreon — the output is CORRECT but mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
   },
 
   'mcp/diagnose': {
@@ -3274,6 +3385,9 @@ diagnose({
     example: `get_routes()
 // → [{ path: '/', name: 'home', hasLoader: true, params: [] }, ...]`,
     notes: 'List every route in the current project — path, loader presence, guards, params, and named-route name. Walks the project source from `process.cwd()` down. Cached per server instance with auto-invalidation on `cwd` change. See also: get_components.',
+    mistakes: `- Calling \`get_routes\` from outside a Pyreon project (no \`package.json\` with \`@pyreon/router\` or \`@pyreon/zero\` reachable from \`process.cwd()\`) — returns an empty array. Run from the project root, not from \`~/\` or a parent directory.
+- Expecting the route list to update mid-session after file changes — the scanner caches per server-instance + cwd. Restart the MCP server or change cwd to refresh.
+- Treating \`hasLoader: false\` as "no data" — the route may load data via \`useQuery\` in the component body. \`hasLoader\` reflects the \`export const loader = …\` convention only.`,
   },
 
   'mcp/get_components': {
@@ -3281,6 +3395,9 @@ diagnose({
     example: `get_components()
 // → [{ name: 'Button', file: 'src/Button.tsx', props: ['onClick', 'children'], signals: ['count'] }, ...]`,
     notes: 'List every component in the current project with its props and signal usage. Same scanner as `get_routes`. Useful for an agent before generating new code that needs to reference existing components. See also: get_routes.',
+    mistakes: `- Trusting the \`props\` list to be complete — the scanner extracts props from the FIRST parameter type annotation or destructure. Components using prop spread (\`<Comp {...rest}>\`) or computed prop shapes won't have their forwarded keys listed.
+- Expecting \`signals\` to count signals declared INSIDE the component body — yes, those are listed; but signals imported from another module and used here are NOT listed (the scanner is per-file).
+- Calling outside a Pyreon project — same caveat as \`get_routes\`: returns empty if the scanner can't find a project root.`,
   },
 
   'mcp/get_pattern': {
@@ -3290,6 +3407,9 @@ diagnose({
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
     notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
+    mistakes: `- Passing a name in CamelCase or PascalCase — pattern names are kebab-case (\`controllable-state\`, not \`ControllableState\`). A wrong-case name 404s.
+- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 16 foundational shapes (data fetching, forms, signal writes, etc.). Specialized patterns (PMTC, native compat, devtools wiring) live elsewhere in the docs.
+- Confusing patterns with anti-patterns — \`get_pattern\` returns "how to do X correctly"; \`get_anti_patterns\` returns "what to avoid". They're complementary.`,
   },
 
   'mcp/get_anti_patterns': {
@@ -3309,6 +3429,10 @@ get_anti_patterns({ full: true })                   // → entire catalog (~14K)
     example: `get_changelog({ package: 'flow', limit: 5 })
 get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
     notes: 'Recent release notes for any `@pyreon/*` package without scraping `git log`. Parses `packages/**/CHANGELOG.md` into version entries (`{ version, changes[], dependencyUpdates[], empty }`) and returns the N most recent substantive versions (default 5). Filters out ceremonial version bumps (pure dependency-update releases with no user-facing body) by default — opt back in with `includeDependencyUpdates: true`. `since: "0.12.0"` returns the delta from a known floor — useful when an agent knows the version it was trained against. See also: get_api.',
+    mistakes: `- Forgetting that ceremonial version bumps are filtered by default — if you NEED the dep-only releases (e.g. tracking when a transitive Pyreon dep flipped), pass \`includeDependencyUpdates: true\`. Otherwise the gap between "what changed" and "what shipped" can confuse a coverage analysis.
+- Passing \`since: "0.27"\` (without patch) — the parser does a semver-aware comparison and treats \`"0.27"\` as \`"0.27.0"\`. Be explicit (\`"0.27.0"\`) to avoid silent off-by-one.
+- Omitting \`package\` and expecting a multi-package digest — the tool is per-package. For a cross-package release survey, call once per package or read the release notes on GitHub.
+- Trusting changelog entries to spell out the migration — they describe WHAT changed, not always HOW to migrate. Pair with \`get_pattern\` / \`get_api\` for shape changes.`,
   },
 
   'mcp/audit_test_environment': {
@@ -3316,6 +3440,10 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
     example: `audit_test_environment({ minRisk: 'medium', limit: 10 })
 // → grouped report with HIGH / MEDIUM / LOW sections`,
     notes: `Scan every \`*.test.{ts,tsx}\` under \`packages/\` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real \`h()\` calls + \`@pyreon/core\` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change. See also: get_browser_smoke_status, audit_islands.`,
+    mistakes: `- Treating a HIGH finding as "this test is broken" — HIGH means the test relies HEAVILY on mock vnodes. The test may still be correct given its scope (e.g. testing a helper that only operates on vnode shapes); review the file and pair with a real-\`h()\` companion test if the contract assertion matters.
+- Calling with \`minRisk: "low"\` and getting overwhelmed — LOW includes any file that even mentions a mock vnode helper. Use \`medium\` for actionable signal, \`high\` for "would have prevented PR #197"-tier risk.
+- Running outside the monorepo root — the scanner walks \`packages/\` from \`process.cwd()\`. From a subpackage dir, you get a partial result.
+- Expecting it to flag missing tests — it ONLY scans existing test files. Missing test coverage is a separate concern (coverage gate, not audit_test_environment).`,
   },
 
   'mcp/audit_islands': {
@@ -3326,6 +3454,10 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
 audit_islands({ json: true })
 // → machine-readable { root, findings: [...], summary: {...} }`,
     notes: `Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks \`packages/\` + \`examples/\` and runs five detectors that auto-registry can\'t reach (manual \`hydrateIslands({...})\` for non-Vite consumers / library authors) AND PR G\'s per-file \`island-never-with-registry-entry\` detector misses (it only catches the same-file shape): \`duplicate-name\`, \`never-with-registry-entry\`, \`registry-mismatch\`, \`nested-island\`, \`dead-island\`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the \`pyreon doctor --check-islands\` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping \`--json\` and grepping \`findings.length > 0\`. See also: audit_test_environment, get_anti_patterns.`,
+    mistakes: `- Running outside a project that uses islands — the audit walks \`packages/\` + \`examples/\` from \`process.cwd()\`. A project with zero \`island()\` declarations returns an empty findings array (not an error).
+- Treating \`registry-mismatch\` as a hard error in auto-registry apps — it only fires for MANUAL \`hydrateIslands({ ... })\` calls. Apps using \`hydrateIslandsAuto()\` (Vite plugin default) won't see this finding even if they'd be vulnerable to the same drift in a manual setup.
+- Expecting \`dead-island\` to catch every never-used island — the detector tracks static imports of the loader path. Dynamic-import chains routed through a registry indirection may not be statically traceable; verify by source-grepping the loader path before deleting.
+- Confusing \`nested-island\` with intentional island composition — the outer island's \`hydrateRoot\` REPLACES the inner subtree before the inner can hydrate. If you genuinely need nested islands, flatten or use a different boundary primitive.`,
   },
   // <gen-docs:api-reference:end @pyreon/mcp>
 

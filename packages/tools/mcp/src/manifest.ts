@@ -85,6 +85,12 @@ export default defineManifest({
       example: `// Agent-side
 get_api({ package: 'flow', symbol: 'createFlow' })
 get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })`,
+      mistakes: [
+        'Passing the package name with a typo or wrong scope — `get_api({ package: "pyreon-flow", ... })` returns nothing. Use `"flow"` or `"@pyreon/flow"`; the tool accepts both.',
+        'Expecting `symbol` to match a method on a returned instance (e.g. `Posts.useList`) — only TOP-LEVEL exports are in api-reference. Method-on-instance APIs are documented in the parent symbol\'s `summary` / `example`.',
+        'Treating a 404 as "the API doesn\'t exist" — it may exist but the package\'s manifest is not yet on the MCP pipeline (~33 of ~55 packages migrated). Check the docs page or source as a fallback when get_api returns empty.',
+        'Forgetting that `summary` may contain the answer to a follow-up question — read the full body before falling back to `get_pattern` / `validate` / source diving.',
+      ],
       seeAlso: ['validate', 'get_pattern'],
     },
     {
@@ -99,6 +105,12 @@ function MyComp(props) {
   return <For each={items}>{...}</For>  // → for-missing-by
 }
 \` })`,
+      mistakes: [
+        'Treating zero diagnostics as "the code is correct" — `validate` is a STATIC detector. It catches the documented anti-patterns from `.claude/rules/anti-patterns.md` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with `tsc` + tests for full coverage.',
+        'Omitting the `filename` arg for path-sensitive detectors — some detectors (e.g. `pyreon/no-window-in-ssr` with its `exemptPaths` option) need the path to know whether the file is server-only-exempt. Without it the diagnostic may misfire or fail to fire.',
+        'Running `validate` on a snippet that is NOT a full file — detectors expect complete syntax (every `import`, every `function`). Passing a partial expression yields no diagnostics, which can be mistaken for "clean".',
+        'Calling `validate` after the code is already merged — it\'s a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.',
+      ],
       seeAlso: ['get_anti_patterns', 'migrate_react'],
     },
     {
@@ -115,6 +127,12 @@ function Counter() {
   return <button onClick={() => setCount(count + 1)}>{count}</button>
 }
 \` })`,
+      mistakes: [
+        'Expecting the migration to handle every React feature — currently covers the most common hooks/JSX patterns. Class components, Concurrent React APIs, Suspense boundaries, and React-specific libs (react-router, redux) are NOT migrated automatically; the result will flag remaining issues but won\'t rewrite them.',
+        'Running `migrate_react` on a file that\'s already mostly Pyreon — it\'s idempotent against already-migrated code (nothing flagged → nothing changed), so the cost is just the parse pass; safe to re-run.',
+        'Forgetting that `useEffect(() => fn, [deps])` → `effect(() => fn)` changes semantics: Pyreon effects auto-track via signal reads, the explicit deps array is dropped. Verify your effects read the same signals the React deps array listed.',
+        'Trusting the migration to produce idiomatic Pyreon — the output is CORRECT but mechanical. Pair with `get_pattern` after migration to apply Pyreon-native shapes (e.g. `<Show when={() => …}>` instead of ternaries; `<For>` instead of `.map()`).',
+      ],
       seeAlso: ['validate'],
     },
     {
@@ -168,6 +186,11 @@ diagnose({
         'List every route in the current project — path, loader presence, guards, params, and named-route name. Walks the project source from `process.cwd()` down. Cached per server instance with auto-invalidation on `cwd` change.',
       example: `get_routes()
 // → [{ path: '/', name: 'home', hasLoader: true, params: [] }, ...]`,
+      mistakes: [
+        'Calling `get_routes` from outside a Pyreon project (no `package.json` with `@pyreon/router` or `@pyreon/zero` reachable from `process.cwd()`) — returns an empty array. Run from the project root, not from `~/` or a parent directory.',
+        'Expecting the route list to update mid-session after file changes — the scanner caches per server-instance + cwd. Restart the MCP server or change cwd to refresh.',
+        'Treating `hasLoader: false` as "no data" — the route may load data via `useQuery` in the component body. `hasLoader` reflects the `export const loader = …` convention only.',
+      ],
       seeAlso: ['get_components'],
     },
     {
@@ -178,6 +201,11 @@ diagnose({
         'List every component in the current project with its props and signal usage. Same scanner as `get_routes`. Useful for an agent before generating new code that needs to reference existing components.',
       example: `get_components()
 // → [{ name: 'Button', file: 'src/Button.tsx', props: ['onClick', 'children'], signals: ['count'] }, ...]`,
+      mistakes: [
+        'Trusting the `props` list to be complete — the scanner extracts props from the FIRST parameter type annotation or destructure. Components using prop spread (`<Comp {...rest}>`) or computed prop shapes won\'t have their forwarded keys listed.',
+        'Expecting `signals` to count signals declared INSIDE the component body — yes, those are listed; but signals imported from another module and used here are NOT listed (the scanner is per-file).',
+        'Calling outside a Pyreon project — same caveat as `get_routes`: returns empty if the scanner can\'t find a project root.',
+      ],
       seeAlso: ['get_routes'],
     },
     {
@@ -190,6 +218,11 @@ diagnose({
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
+      mistakes: [
+        'Passing a name in CamelCase or PascalCase — pattern names are kebab-case (`controllable-state`, not `ControllableState`). A wrong-case name 404s.',
+        'Expecting the pattern list to include every Pyreon idiom — `get_pattern` covers the 16 foundational shapes (data fetching, forms, signal writes, etc.). Specialized patterns (PMTC, native compat, devtools wiring) live elsewhere in the docs.',
+        'Confusing patterns with anti-patterns — `get_pattern` returns "how to do X correctly"; `get_anti_patterns` returns "what to avoid". They\'re complementary.',
+      ],
       seeAlso: ['get_anti_patterns'],
     },
     {
@@ -219,6 +252,12 @@ get_anti_patterns({ full: true })                   // → entire catalog (~14K)
         'Recent release notes for any `@pyreon/*` package without scraping `git log`. Parses `packages/**/CHANGELOG.md` into version entries (`{ version, changes[], dependencyUpdates[], empty }`) and returns the N most recent substantive versions (default 5). Filters out ceremonial version bumps (pure dependency-update releases with no user-facing body) by default — opt back in with `includeDependencyUpdates: true`. `since: "0.12.0"` returns the delta from a known floor — useful when an agent knows the version it was trained against.',
       example: `get_changelog({ package: 'flow', limit: 5 })
 get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
+      mistakes: [
+        'Forgetting that ceremonial version bumps are filtered by default — if you NEED the dep-only releases (e.g. tracking when a transitive Pyreon dep flipped), pass `includeDependencyUpdates: true`. Otherwise the gap between "what changed" and "what shipped" can confuse a coverage analysis.',
+        'Passing `since: "0.27"` (without patch) — the parser does a semver-aware comparison and treats `"0.27"` as `"0.27.0"`. Be explicit (`"0.27.0"`) to avoid silent off-by-one.',
+        'Omitting `package` and expecting a multi-package digest — the tool is per-package. For a cross-package release survey, call once per package or read the release notes on GitHub.',
+        'Trusting changelog entries to spell out the migration — they describe WHAT changed, not always HOW to migrate. Pair with `get_pattern` / `get_api` for shape changes.',
+      ],
       seeAlso: ['get_api'],
     },
     {
@@ -230,6 +269,12 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
         'Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197\\\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real `h()` calls + `@pyreon/core` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change.',
       example: `audit_test_environment({ minRisk: 'medium', limit: 10 })
 // → grouped report with HIGH / MEDIUM / LOW sections`,
+      mistakes: [
+        'Treating a HIGH finding as "this test is broken" — HIGH means the test relies HEAVILY on mock vnodes. The test may still be correct given its scope (e.g. testing a helper that only operates on vnode shapes); review the file and pair with a real-`h()` companion test if the contract assertion matters.',
+        'Calling with `minRisk: "low"` and getting overwhelmed — LOW includes any file that even mentions a mock vnode helper. Use `medium` for actionable signal, `high` for "would have prevented PR #197"-tier risk.',
+        'Running outside the monorepo root — the scanner walks `packages/` from `process.cwd()`. From a subpackage dir, you get a partial result.',
+        'Expecting it to flag missing tests — it ONLY scans existing test files. Missing test coverage is a separate concern (coverage gate, not audit_test_environment).',
+      ],
       seeAlso: ['get_browser_smoke_status', 'audit_islands'],
     },
     {
@@ -243,6 +288,12 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
 
 audit_islands({ json: true })
 // → machine-readable { root, findings: [...], summary: {...} }`,
+      mistakes: [
+        'Running outside a project that uses islands — the audit walks `packages/` + `examples/` from `process.cwd()`. A project with zero `island()` declarations returns an empty findings array (not an error).',
+        'Treating `registry-mismatch` as a hard error in auto-registry apps — it only fires for MANUAL `hydrateIslands({ ... })` calls. Apps using `hydrateIslandsAuto()` (Vite plugin default) won\'t see this finding even if they\'d be vulnerable to the same drift in a manual setup.',
+        'Expecting `dead-island` to catch every never-used island — the detector tracks static imports of the loader path. Dynamic-import chains routed through a registry indirection may not be statically traceable; verify by source-grepping the loader path before deleting.',
+        'Confusing `nested-island` with intentional island composition — the outer island\'s `hydrateRoot` REPLACES the inner subtree before the inner can hydrate. If you genuinely need nested islands, flatten or use a different boundary primitive.',
+      ],
       seeAlso: ['audit_test_environment', 'get_anti_patterns'],
     },
   ],
