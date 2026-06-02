@@ -208,7 +208,10 @@ describe('computed — error handler and direct updaters', () => {
     setErrorHandler((_err) => {})
   })
 
-  test('computed.direct registers / fires / unsubscribes a direct updater and exposes _d', () => {
+  test('computed.direct registers / fires / unsubscribes a direct updater (inline-slot fast path)', () => {
+    // After computed's two-tier storage (mirroring signal's PR #1177
+    // shape): a single direct subscriber lives in `_d1` inline slot,
+    // the `_d` Set is NOT allocated until a 2nd subscribe.
     const src = signal(1)
     const c = computed(() => src() * 2)
     void c() // initialize
@@ -216,14 +219,16 @@ describe('computed — error handler and direct updaters', () => {
     const seen: number[] = []
     const unsub = c.direct(() => seen.push(c()))
 
-    // `_d` getter (computed.ts:243-247) exposes the live direct-updater set.
-    expect(accessInternal<{ _d: Set<unknown> }>(c)._d.size).toBe(1)
+    // `_d1` getter exposes the inline slot; `_d` stays null on single
+    // subscribe (no Set allocation).
+    expect(accessInternal<{ _d1: (() => void) | null }>(c)._d1).not.toBeNull()
+    expect(accessInternal<{ _d: Set<unknown> | null }>(c)._d).toBeNull()
 
     src.set(5)
     expect(seen).toEqual([10])
 
     unsub()
-    expect(accessInternal<{ _d: Set<unknown> }>(c)._d.size).toBe(0)
+    expect(accessInternal<{ _d1: (() => void) | null }>(c)._d1).toBeNull()
     src.set(7)
     expect(seen).toEqual([10]) // no further direct notifications
   })
