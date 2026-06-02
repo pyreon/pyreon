@@ -145,7 +145,7 @@ describe('StyleSheet — injectRules failure path', () => {
 describe('StyleSheet — live DOM utility paths', () => {
   it('insert + getStyles returns serialized CSS', () => {
     const s = new StyleSheet()
-    s.insert('.pyr-test', 'color: red')
+    s.insert('.pyr-test { color: red }')
     const out = s.getStyles()
     // happy-dom may not serialize live rules to ssrBuffer; the test
     // exercises getStyles' early-return branch + the live-rules branch.
@@ -154,7 +154,7 @@ describe('StyleSheet — live DOM utility paths', () => {
 
   it('clearAll resets state without throwing', () => {
     const s = new StyleSheet()
-    s.insert('.pyr-foo', 'color: red')
+    s.insert('.pyr-foo { color: red }')
     expect(() => s.clearAll()).not.toThrow()
   })
 })
