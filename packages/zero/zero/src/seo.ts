@@ -133,8 +133,19 @@ export function formatLoc(origin: string, path: string, mode: TrailingSlash): st
     return mode === 'always' ? `${origin}/` : origin
   }
   let p = path
-  if (mode === 'always' && !p.endsWith('/')) p = `${p}/`
-  else if (mode === 'never' && p.endsWith('/')) p = p.replace(/\/+$/, '')
+  if (mode === 'always' && !p.endsWith('/')) {
+    p = `${p}/`
+  } else if (mode === 'never') {
+    // Strip trailing slashes WITHOUT a regex. The obvious `p.replace(/\/+$/, '')`
+    // trips CodeQL `js/polynomial-redos`: an unanchored `…+$` regex is O(N²) on
+    // an all-slashes string (the engine retries the match at every start
+    // position). A char-scan is linear with no backtracking. `end > 1` keeps at
+    // least the leading character so a degenerate all-slashes input can't become
+    // empty (real paths here always start with `/` and aren't `'/'` — handled above).
+    let end = p.length
+    while (end > 1 && p.charCodeAt(end - 1) === 47 /* "/" */) end--
+    p = p.slice(0, end)
+  }
   // 'preserve' → p unchanged.
   return `${origin}${p}`
 }
