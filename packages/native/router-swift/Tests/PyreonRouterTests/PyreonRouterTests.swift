@@ -5,6 +5,7 @@
 // Per the @pyreon/native-runtime-swift convention, View-level rendering
 // tests defer to per-feature PRs that introduce real route handling.
 
+import SwiftUI  // A4: tests construct RouteRecord with `{ AnyView(EmptyView()) }` components
 import XCTest
 @testable import PyreonRouter
 
@@ -436,5 +437,126 @@ final class PyreonRouterTests: XCTestCase {
         }
         router.push("/admin")
         XCTAssertEqual(afterCalls, [])
+    }
+
+    // MARK: - Phase A4 — Route table dispatcher
+    //
+    // 2026-06 native readiness audit, closes CRIT-2 partial + CRIT-3
+    // partial. Backwards-compat: apps that don't configure `routes`
+    // keep pre-A4 behavior (params stays empty, RouterView is no-op).
+    // Apps that DO configure `routes` get matchPath-driven dispatch
+    // and useParams populates per navigation.
+
+    /// Fresh router with NO routes configured keeps pre-A4 behavior:
+    /// params stays empty regardless of push/replace.
+    func testBackwardsCompatNoRoutesParamsStaysEmpty() throws {
+        let router = PyreonRouter()
+        router.push("/users/42")
+        XCTAssertEqual(router.params, [:])
+        router.replace("/users/99")
+        XCTAssertEqual(router.params, [:])
+    }
+
+    /// `push` against a route table populates params from the
+    /// matchPath result — the core CRIT-3 fix.
+    func testPushPopulatesParamsFromMatchedRoute() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/users/:id") { AnyView(EmptyView()) },
+            RouteRecord(path: "/posts/:slug/edit") { AnyView(EmptyView()) },
+        ])
+        router.push("/users/42")
+        XCTAssertEqual(router.params, ["id": "42"])
+        router.push("/posts/hello-world/edit")
+        XCTAssertEqual(router.params, ["slug": "hello-world"])
+    }
+
+    /// `replace` against a route table also populates params.
+    func testReplacePopulatesParamsFromMatchedRoute() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/users/:id") { AnyView(EmptyView()) },
+        ])
+        router.replace("/users/abc")
+        XCTAssertEqual(router.params, ["id": "abc"])
+    }
+
+    /// Navigating to a path with NO matching route clears params —
+    /// stale params from the previous match must not leak.
+    func testNoMatchClearsParams() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/users/:id") { AnyView(EmptyView()) },
+        ])
+        router.push("/users/42")
+        XCTAssertEqual(router.params, ["id": "42"])
+        router.push("/about")  // no match in routes
+        XCTAssertEqual(router.params, [:])
+    }
+
+    /// `back()` recomputes params from the newly-exposed top-of-stack
+    /// path. Pop reveals the previous route's params (not stale ones
+    /// from the popped route).
+    func testBackRecomputesParamsFromPreviousRoute() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/users/:id") { AnyView(EmptyView()) },
+            RouteRecord(path: "/posts/:slug") { AnyView(EmptyView()) },
+        ])
+        router.push("/users/1")
+        router.push("/posts/hello")
+        XCTAssertEqual(router.params, ["slug": "hello"])
+        router.back()
+        // After pop, top-of-stack is "/users/1" → params should
+        // reflect THAT route, not the popped "/posts/hello".
+        XCTAssertEqual(router.params, ["id": "1"])
+    }
+
+    /// `resolveCurrentRoute()` returns the matched (record, params)
+    /// tuple for the current path. RouterView depends on this for
+    /// rendering.
+    func testResolveCurrentRouteReturnsMatchedRecord() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/") { AnyView(EmptyView()) },
+            RouteRecord(path: "/users/:id") { AnyView(EmptyView()) },
+        ])
+        router.push("/users/7")
+        let resolved = router.resolveCurrentRoute()
+        XCTAssertNotNil(resolved)
+        XCTAssertEqual(resolved?.route.path, "/users/:id")
+        XCTAssertEqual(resolved?.params, ["id": "7"])
+    }
+
+    /// `resolveCurrentRoute()` returns nil when no route matches.
+    /// RouterView falls through to EmptyView in this case.
+    func testResolveCurrentRouteReturnsNilOnNoMatch() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/users/:id") { AnyView(EmptyView()) },
+        ])
+        router.push("/about")
+        XCTAssertNil(router.resolveCurrentRoute())
+    }
+
+    /// Declaration order IS precedence — the FIRST matching record
+    /// wins, even when a later record would also match.
+    func testDeclarationOrderIsPrecedence() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/:type/:id") { AnyView(EmptyView()) },  // matches everything first
+            RouteRecord(path: "/users/:id") { AnyView(EmptyView()) },  // more specific, but declared 2nd
+        ])
+        router.push("/users/42")
+        let resolved = router.resolveCurrentRoute()
+        XCTAssertEqual(resolved?.route.path, "/:type/:id")
+        // The user-controllable contract: declaration order is the
+        // app's lever to express precedence. More specific routes
+        // first; catch-alls last.
+        XCTAssertEqual(resolved?.params, ["type": "users", "id": "42"])
+    }
+
+    /// Initializer-time path resolution: an app constructing a router
+    /// with `initialPath: ["/users/42"]` should have `params["id"]`
+    /// available immediately — no need to call push just to populate.
+    func testInitialPathPopulatesParams() throws {
+        let router = PyreonRouter(
+            initialPath: ["/users/42"],
+            routes: [RouteRecord(path: "/users/:id") { AnyView(EmptyView()) }],
+        )
+        XCTAssertEqual(router.params, ["id": "42"])
     }
 }

@@ -332,5 +332,99 @@ fun main() {
         expectEq(afterCalls.toList(), emptyList(), "no afterEach fires for redirect case")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${33} test(s) passed")
+    // Phase A4 — Route table dispatcher (closes CRIT-2 partial + CRIT-3 partial)
+    // 2026-06 native readiness audit. Backwards-compat: apps that don't
+    // configure `routes` keep pre-A4 behavior (params stays empty,
+    // RouterView is no-op). Apps that DO configure `routes` get
+    // matchPath-driven dispatch and useParams populates per navigation.
+
+    runTest("A4 backwards-compat: no routes → params stays empty") {
+        val router = PyreonRouter()
+        router.push("/users/42")
+        expectEq(router.params.value, emptyMap(), "no route table → no params populated")
+        router.replace("/users/99")
+        expectEq(router.params.value, emptyMap(), "replace too — pre-A4 behavior preserved")
+    }
+
+    runTest("A4 push populates params from matched route (CRIT-3 fix)") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/users/:id") {},
+            RouteRecord("/posts/:slug/edit") {},
+        ))
+        router.push("/users/42")
+        expectEq(router.params.value, mapOf("id" to "42"), "users/:id matched")
+        router.push("/posts/hello-world/edit")
+        expectEq(router.params.value, mapOf("slug" to "hello-world"), "posts/:slug/edit matched")
+    }
+
+    runTest("A4 replace populates params from matched route") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/users/:id") {},
+        ))
+        router.replace("/users/abc")
+        expectEq(router.params.value, mapOf("id" to "abc"), "replace populates params")
+    }
+
+    runTest("A4 no match clears params (stale params don't leak)") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/users/:id") {},
+        ))
+        router.push("/users/42")
+        expectEq(router.params.value, mapOf("id" to "42"), "matched")
+        router.push("/about")  // no match
+        expectEq(router.params.value, emptyMap(), "no match → params cleared")
+    }
+
+    runTest("A4 back() recomputes params from previous route") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/users/:id") {},
+            RouteRecord("/posts/:slug") {},
+        ))
+        router.push("/users/1")
+        router.push("/posts/hello")
+        expectEq(router.params.value, mapOf("slug" to "hello"), "before back: posts/:slug")
+        router.back()
+        expectEq(router.params.value, mapOf("id" to "1"), "after back: previous route's params")
+    }
+
+    runTest("A4 resolveCurrentRoute returns matched record") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/") {},
+            RouteRecord("/users/:id") {},
+        ))
+        router.push("/users/7")
+        val resolved = router.resolveCurrentRoute()
+        expect(resolved != null, "resolved should be non-null")
+        expectEq(resolved!!.first.path, "/users/:id", "matched record's path")
+        expectEq(resolved.second, mapOf("id" to "7"), "matched record's params")
+    }
+
+    runTest("A4 resolveCurrentRoute returns null on no match") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/users/:id") {},
+        ))
+        router.push("/about")
+        expect(router.resolveCurrentRoute() == null, "no match → null")
+    }
+
+    runTest("A4 declaration order is precedence (first match wins)") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/:type/:id") {},  // catch-all FIRST
+            RouteRecord("/users/:id") {},  // more specific, declared 2nd
+        ))
+        router.push("/users/42")
+        val resolved = router.resolveCurrentRoute()
+        expectEq(resolved!!.first.path, "/:type/:id", "first declared wins")
+        expectEq(resolved.second, mapOf("type" to "users", "id" to "42"), "matched the catch-all")
+    }
+
+    runTest("A4 initial path populates params at construction time") {
+        val router = PyreonRouter(
+            initialPath = listOf("/users/42"),
+            routes = listOf(RouteRecord("/users/:id") {}),
+        )
+        expectEq(router.params.value, mapOf("id" to "42"), "params populated by init resolver")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${42} test(s) passed")
 }

@@ -12,6 +12,31 @@
 
 import SwiftUI
 
+/// A single route definition — Phase A4 of the 2026-06 native readiness
+/// audit (closes CRIT-2 partial + CRIT-3 partial). Apps populate
+/// `PyreonRouter.routes` with a list of these; the router's
+/// `push`/`replace` runs `matchPath` against each pattern in declaration
+/// order, populates `params` from the first match, and `RouterView`
+/// renders the matched component.
+///
+/// Apps that DON'T configure `routes` keep the pre-A4 behavior: `params`
+/// stays `[:]`, `RouterView` renders `EmptyView()`, host wires its own
+/// `.navigationDestination(for:)`. Strictly additive.
+@available(iOS 17.0, macOS 14.0, *)
+public struct RouteRecord {
+    /// Path pattern. Supports the same shapes `PyreonRouter.matchPath`
+    /// accepts — literal segments, `:name`, `:name?`, `:name*` splat.
+    public let path: String
+    /// Factory producing the View when this route matches. Lazy: a route
+    /// that's never visited doesn't pay component-construction cost.
+    public let component: () -> AnyView
+
+    public init(path: String, component: @escaping () -> AnyView) {
+        self.path = path
+        self.component = component
+    }
+}
+
 /// Routing model that wraps SwiftUI's NavigationStack.
 ///
 /// API parity with `@pyreon/router`'s `Router` class:
@@ -38,12 +63,25 @@ public final class PyreonRouter {
     }
 
     /// Path parameter map for the current route (segments matched
-    /// against route patterns). Phase C1 ships an empty dictionary —
-    /// real pattern-matching lands when route definitions get a
-    /// concrete shape (PR C1.x). The compiler-emitted Swift references
-    /// `router.params["id"]` so the symbol must exist now even with
-    /// no-op behaviour.
+    /// against route patterns).
+    ///
+    /// Phase A4 (native readiness audit, 2026-06): populated by
+    /// `push`/`replace` when the candidate path matches a `routes` entry
+    /// via `matchPath`. Apps that DON'T configure `routes` keep the
+    /// pre-A4 behavior — `params` stays `[:]` and host code reads
+    /// segments directly from `currentPath`.
     public var params: [String: String] = [:]
+
+    /// Route table — declaration-order list of `RouteRecord` patterns.
+    /// `push`/`replace` walk this list and pick the FIRST match;
+    /// declaration order IS precedence. `RouterView` renders the matched
+    /// record's component (or `EmptyView()` when no match — the
+    /// backward-compat fallback for apps that don't configure routes).
+    ///
+    /// Phase A4 ships a flat list; nested-route depth indexing
+    /// (`RouteRecord.children`) lands as A4.5 — separate PR to limit
+    /// blast radius.
+    public var routes: [RouteRecord] = []
 
     /// Phase 3 (loaders) — per-route loaded data, keyed by full path. A
     /// route's loader stores its result here on navigation; `useLoaderData()`
@@ -87,11 +125,52 @@ public final class PyreonRouter {
     @ObservationIgnored
     private var _inGuard: Bool = false
 
-    /// Construct with an initial path stack. Most apps pass `[]`
-    /// (NavigationStack starts at its root view) or `["/"]` for an
-    /// explicit root segment.
-    public init(initialPath: [String] = []) {
+    /// Construct with an initial path stack and optional route table.
+    /// Most apps pass `[]` (NavigationStack starts at its root view)
+    /// or `["/"]` for an explicit root segment.
+    ///
+    /// `routes` defaults to empty for backward-compat — pre-A4 apps
+    /// that use `.navigationDestination(for:)` directly keep working
+    /// without changes. Apps adopting the new dispatcher pass a
+    /// `[RouteRecord]` and let `RouterView` + `params` do the work.
+    public init(initialPath: [String] = [], routes: [RouteRecord] = []) {
         self.path = initialPath
+        self.routes = routes
+        // Resolve any params that the initial top-of-stack path produces,
+        // so apps that start on `/users/42` have `params["id"] == "42"`
+        // immediately — no need to call push/replace just to populate.
+        if !initialPath.isEmpty, let resolved = self.resolve(initialPath.last!) {
+            self.params = resolved.params
+        }
+    }
+
+    /// Walk `routes` in declaration order against `candidate`, returning
+    /// the first matching record + its extracted params. Internal helper
+    /// called by push/replace AND by the initializer (for the
+    /// initial-path case). Pure — does NOT mutate state.
+    private func resolve(_ candidate: String) -> (route: RouteRecord, params: [String: String])? {
+        for record in routes {
+            if let params = Self.matchPath(candidate, record.path) {
+                return (record, params)
+            }
+        }
+        return nil
+    }
+
+    /// Resolve the CURRENT top-of-stack path against the route table.
+    /// Public so `RouterView` can call it during render — treat as an
+    /// internal-API surface on the package.
+    public func resolveCurrentRoute() -> (route: RouteRecord, params: [String: String])? {
+        return resolve(currentPath)
+    }
+
+    /// Recompute `params` from `committed` against the route table.
+    /// Called by push/replace AFTER the path mutation so the params
+    /// signal updates in lockstep with the path (readers observing
+    /// either field see a consistent snapshot). No-match → `params`
+    /// is cleared (don't leak stale params from a previous route).
+    private func updateParamsFromPath(_ committed: String) {
+        params = resolve(committed)?.params ?? [:]
     }
 
     /// Run the beforeEach chain against `candidate`; any false →
@@ -129,10 +208,15 @@ public final class PyreonRouter {
             // mutation IS the chain's outcome) and the afterEach
             // fan-out (the outer level fires it).
             self.path.append(path)
+            updateParamsFromPath(path)
             return
         }
         if !allowNavigation(to: path) { return }
         self.path.append(path)
+        // Phase A4: resolve the matched route + extract params atomically
+        // with the path mutation, so observers see a consistent snapshot
+        // (params + path always describe the same route).
+        updateParamsFromPath(path)
         runAfterEach(path)
     }
 
@@ -151,6 +235,7 @@ public final class PyreonRouter {
             } else {
                 self.path[self.path.count - 1] = path
             }
+            updateParamsFromPath(path)
             return
         }
         if !allowNavigation(to: path) { return }
@@ -159,6 +244,8 @@ public final class PyreonRouter {
         } else {
             self.path[self.path.count - 1] = path
         }
+        // Phase A4: same params-after-path contract as `push`.
+        updateParamsFromPath(path)
         runAfterEach(path)
     }
 
@@ -191,9 +278,16 @@ public final class PyreonRouter {
     /// Pop the top-of-stack path. Matches `router.back()` on the web
     /// side. No-op if the stack is empty (NavigationStack's root view
     /// has nothing to pop to).
+    ///
+    /// Phase A4: also recomputes `params` from the newly-exposed
+    /// top-of-stack path, so views observing `params` after a `back()`
+    /// see the previous route's values (not stale params from the
+    /// popped route). When the stack becomes empty, `currentPath`
+    /// falls back to `"/"` and the resolver runs against that.
     public func back() {
         guard !self.path.isEmpty else { return }
         self.path.removeLast()
+        updateParamsFromPath(currentPath)
     }
 
     /// Store a route's loaded data under its path. Called by the loader

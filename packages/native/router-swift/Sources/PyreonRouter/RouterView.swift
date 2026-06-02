@@ -1,39 +1,55 @@
 // RouterView — the SwiftUI counterpart to @pyreon/router's
-// `<RouterView />` component. Phase C1 ships the SCAFFOLD: a view that
-// reads the active router from the environment and renders whatever
-// content the host wires up via `.navigationDestination(for:)`.
+// `<RouterView />` component.
 //
-// Phase C1 is intentionally minimal because route definitions (the
-// `routes: [...]` config the web side passes to `createRouter()`) are
-// in flux on the native side. The compiler-emit shape is being settled
-// per the canonical-primitives table; this scaffold is enough to make
-// the symbol resolvable + the package buildable.
+// Phase A4 (native readiness audit, 2026-06 — closes CRIT-2 partial):
+// RouterView now renders the route table dispatcher's matched component
+// instead of the pre-A4 `EmptyView()` no-op. The router's
+// `resolveCurrentRoute()` walks `routes` in declaration order, picks
+// the first match, and returns the matching record. RouterView pulls
+// the component from that record and renders it.
 //
-// The host app's NavigationStack content is the source of truth for
-// what each path renders to. RouterView itself is just a placeholder
-// — the real per-route rendering lives in
-// `.navigationDestination(for: String.self) { path in ... }` modifiers
-// the host wires up.
+// Backward-compat: if the active router has NO routes configured (the
+// pre-A4 shape, where the host wires its own `.navigationDestination(for:)`
+// on the parent NavigationStack), RouterView still emits `EmptyView()`
+// — the host's destination handler is the source of truth.
+//
+// Out of scope (separate follow-up PRs):
+//   - Nested-route depth indexing (`RouteRecord.children` + per-depth
+//     `<RouterView />`) — A4.5
+//   - Per-route `beforeEnter` guards wired to navigation — A5
+//   - Wildcard-404 catch-all + `notFoundComponent` — A6
 
 import SwiftUI
 
-/// Active-route view. Placeholder content for now — the host's
-/// `.navigationDestination(for:)` modifier on the parent NavigationStack
-/// is what actually renders per-path content. Phase C1 ships RouterView
-/// as a symbol-reachable namespace anchor so the compiler emit can
-/// reference it.
+/// Active-route view — Phase A4.
 ///
-/// Phase C2+ extends this with declarative route definitions matching
-/// the web side's `routes: [{ path: '/users/:id', component: UserPage }, ...]`
-/// shape, so the SAME source compiles to both targets.
+/// Looks up `PyreonRouter` from the SwiftUI environment, calls
+/// `resolveCurrentRoute()` against the route table, and renders the
+/// matched component. Falls through to `EmptyView()` when:
+///   - no `PyreonRouter` is in scope (impossible inside a properly-wired
+///     `RouterProvider`; defensive default)
+///   - the router has no `routes` configured (backward-compat for
+///     pre-A4 apps using `.navigationDestination(for:)` manually)
+///   - no route matches the current path (wildcard-404 is A6 work)
 @available(iOS 17.0, macOS 14.0, *)
 public struct RouterView: View {
+    @Environment(\.pyreonRouter) private var router: PyreonRouter?
+
     public init() {}
 
     public var body: some View {
-        // EmptyView so the placeholder doesn't render anything visible.
-        // The host's NavigationStack-level `.navigationDestination(for:)`
-        // modifier is what actually paints per-path content.
-        EmptyView()
+        // Resolving against the live router triggers SwiftUI's
+        // observation: when `path` (and therefore `currentPath`)
+        // changes via push/replace/back, this body re-runs and the
+        // matched component swaps. `routes` itself is also Observable
+        // — if the host mutates the route table at runtime (rare),
+        // re-resolution picks up the change too.
+        if let router, let resolved = router.resolveCurrentRoute() {
+            resolved.route.component()
+        } else {
+            // Pre-A4 fallback: host's `.navigationDestination(for:)`
+            // handles routing externally. Don't paint anything here.
+            EmptyView()
+        }
     }
 }
