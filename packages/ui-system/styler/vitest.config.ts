@@ -11,8 +11,8 @@ export default defineNodeConfig({
   coverageExclude: ['**/*.bench.ts', '**/__tests__/index.ts'],
   coverageThresholds: {
     statements: 94,
-    branches: 80,
-    functions: 94,
-    lines: 94,
+    branches: 85,
+    functions: 95,
+    lines: 95,
   },
 })

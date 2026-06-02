@@ -108,9 +108,9 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   },
   '@pyreon/styler': {
     currentStatements: 94,
-    currentBranches: 80,
+    currentBranches: 85,
     reason:
-      'CSS-in-JS engine. Statements lifted 90 → 94 (cov-94 series, PR #1081). Branches at 84.04% — just below the 85 branch floor; small follow-up to test sheet-split edge cases.',
+      'CSS-in-JS engine. Statements lifted 90 → 94 (cov-94 series, PR #1081). Now 94.83% statements / 85.11% branches / 97.33% functions / 96.03% lines (sheet SSR-paths + buildProps reactive-class tests added). Statements 1pt below 95 target — uncovered is in styled.tsx (rocketstyle/element class-cache hot-path fast-paths exercised in real-Chromium browser tests).',
   },
   '@pyreon/document': {
     currentStatements: 95,
