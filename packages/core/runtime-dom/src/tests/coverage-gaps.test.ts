@@ -656,6 +656,28 @@ describe('props.ts — Sanitizer API branch', () => {
       applyProp(el, 'src', 'javascript:alert(1)')
       expect(el.getAttribute('src')).toBeNull()
     })
+
+    // Defensive SVG-decode branches: a malformed image/svg+xml payload is
+    // treated as unsafe rather than risking an undecodable-but-scripted SVG.
+    test('img src — svg+xml with no payload comma is blocked (malformed)', () => {
+      const el = document.createElement('img')
+      applyProp(el, 'src', 'data:image/svg+xml;base64')
+      expect(el.getAttribute('src')).toBeNull()
+    })
+
+    test('img src — svg+xml with undecodable base64 is blocked', () => {
+      const el = document.createElement('img')
+      applyProp(el, 'src', 'data:image/svg+xml;base64,@@@not-base64@@@')
+      expect(el.getAttribute('src')).toBeNull()
+    })
+
+    test('img src — svg+xml with malformed %-escape falls back to raw scan and blocks <script>', () => {
+      const el = document.createElement('img')
+      // The trailing `%ZZ` makes decodeURIComponent throw; the raw payload is
+      // still scanned, so the embedded <script> is caught.
+      applyProp(el, 'src', 'data:image/svg+xml,<svg><script>x</script>%ZZ</svg>')
+      expect(el.getAttribute('src')).toBeNull()
+    })
   })
 
   test('style as object applies via Object.assign', () => {
