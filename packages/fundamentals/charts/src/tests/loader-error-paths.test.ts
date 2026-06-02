@@ -6,7 +6,7 @@
  * - lines 156-157: corePromise = null + rethrowWithAliasHint in getCore catch
  * - lines 195-196: inflight.delete(key) + throw err in loadAndRegister catch
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { _wrapTslibError, getCoreSync } from '../loader'
 
 describe('loader.ts — error paths', () => {
