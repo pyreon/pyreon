@@ -319,13 +319,15 @@ describe("render404Page", () => {
 		expect(html).not.toContain("<!--pyreon-app-->");
 	});
 
-	// ─── 404 noindex injection — claim-3 from render-modes audit ────────────
+	// ─── 404 noindex enforcement — claim-3 from render-modes audit ──────────
 	//
 	// The framework KNOWS it's emitting a 404. The `<Meta>` component
 	// default of `'index, follow'` is correct for regular pages but
-	// actively wrong here. `ensureNoindexMeta` injects the noindex tag
-	// into the rendered head; user override (any explicit robots meta)
-	// wins. See `not-found.ts:ensureNoindexMeta` for the contract.
+	// actively wrong here. `ensureNoindexMeta` INJECTS the noindex tag when
+	// absent AND OVERRIDES an index-permitting robots meta (the `<Meta>`
+	// default / explicit `index, follow` / `all`) — a 404 is never
+	// indexable. A deliberate `noindex`/`none` directive still wins. See
+	// `not-found.ts:ensureNoindexMeta` for the contract.
 
 	it("default 404 carries noindex,nofollow robots meta in the rendered head", async () => {
 		const html = await render404Page(undefined);
@@ -345,27 +347,50 @@ describe("render404Page", () => {
 		expect(html).toContain("Bare 404 content");
 	});
 
-	it("user-supplied robots meta wins (does NOT inject default)", async () => {
-		// User explicitly opts into something different — `<Meta>` might
-		// emit `<meta name="robots" content="noindex, nofollow, noarchive">`
-		// or for some reason `'index, follow'`. Either way, ours stays out.
+	it("deliberate noindex robots meta is preserved (does NOT clobber)", async () => {
+		// A sophisticated app emits `<Meta robots="noindex, nofollow,
+		// noarchive">` — that already prevents indexing, so the framework
+		// leaves it exactly as-is (never strips the extra `noarchive`).
 		const template =
 			'<!DOCTYPE html><html><head><meta name="robots" content="noindex, nofollow, noarchive"></head><body><!--pyreon-app--></body></html>';
 		const html = await render404Page(undefined, template);
 		expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive">');
-		// Default version (without noarchive) must NOT appear ALSO — the
-		// helper bailed out cleanly without double-injection.
+		// No double-injection — the existing directive is the only one.
 		const robotsMetaCount = (html.match(/name="robots"/g) ?? []).length;
 		expect(robotsMetaCount).toBe(1);
 	});
 
-	it("user-supplied single-quote robots meta also wins (regex covers both quote styles)", async () => {
+	it("`none` shorthand is preserved (≡ noindex,nofollow per robots spec)", async () => {
+		const template =
+			'<!DOCTYPE html><html><head><meta name="robots" content="none"></head><body><!--pyreon-app--></body></html>';
+		const html = await render404Page(undefined, template);
+		expect(html).toContain('<meta name="robots" content="none">');
+		expect((html.match(/name="robots"/g) ?? []).length).toBe(1);
+	});
+
+	// The core bokisch.com regression (0.27.1): a `_404.tsx` using `<Meta>`
+	// (no explicit robots) emits the component default `index, follow`, which
+	// the old "bail if any robots meta exists" contract passed straight
+	// through — shipping an INDEXABLE 404. The framework now OVERRIDES it.
+	it("`<Meta>` default `index, follow` is OVERRIDDEN to noindex on a 404", async () => {
+		const template =
+			'<!DOCTYPE html><html><head><meta name="robots" content="index, follow"></head><body><!--pyreon-app--></body></html>';
+		const html = await render404Page(undefined, template);
+		expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
+		expect(html).not.toContain('content="index, follow"');
+		// Exactly one robots meta — overwrite, not append.
+		expect((html.match(/name="robots"/g) ?? []).length).toBe(1);
+	});
+
+	it("single-quote `all` shorthand is OVERRIDDEN (covers both quote styles)", async () => {
+		// `all` ≡ `index, follow` — index-permitting, so it's overridden.
+		// Also exercises the single-quote attribute detection path.
 		const template =
 			"<!DOCTYPE html><html><head><meta name='robots' content='all'></head><body><!--pyreon-app--></body></html>";
 		const html = await render404Page(undefined, template);
-		const robotsMetaCount = (html.match(/name=['"]robots['"]/g) ?? []).length;
-		expect(robotsMetaCount).toBe(1);
-		expect(html).toContain("content='all'");
+		expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
+		expect(html).not.toContain("content='all'");
+		expect((html.match(/name=['"]robots['"]/g) ?? []).length).toBe(1);
 	});
 
 	it("ensureNoindexMeta is idempotent (calling twice = same output)", async () => {
