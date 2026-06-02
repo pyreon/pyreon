@@ -47,6 +47,7 @@
  *   bun bench-fair.ts --baseline <path>              # compare to baseline JSON
  *   bun bench-fair.ts --throttle 4                   # 4× CPU slowdown via CDP
  *   bun bench-fair.ts --frameworks Pyreon,Solid      # restrict to subset
+ *   bun bench-fair.ts --repeat 4                     # 4 full passes; pools 20×4=80 samples per test for tighter CI95
  */
 import { execSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -78,6 +79,8 @@ interface BenchResult {
   ci95: [number, number]
   cv: number
   warmupUsed: number
+  /** Raw samples — surfaced by `src/runner.ts` for sample-pooling across --repeat N runs. */
+  samples: number[]
 }
 interface SuiteResult {
   framework: string
@@ -89,6 +92,14 @@ interface CliArgs {
   baseline: string | undefined
   throttle: number | undefined
   frameworks: readonly string[]
+  /**
+   * Repeat the entire per-framework page-isolation loop N times,
+   * pooling the 20×N samples per test for a tighter CI95. N=1 (default)
+   * is the current behavior (20 samples per test). N=3-5 is appropriate
+   * when sub-millisecond medians live at the performance.now() floor
+   * and run-to-run variance is the dominant source of noise.
+   */
+  repeat: number
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -97,6 +108,7 @@ function parseArgs(argv: string[]): CliArgs {
     baseline: undefined,
     throttle: undefined,
     frameworks: ALL_FRAMEWORKS,
+    repeat: 1,
   }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -107,6 +119,11 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === '--throttle' && argv[i + 1]) {
       const v = Number(argv[++i])
       if (Number.isFinite(v) && v > 0) args.throttle = v
+    } else if (a === '--repeat' && argv[i + 1]) {
+      const v = Number(argv[++i])
+      // Clamp [1, 20] — beyond ~20 the cost of running the whole bench
+      // outpaces the marginal CI95 tightening from more samples.
+      if (Number.isInteger(v) && v >= 1 && v <= 20) args.repeat = v
     } else if (a === '--frameworks' && argv[i + 1]) {
       const next = argv[++i]
       if (next) {
@@ -117,6 +134,85 @@ function parseArgs(argv: string[]): CliArgs {
     }
   }
   return args
+}
+
+/**
+ * Re-compute median + p90 + CI95 + CV from a pooled samples array.
+ * Used by `--repeat N` to aggregate 20×N samples into a single result
+ * with tighter CI95 than any individual run.
+ */
+function recomputeStats(name: string, pooledSamples: number[], warmupUsedMax: number): BenchResult {
+  const sorted = [...pooledSamples].sort((a, b) => a - b)
+  const median = sorted[Math.floor((sorted.length - 1) * 0.5)] ?? 0
+  const p90 = sorted[Math.floor((sorted.length - 1) * 0.9)] ?? 0
+  const min = sorted[0] ?? 0
+  const max = sorted[sorted.length - 1] ?? 0
+  const mean = pooledSamples.reduce((s, x) => s + x, 0) / pooledSamples.length
+  const stddev = Math.sqrt(
+    pooledSamples.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(pooledSamples.length - 1, 1),
+  )
+  const cv = mean > 0 ? stddev / mean : 0
+
+  // 95% bootstrap CI on the median over the pooled samples — uses the
+  // same 1000-resample non-parametric bootstrap as `runner.ts`. Pooling
+  // 20×N samples roughly halves the CI95 width per √N (statistical
+  // power), so 4 runs ≈ half the noise of 1 run.
+  const RESAMPLES = 1000
+  const medians: number[] = []
+  for (let b = 0; b < RESAMPLES; b++) {
+    const resample: number[] = []
+    for (let i = 0; i < pooledSamples.length; i++) {
+      resample.push(pooledSamples[Math.floor(Math.random() * pooledSamples.length)] ?? 0)
+    }
+    resample.sort((a, b2) => a - b2)
+    medians.push(resample[Math.floor((resample.length - 1) * 0.5)] ?? 0)
+  }
+  medians.sort((a, b) => a - b)
+  const ci95: [number, number] = [
+    medians[Math.floor((medians.length - 1) * 0.025)] ?? 0,
+    medians[Math.floor((medians.length - 1) * 0.975)] ?? 0,
+  ]
+
+  return {
+    name,
+    median,
+    p90,
+    min,
+    max,
+    runs: pooledSamples.length,
+    ci95,
+    cv,
+    warmupUsed: warmupUsedMax,
+    samples: pooledSamples,
+  }
+}
+
+/**
+ * Aggregate N independent SuiteResult arrays into one — pools the
+ * per-test `samples` across runs, then recomputes median + CI95 + CV
+ * over the full pool.
+ */
+function aggregateRepeated(runs: SuiteResult[][]): SuiteResult[] {
+  if (runs.length === 0) return []
+  const first = runs[0]
+  if (!first || first.length === 0) return []
+  // For each framework × test, pool samples across runs.
+  return first.map((suite, suiteIdx) => ({
+    framework: suite.framework,
+    results: suite.results.map((result, testIdx) => {
+      // Collect samples + max warmupUsed across all runs for this (framework, test)
+      const pooled: number[] = []
+      let warmupMax = 0
+      for (const run of runs) {
+        const r = run[suiteIdx]?.results[testIdx]
+        if (r?.samples) {
+          for (const s of r.samples) pooled.push(s)
+          if (r.warmupUsed > warmupMax) warmupMax = r.warmupUsed
+        }
+      }
+      return recomputeStats(result.name, pooled, warmupMax)
+    }),
+  }))
 }
 
 async function runOneFramework(
@@ -208,21 +304,41 @@ async function main(): Promise<void> {
   console.log(
     `[bench-fair] running ${args.frameworks.length} framework(s) — each in a fresh page…`,
   )
+  if (args.repeat > 1) {
+    console.log(
+      `[bench-fair] --repeat ${args.repeat} → pooling ${args.repeat * 20} samples per test for tighter CI95`,
+    )
+  }
 
-  const suites: SuiteResult[] = []
-  for (const framework of args.frameworks) {
-    console.log(`[bench-fair]   ▸ ${framework}`)
-    const suite = await runOneFramework(framework, baseUrl, args.throttle, browser)
-    if (suite) suites.push(suite)
+  // Per-repeat data: each entry is one full SuiteResult[] (one full sweep).
+  // Final reported numbers are the AGGREGATE — sample-pooled across all repeats.
+  const allRuns: SuiteResult[][] = []
+  for (let r = 0; r < args.repeat; r++) {
+    if (args.repeat > 1) console.log(`[bench-fair] === repeat pass ${r + 1}/${args.repeat} ===`)
+    const suites: SuiteResult[] = []
+    for (const framework of args.frameworks) {
+      console.log(`[bench-fair]   ▸ ${framework}`)
+      const suite = await runOneFramework(framework, baseUrl, args.throttle, browser)
+      if (suite) suites.push(suite)
+    }
+    if (suites.length === 0) {
+      console.error(
+        `[bench-fair] no results from repeat pass ${r + 1} — check console output above`,
+      )
+      await browser.close()
+      preview.kill('SIGTERM')
+      process.exit(1)
+    }
+    allRuns.push(suites)
   }
 
   await browser.close()
   preview.kill('SIGTERM')
 
-  if (suites.length === 0) {
-    console.error('[bench-fair] no results — check console output above')
-    process.exit(1)
-  }
+  // Single pass → use the run directly (preserves exact stats from `runner.ts`).
+  // Multiple passes → pool samples + recompute stats over the bigger sample set.
+  const suites: SuiteResult[] =
+    args.repeat === 1 && allRuns[0] ? allRuns[0] : aggregateRepeated(allRuns)
 
   printMarkdownTable(suites)
 
@@ -241,6 +357,8 @@ async function main(): Promise<void> {
         bootstrapResamples: 1000,
         pageIsolation: 'per-framework',
         exposeGc: true,
+        repeat: args.repeat,
+        pooledSamplesPerTest: args.repeat * 20,
       },
       suites,
     }
