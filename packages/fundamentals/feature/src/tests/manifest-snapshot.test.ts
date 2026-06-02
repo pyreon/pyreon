@@ -100,6 +100,7 @@ describe('gen-docs — feature snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(2)
+    // 5 entries: defineFeature, reference, isReference, extractFields, defaultInitialValues
+    expect(Object.keys(record).length).toBe(5)
   })
 })

@@ -67,7 +67,9 @@ describe('gen-docs — storage snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(4)
+    // 7 entries: useStorage, useCookie, useSessionStorage, useMemoryStorage,
+    // useIndexedDB, setCookieSource, createStorage
+    expect(Object.keys(record).length).toBe(7)
     expect(record['storage/useStorage']!.notes).toContain('localStorage')
     expect(record['storage/useStorage']!.mistakes?.split('\n').length).toBe(3)
   })
