@@ -40,6 +40,14 @@ export interface BenchResult {
   cv: number
   /** Warmup iterations actually performed (≥ WARMUP_MIN, ≤ WARMUP_MAX). */
   warmupUsed: number
+  /**
+   * Raw timed samples in ms (length === `runs`). Surfaced so external
+   * orchestrators (e.g. `bench-fair.ts --repeat N`) can POOL samples
+   * across multiple independent runs to compute a tighter CI95 over
+   * 20×N samples instead of N point-medians. Internally unused; safe
+   * to drop from JSON output if size matters.
+   */
+  samples: number[]
 }
 
 export interface BenchSuite {
@@ -198,6 +206,7 @@ export async function bench(
     ci95,
     cv,
     warmupUsed,
+    samples: samples.slice(), // copy — caller may pool across runs
   }
   suite.results.push(result)
   return result
