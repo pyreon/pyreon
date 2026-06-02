@@ -50,6 +50,8 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     '10-multi-component.tsx',
     '11-canonical-layout.tsx',
     '12-canonical-input.tsx',
+    '13-canonical-overlay.tsx',
+    '14-canonical-content.tsx',
   ] as const
 
   for (const fixture of fixtures) {
