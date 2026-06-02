@@ -195,9 +195,12 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Zero', link: '/docs/zero' },
+            { text: 'Zero CLI', link: '/docs/zero-cli' },
             { text: 'SSR & ISR', link: '/docs/ssr' },
             { text: 'SSG', link: '/docs/ssg' },
             { text: 'Create Zero', link: '/docs/create-zero' },
+            { text: 'Create Multi-Platform', link: '/docs/create-multiplatform' },
+            { text: 'Primitives', link: '/docs/primitives' },
             { text: 'Meta', link: '/docs/meta' },
             { text: 'Storybook', link: '/docs/storybook' },
           ],
@@ -243,6 +246,7 @@ export default defineConfig({
           items: [
             { text: 'DevTools', link: '/docs/devtools' },
             { text: 'Live Program Inlay Hints', link: '/docs/lpih' },
+            { text: 'Sized Map (bounded cache)', link: '/docs/sized-map' },
           ],
         },
       ],
