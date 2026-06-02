@@ -1,7 +1,7 @@
 import type { Ref, VNodeChild } from '@pyreon/core'
-import { createRef } from '@pyreon/core'
+import { createRef, splitProps } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import type { FormatSource } from './image-plugin'
+import type { FormatSource, ProcessedImage } from './image-plugin'
 import { useIntersectionObserver } from './utils/use-intersection-observer'
 
 // ─── Image optimization component ───────────────────────────────────────────
@@ -347,3 +347,39 @@ export const Image: (props: ImageProps) => any = createImage((props) => (
     {props.image}
   </div>
 ))
+
+/** Props for {@link OptimizedImage}. */
+export interface OptimizedImageProps
+  extends Omit<ImageProps, 'src' | 'width' | 'height' | 'srcset' | 'formats' | 'placeholder'> {
+  /**
+   * A `?optimize` import descriptor — `import hero from './hero.jpg?optimize'`.
+   * Carries `src` / `srcset` / `width` / `height` / `placeholder` / `formats`;
+   * `<OptimizedImage>` spreads ALL of them onto `<Image>` so none are dropped.
+   */
+  source: ProcessedImage
+}
+
+/**
+ * One-prop form of {@link Image} for `?optimize` imports.
+ *
+ * `<Image {...hero} alt="…" />` already works, but spreading by hand makes it
+ * easy to drop a field — the #1 real-world CLS cause is pulling just `hero.src`
+ * onto a raw `<img>` and losing `width` / `height` / `srcset` / `placeholder`.
+ * `<OptimizedImage source={hero} alt="…" />` takes the whole descriptor as a
+ * single prop, so every optimization field reaches `<Image>` by construction —
+ * there is no "did I remember every field?" step.
+ *
+ * Display props (`alt`, `sizes`, `priority`, `loading`, `class`, `style`,
+ * `fit`, `decoding`, `raw`) are passed alongside `source` and win over the
+ * descriptor on the (currently non-overlapping) keys.
+ *
+ * @example
+ * import hero from './hero.jpg?optimize'
+ * <OptimizedImage source={hero} alt="Hero" priority />
+ */
+export function OptimizedImage(props: OptimizedImageProps): any {
+  // splitProps (not destructuring) so the display props keep their reactive
+  // getters; `source` is a static build-time descriptor with no reactivity.
+  const [local, rest] = splitProps(props, ['source'])
+  return <Image {...local.source} {...rest} />
+}

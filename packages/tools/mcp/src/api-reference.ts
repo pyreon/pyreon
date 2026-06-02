@@ -3213,7 +3213,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '86 rules across 18 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
+    notes: '87 rules across 18 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
   },
 
   'lint/lintFile': {
@@ -3232,7 +3232,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
     example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
-pyreon-lint --list                      # list all 86 rules
+pyreon-lint --list                      # list all 87 rules
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
     notes: `CLI entry. Config: \`.pyreonlintrc.json\` (reference \`schema/pyreonlintrc.schema.json\` for IDE autocomplete) or \`package.json\`'s \`'pyreonlint'\` field. Ignore: \`.pyreonlintignore\` + \`.gitignore\`. Watch: \`fs.watch\` recursive with 100ms debounce. \`--rule-options id='{json}'\` passes per-rule options on a single run. See also: lint.`,
@@ -4789,13 +4789,24 @@ import hero from './hero.jpg?optimize'
 
 // Raw mode — skip all optimization wrappers (custom layout)
 <Image src="/bg.jpg" alt="" width={400} height={300} raw />`,
-    notes: 'Default optimized image — lazy loading via IntersectionObserver, automatic width/height for CLS prevention, responsive srcset, multi-format via `<picture>`, blur-up placeholder, `fetchPriority="high"` for LCP images. Built on `createImage` so consumers can layer rocketstyle / custom wrappers on top via `createImage(MyStyledImage)` without losing the optimization pipeline. The `raw: true` escape hatch returns a bare `<img>` (no container, no lazy load, no aspect-ratio enforcement). See also: useImage, createImage, ImageProps, ImageRenderProps.',
+    notes: 'Default optimized image — lazy loading via IntersectionObserver, automatic width/height for CLS prevention, responsive srcset, multi-format via `<picture>`, blur-up placeholder, `fetchPriority="high"` for LCP images. Built on `createImage` so consumers can layer rocketstyle / custom wrappers on top via `createImage(MyStyledImage)` without losing the optimization pipeline. The `raw: true` escape hatch returns a bare `<img>` (no container, no lazy load, no aspect-ratio enforcement). See also: useImage, createImage, OptimizedImage, ImageProps, ImageRenderProps.',
     mistakes: `- Forgetting \`width\` + \`height\` — both are REQUIRED for CLS prevention. The \`aspect-ratio\` CSS is computed from these; omitting them produces layout shift when the image loads
 - Setting \`priority\` on below-the-fold images — \`priority\` disables lazy loading AND adds \`fetchPriority="high"\`. Reserve it for the LCP image only (typically the hero)
 - Setting \`loading="eager"\` AND \`priority\` — they're redundant; \`priority\` already implies eager. Pick one (\`priority\` is the LCP-marker; \`loading="eager"\` is the no-priority eager hint)
 - Using \`placeholder\` as a full-resolution image — it should be a tiny base64 data URI or a /placeholder.jpg (~1-2 KB). Large placeholders defeat the purpose by blocking initial paint
 - Spreading \`imagePlugin\` output (\`{...hero}\`) WITHOUT \`alt\` — \`alt\` is required for accessibility AND not auto-derived by the plugin. The TypeScript type enforces this
 - Wrapping \`<Image>\` in a \`<picture>\` manually for WebP/AVIF — \`formats\` already does this via \`imagePlugin\`. Manual \`<picture>\` defeats the optimization`,
+  },
+
+  'zero/OptimizedImage': {
+    signature: '<OptimizedImage source={img} alt={alt} priority={false} />',
+    example: `import { OptimizedImage } from '@pyreon/zero/image'
+import hero from './hero.jpg?optimize'
+
+<OptimizedImage source={hero} alt="Hero" priority />`,
+    notes: 'One-prop form of `<Image>` for `?optimize` imports. `<Image {...hero} alt="…" />` already works, but spreading by hand makes it easy to drop a field — the #1 real-world CLS cause is pulling just `hero.src` onto a raw `<img>` and losing width / height / srcset / placeholder. `<OptimizedImage source={hero} alt="…" />` takes the whole descriptor as a single prop, so every optimization field reaches `<Image>` by construction. Display props (`alt`, `sizes`, `priority`, `loading`, `class`, `style`, `fit`, `decoding`, `raw`) pass through alongside `source`. The companion opt-in lint rule `pyreon/no-discarded-optimize-fields` flags the discard shape (`<img src={hero.src}>`) and points here. See also: Image, ProcessedImage, useImage.',
+    mistakes: `- Pulling just \`hero.src\` onto a raw \`<img src={hero.src}>\` — that discards width / height / srcset / placeholder / formats (CLS + no responsive images). Pass the whole descriptor: \`<OptimizedImage source={hero} />\`
+- Forgetting \`alt\` — it is required for accessibility and is NOT part of the \`?optimize\` descriptor, so \`source\` alone never supplies it`,
   },
 
   'zero/useImage': {

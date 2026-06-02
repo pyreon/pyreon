@@ -677,10 +677,18 @@ export default {
 
 ```tsx
 import hero from './images/hero.jpg?optimize'
-import { Image } from '@pyreon/zero'
+import { Image, OptimizedImage } from '@pyreon/zero'
 
+// Recommended — one prop, every field forwarded (nothing dropped)
+;<OptimizedImage source={hero} alt="Hero" priority />
+
+// Equivalent spread form
 ;<Image {...hero} alt="Hero" priority />
 ```
+
+::: warning Don't pull just `.src` onto a raw `<img>`
+`<img src={hero.src} />` discards `width` / `height` / `srcset` / `placeholder` / `formats` — the #1 real-world cause of Cumulative Layout Shift. Render the whole descriptor via `<OptimizedImage source={hero} />` or `<Image {...hero} />`. The opt-in lint rule `pyreon/no-discarded-optimize-fields` (enable via the `best-practices` preset) flags the discard shape automatically in `@pyreon/zero` projects.
+:::
 
 **Typing the `?optimize` import.** `?optimize` (and `?component` / `?raw` for SVG) are custom Vite import queries — TypeScript doesn't know their shape by default. Zero ships the ambient declarations; add **one line** to any tsconfig-covered `.d.ts` (e.g. `src/env.d.ts`):
 
