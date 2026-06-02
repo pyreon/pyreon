@@ -1,8 +1,7 @@
 /** @jsxImportSource @pyreon/core */
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { sheet } from '@pyreon/styler'
-import { styled } from '@pyreon/styler'
+import { sheet, styled } from '@pyreon/styler'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import rocketstyle from '../init'

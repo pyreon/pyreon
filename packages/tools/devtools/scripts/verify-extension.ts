@@ -24,7 +24,7 @@
  */
 
 import { dirname, join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
@@ -75,7 +75,6 @@ if (process.exitCode) process.exit(1)
 // sets window.__PYREON_DEVTOOLS__ from page-context independently of the
 // extension. The static scan catches it deterministically.
 console.log('\n1b. Static syntax-quality scan (catches the IIFE-no-exports bug class)')
-import { readFileSync } from 'node:fs'
 
 const IIFE_ENTRIES = ['content-script.js', 'devtools.js', 'panel.js', 'page-hook.js']
 for (const name of IIFE_ENTRIES) {
@@ -146,7 +145,7 @@ page.on('pageerror', (err) => pageErrors.push(err.message))
 try {
   await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 })
   pass(`Loaded ${APP_URL}`)
-} catch (err) {
+} catch {
   fail(`Could not reach ${APP_URL} — is the dev server running?`)
   info(`  Hint: cd examples/perf-dashboard && bun run dev`)
   await context.close()
@@ -211,7 +210,10 @@ for (const m of requiredMethods) {
 }
 
 if (hookSurface.hasReactive) pass('  has .reactive Foundation surface')
-else fail('  MISSING .reactive Foundation surface (the Signals/Graph/Effects/Profiler tabs depend on this)')
+else
+  fail(
+    '  MISSING .reactive Foundation surface (the Signals/Graph/Effects/Profiler tabs depend on this)',
+  )
 
 const requiredReactive = ['activate', 'deactivate', 'getGraph', 'getFires']
 for (const m of requiredReactive) {
@@ -223,19 +225,21 @@ for (const m of requiredReactive) {
 console.log('\n4. Activate reactive Foundation + drive real signal activity')
 
 const reactiveResult = await page.evaluate(async () => {
-  const dt = (window as unknown as {
-    __PYREON_DEVTOOLS__: {
-      reactive: {
-        activate: () => void
-        deactivate: () => void
-        getGraph: () => {
-          nodes: Array<{ loc?: { file: string; line: number; col: number } }>
-          edges: unknown[]
+  const dt = (
+    window as unknown as {
+      __PYREON_DEVTOOLS__: {
+        reactive: {
+          activate: () => void
+          deactivate: () => void
+          getGraph: () => {
+            nodes: Array<{ loc?: { file: string; line: number; col: number } }>
+            edges: unknown[]
+          }
+          getFires: () => unknown[]
         }
-        getFires: () => unknown[]
       }
     }
-  }).__PYREON_DEVTOOLS__
+  ).__PYREON_DEVTOOLS__
 
   // ACTIVATE AFTER MOUNT — same workflow as a real user opening the
   // devtools panel after the app already finished mounting. This is the
@@ -268,15 +272,21 @@ const reactiveResult = await page.evaluate(async () => {
   }
 })
 
-info(`  initial graph: ${reactiveResult.initialNodeCount} nodes, ${reactiveResult.initialEdgeCount} edges`)
-info(`  after 500ms: ${reactiveResult.afterDelayNodeCount} nodes, ${reactiveResult.afterDelayEdgeCount} edges`)
+info(
+  `  initial graph: ${reactiveResult.initialNodeCount} nodes, ${reactiveResult.initialEdgeCount} edges`,
+)
+info(
+  `  after 500ms: ${reactiveResult.afterDelayNodeCount} nodes, ${reactiveResult.afterDelayEdgeCount} edges`,
+)
 info(`  fires captured: ${reactiveResult.fireCount}`)
 if (reactiveResult.sampleFire) {
   info(`  sample fire: ${JSON.stringify(reactiveResult.sampleFire).slice(0, 120)}`)
 }
 if (reactiveResult.afterDelayNodeCount > 0) {
   const pct = (reactiveResult.nodesWithLoc / reactiveResult.afterDelayNodeCount) * 100
-  info(`  nodes with loc resolved: ${reactiveResult.nodesWithLoc}/${reactiveResult.afterDelayNodeCount} (${pct.toFixed(1)}%)`)
+  info(
+    `  nodes with loc resolved: ${reactiveResult.nodesWithLoc}/${reactiveResult.afterDelayNodeCount} (${pct.toFixed(1)}%)`,
+  )
 }
 
 // Hard assertion (closes the bug class behind PR #900's first false-positive
@@ -286,12 +296,14 @@ if (reactiveResult.afterDelayNodeCount > 0) {
 // returned on `!_active`. Post-fix the registry is always-on in __DEV__;
 // activate exposes the live graph. Verifier asserts the post-fix contract.
 if (reactiveResult.afterDelayNodeCount > 0) {
-  pass(`Reactive graph populated with live signal/effect nodes (${reactiveResult.afterDelayNodeCount} nodes, ${reactiveResult.afterDelayEdgeCount} edges)`)
+  pass(
+    `Reactive graph populated with live signal/effect nodes (${reactiveResult.afterDelayNodeCount} nodes, ${reactiveResult.afterDelayEdgeCount} edges)`,
+  )
 } else {
   fail(
     '  Reactive graph EMPTY after activate() — this is the post-mount-activate bug. ' +
       'Always-on registration in __DEV__ should expose pre-existing signals as soon as activate() fires. ' +
-      'Check `_rdRegister` is no longer gated on `!_active`, and that `@pyreon/reactivity`\'s lib/ is freshly built.',
+      "Check `_rdRegister` is no longer gated on `!_active`, and that `@pyreon/reactivity`'s lib/ is freshly built.",
   )
 }
 
@@ -309,7 +321,9 @@ if (reactiveResult.afterDelayNodeCount > 0) {
 if (reactiveResult.afterDelayNodeCount > 0) {
   const pct = (reactiveResult.nodesWithLoc / reactiveResult.afterDelayNodeCount) * 100
   if (pct >= 50) {
-    pass(`LPIH loc resolved for pre-existing signals: ${reactiveResult.nodesWithLoc}/${reactiveResult.afterDelayNodeCount} (${pct.toFixed(1)}%)`)
+    pass(
+      `LPIH loc resolved for pre-existing signals: ${reactiveResult.nodesWithLoc}/${reactiveResult.afterDelayNodeCount} (${pct.toFixed(1)}%)`,
+    )
   } else {
     fail(
       `  Only ${pct.toFixed(1)}% of pre-existing signals have loc populated — expected ≥50%. ` +
@@ -323,12 +337,14 @@ if (reactiveResult.afterDelayNodeCount > 0) {
 console.log('\n5. Component tree')
 
 const treeResult = await page.evaluate(() => {
-  const dt = (window as unknown as {
-    __PYREON_DEVTOOLS__: {
-      getComponentTree: () => unknown[]
-      getAllComponents: () => unknown[]
+  const dt = (
+    window as unknown as {
+      __PYREON_DEVTOOLS__: {
+        getComponentTree: () => unknown[]
+        getAllComponents: () => unknown[]
+      }
     }
-  }).__PYREON_DEVTOOLS__
+  ).__PYREON_DEVTOOLS__
   return {
     treeCount: dt.getComponentTree().length,
     allCount: dt.getAllComponents().length,

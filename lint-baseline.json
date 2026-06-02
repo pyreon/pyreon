@@ -1,13 +1,11 @@
 {
   "description": "oxlint WARN-finding ratchet — per-rule counts may only DECREASE. A change pushing any rule above its baseline fails `bun scripts/check-lint-ratchet.ts`. After fixing findings, tighten with `--update`. Never raise the baseline to absorb new findings. See .claude/rules/code-style.md (three-state model).",
-  "total": 559,
+  "total": 526,
   "rules": {
     "typescript(no-non-null-assertion)": 296,
     "eslint(no-console)": 115,
     "unicorn(no-new-array)": 24,
-    "import(no-duplicates)": 18,
     "oxc(no-map-spread)": 18,
-    "eslint(no-unused-vars)": 15,
     "promise(no-callback-in-promise)": 9,
     "eslint(no-useless-escape)": 8,
     "typescript(no-this-alias)": 6,

@@ -1,5 +1,5 @@
 import { escapeXml as esc, sanitizeHref } from '../sanitize'
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
+import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getTextContent } from '../nodes'
 
 /**
@@ -11,7 +11,6 @@ import { getTextContent } from '../nodes'
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
-
 
 function renderNode(node: DocNode): string {
   const p = node.props

@@ -1,6 +1,4 @@
-import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { Portal } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import { Portal, splitProps, type ComponentFn, type VNodeChild } from '@pyreon/core'
 import { useEventListener, useScrollLock } from '@pyreon/hooks'
 import { effect } from '@pyreon/reactivity'
 
@@ -52,7 +50,7 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
     if (closeOnOverlay && e.target === e.currentTarget) own.onClose?.()
   }
 
-  return (() => {
+  return () => {
     if (!own.open) return null
 
     return (
@@ -68,5 +66,5 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
         </div>
       </Portal>
     )
-  })
+  }
 }

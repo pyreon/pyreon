@@ -145,7 +145,11 @@ Exit codes:
  *     perfect line; 0 means the line explains no variance. NaN-safe:
  *     returns 0 when total variance is 0 (constant samples).
  */
-export function linearRegression(samples: number[]): { slope: number; intercept: number; rSquared: number } {
+export function linearRegression(samples: number[]): {
+  slope: number
+  intercept: number
+  rSquared: number
+} {
   const n = samples.length
   if (n < 2) return { slope: 0, intercept: samples[0] ?? 0, rSquared: 0 }
   // x is the cycle index (0..n-1); y is the heap-size sample.
@@ -174,14 +178,6 @@ export function linearRegression(samples: number[]): { slope: number; intercept:
   }
   const rSquared = ssTotal > 0 ? 1 - ssRes / ssTotal : 0
   return { slope, intercept, rSquared }
-}
-
-interface JourneyHandle {
-  click: (selector: string) => Promise<void>
-  fill: (selector: string, value: string) => Promise<void>
-  waitForSelector: (selector: string) => Promise<void>
-  evaluate: <T>(fn: () => T) => Promise<T>
-  reload: (opts?: { waitUntil?: string }) => Promise<unknown>
 }
 
 async function runOneCycle(page: Page, journeyName: string): Promise<void> {
@@ -240,7 +236,7 @@ async function forceGcTwice(page: Page): Promise<void> {
 
 async function sampleHeap(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const perf = (performance as unknown) as { memory?: { usedJSHeapSize: number } }
+    const perf = performance as unknown as { memory?: { usedJSHeapSize: number } }
     return perf.memory?.usedJSHeapSize ?? 0
   })
 }
@@ -249,7 +245,9 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
 
   console.log(`[leak-audit] app=${args.app} journey=${args.journey} mode=${args.mode}`)
-  console.log(`[leak-audit] cycles=${args.cycles} warmup=${args.warmup} threshold=${args.thresholdBytesPerCycle} bytes/cycle`)
+  console.log(
+    `[leak-audit] cycles=${args.cycles} warmup=${args.warmup} threshold=${args.thresholdBytesPerCycle} bytes/cycle`,
+  )
 
   let server
   try {
@@ -310,7 +308,9 @@ async function main(): Promise<void> {
       const used = await sampleHeap(page)
       samples.push(used)
       if (i === 0 || i === args.cycles - 1 || (i + 1) % 10 === 0) {
-        console.log(`[leak-audit]   cycle ${i + 1}/${args.cycles}: ${(used / 1024 / 1024).toFixed(2)} MB`)
+        console.log(
+          `[leak-audit]   cycle ${i + 1}/${args.cycles}: ${(used / 1024 / 1024).toFixed(2)} MB`,
+        )
       }
     }
 
@@ -329,11 +329,15 @@ async function main(): Promise<void> {
     console.log('─'.repeat(72))
     console.log(`  First sample:        ${(first / 1024 / 1024).toFixed(2)} MB`)
     console.log(`  Last sample:         ${(last / 1024 / 1024).toFixed(2)} MB`)
-    console.log(`  Total growth:        ${(total / 1024 / 1024).toFixed(2)} MB over ${args.cycles} cycles`)
+    console.log(
+      `  Total growth:        ${(total / 1024 / 1024).toFixed(2)} MB over ${args.cycles} cycles`,
+    )
     console.log(`  Slope (regression):  ${(slope / 1024).toFixed(2)} KB/cycle`)
     console.log(`  Intercept:           ${(intercept / 1024 / 1024).toFixed(2)} MB`)
     console.log(`  R² (fit quality):    ${rSquared.toFixed(3)}  (1.0 = perfect line; <0.3 = noisy)`)
-    console.log(`  Threshold:           ${(args.thresholdBytesPerCycle / 1024).toFixed(2)} KB/cycle`)
+    console.log(
+      `  Threshold:           ${(args.thresholdBytesPerCycle / 1024).toFixed(2)} KB/cycle`,
+    )
     console.log('─'.repeat(72))
 
     const leakDetected = slope > args.thresholdBytesPerCycle
@@ -362,7 +366,9 @@ async function main(): Promise<void> {
       console.log(`  movement is below the bucket size.)`)
     } else if (rSquared < 0.3 && Math.abs(slope) < args.thresholdBytesPerCycle * 2) {
       console.log()
-      console.log(`  Note: R² = ${rSquared.toFixed(3)} with CV ${(cv * 100).toFixed(2)}% — heap samples`)
+      console.log(
+        `  Note: R² = ${rSquared.toFixed(3)} with CV ${(cv * 100).toFixed(2)}% — heap samples`,
+      )
       console.log(`  are jittery, the slope estimate is uncertain. Consider more cycles for a`)
       console.log(`  tighter signal.`)
     }

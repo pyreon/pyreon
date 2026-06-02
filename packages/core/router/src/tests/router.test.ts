@@ -1,7 +1,6 @@
 import { h, popContext } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { accessInternal, callInternal, query } from '@pyreon/test-utils'
-import type { ResolvedRoute, RouteRecord } from '../index'
 import { isNotFoundError, NotFoundBoundary, notFound } from '../not-found'
 import { getRedirectInfo, redirect } from '../redirect'
 import {
@@ -24,8 +23,10 @@ import {
   useTransition,
   useTypedSearchParams,
   useValidatedSearch,
+  type ResolvedRoute,
+  type RouteMiddleware,
+  type RouteRecord,
 } from '../index'
-import type { RouteMiddleware } from '../index'
 import {
   buildNameIndex,
   buildPath,
@@ -366,7 +367,9 @@ describe('router navigation', () => {
     const router = createRouter({ routes, url: '/about' })
     await router.push({ name: 'nonexistent' })
     expect(router.currentRoute().path).toBe('/')
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown route name "nonexistent"'))
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown route name "nonexistent"'),
+    )
     warnSpy.mockRestore()
   })
 
@@ -824,7 +827,9 @@ describe('router.loading', () => {
     const routes: RouteRecord[] = [
       {
         path: '/',
-        component: lazy(async () => ({ default: Home }), { hmrId: '/index.tsx' }) as unknown as typeof Home,
+        component: lazy(async () => ({ default: Home }), {
+          hmrId: '/index.tsx',
+        }) as unknown as typeof Home,
       },
     ]
     const router = createRouter({ routes, url: '/' }) as RouterInstance
@@ -868,7 +873,7 @@ describe('router.loading', () => {
     expect(router._loadingSignal()).toBe(0)
   })
 
-  test('PR-S8: multiple HMR swaps don\'t accumulate in _loadingSignal', async () => {
+  test("PR-S8: multiple HMR swaps don't accumulate in _loadingSignal", async () => {
     // Stress test: pre-PR-S8 every HMR swap added 1 to _loadingSignal,
     // so the count grew unboundedly across edit sessions. Even with the
     // fix, asserting "many swaps → 0" is the strongest signal that the
@@ -876,7 +881,9 @@ describe('router.loading', () => {
     const routes: RouteRecord[] = [
       {
         path: '/',
-        component: lazy(async () => ({ default: Home }), { hmrId: '/index.tsx' }) as unknown as typeof Home,
+        component: lazy(async () => ({ default: Home }), {
+          hmrId: '/index.tsx',
+        }) as unknown as typeof Home,
       },
     ]
     const router = createRouter({ routes, url: '/' }) as RouterInstance
@@ -2693,11 +2700,7 @@ describe('RouterLink viewport prefetch', () => {
     } as unknown as typeof IntersectionObserver
 
     mount(
-      h(
-        RouterProvider,
-        { router },
-        h(RouterLink, { to: '/idle', prefetch: 'viewport' }, 'Idle'),
-      ),
+      h(RouterProvider, { router }, h(RouterLink, { to: '/idle', prefetch: 'viewport' }, 'Idle')),
       el,
     )
 
@@ -4526,10 +4529,14 @@ describe('useTypedSearchParams', () => {
 describe('useTransition', () => {
   const trRoutes: RouteRecord[] = [
     { path: '/', component: Home },
-    { path: '/slow', component: About, loader: async () => {
-      await new Promise<void>((r) => setTimeout(r, 50))
-      return 'data'
-    }},
+    {
+      path: '/slow',
+      component: About,
+      loader: async () => {
+        await new Promise<void>((r) => setTimeout(r, 50))
+        return 'data'
+      },
+    },
   ]
 
   it('returns a function that returns boolean', () => {
@@ -4639,7 +4646,9 @@ describe('route middleware', () => {
 
 describe('View Transitions API', () => {
   it('calls document.startViewTransition on navigation when available', async () => {
-    const startViewTransition = vi.fn((cb: () => void) => { cb() })
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
     ;(document as any).startViewTransition = startViewTransition
 
     const vtRoutes: RouteRecord[] = [
@@ -4656,7 +4665,9 @@ describe('View Transitions API', () => {
   })
 
   it('does NOT call startViewTransition when meta.viewTransition is false', async () => {
-    const startViewTransition = vi.fn((cb: () => void) => { cb() })
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
     ;(document as any).startViewTransition = startViewTransition
 
     const vtRoutes: RouteRecord[] = [
@@ -4889,12 +4900,16 @@ describe('View Transitions API', () => {
     // If the fix holds, the loadingSignal decrement hasn't run yet.
     // If the fix regresses (decrement moved above the await), the signal
     // would already be 0 here — this assertion catches that.
-    observations.push(accessInternal<{ _loadingSignal: { peek(): number } }>(router)._loadingSignal.peek())
+    observations.push(
+      accessInternal<{ _loadingSignal: { peek(): number } }>(router)._loadingSignal.peek(),
+    )
 
     // Release updateCallbackDone; navigate unwinds, push() settles.
     deferred.resolve?.()
     await pushPromise
-    observations.push(accessInternal<{ _loadingSignal: { peek(): number } }>(router)._loadingSignal.peek())
+    observations.push(
+      accessInternal<{ _loadingSignal: { peek(): number } }>(router)._loadingSignal.peek(),
+    )
 
     // Observation 1: in-flight → loadingSignal > 0.
     expect(observations[0]).toBeGreaterThan(0)
@@ -4975,7 +4990,6 @@ describe('Router<TNames> type safety', () => {
 // ─── notFound() + isNotFoundError ─────────────────────────────────────────────
 
 describe('notFound()', () => {
-
   test('throws an Error with NOT_FOUND brand', () => {
     expect(() => notFound()).toThrow('Not Found')
     expect(() => notFound('User not found')).toThrow('User not found')
@@ -5046,18 +5060,22 @@ describe('NotFoundBoundary e2e', () => {
       notFound('User not found')
       return null // unreachable
     }
-    const nfRoutes: RouteRecord[] = [
-      { path: '/missing', component: ThrowNotFound },
-    ]
+    const nfRoutes: RouteRecord[] = [{ path: '/missing', component: ThrowNotFound }]
     const router = createRouter({ routes: nfRoutes, url: '/missing' })
     const ctr = document.createElement('div')
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     mount(
-      h(RouterProvider, { router },
-        h(NotFoundBoundary, {
-          fallback: h('div', { id: 'not-found' }, '404 Not Found'),
-        }, h(RouterView, {})),
+      h(
+        RouterProvider,
+        { router },
+        h(
+          NotFoundBoundary,
+          {
+            fallback: h('div', { id: 'not-found' }, '404 Not Found'),
+          },
+          h(RouterView, {}),
+        ),
       ),
       ctr,
     )
@@ -5073,7 +5091,9 @@ describe('NotFoundBoundary e2e', () => {
 describe('pendingComponent', () => {
   test('pendingComponent shows immediately when pendingMs=0', async () => {
     let resolveLoader: (v: unknown) => void
-    const loaderPromise = new Promise((r) => { resolveLoader = r })
+    const loaderPromise = new Promise((r) => {
+      resolveLoader = r
+    })
     const PendingComp = () => h('div', { id: 'pending' }, 'Loading...')
     const RealComp = () => h('div', { id: 'real' }, 'Loaded')
 
@@ -5105,7 +5125,9 @@ describe('pendingComponent', () => {
 
   test('pendingMinMs keeps pending visible even after loader resolves', async () => {
     let resolveLoader: (v: unknown) => void
-    const loaderPromise = new Promise((r) => { resolveLoader = r })
+    const loaderPromise = new Promise((r) => {
+      resolveLoader = r
+    })
     const PendingComp = () => h('div', { id: 'pending-min' }, 'Loading...')
     const RealComp = () => h('div', { id: 'real-min' }, 'Loaded')
 
@@ -5115,8 +5137,8 @@ describe('pendingComponent', () => {
         component: RealComp,
         loader: () => loaderPromise,
         pendingComponent: PendingComp,
-        pendingMs: 0,       // show pending immediately
-        pendingMinMs: 300,  // keep for at least 300ms
+        pendingMs: 0, // show pending immediately
+        pendingMinMs: 300, // keep for at least 300ms
       },
     ]
     const router = createRouter({ routes: pendRoutes, url: '/mintime' })
@@ -5154,7 +5176,9 @@ describe('pendingComponent', () => {
 
   test('pendingMs delays showing pending — data arriving before delay skips pending', async () => {
     let resolveLoader: (v: unknown) => void
-    const loaderPromise = new Promise((r) => { resolveLoader = r })
+    const loaderPromise = new Promise((r) => {
+      resolveLoader = r
+    })
     const PendingComp = () => h('div', { id: 'pending-delay' }, 'Loading...')
     const RealComp = () => h('div', { id: 'real-delay' }, 'Loaded')
 
@@ -5164,7 +5188,7 @@ describe('pendingComponent', () => {
         component: RealComp,
         loader: () => loaderPromise,
         pendingComponent: PendingComp,
-        pendingMs: 500,     // wait 500ms before showing pending
+        pendingMs: 500, // wait 500ms before showing pending
         pendingMinMs: 0,
       },
     ]
@@ -5246,7 +5270,9 @@ describe('validateSearch', () => {
       {
         path: '/broken',
         component: Home,
-        validateSearch: () => { throw new Error('schema fail') },
+        validateSearch: () => {
+          throw new Error('schema fail')
+        },
       },
     ]
     const router = createRouter({ routes: vsRoutes, url: '/broken?foo=bar' })
@@ -5322,7 +5348,10 @@ describe('loader cache', () => {
       {
         path: '/user/:id',
         component: Home,
-        loader: async () => { callCount++; return {} },
+        loader: async () => {
+          callCount++
+          return {}
+        },
       },
     ]
     const router = createRouter({ routes: cacheRoutes, url: '/' })
@@ -5344,7 +5373,10 @@ describe('loader cache', () => {
         path: '/items',
         component: Home,
         loaderKey: ({ query }) => `items-page-${query.page ?? '1'}`,
-        loader: async () => { callCount++; return [] },
+        loader: async () => {
+          callCount++
+          return []
+        },
       },
     ]
     const router = createRouter({ routes: cacheRoutes, url: '/' })
@@ -5372,7 +5404,10 @@ describe('loader cache', () => {
         path: '/data',
         component: Home,
         gcTime: 0,
-        loader: async () => { callCount++; return {} },
+        loader: async () => {
+          callCount++
+          return {}
+        },
       },
     ]
     const router = createRouter({ routes: cacheRoutes, url: '/' })
@@ -5394,7 +5429,10 @@ describe('loader cache', () => {
       {
         path: '/data',
         component: Home,
-        loader: async () => { callCount++; return {} },
+        loader: async () => {
+          callCount++
+          return {}
+        },
       },
     ]
     const router = createRouter({ routes: cacheRoutes, url: '/' })
@@ -5421,13 +5459,19 @@ describe('loader cache', () => {
         path: '/data',
         component: Home,
         loaderKey: () => 'data-key',
-        loader: async () => { dataCallCount++; return {} },
+        loader: async () => {
+          dataCallCount++
+          return {}
+        },
       },
       {
         path: '/items',
         component: Home,
         loaderKey: () => 'items-key',
-        loader: async () => { itemsCallCount++; return [] },
+        loader: async () => {
+          itemsCallCount++
+          return []
+        },
       },
     ]
     const router = createRouter({ routes: cacheRoutes, url: '/' })

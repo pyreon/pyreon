@@ -1,6 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { onMount } from '@pyreon/core'
-import { For } from '@pyreon/core'
+import { For, onMount } from '@pyreon/core'
 
 const FAKE_COMMENTS = [
   { id: 1, author: 'alice', body: 'First!' },
@@ -17,7 +16,10 @@ export default function VisibleComments() {
     return () => clearTimeout(id)
   })
   return (
-    <div data-testid="visible-comments" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+    <div
+      data-testid="visible-comments"
+      style="padding: 12px; border: 1px solid #ccc; border-radius: 4px;"
+    >
       <strong>Comments (loaded on visible):</strong>
       <ul data-testid="visible-comments-list">
         <For each={() => comments()} by={(c) => c.id}>

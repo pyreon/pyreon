@@ -31,8 +31,7 @@
  */
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { sheet } from '@pyreon/styler'
-import { styled } from '@pyreon/styler'
+import { sheet, styled } from '@pyreon/styler'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import rocketstyle from '../init'
@@ -57,29 +56,39 @@ let counter = 0
 const uniqueName = () => `Btn${++counter}`
 
 const makeBareRocketstyle = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor })
 }
 
 const makeWithConfig = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor }).config({ component: Anchor })
 }
 
 const makeWithAttrs = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor }).attrs(() => ({}))
 }
 
 const makeWithTheme = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor })
     .attrs(() => ({}))
     .theme(() => ({ background: 'red' }))
 }
 
 const makeWithStates = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor }).states({
     primary: () => ({ background: 'red' }),
     secondary: () => ({ background: 'green' }),
@@ -87,7 +96,9 @@ const makeWithStates = (): any => {
 }
 
 const makeWithSizes = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor }).sizes({
     small: () => ({ padding: '4px' }),
     large: () => ({ padding: '16px' }),
@@ -95,12 +106,16 @@ const makeWithSizes = (): any => {
 }
 
 const makeWithCompose = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor }).compose({})
 }
 
 const makeFullChain = (): any => {
-  const Anchor: any = styled('a')`color: blue;`
+  const Anchor: any = styled('a')`
+    color: blue;
+  `
   return rocketstyle()({ name: uniqueName(), component: Anchor })
     .attrs(() => ({}))
     .theme(() => ({ background: 'red' }))

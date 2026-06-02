@@ -1,6 +1,5 @@
 import { sanitizeHref, sanitizeXmlColor } from '../sanitize'
 import type {
-  DocChild,
   DocNode,
   DocumentRenderer,
   PageOrientation,
@@ -17,7 +16,6 @@ import { getTextContent } from '../nodes'
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
-
 
 /** Parse a data URL and return the base64 data and media type, or null for external URLs. */
 function parseDataUrl(src: string): { data: string; mime: string } | null {

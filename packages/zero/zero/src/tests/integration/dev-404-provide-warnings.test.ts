@@ -7,8 +7,7 @@
  * Drives the real `renderSsr` pipeline with a custom fixture that mirrors
  * the reported bug shape and captures `console.warn` calls.
  */
-import { h, type VNodeChild } from '@pyreon/core'
-import { Show } from '@pyreon/core'
+import { h, Show, type VNodeChild } from '@pyreon/core'
 import { Element } from '@pyreon/elements'
 import { signal } from '@pyreon/reactivity'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'

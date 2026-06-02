@@ -1,5 +1,4 @@
-import { h, splitProps } from '@pyreon/core'
-import { _rp } from '@pyreon/core'
+import { _rp, h, splitProps } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '../index'
 
@@ -57,7 +56,14 @@ describe('reactive component props', () => {
       return h('button', { onClick: props.onClick }, 'click')
     }
 
-    mount(h(Comp, { onClick: () => { clicked = true } }), container)
+    mount(
+      h(Comp, {
+        onClick: () => {
+          clicked = true
+        },
+      }),
+      container,
+    )
     container.querySelector('button')?.click()
     expect(clicked).toBe(true)
   })
@@ -157,7 +163,9 @@ describe('reactive component props', () => {
 
     const Comp = (props: any) => {
       mountCount++
-      return h('div', null,
+      return h(
+        'div',
+        null,
         h('span', { id: 'first' }, () => props.first),
         h('span', { id: 'last' }, () => props.last),
       )
@@ -185,7 +193,9 @@ describe('reactive component props', () => {
 
     const Comp = (props: any) => {
       mountCount++
-      return h('div', null,
+      return h(
+        'div',
+        null,
         h('span', { id: 'dynamic' }, () => String(props.count)),
         h('span', { id: 'static' }, props.label),
       )
@@ -214,10 +224,7 @@ describe('reactive component props', () => {
 
     const Outer = (props: any) => {
       outerMounts++
-      return h('div', { id: 'outer' },
-        () => props.label,
-        h(Inner, { text: _rp(() => value()) }),
-      )
+      return h('div', { id: 'outer' }, () => props.label, h(Inner, { text: _rp(() => value()) }))
     }
 
     mount(h(Outer, { label: _rp(() => value()) }), container)
