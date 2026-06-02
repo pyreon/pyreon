@@ -95,10 +95,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   },
   // ── Branch < 85 (statements OK) ─────────────────────────────────────
   '@pyreon/elements': {
-    currentStatements: 94,
-    currentBranches: 76,
+    currentStatements: 95,
+    currentBranches: 80,
     reason:
-      'Foundational primitives. Statements lifted 90 → 94 (cov-94 series, PR #1076). Branches at 79.83% — Overlay\\\'s SSR / happy-dom-only event-handler branches are legitimately harder to cover.',
+      'Foundational primitives. Statements lifted 94 → 95 (cov-95 series, PR #1218). Branches at 91.27% with floor at 80 — Overlay\\\'s SSR / happy-dom-only event-handler branches are legitimately harder to cover.',
   },
   '@pyreon/code': {
     currentStatements: 95,
