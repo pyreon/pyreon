@@ -1,5 +1,16 @@
 # @pyreon/rocketstyle
 
+## 0.28.0
+
+### Patch Changes
+
+- Updated dependencies [[`1aeb610`](https://github.com/pyreon/pyreon/commit/1aeb610a10ce5069b52b2882a6175a16c16483b3)]:
+  - @pyreon/sized-map@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/styler@1.0.0
+  - @pyreon/ui-core@1.0.0
+
 ## 0.27.1
 
 ### Patch Changes

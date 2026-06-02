@@ -1,5 +1,17 @@
 # @pyreon/server
 
+## 0.28.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/runtime-server@1.0.0
+
 ## 0.27.1
 
 ### Patch Changes

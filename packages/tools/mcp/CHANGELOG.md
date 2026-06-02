@@ -1,5 +1,120 @@
 # @pyreon/mcp
 
+## 0.28.0
+
+### Patch Changes
+
+- [#1201](https://github.com/pyreon/pyreon/pull/1201) [`7f446f2`](https://github.com/pyreon/pyreon/commit/7f446f279e344b7db68eaf7c91ddd1a255f89a1f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): `pyreon/color-contrast` rule — flag low-contrast literal-hex pairs (a11y)
+
+  New opt-in frontend accessibility rule. When a style object literal sets BOTH
+  `color` and `background`/`backgroundColor` to LITERAL hex colours, it computes
+  the WCAG 2.1 relative-luminance contrast ratio and warns when it's below AA
+  (4.5:1 for normal text). Catches the exact bokisch.com Lighthouse pairs
+  (`#6b7280` on `[#212121](https://github.com/pyreon/pyreon/issues/212121)` = 3.33:1, `#f8f8f8` on `#06b6d4` = 2.28:1).
+
+  **Scope — literal hex pairs only.** It does NOT resolve theme tokens
+  (`color: t.color.muted`), CSS template strings, `rgb()`/`hsl()`/named colours,
+  or alpha hex. Theme-token contrast (the more common real-world shape) is
+  impossible for a static AST walker — it would need to evaluate the theme object
+  at its definition site. That belongs in a theme-loading audit, not a syntactic
+  lint rule; this covers the hardcoded-hex case it can prove with zero guessing.
+  Documented prominently in the rule's JSDoc.
+
+  Off in `recommended`/`strict`/`app`/`lib`; on in `best-practices`. (87 rules
+  total; frontend category 7 → 8.) `@pyreon/mcp` api-reference regenerated.
+
+- [#1200](https://github.com/pyreon/pyreon/pull/1200) [`cc4b6b6`](https://github.com/pyreon/pyreon/commit/cc4b6b683e1c1450432f97fc708abda067818e2e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): `pyreon/heading-order` rule — flag skipped heading levels (a11y)
+
+  New opt-in frontend accessibility rule. Flags a heading whose level jumps by
+  more than one from the previous heading in the same scope (e.g. `<h1>` followed
+  by `<h3>`, skipping `<h2>`) — the axe-core "heading-order" check. Screen-reader
+  users navigate by the heading outline; skipped levels break it.
+
+  **Function-scoped** so two sibling components in one file each get their own
+  outline (no false positive when component B opens at `<h3>` after component A
+  ended at `<h1>`). Off in `recommended`/`strict`/`app`/`lib`; on in
+  `best-practices`. (87 rules total; frontend category 7 → 8.)
+
+  Limitations (the "80% case"): only literal `<h1>`–`<h6>` in a single file's
+  source order; dynamic-level components (`<Heading level={n}>`) and
+  cross-component document order are out of reach for a static walker.
+  `@pyreon/mcp` api-reference regenerated from the updated manifest.
+
+- [#1194](https://github.com/pyreon/pyreon/pull/1194) [`1aeb610`](https://github.com/pyreon/pyreon/commit/1aeb610a10ce5069b52b2882a6175a16c16483b3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - chore: move @pyreon/sized-map to packages/core/ + enrich mcp/feature/storage manifests
+
+  **@pyreon/sized-map** — package moved from `packages/internals/` to `packages/core/`
+  alongside the other foundational primitives every Pyreon package depends on. The
+  package is now published to npm at 0.27.1 with OIDC trusted publishing, so the
+  "internal-by-convention" location no longer fits. Updated:
+
+  - `repository.directory` in package.json → `packages/core/sized-map`
+  - `bun.lock` workspace dep entry rewritten
+
+  Zero source/runtime changes — every consumer imports `@pyreon/sized-map` by package
+  name, never by path. This is a path-only repackage; the published artifact is
+  byte-identical.
+
+  **@pyreon/feature** — manifest enriched from 2 → 5 api[] entries:
+
+  - Added `isReference`, `extractFields`, `defaultInitialValues` (helpers exported
+    from the package but not in the MCP `get_api` surface before this PR)
+  - Added `mistakes[]` to the existing `reference()` entry
+
+  `get_api({ package: 'feature', symbol: 'extractFields' })` now returns a real
+  entry instead of 404. No runtime change.
+
+  **@pyreon/mcp** — manifest enriched: 9 of 14 tool entries lacked `mistakes[]`.
+  Added foot-gun catalogs for `get_api`, `validate`, `migrate_react`, `get_routes`,
+  `get_components`, `get_pattern`, `get_changelog`, `audit_test_environment`,
+  `audit_islands`. All 14 tools now have 3-4 documented mistakes grounded in real
+  failure modes. No runtime change.
+
+  **@pyreon/storage** — manifest enriched from 4 → 7 api[] entries:
+
+  - Added `useSessionStorage`, `useMemoryStorage`, `setCookieSource` (helpers exported
+    but not in the MCP `get_api` surface before this PR)
+  - Added `mistakes[]` to existing `useCookie`, `useIndexedDB`, `createStorage`
+    entries (e.g. cookie maxAge unit traps, IDB async-init flash-of-default, custom
+    backend `undefined` vs `null` return contract)
+
+  No runtime change.
+
+- [#1198](https://github.com/pyreon/pyreon/pull/1198) [`889cf5a`](https://github.com/pyreon/pyreon/commit/889cf5aec04dd41a37dd4d47edcdad358e23f3a2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: `<OptimizedImage source={img} />` + `pyreon/no-discarded-optimize-fields` lint rule
+
+  Two complementary defenses against the [#1](https://github.com/pyreon/pyreon/issues/1) real-world CLS cause — pulling just
+  `hero.src` off a `?optimize` import onto a raw `<img>`, silently dropping
+  `width` / `height` / `srcset` / `placeholder` / `formats`.
+
+  - **`@pyreon/zero`**: new `<OptimizedImage source={hero} alt="…" />` — a one-prop
+    form of `<Image>` that spreads the WHOLE `?optimize` descriptor, so no field
+    can be forgotten. `<Image {...hero} />` still works; this removes the "did I
+    remember every field?" step. Display props pass through alongside `source`.
+  - **`@pyreon/lint`**: new opt-in, `@pyreon/zero`-dep-gated frontend rule
+    `pyreon/no-discarded-optimize-fields` flags `<img src={x.src}>` where `x` is a
+    `?optimize` import, pointing at `<OptimizedImage>` / `<Image {...x}>`. Off in
+    `recommended`/`strict`/`app`/`lib`; on in `best-practices`. (87 rules total.)
+  - `@pyreon/mcp`: api-reference regenerated from the updated manifests.
+
+  The audit also asked to "brand"/rename the `ProcessedImage` type — intentionally
+  skipped: the type is already named and the lint rule keys off the `?optimize`
+  import query, not the type name, so a rename would be churn with no detection gain.
+
+- [#1195](https://github.com/pyreon/pyreon/pull/1195) [`bb6a0e3`](https://github.com/pyreon/pyreon/commit/bb6a0e38ae15a8f195ed6c0b975f63ebec8663cb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): `sitemap.trailingSlash` option (`'always' | 'never' | 'preserve'`)
+
+  Adds a trailing-slash policy to `SitemapConfig`, applied to every non-root
+  `<loc>` and hreflang `href`. Default `'preserve'` is a no-op (no behaviour
+  change). Set `'always'` when deploying SSG output to a host that 301-redirects
+  `/path` → `/path/` (GitHub Pages, directory-style Netlify / Cloudflare Pages) so
+  the sitemap stops emitting redirect-triggering URLs — closes the bokisch.com
+  0.27.1 Lighthouse "Avoid multiple page redirects" finding (~160ms).
+
+  Default kept `'preserve'` rather than auto-switching on adapter, since not every
+  SSG host redirects — opt in to match your host. `@pyreon/mcp` api-reference
+  regenerated from the updated manifest.
+
+- Updated dependencies []:
+  - @pyreon/compiler@1.0.0
+
 ## 0.27.1
 
 ### Patch Changes

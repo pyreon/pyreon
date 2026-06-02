@@ -1,5 +1,87 @@
 # @pyreon/zero
 
+## 0.28.0
+
+### Minor Changes
+
+- [#1198](https://github.com/pyreon/pyreon/pull/1198) [`889cf5a`](https://github.com/pyreon/pyreon/commit/889cf5aec04dd41a37dd4d47edcdad358e23f3a2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: `<OptimizedImage source={img} />` + `pyreon/no-discarded-optimize-fields` lint rule
+
+  Two complementary defenses against the [#1](https://github.com/pyreon/pyreon/issues/1) real-world CLS cause — pulling just
+  `hero.src` off a `?optimize` import onto a raw `<img>`, silently dropping
+  `width` / `height` / `srcset` / `placeholder` / `formats`.
+
+  - **`@pyreon/zero`**: new `<OptimizedImage source={hero} alt="…" />` — a one-prop
+    form of `<Image>` that spreads the WHOLE `?optimize` descriptor, so no field
+    can be forgotten. `<Image {...hero} />` still works; this removes the "did I
+    remember every field?" step. Display props pass through alongside `source`.
+  - **`@pyreon/lint`**: new opt-in, `@pyreon/zero`-dep-gated frontend rule
+    `pyreon/no-discarded-optimize-fields` flags `<img src={x.src}>` where `x` is a
+    `?optimize` import, pointing at `<OptimizedImage>` / `<Image {...x}>`. Off in
+    `recommended`/`strict`/`app`/`lib`; on in `best-practices`. (87 rules total.)
+  - `@pyreon/mcp`: api-reference regenerated from the updated manifests.
+
+  The audit also asked to "brand"/rename the `ProcessedImage` type — intentionally
+  skipped: the type is already named and the lint rule keys off the `?optimize`
+  import query, not the type name, so a rename would be churn with no detection gain.
+
+- [#1195](https://github.com/pyreon/pyreon/pull/1195) [`bb6a0e3`](https://github.com/pyreon/pyreon/commit/bb6a0e38ae15a8f195ed6c0b975f63ebec8663cb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): `sitemap.trailingSlash` option (`'always' | 'never' | 'preserve'`)
+
+  Adds a trailing-slash policy to `SitemapConfig`, applied to every non-root
+  `<loc>` and hreflang `href`. Default `'preserve'` is a no-op (no behaviour
+  change). Set `'always'` when deploying SSG output to a host that 301-redirects
+  `/path` → `/path/` (GitHub Pages, directory-style Netlify / Cloudflare Pages) so
+  the sitemap stops emitting redirect-triggering URLs — closes the bokisch.com
+  0.27.1 Lighthouse "Avoid multiple page redirects" finding (~160ms).
+
+  Default kept `'preserve'` rather than auto-switching on adapter, since not every
+  SSG host redirects — opt in to match your host. `@pyreon/mcp` api-reference
+  regenerated from the updated manifest.
+
+### Patch Changes
+
+- [#1193](https://github.com/pyreon/pyreon/pull/1193) [`582e58a`](https://github.com/pyreon/pyreon/commit/582e58a6b65a73a292b88eb83ec64651bc856810) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): 404 pages force `noindex` over an index-permitting `<Meta>` robots default
+
+  `ensureNoindexMeta` previously bailed out whenever the rendered 404 head already
+  contained any `<meta name="robots">`. But `<Meta>` emits its `index, follow`
+  default whenever the user doesn't pass an explicit `robots`, so every `_404.tsx`
+  that used `<Meta>` (the common case, for title/canonical) silently shipped an
+  **indexable** 404. A 404 is never indexable, so the helper now OVERRIDES an
+  index-permitting robots value (`index, follow` / `all`) to `noindex, nofollow`
+  while still preserving a deliberate `noindex` / `none` directive verbatim.
+
+  Closes the bokisch.com 0.27.1 Lighthouse finding (`<meta name="robots"
+content="index, follow">` on the live `/404.html`). Applies to both the
+  runtime SSR path (`render404Page`) and the SSG build path
+  (`__renderNotFound`) since they share this boundary.
+
+- [#1196](https://github.com/pyreon/pyreon/pull/1196) [`2bb68fb`](https://github.com/pyreon/pyreon/commit/2bb68fb773b86444810e7b865bc46f7da4058441) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(zero): clarify `<Image raw>` CLS contract + lock the default `<Image>` aspect-ratio reservation
+
+  The default `<Image>` already prevents CLS by reserving `aspect-ratio` +
+  `max-width` on its container — but that contract was only covered by a
+  local _copy_ of the style-assembly logic in tests, so a regression in the
+  real `useImage` hook would not have been caught. Adds a regression test
+  asserting the **real** `useImage().containerStyle` carries the
+  reserved-box declarations.
+
+  Also clarifies the `raw` mode JSDoc: raw is still CLS-safe (the
+  `width`/`height` attributes drive `aspect-ratio` via the UA stylesheet);
+  the _explicit_ `aspect-ratio` CSS is deliberately omitted so it can't
+  fight a custom absolute-positioned layout.
+
+  No runtime behavior change.
+
+- Updated dependencies [[`1aeb610`](https://github.com/pyreon/pyreon/commit/1aeb610a10ce5069b52b2882a6175a16c16483b3)]:
+  - @pyreon/sized-map@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/vite-plugin@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.27.1
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @pyreon/example-native-todomvc-web
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [[`1aeb610`](https://github.com/pyreon/pyreon/commit/1aeb610a10ce5069b52b2882a6175a16c16483b3)]:
+  - @pyreon/storage@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/primitives@1.0.0
+
 ## 0.0.6
 
 ### Patch Changes
