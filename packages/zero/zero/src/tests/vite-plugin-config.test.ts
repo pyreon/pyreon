@@ -164,13 +164,15 @@ describe('zero vite-plugin config', () => {
     })
   })
 
-  // SSG mode auto-wires `ssgPlugin` into the plugin chain alongside the
-  // main plugin. Without it, `mode: "ssg"` was types-only — `ssg.paths`
-  // never reached a build hook and no per-route HTML was emitted.
-  describe('SSG mode wiring', () => {
-    it('non-SSG modes return a single-plugin array', async () => {
+  // Each render mode auto-wires its build-time companion plugin:
+  //   - `ssg` → ssgPlugin (prerender every path to dist/<path>/index.html)
+  //   - `ssr` / `isr` → ssrPlugin (bundle the SSR handler into
+  //     dist/server/entry-server.js + dispatch adapter.build)
+  //   - `spa` → no companion (SPA ships a client bundle only)
+  describe('mode → companion plugin wiring', () => {
+    it('mode: "spa" returns a single-plugin array (no companion needed)', async () => {
       const { zeroPlugin } = await vitePluginModulePromise
-      const plugins = zeroPlugin({ mode: 'ssr' }) as any
+      const plugins = zeroPlugin({ mode: 'spa' }) as any
       expect(Array.isArray(plugins)).toBe(true)
       expect(plugins).toHaveLength(1)
       expect(plugins[0].name).toBe('pyreon-zero')
@@ -185,11 +187,40 @@ describe('zero vite-plugin config', () => {
       expect(plugins[1].name).toBe('pyreon-zero-ssg')
     })
 
-    it('default mode (no config) returns single-plugin array', async () => {
+    it('mode: "ssr" returns main plugin AND ssr plugin', async () => {
+      // ssrPlugin auto-wires the SSR bundle build that produces
+      // `dist/server/entry-server.js`. Without it, `mode: "ssr"` was
+      // types-only — `Adapter.build({ kind: 'ssr' })` was implemented
+      // for all 6 adapters but never invoked.
+      const { zeroPlugin } = await vitePluginModulePromise
+      const plugins = zeroPlugin({ mode: 'ssr' }) as any
+      expect(Array.isArray(plugins)).toBe(true)
+      expect(plugins).toHaveLength(2)
+      expect(plugins[0].name).toBe('pyreon-zero')
+      expect(plugins[1].name).toBe('pyreon-zero-ssr')
+    })
+
+    it('mode: "isr" returns main plugin AND ssr plugin (same plugin handles both)', async () => {
+      // ISR shares the SSR plugin — `createServer` dispatches mode at
+      // runtime via `wireRenderMode`. Same bundle, different runtime
+      // wrapper.
+      const { zeroPlugin } = await vitePluginModulePromise
+      const plugins = zeroPlugin({ mode: 'isr' }) as any
+      expect(Array.isArray(plugins)).toBe(true)
+      expect(plugins).toHaveLength(2)
+      expect(plugins[0].name).toBe('pyreon-zero')
+      expect(plugins[1].name).toBe('pyreon-zero-ssr')
+    })
+
+    it('default mode (no config) is "ssr" → returns main plugin AND ssr plugin', async () => {
+      // Defaults from `resolveConfig`: `mode: "ssr"`. So the default
+      // chain includes the SSR companion.
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin() as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(1)
+      expect(plugins).toHaveLength(2)
+      expect(plugins[0].name).toBe('pyreon-zero')
+      expect(plugins[1].name).toBe('pyreon-zero-ssr')
     })
   })
 })

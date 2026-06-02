@@ -22,7 +22,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { withSilent } from '@pyreon/reactivity'
@@ -31,6 +31,16 @@ import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
 import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
+import {
+  _peekMkdirCacheSize,
+  _registerSsgEntryRenderer,
+  _resetMkdirCache,
+  buildSsrBundle,
+  injectIntoTemplate,
+  materializeEntry,
+  mkdirOnce,
+  writeFileAtomic,
+} from './ssr-build-shared'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
@@ -91,7 +101,7 @@ const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 // has to compare paths against the known locale list. Wrapping the
 // source template in a function lets the outer plugin pass
 // `config.i18n?.locales ?? []` per build.
-const renderSsrEntrySource = (locales: readonly string[] = []): string => {
+const renderSsgEntrySource = (locales: readonly string[] = []): string => {
   const i18nLocalesLiteral = JSON.stringify(locales)
   return `
 import { routes } from "virtual:zero/routes"
@@ -345,6 +355,17 @@ export async function __renderNotFound(locale) {
 `.trimStart()
 }
 
+// Register the SSG-specific renderer with the shared dispatcher.
+// See `ssr-build-shared.ts:_registerSsgEntryRenderer` for the
+// dependency-inversion rationale (keeps the SSG locale walker
+// co-located with its closeBundle wiring while letting the shared
+// dispatcher pick the right renderer for `kind: 'ssg'`).
+_registerSsgEntryRenderer(renderSsgEntrySource)
+
+// Marker env var used to skip the SSG hook on the recursive SSR
+// sub-build — the SSR pass loads the same vite config + same plugin
+// chain. Per-mode flag namespaces (SSG vs SSR) eliminate the
+// cross-mode flag-leak failure class.
 const SSR_ENTRY_FILENAME = '__pyreon-zero-ssg-entry.js'
 
 /** Per-route enumerator. URL pattern (`/posts/:id`) → params list. */
@@ -494,77 +515,10 @@ async function resolvePaths(
   return autoDetectStaticPaths(routesDir, registry, errors, config.i18n)
 }
 
-/**
- * Write `content` to `target` atomically: write to a sibling temp file first,
- * then `rename` into place. Rename is an atomic syscall on POSIX (and Windows
- * for same-volume renames) — readers either see the OLD content or the FULL
- * new content, never a half-written file.
- *
- * M2.1 — Use this for manifests that adapters consume (`_redirects`,
- * `_pyreon-ssg-paths.json`, `_pyreon-revalidate.json`, etc.). A SIGINT during
- * a sequential plain-`writeFile` chain in `closeBundle` would leave partial
- * state: half the manifests pointing at the new render, half the old. Atomic
- * writes mean each manifest is independently consistent — readers see either
- * the old build's manifest or the new build's, never a mix.
- *
- * Per-page HTML writes (`dist/<path>/index.html`) intentionally do NOT use
- * this — they're individually-readable files (no cross-file invariants), and
- * the rename-per-page cost on 10k-path sites would be significant.
- *
- * Temp filename embeds `pid + perf-counter` so concurrent runs (e.g. CI
- * pipelines that fight over the same dist) don't collide. The tmp file is
- * cleaned up in a finally block — even if the rename fails, no orphaned
- * `.tmp.*` files leak.
- *
- * @internal Exposed via `_internal.writeFileAtomic` for unit tests.
- */
-let _atomicSeq = 0
-
-/**
- * Dedup mkdir calls across the per-path render loop. Concurrent workers
- * (PR D, default 4) often mkdir the SAME directory (sibling paths under
- * `/blog/`, `/docs/`, etc.). Without dedup, every path makes its own
- * mkdir(dirname, { recursive: true }) call — N filesystem syscalls for
- * N paths even when they share parent directories.
- *
- * `mkdirOnce` returns a cached Promise per directory string. First call
- * launches the mkdir; concurrent callers await the SAME Promise. After
- * resolution the Promise stays cached — subsequent paths skip the mkdir
- * entirely (Map.get is O(1)).
- *
- * Cache is per-build: cleared at the start of each `closeBundle` via
- * `_resetMkdirCache()` so a `vite build --watch` cycle that deletes
- * `dist/` between builds doesn't try to skip a now-needed mkdir.
- */
-const _mkdirCache = new Map<string, Promise<void>>()
-async function mkdirOnce(dir: string): Promise<void> {
-  let p = _mkdirCache.get(dir)
-  if (!p) {
-    p = mkdir(dir, { recursive: true }).then(() => undefined)
-    _mkdirCache.set(dir, p)
-  }
-  await p
-}
-function _resetMkdirCache(): void {
-  _mkdirCache.clear()
-}
-
-async function writeFileAtomic(target: string, content: string | Uint8Array): Promise<void> {
-  const tmp = `${target}.tmp.${process.pid}.${++_atomicSeq}`
-  try {
-    await writeFile(tmp, content)
-    await rename(tmp, target)
-  } catch (err) {
-    // Best-effort cleanup — if rename succeeded the tmp file is gone; if it
-    // failed (or writeFile failed), unlink it. unlink-on-missing is fine.
-    try {
-      await unlink(tmp)
-    } catch {
-      // Already gone (rename succeeded, or writeFile never produced it).
-    }
-    throw err
-  }
-}
+// `writeFileAtomic`, `mkdirOnce`, `_resetMkdirCache` are imported from
+// `./ssr-build-shared` (see top-level imports). See that module's JSDoc
+// for the atomic-rename / per-build-cache contract — both shared across
+// the SSG + SSR/ISR plugins so the cleanup recipe can never diverge.
 
 /**
  * Build the per-locale breakdown summary string for the closeBundle log.
@@ -974,45 +928,10 @@ function renderErrorArtifact(entries: { path: string; error: unknown }[]): strin
   return `${JSON.stringify({ errors }, null, 2)}\n`
 }
 
-/**
- * Inject a rendered SSR result into the index.html template. Prefers
- * Pyreon's `<!--pyreon-head-->` / `<!--pyreon-app-->` /
- * `<!--pyreon-scripts-->` placeholders; falls back to inserting before
- * `</head>` / inside `<div id="app">` / before `</body>` so a bare
- * Vite-style `index.html` (no Pyreon comments) still receives content.
- *
- * Factored out of the per-path render loop so the 404 emission path can
- * reuse the exact same injection rules — keeps the rendered _404.tsx
- * subject to the same head/body/scripts pipeline as regular pages
- * (styler tag, @pyreon/head meta, hashed asset preload links).
- */
-function injectIntoTemplate(
-  template: string,
-  result: { appHtml: string; head: string; loaderScript: string },
-): string {
-  let html = template
-  if (html.includes('<!--pyreon-head-->')) {
-    html = html.replace('<!--pyreon-head-->', result.head)
-  } else if (result.head) {
-    html = html.replace('</head>', `${result.head}</head>`)
-  }
-  if (html.includes('<!--pyreon-app-->')) {
-    html = html.replace('<!--pyreon-app-->', result.appHtml)
-  } else if (result.appHtml) {
-    const appDivMatch = html.match(/<div\s+id=["']app["']\s*>([\s\S]*?)<\/div>/)
-    if (appDivMatch) {
-      html = html.replace(appDivMatch[0], `<div id="app">${result.appHtml}</div>`)
-    } else {
-      html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
-    }
-  }
-  if (html.includes('<!--pyreon-scripts-->')) {
-    html = html.replace('<!--pyreon-scripts-->', result.loaderScript)
-  } else if (result.loaderScript) {
-    html = html.replace('</body>', `${result.loaderScript}</body>`)
-  }
-  return html
-}
+// `injectIntoTemplate` is imported from `./ssr-build-shared` — single
+// source of truth for the placeholder-or-fallback HTML injection rules,
+// shared with the SSR/ISR plugin so the same head/body/scripts pipeline
+// applies uniformly across modes.
 
 /**
  * Plugin that performs SSG when `mode: "ssg"` is configured. Wires into
@@ -1082,51 +1001,23 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // per-locale 404 walker can detect which RouteRecord serves which
       // locale at module-eval time inside the SSR sub-build.
       const i18nLocales = config.i18n?.locales ?? []
-      await writeFile(entryPath, renderSsrEntrySource(i18nLocales), 'utf-8')
+      await materializeEntry(entryPath, renderSsgEntrySource(i18nLocales))
 
-      // Vite's programmatic build API. Loaded lazily so the plugin doesn't
-      // pull `vite` into the runtime dep graph at module-evaluation time.
-      const { build } = await import('vite')
-
-      // Inner SSR sub-build. Re-assembles zero's plugin chain plus
-      // `@pyreon/vite-plugin` (JSX compiler) — every Pyreon app already
-      // has both because zero is built on top of pyreon. Loading both
-      // lazily keeps the SSG plugin off the module-eval critical path.
-      // Env-flag gate prevents the inner ssgPlugin instance from
-      // re-triggering itself.
-      process.env[SSG_BUILD_FLAG] = '1'
+      // Inner SSR sub-build via the shared helper. Owns the env-flag
+      // set/clear recipe — see `ssr-build-shared.ts:buildSsrBundle`.
+      // We add the entry-file cleanup in our own finally because the
+      // helper deliberately doesn't own that side effect (callers may
+      // want to keep the entry around for debugging).
       try {
-        const [{ zeroPlugin }, pyreonModule] = await Promise.all([
-          import('./vite-plugin'),
-          import('@pyreon/vite-plugin'),
-        ])
-        const pyreon = (pyreonModule as { default: () => unknown }).default
-
-        await build({
+        await buildSsrBundle({
           root,
-          mode: 'production',
-          logLevel: 'error',
-          configFile: false,
-          publicDir: false,
-          plugins: [pyreon(), zeroPlugin(userConfig)] as Plugin[],
-          resolve: { conditions: ['bun'] },
-          build: {
-            ssr: entryPath,
-            outDir: ssrOutDir,
-            emptyOutDir: true,
-            target: 'esnext',
-            rollupOptions: {
-              input: entryPath,
-              output: {
-                format: 'es',
-                entryFileNames: 'entry-server.mjs',
-              },
-              external: [/^node:/],
-            },
-          },
+          entryPath,
+          outDir: ssrOutDir,
+          outputFilename: 'entry-server.mjs',
+          envFlag: SSG_BUILD_FLAG,
+          userConfig,
         })
       } finally {
-        delete process.env[SSG_BUILD_FLAG]
         // Remove the synthetic entry file so it never lands in user's
         // working tree.
         try {
@@ -1700,7 +1591,14 @@ export const _internal = {
   renderErrorArtifact,
   runWithConcurrency,
   buildRevalidateManifest,
-  renderSsrEntrySource,
+  // Keep the historical `renderSsrEntrySource` export name (the test
+  // suite calls `_internal.renderSsrEntrySource()`); under the hood it
+  // dispatches the SSG kind through the shared dispatcher (preserving
+  // the original behaviour byte-for-byte). The SSG-specific renderer
+  // is also exposed for tests that want to assert the locale-baking
+  // contract directly.
+  renderSsrEntrySource: renderSsgEntrySource,
+  renderSsgEntrySource,
   SSR_ENTRY_FILENAME,
   detectPathCollisions,
   formatPathCollisionError,
@@ -1713,5 +1611,5 @@ export const _internal = {
   // crash path) — these exports cover the cache primitives' contract.
   mkdirOnce,
   _resetMkdirCache,
-  _peekMkdirCacheSize: () => _mkdirCache.size,
+  _peekMkdirCacheSize,
 }

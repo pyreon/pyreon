@@ -577,6 +577,21 @@ const MATRIX: Cell[] = [
       // by the server at request time. Assert the placeholders are intact.
       assertFileContains(join(dist, 'index.html'), '<!--pyreon-app-->')
       assertFileContains(join(dist, 'index.html'), '<!--pyreon-head-->')
+      // ssrPlugin must produce a deployable SSR bundle at
+      // `dist/server/entry-server.js`. Pre-fix (no ssrPlugin wired into
+      // the chain) the SSR build emitted ONLY the client bundle and no
+      // server entry — `Adapter.build({ kind: 'ssr' })` was implemented
+      // for all 6 adapters but never invoked. Same typed-but-
+      // unimplemented bug class the SSG plugin closed in PR-J. Bisect-
+      // verifiable: revert the `ssrPlugin(userConfig)` push in
+      // `packages/zero/zero/src/vite-plugin.ts:zeroPlugin` and this
+      // assertion fails with `expected file: dist/server/entry-server.js`.
+      const serverEntry = join(dist, 'server', 'entry-server.js')
+      assertFileExists(serverEntry)
+      const serverBytes = readFileSync(serverEntry, 'utf-8')
+      if (serverBytes.length === 0) {
+        throw new Error(`expected ${serverEntry} to be non-empty (got 0 bytes)`)
+      }
     },
   },
   {
