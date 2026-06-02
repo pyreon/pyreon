@@ -1174,15 +1174,17 @@ function TodoList() {
 
   return (
     <ul>
-      {For({
-        each: () => todos(),
-        by: (item) => item.id,
-        children: (item) => <li>{item.text}</li>,
-      })}
+      <For each={() => todos()} by={(item) => item.id}>
+        {(item) => <li>{item.text}</li>}
+      </For>
     </ul>
   )
 }
 ```
+
+::: tip `by`, not `key`
+Pyreon's `<For>` uses **`by`** (not `key`) — JSX reserves `key` as a special VNode reconciliation prop, so the framework can't read it as a list-keying argument. The `pyreon/for-missing-by` lint rule catches `<For>` without a `by` prop.
+:::
 
 #### Keying Strategy
 
@@ -1190,21 +1192,17 @@ The `by` function must return a unique, stable identifier for each item. Common 
 
 ```tsx
 // Database ID (best)
-For({ each: () => users(), by: (u) => u.id, children: renderUser })
+<For each={() => users()} by={(u) => u.id}>{renderUser}</For>
 
 // Composite key
-For({
-  each: () => items(),
-  by: (item) => `${item.category}-${item.id}`,
-  children: renderItem,
-})
+<For each={() => items()} by={(item) => `${item.category}-${item.id}`}>
+  {renderItem}
+</For>
 
 // Index-based key (use only when items have no stable identity)
-For({
-  each: () => items(),
-  by: (_, index) => index,
-  children: renderItem,
-})
+<For each={() => items()} by={(_, index) => index}>
+  {renderItem}
+</For>
 ```
 
 #### For with Complex Rendering
@@ -1216,10 +1214,8 @@ function UserList() {
 
   return (
     <div class="user-list">
-      {For({
-        each: () => users(),
-        by: (u) => u.id,
-        children: (user) => (
+      <For each={() => users()} by={(u) => u.id}>
+        {(user) => (
           <div
             class={() => (selectedId() === user.id ? 'user selected' : 'user')}
             onClick={() => selectedId.set(user.id)}
@@ -1228,8 +1224,8 @@ function UserList() {
             <span>{user.name}</span>
             <span class="email">{user.email}</span>
           </div>
-        ),
-      })}
+        )}
+      </For>
     </div>
   )
 }

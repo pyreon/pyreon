@@ -1100,18 +1100,16 @@ function SelectableList(props: { items: () => Item[] }) {
 
   return (
     <ul>
-      {For({
-        each: props.items,
-        by: (item) => item.id,
-        children: (item) => (
+      <For each={props.items} by={(item) => item.id}>
+        {(item) => (
           <li
             class={() => (isSelected(item.id) ? 'item selected' : 'item')}
             onClick={() => selectedId.set(item.id)}
           >
             {item.name}
           </li>
-        ),
-      })}
+        )}
+      </For>
     </ul>
   )
 }
@@ -1299,14 +1297,19 @@ function startTracking() {
       sendAnalytics('cursor', position())
     })
 
-    window.addEventListener('mousemove', (e) => {
+    const onMove = (e: MouseEvent) => {
       position.set({ x: e.clientX, y: e.clientY })
-    })
+    }
+    window.addEventListener('mousemove', onMove)
+    // Register cleanup so `scope.stop()` removes the listener too.
+    // Without this, the listener leaks past `stopTracking()` even though
+    // the effect inside the scope is disposed.
+    onCleanup(() => window.removeEventListener('mousemove', onMove))
   })
 }
 
 function stopTracking() {
-  scope.stop() // all effects disposed
+  scope.stop() // all effects disposed + listeners removed via onCleanup
 }
 ```
 

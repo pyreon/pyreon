@@ -1425,7 +1425,7 @@ app.get('*', (req, res) => {
   als.run(new Map(), async () => {
     try {
       // All stores created during this request are fully isolated
-      const html = await renderToString(App)
+      const html = await renderToString(<App />)
       res.send(`<!DOCTYPE html><html><body>${html}</body></html>`)
     } finally {
       // Clean up (optional — the Map is GC'd when the async context ends)

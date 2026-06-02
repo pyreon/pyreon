@@ -29,14 +29,14 @@ yarn add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 
 ## Vite Setup
 
-Add the Pyreon plugin to your Vite config:
+Add the Pyreon plugin to your Vite config. The plugin is a default export — convention is to name the import `pyreon`:
 
 ```ts title="vite.config.ts"
 import { defineConfig } from 'vite'
-import { pyreonPlugin } from '@pyreon/vite-plugin'
+import pyreon from '@pyreon/vite-plugin'
 
 export default defineConfig({
-  plugins: [pyreonPlugin()],
+  plugins: [pyreon()],
 })
 ```
 
@@ -44,28 +44,38 @@ export default defineConfig({
 
 ```tsx title="src/main.tsx"
 import { signal, computed } from '@pyreon/reactivity'
-import { defineComponent, Show } from '@pyreon/core'
+import { Show } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 
 const count = signal(0)
 
-const App = defineComponent(() => {
+function App() {
   const doubled = computed(() => count() * 2)
 
-  return () => (
+  return (
     <div>
       <h1>Hello Pyreon!</h1>
-      <button onClick={() => count(count() + 1)}>Clicks: {count()}</button>
+      <button onClick={() => count.update((n) => n + 1)}>
+        Clicks: {count()}
+      </button>
       <p>Doubled: {doubled()}</p>
       <Show when={() => count() > 0}>
         <p>You've started clicking!</p>
       </Show>
     </div>
   )
-})
+}
 
-mount(App, document.getElementById('app')!)
+mount(<App />, document.getElementById('app')!)
 ```
+
+::: tip Signal writes
+Write to a signal with `signal.set(value)` or `signal.update(fn)` — calling `count(value)` is a READ that discards the argument (the framework's lint rule flags this). Reading a signal inside JSX (`{count()}`) is reactive thanks to the compiler.
+:::
+
+::: tip Components are functions
+Pyreon components are plain functions that return JSX — no `defineComponent` wrapper required. The `defineComponent` helper from `@pyreon/core` exists only for cases that need explicit lifecycle hooks attached to the function reference.
+:::
 
 ## HTML Entry Point
 
@@ -113,7 +123,7 @@ import { renderToString } from '@pyreon/runtime-server'
 import App from './App'
 
 export async function render() {
-  return await renderToString(App)
+  return await renderToString(<App />)
 }
 ```
 
@@ -124,7 +134,7 @@ import { renderToStream } from '@pyreon/runtime-server'
 import App from './App'
 
 export function render(res: WritableStream) {
-  return renderToStream(App, res)
+  return renderToStream(<App />, res)
 }
 ```
 
@@ -163,12 +173,11 @@ export const router = createRouter({
 ```
 
 ```tsx title="src/App.tsx"
-import { defineComponent } from '@pyreon/core'
 import { RouterProvider, RouterView, RouterLink } from '@pyreon/router'
 import { router } from './router'
 
-export default defineComponent(() => {
-  return () => (
+export default function App() {
+  return (
     <RouterProvider router={router}>
       <nav>
         <RouterLink to="/">Home</RouterLink>
@@ -177,7 +186,7 @@ export default defineComponent(() => {
       <RouterView />
     </RouterProvider>
   )
-})
+}
 ```
 
 ## Using a Compatibility Layer
@@ -221,7 +230,7 @@ const Counter = memo(() => {
 ## What's Next?
 
 - Learn about [Reactivity](/docs/reactivity) — the signal engine at the core
-- Explore the [Component Model](/docs/core) — defineComponent, lifecycle, control flow
+- Explore the [Component Model](/docs/core) — component functions, lifecycle, control flow
 - Set up [Routing](/docs/router) — type-safe nested routes
 - Add [State Management](/docs/store) — Pinia-inspired stores
 - Style with [Styler](/docs/styler) — CSS-in-JS for signals

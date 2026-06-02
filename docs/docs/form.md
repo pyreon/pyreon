@@ -29,6 +29,15 @@ yarn add @pyreon/form
 
 :::
 
+## Two API styles
+
+`@pyreon/form` exposes two complementary shapes — both are first-class and supported. Pick by team taste:
+
+1. **Object-config (this page's primary)** — `useForm({ initialValues, validators, onSubmit })`. Best for forms that already have a single source of truth for the values shape (e.g. backed by a schema type or a server DTO).
+2. **Composable fields (recommended for new forms)** — `field('email', '', validator)` declarations + `useForm({ fields: [...] })` + `useField('name')` inside `<Form>` / `<FormProvider>`. Best for forms reused across layouts, deeply-nested form trees that benefit from context-based reads (no prop drilling), and apps that prefer co-locating each field's name + default + validator into a single value.
+
+The composable shape lives in the dedicated [Form fields pattern](/docs/patterns/form-fields). Examples below use the object-config style; everything documented here (validation timing, async validators, field arrays, `useFormState`, `useWatch`, ...) works identically against either shape.
+
 ## Basic Usage
 
 Use `useForm` to create a form with initial values, validators, and a submit handler.
