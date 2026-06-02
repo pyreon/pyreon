@@ -7,5 +7,5 @@ export default defineNodeConfig({
   coverageExclude: ['src/components/**', 'src/minimap.ts', 'src/editor.ts'],
   // Branch threshold lowered: CodeMirror integration paths have many
   // editor-state branches unreachable in unit tests.
-  coverageThresholds: { statements: 94, branches: 70, lines: 94 },
+  coverageThresholds: { statements: 95, branches: 70, lines: 94 },
 })

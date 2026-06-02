@@ -6,7 +6,7 @@ export default defineNodeConfig({
   includeIndexInCoverage: true,
   coverageExclude: ['src/tests/**'],
   coverageThresholds: {
-    statements: 94,
+    statements: 95,
     lines: 94,
     branches: 85,
     functions: 90,
