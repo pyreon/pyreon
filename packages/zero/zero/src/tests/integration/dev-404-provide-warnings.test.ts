@@ -27,26 +27,18 @@ function ThemeSwitch(): VNodeChild {
 }
 
 function Header(): VNodeChild {
-  return h(
-    Element,
-    {
-      tag: 'header',
-      content: 'Site title',
-      afterContent: () => h(Show, { when: true }, h(ThemeSwitch, null)),
-    },
-  )
+  return h(Element, {
+    tag: 'header',
+    content: 'Site title',
+    afterContent: () => h(Show, { when: true }, h(ThemeSwitch, null)),
+  })
 }
 
 function Layout(): VNodeChild {
   // Real fs-router pattern: layout contains its OWN <RouterView /> which
   // claims depth 1 and renders the matched leaf (the synthetic NotFound
   // in the dev-404 case).
-  return h(
-    PyreonUI,
-    { theme },
-    h(Header, null),
-    h(RouterView as Parameters<typeof h>[0], null),
-  )
+  return h(PyreonUI, { theme }, h(Header, null), h(RouterView as Parameters<typeof h>[0], null))
 }
 
 function NotFound(): VNodeChild {
@@ -63,16 +55,18 @@ const routes: RouteRecord[] = [
   {
     path: '/',
     component: Layout as Parameters<typeof createRouter>[0]['routes'][number]['component'],
-    notFoundComponent: NotFound as Parameters<typeof createRouter>[0]['routes'][number]['component'],
-    children: [
-      { path: '/', component: Home as RouteRecord['component'] },
-    ],
+    notFoundComponent: NotFound as Parameters<
+      typeof createRouter
+    >[0]['routes'][number]['component'],
+    children: [{ path: '/', component: Home as RouteRecord['component'] }],
   },
 ]
 
 async function probeRoutes(label: string, routes: RouteRecord[], url: string) {
   const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  let provideWarnings: string[] = []
+  let effectErrors: string[] = []
   try {
     const router = createRouter({ routes, mode: 'history', url })
     await router.preload(url)
@@ -86,19 +80,23 @@ async function probeRoutes(label: string, routes: RouteRecord[], url: string) {
     })
   } finally {
     const warns = warnSpy.mock.calls.map((a) => String(a[0] ?? ''))
-    const errs = errSpy.mock.calls.map((a) => a.map((x) => {
-      if (x instanceof Error) return `${x.name}: ${x.message}\n${x.stack ?? ''}`
-      return String(x ?? '')
-    }).join(' | '))
+    const errs = errSpy.mock.calls.map((a) =>
+      a
+        .map((x) => {
+          if (x instanceof Error) return `${x.name}: ${x.message}\n${x.stack ?? ''}`
+          return String(x ?? '')
+        })
+        .join(' | '),
+    )
     warnSpy.mockRestore()
     errSpy.mockRestore()
-    const provideWarnings = warns.filter((m) =>
-      m.includes('called outside component setup') ||
-      m.includes('provide() internally calls onUnmount'),
+    provideWarnings = warns.filter(
+      (m) =>
+        m.includes('called outside component setup') ||
+        m.includes('provide() internally calls onUnmount'),
     )
-    const effectErrors = errs.filter((m) =>
-      m.includes('Unhandled effect error') ||
-      m.includes('Cannot destructure'),
+    effectErrors = errs.filter(
+      (m) => m.includes('Unhandled effect error') || m.includes('Cannot destructure'),
     )
     process.stderr.write(
       `\n[${label}] provideWarnings=${provideWarnings.length} effectErrors=${effectErrors.length} errCalls=${errs.length}\n`,
@@ -112,8 +110,8 @@ async function probeRoutes(label: string, routes: RouteRecord[], url: string) {
     if (errs.length > 0 && effectErrors.length === 0) {
       process.stderr.write(`  uncategorized first console.error: ${errs[0]?.slice(0, 200)}\n`)
     }
-    return { provideWarnings, effectErrors }
   }
+  return { provideWarnings, effectErrors }
 }
 
 describe('dev-404 SSR — provide() warning storm probe', () => {
@@ -130,7 +128,11 @@ describe('dev-404 SSR — provide() warning storm probe', () => {
     expect(resolved.isNotFound).toBe(true)
 
     await runWithRequestContext(async () => {
-      const app = h(RouterProvider as Parameters<typeof h>[0], { router }, h(RouterView as Parameters<typeof h>[0], null))
+      const app = h(
+        RouterProvider as Parameters<typeof h>[0],
+        { router },
+        h(RouterView as Parameters<typeof h>[0], null),
+      )
       const html = await renderToString(app)
       // Sanity: NotFound content lands in the rendered HTML
       expect(html).toContain('Page Not Found')
@@ -140,9 +142,10 @@ describe('dev-404 SSR — provide() warning storm probe', () => {
     // close this, we expect "onUnmount() called outside component setup"
     // warnings from provide() calls landing outside a setup window.
     const calls = warnSpy.mock.calls.map((args) => String(args[0] ?? ''))
-    const provideWarnings = calls.filter((m) =>
-      m.includes('called outside component setup') ||
-      m.includes('provide() internally calls onUnmount'),
+    const provideWarnings = calls.filter(
+      (m) =>
+        m.includes('called outside component setup') ||
+        m.includes('provide() internally calls onUnmount'),
     )
     console.error(`\nCaptured ${provideWarnings.length} provide-outside-setup warnings:`)
     for (const w of provideWarnings) console.error(`  ${w.split('\n')[0]}`)
@@ -195,8 +198,7 @@ describe('dev-404 SSR — provide() warning storm probe', () => {
       return h(Element, {
         tag: 'header',
         content: 'Site title',
-        afterContent: () =>
-          h(PyreonUI, { inversed: true }, h(ThemeSwitch, null)),
+        afterContent: () => h(PyreonUI, { inversed: true }, h(ThemeSwitch, null)),
       })
     }
     function LayoutNested(): VNodeChild {
@@ -278,7 +280,9 @@ describe('dev-404 SSR — provide() warning storm probe', () => {
         tag: 'header',
         content: 'Site title',
         afterContent: () =>
-          h(PyreonUI, { inversed: true },
+          h(
+            PyreonUI,
+            { inversed: true },
             h(Element, {
               tag: 'div',
               afterContent: () => h(Show, { when: true }, h(ThemeSwitch, null)),

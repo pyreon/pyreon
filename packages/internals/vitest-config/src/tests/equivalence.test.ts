@@ -60,14 +60,8 @@ describe('defineNodeConfig — equivalence vs legacy merge patterns', () => {
 
   it('matches pattern 3: triple-nested with environment + excludeBrowserTests', () => {
     const legacy = mergeConfig(
-      mergeConfig(
-        sharedConfig,
-        createVitestConfig({ environment: 'happy-dom' }),
-      ),
-      mergeConfig(
-        { resolve: { conditions: ['bun'] } },
-        nodeExcludeBrowserTests,
-      ),
+      mergeConfig(sharedConfig, createVitestConfig({ environment: 'happy-dom' })),
+      mergeConfig({ resolve: { conditions: ['bun'] } }, nodeExcludeBrowserTests),
     )
     const next = defineNodeConfig({
       environment: 'happy-dom',
@@ -215,11 +209,8 @@ describe('defineNodeConfig — invariants', () => {
     })
     const withoutFlag = defineNodeConfig({ category: 'core' })
 
-    const coveredExclude = (withFlag.test?.coverage as { exclude: string[] })
-      .exclude
-    const defaultExclude = (
-      withoutFlag.test?.coverage as { exclude: string[] }
-    ).exclude
+    const coveredExclude = (withFlag.test?.coverage as { exclude: string[] })?.exclude
+    const defaultExclude = (withoutFlag.test?.coverage as { exclude: string[] })?.exclude
 
     expect(defaultExclude).toContain('src/**/index.ts')
     expect(coveredExclude).not.toContain('src/**/index.ts')

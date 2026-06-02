@@ -33,7 +33,10 @@ type ChainOrOptions = (
 ) => Record<string, unknown>
 
 export const chainOrOptions: ChainOrOptions = (keys, opts, defaultOpts) =>
-  keys.reduce((acc, item) => ({ ...acc, [item]: opts[item] || defaultOpts[item] }), {})
+  keys.reduce<Record<string, unknown>>((acc, item) => {
+    acc[item] = opts[item] || defaultOpts[item]
+    return acc
+  }, {})
 
 // --------------------------------------------------------
 // Chain Reserved Options
@@ -49,10 +52,7 @@ type ChainReservedKeyOptions = (
 ) => Record<string, ReturnType<typeof chainOptions>>
 
 export const chainReservedKeyOptions: ChainReservedKeyOptions = (keys, opts, defaultOpts) =>
-  keys.reduce(
-    (acc, item) => ({
-      ...acc,
-      [item]: chainOptions(opts[item], defaultOpts[item] ?? []),
-    }),
-    {},
-  )
+  keys.reduce<Record<string, ReturnType<typeof chainOptions>>>((acc, item) => {
+    acc[item] = chainOptions(opts[item], defaultOpts[item] ?? [])
+    return acc
+  }, {})

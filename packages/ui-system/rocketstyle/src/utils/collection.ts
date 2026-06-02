@@ -6,4 +6,7 @@ type RemoveNullableValues = (obj: Record<string, any>) => Record<string, any>
 export const removeNullableValues: RemoveNullableValues = (obj) =>
   Object.entries(obj)
     .filter(([, v]) => v != null && v !== false)
-    .reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {})
+    .reduce<Record<string, any>>((acc, [k, v]) => {
+      acc[k] = v
+      return acc
+    }, {})
