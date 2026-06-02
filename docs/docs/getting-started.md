@@ -123,7 +123,7 @@ import { renderToString } from '@pyreon/runtime-server'
 import App from './App'
 
 export async function render() {
-  return await renderToString(App)
+  return await renderToString(<App />)
 }
 ```
 
@@ -134,7 +134,7 @@ import { renderToStream } from '@pyreon/runtime-server'
 import App from './App'
 
 export function render(res: WritableStream) {
-  return renderToStream(App, res)
+  return renderToStream(<App />, res)
 }
 ```
 
