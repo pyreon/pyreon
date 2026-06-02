@@ -66,6 +66,7 @@
     "check-client-bundle-node-imports": "bun scripts/check-client-bundle-node-imports.ts",
     "check-distribution": "bun scripts/check-distribution.ts",
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
+    "check-lint-ratchet": "bun scripts/check-lint-ratchet.ts",
     "check-manifest-depth": "bun scripts/check-manifest-depth.ts",
     "check-mcp-docs": "bun scripts/check-mcp-docs.ts",
     "check-release-readiness": "bun scripts/check-release-readiness.ts",

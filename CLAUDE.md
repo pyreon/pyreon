@@ -1402,7 +1402,7 @@ PR pipeline wall-clock: **~8.3 min** (was ~13 min pre-speedup). Five-PR plan lan
 Install (~25s, bun install only — postinstall bootstrap SKIPPED via PYREON_BOOTSTRAP_SKIP=1)
 ├── lib-free jobs (start at T+25s, save ~150s critical-path):
 │     typecheck-cell (8-cell matrix) → Typecheck (aggregator)
-│     lint, audit-types, coverage (floor), check-doc-claims,
+│     lint, lint-ratchet, audit-types, coverage (floor), check-doc-claims,
 │     check-manifest-depth, docs-sync, audit, test-rust-binary,
 │     e2e-decide
 │
@@ -1619,6 +1619,18 @@ bun run check-doc-claims --json  # machine-readable
 ```
 
 CI runs this on every PR as a required `Check Doc Claims` job (~2s). The gate ALSO rejects hedged forms like "33+ hooks" — write the exact number so the source-of-truth comparison stays strict. Adding a new claim with a known canonical source means adding a new entry to the `checks[]` array; arbitrary numeric prose is not in scope.
+
+## Lint Ratchet — oxlint warn-finding burn-down gate
+
+`scripts/check-lint-ratchet.ts` + `lint-baseline.json` are the keystone that turns the curated oxlint config (`.oxlintrc.json`) from a one-time snapshot into a **self-sustaining quality system**. oxlint runs in a three-state model (see `.claude/rules/code-style.md`): `error` rules are gated at 0 by oxlint itself (the `Lint` CI job exits non-zero on any error); `warn` rules are a **burn-down lane**. This gate covers the warn half — each rule's count in `lint-baseline.json` may only **decrease**. A change that pushes any rule above its baseline fails. So new code can't refill the backlog while it's burned down; combined with the error tier, the lint surface can only improve over time.
+
+```bash
+bun run check-lint-ratchet            # gate: fail if any rule grew above baseline
+bun run check-lint-ratchet -- --json  # machine-readable {regressions, improvements}
+bun run check-lint-ratchet -- --update # regenerate baseline (only DOWN — after fixing findings)
+```
+
+Same ratchet shape as `check-bundle-budgets` / `check-manifest-depth`: the baseline is the *achieved* state, moved DOWN only via `--update` (reviewed in the diff). **Never raise a count to absorb a new finding** — fix it or scope/suppress with rationale. To gate a warn rule permanently, drive it to 0 and promote it to `error` in `.oxlintrc.json` (atomic fix-and-gate; it then leaves the baseline since errors aren't ratcheted). CI runs it as a required `Lint Ratchet` job (lib-free, `needs: install`, `restore-bootstrap: 'false'`); also in `validate-fast` + the pre-push hook. Pure logic (`countWarnFindings` / `compareToBaseline` / `buildBaseline`) unit-tested in `packages/internals/test-utils/src/tests/lint-ratchet.test.ts`; the end-to-end gate is bisect-verified (lowering a baseline count by 1 → exit 1).
 
 ## Check Manifest Depth — MCP `get_api` density ratchet
 
