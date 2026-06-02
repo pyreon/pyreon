@@ -69,12 +69,6 @@ interface FloorExemption {
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   // ── Statement < 90 ──────────────────────────────────────────────────
-  '@pyreon/vue-compat': {
-    currentStatements: 94,
-    currentBranches: 84,
-    reason:
-      'cov-94 series raised statements 85 → 94 (actual 94.22%) — above floor. Branches at 84 (actual 84.08%) still 1pt below 85 floor — remaining gap is the `isComponent` detection edge in wrapCompatComponent + scheduleEffects branches that need a wrapped Vue-component invocation harness to fully exercise.',
-  },
   '@pyreon/create-zero': {
     currentStatements: 95,
     currentBranches: 80,
