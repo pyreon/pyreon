@@ -33,6 +33,8 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
   // fixture loop to PARITY with Swift's 10-fixture loop. Pre-B4 only
   // 01-07 ran; 08/09/10 were extracted (the fixture files existed)
   // but never invoked here. Scout-2's "Kotlin fixture parity" finding.
+  // Phase B5: added 11-canonical-layout to exercise the broader
+  // canonical-primitive set (Stack/Inline/Heading) — scout-1's finding.
   const fixtures = [
     '01-stateless.tsx',
     '02-signal.tsx',
@@ -44,6 +46,7 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     '08-string-computed.tsx',
     '09-props.tsx',
     '10-multi-component.tsx',
+    '11-canonical-layout.tsx',
   ] as const
 
   for (const fixture of fixtures) {
