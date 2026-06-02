@@ -53,8 +53,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 87 rules', () => {
-    expect(allRules.length).toBe(87)
+  it('should have 88 rules', () => {
+    expect(allRules.length).toBe(88)
   })
 
   it('should have unique rule IDs', () => {
@@ -115,13 +115,13 @@ describe('Rule metadata', () => {
     // M3.5 — SSG rules.
     expect(counts.ssg).toBe(3)
     // Opt-in best-practice categories.
-    expect(counts.frontend).toBe(8)
+    expect(counts.frontend).toBe(9)
     expect(counts.query).toBe(1)
     expect(counts.rx).toBe(1)
     expect(counts.i18n).toBe(1)
     expect(counts.storage).toBe(1)
     const total = Object.values(counts).reduce((a, b) => a + b, 0)
-    expect(total).toBe(87)
+    expect(total).toBe(88)
   })
 })
 
@@ -1982,7 +1982,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules (opt-in ones forced off)', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(87)
+    expect(Object.keys(config.rules).length).toBe(88)
     // Opt-in best-practice rules are present as keys but disabled.
     for (const rule of allRules) {
       if (rule.meta.optIn === true) {
