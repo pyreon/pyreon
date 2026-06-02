@@ -92,13 +92,30 @@ public final class PyreonRouter {
     /// Route table — declaration-order list of `RouteRecord` patterns.
     /// `push`/`replace` walk this list and pick the FIRST match;
     /// declaration order IS precedence. `RouterView` renders the matched
-    /// record's component (or `EmptyView()` when no match — the
-    /// backward-compat fallback for apps that don't configure routes).
+    /// record's component (or `notFoundComponent` when no match — see
+    /// the wildcard-404 catch-all below; or `EmptyView()` when neither
+    /// is configured — the original backward-compat fallback).
     ///
     /// Phase A4 ships a flat list; nested-route depth indexing
     /// (`RouteRecord.children`) lands as A4.5 — separate PR to limit
     /// blast radius.
     public var routes: [RouteRecord] = []
+
+    /// Wildcard-404 catch-all — Phase A6 of the readiness audit. When
+    /// `push`/`replace` lands a path that NO `routes` entry matches,
+    /// `RouterView` renders this component instead of the backward-compat
+    /// `EmptyView()` fallback. `nil` (the default) preserves pre-A6
+    /// behavior; apps adopting catch-all 404s set this at construction
+    /// or via `router.notFoundComponent = …`.
+    ///
+    /// The web router exposes this as a `'*'` / `(.*)` wildcard route
+    /// in the routes config; the native runtime keeps it as a separate
+    /// field because the route table walks declaration-order — a `'*'`
+    /// pattern in `routes` would ALWAYS win (matches everything),
+    /// forcing apps into precedence-by-declaration-order traps. A
+    /// dedicated `notFoundComponent` field is the structurally simpler
+    /// design.
+    public var notFoundComponent: (() -> AnyView)? = nil
 
     /// Phase 3 (loaders) — per-route loaded data, keyed by full path. A
     /// route's loader stores its result here on navigation; `useLoaderData()`
@@ -169,17 +186,24 @@ public final class PyreonRouter {
     @ObservationIgnored
     private var _inGuard: Bool = false
 
-    /// Construct with an initial path stack and optional route table.
-    /// Most apps pass `[]` (NavigationStack starts at its root view)
-    /// or `["/"]` for an explicit root segment.
+    /// Construct with an initial path stack, optional route table, and
+    /// optional wildcard-404 catch-all. Most apps pass `[]`
+    /// (NavigationStack starts at its root view) or `["/"]` for an
+    /// explicit root segment.
     ///
-    /// `routes` defaults to empty for backward-compat — pre-A4 apps
-    /// that use `.navigationDestination(for:)` directly keep working
-    /// without changes. Apps adopting the new dispatcher pass a
-    /// `[RouteRecord]` and let `RouterView` + `params` do the work.
-    public init(initialPath: [String] = [], routes: [RouteRecord] = []) {
+    /// `routes` and `notFoundComponent` both default to empty/nil for
+    /// backward-compat — pre-A4 apps that use `.navigationDestination(for:)`
+    /// directly keep working without changes. Apps adopting the new
+    /// dispatcher pass a `[RouteRecord]` and (optionally) a
+    /// `notFoundComponent` for the wildcard catch-all (Phase A6).
+    public init(
+        initialPath: [String] = [],
+        routes: [RouteRecord] = [],
+        notFoundComponent: (() -> AnyView)? = nil,
+    ) {
         self.path = initialPath
         self.routes = routes
+        self.notFoundComponent = notFoundComponent
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.

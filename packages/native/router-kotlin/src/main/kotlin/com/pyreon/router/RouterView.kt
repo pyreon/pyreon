@@ -70,6 +70,14 @@ public fun RouterView() {
     // Reading the routes signal + currentPath inside this Composable
     // means a navigation OR a routes-table mutation triggers
     // recomposition. The route's component is then invoked fresh.
-    val resolved = router.resolveCurrentRoute() ?: return
-    resolved.first.component()
+    val resolved = router.resolveCurrentRoute()
+    if (resolved != null) {
+        resolved.first.component()
+        return
+    }
+    // Phase A6: wildcard-404 catch-all. No route matched currentPath;
+    // if the app configured a notFoundComponent, render it (mirrors
+    // the web router's `'*'` / `(.*)` wildcard). Otherwise fall
+    // through silently — the host's manual when-dispatch handles it.
+    router.notFoundComponent.value?.invoke()
 }
