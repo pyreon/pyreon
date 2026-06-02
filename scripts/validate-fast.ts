@@ -14,6 +14,7 @@
  *   - check-manifest-depth  (LOCKED package density regressed)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
  *   - check-mcp-docs        (MCP tool added without docs/docs/mcp.md section)
+ *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *
  * Each gate runs ~1-15s, total ~30-60s. The point is: catch ALL the
@@ -46,6 +47,7 @@ interface Gate {
 
 const GATES: Gate[] = [
   { name: 'lint', cmd: 'bun run lint' },
+  { name: 'check-lint-ratchet', cmd: 'bun scripts/check-lint-ratchet.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
   { name: 'check-changeset-required', cmd: 'bun scripts/check-changeset-required.ts' },
@@ -112,11 +114,13 @@ if (failed.length === 0) {
   process.exit(0)
 }
 
-console.log(`✗ ${failed.length} of ${results.length} gate(s) failed in ${(totalMs / 1000).toFixed(1)}s`)
+console.log(
+  `✗ ${failed.length} of ${results.length} gate(s) failed in ${(totalMs / 1000).toFixed(1)}s`,
+)
 console.log()
 console.log('Failed gates:')
 for (const f of failed) console.log(`  - ${f.name}`)
 console.log()
-console.log("Fix the failures above and re-run `bun run validate-fast`. Or run a")
+console.log('Fix the failures above and re-run `bun run validate-fast`. Or run a')
 console.log('single gate to iterate: `bun run check-doc-claims`, `bun run gen-docs --check`, etc.')
 process.exit(1)

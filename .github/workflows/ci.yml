@@ -888,6 +888,27 @@ jobs:
       - name: Verify doc-claim numbers match source of truth
         run: bun run check-doc-claims
 
+  # ── Lint ratchet ──────────────────────────────────────────────────────
+  # oxlint `error`-severity rules are gated at 0 by the `Lint` job itself.
+  # This gate covers the other half: the `warn` backlog. Per-rule counts in
+  # lint-baseline.json may only DECREASE — a change pushing any rule above
+  # its baseline fails here. Turns the curated config from a snapshot into a
+  # self-sustaining system: new code can't refill the backlog while it's
+  # burned down. Lib-free (just oxlint + a JSON compare). See
+  # scripts/check-lint-ratchet.ts + .claude/rules/code-style.md.
+  lint-ratchet:
+    name: Lint Ratchet
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+      - name: Verify oxlint warn-finding counts have not regressed
+        run: bun run check-lint-ratchet
+
   # ── Manifest depth ratchet ────────────────────────────────────────────
   # The root cause behind "get_api returns a signature but no foot-gun
   # catalog for half the fundamentals" was that nothing enforced manifest
