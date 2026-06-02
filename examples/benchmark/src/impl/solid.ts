@@ -83,7 +83,6 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     suite,
     async () => {
       setRows(mkRows(1_000))
-      await tick()
     },
     { verify: expectRows(1_000) },
   )
@@ -93,7 +92,6 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     suite,
     async () => {
       setRows(mkRows(1_000))
-      await tick()
     },
     { verify: expectRows(1_000) },
   )
@@ -108,7 +106,6 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
       for (let i = 0; i < cur.length; i += 10) {
         cur[i]?.setLabel(`${cur[i]?.label() ?? ''} !!!`)
       }
-      await tick()
     },
     {
       // Reset labels before each run
@@ -136,7 +133,6 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     async () => {
       const r = rows()
       setSelected(r[Math.floor(r.length / 2)]?.id ?? null)
-      await tick()
     },
     { verify: expectRowsWithSelected(1_000, 1) },
   )
@@ -155,7 +151,6 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
         }
       }
       setRows(updated)
-      await tick()
     },
     { verify: expectRows(1_000) },
   )
@@ -165,7 +160,6 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     suite,
     async () => {
       setRows([])
-      await tick()
     },
     { verify: expectRows(0) },
   )
@@ -178,7 +172,6 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     suite,
     async () => {
       setRows(mkRows(10_000))
-      await tick()
     },
     { verify: expectRows(10_000) },
   )

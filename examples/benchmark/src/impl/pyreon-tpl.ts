@@ -84,7 +84,6 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
     suite,
     async () => {
       rows.set(mkRows(1_000))
-      await tick()
     },
     { verify: expectRows(1_000) },
   )
@@ -94,7 +93,6 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
     suite,
     async () => {
       rows.set(mkRows(1_000))
-      await tick()
     },
     { verify: expectRows(1_000) },
   )
@@ -109,7 +107,6 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
       for (let i = 0; i < current.length; i += 10) {
         current[i]?.label.update((l) => `${l} !!!`)
       }
-      await tick()
     },
     {
       // Reset labels before each run to avoid accumulation
@@ -137,7 +134,6 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
     async () => {
       const r = rows()
       selectedId.set(r[Math.floor(r.length / 2)]?.id ?? null)
-      await tick()
     },
     { verify: expectRowsWithSelected(1_000, 1) },
   )
@@ -156,7 +152,6 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
           rows.set(current)
         }
       }
-      await tick()
     },
     { verify: expectRows(1_000) },
   )
@@ -166,7 +161,6 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
     suite,
     async () => {
       rows.set([])
-      await tick()
     },
     { verify: expectRows(0) },
   )
@@ -179,7 +173,6 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
     suite,
     async () => {
       rows.set(mkRows(10_000))
-      await tick()
     },
     { verify: expectRows(10_000) },
   )

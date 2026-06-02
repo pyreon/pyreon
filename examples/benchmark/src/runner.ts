@@ -79,6 +79,32 @@ export interface BenchOptions {
    * numbers — the whole point of the fair-bench methodology.
    */
   verify?: (container: HTMLElement) => void
+  /**
+   * Per-framework commit-boundary hook. Called INSIDE the timed region,
+   * AFTER the user's `fn()` returns but BEFORE `getBoundingClientRect()`
+   * forces the layout flush. Use this to wait for the framework's
+   * scheduler to commit pending DOM updates.
+   *
+   * Frameworks that need this:
+   * - **React, Preact**: `rAF + setTimeout(0)` for MessageChannel scheduler
+   * - **Vue**: `Promise.resolve()` (microtask) for its update queue
+   * - **Svelte 5**: `flushSync()` from the runtime
+   *
+   * Frameworks that DON'T need this (omit the option):
+   * - **Vanilla**: truly synchronous DOM writes
+   * - **Pyreon (raw + compiled)**: signal write → effects → DOM synchronously
+   * - **Solid**: same as Pyreon
+   *
+   * Pre-fix: every impl awaited `tick()` (setTimeout(0)) inside its bench
+   * callback. That works for VDOM frameworks (their scheduler needs the
+   * macrotask) but adds ~4ms of macrotask-floor delay to synchronous
+   * signal frameworks that don't need any wait. The fix: opt-in per
+   * framework. Synchronous frameworks now measure their TRUE commit cost;
+   * VDOM frameworks measure scheduler-wait-included cost (as they always
+   * needed to). Both are honest. The audit + measurement that drove this
+   * is documented in CLAUDE.md → "Benchmark Results" → "Methodology".
+   */
+  commit?: () => void | Promise<void>
 }
 
 /**
@@ -108,6 +134,12 @@ export async function bench(
     if (options.reset) await options.reset()
     const t0 = performance.now()
     await fn()
+    // Per-framework commit boundary — inside the timed region, BEFORE
+    // the layout flush. Async frameworks (React/Preact/Vue/Svelte) use
+    // this to wait for their scheduler; synchronous frameworks (Vanilla,
+    // Pyreon, Solid) omit `commit` entirely so they don't pay the
+    // macrotask floor.
+    if (options.commit) await options.commit()
     suite.container.getBoundingClientRect()
     const elapsed = performance.now() - t0
     warmupSamples.push(elapsed)
@@ -133,12 +165,14 @@ export async function bench(
     forceGc()
     const t0 = performance.now()
     await fn()
+    // Per-framework commit boundary (see warmup loop above for rationale).
+    if (options.commit) await options.commit()
     // Force layout flush so DOM work is included in the measurement
     suite.container.getBoundingClientRect()
     const elapsed = performance.now() - t0
     samples.push(elapsed)
     if (options.verify) options.verify(suite.container)
-    // Yield to browser between runs
+    // Yield to browser between runs (not measured — runs outside the t0/elapsed region)
     await tick()
   }
 
