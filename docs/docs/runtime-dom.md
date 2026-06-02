@@ -93,11 +93,13 @@ If you are using the Pyreon JSX transform, mounting looks like this:
 import { mount } from '@pyreon/runtime-dom'
 
 function App() {
-  return () => <h1>Hello Pyreon</h1>
+  return <h1>Hello Pyreon</h1>
 }
 
 const unmount = mount(<App />, document.getElementById('app')!)
 ```
+
+Components run **once** and return JSX directly — there is no render-thunk wrapper. Reactivity is handled per-binding by the compiler (signal reads inside JSX text positions become reactive accessors automatically); the component body never re-runs.
 
 ### Mounting Lifecycle
 
@@ -136,7 +138,7 @@ When a reactive accessor returns a primitive (string, number, boolean), Pyreon u
 ```tsx
 function Counter() {
   const count = signal(0)
-  return () => <p>Count: {() => count()}</p>
+  return <p>Count: {() => count()}</p>
   // The reactive binding {() => count()} uses the text fast path.
   // Only text.data is updated -- no DOM node replacement.
 }
@@ -154,7 +156,7 @@ function KeyedList() {
     { id: 3, text: 'Gamma' },
   ])
 
-  return () => <ul>{() => items().map((item) => <li key={item.id}>{item.text}</li>)}</ul>
+  return <ul>{() => items().map((item) => <li key={item.id}>{item.text}</li>)}</ul>
 }
 ```
 

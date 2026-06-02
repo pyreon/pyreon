@@ -186,16 +186,16 @@ const html = await renderToString(<UserProfile userId="123" />)
 The `For` component renders list items with hydration markers so the client can claim existing DOM nodes during hydration:
 
 ```tsx
-import { For, h } from '@pyreon/core'
+import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
 const items = signal(['apple', 'banana', 'cherry'])
 
-const vnode = For({
-  each: () => items(),
-  by: (item) => item,
-  children: (item) => <li>{item}</li>,
-})
+const vnode = (
+  <For each={() => items()} by={(item) => item}>
+    {(item) => <li>{item}</li>}
+  </For>
+)
 
 const html = await renderToString(vnode)
 // => '<!--pyreon-for--><li>apple</li><li>banana</li><li>cherry</li><!--/pyreon-for-->'
