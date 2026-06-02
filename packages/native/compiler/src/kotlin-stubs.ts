@@ -520,4 +520,23 @@ fun rememberNavController(): NavController = NavController()
 // PMTC's C5.3 emit always passes the 1-arg trailing closure form
 // (entry-> for :param routes, _-> for literal routes). Single overload —
 // no extension needed; matches real androidx.navigation:navigation-compose.
+
+// PyreonLink — declarative navigation, mirrors the real PyreonLink
+// composable in @pyreon/native-router-kotlin (B5.5). The compiler
+// emits \`<Link to="/x">child</Link>\` as:
+//   PyreonLink("/x") { navigate ->
+//     Box(modifier = Modifier.clickable { navigate() }) { ... }
+//   }
+// The stub mirrors that exact signature so kotlinc accepts the emit
+// without requiring the consuming app to set up router-kotlin during
+// the validate gate. Real apps depend on the actual PyreonLink from
+// @pyreon/native-router-kotlin.
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) {
+  // Stub body — real impl reads LocalPyreonRouter and pushes \`to\`
+  // on navigate(). For typecheck-only purposes we just invoke the
+  // content with a no-op navigate.
+  content { }
+}
 `
