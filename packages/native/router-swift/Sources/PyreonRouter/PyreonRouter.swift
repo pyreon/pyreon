@@ -31,9 +31,55 @@ public struct RouteRecord {
     /// that's never visited doesn't pay component-construction cost.
     public let component: () -> AnyView
 
-    public init(path: String, component: @escaping () -> AnyView) {
+    /// Phase A4.5 — nested child routes. A non-empty `children` makes
+    /// this record a LAYOUT route: when a navigation path matches one
+    /// of `children`, the matched chain INCLUDES this parent AND the
+    /// matched child. `RouterView` at depth 0 renders this layout's
+    /// `component`; nested `<RouterView />` inside the layout body
+    /// renders the matched child (at depth 1). Depth indexing is
+    /// automatic via the SwiftUI environment — apps just nest
+    /// `<RouterView />` inside their layouts.
+    ///
+    /// Children's `path` field is the FULL path including the parent
+    /// prefix (e.g. parent `/app` → children `/app/dashboard`,
+    /// `/app/profile`). The resolver tries each child via the standard
+    /// matchPath, so all the same pattern shapes apply (`:param`,
+    /// `:name?`, `:name*` splat).
+    ///
+    /// `nil` (the default) means this is a LEAF route — chain is
+    /// just `[this]`.
+    public let children: [RouteRecord]?
+
+    public init(
+        path: String,
+        component: @escaping () -> AnyView,
+        children: [RouteRecord]? = nil,
+    ) {
         self.path = path
         self.component = component
+        self.children = children
+    }
+}
+
+/// Phase A4.5 — SwiftUI environment key for the current router depth.
+/// `RouterView` reads this to know which level of the matched chain
+/// to render. Defaults to 0 (top-of-chain); incremented automatically
+/// when `RouterView` invokes a nested route's component (so any
+/// `<RouterView />` inside a layout body is depth = parent + 1).
+@available(iOS 17.0, macOS 14.0, *)
+private struct RouterDepthKey: EnvironmentKey {
+    static let defaultValue: Int = 0
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+extension EnvironmentValues {
+    /// Current router-view depth — read by `RouterView` to pick which
+    /// chain entry to render. Apps don't typically read or write this
+    /// directly; `RouterView` manages it via `.environment(...)` when
+    /// invoking nested components.
+    public var routerDepth: Int {
+        get { self[RouterDepthKey.self] }
+        set { self[RouterDepthKey.self] = newValue }
     }
 }
 
@@ -212,23 +258,80 @@ public final class PyreonRouter {
         }
     }
 
-    /// Walk `routes` in declaration order against `candidate`, returning
-    /// the first matching record + its extracted params. Internal helper
-    /// called by push/replace AND by the initializer (for the
-    /// initial-path case). Pure — does NOT mutate state.
-    private func resolve(_ candidate: String) -> (route: RouteRecord, params: [String: String])? {
-        for record in routes {
+    /// Phase A4.5 — element of a resolved chain. The router walks the
+    /// route tree recursively; for a nested-layout match the chain has
+    /// MULTIPLE entries (parent layout, then matched child). For a
+    /// flat match the chain has ONE entry. `RouterView` reads depth N
+    /// from the environment and renders `chain[N].route.component`.
+    public typealias ChainEntry = (route: RouteRecord, params: [String: String])
+
+    /// Walk `routes` recursively against `candidate`, returning the
+    /// full matched chain (parent → child → grandchild). For a
+    /// flat-routes app this returns a single-entry chain. For nested
+    /// layouts the chain has one entry per nesting level. Each
+    /// entry's `params` contains ONLY that level's pattern matches;
+    /// the merged dict (parent + child + ...) lives on
+    /// `PyreonRouter.params`.
+    ///
+    /// Resolution strategy:
+    /// 1. For each route in `records` (declaration order):
+    /// 2. Try `matchPath(candidate, record.path)` — exact match → leaf
+    ///    chain `[(record, params)]`.
+    /// 3. If no exact match BUT record has children, recurse into
+    ///    children. On a successful child recursion, prepend `(record,
+    ///    parentParams)` where parentParams is the matchPath against
+    ///    the parent's prefix (matched portion). If the parent isn't
+    ///    itself matched, parentParams is `[:]` — the parent is just a
+    ///    structural layout.
+    /// 4. First successful chain wins (declaration order is
+    ///    precedence, same as A4 flat resolution).
+    ///
+    /// Internal — `resolveCurrentRoute()` (flat top-of-chain) and
+    /// `resolveCurrentChain()` (full chain) are the public accessors.
+    private func resolveChainIn(_ records: [RouteRecord], _ candidate: String) -> [ChainEntry]? {
+        for record in records {
+            // Exact match (leaf or parent matching its own path) → terminate here.
             if let params = Self.matchPath(candidate, record.path) {
-                return (record, params)
+                return [(record, params)]
+            }
+            // No exact match — try descending into children if any. The
+            // child's `path` is the FULL path (including parent prefix),
+            // so we recurse with the SAME candidate.
+            if let children = record.children, !children.isEmpty {
+                if let childChain = resolveChainIn(children, candidate) {
+                    // Successful descent — prepend the parent. Parent
+                    // doesn't itself match the candidate, so its
+                    // params are empty (it's a structural layout).
+                    return [(record, [:])] + childChain
+                }
             }
         }
         return nil
     }
 
+    /// Walk `routes` in declaration order against `candidate`, returning
+    /// the first matching record + its extracted params. Pre-A4.5
+    /// behavior: this is the TOP of the chain (or the only entry on
+    /// non-nested routes). Internal helper called by push/replace AND
+    /// the initializer. Pure — does NOT mutate state.
+    private func resolve(_ candidate: String) -> ChainEntry? {
+        return resolveChainIn(routes, candidate)?.first
+    }
+
+    /// Phase A4.5 — resolve to the FULL matched chain (parent
+    /// → child → ...). For flat-routes apps this returns a single-
+    /// entry array. `RouterView` reads this + depth from the
+    /// environment to render the right level.
+    public func resolveCurrentChain() -> [ChainEntry]? {
+        return resolveChainIn(routes, currentPath)
+    }
+
     /// Resolve the CURRENT top-of-stack path against the route table.
-    /// Public so `RouterView` can call it during render — treat as an
-    /// internal-API surface on the package.
-    public func resolveCurrentRoute() -> (route: RouteRecord, params: [String: String])? {
+    /// Returns the TOP of the matched chain (the first entry, which is
+    /// the outermost layout in nested cases). Public so `RouterView`
+    /// can call it during render — treat as an internal-API surface
+    /// on the package.
+    public func resolveCurrentRoute() -> ChainEntry? {
         return resolve(currentPath)
     }
 
@@ -237,8 +340,21 @@ public final class PyreonRouter {
     /// signal updates in lockstep with the path (readers observing
     /// either field see a consistent snapshot). No-match → `params`
     /// is cleared (don't leak stale params from a previous route).
+    ///
+    /// Phase A4.5: when the matched route is part of a NESTED chain,
+    /// params is the MERGED dict across the chain (parent params +
+    /// child params + ...). For flat single-entry chains this matches
+    /// the pre-A4.5 behavior.
     private func updateParamsFromPath(_ committed: String) {
-        params = resolve(committed)?.params ?? [:]
+        guard let chain = resolveChainIn(routes, committed) else {
+            params = [:]
+            return
+        }
+        var merged: [String: String] = [:]
+        for entry in chain {
+            for (k, v) in entry.params { merged[k] = v }
+        }
+        params = merged
     }
 
     /// Run the beforeEach chain against `candidate`; any false →

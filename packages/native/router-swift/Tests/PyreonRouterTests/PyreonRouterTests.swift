@@ -820,4 +820,143 @@ final class PyreonRouterTests: XCTestCase {
         // router model itself doesn't pretend the no-match path was
         // matched by some catch-all route.
     }
+
+    // MARK: - Phase A4.5 — Nested route depth indexing
+    //
+    // 2026-06 native readiness audit. RouteRecord gains `children` —
+    // the router walks the tree recursively; the matched chain has one
+    // entry per nesting level. RouterView reads
+    // `@Environment(\.routerDepth)` to render the right level. Params
+    // is the MERGED dict across the chain.
+
+    /// Flat routes (no `children`) still resolve as single-entry chain.
+    /// Backward-compat — A4 behavior unchanged.
+    func testFlatRoutesYieldSingleEntryChain() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(path: "/about", component: { AnyView(EmptyView()) }),
+        ])
+        router.push("/about")
+        let chain = router.resolveCurrentChain()
+        XCTAssertEqual(chain?.count, 1)
+        XCTAssertEqual(chain?[0].route.path, "/about")
+    }
+
+    /// Parent layout + matching child → 2-entry chain.
+    func testNestedRouteYieldsParentChildChain() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(
+                path: "/app",
+                component: { AnyView(EmptyView()) },
+                children: [
+                    RouteRecord(path: "/app/dashboard", component: { AnyView(EmptyView()) }),
+                    RouteRecord(path: "/app/profile", component: { AnyView(EmptyView()) }),
+                ],
+            ),
+        ])
+        router.push("/app/dashboard")
+        let chain = router.resolveCurrentChain()
+        XCTAssertEqual(chain?.count, 2)
+        XCTAssertEqual(chain?[0].route.path, "/app")
+        XCTAssertEqual(chain?[1].route.path, "/app/dashboard")
+    }
+
+    /// Parent itself matches (exact-match precedence over children) →
+    /// single-entry chain. Apps that want the parent's component to
+    /// render WITHOUT a child must hit the parent's exact path.
+    func testParentExactMatchWinsOverChildren() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(
+                path: "/app",
+                component: { AnyView(EmptyView()) },
+                children: [
+                    RouteRecord(path: "/app/dashboard", component: { AnyView(EmptyView()) }),
+                ],
+            ),
+        ])
+        router.push("/app")
+        let chain = router.resolveCurrentChain()
+        XCTAssertEqual(chain?.count, 1)
+        XCTAssertEqual(chain?[0].route.path, "/app")
+    }
+
+    /// Nested params merge across the chain: parent's `:tenant` +
+    /// child's `:id` both land in `router.params`.
+    func testNestedParamsMergeAcrossChain() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(
+                path: "/t/:tenant",
+                component: { AnyView(EmptyView()) },
+                children: [
+                    RouteRecord(path: "/t/:tenant/users/:id", component: { AnyView(EmptyView()) }),
+                ],
+            ),
+        ])
+        router.push("/t/acme/users/42")
+        XCTAssertEqual(router.params, ["tenant": "acme", "id": "42"])
+        let chain = router.resolveCurrentChain()
+        XCTAssertEqual(chain?.count, 2)
+        // Each chain entry has ONLY its level's params.
+        XCTAssertEqual(chain?[0].params, [:])  // parent didn't match candidate
+        XCTAssertEqual(chain?[1].params, ["tenant": "acme", "id": "42"])
+    }
+
+    /// No-match still returns nil chain → params cleared.
+    func testNestedRoutesNoMatchClearsParams() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(
+                path: "/app",
+                component: { AnyView(EmptyView()) },
+                children: [
+                    RouteRecord(path: "/app/dashboard", component: { AnyView(EmptyView()) }),
+                ],
+            ),
+        ])
+        router.push("/app/dashboard")  // matched
+        XCTAssertNotNil(router.resolveCurrentChain())
+        router.push("/unrelated")  // no match
+        XCTAssertNil(router.resolveCurrentChain())
+        XCTAssertEqual(router.params, [:])
+    }
+
+    /// Deep nesting: parent → middle → leaf → 3-entry chain.
+    func testThreeLevelNestingYieldsThreeEntryChain() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(
+                path: "/a",
+                component: { AnyView(EmptyView()) },
+                children: [
+                    RouteRecord(
+                        path: "/a/b",
+                        component: { AnyView(EmptyView()) },
+                        children: [
+                            RouteRecord(path: "/a/b/c", component: { AnyView(EmptyView()) }),
+                        ],
+                    ),
+                ],
+            ),
+        ])
+        router.push("/a/b/c")
+        let chain = router.resolveCurrentChain()
+        XCTAssertEqual(chain?.count, 3)
+        XCTAssertEqual(chain?[0].route.path, "/a")
+        XCTAssertEqual(chain?[1].route.path, "/a/b")
+        XCTAssertEqual(chain?[2].route.path, "/a/b/c")
+    }
+
+    /// `resolveCurrentRoute()` (backward-compat) returns the TOP of
+    /// the chain. For nested cases this is the parent layout (not the
+    /// matched leaf).
+    func testResolveCurrentRouteReturnsTopOfChain() throws {
+        let router = PyreonRouter(routes: [
+            RouteRecord(
+                path: "/app",
+                component: { AnyView(EmptyView()) },
+                children: [
+                    RouteRecord(path: "/app/dashboard", component: { AnyView(EmptyView()) }),
+                ],
+            ),
+        ])
+        router.push("/app/dashboard")
+        XCTAssertEqual(router.resolveCurrentRoute()?.route.path, "/app")
+    }
 }
