@@ -114,6 +114,7 @@ export default defineConfig({
             { text: 'Architecture & prior art', link: '/docs/architecture-and-prior-art' },
             { text: 'Multi-Platform (PMTC)', link: '/docs/multiplatform' },
             { text: 'PMTC Supported TypeScript', link: '/docs/pmtc-supported-typescript' },
+            { text: 'PMTC Per-Target Setup', link: '/docs/pmtc-per-target-setup' },
           ],
         },
         {
