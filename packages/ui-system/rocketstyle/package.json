@@ -41,7 +41,6 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@pyreon/sized-map": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
@@ -52,6 +51,7 @@
     "node": ">= 22"
   },
   "dependencies": {
+    "@pyreon/sized-map": "workspace:*",
     "@pyreon/styler": "workspace:^",
     "@pyreon/ui-core": "workspace:^"
   },

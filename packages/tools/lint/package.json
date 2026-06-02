@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/lint",
   "version": "0.27.0",
-  "description": "Pyreon-specific linter — 56 rules for signals, JSX, SSR, performance, router, and architecture",
+  "description": "Pyreon-specific linter \u2014 56 rules for signals, JSX, SSR, performance, router, and architecture",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/lint#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
@@ -54,12 +54,12 @@
   "dependencies": {
     "@oxc-project/types": "^0.133.0",
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/sized-map": "workspace:*",
     "oxc-parser": "^0.133.0"
   },
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
     "@pyreon/manifest": "workspace:*",
-    "@pyreon/sized-map": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   }
 }
