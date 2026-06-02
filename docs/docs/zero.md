@@ -812,7 +812,16 @@ defineConfig({ adapter: 'vercel' }) // or adapter: vercelAdapter()
 
 `vercel`/`cloudflare`/`netlify` also implement `Adapter.revalidate(path)` for build-time ISR — see [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate). `static`/`node`/`bun` implement `revalidate` as a no-op.
 
-The adapter's `build()` receives a discriminated `AdapterBuildOptions`: `{ kind: 'ssr', serverEntry, clientOutDir, outDir, config }` or `{ kind: 'ssg', outDir, config }`. In SSG mode the adapter's `build()` is invoked automatically by the SSG plugin's `closeBundle`.
+The adapter's `build()` receives a discriminated `AdapterBuildOptions`: `{ kind: 'ssr', serverEntry, clientOutDir, outDir, config }` or `{ kind: 'ssg', outDir, config }`. **Auto-invoked by mode**: SSG mode (`ssgPlugin`) calls `adapter.build({ kind: 'ssg', … })` after every path renders; SSR/ISR modes (`ssrPlugin`) bundle the SSR handler to `dist/server/entry-server.js` and call `adapter.build({ kind: 'ssr', … })`. SPA mode ships only a client bundle (no adapter.build call).
+
+### SSR/ISR build
+
+When `mode: 'ssr'` or `mode: 'isr'` is set, the build pipeline also produces a server bundle at `dist/server/entry-server.js`:
+
+- If you have a `src/entry-server.ts` (the standard hand-written entry — useful when you ship `securityHeaders()` / `cacheMiddleware()` / custom `ssr.mode` overrides / `actions: { corsOrigins }` config), the plugin uses **that file** as the bundle entry.
+- Otherwise the plugin synthesizes the canonical entry `import { routes } from "virtual:zero/routes"; … export default createServer({ routes, routeMiddleware, apiRoutes })` automatically — no setup required.
+
+After the bundle lands the configured adapter's `build({ kind: 'ssr', … })` is invoked so platform adapters (vercel/cloudflare/netlify) can wrap it into a deployable serverless function. The recursive SSR sub-build uses `PYREON_ZERO_SSR_INNER_BUILD` as its env-flag gate (distinct from SSG's `PYREON_ZERO_SSG_INNER_BUILD`) so the two modes can never collide.
 
 ## ISR Handler (runtime)
 

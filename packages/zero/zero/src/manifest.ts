@@ -777,7 +777,7 @@ const StatusScript = createScript((props) => (
     },
     {
       label: 'Adapter.build invocation',
-      note: 'Auto-invoked in SSG `closeBundle` AFTER path render. SSR-mode auto-invoke is NOT yet wired — SSR consumers handle their own server bundle.',
+      note: 'Auto-invoked at the end of every mode-specific build companion. SSG mode (`ssgPlugin`) calls `adapter.build({ kind: \'ssg\', outDir, config })` after every path renders. SSR/ISR modes (`ssrPlugin`) bundle the SSR handler to `dist/server/entry-server.js` and call `adapter.build({ kind: \'ssr\', serverEntry, clientOutDir, outDir, config })`. The SSR plugin prefers a user-authored `src/entry-server.ts` when present; otherwise it synthesizes the canonical `createServer({ routes, routeMiddleware, apiRoutes })` entry. SPA mode ships only a client bundle (no adapter.build call).',
     },
     {
       label: 'Locale-aware RouterLink — not yet shipped',

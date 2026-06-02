@@ -2590,6 +2590,6 @@ export default function PostPage() { /* component body */ }
 >
 > **getStaticPaths × i18n cardinality**: 3 IDs × 3 locales × 2 strategies of accidents = bigger SSG output than you expected. Use `ssg.concurrency` to parallelize the render; use `ssg.onProgress` to surface heartbeat lines on long builds (CI silent-stretches look hung otherwise).
 >
-> **Adapter.build invocation**: Auto-invoked in SSG `closeBundle` AFTER path render. SSR-mode auto-invoke is NOT yet wired — SSR consumers handle their own server bundle.
+> **Adapter.build invocation**: Auto-invoked at the end of every mode-specific build companion. SSG mode (`ssgPlugin`) calls `adapter.build({ kind: 'ssg', outDir, config })` after every path renders. SSR/ISR modes (`ssrPlugin`) bundle the SSR handler to `dist/server/entry-server.js` and call `adapter.build({ kind: 'ssr', serverEntry, clientOutDir, outDir, config })`. The SSR plugin prefers a user-authored `src/entry-server.ts` when present; otherwise it synthesizes the canonical `createServer({ routes, routeMiddleware, apiRoutes })` entry. SPA mode ships only a client bundle (no adapter.build call).
 >
 > **Locale-aware RouterLink — not yet shipped**: RouterLinks under i18n duplication emit LITERAL hrefs from their `to` prop. Cross-locale navigation falls through to the default-locale route. A locale-aware-link feature is a future PR; for now, write per-locale hrefs explicitly or use the router's programmatic navigation in handlers.

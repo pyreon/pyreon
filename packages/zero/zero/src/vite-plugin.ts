@@ -57,6 +57,7 @@ import {
 import { expandRoutesForLocales } from "./i18n-routing";
 import { render404Page } from "./not-found";
 import { ssgPlugin } from "./ssg-plugin";
+import { ssrPlugin } from "./ssr-plugin";
 import type { ZeroConfig } from "./types";
 
 import { withSilent } from "@pyreon/reactivity";
@@ -581,11 +582,21 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	// `_`-prefixed property off the public Plugin object.
 	zeroPluginConfigMap.set(mainPlugin, userConfig);
 
-	// SSG mode auto-wires the static-site generation hook. Other modes get
-	// just the main plugin. The SSG plugin internally no-ops when
-	// `mode !== 'ssg'`, but skipping it entirely keeps the plugin chain
-	// minimal for SSR/SPA/ISR builds (one less `closeBundle` to call).
-	return config.mode === "ssg" ? [mainPlugin, ssgPlugin(userConfig)] : [mainPlugin];
+	// Each render mode auto-wires its build-time companion plugin:
+	//   - `ssg` → ssgPlugin (prerender every path to dist/<path>/index.html)
+	//   - `ssr` / `isr` → ssrPlugin (bundle the SSR handler into
+	//     dist/server/entry-server.js + dispatch adapter.build({ kind: 'ssr' }))
+	//   - `spa` → no companion (SPA ships a client bundle only)
+	//
+	// Each companion is `apply: 'build'` so it never runs during
+	// `vite dev` (runtime dev SSR is handled by mainPlugin's
+	// `configureServer` middleware). Each one internally no-ops when
+	// the mode doesn't match (defense-in-depth) but we omit them from
+	// the chain entirely for clarity — one less closeBundle to call.
+	const plugins: Plugin[] = [mainPlugin];
+	if (config.mode === "ssg") plugins.push(ssgPlugin(userConfig));
+	if (config.mode === "ssr" || config.mode === "isr") plugins.push(ssrPlugin(userConfig));
+	return plugins;
 }
 
 /**
