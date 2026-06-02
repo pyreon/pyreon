@@ -653,13 +653,13 @@ sheet.reset()
 For server environments handling multiple requests, reset the sheet between requests to prevent style leakage:
 
 ```ts
-function handleRequest(req, res) {
+async function handleRequest(req, res) {
   sheet.reset()
 
   // ... render app ...
 
   const styles = sheet.getSSRStyles()
-  const html = renderToString(App)
+  const html = await renderToString(<App />)
 
   res.send(`<html><head>${styles}</head><body>${html}</body></html>`)
 }
