@@ -550,6 +550,114 @@ describe('props.ts — Sanitizer API branch', () => {
     warnSpy.mockRestore()
   })
 
+  // Regression: the URL guard blocked ALL data: URIs on src, which silently
+  // disabled <OptimizedImage>/<Image> blur+color placeholders — the framework's
+  // own imagePlugin ships data:image/webp;base64 (blur) and data:image/svg+xml
+  // (color). data:image on an image-context element is safe; it must pass.
+  describe('image data: URIs on image-source attributes (allowed)', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+    afterEach(() => warnSpy.mockRestore())
+
+    test('img src — base64 webp (blur placeholder) passes, no warning', () => {
+      const el = document.createElement('img')
+      const uri = 'data:image/webp;base64,UklGRvoAAABXRUJQVlA4'
+      applyProp(el, 'src', uri)
+      expect(el.getAttribute('src')).toBe(uri)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    test('img src — base64 png passes', () => {
+      const el = document.createElement('img')
+      const uri =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+      applyProp(el, 'src', uri)
+      expect(el.getAttribute('src')).toBe(uri)
+    })
+
+    test('img src — url-encoded scriptless SVG (color placeholder) passes', () => {
+      const el = document.createElement('img')
+      const uri =
+        "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1'%20height='1'%3E%3Crect%20fill='%23808080'%20width='1'%20height='1'/%3E%3C/svg%3E"
+      applyProp(el, 'src', uri)
+      expect(el.getAttribute('src')).toBe(uri)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    test('img src — raw scriptless SVG passes', () => {
+      const el = document.createElement('img')
+      const uri = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
+      applyProp(el, 'src', uri)
+      expect(el.getAttribute('src')).toBe(uri)
+    })
+
+    test('video poster — base64 webp passes', () => {
+      const el = document.createElement('video')
+      const uri = 'data:image/webp;base64,UklGRvoAAABXRUJQVlA4'
+      applyProp(el, 'poster', uri)
+      expect(el.getAttribute('poster')).toBe(uri)
+    })
+  })
+
+  describe('image data: URIs — unsafe shapes stay blocked', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+    afterEach(() => warnSpy.mockRestore())
+
+    test('img src — SVG with on*= handler is blocked', () => {
+      const el = document.createElement('img')
+      applyProp(el, 'src', 'data:image/svg+xml,<svg onload=alert(1)></svg>')
+      expect(el.getAttribute('src')).toBeNull()
+    })
+
+    test('img src — SVG with <script> is blocked', () => {
+      const el = document.createElement('img')
+      applyProp(el, 'src', 'data:image/svg+xml,<svg><script>alert(1)</script></svg>')
+      expect(el.getAttribute('src')).toBeNull()
+    })
+
+    test('img src — base64 scripted SVG is decoded and blocked', () => {
+      const el = document.createElement('img')
+      const uri = `data:image/svg+xml;base64,${btoa('<svg onload=alert(1)></svg>')}`
+      applyProp(el, 'src', uri)
+      expect(el.getAttribute('src')).toBeNull()
+    })
+
+    test('iframe src — data:text/html stays blocked', () => {
+      const el = document.createElement('iframe')
+      applyProp(el, 'src', 'data:text/html,<script>alert(1)</script>')
+      expect(el.getAttribute('src')).toBeNull()
+    })
+
+    test('object data — data:text/html stays blocked', () => {
+      const el = document.createElement('object')
+      applyProp(el, 'data', 'data:text/html,<script>alert(1)</script>')
+      expect(el.getAttribute('data')).toBeNull()
+    })
+
+    test('anchor href — data:image is blocked (not an image context)', () => {
+      const el = document.createElement('a')
+      applyProp(el, 'href', 'data:image/png;base64,iVBORw0KGgo=')
+      expect(el.getAttribute('href')).toBeNull()
+    })
+
+    test('form action — javascript: stays blocked', () => {
+      const el = document.createElement('form')
+      applyProp(el, 'action', 'javascript:fetch("/x")')
+      expect(el.getAttribute('action')).toBeNull()
+    })
+
+    test('img src — javascript: stays blocked', () => {
+      const el = document.createElement('img')
+      applyProp(el, 'src', 'javascript:alert(1)')
+      expect(el.getAttribute('src')).toBeNull()
+    })
+  })
+
   test('style as object applies via Object.assign', () => {
     const el = container()
     mount(h('div', { style: { color: 'red', fontSize: '14px' } }), el)
@@ -2648,7 +2756,9 @@ describe('Transition — safetyTimer false branches via real 5.1s waits', () => 
         show: visible,
         name: 'st-enter',
         appear: true,
-        onAfterEnter: () => { afterEnterCount++ },
+        onAfterEnter: () => {
+          afterEnterCount++
+        },
         children: h('div', { id: 'st-enter' }, 'content'),
       }),
       el,
@@ -2678,7 +2788,9 @@ describe('Transition — safetyTimer false branches via real 5.1s waits', () => 
       h(Transition, {
         show: visible,
         name: 'st-leave',
-        onAfterLeave: () => { afterLeaveCount++ },
+        onAfterLeave: () => {
+          afterLeaveCount++
+        },
         children: h('div', { id: 'st-leave' }, 'content'),
       }),
       el,
@@ -2774,9 +2886,7 @@ describe('Transition — component child warning (line 228)', () => {
 
     await new Promise<void>((r) => queueMicrotask(r))
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Transition child is a component'),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Transition child is a component'))
     warnSpy.mockRestore()
     el.remove()
   })
