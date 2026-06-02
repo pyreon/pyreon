@@ -50,6 +50,31 @@ The standing default a great senior engineer would apply — assume this is the 
 - Error messages prefixed with `[Pyreon]` and include actionable guidance
 - `__DEV__` guard all warnings — tree-shaken in production
 
+## Recurring CI failure modes — fix once, prevent forever
+
+A small set of CI gates trips freshly-pushed PRs over and over. Before
+every push, run **`bun run validate-fast`** — it executes all of these in
+~2-5s. The pre-push hook does this automatically, but `PYREON_SKIP_PRE_PUSH=1`
+bypasses bring the trap back. If a gate fails CI, ask "would
+`validate-fast` have caught this?" — if yes, that's a workflow failure,
+not a gate failure.
+
+| Gate | When it trips | Pre-fix command |
+|---|---|---|
+| **Changeset** | Source change in a published `@pyreon/*` package without `.changeset/<slug>.md` | Run `bun changeset` BEFORE staging the source change |
+| **Check Doc Claims** | Adding/removing a docs page, or changing a count CLAUDE.md / README quotes (hook count, lint rule count, doc page count, etc.) | Run `bun run check-doc-claims` after touching `docs/` or any LOCKED count source |
+| **Check Bundle Budgets** | Adding a new publishable package, or runtime growth in an existing one | `bun run check-bundle-budgets`; if growth is intentional, `bun run check-bundle-budgets --update` and review the diff |
+| **Check Distribution** | New published package, or `package.json` `files` edit that drops `lib/**/*.map` | `bun run check-distribution` |
+| **Check Release Readiness** | New published package missing `publishConfig.access: "public"` or absent from `.changeset/config.json` `fixed[0]` | `bun run check-release-readiness` |
+| **Check Manifest Depth** | LOCKED package (`store`/`rx`/`query`/`form`) manifest density dropped | `bun run check-manifest-depth` |
+| **Diagnose Catalog** | Source change in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` without an `ERROR_PATTERNS` entry | Add entry to `packages/core/compiler/src/react-intercept.ts:ERROR_PATTERNS` OR add `skip-diagnose-catalog` label if genuinely catalog-irrelevant |
+| **Docs Sync (gen-docs)** | Edited a `manifest.ts` without running `bun run gen-docs` to regenerate llms / api-reference | `bun run gen-docs && bun run gen-docs --check` |
+| **Scaffold Smoke (monorepo-vercel)** | Workspace version ahead of npm (release in flight) | Auto-skipped by `shouldSkipIsolatedCell`; if it still fails, the npm-version check failed or your branch is named `changeset-release/*` |
+
+When CI fails on a gate not in this list, ADD IT here in the same PR.
+The list is the institutional memory; missing entries mean the trap
+will repeat.
+
 ## Git Practices — MANDATORY
 
 - **NEVER push directly to main** — always use feature branches + PRs
@@ -64,7 +89,21 @@ The standing default a great senior engineer would apply — assume this is the 
 The local-fast subset of the validation checklist runs automatically on
 `git push` via a native `core.hooksPath` hook at `.githooks/pre-push`:
 
-1. `bun run lint` — whole repo (oxlint, ~3-15s)
+1. **`bun run validate-fast`** — runs lint + 9 cheap CI gates that have
+   historically tripped freshly-pushed PRs:
+   - `gen-docs --check` — manifest / generated-file drift
+   - `check-doc-claims` — CLAUDE.md / README numeric claims match source
+   - `check-changeset-required` — published-pkg source change needs a changeset
+   - `check-bundle-budgets` — new publishable pkg has a budget entry
+   - `check-distribution` — `sideEffects` + source-map invariants
+   - `check-release-readiness` — `publishConfig.access` + fixed-group coverage
+   - `check-manifest-depth` — LOCKED package density not regressed
+   - `check-client-bundle-node-imports` — no `node:` import in client entry
+   - `check-mcp-docs` — every MCP tool has a `docs/docs/mcp.md` section
+
+   Total runtime: ~2-5s. **If you push without running this and CI fails
+   on one of these gates, the failure was preventable.**
+
 2. `bun run --filter=<affected> typecheck` — affected packages only
 3. `bun run --filter=<affected> test` — affected packages only;
    gracefully no-ops when the affected set has no test scripts (most

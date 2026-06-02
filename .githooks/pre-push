@@ -108,15 +108,24 @@ run_with_timeout() {
   return $?
 }
 
-# ── 1. Lint ──────────────────────────────────────────────────────────
-echo "[1/3] lint"
-run_with_timeout "lint" "bun run lint"
-LINT_RC=$?
-if [ $LINT_RC -eq 124 ]; then
+# ── 1. Fast gates (lint + 9 cheap doc/dist/budget/manifest gates) ───
+# Replaces the standalone lint step. `validate-fast` runs lint AND every
+# gate that has previously tripped freshly-pushed PRs on CI:
+#   check-doc-claims, check-changeset-required, check-bundle-budgets,
+#   check-distribution, check-release-readiness, check-manifest-depth,
+#   check-client-bundle-node-imports, check-mcp-docs, gen-docs --check.
+# Total runtime: ~2-5s. Catches the failure modes that the bare
+# lint+typecheck+test triple historically missed.
+echo "[1/3] fast gates (lint + doc/dist/budget/manifest)"
+run_with_timeout "validate-fast" "bun run validate-fast"
+VF_RC=$?
+if [ $VF_RC -eq 124 ]; then
   exit 1
-elif [ $LINT_RC -ne 0 ]; then
+elif [ $VF_RC -ne 0 ]; then
   echo
-  echo "[pyreon pre-push] ❌ lint failed — fix the errors above and retry."
+  echo "[pyreon pre-push] ❌ fast gates failed — fix the failure(s) above and retry."
+  echo "[pyreon pre-push]    Run a single gate to iterate: bun run check-doc-claims,"
+  echo "[pyreon pre-push]    bun run gen-docs --check, etc."
   exit 1
 fi
 echo
