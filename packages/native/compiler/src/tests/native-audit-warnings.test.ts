@@ -561,14 +561,80 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'swift' },
       )
+      // Phase B6 softened the wording: from "no emit" to
+      // "READ-ONLY emit" — read works via runtime; auto-loader
+      // is still future work.
       expect(
         result.warnings.some(
           (w) =>
             w.includes('useLoaderData') &&
             w.includes('const data = useLoaderData') &&
-            w.includes('no emit'),
+            w.includes('READ-ONLY emit'),
         ),
       ).toBe(true)
+    })
+
+    // Phase B6 emit assertions — the binding now EMITS as a real
+    // read of `router.loaderData[currentPath]` cast to T. Pre-B6
+    // the binding was silently dropped (only the warning fired).
+
+    it('B6 Swift emit: useLoaderData<T>() becomes a computed property reading the runtime helper', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const data = useLoaderData<User>()
+          return <Text>Hi</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      // Computed (not stored) because @Environment isn't readable at
+      // stored-let-init time. Same constraint useParams documents.
+      expect(result.code).toContain(
+        'private var data: User? { useLoaderData(router: pyreonRouter) }',
+      )
+      // Component also gains the @Environment injection.
+      expect(result.code).toContain(
+        '@Environment(\\.pyreonRouter) private var pyreonRouter: PyreonRouter?',
+      )
+    })
+
+    it('B6 Kotlin emit: useLoaderData<T>() becomes a val calling the reified-generic helper', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const data = useLoaderData<User>()
+          return <Text>Hi</Text>
+        }
+        `,
+        { target: 'kotlin' },
+      )
+      // Kotlin's `useLoaderData<T>()` is reified — reads
+      // LocalPyreonRouter.current internally; no env injection
+      // needed at the Composable level.
+      expect(result.code).toContain('val data = useLoaderData<User>()')
+    })
+
+    it('B6 destructure form STILL silent-drops (intentional — opaque T can\'t destructure)', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const { name } = useLoaderData<{ name: string }>()
+          return <Text>Hi</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      // Destructure-form warning has different wording (no "READ-ONLY emit")
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.includes('useLoaderData') &&
+            w.includes('destructure form not yet emitted'),
+        ),
+      ).toBe(true)
+      // The binding does NOT emit (destructure path returns null).
+      expect(result.code).not.toContain('useLoaderData(router:')
     })
 
     it('fires on Kotlin target too (target-independent, parser-level)', () => {

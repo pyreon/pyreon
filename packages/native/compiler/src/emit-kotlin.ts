@@ -473,6 +473,22 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'network-status') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonNetworkStatus() }`
   }
+  // Phase B6: `const data = useLoaderData<User>()` → a `val` that calls
+  // the runtime helper. The reified-generic `useLoaderData<T>()` reads
+  // `LocalPyreonRouter.current` internally, then returns
+  // `router.loaderData.value[router.currentPath] as? T`.
+  //
+  // Emit shape:
+  //   val data = useLoaderData<User>()
+  //
+  // The helper's reified generic does the cast at the call site. No
+  // remember{} needed — the read is per-composition, the value is a
+  // simple snapshot of the loaderData entry at that frame (recomposes
+  // when loaderData.value changes — Compose's reactive map read).
+  if (d.kind === 'useLoaderData') {
+    const ty = kotlinType(d.type)
+    return `val ${kotlinIdent(d.name)} = useLoaderData<${ty}>()`
+  }
   // Phase 3: `const { id } = useParams()` → one `val` per field, each reading
   // the active router's params map (useParams() reads LocalPyreonRouter).
   if (d.kind === 'params-destructure') {

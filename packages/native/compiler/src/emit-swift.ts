@@ -353,6 +353,11 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 4 follow-up: useColorScheme reads SwiftUI's
     // @Environment(\.colorScheme), so the View needs the injection.
     if (d.kind === 'color-scheme') _usesColorScheme = true
+    // Phase B6: `const data = useLoaderData<T>()` reads via the runtime
+    // helper `useLoaderData(router:)` which takes the @Environment-injected
+    // pyreonRouter. Mark _usesRouter so the View struct gets the
+    // injection in its body.
+    if (d.kind === 'useLoaderData') _usesRouter = true
   }
   const lines: string[] = []
   // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
@@ -557,6 +562,24 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // `net.isOnline` read is a plain @Observable property (no rewrite on Swift).
   if (d.kind === 'network-status') {
     return `@State private var ${swiftIdent(d.name)} = PyreonNetworkStatus()`
+  }
+  // Phase B6: `const data = useLoaderData<User>()` → a COMPUTED
+  // property reading the active router's loaderData entry for the
+  // current path, type-cast to T?. MUST be computed (not stored let):
+  // the initializer references `pyreonRouter` (@Environment), which
+  // isn't readable at stored-let-init time — same constraint
+  // useParams + useColorScheme document.
+  //
+  // Emit shape:
+  //   private var data: User? { useLoaderData(router: pyreonRouter) }
+  //
+  // The runtime's `useLoaderData<T>(router:)` helper handles the
+  // optional-router + cast-on-mismatch defensive defaults — returns
+  // nil when router is absent, when no loaderData entry exists for
+  // currentPath, or when the stored value doesn't cast to T.
+  if (d.kind === 'useLoaderData') {
+    const ty = swiftType(d.type)
+    return `private var ${swiftIdent(d.name)}: ${ty}? { useLoaderData(router: pyreonRouter) }`
   }
   // Phase 3: `const { id } = useParams()` → one COMPUTED property per field,
   // each reading the active router's params map. MUST be computed (not stored
