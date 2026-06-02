@@ -526,7 +526,18 @@ interface CellResult {
  * Override `PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE=1` exists for local
  * reproduction without faking the branch name.
  */
-function shouldSkipIsolatedCell(): { skip: boolean; reason: string } {
+/**
+ * Test-injectable dependencies. Defaults read the real workspace +
+ * real npm registry. Tests pass stubs.
+ */
+export interface ShouldSkipIsolatedCellDeps {
+  readWorkspaceVersion?: () => string | null
+  fetchNpmVersion?: (pkg: string) => string | null
+}
+
+export function shouldSkipIsolatedCell(
+  deps: ShouldSkipIsolatedCellDeps = {},
+): { skip: boolean; reason: string } {
   if (process.env['PYREON_SKIP_ISOLATED_SCAFFOLD_SMOKE'] === '1') {
     return {
       skip: true,
@@ -546,9 +557,11 @@ function shouldSkipIsolatedCell(): { skip: boolean; reason: string } {
   // 2. Workspace ahead of npm — query `npm view @pyreon/create-zero version`
   // and compare to the local workspace version. Same package the scaffolder
   // reads its own version from, so it's the right canary.
-  const workspaceVersion = readWorkspaceCreateZeroVersion()
+  const readVer = deps.readWorkspaceVersion ?? readWorkspaceCreateZeroVersion
+  const fetchVer = deps.fetchNpmVersion ?? fetchLatestNpmVersion
+  const workspaceVersion = readVer()
   if (workspaceVersion) {
-    const npmVersion = fetchLatestNpmVersion('@pyreon/create-zero')
+    const npmVersion = fetchVer('@pyreon/create-zero')
     if (npmVersion && compareSemver(workspaceVersion, npmVersion) > 0) {
       return {
         skip: true,
@@ -717,15 +730,12 @@ async function main(): Promise<void> {
   }
 }
 
-// Re-export the release-PR detector so unit tests can exercise it
-// without triggering the full matrix via module-eval side effects.
-// `isReleasePR` is already defined above (see its doc block for the
-// chicken-and-egg rationale).
-export { isReleasePR }
+// `shouldSkipIsolatedCell` is exported inline above (see its doc block
+// for the structural rationale). Tests import it from this module.
 
 // Only execute the matrix when invoked directly (`bun
 // scripts/scaffold-smoke.ts ...`), NOT when imported from a test
-// (`import { isReleasePR } from '.../scripts/scaffold-smoke'`).
+// (`import { shouldSkipIsolatedCell } from '.../scripts/scaffold-smoke'`).
 // `import.meta.main` is Bun's idiomatic equivalent of Python's
 // `__name__ == '__main__'` — true only for the entry-point module.
 if (import.meta.main) {
