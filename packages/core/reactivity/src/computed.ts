@@ -117,13 +117,22 @@ function computedLazy<T>(
   // memory growth AND `recompute` iterating O(total-ever) instead of
   // O(live). Identical bug class already fixed for `signal._d`
   // (signal.ts `_directFn`); `computed` was left on the broken pattern.
+  //
+  // Two-tier storage (mirrors `signal()._d` after PR #1177): `directFn1`
+  // is the inline slot for the FIRST direct subscriber (zero Set
+  // allocation, zero iterator overhead); promotion to `directFns: Set`
+  // happens on 2nd subscribe. Smaller win than for signal in practice
+  // — computeds rarely have many direct subscribers — but applied for
+  // symmetry and to verify the inline-slot pattern generalizes cleanly.
+  let directFn1: (() => void) | null = null
   let directFns: Set<() => void> | null = null
 
   const recompute = () => {
     if (disposed || dirty) return
     dirty = true
     if (host._s) notifySubscribers(host._s)
-    if (directFns) for (const f of directFns) f()
+    if (directFn1) directFn1()
+    else if (directFns) for (const f of directFns) f()
   }
   _markRecompute(recompute)
 
@@ -168,16 +177,37 @@ function computedLazy<T>(
     enumerable: false,
   })
 
-  // @internal — mirrors `signal._d`. Lets tests deterministically assert
-  // the live direct-updater set stays BOUNDED under register/dispose
-  // churn (the never-compacted-array leak this fix removes).
+  // @internal — mirrors `signal._d` / `signal._d1` (PR #1177 two-tier).
+  // Single subscriber lives in `_d1` inline slot; promotion to `_d` Set
+  // happens on 2nd subscribe. Both getters exposed so tests + future
+  // tooling can inspect storage tier directly.
   Object.defineProperty(read, '_d', {
     get: () => directFns,
     enumerable: false,
   })
+  Object.defineProperty(read, '_d1', {
+    get: () => directFn1,
+    enumerable: false,
+  })
 
   read.direct = (updater: () => void): (() => void) => {
-    if (!directFns) directFns = new Set()
+    // Tier 1: empty → inline-slot the single subscriber.
+    if (directFn1 === null && directFns === null) {
+      directFn1 = updater
+      return () => {
+        // Promotion-aware disposer (mirrors signal's pattern). If a 2nd
+        // subscriber arrived before this dispose fires, `directFn1` was
+        // migrated into `directFns` and cleared — check both tiers.
+        if (directFn1 === updater) directFn1 = null
+        else if (directFns) directFns.delete(updater)
+      }
+    }
+    // Tier 2: promote inline slot → Set, then add the new entry.
+    if (directFns === null) {
+      directFns = new Set()
+      directFns.add(directFn1!)
+      directFn1 = null
+    }
     const set = directFns
     set.add(updater)
     return () => {
@@ -225,6 +255,12 @@ function computedWithEquals<T>(
   // memory growth AND `recompute` iterating O(total-ever) instead of
   // O(live). Identical bug class already fixed for `signal._d`
   // (signal.ts `_directFn`); `computed` was left on the broken pattern.
+  //
+  // Two-tier storage (mirrors `signal()._d` after PR #1177): `directFn1`
+  // is the inline slot for the FIRST direct subscriber; promotion to
+  // `directFns: Set` happens on 2nd subscribe. See computedLazy above
+  // for the same pattern.
+  let directFn1: (() => void) | null = null
   let directFns: Set<() => void> | null = null
 
   const recompute = () => {
@@ -245,7 +281,8 @@ function computedWithEquals<T>(
       return
     }
     if (host._s) notifySubscribers(host._s)
-    if (directFns) for (const f of directFns) f()
+    if (directFn1) directFn1()
+    else if (directFns) for (const f of directFns) f()
   }
   _markRecompute(recompute)
 
@@ -280,16 +317,37 @@ function computedWithEquals<T>(
     enumerable: false,
   })
 
-  // @internal — mirrors `signal._d`. Lets tests deterministically assert
-  // the live direct-updater set stays BOUNDED under register/dispose
-  // churn (the never-compacted-array leak this fix removes).
+  // @internal — mirrors `signal._d` / `signal._d1` (PR #1177 two-tier).
+  // Single subscriber lives in `_d1` inline slot; promotion to `_d` Set
+  // happens on 2nd subscribe. Both getters exposed so tests + future
+  // tooling can inspect storage tier directly.
   Object.defineProperty(read, '_d', {
     get: () => directFns,
     enumerable: false,
   })
+  Object.defineProperty(read, '_d1', {
+    get: () => directFn1,
+    enumerable: false,
+  })
 
   read.direct = (updater: () => void): (() => void) => {
-    if (!directFns) directFns = new Set()
+    // Tier 1: empty → inline-slot the single subscriber.
+    if (directFn1 === null && directFns === null) {
+      directFn1 = updater
+      return () => {
+        // Promotion-aware disposer (mirrors signal's pattern). If a 2nd
+        // subscriber arrived before this dispose fires, `directFn1` was
+        // migrated into `directFns` and cleared — check both tiers.
+        if (directFn1 === updater) directFn1 = null
+        else if (directFns) directFns.delete(updater)
+      }
+    }
+    // Tier 2: promote inline slot → Set, then add the new entry.
+    if (directFns === null) {
+      directFns = new Set()
+      directFns.add(directFn1!)
+      directFn1 = null
+    }
     const set = directFns
     set.add(updater)
     return () => {

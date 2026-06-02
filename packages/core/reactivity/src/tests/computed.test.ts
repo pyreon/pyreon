@@ -204,27 +204,36 @@ describe('computed', () => {
     // <For> rows re-mounting) must keep its live set bounded to LIVE
     // registrations, not grow one permanent dead slot per ever-
     // registered binding (which also made `recompute` O(total-ever)).
+    //
+    // After PR #1177 + #4: two-tier storage on computed mirrors signal —
+    // single subscriber lives in `_d1` inline slot (Set not allocated).
     const s = signal(0)
     const c = computed(() => s() * 2)
     c() // initialize
-    const internal = c as unknown as { _d: Set<() => void> | null }
+    const internal = c as unknown as {
+      _d: Set<() => void> | null
+      _d1: (() => void) | null
+    }
 
     for (let i = 0; i < 10_000; i++) {
       const dispose = c.direct(() => {})
       dispose()
     }
-    expect(internal._d!.size).toBe(0)
+    // No Set ever allocated — churn stays on the inline-slot tier.
+    expect(internal._d).toBeNull()
+    expect(internal._d1).toBeNull()
 
-    // One live binding survives → notify/iterate cost is O(live), not 10k.
+    // One live binding survives in the inline slot.
     let fired = 0
     const dispose = c.direct(() => {
       fired++
     })
-    expect(internal._d!.size).toBe(1)
+    expect(internal._d1).not.toBeNull()
+    expect(internal._d).toBeNull()
     s.set(1)
     expect(fired).toBe(1)
     dispose()
-    expect(internal._d!.size).toBe(0)
+    expect(internal._d1).toBeNull()
     s.set(2)
     expect(fired).toBe(1) // disposed updater not invoked
   })
@@ -295,6 +304,36 @@ describe('computed', () => {
       expect(calls1).toBe(1) // disposed
       expect(calls2).toBe(2) // still active
       expect(calls3).toBe(2) // still active
+    })
+
+    test('promotes from inline slot to Set on second subscriber (mirrors signal)', () => {
+      // Computed's direct mirrors signal's PR #1177 two-tier shape:
+      // first subscriber lives in `_d1` inline slot; 2nd subscribe
+      // promotes both into a `_d` Set. Subsequent subscribes use Set.
+      const s = signal(1)
+      const c = computed(() => s() * 2)
+      c() // initialize
+      const internal = c as unknown as {
+        _d: Set<() => void> | null
+        _d1: (() => void) | null
+      }
+
+      const dispose1 = c.direct(() => {})
+      expect(internal._d).toBeNull()
+      expect(internal._d1).not.toBeNull()
+
+      const dispose2 = c.direct(() => {})
+      // Promotion — _d1 cleared, _d Set has both updaters
+      expect(internal._d1).toBeNull()
+      expect(internal._d).not.toBeNull()
+      expect(internal._d!.size).toBe(2)
+
+      // Dispose first (the original inline-slot subscriber, now in _d).
+      // Disposer must be promotion-aware: cleared `_d1` no longer holds it.
+      dispose1()
+      expect(internal._d!.size).toBe(1)
+      dispose2()
+      expect(internal._d!.size).toBe(0)
     })
   })
 
