@@ -313,6 +313,33 @@ function printMarkdownTable(suites: SuiteResult[]): void {
     console.log(`${t.padEnd(28)}${cells.join('')}`)
   }
 
+  // Slowdown vs Vanilla baseline — the framework's real overhead vs
+  // direct DOM manipulation. Only printed when Vanilla is in the
+  // results (always true under the default `--frameworks` set).
+  //
+  // Sub-millisecond test medians (select/clear at 0µs) produce
+  // divide-by-zero — those cells render as `—` (incomparable).
+  const vanilla = suites.find((s) => s.framework === 'Vanilla JS')
+  if (vanilla) {
+    console.log()
+    console.log('Slowdown vs Vanilla JS (1.00× = framework matches no-framework baseline)')
+    console.log(`${' '.repeat(28)}${fwOnly.map((s) => pad(s.framework, FCOL)).join('')}`)
+    console.log('─'.repeat(28 + fwOnly.length * FCOL))
+    for (const t of tests) {
+      const vanillaMedian = vanilla.results.find((x) => x.name === t)?.median ?? 0
+      const cells = fwOnly.map((s) => {
+        const m = s.results.find((x) => x.name === t)?.median
+        if (m === undefined) return pad('—', FCOL)
+        // Below performance.now() resolution → can't make a ratio.
+        // Threshold of 0.1ms: below that, the noise floor swamps any
+        // meaningful ratio. Above it, ratios are meaningful.
+        if (vanillaMedian < 0.1) return pad('—', FCOL)
+        return pad(`${(m / vanillaMedian).toFixed(2)}×`, FCOL)
+      })
+      console.log(`${t.padEnd(28)}${cells.join('')}`)
+    }
+  }
+
   // Warmup-used + worst-CV summary — diagnostic indicators.
   console.log()
   console.log('Adaptive-warmup iterations used (lower = stabilised faster)')
