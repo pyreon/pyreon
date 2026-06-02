@@ -748,6 +748,15 @@ function ThemedCard(props) {
 }
 ```
 
+::: tip `useTheme()` vs `useThemeAccessor()`
+`ThemeContext` is a **reactive** context — whole-theme swaps (e.g. a runtime light/dark toggle that replaces the entire theme object) propagate to every `styled()` component automatically.
+
+- **`useTheme()`** returns a `Theme` snapshot at call time. Use it for static reads in component-setup code (signal-init values, default props from theme tokens). This is the common case.
+- **`useThemeAccessor()`** returns the raw `() => Theme` accessor. Use it inside `effect()` / `computed()` callbacks when you need the effect to re-run on theme swap. `useTheme()` would capture the snapshot once on first run; `useThemeAccessor()()` re-reads on every effect invocation.
+
+Inside `styled()` template interpolations the theme is already tracked via the styler's internal resolver — you don't need either hook explicitly there.
+:::
+
 ### Theme with Styled Components
 
 Access the theme inside styled component interpolations via `useTheme()` in the parent component, or structure your app so theme values are passed as props:

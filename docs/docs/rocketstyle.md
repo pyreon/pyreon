@@ -37,64 +37,81 @@ This approach scales better than flat variant props because dimensions compose m
 
 ## Quick Start
 
+The canonical chain is `.config(...)` → `.attrs(...)` → `.theme((t) => ({...}))` → dimension methods (`.states` / `.sizes` / `.variants` / `.multiple` / `.modifiers`).
+
 ```tsx
 import rocketstyle from '@pyreon/rocketstyle'
-import { styled } from '@pyreon/styler'
 
-const BaseButton = styled('button')`
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-`
+// Create the rocketstyle factory once (per app / per design system).
+// `useBooleans: false` is the default since 2026-04 — dimension props
+// accept string values (`state="primary"`), not boolean shorthand.
+const rs = rocketstyle({ useBooleans: false })
 
-const Button = rocketstyle(BaseButton)
-  .theme({
+const Button = rs('button')
+  .config({ name: 'Button' })
+  .attrs({
+    tag: 'button',
+    direction: 'inline',
+    alignX: 'center',
+    alignY: 'center',
+    gap: 8,
+  })
+  .theme((t) => ({
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontWeight: 500,
+    border: 'none',
+  }))
+  .states({
     primary: { background: 'royalblue', color: 'white' },
     danger: { background: '#dc3545', color: 'white' },
-    ghost: { background: 'transparent', color: '#333', border: '1px solid #ccc' },
+    ghost: { background: 'transparent', color: '#333', borderWidth: '1px', borderColor: '#ccc' },
   })
-  .size({
+  .sizes({
     sm: { padding: '4px 8px', fontSize: '12px' },
     md: { padding: '8px 16px', fontSize: '14px' },
     lg: { padding: '12px 24px', fontSize: '16px' },
   })
-  .state({
-    disabled: { opacity: 0.5, cursor: 'not-allowed' },
-    loading: { opacity: 0.7, cursor: 'wait' },
-  })
 
 // Dimensions become props
-<Button theme="primary" size="lg">Submit</Button>
-<Button theme="danger" size="sm" state="disabled">Delete</Button>
-<Button theme="ghost" size="md">Cancel</Button>
+<Button state="primary" size="lg">Submit</Button>
+<Button state="danger" size="sm">Delete</Button>
+<Button state="ghost" size="md">Cancel</Button>
 ```
+
+::: tip Dimension method names
+Pay attention to the **plural** suffix: dimension methods are `.states()`, `.sizes()`, `.variants()` — not `.state()` / `.size()` / `.variant()`. The singular forms (`state`, `size`, `variant`) are the **prop names** the consumer passes (`<Button state="primary">`). The plural forms are the **definition methods** that declare every valid value for that prop.
+
+`.theme(...)` accepts a CALLBACK receiving the theme — it's the styled-callback that returns base CSS, NOT a dimension definition. The base theme is always-applied; dimensions are conditional based on the prop value.
+:::
 
 ## Dimensions
 
-Rocketstyle supports four built-in dimension types:
+Rocketstyle supports five built-in dimension types — every one is optional:
 
-| Dimension | Description                                         |
-| --------- | --------------------------------------------------- |
-| `theme`   | Visual theme (e.g., primary, secondary, danger)     |
-| `size`    | Size scale (e.g., sm, md, lg, xl)                   |
-| `variant` | Structural variation (e.g., outlined, filled, text) |
-| `state`   | Interactive state (e.g., disabled, loading, active) |
+| Method | Prop name | Multi? | Description |
+| --- | --- | --- | --- |
+| `.states(...)` | `state` | no | Interactive state (e.g., `primary`, `secondary`, `disabled`, `loading`). |
+| `.sizes(...)` | `size` | no | Size scale (e.g., `sm`, `md`, `lg`, `xl`). |
+| `.variants(...)` | `variant` | no | Structural variation (e.g., `outlined`, `filled`, `text`). |
+| `.multiple(...)` | `multiple` | yes | Multi-select dimension — accepts an array of values that compose. |
+| `.modifiers(...)` | `modifier` | yes | Multi-select with prop-name transform — for cross-cutting style flags. |
 
-Each dimension is defined by calling the corresponding method on the rocketstyle builder and passing a map of named values to style objects or callbacks.
+Each dimension is defined by calling its method with a map of named values to style objects or styled-callbacks. Custom dimensions can be declared via `rocketstyle({ dimensions: { ... } })` at factory-init time.
 
 ## Style Callbacks
 
 Dimension values can be static objects or dynamic callbacks that receive the component's props and theme:
 
 ```tsx
-const Card = rocketstyle(BaseCard).theme({
-  light: { background: '#fff', color: '#333' },
-  dark: (props) => ({
-    background: props.elevated ? '#2d2d2d' : '#1a1a1a',
-    color: '#e0e0e0',
-  }),
-})
+const Card = rs('div')
+  .states({
+    light: { background: '#fff', color: '#333' },
+    dark: (props) => ({
+      background: props.elevated ? '#2d2d2d' : '#1a1a1a',
+      color: '#e0e0e0',
+    }),
+  })
 ```
 
 ## Chaining with Attrs
@@ -102,12 +119,13 @@ const Card = rocketstyle(BaseCard).theme({
 Rocketstyle builds on `@pyreon/attrs`, so you can chain `.attrs()` calls alongside dimension definitions:
 
 ```tsx
-const IconButton = rocketstyle(BaseButton)
-  .attrs({ 'aria-label': 'icon button' })
-  .theme({
+const IconButton = rs('button')
+  .config({ name: 'IconButton' })
+  .attrs({ 'aria-label': 'icon button', direction: 'inline', alignX: 'center', alignY: 'center' })
+  .states({
     primary: { background: 'royalblue', color: 'white' },
   })
-  .size({
+  .sizes({
     sm: { width: '32px', height: '32px' },
     md: { width: '40px', height: '40px' },
   })
@@ -120,9 +138,9 @@ Rocketstyle components can be configured at the tree level using the built-in `P
 ```tsx
 import { Provider } from '@pyreon/rocketstyle'
 
-;<Provider value={{ theme: 'dark', size: 'sm' }}>
+;<Provider value={{ state: 'dark', size: 'sm' }}>
   {/* All rocketstyle components inside inherit these defaults */}
-  <Button>Uses dark theme, sm size</Button>
+  <Button>Uses dark state, sm size</Button>
   <Card>Also dark and small</Card>
 </Provider>
 ```
@@ -144,7 +162,7 @@ Rocketstyle is designed to work with `@pyreon/styler`. Dimension style objects a
 
 | Type                   | Description                                                                            |
 | ---------------------- | -------------------------------------------------------------------------------------- |
-| `Rocketstyle`          | The builder interface with `.theme()`, `.size()`, `.variant()`, `.state()`, `.attrs()` |
+| `Rocketstyle`          | The builder interface with `.config()`, `.attrs()`, `.theme()`, `.states()`, `.sizes()`, `.variants()`, `.multiple()`, `.modifiers()` |
 | `RocketStyleComponent` | A component produced by the rocketstyle builder                                        |
 | `Dimensions`           | Map of dimension names to their value definitions                                      |
 | `DimensionProps`       | Props auto-generated from dimension definitions                                        |
@@ -153,7 +171,7 @@ Rocketstyle is designed to work with `@pyreon/styler`. Dimension style objects a
 
 ## Key Features
 
-- Multi-dimensional style composition (theme, size, variant, state)
+- Multi-dimensional style composition (states, sizes, variants, multiple, modifiers + custom)
 - Auto-generated props from dimension definitions
 - Static style objects or dynamic style callbacks
 - Built on `@pyreon/attrs` -- chainable `.attrs()` calls
