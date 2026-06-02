@@ -29,6 +29,10 @@ const skipCondition =
   (!isKotlincAvailable() && process.env.PYREON_REQUIRE_NATIVE_VALIDATE !== '1')
 
 describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture', () => {
+  // Phase B4 (native readiness audit 2026-06): brought the Kotlin
+  // fixture loop to PARITY with Swift's 10-fixture loop. Pre-B4 only
+  // 01-07 ran; 08/09/10 were extracted (the fixture files existed)
+  // but never invoked here. Scout-2's "Kotlin fixture parity" finding.
   const fixtures = [
     '01-stateless.tsx',
     '02-signal.tsx',
@@ -37,6 +41,9 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     '05-multi-signal.tsx',
     '06-for.tsx',
     '07-show.tsx',
+    '08-string-computed.tsx',
+    '09-props.tsx',
+    '10-multi-component.tsx',
   ] as const
 
   for (const fixture of fixtures) {
