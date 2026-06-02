@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "plugins": ["typescript", "unicorn", "oxc", "import", "jsx-a11y", "promise", "node", "vitest"],
   "categories": {
     "correctness": "warn"
   },
@@ -20,7 +20,15 @@
     "no-template-curly-in-string": "warn",
     "no-debugger": "error",
     "typescript/no-non-null-assertion": "warn",
-    "import/no-duplicates": "warn"
+    "import/no-duplicates": "warn",
+    "jsx-a11y/control-has-associated-label": "off",
+    "jsx-a11y/label-has-associated-control": "off",
+    "oxc/no-accumulating-spread": "warn",
+    "oxc/no-map-spread": "warn",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/expect-expect": "off",
+    "vitest/no-conditional-expect": "off",
+    "vitest/require-to-throw-message": "off"
   },
   "overrides": [
     {
@@ -70,7 +78,13 @@
     {
       "files": ["packages/fundamentals/flow/src/**", "packages/fundamentals/code/src/**"],
       "rules": {
-        "jsx-a11y/alt-text": "off"
+        "jsx-a11y/alt-text": "off",
+        "jsx-a11y/prefer-tag-over-role": "off",
+        "jsx-a11y/no-static-element-interactions": "off",
+        "jsx-a11y/click-events-have-key-events": "off",
+        "jsx-a11y/no-noninteractive-element-interactions": "off",
+        "jsx-a11y/no-noninteractive-tabindex": "off",
+        "jsx-a11y/no-noninteractive-element-to-interactive-role": "off"
       }
     },
     {
