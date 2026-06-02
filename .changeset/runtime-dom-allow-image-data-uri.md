@@ -1,5 +1,6 @@
 ---
 "@pyreon/runtime-dom": patch
+"@pyreon/compiler": patch
 ---
 
 fix(runtime-dom): allow `data:image/*` URIs on image-source attributes (unblock `<Image>` placeholders)
@@ -25,3 +26,7 @@ navigable elements like `<a href>`/`<form action>`.
 The same allowance applies to the HTML-sanitizer path (`dangerouslySetInnerHTML`),
 so a legitimate `<img src="data:image/png;base64,…">` in sanitized HTML also
 survives.
+
+`@pyreon/compiler` gains a matching `ERROR_PATTERNS` entry so `pyreon doctor
+diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
+warning and which `data:` URIs are allowed where.
