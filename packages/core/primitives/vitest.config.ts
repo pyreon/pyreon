@@ -14,5 +14,5 @@ export default defineNodeConfig({
   // Statements / functions / lines stay at the 90% default.
   // Same pattern as @pyreon/runtime-dom (see its vitest.config.ts
   // for the precedent + structurally-uncoverable branch enumeration).
-  coverageThresholds: { statements: 94, lines: 94, branches: 85 },
+  coverageThresholds: { statements: 95, lines: 94, branches: 85 },
 })

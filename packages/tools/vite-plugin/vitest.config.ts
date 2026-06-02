@@ -13,7 +13,7 @@ export default defineNodeConfig({
     'src/hmr-runtime.ts',
   ],
   coverageThresholds: {
-    statements: 94,
+    statements: 95,
     branches: 88,
     functions: 94,
     lines: 94,

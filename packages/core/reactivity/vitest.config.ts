@@ -10,5 +10,5 @@ export default defineNodeConfig({
   // internal call sites that aren't worth the test-maintenance cost of synthesising.
   // PR #1199 lifted from 87.07% by adding computed-direct + batch MAX_PASSES tests
   // (computed.ts 87.09 → 98.7 statements, 78.37 → 87.83 branches).
-  coverageThresholds: { statements: 94, lines: 94, branches: 88 },
+  coverageThresholds: { statements: 95, lines: 94, branches: 88 },
 })
