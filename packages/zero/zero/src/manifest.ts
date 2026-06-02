@@ -286,7 +286,7 @@ app.post('/admin/purge', async () => {
       signature:
         'function seoPlugin(config: SeoPluginConfig): Plugin // server-only',
       summary:
-        "SEO plugin — emits `sitemap.xml`, `robots.txt`, JSON-LD, and hreflang cross-references. `sitemap.useSsgPaths: true` auto-detects from SSG output manifest (paths from `getStaticPaths` × locale variants flow in automatically). `sitemap.hreflang: true` auto-detects i18n config from the SSG manifest → clusters per-locale URLs into ONE `<url>` with `<xhtml:link rel='alternate' hreflang>` siblings + `x-default` entry. Falls back to fs-router walk when SSG manifest is absent.",
+        "SEO plugin — emits `sitemap.xml`, `robots.txt`, JSON-LD, and hreflang cross-references. `sitemap.useSsgPaths: true` auto-detects from SSG output manifest (paths from `getStaticPaths` × locale variants flow in automatically). `sitemap.hreflang: true` auto-detects i18n config from the SSG manifest → clusters per-locale URLs into ONE `<url>` with `<xhtml:link rel='alternate' hreflang>` siblings + `x-default` entry. `sitemap.trailingSlash: 'always' | 'never' | 'preserve'` (default `'preserve'`) controls non-root `<loc>` slashes — set `'always'` for hosts that 301 `/path` → `/path/` (GitHub Pages, directory-style Netlify/Cloudflare Pages) so the sitemap doesn't emit redirect-triggering URLs. Falls back to fs-router walk when SSG manifest is absent.",
       example: `seoPlugin({
   sitemap: {
     baseUrl: 'https://example.com',

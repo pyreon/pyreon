@@ -80,6 +80,31 @@ export interface SitemapConfig {
    * into ONE `<url>` entry with three `xhtml:link` siblings.
    */
   hreflang?: boolean | I18nRoutingConfig
+  /**
+   * Trailing-slash policy applied to every non-root `<loc>` (and the
+   * `xhtml:link` hreflang hrefs).
+   *
+   * - `'preserve'` (default) — emit paths exactly as resolved. No
+   *   behaviour change.
+   * - `'always'` — append a trailing slash to every non-root path
+   *   (`/resume` → `/resume/`, root → `${origin}/`).
+   * - `'never'` — strip trailing slashes from non-root paths
+   *   (`/resume/` → `/resume`, root → `${origin}`).
+   *
+   * **Set `'always'` when deploying SSG output to a host that 301-
+   * redirects `/path` → `/path/`** (GitHub Pages, and Netlify /
+   * Cloudflare Pages with directory-style URLs). The default
+   * `'preserve'` emits `/resume`, which those hosts 301 to `/resume/` —
+   * a redirect Lighthouse penalises ("Avoid multiple page redirects").
+   * Matching the directory-style output up front removes the hop.
+   *
+   * Kept `'preserve'` by default rather than auto-switching on adapter:
+   * not every SSG host redirects (some serve `/resume` → the directory's
+   * `index.html` with no hop), so silently rewriting every URL by
+   * deploy target would be the wrong default for those hosts. Opt in
+   * explicitly to match YOUR host's behaviour.
+   */
+  trailingSlash?: TrailingSlash
 }
 
 export interface SitemapEntry {
@@ -90,6 +115,40 @@ export interface SitemapEntry {
 }
 
 export type ChangeFreq = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'
+
+/** Trailing-slash policy for sitemap `<loc>` paths. See {@link SitemapConfig.trailingSlash}. */
+export type TrailingSlash = 'always' | 'never' | 'preserve'
+
+/**
+ * Build a `<loc>` URL from an origin + path, applying the trailing-slash
+ * policy. `'preserve'` reproduces the prior `${origin}${path === '/' ? ''
+ * : path}` form exactly (root → bare origin; others verbatim).
+ *
+ * @internal — exported for unit testing.
+ */
+export function formatLoc(origin: string, path: string, mode: TrailingSlash): string {
+  if (path === '/') {
+    // Root: 'always' adds the slash; 'never'/'preserve' keep the bare
+    // origin (`https://x.com` ≡ `https://x.com/` to every crawler).
+    return mode === 'always' ? `${origin}/` : origin
+  }
+  let p = path
+  if (mode === 'always' && !p.endsWith('/')) {
+    p = `${p}/`
+  } else if (mode === 'never') {
+    // Strip trailing slashes WITHOUT a regex. The obvious `p.replace(/\/+$/, '')`
+    // trips CodeQL `js/polynomial-redos`: an unanchored `…+$` regex is O(N²) on
+    // an all-slashes string (the engine retries the match at every start
+    // position). A char-scan is linear with no backtracking. `end > 1` keeps at
+    // least the leading character so a degenerate all-slashes input can't become
+    // empty (real paths here always start with `/` and aren't `'/'` — handled above).
+    let end = p.length
+    while (end > 1 && p.charCodeAt(end - 1) === 47 /* "/" */) end--
+    p = p.slice(0, end)
+  }
+  // 'preserve' → p unchanged.
+  return `${origin}${p}`
+}
 
 /**
  * Generate a sitemap.xml string from route file paths.
@@ -105,7 +164,7 @@ export function generateSitemap(
   config: SitemapConfig,
   i18n?: I18nRoutingConfig,
 ): string {
-  const { origin, exclude = [], changefreq = 'weekly', priority = 0.7 } = config
+  const { origin, exclude = [], changefreq = 'weekly', priority = 0.7, trailingSlash = 'preserve' } = config
 
   const paths = routeFiles
     .filter((f) => {
@@ -164,7 +223,7 @@ export function generateSitemap(
   const xmlnsHreflang = hasHreflang ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : ''
 
   const entries = clusters
-    .map((cluster) => renderClusterEntry(cluster, origin, changefreq, priority, i18n))
+    .map((cluster) => renderClusterEntry(cluster, origin, changefreq, priority, i18n, trailingSlash))
     .join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -271,9 +330,10 @@ function renderClusterEntry(
   changefreq: ChangeFreq,
   priority: number,
   i18n: I18nRoutingConfig | undefined,
+  trailingSlash: TrailingSlash,
 ): string {
   const { canonical, variantsByLocale } = cluster
-  const loc = `${origin}${canonical.path === '/' ? '' : canonical.path}`
+  const loc = formatLoc(origin, canonical.path, trailingSlash)
 
   const lines: string[] = [
     '  <url>',
@@ -288,7 +348,7 @@ function renderClusterEntry(
     for (const locale of i18n.locales) {
       const variant = variantsByLocale.get(locale)
       if (!variant) continue
-      const variantLoc = `${origin}${variant.path === '/' ? '' : variant.path}`
+      const variantLoc = formatLoc(origin, variant.path, trailingSlash)
       lines.push(
         `    <xhtml:link rel="alternate" hreflang="${escapeXml(locale)}" href="${escapeXml(variantLoc)}"/>`,
       )
@@ -296,7 +356,7 @@ function renderClusterEntry(
     // x-default — the fallback when no locale matches the user.
     const defaultVariant = variantsByLocale.get(i18n.defaultLocale)
     if (defaultVariant) {
-      const defaultLoc = `${origin}${defaultVariant.path === '/' ? '' : defaultVariant.path}`
+      const defaultLoc = formatLoc(origin, defaultVariant.path, trailingSlash)
       lines.push(
         `    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(defaultLoc)}"/>`,
       )

@@ -286,6 +286,27 @@ export default {
 
 When `useSsgPaths` is `true`, sitemap emission moves from `generateBundle` to `closeBundle` (with `enforce: 'post'`) so it runs **after** the SSG plugin has written `dist/_pyreon-ssg-paths.json`. That internal manifest (filename starts with `_` so static hosts don't publish it) lists every path that produced an `index.html` — errored and redirected paths are intentionally excluded (errored pages have no HTML; redirect sources belong in `_redirects`, not the sitemap). It's read and cleaned up after use. Falls back gracefully to the file-system walk when the manifest doesn't exist (non-SSG build).
 
+### Trailing slashes
+
+`sitemap.trailingSlash` controls how non-root `<loc>` paths (and hreflang `href`s) are emitted:
+
+```ts
+seoPlugin({
+  sitemap: {
+    origin: 'https://example.com',
+    trailingSlash: 'always', // /resume → /resume/
+  },
+})
+```
+
+- `'preserve'` (default) — emit paths as resolved. No behaviour change.
+- `'always'` — append a trailing slash to every non-root path (`/resume` → `/resume/`, root → `https://example.com/`).
+- `'never'` — strip trailing slashes (`/resume/` → `/resume`).
+
+**Set `'always'` when deploying SSG output to a host that 301-redirects `/path` → `/path/`** — GitHub Pages, and Netlify / Cloudflare Pages with directory-style URLs. The default `'preserve'` emits `/resume`, which those hosts redirect to `/resume/`; Lighthouse penalises the hop ("Avoid multiple page redirects"). Matching the directory-style output in the sitemap removes it.
+
+The default stays `'preserve'` rather than auto-switching on adapter, because not every SSG host redirects — some serve `/resume` straight from the directory's `index.html` with no hop. Pick the value that matches your host.
+
 ## Build-time ISR (per-route `revalidate`)
 
 Distinct from runtime ISR (`mode: 'isr'`, in-memory LRU cache — see [Zero → ISR](/docs/zero#isr-incremental-static-regeneration-runtime)). **Build-time ISR** is static prerender + platform-driven rebuild-on-stale. A route opts in by exporting a `revalidate` literal:

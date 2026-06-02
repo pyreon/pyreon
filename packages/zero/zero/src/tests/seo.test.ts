@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   clusterPathsByLocale,
+  formatLoc,
   generateRobots,
   generateSitemap,
   jsonLd,
@@ -11,6 +12,64 @@ import {
   seoPlugin,
   stripLocalePrefix,
 } from '../seo'
+
+describe('formatLoc (trailingSlash policy)', () => {
+  const origin = 'https://example.com'
+
+  it("'preserve' reproduces the prior bare-origin / verbatim-path form", () => {
+    expect(formatLoc(origin, '/', 'preserve')).toBe('https://example.com')
+    expect(formatLoc(origin, '/resume', 'preserve')).toBe('https://example.com/resume')
+    expect(formatLoc(origin, '/posts/', 'preserve')).toBe('https://example.com/posts/')
+  })
+
+  it("'always' appends a slash to non-root paths and the root", () => {
+    expect(formatLoc(origin, '/', 'always')).toBe('https://example.com/')
+    expect(formatLoc(origin, '/resume', 'always')).toBe('https://example.com/resume/')
+    // already-slashed path is not doubled
+    expect(formatLoc(origin, '/posts/', 'always')).toBe('https://example.com/posts/')
+  })
+
+  it("'never' strips trailing slashes from non-root paths; root stays bare", () => {
+    expect(formatLoc(origin, '/', 'never')).toBe('https://example.com')
+    expect(formatLoc(origin, '/posts/', 'never')).toBe('https://example.com/posts')
+    expect(formatLoc(origin, '/resume', 'never')).toBe('https://example.com/resume')
+  })
+})
+
+describe('generateSitemap — trailingSlash', () => {
+  const files = ['index.tsx', 'about.tsx']
+
+  it("defaults to 'preserve' (no behaviour change — emits bare paths)", () => {
+    const sitemap = generateSitemap(files, { origin: 'https://example.com' })
+    expect(sitemap).toContain('<loc>https://example.com/about</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/about/</loc>')
+  })
+
+  it("'always' emits directory-style locs (the GitHub-Pages 301 fix)", () => {
+    const sitemap = generateSitemap(files, {
+      origin: 'https://example.com',
+      trailingSlash: 'always',
+    })
+    expect(sitemap).toContain('<loc>https://example.com/about/</loc>')
+    // root canonicalises to origin + '/'
+    expect(sitemap).toContain('<loc>https://example.com/</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/about</loc>')
+  })
+
+  it("'always' also applies to hreflang variant hrefs", () => {
+    const sitemap = generateSitemap(
+      ['index.tsx', 'about.tsx'],
+      {
+        origin: 'https://example.com',
+        additionalPaths: [{ path: '/de/about' }],
+        trailingSlash: 'always',
+      },
+      { locales: ['en', 'de'], defaultLocale: 'en', strategy: 'prefix-except-default' },
+    )
+    expect(sitemap).toContain('hreflang="de" href="https://example.com/de/about/"')
+    expect(sitemap).toContain('hreflang="x-default" href="https://example.com/about/"')
+  })
+})
 
 describe('generateSitemap', () => {
   const config = { origin: 'https://example.com' }
