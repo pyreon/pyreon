@@ -1,7 +1,5 @@
 # @pyreon/sized-map
 
-> **Private — internal to the Pyreon monorepo. Not published to npm.**
-
 A bounded-`Map<K, V>` primitive that evicts the oldest entry when a size cap is exceeded. One implementation, two configurations:
 
 - **FIFO** (default, `lru: false`) — `.get()` does NOT touch ordering; eviction always drops the first-inserted entry. Cheapest semantics, fits hot paths where re-insert-on-read would dominate (`runtime-dom`'s `_tplCache`).
