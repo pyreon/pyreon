@@ -559,4 +559,64 @@ final class PyreonRouterTests: XCTestCase {
         )
         XCTAssertEqual(router.params, ["id": "42"])
     }
+
+    // MARK: - Phase A6 — Wildcard-404 catch-all
+    //
+    // 2026-06 native readiness audit. RouterView renders
+    // `notFoundComponent` on no-match instead of falling through to
+    // `EmptyView()`. Backward-compat: nil notFoundComponent keeps
+    // pre-A6 behavior (empty fallback).
+
+    /// Default `notFoundComponent` is nil — pre-A6 apps see no change.
+    func testNotFoundComponentDefaultsToNil() throws {
+        let router = PyreonRouter()
+        XCTAssertNil(router.notFoundComponent)
+    }
+
+    /// Constructor accepts a notFoundComponent and stores it
+    /// for later RouterView consumption.
+    func testNotFoundComponentInitParam() throws {
+        let router = PyreonRouter(
+            routes: [RouteRecord(path: "/") { AnyView(EmptyView()) }],
+            notFoundComponent: { AnyView(Text("404")) },
+        )
+        XCTAssertNotNil(router.notFoundComponent)
+    }
+
+    /// Setting `notFoundComponent` at runtime works (the field is var).
+    /// Apps that want runtime-configurable 404 (rare) can mutate post-init.
+    func testNotFoundComponentRuntimeAssign() throws {
+        let router = PyreonRouter()
+        XCTAssertNil(router.notFoundComponent)
+        router.notFoundComponent = { AnyView(Text("404")) }
+        XCTAssertNotNil(router.notFoundComponent)
+    }
+
+    /// notFoundComponent does NOT affect navigation or params logic —
+    /// a matching route still wins; the 404 only fires on no-match.
+    func testNotFoundComponentDoesNotInterceptMatchedRoutes() throws {
+        let router = PyreonRouter(
+            routes: [RouteRecord(path: "/users/:id") { AnyView(EmptyView()) }],
+            notFoundComponent: { AnyView(Text("404")) },
+        )
+        router.push("/users/7")
+        XCTAssertEqual(router.params, ["id": "7"])
+        XCTAssertNotNil(router.resolveCurrentRoute())
+    }
+
+    /// notFoundComponent does NOT magically populate params — params
+    /// stays empty on no-match (the route table didn't match, so
+    /// there are no extracted segments).
+    func testNotFoundComponentNoMatchKeepsParamsEmpty() throws {
+        let router = PyreonRouter(
+            routes: [RouteRecord(path: "/users/:id") { AnyView(EmptyView()) }],
+            notFoundComponent: { AnyView(Text("404")) },
+        )
+        router.push("/about")  // no match
+        XCTAssertEqual(router.params, [:])
+        XCTAssertNil(router.resolveCurrentRoute())
+        // The 404 is the RouterView's render-time fallback. The
+        // router model itself doesn't pretend the no-match path was
+        // matched by some catch-all route.
+    }
 }

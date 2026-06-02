@@ -76,6 +76,7 @@ public class RouteRecord(
 public class PyreonRouter(
     initialPath: List<String> = emptyList(),
     routes: List<RouteRecord> = emptyList(),
+    notFoundComponent: (@Composable () -> Unit)? = null,
 ) {
     /**
      * Reactive path stack. Drives the host's NavHost / when-on-path
@@ -94,14 +95,33 @@ public class PyreonRouter(
 
     /** Route table — declaration-order list of [RouteRecord] patterns.
      *  [push]/[replace] walk this list and pick the FIRST match;
-     *  declaration order IS precedence. [RouterView] renders the
-     *  matched record's component (or nothing when no match — the
-     *  backward-compat fallback for apps that don't configure routes).
+     *  declaration order IS precedence. [RouterView] renders the matched
+     *  record's component (or [notFoundComponent] when no match — see
+     *  the wildcard-404 catch-all below; or nothing when neither is
+     *  configured — the original backward-compat fallback).
      *
      *  Phase A4 ships a flat list; nested-route depth indexing
      *  ([RouteRecord.children]) lands as A4.5 — separate PR to limit
      *  blast radius. */
     public val routes: MutableState<List<RouteRecord>> = mutableStateOf(routes)
+
+    /** Wildcard-404 catch-all — Phase A6 of the readiness audit. When
+     *  [push]/[replace] lands a path that NO [routes] entry matches,
+     *  [RouterView] invokes this composable instead of falling through
+     *  to the backward-compat no-op. `null` (the default) preserves the
+     *  pre-A6 behavior; apps adopting catch-all 404s set this via the
+     *  constructor param or assign `router.notFoundComponent.value = ...`
+     *  at runtime.
+     *
+     *  The web router exposes this as a `'*'` / `(.*)` wildcard route in
+     *  the routes config; the native runtime keeps it as a separate
+     *  field because the route table walks declaration-order — a `'*'`
+     *  pattern in `routes` would ALWAYS win (matches everything),
+     *  forcing apps into precedence-by-declaration-order traps. A
+     *  dedicated [notFoundComponent] field is the structurally simpler
+     *  design. */
+    public val notFoundComponent: MutableState<(@Composable () -> Unit)?> =
+        mutableStateOf(notFoundComponent)
 
     /** Phase 3 (loaders) — per-route loaded data, keyed by full path. A
      *  route's loader stores its result here on navigation; `useLoaderData()`
