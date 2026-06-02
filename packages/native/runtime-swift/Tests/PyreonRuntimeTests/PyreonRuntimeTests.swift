@@ -11,10 +11,38 @@ import XCTest
 
 final class PyreonRuntimeTests: XCTestCase {
     /// The `PyreonTokens` namespace is reachable + carries the
-    /// placeholder version constant. PR 7a replaces the version
-    /// with real token tables.
-    func testPyreonTokensIsReachable() throws {
-        XCTAssertEqual(PyreonTokens.version, "0.0.0-phase0-scaffold")
+    /// version constant. Phase B3-partial bumped this to
+    /// `"0.1.0-phase1-tokens"` along with the SPACING + SEMANTIC_SPACING
+    /// constants. Future Phase B+ bumps will land styler/theme tokens.
+    func testPyreonTokensVersionIsPhase1() throws {
+        XCTAssertEqual(PyreonTokens.version, "0.1.0-phase1-tokens")
+    }
+
+    /// Phase B3-partial: SPACING is the canonical 4pt scale matching
+    /// `@pyreon/primitives`'s documented `padding={N}` / `gap={N}` scale.
+    /// Index 0..9 → 0/4/8/12/16/20/24/32/40/48.
+    /// Cross-target parity: Kotlin's PyreonTokens.SPACING ships the
+    /// same integer values (List<Int>).
+    func testPyreonTokensSpacingScale() throws {
+        XCTAssertEqual(
+            PyreonTokens.SPACING,
+            [0, 4, 8, 12, 16, 20, 24, 32, 40, 48],
+        )
+    }
+
+    /// Phase B3-partial: SEMANTIC_SPACING aliases xs/sm/md/lg/xl →
+    /// 4/8/12/16/24 — same as `@pyreon/primitives`. Aliases let
+    /// `space="md"` resolve to a concrete value at emit time.
+    func testPyreonTokensSemanticSpacing() throws {
+        XCTAssertEqual(PyreonTokens.SEMANTIC_SPACING["xs"], 4)
+        XCTAssertEqual(PyreonTokens.SEMANTIC_SPACING["sm"], 8)
+        XCTAssertEqual(PyreonTokens.SEMANTIC_SPACING["md"], 12)
+        XCTAssertEqual(PyreonTokens.SEMANTIC_SPACING["lg"], 16)
+        XCTAssertEqual(PyreonTokens.SEMANTIC_SPACING["xl"], 24)
+        // Aliases not defined return nil (no "xxl" today; if a real
+        // app needs more, define the alias in their own theme layer
+        // until Phase 2's @pyreon/ui-theme bridge ships).
+        XCTAssertNil(PyreonTokens.SEMANTIC_SPACING["xxl"])
     }
 
     /// The `PyreonReactivity` namespace is reachable + carries the

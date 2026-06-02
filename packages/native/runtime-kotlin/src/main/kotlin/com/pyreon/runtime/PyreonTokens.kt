@@ -1,30 +1,66 @@
-// PyreonTokens — design-system tokens emitted from `@pyreon/ui-theme`.
-// KOTLIN PARITY MIRROR of `PyreonTokens.swift`. Closes the Phase B
-// (native readiness audit 2026-06) gap: Swift had this stub; Kotlin
-// didn't, breaking parity for the styler-emitter Phase B work.
+// PyreonTokens — design-system tokens shipped alongside compiler-emitted
+// Compose. KOTLIN PARITY MIRROR of `PyreonTokens.swift`. Phase B3-partial
+// (native readiness audit 2026-06): promoted beyond Phase-0 scaffold to
+// ship the canonical spacing scale from `@pyreon/primitives` as real
+// public constants.
 //
-// In Phase 0 this file is a STUB. The actual tokens (spacing scale,
-// color palette, typography, breakpoints) are emitted by the compiler
-// per the Phase 0 roadmap.
+// What's HERE (Phase 1):
+//   - SPACING — indexed 4dp scale [0..9] = [0,4,8,12,16,20,24,32,40,48]
+//   - SEMANTIC_SPACING — xs/sm/md/lg/xl alias map (4/8/12/16/24)
 //
-// The stub-shape lets PyreonRuntime build and lets downstream PRs
-// (Compose host apps, native examples) reference the namespace early
-// without blocking on the full token emit being ready.
+// What's NOT here (Phase 2+):
+//   - Full `@pyreon/ui-theme` interop (color palette, typography scale,
+//     responsive breakpoints) — needs cross-package design + Compose's
+//     Color/TextStyle interop with web's hex-string conventions
+//   - Compiler-side `<Stack space="md">` → `Column(verticalArrangement = ...)`
+//     emit — separately tracked as Phase-B emit work
+//
+// Cross-target parity is enforced by `scripts/check-native-runtime-parity.ts`:
+// VERSION must match `PyreonTokens.version` on the Swift side byte-for-byte.
+// Bump them together or the parity CI gate fails.
 
 package com.pyreon.runtime
 
 /**
- * Namespace for compiler-generated design tokens.
+ * Namespace for compiler-shipped design tokens.
  *
- * In a real build, the Pyreon compiler emits a `PyreonTokens.generated.kt`
- * file alongside this stub. The stub provides at least one symbol so
- * downstream code can compile-reference the namespace; the generation
- * step replaces it with real tokens.
+ * The canonical token scale mirrors `@pyreon/primitives`'s documented
+ * scale so cross-target code referencing `space="md"` resolves to the
+ * SAME visual gap on web (12px) / iOS (12pt) / Android (12dp).
  */
 public object PyreonTokens {
-    /** Placeholder version constant. Used in smoke tests to verify the
-     *  namespace is reachable. Mirrors `PyreonTokens.version` on the
-     *  Swift side (same `0.0.0-phase0-scaffold` value so cross-target
-     *  drift checks can compare). */
-    public const val VERSION: String = "0.0.0-phase0-scaffold"
+    /** Version sentinel — bumped in lockstep with the Swift side. The
+     *  cross-target parity script (`scripts/check-native-runtime-parity.ts`)
+     *  asserts byte-for-byte match. */
+    public const val VERSION: String = "0.1.0-phase1-tokens"
+
+    /** Indexed 4dp spacing scale. Index 0..9 maps to dp values
+     *  0/4/8/12/16/20/24/32/40/48. Matches `@pyreon/primitives`'s
+     *  `padding={4}` / `gap={4}` convention exactly.
+     *
+     *  Compose's `Dp` would be the idiomatic type here, but importing
+     *  it pulls in androidx.compose.ui — this package intentionally
+     *  stays Compose-import-free at the type level (see the package's
+     *  README + the audit's Kotlin-runtime story). The values are
+     *  Int dp values — call-site converts via `.dp` at usage.
+     *
+     *  Usage in hand-authored Compose:
+     *  ```
+     *  Column(
+     *      verticalArrangement = Arrangement.spacedBy(PyreonTokens.SPACING[3].dp),
+     *  ) { ... }  // 12dp gap
+     *  ```
+     */
+    public val SPACING: List<Int> = listOf(0, 4, 8, 12, 16, 20, 24, 32, 40, 48)
+
+    /** Semantic spacing aliases — xs/sm/md/lg/xl → 4/8/12/16/24. Maps
+     *  the `space="md"` shape to a concrete dp value. Map so the
+     *  compiler emit can look up via the literal alias string. */
+    public val SEMANTIC_SPACING: Map<String, Int> = mapOf(
+        "xs" to 4,
+        "sm" to 8,
+        "md" to 12,
+        "lg" to 16,
+        "xl" to 24,
+    )
 }
