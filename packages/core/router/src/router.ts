@@ -722,7 +722,8 @@ export function createRouter<TNames extends string = string>(
     if (!record.staleWhileRevalidate) {
       const cached = router._loaderCache.get(key)
       if (cached && isCacheFresh(cached, record)) {
-        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.loaderCache.hit')
+        if (process.env.NODE_ENV !== 'production')
+          _countSink.__pyreon_count__?.('router.loaderCache.hit')
         return Promise.resolve(cached.data)
       }
     }
@@ -1182,11 +1183,7 @@ export function createRouter<TNames extends string = string>(
       return router._readyPromise
     },
 
-    async preload(
-      path: string,
-      request?: Request,
-      options?: { skipLoaders?: boolean },
-    ) {
+    async preload(path: string, request?: Request, preloadOptions?: { skipLoaders?: boolean }) {
       const resolved = resolveRoute(path, routes)
       // Load lazy components in parallel and populate the component cache so
       // the synchronous render pass finds ready components instead of kicking
@@ -1210,7 +1207,7 @@ export function createRouter<TNames extends string = string>(
       // generating a static 404 page). Lazy components above DO still
       // resolve so the synthetic chain renders cleanly; only the
       // `r.loader()` invocations are skipped.
-      if (options?.skipLoaders) return
+      if (preloadOptions?.skipLoaders) return
       // Run loaders for the matched path — uses the same code path SSR
       // already relied on, so loader data ends up in `_loaderData` under the
       // matched route records. Uses a LOCAL AbortController: `preload` is
@@ -1346,8 +1343,7 @@ export function createRouter<TNames extends string = string>(
     // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal`
     // (not `this`), so the raw reference is safe to expose and to compare by
     // identity on `destroy()`.
-    ;(globalThis as Record<string, unknown>).__pyreon_hmr_swap__ =
-      router._hmrSwap
+    ;(globalThis as Record<string, unknown>).__pyreon_hmr_swap__ = router._hmrSwap
   }
 
   return router as unknown as Router<TNames>
