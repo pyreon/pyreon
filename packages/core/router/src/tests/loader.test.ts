@@ -184,6 +184,26 @@ describe('stringifyLoaderData (M2.2)', () => {
     })
   })
 
+  test('toJSON returning a primitive — detectCycle short-circuits (line 140 coverage)', () => {
+    // `Date` is the canonical example: toJSON returns a string. The cycle
+    // detector must respect this so a Date doesn't look like an "object
+    // with cycles to its own ancestors" (which it never has — the toJSON
+    // primitive can't carry references). Any object with a primitive-
+    // returning toJSON exercises the line-140 early-return.
+    const d = new Date(2026, 0, 1)
+    const json = stringifyLoaderData({ '/now': { when: d } })
+    // Should NOT throw; the Date serializes to its ISO string.
+    expect(json).toContain('"when":')
+    // Custom toJSON returning a non-Date primitive — same path.
+    const x = {
+      toJSON() {
+        return 42
+      },
+    }
+    expect(() => stringifyLoaderData({ '/x': x })).not.toThrow()
+    expect(stringifyLoaderData({ '/x': x })).toContain('42')
+  })
+
   test('shared (DAG) references serialize — only true cycles throw', () => {
     // BEHAVIOUR CHANGE (intentional, bug fix). Previously the all-seen
     // WeakSet threw "circular reference" on ANY object visited twice — a

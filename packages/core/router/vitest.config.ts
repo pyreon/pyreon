@@ -10,7 +10,7 @@ export default defineNodeConfig({
   // src/tests/setup.ts: test setup file, not production source.
   coverageExclude: ['src/scroll.ts', 'src/tests/**'],
   coverageThresholds: {
-    statements: 94,
+    statements: 95,
     branches: 88,
     functions: 94,
     lines: 94,

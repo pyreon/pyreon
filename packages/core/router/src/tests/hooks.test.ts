@@ -253,4 +253,28 @@ describe('NotFoundBoundary', () => {
     mount(tree, container)
     expect(container.querySelector('span[data-fb="static"]')?.textContent).toBe('static-fallback')
   })
+
+  it('re-throws non-notFound errors so they do NOT render the fallback (line 64)', () => {
+    // The NotFoundBoundary's fallback is invoked for EVERY thrown error,
+    // not just notFound() errors. The `if (!isNotFoundError(err)) throw err`
+    // re-throw on line 64 ensures regular errors continue propagating to
+    // an outer boundary — they must NOT render the NotFoundBoundary's
+    // 404 fallback (otherwise real bugs get silently masked as 404s).
+    const Inner = () => {
+      throw new Error('regular error, not notFound')
+    }
+    const Fallback = () => h('span', { 'data-fb': 'nf' }, 'nf-fallback')
+    const tree = h(NotFoundBoundary, { fallback: Fallback }, h(Inner, null))
+
+    const container = document.createElement('div')
+    // Mount may or may not throw depending on the runtime's error handling;
+    // the assertion that matters is "the notFound fallback was NOT rendered"
+    // because a regular error must not be treated as a 404.
+    try {
+      mount(tree, container)
+    } catch {
+      /* runtime caught and logged the re-throw — that's expected */
+    }
+    expect(container.querySelector('[data-fb="nf"]')).toBeNull()
+  })
 })
