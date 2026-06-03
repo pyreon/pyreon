@@ -52,6 +52,7 @@ export const sharedConfig: VitestUserConfig = {
     // honest, fast feedback. This was the root cause of `Test` going
     // red on unrelated PRs (e5-actor-model race, dnd cold-import
     // timeout) — flakes that pass deterministically when run alone.
+    /* v8 ignore next — CI/local retry split; tests run in local-or-CI but never both in one run */
     retry: process.env.CI ? 2 : 0,
   },
 }

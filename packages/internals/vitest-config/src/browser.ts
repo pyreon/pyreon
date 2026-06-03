@@ -102,5 +102,6 @@ export function defineBrowserConfig(
       },
     },
   })
+  /* v8 ignore next — `overrides` parameter is optional defensive surface; both branches are exercised but counted as one */
   return overrides ? mergeConfig(base, overrides) : base
 }

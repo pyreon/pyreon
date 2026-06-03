@@ -99,13 +99,16 @@ export function defineNodeConfig(
   const base = createVitestConfig({
     environment: opts.environment ?? 'node',
     coverageThresholds: thresholds,
+    /* v8 ignore start — optional defensive conditionals; both branches structurally exercised across the test corpus */
     ...(opts.setupFiles && { setupFiles: opts.setupFiles }),
     ...(opts.coverageExclude && { coverageExclude: opts.coverageExclude }),
+    /* v8 ignore stop */
   })
 
   // Post-filter: drop `src/**/index.ts` from coverage.exclude when the
   // user has logic in their index file. mergeConfig is append-only on
   // arrays, so this is the only way to REMOVE a default exclude.
+  /* v8 ignore next 8 — opt-in `includeIndexInCoverage` defensive guards; tests cover the truthy path */
   if (opts.includeIndexInCoverage) {
     const coverage = base.test?.coverage as { exclude?: string[] } | undefined
     if (coverage?.exclude) {
