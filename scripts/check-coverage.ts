@@ -75,12 +75,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'cov-94 series raised statements 85 → 94, now 95 (cov-95 series, PR #1219). Actual 96.36%. Branches at 81.81% — remaining branches are per-adapter file copies, binary-file path in template-engine, env.example append, and compat-shim deps — exercised at the bin level but not snapshot-locked. args.ts + prompts.ts + index.ts excluded since they need a TTY mock.',
   },
-  '@pyreon/cli': {
-    currentStatements: 94,
-    currentBranches: 80,
-    reason:
-      'cov-94 series raised statements 85 → 94 (actual 94.23%) — above floor. Branches at 80 (actual 82.8%) still 5pt below 85 floor — remaining branches are in render/text.ts opt-in TTY/color gating, doctor.ts argv-parsing flag combos, and lint config-diagnostics edge cases.',
-  },
   // ── Branch < 85 (statements OK) ─────────────────────────────────────
   '@pyreon/elements': {
     currentStatements: 95,
