@@ -13,6 +13,7 @@ import Styled from './styled'
  * with negative margins to offset column gutters.
  */
 
+/* v8 ignore next — production branch not exercised in tests */
 const DEV_PROPS: Record<string, string> = process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'row' } : {}
 
 const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss']> = (props) => {

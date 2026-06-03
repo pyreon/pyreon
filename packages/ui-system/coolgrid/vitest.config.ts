@@ -13,7 +13,7 @@ export default defineNodeConfig({
   coverageThresholds: {
     statements: 95,
     lines: 94,
-    branches: 90,
+    branches: 95,
     functions: 90,
   },
   overrides: {
