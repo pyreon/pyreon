@@ -9,9 +9,13 @@ name: Native Compiler Validation
 #      typically lacks one or both toolchains) wouldn't catch
 #
 # Trigger model:
-#   - `pull_request` with path filter on `packages/native/**` so the
-#     job only runs on PRs touching the native compiler. Other PRs
-#     skip this expensive job entirely.
+#   - `pull_request` runs on EVERY PR (no path filter). Native readiness
+#     audit (2026-06, CRIT-1) found that path-filtering to `packages/native/**`
+#     left a coverage hole: a change in `packages/core/compiler/` cascading
+#     through PMTC silently merged with zero native gating. The gate is
+#     cheap-enough (~5-10 min typical) to run universally; pure docs-only
+#     PRs can be opted out via the existing labels if cost becomes a real
+#     issue.
 #   - `workflow_dispatch` — manual run, useful for re-validating
 #     a specific commit without a fresh PR.
 #   - `schedule` — nightly drift check against main. Catches a fixture
@@ -24,11 +28,6 @@ name: Native Compiler Validation
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - 'packages/native/**'
-      - 'examples/native-counter-ios/**'
-      - 'examples/native-todomvc-ios/**'
-      - '.github/workflows/native-validate.yml'
   workflow_dispatch:
   schedule:
     # 05:23 UTC — offset from existing nightly workflows so runners
