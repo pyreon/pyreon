@@ -41,13 +41,19 @@ These packages are signal-driven business logic with no DOM dependency. They sho
 | `@pyreon/store` | `defineStore`, composition stores returning `StoreApi<T>` | Unverified |
 | `@pyreon/state-tree` | `model({ state, views, actions })` | Unverified |
 | `@pyreon/machine` | `createMachine` constrained signals | Unverified |
-| `@pyreon/rx` | Signal-aware transforms — `filter`, `map`, `sortBy`, `pipe`, `debounce`, etc. | Unverified |
 | `@pyreon/permissions` | `createPermissions`, RBAC + ABAC checks | Unverified |
 | `@pyreon/validation` | Standard Schema adapters (Zod / Valibot / ArkType) | Unverified — depends on whether the underlying validator compiles |
 | `@pyreon/validate` | DX overlay on Standard Schema | Unverified |
 | `@pyreon/i18n/core` | `createI18n` + `interpolate` + plural rules | Unverified (the `/core` entry is intentionally framework-agnostic; the JSX `<Trans>` component needs PMTC's JSX path) |
-| `@pyreon/sized-map` | Bounded Map utility | Unverified |
 | `@pyreon/feature` | Schema-driven CRUD primitives | Composes other Tier-2/3 packages; verify after dependencies |
+
+#### Audit corrections (June 2026)
+
+The following two packages were initially classified as Tier-2 but verification surfaced they belong elsewhere:
+
+- **`@pyreon/rx`** — moved to **Tier 3**. PMTC transform silently drops all `rx.*` calls from the emitted output. The user writes `rx.filter(signal, predicate)` and gets nothing on native. This is a silent correctness bug, not a compile failure. Adding rx support means either teaching PMTC's parser the `rx.*` namespace (so `rx.filter(sig, pred)` emits as `computed(() => sig().filter(pred))`) OR shipping per-target rx runtime ports. Regression-locked by `packages/native/compiler/src/tests/tier2-rx-silent-drop.test.ts`.
+
+- **`@pyreon/sized-map`** — **removed from Tier-2 classification**. SizedMap is a `class SizedMap<K, V>` data structure backed by a generic `Map<K, V>`. It's used INTERNALLY by `@pyreon/runtime-dom`'s template cache and `@pyreon/lint`'s AST cache — not in user component code. PMTC compiles `.tsx` component bodies, not generic standalone classes. This package is **internal infrastructure**, outside the multiplatform user-code surface; it doesn't need a tier.
 
 **To verify each**: write a `.tsx` fixture using the package, run it through PMTC → swiftc / kotlinc. If it compiles, the package is Tier-1.
 
@@ -62,6 +68,7 @@ These have an obvious cross-target API surface but the implementation is fundame
 | `@pyreon/toast` | `toast()`, `toast.success/error/etc()`, `<Toaster />` | Portal + CSS transitions | `UIAlertController` / banner overlay | Compose snackbar / banner |
 | `@pyreon/hotkeys` | `useHotkey('cmd+k', handler)` | `keydown` listener | `keyboardShortcut(modifiers:)` SwiftUI view modifier | `Modifier.onKeyEvent` |
 | `@pyreon/url-state` | `useUrlState(key, default)` | `URLSearchParams` + replaceState | Per-target deep-link API + path-segment state | Same |
+| `@pyreon/rx` | `rx.filter`, `rx.sortBy`, `rx.take`, `rx.pipe`, `rx.average`, ... (signal-aware reactive transforms) | TS source compiles directly | Either PMTC parser learns the `rx.*` namespace (cheapest path — emits `rx.filter(s, p)` as `computed(() => s().filter(p))`) OR per-target Swift rx runtime port | Same shape for Kotlin |
 
 Each of these is **multi-week work per package**. Same architectural shape as Storage (which already shipped).
 
