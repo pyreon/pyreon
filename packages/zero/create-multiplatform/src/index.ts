@@ -72,7 +72,11 @@ export function validateProjectName(name: string): void {
  * with hyphens, collapses double-hyphens, trims trailing hyphens.
  */
 export function suggestKebab(input: string): string {
-  let s = input.toLowerCase()
+  // Cap input length BEFORE regex operations so a malicious caller
+  // can't exploit polynomial-time behavior on greedy quantifiers
+  // (CodeQL: js/polynomial-redos). 200 chars is well above the final
+  // 50-char truncation and any realistic project name.
+  let s = input.slice(0, 200).toLowerCase()
   s = s.replace(/[^a-z0-9-]+/g, '-')
   s = s.replace(/^[^a-z]+/, '') // strip leading non-letters
   s = s.replace(/-+/g, '-')
