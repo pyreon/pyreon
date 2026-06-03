@@ -9,5 +9,5 @@ export default defineNodeConfig({
   // (snapshot of byte ranges). The render() pipeline calling into
   // them is covered by render.test.ts using a stub renderer.
   coverageExclude: ['src/renderers/pdf.ts', 'src/renderers/docx.ts'],
-  coverageThresholds: { statements: 95, lines: 95, branches: 80 },
+  coverageThresholds: { statements: 95, lines: 95, branches: 95 },
 })

@@ -30,7 +30,9 @@ export function sanitizeColor(value: string | undefined): string {
   if (/^[a-zA-Z]{1,20}$/.test(trimmed)) return trimmed
   // rgb/rgba/hsl/hsla
   if (/^(rgb|hsl)a?\(\s*[\d.,\s%]+\)$/.test(trimmed)) return trimmed
-  // transparent, inherit, currentColor
+  // transparent, inherit, currentColor — also matched by L30 named-colors regex
+  // (all letters, ≤ 20 chars) so this is defense-in-depth, dead in practice.
+  /* v8 ignore next — subset of named-colors regex above */
   if (/^(transparent|inherit|currentColor|initial|unset)$/i.test(trimmed)) return trimmed
   return ''
 }

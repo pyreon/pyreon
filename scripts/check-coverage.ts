@@ -75,12 +75,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Coverage has drifted from 92.53% (PR #1079) to 92.38% statements (June 2026) as jsx.ts grew with progressively rarer compiler-edge-case branches. The package vitest.config.ts now declares statements=92 explicitly. Branches at 84 (1pt below 85 floor) tracked alongside. PR #1266 raised MINIMUM_FLOOR 90 → 94 which began failing Coverage (Full) — this PR drops the exemption to match actual. Lifting back to 94+/85+ is its own targeted test-coverage PR — covering the long-tail compiler branches needs targeted fixtures, not opportunistic test adds.',
   },
-  '@pyreon/document': {
-    currentStatements: 95,
-    currentBranches: 80,
-    reason:
-      'Universal document renderer. Statements lifted 90 → 94 → 95 (cov-95 series, PR #1220). Actual 97.22% after excluding PDF + DOCX renderers (need real binary-fixture harness). Branches at 85.17% — XLSX / PPTX / SVG renderers still have format-specific branches that need binary fixtures.',
-  },
 }
 
 interface CoverageResult {
