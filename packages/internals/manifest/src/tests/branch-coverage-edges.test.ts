@@ -1,7 +1,7 @@
 /**
  * Branch-coverage edge tests for define + discovery + render.
  */
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
