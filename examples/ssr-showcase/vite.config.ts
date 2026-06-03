@@ -5,7 +5,7 @@ import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
 
 /**
  * Env-gated, dev-only test harness plugin. Active ONLY when
- * `PYREON_HMR_TEST` is set — which ONLY `playwright.zero-hmr.config.ts`'s
+ * `PYREON_HMR_TEST` is set — which ONLY `e2e-configs/zero-hmr.config.ts`'s
  * webServer sets. Never present in normal dev, never in any build.
  *
  * WHY THIS EXISTS — the zero-hmr e2e gate edits a route file mid-test

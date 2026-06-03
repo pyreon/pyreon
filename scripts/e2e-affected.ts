@@ -23,9 +23,10 @@
  *    suite runs. Only `pull_request` is ever scoped. The gate that
  *    actually protects `main` never trusts this script's narrowing.
  *  - Any change with broad/unknowable blast radius forces the FULL set:
- *    core framework packages, the vite-plugin, ANY `playwright*.config.ts`,
- *    the workflow itself, `scripts/**`, `bun.lock`, root `package.json` /
- *    `tsconfig*`. (Mirrors `scripts/affected.ts`'s root-file safety net.)
+ *    core framework packages, the vite-plugin, ANY `playwright*.config.ts`
+ *    OR `e2e-configs/**`, the workflow itself, `scripts/**`, `bun.lock`,
+ *    root `package.json` / `tsconfig*`. (Mirrors `scripts/affected.ts`'s
+ *    root-file safety net.)
  *  - Per-suite path triggers are deliberately GENEROUS supersets.
  *
  * ## Output
@@ -228,6 +229,7 @@ export function forcesFullRun(path: string): boolean {
   if (path.startsWith('.github/workflows/')) return true
   if (path.startsWith('scripts/')) return true
   if (/^playwright[^/]*\.config\.ts$/.test(path)) return true
+  if (path.startsWith('e2e-configs/')) return true
   // Core framework packages underpin essentially every example app.
   if (path.startsWith('packages/core/reactivity/')) return true
   if (path.startsWith('packages/core/core/')) return true

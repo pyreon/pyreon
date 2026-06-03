@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
  *
  * Targets `examples/ssr-showcase` BUILT under `vite.config.subpath.ts`
  * (with `zero({ base: '/blog/' })`) and SERVED via `vite preview` at
- * `http://localhost:5198` — config in `playwright.ssg-subpath.config.ts`.
+ * `http://localhost:5198` — config in `e2e-configs/ssg-subpath.config.ts`.
  *
  * Companion to the build-artifact gate `verify-modes ssr-showcase ×
  * ssg-subpath`. The verify-modes cell asserts the EMITTED HTML carries

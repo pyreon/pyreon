@@ -88,7 +88,7 @@ test('editing a route component hot-updates the DOM in place, no reload, signal 
     writeFileSync(PROBE, original.replace('MARKER_V1', 'MARKER_V2'), 'utf8')
     // Deterministically trigger Vite's REAL HMR pipeline for the file we
     // just wrote — the dev-only `pyreon:hmr-test-trigger` plugin (mounted
-    // only when playwright.zero-hmr.config.ts sets PYREON_HMR_TEST) calls
+    // only when e2e-configs/zero-hmr.config.ts sets PYREON_HMR_TEST) calls
     // `server.watcher.emit('change', f)`, the exact entrypoint a genuine
     // fs event uses. This removes the dependency on the OS file watcher
     // (no watcher config — Bun, Node, Vite 8 polling — reliably delivers
