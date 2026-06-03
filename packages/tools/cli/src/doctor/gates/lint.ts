@@ -27,7 +27,12 @@ import type {
   Severity,
 } from '../types'
 
-const mapLintSeverity = (s: string): Severity | null => {
+/**
+ * Map a `@pyreon/lint` severity string to the doctor's `Severity` type.
+ * Returns null for 'off' (or any unknown string), which the gate
+ * runner treats as "skip this diagnostic". Exported for unit testing.
+ */
+export const _mapLintSeverity = (s: string): Severity | null => {
   if (s === 'error') return 'error'
   if (s === 'warn') return 'warning'
   if (s === 'info') return 'info'
@@ -97,7 +102,7 @@ export const runLintGate = async (
 
   for (const fileResult of result.files) {
     for (const diag of fileResult.diagnostics) {
-      const severity = mapLintSeverity(diag.severity)
+      const severity = _mapLintSeverity(diag.severity)
       if (severity === null) continue
       const category = RULE_CATEGORY.get(diag.ruleId) ?? 'correctness'
       findings.push({
@@ -120,7 +125,7 @@ export const runLintGate = async (
   // Surface config-level diagnostics as architecture errors — they
   // mean the user's `.pyreonlintrc.json` has malformed rule options.
   for (const cd of result.configDiagnostics) {
-    const severity = mapLintSeverity(cd.severity)
+    const severity = _mapLintSeverity(cd.severity)
     if (severity === null) continue
     findings.push({
       category: 'architecture',
