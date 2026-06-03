@@ -115,30 +115,29 @@ describe('Transition', () => {
     await new Promise<void>((r) => setTimeout(r, 20))
     expect(onBeforeEnter).toHaveBeenCalled()
 
-    // Trigger the transitionend to complete the enter
+    // Drive the enter to completion. The Transition attaches its
+    // `transitionend` listener during the enter SETUP, which is rAF-scheduled —
+    // so a single `dispatchEvent` fired at a fixed delay (the previous shape)
+    // races the listener attach: if it lands first, the event is silently
+    // dropped and `onAfterEnter` only fires via the runtime's 5s fallback. That
+    // race is exactly why the previous fix had to widen the poll to 8000ms (to
+    // catch the 5s fallback) and why earlier fixed 10ms/50ms sleeps flaked.
+    //
+    // Structural fix: re-dispatch `transitionend` on EVERY poll iteration. Once
+    // the listener is attached (within a frame), the next dispatch lands and
+    // `onAfterEnter` fires — the poll then exits immediately, so exactly one
+    // dispatch is effective (no double-fire). This removes the dependency on the
+    // 5s fallback entirely, so the worst case is ~one frame, not ~5s + CI margin
+    // — the 8000ms ceiling can drop back to a sane 2000ms.
     const target = queryOptional<HTMLElement>(el, '.lifecycle')
     if (target) {
-      target.dispatchEvent(new Event('transitionend'))
-      // Poll for the assertion instead of fixed sleep. Fixed setTimeout
-      // is structurally flaky on shared CI runners: scheduling latency
-      // between dispatchEvent's callback queue and the next tick can
-      // exceed any reasonable fixed wait (we tried 10ms then 50ms, both
-      // flaked). `vi.waitFor` polls every 10ms up to the timeout, so it
-      // settles as soon as the assertion holds while still bounding the
-      // worst case.
-      //
-      // Timeout raised 2000 → 8000: under the full 60+-package parallel
-      // CI `Test` job, event-loop starvation can delay the Transition's
-      // completion callback past 2s (it was reproducibly flaking this
-      // single test there while passing deterministically in isolation).
-      // The runtime itself bounds Transition completion at a documented
-      // 5s fallback (CLAUDE.md), so a test asserting that completion must
-      // allow ≥5s + CI-scheduling margin. The poll still settles
-      // immediately once `onAfterEnter` fires — this only widens the
-      // worst-case ceiling, it does not slow the happy path.
-      await vi.waitFor(() => expect(onAfterEnter).toHaveBeenCalled(), {
-        timeout: 8000,
-      })
+      await vi.waitFor(
+        () => {
+          target.dispatchEvent(new Event('transitionend'))
+          expect(onAfterEnter).toHaveBeenCalled()
+        },
+        { timeout: 2000, interval: 16 },
+      )
     }
   })
 
@@ -169,12 +168,19 @@ describe('Transition', () => {
     await new Promise<void>((r) => setTimeout(r, 20))
     expect(onBeforeLeave).toHaveBeenCalled()
 
-    // Trigger transitionend to complete leave
+    // Same listener-attach race as the enter test, plus a worse tell: this used
+    // a single dispatch + a FIXED 20ms wait — exactly the shape the enter
+    // comment notes flaked at 10ms/50ms. Re-dispatch inside the poll so the
+    // leave completion is driven deterministically, not raced.
     const target = queryOptional<HTMLElement>(el, '.leave-target')
     if (target) {
-      target.dispatchEvent(new Event('transitionend'))
-      await new Promise<void>((r) => setTimeout(r, 20))
-      expect(onAfterLeave).toHaveBeenCalled()
+      await vi.waitFor(
+        () => {
+          target.dispatchEvent(new Event('transitionend'))
+          expect(onAfterLeave).toHaveBeenCalled()
+        },
+        { timeout: 2000, interval: 16 },
+      )
     }
   })
 
