@@ -93,12 +93,7 @@
     "pyreon/no-bare-signal-in-jsx": [
       "error",
       {
-        "exemptPaths": [
-          "packages/ui/primitives/",
-          "packages/ui-system/elements/",
-          "__tests__/",
-          ".test."
-        ]
+        "exemptPaths": ["__tests__/", ".test."]
       }
     ],
     "pyreon/no-module-signal-in-server-package": [

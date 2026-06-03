@@ -8,8 +8,7 @@ const defaultConfig = (): LintConfig => getPreset('recommended')
 const find = (
   result: ReturnType<typeof lintFile>,
   id: string,
-): ReturnType<typeof lintFile>['diagnostics'] =>
-  result.diagnostics.filter((d) => d.ruleId === id)
+): ReturnType<typeof lintFile>['diagnostics'] => result.diagnostics.filter((d) => d.ruleId === id)
 
 const fp = '/abs/packages/core/foo/src/x.tsx'
 const fpTs = '/abs/packages/core/foo/src/x.ts'
@@ -27,27 +26,60 @@ describe('pyreon/no-classname (jsx)', () => {
 
 describe('pyreon/no-htmlfor (jsx)', () => {
   it('flags htmlFor= in JSX', () => {
-    const result = lintFile(fp, `const X = () => <label htmlFor="x">y</label>`, allRules, defaultConfig())
+    const result = lintFile(
+      fp,
+      `const X = () => <label htmlFor="x">y</label>`,
+      allRules,
+      defaultConfig(),
+    )
     expect(find(result, 'pyreon/no-htmlfor').length).toBeGreaterThan(0)
   })
   it('does NOT flag for= in JSX', () => {
-    const result = lintFile(fp, `const X = () => <label for="x">y</label>`, allRules, defaultConfig())
+    const result = lintFile(
+      fp,
+      `const X = () => <label for="x">y</label>`,
+      allRules,
+      defaultConfig(),
+    )
     expect(find(result, 'pyreon/no-htmlfor').length).toBe(0)
   })
 })
 
 describe('pyreon/no-bare-signal-in-jsx', () => {
-  it('flags {signal()} as text expression', () => {
+  it('flags {signal()} in TEXT position', () => {
     const result = lintFile(
       fp,
       `const count = signal(0); const X = () => <div>{count()}</div>`,
       allRules,
       defaultConfig(),
     )
-    const diags = find(result, 'pyreon/no-bare-signal-in-jsx')
-    // The rule may or may not fire depending on context — just ensure
-    // lintFile doesn't crash and the rule runs.
-    expect(Array.isArray(diags)).toBe(true)
+    expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThan(0)
+  })
+
+  it('does NOT flag {signal()} in an ATTRIBUTE value (compiler _rp/_bind-wraps it)', () => {
+    // The exact shape from @pyreon/ui-primitives: `checked={checked()}`,
+    // `value={value()}`, `aria-checked={checked()}` are reactive — the rule
+    // previously over-fired here, treating attribute values as "JSX text".
+    const result = lintFile(
+      fp,
+      `const checked = signal(false); const value = signal(0);
+       const X = () => <input checked={checked()} value={value()} aria-valuenow={value()} />`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
+  })
+
+  it('still flags TEXT inside JSX nested in an attribute (precision)', () => {
+    // `prop={<div>{count()}</div>}` — the inner `{count()}` IS a text child of
+    // the nested <div>, so it must still report despite being inside an attr.
+    const result = lintFile(
+      fp,
+      `const count = signal(0); const X = () => <Comp prop={<div>{count()}</div>} />`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThan(0)
   })
 
   it('does NOT flag {() => signal()} accessor form', () => {
