@@ -36,7 +36,6 @@ const useTransitionState: UseTransitionState = ({ show, appear = false }) => {
       }
 
       const currentStage = runUntracked(() => stage())
-      /* v8 ignore next — defensive stage-discriminator branch */
       if (showVal && (currentStage === 'hidden' || currentStage === 'leaving')) {
         stage.set('entering')
       } else if (!showVal && (currentStage === 'entered' || currentStage === 'entering')) {

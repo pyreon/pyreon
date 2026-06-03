@@ -17,7 +17,6 @@ const Stagger = (props: StaggerProps): VNode | null => {
     'children',
     'onAfterLeave',
   ])
-  /* v8 ignore next 4 — defensive default-value fallbacks */
   const interval = own.interval ?? 50
   const reverseLeave = own.reverseLeave ?? false
   const appear = own.appear ?? false
@@ -33,7 +32,6 @@ const Stagger = (props: StaggerProps): VNode | null => {
   return (
     <>
       {childArray.map((child, index) => {
-        /* v8 ignore next — reverseLeave ternary combinatorics */
         const staggerIndex = !own.show() && reverseLeave ? count - 1 - index : index
         const delay = staggerIndex * interval
 
@@ -44,7 +42,6 @@ const Stagger = (props: StaggerProps): VNode | null => {
             appear={appear}
             timeout={timeout + delay}
             {...transitionProps}
-            /* v8 ignore next — reverseLeave ternary + last-index check combinatorics */
             onAfterLeave={index === (reverseLeave ? 0 : count - 1) ? own.onAfterLeave : undefined}
           >
             {cloneVNode(child, {
