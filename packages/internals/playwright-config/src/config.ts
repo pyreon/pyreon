@@ -25,6 +25,11 @@ export interface DefinePlaywrightConfigOptions {
   /** Worker count. Omit for Playwright's default; set `1` for gates whose
    * spec mutates committed shared state (e.g. zero-hmr). */
   workers?: number
+  /** Directory containing spec files, relative to the config file's
+   * location. Default `'./e2e'` (root `playwright.config.ts` sits next
+   * to the `e2e/` dir). Configs under `e2e-configs/` set this to
+   * `'../e2e'` so the resolved path stays `<repo>/e2e/`. */
+  testDir?: string
 }
 
 const DEFAULT_TEST_TIMEOUT = 30_000
@@ -49,7 +54,7 @@ const DEFAULT_WEBSERVER_TIMEOUT = 120_000
  */
 export function definePlaywrightConfig(opts: DefinePlaywrightConfigOptions): PlaywrightTestConfig {
   return defineConfig({
-    testDir: './e2e',
+    testDir: opts.testDir ?? './e2e',
     timeout: opts.timeout ?? DEFAULT_TEST_TIMEOUT,
     retries: process.env.CI ? 2 : 0,
     ...(opts.workers !== undefined ? { workers: opts.workers } : {}),

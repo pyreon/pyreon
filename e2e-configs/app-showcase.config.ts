@@ -12,6 +12,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  * CI: `bun run test:e2e:app-showcase` (own step in the E2E job).
  */
 export default definePlaywrightConfig({
+  testDir: '../e2e',
   projects: [
     { name: 'app-showcase', testMatch: /app-showcase-(flow|dnd|charts)\.spec\.ts$/, port: 5181 },
   ],

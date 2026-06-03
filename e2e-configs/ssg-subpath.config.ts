@@ -13,6 +13,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  * CI: `bun run test:e2e:ssg-subpath` (own step).
  */
 export default definePlaywrightConfig({
+  testDir: '../e2e',
   timeout: 60_000,
   projects: [
     { name: 'ssg-subpath', testMatch: /ssg-subpath\.spec\.ts$/, port: 5198 },

@@ -10,6 +10,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  * CI: `bun run test:e2e:native-router-demo-web` (own step).
  */
 export default definePlaywrightConfig({
+  testDir: '../e2e',
   projects: [
     {
       name: 'native-router-demo-web',

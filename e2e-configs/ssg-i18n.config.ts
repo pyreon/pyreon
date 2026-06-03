@@ -15,6 +15,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  * CI: `bun run test:e2e:ssg-i18n` (own step).
  */
 export default definePlaywrightConfig({
+  testDir: '../e2e',
   timeout: 60_000,
   projects: [
     { name: 'ssg-i18n', testMatch: /ssg-i18n\.spec\.ts$/, port: 5199 },

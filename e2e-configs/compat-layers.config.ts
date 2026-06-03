@@ -14,6 +14,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  * CI: `bun run test:e2e:compat` (own step).
  */
 export default definePlaywrightConfig({
+  testDir: '../e2e',
   projects: [
     { name: 'react-compat', testMatch: /react-compat\.spec\.ts$/, port: 5177 },
     { name: 'preact-compat', testMatch: /preact-compat\.spec\.ts$/, port: 5178 },

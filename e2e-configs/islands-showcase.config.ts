@@ -18,6 +18,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  * CI: `bun run test:e2e:islands` (own step).
  */
 export default definePlaywrightConfig({
+  testDir: '../e2e',
   projects: [
     {
       name: 'islands-showcase',

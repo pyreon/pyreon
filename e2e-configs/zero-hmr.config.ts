@@ -22,6 +22,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  * CI: `bun run test:e2e:zero-hmr` (own step).
  */
 export default definePlaywrightConfig({
+  testDir: '../e2e',
   timeout: 60_000,
   workers: 1,
   projects: [
