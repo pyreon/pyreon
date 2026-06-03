@@ -159,6 +159,11 @@ interface LisState {
   tailIdx: Int32Array
   pred: Int32Array
   stay: Uint8Array
+  // Reused per-update buffer of resolved cache entries (mountFor only). Lets
+  // the reorder resolve `cache.get(key)` ONCE per index instead of 3× (in
+  // computeForLis, applyForMoves, and the pos-refresh loop) — for a 1k swap
+  // that's ~2k fewer Map hashes per update. mountKeyedList leaves it empty.
+  entries: (ForEntry | undefined)[]
 }
 
 function growLisArrays(lis: LisState, n: number): LisState {
@@ -168,6 +173,7 @@ function growLisArrays(lis: LisState, n: number): LisState {
     tailIdx: new Int32Array(n + 16),
     pred: new Int32Array(n + 16),
     stay: new Uint8Array(n + 16),
+    entries: new Array<ForEntry | undefined>(n + 16),
   }
 }
 
@@ -199,7 +205,8 @@ function computeKeyedLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
-  if (process.env.NODE_ENV !== 'production' && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+  if (process.env.NODE_ENV !== 'production' && ops > 0)
+    _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
@@ -272,6 +279,7 @@ export function mountKeyedList(
     tailIdx: new Int32Array(16),
     pred: new Int32Array(16),
     stay: new Uint8Array(16),
+    entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
   }
 
   const collectKeyOrder = (
@@ -415,13 +423,8 @@ function trySmallKReorder(
   return true
 }
 
-function computeForLis(
-  lis: LisState,
-  n: number,
-  newKeys: (string | number)[],
-  cache: Map<string | number, ForEntry>,
-): number {
-  const { tails, tailIdx, pred } = lis
+function computeForLis(lis: LisState, n: number): number {
+  const { tails, tailIdx, pred, entries } = lis
   let lisLen = 0
   let ops = 0
   // Two-tier fast path.
@@ -447,8 +450,7 @@ function computeForLis(
   // happens to be the index itself. No behaviour change, only fewer probes.
   let lastV = -1
   for (let i = 0; i < n; i++) {
-    const key = newKeys[i] as string | number
-    const v = cache.get(key)?.pos ?? 0
+    const v = entries[i]?.pos ?? 0
     // Tier 1: extend LIS.
     if (v > lastV) {
       tails[lisLen] = v
@@ -478,21 +480,21 @@ function computeForLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     // v ≤ lastV here, so tails can't be extended: lo < lisLen always.
   }
-  if (process.env.NODE_ENV !== 'production' && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+  if (process.env.NODE_ENV !== 'production' && ops > 0)
+    _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
 function applyForMoves(
   n: number,
-  newKeys: (string | number)[],
+  entries: (ForEntry | undefined)[],
   stay: Uint8Array,
-  cache: Map<string | number, ForEntry>,
   liveParent: Node,
   tailMarker: Comment,
 ): void {
   let cursor: Node = tailMarker
   for (let i = n - 1; i >= 0; i--) {
-    const entry = cache.get(newKeys[i] as string | number)
+    const entry = entries[i]
     if (!entry) continue
     if (!stay[i]) moveEntryBefore(liveParent, entry.anchor, cursor)
     cursor = entry.anchor
@@ -512,12 +514,18 @@ function forLisReorder(
   grown.pred.fill(-1, 0, n)
   grown.stay.fill(0, 0, n)
 
-  const lisLen = computeForLis(grown, n, newKeys, cache)
+  // Resolve cache entries ONCE per index — computeForLis, applyForMoves, and
+  // the pos-refresh below all read them, so this replaces 3× Map.get(key) per
+  // entry with 1× (a 1k swap drops ~2k key hashes per update).
+  const entries = grown.entries
+  for (let i = 0; i < n; i++) entries[i] = cache.get(newKeys[i] as string | number)
+
+  const lisLen = computeForLis(grown, n)
   markStayingEntries(grown, lisLen)
-  applyForMoves(n, newKeys, grown.stay, cache, liveParent, tailMarker)
+  applyForMoves(n, entries, grown.stay, liveParent, tailMarker)
 
   for (let i = 0; i < n; i++) {
-    const cached = cache.get(newKeys[i] as string | number)
+    const cached = entries[i]
     if (cached) cached.pos = i
   }
 
@@ -557,6 +565,7 @@ export function mountFor<T>(
     tailIdx: new Int32Array(16),
     pred: new Int32Array(16),
     stay: new Uint8Array(16),
+    entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
   }
 
   const warnForKey = (seen: Set<string | number> | null, key: string | number) => {
@@ -626,12 +635,23 @@ export function mountFor<T>(
 
   const collectNewKeys = (items: T[], n: number): (string | number)[] => {
     const newKeys = new Array<string | number>(n)
-    const _seenUpdate = new Set<string | number>()
+    if (process.env.NODE_ENV !== 'production') {
+      // Duplicate-key detection here is purely a DEV diagnostic — the update
+      // path does NOT skip duplicates (keys array must match items length;
+      // duplicate keys cause cache collisions, first wins). So the per-update
+      // Set + warnForKey scan is dead weight in production: gate it out so the
+      // hot reorder path (swap/partial-update/replace) is a tight key loop with
+      // zero Set allocation. The fresh-render path keeps its load-bearing
+      // dedup (it DOES skip duplicates to prevent DOM corruption).
+      const _seenUpdate = new Set<string | number>()
+      for (let i = 0; i < n; i++) {
+        newKeys[i] = getKey(items[i] as T)
+        warnForKey(_seenUpdate, newKeys[i] as string | number)
+      }
+      return newKeys
+    }
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
-      warnForKey(_seenUpdate, newKeys[i] as string | number)
-      // Note: we don't skip here — keys array must match items array length.
-      // Duplicate keys in update will just cause cache collisions (first wins).
     }
     return newKeys
   }
