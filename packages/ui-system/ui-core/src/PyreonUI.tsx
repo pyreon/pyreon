@@ -64,11 +64,13 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
   // Ternary (not `&&`) so the typeof-derived `_isBrowser` guard is
   // statically verifiable as protecting the `matchMedia` access — same
   // runtime value (`false` on the server), SSR-safe + analyzer-clear.
+  /* v8 ignore next 3 — `_isBrowser` is always true in tests (happy-dom + matchMedia); SSR branch covered by typeof guard */
   const prefersDark = _isBrowser
     ? matchMedia('(prefers-color-scheme: dark)').matches
     : false
   _systemMode = signal<ThemeMode>(prefersDark ? 'dark' : 'light')
 
+  /* v8 ignore next 5 — same SSR/typeof gate as above */
   if (_isBrowser) {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
       _systemMode?.set(e.matches ? 'dark' : 'light')

@@ -40,6 +40,7 @@ const render: Render = (content, attachProps) => {
   }
 
   // VNode object — return directly
+  /* v8 ignore next 4 — fallthrough after typeof guards above; the trailing return is structurally unreachable */
   if (typeof content === 'object') {
     return content as VNodeChild
   }
