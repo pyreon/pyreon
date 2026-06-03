@@ -426,5 +426,78 @@ fun main() {
         expectEq(router.params.value, mapOf("id" to "42"), "params populated by init resolver")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${42} test(s) passed")
+    // Phase B8 — forward() + canGoForward + history semantics
+    // 2026-06 native readiness audit. Closes scout-5's "no forward()"
+    // finding. Mirror of Swift impl on Kotlin/Compose side.
+
+    runTest("B8 canGoForward starts false") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        expect(!router.canGoForward, "initial: no forward history")
+        router.push("/about")
+        expect(!router.canGoForward, "after push: no forward history")
+    }
+
+    runTest("B8 back() enables forward(); forward() re-navigates") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        router.push("/about")
+        expectEq(router.currentPath, "/about", "after push")
+        router.back()
+        expectEq(router.currentPath, "/home", "after back")
+        expect(router.canGoForward, "back populated forward stack")
+        router.forward()
+        expectEq(router.currentPath, "/about", "forward replayed")
+        expect(!router.canGoForward, "forward stack drained")
+    }
+
+    runTest("B8 forward() is no-op when stack empty") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        router.forward()
+        expectEq(router.currentPath, "/home", "unchanged")
+    }
+
+    runTest("B8 push() clears forward history") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        router.push("/a")
+        router.push("/b")
+        router.back()
+        expect(router.canGoForward, "back populated")
+        router.push("/c")
+        expect(!router.canGoForward, "new push cleared forward")
+    }
+
+    runTest("B8 replace() clears forward history") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        router.push("/a")
+        router.back()
+        expect(router.canGoForward, "back populated")
+        router.replace("/b")
+        expect(!router.canGoForward, "replace cleared forward")
+    }
+
+    runTest("B8 reset() clears both stacks") {
+        val router = PyreonRouter(initialPath = listOf("/a", "/b", "/c"))
+        router.back()  // forward stack = [/c]
+        expect(router.canGoForward, "back populated")
+        router.reset()
+        expect(!router.canGoForward, "reset cleared forward")
+        expectEq(router.path.value, emptyList(), "path also cleared")
+    }
+
+    runTest("B8 multi-back / multi-forward preserves order") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        router.push("/a")
+        router.push("/b")
+        router.push("/c")
+        expectEq(router.path.value, listOf("/home", "/a", "/b", "/c"), "after 3 pushes")
+        router.back()
+        router.back()
+        expectEq(router.currentPath, "/a", "after 2 backs")
+        router.forward()
+        expectEq(router.currentPath, "/b", "forward to /b")
+        router.forward()
+        expectEq(router.currentPath, "/c", "forward to /c")
+        expect(!router.canGoForward, "drained")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${49} test(s) passed")
 }
