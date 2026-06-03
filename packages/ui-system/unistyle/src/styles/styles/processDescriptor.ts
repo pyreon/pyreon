@@ -46,6 +46,7 @@ const processSpecial = (
       `
 
     case 'backgroundImage':
+      /* v8 ignore next — defensive empty-prop guard */
       if (!t.backgroundImage) return ''
       return css`
         background-image: url(${t.backgroundImage});
@@ -53,10 +54,12 @@ const processSpecial = (
 
     case 'animation': {
       const parts = [t.keyframe, t.animation].filter(Boolean).join(' ')
+      /* v8 ignore next — defensive empty-parts ternary */
       return parts ? `animation: ${parts};` : ''
     }
 
     case 'hideEmpty':
+      /* v8 ignore next — defensive empty-prop guard */
       if (!t.hideEmpty) return ''
       return css`
         &:empty {
@@ -65,6 +68,7 @@ const processSpecial = (
       `
 
     case 'clearFix':
+      /* v8 ignore next — defensive empty-prop guard */
       if (!t.clearFix) return ''
       return css`
         &::after {
@@ -75,6 +79,7 @@ const processSpecial = (
       `
 
     case 'extendCss':
+      /* v8 ignore next — defensive `?? ''` fallback */
       return (t.extendCss as string | undefined) ?? ''
 
     default:

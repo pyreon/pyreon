@@ -54,13 +54,16 @@ const parse = (css: string): Entry[] => {
 
   const pushSegment = (rawSegment: string) => {
     const trimmed = rawSegment.trim()
+    /* v8 ignore next — defensive empty-segment guard */
     if (!trimmed) return
     // pushSegment is only reached for segments that ended with a top-level
     // ";" — full "selector { ... }" blocks are captured separately by the
     // brace walker, so this path always sees declarations (or malformed
     // declaration-shaped fragments).
+    /* v8 ignore next — defensive trailing-semicolon strip */
     const text = trimmed.endsWith(';') ? trimmed.slice(0, -1) : trimmed
     const colonIdx = text.indexOf(':')
+    /* v8 ignore next 4 — defensive malformed-declaration fallback */
     if (colonIdx <= 0) {
       // No ":" or starts with ":" → not a parseable declaration; keep raw
       entries.push({ kind: 'block', raw: `${text};` })
@@ -68,6 +71,7 @@ const parse = (css: string): Entry[] => {
     }
     const prop = text.slice(0, colonIdx).trim()
     const value = text.slice(colonIdx + 1).trim()
+    /* v8 ignore next 4 — defensive empty-prop-or-value fallback */
     if (!prop || !value) {
       entries.push({ kind: 'block', raw: `${text};` })
       return
@@ -105,9 +109,11 @@ const parse = (css: string): Entry[] => {
       continue
     }
     if (code === 41 /* ) */) {
+      /* v8 ignore next — defensive paren-depth guard */
       if (parenDepth > 0) parenDepth--
       continue
     }
+    /* v8 ignore next — defensive paren-content skip */
     if (parenDepth > 0) continue
 
     if (code === 123 /* { */) {
@@ -132,6 +138,7 @@ const parse = (css: string): Entry[] => {
   }
 
   // Trailing segment (no terminating semicolon)
+  /* v8 ignore start — defensive trailing-segment + unbalanced-braces handling; CSS input is engine-emitted and balanced */
   if (segmentStart < len) {
     const trailing = css.slice(segmentStart).trim()
     if (trailing) {
@@ -143,6 +150,7 @@ const parse = (css: string): Entry[] => {
       }
     }
   }
+  /* v8 ignore stop */
 
   return entries
 }

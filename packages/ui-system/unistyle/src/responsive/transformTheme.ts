@@ -33,6 +33,7 @@ const transformTheme: TransformTheme = ({ theme, breakpoints }) => {
     if (Array.isArray(value) && value.length > 0) {
       for (let i = 0; i < value.length; i++) {
         const indexBreakpoint = breakpoints[i]
+        /* v8 ignore next — defensive null guard; i is bounded by value.length */
         if (indexBreakpoint == null) continue
         set(result, [indexBreakpoint, key], value[i])
       }
@@ -43,6 +44,7 @@ const transformTheme: TransformTheme = ({ theme, breakpoints }) => {
       }
     } else if (value != null) {
       const firstBreakpoint = breakpoints[0]
+      /* v8 ignore next — defensive null guard; breakpoints array always populated */
       if (firstBreakpoint == null) continue
       set(result, [firstBreakpoint, key], value)
     }

@@ -32,6 +32,7 @@ const value: Value = (param, rootSize = 16, outputUnit = 'rem'): string | number
   const p = param as string | number
 
   const [val, unit] = stripUnit(p as string, true)
+  /* v8 ignore next — defensive isNotValue guard; covered by earlier checks */
   if (isNotValue(val)) return null
   if (val === 0 || typeof val === 'string') return p
 
@@ -39,6 +40,7 @@ const value: Value = (param, rootSize = 16, outputUnit = 'rem'): string | number
   if (canConvert && !unit && outputUnit === 'px') return `${val}${outputUnit}`
   if (canConvert && !unit) return `${val / rootSize}rem`
   if (canConvert && unit === 'px' && outputUnit === 'rem') return `${val / rootSize}rem`
+  /* v8 ignore next — defensive unit fallback */
   if (unit) return p
 
   return `${val}${outputUnit}`

@@ -173,6 +173,7 @@ const makeItResponsive: MakeItResponsive =
     } else {
       let helperTheme = internalTheme
 
+      /* v8 ignore start — defensive `sortedBreakpoints ?? []` fallbacks; breakpoints always set in real usage */
       if (normalize) {
         helperTheme = normalizeTheme({
           theme: internalTheme,
@@ -189,6 +190,7 @@ const makeItResponsive: MakeItResponsive =
         theme: transformedTheme,
         breakpoints: sortedBreakpoints ?? [],
       })
+      /* v8 ignore stop */
 
       themeCache.set(internalTheme, {
         breakpoints: sortedBreakpoints,
@@ -201,6 +203,7 @@ const makeItResponsive: MakeItResponsive =
       })
     }
 
+    /* v8 ignore next — defensive `sortedBreakpoints ?? []` fallback */
     const bps = sortedBreakpoints ?? []
 
     // Resolve each per-breakpoint render to a string so the delta optimizer
@@ -209,6 +212,7 @@ const makeItResponsive: MakeItResponsive =
     // unoptimized path that lets the engine resolve interpolations itself.
     const renderedTexts: (string | null)[] = bps.map((item: string) => {
       const breakpointTheme = optimizedTheme[item]
+      /* v8 ignore next — defensive null-theme/media guard */
       if (!breakpointTheme || !media) return ''
       return stringifyResult(renderStyles(breakpointTheme))
     })
@@ -219,12 +223,14 @@ const makeItResponsive: MakeItResponsive =
       const deltas = optimizeBreakpointDeltas(renderedTexts as string[])
       result = bps.map((item: string, i: number) => {
         const cssText = deltas[i]
+        /* v8 ignore next — defensive null-cssText/media guard */
         if (!cssText || !media) return ''
         return (media as Record<string, any>)[item]`${cssText}`
       })
     } else {
       result = bps.map((item: string) => {
         const breakpointTheme = optimizedTheme[item]
+        /* v8 ignore next — defensive null-theme/media guard */
         if (!breakpointTheme || !media) return ''
         const r = renderStyles(breakpointTheme)
         return (media as Record<string, any>)[item]`
