@@ -191,11 +191,11 @@ describeNative('Native vs JS equivalence — template emission', () => {
     compare(input)
     // Tighter assertion: neither backend may emit the silent-merge shape.
     const js = transformJSX_JS(input, 'test.tsx')
-    expect(js.code).not.toMatch(/children\[0\]\(\(/)
-    expect(js.code).toMatch(/const __e0 = __root\.children\[0\];/)
+    expect(js.code).not.toMatch(/firstElementChild\(\(/)
+    expect(js.code).toMatch(/const __e0 = __root\.firstElementChild;/)
     const rs = nativeTransform!(input, 'test.tsx', false, null)
-    expect(rs.code).not.toMatch(/children\[0\]\(\(/)
-    expect(rs.code).toMatch(/const __e0 = __root\.children\[0\];/)
+    expect(rs.code).not.toMatch(/firstElementChild\(\(/)
+    expect(rs.code).toMatch(/const __e0 = __root\.firstElementChild;/)
   })
   test('non-delegated event', () => compare('<div onMouseEnter={handler}><span /></div>'))
   test('style object in template', () => compare('<div style={{ overflow: "hidden" }}>text</div>'))
@@ -207,7 +207,8 @@ describeNative('Native vs JS equivalence — template emission', () => {
   test('hidden=null', () => compare('<div hidden={null}><span /></div>'))
   test('hidden=undefined', () => compare('<div hidden={undefined}><span /></div>'))
   test('one-time set for variable', () => compare('<div title={someVar}><span /></div>'))
-  test('benchmark-like row', () => compare('<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>'))
+  test('benchmark-like row', () =>
+    compare('<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>'))
 })
 
 describeNative('Native vs JS equivalence — hoisting', () => {
@@ -242,67 +243,96 @@ describeNative('Native vs JS equivalence — pure calls', () => {
 
 describeNative('Native vs JS equivalence — props detection', () => {
   test('props.x in child', () => compare('function Comp(props) { return <div>{props.name}</div> }'))
-  test('props.x in attr', () => compare('function Comp(props) { return <div class={props.cls}></div> }'))
-  test('prop-derived inline', () => compare('function Comp(props) { const x = props.name ?? "anon"; return <div>{x}</div> }'))
-  test('prop-derived in attr', () => compare('function Comp(props) { const align = props.alignX ?? "left"; return <div class={align}></div> }'))
-  test('splitProps tracking', () => compare('function Comp(props) { const [own, rest] = splitProps(props, ["x"]); const v = own.x ?? 5; return <div>{v}</div> }'))
-  test('non-component not tracked', () => compare('function helper(props) { const x = props.y; return x }'))
-  test('signal alongside props', () => compare('function Comp(props) { return <div>{count()}</div> }'))
+  test('props.x in attr', () =>
+    compare('function Comp(props) { return <div class={props.cls}></div> }'))
+  test('prop-derived inline', () =>
+    compare('function Comp(props) { const x = props.name ?? "anon"; return <div>{x}</div> }'))
+  test('prop-derived in attr', () =>
+    compare(
+      'function Comp(props) { const align = props.alignX ?? "left"; return <div class={align}></div> }',
+    ))
+  test('splitProps tracking', () =>
+    compare(
+      'function Comp(props) { const [own, rest] = splitProps(props, ["x"]); const v = own.x ?? 5; return <div>{v}</div> }',
+    ))
+  test('non-component not tracked', () =>
+    compare('function helper(props) { const x = props.y; return x }'))
+  test('signal alongside props', () =>
+    compare('function Comp(props) { return <div>{count()}</div> }'))
   test('arrow component', () => compare('const Comp = (props) => <div>{props.x}</div>'))
-  test('prop used multiple times', () => compare('function Comp(props) { const x = props.a ?? "def"; return <div class={x}>{x}</div> }'))
+  test('prop used multiple times', () =>
+    compare('function Comp(props) { const x = props.a ?? "def"; return <div class={x}>{x}</div> }'))
 })
 
 describeNative('Native vs JS equivalence — transitive derivation', () => {
-  test('simple chain', () => compare('function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }'))
-  test('non-prop const', () => compare('function Comp(props) { const x = 42; return <div>{x}</div> }'))
-  test('let not tracked', () => compare('function Comp(props) { let x = props.y; x = "override"; return <div>{x}</div> }'))
-  test('deep chain', () => compare('function Comp(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }'))
-  test('mixed props and signals', () => compare('function Comp(props) { return <div class={`${props.base} ${count()}`}></div> }'))
+  test('simple chain', () =>
+    compare('function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }'))
+  test('non-prop const', () =>
+    compare('function Comp(props) { const x = 42; return <div>{x}</div> }'))
+  test('let not tracked', () =>
+    compare('function Comp(props) { let x = props.y; x = "override"; return <div>{x}</div> }'))
+  test('deep chain', () =>
+    compare(
+      'function Comp(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }',
+    ))
+  test('mixed props and signals', () =>
+    compare('function Comp(props) { return <div class={`${props.base} ${count()}`}></div> }'))
 })
 
 // ─── Edge cases that previously broke ───────────────────────────────────────
 
 describeNative('Native vs JS equivalence — TypeScript syntax', () => {
-  test('as expression in prop', () => compare('function C(props) { return <div>{(props.x as string)}</div> }'))
-  test('as in variable init', () => compare(`
+  test('as expression in prop', () =>
+    compare('function C(props) { return <div>{(props.x as string)}</div> }'))
+  test('as in variable init', () =>
+    compare(`
     function C(props) {
       const items = props.data as any[]
       return <div>{items}</div>
     }
   `))
   test('non-null assertion', () => compare('function C(props) { return <div>{props.name!}</div> }'))
-  test('satisfies', () => compare('function C(props) { return <div>{(props.x satisfies string)}</div> }'))
-  test('type annotation on arrow', () => compare('const C = (props: { x: string }) => <div>{props.x}</div>'))
-  test('generic component', () => compare('function List<T>(props: { items: T[] }) { return <div>{props.items}</div> }'))
+  test('satisfies', () =>
+    compare('function C(props) { return <div>{(props.x satisfies string)}</div> }'))
+  test('type annotation on arrow', () =>
+    compare('const C = (props: { x: string }) => <div>{props.x}</div>'))
+  test('generic component', () =>
+    compare('function List<T>(props: { items: T[] }) { return <div>{props.items}</div> }'))
 })
 
 describeNative('Native vs JS equivalence — export forms', () => {
-  test('export default function', () => compare('export default function App(props) { return <div>{props.name}</div> }'))
+  test('export default function', () =>
+    compare('export default function App(props) { return <div>{props.name}</div> }'))
   test('export const arrow', () => compare('export const App = (props) => <div>{props.name}</div>'))
-  test('export named function', () => compare('export function App(props) { return <div>{props.name}</div> }'))
+  test('export named function', () =>
+    compare('export function App(props) { return <div>{props.name}</div> }'))
   test('export const with signal', () => compare('export const view = <div>{count()}</div>'))
 })
 
 describeNative('Native vs JS equivalence — control flow', () => {
-  test('if statement before JSX', () => compare(`
+  test('if statement before JSX', () =>
+    compare(`
     function C(props) {
       if (!props.show) return null
       return <div>{props.name}</div>
     }
   `))
-  test('for loop before JSX', () => compare(`
+  test('for loop before JSX', () =>
+    compare(`
     function C(props) {
       for (let i = 0; i < 10; i++) {}
       return <div>{props.name}</div>
     }
   `))
-  test('try/catch wrapping JSX', () => compare(`
+  test('try/catch wrapping JSX', () =>
+    compare(`
     function C(props) {
       try { return <div>{props.name}</div> }
       catch(e) { return <div>error</div> }
     }
   `))
-  test('switch statement', () => compare(`
+  test('switch statement', () =>
+    compare(`
     function C(props) {
       switch (props.mode) {
         case 'a': return <div>A</div>
@@ -310,24 +340,28 @@ describeNative('Native vs JS equivalence — control flow', () => {
       }
     }
   `))
-  test('while loop', () => compare(`
+  test('while loop', () =>
+    compare(`
     function C() {
       let items = []
       while (items.length < 10) { items.push(1) }
       return <div>{items.length}</div>
     }
   `))
-  test('ternary return', () => compare(`
+  test('ternary return', () =>
+    compare(`
     function C(props) {
       return props.show ? <div>yes</div> : <div>no</div>
     }
   `))
-  test('logical AND return', () => compare(`
+  test('logical AND return', () =>
+    compare(`
     function C(props) {
       return props.show && <div>yes</div>
     }
   `))
-  test('arrow with block body', () => compare(`
+  test('arrow with block body', () =>
+    compare(`
     const C = (props) => {
       const x = props.name
       return <div>{x}</div>
@@ -336,7 +370,8 @@ describeNative('Native vs JS equivalence — control flow', () => {
 })
 
 describeNative('Native vs JS equivalence — callback depth', () => {
-  test('.map callback not tracked', () => compare(`
+  test('.map callback not tracked', () =>
+    compare(`
     function App(props) {
       return <div>{tabs.map((tab) => {
         const C = tab.component
@@ -344,12 +379,14 @@ describeNative('Native vs JS equivalence — callback depth', () => {
       })}</div>
     }
   `))
-  test('.filter callback not tracked', () => compare(`
+  test('.filter callback not tracked', () =>
+    compare(`
     function App(props) {
       return <div>{items.filter(i => i.visible).map(i => <span>{i.name()}</span>)}</div>
     }
   `))
-  test('nested callback', () => compare(`
+  test('nested callback', () =>
+    compare(`
     function App(props) {
       return <ul>{items.map(item => (
         <li class={item.done() ? 'done' : ''}>
@@ -361,9 +398,14 @@ describeNative('Native vs JS equivalence — callback depth', () => {
 })
 
 describeNative('Native vs JS equivalence — children slot', () => {
-  test('props.children uses _mountSlot', () => compare('function C(props) { return <div>{props.children}</div> }'))
-  test('own.children uses _mountSlot', () => compare('function C(props) { const own = props; return <label><input/>{own.children}</label> }'))
-  test('non-children prop uses text bind', () => compare('function C(props) { return <div>{props.name}</div> }'))
+  test('props.children uses _mountSlot', () =>
+    compare('function C(props) { return <div>{props.children}</div> }'))
+  test('own.children uses _mountSlot', () =>
+    compare(
+      'function C(props) { const own = props; return <label><input/>{own.children}</label> }',
+    ))
+  test('non-children prop uses text bind', () =>
+    compare('function C(props) { return <div>{props.name}</div> }'))
 })
 
 describeNative('Native vs JS equivalence — SSR mode', () => {
@@ -377,27 +419,42 @@ describeNative('Native vs JS equivalence — SSR mode', () => {
 describeNative('Native vs JS equivalence — warnings', () => {
   test('<For> without by produces warning', () => {
     const js = transformJSX_JS('<For each={items}>{(item) => <li>{item}</li>}</For>')
-    const rs = nativeTransform!('<For each={items}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false, null)
+    const rs = nativeTransform!(
+      '<For each={items}>{(item) => <li>{item}</li>}</For>',
+      'test.tsx',
+      false,
+      null,
+    )
     expect(rs.warnings.length).toBe(js.warnings.length)
     if (js.warnings.length > 0) {
       expect(rs.warnings[0]!.code).toBe(js.warnings[0]!.code)
     }
   })
   test('<For> with by has no warning', () => {
-    const js = transformJSX_JS('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>')
-    const rs = nativeTransform!('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false, null)
+    const js = transformJSX_JS(
+      '<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>',
+    )
+    const rs = nativeTransform!(
+      '<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>',
+      'test.tsx',
+      false,
+      null,
+    )
     expect(rs.warnings.length).toBe(js.warnings.length)
   })
 })
 
 describeNative('Native vs JS equivalence — HTML escaping', () => {
-  test('HTML entities preserved', () => compare('function C() { return <button>&lt; prev</button> }'))
-  test('mixed entities and ampersands', () => compare('function C() { return <span>A &amp; B &lt; C</span> }'))
+  test('HTML entities preserved', () =>
+    compare('function C() { return <button>&lt; prev</button> }'))
+  test('mixed entities and ampersands', () =>
+    compare('function C() { return <span>A &amp; B &lt; C</span> }'))
   test('quotes in attributes', () => compare('<div title="say &quot;hi&quot;"><span /></div>'))
 })
 
 describeNative('Native vs JS equivalence — signal() not inlined', () => {
-  test('signal() call not tracked as prop-derived', () => compare(`
+  test('signal() call not tracked as prop-derived', () =>
+    compare(`
     function C(props) {
       const open = signal(props.defaultOpen ?? false)
       return <div>{() => open() ? 'yes' : 'no'}</div>
@@ -406,20 +463,23 @@ describeNative('Native vs JS equivalence — signal() not inlined', () => {
 })
 
 describeNative('Native vs JS equivalence — circular references', () => {
-  test('two-variable cycle does not crash', () => compare(`
+  test('two-variable cycle does not crash', () =>
+    compare(`
     function Comp(props) {
       const a = b + props.x;
       const b = a + 1;
       return <div>{a}</div>
     }
   `))
-  test('self-referencing variable', () => compare(`
+  test('self-referencing variable', () =>
+    compare(`
     function Comp(props) {
       const a = a + props.x;
       return <div>{a}</div>
     }
   `))
-  test('non-cyclic deep chain', () => compare(`
+  test('non-cyclic deep chain', () =>
+    compare(`
     function Comp(props) {
       const a = props.x;
       const b = a + 1;
@@ -430,7 +490,8 @@ describeNative('Native vs JS equivalence — circular references', () => {
 })
 
 describeNative('Native vs JS equivalence — complex real-world patterns', () => {
-  test('todo app component', () => compare(`
+  test('todo app component', () =>
+    compare(`
     const TodoApp = (props) => {
       const [items, rest] = splitProps(props, ['items'])
       const count = items.items?.length ?? 0
@@ -443,7 +504,8 @@ describeNative('Native vs JS equivalence — complex real-world patterns', () =>
     }
   `))
 
-  test('form with multiple props', () => compare(`
+  test('form with multiple props', () =>
+    compare(`
     function FormField(props) {
       const label = props.label ?? 'Field'
       const required = props.required
@@ -456,7 +518,8 @@ describeNative('Native vs JS equivalence — complex real-world patterns', () =>
     }
   `))
 
-  test('list with For and template rows', () => compare(`
+  test('list with For and template rows', () =>
+    compare(`
     function UserList(props) {
       return (
         <table>
@@ -476,7 +539,8 @@ describeNative('Native vs JS equivalence — complex real-world patterns', () =>
     }
   `))
 
-  test('conditional rendering with Show', () => compare(`
+  test('conditional rendering with Show', () =>
+    compare(`
     function Modal(props) {
       return (
         <Show when={props.open}>
@@ -495,25 +559,32 @@ describeNative('Native vs JS equivalence — complex real-world patterns', () =>
 // ─── Unicode and multi-byte character safety ────────────────────────────────
 
 describeNative('Native vs JS equivalence — Unicode', () => {
-  test('emoji before JSX expression', () => compare(`
+  test('emoji before JSX expression', () =>
+    compare(`
     function C() { return <div>🔥{count()}</div> }
   `))
-  test('CJK characters before JSX', () => compare(`
+  test('CJK characters before JSX', () =>
+    compare(`
     function C() { return <div>日本語{name()}</div> }
   `))
-  test('accented chars in identifier', () => compare(`
+  test('accented chars in identifier', () =>
+    compare(`
     function C() { const café = "test"; return <div>{café}</div> }
   `))
-  test('emoji in prop value', () => compare(`
+  test('emoji in prop value', () =>
+    compare(`
     <div title="🎉 Party">text</div>
   `))
-  test('multi-byte chars in template literal', () => compare(`
+  test('multi-byte chars in template literal', () =>
+    compare(`
     <div>{\`Hello 世界 \${name()}\`}</div>
   `))
-  test('unicode in component name', () => compare(`
+  test('unicode in component name', () =>
+    compare(`
     <Ñoño value={x()} />
   `))
-  test('mixed unicode and ASCII', () => compare(`
+  test('mixed unicode and ASCII', () =>
+    compare(`
     function Comp(props) {
       const naïve = props.naïve ?? "default"
       return <div class={naïve}>{props.résumé}</div>
@@ -524,25 +595,29 @@ describeNative('Native vs JS equivalence — Unicode', () => {
 // ─── String literal collision resistance ────────────────────────────────────
 
 describeNative('Native vs JS equivalence — string literal collision', () => {
-  test('prop name matches string in ternary', () => compare(`
+  test('prop name matches string in ternary', () =>
+    compare(`
     function C(props) {
       const required = props.required
       return <div class={required ? 'required' : ''}>{required}</div>
     }
   `))
-  test('prop name in template literal string part', () => compare(`
+  test('prop name in template literal string part', () =>
+    compare(`
     function C(props) {
       const mode = props.mode
       return <div>{\`mode is \${mode}\`}</div>
     }
   `))
-  test('prop name in object key position', () => compare(`
+  test('prop name in object key position', () =>
+    compare(`
     function C(props) {
       const x = props.x
       return <div style={{ x: x }}></div>
     }
   `))
-  test('prop name in nested string', () => compare(`
+  test('prop name in nested string', () =>
+    compare(`
     function C(props) {
       const label = props.label
       return <div title={label || "label"}>text</div>
@@ -553,29 +628,37 @@ describeNative('Native vs JS equivalence — string literal collision', () => {
 // ─── Additional robustness tests ────────────────────────────────────────────
 
 describeNative('Native vs JS equivalence — additional edge cases', () => {
-  test('deeply nested template', () => compare(`
+  test('deeply nested template', () =>
+    compare(`
     <div><section><article><header><h1>{title()}</h1></header><p>{body()}</p></article></section></div>
   `))
-  test('multiple components in one file', () => compare(`
+  test('multiple components in one file', () =>
+    compare(`
     function A(props) { return <div>{props.a}</div> }
     function B(props) { return <span>{props.b}</span> }
   `))
-  test('component returning fragment', () => compare(`
+  test('component returning fragment', () =>
+    compare(`
     function C(props) { return <>{props.children}</> }
   `))
-  test('empty component', () => compare(`
+  test('empty component', () =>
+    compare(`
     function C() { return <div></div> }
   `))
-  test('template inside fragment wraps in braces', () => compare(`
+  test('template inside fragment wraps in braces', () =>
+    compare(`
     function C() { return <><button type="button">text</button><span /></> }
   `))
-  test('template inside nested fragment', () => compare(`
+  test('template inside nested fragment', () =>
+    compare(`
     function C() { return <><><div>inner</div></></> }
   `))
-  test('template in JSX attribute value (not brace-wrapped)', () => compare(`
+  test('template in JSX attribute value (not brace-wrapped)', () =>
+    compare(`
     <Show fallback={<div><p>Not logged in</p></div>}><span /></Show>
   `))
-  test('full Showcase pattern with Show + fallback', () => compare(`
+  test('full Showcase pattern with Show + fallback', () =>
+    compare(`
     function Demo(props) {
       const open = signal(false)
       return (
@@ -588,28 +671,34 @@ describeNative('Native vs JS equivalence — additional edge cases', () => {
       )
     }
   `))
-  test('array destructuring from signal', () => compare(`
+  test('array destructuring from signal', () =>
+    compare(`
     function C(props) {
       const [a, b] = props.items
       return <div>{a}</div>
     }
   `))
-  test('nested function not confused with component', () => compare(`
+  test('nested function not confused with component', () =>
+    compare(`
     function App(props) {
       function helper() { return props.x + 1 }
       return <div>{helper()}</div>
     }
   `))
-  test('class with JSX method', () => compare(`
+  test('class with JSX method', () =>
+    compare(`
     class C { render(props) { return <div>{props.name}</div> } }
   `))
-  test('immediately invoked arrow', () => compare(`
+  test('immediately invoked arrow', () =>
+    compare(`
     const el = (() => <div>{count()}</div>)()
   `))
-  test('JSX in variable init', () => compare(`
+  test('JSX in variable init', () =>
+    compare(`
     const header = <header><h1>Title</h1></header>
   `))
-  test('multiple JSX returns', () => compare(`
+  test('multiple JSX returns', () =>
+    compare(`
     function C(props) {
       if (props.loading) return <div>Loading...</div>
       if (props.error) return <div>Error</div>
@@ -621,111 +710,112 @@ describeNative('Native vs JS equivalence — additional edge cases', () => {
 // ─── Signal auto-call cross-backend equivalence ─────────────────────────────
 
 describeNative('Native vs JS equivalence — signal auto-call', () => {
-  test('bare signal in text child', () => compare(
-    'function C() { const name = signal("Vít"); return <div>{name}</div> }',
-  ))
-  test('signal in attribute', () => compare(
-    'function C() { const show = signal(false); return <div class={show ? "active" : ""}></div> }',
-  ))
-  test('already called NOT double-called', () => compare(
-    'function C() { const count = signal(0); return <div>{count()}</div> }',
-  ))
-  test('computed auto-called', () => compare(
-    'function C() { const d = computed(() => 2); return <div>{d}</div> }',
-  ))
-  test('signal in ternary', () => compare(
-    'function C() { const show = signal(false); return <div>{show ? "yes" : "no"}</div> }',
-  ))
-  test('signal in template literal', () => compare(
-    'function C() { const name = signal("world"); return <div>{`hello ${name}`}</div> }',
-  ))
-  test('signal in component prop with _rp', () => compare(
-    'function C() { const val = signal(42); return <MyComp value={val} /> }',
-  ))
-  test('multiple signals', () => compare(
-    'function C() { const a = signal(1); const b = signal(2); return <div>{a + b}</div> }',
-  ))
-  test('signal + computed together', () => compare(
-    'function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }',
-  ))
-  test('non-signal const NOT auto-called', () => compare(
-    'function C() { const x = 42; return <div>{x}</div> }',
-  ))
-  test('shorthand property NOT auto-called', () => compare(
-    'function C() { const name = signal("x"); return <div>{t("hi", { name })}</div> }',
-  ))
-  test('non-shorthand property value auto-called', () => compare(
-    'function C() { const name = signal("x"); return <div>{t("hi", { label: name })}</div> }',
-  ))
-  test('signal in object property value', () => compare(
-    'function C() { const x = signal(0); return <div>{({val: x})}</div> }',
-  ))
-  test('signal as member expression object', () => compare(
-    'function C() { const x = signal(0); return <div>{x.toString()}</div> }',
-  ))
-  test('signal in computed property access', () => compare(
-    'function C() { const idx = signal(0); return <div>{arr[idx]}</div> }',
-  ))
-  test('shadowed by inner const', () => compare(`
+  test('bare signal in text child', () =>
+    compare('function C() { const name = signal("Vít"); return <div>{name}</div> }'))
+  test('signal in attribute', () =>
+    compare(
+      'function C() { const show = signal(false); return <div class={show ? "active" : ""}></div> }',
+    ))
+  test('already called NOT double-called', () =>
+    compare('function C() { const count = signal(0); return <div>{count()}</div> }'))
+  test('computed auto-called', () =>
+    compare('function C() { const d = computed(() => 2); return <div>{d}</div> }'))
+  test('signal in ternary', () =>
+    compare('function C() { const show = signal(false); return <div>{show ? "yes" : "no"}</div> }'))
+  test('signal in template literal', () =>
+    compare('function C() { const name = signal("world"); return <div>{`hello ${name}`}</div> }'))
+  test('signal in component prop with _rp', () =>
+    compare('function C() { const val = signal(42); return <MyComp value={val} /> }'))
+  test('multiple signals', () =>
+    compare('function C() { const a = signal(1); const b = signal(2); return <div>{a + b}</div> }'))
+  test('signal + computed together', () =>
+    compare(
+      'function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }',
+    ))
+  test('non-signal const NOT auto-called', () =>
+    compare('function C() { const x = 42; return <div>{x}</div> }'))
+  test('shorthand property NOT auto-called', () =>
+    compare('function C() { const name = signal("x"); return <div>{t("hi", { name })}</div> }'))
+  test('non-shorthand property value auto-called', () =>
+    compare(
+      'function C() { const name = signal("x"); return <div>{t("hi", { label: name })}</div> }',
+    ))
+  test('signal in object property value', () =>
+    compare('function C() { const x = signal(0); return <div>{({val: x})}</div> }'))
+  test('signal as member expression object', () =>
+    compare('function C() { const x = signal(0); return <div>{x.toString()}</div> }'))
+  test('signal in computed property access', () =>
+    compare('function C() { const idx = signal(0); return <div>{arr[idx]}</div> }'))
+  test('shadowed by inner const', () =>
+    compare(`
     const show = signal(false)
     function Inner() {
       const show = 'not a signal'
       return <div>{show}</div>
     }
   `))
-  test('shadowed by function parameter', () => compare(`
+  test('shadowed by function parameter', () =>
+    compare(`
     const count = signal(0)
     function Display(count) {
       return <div>{count}</div>
     }
   `))
-  test('shadowed by destructured parameter', () => compare(`
+  test('shadowed by destructured parameter', () =>
+    compare(`
     const name = signal('Vít')
     function Greet({ name }) {
       return <div>{name}</div>
     }
   `))
-  test('export default function with shadow', () => compare(`
+  test('export default function with shadow', () =>
+    compare(`
     const show = signal(false)
     export default function App(show) {
       return <div>{show}</div>
     }
   `))
-  test('export named function with shadow', () => compare(`
+  test('export named function with shadow', () =>
+    compare(`
     const show = signal(false)
     export function App(show) {
       return <div>{show}</div>
     }
   `))
-  test('module-scope signal auto-called', () => compare(
-    'const globalSig = signal(0); function C() { return <div>{globalSig}</div> }',
-  ))
-  test('props + signal in same expression', () => compare(
-    'function C(props) { const show = signal(false); const label = props.label; return <div class={show ? label : "default"}></div> }',
-  ))
+  test('module-scope signal auto-called', () =>
+    compare('const globalSig = signal(0); function C() { return <div>{globalSig}</div> }'))
+  test('props + signal in same expression', () =>
+    compare(
+      'function C(props) { const show = signal(false); const label = props.label; return <div class={show ? label : "default"}></div> }',
+    ))
 })
 
 describeNative('Native vs JS equivalence — knownSignals cross-module', () => {
-  test('imported signal auto-called', () => compareWithSignals(
-    'import { count } from "./store"; function App() { return <div>{count}</div> }',
-    ['count'],
-  ))
-  test('imported signal with alias', () => compareWithSignals(
-    'import { count as c } from "./store"; function App() { return <div>{c}</div> }',
-    ['c'],
-  ))
-  test('imported signal not double-called', () => compareWithSignals(
-    'import { count } from "./store"; function App() { return <div>{count()}</div> }',
-    ['count'],
-  ))
-  test('imported signal respects shadow', () => compareWithSignals(
-    'import { count } from "./store"; function App() { const count = "shadow"; return <div>{count}</div> }',
-    ['count'],
-  ))
-  test('knownSignals combined with local signals', () => compareWithSignals(
-    'import { theme } from "./store"; function App() { const count = signal(0); return <div class={theme}>{count}</div> }',
-    ['theme'],
-  ))
+  test('imported signal auto-called', () =>
+    compareWithSignals(
+      'import { count } from "./store"; function App() { return <div>{count}</div> }',
+      ['count'],
+    ))
+  test('imported signal with alias', () =>
+    compareWithSignals(
+      'import { count as c } from "./store"; function App() { return <div>{c}</div> }',
+      ['c'],
+    ))
+  test('imported signal not double-called', () =>
+    compareWithSignals(
+      'import { count } from "./store"; function App() { return <div>{count()}</div> }',
+      ['count'],
+    ))
+  test('imported signal respects shadow', () =>
+    compareWithSignals(
+      'import { count } from "./store"; function App() { const count = "shadow"; return <div>{count}</div> }',
+      ['count'],
+    ))
+  test('knownSignals combined with local signals', () =>
+    compareWithSignals(
+      'import { theme } from "./store"; function App() { const count = signal(0); return <div class={theme}>{count}</div> }',
+      ['theme'],
+    ))
 })
 
 // PR #352 added a `DOM_PROPS` set so `<input value={x()} />` inside a
@@ -801,17 +891,14 @@ describeNative('Native vs JS equivalence — DOM properties', () => {
 // `expect(r).toEqual(j)` because the Rust set is missing that span);
 // restored → 9/9 pass.
 describeNative('Reactivity-lens — JS↔Rust span parity', () => {
-  test('reactive text child (_bindText)', () =>
-    compareLens('<div>{count()}</div>'))
+  test('reactive text child (_bindText)', () => compareLens('<div>{count()}</div>'))
 
-  test('reactive accessor text child (() => …)', () =>
-    compareLens('<div>{() => count()}</div>'))
+  test('reactive accessor text child (() => …)', () => compareLens('<div>{() => count()}</div>'))
 
   test('static-text child (baked once — the high-precision negative)', () =>
     compareLens('<div>{someConst}</div>'))
 
-  test('reactive-prop on a component (_rp(() => …))', () =>
-    compareLens('<Comp value={count()} />'))
+  test('reactive-prop on a component (_rp(() => …))', () => compareLens('<Comp value={count()} />'))
 
   test('reactive-attr on a DOM element (live binding)', () =>
     compareLens('<div><span title={count()}>hi</span></div>'))
@@ -820,9 +907,7 @@ describeNative('Reactivity-lens — JS↔Rust span parity', () => {
     compareLens('<Comp>{<b class="x">hi</b>}</Comp>'))
 
   test('mixed: reactive + static + prop in one tree', () =>
-    compareLens(
-      '<section><Comp value={count()} /><p>{count()}</p><p>{label}</p></section>',
-    ))
+    compareLens('<section><Comp value={count()} /><p>{count()}</p><p>{label}</p></section>'))
 
   test('multi-line source — line/column parity across newlines', () =>
     compareLens('<div>\n  {count()}\n  <span title={other()}>\n  z</span>\n</div>'))

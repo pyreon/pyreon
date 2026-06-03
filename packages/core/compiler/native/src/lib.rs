@@ -4137,8 +4137,8 @@ fn emit_reactive_text_child(
         .push(format!("const {} = document.createTextNode(\"\")", t_var));
     if needs_placeholder {
         tb.bind_lines.push(format!(
-            "{}.replaceChild({}, {}.childNodes[{}])",
-            parent_ref, t_var, parent_ref, child_node_idx
+            "{}.replaceChild({}, {})",
+            parent_ref, t_var, child_node_accessor(parent_ref, child_node_idx, true)
         ));
     } else {
         tb.bind_lines
@@ -4201,8 +4201,8 @@ fn emit_static_text_child(
         tb.bind_lines
             .push(format!("const {} = document.createTextNode({})", t_var, expr_text));
         tb.bind_lines.push(format!(
-            "{}.replaceChild({}, {}.childNodes[{}])",
-            parent_ref, t_var, parent_ref, child_node_idx
+            "{}.replaceChild({}, {})",
+            parent_ref, t_var, child_node_accessor(parent_ref, child_node_idx, true)
         ));
         "<!>".to_string()
     } else {
@@ -4210,6 +4210,31 @@ fn emit_static_text_child(
             .push(format!("{}.textContent = {}", var_name, expr_text));
         String::new()
     }
+}
+
+// Strength-reduce children[N]/childNodes[N] to a firstChild/nextSibling walk.
+// The live HTMLCollection/NodeList indexed getter is measurably slower than
+// direct pointer reads (~3.8% on create-heavy mounts; SolidJS emits the walk
+// form for the same reason). children[] (element collection, skips text) maps to
+// firstElementChild/nextElementSibling; childNodes[] (node list) maps to
+// firstChild/nextSibling. Falls back to indexed past 8 hops. MUST stay byte-for-
+// byte identical to jsx.ts:childNodeAccessor (native-equivalence tests enforce).
+fn child_node_accessor(parent_ref: &str, idx: usize, mixed: bool) -> String {
+    if idx > 8 {
+        return if mixed {
+            format!("{}.childNodes[{}]", parent_ref, idx)
+        } else {
+            format!("{}.children[{}]", parent_ref, idx)
+        };
+    }
+    let first = if mixed { "firstChild" } else { "firstElementChild" };
+    let next = if mixed { "nextSibling" } else { "nextElementSibling" };
+    let mut s = format!("{}.{}", parent_ref, first);
+    for _ in 0..idx {
+        s.push('.');
+        s.push_str(next);
+    }
+    s
 }
 
 fn process_one_child(
@@ -4226,9 +4251,9 @@ fn process_one_child(
         FlatChild::Text(text) => Some(escape_html_text(text)),
         FlatChild::Element(el, elem_idx) => {
             let child_accessor = if use_mixed {
-                format!("{}.childNodes[{}]", parent_ref, child_node_idx)
+                child_node_accessor(parent_ref, child_node_idx, true)
             } else {
-                format!("{}.children[{}]", parent_ref, elem_idx)
+                child_node_accessor(parent_ref, *elem_idx, false)
             };
             process_element(el, &child_accessor, tb, ctx)
         }
@@ -4241,7 +4266,7 @@ fn process_one_child(
             );
             if is_children_expression(expr, &expr_text) || is_element_valued_ident {
                 tb.needs_mount_slot = true;
-                let placeholder = format!("{}.childNodes[{}]", parent_ref, child_node_idx);
+                let placeholder = child_node_accessor(parent_ref, child_node_idx, true);
                 let d = tb.next_disp();
                 tb.bind_lines.push(format!(
                     "const {} = _mountSlot({}, {}, {})",
