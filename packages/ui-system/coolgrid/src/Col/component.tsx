@@ -12,6 +12,7 @@ import Styled from './styled'
  * of the total columns. Supports responsive size, padding, and visibility.
  */
 
+/* v8 ignore next — production branch not exercised in tests */
 const DEV_PROPS: Record<string, string> = process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'col' } : {}
 
 const Component: ElementType<
