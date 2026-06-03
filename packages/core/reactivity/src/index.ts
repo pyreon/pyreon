@@ -1,11 +1,13 @@
+import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from './singleton-sentinel'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/reactivity
 // instances in the same heap. See singleton-sentinel.ts for full rationale.
-// Hardcoded version is acceptable here — it's a diagnostic aid, not a
-// load-bearing identity check (the marker identity is the package name +
-// normalized location).
-registerSingleton('@pyreon/reactivity', '0.24.6', import.meta.url)
+// Name + version are derived from this package's OWN package.json (single
+// source of truth) so the diagnostic can never report a stale version: the
+// build inlines the literals, dev (bun → src) reads the live package.json.
+// No hardcoded version to drift on release.
+registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export { batch, nextTick } from './batch'
 export { Cell, cell } from './cell'
