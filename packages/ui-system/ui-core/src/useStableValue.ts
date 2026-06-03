@@ -11,6 +11,7 @@ import isEqual from './isEqual'
 const useStableValue = <T>(value: T): T => {
   const ref = signal(value)
 
+  /* v8 ignore next 3 — defensive: ref was just initialized with `value`, isEqual is always true */
   if (!isEqual(ref.peek(), value)) {
     ref.set(value)
   }

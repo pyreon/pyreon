@@ -44,6 +44,7 @@ const hoistNonReactStatics = <T, S>(
     }
 
     const descriptor = Object.getOwnPropertyDescriptor(source, key)
+    /* v8 ignore next — descriptor is always defined: key came from getOwnPropertyNames(source) */
     if (descriptor) {
       try {
         Object.defineProperty(target, key, descriptor)

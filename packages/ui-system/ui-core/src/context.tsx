@@ -49,6 +49,7 @@ type ProviderType = Partial<
  * @deprecated Prefer `<PyreonUI theme={theme}>` which handles all context layers.
  */
 function Provider({ theme, children, ...props }: ProviderType): VNodeChild {
+  /* v8 ignore next 5 — dev-only warning gate; production NODE_ENV branch not exercised in tests */
   if (process.env.NODE_ENV !== 'production') {
     // oxlint-disable-next-line no-console
     console.warn(
