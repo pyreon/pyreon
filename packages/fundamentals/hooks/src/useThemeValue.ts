@@ -14,6 +14,7 @@ export type UseThemeValue = <T = unknown>(path: string) => T | undefined
  */
 export const useThemeValue: UseThemeValue = (path) => {
   const theme = useTheme()
+  /* v8 ignore next — defensive no-theme guard; ThemeContext default is `{}`, so falsy is unreachable in practice */
   if (!theme) return undefined
   return get(theme, path)
 }

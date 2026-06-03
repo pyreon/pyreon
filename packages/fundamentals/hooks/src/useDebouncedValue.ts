@@ -17,6 +17,7 @@ export function useDebouncedValue<T>(getter: () => T, delayMs: number): () => T 
   })
 
   onUnmount(() => {
+    /* v8 ignore next — defensive timer cleanup; both timer states counted as separate paths */
     if (timer !== undefined) clearTimeout(timer)
   })
 

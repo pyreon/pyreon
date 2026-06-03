@@ -14,6 +14,7 @@ export interface WindowSize {
  */
 export function useWindowResize(debounceMs = 200): () => WindowSize {
   const size = signal<WindowSize>({
+    /* v8 ignore next 2 — SSR/typeof window guards; tests run with happy-dom */
     width: typeof window !== 'undefined' ? window.innerWidth : 0,
     height: typeof window !== 'undefined' ? window.innerHeight : 0,
   })
