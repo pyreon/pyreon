@@ -10,6 +10,26 @@ import {
   resolveSpace,
 } from '../web/tokens'
 
+describe('resolveSpace — out-of-range fallbacks', () => {
+  it('out-of-range numeric index returns "0"', () => {
+    expect(resolveSpace(99 as never)).toBe('0')
+  })
+
+  it('unknown semantic name returns "0"', () => {
+    expect(resolveSpace('huge' as never)).toBe('0')
+  })
+})
+
+describe('resolveColor / resolveRadius — fallback paths', () => {
+  it('unknown color token falls back to `text`', () => {
+    expect(resolveColor('purple' as never)).toBe('#111827')
+  })
+
+  it('unknown radius token falls back to "0"', () => {
+    expect(resolveRadius('mega' as never)).toBe('0')
+  })
+})
+
 describe('resolveSpace', () => {
   it('integer indices map to canonical 4px scale', () => {
     // 0 still emits "0px" (uniform output keeps style strings normalized).
