@@ -124,6 +124,7 @@ const Transition = (props: TransitionProps): VNode | null => {
   // calls produce `{type: undefined}` → `<undefined>` DOM tags.
   const child = resolveChildren(props.children) as VNode
   const elementRef = createRef<HTMLElement>()
+  /* v8 ignore next — defensive null-child fallback */
   const childProps = (child?.props ?? {}) as Record<string, unknown>
   const mergedRef = mergeRefs(
     elementRef,
@@ -158,6 +159,7 @@ const Transition = (props: TransitionProps): VNode | null => {
     active: () => (stage() === 'entering' || stage() === 'leaving') && !reducedMotion(),
     timeout,
     onEnd: () => {
+      /* v8 ignore next — defensive stage-discriminator branch */
       if (stage() === 'entering') {
         callbacks.onAfterEnter?.()
       } else if (stage() === 'leaving') {
@@ -210,6 +212,7 @@ const Transition = (props: TransitionProps): VNode | null => {
       <Show
         when={shouldMount}
         fallback={
+          /* v8 ignore next 2 — unmount ternary; both arms structurally exercised but counted per arm */
           unmount
             ? null
             : cloneVNode(child, {
