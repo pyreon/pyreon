@@ -6,7 +6,7 @@
   },
   "rules": {
     "no-unused-vars": [
-      "warn",
+      "error",
       {
         "argsIgnorePattern": "^_",
         "varsIgnorePattern": "^_",
@@ -20,10 +20,10 @@
     "no-template-curly-in-string": "warn",
     "no-debugger": "error",
     "typescript/no-non-null-assertion": "warn",
-    "import/no-duplicates": "warn",
+    "import/no-duplicates": "error",
     "jsx-a11y/control-has-associated-label": "off",
     "jsx-a11y/label-has-associated-control": "off",
-    "oxc/no-map-spread": "warn",
+    "oxc/no-map-spread": "off",
     "vitest/require-mock-type-parameters": "off",
     "vitest/expect-expect": "off",
     "vitest/no-conditional-expect": "off",
@@ -33,7 +33,10 @@
     "no-unsafe-optional-chaining": "error",
     "no-control-regex": "error",
     "no-unused-expressions": "error",
+    "no-useless-escape": "error",
     "unicorn/no-thenable": "error",
+    "unicorn/prefer-string-starts-ends-with": "error",
+    "jsx-a11y/no-redundant-roles": "error",
     "vitest/valid-expect": ["error", { "maxArgs": 2 }],
     "vitest/no-standalone-expect": "error"
   },
@@ -117,6 +120,12 @@
       "files": ["packages/native/compiler/src/**"],
       "rules": {
         "unicorn/no-thenable": "off"
+      }
+    },
+    {
+      "files": ["docs/.vitepress/**"],
+      "rules": {
+        "no-useless-escape": "off"
       }
     }
   ],

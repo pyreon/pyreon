@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/feature',
   title: 'Schema-Driven CRUD',
-  tagline:
-    'Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores',
+  tagline: 'Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores',
   description:
     'Schema-driven feature factory for Pyreon. Define a feature schema and API config once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.',
   category: 'universal',
@@ -91,8 +90,7 @@ store.loading() // loading state`,
     {
       name: 'defineFeature',
       kind: 'function',
-      signature:
-        '<T>(config: FeatureConfig<T>) => Feature<T>',
+      signature: '<T>(config: FeatureConfig<T>) => Feature<T>',
       summary:
         'Define a schema-driven CRUD feature. Accepts a name, field schema, and API config. Returns a Feature object with auto-generated hooks: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`. Composes @pyreon/query (data fetching), @pyreon/form (form state), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). Schema field types are inferred for TypeScript autocompletion across all generated hooks.',
       example: `const Posts = defineFeature({
@@ -123,7 +121,7 @@ Posts.useTable({ columns: ['title', 'author'] })`,
       kind: 'function',
       signature: 'reference(target: { name: string }) => ReferenceSchema',
       summary:
-        'Mark a schema field as a foreign key reference to another feature. Used inside defineFeature schema definitions to establish relationships between features. The generated form and table hooks understand reference fields and can render appropriate UI (select dropdowns, linked displays). The marker is a `Symbol.for(\'pyreon:feature:reference\')` property — invisible to JSON.stringify but detected by extractFields() and the validation layer.',
+        "Mark a schema field as a foreign key reference to another feature. Used inside defineFeature schema definitions to establish relationships between features. The generated form and table hooks understand reference fields and can render appropriate UI (select dropdowns, linked displays). The marker is a `Symbol.for('pyreon:feature:reference')` property — invisible to JSON.stringify but detected by extractFields() and the validation layer.",
       example: `const Users = defineFeature({ name: 'users', schema: { name: 'string' }, api: { baseUrl: '/api/users' } })
 const Posts = defineFeature({
   name: 'posts',
@@ -137,7 +135,7 @@ const Posts = defineFeature({
       mistakes: [
         'Passing a plain string instead of a Feature ref — `reference("users")` will not typecheck; pass the Feature object or `{ name: "users" }`.',
         'Forgetting that the referenced Feature must ALSO be defined via defineFeature — the FK only works end-to-end when both sides are real Features sharing the same QueryClient.',
-        'Expecting reference() to enforce schema validation at the foreign side — it only marks the field. Cascade behaviour (deleting a user → orphaning posts) is the consumer\'s concern.',
+        "Expecting reference() to enforce schema validation at the foreign side — it only marks the field. Cascade behaviour (deleting a user → orphaning posts) is the consumer's concern.",
       ],
       seeAlso: ['defineFeature', 'isReference'],
     },
@@ -155,8 +153,8 @@ for (const [key, value] of Object.entries(Posts.schema)) {
   }
 }`,
       mistakes: [
-        'Trying to detect references via \`instanceof\` — references are symbol-tagged plain objects, not class instances. Always use isReference().',
-        'Confusing isReference() with Zod\'s own type guards — isReference checks ONLY for the Pyreon reference marker, not for arbitrary Zod schemas.',
+        'Trying to detect references via `instanceof` — references are symbol-tagged plain objects, not class instances. Always use isReference().',
+        "Confusing isReference() with Zod's own type guards — isReference checks ONLY for the Pyreon reference marker, not for arbitrary Zod schemas.",
       ],
       seeAlso: ['reference', 'extractFields'],
     },
@@ -184,7 +182,7 @@ const fields = extractFields(schema)
       mistakes: [
         'Calling extractFields on a Pyreon plain-string schema (`{ title: "string" }`) instead of a Zod schema — extractFields expects Zod shapes; the plain-string form is interpreted inside defineFeature, not here.',
         'Expecting field order to match declaration order in ALL JS engines — relies on Object.keys() insertion order, which V8 / SpiderMonkey / JSC all preserve for string keys but is technically engine-specific.',
-        'Assuming `label` is derived from a docs comment — labels are derived from the field name via humanize-case (\`firstName\` → \`First Name\`). Override by passing a label via your own `FieldInfo`.',
+        'Assuming `label` is derived from a docs comment — labels are derived from the field name via humanize-case (`firstName` → `First Name`). Override by passing a label via your own `FieldInfo`.',
       ],
       seeAlso: ['defaultInitialValues', 'defineFeature'],
     },
@@ -202,7 +200,7 @@ const initial = defaultInitialValues(fields)
 
 const form = useForm({ initialValues: initial, ... })`,
       mistakes: [
-        'Expecting defaults to come from Zod\'s `.default()` modifier — defaultInitialValues uses the FIELD TYPE only. Zod-level defaults flow through Zod\'s own parse, not this helper.',
+        "Expecting defaults to come from Zod's `.default()` modifier — defaultInitialValues uses the FIELD TYPE only. Zod-level defaults flow through Zod's own parse, not this helper.",
         'Using these defaults for create-or-update forms — these are CREATE-mode seeds. For edit mode, fetch the existing record and use those values.',
       ],
       seeAlso: ['extractFields', 'defineFeature'],

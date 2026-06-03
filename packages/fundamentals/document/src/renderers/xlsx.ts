@@ -1,4 +1,4 @@
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
+import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getTextContent } from '../nodes'
 
 /**

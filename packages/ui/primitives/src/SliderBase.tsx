@@ -57,7 +57,6 @@ export const SliderBase: ComponentFn<SliderBaseProps> = (props) => {
       step={own.step ?? 1}
       disabled={own.disabled}
       name={own.name}
-      role="slider"
       aria-valuenow={value()}
       aria-valuemin={own.min ?? 0}
       aria-valuemax={own.max ?? 100}

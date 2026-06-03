@@ -1,6 +1,5 @@
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero/server'
-import { nodeAdapter } from '@pyreon/zero/server'
+import zero, { nodeAdapter } from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
 import { seoPlugin } from '@pyreon/zero/seo'
 import { chartsViteAlias } from '@pyreon/charts/vite'

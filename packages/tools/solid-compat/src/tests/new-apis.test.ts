@@ -33,16 +33,32 @@ import {
   produce,
   startTransition,
   useTransition,
-} from '../index'
-import type {
-  Accessor,
-  Component,
-  FlowComponent,
-  Owner,
-  ParentComponent,
-  Setter,
-  Signal,
-  VoidComponent,
+  catchError,
+  createContext,
+  createDeferred,
+  createReaction,
+  createUniqueId,
+  DEV,
+  Dynamic,
+  hydrate,
+  Index,
+  mergeProps,
+  on,
+  Portal,
+  reconcile,
+  render,
+  Show,
+  splitProps,
+  unwrap,
+  useContext,
+  type Accessor,
+  type Component,
+  type FlowComponent,
+  type Owner,
+  type ParentComponent,
+  type Setter,
+  type Signal,
+  type VoidComponent,
 } from '../index'
 import type { RenderContext } from '../jsx-runtime'
 import { beginRender, endRender, getCurrentCtx, jsx } from '../jsx-runtime'
@@ -103,10 +119,7 @@ describe('createSignal equals option in component context', () => {
       rerenders++
     }
     const [obj, setObj] = runner.run(() =>
-      createSignal(
-        { id: 1, name: 'a' },
-        { equals: (prev, next) => prev.id === next.id },
-      ),
+      createSignal({ id: 1, name: 'a' }, { equals: (prev, next) => prev.id === next.id }),
     )
     setObj({ id: 1, name: 'b' }) // same id, different name
     expect(rerenders).toBe(0) // skipped due to custom equals
@@ -124,10 +137,7 @@ describe('createSignal equals option in component context', () => {
       rerenders++
     }
     const [, setObj] = runner.run(() =>
-      createSignal(
-        { id: 1, name: 'a' },
-        { equals: (prev, next) => prev.id === next.id },
-      ),
+      createSignal({ id: 1, name: 'a' }, { equals: (prev, next) => prev.id === next.id }),
     )
     setObj((prev) => ({ ...prev, name: 'updated' })) // same id
     expect(rerenders).toBe(0) // skipped
@@ -658,7 +668,9 @@ describe('jsx-runtime coverage', () => {
         ctx.pendingLayoutEffects.push({
           fn: () => {
             cleanups.push('layout-run')
-            return () => { cleanups.push('layout-cleanup') }
+            return () => {
+              cleanups.push('layout-cleanup')
+            }
           },
           deps: undefined,
           cleanup: undefined,
@@ -1001,27 +1013,6 @@ describe('jsx-runtime layout/schedule effects', () => {
 })
 
 // ─── import mergeProps and splitProps ────────────────────────────────────────
-
-import {
-  catchError,
-  createContext,
-  createDeferred,
-  createReaction,
-  createUniqueId,
-  DEV,
-  Dynamic,
-  hydrate,
-  Index,
-  mergeProps,
-  on,
-  Portal,
-  reconcile,
-  render,
-  Show,
-  splitProps,
-  unwrap,
-  useContext,
-} from '../index'
 
 // ─── createEffect with prev value ───────────────────────────────────────────
 
@@ -1374,12 +1365,7 @@ describe('createStore path setter with filter predicate', () => {
     })
 
     // Update text of all done items
-    setStore(
-      'todos',
-      (t: { done: boolean }) => t.done,
-      'text',
-      'completed',
-    )
+    setStore('todos', (t: { done: boolean }) => t.done, 'text', 'completed')
     expect(store.todos[0]!.text).toBe('completed')
     expect(store.todos[1]!.text).toBe('Walk dog') // unchanged
     expect(store.todos[2]!.text).toBe('completed')
@@ -1387,11 +1373,7 @@ describe('createStore path setter with filter predicate', () => {
 
   it('filter predicate with functional value update', () => {
     const [store, setStore] = createStore({
-      items: [
-        { value: 1 },
-        { value: 2 },
-        { value: 3 },
-      ],
+      items: [{ value: 1 }, { value: 2 }, { value: 3 }],
     })
 
     // Double the value of items > 1
@@ -1412,11 +1394,7 @@ describe('createStore path setter with filter predicate', () => {
     })
 
     // Replace all even numbers with 0
-    setStore(
-      'items',
-      (_v: number, i: number) => i % 2 === 1,
-      0,
-    )
+    setStore('items', (_v: number, i: number) => i % 2 === 1, 0)
     expect(store.items[0]!).toBe(1)
     expect(store.items[1]!).toBe(0)
     expect(store.items[2]!).toBe(3)
@@ -1429,20 +1407,16 @@ describe('createStore path setter with filter predicate', () => {
 
 describe('createResource with initialValue', () => {
   it('returns initialValue immediately without throwing', () => {
-    const [data] = createResource(
-      () => new Promise<number>((r) => setTimeout(() => r(99), 100)),
-      { initialValue: 42 },
-    )
+    const [data] = createResource(() => new Promise<number>((r) => setTimeout(() => r(99), 100)), {
+      initialValue: 42,
+    })
     // Should not throw even while loading — initialValue is set
     expect(data()).toBe(42)
     expect(data.loading).toBe(true)
   })
 
   it('initialValue replaced after fetch resolves', async () => {
-    const [data] = createResource(
-      () => Promise.resolve(99),
-      { initialValue: 42 },
-    )
+    const [data] = createResource(() => Promise.resolve(99), { initialValue: 42 })
     expect(data()).toBe(42)
     await new Promise((r) => setTimeout(r, 10))
     expect(data()).toBe(99)
@@ -1450,11 +1424,9 @@ describe('createResource with initialValue', () => {
 
   it('initialValue with source-based resource', async () => {
     const [source] = createSignal('key')
-    const [data] = createResource(
-      source,
-      async (src) => `result-${src}`,
-      { initialValue: 'initial' },
-    )
+    const [data] = createResource(source, async (src) => `result-${src}`, {
+      initialValue: 'initial',
+    })
     expect(data()).toBe('initial')
     await new Promise((r) => setTimeout(r, 10))
     expect(data()).toBe('result-key')
@@ -1465,17 +1437,23 @@ describe('createResource with initialValue', () => {
 
 describe('catchError', () => {
   it('returns value on success', () => {
-    const result = catchError(() => 42, () => {})
+    const result = catchError(
+      () => 42,
+      () => {},
+    )
     expect(result).toBe(42)
   })
 
   it('catches sync Error and calls onError', () => {
     let caught: Error | undefined
-    const result = catchError(() => {
-      throw new Error('test-error')
-    }, (err) => {
-      caught = err
-    })
+    const result = catchError(
+      () => {
+        throw new Error('test-error')
+      },
+      (err) => {
+        caught = err
+      },
+    )
     expect(result).toBeUndefined()
     expect(caught).toBeInstanceOf(Error)
     expect(caught!.message).toBe('test-error')
@@ -1483,11 +1461,14 @@ describe('catchError', () => {
 
   it('wraps non-Error throw in Error', () => {
     let caught: Error | undefined
-    catchError(() => {
-      throw 'string-error'
-    }, (err) => {
-      caught = err
-    })
+    catchError(
+      () => {
+        throw 'string-error'
+      },
+      (err) => {
+        caught = err
+      },
+    )
     expect(caught).toBeInstanceOf(Error)
     expect(caught!.message).toBe('string-error')
   })
@@ -1545,10 +1526,7 @@ describe('createReaction', () => {
 describe('Dynamic', () => {
   it('renders a string tag chosen at runtime', () => {
     const container = document.createElement('div')
-    mount(
-      jsx(Dynamic as unknown as ComponentFn, { component: 'h2', children: 'Title' }),
-      container,
-    )
+    mount(jsx(Dynamic as unknown as ComponentFn, { component: 'h2', children: 'Title' }), container)
     expect(container.querySelector('h2')?.textContent).toBe('Title')
   })
 
@@ -1665,9 +1643,7 @@ describe('Portal', () => {
     )
     // No wrapper host — children land directly under mount.
     expect(mountEl.querySelector('#p-plain')?.textContent).toBe('plain')
-    expect(
-      (mountEl.firstElementChild as HTMLElement | null)?.shadowRoot ?? null,
-    ).toBeNull()
+    expect((mountEl.firstElementChild as HTMLElement | null)?.shadowRoot ?? null).toBeNull()
     document.body.removeChild(mountEl)
   })
 })

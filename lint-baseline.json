@@ -1,21 +1,17 @@
 {
   "description": "oxlint WARN-finding ratchet — per-rule counts may only DECREASE. A change pushing any rule above its baseline fails `bun scripts/check-lint-ratchet.ts`. After fixing findings, tighten with `--update`. Never raise the baseline to absorb new findings. See .claude/rules/code-style.md (three-state model).",
-  "total": 559,
+  "total": 496,
   "rules": {
     "typescript(no-non-null-assertion)": 296,
     "eslint(no-console)": 115,
     "unicorn(no-new-array)": 24,
-    "import(no-duplicates)": 18,
-    "oxc(no-map-spread)": 18,
-    "eslint(no-unused-vars)": 15,
     "promise(no-callback-in-promise)": 9,
-    "eslint(no-useless-escape)": 8,
     "typescript(no-this-alias)": 6,
     "jsx-a11y(click-events-have-key-events)": 6,
     "jsx-a11y(no-static-element-interactions)": 6,
-    "unicorn(no-useless-fallback-in-spread)": 5,
     "eslint(no-template-curly-in-string)": 4,
     "jsx-a11y(prefer-tag-over-role)": 4,
+    "unicorn(no-useless-fallback-in-spread)": 3,
     "jsx-a11y(no-noninteractive-element-interactions)": 3,
     "jsx-a11y(no-autofocus)": 3,
     "jsx-a11y(anchor-is-valid)": 3,
@@ -26,8 +22,6 @@
     "jsx-a11y(no-noninteractive-element-to-interactive-role)": 2,
     "unicorn(no-useless-length-check)": 1,
     "vitest(valid-title)": 1,
-    "unicorn(prefer-string-starts-ends-with)": 1,
-    "jsx-a11y(no-redundant-roles)": 1,
     "unicorn(no-empty-file)": 1,
     "jsx-a11y(no-noninteractive-tabindex)": 1
   }
