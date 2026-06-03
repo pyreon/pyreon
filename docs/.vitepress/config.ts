@@ -113,6 +113,7 @@ export default defineConfig({
             { text: 'Reactivity Rules', link: '/docs/reactivity-rules' },
             { text: 'Architecture & prior art', link: '/docs/architecture-and-prior-art' },
             { text: 'Multi-Platform (PMTC)', link: '/docs/multiplatform' },
+            { text: 'PMTC Library Status & Authoring', link: '/docs/multiplatform-libraries' },
             { text: 'PMTC Supported TypeScript', link: '/docs/pmtc-supported-typescript' },
             { text: 'PMTC Per-Target Setup', link: '/docs/pmtc-per-target-setup' },
           ],
