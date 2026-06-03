@@ -62,6 +62,12 @@ import {
   withTracking,
 } from '../tracking'
 
+// Cast helpers: @pyreon/reactivity narrows process.env to { NODE_ENV?: string }
+// for tree-shaking purposes; tests need wider access to PYREON_SINGLE_INSTANCE.
+const _env = process.env as Record<string, string | undefined>
+const _psi = () => _env.PYREON_SINGLE_INSTANCE
+const _setPsi = (v: string | undefined) => { _env.PYREON_SINGLE_INSTANCE = v }
+
 // ─── tracking.ts ────────────────────────────────────────────────────────────
 
 describe('tracking — cleanupEffect WeakMap path (lines 70-71)', () => {
@@ -725,8 +731,8 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
 
   test('PYREON_SINGLE_INSTANCE=warn demotes dual-instance throw to console.error (line 107)', () => {
     const errMock = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const prev = process.env.PYREON_SINGLE_INSTANCE
-    process.env.PYREON_SINGLE_INSTANCE = 'warn'
+    const prev = _psi()
+    _setPsi('warn')
 
     try {
       registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/A')
@@ -737,16 +743,16 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
       ).not.toThrow()
       expect(errMock).toHaveBeenCalled()
     } finally {
-      if (prev === undefined) delete process.env.PYREON_SINGLE_INSTANCE
-      else process.env.PYREON_SINGLE_INSTANCE = prev
+      if (prev === undefined) delete _env.PYREON_SINGLE_INSTANCE
+      else _setPsi(prev)
       errMock.mockRestore()
     }
   })
 
   test('PYREON_SINGLE_INSTANCE=silent suppresses warn AND throw', () => {
     const errMock = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const prev = process.env.PYREON_SINGLE_INSTANCE
-    process.env.PYREON_SINGLE_INSTANCE = 'silent'
+    const prev = _psi()
+    _setPsi('silent')
 
     try {
       registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/A')
@@ -756,15 +762,15 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
       // No console.error in silent mode
       expect(errMock).not.toHaveBeenCalled()
     } finally {
-      if (prev === undefined) delete process.env.PYREON_SINGLE_INSTANCE
-      else process.env.PYREON_SINGLE_INSTANCE = prev
+      if (prev === undefined) delete _env.PYREON_SINGLE_INSTANCE
+      else _setPsi(prev)
       errMock.mockRestore()
     }
   })
 
   test('default behavior (no env) throws on dual-instance', () => {
-    const prev = process.env.PYREON_SINGLE_INSTANCE
-    delete process.env.PYREON_SINGLE_INSTANCE
+    const prev = _psi()
+    delete _env.PYREON_SINGLE_INSTANCE
 
     try {
       registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/A')
@@ -772,14 +778,14 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
         registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/B'),
       ).toThrow(/Multiple instances/)
     } finally {
-      if (prev !== undefined) process.env.PYREON_SINGLE_INSTANCE = prev
+      if (prev !== undefined) _setPsi(prev)
     }
   })
 
   test('withSilent during dual-load suppresses detection (refcount path)', async () => {
     const errMock = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const prev = process.env.PYREON_SINGLE_INSTANCE
-    delete process.env.PYREON_SINGLE_INSTANCE
+    const prev = _psi()
+    delete _env.PYREON_SINGLE_INSTANCE
 
     try {
       registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/A')
@@ -791,14 +797,14 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
       // No throw, no error
       expect(errMock).not.toHaveBeenCalled()
     } finally {
-      if (prev !== undefined) process.env.PYREON_SINGLE_INSTANCE = prev
+      if (prev !== undefined) _setPsi(prev)
       errMock.mockRestore()
     }
   })
 
   test('withSilentSync supports the same refcount-based suppression', () => {
-    const prev = process.env.PYREON_SINGLE_INSTANCE
-    delete process.env.PYREON_SINGLE_INSTANCE
+    const prev = _psi()
+    delete _env.PYREON_SINGLE_INSTANCE
 
     try {
       registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/A')
@@ -809,13 +815,13 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
         }),
       ).not.toThrow()
     } finally {
-      if (prev !== undefined) process.env.PYREON_SINGLE_INSTANCE = prev
+      if (prev !== undefined) _setPsi(prev)
     }
   })
 
   test('nested withSilent calls compose via refcount (depth > 1 stays silent)', async () => {
-    const prev = process.env.PYREON_SINGLE_INSTANCE
-    delete process.env.PYREON_SINGLE_INSTANCE
+    const prev = _psi()
+    delete _env.PYREON_SINGLE_INSTANCE
 
     try {
       registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/A')
@@ -828,13 +834,13 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
         registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/C')
       })
     } finally {
-      if (prev !== undefined) process.env.PYREON_SINGLE_INSTANCE = prev
+      if (prev !== undefined) _setPsi(prev)
     }
   })
 
   test('withSilent throwing user fn still pops depth (finally guard fires)', async () => {
-    const prev = process.env.PYREON_SINGLE_INSTANCE
-    delete process.env.PYREON_SINGLE_INSTANCE
+    const prev = _psi()
+    delete _env.PYREON_SINGLE_INSTANCE
 
     try {
       await expect(
@@ -850,7 +856,7 @@ describe('singleton-sentinel — env override + silentDepth guards', () => {
         registerSingleton('@pyreon/test-pkg', '1.0.0', 'file:///path/B'),
       ).toThrow(/Multiple instances/)
     } finally {
-      if (prev !== undefined) process.env.PYREON_SINGLE_INSTANCE = prev
+      if (prev !== undefined) _setPsi(prev)
     }
   })
 
@@ -889,8 +895,8 @@ describe('lpih — getDefaultLpihCachePath fallback paths', () => {
     expect(result).toMatch(/\.pyreon-lpih\.json$/)
   })
 
-  test('when process.cwd throws, getDefaultLpihCachePath returns null (line 72-74)', () => {
-    const origCwd = process.cwd
+  test('when (process as unknown as { cwd: () => string }).cwd throws, getDefaultLpihCachePath returns null (line 72-74)', () => {
+    const origCwd = (process as unknown as { cwd: () => string }).cwd
     // Force cwd to throw — simulates filesystem-detached process state.
     ;(process as unknown as { cwd: () => string }).cwd = () => {
       throw new Error('no cwd')
@@ -904,7 +910,7 @@ describe('lpih — getDefaultLpihCachePath fallback paths', () => {
 
   test('writeLpihCache throws when no path AND no cwd default available', async () => {
     const { writeLpihCache } = await import('../lpih')
-    const origCwd = process.cwd
+    const origCwd = (process as unknown as { cwd: () => string }).cwd
     ;(process as unknown as { cwd: () => string }).cwd = () => {
       throw new Error('no cwd')
     }
@@ -917,7 +923,7 @@ describe('lpih — getDefaultLpihCachePath fallback paths', () => {
 
   test('startLpihPolling throws when no path AND no cwd default available', async () => {
     const { startLpihPolling } = await import('../lpih')
-    const origCwd = process.cwd
+    const origCwd = (process as unknown as { cwd: () => string }).cwd
     ;(process as unknown as { cwd: () => string }).cwd = () => {
       throw new Error('no cwd')
     }
@@ -1399,9 +1405,9 @@ describe('production-mode gates — NODE_ENV=production paths', () => {
 
   test('effect() in production with async fn does NOT warn (gated)', () => {
     const warnMock = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const eff = effect(async () => {
+    const eff = effect((async () => {
       /* async body */
-    })
+    }) as () => void)
     expect(warnMock).not.toHaveBeenCalled()
     eff.dispose()
     warnMock.mockRestore()
