@@ -96,13 +96,11 @@ function plainSubscribe<R>(fn: () => R): R {
  * notify (so in-place-mutated store objects still propagate).
  */
 function safeNotEqual(a: unknown, b: unknown): boolean {
-  /* v8 ignore start */
   // eslint-disable-next-line no-self-compare
   return a != a
     ? // eslint-disable-next-line no-self-compare
       b == b
     : a !== b || (a !== null && typeof a === 'object') || typeof a === 'function'
-  /* v8 ignore stop */
 }
 
 interface SubEntry<T> {
@@ -142,7 +140,6 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
   const subs = new Set<SubEntry<T>>()
 
   const setVal = (next: T): void => {
-    /* v8 ignore next — defensive equality-skip; tests exercise both arms but counted */
     if (!safeNotEqual(v, next)) return
     v = next
     if (!stop) return // not "ready" — Svelte's gate (start hasn't returned)
@@ -201,7 +198,6 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
             // array). Zero on a render-heavy workload = either no
             // cached subscriptions OR — bug — the includes() guard
             // suppressed a valid re-push.
-            /* v8 ignore next 2 — defensive dev-mode telemetry */
             if (process.env.NODE_ENV !== 'production')
               _countSink.__pyreon_count__?.('svelte-compat.subscribe.cachedRePush')
           }
@@ -211,7 +207,6 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
           run,
           invalidate,
           rerender: () => {
-            /* v8 ignore next — defensive unmounted-check during re-render */
             if (!ctx.unmounted) ctx.scheduleRerender()
           },
         }
@@ -361,13 +356,11 @@ export function onMount(fn: () => CleanupFn | void): void {
       // cleanup. Re-push it so it still runs on final unmount — the lifecycle
       // sibling of the #739 `writable.subscribe` re-push. `includes()` guards
       // against a double-push within the same render.
-      /* v8 ignore start — defensive re-push on re-render; rare lifecycle shape */
       const stored = ctx.hooks[idx]
       if (typeof stored === 'function') {
         const cb = stored as () => void
         if (!ctx.unmountCallbacks.includes(cb)) ctx.unmountCallbacks.push(cb)
       }
-      /* v8 ignore stop */
     }
     return
   }
@@ -387,13 +380,11 @@ export function onDestroy(fn: () => void): void {
     } else {
       // Re-render: re-push the dropped destroy callback (the #739 lifecycle
       // sibling) so it still fires on final unmount.
-      /* v8 ignore start — defensive re-push on re-render; rare lifecycle shape */
       const stored = ctx.hooks[idx]
       if (typeof stored === 'function') {
         const cb = stored as () => void
         if (!ctx.unmountCallbacks.includes(cb)) ctx.unmountCallbacks.push(cb)
       }
-      /* v8 ignore stop */
     }
     return
   }
@@ -482,10 +473,8 @@ export function createEventDispatcher<EventMap extends Record<string, unknown> =
   detail?: EventMap[Type],
 ) => boolean {
   const ctx = getCurrentCtx()
-  /* v8 ignore next — defensive `ctx?.props ?? {}` fallback */
   const props = (ctx?.props ?? {}) as Record<string, unknown>
   return (type, detail) => {
-    /* v8 ignore next 4 — defensive CustomEvent-typeof guard; both arms exercised but counted */
     const evt =
       typeof CustomEvent === 'function'
         ? new CustomEvent(type, { detail })
