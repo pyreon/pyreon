@@ -282,19 +282,13 @@ export function mountKeyedList(
     entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
   }
 
-  const collectKeyOrder = (
-    newList: VNode[],
-  ): { newKeyOrder: (string | number)[]; newKeySet: Set<string | number> } => {
+  const collectKeyOrder = (newList: VNode[]): (string | number)[] => {
     const newKeyOrder: (string | number)[] = []
-    const newKeySet = new Set<string | number>()
     for (const vnode of newList) {
       const key = vnode.key
-      if (key !== null && key !== undefined) {
-        newKeyOrder.push(key)
-        newKeySet.add(key)
-      }
+      if (key !== null && key !== undefined) newKeyOrder.push(key)
     }
-    return { newKeyOrder, newKeySet }
+    return newKeyOrder
   }
 
   const removeStaleEntries = (newKeySet: Set<string | number>) => {
@@ -308,7 +302,8 @@ export function mountKeyedList(
     }
   }
 
-  const mountNewEntries = (newList: VNode[], liveParent: Node) => {
+  const mountNewEntries = (newList: VNode[], liveParent: Node): number => {
+    let added = 0
     for (const vnode of newList) {
       const key = vnode.key
       if (key === null || key === undefined) continue
@@ -318,7 +313,9 @@ export function mountKeyedList(
       liveParent.insertBefore(anchor, tailMarker)
       const cleanup = mountVNode(vnode, liveParent, tailMarker)
       cache.set(key, { anchor, cleanup })
+      added++
     }
+    return added
   }
 
   const e = effect(() => {
@@ -350,9 +347,15 @@ export function mountKeyedList(
         return
       }
 
-      const { newKeyOrder, newKeySet } = collectKeyOrder(newList)
-      removeStaleEntries(newKeySet)
-      mountNewEntries(newList, liveParent)
+      const newKeyOrder = collectKeyOrder(newList)
+      // Pure-reorder skip (mirrors mountFor): mount new entries FIRST + count.
+      // When nothing was added AND the cache already holds exactly the keyed
+      // count, it's a same-key-set reorder (swap/reverse/sort) — nothing stale —
+      // so skip building the newKey Set + the O(m) stale scan entirely.
+      const added = mountNewEntries(newList, liveParent)
+      if (added !== 0 || cache.size !== newKeyOrder.length) {
+        removeStaleEntries(new Set(newKeyOrder))
+      }
 
       if (currentKeyOrder.length > 0 && n > 0) {
         lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, liveParent, tailMarker)
