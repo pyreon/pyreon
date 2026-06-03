@@ -43,7 +43,6 @@ export const removeClasses = (el: HTMLElement, classes: string | undefined) => {
  * are always browser-only via `onMount`, but the rule can't AST-trace it).
  */
 export const nextFrame = (callback: () => void): number => {
-  /* v8 ignore next — SSR/no-rAF guard; tests run with happy-dom */
   if (typeof requestAnimationFrame === 'undefined') return 0
   return requestAnimationFrame(() => {
     requestAnimationFrame(callback)
