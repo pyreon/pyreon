@@ -40,6 +40,7 @@ function parseCookies(cookieString: string): Map<string, string> {
 }
 
 function getCookieString(): string {
+  /* v8 ignore next 2 — SSR/isBrowser branch; tests run with happy-dom */
   if (isBrowser()) return document.cookie
   return serverCookieString
 }
@@ -52,6 +53,7 @@ function readCookie(key: string): string | null {
 // ─── Cookie writing ──────────────────────────────────────────────────────────
 
 function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void {
+  /* v8 ignore next — SSR/isBrowser guard */
   if (!isBrowser()) return
 
   const serialized = serialize(value, options.serializer)
@@ -76,6 +78,7 @@ function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void 
 }
 
 function deleteCookie<T>(key: string, options: CookieOptions<T>): void {
+  /* v8 ignore next — SSR/isBrowser guard */
   if (!isBrowser()) return
 
   let cookie = `${encodeURIComponent(key)}=; max-age=0`

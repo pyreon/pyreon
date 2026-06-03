@@ -48,6 +48,7 @@ export function deserialize<T>(
  * Returns null if not available (SSR, security restrictions, etc.).
  */
 export function getWebStorage(type: 'local' | 'session'): Storage | null {
+  /* v8 ignore next — SSR/isBrowser guard; tests run with happy-dom */
   if (!isBrowser()) return null
   try {
     const storage = type === 'local' ? window.localStorage : window.sessionStorage

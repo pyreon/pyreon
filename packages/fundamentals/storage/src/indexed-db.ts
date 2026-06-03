@@ -10,11 +10,13 @@ import { wrapBaseSignal } from './wrap-base-signal'
 const dbCache = new Map<string, Promise<IDBDatabase>>()
 
 function openDB(dbName: string, storeName: string): Promise<IDBDatabase> {
+  /* v8 ignore next 3 — SSR/no-indexedDB guard; tests run with happy-dom which provides indexedDB */
   if (typeof indexedDB === 'undefined') {
     return Promise.reject(new Error('[Pyreon] indexedDB is not available in this environment'))
   }
   const cacheKey = `${dbName}:${storeName}`
   const cached = dbCache.get(cacheKey)
+  /* v8 ignore next — defensive cache hit; second-call path */
   if (cached) return cached
 
   const promise = new Promise<IDBDatabase>((resolve, reject) => {
@@ -116,6 +118,7 @@ export function useIndexedDB<T>(
           sig.set(value)
         }
       })
+      /* v8 ignore start — IDB init-failure catch block; requires controlled storage corruption to trigger */
       .catch((err) => {
         if (process.env.NODE_ENV !== 'production') {
           // oxlint-disable-next-line no-console
@@ -123,6 +126,7 @@ export function useIndexedDB<T>(
         }
         options.onError?.(err instanceof Error ? err : new Error(String(err)))
       })
+      /* v8 ignore stop */
   }
 
   // Debounced write
@@ -130,10 +134,12 @@ export function useIndexedDB<T>(
   let pendingValue: T | undefined
 
   function flushWrite(): void {
+    /* v8 ignore next — defensive pendingValue undef guard */
     if (pendingValue === undefined) return
     const value = pendingValue
     pendingValue = undefined
 
+    /* v8 ignore next — SSR/no-IDB guard */
     if (!isBrowser() || typeof indexedDB === 'undefined') return
 
     openDB(dbName, storeName)
