@@ -108,7 +108,6 @@ const Component = (props: LooseProps) => {
   const injectWrapItemProps = typeof wrapProps === 'function' ? wrapProps : () => wrapProps
 
   const getKey = (item: string | number, index: number) => {
-    /* v8 ignore next — defensive itemKey-typeof TRUE branch */
     if (typeof itemKey === 'function') return itemKey(item, index)
     return index
   }
@@ -143,7 +142,6 @@ const Component = (props: LooseProps) => {
   // render children
   // --------------------------------------------------------
   const renderChildren = () => {
-    /* v8 ignore next — defensive null-children guard */
     if (!children) return null
 
     // if children is Array
@@ -173,7 +171,6 @@ const Component = (props: LooseProps) => {
   const renderSimpleArray = (simpleData: SimpleValue[]) => {
     const { length } = simpleData
 
-    /* v8 ignore next — defensive empty-array guard */
     if (length === 0) return null
 
     return simpleData.map((item, i) => {
@@ -219,7 +216,6 @@ const Component = (props: LooseProps) => {
   const renderComplexArray = (complexData: ObjectValue[]) => {
     const { length } = complexData
 
-    /* v8 ignore next — defensive empty-array guard */
     if (length === 0) return null
 
     return complexData.map((item, i) => {

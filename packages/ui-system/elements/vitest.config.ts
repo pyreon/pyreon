@@ -28,9 +28,22 @@ export default defineNodeConfig({
     'src/Text/styled.ts',
     'src/helpers/Content/styled.ts',
   ],
+  // Threshold history (post v8-ignore campaign cleanup):
+  // - Pre-PR-1299 baseline: 91.27% branches
+  // - PR #1299 (cosmetic): 96.19% via 18 /* v8 ignore */ annotations across 6 files
+  //   (gaming the gate by ignoring Element equalize layout-measurement
+  //   defensives, useOverlay dev-warns, Iterator/Wrapper defensives)
+  // - Current: 91.27% branches via removal of cosmetic ignores
+  //
+  // The remaining ~37 uncov branches are defensive guards in:
+  // - Element's equalize layout effect (ResizeObserver fallback paths)
+  // - useOverlay dev-mode warns + positioning fallbacks
+  // - Iterator/Wrapper optional-prop arms
+  // These are exercised by elements.browser.test.tsx + ui-showcase e2e in
+  // a real browser; vitest measures unit-test-process coverage only.
   coverageThresholds: {
     statements: 95,
-    branches: 95,
+    branches: 91,
     functions: 85,
     lines: 95,
   },
