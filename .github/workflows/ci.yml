@@ -737,8 +737,15 @@ jobs:
     name: Coverage (Full)
     # P3c — runs the full test suite, same lib/-requiring tests as
     # `test-cell`. Needs Bootstrap.
+    #
+    # Now runs on EVERY trigger (push:main, merge_group, AND pull_request)
+    # — the floor-only Coverage gate proves the exemption invariant holds,
+    # but `Coverage (Full)` is the only thing that catches an actual
+    # regression in coverage numbers (e.g. a PR drops a package from 95%
+    # to 92% while staying above the configured threshold of 90% — the
+    # floor gate accepts it, the Full gate fails it). Trade-off: ~30s
+    # added to PR CI; gain: main can't silently regress through merges.
     needs: bootstrap
-    if: github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
