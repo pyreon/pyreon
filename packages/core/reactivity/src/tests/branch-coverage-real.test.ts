@@ -406,7 +406,7 @@ describe('scope — addUpdateHook with hooks array already allocated', () => {
 describe('computed — error catch inside read body (line 298)', () => {
   test('a computed whose body throws on first read routes the error through _errorHandler', () => {
     const errors: unknown[] = []
-    const prevHandler = setErrorHandler((err) => errors.push(err))
+    setErrorHandler((err) => errors.push(err))
 
     try {
       const broken = computed<number>(() => {
@@ -422,7 +422,8 @@ describe('computed — error catch inside read body (line 298)', () => {
       expect(errors).toHaveLength(1)
       expect((errors[0] as Error).message).toBe('boom-in-computed')
     } finally {
-      setErrorHandler(prevHandler ?? (() => {}))
+      // Reset handler back to default (no public way to read prev — accept this)
+      setErrorHandler(() => {})
     }
   })
 })
@@ -1577,7 +1578,7 @@ describe('singleton-sentinel — silentDepth negative guard (lines 255, 276)', (
 describe('computed — custom equals throwing in body (computedWithEquals catch path)', () => {
   test('eager computed with custom equals throwing in body routes through _errorHandler', () => {
     const errors: unknown[] = []
-    const prevHandler = setErrorHandler((err) => errors.push(err))
+    setErrorHandler((err) => errors.push(err))
 
     try {
       const src = signal(0)
@@ -1598,7 +1599,8 @@ describe('computed — custom equals throwing in body (computedWithEquals catch 
 
       expect(errors.some((e) => (e as Error).message === 'eager-boom')).toBe(true)
     } finally {
-      setErrorHandler(prevHandler ?? (() => {}))
+      // Reset handler back to default (setErrorHandler returns void)
+      setErrorHandler(() => {})
     }
   })
 
