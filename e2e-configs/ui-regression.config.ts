@@ -12,15 +12,10 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  *
  * CI: `bun run test:e2e:ui-regression` (own step in the E2E job).
  */
-const _baseConfig = definePlaywrightConfig({
+export default definePlaywrightConfig({
+  testDir: '../e2e',
   projects: [
     { name: 'ui-showcase', testMatch: /ui-showcase-regression\.spec\.ts$/, port: 5174 },
   ],
   webServer: [viteDevServer('@pyreon/example-ui-showcase', 5174)],
 })
-
-// testDir resolves relative to this config file's directory; the
-// repo's e2e/ specs sit one level up.
-_baseConfig.testDir = '../e2e'
-
-export default _baseConfig

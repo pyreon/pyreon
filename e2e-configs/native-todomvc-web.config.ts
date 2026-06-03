@@ -9,7 +9,8 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  *
  * CI: `bun run test:e2e:native-todomvc-web` (own step).
  */
-const _baseConfig = definePlaywrightConfig({
+export default definePlaywrightConfig({
+  testDir: '../e2e',
   projects: [
     {
       name: 'native-todomvc-web',
@@ -20,9 +21,3 @@ const _baseConfig = definePlaywrightConfig({
   ],
   webServer: [viteDevServer('@pyreon/example-native-todomvc-web', 5202)],
 })
-
-// testDir resolves relative to this config file's directory; the
-// repo's e2e/ specs sit one level up.
-_baseConfig.testDir = '../e2e'
-
-export default _baseConfig
