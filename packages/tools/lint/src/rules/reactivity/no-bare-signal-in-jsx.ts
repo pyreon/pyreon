@@ -26,28 +26,38 @@ export const noBareSignalInJsx: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    // Path-based exemption (consistent with the other exemptable rules):
-    // render-function primitives (`@pyreon/ui-primitives`, `@pyreon/elements`)
-    // read signals in JSX *attribute* positions (`value={value()}`) which the
-    // compiler `_rp()`-wraps reactively — the rule's text-position heuristic
-    // over-fires there. Curated via `.pyreonlintrc.json` `exemptPaths`.
+    // Optional path-based exemption (kept for consumer override flexibility).
     if (isPathExempt(context)) return {}
-    let jsxDepth = 0
+
+    // Only TEXT-position containers are reported. A `JSXExpressionContainer`
+    // appears in two places: as a TEXT CHILD of an element/fragment
+    // (`<div>{sig()}</div>` — the compiler does NOT re-wrap an already-called
+    // signal here, so it's captured once → the real bug) and as an ATTRIBUTE
+    // VALUE (`<input value={sig()}>` — the compiler `_rp()`/`_bind()`-wraps
+    // signal reads in attribute position, so it IS reactive). oxc's walker
+    // passes no parent, so we mark text-child containers when visiting their
+    // owning element/fragment; anything not marked is an attribute value
+    // (or otherwise not a text child) and is skipped. Nested JSX inside an
+    // attribute (`prop={<div>{sig()}</div>}`) still reports its INNER text
+    // container, because that container IS a child of the nested element.
+    const textContainers = new WeakSet<object>()
+    function markTextChildren(node: any): void {
+      const children = node?.children
+      if (!Array.isArray(children)) return
+      for (const child of children) {
+        if (child && child.type === 'JSXExpressionContainer') textContainers.add(child)
+      }
+    }
+
     const callbacks: VisitorCallbacks = {
-      JSXElement() {
-        jsxDepth++
+      JSXElement(node: any) {
+        markTextChildren(node)
       },
-      'JSXElement:exit'() {
-        jsxDepth--
-      },
-      JSXFragment() {
-        jsxDepth++
-      },
-      'JSXFragment:exit'() {
-        jsxDepth--
+      JSXFragment(node: any) {
+        markTextChildren(node)
       },
       JSXExpressionContainer(node: any) {
-        if (jsxDepth === 0) return
+        if (!textContainers.has(node)) return // attribute value (or non-text) → reactive, skip
         const expr = node.expression
         if (!expr || expr.type !== 'CallExpression') return
         const callee = expr.callee
