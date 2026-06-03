@@ -55,7 +55,7 @@
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import type { Plugin } from 'vite'
+import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
 import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
@@ -109,6 +109,11 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   const config = resolveConfig(userConfig)
   let root = ''
   let distDir = ''
+  // Captured from the OUTER build's resolved config so the inner SSR
+  // sub-build (which runs `configFile: false`) emits assets identically.
+  // See `buildInnerBuildOptions` / `ssg-plugin.ts`.
+  let assetsInlineLimit: BuildOptions['assetsInlineLimit']
+  let assetsDir: string | undefined
   // Capture inner-build state once at plugin instantiation. The inner
   // build re-loads zero's plugin chain (same as SSG); without this gate
   // the inner plugin instance would re-enter its own closeBundle.
@@ -123,6 +128,8 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
     configResolved(resolved) {
       root = resolved.root
       distDir = resolve(root, resolved.build.outDir)
+      assetsInlineLimit = resolved.build.assetsInlineLimit
+      assetsDir = resolved.build.assetsDir
     },
 
     async closeBundle() {
@@ -178,6 +185,8 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           outputFilename: SSR_OUTPUT_FILENAME,
           envFlag: SSR_BUILD_FLAG,
           userConfig,
+          assetsInlineLimit,
+          assetsDir,
         })
       } catch (buildError) {
         // Surface with structured context — mode + entry + output +
