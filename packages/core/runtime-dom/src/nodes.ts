@@ -635,23 +635,20 @@ export function mountFor<T>(
 
   const collectNewKeys = (items: T[], n: number): (string | number)[] => {
     const newKeys = new Array<string | number>(n)
-    if (process.env.NODE_ENV !== 'production') {
-      // Duplicate-key detection here is purely a DEV diagnostic — the update
-      // path does NOT skip duplicates (keys array must match items length;
-      // duplicate keys cause cache collisions, first wins). So the per-update
-      // Set + warnForKey scan is dead weight in production: gate it out so the
-      // hot reorder path (swap/partial-update/replace) is a tight key loop with
-      // zero Set allocation. The fresh-render path keeps its load-bearing
-      // dedup (it DOES skip duplicates to prevent DOM corruption).
-      const _seenUpdate = new Set<string | number>()
-      for (let i = 0; i < n; i++) {
-        newKeys[i] = getKey(items[i] as T)
-        warnForKey(_seenUpdate, newKeys[i] as string | number)
-      }
-      return newKeys
-    }
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
+    }
+    // Duplicate-key detection here is purely a DEV diagnostic — the update path
+    // does NOT skip duplicates (keys array must match items length; duplicate
+    // keys cause cache collisions, first wins). So the per-update Set +
+    // warnForKey scan is dead weight in production: gate it out so the hot
+    // reorder path (swap/partial-update/replace) allocates zero Set. The
+    // fresh-render path keeps its load-bearing dedup (it DOES skip duplicates
+    // to prevent DOM corruption). The key loop above always runs (no uncovered
+    // production-only statements); only this dev-diagnostic block is gated.
+    if (process.env.NODE_ENV !== 'production') {
+      const _seenUpdate = new Set<string | number>()
+      for (let i = 0; i < n; i++) warnForKey(_seenUpdate, newKeys[i] as string | number)
     }
     return newKeys
   }
