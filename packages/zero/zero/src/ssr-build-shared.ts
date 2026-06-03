@@ -24,7 +24,7 @@
  */
 
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
-import type { Plugin } from 'vite'
+import type { BuildOptions, Plugin } from 'vite'
 import type { ZeroConfig } from './types'
 
 /**
@@ -133,6 +133,50 @@ export interface BuildSsrBundleOptions {
   envFlag: string
   /** Original user config — forwarded to the recursively-loaded plugin chain. */
   userConfig: ZeroConfig
+  /**
+   * The OUTER (client) build's `build.assetsInlineLimit`, captured from the
+   * plugin's `configResolved` hook. The inner build runs with `configFile:
+   * false` (it must NOT re-load + re-run the user's whole vite.config), so
+   * without this it falls back to Vite's 4 KB default — meaning a `<= 4 KB`
+   * asset the client build emitted as a hashed file gets inlined as a `data:`
+   * URI in the SSR/SSG-rendered HTML. The two builds then disagree on the
+   * `<img src>` of every small image: an avoidable hydration mismatch (client
+   * expects `/assets/x-HASH.png`, SSR baked `data:image/...`). Threading the
+   * outer value keeps asset emission identical across the two builds.
+   * `undefined` → the inner build keeps Vite's default (no behaviour change
+   * for apps that don't set it).
+   */
+  assetsInlineLimit?: BuildOptions['assetsInlineLimit']
+  /** The OUTER build's `build.assetsDir` — same URL-consistency rationale. */
+  assetsDir?: string | undefined
+}
+
+/**
+ * Construct the inner sub-build's `build` options. Pure + exported so the
+ * config can be asserted without spawning a real Vite build. `target: 'esnext'`
+ * and the `format: 'es'` / `external: [/^node:/]` rollup output are
+ * deliberately SSR-runtime-fixed (NOT inherited from the user — the SSR handler
+ * runs in Node/Bun), whereas the asset-emission settings (`assetsInlineLimit`,
+ * `assetsDir`) ARE inherited so the rendered HTML's asset URLs match the client.
+ */
+export function buildInnerBuildOptions(options: BuildSsrBundleOptions): BuildOptions {
+  const build: BuildOptions = {
+    ssr: options.entryPath,
+    outDir: options.outDir,
+    emptyOutDir: true,
+    target: 'esnext',
+    rollupOptions: {
+      input: options.entryPath,
+      output: {
+        format: 'es',
+        entryFileNames: options.outputFilename,
+      },
+      external: [/^node:/],
+    },
+  }
+  if (options.assetsInlineLimit !== undefined) build.assetsInlineLimit = options.assetsInlineLimit
+  if (options.assetsDir !== undefined) build.assetsDir = options.assetsDir
+  return build
 }
 
 /**
@@ -175,20 +219,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       publicDir: false,
       plugins: [pyreon(), zeroPlugin(options.userConfig)] as Plugin[],
       resolve: { conditions: ['bun'] },
-      build: {
-        ssr: options.entryPath,
-        outDir: options.outDir,
-        emptyOutDir: true,
-        target: 'esnext',
-        rollupOptions: {
-          input: options.entryPath,
-          output: {
-            format: 'es',
-            entryFileNames: options.outputFilename,
-          },
-          external: [/^node:/],
-        },
-      },
+      build: buildInnerBuildOptions(options),
     })
   } finally {
     delete process.env[options.envFlag]

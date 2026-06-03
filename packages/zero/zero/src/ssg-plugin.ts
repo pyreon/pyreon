@@ -26,7 +26,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { withSilent } from '@pyreon/reactivity'
-import type { Plugin } from 'vite'
+import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
 import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
@@ -943,6 +943,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   const config = resolveConfig(userConfig)
   let root = ''
   let distDir = ''
+  // Captured from the OUTER build's resolved config so the inner SSR
+  // sub-build (which runs `configFile: false`) emits assets identically —
+  // otherwise small images inline as `data:` URIs in SSG HTML while the
+  // client build emits hashed files. See `buildInnerBuildOptions`.
+  let assetsInlineLimit: BuildOptions['assetsInlineLimit']
+  let assetsDir: string | undefined
   // Track whether this plugin instance is running inside the inner SSR
   // sub-build (where it must be a no-op) vs. the outer client build.
   const isInnerBuild = process.env[SSG_BUILD_FLAG] === '1'
@@ -955,6 +961,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
     configResolved(resolved) {
       root = resolved.root
       distDir = resolve(root, resolved.build.outDir)
+      assetsInlineLimit = resolved.build.assetsInlineLimit
+      assetsDir = resolved.build.assetsDir
     },
 
     async closeBundle() {
@@ -1017,6 +1025,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           outputFilename: 'entry-server.mjs',
           envFlag: SSG_BUILD_FLAG,
           userConfig,
+          assetsInlineLimit,
+          assetsDir,
         })
       } finally {
         // Remove the synthetic entry file so it never lands in user's
