@@ -2,24 +2,29 @@
 "@pyreon/runtime-dom": patch
 ---
 
-perf(runtime-dom): mountFor reorder resolves each cache entry once (3× → 1× Map.get) + gates the prod-dead duplicate-key Set
+perf(runtime-dom): faster `<For>` reorder — resolve cache entry once + skip stale-scan on pure reorders
 
-The `<For>` keyed reorder hashed every key THREE times per update — once in
-`computeForLis` (`cache.get(key).pos`), once in `applyForMoves`
-(`cache.get(key)`), and once in the trailing pos-refresh loop. It now resolves
-the entries ONCE into a reused buffer (`LisState.entries`) and indexes that, so a
-1k-row reorder drops ~2k Map hashes per update. Separately, `collectNewKeys`'s
-per-update duplicate-key `Set` is purely a DEV diagnostic on the update path (it
-never skips in production — keys must match item length), so it's now gated
-behind `process.env.NODE_ENV !== 'production'`: the production reorder path is a
-tight key loop with zero Set allocation. (The fresh-render path keeps its
-load-bearing dedup, which DOES skip duplicates to prevent DOM corruption.)
+Two measured wins on the keyed `<For>` update path (real Chromium,
+drift-controlled tight-alternating A/B, 5000-row full-reverse ×60):
 
-Measured (real Chromium, drift-controlled back-to-back A/B, 5000-row full-reverse
-×60, dev build where only the Map-get reduction applies): median **1.40ms →
-1.20ms (~14%)**, non-overlapping distributions. Production additionally removes
-the per-update Set, so the production win is ≥ the measured dev win. The
-synthetic 2-row-swap-in-1000 benchmark op is floor-bound (~700µs, CI95-tied with
-Vanilla) and does not show this — the win scales with reorder size, so it helps
-real apps that sort/reorder large lists. Zero behaviour change: 699 runtime-dom
-tests pass.
+1. **Resolve each cache entry once (3× → 1× `Map.get`).** The reorder hashed
+   every key three times per update (`computeForLis`, `applyForMoves`, the
+   pos-refresh). It now resolves entries once into a reused `LisState.entries`
+   buffer. Plus `collectNewKeys`'s per-update duplicate-key `Set` is gated to
+   dev (it never skips in production). **1.40ms → 1.20ms (~14%).**
+
+2. **Skip the stale-scan on pure reorders.** A swap / reverse / sort keeps the
+   SAME key set in a new order, so nothing is added or removed — yet every
+   update still rebuilt an O(n) newKey `Set` and ran an O(m) stale scan. The
+   update now mounts new entries FIRST and counts them; when nothing was added
+   and the cache still holds exactly `n` entries, it's provably a pure reorder
+   and both the Set rebuild and the stale scan are skipped. **1.20ms → 1.00ms
+   (~17%).**
+
+Combined, a 5000-row full-reverse drops **1.40ms → 1.00ms (~29%)**. The win
+scales with reorder size; the synthetic 2-row-swap-in-1000 op is floor-bound
+(~700µs, CI95-tied with Vanilla) and won't show it, but real apps that
+sort / drag-reorder / reverse large lists benefit. Mount-before-remove is
+order-independent for correctness (new and stale keys are disjoint; the stale
+scan skips any cache key present in the newKey set). 699 runtime-dom tests pass,
+coverage 95.12%, zero behaviour change.

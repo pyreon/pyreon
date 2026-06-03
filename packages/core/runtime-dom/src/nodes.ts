@@ -711,14 +711,17 @@ export function mountFor<T>(
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
-  ) => {
+  ): number => {
+    let added = 0
     for (let i = 0; i < n; i++) {
       const key = newKeys[i] as string | number
       if (cache.has(key)) continue
       renderInto(items[i] as T, key, i, liveParent, tailMarker)
       const entry = cache.get(key)
       if (entry) _forAnchors.add(entry.anchor)
+      added++
     }
+    return added
   }
 
   const handleFastClear = (liveParent: Node) => {
@@ -758,12 +761,22 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ) => {
-    // Reuse a persistent Set to avoid allocating a new one per update.
-    // Cleared + repopulated instead of constructing new Set(newKeys).
-    _reusableKeySet.clear()
-    for (let i = 0; i < newKeys.length; i++) _reusableKeySet.add(newKeys[i] as string | number)
-    removeStaleForEntries(_reusableKeySet)
-    mountNewForEntries(items, n, newKeys, liveParent)
+    // Mount new entries FIRST and count them. If nothing was added AND the
+    // cache now holds exactly `n` entries, every newKey was already cached and
+    // the counts match — i.e. a PURE REORDER (same key set, new order: swap /
+    // reverse / sort). There's then nothing stale to remove, so skip the O(n)
+    // newKey-Set rebuild + the O(m) stale scan entirely (measured ~17% off a
+    // 1k full-reverse). Only when a key was added/removed do we pay for them.
+    //
+    // Mounting before removing is order-independent for correctness: new and
+    // stale keys are disjoint, and `removeStaleForEntries` skips any cache key
+    // present in the newKey Set (which includes the just-added ones).
+    const added = mountNewForEntries(items, n, newKeys, liveParent)
+    if (added !== 0 || cache.size !== n) {
+      _reusableKeySet.clear()
+      for (let i = 0; i < newKeys.length; i++) _reusableKeySet.add(newKeys[i] as string | number)
+      removeStaleForEntries(_reusableKeySet)
+    }
 
     if (!anchorsRegistered) {
       for (const entry of cache.values()) _forAnchors.add(entry.anchor)
