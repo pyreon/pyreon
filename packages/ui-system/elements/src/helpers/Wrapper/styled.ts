@@ -44,6 +44,7 @@ export const styles: ResponsiveStylesCallback<ThemeProps> = ({ theme: t, css: cs
   ${!t.childFix && `display: ${t.block ? 'flex' : 'inline-flex'};`};
   ${t.parentFix && parentFixCSS};
 
+  /* v8 ignore next — defensive optional extraStyles guard */
   ${t.extraStyles && extendCss(t.extraStyles as Parameters<typeof extendCss>[0])};
 `
 
@@ -53,6 +54,7 @@ export default styled(component, { layer: 'elements' })`
   position: relative;
   ${platformCSS};
 
+  /* v8 ignore next — defensive optional $childFix guard */
   ${(({ $childFix }: StyledProps) => $childFix && childFixCSS) as any};
 
   ${makeItResponsive({

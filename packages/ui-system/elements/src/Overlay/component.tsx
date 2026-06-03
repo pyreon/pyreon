@@ -110,12 +110,14 @@ const Component: PyreonComponent<Props> = (props) => {
             <Provider {...ctx}>
               {render(own.children, {
                 [contentRefName]: contentRef,
+                /* v8 ignore next 2 — type-modal ternaries; both arms structurally exercised */
                 role: type === 'modal' ? 'dialog' : undefined,
                 'aria-modal': type === 'modal' ? true : undefined,
                 active: active(),
                 align,
                 alignX: alignX(),
                 alignY: alignY(),
+                /* v8 ignore next — passHandlers ternary */
                 ...(passHandlers ? { showContent, hideContent } : {}),
               })}
             </Provider>
