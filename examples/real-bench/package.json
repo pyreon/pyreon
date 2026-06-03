@@ -1,0 +1,29 @@
+{
+  "name": "@pyreon/real-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4319 --strictPort",
+    "bench": "bun bench.ts",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "playwright": "^1.60.0",
+    "typescript": "^5.7.0",
+    "vite": "^8.0.16"
+  }
+}
