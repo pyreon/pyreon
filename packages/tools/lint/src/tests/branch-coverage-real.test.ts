@@ -92,32 +92,32 @@ describe('applyFixes — edge cases', () => {
 describe('lintFile — basic contracts', () => {
   it('returns filePath + diagnostics array for a clean file', () => {
     const source = 'const x = 1'
-    const result = lintFile('/test/clean.ts', source, [], {})
+    const result = lintFile('/test/clean.ts', source, [], { rules: {} })
     expect(result.filePath).toBe('/test/clean.ts')
     expect(Array.isArray(result.diagnostics)).toBe(true)
   })
 
   it('respects an empty rules array (no diagnostics)', () => {
     const source = 'const x: any = 1' // would trip many rules if enabled
-    const result = lintFile('/test/empty-rules.ts', source, [], {})
+    const result = lintFile('/test/empty-rules.ts', source, [], { rules: {} })
     expect(result.diagnostics).toEqual([])
   })
 
   it('handles .tsx files', () => {
     const source = 'const x = <div>hello</div>'
-    const result = lintFile('/test/comp.tsx', source, [], {})
+    const result = lintFile('/test/comp.tsx', source, [], { rules: {} })
     expect(Array.isArray(result.diagnostics)).toBe(true)
   })
 
   it('handles .js files', () => {
     const source = 'const x = 1'
-    const result = lintFile('/test/plain.js', source, [], {})
+    const result = lintFile('/test/plain.js', source, [], { rules: {} })
     expect(Array.isArray(result.diagnostics)).toBe(true)
   })
 
   it('lintFile filePath ending in .d.ts skips lint entirely', () => {
     const source = 'declare const x: number'
-    const result = lintFile('/test/types.d.ts', source, [], {})
+    const result = lintFile('/test/types.d.ts', source, [], { rules: {} })
     expect(result.diagnostics).toEqual([])
   })
 })
