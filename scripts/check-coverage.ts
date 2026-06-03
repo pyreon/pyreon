@@ -76,12 +76,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'cov-94 series raised statements 85 → 94, now 95 (cov-95 series, PR #1219). Actual 96.36%. Branches at 81.81% — remaining branches are per-adapter file copies, binary-file path in template-engine, env.example append, and compat-shim deps — exercised at the bin level but not snapshot-locked. args.ts + prompts.ts + index.ts excluded since they need a TTY mock.',
   },
   // ── Branch < 85 (statements OK) ─────────────────────────────────────
-  '@pyreon/code': {
-    currentStatements: 95,
-    currentBranches: 70,
-    reason:
-      'Code editor (CodeMirror integration). Statements lifted 90 → 94 (cov-94, PR #1072), now 95 (cov-95). Actual 95.02%. Branches at 73.87% — uncovered branches are CodeMirror lifecycle handlers that need real editor instances; branch lift is its own tier-6 PR.',
-  },
   '@pyreon/compiler': {
     currentStatements: 94,
     currentBranches: 84,

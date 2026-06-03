@@ -5,7 +5,8 @@ export default defineNodeConfig({
   environment: 'happy-dom',
   excludeBrowserTests: true,
   coverageExclude: ['src/components/**', 'src/minimap.ts', 'src/editor.ts'],
-  // Branch threshold lowered: CodeMirror integration paths have many
-  // editor-state branches unreachable in unit tests.
-  coverageThresholds: { statements: 95, branches: 70, lines: 94 },
+  // Refactored tabbed-editor `tab.id ?? tab.name` fallback into a
+  // single `_tabKey()` helper + v8-ignored a handful of DOM-driven
+  // onChange callback branches.
+  coverageThresholds: { statements: 95, branches: 95, lines: 95 },
 })
