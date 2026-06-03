@@ -7,8 +7,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { prefetchLoaderData, stringifyLoaderData } from '../loader'
 import { getRedirectInfo, isRedirectError, redirect } from '../redirect'
 import { notFound } from '../not-found'
-import { createRouter, setActiveRouter } from '../router'
-import type { LoaderContext, RouteRecord } from '../types'
+import { createRouter } from '../router'
+import type { LoaderContext, RouteRecord, RouterInstance } from '../types'
 
 // ─── redirect — getRedirectInfo paths ──────────────────────────────────────
 
@@ -52,7 +52,7 @@ describe('redirect — info extraction', () => {
   it('getRedirectInfo handles edge case where REDIRECT symbol missing returns null (line 62 fallback)', () => {
     // Construct a fake error that PASSES isRedirectError's brand check but
     // lacks the REDIRECT symbol payload — falls through to the ?? null arm.
-    const fakeError = new Error('fake') as Record<string | symbol, unknown>
+    const fakeError = new Error('fake') as unknown as Record<string | symbol, unknown>
     // Set the isRedirectError brand to true without setting REDIRECT payload
     const IS_REDIRECT = Symbol.for('pyreon.redirect.is')
     fakeError[IS_REDIRECT] = true
@@ -81,8 +81,8 @@ describe('notFound', () => {
 // ─── prefetchLoaderData — request-arg branch (line 65) ──────────────────────
 
 describe('prefetchLoaderData — request arg passes through', () => {
-  function makeRouter(routes: RouteRecord[]) {
-    return createRouter({ routes, url: 'http://localhost/' })
+  function makeRouter(routes: RouteRecord[]): RouterInstance {
+    return createRouter({ routes, url: 'http://localhost/' }) as RouterInstance
   }
 
   it('without request arg the loader receives no request field (line 65 false)', async () => {
@@ -91,7 +91,7 @@ describe('prefetchLoaderData — request arg passes through', () => {
       {
         path: '/data',
         component: () => null,
-        loader: (ctx: LoaderContext) => {
+        loader: async (ctx: LoaderContext) => {
           sawRequest = (ctx as { request?: Request }).request
           return { ok: true }
         },
@@ -107,7 +107,7 @@ describe('prefetchLoaderData — request arg passes through', () => {
       {
         path: '/data',
         component: () => null,
-        loader: (ctx: LoaderContext) => {
+        loader: async (ctx: LoaderContext) => {
           sawRequest = (ctx as { request?: Request }).request
           return { ok: true }
         },
