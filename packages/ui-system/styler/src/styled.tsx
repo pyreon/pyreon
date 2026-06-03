@@ -48,6 +48,12 @@ const getDisplayName = (tag: Tag): string =>
     ? tag
     : (tag as ComponentFn<any> & { displayName?: string }).displayName || tag.name || 'Component'
 
+// SSR detection — evaluated once at module load (matches `sheet.ts` /
+// `@pyreon/runtime-server`). On the server every render is a single pass with
+// no client reactivity, so `DynamicStyled` skips the computed subscription +
+// ref closure + renderEffect (all client-only dead weight server-side).
+const IS_SERVER = typeof document === 'undefined'
+
 // Component cache: same template literal + tag + no options → same component.
 // WeakMap on `strings` (TemplateStringsArray is object-identity per source location).
 // `let` so `sheet.clearAll()` (HMR / dev reload) can drop stale entries by
@@ -292,6 +298,36 @@ const createStyledComponent = (
         inner.set($childFix, className)
       }
       return className
+    }
+
+    // SSR fast path — a single render with no client reactivity. Resolve the
+    // class once and emit, skipping the `computed` subscription, the `ref`
+    // closure, and the `renderEffect` that the client path sets up below. All
+    // three are client-only dead weight on the server: `el` is never assigned
+    // (refs don't fire during `renderToString`), and no signal changes within
+    // one SSR pass — so they allocate per dynamic component and produce zero
+    // HTML. The emitted className is byte-identical to the reactive path's
+    // initial value (`cssClass()` resolves the same inputs). Mirrors the
+    // IS_SERVER variant split in vitus-labs/styler.
+    if (IS_SERVER) {
+      const finalTag = rawProps.as || tag
+      const className = runUntracked(() =>
+        doResolve(
+          isReactiveRS ? $rs() : $rs,
+          isReactiveState ? $rsState() : $rsState,
+          theme,
+        ),
+      )
+      const finalProps = buildProps(rawProps, className, typeof finalTag === 'string', customFilter)
+      return h(
+        finalTag as string,
+        finalProps,
+        ...(Array.isArray(rawProps.children)
+          ? rawProps.children
+          : rawProps.children != null
+            ? [rawProps.children]
+            : []),
+      )
     }
 
     // If any axis is reactive, wrap in computed that tracks all three:
