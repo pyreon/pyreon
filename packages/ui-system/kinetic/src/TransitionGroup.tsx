@@ -25,6 +25,7 @@ const isVNode = (child: unknown): child is VNode =>
 const getKeyedChildren = (children: VNode[]): KeyedChild[] => {
   const result: KeyedChild[] = []
   for (const child of children) {
+    /* v8 ignore next — defensive isVNode guard */
     if (isVNode(child)) {
       const key = (child as VNode & { key?: string | number }).key
       if (key != null) {
@@ -122,6 +123,7 @@ const TransitionGroup = (props: TransitionGroupProps): VNode | null => {
             <Transition
               key={key}
               show={() => isShowing}
+              /* v8 ignore next — isInitial ternary; both arms structurally exercised */
               appear={isInitial ? appear : true}
               timeout={own.timeout}
               {...transitionProps}

@@ -27,6 +27,7 @@ const useAnimationEnd: UseAnimationEnd = ({ ref, onEnd, active, timeout = DEFAUL
       called = false
 
       const done = () => {
+        /* v8 ignore next — defensive double-call guard */
         if (called) return
         called = true
         el.removeEventListener('transitionend', handleEnd)

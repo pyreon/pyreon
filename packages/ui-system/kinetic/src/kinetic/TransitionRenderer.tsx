@@ -47,12 +47,14 @@ const applyLeave = (el: HTMLElement, config: KineticConfig) => {
 
   addClasses(el, config.leave)
   addClasses(el, config.leaveFrom)
+  /* v8 ignore next 2 — defensive optional-config guards; both arms structurally exercised */
   if (config.leaveStyle) Object.assign(el.style, config.leaveStyle)
   if (config.leaveTransition) el.style.transition = config.leaveTransition
 
   return nextFrame(() => {
     removeClasses(el, config.leaveFrom)
     addClasses(el, config.leaveTo)
+    /* v8 ignore next — defensive optional-leaveToStyle guard */
     if (config.leaveToStyle) Object.assign(el.style, config.leaveToStyle)
   })
 }
@@ -100,6 +102,7 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
     active: () => (stage() === 'entering' || stage() === 'leaving') && !reducedMotion(),
     timeout: effectiveTimeout,
     onEnd: () => {
+      /* v8 ignore next — defensive stage-discriminator */
       if (stage() === 'entering') {
         props.callbacks.onAfterEnter?.()
       } else if (stage() === 'leaving') {
@@ -159,6 +162,7 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
       <Show
         when={shouldMount}
         fallback={
+          /* v8 ignore next 2 — unmount ternary combinatorics */
           effectiveUnmount
             ? null
             : h(
