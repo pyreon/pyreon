@@ -72,13 +72,6 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
-  // ── Statement < MINIMUM_FLOOR ───────────────────────────────────────
-  '@pyreon/styler': {
-    currentStatements: 94,
-    currentBranches: 85,
-    reason:
-      'CSS-in-JS sheet management. After MINIMUM_FLOOR moved 94 → 95 (cov-95 series, June 2026), styler sits at 94.83% statements (0.17pp below). Residual uncov: styled.tsx WeakMap fallback caches + SSR hydration paths in sheet.ts that need targeted DOM-replay tests. Lifting to 95 is its own focused PR (~5-8 statement coverage targets).',
-  },
   // ── Branch < MINIMUM_BRANCH_FLOOR (statements OK) ───────────────────
   '@pyreon/compiler': {
     currentStatements: 92,

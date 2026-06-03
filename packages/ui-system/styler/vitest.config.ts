@@ -10,7 +10,7 @@ export default defineNodeConfig({
   // package's overall numbers (PR #323 finding).
   coverageExclude: ['**/*.bench.ts', '**/__tests__/index.ts'],
   coverageThresholds: {
-    statements: 94,
+    statements: 95,
     branches: 85,
     functions: 95,
     lines: 95,
