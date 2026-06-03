@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/storage',
   title: 'Reactive Storage',
-  tagline:
-    'Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB',
+  tagline: 'Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB',
   description:
     'Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.',
   category: 'universal',
@@ -58,7 +57,8 @@ const secret = useEncrypted('api-key', '')`,
     {
       name: 'useStorage',
       kind: 'hook',
-      signature: '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+      signature:
+        '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
       summary:
         'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serialize`/`deserialize` in options for non-JSON types.',
       example: `const theme = useStorage('theme', 'light')
@@ -83,7 +83,7 @@ locale.set('fr')`,
       mistakes: [
         'Forgetting `setCookieSource(req.headers.get("cookie"))` on SSR — without it the server-side render starts from `defaultValue`, not the user\'s actual cookie; the page flashes the wrong locale/theme until client-side hydration corrects it.',
         'Omitting `sameSite` for auth-style cookies — the browser default has tightened across vendors. Be explicit: `sameSite: "lax"` (default for nav) or `"strict"` (login cookies) or `"none"` (cross-origin embeds with `secure: true`).',
-        'Setting `maxAge` in milliseconds — it\'s in SECONDS (matches the HTTP spec). `maxAge: 86400` is one DAY, not one minute.',
+        "Setting `maxAge` in milliseconds — it's in SECONDS (matches the HTTP spec). `maxAge: 86400` is one DAY, not one minute.",
         'Storing > 4KB in a cookie — browsers enforce a ~4KB per-cookie limit. Reach for `useIndexedDB` for large values; cookies are for small server-readable state.',
       ],
       seeAlso: ['useStorage', 'setCookieSource', 'useSessionStorage'],
@@ -91,12 +91,13 @@ locale.set('fr')`,
     {
       name: 'useSessionStorage',
       kind: 'hook',
-      signature: '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+      signature:
+        '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
       summary:
-        'Per-tab ephemeral reactive storage. Same shape as `useStorage` but writes go to `sessionStorage` instead of `localStorage` — cleared when the tab closes. NO cross-tab sync (browsers do not fire storage events for sessionStorage). Useful for per-visit filter state, unsaved form drafts that shouldn\'t survive tab close, and any state that should NOT outlive the current browsing session.',
+        "Per-tab ephemeral reactive storage. Same shape as `useStorage` but writes go to `sessionStorage` instead of `localStorage` — cleared when the tab closes. NO cross-tab sync (browsers do not fire storage events for sessionStorage). Useful for per-visit filter state, unsaved form drafts that shouldn't survive tab close, and any state that should NOT outlive the current browsing session.",
       example: `const filter = useSessionStorage('list-filter', { query: '', page: 1 })
 filter.set({ query: 'pyreon', page: 1 })
-// → persists for the tab\'s lifetime; gone on close`,
+// → persists for the tab's lifetime; gone on close`,
       mistakes: [
         'Expecting cross-tab sync — sessionStorage is per-tab by spec. Two tabs on the same page each have their own independent sessionStorage. For shared state across tabs, use `useStorage` (localStorage).',
         'Treating sessionStorage as "private" — same JavaScript-readable shape as localStorage; do not store secrets there.',
@@ -113,7 +114,7 @@ filter.set({ query: 'pyreon', page: 1 })
 draft.set('typing...')
 // → reactive, but cleared on reload`,
       mistakes: [
-        'Reaching for useMemoryStorage when a plain `signal()` would do — if you don\'t need the StorageSignal `.remove()` shape or the cross-storage-backend interchangeability, a plain `signal(defaultValue)` is simpler.',
+        "Reaching for useMemoryStorage when a plain `signal()` would do — if you don't need the StorageSignal `.remove()` shape or the cross-storage-backend interchangeability, a plain `signal(defaultValue)` is simpler.",
         'Expecting persistence — values vanish on reload by design. If persistence is needed, swap to `useStorage` / `useSessionStorage` / `useIndexedDB`.',
       ],
       seeAlso: ['useStorage', 'useSessionStorage'],
@@ -123,14 +124,14 @@ draft.set('typing...')
       kind: 'function',
       signature: 'setCookieSource(source: string | (() => string) | null) => void',
       summary:
-        'Tell `useCookie` how to read cookies during SSR. Pass the raw cookie header string (or an accessor returning it) at the top of each request handler so server-side renders see the user\'s actual cookies. Pass `null` to clear (typically at request cleanup). The module-level cookie source is per-request-context-isolated via `runWithRequestContext` so concurrent SSR requests do not see each other\'s cookies.',
+        "Tell `useCookie` how to read cookies during SSR. Pass the raw cookie header string (or an accessor returning it) at the top of each request handler so server-side renders see the user's actual cookies. Pass `null` to clear (typically at request cleanup). The module-level cookie source is per-request-context-isolated via `runWithRequestContext` so concurrent SSR requests do not see each other's cookies.",
       example: `import { setCookieSource } from '@pyreon/storage'
 
 // Inside an SSR handler:
 setCookieSource(request.headers.get('cookie') ?? '')
 const html = await renderToString(<App />)`,
       mistakes: [
-        'Forgetting to call setCookieSource on SSR — `useCookie` falls back to `defaultValue` on every request, ignoring the user\'s real cookie state. The page hydrates correctly on the client but flashes the default first.',
+        "Forgetting to call setCookieSource on SSR — `useCookie` falls back to `defaultValue` on every request, ignoring the user's real cookie state. The page hydrates correctly on the client but flashes the default first.",
         'Passing a stale cookie source after redirect or login — the source is captured once; re-call after any operation that should change the cookie set.',
         'Calling setCookieSource(null) too early — call it at request CLEANUP (after the response is sent), not before render. Cleaning up mid-render erases the source from later loaders.',
       ],
@@ -139,7 +140,8 @@ const html = await renderToString(<App />)`,
     {
       name: 'useIndexedDB',
       kind: 'hook',
-      signature: '<T>(key: string, defaultValue: T, options?: IndexedDBOptions) => StorageSignal<T>',
+      signature:
+        '<T>(key: string, defaultValue: T, options?: IndexedDBOptions) => StorageSignal<T>',
       summary:
         'Reactive signal backed by IndexedDB for large data. Writes are debounced to avoid excessive I/O. The signal initializes with `defaultValue` synchronously and hydrates from IndexedDB asynchronously — the value updates reactively once the read completes. Silent init error logging in dev mode.',
       example: `const draft = useIndexedDB('article-draft', { title: '', body: '' })
@@ -155,7 +157,8 @@ draft.set({ title: 'New Article', body: 'Content...' })`,
     {
       name: 'createStorage',
       kind: 'function',
-      signature: '(backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+      signature:
+        '(backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
       summary:
         'Factory for custom storage backends. Pass an object with `getItem`, `setItem`, `removeItem` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer.',
       example: `const useEncrypted = createStorage({
