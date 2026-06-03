@@ -1,5 +1,11 @@
 # @pyreon/hotkeys
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1216](https://github.com/pyreon/pyreon/pull/1216) [`894a044`](https://github.com/pyreon/pyreon/commit/894a04432507f0757bf37cf0a6bf0498f45788c8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements. Add 4 edge-case tests: `mod` → ctrl on non-Mac (line 46 in `parse.ts`), `mod` → meta on Mac, empty-string + whitespace-only shortcuts both throw (line 194 in `registry.ts`). Bump `coverageThresholds` 94 → 95.
+
 ## 0.28.0
 
 ### Patch Changes

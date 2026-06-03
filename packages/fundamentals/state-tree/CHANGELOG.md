@@ -1,5 +1,36 @@
 # @pyreon/state-tree
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1211](https://github.com/pyreon/pyreon/pull/1211) [`8bb2463`](https://github.com/pyreon/pyreon/commit/8bb2463d9771c63bd53c6a761cb067aeb9c9e9ee) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(state-tree): cover applyPatch error paths to lift coverage 94.98% → 96.55%
+
+  Adds 7 focused tests for the validation throw branches in
+  `applyPatch` (patch.ts lines 109, 114, 122, 126, 129, 133, 142, 147)
+  that previously had no coverage:
+
+  - unsupported op
+  - empty path
+  - reserved property name (intermediate segment) via `__proto__`
+  - unknown intermediate state key
+  - intermediate segment is not a nested model instance
+  - reserved property at final segment
+  - unknown final state key
+
+  All 7 tests assert the documented error messages, so a future refactor
+  that silently changes the messaging will fail the test.
+
+  Lifts `state-tree` statements 94.98% → 96.55%; threshold bumped 94 → 95
+  to lock in the actuals.
+
+  Part of the user-approved "whole-repo coverage ≥ 95%" incremental plan.
+  Tier 2 follow-up: charts, elements, hooks, hotkeys, lint, router each
+  within 1pt of 95 — addressed in separate PRs.
+
+- Updated dependencies [[`9be0265`](https://github.com/pyreon/pyreon/commit/9be0265553ff756383b21f9c0ab556949d7cadb0)]:
+  - @pyreon/validation@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes

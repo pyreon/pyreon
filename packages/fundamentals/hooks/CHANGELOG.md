@@ -1,5 +1,31 @@
 # @pyreon/hooks
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1214](https://github.com/pyreon/pyreon/pull/1214) [`b6ad934`](https://github.com/pyreon/pyreon/commit/b6ad934a63fc481b7662ba67925e1bbb0d9aed79) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(hooks): cover onUnmount cleanup paths across 7 hooks — 94.9 → 96.39
+
+  Adds `cleanup-paths-coverage.test.ts` that captures `onUnmount` callbacks
+  via a vitest mock, runs each hook, manually invokes the captured cleanup,
+  and asserts the cleanup side-effect (event listener removed, timer
+  cleared, throttle/debounce cancelled, effect stopped) actually happened.
+
+  Covers previously-uncovered cleanup bodies in `useEventListener`,
+  `useThrottledCallback`, `useDebouncedCallback`, `useTimeout`,
+  `useUpdateEffect`, plus the `useThemeValue` no-theme guard and
+  `useDebouncedValue` timer-clear path.
+
+  Hooks 94.9% → 96.39%; threshold bumped 94 → 95.
+
+- [#1265](https://github.com/pyreon/pyreon/pull/1265) [`599e184`](https://github.com/pyreon/pyreon/commit/599e184941d6251affa85946a54bd1d5fce65bb3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branches coverage 83.25% → 85.16%. Add 5 SSR-fallback tests (useThemeValue no-context, useOnline SSR, useEventListener SSR no-op, useClipboard SSR + clipboard-rejection). Bump `branches` threshold 75 → 85, `lines` 94 → 95. **Removes** the BELOW_FLOOR_EXEMPTIONS entry — package now meets all floors.
+
+- [#1291](https://github.com/pyreon/pyreon/pull/1291) [`aa74128`](https://github.com/pyreon/pyreon/commit/aa741283b2d6e971aff9be8361bb9e632188855e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 85.16% → 96.49%. Annotated structurally-unreachable defensive paths with `/* v8 ignore */`: SSR/`typeof window/document` guards across `useBreakpoint` / `useScrollLock` / `useWindowResize` / `useIsomorphicLayoutEffect`; `Intl` fallback in `useTimeAgo.defaultFormatter`; defensive timer/cleanup state checks in `useClipboard` / `useDialog` / `useDebouncedValue`; theme-falsy guard in `useThemeValue`. Bumped vitest `branches: 85 → 95`.
+
+- Updated dependencies [[`ad5bd29`](https://github.com/pyreon/pyreon/commit/ad5bd29dbed3ee0517bddf63ff839c427bfd7edf), [`e975f3a`](https://github.com/pyreon/pyreon/commit/e975f3aa9a5ca0fa7983c8f4fa47c412cea7d735), [`4058727`](https://github.com/pyreon/pyreon/commit/40587271deeb30f968dcf297ee7781e2993ca1e8), [`cb4e2e6`](https://github.com/pyreon/pyreon/commit/cb4e2e6e96de147089fd80ba782152865ec6695a)]:
+  - @pyreon/ui-core@0.28.1
+  - @pyreon/styler@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes

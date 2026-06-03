@@ -1,5 +1,13 @@
 # @pyreon/document
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1220](https://github.com/pyreon/pyreon/pull/1220) [`a292e1e`](https://github.com/pyreon/pyreon/commit/a292e1e40822ac5036af8ce05ebc0b90ff09dd64) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements. Exclude `src/renderers/pdf.ts` + `src/renderers/docx.ts` from node-side coverage — they emit real binary output via pdfmake / docx libs and format-specific branches need a binary-fixture harness. The `render()` pipeline calling into them is covered via render.test.ts. Bump `coverageThresholds.statements` 94 → 95, `lines` 94 → 95.
+
+- [#1276](https://github.com/pyreon/pyreon/pull/1276) [`89199fa`](https://github.com/pyreon/pyreon/commit/89199fa464a4c79c93a1c8d7835a8510d49fba4d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 85.17% → 95.13% (≥ 95% target). Added `branch-coverage-edges.test.ts` with: (a) a "bareDoc" fixture of manually-constructed `DocNode`s WITHOUT optional props that primitive constructors normally default, driving every renderer's `?? <fallback>` right-side path; (b) a parameterized renderer sweep across 16 formats (html / text / md / csv / svg / email / slack / discord / teams / telegram / whatsapp / notion / confluence / google-chat / pptx / xlsx); (c) builder.ts `chart()` / `flow()` width+height+caption combination matrix (all 8 subsets); (d) download.ts error paths; (e) `nodes.ts` `normalizeChildren` edges via primitive constructors; (f) `sanitize.ts` keyword-color path. Annotated structurally-unreachable `transparent|inherit|currentColor|initial|unset` keyword regex in `sanitize.ts` (always pre-matched by the named-colors regex above) with `/* v8 ignore */`. Bumped vitest threshold `branches: 80 → 95`, dropped `@pyreon/document` from `BELOW_FLOOR_EXEMPTIONS`.
+
 ## 0.28.0
 
 ### Patch Changes

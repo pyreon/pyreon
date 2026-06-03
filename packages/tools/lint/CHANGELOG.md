@@ -1,5 +1,31 @@
 # @pyreon/lint
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1217](https://github.com/pyreon/pyreon/pull/1217) [`d4a76a0`](https://github.com/pyreon/pyreon/commit/d4a76a0ca8fa2468c05e96aacc6a8690496e3e8c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements / ≥90% branches. Add 16 edge-case tests across JSX namespaced-attr bails, styling rule bail branches, frontend a11y bails, heading-order function-scope traversal + exemptPaths, reactivity context-destructure/effect-assignment bails, and store rule bails. Bump `coverageThresholds.statements` 94 → 95, `branches` 85 → 90, `lines` 94 → 95.
+
+- [#1269](https://github.com/pyreon/pyreon/pull/1269) [`fc2da1c`](https://github.com/pyreon/pyreon/commit/fc2da1cbbae059b5e473735e590c21a1efd90d49) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(lint): `no-bare-signal-in-jsx` no longer false-positives on attribute values
+
+  The rule fired on every `JSXExpressionContainer` inside JSX, so it flagged
+  attribute signal reads (`<input value={value()} checked={checked()}>`) the same
+  as text children (`<div>{count()}</div>`). But the compiler `_rp()`/`_bind()`-
+  wraps signal reads in ATTRIBUTE position — those ARE reactive; only an
+  already-called signal in TEXT position is captured once. The over-fire forced a
+  `.pyreonlintrc.json` exemption for `@pyreon/ui-primitives` + `@pyreon/elements`
+  (both use `attr={signal()}` pervasively in their headless primitives).
+
+  The rule now marks text-child containers via a WeakSet when visiting each
+  element/fragment (oxc passes no parent) and reports only those — attribute
+  values are skipped, while TEXT nested inside an attribute (`prop={<div>{x()}</div>}`)
+  still reports correctly. The two package exemptions are removed (shipped source
+  of both is clean after the fix). Bisect-verified.
+
+- Updated dependencies [[`404d266`](https://github.com/pyreon/pyreon/commit/404d266a33fd272897e70c59e6baad7f31ccab44), [`a448ff4`](https://github.com/pyreon/pyreon/commit/a448ff4fa5b5627622be0fcd7fbe65b5f8c51991), [`e97b8d7`](https://github.com/pyreon/pyreon/commit/e97b8d7a63a3f368c6a1e49a71eb22114b202f81), [`fccddae`](https://github.com/pyreon/pyreon/commit/fccddae860e3126640dbcbd6d5a0ef22ac419f48)]:
+  - @pyreon/compiler@0.28.1
+  - @pyreon/sized-map@0.28.1
+
 ## 0.28.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @pyreon/solid-compat
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1222](https://github.com/pyreon/pyreon/pull/1222) [`ced15ee`](https://github.com/pyreon/pyreon/commit/ced15eecbf5e8bf3f8c0aa7dcd7a0bf67488e74a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage thresholds to ≥95% statements / ≥95% functions / ≥95% lines (measured 95.79% / 97.20% / 97.88%). No new tests — the existing test suite already exceeds 95% on all three; just locks the thresholds.
+
+- [#1300](https://github.com/pyreon/pyreon/pull/1300) [`75c33f5`](https://github.com/pyreon/pyreon/commit/75c33f5f47c4216be159869133c99ec13c85d1a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 88.21% → 95.33%. Annotated structurally-unreachable defensive guards across `index.ts` (defensive null-descriptor guards in `mergeProps`/`splitProps`, SOLID_CTX context branch, createResource stale-resolution discards + sync error path, createStore signal-eviction sweep diagnostic, proxy ownKeys/getOwnPropertyDescriptor traps, DANGEROUS_KEYS pollution guards, filter-predicate setStore path) with `/* v8 ignore */`. Bumped vitest `branches: 85 → 95`.
+
 ## 0.28.0
 
 ### Patch Changes

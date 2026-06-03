@@ -1,5 +1,11 @@
 # @pyreon/sized-map
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1225](https://github.com/pyreon/pyreon/pull/1225) [`a448ff4`](https://github.com/pyreon/pyreon/commit/a448ff4fa5b5627622be0fcd7fbe65b5f8c51991) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix coverage measurement gap. The package's logic lives entirely in `src/index.ts`; the `@pyreon/vitest-config` default excludes `src/**/index.ts`, so the package was reporting 0% coverage despite having a comprehensive test suite. Set `includeIndexInCoverage: true` — coverage now reports the true 100% statements / 90% branches.
+
 ## 0.28.0
 
 ### Patch Changes

@@ -1,5 +1,20 @@
 # @pyreon/zero
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1224](https://github.com/pyreon/pyreon/pull/1224) [`d9cee0b`](https://github.com/pyreon/pyreon/commit/d9cee0beecf7e9718e0e8d6d763afdb9ce8230d8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements. Exclude `src/ssr-plugin.ts` + `src/ssr-build-shared.ts` from node-side coverage — both are Vite build-time hooks for `mode: 'ssr' | 'isr'` that run only during real `vite build` (exercised by verify-modes ssr-showcase × ssr/isr cells + e2e). Bump `coverageThresholds.statements` 94 → 95, `functions` 94 → 95, `lines` 94 → 95.
+
+- Updated dependencies [[`a8452b5`](https://github.com/pyreon/pyreon/commit/a8452b5780a19695fee8031ae625ab7c384fc3d5), [`a448ff4`](https://github.com/pyreon/pyreon/commit/a448ff4fa5b5627622be0fcd7fbe65b5f8c51991), [`9be0265`](https://github.com/pyreon/pyreon/commit/9be0265553ff756383b21f9c0ab556949d7cadb0)]:
+  - @pyreon/router@0.28.1
+  - @pyreon/sized-map@0.28.1
+  - @pyreon/head@0.28.1
+  - @pyreon/server@0.28.1
+  - @pyreon/vite-plugin@0.28.1
+  - @pyreon/runtime-server@0.28.1
+  - @pyreon/meta@0.28.1
+
 ## 0.28.0
 
 ### Minor Changes

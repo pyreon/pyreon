@@ -1,5 +1,13 @@
 # @pyreon/styler
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1231](https://github.com/pyreon/pyreon/pull/1231) [`e975f3a`](https://github.com/pyreon/pyreon/commit/e975f3aa9a5ca0fa7983c8f4fa47c412cea7d735) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to pass its own gate + raise functions / lines to ≥95%. Add 11 tests covering SSR-mode `injectRules` buffering + idempotency, `resetSSRBuffer`, `getStyleRules` return-copy contract, `buildProps` reactive-class-getter merging (3 cases: with generated, generated-only, user-only), and `injectRules` insertRule-throw warn path. Coverage 93.16% → 94.83% statements, 83.55% → 85.11% branches, 93.33% → 97.33% functions, 94.48% → 96.03% lines. Bump thresholds: branches 80 → 85, functions 94 → 95, lines 94 → 95.
+
+- [#1281](https://github.com/pyreon/pyreon/pull/1281) [`4058727`](https://github.com/pyreon/pyreon/commit/40587271deeb30f968dcf297ee7781e2993ca1e8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift statement coverage 94.83% → 95.89% and drop `@pyreon/styler` from `BELOW_FLOOR_EXEMPTIONS`. Added `__tests__/coverage-edges.test.ts` covering: (a) the `WeakMap` fallback cache hit path in `createStyledComponent` (alternating same-strings + different-tag pattern), (b) the `styled` Proxy guards for `prototype` / `$$typeof`, (c) per-tag factory caching identity. Vitest threshold `statements: 94 → 95`.
+
 ## 0.28.0
 
 ### Patch Changes

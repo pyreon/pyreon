@@ -1,5 +1,12 @@
 # @pyreon/typescript
 
+## 0.28.1
+
+### Patch Changes
+
+- Updated dependencies [[`9be0265`](https://github.com/pyreon/pyreon/commit/9be0265553ff756383b21f9c0ab556949d7cadb0)]:
+  - @pyreon/core@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes

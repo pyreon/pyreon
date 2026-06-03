@@ -1,5 +1,16 @@
 # @pyreon/example-native-todomvc-web
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [[`9be0265`](https://github.com/pyreon/pyreon/commit/9be0265553ff756383b21f9c0ab556949d7cadb0), [`d716811`](https://github.com/pyreon/pyreon/commit/d716811ec3bb853b628c3d28d710b6a34b20beb3), [`5d086f0`](https://github.com/pyreon/pyreon/commit/5d086f0be77b23958748889b7ee61bcec0074a02), [`ea58eda`](https://github.com/pyreon/pyreon/commit/ea58eda140865aacc1b3d6f02bb9b0fe1772b7fe), [`04bb778`](https://github.com/pyreon/pyreon/commit/04bb77889f4b158fd7dbe109454a1faf992bccaf), [`3fb1733`](https://github.com/pyreon/pyreon/commit/3fb173327a5cda36f4150cf8ed66d5d97be4501c), [`fccddae`](https://github.com/pyreon/pyreon/commit/fccddae860e3126640dbcbd6d5a0ef22ac419f48)]:
+  - @pyreon/core@0.28.1
+  - @pyreon/primitives@0.28.1
+  - @pyreon/reactivity@0.28.1
+  - @pyreon/runtime-dom@0.28.1
+  - @pyreon/storage@0.28.1
+
 ## 0.0.7
 
 ### Patch Changes
