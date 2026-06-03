@@ -203,6 +203,7 @@ export function mountAndExpectOnce(
  * see a cryptic `ReferenceError: document is not defined`.
  */
 function ensureDom(helperName: string): void {
+  /* v8 ignore next 3 — SSR / no-DOM environment defensive guard; tests always run with happy-dom */
   if (typeof document === 'undefined') {
     throw new Error(buildDomErrorMessage(helperName))
   }

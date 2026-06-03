@@ -6,5 +6,5 @@ export default defineNodeConfig({
   // Existing non-DOM tests run fine in this environment too.
   environment: 'happy-dom',
   excludeBrowserTests: true,
-  coverageThresholds: { statements: 95, branches: 80, functions: 95, lines: 95 },
+  coverageThresholds: { statements: 95, branches: 95, functions: 95, lines: 95 },
 })
