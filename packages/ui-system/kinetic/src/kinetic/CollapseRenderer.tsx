@@ -161,7 +161,7 @@ const CollapseRenderer = ({
   const shouldRender = () => stage() !== 'hidden'
 
   const wrapperStyle: CSSProperties = {
-    ...((htmlProps.style as CSSProperties) ?? {}),
+    ...(htmlProps.style as CSSProperties),
     ...(stage() !== 'entered' ? { overflow: 'hidden' } : {}),
     ...(stage() === 'hidden' ? { height: '0px' } : stage() === 'entered' ? { height: 'auto' } : {}),
   }

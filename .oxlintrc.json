@@ -14,16 +14,19 @@
         "destructuredArrayIgnorePattern": "^_"
       }
     ],
-    "no-shadow": "warn",
+    "no-shadow": "error",
     "no-empty": "warn",
-    "no-console": "warn",
-    "no-template-curly-in-string": "warn",
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "no-template-curly-in-string": "off",
     "no-debugger": "error",
-    "typescript/no-non-null-assertion": "warn",
+    "typescript/no-non-null-assertion": "off",
     "import/no-duplicates": "error",
     "jsx-a11y/control-has-associated-label": "off",
     "jsx-a11y/label-has-associated-control": "off",
     "oxc/no-map-spread": "off",
+    "unicorn/no-new-array": "off",
+    "promise/no-callback-in-promise": "off",
+    "typescript/no-this-alias": "off",
     "vitest/require-mock-type-parameters": "off",
     "vitest/expect-expect": "off",
     "vitest/no-conditional-expect": "off",
@@ -37,6 +40,9 @@
     "unicorn/no-thenable": "error",
     "unicorn/prefer-string-starts-ends-with": "error",
     "jsx-a11y/no-redundant-roles": "error",
+    "unicorn/no-useless-length-check": "error",
+    "unicorn/no-useless-fallback-in-spread": "error",
+    "unicorn/no-useless-spread": "off",
     "vitest/valid-expect": ["error", { "maxArgs": 2 }],
     "vitest/no-standalone-expect": "error"
   },
@@ -49,7 +55,16 @@
         "no-shadow": "off",
         "no-template-curly-in-string": "off",
         "typescript/no-non-null-assertion": "off",
-        "no-unused-vars": "off"
+        "no-unused-vars": "off",
+        "vitest/no-disabled-tests": "off",
+        "vitest/no-conditional-tests": "off",
+        "vitest/valid-title": "off"
+      }
+    },
+    {
+      "files": ["**/*.d.ts"],
+      "rules": {
+        "unicorn/no-empty-file": "off"
       }
     },
     {
@@ -67,11 +82,14 @@
         "packages/core/runtime-server/src/index.ts",
         "packages/core/server/src/handler.ts",
         "packages/core/server/src/client.ts",
-        "examples/benchmark/**/*.ts",
+        "examples/**",
         "scripts/**/*.ts",
+        "packages/**/scripts/**",
         "packages/tools/cli/src/**",
         "packages/tools/mcp/src/**",
-        "packages/tools/devtools/scripts/**/*.ts",
+        "packages/native/cli/src/**",
+        "packages/zero/cli/src/**",
+        "packages/zero/create-zero/src/**",
         "packages/tools/lint/src/cli.ts",
         "packages/tools/lint/src/watcher.ts"
       ],
@@ -126,6 +144,19 @@
       "files": ["docs/.vitepress/**"],
       "rules": {
         "no-useless-escape": "off"
+      }
+    },
+    {
+      "files": ["examples/**", "packages/ui/primitives/src/**"],
+      "rules": {
+        "jsx-a11y/click-events-have-key-events": "off",
+        "jsx-a11y/no-static-element-interactions": "off",
+        "jsx-a11y/no-noninteractive-element-interactions": "off",
+        "jsx-a11y/no-noninteractive-element-to-interactive-role": "off",
+        "jsx-a11y/no-noninteractive-tabindex": "off",
+        "jsx-a11y/prefer-tag-over-role": "off",
+        "jsx-a11y/no-autofocus": "off",
+        "jsx-a11y/anchor-is-valid": "off"
       }
     }
   ],

@@ -170,7 +170,7 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
                 mergeProps(props.htmlProps, {
                   ref: mergedRef,
                   style: {
-                    ...((props.htmlProps.style as CSSProperties) ?? {}),
+                    ...(props.htmlProps.style as CSSProperties),
                     display: 'none',
                   },
                 }),
@@ -217,7 +217,7 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
     ? cx([childClass as Parameters<typeof cx>[0], hiddenClass])
     : undefined
   const mergedStyle = hiddenStyle
-    ? { ...((props.htmlProps.style as CSSProperties) ?? {}), ...hiddenStyle }
+    ? { ...(props.htmlProps.style as CSSProperties), ...hiddenStyle }
     : undefined
 
   const extra: Record<string, unknown> = { ref: mergedRef }
