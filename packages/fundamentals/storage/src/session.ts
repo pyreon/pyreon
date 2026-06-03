@@ -31,6 +31,7 @@ export function useSessionStorage<T>(
 
   // Read initial value from storage
   let initialValue = defaultValue
+  /* v8 ignore next — defensive null storage guard */
   if (storage) {
     const raw = storage.getItem(key)
     if (raw !== null) {

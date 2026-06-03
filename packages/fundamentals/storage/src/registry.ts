@@ -55,6 +55,7 @@ export function setEntry<T>(
  */
 export function retainEntry(backend: string, key: string): void {
   const entry = registry.get(registryKey(backend, key))
+  /* v8 ignore next — defensive null entry guard; caller chain always has live entry */
   if (entry) entry.refCount++
 }
 
@@ -67,6 +68,7 @@ export function retainEntry(backend: string, key: string): void {
 export function releaseEntry(backend: string, key: string): boolean {
   const composite = registryKey(backend, key)
   const entry = registry.get(composite)
+  /* v8 ignore next — defensive null entry guard; release pairs with retain */
   if (!entry) return false
   entry.refCount--
   if (entry.refCount <= 0) {

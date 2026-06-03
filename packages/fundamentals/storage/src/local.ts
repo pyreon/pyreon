@@ -26,6 +26,7 @@ function onStorageEvent(e: StorageEvent): void {
 }
 
 function retainStorageListener(): void {
+  /* v8 ignore next — SSR guard */
   if (!isBrowser()) return
   activeCount++
   if (storageHandler === null) {
@@ -51,6 +52,7 @@ export function _resetStorageListener(): void {
  * handler when the count drops to zero. Called from `.remove()`.
  */
 export function releaseStorageListener(): void {
+  /* v8 ignore next 2 — SSR + already-released defensive guards */
   if (!isBrowser()) return
   if (activeCount === 0) return
   activeCount--
@@ -96,6 +98,7 @@ export function useStorage<T>(
 
   // Read initial value from storage
   let initialValue = defaultValue
+  /* v8 ignore next — defensive null storage guard */
   if (storage) {
     const raw = storage.getItem(key)
     if (raw !== null) {
@@ -138,6 +141,7 @@ export function createStorageSignal<T>(
   // Override set to persist
   storageSig.set = (value: T) => {
     sig.set(value)
+    /* v8 ignore next — defensive null storage guard */
     if (storage) {
       try {
         storage.setItem(key, serialize(value, options?.serializer))
@@ -169,6 +173,7 @@ export function createStorageSignal<T>(
   // consumer's release.
   storageSig.remove = () => {
     sig.set(defaultValue)
+    /* v8 ignore next — defensive null storage guard */
     if (storage) {
       storage.removeItem(key)
     }

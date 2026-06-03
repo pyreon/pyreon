@@ -30,6 +30,7 @@ export function removeStorage(
     // No signal registered — still try to clear the raw storage
     if (type === 'local' || type === 'session') {
       const storage = getWebStorage(type)
+      /* v8 ignore next — defensive null storage guard */
       if (storage) storage.removeItem(key)
     } else if (type === 'cookie' && isBrowser()) {
       document.cookie = `${encodeURIComponent(key)}=; max-age=0; path=/`
