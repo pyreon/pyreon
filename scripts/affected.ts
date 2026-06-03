@@ -25,9 +25,14 @@
  * ## Root-file safety net
  *
  * If any "root-level" file changed (root `package.json`, `bun.lock`, root
- * `tsconfig*.json`, `vitest.shared.ts`, `.github/workflows/*`, `scripts/*`),
- * we cannot reason about what's affected — emit `--filter='*'` to run
- * everything.
+ * `tsconfig*.json`, `vitest.shared.ts`, `.github/workflows/*`), we cannot
+ * reason about what's affected — emit `--filter='*'` to run everything.
+ *
+ * `scripts/**` is DELIBERATELY excluded from the root-file net: a tooling
+ * script owns no workspace and touches no package source, so package tests
+ * are unaffected. It's covered by `@pyreon/test-utils`' script tests, so it's
+ * mapped there as a LEAF seed (no dependent expansion — test-utils is a
+ * universal devDependency, so expanding it would re-run ~all 60 packages).
  *
  * ## Empty case
  *
@@ -74,9 +79,22 @@ export function isRootFile(path: string): boolean {
   if (path === 'vitest.browser.ts') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
   if (path.startsWith('.github/workflows/')) return true
-  if (path.startsWith('scripts/')) return true
+  // NOTE: `scripts/` is deliberately NOT a root file. Scripts are standalone
+  // tooling — they don't touch package SOURCE, so package tests are unaffected.
+  // A script change can only break a test via @pyreon/test-utils (which
+  // unit-tests several scripts), so it's mapped THERE in computeAffectedFlags
+  // instead of escalating to `--filter=*`. The old blanket rule ran ALL ~60
+  // packages, which flakes the local pre-push full-run under CPU contention.
   return false
 }
+
+/** A standalone tooling script under `scripts/` (mapped to @pyreon/test-utils). */
+export function isScriptFile(path: string): boolean {
+  return path.startsWith('scripts/') && /\.(ts|tsx|js|mjs|cjs)$/.test(path)
+}
+
+/** The package whose tests cover `scripts/**` (affected target for script edits). */
+export const SCRIPT_TEST_PACKAGE = '@pyreon/test-utils'
 
 // ── Workspace discovery ────────────────────────────────────────────────────
 
@@ -176,10 +194,7 @@ export function findOwningWorkspace(
 
 // ── Reverse-dep graph + BFS ────────────────────────────────────────────────
 
-export function transitiveDependents(
-  seeds: Set<string>,
-  workspaces: Workspace[],
-): Set<string> {
+export function transitiveDependents(seeds: Set<string>, workspaces: Workspace[]): Set<string> {
   // Build reverse graph: dep -> [dependents]
   const reverse = new Map<string, Set<string>>()
   for (const ws of workspaces) {
@@ -234,9 +249,7 @@ export function filterByCategory(
   // dir — example apps live outside `packages/<category>/`. Every other
   // category maps to `packages/<category>/`.
   const prefix =
-    category === 'examples'
-      ? join(root, 'examples') + '/'
-      : join(root, 'packages', category) + '/'
+    category === 'examples' ? join(root, 'examples') + '/' : join(root, 'packages', category) + '/'
   const byName = new Map<string, Workspace>()
   for (const ws of workspaces) byName.set(ws.name, ws)
 
@@ -280,16 +293,27 @@ export function computeAffectedFlags(opts: {
     if (isRootFile(path)) return '--filter=*'
   }
 
-  // Seed set from owning workspaces.
+  // Seed set from owning workspaces (these EXPAND to their dependents).
   const seeds = new Set<string>()
+  // Script changes are LEAF seeds: a `scripts/**` file owns no workspace, but
+  // it's covered by @pyreon/test-utils' own script tests. It must NOT expand to
+  // test-utils' dependents — test-utils is a universal devDependency (~30
+  // packages → 92 via transitive closure), and a tooling-script edit affects
+  // ONLY test-utils' script tests, never any consumer. Adding it as a leaf is
+  // what actually keeps a script change off the full 60-package run.
+  const leafSeeds = new Set<string>()
+  const hasScriptTestPkg = workspaces.some((w) => w.name === SCRIPT_TEST_PACKAGE)
   for (const path of changed) {
     const ws = findOwningWorkspace(path, workspaces, root)
     if (ws) seeds.add(ws.name)
+    else if (hasScriptTestPkg && isScriptFile(path)) leafSeeds.add(SCRIPT_TEST_PACKAGE)
   }
 
-  if (seeds.size === 0) return ''
+  if (seeds.size === 0 && leafSeeds.size === 0) return ''
 
   let closure = transitiveDependents(seeds, workspaces)
+  // Add leaf seeds AFTER expansion (no dependents of their own get pulled in).
+  for (const leaf of leafSeeds) closure.add(leaf)
 
   if (category) {
     closure = filterByCategory(closure, workspaces, category, root)
@@ -300,7 +324,10 @@ export function computeAffectedFlags(opts: {
   // single quotes here breaks GitHub Actions step outputs (the quotes are
   // preserved verbatim and bun receives `--filter='@pyreon/x'` literally,
   // matching no packages).
-  return [...closure].sort().map((name) => `--filter=${name}`).join(' ')
+  return [...closure]
+    .sort()
+    .map((name) => `--filter=${name}`)
+    .join(' ')
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -323,11 +350,10 @@ function main(): void {
     // not executable shell). Same fix shape applies to scripts/e2e-affected.ts
     // — tracked as a follow-up to keep this PR scoped to the typecheck/test
     // shard work.
-    const diffOut = execFileSync(
-      'git',
-      ['diff', '--name-only', `${base}...HEAD`],
-      { cwd: ROOT, encoding: 'utf-8' },
-    )
+    const diffOut = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], {
+      cwd: ROOT,
+      encoding: 'utf-8',
+    })
     changed = diffOut.split('\n').filter(Boolean)
   } catch {
     // Diff failed (bad base ref, shallow clone, etc.) — be safe, run all.
