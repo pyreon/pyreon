@@ -30,8 +30,33 @@
 
 package com.pyreon.router
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+
+/**
+ * A single route definition — Phase A4 of the 2026-06 native readiness
+ * audit (closes CRIT-2 partial + CRIT-3 partial). Apps populate
+ * [PyreonRouter.routes] with a list of these; the router's `push`/`replace`
+ * runs [PyreonRouter.matchPath] against each pattern in declaration
+ * order, populates [PyreonRouter.params] from the first match, and
+ * [RouterView] renders the matched component.
+ *
+ * Apps that DON'T configure `routes` keep the pre-A4 behavior:
+ * `params` stays empty, [RouterView] emits nothing, host wires its
+ * own when-dispatch on `currentPath`. Strictly additive.
+ *
+ * @property path Path pattern; supports the same shapes
+ *   [PyreonRouter.matchPath] accepts — literal segments, `:name`,
+ *   `:name?`, `:name*` splat.
+ * @property component Composable factory that produces the UI when
+ *   this route matches. Lazy: a route that's never visited doesn't
+ *   pay composition cost.
+ */
+public class RouteRecord(
+    public val path: String,
+    public val component: @Composable () -> Unit,
+)
 
 /**
  * Routing model. Holds a reactive path stack as `MutableState<List<String>>`
@@ -48,18 +73,35 @@ import androidx.compose.runtime.mutableStateOf
  * | `router.back()`                           | `router.back()`              |
  * | `router.reset()`                          | `router.reset()`             |
  */
-public class PyreonRouter(initialPath: List<String> = emptyList()) {
+public class PyreonRouter(
+    initialPath: List<String> = emptyList(),
+    routes: List<RouteRecord> = emptyList(),
+) {
     /**
      * Reactive path stack. Drives the host's NavHost / when-on-path
      * branching. Compose observers recompose when this changes.
      */
     public val path: MutableState<List<String>> = mutableStateOf(initialPath)
 
-    /** Path parameter map for the current route. Phase C2 ships SCAFFOLD — empty
-     *  by default; real pattern-matching against route definitions lands in
-     *  follow-up PRs. The compiler-emitted Kotlin references `router.params["id"]`
-     *  so the symbol must exist now even with no-op behaviour. */
+    /** Path parameter map for the current route.
+     *
+     *  Phase A4 (native readiness audit, 2026-06): populated by
+     *  [push]/[replace] when the candidate path matches a [routes]
+     *  entry via [matchPath]. Apps that DON'T configure `routes`
+     *  keep the pre-A4 behavior — `params` stays empty and host
+     *  code reads segments directly from [currentPath]. */
     public val params: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
+
+    /** Route table — declaration-order list of [RouteRecord] patterns.
+     *  [push]/[replace] walk this list and pick the FIRST match;
+     *  declaration order IS precedence. [RouterView] renders the
+     *  matched record's component (or nothing when no match — the
+     *  backward-compat fallback for apps that don't configure routes).
+     *
+     *  Phase A4 ships a flat list; nested-route depth indexing
+     *  ([RouteRecord.children]) lands as A4.5 — separate PR to limit
+     *  blast radius. */
+    public val routes: MutableState<List<RouteRecord>> = mutableStateOf(routes)
 
     /** Phase 3 (loaders) — per-route loaded data, keyed by full path. A
      *  route's loader stores its result here on navigation; `useLoaderData()`
@@ -71,6 +113,45 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
     /** Top-of-stack path. Mirrors `router.currentRoute().path` on the web side. */
     public val currentPath: String
         get() = path.value.lastOrNull() ?: "/"
+
+    init {
+        // Resolve any params that the initial top-of-stack path produces,
+        // so apps starting on `/users/42` have `params["id"] == "42"`
+        // immediately — no need to call push/replace just to populate.
+        if (initialPath.isNotEmpty()) {
+            val resolved = resolve(initialPath.last())
+            if (resolved != null) {
+                params.value = resolved.second
+            }
+        }
+    }
+
+    /** Walk [routes] in declaration order against [candidate], returning the
+     *  first matching record + its extracted params. Internal helper called
+     *  by [push]/[replace] AND the [init] block. Pure — does NOT mutate
+     *  router state. */
+    private fun resolve(candidate: String): Pair<RouteRecord, Map<String, String>>? {
+        for (record in routes.value) {
+            val matched = matchPath(candidate, record.path)
+            if (matched != null) return record to matched
+        }
+        return null
+    }
+
+    /** Resolve the CURRENT top-of-stack path against the route table.
+     *  Public so [RouterView] can call it during composition — treat as
+     *  an internal-API surface on the package. */
+    public fun resolveCurrentRoute(): Pair<RouteRecord, Map<String, String>>? =
+        resolve(currentPath)
+
+    /** Recompute [params] from [committed] against the route table.
+     *  Called by [push]/[replace] AFTER the path mutation so the params
+     *  signal updates in lockstep with the path (observers reading
+     *  either field see a consistent snapshot). No-match → params is
+     *  cleared (don't leak stale params from a previous route). */
+    private fun updateParamsFromPath(committed: String) {
+        params.value = resolve(committed)?.second ?: emptyMap()
+    }
 
     /** Store a route's loaded data under its path. Called by the compiler's
      *  loader harness; idempotent overwrite. Mutating `loaderData` triggers
@@ -149,10 +230,15 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
             // chain (guard is the active gate) AND the afterEach
             // fan-out (the outer level fires it).
             this.path.value = this.path.value + path
+            updateParamsFromPath(path)
             return
         }
         if (!allowNavigation(path)) return
         this.path.value = this.path.value + path
+        // Phase A4: resolve the matched route + extract params atomically
+        // with the path mutation, so observers see a consistent snapshot
+        // (params + path always describe the same route).
+        updateParamsFromPath(path)
         for (hook in afterEachHooks) hook(path)
     }
 
@@ -174,6 +260,7 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
             } else {
                 current.dropLast(1) + path
             }
+            updateParamsFromPath(path)
             return
         }
         if (!allowNavigation(path)) return
@@ -183,6 +270,8 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
         } else {
             current.dropLast(1) + path
         }
+        // Phase A4: same params-after-path contract as `push`.
+        updateParamsFromPath(path)
         for (hook in afterEachHooks) hook(path)
     }
 
@@ -220,6 +309,12 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
         val current = this.path.value
         if (current.isEmpty()) return
         this.path.value = current.dropLast(1)
+        // Phase A4: recompute params from the newly-exposed top-of-stack
+        // path so observers after a back() see the previous route's
+        // values (not stale params from the popped route). When the
+        // stack becomes empty, `currentPath` falls back to "/" and the
+        // resolver runs against that.
+        updateParamsFromPath(currentPath)
     }
 
     /**
