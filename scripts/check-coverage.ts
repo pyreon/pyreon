@@ -21,13 +21,16 @@
  * regress, but PRs get fast feedback instead of paying the 200s+ cost
  * on every iteration.
  *
- * ## Coverage floor (PR #323 + PR #324)
+ * ## Coverage floor (PR #323 → #324 → #1266 → 95% goal)
  *
  * MINIMUM_FLOOR is the lowest STATEMENT threshold any package may
  * configure without an explicit entry in BELOW_FLOOR_EXEMPTIONS.
  * MINIMUM_BRANCH_FLOOR is the same for branch coverage. PR #323
- * established the 85% statement floor; PR #324 raised it to 90%
- * and added an explicit 80% branch floor.
+ * established the 85% statement floor; PR #324 raised it to 90%;
+ * PR #1266 raised it to 94%; the cov-95 series (this PR) raises it
+ * to 95%. The branch floor stays at 85% for now — lifting every
+ * package's branches to 95 is multi-week per-package work tracked
+ * separately.
  *
  * BELOW_FLOOR_EXEMPTIONS is the visible-debt list — every entry must
  * carry the package's currently-configured statement + branch
@@ -46,8 +49,8 @@ const PACKAGE_DIRS = [
   'packages/tools',
   'packages/zero',
 ]
-const DEFAULT_THRESHOLD = 94
-const MINIMUM_FLOOR = 94
+const DEFAULT_THRESHOLD = 95
+const MINIMUM_FLOOR = 95
 const MINIMUM_BRANCH_FLOOR = 85
 const CONCURRENCY = 4
 
@@ -68,12 +71,19 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
-  // ── Branch < 85 (statements OK) ─────────────────────────────────────
+  // ── Statement < 95 (post cov-95 floor lift) ─────────────────────────
+  '@pyreon/styler': {
+    currentStatements: 94,
+    currentBranches: 85,
+    reason:
+      'CSS-in-JS sheet management. After MINIMUM_FLOOR moved 94 → 95 (cov-95 series, June 2026), styler sits at 94.83% statements (0.17pp below). Residual uncov: styled.tsx WeakMap fallback caches + SSR hydration paths in sheet.ts that need targeted DOM-replay tests. Lifting to 95 is its own focused PR (~5-8 statement coverage targets).',
+  },
+  // ── Branch < MINIMUM_BRANCH_FLOOR (statements OK) ───────────────────
   '@pyreon/compiler': {
     currentStatements: 92,
     currentBranches: 84,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Coverage has drifted from 92.53% (PR #1079) to 92.38% statements (June 2026) as jsx.ts grew with progressively rarer compiler-edge-case branches. The package vitest.config.ts now declares statements=92 explicitly. Branches at 84 (1pt below 85 floor) tracked alongside. PR #1266 raised MINIMUM_FLOOR 90 → 94 which began failing Coverage (Full) — this PR drops the exemption to match actual. Lifting back to 94+/85+ is its own targeted test-coverage PR — covering the long-tail compiler branches needs targeted fixtures, not opportunistic test adds.',
+      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). After cov-95 series (this PR) the floor moved to 95% statements and compiler stays explicitly exempted: actual statements=92.38%, branches=84.7% (1pt below MINIMUM_BRANCH_FLOOR=85). Residual gap is in jsx.ts (~3000-line file with progressively rarer compiler-edge-case AST branches needing targeted fixtures, not opportunistic test adds). Lifting compiler to 95/95 is multi-PR work tracked as a long-tail effort — every other published Pyreon package is at ≥ 95% statements as of this PR.',
   },
 }
 
