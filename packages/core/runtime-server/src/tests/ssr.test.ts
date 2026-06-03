@@ -998,9 +998,117 @@ describe('renderToString — prop rendering edge cases', () => {
     expect(html).not.toContain('javascript')
   })
 
-  test('blocks data: URI in poster attribute', async () => {
-    const html = await renderToString(h('video', { poster: 'data:image/png;base64,abc' }))
+  test('blocks data:text/html URI in href attribute', async () => {
+    const html = await renderToString(h('a', { href: 'data:text/html,<script>alert(1)</script>' }))
     expect(html).not.toContain('data:')
+  })
+
+  // Regression: SSR/SSG used to strip ALL data: URIs on URL attributes, silently
+  // dropping the imagePlugin blur/color placeholders from the static HTML. A
+  // data:image on an image-context element is safe and must round-trip. Mirrors
+  // @pyreon/runtime-dom's allow matrix (props.ts `isSafeImageDataUri`).
+  describe('image data: URIs on image-source attributes (allowed)', () => {
+    test('img src — base64 webp passes', async () => {
+      const uri = 'data:image/webp;base64,UklGRvoAAABXRUJQVlA4'
+      const html = await renderToString(h('img', { src: uri }))
+      expect(html).toContain(`src="${uri}"`)
+    })
+
+    test('img src — base64 png passes', async () => {
+      const uri =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+      const html = await renderToString(h('img', { src: uri }))
+      expect(html).toContain(uri)
+    })
+
+    test('img src — url-encoded svg (no script) passes', async () => {
+      const uri =
+        "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1'%20height='1'%3E%3Crect%20fill='%23808080'%20width='1'%20height='1'/%3E%3C/svg%3E"
+      const html = await renderToString(h('img', { src: uri }))
+      expect(html).toContain('data:image/svg+xml')
+    })
+
+    test('img src — raw svg (no script) passes', async () => {
+      const uri = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
+      const html = await renderToString(h('img', { src: uri }))
+      expect(html).toContain('data:image/svg+xml')
+    })
+
+    test('video poster — base64 webp passes', async () => {
+      const uri = 'data:image/webp;base64,UklGRvoAAABXRUJQVlA4'
+      const html = await renderToString(h('video', { poster: uri }))
+      expect(html).toContain(`poster="${uri}"`)
+    })
+  })
+
+  describe('image data: URIs — unsafe shapes stay blocked', () => {
+    test('img src — svg with onload= is blocked', async () => {
+      const html = await renderToString(
+        h('img', { src: 'data:image/svg+xml,<svg onload=alert(1)></svg>' }),
+      )
+      expect(html).not.toContain('data:')
+    })
+
+    test('img src — svg with <script> is blocked', async () => {
+      const html = await renderToString(
+        h('img', { src: 'data:image/svg+xml,<svg><script>alert(1)</script></svg>' }),
+      )
+      expect(html).not.toContain('data:')
+    })
+
+    test('img src — base64 svg with onload is blocked', async () => {
+      const uri = `data:image/svg+xml;base64,${btoa('<svg onload=alert(1)></svg>')}`
+      const html = await renderToString(h('img', { src: uri }))
+      expect(html).not.toContain('data:')
+    })
+
+    test('iframe src — data:text/html stays blocked', async () => {
+      const html = await renderToString(
+        h('iframe', { src: 'data:text/html,<script>alert(1)</script>' }),
+      )
+      expect(html).not.toContain('data:')
+    })
+
+    test('object data — data:text/html stays blocked', async () => {
+      const html = await renderToString(
+        h('object', { data: 'data:text/html,<script>alert(1)</script>' }),
+      )
+      expect(html).not.toContain('data:')
+    })
+
+    test('anchor href — data:image is blocked (not an image context)', async () => {
+      const html = await renderToString(h('a', { href: 'data:image/png;base64,iVBORw0KGgo=' }))
+      expect(html).not.toContain('data:')
+    })
+
+    test('embed src — data:image is blocked (image-src key, non-image-context tag)', async () => {
+      const html = await renderToString(h('embed', { src: 'data:image/png;base64,iVBORw0KGgo=' }))
+      expect(html).not.toContain('data:')
+    })
+
+    test('img src — javascript: stays blocked', async () => {
+      const html = await renderToString(h('img', { src: 'javascript:alert(1)' }))
+      expect(html).not.toContain('javascript:')
+    })
+
+    test('img src — svg+xml with no payload comma is blocked (malformed)', async () => {
+      const html = await renderToString(h('img', { src: 'data:image/svg+xml;base64' }))
+      expect(html).not.toContain('data:')
+    })
+
+    test('img src — svg+xml with undecodable base64 is blocked', async () => {
+      const html = await renderToString(
+        h('img', { src: 'data:image/svg+xml;base64,@@@not-base64@@@' }),
+      )
+      expect(html).not.toContain('data:')
+    })
+
+    test('img src — svg+xml with malformed %-escape falls back to raw scan and blocks <script>', async () => {
+      const html = await renderToString(
+        h('img', { src: 'data:image/svg+xml,<svg><script>x</script>%ZZ</svg>' }),
+      )
+      expect(html).not.toContain('data:')
+    })
   })
 
   test('allows safe URLs in href', async () => {
