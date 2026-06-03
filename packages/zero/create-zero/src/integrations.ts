@@ -79,6 +79,7 @@ async function appendEnvExample(config: ProjectConfig): Promise<void> {
   const lines: string[] = []
   for (const id of config.integrations) {
     const keys = META[id].envKeys()
+    /* v8 ignore next — no integration in META has empty envKeys; defensive guard */
     if (keys.length === 0) continue
     lines.push(`# ─── ${id} ───`)
     for (const k of keys) lines.push(`${k}=`)
@@ -92,6 +93,7 @@ async function appendEnvExample(config: ProjectConfig): Promise<void> {
   } catch (err) {
     // ENOENT is expected when the file doesn't yet exist — proceed with empty.
     // Any other error (permissions, etc.) should propagate.
+    /* v8 ignore next — non-ENOENT (permission denied etc.) requires OS-level injection */
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
   }
   const next = existing ? `${existing.trimEnd()}\n\n${lines.join('\n')}` : lines.join('\n')
