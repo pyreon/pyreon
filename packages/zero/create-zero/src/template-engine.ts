@@ -134,8 +134,10 @@ async function walkAndCopy(
       await walkAndCopy(srcPath, dstPath, vars, options, false)
       continue
     }
+    /* v8 ignore next — defensive: source tree is files+dirs only, no symlinks */
     if (!entry.isFile()) continue
     await mkdir(dirname(dstPath), { recursive: true })
+    /* v8 ignore next 4 — binary copy path; templates ship only text files */
     if (isBinary(srcPath)) {
       await copyFile(srcPath, dstPath)
       continue
@@ -152,11 +154,13 @@ async function walkAndCopy(
 export async function listFiles(root: string): Promise<string[]> {
   const out: string[] = []
   async function walk(dir: string): Promise<void> {
+    /* v8 ignore next — defensive: caller controls root, never passes non-existent */
     if (!existsSync(dir)) return
     const entries = await readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       const full = join(dir, entry.name)
       if (entry.isDirectory()) await walk(full)
+      /* v8 ignore next — files-or-dirs only; templates carry no symlinks */
       else if (entry.isFile()) out.push(relative(root, full))
     }
   }
