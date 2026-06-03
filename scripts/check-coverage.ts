@@ -7,7 +7,7 @@
  *   bun scripts/check-coverage.ts --floor-only # config check only (~5s)
  *
  * Reads coverage thresholds from each package's vitest.config.ts.
- * If no threshold is configured, uses the default (90% statements).
+ * If no threshold is configured, uses DEFAULT_THRESHOLD.
  * Supports parallel execution and CI-friendly output.
  *
  * ## --floor-only mode (P3a)
@@ -21,16 +21,17 @@
  * regress, but PRs get fast feedback instead of paying the 200s+ cost
  * on every iteration.
  *
- * ## Coverage floor (PR #323 → #324 → #1266 → 95% goal)
+ * ## Coverage floor (PR #323 → #324 → #1266 → #1279)
  *
  * MINIMUM_FLOOR is the lowest STATEMENT threshold any package may
  * configure without an explicit entry in BELOW_FLOOR_EXEMPTIONS.
- * MINIMUM_BRANCH_FLOOR is the same for branch coverage. PR #323
- * established the 85% statement floor; PR #324 raised it to 90%;
- * PR #1266 raised it to 94%; the cov-95 series (this PR) raises it
- * to 95%. The branch floor stays at 85% for now — lifting every
- * package's branches to 95 is multi-week per-package work tracked
- * separately.
+ * MINIMUM_BRANCH_FLOOR is the same for branch coverage. Trajectory:
+ *   PR #323 established the 85% statement floor;
+ *   PR #324 raised it to 90% + added an explicit 80% branch floor;
+ *   PR #1266 raised statements 90 → 94 + branches 80 → 85;
+ *   PR #1279 raised statements 94 → 95 (cov-95 floor).
+ * The branch floor stays at 85% for now — lifting every package's
+ * branches to 95 is multi-week per-package work tracked separately.
  *
  * BELOW_FLOOR_EXEMPTIONS is the visible-debt list — every entry must
  * carry the package's currently-configured statement + branch
@@ -71,7 +72,7 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
-  // ── Statement < 95 (post cov-95 floor lift) ─────────────────────────
+  // ── Statement < MINIMUM_FLOOR ───────────────────────────────────────
   '@pyreon/styler': {
     currentStatements: 94,
     currentBranches: 85,
@@ -113,7 +114,7 @@ function getPackageThreshold(pkgDir: string): number {
   return DEFAULT_THRESHOLD
 }
 
-/** Extract branch threshold from a package's vitest.config.ts. Defaults to 90 if absent. */
+/** Extract branch threshold from a package's vitest.config.ts. Defaults to DEFAULT_THRESHOLD if absent. */
 function getPackageBranchThreshold(pkgDir: string): number {
   const configPath = join(pkgDir, 'vitest.config.ts')
   if (!existsSync(configPath)) return DEFAULT_THRESHOLD
