@@ -24,11 +24,17 @@ interface Todo {
 export function RxProbe() {
   const todos = signal<Todo[]>([])
 
+  // oxlint-disable no-unused-vars — this fixture's whole point is to
+  // exercise PMTC's emit on rx.* calls. The variables are deliberately
+  // unused at the TS level because PMTC silently drops the rx-derived
+  // values from the emitted Swift/Kotlin output (the regression-locked
+  // bug this fixture documents — see tier2-rx-silent-drop.test.ts).
   const active = rx.filter(todos, (t: Todo) => !t.done)
   const sortedByPriority = rx.sortBy(active, 'priority' as const)
   const top5 = rx.take(sortedByPriority, 5)
   const activeCount = rx.count(active)
   const avgPriority = rx.average(rx.map(active, (t: Todo) => t.priority))
+  // oxlint-enable no-unused-vars
 
   return null
 }
