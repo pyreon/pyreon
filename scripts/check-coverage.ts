@@ -82,12 +82,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'cov-94 series raised statements 85 → 94 (actual 94.23%) — above floor. Branches at 80 (actual 82.8%) still 5pt below 85 floor — remaining branches are in render/text.ts opt-in TTY/color gating, doctor.ts argv-parsing flag combos, and lint config-diagnostics edge cases.',
   },
   // ── Branch < 85 (statements OK) ─────────────────────────────────────
-  '@pyreon/elements': {
-    currentStatements: 95,
-    currentBranches: 80,
-    reason:
-      'Foundational primitives. Statements lifted 94 → 95 (cov-95 series, PR #1218). Branches at 91.27% with floor at 80 — Overlay\\\'s SSR / happy-dom-only event-handler branches are legitimately harder to cover.',
-  },
   '@pyreon/code': {
     currentStatements: 95,
     currentBranches: 70,
