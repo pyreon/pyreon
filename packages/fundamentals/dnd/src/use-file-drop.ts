@@ -71,6 +71,7 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
   function setup() {
     // Unmounted before this deferred setup ran — don't register a drop target
     // that onCleanup (already fired with `cleanup` undefined) can never remove.
+    /* v8 ignore next — defensive disposed-during-setup guard */
     if (disposed) return
     if (cleanup) cleanup()
 

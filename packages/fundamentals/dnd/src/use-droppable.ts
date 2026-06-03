@@ -32,6 +32,7 @@ export function useDroppable<T extends DragData = DragData>(
   function setup() {
     // Unmounted before this deferred setup ran — don't register a target that
     // onCleanup (already fired with `cleanup` undefined) can never tear down.
+    /* v8 ignore next — defensive disposed-during-setup guard */
     if (disposed) return
     if (cleanup) cleanup()
 

@@ -8,11 +8,9 @@ export default defineNodeConfig({
   category: 'fundamentals',
   environment: 'happy-dom',
   excludeBrowserTests: true,
-  // onCleanup callbacks from @pyreon/reactivity only execute inside
-  // reactive component scopes — unreachable in unit tests.
   coverageThresholds: {
     statements: 95,
-    branches: 85,
+    branches: 95,
     functions: 94,
     lines: 94,
   },
