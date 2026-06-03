@@ -30,13 +30,16 @@ export function LoaderProbe() {
     },
   })
 
-  // Bare method calls — `m` is used (via .send / .matches), so no
-  // unused-vars findings. PMTC drops the createMachine binding but
-  // preserves these call sites, producing structurally-broken emit
-  // that references undefined `m` (the bug this fixture documents).
-  m.send('FETCH')
-  m.send('SUCCESS')
-  m.matches('loading')
+  // These arrow-fn bindings carry the `m.send` / `m.matches` call
+  // sites PMTC preserves into emit (while dropping `var m`). The
+  // void-discards consume the identifiers so unused-vars analysers
+  // (oxlint + code-quality bot) stay quiet without inline disables.
+  const start = () => m.send('FETCH')
+  const succeed = () => m.send('SUCCESS')
+  const isLoading = () => m.matches('loading')
+  void start
+  void succeed
+  void isLoading
 
   return null
 }
