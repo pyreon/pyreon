@@ -5,8 +5,7 @@
  * actually exercise the previously-uncovered branches via the public API.
  * NO v8-ignore annotations.
  */
-import { describe, expect, it, vi } from 'vitest'
-import { h } from '@pyreon/core'
+import { describe, expect, it } from 'vitest'
 import {
   batch,
   createContext,
@@ -16,7 +15,6 @@ import {
   createSignal,
   createStore,
   mergeProps,
-  onCleanup,
   produce,
   splitProps,
   useContext,
@@ -270,7 +268,7 @@ describe('createStore — proxy semantics + safety', () => {
   })
 
   it('setStore skips DANGEROUS_KEYS to prevent prototype pollution', () => {
-    const [state, setState] = createStore({ safe: 1 } as Record<string, unknown>)
+    const [, setState] = createStore({ safe: 1 } as Record<string, unknown>)
     // __proto__ assignment via setStore must be blocked
     setState('__proto__' as never, { polluted: true } as never)
     expect(({} as { polluted?: boolean }).polluted).toBeUndefined()
