@@ -83,6 +83,7 @@ export type { ClassValue } from './style'
 export { CSS_UNITLESS, cx, normalizeStyleValue, toKebabCase } from './style'
 export type { LazyComponent } from './suspense'
 export { Suspense } from './suspense'
+export { isSafeImageDataUri, UNSAFE_URL_RE, URL_ATTRS } from './url-guard'
 export type { ErrorContext, ErrorHandler, ReactiveTraceEntry } from './telemetry'
 export { registerErrorHandler, reportError } from './telemetry'
 export type {

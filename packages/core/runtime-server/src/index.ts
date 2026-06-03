@@ -28,12 +28,15 @@ import {
   ForSymbol,
   Fragment,
   getContextStackLength,
+  isSafeImageDataUri,
   makeReactiveProps,
   normalizeStyleValue,
   popContext,
   runWithHooks,
   Suspense,
   setContextStackProvider,
+  UNSAFE_URL_RE,
+  URL_ATTRS,
 } from '@pyreon/core'
 
 const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
@@ -705,63 +708,12 @@ async function renderElement(vnode: VNode): Promise<string> {
   return html
 }
 
-const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
-const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
-
-// A `data:image/...` URI on an image-source attribute renders as a static,
-// non-executing image — the framework's own imagePlugin ships exactly these as
-// blur/color placeholders (`data:image/webp;base64,…`, `data:image/svg+xml,…`).
-// Without this allowlist, SSR/SSG strips those placeholders out of the static
-// HTML (the client-side guard in `@pyreon/runtime-dom` already allows them —
-// these two MUST stay in sync). Mirrors `isSafeImageDataUri` in that package's
-// `props.ts`; `data:text/html` on <iframe>/<object>, `javascript:` everywhere,
-// and scripted SVG stay blocked.
-const SSR_IMAGE_SRC_ATTRS = new Set(['src', 'srcset', 'poster'])
-const SSR_IMAGE_CONTEXT_TAGS = new Set(['img', 'source', 'video'])
-// Raster image data URIs can never carry executable content — always safe.
-const SSR_SAFE_RASTER_DATA_RE =
-  /^\s*data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)\s*[;,]/i
-const SSR_SVG_DATA_RE = /^\s*data:image\/svg\+xml\s*[;,]/i
-// SVG carrying <script> or on*= handlers stays blocked — defense in depth, and
-// safe if the URI ever reaches a script-executing context.
-const SSR_SVG_SCRIPT_RE = /<\s*script\b|\son[a-z-]+\s*=/i
-
-/**
- * True when `value` is an image `data:` URI on an image-source attribute of an
- * image-context element (`<img src>`, `<source srcset>`, `<video poster>`) and
- * therefore safe to emit despite the guarded `data:` prefix. Raster types
- * (png/jpeg/webp/…) can't execute; SVG is allowed only when it carries no
- * `<script>` / `on*=` handlers. Every other `data:` URI — and any `data:` on a
- * navigable/executing element (iframe, object, anchor, …) — stays blocked.
- */
-function isSafeImageDataUri(tag: string, key: string, value: string): boolean {
-  if (!SSR_IMAGE_SRC_ATTRS.has(key) || !SSR_IMAGE_CONTEXT_TAGS.has(tag.toLowerCase())) return false
-  if (SSR_SAFE_RASTER_DATA_RE.test(value)) return true
-  if (SSR_SVG_DATA_RE.test(value)) return !svgDataUriHasScript(value)
-  return false
-}
-
-/** Decode an `image/svg+xml` data URI payload and test for executable content. */
-function svgDataUriHasScript(value: string): boolean {
-  const comma = value.indexOf(',')
-  if (comma === -1) return true // malformed — treat as unsafe
-  const isBase64 = /;base64/i.test(value.slice(0, comma))
-  let payload = value.slice(comma + 1)
-  if (isBase64) {
-    try {
-      payload = atob(payload)
-    } catch {
-      return true // undecodable base64 — treat as unsafe
-    }
-  } else {
-    try {
-      payload = decodeURIComponent(payload)
-    } catch {
-      // keep the raw (still-encoded) payload — the scan below runs on it as-is
-    }
-  }
-  return SSR_SVG_SCRIPT_RE.test(payload)
-}
+// URL-attribute injection guard (`URL_ATTRS` / `UNSAFE_URL_RE` /
+// `isSafeImageDataUri`) is single-sourced in `@pyreon/core/url-guard` and
+// shared with `@pyreon/runtime-dom`'s client `setStaticProp` — see the import
+// above. Keeping it in one place is deliberate: the placeholder-stripping bug
+// (`data:image/*` allowed on the client but stripped from SSG static HTML) was
+// caused by the two renderers carrying independent copies that drifted.
 
 function renderPropSkipped(key: string): boolean {
   // `innerHTML` and `dangerouslySetInnerHTML` are NOT attributes — they
@@ -802,9 +754,9 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   }
 
   if (
-    SSR_URL_ATTRS.has(key) &&
+    URL_ATTRS.has(key) &&
     typeof value === 'string' &&
-    SSR_UNSAFE_URL_RE.test(value) &&
+    UNSAFE_URL_RE.test(value) &&
     !isSafeImageDataUri(tag, key, value)
   ) {
     return null
