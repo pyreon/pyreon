@@ -239,7 +239,7 @@ describe('createEventDispatcher — fallback paths', () => {
 describe('derived — multi/single source', () => {
   it('derived from a single source updates when source changes', () => {
     const src = writable(1)
-    const doubled = derived(src, (v) => v * 2)
+    const doubled = derived(src, (v: number) => v * 2)
     let seen: number | undefined
     doubled.subscribe((v) => {
       seen = v
@@ -252,7 +252,7 @@ describe('derived — multi/single source', () => {
   it('derived from multiple sources updates when any source changes', () => {
     const a = writable(1)
     const b = writable(10)
-    const sum = derived([a, b], ([av, bv]) => av + bv)
+    const sum = derived([a, b], ([av, bv]: [number, number]) => av + bv)
 
     let seen: number | undefined
     sum.subscribe((v) => {
@@ -309,7 +309,7 @@ describe('writable + Pyreon DOM mount', () => {
         })
         return h('div', null, seen)
       }
-      pyreonMount(h(Comp), root)
+      pyreonMount(h(Comp, null), root as unknown as HTMLElement)
       expect(root.textContent).toContain('initial')
     } finally {
       root.remove()
