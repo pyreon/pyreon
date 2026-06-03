@@ -45,15 +45,15 @@ describe('Tier-2 audit — @pyreon/rx silent-drop (known bug)', () => {
   it('Swift: emit omits every rx.* call from the user body', () => {
     const src = readFileSync(FIXTURE, 'utf8')
     const result = transform(src, { target: 'swift' })
-    // PMTC emits the signal declaration but DROPS the derived rx calls.
+    // PMTC emits the signal declaration but DROPS the rx.* expressions.
     expect(result.code).toContain('@State private var todos: [Todo] = []')
-    // The user wrote 5 rx-derived values — none reach the emit.
+    // The user wrote 5 distinct rx.* call shapes — none reach the emit.
     expect(result.code).not.toContain('rx.filter')
     expect(result.code).not.toContain('rx.sortBy')
     expect(result.code).not.toContain('rx.take')
-    expect(result.code).not.toContain('sortedByPriority')
-    expect(result.code).not.toContain('activeCount')
-    expect(result.code).not.toContain('avgPriority')
+    expect(result.code).not.toContain('rx.count')
+    expect(result.code).not.toContain('rx.average')
+    expect(result.code).not.toContain('rx.map')
   })
 
   it('Kotlin: emit omits every rx.* call from the user body', () => {
@@ -63,9 +63,9 @@ describe('Tier-2 audit — @pyreon/rx silent-drop (known bug)', () => {
     expect(result.code).not.toContain('rx.filter')
     expect(result.code).not.toContain('rx.sortBy')
     expect(result.code).not.toContain('rx.take')
-    expect(result.code).not.toContain('sortedByPriority')
-    expect(result.code).not.toContain('activeCount')
-    expect(result.code).not.toContain('avgPriority')
+    expect(result.code).not.toContain('rx.count')
+    expect(result.code).not.toContain('rx.average')
+    expect(result.code).not.toContain('rx.map')
   })
 
   it('the transform does NOT emit any warning about the dropped calls (the bug)', () => {
