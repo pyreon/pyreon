@@ -30,13 +30,13 @@ export function LoaderProbe() {
     },
   })
 
-  // oxlint-disable no-unused-vars — these are the call sites that
-  // PMTC drops (createMachine binding) + keeps (method calls) into
-  // structurally-broken emit.
-  const start = () => m.send('FETCH')
-  const succeed = () => m.send('SUCCESS')
-  const isLoading = () => m.matches('loading')
-  // oxlint-enable no-unused-vars
+  // Bare method calls — `m` is used (via .send / .matches), so no
+  // unused-vars findings. PMTC drops the createMachine binding but
+  // preserves these call sites, producing structurally-broken emit
+  // that references undefined `m` (the bug this fixture documents).
+  m.send('FETCH')
+  m.send('SUCCESS')
+  m.matches('loading')
 
   return null
 }
