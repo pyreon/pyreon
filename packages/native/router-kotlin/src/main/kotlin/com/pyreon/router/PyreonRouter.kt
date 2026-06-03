@@ -55,8 +55,37 @@ import androidx.compose.runtime.mutableStateOf
  */
 public class RouteRecord(
     public val path: String,
+    /** Phase A4.5 — nested child routes. A non-empty `children` makes
+     *  this record a LAYOUT route: when a navigation path matches one
+     *  of `children`, the matched chain INCLUDES this parent AND the
+     *  matched child. [RouterView] at depth 0 renders this layout's
+     *  [component]; nested `RouterView()` inside the layout body
+     *  renders the matched child (at depth 1). Depth indexing is
+     *  automatic via [LocalRouterDepth] CompositionLocal — apps just
+     *  nest `RouterView()` inside their layouts.
+     *
+     *  Children's [path] is the FULL path including the parent prefix
+     *  (e.g. parent `/app` → children `/app/dashboard`, `/app/profile`).
+     *  The resolver tries each child via the standard [matchPath], so
+     *  all the same pattern shapes apply (`:param`, `:name?`, `:name*`
+     *  splat).
+     *
+     *  `null` (the default) means this is a LEAF route — chain is
+     *  just `[this]`.
+     *
+     *  Position: declared BEFORE `component` so Kotlin's trailing-lambda
+     *  continues to bind to `component` — the more common shape. */
+    public val children: List<RouteRecord>? = null,
     public val component: @Composable () -> Unit,
 )
+
+/** Phase A4.5 — CompositionLocal carrying the current router depth.
+ *  [RouterView] reads this to know which level of the matched chain
+ *  to render. Defaults to 0 (top-of-chain); incremented automatically
+ *  when [RouterView] invokes a nested route's component (so any
+ *  `RouterView()` inside a layout body is depth = parent + 1). */
+public val LocalRouterDepth: androidx.compose.runtime.ProvidableCompositionLocal<Int> =
+    androidx.compose.runtime.compositionLocalOf { 0 }
 
 /**
  * Routing model. Holds a reactive path stack as `MutableState<List<String>>`
@@ -162,16 +191,59 @@ public class PyreonRouter(
         }
     }
 
-    /** Walk [routes] in declaration order against [candidate], returning the
-     *  first matching record + its extracted params. Internal helper called
-     *  by [push]/[replace] AND the [init] block. Pure — does NOT mutate
-     *  router state. */
-    private fun resolve(candidate: String): Pair<RouteRecord, Map<String, String>>? {
-        for (record in routes.value) {
+    /** Phase A4.5 — recursive resolver. Walks [records] in declaration
+     *  order against [candidate], returning the full matched chain
+     *  (parent → child → ...). For a flat-routes app this returns a
+     *  single-entry list. For nested-layout apps each entry is one
+     *  nesting level; each entry's params is ONLY that level's
+     *  matches (merged dict lives on [params]).
+     *
+     *  Resolution strategy:
+     *  1. For each route in [records] (declaration order):
+     *  2. Try [matchPath] — exact match → leaf chain `[record to params]`.
+     *  3. If no exact match BUT record has children, recurse into
+     *     [RouteRecord.children]. On a successful child recursion,
+     *     prepend `(record, emptyMap())` — the parent is a structural
+     *     layout, no params at its level.
+     *  4. First successful chain wins (declaration order is
+     *     precedence, same as A4 flat resolution). */
+    private fun resolveChainIn(
+        records: List<RouteRecord>,
+        candidate: String,
+    ): List<Pair<RouteRecord, Map<String, String>>>? {
+        for (record in records) {
             val matched = matchPath(candidate, record.path)
-            if (matched != null) return record to matched
+            if (matched != null) {
+                return listOf(record to matched)
+            }
+            val children = record.children
+            if (children != null && children.isNotEmpty()) {
+                val childChain = resolveChainIn(children, candidate)
+                if (childChain != null) {
+                    return listOf<Pair<RouteRecord, Map<String, String>>>(
+                        record to emptyMap(),
+                    ) + childChain
+                }
+            }
         }
         return null
+    }
+
+    /** Walk [routes] in declaration order against [candidate], returning the
+     *  first matching record + its extracted params. Pre-A4.5 behavior:
+     *  the TOP of the chain (the outermost layout in nested cases).
+     *  Internal helper called by [push]/[replace] AND the [init]
+     *  block. Pure — does NOT mutate router state. */
+    private fun resolve(candidate: String): Pair<RouteRecord, Map<String, String>>? {
+        return resolveChainIn(routes.value, candidate)?.firstOrNull()
+    }
+
+    /** Phase A4.5 — resolve to the FULL matched chain (parent →
+     *  child → ...). For flat-routes apps this returns a single-
+     *  entry list. [RouterView] reads this + [LocalRouterDepth] to
+     *  render the right level. */
+    public fun resolveCurrentChain(): List<Pair<RouteRecord, Map<String, String>>>? {
+        return resolveChainIn(routes.value, currentPath)
     }
 
     /** Resolve the CURRENT top-of-stack path against the route table.
@@ -184,9 +256,23 @@ public class PyreonRouter(
      *  Called by [push]/[replace] AFTER the path mutation so the params
      *  signal updates in lockstep with the path (observers reading
      *  either field see a consistent snapshot). No-match → params is
-     *  cleared (don't leak stale params from a previous route). */
+     *  cleared (don't leak stale params from a previous route).
+     *
+     *  Phase A4.5: when the matched route is part of a NESTED chain,
+     *  params is the MERGED dict across the chain (parent params +
+     *  child params + ...). For flat single-entry chains this matches
+     *  pre-A4.5 behavior. */
     private fun updateParamsFromPath(committed: String) {
-        params.value = resolve(committed)?.second ?: emptyMap()
+        val chain = resolveChainIn(routes.value, committed)
+        if (chain == null) {
+            params.value = emptyMap()
+            return
+        }
+        val merged = mutableMapOf<String, String>()
+        for ((_, p) in chain) {
+            merged.putAll(p)
+        }
+        params.value = merged
     }
 
     /** Store a route's loaded data under its path. Called by the compiler's

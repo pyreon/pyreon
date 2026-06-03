@@ -643,5 +643,132 @@ fun main() {
         // by some catch-all route.
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${62} test(s) passed")
+    // Phase A4.5 — Nested route depth indexing (closes rest of CRIT-2)
+    // 2026-06 native readiness audit. RouteRecord gains `children`;
+    // router walks the tree recursively; matched chain has one entry
+    // per nesting level. params is MERGED across the chain.
+
+    runTest("A4.5 flat routes yield single-entry chain (backward-compat)") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord("/about") {},
+        ))
+        router.push("/about")
+        val chain = router.resolveCurrentChain()
+        expectEq(chain?.size, 1, "single entry")
+        expectEq(chain?.get(0)?.first?.path, "/about", "matched the leaf")
+    }
+
+    runTest("A4.5 nested route yields parent-child chain") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord(
+                "/app",
+                children = listOf(
+                    RouteRecord("/app/dashboard") {},
+                    RouteRecord("/app/profile") {},
+                ),
+            ) {},
+        ))
+        router.push("/app/dashboard")
+        val chain = router.resolveCurrentChain()
+        expectEq(chain?.size, 2, "parent + child = 2 entries")
+        expectEq(chain?.get(0)?.first?.path, "/app", "parent at depth 0")
+        expectEq(chain?.get(1)?.first?.path, "/app/dashboard", "child at depth 1")
+    }
+
+    runTest("A4.5 parent exact match wins over children") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord(
+                "/app",
+                children = listOf(
+                    RouteRecord("/app/dashboard") {},
+                ),
+            ) {},
+        ))
+        router.push("/app")  // exact parent match
+        val chain = router.resolveCurrentChain()
+        expectEq(chain?.size, 1, "single entry — exact match")
+        expectEq(chain?.get(0)?.first?.path, "/app", "matched the parent")
+    }
+
+    runTest("A4.5 nested params merge across chain") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord(
+                "/t/:tenant",
+                children = listOf(
+                    RouteRecord("/t/:tenant/users/:id") {},
+                ),
+            ) {},
+        ))
+        router.push("/t/acme/users/42")
+        expectEq(
+            router.params.value,
+            mapOf("tenant" to "acme", "id" to "42"),
+            "merged params across chain",
+        )
+        val chain = router.resolveCurrentChain()
+        expectEq(chain?.size, 2, "parent + child")
+        expectEq(chain?.get(0)?.second, emptyMap(), "parent didn't match → empty params at depth 0")
+        expectEq(
+            chain?.get(1)?.second,
+            mapOf("tenant" to "acme", "id" to "42"),
+            "leaf matched → full params at depth 1",
+        )
+    }
+
+    runTest("A4.5 no-match clears params") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord(
+                "/app",
+                children = listOf(
+                    RouteRecord("/app/dashboard") {},
+                ),
+            ) {},
+        ))
+        router.push("/app/dashboard")
+        expect(router.resolveCurrentChain() != null, "matched chain present")
+        router.push("/unrelated")  // no match
+        expect(router.resolveCurrentChain() == null, "no match → null chain")
+        expectEq(router.params.value, emptyMap(), "params cleared on no-match")
+    }
+
+    runTest("A4.5 three-level nesting yields three-entry chain") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord(
+                "/a",
+                children = listOf(
+                    RouteRecord(
+                        "/a/b",
+                        children = listOf(
+                            RouteRecord("/a/b/c") {},
+                        ),
+                    ) {},
+                ),
+            ) {},
+        ))
+        router.push("/a/b/c")
+        val chain = router.resolveCurrentChain()
+        expectEq(chain?.size, 3, "deep nesting → 3 entries")
+        expectEq(chain?.get(0)?.first?.path, "/a", "level 0")
+        expectEq(chain?.get(1)?.first?.path, "/a/b", "level 1")
+        expectEq(chain?.get(2)?.first?.path, "/a/b/c", "level 2")
+    }
+
+    runTest("A4.5 resolveCurrentRoute returns TOP of chain (back-compat)") {
+        val router = PyreonRouter(routes = listOf(
+            RouteRecord(
+                "/app",
+                children = listOf(
+                    RouteRecord("/app/dashboard") {},
+                ),
+            ) {},
+        ))
+        router.push("/app/dashboard")
+        expectEq(
+            router.resolveCurrentRoute()?.first?.path,
+            "/app",
+            "TOP of chain is the parent (back-compat for A4 API)",
+        )
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${69} test(s) passed")
 }
