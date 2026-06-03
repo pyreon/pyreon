@@ -594,5 +594,54 @@ fun main() {
         expectEq(disposableFires, 0, "all disposable cleared")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${57} test(s) passed")
+    // Phase A6 — Wildcard-404 catch-all (builds on A4)
+    // 2026-06 native readiness audit. RouterView renders
+    // notFoundComponent on no-match instead of falling through
+    // silently. Backward-compat: null notFoundComponent keeps
+    // pre-A6 behavior.
+
+    runTest("A6 notFoundComponent defaults to null (pre-A6 unchanged)") {
+        val router = PyreonRouter()
+        expect(router.notFoundComponent.value == null, "default is null")
+    }
+
+    runTest("A6 constructor accepts notFoundComponent and stores it") {
+        val router = PyreonRouter(
+            routes = listOf(RouteRecord("/") {}),
+            notFoundComponent = {},
+        )
+        expect(router.notFoundComponent.value != null, "stored from constructor")
+    }
+
+    runTest("A6 notFoundComponent runtime assign works") {
+        val router = PyreonRouter()
+        expect(router.notFoundComponent.value == null, "starts null")
+        router.notFoundComponent.value = {}
+        expect(router.notFoundComponent.value != null, "after assign: set")
+    }
+
+    runTest("A6 notFoundComponent does NOT intercept matched routes") {
+        val router = PyreonRouter(
+            routes = listOf(RouteRecord("/users/:id") {}),
+            notFoundComponent = {},
+        )
+        router.push("/users/7")
+        expectEq(router.params.value, mapOf("id" to "7"), "matched route still wins")
+        expect(router.resolveCurrentRoute() != null, "match still resolves")
+    }
+
+    runTest("A6 notFoundComponent no-match keeps params empty") {
+        val router = PyreonRouter(
+            routes = listOf(RouteRecord("/users/:id") {}),
+            notFoundComponent = {},
+        )
+        router.push("/about")  // no match
+        expectEq(router.params.value, emptyMap(), "no match → params empty")
+        expect(router.resolveCurrentRoute() == null, "no resolve")
+        // The 404 is RouterView's render-time fallback. The router
+        // model itself doesn't pretend the no-match path was matched
+        // by some catch-all route.
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${62} test(s) passed")
 }
