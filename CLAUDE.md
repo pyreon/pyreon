@@ -254,13 +254,13 @@ The Pyreon Multi-Target Compiler (PMTC) emits typecheck-clean SwiftUI + Compose 
 ```text
 Layer 4: <NativeIOS> / <NativeAndroid> / <Web> escape hatches (per-platform, opt-in)
 Layer 3b: @pyreon/elements (web-only rich primitives, rocketstyle/styler-coupled)
-Layer 3a: @pyreon/primitives (NEW — canonical multi-platform primitives)
+Layer 3a: @pyreon/primitives (canonical multi-platform primitives — 15 of them)
 Layer 2: useStorage / useRouter / useFetch / usePermissions (ServiceBackend pattern)
 Layer 1: Custom hooks (useDebounce, useToggle, ...) — pure-logic, 100% shared
 Layer 0: signal() / computed() / effect() — runs identically; PMTC maps to @State / mutableStateOf
 ```
 
-**Canonical multi-platform primitives** (Layer 3a, `@pyreon/primitives` — Phase A in progress): 16 semantic primitives designed for cross-platform from scratch. `<Stack>` (NOT `<View>` or `<VStack>`), `<Inline>`, `<Press>`, `<Field>`, etc. Compiles to: DOM (web) / SwiftUI primitives (iOS) / Compose primitives (Android). One canonical name per concept (`onPress` everywhere, not `onClick` vs `action:`). Tokens-first styling (`padding={4}` / `gap="md"`). No responsive props or animations in v1 — apps that need responsive web use `@pyreon/elements` directly.
+**Canonical multi-platform primitives** (Layer 3a, `@pyreon/primitives`): **15 semantic primitives** — `Stack`, `Inline`, `Layer`, `Scroll`, `Spacer`, `Text`, `Heading`, `Image`, `Icon`, `Button`, `Press`, `Link`, `Field`, `Toggle`, `Modal` — designed for cross-platform from scratch. `<Stack>` (NOT `<View>` or `<VStack>`), `<Inline>`, `<Press>`, `<Field>`, etc. Compiles to: DOM (web) / SwiftUI primitives (iOS) / Compose primitives (Android). One canonical name per concept (`onPress` everywhere, not `onClick` vs `action:`). Tokens-first styling (`padding={4}` / `gap="md"`). No responsive props or animations in v1 — apps that need responsive web use `@pyreon/elements` directly. Source of truth: `packages/native/compiler/src/canonical-primitives.ts` `SWIFT_NAMES` + `KOTLIN_NAMES` (both maps carry exactly 15 entries).
 
 **Critical architectural split**: `@pyreon/elements` stays web-only-rich (rocketstyle/styler-coupled); `@pyreon/primitives` is the NEW multi-platform-minimal layer. Different architectural tiers. No naming collision because imports are explicit.
 
@@ -268,7 +268,11 @@ Layer 0: signal() / computed() / effect() — runs identically; PMTC maps to @St
 
 **Existing Layer-2 pattern**: `@pyreon/storage`'s `StorageBackend` interface + `createStorage(backend)` factory is the blueprint every Layer-2 service follows. `@pyreon/native-runtime-{swift,kotlin}` ship `@PyreonAppStorage` (Swift property wrapper) + `rememberPyreonStorage` (Compose Composable) — same API parity, different runtime impl. Compiler emits `useStorage<T>` calls as these runtime helpers via Phase 2.5 (#891) — collapsed 14-line inline Codable bridge to one-line property-wrapper call.
 
-**Implementation roadmap** (10 PRs across 5 phases): Phase A (foundation — primitives package + 6-primitive web runtime), Phase B (PMTC emit for iOS + Android — extend `canonical-primitives.ts` mapping table), Phase C (`@pyreon/native-router-{swift,kotlin}` runtimes), Phase D (web target for PMTC + cross-platform example dir), Phase E (TodoMVC migration to canonical vocab — `<VStack>` → `<Stack>`, etc.). End-user docs: `docs/docs/multiplatform.md`.
+**Native data + services hooks shipped end-to-end** (runtime port + compiler emit, both targets): `useFetch`, `useForm`, `usePermissions`, `useOnline`, `useClipboard`, plus `useColorScheme` (#1103 — emit-only; SwiftUI's `@Environment(\.colorScheme)` and Compose's `isSystemInDarkTheme()` provide the platform primitive). `useValidation` planned. Runtime files live at `packages/native/runtime-{swift,kotlin}/`.
+
+**Native routing runtime** (both targets, `packages/native/router-{swift,kotlin}/`): `PyreonRouter` + `RouterProvider` + `RouterView` + `Link` + hooks (`useNavigate`, `useParams`, `useLoaderData`). Global guards `beforeEach` / `afterEach` (#1108), throw-redirect via `router.redirect()` (#1109, re-entry-safe via `_inGuard`). Per-route `beforeEnter`, nested-routes (`RouteRecord.children`), and `useLoaderData` auto-emit are the open native-readiness items (see [.claude/audits/native-readiness-2026-06-02.md](.claude/audits/native-readiness-2026-06-02.md) Phase A roadmap).
+
+**Implementation roadmap** (originally scoped as 10 PRs across 5 phases): Phase A (foundation — primitives package + canonical web DOM runtimes for all 15) ✅ Done; Phase B (PMTC emit for iOS + Android — extend `canonical-primitives.ts` mapping table) ✅ both targets all 15 primitives; Phase C (`@pyreon/native-router-{swift,kotlin}` runtimes) ✅ core navigation + global guards shipped, per-route guards / nested routes / typed `useParams<T>` open; Phase D (web target for PMTC + cross-platform example dir) ✅ Done; Phase E (TodoMVC migration to canonical vocab — `<VStack>` → `<Stack>`) ✅ Done. End-user docs: `docs/docs/multiplatform.md`. Post-Phase-E follow-ups (router parity, real-device CI promotion, supported-TS-surface enumeration, real-app showcase, asset pipeline) are tracked in the readiness-audit roadmap above — current overall score 66/100, demo-quality, not production-ready.
 
 **Migration is additive** — existing `<VStack>` / `<HStack>` / `<TextField>` in PMTC source continue to work via current per-target emit. New canonical vocab ships alongside. Deprecation warnings on SwiftUI-flavored tags land AFTER Phase E migration is proven on TodoMVC. Removal in a major-version bump LATER.
 

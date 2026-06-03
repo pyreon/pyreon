@@ -91,7 +91,7 @@ Two separate primitive layers serve different needs:
 
 #### Layer 3a: `@pyreon/primitives` — canonical multi-platform
 
-The cross-platform vocabulary. 16 semantic primitives designed for **fundamentally the easiest DX** across all three targets:
+The cross-platform vocabulary. 15 semantic primitives designed for **fundamentally the easiest DX** across all three targets:
 
 | Category | Primitives |
 |----------|-----------|
