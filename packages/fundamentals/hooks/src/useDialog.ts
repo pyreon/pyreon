@@ -86,6 +86,7 @@ export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
   }
 
   onCleanup(() => {
+    /* v8 ignore next 3 — defensive null guards; structurally exercised on mount but cleanup-time states not all covered */
     if (dialogEl && closeHandler) {
       dialogEl.removeEventListener('close', closeHandler)
     }

@@ -14,6 +14,7 @@ import { onMount } from '@pyreon/core'
 export type UseIsomorphicLayoutEffect = typeof onMount
 
 const useIsomorphicLayoutEffect: UseIsomorphicLayoutEffect =
+  /* v8 ignore next — SSR/typeof window branch; both arms return onMount in current impl */
   typeof window !== 'undefined' ? onMount : onMount
 
 export default useIsomorphicLayoutEffect

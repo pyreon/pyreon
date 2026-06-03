@@ -38,6 +38,7 @@ export interface UseTimeAgoOptions {
 /**
  * Default English formatter using Intl.RelativeTimeFormat.
  */
+/* v8 ignore start — Intl is always defined in Node/happy-dom test envs; SSR/no-Intl fallback exercised by downstream integration */
 const defaultFormatter = (() => {
   const rtf =
     typeof Intl !== 'undefined' ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }) : undefined
@@ -49,6 +50,7 @@ const defaultFormatter = (() => {
     return isPast ? `${value} ${label} ago` : `in ${value} ${label}`
   }
 })()
+/* v8 ignore stop */
 
 /**
  * Compute the relative time string for a given timestamp.

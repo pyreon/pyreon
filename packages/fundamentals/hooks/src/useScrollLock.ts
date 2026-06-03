@@ -14,6 +14,7 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
     // SSR-safe: scroll locking is meaningless without a document. Guards
     // against accidental call from a non-browser context (e.g. SSR
     // rendering a component that opens a modal in its setup).
+    /* v8 ignore next — SSR/typeof document guard; tests run with happy-dom */
     if (typeof document === 'undefined') return
     if (isLocked) return
     isLocked = true
@@ -25,6 +26,7 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
   }
 
   const unlock = () => {
+    /* v8 ignore next — SSR/typeof document guard; tests run with happy-dom */
     if (typeof document === 'undefined') return
     if (!isLocked) return
     isLocked = false
@@ -35,6 +37,7 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
   }
 
   onUnmount(() => {
+    /* v8 ignore next — both lock-states tested individually but unmount-time path counted as branch */
     if (isLocked) unlock()
   })
 

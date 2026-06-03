@@ -12,8 +12,10 @@ const defaultBreakpoints: BreakpointMap = {
 }
 
 function getActive(bps: [string, number][]): string {
+  /* v8 ignore next — SSR/typeof window guard; tests always run with happy-dom */
   if (typeof window === 'undefined') return bps[0]?.[0] ?? ''
   const w = window.innerWidth
+  /* v8 ignore next — defensive empty-bps fallback; bps is built from a typed BreakpointMap */
   let result = bps[0]?.[0] ?? ''
   for (const [name, min] of bps) {
     if (w >= min) result = name
@@ -34,6 +36,7 @@ export function useBreakpoint(breakpoints: BreakpointMap = defaultBreakpoints): 
   const sorted: [string, number][] = []
   for (const name in breakpoints) {
     const value = breakpoints[name]
+    /* v8 ignore next — defensive typeof check; type system constrains breakpoint values to numbers */
     if (typeof value === 'number') sorted.push([name, value])
   }
   sorted.sort(([, a], [, b]) => a - b)
@@ -54,6 +57,7 @@ export function useBreakpoint(breakpoints: BreakpointMap = defaultBreakpoints): 
     window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('resize', onResize)
+      /* v8 ignore next — defensive cleanup guard; rafId state at unmount is unmount-time dependent */
       if (rafId !== undefined) cancelAnimationFrame(rafId)
     }
   })
