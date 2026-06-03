@@ -93,22 +93,17 @@ export function endRender(): void {
 
 function runLayoutEffects(entries: EffectEntry[]): void {
   for (const entry of entries) {
-    /* v8 ignore next — defensive prior-cleanup guard */
     if (entry.cleanup) entry.cleanup()
     const cleanup = entry.fn()
-    /* v8 ignore next — defensive cleanup-return typeof guard */
     entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
   }
 }
 
 function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
-  /* v8 ignore next — defensive empty-entries guard */
   if (entries.length === 0) return
   queueMicrotask(() => {
     for (const entry of entries) {
-      /* v8 ignore next — defensive unmounted check during deferred effect */
       if (ctx.unmounted) return
-      /* v8 ignore next — defensive prior-cleanup guard */
       if (entry.cleanup) entry.cleanup()
       const cleanup = entry.fn()
       entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
@@ -146,11 +141,9 @@ const _nativeComponents: Set<Function> = new Set([
 ])
 
 function wrapCompatComponent(solidComponent: Function): ComponentFn {
-  /* v8 ignore next — defensive native-components fast path */
   if (_nativeComponents.has(solidComponent)) return solidComponent as ComponentFn
 
   let wrapped = _wrapperCache.get(solidComponent)
-  /* v8 ignore next — defensive wrapper-cache hit */
   if (wrapped) return wrapped
 
   // The wrapper returns a reactive accessor (() => VNodeChild) which Pyreon's
@@ -185,12 +178,10 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
     let updateScheduled = existing?.updateScheduled ?? false
 
     ctx.scheduleRerender = () => {
-      /* v8 ignore next — defensive double-call guard */
       if (ctx.unmounted || updateScheduled) return
       updateScheduled = true
       queueMicrotask(() => {
         updateScheduled = false
-        /* v8 ignore next — defensive unmounted check during microtask */
         if (!ctx.unmounted) version.set(version.peek() + 1)
       })
     }
@@ -230,7 +221,6 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
   }) as unknown as ComponentFn
 
   // Forward __loading from lazy components so Pyreon's Suspense can detect them
-  /* v8 ignore next 5 — defensive lazy-component __loading forward; non-lazy components don't hit this */
   if ('__loading' in solidComponent) {
     ;(wrapped as unknown as Record<string, unknown>).__loading = (
       solidComponent as unknown as Record<string, unknown>
@@ -291,7 +281,6 @@ export function jsx(
     // are imported into solid-compat directly, so guarding their identity
     // doesn't cost a property lookup and ensures the marker is never lost
     // through any tree-shaking edge case).
-    /* v8 ignore next 4 — defensive native-components guard; redundant with isNativeCompat below */
     if (_nativeComponents.has(type)) {
       const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
       return h(type as ComponentFn, componentProps)
@@ -300,14 +289,12 @@ export function jsx(
     // Native Pyreon framework components (context Providers, RouterView, etc.)
     // skip compat wrapping — see `@pyreon/core`'s `nativeCompat()` for the
     // full contract.
-    /* v8 ignore next 4 — defensive children-check on native compat path */
     if (isNativeCompat(type)) {
       const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
       return h(type as ComponentFn, componentProps)
     }
 
     const wrapped = wrapCompatComponent(type)
-    /* v8 ignore next 2 — defensive children-check on wrapped compat path */
     const componentProps =
       children !== undefined ? { ...propsWithKey, children } : { ...propsWithKey }
 
