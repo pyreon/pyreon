@@ -74,10 +74,21 @@ const JSON_MODE = process.argv.includes('--json')
 const CLIENT_SAFE_PACKAGES: ReadonlyArray<{
   pkg: string
   dir: string
+  /** Exports subpath to walk (default `.`). */
+  subpath?: string
 }> = [
   // @pyreon/zero — main entry is docstring-marked client-safe; server
   // code at `@pyreon/zero/server`. The PR-S7 regression was here.
   { pkg: '@pyreon/zero', dir: 'packages/zero/zero' },
+  // @pyreon/server/client — the CLIENT-safe subentry (startClient,
+  // hydrateIslands*, AND `island()` as of the islands-in-zero fix). The
+  // `@pyreon/server` MAIN barrel is server-only (createHandler/prerender
+  // pull node:), so islands declared in client/route code MUST import from
+  // here. This lock guarantees `/client` never transitively pulls a node:
+  // import — re-introducing it would resurrect the server-barrel leak that
+  // crashed islands inside zero routes (dual @pyreon/* instance + node: in
+  // the browser bundle).
+  { pkg: '@pyreon/server/client', dir: 'packages/core/server', subpath: './client' },
 ]
 
 interface Finding {
@@ -99,11 +110,11 @@ function readPackageJson(dir: string): Record<string, unknown> {
  * at `src/index.ts`), falls back to `import` (points at `lib/index.js`
  * but TS source is colocated at `src/index.ts`).
  */
-function resolveMainEntrySource(pkgDir: string): string | null {
+function resolveMainEntrySource(pkgDir: string, exportKey = '.'): string | null {
   const pkg = readPackageJson(pkgDir)
   const exports = pkg.exports as Record<string, unknown> | undefined
   if (!exports) return null
-  const rootExport = exports['.']
+  const rootExport = exports[exportKey]
   if (typeof rootExport !== 'object' || rootExport === null) return null
   const conds = rootExport as Record<string, unknown>
   const bunPath = typeof conds.bun === 'string' ? conds.bun : null
@@ -226,13 +237,13 @@ function walkPackage(
 const allFindings: Finding[] = []
 const skipped: string[] = []
 
-for (const { pkg, dir } of CLIENT_SAFE_PACKAGES) {
+for (const { pkg, dir, subpath } of CLIENT_SAFE_PACKAGES) {
   const pkgDir = join(REPO_ROOT, dir)
   if (!existsSync(pkgDir)) {
     skipped.push(`${pkg} (directory not found at ${dir})`)
     continue
   }
-  const entry = resolveMainEntrySource(pkgDir)
+  const entry = resolveMainEntrySource(pkgDir, subpath ?? '.')
   if (!entry) {
     skipped.push(`${pkg} (could not resolve main entry source)`)
     continue

@@ -28,6 +28,8 @@ Rule of thumb: if you'd write `<App />` and hydrate the whole tree under it, use
 1. `island(loader, options)` wraps an async component import and returns a `ComponentFn` that renders inside a `<pyreon-island>` custom element with serialized props + the hydration strategy as data attributes.
 2. The rest of the page renders normally — every non-island component produces plain HTML with no client wiring.
 
+> **Import `island` from `@pyreon/server/client` if the declaration ships to the client.** `island()` itself is client-safe, but the `@pyreon/server` *main* barrel also re-exports `createHandler` / `prerender` (which pull `node:` modules). If you call `island()` in a file that is bundled client-side — most importantly, **any `@pyreon/zero` route**, since every route ships to the client for hydration — a `from '@pyreon/server'` barrel import drags the whole server module into the browser bundle, which crashes the build (duplicate-`@pyreon/server` singleton sentinel) and breaks the hydrated island. Use `import { island } from '@pyreon/server/client'` there. A server-only declaration file (imported only by `entry-server.ts`, as in `examples/islands-showcase`) can use either path.
+
 **Client side:**
 
 1. `hydrateIslandsAuto(registry)` (or the manual `hydrateIslands({ ... })`) scans the DOM for `<pyreon-island>` elements.
