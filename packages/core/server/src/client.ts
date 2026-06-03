@@ -32,6 +32,16 @@ import { decodeIslandProps } from './island-codec'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import type { HydrationStrategy, PrefetchStrategy } from './island'
 
+// `island()` is client-safe — it only renders the `<pyreon-island>` marker via
+// `h()` and encodes props (island.ts imports nothing beyond `@pyreon/core` +
+// `./island-codec`). Re-exported from this CLIENT-safe subentry so island
+// declarations can be imported WITHOUT dragging the `@pyreon/server` main
+// barrel (`createHandler` / `prerender` + their `node:` deps + the package's
+// `registerSingleton`) into a client/route bundle — the leak that breaks
+// islands inside `@pyreon/zero` routes (every route ships to the client).
+export type { IslandMeta, IslandOptions } from './island'
+export { island } from './island'
+
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 // Same pattern as @pyreon/runtime-dom: bare process.env.NODE_ENV gate (the
 // bundler-agnostic library standard) so counter strings tree-shake out under
