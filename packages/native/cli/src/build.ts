@@ -72,6 +72,54 @@ function sourceMapHeader(target: TargetLanguage, originalPath: string): string {
   return `// pyreon-source: ${originalPath}\n`
 }
 
+/**
+ * Import preamble prepended to each emitted file. PMTC emits SwiftUI /
+ * Compose vocabulary (`View`, `@State`, `VStack`, `@Composable`,
+ * `mutableStateOf`, `Column`, `Arrangement`, etc.) — those symbols need
+ * a `import SwiftUI` / `import androidx.compose.*` line at the top of
+ * every generated file or the compiler can't resolve them.
+ *
+ * Pyreon-runtime imports (`PyreonRuntime`, `PyreonRouter` on Swift;
+ * `com.pyreon.runtime.*`, `com.pyreon.router.*` on Kotlin) are also
+ * included because most emitted files reference at least one of:
+ * `@PyreonAppStorage`, `rememberPyreonStorage`, `PyreonRouter`, the
+ * canonical-primitive impls. Unused imports are harmless on both
+ * targets — Swift's `-warnings-as-errors` for unused-imports is opt-in,
+ * and Kotlin's `-Werror` flag isn't enabled by the standard project
+ * templates.
+ *
+ * Kotlin gets wildcard imports for breadth; specific deep imports
+ * (KeyboardOptions, ImeAction, etc.) come from the same package roots
+ * already named.
+ */
+function importHeader(target: TargetLanguage): string {
+  if (target === 'swift') {
+    return [
+      'import SwiftUI',
+      'import PyreonRuntime',
+      'import PyreonRouter',
+      '',
+    ].join('\n')
+  }
+  return [
+    'import androidx.compose.runtime.*',
+    'import androidx.compose.foundation.layout.*',
+    'import androidx.compose.foundation.lazy.*',
+    'import androidx.compose.foundation.text.*',
+    'import androidx.compose.material.*',
+    'import androidx.compose.ui.*',
+    'import androidx.compose.ui.Modifier',
+    'import androidx.compose.ui.Alignment',
+    'import androidx.compose.ui.platform.testTag',
+    'import androidx.compose.ui.unit.*',
+    'import androidx.compose.ui.text.input.ImeAction',
+    'import kotlinx.serialization.Serializable',
+    'import com.pyreon.runtime.*',
+    'import com.pyreon.router.*',
+    '',
+  ].join('\n')
+}
+
 /** Walk a directory recursively, returning all `.tsx` files (excluding tests). */
 export function findTsxFiles(sourceDir: string): string[] {
   const found: string[] = []
@@ -121,7 +169,11 @@ export function build(options: BuildOptions): BuildResult {
       options.target === 'kotlin' && options.kotlinPackage
         ? `package ${options.kotlinPackage}\n\n`
         : ''
-    const finalCode = packageHeader + sourceMapHeader(options.target, input) + result.code
+    const finalCode =
+      packageHeader +
+      sourceMapHeader(options.target, input) +
+      importHeader(options.target) +
+      result.code
     writeFileSync(outPath, finalCode, 'utf8')
     outputs.push({ source: input, output: outPath, code: finalCode })
   }

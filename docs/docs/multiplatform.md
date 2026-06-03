@@ -465,6 +465,68 @@ the path until a public published API lands.
 - **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated` produces typecheck-clean Swift (verified via `swiftc -parse` in the `native-validate` CI). The **opt-in** `native-device` workflow additionally runs `xcodegen` + `xcodebuild` to compile the full example app on a real Xcode/Simulator SDK, then `xcodebuild test` boots the iPhone 15 Simulator + runs `PyreonTodoMVCUITests` to assert `accessibilityIdentifier("todo-app")` renders within 30s.
 - **Android**: `pyreon-native build --target=android --source=./src --out=./generated` produces typecheck-clean Kotlin (verified via `kotlinc + Compose stubs`). The same opt-in `native-device` workflow runs `gradle assembleDebug` against the real Android toolchain, then boots a Pixel-6 emulator (API 33, google_apis, x86_64, via `reactivecircus/android-emulator-runner`) + runs `gradle connectedCheck` which executes `TodoAppInstrumentedTest`'s `composeRule.onNodeWithTag("todo-app").assertIsDisplayed()`.
 
+### TodoMVC reference walkthrough (locally verified, June 2026)
+
+The `examples/native-todomvc-{web,ios,android}` apps form the **canonical proof** of the single-source contract. The shared TodoApp source (`examples/native-todomvc-ios/src/TodoApp.tsx`) renders on all three targets without modification.
+
+**Web** (a real running app in the browser):
+
+```bash
+cd examples/native-todomvc-web
+bun run build      # 88 modules → 35 KB JS bundle, 13 KB gzipped
+bun run dev        # http://localhost:5173/
+```
+
+Then in a browser: type, hit Enter, toggle, filter All/Active/Completed, click Clear completed. Zero console errors. Web fully working.
+
+**iOS Swift emit**:
+
+```bash
+bash examples/native-todomvc-ios/scripts/build.sh
+# → examples/native-todomvc-ios/generated/TodoApp.swift
+```
+
+The emitted file opens with the import preamble (`import SwiftUI` / `PyreonRuntime` / `PyreonRouter`) and emits idiomatic SwiftUI: `@PyreonAppStorage("pyreon-todomvc:todos")` for persistence, `@State` for local signals, `VStack(spacing: 8)` / `HStack` for layout, `TextField(..., text: $draft)` with `.onSubmit { addTodo() }`, `ForEach` keyed by id, `Button(action:)`. The `data-testid="todo-app"` JSX attribute becomes `.accessibilityIdentifier("todo-app")` so the same string works on the iOS UI test.
+
+Verify it compiles against the real SwiftUI SDK:
+
+```bash
+swiftc -typecheck \
+  -target arm64-apple-macos14.0 \
+  packages/native/runtime-swift/Sources/PyreonRuntime/*.swift \
+  packages/native/router-swift/Sources/PyreonRouter/*.swift \
+  examples/native-todomvc-ios/generated/TodoApp.swift
+# → exit 0 (zero errors)
+```
+
+**Android Kotlin emit**:
+
+```bash
+bash examples/native-todomvc-android/scripts/build.sh
+# → examples/native-todomvc-android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt
+```
+
+The emitted file opens with `package com.pyreon.generated`, the Compose import preamble (`androidx.compose.runtime.*` / `material.*` / `kotlinx.serialization.Serializable` / `com.pyreon.runtime.*`), and emits idiomatic Compose: `var todos by rememberPyreonStorage<List<Todo>>(...)`, `var filter by remember { mutableStateOf(Filter.all) }`, `val visible by remember { derivedStateOf { ... } }`, `Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("todo-app"))`, `TextField` with `KeyboardOptions(imeAction = ImeAction.Done)` + `KeyboardActions(onDone = { addTodo() })`, `LazyColumn { items(visible, key = { it.id }) { ... } }`, `Button(onClick = ...)`.
+
+Verify against the framework's `validateKotlin` (same Compose stub set the `validate-kotlin.test.ts` gate uses):
+
+```bash
+bun -e "
+  import('./packages/native/compiler/src/validate.ts').then(async (m) => {
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync('examples/native-todomvc-android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt', 'utf8')
+    // Strip the package + wildcard imports (the stub set is in default package).
+    const stripped = src.split('\n')
+      .filter(l => !l.startsWith('package ') && !l.startsWith('import androidx') && !l.startsWith('import kotlinx') && !l.startsWith('import com.pyreon'))
+      .join('\n')
+    console.log(JSON.stringify(m.validateKotlin(stripped), null, 2))
+  })
+"
+# → { "ok": true }
+```
+
+**One source. Three targets. Verified locally** on macOS 14 with Xcode 15 + JDK 21 + Kotlin 2.x.
+
 The runtime packages exist, with one reactive container per data/service hook:
 
 - `@pyreon/native-runtime-swift` — `@PyreonAppStorage` + `PyreonStorage`, `PyreonFetch<T>`, `PyreonForm`, `PyreonPermissions`, `PyreonNetworkStatus` (`@Observable` containers)

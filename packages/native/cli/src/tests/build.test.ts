@@ -138,7 +138,7 @@ describe('@pyreon/native-cli build', () => {
     }
   })
 
-  it('build output matches direct transform() result (modulo source-map header)', () => {
+  it('build output matches direct transform() result (modulo source-map + import headers)', () => {
     const result = build({
       source: COMPILER_FIXTURES,
       out: tempOut,
@@ -151,8 +151,51 @@ describe('@pyreon/native-cli build', () => {
     expect(counter).toBeDefined()
     const source = readFileSync(counter!.source, 'utf8')
     const direct = transform(source, { target: 'swift' }).code
-    // The build prepends a source-map header; strip it before comparing.
-    const builtBody = counter!.code.split('\n').slice(1).join('\n')
+    // The build prepends a source-map header + an import preamble; strip
+    // both before comparing. Format:
+    //   line 0: #sourceLocation(...)
+    //   lines 1..N: imports
+    //   blank line
+    //   then: emitted code
+    const lines = counter!.code.split('\n')
+    // First line is the source-map directive; skip the import block
+    // (lines starting with `import ` plus the trailing blank line).
+    let idx = 1
+    while (idx < lines.length && lines[idx]?.startsWith('import ')) idx++
+    if (lines[idx] === '') idx++ // skip blank separator
+    const builtBody = lines.slice(idx).join('\n')
     expect(builtBody).toBe(direct)
+  })
+
+  it('Swift outputs include the SwiftUI + PyreonRuntime + PyreonRouter import preamble', () => {
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'swift',
+    })
+    for (const output of result.outputs) {
+      expect(output.code).toContain('import SwiftUI')
+      expect(output.code).toContain('import PyreonRuntime')
+      expect(output.code).toContain('import PyreonRouter')
+    }
+  })
+
+  it('Kotlin outputs include the Compose + Pyreon-runtime import preamble', () => {
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'kotlin',
+      kotlinPackage: 'com.pyreon.generated',
+    })
+    for (const output of result.outputs) {
+      expect(output.code).toContain('import androidx.compose.runtime.*')
+      expect(output.code).toContain('import androidx.compose.material.*')
+      expect(output.code).toContain('import kotlinx.serialization.Serializable')
+      expect(output.code).toContain('import com.pyreon.runtime.*')
+      expect(output.code).toContain('import com.pyreon.router.*')
+      // Package declaration still comes FIRST, then source-map header,
+      // then imports, then the emitted body.
+      expect(output.code).toMatch(/^package com\.pyreon\.generated\n/)
+    }
   })
 })
