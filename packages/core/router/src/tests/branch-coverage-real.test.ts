@@ -3,7 +3,7 @@
  * Targets honest gaps in router.ts / match.ts / loader.ts / redirect.ts /
  * components.tsx — no v8-ignore annotations.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { prefetchLoaderData, stringifyLoaderData } from '../loader'
 import { getRedirectInfo, isRedirectError, redirect } from '../redirect'
 import { notFound } from '../not-found'
