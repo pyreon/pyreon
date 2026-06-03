@@ -45,10 +45,11 @@ describe('createEffect — undefined-result fast path', () => {
 
     beginRender(ctx)
     // fn returns void — line 208 the if-undefined FALSE arm fires.
-    createEffect((prev) => {
+    createEffect<number>((prev) => {
       lastSeen = prev
       count() // tracks
       // No return → result is undefined → branch skipped
+      return undefined as unknown as number
     })
     endRender()
 
@@ -134,8 +135,8 @@ describe('splitProps — descriptor preservation', () => {
     props.static = 100
 
     const [picked, rest] = splitProps(props, ['tracked'] as never)
-    expect(picked.tracked).toBe(42)
-    expect(rest.static).toBe(100)
+    expect((picked as { tracked: number }).tracked).toBe(42)
+    expect((rest as { static: number }).static).toBe(100)
     expect(calls).toBe(1)
   })
 
@@ -143,7 +144,7 @@ describe('splitProps — descriptor preservation', () => {
     const sym = Symbol('key')
     const props = { a: 1, [sym]: 'value' }
     const [picked, rest] = splitProps(props, ['a'] as never)
-    expect(picked.a).toBe(1)
+    expect((picked as { a: number }).a).toBe(1)
     expect((rest as Record<symbol, unknown>)[sym]).toBe('value')
   })
 })
