@@ -647,4 +647,117 @@ final class PyreonRouterTests: XCTestCase {
         XCTAssertEqual(router.currentPath, "/c")
         XCTAssertFalse(router.canGoForward)
     }
+
+    // MARK: - Phase A7 — Disposer-returning guard registration
+    //
+    // 2026-06 native readiness audit Class C anti-pattern: appending
+    // to `beforeEachGuards` / `afterEachHooks` grows the arrays
+    // monotonically with no removal API. `addBeforeEach` /
+    // `addAfterEach` return a disposer; calling the disposer
+    // removes ONLY that guard by ID-identity, robust to other
+    // guards being added/removed in any order.
+
+    /// `addBeforeEach` registers a guard that runs on push.
+    func testAddBeforeEachRegistersGuard() throws {
+        let router = PyreonRouter()
+        var fired = false
+        router.addBeforeEach { _ in fired = true; return true }
+        router.push("/x")
+        XCTAssertTrue(fired)
+        XCTAssertEqual(router.currentPath, "/x")
+    }
+
+    /// Disposer removes the specific guard by ID — other guards
+    /// stay attached.
+    func testAddBeforeEachDisposerRemovesOnlyOne() throws {
+        let router = PyreonRouter()
+        var aFires = 0
+        var bFires = 0
+        let disposeA = router.addBeforeEach { _ in aFires += 1; return true }
+        _ = router.addBeforeEach { _ in bFires += 1; return true }
+        router.push("/1")
+        XCTAssertEqual(aFires, 1)
+        XCTAssertEqual(bFires, 1)
+        disposeA()
+        router.push("/2")
+        // A removed, B still attached.
+        XCTAssertEqual(aFires, 1)
+        XCTAssertEqual(bFires, 2)
+    }
+
+    /// Calling the disposer twice is idempotent (second call no-op).
+    func testAddBeforeEachDisposerIsIdempotent() throws {
+        let router = PyreonRouter()
+        var fires = 0
+        let dispose = router.addBeforeEach { _ in fires += 1; return true }
+        dispose()
+        dispose()  // idempotent — no crash, no double-remove
+        router.push("/x")
+        XCTAssertEqual(fires, 0)
+    }
+
+    /// Returning false from the disposable guard blocks navigation —
+    /// matches the legacy `beforeEachGuards` semantic.
+    func testAddBeforeEachCanBlockNavigation() throws {
+        let router = PyreonRouter()
+        router.addBeforeEach { path in path != "/blocked" }
+        router.push("/ok")
+        XCTAssertEqual(router.currentPath, "/ok")
+        router.push("/blocked")
+        // Still /ok — the blocked nav was rejected.
+        XCTAssertEqual(router.currentPath, "/ok")
+    }
+
+    /// Disposable + legacy guards both run; legacy walks FIRST.
+    func testAddBeforeEachCoexistsWithLegacy() throws {
+        let router = PyreonRouter()
+        var order: [String] = []
+        router.beforeEachGuards.append { _ in order.append("legacy"); return true }
+        router.addBeforeEach { _ in order.append("disposable"); return true }
+        router.push("/x")
+        XCTAssertEqual(order, ["legacy", "disposable"])
+    }
+
+    /// `addAfterEach` mirrors `addBeforeEach` for fan-out hooks.
+    func testAddAfterEachRegistersAndDisposes() throws {
+        let router = PyreonRouter()
+        var fires: [String] = []
+        let dispose = router.addAfterEach { p in fires.append(p) }
+        router.push("/a")
+        router.push("/b")
+        XCTAssertEqual(fires, ["/a", "/b"])
+        dispose()
+        router.push("/c")
+        XCTAssertEqual(fires, ["/a", "/b"])
+    }
+
+    /// `clearDisposableBeforeEachGuards` removes all disposable
+    /// guards in one call (test-teardown convenience). Legacy
+    /// guards stay.
+    func testClearDisposableBeforeEachGuardsKeepsLegacy() throws {
+        let router = PyreonRouter()
+        var legacyFires = 0
+        var disposableFires = 0
+        router.beforeEachGuards.append { _ in legacyFires += 1; return true }
+        router.addBeforeEach { _ in disposableFires += 1; return true }
+        router.addBeforeEach { _ in disposableFires += 1; return true }
+        router.clearDisposableBeforeEachGuards()
+        router.push("/x")
+        XCTAssertEqual(legacyFires, 1)
+        XCTAssertEqual(disposableFires, 0)  // all disposable cleared
+    }
+
+    /// Same shape for `clearDisposableAfterEachHooks`.
+    func testClearDisposableAfterEachHooksKeepsLegacy() throws {
+        let router = PyreonRouter()
+        var legacyFires = 0
+        var disposableFires = 0
+        router.afterEachHooks.append { _ in legacyFires += 1 }
+        _ = router.addAfterEach { _ in disposableFires += 1 }
+        _ = router.addAfterEach { _ in disposableFires += 1 }
+        router.clearDisposableAfterEachHooks()
+        router.push("/x")
+        XCTAssertEqual(legacyFires, 1)
+        XCTAssertEqual(disposableFires, 0)
+    }
 }

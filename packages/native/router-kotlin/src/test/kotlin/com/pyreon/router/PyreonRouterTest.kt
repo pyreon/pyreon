@@ -499,5 +499,100 @@ fun main() {
         expect(!router.canGoForward, "drained")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${49} test(s) passed")
+    // Phase A7 — Disposer-returning guard registration (Class C fix)
+    // 2026-06 native readiness audit. `beforeEachGuards.add(...)` /
+    // `afterEachHooks.add(...)` grow unboundedly; `addBeforeEach` /
+    // `addAfterEach` return a disposer for lifecycle-bound cleanup.
+
+    runTest("A7 addBeforeEach registers a guard that fires on push") {
+        val router = PyreonRouter()
+        var fired = false
+        router.addBeforeEach { _ -> fired = true; true }
+        router.push("/x")
+        expect(fired, "guard fired on push")
+        expectEq(router.currentPath, "/x", "nav succeeded")
+    }
+
+    runTest("A7 addBeforeEach disposer removes ONLY that guard") {
+        val router = PyreonRouter()
+        var aFires = 0
+        var bFires = 0
+        val disposeA = router.addBeforeEach { _ -> aFires += 1; true }
+        router.addBeforeEach { _ -> bFires += 1; true }
+        router.push("/1")
+        expectEq(aFires, 1, "A fired on push 1")
+        expectEq(bFires, 1, "B fired on push 1")
+        disposeA()
+        router.push("/2")
+        expectEq(aFires, 1, "A removed — no second fire")
+        expectEq(bFires, 2, "B still attached")
+    }
+
+    runTest("A7 addBeforeEach disposer is idempotent") {
+        val router = PyreonRouter()
+        var fires = 0
+        val dispose = router.addBeforeEach { _ -> fires += 1; true }
+        dispose()
+        dispose()  // no-op, no crash
+        router.push("/x")
+        expectEq(fires, 0, "guard removed; no fire")
+    }
+
+    runTest("A7 addBeforeEach returning false blocks navigation") {
+        val router = PyreonRouter()
+        router.addBeforeEach { path -> path != "/blocked" }
+        router.push("/ok")
+        expectEq(router.currentPath, "/ok", "ok path nav succeeded")
+        router.push("/blocked")
+        expectEq(router.currentPath, "/ok", "blocked path rejected")
+    }
+
+    runTest("A7 disposable + legacy guards coexist; legacy walks first") {
+        val router = PyreonRouter()
+        val order = mutableListOf<String>()
+        router.beforeEachGuards.add { _ -> order.add("legacy"); true }
+        router.addBeforeEach { _ -> order.add("disposable"); true }
+        router.push("/x")
+        expectEq(order.toList(), listOf("legacy", "disposable"), "legacy first, then disposable")
+    }
+
+    runTest("A7 addAfterEach + disposer mirror addBeforeEach") {
+        val router = PyreonRouter()
+        val fires = mutableListOf<String>()
+        val dispose = router.addAfterEach { p -> fires.add(p) }
+        router.push("/a")
+        router.push("/b")
+        expectEq(fires.toList(), listOf("/a", "/b"), "both pushes fired the hook")
+        dispose()
+        router.push("/c")
+        expectEq(fires.toList(), listOf("/a", "/b"), "after dispose: no more fires")
+    }
+
+    runTest("A7 clearDisposableBeforeEachGuards keeps legacy intact") {
+        val router = PyreonRouter()
+        var legacyFires = 0
+        var disposableFires = 0
+        router.beforeEachGuards.add { _ -> legacyFires += 1; true }
+        router.addBeforeEach { _ -> disposableFires += 1; true }
+        router.addBeforeEach { _ -> disposableFires += 1; true }
+        router.clearDisposableBeforeEachGuards()
+        router.push("/x")
+        expectEq(legacyFires, 1, "legacy still attached")
+        expectEq(disposableFires, 0, "all disposable cleared")
+    }
+
+    runTest("A7 clearDisposableAfterEachHooks keeps legacy intact") {
+        val router = PyreonRouter()
+        var legacyFires = 0
+        var disposableFires = 0
+        router.afterEachHooks.add { _ -> legacyFires += 1 }
+        router.addAfterEach { _ -> disposableFires += 1 }
+        router.addAfterEach { _ -> disposableFires += 1 }
+        router.clearDisposableAfterEachHooks()
+        router.push("/x")
+        expectEq(legacyFires, 1, "legacy still attached")
+        expectEq(disposableFires, 0, "all disposable cleared")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${57} test(s) passed")
 }
