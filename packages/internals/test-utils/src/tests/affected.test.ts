@@ -83,7 +83,6 @@ describe('isRootFile', () => {
     'vitest.shared.ts',
     'vitest.browser.ts',
     '.github/workflows/ci.yml',
-    'scripts/affected.ts',
   ])('treats %s as a root file (forces full suite)', (path) => {
     expect(isRootFile(path)).toBe(true)
   })
@@ -95,6 +94,10 @@ describe('isRootFile', () => {
     'README.md',
     'CLAUDE.md',
     'e2e/zero-hmr.spec.ts',
+    // scripts/ is NOT a root file — it maps to @pyreon/test-utils instead of
+    // escalating the whole suite (see computeAffectedFlags tests below).
+    'scripts/affected.ts',
+    'scripts/scaffold-smoke.ts',
   ])('does NOT treat %s as a root file', (path) => {
     expect(isRootFile(path)).toBe(false)
   })
@@ -149,12 +152,8 @@ describe('filterByCategory', () => {
       '@pyreon/hooks',
       '@pyreon/toast',
     ])
-    expect([...filterByCategory(full, WS, 'ui-system', ROOT)].sort()).toEqual([
-      '@pyreon/styler',
-    ])
-    expect([...filterByCategory(full, WS, 'tools', ROOT)].sort()).toEqual([
-      '@pyreon/lint',
-    ])
+    expect([...filterByCategory(full, WS, 'ui-system', ROOT)].sort()).toEqual(['@pyreon/styler'])
+    expect([...filterByCategory(full, WS, 'tools', ROOT)].sort()).toEqual(['@pyreon/lint'])
   })
 
   it('returns empty for a category with no affected packages', () => {
@@ -167,7 +166,16 @@ describe('filterByCategory', () => {
     // category's prefix test. The `examples` pseudo-category (below) is the
     // one place example apps ARE selected.
     const result = new Set<string>()
-    for (const cat of ['core', 'fundamentals', 'ui-system', 'tools', 'zero', 'internals', 'native', 'ui']) {
+    for (const cat of [
+      'core',
+      'fundamentals',
+      'ui-system',
+      'tools',
+      'zero',
+      'internals',
+      'native',
+      'ui',
+    ]) {
       for (const name of filterByCategory(full, WS, cat, ROOT)) {
         result.add(name)
       }
@@ -190,17 +198,13 @@ describe('filterByCategory', () => {
 
   it('safely ignores names that are not in the workspace set', () => {
     const stale = new Set(['@pyreon/does-not-exist', '@pyreon/core'])
-    expect([...filterByCategory(stale, WS, 'core', ROOT)]).toEqual([
-      '@pyreon/core',
-    ])
+    expect([...filterByCategory(stale, WS, 'core', ROOT)]).toEqual(['@pyreon/core'])
   })
 })
 
 describe('computeAffectedFlags', () => {
   it('null changed (diff failed) → --filter=* regardless of category', () => {
-    expect(computeAffectedFlags({ changed: null, workspaces: WS, root: ROOT })).toBe(
-      '--filter=*',
-    )
+    expect(computeAffectedFlags({ changed: null, workspaces: WS, root: ROOT })).toBe('--filter=*')
     expect(
       computeAffectedFlags({
         changed: null,
@@ -246,14 +250,58 @@ describe('computeAffectedFlags', () => {
     ).toBe('--filter=*')
   })
 
+  describe('scripts/ map to @pyreon/test-utils (never --filter=*)', () => {
+    const WS_TU: Workspace[] = [
+      ...WS,
+      { name: '@pyreon/test-utils', dir: `${ROOT}/packages/internals/test-utils`, deps: [] },
+    ]
+
+    it('a tested script (affected.ts) seeds @pyreon/test-utils, NOT the full suite', () => {
+      const out = computeAffectedFlags({
+        changed: ['scripts/affected.ts'],
+        workspaces: WS_TU,
+        root: ROOT,
+      })
+      expect(out).toBe('--filter=@pyreon/test-utils')
+      expect(out).not.toBe('--filter=*')
+    })
+
+    it('an untested script (scaffold-smoke.ts) still maps to test-utils, never escalates', () => {
+      // This is the exact file that flaked the local pre-push full-run.
+      expect(
+        computeAffectedFlags({
+          changed: ['scripts/scaffold-smoke.ts'],
+          workspaces: WS_TU,
+          root: ROOT,
+        }),
+      ).toBe('--filter=@pyreon/test-utils')
+    })
+
+    it('scripts/ + a package source change unions both (no escalation)', () => {
+      const out = computeAffectedFlags({
+        changed: ['scripts/gen-docs.ts', 'packages/fundamentals/toast/src/index.ts'],
+        workspaces: WS_TU,
+        root: ROOT,
+      })
+      expect(out).toContain('--filter=@pyreon/test-utils')
+      expect(out).toContain('--filter=@pyreon/toast')
+      expect(out).not.toBe('--filter=*')
+    })
+
+    it('gracefully no-ops (NOT --filter=*) when @pyreon/test-utils is absent', () => {
+      // WS has no test-utils → a lone script change seeds nothing → no-op.
+      expect(
+        computeAffectedFlags({ changed: ['scripts/affected.ts'], workspaces: WS, root: ROOT }),
+      ).toBe('')
+    })
+  })
+
   it('narrow change in one category → only that category emits flags; others are empty', () => {
     // Change to @pyreon/toast (fundamentals, no dependents in this fake
     // workspace) → fundamentals cell gets the package; every other cell
     // is empty (gracefully skipped at the bun-run layer).
     const changed = ['packages/fundamentals/toast/src/index.ts']
-    expect(
-      computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT }),
-    ).toBe('')
+    expect(computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT })).toBe('')
     expect(
       computeAffectedFlags({
         changed,
@@ -286,9 +334,7 @@ describe('computeAffectedFlags', () => {
     // example. With a category filter, each cell sees ONLY its own slice.
     const changed = ['packages/core/reactivity/src/signal.ts']
 
-    expect(
-      computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT }),
-    ).toBe(
+    expect(computeAffectedFlags({ changed, workspaces: WS, category: 'core', root: ROOT })).toBe(
       '--filter=@pyreon/core --filter=@pyreon/reactivity --filter=@pyreon/runtime-dom',
     )
     expect(
@@ -316,9 +362,7 @@ describe('computeAffectedFlags', () => {
       }),
     ).toBe('--filter=@pyreon/lint')
     // No 'zero' workspace in this fake set → empty (gracefully skipped)
-    expect(
-      computeAffectedFlags({ changed, workspaces: WS, category: 'zero', root: ROOT }),
-    ).toBe('')
+    expect(computeAffectedFlags({ changed, workspaces: WS, category: 'zero', root: ROOT })).toBe('')
   })
 
   it('without --category, output matches the existing no-category contract (backward-compat)', () => {
