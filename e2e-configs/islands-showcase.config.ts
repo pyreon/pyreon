@@ -21,13 +21,13 @@ const _baseConfig = definePlaywrightConfig({
   projects: [
     {
       name: 'islands-showcase',
-      testMatch: /islands-showcase\.spec\.ts$/,
+      testMatch: /\/islands-showcase\.spec\.ts$/,
       port: 5182,
       use: { viewport: { width: 1280, height: 720 } },
     },
     {
       name: 'islands-showcase-mobile',
-      testMatch: /islands-showcase-mobile\.spec\.ts$/,
+      testMatch: /\/islands-showcase-mobile\.spec\.ts$/,
       port: 5182,
       use: { ...devices['iPhone 12'] },
     },

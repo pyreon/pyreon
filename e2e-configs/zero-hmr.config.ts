@@ -30,7 +30,11 @@ const _baseConfig = definePlaywrightConfig({
   webServer: [
     {
       command: 'node ../../node_modules/.bin/vite --port 5201 --strictPort',
-      cwd: 'examples/ssr-showcase',
+      // cwd is relative to the config file's directory; e2e-configs/
+      // sits next to examples/, so '../examples/ssr-showcase' resolves
+      // to <repo>/examples/ssr-showcase. The `node ../../...` inside
+      // then resolves to the workspace root unchanged.
+      cwd: '../examples/ssr-showcase',
       port: 5201,
       timeout: 180_000,
       env: { PYREON_HMR_TEST: '1' },

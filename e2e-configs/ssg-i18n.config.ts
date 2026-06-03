@@ -21,6 +21,11 @@ const _baseConfig = definePlaywrightConfig({
   ],
   webServer: [
     {
+      // cwd: '..' — webServer commands run from the config file's
+      // directory by default; this config lives in e2e-configs/ but
+      // `scripts/serve-ssg.ts` and `examples/ssr-showcase/dist` are
+      // repo-root-relative.
+      cwd: '..',
       command:
         'bun run --filter=@pyreon/ssr-showcase build:i18n && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199',
       port: 5199,

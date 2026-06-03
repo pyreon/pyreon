@@ -15,11 +15,11 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  */
 const _baseConfig = definePlaywrightConfig({
   projects: [
-    { name: 'react-compat', testMatch: /react-compat\.spec\.ts$/, port: 5177 },
-    { name: 'preact-compat', testMatch: /preact-compat\.spec\.ts$/, port: 5178 },
-    { name: 'vue-compat', testMatch: /vue-compat\.spec\.ts$/, port: 5179 },
-    { name: 'solid-compat', testMatch: /solid-compat\.spec\.ts$/, port: 5180 },
-    { name: 'svelte-compat', testMatch: /svelte-compat\.spec\.ts$/, port: 5182 },
+    { name: 'react-compat', testMatch: /\/react-compat\.spec\.ts$/, port: 5177 },
+    { name: 'preact-compat', testMatch: /\/preact-compat\.spec\.ts$/, port: 5178 },
+    { name: 'vue-compat', testMatch: /\/vue-compat\.spec\.ts$/, port: 5179 },
+    { name: 'solid-compat', testMatch: /\/solid-compat\.spec\.ts$/, port: 5180 },
+    { name: 'svelte-compat', testMatch: /\/svelte-compat\.spec\.ts$/, port: 5182 },
   ],
   webServer: [
     viteDevServer('@pyreon/example-react-compat', 5177),

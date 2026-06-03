@@ -13,7 +13,7 @@ const _baseConfig = definePlaywrightConfig({
   projects: [
     {
       name: 'native-todomvc-web',
-      testMatch: /native-todomvc-web\.spec\.ts$/,
+      testMatch: /\/native-todomvc-web\.spec\.ts$/,
       port: 5202,
       use: { viewport: { width: 1280, height: 720 } },
     },
