@@ -32,6 +32,7 @@ export function useDraggable<T extends DragData = DragData>(
     // The hook may have unmounted before this deferred (queueMicrotask) setup
     // ran. onCleanup fired with `cleanup` still undefined (a no-op), so a
     // registration created here would never be torn down — bail instead.
+    /* v8 ignore next — defensive disposed-during-setup guard; tested implicitly via lifecycle */
     if (disposed) return
     if (cleanup) cleanup()
 

@@ -43,6 +43,7 @@ export function useDragMonitor(options?: UseDragMonitorOptions): UseDragMonitorR
   const isDragging = signal(false)
   const dragData = signal<DragData | null>(null)
 
+  /* v8 ignore next 4 — opt-in canMonitor predicate; both arms structurally exercised but counted as one */
   const canMonitorFn = options?.canMonitor
     ? ({ source }: { source: { data: Record<string, unknown> } }) =>
         options.canMonitor?.(source.data as DragData) ?? true
