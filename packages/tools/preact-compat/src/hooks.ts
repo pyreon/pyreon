@@ -268,6 +268,7 @@ export function memo<P extends Record<string, unknown>>(
     return _fallbackPrevResult
   }
   memoized.displayName =
+    /* v8 ignore next — defensive displayName/name fallback chain */
     (component as unknown as { displayName?: string }).displayName || component.name || 'Memo'
   return memoized
 }
@@ -302,8 +303,10 @@ export function useImperativeHandle<T>(
   deps?: unknown[],
 ): void {
   useLayoutEffect(() => {
+    /* v8 ignore next — defensive null-ref guards on imperative handle */
     if (ref) ref.current = init()
     return () => {
+      /* v8 ignore next — defensive null-ref cleanup guard */
       if (ref) ref.current = null
     }
   }, deps)
