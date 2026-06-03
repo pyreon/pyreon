@@ -100,12 +100,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader, exercised at build time only) + event-names.ts (DOM-event remap table — data constants only exercised when matching event handlers appear in compiled JSX). Post-exclude functions=98.12%, lines=96.29%, statements=92.53%, branches=84% — branches 1pt below the 85 floor due to scattered compiler-edge-case branches in jsx.ts (~3000-statement file). Statements threshold is the global 90 default. Lifting branches is a dedicated multi-PR effort.',
   },
-  '@pyreon/hooks': {
-    currentStatements: 95,
-    currentBranches: 75,
-    reason:
-      '35+ signal hooks. Statements lifted 90 → 94 (cov-94, PR #1074) → 95 (cov-95). Actual 96.39% after cleanup-paths-coverage tests. Branches at 83.25% — several hooks have early-return guards (typeof window, Intl fallback, no-theme) whose negative branch only fires in SSR or non-Intl environments.',
-  },
   '@pyreon/styler': {
     currentStatements: 94,
     currentBranches: 85,
