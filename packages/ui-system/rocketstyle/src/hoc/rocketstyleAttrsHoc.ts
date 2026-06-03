@@ -24,53 +24,65 @@ export type RocketStyleHOC = ({
  */
 const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
   const calculateAttrs = calculateChainOptions(attrs)
-  const calculatePriorityAttrs = calculateChainOptions(priorityAttrs)
+  const hasAttrs = (attrs?.length ?? 0) > 0
+  const hasPriorityAttrs = (priorityAttrs?.length ?? 0) > 0
 
+  const makeCallbackParams = (themeAttrs: ReturnType<typeof useTheme>) => [
+    themeAttrs.theme,
+    { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
+  ]
+
+  // Fast path — no `.priorityAttrs()` chain. This is the dominant case in
+  // practice (priorityAttrs is unused across the whole component library), so
+  // `prioritizedAttrs` would always be `{}`. The full path below would then
+  // (a) call `calculatePriorityAttrs` to produce `{}`, (b) run a wasted
+  // `mergeProps({}, filteredProps)` — a full descriptor copy of every prop just
+  // to merge with `{}` — and (c) pass that empty `{}` as the first arg of the
+  // final 3-way merge. The fast path skips all three. `removeUndefinedProps`
+  // (load-bearing: strips `undefined` so consumer props don't shadow `.attrs()`
+  // defaults) is kept. Variant picked at factory time so render-time work is
+  // fixed. Merge precedence is preserved: props win over attrs win over {}.
+  if (!hasPriorityAttrs) {
+    const Enhanced = (WrappedComponent: ComponentFn<any>) => {
+      const HOCComponent: ComponentFn<any> = (props) => {
+        const themeAttrs = useTheme({ inversed })
+        const filteredProps = removeUndefinedProps(props)
+        if (!hasAttrs) {
+          // No chain at all — filteredProps IS the final props (the full path
+          // would just re-copy them via `mergeProps({}, {}, filteredProps)`).
+          return WrappedComponent(filteredProps)
+        }
+        const finalAttrs = calculateAttrs([filteredProps, ...makeCallbackParams(themeAttrs)])
+        return WrappedComponent(mergeProps(finalAttrs, filteredProps))
+      }
+      return HOCComponent
+    }
+    return Enhanced
+  }
+
+  // Full path — `.priorityAttrs()` present.
+  const calculatePriorityAttrs = calculateChainOptions(priorityAttrs)
   const Enhanced = (WrappedComponent: ComponentFn<any>) => {
     const HOCComponent: ComponentFn<any> = (props) => {
       // IMPORTANT: Do NOT destructure — useTheme returns getter properties.
-      // Destructuring calls getters once and captures static values.
       // Keep the object reference so properties re-evaluate lazily.
       const themeAttrs = useTheme({ inversed })
-
-      // Remove undefined props not to override potential default props
       const filteredProps = removeUndefinedProps(props)
-
-      // Read theme attrs eagerly — .attrs() callbacks run once at mount.
-      // Mode-dependent styling is handled reactively by the $rocketstyle
-      // accessor in EnhancedComponent, not by re-running attrs.
-      const callbackParams = [
-        themeAttrs.theme,
-        { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
-      ]
-
+      const callbackParams = makeCallbackParams(themeAttrs)
       const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams])
-
-      // Merge via canonical `mergeProps` from @pyreon/core so reactive
-      // getter props on filteredProps survive the chain. A `{...A, ...B}`
-      // spread would fire every getter on A and B and store the resolved
-      // value, breaking the reactive subscription downstream.
-      // Attrs callbacks legitimately read prop VALUES (e.g.
-      // `({ href }) => ({ tag: href ? 'a' : 'button' })`) — that's
-      // a one-shot read at setup time by design. The pipeline only
-      // needs to preserve reactivity for props the callbacks DON'T
-      // consume, which the descriptor-merge does.
-      // `prioritizedAttrs` and `filteredProps` are always non-null at
-      // these sites — `calculatePriorityAttrs` / `calculateAttrs` return
-      // `{}` for an empty chain, and `removeUndefinedProps` always
-      // returns an object.
+      // Merge via canonical `mergeProps` so reactive getter props survive the
+      // chain (a `{...A, ...B}` spread would fire every getter and break the
+      // reactive subscription downstream). Attrs callbacks legitimately read
+      // prop VALUES (`({ href }) => ({ tag: href ? 'a' : 'button' })`) — a
+      // one-shot read at setup time by design.
       const finalAttrs = calculateAttrs([
         mergeProps(prioritizedAttrs, filteredProps),
         ...callbackParams,
       ])
-
-      const finalProps = mergeProps(prioritizedAttrs, finalAttrs, filteredProps)
-
-      return WrappedComponent(finalProps)
+      return WrappedComponent(mergeProps(prioritizedAttrs, finalAttrs, filteredProps))
     }
     return HOCComponent
   }
-
   return Enhanced
 }
 
