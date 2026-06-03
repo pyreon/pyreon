@@ -17,8 +17,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  *
  * CI: `bun run test:e2e:islands` (own step).
  */
-export default definePlaywrightConfig({
-  testDir: '../e2e',
+const _baseConfig = definePlaywrightConfig({
   projects: [
     {
       name: 'islands-showcase',
@@ -35,3 +34,9 @@ export default definePlaywrightConfig({
   ],
   webServer: [viteDevServer('@pyreon/islands-showcase', 5182)],
 })
+
+// testDir resolves relative to this config file's directory; the
+// repo's e2e/ specs sit one level up.
+_baseConfig.testDir = '../e2e'
+
+export default _baseConfig

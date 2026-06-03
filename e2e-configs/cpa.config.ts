@@ -13,8 +13,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  *
  * CI: `bun run test:e2e:cpa` (own step).
  */
-export default definePlaywrightConfig({
-  testDir: '../e2e',
+const _baseConfig = definePlaywrightConfig({
   projects: [
     { name: 'cpa-app', testMatch: /\/cpa-app\.spec\.ts$/, port: 5191 },
     { name: 'cpa-blog', testMatch: /\/cpa-blog\.spec\.ts$/, port: 5192 },
@@ -34,3 +33,9 @@ export default definePlaywrightConfig({
     viteDevServer('cpa-pw-app-preact', 5197, { strictPort: false }),
   ],
 })
+
+// testDir resolves relative to this config file's directory; the
+// repo's e2e/ specs sit one level up.
+_baseConfig.testDir = '../e2e'
+
+export default _baseConfig

@@ -14,8 +14,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  *
  * CI: `bun run test:e2e:ssg-i18n` (own step).
  */
-export default definePlaywrightConfig({
-  testDir: '../e2e',
+const _baseConfig = definePlaywrightConfig({
   timeout: 60_000,
   projects: [
     { name: 'ssg-i18n', testMatch: /ssg-i18n\.spec\.ts$/, port: 5199 },
@@ -29,3 +28,9 @@ export default definePlaywrightConfig({
     },
   ],
 })
+
+// testDir resolves relative to this config file's directory; the
+// repo's e2e/ specs sit one level up.
+_baseConfig.testDir = '../e2e'
+
+export default _baseConfig

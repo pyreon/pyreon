@@ -21,8 +21,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  *
  * CI: `bun run test:e2e:zero-hmr` (own step).
  */
-export default definePlaywrightConfig({
-  testDir: '../e2e',
+const _baseConfig = definePlaywrightConfig({
   timeout: 60_000,
   workers: 1,
   projects: [
@@ -38,3 +37,9 @@ export default definePlaywrightConfig({
     },
   ],
 })
+
+// testDir resolves relative to this config file's directory; the
+// repo's e2e/ specs sit one level up.
+_baseConfig.testDir = '../e2e'
+
+export default _baseConfig

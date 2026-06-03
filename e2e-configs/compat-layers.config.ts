@@ -13,8 +13,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  *
  * CI: `bun run test:e2e:compat` (own step).
  */
-export default definePlaywrightConfig({
-  testDir: '../e2e',
+const _baseConfig = definePlaywrightConfig({
   projects: [
     { name: 'react-compat', testMatch: /react-compat\.spec\.ts$/, port: 5177 },
     { name: 'preact-compat', testMatch: /preact-compat\.spec\.ts$/, port: 5178 },
@@ -30,3 +29,9 @@ export default definePlaywrightConfig({
     viteDevServer('@pyreon/example-svelte-compat', 5182),
   ],
 })
+
+// testDir resolves relative to this config file's directory; the
+// repo's e2e/ specs sit one level up.
+_baseConfig.testDir = '../e2e'
+
+export default _baseConfig
