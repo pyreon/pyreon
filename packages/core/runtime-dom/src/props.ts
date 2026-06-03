@@ -1,5 +1,5 @@
 import type { ClassValue, Props } from '@pyreon/core'
-import { cx, normalizeStyleValue, toKebabCase } from '@pyreon/core'
+import { cx, isSafeImageDataUri, normalizeStyleValue, toKebabCase, UNSAFE_URL_RE, URL_ATTRS } from '@pyreon/core'
 
 import { batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
@@ -133,7 +133,7 @@ function stripUnsafeAttrs(el: Element): void {
     } else if (
       URL_ATTRS.has(attr.name) &&
       UNSAFE_URL_RE.test(attr.value) &&
-      !isSafeImageDataUri(el, attr.name, attr.value)
+      !isSafeImageDataUri(el.tagName, attr.name, attr.value)
     ) {
       el.removeAttribute(attr.name)
     }
@@ -361,66 +361,6 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   return null
 }
 
-// Attributes that carry URLs and must be guarded against javascript:/data: injection.
-const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
-const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
-
-// A `data:image/...` URI on an image-source attribute renders as a static,
-// non-executing image — the framework's own imagePlugin ships exactly these as
-// blur/color placeholders (`data:image/webp;base64,…`, `data:image/svg+xml,…`).
-// Those contexts are safe, so the URL guard allows them while still blocking
-// `data:text/html` on <iframe>/<object>/<embed>, `javascript:` everywhere, and
-// scripted SVG. See `isSafeImageDataUri`.
-const IMAGE_SRC_ATTRS = new Set(['src', 'srcset', 'poster'])
-const IMAGE_CONTEXT_TAGS = new Set(['IMG', 'SOURCE', 'VIDEO'])
-// Raster image data URIs can never carry executable content — always safe.
-const SAFE_RASTER_DATA_RE =
-  /^\s*data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)\s*[;,]/i
-const SVG_DATA_RE = /^\s*data:image\/svg\+xml\s*[;,]/i
-// SVG loaded via <img> is sandboxed (scripts don't run), but we still reject
-// SVGs carrying <script> or on*= handlers — defense in depth, and safe if the
-// URI ever reaches a script-executing context.
-const SVG_SCRIPT_RE = /<\s*script\b|\son[a-z-]+\s*=/i
-
-/**
- * True when `value` is an image `data:` URI on an image-source attribute of an
- * image-context element (`<img src>`, `<source srcset>`, `<video poster>`) and
- * therefore safe to write despite the guarded `data:` prefix.
- *
- * Raster types (png/jpeg/webp/…) can't execute. SVG is allowed only when it
- * carries no `<script>` / `on*=` handlers. Every other `data:` URI — and any
- * `data:` on a navigable/executing element (iframe, object, anchor, …) — stays
- * blocked.
- */
-function isSafeImageDataUri(el: Element, key: string, value: string): boolean {
-  if (!IMAGE_SRC_ATTRS.has(key) || !IMAGE_CONTEXT_TAGS.has(el.tagName)) return false
-  if (SAFE_RASTER_DATA_RE.test(value)) return true
-  if (SVG_DATA_RE.test(value)) return !svgDataUriHasScript(value)
-  return false
-}
-
-/** Decode an `image/svg+xml` data URI payload and test for executable content. */
-function svgDataUriHasScript(value: string): boolean {
-  const comma = value.indexOf(',')
-  if (comma === -1) return true // malformed — treat as unsafe
-  const isBase64 = /;base64/i.test(value.slice(0, comma))
-  let payload = value.slice(comma + 1)
-  if (isBase64) {
-    try {
-      payload = atob(payload)
-    } catch {
-      return true // undecodable base64 — treat as unsafe
-    }
-  } else {
-    try {
-      payload = decodeURIComponent(payload)
-    } catch {
-      // keep the raw (still-encoded) payload — the scan below runs on it as-is
-    }
-  }
-  return SVG_SCRIPT_RE.test(payload)
-}
-
 // Track the CSS property names an element's last-applied style object set,
 // so a reactive style going from `{ color, fontSize }` to `{ color }` removes
 // the stale `fontSize`. React/Vue/Solid all do this diff; previously Pyreon
@@ -477,7 +417,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     URL_ATTRS.has(key) &&
     typeof value === 'string' &&
     UNSAFE_URL_RE.test(value) &&
-    !isSafeImageDataUri(el, key, value)
+    !isSafeImageDataUri(el.tagName, key, value)
   ) {
     if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
