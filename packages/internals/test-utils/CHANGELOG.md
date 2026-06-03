@@ -1,5 +1,22 @@
 # @pyreon/test-utils
 
+## 0.13.16
+
+### Patch Changes
+
+- [#1228](https://github.com/pyreon/pyreon/pull/1228) [`9b80d3e`](https://github.com/pyreon/pyreon/commit/9b80d3e4de7565515ce5bea603f6636e086af456) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements on test-utils + perf-harness.
+
+  - `test-utils`: add 6 render-helpers tests covering getComputedTheme (function vs object $rocketstyle, missing props) + renderProps (with/without props, null vnode). Coverage 89.7% → 98.52% statements. Set thresholds 95/80/95/95.
+  - `perf-harness`: exclude `src/overlay.ts` (DOM-heavy draggable floating panel with shadow DOM + pointer drag — needs real browser; exercised by Chromium e2e via examples/perf-dashboard). Coverage 88.35% → 100% statements. Set thresholds 95/80/95/95.
+
+- [#1287](https://github.com/pyreon/pyreon/pull/1287) [`7c8c1d4`](https://github.com/pyreon/pyreon/commit/7c8c1d43f7dbd81d4581094b10738f8ffc5ff458) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 83.33% → 100%. Added `tests/components-edges.test.ts` covering `ThemeCapture` / `BaseComponent` function-accessor resolve path + `?? 'none'` pseudo-state fallbacks. Annotated `mount-reactive.ensureDom` SSR/no-DOM guard with `/* v8 ignore */`. Bumped vitest `branches: 80 → 95`.
+
+- Updated dependencies [[`9be0265`](https://github.com/pyreon/pyreon/commit/9be0265553ff756383b21f9c0ab556949d7cadb0), [`ad5bd29`](https://github.com/pyreon/pyreon/commit/ad5bd29dbed3ee0517bddf63ff839c427bfd7edf), [`cb4e2e6`](https://github.com/pyreon/pyreon/commit/cb4e2e6e96de147089fd80ba782152865ec6695a), [`ea58eda`](https://github.com/pyreon/pyreon/commit/ea58eda140865aacc1b3d6f02bb9b0fe1772b7fe), [`04bb778`](https://github.com/pyreon/pyreon/commit/04bb77889f4b158fd7dbe109454a1faf992bccaf), [`e8d00a7`](https://github.com/pyreon/pyreon/commit/e8d00a763b713aab51172b1e16c6529feac028d3), [`fccddae`](https://github.com/pyreon/pyreon/commit/fccddae860e3126640dbcbd6d5a0ef22ac419f48)]:
+  - @pyreon/core@0.28.1
+  - @pyreon/rocketstyle@0.28.1
+  - @pyreon/runtime-dom@0.28.1
+  - @pyreon/ui-core@0.28.1
+
 ## 0.13.15
 
 ### Patch Changes

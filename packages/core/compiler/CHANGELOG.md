@@ -1,5 +1,56 @@
 # @pyreon/compiler
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1297](https://github.com/pyreon/pyreon/pull/1297) [`404d266`](https://github.com/pyreon/pyreon/commit/404d266a33fd272897e70c59e6baad7f31ccab44) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(compiler): emit firstChild/nextSibling walks instead of children[N] for dynamic-element resolution
+
+  Compiled templates resolved each dynamic element via the live HTMLCollection /
+  NodeList indexed getter (`__root.children[N]` / `__root.childNodes[N]`). That
+  getter is measurably slower than direct pointer reads. The codegen now emits a
+  `firstElementChild`/`nextElementSibling` walk for `children[N]` and a
+  `firstChild`/`nextSibling` walk for `childNodes[N]` (the element-vs-node sibling
+  forms match each collection's text-node semantics exactly), matching SolidJS's
+  codegen for the same reason. Falls back to the indexed form past 8 hops, where
+  the chained reads outweigh the getter overhead.
+
+  Measured (real Chromium, drift-controlled, real `_tpl` + `_bindText` + signal
+  mounts): **~3.8% faster create** for rows resolving two dynamic cells, ~2% for a
+  single-cell row — pure compile-time, zero runtime cost, semantically identical
+  output. Both compiler backends (JS + Rust napi) emit byte-for-byte identical
+  code; all 1429 compiler tests pass including the 180 native-equivalence checks.
+
+- [#1279](https://github.com/pyreon/pyreon/pull/1279) [`e97b8d7`](https://github.com/pyreon/pyreon/commit/e97b8d7a63a3f368c6a1e49a71eb22114b202f81) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Coverage floor: raise `MINIMUM_FLOOR` 94 → 95 (statements) in `scripts/check-coverage.ts`. Every published `@pyreon/*` package now configures `statements ≥ 95` except two documented exemptions: `@pyreon/compiler` (jsx.ts ~3000-line file, long-tail edge-case branches; multi-PR effort) and `@pyreon/styler` (94.83% — 0.17pp gap from styled.tsx WeakMap fallback + SSR hydration paths needing targeted DOM-replay tests). Compiler `vitest.config.ts` now declares `statements: 92` explicitly (matches actual 92.38%). The `MINIMUM_BRANCH_FLOOR` stays at 85% for now — universal 95% branch coverage is multi-week per-package work tracked separately.
+
+- [#1212](https://github.com/pyreon/pyreon/pull/1212) [`fccddae`](https://github.com/pyreon/pyreon/commit/fccddae860e3126640dbcbd6d5a0ef22ac419f48) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom): allow `data:image/*` URIs on image-source attributes (unblock `<Image>` placeholders)
+
+  The `setStaticProp` URL guard blocked **every** `data:` URI on URL-bearing
+  attributes (`src`, `poster`, …) to stop `javascript:`/`data:text/html`
+  injection. But that also rejected `data:image/*` placeholders — silently
+  disabling `<Image>`/`<OptimizedImage>`'s blur-up and color placeholders, which
+  is the framework's **own** `imagePlugin` output (`data:image/webp;base64,…` for
+  blur, `data:image/svg+xml,…` for color). Dev mode logged a `[Pyreon] Blocked
+unsafe URL` warning on every render; production silently dropped the attribute
+  so the placeholder never reached the DOM.
+
+  The guard is now context-aware. A `data:image/<type>` URI is allowed only on an
+  image-source attribute (`src`/`srcset`/`poster`) of an image-context element
+  (`<img>`/`<source>`/`<video>`), where the browser treats it as a static,
+  non-executing image. Raster types (png/jpeg/webp/avif/…) always pass; SVG is
+  allowed only when it carries no `<script>` or `on*=` handlers (decoded for both
+  base64 and url-encoded payloads). Everything else stays blocked — `javascript:`
+  everywhere, `data:text/html` on `<iframe>`/`<object>`/`<embed>`, and `data:` on
+  navigable elements like `<a href>`/`<form action>`.
+
+  The same allowance applies to the HTML-sanitizer path (`dangerouslySetInnerHTML`),
+  so a legitimate `<img src="data:image/png;base64,…">` in sanitized HTML also
+  survives.
+
+  `@pyreon/compiler` gains a matching `ERROR_PATTERNS` entry so `pyreon doctor
+diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
+  warning and which `data:` URIs are allowed where.
+
 ## 0.28.0
 
 ## 0.27.1

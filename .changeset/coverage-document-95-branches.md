@@ -1,5 +1,0 @@
----
-'@pyreon/document': patch
----
-
-Lift branch coverage 85.17% → 95.13% (≥ 95% target). Added `branch-coverage-edges.test.ts` with: (a) a "bareDoc" fixture of manually-constructed `DocNode`s WITHOUT optional props that primitive constructors normally default, driving every renderer's `?? <fallback>` right-side path; (b) a parameterized renderer sweep across 16 formats (html / text / md / csv / svg / email / slack / discord / teams / telegram / whatsapp / notion / confluence / google-chat / pptx / xlsx); (c) builder.ts `chart()` / `flow()` width+height+caption combination matrix (all 8 subsets); (d) download.ts error paths; (e) `nodes.ts` `normalizeChildren` edges via primitive constructors; (f) `sanitize.ts` keyword-color path. Annotated structurally-unreachable `transparent|inherit|currentColor|initial|unset` keyword regex in `sanitize.ts` (always pre-matched by the named-colors regex above) with `/* v8 ignore */`. Bumped vitest threshold `branches: 80 → 95`, dropped `@pyreon/document` from `BELOW_FLOOR_EXEMPTIONS`.

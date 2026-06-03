@@ -1,5 +1,17 @@
 # @pyreon/ui-core
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1223](https://github.com/pyreon/pyreon/pull/1223) [`ad5bd29`](https://github.com/pyreon/pyreon/commit/ad5bd29dbed3ee0517bddf63ff839c427bfd7edf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements / ≥90% branches. Add 14 tests covering `isPyreonComponent` (Tier 1 framework markers + Tier 2 naming convention, all branches) and `resolveSlot` (static atoms, null, reactive accessor, marked component). Bump `coverageThresholds.statements` 94 → 95, add `branches: 90`, `lines` 94 → 95.
+
+- [#1282](https://github.com/pyreon/pyreon/pull/1282) [`cb4e2e6`](https://github.com/pyreon/pyreon/commit/cb4e2e6e96de147089fd80ba782152865ec6695a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 93.27% → 98.56% (well above the 95% target). Added `__tests__/branch-coverage-edges.test.ts` with tests for: `omit` / `pick` null + Set edges, `throttle.cancel` idle + leading-false trailing path, `useStableValue` deep-equal branch, `hoistNonReactStatics` non-configurable property swallow (try/catch), `render` component-fn + key extraction + primitive pass-through paths. Annotated structurally unreachable defensive branches with `/* v8 ignore */`: SSR-only `_isBrowser` gate in `PyreonUI.getSystemMode`, production dev-warn gate in `context.Provider`, post-typeof-fallthrough in `render`, just-initialized signal equality check in `useStableValue`, and the always-defined descriptor guard in `hoistNonReactStatics`. Bumped vitest threshold `branches: 90 → 95`.
+
+- Updated dependencies [[`e975f3a`](https://github.com/pyreon/pyreon/commit/e975f3aa9a5ca0fa7983c8f4fa47c412cea7d735), [`4058727`](https://github.com/pyreon/pyreon/commit/40587271deeb30f968dcf297ee7781e2993ca1e8), [`971259b`](https://github.com/pyreon/pyreon/commit/971259b8e05b6221937ad27deda0074176da6b25)]:
+  - @pyreon/styler@0.28.1
+  - @pyreon/unistyle@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @pyreon/vue-compat
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1221](https://github.com/pyreon/pyreon/pull/1221) [`5f3ea1c`](https://github.com/pyreon/pyreon/commit/5f3ea1c77b5b5b8d83885bd13b3410f468553b1c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements / ≥85% branches. Add 9 tests covering computed() with `{get, set}` setter (inside + outside component), reactive() proxy `set` / `deleteProperty` trap firing scheduleRerender, readonly() / shallowReadonly() write + delete throw. Bump `coverageThresholds.statements` 94 → 95, `branches` 84 → 85. **Removes** the BELOW_FLOOR_EXEMPTIONS entry — package now meets both floors.
+
 ## 0.28.0
 
 ### Patch Changes

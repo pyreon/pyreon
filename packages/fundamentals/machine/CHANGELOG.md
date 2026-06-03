@@ -1,5 +1,11 @@
 # @pyreon/machine
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1226](https://github.com/pyreon/pyreon/pull/1226) [`63bdb95`](https://github.com/pyreon/pyreon/commit/63bdb956b9d1ac5db779672f0cd7314de672fac9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lock coverage thresholds at ≥95% statements / branches / functions / lines. All 4 packages already measure at 100% on every metric (machine 63/63, store 13/13, virtual 59/59, kinetic-presets 198/198) — this PR just locks the thresholds.
+
 ## 0.28.0
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @pyreon/cli
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1261](https://github.com/pyreon/pyreon/pull/1261) [`de422bc`](https://github.com/pyreon/pyreon/commit/de422bc24ef8d9f434781160f5d1062b8644d5ec) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements / ≥85% branches. Export `_mapLintSeverity` from `doctor/gates/lint.ts` for unit testing; add 8 targeted tests covering severity mapping, distribution gate package-discovery edge cases (no packages/ dir, malformed package.json, non-string name, private packages), and doctor's `--check-islands` + `--check-ssg` legacy flag mapping + non-`ci` exit code path. Bump thresholds: statements 94 → 95, branches 80 → 85, functions 94 → 95, lines 94 → 95. **Removes** the BELOW_FLOOR_EXEMPTIONS entry — package now meets all floors.
+
+- Updated dependencies [[`404d266`](https://github.com/pyreon/pyreon/commit/404d266a33fd272897e70c59e6baad7f31ccab44), [`d4a76a0`](https://github.com/pyreon/pyreon/commit/d4a76a0ca8fa2468c05e96aacc6a8690496e3e8c), [`e97b8d7`](https://github.com/pyreon/pyreon/commit/e97b8d7a63a3f368c6a1e49a71eb22114b202f81), [`fc2da1c`](https://github.com/pyreon/pyreon/commit/fc2da1cbbae059b5e473735e590c21a1efd90d49), [`fccddae`](https://github.com/pyreon/pyreon/commit/fccddae860e3126640dbcbd6d5a0ef22ac419f48)]:
+  - @pyreon/compiler@0.28.1
+  - @pyreon/lint@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes

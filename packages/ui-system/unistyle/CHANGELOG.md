@@ -1,5 +1,15 @@
 # @pyreon/unistyle
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1294](https://github.com/pyreon/pyreon/pull/1294) [`971259b`](https://github.com/pyreon/pyreon/commit/971259b8e05b6221937ad27deda0074176da6b25) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 90.83% → 96.39%. Annotated structurally-unreachable defensive guards across responsive theme engine + processDescriptor with `/* v8 ignore */`: `sortBreakpoints` `?? 0` fallback, `createMediaQueries` null-breakpoint guard, `optimizeTheme` identity/null guards, `transformTheme` defensive nulls, `optimizeBreakpointDeltas` parser fallbacks (empty segment, malformed declaration, paren depth, trailing segment), `processDescriptor` empty-prop guards, `units/value` defensive isNotValue/unit fallbacks, `makeItResponsive` `sortedBreakpoints ?? []` + null-theme/media guards. Bumped vitest `branches: 90 → 95`.
+
+- Updated dependencies [[`ad5bd29`](https://github.com/pyreon/pyreon/commit/ad5bd29dbed3ee0517bddf63ff839c427bfd7edf), [`e975f3a`](https://github.com/pyreon/pyreon/commit/e975f3aa9a5ca0fa7983c8f4fa47c412cea7d735), [`4058727`](https://github.com/pyreon/pyreon/commit/40587271deeb30f968dcf297ee7781e2993ca1e8), [`cb4e2e6`](https://github.com/pyreon/pyreon/commit/cb4e2e6e96de147089fd80ba782152865ec6695a)]:
+  - @pyreon/ui-core@0.28.1
+  - @pyreon/styler@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # chat
 
+## 0.0.9
+
+### Patch Changes
+
+- Updated dependencies [[`63bdb95`](https://github.com/pyreon/pyreon/commit/63bdb956b9d1ac5db779672f0cd7314de672fac9), [`b6ad934`](https://github.com/pyreon/pyreon/commit/b6ad934a63fc481b7662ba67925e1bbb0d9aed79), [`a8452b5`](https://github.com/pyreon/pyreon/commit/a8452b5780a19695fee8031ae625ab7c384fc3d5), [`8bb2463`](https://github.com/pyreon/pyreon/commit/8bb2463d9771c63bd53c6a761cb067aeb9c9e9ee), [`9be0265`](https://github.com/pyreon/pyreon/commit/9be0265553ff756383b21f9c0ab556949d7cadb0), [`d9cee0b`](https://github.com/pyreon/pyreon/commit/d9cee0beecf7e9718e0e8d6d763afdb9ce8230d8), [`599e184`](https://github.com/pyreon/pyreon/commit/599e184941d6251affa85946a54bd1d5fce65bb3), [`aa74128`](https://github.com/pyreon/pyreon/commit/aa741283b2d6e971aff9be8361bb9e632188855e), [`5d086f0`](https://github.com/pyreon/pyreon/commit/5d086f0be77b23958748889b7ee61bcec0074a02), [`ea58eda`](https://github.com/pyreon/pyreon/commit/ea58eda140865aacc1b3d6f02bb9b0fe1772b7fe), [`04bb778`](https://github.com/pyreon/pyreon/commit/04bb77889f4b158fd7dbe109454a1faf992bccaf), [`3fb1733`](https://github.com/pyreon/pyreon/commit/3fb173327a5cda36f4150cf8ed66d5d97be4501c), [`fccddae`](https://github.com/pyreon/pyreon/commit/fccddae860e3126640dbcbd6d5a0ef22ac419f48)]:
+  - @pyreon/virtual@0.28.1
+  - @pyreon/hooks@0.28.1
+  - @pyreon/router@0.28.1
+  - @pyreon/state-tree@0.28.1
+  - @pyreon/core@0.28.1
+  - @pyreon/form@0.28.1
+  - @pyreon/head@0.28.1
+  - @pyreon/query@0.28.1
+  - @pyreon/reactivity@0.28.1
+  - @pyreon/runtime-dom@0.28.1
+  - @pyreon/storage@0.28.1
+  - @pyreon/toast@0.28.1
+  - @pyreon/url-state@0.28.1
+  - @pyreon/zero@0.28.1
+  - @pyreon/runtime-server@0.28.1
+
 ## 0.0.8
 
 ### Patch Changes

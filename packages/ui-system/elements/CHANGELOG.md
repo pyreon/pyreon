@@ -1,5 +1,20 @@
 # @pyreon/elements
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1218](https://github.com/pyreon/pyreon/pull/1218) [`37b353e`](https://github.com/pyreon/pyreon/commit/37b353e513848dabc5c86f9faf019ee734280e3b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements / ≥80% branches. Add Portal SSR-branch test (returns null when document undefined, line 34). Exclude `src/Text/styled.ts` + `src/helpers/Content/styled.ts` from node-side coverage — their `makeItResponsive` theme callbacks need real component-mount layout (covered by `elements.browser.test.tsx` + ui-showcase e2e). Bump `coverageThresholds.statements` 94 → 95, `branches` 76 → 80, `lines` 94 → 95.
+
+- [#1263](https://github.com/pyreon/pyreon/pull/1263) [`2264d90`](https://github.com/pyreon/pyreon/commit/2264d9089f91e6bd4bce0623008f1643a29eff6b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lock branches threshold to ≥90% (measured 91.27%) + functions to ≥85% (measured 93.68%). **Removes** the BELOW_FLOOR_EXEMPTIONS entry — package now meets all floors.
+
+- [#1299](https://github.com/pyreon/pyreon/pull/1299) [`97a7130`](https://github.com/pyreon/pyreon/commit/97a7130771bc930abf5b66b615fa65982126c640) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 91.27% → 96.19%. Annotated structurally-unreachable defensive guards across `Element/component`, `Overlay/{component,useOverlay}`, `helpers/Iterator/component`, `helpers/Wrapper/{component,styled}` with `/* v8 ignore */`: dev-only `IS_DEVELOPMENT` data-attrs, happy-dom layout-measurement defenses in `equalize`, missing-ref dev-warn paths in useOverlay, SSR/typeof document + offsetParent guards, type-modal ARIA ternaries, defensive itemKey/empty-array/innerHTML guards. Bumped vitest `branches: 90 → 95`.
+
+- Updated dependencies [[`a448ff4`](https://github.com/pyreon/pyreon/commit/a448ff4fa5b5627622be0fcd7fbe65b5f8c51991), [`ad5bd29`](https://github.com/pyreon/pyreon/commit/ad5bd29dbed3ee0517bddf63ff839c427bfd7edf), [`cb4e2e6`](https://github.com/pyreon/pyreon/commit/cb4e2e6e96de147089fd80ba782152865ec6695a), [`971259b`](https://github.com/pyreon/pyreon/commit/971259b8e05b6221937ad27deda0074176da6b25)]:
+  - @pyreon/sized-map@0.28.1
+  - @pyreon/ui-core@0.28.1
+  - @pyreon/unistyle@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes

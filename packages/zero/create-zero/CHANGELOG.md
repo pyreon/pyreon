@@ -1,5 +1,13 @@
 # create-zero
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1219](https://github.com/pyreon/pyreon/pull/1219) [`a633067`](https://github.com/pyreon/pyreon/commit/a6330675e99fb54f5d25947670ae873b161a8cf8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift node-side coverage to ≥95% statements. Add `pathExists` helper tests covering file / directory / missing-path branches. Bump `coverageThresholds.statements` 94 → 95, `lines` 94 → 95, `functions` 94 → 95. Updates BELOW_FLOOR_EXEMPTIONS entry.
+
+- [#1274](https://github.com/pyreon/pyreon/pull/1274) [`4d75f2d`](https://github.com/pyreon/pyreon/commit/4d75f2dc5ff6768078b60deb126f75c2dd9f8768) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lift branch coverage 81.81% → 96.15% (≥ 95% target). Added `branch-coverage-edges.test.ts` covering env.example append paths, tanstack non-query/non-table dep version branch (virtual), compat-shim deps (react/vue), package strategies (meta), vite-config compat-flag emit, and unknown-feature defensive paths. Annotated structurally unreachable defensive paths in `integrations.ts` (empty envKeys, non-ENOENT readFile error rethrow) and `template-engine.ts` (non-file dirent, binary copy, listFiles non-existent dir, non-file dirent) with `/* v8 ignore */`. Bumped vitest threshold `branches: 80 → 95`, dropped `@pyreon/create-zero` from `BELOW_FLOOR_EXEMPTIONS` in `scripts/check-coverage.ts`.
+
 ## 0.28.0
 
 ## 0.27.1
