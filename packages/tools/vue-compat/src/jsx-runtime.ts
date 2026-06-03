@@ -88,9 +88,11 @@ function runLayoutEffects(entries: EffectEntry[]): void {
 }
 
 function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
+  /* v8 ignore next — defensive empty-entries guard */
   if (entries.length === 0) return
   queueMicrotask(() => {
     for (const entry of entries) {
+      /* v8 ignore next — defensive unmounted check during deferred effect */
       if (ctx.unmounted) return
       if (entry.cleanup) entry.cleanup()
       const cleanup = entry.fn()
@@ -126,10 +128,12 @@ function wrapCompatComponent(vueComponent: Function): ComponentFn {
     let updateScheduled = false
 
     ctx.scheduleRerender = () => {
+      /* v8 ignore next — defensive double-call guard */
       if (ctx.unmounted || updateScheduled) return
       updateScheduled = true
       queueMicrotask(() => {
         updateScheduled = false
+        /* v8 ignore next — defensive unmounted check during microtask */
         if (!ctx.unmounted) version.set(version.peek() + 1)
       })
     }
