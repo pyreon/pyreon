@@ -542,4 +542,142 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       expect(result.code).toContain('AdminPage')
     })
   })
+
+  // ====================================================================
+  // Native readiness audit (2026-06, CRIT-4) — useLoaderData silent-drop.
+  // Compiler has no emit for useLoaderData on either target; runtime
+  // PyreonRouter.setLoaderData() ships but loader auto-emit is deferred.
+  // Warn at the call site naming the binding so the silent-drop is
+  // visible to the author at compile time.
+  // ====================================================================
+  describe('useLoaderData<T>() silent-drop diagnostic', () => {
+    it('warns naming the binding when `const data = useLoaderData<User>()` at component body scope (Swift target)', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const data = useLoaderData<User>()
+          return <Text>Hi</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.includes('useLoaderData') &&
+            w.includes('const data = useLoaderData') &&
+            w.includes('no emit'),
+        ),
+      ).toBe(true)
+    })
+
+    it('fires on Kotlin target too (target-independent, parser-level)', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const data = useLoaderData<User>()
+          return <Text>Hi</Text>
+        }
+        `,
+        { target: 'kotlin' },
+      )
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.includes('useLoaderData') &&
+            w.includes('const data = useLoaderData'),
+        ),
+      ).toBe(true)
+    })
+
+    it('warns with destructure-form binding description', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const { user } = useLoaderData<{ user: User }>()
+          return <Text>Hi</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.includes('useLoaderData') &&
+            w.includes('{ ... } = useLoaderData'),
+        ),
+      ).toBe(true)
+    })
+
+    it('names multiple loader bindings independently when several appear', () => {
+      const result = transform(
+        `
+        export function DashboardPage() {
+          const userData = useLoaderData<User>()
+          const settingsData = useLoaderData<Settings>()
+          return <Text>Hi</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      const useLoaderWarnings = result.warnings.filter((w) =>
+        w.includes('useLoaderData'),
+      )
+      // Both bindings get their own warning so a developer with multiple
+      // loaders can spot which is affected.
+      expect(useLoaderWarnings.length).toBeGreaterThanOrEqual(2)
+      expect(
+        useLoaderWarnings.some((w) => w.includes('userData')),
+      ).toBe(true)
+      expect(
+        useLoaderWarnings.some((w) => w.includes('settingsData')),
+      ).toBe(true)
+    })
+
+    it('does NOT warn for `router.loaderData()` direct read (different API — no diagnostic needed)', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const router = useRouter()
+          return <Text>{router.loaderData().name}</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some((w) => w.includes('useLoaderData')),
+      ).toBe(false)
+    })
+
+    it('does NOT warn when the file has NO useLoaderData call (baseline — clean signal)', () => {
+      const result = transform(
+        `
+        export function StaticPage() {
+          const greeting = signal("hello")
+          return <Text>{greeting()}</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      expect(
+        result.warnings.some((w) => w.includes('useLoaderData')),
+      ).toBe(false)
+    })
+
+    it('emit shape UNCHANGED — useLoaderData call still produces a body (warning is purely additive)', () => {
+      const result = transform(
+        `
+        export function ProfilePage() {
+          const data = useLoaderData<User>()
+          return <Text>Profile</Text>
+        }
+        `,
+        { target: 'swift' },
+      )
+      // The emit still produces the view; the warning is on
+      // result.warnings, code is unchanged from pre-fix shape.
+      expect(result.code.length).toBeGreaterThan(0)
+      expect(result.code).toContain('ProfilePage')
+    })
+  })
 })
