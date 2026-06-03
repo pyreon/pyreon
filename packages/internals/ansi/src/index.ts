@@ -82,10 +82,9 @@ export const colorEnabled = isColorEnabled()
 const wrap =
   (open: string, close: string) =>
   (s: string): string =>
-    /* v8 ignore next 2 — colorEnabled=true path requires real TTY or
-     * FORCE_COLOR=1; tested via the `colorEnabled` boolean + shape
-     * assertions in src/tests/ansi.test.ts. */
+    /* v8 ignore start */
     colorEnabled ? `${CSI}${open}m${s}${CSI}${close}m` : s
+/* v8 ignore stop */
 
 const c256 = (code: number) => wrap(`38;5;${code}`, '39')
 
@@ -131,9 +130,10 @@ export const SEVERITY_GLYPH = {
  *   `file:///path/to/file.ts#L42`
  */
 export const hyperlink = (text: string, url: string): string => {
+  /* v8 ignore start */
   if (!colorEnabled) return text
-  /* v8 ignore next — colorEnabled=true path requires real TTY. */
   return `${OSC}8;;${url}${ST}${text}${OSC}8;;${ST}`
+  /* v8 ignore stop */
 }
 
 /** Build a `file://` URL with optional line / column suffix. */

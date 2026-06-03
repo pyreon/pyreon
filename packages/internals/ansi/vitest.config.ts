@@ -5,10 +5,8 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 export default defineNodeConfig({
   category: 'internals',
   includeIndexInCoverage: true,
-  // hyperlink's colorEnabled=true path requires a TTY; isColorEnabled's
-  // env-var branches captured at module load (NO_COLOR / FORCE_COLOR) —
-  // both are v8-ignored inline. Branches lowered to reflect.
-  // branches: colorEnabled=true ternary paths need real TTY or
-  // FORCE_COLOR=1 — exercised by lint-reporter integration tests.
-  coverageThresholds: { statements: 95, branches: 65, functions: 95, lines: 95 },
+  // colorEnabled=true paths require real TTY or FORCE_COLOR=1 — wrapped
+  // in /* v8 ignore */ regions; exercised by downstream lint-reporter
+  // integration tests under real terminals.
+  coverageThresholds: { statements: 95, branches: 95, functions: 95, lines: 95 },
 })
