@@ -46,8 +46,8 @@ const PACKAGE_DIRS = [
   'packages/tools',
   'packages/zero',
 ]
-const DEFAULT_THRESHOLD = 90
-const MINIMUM_FLOOR = 90
+const DEFAULT_THRESHOLD = 94
+const MINIMUM_FLOOR = 94
 const MINIMUM_BRANCH_FLOOR = 85
 const CONCURRENCY = 4
 
@@ -83,16 +83,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Code editor (CodeMirror integration). Statements lifted 90 → 94 (cov-94, PR #1072), now 95 (cov-95). Actual 95.02%. Branches at 73.87% — uncovered branches are CodeMirror lifecycle handlers that need real editor instances; branch lift is its own tier-6 PR.',
   },
   '@pyreon/compiler': {
-    currentStatements: 90,
+    currentStatements: 94,
     currentBranches: 84,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader, exercised at build time only) + event-names.ts (DOM-event remap table — data constants only exercised when matching event handlers appear in compiled JSX). Post-exclude functions=98.12%, lines=96.29%, statements=92.53%, branches=84% — branches 1pt below the 85 floor due to scattered compiler-edge-case branches in jsx.ts (~3000-statement file). Statements threshold is the global 90 default. Lifting branches is a dedicated multi-PR effort.',
-  },
-  '@pyreon/styler': {
-    currentStatements: 94,
-    currentBranches: 85,
-    reason:
-      'CSS-in-JS engine. Statements lifted 90 → 94 (cov-94 series, PR #1081). Now 94.83% statements / 85.11% branches / 97.33% functions / 96.03% lines (sheet SSR-paths + buildProps reactive-class tests added). Statements 1pt below 95 target — uncovered is in styled.tsx (rocketstyle/element class-cache hot-path fast-paths exercised in real-Chromium browser tests).',
+      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Post-exclude functions=98.12%, lines=96.29%, statements=92.53%, branches=84% — branches 1pt below the 85 floor due to scattered compiler-edge-case branches in jsx.ts (~3000-statement file). Statements stays at the new 94 floor default. Lifting branches is a dedicated multi-PR effort.',
   },
   '@pyreon/document': {
     currentStatements: 95,
