@@ -19,7 +19,6 @@ import { IS_DEVELOPMENT } from '../utils'
 import type { PyreonElement } from './types'
 import { getShouldBeEmpty, isInlineElement } from './utils'
 
-/* v8 ignore next 3 — dev-only data-attr; production branch not exercised */
 const WRAPPER_DEV_PROPS: Record<string, string> = IS_DEVELOPMENT
   ? { 'data-pyr-element': 'Element' }
   : {}
@@ -28,7 +27,6 @@ const equalize = (el: HTMLElement, direction: unknown) => {
   const beforeEl = el.firstElementChild as HTMLElement | null
   const afterEl = el.lastElementChild as HTMLElement | null
 
-  /* v8 ignore next 8 — defensive happy-dom layout-measurement guards; layout not measured in unit tests */
   if (beforeEl && afterEl && beforeEl !== afterEl) {
     const type: 'height' | 'width' = direction === 'rows' ? 'height' : 'width'
     const prop = type === 'height' ? 'offsetHeight' : 'offsetWidth'
@@ -119,7 +117,6 @@ const Component: PyreonElement = (props) => {
   let wrapperAlignY: typeof alignY = alignY
 
   if (isSimpleElement) {
-    /* v8 ignore next 3 — defensive optional-prop guards; both arms exercised but counted per */
     if (contentDirection) wrapperDirection = contentDirection
     if (contentAlignX) wrapperAlignX = contentAlignX
     if (contentAlignY) wrapperAlignY = contentAlignY
@@ -150,7 +147,6 @@ const Component: PyreonElement = (props) => {
     // useLayoutEffect + ResizeObserver pattern.
     onMount(() => {
       const node = equalizeRef
-      /* v8 ignore next — defensive null-ref guard */
       if (!node) return undefined
 
       equalize(node, own.direction)
