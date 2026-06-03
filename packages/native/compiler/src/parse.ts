@@ -484,18 +484,49 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (init?.type === 'CallExpression') {
     const callee = init.callee?.name as string | undefined
     if (callee === 'useLoaderData') {
-      const bindingDesc =
-        node.id?.type === 'Identifier'
-          ? `\`const ${node.id.name as string} = useLoaderData<T>()\``
-          : node.id?.type === 'ObjectPattern'
-            ? '`const { ... } = useLoaderData<T>()`'
-            : '`useLoaderData<T>()`'
+      // Phase B6 (native readiness audit): `const data = useLoaderData<T>()`
+      // now emits READ-ONLY (was silent-drop pre-B6). The Identifier shape
+      // emits a binding that reads the runtime container's loaderData entry
+      // for the current path, type-cast to T. Auto-loader emit (firing
+      // route.loader on navigation) remains future work — the warning
+      // below names this gap so authors aren't surprised when their
+      // useLoaderData hook stays `nil`/`null` without a host-side
+      // setLoaderData() call.
+      //
+      // Destructure shape (`const { x } = useLoaderData<T>()`) STILL
+      // silent-drops — the runtime read returns an OPAQUE T?, not a
+      // shape the destructure can pattern-match against without
+      // type-knowledge of T's fields. That's bigger Phase B+ work.
+      const isIdentifier = node.id?.type === 'Identifier'
+      const isObjectPattern = node.id?.type === 'ObjectPattern'
+
+      // Both shapes warn. Identifier softens to "emit ships read-only,
+      // auto-loader follow-up needed"; destructure keeps the original
+      // silent-drop warning because the shape genuinely doesn't emit.
+      const bindingDesc = isIdentifier
+        ? `\`const ${node.id?.name as string} = useLoaderData<T>()\``
+        : isObjectPattern
+          ? '`const { ... } = useLoaderData<T>()`'
+          : '`useLoaderData<T>()`'
+
+      if (isIdentifier) {
+        ctx.warnings.push(
+          `useLoaderData<T>() declared (${bindingDesc}) — PMTC ships READ-ONLY emit (Phase B6): the binding reads PyreonRouter.loaderData[currentPath] cast to T. Auto-loader emit (firing a route's \`loader\` on navigation) is future work — populate loaderData via the runtime container's \`setLoaderData(path, value)\` method from your native host code today. Reference: docs/docs/multiplatform.md → "Loader auto-emit is intentionally deferred, not forgotten."`,
+        )
+        // Phase B6 IR — capture name + type generic. The emit reads
+        // PyreonRouter.loaderData[currentPath] cast to T at the
+        // declaration site (read-only).
+        const name = node.id?.name as string
+        const type = parseGenericTypeArg(init, ctx)
+        return { kind: 'useLoaderData', name, type }
+      }
+
+      // Destructure (and other non-Identifier shapes) keep the original
+      // silent-drop behavior + warning. Phase B6+ work would unwrap a
+      // destructure against a known type — bigger scope.
       ctx.warnings.push(
-        `useLoaderData<T>() declared (${bindingDesc}) but PMTC has no emit for loader data on native targets yet — the runtime PyreonRouter's setLoaderData() is the only way to populate this signal today. Either remove the useLoaderData call and read \`router.loaderData()\` directly via a custom hook, or wait for the loader auto-emit follow-up (tracked as native-readiness Phase B). Reference: docs/docs/multiplatform.md → "Loader auto-emit is intentionally deferred, not forgotten."`,
+        `useLoaderData<T>() declared (${bindingDesc}) — destructure form not yet emitted on native targets. Use the single-binding shape \`const data = useLoaderData<T>(); …data.x\` instead. Tracked as Phase B+ follow-up.`,
       )
-      // Still return null so emit continues as before (silent-drop is
-      // preserved; the warning is purely additive — same shape as the
-      // useClipboard-destructure path above).
       return null
     }
   }

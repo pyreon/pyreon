@@ -257,6 +257,32 @@ export type DeclIR =
    * hooks document).
    */
   | { kind: 'color-scheme'; name: string }
+  /**
+   * Phase B6 (native readiness audit 2026-06, partial CRIT-4 closure).
+   * `const data = useLoaderData<User>()` binding — reads the active
+   * router's loaderData entry for the current path, type-cast to T.
+   *
+   * Phase B6 ships READ-ONLY emit — the runtime container's
+   * `loaderData[currentPath]` IS read, but no auto-loader-runner
+   * fires the loader. Apps populate via `router.setLoaderData(...)`
+   * from native host code (Swift / Kotlin). True loader auto-emit
+   * (the compiler walking a route's `loader:` field and emitting a
+   * `task { … }` / `LaunchedEffect { … }` that calls setLoaderData
+   * automatically) remains future work — that needs route-loader
+   * coordination this PR doesn't attempt.
+   *
+   * Per-target emit:
+   *   Swift:  `let data: User? = useLoaderData(router: pyreonRouter)`
+   *   Kotlin: `val data = useLoaderData<User>()`
+   * (Kotlin's reified-generic helper reads LocalPyreonRouter.current
+   * internally; Swift's needs the @Environment(\.pyreonRouter)
+   * passed in explicitly because @Environment can't be read at
+   * stored-let-init time. Same constraint useParams documents.)
+   *
+   * The A3 diagnostic warning (PR #1235) softens to a HINT — emit
+   * now exists, but the auto-loader gap remains intentional.
+   */
+  | { kind: 'useLoaderData'; name: string; type: TypeIR }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
