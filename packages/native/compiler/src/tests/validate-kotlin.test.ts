@@ -35,6 +35,8 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
   // but never invoked here. Scout-2's "Kotlin fixture parity" finding.
   // Phase B5: added 11-canonical-layout to exercise the broader
   // canonical-primitive set (Stack/Inline/Heading) — scout-1's finding.
+  // Phase B5.2: added 12-canonical-input (Field/Toggle/Modal — form +
+  // overlay primitives).
   const fixtures = [
     '01-stateless.tsx',
     '02-signal.tsx',
@@ -47,6 +49,9 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     '09-props.tsx',
     '10-multi-component.tsx',
     '11-canonical-layout.tsx',
+    '12-canonical-input.tsx',
+    '13-canonical-overlay.tsx',
+    '14-canonical-content.tsx',
   ] as const
 
   for (const fixture of fixtures) {
