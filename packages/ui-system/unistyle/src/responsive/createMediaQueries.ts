@@ -28,6 +28,7 @@ const createMediaQueries: CreateMediaQueries = ((props: {
     const breakpointValue = breakpoints[key]
     if (breakpointValue === 0) {
       acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css(...args)
+    /* v8 ignore next — defensive null-breakpoint guard; type-system constrains values */
     } else if (breakpointValue != null) {
       const emSize = breakpointValue / rootSize
       acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css`

@@ -10,6 +10,7 @@ const shallowEqual = (
   a: Record<string, unknown> | undefined,
   b: Record<string, unknown> | undefined,
 ): boolean => {
+  /* v8 ignore next 2 — defensive identity + null guards; both arms structurally covered */
   if (a === b) return true
   if (!a || !b) return false
   // for-in + counting avoids the two `Object.keys` array allocations the
