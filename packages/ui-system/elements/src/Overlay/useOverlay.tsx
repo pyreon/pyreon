@@ -56,6 +56,7 @@ const CLICK_CLOSE_KINDS: ReadonlySet<string> = new Set([
 ])
 
 const devWarn = (msg: string) => {
+  /* v8 ignore next 3 — dev-only warning gate; tests run in dev mode */
   if (!IS_DEVELOPMENT) return
   // oxlint-disable-next-line no-console
   console.warn(msg)
@@ -81,6 +82,7 @@ const computePosition = (
 ): ComputeResult => {
   const isDropdown = ['dropdown', 'tooltip', 'popover'].includes(type)
 
+  /* v8 ignore next 7 — defensive missing-ref dev-warn path; tests always provide refs */
   if (isDropdown && (!triggerEl || !contentEl)) {
     devWarn(
       `[@pyreon/elements] Overlay (${type}): ` +
@@ -106,6 +108,7 @@ const computePosition = (
   }
 
   if (type === 'modal') {
+    /* v8 ignore next 7 — defensive missing-contentEl modal dev-warn */
     if (!contentEl) {
       devWarn(
         '[@pyreon/elements] Overlay (modal): contentRef is not attached. ' +
@@ -223,12 +226,15 @@ const useOverlay = ({
 
   // Position calculation helpers
   const getAncestorOffset = () => {
+    /* v8 ignore next — SSR/typeof document guard */
     if (typeof document === 'undefined') return { top: 0, left: 0 }
+    /* v8 ignore next 3 — defensive non-absolute or null-contentEl guard */
     if (position !== 'absolute' || !contentEl) {
       return { top: 0, left: 0 }
     }
 
     const offsetParent = contentEl.offsetParent as HTMLElement | null
+    /* v8 ignore next 3 — defensive null/body offsetParent guard */
     if (!offsetParent || offsetParent === document.body) {
       return { top: 0, left: 0 }
     }

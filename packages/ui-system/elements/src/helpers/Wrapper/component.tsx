@@ -12,6 +12,7 @@ import Styled from './styled'
 import type { Props } from './types'
 import { isWebFixNeeded } from './utils'
 
+/* v8 ignore next — dev-only data-attr; production branch not exercised */
 const DEV_PROPS: Record<string, string> = IS_DEVELOPMENT ? { 'data-pyr-element': 'Element' } : {}
 
 /**
@@ -133,6 +134,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   // branch normally won't execute when innerHTML is set — but we keep
   // the defensive forwarding so the contract is robust against future
   // refactors of the needsFix gate.
+  /* v8 ignore next — defensive innerHTML branch; needsFix gate normally excludes this */
   if (innerHTML) {
     return h(
       Styled,
