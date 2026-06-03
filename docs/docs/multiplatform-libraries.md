@@ -40,7 +40,7 @@ These packages are signal-driven business logic with no DOM dependency. They sho
 |---|---|---|
 | `@pyreon/store` | `defineStore`, composition stores returning `StoreApi<T>` | Unverified |
 | `@pyreon/state-tree` | `model({ state, views, actions })` | Unverified |
-| `@pyreon/machine` | `createMachine` constrained signals | Unverified |
+| `@pyreon/machine` | `createMachine` constrained signals | ⚠️ Moved to Tier 3 — see [audit correction below](#audit-corrections-june-2026). |
 | `@pyreon/permissions` | `createPermissions`, RBAC + ABAC checks | Unverified |
 | `@pyreon/validation` | Standard Schema adapters (Zod / Valibot / ArkType) | Unverified — depends on whether the underlying validator compiles |
 | `@pyreon/validate` | DX overlay on Standard Schema | Unverified |
@@ -49,13 +49,13 @@ These packages are signal-driven business logic with no DOM dependency. They sho
 
 #### Audit corrections (June 2026)
 
-The following two packages were initially classified as Tier-2 but verification surfaced they belong elsewhere:
+The following packages were initially classified as Tier-2 but verification surfaced they belong elsewhere:
 
 - **`@pyreon/rx`** — moved to **Tier 3**. PMTC transform silently drops all `rx.*` calls from the emitted output. The user writes `rx.filter(signal, predicate)` and gets nothing on native. This is a silent correctness bug, not a compile failure. Adding rx support means either teaching PMTC's parser the `rx.*` namespace (so `rx.filter(sig, pred)` emits as `computed(() => sig().filter(pred))`) OR shipping per-target rx runtime ports. Regression-locked by `packages/native/compiler/src/tests/tier2-rx-silent-drop.test.ts`.
 
-- **`@pyreon/sized-map`** — **removed from Tier-2 classification**. SizedMap is a `class SizedMap<K, V>` data structure backed by a generic `Map<K, V>`. It's used INTERNALLY by `@pyreon/runtime-dom`'s template cache and `@pyreon/lint`'s AST cache — not in user component code. PMTC compiles `.tsx` component bodies, not generic standalone classes. This package is **internal infrastructure**, outside the multiplatform user-code surface; it doesn't need a tier.
+- **`@pyreon/machine`** — moved to **Tier 3**. PMTC silently drops the `const m = createMachine({...})` binding but PRESERVES the call sites `m.send(...)` and `m.matches(...)` — yielding emit that references undefined `m`. This is a **hard swiftc/kotlinc compile error** at the platform-compile layer, with **no warning at the PMTC-transform layer**. Worse-than-rx in that the emit is structurally broken (not just behaviourally wrong); better-than-rx in that the bug is loud once you actually run the platform compiler. Fix paths same as rx: PMTC parser learns `createMachine` (cheapest — lowers binding to `@State`/`mutableStateOf` + native equivalents for `.send`/`.matches`) OR per-target Swift/Kotlin machine runtime ports. Regression-locked by `packages/native/compiler/src/tests/tier2-machine-emit-broken.test.ts`.
 
-**To verify each**: write a `.tsx` fixture using the package, run it through PMTC → swiftc / kotlinc. If it compiles, the package is Tier-1.
+- **`@pyreon/sized-map`** — **removed from Tier-2 classification**. SizedMap is a `class SizedMap<K, V>` data structure backed by a generic `Map<K, V>`. It's used INTERNALLY by `@pyreon/runtime-dom`'s template cache and `@pyreon/lint`'s AST cache — not in user component code. PMTC compiles `.tsx` component bodies, not generic standalone classes. This package is **internal infrastructure**, outside the multiplatform user-code surface; it doesn't need a tier.
 
 ### Tier 3 — needs Pyreon-blessed native impl (the Storage pattern at scale)
 
