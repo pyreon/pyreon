@@ -30,6 +30,27 @@ export interface FontConfig {
   preload?: boolean
   /** Self-host Google Fonts at build time. Default: true */
   selfHost?: boolean
+  /**
+   * Restrict self-hosted Google Font subsets to this allowlist, e.g.
+   * `['latin', 'latin-ext']`. Google's css2 API returns EVERY subset a
+   * family supports (latin, latin-ext, cyrillic, cyrillic-ext, greek,
+   * vietnamese, …) — each a separate `@font-face` with its own
+   * `unicode-range` — and it IGNORES a `&subset=` URL param, so the only
+   * way to drop the unused ones is to filter the returned CSS by the
+   * per-subset comment labels Google emits before each block (which this
+   * does).
+   *
+   * Self-host only — no effect with `selfHost: false` or in dev. The
+   * browser already skips unrequested subsets at runtime via
+   * `unicode-range`, so this changes NOTHING visible; it only trims the
+   * emitted `woff2` files (build output / deploy size), not runtime
+   * behavior.
+   *
+   * Default: `undefined` keeps ALL subsets (no behavior change). An
+   * empty array, or an allowlist that matches no subset, also keeps all
+   * subsets — a smaller-but-correct build always beats a fontless one.
+   */
+  subsets?: string[]
   /** Fallback font metrics for reducing CLS. */
   fallbacks?: Record<string, FallbackMetrics>
 }
@@ -310,19 +331,64 @@ function extractFontUrls(css: string): string[] {
 }
 
 /**
+ * Filter a Google Fonts css2 response down to an allowlist of subsets.
+ *
+ * css2 emits each subset as a comment label (`latin`, `cyrillic`, …)
+ * immediately followed by its `@font-face` block, which carries that
+ * subset's own `unicode-range` and its own gstatic `woff2` URL. css2
+ * IGNORES a `&subset=` URL param, so post-filtering the returned CSS by
+ * these labels is the only way to drop unwanted subsets before they're
+ * downloaded + self-hosted.
+ *
+ * Fail-safe by design — returns the ORIGINAL css unchanged when either
+ * (a) it has no recognizable labeled blocks (format drift / a future
+ * css2 shape), or (b) the allowlist matches no subset (e.g. a typo).
+ * A smaller-but-correct build always beats a fontless one.
+ *
+ * @example
+ * filterCssBySubsets(css, ['latin', 'latin-ext'])
+ */
+export function filterCssBySubsets(css: string, allowed: string[]): string {
+  const allow = new Set(allowed)
+  if (allow.size === 0) return css
+
+  // Each block = `/* <label> */` then everything up to the next such
+  // comment (or EOF). The lazy body never swallows the next label
+  // because of the look-ahead boundary.
+  const blockRe = /\/\*\s*([\w-]+)\s*\*\/[\s\S]*?(?=\/\*\s*[\w-]+\s*\*\/|$)/g
+  const blocks = [...css.matchAll(blockRe)]
+  if (blocks.length === 0) return css
+
+  const kept = blocks.filter((m) => allow.has(m[1] ?? '')).map((m) => m[0] ?? '')
+  if (kept.length === 0) return css
+
+  return `${kept.join('').trimEnd()}\n`
+}
+
+/**
  * Self-host Google Fonts: download CSS + font files, rewrite URLs to local paths.
+ *
+ * `allowedSubsets` (optional) narrows the emitted `@font-face` blocks —
+ * and therefore the downloaded `woff2` files — to that subset allowlist
+ * before extracting URLs, so one filter governs downloads, emitted
+ * assets, and the inlined CSS at once.
  */
 async function selfHostFonts(
   cssUrl: string,
   fontsSubDir: string,
   root: string,
+  allowedSubsets?: string[],
 ): Promise<{
   css: string
   fontFiles: Array<{ name: string; content: Buffer }>
 }> {
-  // Cache fonts between builds to avoid re-downloading (~6s penalty)
+  // Cache fonts between builds to avoid re-downloading (~6s penalty).
+  // The subset allowlist is part of the cache identity — two configs
+  // that differ ONLY in `subsets` must not collide on a stale entry.
   const cacheDir = join(root, 'node_modules', '.cache', 'zero-fonts')
-  const cacheKey = Buffer.from(cssUrl).toString('base64url')
+  const cacheKey = Buffer.from(
+    `${cssUrl}|subsets=${allowedSubsets?.join(',') ?? ''}`,
+  ).toString('base64url')
   const cachePath = join(cacheDir, `${cacheKey}.json`)
 
   try {
@@ -340,7 +406,13 @@ async function selfHostFonts(
     // No cache — download fresh
   }
 
-  const css = await downloadGoogleFontsCSS(cssUrl)
+  const rawCss = await downloadGoogleFontsCSS(cssUrl)
+  // Filter BEFORE extracting URLs: dropped subset blocks never get
+  // downloaded, never get emitted, and never appear in the inlined CSS.
+  const css =
+    allowedSubsets && allowedSubsets.length > 0
+      ? filterCssBySubsets(rawCss, allowedSubsets)
+      : rawCss
   const fontUrls = extractFontUrls(css)
   const fontFiles: Array<{ name: string; content: Buffer }> = []
 
@@ -414,7 +486,7 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
       if (isBuild && shouldSelfHost && googleFamilies.length > 0) {
         const cssUrl = googleFontsUrl(googleFamilies, display)
         try {
-          const result = await selfHostFonts(cssUrl, 'assets/fonts', root)
+          const result = await selfHostFonts(cssUrl, 'assets/fonts', root, config.subsets)
           selfHostedCSS = result.css
           selfHostedFontFiles = result.fontFiles
         } catch {

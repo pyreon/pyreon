@@ -163,6 +163,25 @@ zero({
 
 In dev mode the plugin falls back to the Google Fonts CDN for fast startup (no download step); production always self-hosts.
 
+### Trimming subsets (Latin-only sites)
+
+By default, self-hosting downloads **every subset** a Google font ships. Ubuntu, for example, returns six (`latin`, `latin-ext`, `cyrillic`, `cyrillic-ext`, `greek`, `greek-ext`) — each a separate `@font-face` + `woff2`. A Latin-only site self-hosts (and deploys) all of them, even though the browser only ever fetches the subsets whose `unicode-range` matches rendered text. Narrow the emitted set with `subsets`:
+
+```ts
+zero({
+  font: {
+    google: ['Inter:wght@400;500;600;700;800'],
+    subsets: ['latin', 'latin-ext'], // drop cyrillic / greek / vietnamese / …
+  },
+})
+```
+
+On the config above this trims the self-hosted set to the Latin pair — roughly **−40% of self-hosted font weight** — with **zero runtime change** (the browser already skips unrequested subsets via `unicode-range`; the savings are build output, deploy size, and static-host quota).
+
+- **Opt-in.** Omitting `subsets` keeps every subset (no behavior change). A `['latin']` default would silently break Cyrillic / Greek / Vietnamese pages, so _you_ pick the allowlist.
+- **Self-host only.** No effect with `selfHost: false` or in dev — and it can't be done via the URL: Google's `css2` API **ignores** a `&subset=` query param, so the plugin filters the returned CSS by its per-subset comment labels instead.
+- **Fail-safe.** If the allowlist matches nothing (a typo), the plugin keeps every subset rather than ship a fontless build.
+
 ## Opt-out
 
 Either plugin can be skipped entirely:
@@ -199,6 +218,7 @@ Use `image: false` when you handle image optimization via a third-party CDN prov
 | `display` | `'swap' \| 'block' \| 'fallback' \| 'optional' \| 'auto'` | `'swap'` | `font-display` value for all declarations. |
 | `preload` | `boolean` | `true` | Emit `<link rel="preload">` tags for critical fonts. |
 | `selfHost` | `boolean` | `true` | Self-host Google Fonts at build time. `false` keeps the Google CDN link. |
+| `subsets` | `string[]` | — (keep all) | Restrict self-hosted subsets, e.g. `['latin', 'latin-ext']`. Drops unused subsets (Cyrillic/Greek/…) from the build output. Opt-in; self-host only; **runtime is unchanged** (the browser already skips unused subsets via `unicode-range`). See [Trimming subsets](#trimming-subsets-latin-only-sites). |
 | `fallbacks` | `Record<string, FallbackMetrics>` | — | Size-adjusted fallback font metrics for CLS reduction. |
 
 ## Migration

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { fontVariables, googleFontsUrl, parseGoogleFamily, resolveGoogleFont } from '../font'
+import {
+  filterCssBySubsets,
+  fontVariables,
+  googleFontsUrl,
+  parseGoogleFamily,
+  resolveGoogleFont,
+} from '../font'
 
 describe('parseGoogleFamily', () => {
   it('parses family with weights', () => {
@@ -234,5 +240,122 @@ describe('fontVariables', () => {
     expect(css).toContain('--font-sans: "Inter", system-ui, sans-serif;')
     expect(css).toContain('--font-mono: "JetBrains Mono", monospace;')
     expect(css).toContain('}')
+  })
+})
+
+describe('filterCssBySubsets', () => {
+  // Mirrors the real css2 shape: a `/* <subset> */` comment label
+  // immediately before each @font-face, with its own unicode-range +
+  // gstatic woff2 url. One weight, four subsets.
+  const CSS2 = `/* cyrillic-ext */
+@font-face {
+  font-family: 'Ubuntu';
+  font-weight: 300;
+  src: url(https://fonts.gstatic.com/s/ubuntu/cyr-ext.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88;
+}
+/* greek */
+@font-face {
+  font-family: 'Ubuntu';
+  font-weight: 300;
+  src: url(https://fonts.gstatic.com/s/ubuntu/greek.woff2) format('woff2');
+  unicode-range: U+0370-03FF;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Ubuntu';
+  font-weight: 300;
+  src: url(https://fonts.gstatic.com/s/ubuntu/lat-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+1E00-1EFF;
+}
+/* latin */
+@font-face {
+  font-family: 'Ubuntu';
+  font-weight: 300;
+  src: url(https://fonts.gstatic.com/s/ubuntu/lat.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131;
+}
+`
+
+  const subsetsIn = (css: string) => [
+    ...new Set([...css.matchAll(/\/\*\s*([\w-]+)\s*\*\//g)].map((m) => m[1])),
+  ]
+
+  it('keeps only allowlisted subsets and drops the rest', () => {
+    const out = filterCssBySubsets(CSS2, ['latin'])
+    expect(subsetsIn(out)).toEqual(['latin'])
+    expect(out).toContain('lat.woff2')
+    expect(out).not.toContain('cyr-ext.woff2')
+    expect(out).not.toContain('greek.woff2')
+    expect(out).not.toContain('lat-ext.woff2')
+  })
+
+  it('keeps a multi-subset allowlist', () => {
+    const out = filterCssBySubsets(CSS2, ['latin', 'latin-ext'])
+    expect(subsetsIn(out)).toEqual(['latin-ext', 'latin'])
+    expect(out).toContain('lat.woff2')
+    expect(out).toContain('lat-ext.woff2')
+    expect(out).not.toContain('greek.woff2')
+  })
+
+  it('preserves the full @font-face body of kept blocks', () => {
+    const out = filterCssBySubsets(CSS2, ['latin'])
+    expect(out).toContain('unicode-range: U+0000-00FF, U+0131;')
+    expect(out).toContain("font-family: 'Ubuntu';")
+    expect(out).toContain('font-weight: 300;')
+  })
+
+  it('keeps EVERY block matching the allowlist across multiple weights', () => {
+    const twoWeights =
+      CSS2 +
+      `/* latin */
+@font-face {
+  font-family: 'Ubuntu';
+  font-weight: 500;
+  src: url(https://fonts.gstatic.com/s/ubuntu/lat-500.woff2) format('woff2');
+  unicode-range: U+0000-00FF;
+}
+`
+    const out = filterCssBySubsets(twoWeights, ['latin'])
+    expect(out).toContain('lat.woff2')
+    expect(out).toContain('lat-500.woff2')
+    expect((out.match(/@font-face/g) ?? []).length).toBe(2)
+  })
+
+  it('filters variable-font blocks the same way (per-subset, weight-range src)', () => {
+    const variable = `/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 100 900;
+  src: url(https://fonts.gstatic.com/s/inter/cyr.woff2) format('woff2');
+  unicode-range: U+0400-045F;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 100 900;
+  src: url(https://fonts.gstatic.com/s/inter/lat.woff2) format('woff2');
+  unicode-range: U+0000-00FF;
+}
+`
+    const out = filterCssBySubsets(variable, ['latin'])
+    expect(out).toContain('inter/lat.woff2')
+    expect(out).not.toContain('inter/cyr.woff2')
+    expect(out).toContain('font-weight: 100 900;')
+  })
+
+  it('FAIL-SAFE: an allowlist matching no subset keeps ALL subsets (never fontless)', () => {
+    const out = filterCssBySubsets(CSS2, ['lateen']) // typo
+    expect(subsetsIn(out)).toEqual(['cyrillic-ext', 'greek', 'latin-ext', 'latin'])
+    expect(out).toContain('cyr-ext.woff2')
+  })
+
+  it('FAIL-SAFE: CSS with no recognizable labels is returned unchanged', () => {
+    const noLabels = `@font-face { src: url(x.woff2) format('woff2'); }`
+    expect(filterCssBySubsets(noLabels, ['latin'])).toBe(noLabels)
+  })
+
+  it('an empty allowlist is a no-op (keeps all)', () => {
+    expect(filterCssBySubsets(CSS2, [])).toBe(CSS2)
   })
 })
