@@ -2593,3 +2593,40 @@ export default function PostPage() { /* component body */ }
 > **Adapter.build invocation**: Auto-invoked at the end of every mode-specific build companion. SSG mode (`ssgPlugin`) calls `adapter.build({ kind: 'ssg', outDir, config })` after every path renders. SSR/ISR modes (`ssrPlugin`) bundle the SSR handler to `dist/server/entry-server.js` and call `adapter.build({ kind: 'ssr', serverEntry, clientOutDir, outDir, config })`. The SSR plugin prefers a user-authored `src/entry-server.ts` when present; otherwise it synthesizes the canonical `createServer({ routes, routeMiddleware, apiRoutes })` entry. SPA mode ships only a client bundle (no adapter.build call).
 >
 > **Locale-aware RouterLink — not yet shipped**: RouterLinks under i18n duplication emit LITERAL hrefs from their `to` prop. Cross-locale navigation falls through to the default-locale route. A locale-aware-link feature is a future PR; for now, write per-locale hrefs explicitly or use the router's programmatic navigation in handlers.
+
+## @pyreon/zero-content — Zero Content — markdown-driven Pyreon sites
+
+Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: per-route LCP optimization inherits from zero's image/font/script-defer/resource-hint stack, markdown pages route through zero's fs-router via auto-generated catch-all routes, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via zod schema inference: `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<PackageBadge>`, `<Playground>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
+
+```typescript
+// vite.config.ts
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero'
+import content from '@pyreon/zero-content/plugin'
+
+export default { plugins: [pyreon(), zero(), content()] }
+
+// content.config.ts
+import { defineConfig, defineCollection, z } from '@pyreon/zero-content'
+
+export default defineConfig({
+  collections: {
+    docs: defineCollection({
+      type: 'pages',
+      path: 'src/content/docs',
+      schema: z.object({
+        title: z.string(),
+        description: z.string(),
+        sidebar: z.object({ order: z.number(), group: z.string() }).optional(),
+      }),
+    }),
+  },
+})
+
+// User code anywhere — typed via zod inference
+import { getCollection } from '@pyreon/zero-content'
+
+const docs = await getCollection('docs')
+//    ^? Array<{ slug: string; data: { title: string; description: string; ... }; render: () => Promise<ComponentFn> }>
+
+```
