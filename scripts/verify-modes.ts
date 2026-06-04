@@ -33,7 +33,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 
 type Mode = 'ssr' | 'ssg' | 'spa' | 'isr'
 
@@ -102,8 +102,20 @@ interface Cell {
     useSsgPaths?: boolean
     hreflang?: boolean
   }
-  /** Smoke assertion — throws on failure. Receives absolute path to dist/. */
-  smoke: (distDir: string) => void
+  /**
+   * Deploy adapter (PR: SSR/ISR deploy). Forwarded to `zero({ adapter })` in
+   * the generated verify config. Used by the platform-function cells, whose
+   * smoke IMPORTS + INVOKES the emitted serverless function to prove it
+   * actually server-renders (not just that the file structure exists).
+   * Defaults to `'node'` when omitted.
+   */
+  adapter?: 'node' | 'bun' | 'static' | 'vercel' | 'netlify' | 'cloudflare'
+  /**
+   * Smoke assertion — throws on failure. Receives absolute path to dist/.
+   * May be async (the platform-function cells `await import()` + invoke the
+   * emitted handler).
+   */
+  smoke: (distDir: string) => void | Promise<void>
 }
 
 // ─── Smoke assertion helpers ────────────────────────────────────────────────
@@ -118,6 +130,39 @@ function assertFileContains(path: string, needle: string): void {
   if (!content.includes(needle)) {
     const preview = content.length > 400 ? `${content.slice(0, 400)}…` : content
     throw new Error(`expected ${path} to contain "${needle}". Got:\n${preview}`)
+  }
+}
+
+/**
+ * Build-then-INVOKE proof for a platform adapter's emitted serverless
+ * function: spawn an ISOLATED node process that imports the handler at
+ * `funcRelPath` (relative to dist), invokes it with a loader-driven Request,
+ * and asserts it server-renders a hydration-ready page — router-view + loader
+ * payload present, hashed client entry (so it HYDRATES), and NOT the unfilled
+ * `<!--pyreon-app-->` shell or the dev `/src/entry-client.ts`. Proves the
+ * adapter output actually RUNS the SSR handler, not just that files exist.
+ *
+ * One process PER function (via `_invoke-ssr-function.mjs`) so each emitted
+ * bundle's `registerSingleton` sees a single `@pyreon/server` instance —
+ * mirrors real deploys (each function = its own isolate); loading several in
+ * one process would correctly trip the duplicate-instance sentinel.
+ *
+ * (The platform's own CDN static-routing — config.json / _routes.json /
+ * netlify.toml — still requires a real deploy to fully verify.)
+ */
+function assertSsrFunctionRenders(
+  distDir: string,
+  funcRelPath: string,
+  style: 'vercel' | 'netlify' | 'cloudflare' | 'node',
+): void {
+  const funcPath = join(distDir, funcRelPath)
+  assertFileExists(funcPath)
+  const invoker = join(REPO_ROOT, 'scripts', '_invoke-ssr-function.mjs')
+  const result = spawnSync('node', [invoker, funcPath, style], { encoding: 'utf-8' })
+  if (result.status !== 0) {
+    throw new Error(
+      `${funcRelPath}: emitted ${style} function failed to server-render.\n${result.stderr || result.stdout || '(no output)'}`,
+    )
   }
 }
 
@@ -632,6 +677,43 @@ const MATRIX: Cell[] = [
       // Hydration-ready: the production template (hashed <script>) is staged.
       assertFileExists(join(dist, 'server', 'template.html'))
       assertFileContains(join(dist, 'server', 'template.html'), '/assets/')
+    },
+  },
+  // Platform adapters: build the real output AND INVOKE the emitted serverless
+  // function to prove it actually server-renders (the function runtime — what
+  // verify-modes' file-shape checks + the adapters unit tests couldn't reach).
+  // The platform's own CDN/static-routing still needs a real deploy; the SSR
+  // FUNCTION is proven here.
+  {
+    example: 'ssr-showcase',
+    mode: 'ssr',
+    adapter: 'vercel',
+    smoke: (dist) => {
+      assertFileExists(join(dist, '.vercel', 'output', 'config.json'))
+      assertFileContains(join(dist, '.vercel', 'output', 'static', 'index.html'), '<!--pyreon-app-->')
+      assertSsrFunctionRenders(dist, join('.vercel', 'output', 'functions', 'ssr.func', 'index.js'), 'vercel')
+    },
+  },
+  {
+    example: 'ssr-showcase',
+    mode: 'ssr',
+    adapter: 'netlify',
+    smoke: (dist) => {
+      assertFileExists(join(dist, 'netlify.toml'))
+      assertFileContains(join(dist, 'publish', 'index.html'), '<!--pyreon-app-->')
+      assertSsrFunctionRenders(dist, join('netlify', 'functions', 'ssr.mjs'), 'netlify')
+    },
+  },
+  {
+    example: 'ssr-showcase',
+    mode: 'ssr',
+    adapter: 'cloudflare',
+    smoke: (dist) => {
+      assertFileExists(join(dist, '_routes.json'))
+      assertFileExists(join(dist, '_worker.js'))
+      // Cloudflare serves the client flat at the root.
+      assertFileContains(join(dist, 'index.html'), '<!--pyreon-app-->')
+      assertSsrFunctionRenders(dist, '_worker.js', 'cloudflare')
     },
   },
   {
@@ -1517,12 +1599,14 @@ const REPO_ROOT = resolve(import.meta.dir, '..')
 const VERIFY_CONFIG_NAME = 'vite.config.verify.ts'
 
 function cellId(c: Cell): string {
-  return `${c.example} × ${c.mode}`
+  const adapter = c.adapter && c.adapter !== 'node' ? ` (${c.adapter})` : ''
+  return `${c.example} × ${c.mode}${adapter}`
 }
 
 function configSourceFor(cell: Cell): string {
   const ssgConfig = cell.ssgPaths ? `, ssg: { paths: ${JSON.stringify(cell.ssgPaths)} }` : ''
   const baseConfig = cell.base ? `, base: ${JSON.stringify(cell.base)}` : ''
+  const adapterConfig = cell.adapter ? `, adapter: ${JSON.stringify(cell.adapter)}` : ''
   const i18nConfig = cell.i18n ? `, i18n: ${JSON.stringify(cell.i18n)}` : ''
   // PR F + K: optional seoPlugin wiring for sitemap + hreflang
   // assertions. Loaded AFTER zero() so closeBundle ordering matches
@@ -1538,7 +1622,7 @@ ${seoImport}import { defineConfig } from 'vite'
 
 // Auto-generated by scripts/verify-modes.ts — do not commit.
 export default defineConfig({
-  plugins: [pyreon(${cell.collapse ? '{ collapse: true }' : ''}), zero({ mode: ${JSON.stringify(cell.mode)}${baseConfig}${ssgConfig}${i18nConfig} })${seoPluginCall}],
+  plugins: [pyreon(${cell.collapse ? '{ collapse: true }' : ''}), zero({ mode: ${JSON.stringify(cell.mode)}${baseConfig}${adapterConfig}${ssgConfig}${i18nConfig} })${seoPluginCall}],
   resolve: { conditions: ['bun'] },
 })
 `
@@ -1608,8 +1692,8 @@ async function runCell(cell: Cell): Promise<CellResult> {
       await runViteBuild(exampleDir, VERIFY_CONFIG_NAME)
     }
 
-    // Smoke.
-    cell.smoke(distDir)
+    // Smoke (may be async — platform-function cells import + invoke the entry).
+    await cell.smoke(distDir)
 
     return { cell, ok: true, durationMs: Date.now() - start }
   } catch (error) {
