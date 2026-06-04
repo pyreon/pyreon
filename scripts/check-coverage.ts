@@ -75,9 +75,9 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   // ── Branch < MINIMUM_BRANCH_FLOOR (statements OK) ───────────────────
   '@pyreon/compiler': {
     currentStatements: 92,
-    currentBranches: 84,
+    currentBranches: 85,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). After cov-95 series (this PR) the floor moved to 95% statements and compiler stays explicitly exempted: actual statements=92.38%, branches=84.7% (1pt below MINIMUM_BRANCH_FLOOR=85). Residual gap is in jsx.ts (~3000-line file with progressively rarer compiler-edge-case AST branches needing targeted fixtures, not opportunistic test adds). Lifting compiler to 95/95 is multi-PR work tracked as a long-tail effort — every other published Pyreon package is at ≥ 95% statements as of this PR.',
+      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Branches lifted to 85% (was 84) via branch-coverage-real.test.ts targeting reactivity-lens / lpih / test-audit small-helper modules; now clears MINIMUM_BRANCH_FLOOR=85 — exemption persists for STATEMENTS only (92.65% vs floor 95). Residual statement gap is in jsx.ts (~3000-line file with progressively rarer compiler-edge-case AST branches needing targeted fixtures, not opportunistic test adds). Lifting statements to 95 is multi-PR work tracked as a long-tail effort — every other published Pyreon package is at ≥ 95% statements as of this PR.',
   },
 }
 
