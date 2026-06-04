@@ -126,11 +126,20 @@ describe('imagePlugin loadDevImage — dev serves /@fs/ for absolute paths (regr
     p.configResolved({ root: tmp, build: { outDir: 'dist' }, command: 'serve' })
     return p
   }
-  const parse = (mod: string) =>
-    JSON.parse(String(mod).replace(/^export default /, '')) as {
+  // The imagePlugin's emitDescriptor() wraps the descriptor JSON with
+  // toString/valueOf/Symbol.toPrimitive helpers so the imported module
+  // coerces to its URL in string contexts. We just need the JSON object
+  // back for this test's assertions — extract it from the `const _d = ...`
+  // literal that emitDescriptor() always emits first.
+  const parse = (mod: string) => {
+    const s = String(mod)
+    const m = /^const _d = (\{[\s\S]*?\});\n/.exec(s)
+    if (!m) throw new Error(`emitDescriptor() shape changed; could not extract descriptor JSON from:\n${s.slice(0, 200)}`)
+    return JSON.parse(m[1]!) as {
       src: string
       sources: { src: string }[]
     }
+  }
 
   it('relative import → src is /@fs/<abs>, NOT the raw filesystem path', async () => {
     const p = devPlugin()
