@@ -21,6 +21,7 @@ const VALID_GATES: GateName[] = [
   'audit-tests',
   'islands-audit',
   'ssg-audit',
+  'content-audit',
   'audit-leak-classes',
   'audit-types',
   'bundle-budgets',
@@ -50,13 +51,14 @@ function printUsage(): void {
     --audit-min-risk high|medium|low Minimum risk for test-env audit (default: medium).
 
   doctor gates:
-    Fast: ${VALID_GATES.slice(0, 9).join(', ')}
-    Slow: ${VALID_GATES.slice(9).join(', ')} (require --full)
+    Fast: ${VALID_GATES.slice(0, 10).join(', ')}
+    Slow: ${VALID_GATES.slice(10).join(', ')} (require --full)
 
   Legacy doctor flags (still work — map to --only shortcuts):
     --audit-tests                    Equivalent to --only audit-tests
     --check-islands                  Equivalent to --only islands-audit
     --check-ssg                      Equivalent to --only ssg-audit
+    --check-content                  Equivalent to --only content-audit
 
   Options:
     --help                           Show this help message
@@ -126,6 +128,7 @@ async function main(): Promise<void> {
       auditMinRisk: parseMinRisk(getFlagValue('--audit-min-risk')),
       checkIslands: args.includes('--check-islands'),
       checkSsg: args.includes('--check-ssg'),
+      checkContent: args.includes('--check-content'),
     }
     const exitCode = await doctor(options)
     if (options.ci && exitCode > 0) {
