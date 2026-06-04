@@ -57,7 +57,7 @@
 
 ## @pyreon/reactivity — Complete API
 
-Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Subscribers tracked via `Set<() => void>`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead.
+Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Subscribers tracked via `Set<() => void>`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead. `wrapSignal(base, { set, update? })` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal `_v` field and `.direct` by construction, so the bind-fast-path contract cannot be silently broken.
 
 ```typescript
 import { signal, computed, effect, batch, onCleanup, createStore, watch, untrack } from "@pyreon/reactivity"
@@ -393,7 +393,7 @@ const User = () => {
 
 ## @pyreon/head — Head Management
 
-Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app.
+Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app. External `<script>` tags (those with `src`) default to `defer` for non-blocking page load — module scripts, import maps, and inline scripts are left untouched; the `ScriptTag` type carries the full attribute surface (`integrity` / `nomodule` / `referrerpolicy` / `fetchpriority` / …).
 
 ```typescript
 import { useHead, HeadProvider } from '@pyreon/head'
@@ -2539,7 +2539,7 @@ The runtime-dom tree-shake test bundles via Vite's `build()` API (not raw esbuil
 
 ## @pyreon/zero — Zero — Full-Stack Meta-Framework
 
-Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static).
+Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.
 
 ```typescript
 import { defineConfig } from 'vite'

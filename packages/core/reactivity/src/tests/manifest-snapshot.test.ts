@@ -14,7 +14,7 @@ describe('gen-docs — reactivity snapshot', () => {
     expect(renderLlmsFullSection(reactivityManifest)).toMatchInlineSnapshot(`
       "## @pyreon/reactivity — Complete API
 
-      Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (\`count()\` to read, \`count.set(5)\` to write, \`count.update(n => n + 1)\` to derive). Subscribers tracked via \`Set<() => void>\`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but \`@pyreon/reactivity\` can be used independently in Node, Bun, or browser scripts without any framework overhead.
+      Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (\`count()\` to read, \`count.set(5)\` to write, \`count.update(n => n + 1)\` to derive). Subscribers tracked via \`Set<() => void>\`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but \`@pyreon/reactivity\` can be used independently in Node, Bun, or browser scripts without any framework overhead. \`wrapSignal(base, { set, update? })\` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal \`_v\` field and \`.direct\` by construction, so the bind-fast-path contract cannot be silently broken.
 
       \`\`\`typescript
       import { signal, computed, effect, batch, onCleanup, createStore, watch, untrack } from "@pyreon/reactivity"
