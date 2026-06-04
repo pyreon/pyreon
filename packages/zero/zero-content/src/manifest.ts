@@ -34,6 +34,7 @@ export default defineManifest({
     'Custom markdown blocks: :::tip / :::warning / :::note / :::danger / :::info / :::code-group via remark-directive',
     'Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")',
     'HMR for src/mdx/ changes + content.config.ts edits — invalidates virtual modules, re-renders dependent .md pages without reload',
+    'Built-in search — minisearch-backed `<Search>` component with Cmd+K + debounced query + SPA navigation + lazy index loading',
     'Inherits zero\'s perf stack — image/font auto-wire, script defer default, resource hints, view transitions',
   ],
   longExample: `// vite.config.ts
