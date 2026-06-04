@@ -19,7 +19,14 @@ import {
   reportError,
   runWithHooks,
 } from '@pyreon/core'
-import { effectScope, renderEffect, runUntracked, setCurrentScope } from '@pyreon/reactivity'
+import {
+  effectScope,
+  getContextOwner,
+  renderEffect,
+  runUntracked,
+  setContextOwner,
+  setCurrentScope,
+} from '@pyreon/reactivity'
 import { registerComponent, unregisterComponent } from './devtools'
 import { mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps } from './props'
@@ -381,8 +388,17 @@ function mountComponent(
   parent: Node,
   anchor: Node | null,
 ): Cleanup {
+  // Owner chain: link this component's scope to its parent owner so
+  // `useContext()` resolves up the component tree. The owner stays `scope`
+  // through both `runWithHooks` (so `provide()` writes onto it) AND
+  // `mountChild` below (so children chain to it), then is restored to
+  // `prevOwner` on every exit path. Kept SEPARATE from `setCurrentScope`
+  // (effect tracking) so the two concerns don't interfere.
+  const prevOwner = getContextOwner()
   const scope = effectScope()
+  scope._parent = prevOwner
   setCurrentScope(scope)
+  setContextOwner(scope)
 
   let hooks: ReturnType<typeof runWithHooks>['hooks']
   let output: VNodeChild
@@ -447,6 +463,7 @@ function mountComponent(
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     setCurrentScope(null)
+    setContextOwner(prevOwner)
     scope.stop()
     reportError({
       component: componentName,
@@ -500,6 +517,7 @@ function mountComponent(
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     scope.stop()
+    setContextOwner(prevOwner)
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) {
       reportError({
@@ -540,6 +558,10 @@ function mountComponent(
       }
     }
   }
+
+  // Subtree fully mounted (incl. onMount) — restore the parent owner so this
+  // component's siblings resolve their own context, not this component's.
+  setContextOwner(prevOwner)
 
   return () => {
     if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)

@@ -1373,9 +1373,13 @@ describe('RouterView', () => {
   test('returns null when no router is available', () => {
     const el = container()
     mount(h(RouterView, {}), el)
-    // RouterView always wraps in a div, but with no router the child is null
+    // With no router in context (RouterView early-returns null at `if (!router)`),
+    // nothing renders — no wrapper div. (Previously this asserted the wrapper
+    // EXISTED, which only held because a prior test's `RouterProvider` leaked a
+    // RouterContext frame onto the global context stack; the owner-based context
+    // model isolates context per-mount, so there is no leak to ride on.)
     const wrapper = el.querySelector('[data-pyreon-router-view]')
-    expect(wrapper).not.toBeNull()
+    expect(wrapper).toBeNull()
   })
 
   test('renders matched route component at depth 0', () => {

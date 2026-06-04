@@ -26,7 +26,14 @@ import {
   reportError,
   runWithHooks,
 } from '@pyreon/core'
-import { effectScope, renderEffect, runUntracked, setCurrentScope } from '@pyreon/reactivity'
+import {
+  effectScope,
+  getContextOwner,
+  renderEffect,
+  runUntracked,
+  setContextOwner,
+  setCurrentScope,
+} from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
 import { warnHydrationMismatch } from './hydration-debug'
 import { mountChild } from './mount'
@@ -341,8 +348,14 @@ function hydrateComponent(
   anchor: Node | null,
   path = 'root',
 ): [Cleanup, ChildNode | null] {
+  // Owner chain — mirrors mount.ts so `useContext()` resolves up the tree
+  // during hydration too. Owner stays `scope` through `runWithHooks` +
+  // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
+  const prevOwner = getContextOwner()
   const scope = effectScope()
+  scope._parent = prevOwner
   setCurrentScope(scope)
+  setContextOwner(scope)
 
   let subtreeCleanup: Cleanup = noop
   const mountCleanups: Cleanup[] = []
@@ -373,6 +386,7 @@ function hydrateComponent(
     result = runWithHooks(vnode.type as ComponentFn, mergedProps)
   } catch (err) {
     setCurrentScope(null)
+    setContextOwner(prevOwner)
     scope.stop()
 
     console.error(`[Pyreon] Error hydrating component <${componentName}>:`, err)
@@ -415,6 +429,9 @@ function hydrateComponent(
       }
     }
   }
+
+  // Subtree fully hydrated — restore the parent owner for siblings.
+  setContextOwner(prevOwner)
 
   const cleanup: Cleanup = () => {
     scope.stop()

@@ -61,8 +61,11 @@ export { createResource, type Resource } from './resource'
 export {
   EffectScope,
   effectScope,
+  getContextOwner,
   getCurrentScope,
   onScopeDispose,
+  runWithContextOwner,
+  setContextOwner,
   setCurrentScope,
 } from './scope'
 export {
