@@ -338,6 +338,21 @@ defineConfig({
 })
 ```
 
+**Cloudflare runs in workerd (not Node), so two requirements apply:**
+
+- **`nodejs_compat` is required.** The SSR bundle imports Node builtins (`node:async_hooks` for per-request context isolation — instantiated at module load, so **without the flag the worker fails to start** — and `node:fs`). The create-zero cloudflare scaffold sets it for you:
+
+  ```toml
+  # wrangler.toml
+  compatibility_date = "2026-01-01"
+  compatibility_flags = ["nodejs_compat"]
+  pages_build_output_dir = "dist"
+  ```
+
+  A hand-rolled deploy must set it in the Pages dashboard (Settings → Functions → Compatibility flags) or `wrangler.toml`, or pass `--compatibility-flags nodejs_compat` to `wrangler pages dev`.
+
+- **The SSR template is inlined automatically.** workerd has no filesystem, so the adapter inlines the built `index.html` (with its hashed client-entry `<script>`) into `_worker.js` at build time and reads it from a global at runtime — there's nothing to configure. Without this, SSR pages would render but never hydrate (they'd reference the dev client entry). This is transparent; it's documented here only so the larger `_worker.js` is expected.
+
 ### Netlify
 
 `adapter: 'netlify'` produces `netlify/functions/server.mjs` + a `netlify.toml` redirect for `/* → /.netlify/functions/server`. Deploy with `netlify deploy`.

@@ -202,6 +202,69 @@ describe('cloudflare adapter build', () => {
 
     await cleanup()
   })
+
+  it('inlines the built SSR template into a global BEFORE dynamic-importing the handler (workerd hydration contract)', async () => {
+    // Cloudflare runs in workerd, which has NO filesystem — so the server
+    // bundle's `readBuiltTemplate()` can't `readFileSync` the staged
+    // `_server/template.html`. Without the template, SSR renders but ships the
+    // DEV `entry-client.ts` (no hashed script) → the page never hydrates in
+    // production. The adapter must therefore:
+    //   1. read the staged template at BUILD time (in Node) and inline it into
+    //      `globalThis.__PYREON_SSR_TEMPLATE__`, which `readBuiltTemplate()`
+    //      reads FIRST (entry-server.ts);
+    //   2. set that global BEFORE the handler module evaluates — which means a
+    //      DYNAMIC `await import(...)` (a static, hoisted `import` would run
+    //      `createServer → readBuiltTemplate` before the assignment).
+    // This locks all three properties against revert. Unlike the node-invoke
+    // smoke (verify-modes), a content assertion is NOT masked by Node's fs
+    // fallback, so it genuinely regression-catches a revert of cloudflare.ts.
+    // Bisect-verify: revert cloudflare.ts to a static `import handler from
+    // "./_server/entry-server.js"` with no global → the ordering + global
+    // assertions fail.
+    await setupMockBuild()
+    // Stage a realistic built template next to the server bundle (what
+    // ssr-plugin.ts copies as dist/server/template.html — carries the hashed
+    // client entry + the injection markers).
+    const builtTemplate =
+      '<!doctype html><html><head><!--pyreon-head-->' +
+      '<script type="module" crossorigin src="/assets/index-Ck3nO5q7.js"></script>' +
+      '</head><body><div id="app"><!--pyreon-app--></div><!--pyreon-scripts--></body></html>'
+    await writeFile(join(MOCK_SERVER, 'template.html'), builtTemplate)
+
+    const outDir = join(TMP, 'cf-template-out')
+    await cloudflareAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+      clientOutDir: MOCK_CLIENT,
+      outDir,
+      config: {},
+    })
+
+    const worker = await readFile(join(outDir, '_worker.js'), 'utf-8')
+
+    // (1) the template global is set and (2) the handler import is dynamic,
+    // with the global assignment STRICTLY BEFORE the import (the ordering is
+    // the entire point — a static hoisted import defeats it).
+    const globalIdx = worker.indexOf('globalThis.__PYREON_SSR_TEMPLATE__')
+    const importIdx = worker.indexOf('await import("./_server/entry-server.js")')
+    expect(globalIdx, '_worker.js must set globalThis.__PYREON_SSR_TEMPLATE__').toBeGreaterThanOrEqual(0)
+    expect(importIdx, '_worker.js must DYNAMIC-import the handler (await import)').toBeGreaterThanOrEqual(0)
+    expect(globalIdx, 'the template global must be set BEFORE the dynamic handler import').toBeLessThan(importIdx)
+
+    // (3) the inlined template carries the hashed PROD entry, not the dev one —
+    // this is what makes workerd hydrate.
+    expect(worker, 'inlined template must reference the hashed /assets/index-*.js entry').toMatch(
+      /\/assets\/index-[\w.-]+\.js/,
+    )
+    expect(worker, 'inlined template must NOT reference the dev /src/entry-client.ts').not.toContain(
+      '/src/entry-client.ts',
+    )
+    // The injection markers must survive the JSON.stringify round-trip so the
+    // handler can replace them at render time.
+    expect(worker).toContain('<!--pyreon-app-->')
+
+    await cleanup()
+  })
 })
 
 describe('netlify adapter build', () => {

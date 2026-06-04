@@ -155,9 +155,17 @@ export interface BuildSsrBundleOptions {
  * Construct the inner sub-build's `build` options. Pure + exported so the
  * config can be asserted without spawning a real Vite build. `target: 'esnext'`
  * and the `format: 'es'` / `external: [/^node:/]` rollup output are
- * deliberately SSR-runtime-fixed (NOT inherited from the user — the SSR handler
- * runs in Node/Bun), whereas the asset-emission settings (`assetsInlineLimit`,
- * `assetsDir`) ARE inherited so the rendered HTML's asset URLs match the client.
+ * deliberately SSR-runtime-fixed (NOT inherited from the user), whereas the
+ * asset-emission settings (`assetsInlineLimit`, `assetsDir`) ARE inherited so
+ * the rendered HTML's asset URLs match the client.
+ *
+ * `external: [/^node:/]` keeps Node builtins unbundled. The SSR handler depends
+ * on them (`node:async_hooks` for `runWithRequestContext`, `node:fs` for the
+ * template fallback); they resolve natively on Node/Bun (node/vercel/netlify
+ * adapters) AND on Cloudflare workerd — but workerd ONLY resolves `node:*` with
+ * the `nodejs_compat` flag, which the create-zero cloudflare scaffold provides
+ * (`wrangler.toml: compatibility_flags = ["nodejs_compat"]`). Without it the
+ * worker fails to start at module-eval. See the cloudflareAdapter JSDoc.
  */
 export function buildInnerBuildOptions(options: BuildSsrBundleOptions): BuildOptions {
   const build: BuildOptions = {
@@ -188,10 +196,11 @@ export function buildInnerBuildOptions(options: BuildSsrBundleOptions): BuildOpt
  * in `ssg-plugin.ts` and any new mode-plugin would have copy-pasted
  * it (with the typical "I'll just tweak one thing" drift hazard).
  *
- * The `external: [/^node:/]` keeps Node builtins from being bundled —
- * the SSR handler runs in a real Node/Bun runtime where those resolve
- * natively. Same `target: 'esnext'` and `format: 'es'` as the SSG
- * sub-build so the runtime contract is identical across modes.
+ * The `external: [/^node:/]` keeps Node builtins from being bundled.
+ * They resolve natively on Node/Bun and — via the `nodejs_compat` flag —
+ * on Cloudflare workerd (see `buildInnerBuildOptions` above). Same
+ * `target: 'esnext'` and `format: 'es'` as the SSG sub-build so the
+ * runtime contract is identical across modes.
  */
 export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<void> {
   // Lazy-load Vite so the plugin doesn't pull it into the runtime dep

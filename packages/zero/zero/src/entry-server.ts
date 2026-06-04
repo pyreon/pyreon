@@ -130,16 +130,31 @@ export function matchPattern(pattern: string, path: string): boolean {
 }
 
 /**
- * Read the production SSR template — a `template.html` sibling of this server
- * bundle, copied from the built client `index.html` by the SSR build
- * (`ssr-plugin.ts`). Returns `undefined` when absent (dev / tests / a build
- * that didn't stage one) so the handler falls back to its defaults.
+ * Read the production SSR template — the built client `index.html` (with its
+ * hashed entry script), so SSR responses hydrate. Returns `undefined` when
+ * absent (dev / tests / a build that didn't stage one) so the handler falls
+ * back to its defaults.
  *
- * `import.meta.url` resolves to the emitted `entry-server.js` location at
- * runtime (the bundler preserves it), so `./template.html` lands next to the
- * server bundle regardless of which adapter staged it.
+ * Two delivery paths, runtime-agnostic by design:
+ *
+ * 1. **Worker runtimes (Cloudflare workerd)** have no filesystem and can't
+ *    `readFileSync` a sibling asset, so the adapter inlines the template into
+ *    `globalThis.__PYREON_SSR_TEMPLATE__` in the generated `_worker.js` BEFORE
+ *    dynamic-importing this module. Checked first.
+ * 2. **Node-based runtimes** (node / bun / vercel / netlify functions all run
+ *    on Node) read the `template.html` sibling that `ssr-plugin.ts` staged
+ *    next to the server bundle. `import.meta.url` resolves to the emitted
+ *    `entry-server.js` location at runtime, so `./template.html` lands beside
+ *    it regardless of which adapter staged it.
+ *
+ * Without path 1, Cloudflare SSR server-rendered but shipped the dev
+ * `entry-client.ts` (the fs read threw → caught → undefined → dev fallback) →
+ * no hydration in production.
  */
 function readBuiltTemplate(): string | undefined {
+	const injected = (globalThis as { __PYREON_SSR_TEMPLATE__?: unknown })
+		.__PYREON_SSR_TEMPLATE__;
+	if (typeof injected === "string" && injected.length > 0) return injected;
 	try {
 		return readFileSync(new URL("./template.html", import.meta.url), "utf-8");
 	} catch {

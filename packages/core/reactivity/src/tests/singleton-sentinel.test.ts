@@ -446,3 +446,68 @@ describe('withSilent — refcount opt-out (race-safe replacement for env-var dan
     }).toThrow()
   })
 })
+
+describe('workerd / undefined import.meta.url (Cloudflare Pages)', () => {
+  // Cloudflare workerd passes `undefined` as `import.meta.url` at module init.
+  // A bare `url.indexOf('?')` in normalizeLocation threw
+  // `Cannot read properties of undefined (reading 'indexOf')` BEFORE any
+  // handler ran — every @pyreon-based Worker crashed at startup. The guard
+  // (`typeof url !== 'string' || url.length === 0 → '<unknown>'`) must let the
+  // registration succeed. Bisect-verify: delete that guard line in
+  // singleton-sentinel.ts → the first two specs throw the indexOf TypeError.
+
+  it('registerSingleton does NOT throw when location is undefined', () => {
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        undefined as unknown as string,
+      )
+    }).not.toThrow()
+  })
+
+  it('registerSingleton does NOT throw when location is the empty string', () => {
+    expect(() => {
+      registerSingleton('@pyreon/reactivity', '0.24.6', '')
+    }).not.toThrow()
+  })
+
+  it('re-registering the same package with undefined is idempotent (single workerd instance, no false-positive duplicate throw)', () => {
+    // A single workerd bundle imports @pyreon/reactivity once, but a re-eval
+    // (or a second module in the same heap re-running the index) must NOT be
+    // mistaken for a dual-instance load: both normalize to '<unknown>' →
+    // `existing.location === marker.location` → allowed silently.
+    registerSingleton(
+      '@pyreon/reactivity',
+      '0.24.6',
+      undefined as unknown as string,
+    )
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        undefined as unknown as string,
+      )
+    }).not.toThrow()
+  })
+
+  it('a defined location is still distinguished from an undefined one (detection preserved)', () => {
+    // The guard only relaxes the bad-input case; genuine dual-instance
+    // detection between a real file:// location and a second real location is
+    // unchanged (covered exhaustively above). Here we confirm the guard didn't
+    // collapse a REAL location into the '<unknown>' bucket: registering a real
+    // location after an undefined one is a genuine location MISMATCH → throws.
+    registerSingleton(
+      '@pyreon/reactivity',
+      '0.24.6',
+      undefined as unknown as string,
+    )
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        'file:///workspace/reactivity/lib/index.js',
+      )
+    }).toThrow(/Multiple instances/)
+  })
+})

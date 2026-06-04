@@ -10,11 +10,26 @@ import { warnMissingEnv } from './warn-missing-env'
  * - Client assets in the output directory root (served as static)
  * - `_worker.js` — Cloudflare Pages Function for SSR
  *
+ * **Requires the `nodejs_compat` compatibility flag.** The SSR bundle imports
+ * Node builtins (`node:async_hooks` for `runWithRequestContext` — instantiated
+ * at module-eval, so without the flag the worker fails to START — and `node:fs`
+ * for the template fallback). The create-zero cloudflare scaffold sets it
+ * (`wrangler.toml: compatibility_flags = ["nodejs_compat"]`); a hand-rolled
+ * deploy MUST set it in the Pages dashboard or wrangler.toml, or pass
+ * `--compatibility-flags nodejs_compat` to `wrangler pages dev`.
+ *
+ * **workerd has no filesystem**, so this adapter inlines the built SSR template
+ * (`dist/server/template.html`, with the hashed client entry) into
+ * `globalThis.__PYREON_SSR_TEMPLATE__` in `_worker.js` and dynamic-imports the
+ * handler — the global is set BEFORE `createServer → readBuiltTemplate` runs.
+ * Without this, SSR would render but ship the dev `entry-client.ts` (the
+ * `readFileSync` fallback can't reach a sibling on workerd) → no hydration.
+ *
  * Note: Cloudflare Pages Functions have a ~1MB module size limit.
  * For large apps, configure Vite's SSR build to bundle server code:
  * `ssr: { noExternal: true }` in vite.config.ts.
  *
- * Deploy with: `npx wrangler pages deploy ./dist`
+ * Deploy with: `npx wrangler pages deploy ./dist` (with `nodejs_compat` set).
  *
  * @example
  * ```ts
@@ -73,17 +88,36 @@ export function cloudflareAdapter(): Adapter {
         serverDest: join(outDir, '_server'),
       })
 
+      // Cloudflare runs in workerd, NOT Node — there is no filesystem, so the
+      // server bundle's `readBuiltTemplate()` can't `readFileSync` the staged
+      // `_server/template.html`. Without the template, SSR renders but ships
+      // the DEV `entry-client.ts` (no hashed script) → the page never
+      // hydrates in production. Fix: read the staged template at build time
+      // and inline it into a global the worker sets BEFORE importing the
+      // handler; `readBuiltTemplate()` reads that global first (see
+      // `entry-server.ts`). Empty/missing template → empty global → the
+      // server falls back exactly as before (SSG-only builds, etc.).
+      const { readFile } = await import('node:fs/promises')
+      const builtTemplate = await readFile(
+        join(outDir, '_server', 'template.html'),
+        'utf-8',
+      ).catch(() => '')
+
       // Generate Cloudflare Pages _worker.js (ES module format).
       //
-      // Static assets are handled by Cloudflare Pages itself via the
-      // asset binding (Cloudflare's CDN serves files from the dist
-      // root before invoking the worker). The pre-fix harness had an
-      // \`if (ext && ...) { /* comment */ }\` block here computing an
-      // \`ext\` variable and checking a condition with an EMPTY body —
-      // pure dead code that did nothing at runtime. Removed for
-      // clarity.
+      // Static assets are handled by Cloudflare Pages itself via the asset
+      // binding (Cloudflare's CDN serves files from the dist root before
+      // invoking the worker).
+      //
+      // The handler is DYNAMIC-imported: static `import` is hoisted above the
+      // global assignment, so `entry-server.js` would evaluate `createServer`
+      // → `readBuiltTemplate()` BEFORE the template global was set. A
+      // top-level `await import(...)` after the assignment guarantees the
+      // ordering (workerd supports top-level await in module workers).
       const workerEntry = `
-import handler from "./_server/entry-server.js"
+globalThis.__PYREON_SSR_TEMPLATE__ = ${JSON.stringify(builtTemplate)}
+
+const { default: handler } = await import("./_server/entry-server.js")
 
 export default {
   async fetch(request, env, ctx) {
