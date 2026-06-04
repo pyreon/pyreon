@@ -24,7 +24,7 @@
  * `createApp.mount` tracks every pushed app-level frame and removes each on
  * unmount.
  */
-import { captureContextStack, h as pyreonH } from '@pyreon/core'
+import { getContextStackLength, h as pyreonH } from '@pyreon/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp, inject } from '../index'
 
@@ -40,7 +40,7 @@ describe('vue-compat — provide/popContext is identity-safe (#725/#729 class)',
   })
 
   it('REGRESSION: createApp().provide(k, v).mount(el); unmount() — context stack returns to baseline', () => {
-    const baseLen = captureContextStack().length
+    const baseLen = getContextStackLength()
 
     function Root() {
       const v = inject<string>('K')
@@ -58,11 +58,11 @@ describe('vue-compat — provide/popContext is identity-safe (#725/#729 class)',
     // The critical assertion: app-level provision frames are removed on
     // unmount. Pre-fix the stack accumulates one frame per provision per
     // mount cycle, forever.
-    expect(captureContextStack().length).toBe(baseLen)
+    expect(getContextStackLength()).toBe(baseLen)
   })
 
   it('REGRESSION: 100 mount/unmount cycles do NOT accumulate context-stack frames', () => {
-    const baseLen = captureContextStack().length
+    const baseLen = getContextStackLength()
 
     function Root() {
       return pyreonH('span', null, 'x')
@@ -75,7 +75,7 @@ describe('vue-compat — provide/popContext is identity-safe (#725/#729 class)',
 
     // Pre-fix: each mount pushes 2 frames, unmount removes 0 → 200 orphan
     // frames after 100 cycles. Post-fix: stack returns to baseline.
-    const delta = captureContextStack().length - baseLen
+    const delta = getContextStackLength() - baseLen
     expect(delta).toBeLessThan(5) // allow tiny noise from other unrelated test infra
   })
 })

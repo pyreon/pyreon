@@ -175,39 +175,33 @@ describe('context inheritance through reactive boundaries', () => {
     expect(collected.every((v) => v === 'parent-provided')).toBe(true)
   })
 
-  // ── Lock-in for the context-truncation fix (PR #406) ──────────────────────
+  // ── Lock-in: context survives a reactive re-run (PR #406; owner model) ────
   //
-  // Pre-fix `mountReactive`'s `restoreContextStack` did
-  // `stack.length = savedLength` in its finally block — which destroyed
-  // every provider frame that the synchronous mount had pushed via
-  // `provide()`. Signal-driven re-runs of `_bind` / `renderEffect` inside
-  // the mounted subtree later saw a half-empty stack and `useContext()`
-  // silently fell back to the default. The original symptom was
-  // `<PyreonUI mode={signal()}>` toggling not propagating to consumers
-  // — discovered while writing PR #406's regression e2e and traced back
-  // through the binding subscription chain to this stack truncation.
+  // Symptom (original): `<PyreonUI mode={signal()}>` toggling not propagating
+  // to consumers — traced through the binding subscription chain to context
+  // loss when a `_bind` / `renderEffect` inside a `mountReactive` subtree
+  // re-ran after setup and resolved `useContext()` against the wrong context
+  // scope, falling back to the default.
   //
-  // The fix has two cooperating layers; each provides defense-in-depth
-  // for the other, so this assertion would still pass if you revert
-  // EITHER alone — but reverting BOTH layers together fails it. To
-  // bisect-verify cleanly, revert both:
-  //   1. `packages/core/core/src/context.ts:restoreContextStack` — change
-  //      the finally block back to `stack.length = savedLength` (truncate
-  //      everything fn() pushed).
-  //   2. `packages/core/reactivity/src/effect.ts:_bind` — remove the
-  //      `_snapshotCapture` capture/restore wiring so re-runs call fn()
-  //      against whatever the live stack happens to be at re-run time.
-  //
-  // With both reverted, this test fails with `seen[1] === 'default'`.
+  // The owner-based context model makes this structural: context lives on the
+  // component's EffectScope OWNER, and effects capture the active owner at
+  // setup + restore it on each re-run (via `setSnapshotCapture` →
+  // `runWithContextOwner`), so a re-run resolves `useContext()` through the
+  // same owner chain it was created in. To bisect-verify, revert the owner
+  // restore in `packages/core/core/src/context.ts` (the `setSnapshotCapture`
+  // block backed by `getContextOwner` / `runWithContextOwner`) and/or the
+  // `_snapshotCapture` capture/restore in
+  // `packages/core/reactivity/src/effect.ts:_bind` — re-runs then resolve
+  // against whatever owner is current, and this test fails with
+  // `seen[1] === 'default'`.
   //
   // What the test exercises: a `_bind` text binding inside a child mounted
   // through a reactive accessor (which goes through `mountReactive`). The
-  // binding subscribes to a signal and reads `useContext(Ctx)`. After
-  // initial mount, the provider frame is at risk of being truncated by
-  // `mountReactive`'s cleanup — toggling the signal forces the binding to
-  // re-run, which re-reads context. If either fix is in place, the
-  // re-read finds the provider frame and returns the provided value.
-  it('binding re-runs preserve context lookup across mountReactive cleanup boundary (PR #406 splice + snapshot capture)', async () => {
+  // binding subscribes to a signal and reads `useContext(Ctx)`. Toggling the
+  // signal forces the binding to re-run, which re-reads context; with the
+  // owner capture/restore in place, the re-read finds the provider and
+  // returns the provided value.
+  it('binding re-runs preserve context lookup across a mountReactive re-run (PR #406; owner capture/restore)', async () => {
     const Ctx = createContext('default')
     const trigger = signal(0)
     let lastSeen: string | undefined
@@ -227,15 +221,16 @@ describe('context inheritance through reactive boundaries', () => {
     }
 
     function Provider() {
-      // CRITICAL for exercising the bug: `provide()` runs INSIDE the
+      // CRITICAL for exercising the case: `provide()` runs INSIDE the
       // reactive child fn (the accessor `() => h(Provider)` returned by
-      // App below). That puts Ctx on the stack DURING `mountReactive`'s
-      // restoreContextStack(snapshot, fn) execution — and pre-fix the
-      // truncating finally block (`stack.length = savedLength`) destroyed
-      // the frame the moment fn returned. If Outer pushed Ctx in its OWN
-      // body BEFORE returning the accessor, the frame would already be on
-      // the stack at snapshot-capture time and survive truncation
-      // unrelated — so the test wouldn't actually exercise the bug.
+      // App below). The Provider's own owner scope is established DURING
+      // `mountReactive`'s deferred mount (under the owner captured via
+      // `runWithContextOwner`), so its provided Ctx lives on a scope that
+      // is created + disposed across the boundary's re-runs. If Outer
+      // pushed Ctx in its OWN body BEFORE returning the accessor, the
+      // value would sit on a longer-lived ancestor owner and survive
+      // trivially — so the test wouldn't actually exercise the deferred
+      // re-run path.
       provide(Ctx, 'provider-value')
       return h(Inner, null)
     }

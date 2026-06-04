@@ -21,7 +21,7 @@
  * identity-based splice that finds the specific frame regardless of its
  * position on the stack.
  */
-import { captureContextStack, createContext, h, provide, useContext } from '@pyreon/core'
+import { getContextStackLength, createContext, h, provide, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import { mount } from '..'
@@ -31,7 +31,7 @@ describe('Context stack — growth under repeated remounts', () => {
     const Ctx = createContext<string>('root')
     const container = document.createElement('div')
 
-    const baseLen = captureContextStack().length
+    const baseLen = getContextStackLength()
     const cond = signal(true)
 
     function InnerProvider() {
@@ -49,7 +49,7 @@ describe('Context stack — growth under repeated remounts', () => {
       cond.set(true)
     }
 
-    const finalLen = captureContextStack().length
+    const finalLen = getContextStackLength()
     expect(finalLen - baseLen).toBeLessThan(10)
 
     unmount()
@@ -64,7 +64,7 @@ describe('Context stack — growth under repeated remounts', () => {
     const A = createContext<string>('A_default')
     const B = createContext<string>('B_default')
     const container = document.createElement('div')
-    const baseLen = captureContextStack().length
+    const baseLen = getContextStackLength()
 
     const toggleA = signal(true)
     const toggleB = signal(true)
@@ -92,7 +92,7 @@ describe('Context stack — growth under repeated remounts', () => {
       toggleA.set(true)
     }
 
-    const finalLen = captureContextStack().length
+    const finalLen = getContextStackLength()
     expect(finalLen - baseLen).toBeLessThan(10)
 
     unmount()
@@ -101,7 +101,7 @@ describe('Context stack — growth under repeated remounts', () => {
   it('signal-driven re-mount of a provider — stack stays bounded across many updates', () => {
     const Ctx = createContext<string>('root')
     const container = document.createElement('div')
-    const baseLen = captureContextStack().length
+    const baseLen = getContextStackLength()
     const inner = signal('a')
 
     function InnerProvider() {
@@ -114,13 +114,13 @@ describe('Context stack — growth under repeated remounts', () => {
 
     for (let i = 0; i < 2000; i++) inner.set(`v${i}`)
 
-    const finalLen = captureContextStack().length
+    const finalLen = getContextStackLength()
     expect(finalLen - baseLen).toBeLessThan(10)
 
     unmount()
   })
 
-  it('contextSnapshot used in restoreContextStack still finds inherited providers post-remount', () => {
+  it('context owner restored on reactive re-run still finds inherited providers post-remount', () => {
     // Read-side correctness: the snapshot mechanism's whole point is that
     // useContext from a descendant inside a reactive boundary still finds
     // the ancestor provider. The fix must not break this.

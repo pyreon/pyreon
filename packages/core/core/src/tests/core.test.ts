@@ -1,3 +1,4 @@
+import { effectScope, setContextOwner } from '@pyreon/reactivity'
 import {
   createContext,
   createRef,
@@ -338,19 +339,16 @@ describe('createContext / useContext', () => {
     expect(useContext(ctx)).toBe('default')
   })
 
-  test('provide() pushes context and registers cleanup on unmount', () => {
+  test('provide() writes onto the current owner; released when the owner is left', () => {
     const ctx = createContext('default')
-    const { hooks } = runWithHooks(
-      (() => {
-        provide(ctx, 'provided')
-        return null
-      }) as ComponentFn,
-      {} as Props,
-    )
-    // Context is available after provide()
+    const scope = effectScope()
+    const prev = setContextOwner(scope)
+    provide(ctx, 'provided')
+    // Context is available within the owner
     expect(useContext(ctx)).toBe('provided')
-    // Running unmount hooks should pop the context
-    for (const fn of hooks.unmount!) fn()
+    // Leaving the owner releases it (context dies with the scope — no
+    // onUnmount cleanup needed)
+    setContextOwner(prev)
     expect(useContext(ctx)).toBe('default')
   })
 })

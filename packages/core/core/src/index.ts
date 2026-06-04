@@ -15,9 +15,8 @@ export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-mar
 // @pyreon/reactivity for the full module-duplication rationale.
 export { defineCrossModuleState } from '@pyreon/reactivity'
 export { mapCompatDomProps, shallowEqualProps } from './compat-shared'
-export type { Context, ContextSnapshot, ReactiveContext } from './context'
+export type { Context, ReactiveContext } from './context'
 export {
-  captureContextStack,
   createContext,
   createReactiveContext,
   getContextStackLength,
@@ -25,7 +24,6 @@ export {
   provide,
   pushContext,
   removeContextFrame,
-  restoreContextStack,
   setContextStackProvider,
   useContext,
   withContext,

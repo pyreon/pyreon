@@ -4,6 +4,7 @@ import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
 import { flush } from '@pyreon/test-utils/browser'
 import { install as installPerfHarness, perfHarness } from '@pyreon/perf-harness'
+import { signal } from '@pyreon/reactivity'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { Button } from './index'
 
@@ -113,34 +114,36 @@ describe('@pyreon/ui-components — element-child collapse vs real Button (CI-ga
 
   it('perf win MEASURED: real element-child Button fires N mountChild; collapsed fires exactly 1', async () => {
     // Baseline: amortize the PyreonUI provider (mount once), then count ONLY
-    // the Button-into-provider mount — the fair per-component cost.
+    // the Button's mount — the fair per-component cost. The Button is added
+    // INSIDE the provider's tree via a reactive slot, so it inherits the theme
+    // through the owner chain. (Mounting it as a SEPARATE root would correctly
+    // isolate it from the provider's context — owner-based context, like
+    // React/Solid, does not leak across independent mount roots.)
     const provRoot = document.createElement('div')
     document.body.appendChild(provRoot)
+    const showButton = signal(false)
     const provDispose = mount(
       h(
         PyreonUI,
         { theme, mode: 'light' as const },
-        h('div', { id: 'host' }),
+        h('div', { id: 'host' }, () =>
+          showButton()
+            ? h(Button, { state: 'primary', size: 'large' }, h('span', { class: 'ico' }, 'Save'))
+            : null,
+        ),
       ) as unknown as VNodeChild,
       provRoot,
     )
     await flush()
-    const host = provRoot.querySelector('#host') as HTMLElement
 
     perfHarness.reset()
     const b0 = perfHarness.snapshot()
-    const baseDispose = mount(
-      h(
-        Button,
-        { state: 'primary', size: 'large' },
-        h('span', { class: 'ico' }, 'Save'),
-      ) as unknown as VNodeChild,
-      host,
-    )
+    showButton.set(true)
     await flush()
     const baselineMountChild =
       (perfHarness.snapshot()['runtime.mountChild'] ?? 0) - (b0['runtime.mountChild'] ?? 0)
-    baseDispose()
+    showButton.set(false)
+    await flush()
 
     // Collapsed: ONE cloneNode, no provider needed (class baked in).
     const colRoot = document.createElement('div')

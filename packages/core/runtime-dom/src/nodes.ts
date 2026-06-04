@@ -1,9 +1,8 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { captureContextStack, restoreContextStack } from '@pyreon/core'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
-import { effect, runUntracked } from '@pyreon/reactivity'
+import { effect, getContextOwner, runUntracked, runWithContextOwner } from '@pyreon/reactivity'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -56,11 +55,12 @@ export function mountReactive(
   const marker = document.createComment('pyreon')
   parent.insertBefore(marker, anchor)
 
-  // Capture the context stack at creation time — ancestor provide() calls
-  // have already run, so this snapshot contains all parent contexts.
-  // When the effect re-mounts children later (e.g. Show toggling on),
-  // we restore this snapshot so children see ancestor providers.
-  const contextSnapshot = captureContextStack()
+  // Capture the context OWNER at creation time — this reactive boundary lives
+  // under the component that set it up, so its owner is the right parent for
+  // any children mounted later (e.g. Show toggling on). Restoring this single
+  // reference when we mount deferred children lets them resolve ancestor
+  // providers via the owner chain, with no stack snapshot to dedup or leak.
+  const ownerAtSetup = getContextOwner()
 
   let currentCleanup: Cleanup = () => {
     /* noop */
@@ -109,7 +109,7 @@ export function mountReactive(
       // detached (cleanup edge case) preserves prior behavior.
       const liveParent = marker.parentNode ?? parent
       const cleanup = runUntracked(() =>
-        restoreContextStack(contextSnapshot, () => mount(value, liveParent, marker)),
+        runWithContextOwner(ownerAtSetup, () => mount(value, liveParent, marker)),
       )
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
       // throw) may have already re-run this effect and updated currentCleanup.

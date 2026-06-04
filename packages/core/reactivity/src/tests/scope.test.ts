@@ -1,5 +1,13 @@
 import { effect } from '../effect'
-import { EffectScope, effectScope, getCurrentScope, setCurrentScope } from '../scope'
+import {
+  EffectScope,
+  effectScope,
+  getContextOwner,
+  getCurrentScope,
+  runWithContextOwner,
+  setContextOwner,
+  setCurrentScope,
+} from '../scope'
 import { signal } from '../signal'
 
 describe('effectScope', () => {
@@ -227,5 +235,65 @@ describe('effectScope', () => {
     for (let i = 0; i < 100; i++) scope.addUpdateHook(() => {})
     scope.notifyEffectRan()
     expect(hookFired).toBe(false)
+  })
+})
+
+describe('EffectScope — context ownership', () => {
+  it('provideContext + lookupContext on a single scope', () => {
+    const s = effectScope()
+    const id = Symbol('ctx')
+    expect(s.lookupContext(id)).toEqual({ found: false, value: undefined })
+    s.provideContext(id, 'v')
+    expect(s.lookupContext(id)).toEqual({ found: true, value: 'v' })
+  })
+
+  it('lookupContext walks the _parent owner chain (child shadows parent)', () => {
+    const a = Symbol('a')
+    const b = Symbol('b')
+    const parent = effectScope()
+    parent.provideContext(a, 'parent-a')
+    parent.provideContext(b, 'parent-b')
+    const child = effectScope()
+    child._parent = parent
+    child.provideContext(b, 'child-b') // shadows parent's b
+    // child resolves its own b, inherits a from parent
+    expect(child.lookupContext(b)).toEqual({ found: true, value: 'child-b' })
+    expect(child.lookupContext(a)).toEqual({ found: true, value: 'parent-a' })
+    // parent is unaffected by the child
+    expect(parent.lookupContext(b)).toEqual({ found: true, value: 'parent-b' })
+  })
+
+  it('distinguishes "provided as undefined" from "not provided"', () => {
+    const s = effectScope()
+    const id = Symbol('ctx')
+    s.provideContext(id, undefined)
+    expect(s.lookupContext(id)).toEqual({ found: true, value: undefined })
+    expect(s.lookupContext(Symbol('other'))).toEqual({ found: false, value: undefined })
+  })
+})
+
+describe('current context owner', () => {
+  it('getContextOwner / setContextOwner round-trip + restore', () => {
+    expect(getContextOwner()).toBe(null)
+    const s = effectScope()
+    const prev = setContextOwner(s)
+    expect(prev).toBe(null)
+    expect(getContextOwner()).toBe(s)
+    setContextOwner(prev)
+    expect(getContextOwner()).toBe(null)
+  })
+
+  it('runWithContextOwner sets the owner for fn then restores, even on throw', () => {
+    const s = effectScope()
+    const seen = runWithContextOwner(s, () => getContextOwner())
+    expect(seen).toBe(s)
+    expect(getContextOwner()).toBe(null)
+    // restores on throw
+    expect(() =>
+      runWithContextOwner(s, () => {
+        throw new Error('boom')
+      }),
+    ).toThrow('boom')
+    expect(getContextOwner()).toBe(null)
   })
 })
