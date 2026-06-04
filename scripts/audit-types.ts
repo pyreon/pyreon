@@ -70,6 +70,27 @@ const EXEMPT_FIELDS: Exemption[] = [
     field: '__isNative',
     reason: 'brand marker consumed cross-package by @pyreon/runtime-dom (mount/nodes/hydrate/template)',
   },
+  // `ViteManifestChunk` is a faithful mirror of Vite's EXTERNAL `build.manifest`
+  // JSON shape (populated by Vite, not Pyreon). `dynamicImports` is DELIBERATELY
+  // unread — following it would preload deferred island / lazy chunks and defeat
+  // the SSG modulepreload islands-safety (the whole point of the feature). The
+  // type declares it so `ssg-modulepreload.test.ts` can construct the regression
+  // fixture that PROVES the closure ignores it. Reading it would be the bug.
+  {
+    package: '@pyreon/zero',
+    interface: 'ViteManifestChunk',
+    field: 'dynamicImports',
+    reason: 'external Vite-manifest-shape mirror; deliberately UNREAD (following it defeats islands-safety) — tests construct it to prove the closure excludes it',
+  },
+  // `isDynamicEntry` is part of the same documented Vite-manifest shape; the
+  // resolver keys off `isEntry` + `imports`, not this flag. Kept for an accurate,
+  // self-documenting mirror of what Vite emits.
+  {
+    package: '@pyreon/zero',
+    interface: 'ViteManifestChunk',
+    field: 'isDynamicEntry',
+    reason: 'external Vite-manifest-shape mirror — documented field Vite emits; the resolver uses isEntry + imports, not this flag',
+  },
 ]
 
 // File-level exemptions — entire files whose interfaces are
