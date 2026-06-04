@@ -16,6 +16,14 @@ import type {
   Text,
   ThematicBreak,
 } from 'mdast'
+import type {
+  MdxJsxAttribute,
+  MdxJsxExpressionAttribute,
+  MdxJsxFlowElement,
+  MdxJsxTextElement,
+} from 'mdast-util-mdx-jsx'
+
+type MdxJsxElement = MdxJsxFlowElement | MdxJsxTextElement
 
 // ─── mdast → Pyreon JSX string emitter ─────────────────────────────────────
 //
@@ -64,6 +72,25 @@ export interface EmitOptions {
    * (PR 1 behavior).
    */
   highlight?: (code: string, lang: string | undefined) => Promise<string>
+  /**
+   * Callback that receives every top-of-file ESM `import` / `export`
+   * statement encountered (`mdxjsEsm` nodes). The walker emits an empty
+   * string in place so the markdown body's JSX output stays clean;
+   * `compileMarkdown` collects them via this hook and prepends them to
+   * the generated `.tsx` module's import section.
+   */
+  mdxEsmHoist?: (esm: string) => void
+  /**
+   * Callback that receives every component name (uppercase JSX tag)
+   * referenced in the markdown — produced by `mdxJsxFlowElement` /
+   * `mdxJsxTextElement` nodes. `compileMarkdown` uses these to emit
+   * a single `import { Name1, Name2 } from 'virtual:zero-content/components'`
+   * at the top of the compiled `.tsx`.
+   *
+   * Built-in component names (`Callout`, `CodeGroup`, `CodeBlock`)
+   * are forwarded the same way; the virtual module re-exports them.
+   */
+  mdxComponentRef?: (name: string) => void
 }
 
 /**
@@ -123,9 +150,26 @@ async function emitNode(
       // First-party content; pass through verbatim. Output is JSX so
       // tag-shaped content parses natively.
       return (node as { value: string }).value
+    // ─── MDX nodes (PR 3 — produced by remark-mdx) ───────────────────
+    case 'mdxJsxFlowElement':
+    case 'mdxJsxTextElement':
+      return emitMdxJsxElement(node as MdxJsxElement, headings, opts)
+    case 'mdxFlowExpression':
+    case 'mdxTextExpression':
+      // `{expression}` blocks in markdown — emit verbatim wrapped in
+      // braces so JSX sees them as expression slots. We DON'T escape;
+      // the contained code is first-party MDX.
+      return `{${(node as { value: string }).value}}`
+    case 'mdxjsEsm':
+      // `import` / `export` ESM statements at the top of an MDX file.
+      // These are hoisted to the module scope; the walker collects them
+      // via the `mdxEsmHoist` opts callback and emits an empty string
+      // in place. See `compileMarkdown` for the hoist wiring.
+      if (opts.mdxEsmHoist) opts.mdxEsmHoist((node as { value: string }).value)
+      return ''
     default:
       // Unknown node type — emit a comment so the build doesn't drop
-      // content silently. PR 3 covers MDX-specific node types.
+      // content silently.
       return `{/* unhandled mdast node: ${node.type} */}`
   }
 }
@@ -241,6 +285,51 @@ async function emitBlockquote(
 
 function emitThematicBreak(_node: ThematicBreak): string {
   return '<hr />'
+}
+
+async function emitMdxJsxElement(
+  node: MdxJsxElement,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
+  // `name === null` is the JSX fragment `<>...</>` — emit verbatim.
+  const name = node.name
+  if (name && /^[A-Z]/.test(name) && opts.mdxComponentRef) {
+    opts.mdxComponentRef(name)
+  }
+  const attrs = node.attributes
+    .map((attr) => emitMdxAttribute(attr))
+    .filter(Boolean)
+    .join(' ')
+  const attrStr = attrs ? ` ${attrs}` : ''
+  if (node.children.length === 0) {
+    return name ? `<${name}${attrStr} />` : `<>${attrStr}</>`
+  }
+  const inner = await emitChildren(node.children as Nodes[], headings, opts)
+  return name
+    ? `<${name}${attrStr}>${inner}</${name}>`
+    : `<>${inner}</>`
+}
+
+/**
+ * Convert an MDX JSX attribute into its source representation. Three
+ * shapes:
+ *   - `{...obj}` spread → `mdxJsxExpressionAttribute`
+ *   - `name`            → `mdxJsxAttribute` with no value (boolean attr)
+ *   - `name="literal"`  → `mdxJsxAttribute` with string value
+ *   - `name={expr}`     → `mdxJsxAttribute` with expression value
+ */
+function emitMdxAttribute(attr: MdxJsxAttribute | MdxJsxExpressionAttribute): string {
+  if (attr.type === 'mdxJsxExpressionAttribute') {
+    return `{${attr.value}}`
+  }
+  const name = attr.name
+  if (attr.value == null) return name
+  if (typeof attr.value === 'string') {
+    return `${name}=${JSON.stringify(attr.value)}`
+  }
+  // Expression attribute — value is `{ type: 'mdxJsxAttributeValueExpression', value: 'expr' }`
+  return `${name}={${attr.value.value}}`
 }
 
 function emitImage(node: MdastImage): string {
