@@ -32,9 +32,11 @@ describe('Stagger — defensive prop defaults', () => {
   it('non-array single child resolves to [child] (line 29 arm 0)', () => {
     const show = signal(true)
     const Item: ComponentFn<{ children?: string }> = (p) => h('span', null, p.children ?? 'x')
+    // Runtime accepts non-array via resolveChildren(); cast through unknown
+    // to bypass StaggerProps's array-only public type to exercise the path.
     const result = Stagger({
       show: () => show(),
-      children: h(Item, { children: 'solo' }),
+      children: h(Item, { children: 'solo' }) as unknown as Parameters<typeof Stagger>[0]['children'],
     })
     expect(result).toBeDefined()
   })
