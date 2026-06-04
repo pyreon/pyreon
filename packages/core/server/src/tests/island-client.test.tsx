@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { h } from '@pyreon/core'
+import { createContext, h, provide, useContext } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { island } from '../island'
 
@@ -51,6 +51,46 @@ describe("island() — client self-hydration branch", () => {
     // import + microtasks settle; the branch (incl. the .then body) must run
     // without throwing.
     await new Promise((r) => setTimeout(r, 50))
+  })
+
+  it("a context-reading island inherits the provider from its render-tree owner (theme-lost-across-hydration regression)", async () => {
+    // #1338 made context owner-based (no global stack). A deferred island
+    // hydration mounts in its own root AFTER the marker component's owner is
+    // gone — so without threading the captured owner, the island's tree has
+    // no link to ancestor providers (PyreonUI theme, etc.) and `useContext`
+    // returns the DEFAULT. A rocketstyle `theme((t) => …)` then crashes on the
+    // undefined theme. The fix captures `getContextOwner()` at the marker's
+    // render and re-establishes it around `hydrateRoot`. Bisect: drop the
+    // `owner` arg (or the `runWithContextOwner` wrap) → reads 'DEFAULT'.
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+
+    const ThemeCtx = createContext<string>("DEFAULT")
+    const Inner = () =>
+      h("span", { "data-testid": "isle-theme" }, useContext(ThemeCtx))
+    const ThemedIsle = island(async () => ({ default: Inner }), {
+      name: "ThemedIsle",
+      hydrate: "load",
+    })
+    // Provider component renders the island in its subtree — mirrors a
+    // `_layout` wrapping a route that declares an `island()`.
+    const App = () => {
+      provide(ThemeCtx, "PROVIDED")
+      return h("div", null, h(ThemedIsle, null))
+    }
+
+    mount(h(App, null), container)
+
+    // Poll for the hydrated island body (load strategy + async loader settles
+    // within a few microtask/timer turns).
+    for (let i = 0; i < 50; i++) {
+      if (container.querySelector('[data-testid="isle-theme"]')) break
+      await new Promise((r) => setTimeout(r, 10))
+    }
+
+    const themed = container.querySelector('[data-testid="isle-theme"]')
+    expect(themed).toBeTruthy()
+    expect(themed?.textContent).toBe("PROVIDED")
   })
 
   it("emits a prefetch hint + runs the prefetch path (hydrate: 'visible', prefetch: 'idle')", async () => {

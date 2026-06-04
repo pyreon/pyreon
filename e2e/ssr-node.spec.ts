@@ -22,19 +22,29 @@ test.describe('SSR node deploy artifact', () => {
     // Server-rendered route content is present in the RAW response.
     expect(html).toContain('data-pyreon-router-view')
     expect(html).toContain('data-testid="nav-home"')
+    // The PAGE's own content — NOT just the layout chrome. The layout's nav
+    // (`nav-home`) renders even when the page leaf is empty, so it could not
+    // catch the 0.30.0 empty-page regression: the lazy page component wasn't
+    // resolved before the synchronous render, so the depth-1 RouterView
+    // rendered NOTHING inside the layout (status 200, masked by hydration).
+    // Asserting the route's OWN content is the gap-closer.
+    expect(html).toContain('Interactive Counter')
     // The unfilled SSR template placeholder must NEVER reach the client.
     expect(html).not.toContain('<!--pyreon-app-->')
   })
 
-  test('GET /about is server-rendered', async ({ page }) => {
+  test('GET /about is server-rendered (PAGE content, not just the layout nav)', async ({ page }) => {
     const resp = await page.request.get('/about')
     expect(resp.status()).toBe(200)
     const html = await resp.text()
     expect(html).toContain('data-testid="nav-about"')
+    // The about PAGE's own marker — empty pre-fix (lazy component unresolved),
+    // present after the handler resolves lazy components via `router.preload`.
+    expect(html).toContain('data-testid="about-page"')
     expect(html).not.toContain('<!--pyreon-app-->')
   })
 
-  test('GET /posts is server-rendered FROM ITS LOADER (data + hydration payload)', async ({ page }) => {
+  test('GET /posts is server-rendered FROM ITS LOADER (page content + data + hydration payload)', async ({ page }) => {
     // The real-app surface: a route with a `loader` + `useLoaderData`. Proves
     // the production server runs the loader server-side, renders the data
     // (not an empty shell), and emits the hydration payload so the client can
@@ -43,6 +53,9 @@ test.describe('SSR node deploy artifact', () => {
     expect(resp.status()).toBe(200)
     const html = await resp.text()
     expect(html).toContain('data-pyreon-router-view')
+    // The posts PAGE's own marker — the gap-closer (layout nav alone passed
+    // even when the page rendered blank pre-fix).
+    expect(html).toContain('data-testid="posts-page"')
     expect(html).not.toContain('<!--pyreon-app-->')
     // Loader data serialized for client hydration.
     expect(html).toContain('__PYREON_LOADER_DATA__')

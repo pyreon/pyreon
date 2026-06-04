@@ -30,7 +30,6 @@ import { renderWithHead } from '@pyreon/head/ssr'
 import {
   createRouter,
   getRedirectInfo,
-  prefetchLoaderData,
   type RouteRecord,
   RouterProvider,
   serializeLoaderData,
@@ -185,12 +184,19 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         // can access per-request data (CSP nonce, auth user, etc.)
         provideRequestLocals(ctx.locals)
 
-        // Pre-run loaders so data is available during render. Forward the
-        // incoming request so loaders can read cookies / auth headers and
-        // `throw redirect('/login')` BEFORE the layout renders. A thrown
-        // redirect propagates here and is converted to a 302/307 in the
-        // catch below.
-        await prefetchLoaderData(router as never, path, req)
+        // Resolve the matched route's lazy COMPONENTS into the cache AND run
+        // its loaders before the synchronous render. `router.preload` does
+        // BOTH (same path the SSG build uses); plain `prefetchLoaderData`
+        // would run loaders only, leaving lazy page components unresolved —
+        // the synchronous `renderToString` then hits `RouterView`'s empty lazy
+        // fallback and ships the layout wrapping a BLANK page (status 200,
+        // template shell). zero's fs-router emits every route as `lazy()`, so
+        // that shipped empty SSR/ISR pages while SSG (which already used
+        // `preload`) rendered correctly. Forward the request so loaders can
+        // read cookies / auth headers and `throw redirect()` BEFORE the layout
+        // renders — the thrown redirect propagates here and is converted to a
+        // 302/307 in the catch below.
+        await router.preload(path, req)
 
         // Build the VNode tree
         const app = h(RouterProvider, { router }, h(App, null))

@@ -1050,3 +1050,51 @@ describe('router — _loaderInflight aborted-signal dedup', () => {
     expect(router.currentRoute().path).toBe('/data')
   })
 })
+
+describe('router.preload — resolves lazy components for SSR (0.30.0 empty-page regression)', () => {
+  // The synchronous SSR render needs every matched route component ALREADY
+  // resolved — an unresolved `lazy()` falls back to its empty loading state,
+  // so the page renders blank inside the layout (status 200, template shell).
+  // `router.preload` resolves lazy COMPONENTS into the cache (and runs
+  // loaders); the SSR handler calls it before render. `prefetchLoaderData`
+  // (loaders-only, the RouterLink-prefetch path) does NOT — the handler used
+  // to call THAT, which is why `mode: 'ssr'`/`'isr'` shipped empty pages while
+  // SSG (already on `preload`) rendered. These lock the `preload` contract the
+  // handler now depends on. Bisect: drop the component-resolution loop in
+  // `router.preload` → `_componentCache.get(rec)` is undefined → these fail.
+
+  test('populates _componentCache for a lazy leaf component', async () => {
+    const LazyPage = () => null
+    const routes: RouteRecord[] = [
+      { path: '/', component: lazy(() => Promise.resolve({ default: LazyPage })) },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+    await router.preload('/')
+    const rec = router.currentRoute().matched[0]
+    expect(rec).toBeDefined()
+    expect(router._componentCache.get(rec!)).toBe(LazyPage)
+  })
+
+  test('resolves a lazy PAGE nested under an eager layout (the zero fs-router shape)', async () => {
+    const Layout = () => null
+    const LazyAbout = () => null
+    const routes: RouteRecord[] = [
+      {
+        // Eager layout (always rendered) wrapping a lazy page — the exact
+        // shape that shipped the layout but a BLANK page pre-fix.
+        path: '/',
+        component: Layout,
+        children: [
+          { path: 'about', component: lazy(() => Promise.resolve({ default: LazyAbout })) },
+        ],
+      },
+    ]
+    const router = createRouter({ routes, url: '/about' }) as RouterInstance
+    await router.preload('/about')
+    const [layoutRec, pageRec] = router.currentRoute().matched
+    expect(layoutRec).toBeDefined()
+    expect(pageRec).toBeDefined()
+    expect(router._componentCache.get(layoutRec!)).toBe(Layout)
+    expect(router._componentCache.get(pageRec!)).toBe(LazyAbout)
+  })
+})

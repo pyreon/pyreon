@@ -31,6 +31,14 @@ export function useLoaderData<T = unknown>(): T {
  * SSR helper: pre-run all loaders for the given path before rendering.
  * Call this before `renderToString` so route components can read data via `useLoaderData()`.
  *
+ * NOTE: this runs LOADERS only — it does NOT resolve lazy route *components*.
+ * The SSR handler additionally calls `router.preload(path)` to resolve lazy
+ * components into the cache before the synchronous render (an unresolved
+ * `lazy()` would otherwise fall back to its empty loading state and ship a
+ * blank page). This function stays loaders-only because it is also the
+ * RouterLink-prefetch path, which should warm loader DATA on hover without
+ * eagerly downloading every route's component chunk.
+ *
  * The optional `request` is forwarded to each loader's `LoaderContext.request`,
  * letting server-side loaders read cookies / auth headers and `throw redirect()`
  * before the layout renders. A loader that throws `redirect()` propagates the
