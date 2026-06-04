@@ -651,6 +651,56 @@ describe('renderToString — class and style edge cases', () => {
     const html = await renderToString(h('div', { dataTestId: 'val' }))
     expect(html).toContain('data-test-id="val"')
   })
+
+  // Standard HTML attrs that the spec defines as LOWERCASE-NO-DASH —
+  // NOT kebab. Pyreon's JSX types use React-style camelCase (`srcSet`,
+  // `fetchPriority`, `crossOrigin`) for ergonomics + TypeScript type
+  // checking, but the rendered HTML MUST use the lowercase form. Before
+  // the toAttrName allow-list landed, the kebab default emitted
+  // `src-set`/`fetch-priority`/`cross-origin` — non-standard names
+  // browsers silently ignore. That broke `<Image priority>`'s body
+  // <img>'s fetchpriority hint (issue #1351 follow-up).
+  test('maps HTML-spec lowercase attrs (srcSet → srcset, fetchPriority → fetchpriority, etc.)', async () => {
+    const html = await renderToString(
+      h('img', {
+        srcSet: '/a.jpg 1x',
+        fetchPriority: 'high',
+        crossOrigin: 'anonymous',
+        referrerPolicy: 'no-referrer',
+      }),
+    )
+    expect(html).toContain('srcset="/a.jpg 1x"')
+    expect(html).toContain('fetchpriority="high"')
+    expect(html).toContain('crossorigin="anonymous"')
+    expect(html).toContain('referrerpolicy="no-referrer"')
+    // Negative — none of these standard attrs should ship with a dash.
+    expect(html).not.toContain('src-set')
+    expect(html).not.toContain('fetch-priority')
+    expect(html).not.toContain('cross-origin')
+    expect(html).not.toContain('referrer-policy')
+  })
+
+  // `accept-charset` and `http-equiv` are the two genuinely kebab HTML
+  // attrs — JSX camelCase `acceptCharset` / `httpEquiv` MUST map to the
+  // dashed form (not the all-lowercase default).
+  test('maps HTML-spec kebab attrs (acceptCharset → accept-charset, httpEquiv → http-equiv)', async () => {
+    const html = await renderToString(
+      h('form', { acceptCharset: 'UTF-8' }, h('meta', { httpEquiv: 'refresh' })),
+    )
+    expect(html).toContain('accept-charset="UTF-8"')
+    expect(html).toContain('http-equiv="refresh"')
+  })
+
+  test('maps tabIndex / readOnly / maxLength / colSpan to lowercase HTML attrs', async () => {
+    const html = await renderToString(
+      h('input', { tabIndex: 0, readOnly: true, maxLength: 50 }),
+    )
+    expect(html).toContain('tabindex="0"')
+    // Boolean attrs render bare (no `=""`) per Pyreon's SSR convention.
+    expect(html).toContain('readonly')
+    expect(html).not.toContain('read-only')
+    expect(html).toContain('maxlength="50"')
+  })
 })
 
 describe('renderToString — URL injection blocking', () => {

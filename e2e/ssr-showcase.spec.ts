@@ -207,3 +207,51 @@ test.describe('theme', () => {
     expect(firstTheme).not.toEqual(secondTheme)
   })
 })
+
+// ─── <Image priority> preload (closes #1351) ─────────────────────────────────
+
+test.describe('<Image priority> preload', () => {
+  // The browser's preload scanner reads the raw HTML response BEFORE
+  // hydration runs and BEFORE the body's <img> is parsed. So the
+  // preload <link> MUST be in the initial HTML response — not injected
+  // by client-side JS. This spec asserts that contract against the SSR
+  // response bytes (page.goto → response.text()), not against the
+  // hydrated DOM.
+
+  test('priority preload <link> is present in the initial HTML response', async ({ page }) => {
+    const response = await page.goto('/image-priority-probe')
+    const html = await response!.text()
+    // The <head> contains a preload link emitted via useHead at render
+    // time. We slice to </head> to guarantee we're reading the head
+    // section, not a stray inline string in the body.
+    const head = html.slice(0, html.indexOf('</head>'))
+    expect(head).toContain('rel="preload"')
+    expect(head).toContain('as="image"')
+    expect(head).toContain('fetchpriority="high"')
+    // Cross-origin src → crossorigin="anonymous" to avoid double-fetch.
+    expect(head).toContain('crossorigin="anonymous"')
+    // Responsive srcset → imagesrcset attribute carries it (so the
+    // preload scanner picks the same size the body's <img> will).
+    expect(head).toContain('imagesrcset')
+  })
+
+  test('priority body <img> carries fetchpriority="high" + loading="eager" in SSR HTML', async ({ page }) => {
+    // Read the raw SSR HTML response — same shape the verify-modes cell
+    // and the preload-in-head spec above both assert. The body's <img>
+    // is part of the SSR'd markup; hydration doesn't change these attrs.
+    const response = await page.goto('/image-priority-probe')
+    const html = await response!.text()
+    // Slice to the probe's <main> region to anchor against the right
+    // element (avoids matching some unrelated <img> if the showcase
+    // ever ships a header logo or similar).
+    const probeStart = html.indexOf('data-testid="image-priority-probe"')
+    expect(probeStart).toBeGreaterThan(-1)
+    const probeEnd = html.indexOf('</main>', probeStart)
+    const probeSlice = html.slice(probeStart, probeEnd)
+    // fetchPriority (camelCase in JSX) serializes to `fetchpriority` (DOM
+    // lowercase). loading="eager" is set by `useImage` when `priority` is
+    // true.
+    expect(probeSlice).toContain('fetchpriority="high"')
+    expect(probeSlice).toContain('loading="eager"')
+  })
+})

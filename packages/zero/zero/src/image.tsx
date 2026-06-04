@@ -38,7 +38,7 @@ export interface ImageProps {
   formats?: FormatSource[]
   /** Loading strategy. "lazy" uses IntersectionObserver, "eager" loads immediately. Default: "lazy" */
   loading?: 'lazy' | 'eager'
-  /** Mark as priority (LCP image). Disables lazy loading, adds fetchPriority="high". */
+  /** Mark as priority (LCP image). Disables lazy loading, adds fetchpriority="high". */
   priority?: boolean
   /** Low-quality placeholder image URL or base64 data URI for blur-up effect. */
   placeholder?: string
@@ -99,7 +99,7 @@ export interface UseImageReturn {
   placeholderStyle: () => string
   /** `loading` attribute — eager when priority/eager, else lazy. */
   loading: 'lazy' | 'eager'
-  /** `fetchPriority` — 'high' when priority, else undefined. */
+  /** `fetchpriority` — 'high' when priority, else undefined. */
   fetchPriority: 'high' | undefined
   /** onLoad handler — sets the loaded signal. Wire into the rendered `<img>`. */
   handleLoad: () => void

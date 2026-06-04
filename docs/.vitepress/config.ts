@@ -201,6 +201,7 @@ export default defineConfig({
             { text: 'Zero CLI', link: '/docs/zero-cli' },
             { text: 'SSR & ISR', link: '/docs/ssr' },
             { text: 'SSG', link: '/docs/ssg' },
+            { text: 'Images & Fonts', link: '/docs/images-and-fonts' },
             { text: 'Create Zero', link: '/docs/create-zero' },
             { text: 'Create Multi-Platform', link: '/docs/create-multiplatform' },
             { text: 'Primitives', link: '/docs/primitives' },
