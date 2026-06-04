@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { materialize } from './stage'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -18,19 +19,19 @@ export function bunAdapter(): Adapter {
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, cp, mkdir } = await import('node:fs/promises')
+      const { writeFile, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const outDir = options.outDir
       await mkdir(outDir, { recursive: true })
 
-      // Copy server and client builds
-      await cp(options.clientOutDir, join(outDir, 'client'), {
-        recursive: true,
+      // Stage client → outDir/client and server → outDir/server. See node.ts /
+      // stage.ts for why a plain cp is a copy-into-self here (clientOutDir ===
+      // outDir, server already at outDir/server).
+      await materialize(options.clientOutDir, join(outDir, 'client'), {
+        preserve: ['server', 'index.ts'],
       })
-      await cp(join(options.serverEntry, '..'), join(outDir, 'server'), {
-        recursive: true,
-      })
+      await materialize(join(options.serverEntry, '..'), join(outDir, 'server'))
 
       const port = options.config.port ?? 3000
       const serverEntry = `
@@ -68,25 +69,30 @@ Bun.serve({
       if (decoded.includes("\\0")) {
         return new Response("Forbidden", { status: 403 })
       }
-      const reqPath = decoded === "/" ? "/index.html" : decoded
-      // Prepend clientDir then normalize. If the normalized result
-      // no longer starts with clientDir, a \`..\` segment escaped —
-      // reject. Using string-startsWith with clientDir (which ends
-      // in "/") prevents the "/clientdir-evil/" sibling-prefix
-      // bypass.
-      const candidate = normalize(clientDir + reqPath)
-      if (!candidate.startsWith(clientDir)) {
-        return new Response("Forbidden", { status: 403 })
-      }
-      const file = Bun.file(candidate)
-      if (await file.exists()) {
-        return new Response(file, {
-          headers: {
-            "cache-control": candidate.endsWith(".js") || candidate.endsWith(".css")
-              ? "public, max-age=31536000, immutable"
-              : "public, max-age=3600",
-          },
-        })
+      // Serve real static assets only. "/" and ANY .html path fall through
+      // to the SSR handler so the home route + HTML routes are SERVER-
+      // RENDERED, not shipped as the unfilled <!--pyreon-app--> shell. In
+      // SSR mode clientDir holds the template, not prerendered pages.
+      if (decoded !== "/" && !decoded.endsWith(".html")) {
+        // Prepend clientDir then normalize. If the normalized result
+        // no longer starts with clientDir, a \`..\` segment escaped —
+        // reject. Using string-startsWith with clientDir (which ends
+        // in "/") prevents the "/clientdir-evil/" sibling-prefix
+        // bypass.
+        const candidate = normalize(clientDir + decoded)
+        if (!candidate.startsWith(clientDir)) {
+          return new Response("Forbidden", { status: 403 })
+        }
+        const file = Bun.file(candidate)
+        if (await file.exists()) {
+          return new Response(file, {
+            headers: {
+              "cache-control": candidate.endsWith(".js") || candidate.endsWith(".css")
+                ? "public, max-age=31536000, immutable"
+                : "public, max-age=3600",
+            },
+          })
+        }
       }
     }
 

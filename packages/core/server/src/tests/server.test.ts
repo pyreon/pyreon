@@ -133,6 +133,23 @@ describe('createHandler', () => {
     expect(html).toContain('src="/dist/client.js"')
   })
 
+  test('clientEntry: false suppresses the client-entry script (built template carries it)', async () => {
+    // Production SSR: `template` is a built index.html that ALREADY has the
+    // hashed `<script type="module" src="/assets/…">`. `clientEntry: false`
+    // stops the handler from injecting a SECOND (and, with the default,
+    // dev-path) script tag. Loader data still injects.
+    const template =
+      '<html><!--pyreon-head--><body><div id="app"><!--pyreon-app--></div><script type="module" src="/assets/index-abc123.js"></script><!--pyreon-scripts--></body></html>'
+    const handler = createHandler({ App: Home, routes, template, clientEntry: false })
+    const res = await handler(new Request('http://localhost/'))
+    const html = await res.text()
+    // The built template's hashed entry survives.
+    expect(html).toContain('src="/assets/index-abc123.js"')
+    // No injected dev entry, and exactly ONE module script (no duplicate).
+    expect(html).not.toContain('/src/entry-client.ts')
+    expect(html.match(/<script type="module"/g) ?? []).toHaveLength(1)
+  })
+
   test('serializes loader data into HTML', async () => {
     const WithLoader: ComponentFn = () => h('div', null, 'loaded')
     const loaderRoutes = [

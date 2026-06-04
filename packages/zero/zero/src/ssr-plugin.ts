@@ -53,7 +53,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { copyFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
@@ -221,6 +221,28 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           `[zero:ssr] SSR build did not produce ${serverEntry} — skipping adapter.build()`,
         )
         return
+      }
+
+      // Production SSR template: copy the built client index.html (which
+      // carries the hashed `<script>` + CSS `<link>` + injection
+      // placeholders) next to the server bundle as `template.html`.
+      // `createServer` reads it at runtime as the production template +
+      // suppresses the dev client-entry injection (see entry-server.ts:
+      // readBuiltTemplate). Every deploy adapter copies the whole server
+      // dir, so it travels to node/bun/vercel/netlify/cloudflare alike.
+      // Without it the handler ships DEFAULT_TEMPLATE + "/src/entry-client.ts"
+      // → the page server-renders but 404s on hydration. Done BEFORE
+      // adapter.build so the staging copies it along. Non-fatal on failure
+      // (the handler falls back to its defaults).
+      try {
+        await copyFile(indexHtmlPath, join(ssrOutDir, 'template.html'))
+      } catch (templateError) {
+        // oxlint-disable-next-line no-console
+        console.warn(
+          `[zero:ssr] Could not stage production template (${
+            templateError instanceof Error ? templateError.message : String(templateError)
+          }) — SSR will fall back to the default template + dev client entry.`,
+        )
       }
 
       // Invoke the configured adapter with the canonical SSR shape.

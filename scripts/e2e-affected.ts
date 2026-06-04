@@ -164,6 +164,14 @@ const SUITES: Suite[] = [
     triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssg-i18n-prefix'],
   },
   {
+    // SSR node-deploy artifact (Bug A/C). The deploy adapters live in
+    // @pyreon/zero (covered by ROUTER_CORE's `packages/zero/`); the example
+    // + spec are listed explicitly too.
+    name: 'ssr-node',
+    script: 'test:e2e:ssr-node',
+    triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssr-node.spec.ts'],
+  },
+  {
     name: 'zero-hmr',
     script: 'test:e2e:zero-hmr',
     triggers: [

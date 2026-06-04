@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { ComponentFn } from "@pyreon/core";
 import type { RouteRecord } from "@pyreon/router";
 import type { Middleware, MiddlewareContext } from "@pyreon/server";
@@ -35,8 +36,8 @@ export interface CreateServerOptions {
 	apiRoutes?: ApiRouteEntry[];
 	/** HTML template override. */
 	template?: string;
-	/** Client entry path. */
-	clientEntry?: string;
+	/** Client entry path. Pass `false` to suppress the client-entry script. */
+	clientEntry?: string | false;
 	/** Component to render when no route matches (from _404.tsx). */
 	notFoundComponent?: ComponentFn;
 	/**
@@ -115,12 +116,30 @@ export function matchPattern(pattern: string, path: string): boolean {
 }
 
 /**
+ * Read the production SSR template — a `template.html` sibling of this server
+ * bundle, copied from the built client `index.html` by the SSR build
+ * (`ssr-plugin.ts`). Returns `undefined` when absent (dev / tests / a build
+ * that didn't stage one) so the handler falls back to its defaults.
+ *
+ * `import.meta.url` resolves to the emitted `entry-server.js` location at
+ * runtime (the bundler preserves it), so `./template.html` lands next to the
+ * server bundle regardless of which adapter staged it.
+ */
+function readBuiltTemplate(): string | undefined {
+	try {
+		return readFileSync(new URL("./template.html", import.meta.url), "utf-8");
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * Create the SSR request handler for production.
  *
  * @example
  * import { routes } from "virtual:zero/routes"
  * import { routeMiddleware } from "virtual:zero/route-middleware"
- * import { createServer } from "@pyreon/zero"
+ * import { createServer } from "@pyreon/zero/server"
  *
  * export default createServer({ routes, routeMiddleware, apiRoutes })
  */
@@ -173,13 +192,35 @@ export function createServer(options: CreateServerOptions) {
 		...(config.base && config.base !== "/" ? { base: config.base } : {}),
 	});
 
+	// Production SSR template resolution. When the caller passes no explicit
+	// template, look for a built `template.html` sibling of this server bundle.
+	// The SSR build copies the built client index.html there (see
+	// ssr-plugin.ts), and every deploy adapter copies the whole server dir, so
+	// it travels with entry-server.js to node/bun/vercel/netlify/cloudflare
+	// alike. That built template carries the hashed client `<script>` + CSS
+	// `<link>` + the injection placeholders, so we use it AND suppress the
+	// client-entry injection (clientEntry: false — the template already
+	// references the hashed entry). WITHOUT this the handler falls back to
+	// DEFAULT_TEMPLATE + the DEV "/src/entry-client.ts" path, which 404s in
+	// production: the page server-renders but never hydrates. In dev / tests
+	// the sibling doesn't exist → undefined → the handler's defaults apply
+	// (dev SSR renders via a separate path that reads the real index.html).
+	const autoTemplate = options.template ? undefined : readBuiltTemplate();
+	const resolvedTemplate = options.template ?? autoTemplate;
+	const resolvedClientEntry =
+		options.clientEntry !== undefined
+			? options.clientEntry
+			: autoTemplate
+				? (false as const)
+				: undefined;
+
 	const baseHandler = createHandler({
 		App,
 		routes: options.routes,
 		middleware: allMiddleware,
 		mode: config.ssr?.mode ?? "string",
-		...(options.template ? { template: options.template } : {}),
-		...(options.clientEntry ? { clientEntry: options.clientEntry } : {}),
+		...(resolvedTemplate ? { template: resolvedTemplate } : {}),
+		...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
 	});
 
 	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-

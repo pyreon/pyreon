@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { materialize } from './stage'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -18,19 +19,22 @@ export function nodeAdapter(): Adapter {
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, cp, mkdir } = await import('node:fs/promises')
+      const { writeFile, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const outDir = options.outDir
       await mkdir(outDir, { recursive: true })
 
-      // Copy server and client builds
-      await cp(options.clientOutDir, join(outDir, 'client'), {
-        recursive: true,
+      // Stage client → outDir/client and server → outDir/server. The zero SSR
+      // plugin passes clientOutDir === outDir with the server bundle already at
+      // outDir/server, so a naive cp would copy a directory into its own
+      // subtree (client) or onto itself (server) → EINVAL. `materialize` moves
+      // the client into client/ (preserving the server subdir + the scaffold
+      // files we write next) and no-ops the already-in-place server copy.
+      await materialize(options.clientOutDir, join(outDir, 'client'), {
+        preserve: ['server', 'index.js', 'package.json'],
       })
-      await cp(join(options.serverEntry, '..'), join(outDir, 'server'), {
-        recursive: true,
-      })
+      await materialize(join(options.serverEntry, '..'), join(outDir, 'server'))
 
       // Generate standalone server entry
       const port = options.config.port ?? 3000
@@ -60,27 +64,25 @@ const MIME_TYPES = {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
 
-  // Try to serve static files first (GET only).
+  // Serve real static assets only (js / css / images / fonts). The SSR
+  // template index.html — and ANY .html path — deliberately falls through
+  // to the SSR handler so "/" and HTML routes are SERVER-RENDERED, not
+  // shipped as the unfilled <!--pyreon-app--> shell. In SSR mode clientDir
+  // holds the template, not prerendered pages, so static-serving index.html
+  // at "/" would defeat SSR for the home route entirely.
   if (req.method === "GET") {
-    try {
-      const filePath = join(clientDir, url.pathname === "/" ? "index.html" : url.pathname)
-      // Prevent path traversal — ensure resolved path stays within clientDir.
-      const { resolve } = await import("node:path")
-      const resolved = resolve(filePath)
-      if (!resolved.startsWith(resolve(clientDir))) {
-        res.writeHead(403)
-        res.end("Forbidden")
-        return
-      }
-      const ext = extname(filePath)
-      // Pre-fix shape was \`if (ext && ext !== ".html")\` which made the
-      // static branch silently refuse to serve .html files — INCLUDING
-      // the root \`/\` → \`index.html\` mapping the line above explicitly
-      // sets up. Result: GET / always fell through to SSR, even when an
-      // \`index.html\` shell existed in clientDir. Matches the bun
-      // adapter's behavior (which serves index.html at /) and the
-      // standard static + dynamic deployment pattern.
-      if (ext) {
+    const ext = extname(url.pathname)
+    if (ext && ext !== ".html") {
+      try {
+        const filePath = join(clientDir, url.pathname)
+        // Prevent path traversal — ensure resolved path stays within clientDir.
+        const { resolve } = await import("node:path")
+        const resolved = resolve(filePath)
+        if (!resolved.startsWith(resolve(clientDir))) {
+          res.writeHead(403)
+          res.end("Forbidden")
+          return
+        }
         const data = await readFile(filePath)
         const mime = MIME_TYPES[ext] || "application/octet-stream"
         res.writeHead(200, {
@@ -91,8 +93,8 @@ const server = createServer(async (req, res) => {
         })
         res.end(data)
         return
-      }
-    } catch {}
+      } catch {}
+    }
   }
 
   // Fall through to SSR handler.

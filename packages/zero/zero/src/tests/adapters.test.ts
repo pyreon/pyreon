@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
-import { readFile, rm, mkdir } from 'node:fs/promises'
+import { readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { resolveAdapter } from '../adapters'
 import { vercelAdapter } from '../adapters/vercel'
@@ -304,6 +304,127 @@ describe('static adapter build', () => {
 
     expect(existsSync(join(outDir, 'index.html'))).toBe(true)
 
+    await cleanup()
+  })
+})
+
+// ─── Bug A regression — clientOutDir === outDir (the real SSR-plugin shape) ──
+//
+// The zero SSR plugin (`ssr-plugin.ts`) calls every adapter with
+// `clientOutDir === outDir === distDir` and the server bundle already at
+// `distDir/server/entry-server.js`. A naive `cp(clientOutDir, outDir/<sub>)`
+// is then a copy-into-self → `ERR_FS_CP_EINVAL`, which aborts the adapter
+// BEFORE it writes its runtime entry — so `node dist/index.js` (etc.) never
+// exists and SSR/ISR builds ship a client bundle with no runnable server.
+// The pre-existing build tests above use a DISTINCT mock client dir and so
+// never exercised this. These assert each adapter stages correctly when the
+// client source IS the output dir.
+
+const SAME = join(TMP, 'same-dir-dist')
+
+async function setupSameDirBuild() {
+  await rm(TMP, { recursive: true, force: true })
+  // Mimic the post-build state: client assets at the dist root + the inner
+  // SSR build's output already at dist/server.
+  await mkdir(join(SAME, 'assets'), { recursive: true })
+  await mkdir(join(SAME, 'server'), { recursive: true })
+  await writeFile(join(SAME, 'index.html'), '<html></html>')
+  await writeFile(join(SAME, 'assets', 'app.js'), 'console.log(1)')
+  await writeFile(join(SAME, 'server', 'entry-server.js'), 'export default () => new Response("ok")')
+}
+
+describe('adapter build with clientOutDir === outDir (Bug A regression)', () => {
+  it('node: stages client → client/, keeps server/, writes the runtime entry (no EINVAL)', async () => {
+    await setupSameDirBuild()
+    await nodeAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(SAME, 'server', 'entry-server.js'),
+      clientOutDir: SAME,
+      outDir: SAME,
+      config: {},
+    })
+    expect(existsSync(join(SAME, 'client', 'index.html'))).toBe(true)
+    expect(existsSync(join(SAME, 'client', 'assets', 'app.js'))).toBe(true)
+    expect(existsSync(join(SAME, 'server', 'entry-server.js'))).toBe(true)
+    expect(existsSync(join(SAME, 'index.js'))).toBe(true)
+    expect(existsSync(join(SAME, 'package.json'))).toBe(true)
+    // index.html is copied INTO client/ AND preserved at the root (so a flat
+    // `vite preview` on outDir still serves it).
+    expect(existsSync(join(SAME, 'index.html'))).toBe(true)
+    await cleanup()
+  })
+
+  it('bun: stages client → client/, keeps server/, writes the runtime entry (no EINVAL)', async () => {
+    await setupSameDirBuild()
+    await bunAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(SAME, 'server', 'entry-server.js'),
+      clientOutDir: SAME,
+      outDir: SAME,
+      config: {},
+    })
+    expect(existsSync(join(SAME, 'client', 'index.html'))).toBe(true)
+    expect(existsSync(join(SAME, 'server', 'entry-server.js'))).toBe(true)
+    expect(existsSync(join(SAME, 'index.ts'))).toBe(true)
+    await cleanup()
+  })
+
+  it('static: leaves the flat client in place (no-op, no EINVAL)', async () => {
+    await setupSameDirBuild()
+    await staticAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(SAME, 'server', 'entry-server.js'),
+      clientOutDir: SAME,
+      outDir: SAME,
+      config: {},
+    })
+    expect(existsSync(join(SAME, 'index.html'))).toBe(true)
+    await cleanup()
+  })
+
+  it('vercel: stages client → .vercel/output/static, server → functions (no EINVAL)', async () => {
+    await setupSameDirBuild()
+    await vercelAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(SAME, 'server', 'entry-server.js'),
+      clientOutDir: SAME,
+      outDir: SAME,
+      config: {},
+    })
+    const vercelDir = join(SAME, '.vercel', 'output')
+    expect(existsSync(join(vercelDir, 'static', 'index.html'))).toBe(true)
+    expect(existsSync(join(vercelDir, 'functions', 'ssr.func', 'entry-server.js'))).toBe(true)
+    expect(existsSync(join(vercelDir, 'config.json'))).toBe(true)
+    await cleanup()
+  })
+
+  it('netlify: stages client → publish/, server → functions/_server (no EINVAL)', async () => {
+    await setupSameDirBuild()
+    await netlifyAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(SAME, 'server', 'entry-server.js'),
+      clientOutDir: SAME,
+      outDir: SAME,
+      config: {},
+    })
+    expect(existsSync(join(SAME, 'publish', 'index.html'))).toBe(true)
+    expect(existsSync(join(SAME, 'netlify', 'functions', '_server', 'entry-server.js'))).toBe(true)
+    expect(existsSync(join(SAME, 'netlify.toml'))).toBe(true)
+    await cleanup()
+  })
+
+  it('cloudflare: leaves flat client, copies server → _server (no EINVAL)', async () => {
+    await setupSameDirBuild()
+    await cloudflareAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(SAME, 'server', 'entry-server.js'),
+      clientOutDir: SAME,
+      outDir: SAME,
+      config: {},
+    })
+    expect(existsSync(join(SAME, 'index.html'))).toBe(true)
+    expect(existsSync(join(SAME, '_server', 'entry-server.js'))).toBe(true)
+    expect(existsSync(join(SAME, '_worker.js'))).toBe(true)
     await cleanup()
   })
 })
@@ -964,9 +1085,11 @@ describe('bun adapter — runtime contract', () => {
   )
 
   it.skipIf(!hasBun)(
-    'emitted entry boots — static file served with cache-control',
+    'emitted entry boots — real asset served with cache-control; GET / SSRs',
     async () => {
       await setupMockBuild()
+      // A real static asset alongside the template shell.
+      await writeFile(join(MOCK_CLIENT, 'app.js'), 'console.log("static asset")')
       const outDir = join(TMP, 'bun-runtime-static')
       const port = await pickFreePort()
       const adapter = bunAdapter()
@@ -980,11 +1103,16 @@ describe('bun adapter — runtime contract', () => {
 
       const stop = await startBunServer(join(outDir, 'index.ts'), port)
       try {
-        // GET / → /index.html (the explicit root mapping in the harness).
-        const res = await fetch(`http://127.0.0.1:${port}/`)
-        expect(res.status).toBe(200)
-        expect(await res.text()).toBe('<html></html>')
-        expect(res.headers.get('cache-control')).toContain('max-age')
+        // Real asset → served statically with a cache-control header.
+        const asset = await fetch(`http://127.0.0.1:${port}/app.js`)
+        expect(asset.status).toBe(200)
+        expect(await asset.text()).toBe('console.log("static asset")')
+        expect(asset.headers.get('cache-control')).toContain('max-age')
+        // GET / → SSR handler ("ok"), NOT the static template shell — same
+        // SSR-mode contract as the node adapter.
+        const root = await fetch(`http://127.0.0.1:${port}/`)
+        expect(root.status).toBe(200)
+        expect(await root.text()).toBe('ok')
       } finally {
         await stop()
         await cleanup()
@@ -1010,28 +1138,22 @@ describe('bun adapter — runtime contract', () => {
 
 // ─── Node adapter — runtime contract (spawn-and-curl) ────────────────────────
 //
-// Second adapter to gain a runtime-contract gate (after bun, PR #752). Same
-// proven shape: spawn the emitted entry as a subprocess, drive real HTTP
-// requests, assert on responses. Node is already in CI so no extra install
-// is required — `node` is in PATH.
+// Spawn the emitted entry as a subprocess, drive real HTTP requests, assert
+// on responses. Node is already in CI (`node` in PATH), so no extra install.
 //
-// The audit pass that drove this PR found TWO real bugs the existing
-// shape-only tests couldn't reach:
+// SSR-mode static-serving contract: the emitted harness serves ONLY real
+// static assets (js/css/images/fonts) from clientDir. `/` and any `.html`
+// path fall through to the SSR handler so the home route + HTML routes are
+// SERVER-RENDERED — in `mode: 'ssr'` clientDir holds the UNFILLED SSR
+// template (`<!--pyreon-app-->`), NOT prerendered pages, so static-serving
+// index.html at `/` would ship the empty shell and silently defeat SSR for
+// the home route. The `mode: 'stream'` test below additionally proves the
+// harness pipes the Response body incrementally rather than buffering it via
+// `await response.text()` (which would collapse Suspense chunks into one
+// ending burst — strictly worse than `mode: 'string'`).
 //
-//   1. `GET /` falls through to SSR instead of serving the static
-//      `index.html` — the emitted harness maps `/` → `index.html` in the
-//      filePath builder, but then the next gate `if (ext && ext !== ".html")`
-//      excludes `.html` files, so the static branch never serves them.
-//      The intent (map `/` to root index) and the gate (refuse to serve
-//      HTML) are contradictory.
-//   2. `mode: 'stream'` is silently defeated — the emitted harness calls
-//      `await response.text()` to buffer the FULL SSR response body before
-//      writing it to the client socket. Suspense chunks queue up server-side
-//      and arrive at the client all at once at the end — strictly worse
-//      than `mode: 'string'` because the buffering happens twice.
-//
-// The runtime-contract tests fail against the broken harness, pass against
-// the fixed harness. Bisect-verified per the testing rule.
+// The runtime-contract tests fail against a broken harness, pass against the
+// fixed one. Bisect-verified per the testing rule.
 
 describe('node adapter — runtime contract', () => {
   // node is always in PATH inside the monorepo's bun runtime — but bun
@@ -1193,21 +1315,22 @@ describe('node adapter — runtime contract', () => {
   )
 
   it.skipIf(!hasNode)(
-    'emitted entry boots — GET / serves the static index.html (NOT the SSR fallback)',
+    'emitted entry boots — GET / is SERVER-RENDERED, not the static template shell',
     async () => {
-      // BUG A: the emitted harness maps `GET /` → `clientDir/index.html`
-      // in its filePath builder, but the subsequent `if (ext && ext !==
-      // ".html")` gate excludes .html files from the static branch — so
-      // the root index was never served and ALL requests for `/` fell
-      // through to the SSR handler. For a static-export-first deploy
-      // with no SSR route mounted at `/`, this returns the mock "ok"
-      // instead of the SPA shell, breaking the static-export pattern
-      // entirely.
+      // SSR-mode contract (the Bug C fix): in `mode: 'ssr'` the client build
+      // emits the UNFILLED SSR template at index.html
+      // (`<div id="app"><!--pyreon-app--></div>`), NOT a prerendered page.
+      // The emitted harness must therefore NOT static-serve index.html at `/`
+      // — doing so ships the empty shell and the home route is never
+      // server-rendered. `/` (and any .html path) falls through to the SSR
+      // handler, which renders the route. Real assets (js/css/…) are still
+      // served statically (proven by the asset test above). A static SPA
+      // shell at `/` is what `mode: 'spa'` / the static adapter are for.
       await setupMockBuild()
-      const { writeFile } = await import('node:fs/promises')
+      // Even with an index.html present in clientDir, GET / must SSR it.
       await writeFile(
         join(MOCK_CLIENT, 'index.html'),
-        '<html><body>STATIC INDEX HTML</body></html>',
+        '<html><body><div id="app"><!--pyreon-app--></div></body></html>',
       )
 
       const outDir = join(TMP, 'node-runtime-root')
@@ -1225,8 +1348,11 @@ describe('node adapter — runtime contract', () => {
       try {
         const res = await fetch(`http://127.0.0.1:${port}/`)
         expect(res.status).toBe(200)
-        expect(await res.text()).toContain('STATIC INDEX HTML')
-        expect(res.headers.get('content-type')).toContain('html')
+        const body = await res.text()
+        // The SSR handler's output ("ok"), NOT the static template shell.
+        expect(body).toBe('ok')
+        // The unfilled template placeholder must NEVER reach the client.
+        expect(body).not.toContain('<!--pyreon-app-->')
       } finally {
         await stop()
         await cleanup()
