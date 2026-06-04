@@ -32,10 +32,27 @@ function buildEntry(o: UseHeadInput): HeadEntry {
   })
   o.script?.forEach((s, i) => {
     const { children, ...rest } = s
+    // Default `<script src=...>` tags to non-blocking: if the script
+    // has a `src` AND the author hasn't picked a load strategy
+    // explicitly (no `type`, `async`, OR `defer`), add `defer` so the
+    // script doesn't block HTML parsing. This is the modern best
+    // practice — Mozilla's "Web Performance Score" + Google's Core
+    // Web Vitals both penalize render-blocking scripts. Inline
+    // scripts (no `src`) are left alone (they're explicit synchronous
+    // content by design); `type="module"` is also left alone (modules
+    // are deferred by default per the HTML spec).
+    const noLoadStrategy =
+      rest.src !== undefined &&
+      rest.type === undefined &&
+      rest.async === undefined &&
+      rest.defer === undefined
+    const propsWithDefault = noLoadStrategy
+      ? { ...rest, defer: '' }
+      : rest
     tags.push({
       tag: 'script',
       key: s.src ?? `script-${i}`,
-      props: toProps(rest as Record<string, string | undefined>),
+      props: toProps(propsWithDefault as Record<string, string | undefined>),
       ...(children != null ? { children } : {}),
     })
   })
