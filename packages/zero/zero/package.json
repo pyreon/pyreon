@@ -43,6 +43,11 @@
       "import": "./lib/image.js",
       "types": "./lib/types/image.d.ts"
     },
+    "./no-optimize": {
+      "bun": "./src/no-optimize.tsx",
+      "import": "./lib/no-optimize.js",
+      "types": "./lib/types/no-optimize.d.ts"
+    },
     "./link": {
       "bun": "./src/link.tsx",
       "import": "./lib/link.js",

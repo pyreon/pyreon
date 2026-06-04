@@ -3,6 +3,7 @@ import { createRef, mergeProps, splitProps } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
 import { signal } from '@pyreon/reactivity'
 import type { FormatSource, ProcessedImage } from './image-plugin'
+import { useNoOptimize } from './no-optimize'
 import { useIntersectionObserver } from './utils/use-intersection-observer'
 
 // ─── Image optimization component ───────────────────────────────────────────
@@ -380,11 +381,15 @@ type ImageDisplayProps = Omit<
 export type ImageDescriptorProps = ImageDisplayProps & {
   src: ProcessedImage
   /**
-   * Bypass the optimization pipeline — renders a bare `<img>` with the
-   * descriptor's `src` + intrinsic dimensions. Use when a parent layout
-   * needs full control (an `inset: 0` fill, a custom container, etc).
+   * Optimization opt-out / opt-back-in.
+   *
+   *   - `false` → bypass the optimization pipeline; render a bare `<img>`.
+   *   - `true`  → force optimization ON even inside an outer `<NoOptimize>`
+   *               boundary (caller intent wins over a parent's opt-out).
+   *   - omitted → respect the surrounding `<NoOptimize>` if present, else
+   *               full optimization (default).
    */
-  optimize?: false
+  optimize?: boolean
   /** Override descriptor width — almost always unnecessary. */
   width?: number
   /** Override descriptor height — almost always unnecessary. */
@@ -402,8 +407,12 @@ export type ImageUrlProps = ImageDisplayProps & {
   src: string
   width: number
   height: number
-  /** Bypass optimization — renders a bare `<img>` without the wrapper. */
-  optimize?: false
+  /**
+   * Optimization opt-out / opt-back-in. See `ImageDescriptorProps.optimize`
+   * for the full semantics (false=bypass, true=force-on inside <NoOptimize>,
+   * omitted=default-respect-boundary).
+   */
+  optimize?: boolean
   /** Manual srcset (rarely needed; the descriptor form is preferred). */
   srcset?: string | ImageSource[]
   formats?: FormatSource[]
@@ -445,7 +454,15 @@ export function Image(props: ImageDescriptorProps | ImageUrlProps): any {
 
   const src = local.src
   const isDescriptor = typeof src === 'object' && src !== null
-  const isBypass = local.optimize === false
+  // Bypass triggers from THREE sources (any-of):
+  //   1. Per-call `optimize={false}`.
+  //   2. Surrounding `<NoOptimize>` boundary (subtree-scoped opt-out).
+  //   3. (Future) per-route convention via meta.
+  // Per-call `optimize={true}` is the explicit re-enable form that
+  // overrides a surrounding `<NoOptimize>` — caller intent wins.
+  const noOptimizeBoundary = useNoOptimize()
+  const isBypass =
+    local.optimize === false || (noOptimizeBoundary && local.optimize !== true)
 
   if (isBypass) {
     // Bare <img>, no optimization wrapper, no lazy load — the documented
