@@ -116,30 +116,33 @@ describe('RX-1 — rx namespace lowering', () => {
     // BUT the parser now emits a directed warning naming the missing
     // method — the user knows exactly what's not yet supported instead
     // of getting no signal.
+    // Use rx.partition — still Strategy B (needs tuple emit / runtime
+    // port). count / take / sum / etc. all moved into the v1 set in
+    // the full Strategy-A landing.
     const UNSUPPORTED = `
 import { rx } from '@pyreon/rx'
 import { signal } from '@pyreon/reactivity'
 
 export function P() {
   const xs = signal<number[]>([])
-  const c = rx.count(xs)
+  const parts = rx.partition(xs, (n) => n > 0)
   return null
 }
 `
-    it('warns about rx.count (not yet lowered)', () => {
+    it('warns about rx.partition (not yet lowered)', () => {
       const result = transform(UNSUPPORTED, { target: 'swift' })
       expect(
         (result.warnings ?? []).some((w) =>
-          /rx\.count is not yet lowered/.test(w),
+          /rx\.partition is not yet lowered/.test(w),
         ),
       ).toBe(true)
     })
 
     it('still drops the binding (the original bug shape, until the follow-up lands)', () => {
       const result = transform(UNSUPPORTED, { target: 'swift' })
-      // The `c` binding is absent — same as the pre-RX-1 silent-drop
+      // The `parts` binding is absent — same as the pre-RX-1 silent-drop
       // bug. The warning IS the signal; the emit is the same as before.
-      expect(result.code).not.toMatch(/\bvar c\b|\blet c\b/)
+      expect(result.code).not.toMatch(/\bvar parts\b|\blet parts\b/)
     })
   })
 

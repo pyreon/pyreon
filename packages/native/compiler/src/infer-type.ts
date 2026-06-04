@@ -259,6 +259,54 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // Bare spread outside a context — degrade. The array case
       // handles the common path.
       return { kind: 'unknown' }
+    case 'rx-call': {
+      // RX-2 — type-infer `rx.METHOD(...)` results so the emitted
+      // computed properties get useful Swift return-type annotations.
+      // Mirrors the per-method dispatch in emit-{swift,kotlin}.ts.
+      const sourceType = inferType(expr.source, ctx)
+      const elementType: TypeIR =
+        sourceType.kind === 'array' ? sourceType.element : { kind: 'unknown' }
+      switch (expr.method) {
+        // Transforms preserving the source's element type → Array<T>.
+        case 'filter':
+        case 'reverse':
+        case 'take':
+        case 'skip':
+        case 'takeWhile':
+        case 'dropWhile':
+          return { kind: 'array', element: elementType }
+        // map / compact / flatten — element type would need arrow body
+        // typeflow (map) or per-method semantics (compact strips null,
+        // flatten unwraps a level). Degrade to Array<unknown> — Swift
+        // will still typecheck via the per-call closure inference.
+        case 'map':
+        case 'compact':
+        case 'flatten':
+        case 'unique':
+          return { kind: 'array', element: { kind: 'unknown' } }
+        // Scalar accessors — return the element type (Swift first/last
+        // are Optional<T>, but the IR has no Optional kind; Swift
+        // accepts the unwrapped type at the consumer site because
+        // these properties are typed contextually).
+        case 'first':
+        case 'last':
+        case 'find':
+          return elementType
+        // Boolean predicates.
+        case 'some':
+        case 'every':
+          return { kind: 'boolean' }
+        // Numeric aggregations.
+        case 'count':
+        case 'sum':
+        case 'min':
+        case 'max':
+        case 'average':
+        case 'reduce':
+          return { kind: 'number' }
+      }
+      return { kind: 'unknown' }
+    }
     case 'arrow':
     case 'jsx-element':
     case 'jsx-fragment':

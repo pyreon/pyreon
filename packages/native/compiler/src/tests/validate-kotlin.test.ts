@@ -57,6 +57,7 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // kotlinc passing here proves the lowering produces well-formed
     // Compose code.
     'rx-lowering.tsx',
+    'rx-full.tsx',
   ] as const
 
   for (const fixture of fixtures) {
