@@ -20,8 +20,14 @@ export default defineNodeConfig({
   // a combinatorial test matrix that doesn't scale to the maintenance cost.
   coverageThresholds: {
     statements: 95,
-    branches: 91,
+    branches: 92,
     functions: 95,
     lines: 95,
   },
+  // 2026-06: branch-coverage-95-floor.test.tsx added Stagger prop-default
+  // arms (interval/appear/reverseLeave/timeout nullish), reverseLeave
+  // edge cases. Lifted branches 91.15 → 92.47 (+1.32pp). Remaining ~3pp
+  // gap to MINIMUM_BRANCH_FLOOR=95 in animation lifecycle defensive arms
+  // (Transition/Collapse/TransitionGroup timing fallbacks) exercised by
+  // kinetic.browser.test.tsx + ui-showcase e2e in real Chromium.
 })
