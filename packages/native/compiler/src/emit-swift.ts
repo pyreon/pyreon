@@ -1069,6 +1069,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Swift closure: `{ params in body }`.
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
       return `{ ${e.params.map(swiftIdent).join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
+    case 'rx-call':
+      return emitSwiftRxCall(e, indent)
     case 'jsx-element':
       return emitSwiftJsx(e, indent)
     case 'jsx-fragment': {
@@ -2701,4 +2703,96 @@ function extractMemberPath(expr: ExprIR): string {
 function escapeSwiftInterp(s: string): string {
   // Escape backslashes + double-quotes + the `\(` interpolation marker.
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\\\(/g, '\\\\(')
+}
+
+/**
+ * Lower a `kind: 'rx-call'` ExprIR to Swift. Dispatches on `method` to
+ * produce idiomatic Swift code on `Array<T>`. Mirrors emitKotlinRxCall
+ * in shape; the per-method lowerings are documented in
+ * docs/docs/multiplatform-libraries.md (Strategy A table).
+ *
+ * Predicate / mapper / reducer args are inlined as Swift closures
+ * (`{ t in body }`); count args inline as Swift Int literals.
+ */
+function emitSwiftRxCall(
+  e: { method: string; source: ExprIR; args: ExprIR[] },
+  indent: number,
+): string {
+  const src = emitSwiftExpr(e.source, indent)
+  const arg = (i: number): string =>
+    e.args[i] === undefined ? '' : emitSwiftExpr(e.args[i] as ExprIR, indent)
+  switch (e.method) {
+    // Transforms returning a new collection — first six match the JS
+    // method names on Swift `Array<T>`.
+    case 'filter':
+      return `${src}.filter(${arg(0)})`
+    case 'map':
+      return `${src}.map(${arg(0)})`
+    case 'reverse':
+      return `${src}.reversed()`
+    case 'compact':
+      // JS rx.compact drops null/undefined; Swift Array<T?> uses
+      // compactMap which unwraps and drops nil.
+      return `${src}.compactMap { $0 }`
+    case 'flatten':
+      // Swift's joined() returns a FlattenSequence; Array(...) makes it
+      // a concrete Array<T> matching consumer expectations.
+      return `Array(${src}.joined())`
+    case 'unique':
+      // Requires T: Hashable. Array(Set(_:)) drops duplicates but does
+      // NOT preserve insertion order — Swift's stdlib has no
+      // order-preserving distinct() in Foundation. Matches rx.unique's
+      // "set of unique values" semantic; for ordered uniqueness the
+      // user can fall back to reduce.
+      return `Array(Set(${src}))`
+    // Bounded transforms — take / skip + their while variants. Swift's
+    // `.prefix(_:)` and `.dropFirst(_:)` return ArraySlice; Array(...)
+    // promotes to a concrete Array<T>.
+    case 'take':
+      return `Array(${src}.prefix(${arg(0)}))`
+    case 'skip':
+      return `Array(${src}.dropFirst(${arg(0)}))`
+    case 'takeWhile':
+      return `Array(${src}.prefix(while: ${arg(0)}))`
+    case 'dropWhile':
+      return `Array(${src}.drop(while: ${arg(0)}))`
+    // Scalar accessors — first/last as properties (Optional<T>),
+    // find/some/every as predicate-returning methods.
+    case 'first':
+      return `${src}.first`
+    case 'last':
+      return `${src}.last`
+    case 'find':
+      return `${src}.first(where: ${arg(0)})`
+    case 'some':
+      return `${src}.contains(where: ${arg(0)})`
+    case 'every':
+      return `${src}.allSatisfy(${arg(0)})`
+    // Aggregations — count/sum/min/max + the reduce + average combos.
+    case 'count':
+      return `${src}.count`
+    case 'sum':
+      // Swift Array<Numeric> has reduce(_:_:) but no direct .sum() —
+      // reduce(0, +) is the idiomatic shape.
+      return `${src}.reduce(0, +)`
+    case 'min':
+      return `${src}.min()`
+    case 'max':
+      return `${src}.max()`
+    case 'reduce':
+      // rx.reduce(s, reducer, initial) ≈ Swift reduce(initial, reducer).
+      // Arg 0 = reducer fn, Arg 1 = initial. JS argument order is
+      // (reducer, initial); Swift's is (initial, reducer) — we flip.
+      return `${src}.reduce(${arg(1)}, ${arg(0)})`
+    case 'average': {
+      // Multi-statement Swift closure: bind reduce sum, branch on
+      // empty, divide. IIFE for expression-position usage.
+      return `({ let __xs = ${src}; return __xs.isEmpty ? 0 : Double(__xs.reduce(0, +)) / Double(__xs.count) }())`
+    }
+    default:
+      // Defensive — parse.ts's RX_V1_METHODS set is the authoritative
+      // gate, but if a method slips through we emit a noisy `?rx.X?`
+      // marker so missing dispatch is obvious in failed swiftc output.
+      return `/* unsupported rx.${e.method} */ ${src}`
+  }
 }

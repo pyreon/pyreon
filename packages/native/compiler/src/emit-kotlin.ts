@@ -979,6 +979,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'arrow':
       if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
       return `{ ${e.params.map(kotlinIdent).join(', ')} -> ${emitKotlinExpr(e.body, indent)} }`
+    case 'rx-call':
+      return emitKotlinRxCall(e, indent)
     case 'jsx-element':
       return emitKotlinJsx(e, indent)
     case 'jsx-fragment': {
@@ -2358,4 +2360,87 @@ function extractMemberPath(expr: ExprIR): string {
 function escapeKotlinInterp(s: string): string {
   // Escape backslashes, double-quotes, and `$` (Kotlin's interp marker).
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
+}
+
+/**
+ * Lower a `kind: 'rx-call'` ExprIR to Kotlin. Dispatches on `method` to
+ * produce idiomatic Kotlin code on `List<T>`. Mirrors emitSwiftRxCall
+ * in shape; the per-method lowerings are documented in
+ * docs/docs/multiplatform-libraries.md (Strategy A table).
+ *
+ * Predicate / mapper / reducer args are inlined as Kotlin lambdas
+ * (`{ t -> body }`); count args inline as Kotlin Int literals.
+ */
+function emitKotlinRxCall(
+  e: { method: string; source: ExprIR; args: ExprIR[] },
+  indent: number,
+): string {
+  const src = emitKotlinExpr(e.source, indent)
+  const arg = (i: number): string =>
+    e.args[i] === undefined ? '' : emitKotlinExpr(e.args[i] as ExprIR, indent)
+  switch (e.method) {
+    // Transforms — name-matched on Kotlin Collection<T> for the v1 set.
+    case 'filter':
+      return `${src}.filter(${arg(0)})`
+    case 'map':
+      return `${src}.map(${arg(0)})`
+    case 'reverse':
+      return `${src}.reversed()`
+    case 'compact':
+      // Kotlin's filterNotNull() is the idiomatic equivalent of JS rx.compact.
+      return `${src}.filterNotNull()`
+    case 'flatten':
+      return `${src}.flatten()`
+    case 'unique':
+      // Kotlin's distinct() is insertion-order-preserving — strictly
+      // better than Swift's Array(Set(...)). Matches rx.unique semantics.
+      return `${src}.distinct()`
+    case 'take':
+      return `${src}.take(${arg(0)})`
+    case 'skip':
+      return `${src}.drop(${arg(0)})`
+    case 'takeWhile':
+      return `${src}.takeWhile(${arg(0)})`
+    case 'dropWhile':
+      return `${src}.dropWhile(${arg(0)})`
+    // Scalar accessors — Kotlin's first/last throw on empty; we use
+    // the *OrNull variants to match Swift's Optional<T> semantics.
+    case 'first':
+      return `${src}.firstOrNull()`
+    case 'last':
+      return `${src}.lastOrNull()`
+    case 'find':
+      return `${src}.find(${arg(0)})`
+    case 'some':
+      return `${src}.any(${arg(0)})`
+    case 'every':
+      return `${src}.all(${arg(0)})`
+    // Aggregations — count/size, sum is direct, min/max use OrNull
+    // matching Swift Optional.
+    case 'count':
+      // `.size` is a property on List<T> (O(1) on RandomAccess lists).
+      return `${src}.size`
+    case 'sum':
+      // Iterable<Int>.sum() / Iterable<Double>.sum() are stdlib
+      // extension functions. For non-numeric T the user should use
+      // reduce; this lowering assumes the consumer passes a numeric
+      // source signal (matches rx.sum's type signature on the web).
+      return `${src}.sum()`
+    case 'min':
+      return `${src}.minOrNull()`
+    case 'max':
+      return `${src}.maxOrNull()`
+    case 'reduce':
+      // rx.reduce(s, reducer, initial) ≈ Kotlin fold(initial, reducer).
+      // Same arg-flip as Swift (JS order: reducer-then-initial).
+      return `${src}.fold(${arg(1)}, ${arg(0)})`
+    case 'average': {
+      // Kotlin's Iterable<Number>.average() returns Double directly +
+      // returns NaN for empty (not 0). Match rx.average's "0 for empty"
+      // semantic explicitly via an empty-check lambda.
+      return `(${src}.let { if (it.isEmpty()) 0.0 else it.sum().toDouble() / it.size })`
+    }
+    default:
+      return `/* unsupported rx.${e.method} */ ${src}`
+  }
 }

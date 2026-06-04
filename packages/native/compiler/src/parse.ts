@@ -763,27 +763,70 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 }
 
 /**
- * RX-1 — `@pyreon/rx` namespace lowering. See the long-form rationale at
+ * v1 supported rx methods. Each name maps to per-target emit dispatch
+ * in `emit-swift.ts` + `emit-kotlin.ts`. The list defines the closed
+ * set; an unknown method name surfaces a directed warning and falls
+ * through to the original silent-drop bug (strictly no regression vs
+ * the original pre-RX-1 behaviour).
+ *
+ * v1 covers the full Strategy-A surface from the spec in
+ * docs/docs/multiplatform-libraries.md — collection ops that lower to
+ * native primitives on both Swift `[T]` and Kotlin `List<T>` without
+ * a runtime port. The deferred set (`pipe` / `debounce` / `throttle`
+ * / `combine` / `zip` / `merge` / `scan` / `distinct` / `search`)
+ * carries state OR scheduling and needs Strategy B — runtime ports.
+ *
+ * Methods deliberately deferred from v1 (need bigger emit shapes):
+ *   - `partition` (returns tuple)
+ *   - `groupBy` / `keyBy` / `uniqBy` (key-extractor → dict)
+ *   - `mapValues` (operates on dict, not list)
+ *   - `sortBy` with string-key variant (needs cross-target key emit)
+ *   - `sample` (RNG seeded per platform)
+ *   - `chunk` (Swift needs stride-based slicing — verbose)
+ */
+const RX_V1_METHODS = new Set([
+  'filter',
+  'map',
+  'reverse',
+  'count',
+  'sum',
+  'min',
+  'max',
+  'first',
+  'last',
+  'take',
+  'skip',
+  'takeWhile',
+  'dropWhile',
+  'find',
+  'some',
+  'every',
+  'unique',
+  'compact',
+  'flatten',
+  'reduce',
+  'average',
+])
+
+/**
+ * RX — `@pyreon/rx` namespace lowering. See the long-form rationale at
  * the call site in `tryExtractDecl`.
  *
  * Detects `const name = rx.METHOD(signal, ...)` shapes and rewrites them
- * into a `computed` DeclIR whose body invokes the equivalent native
- * collection method on the unwrapped signal. The emit pipelines (Swift +
- * Kotlin) already render `kind: 'computed'` declarations correctly, so
- * once we synthesise the right ExprIR no further per-target work is
- * needed for the same-name native methods (the v1 set: `filter` / `map`
- * / `reverse`).
+ * into a `computed` DeclIR whose body is a `kind: 'rx-call'` ExprIR.
+ * The per-target emitters (`emit-swift.ts` / `emit-kotlin.ts`) dispatch
+ * on the method name and produce idiomatic Swift / Kotlin native
+ * collection calls.
  *
  * Returns `null` when:
  *   - the callee isn't a MemberExpression
  *   - the MemberExpression's object isn't a bare `rx` identifier
- *   - the rx method isn't in the v1 supported set
- *   - any argument fails to parse (delegated to parseExpr's bail behavior)
+ *   - the rx method isn't in v1's supported set (warning fires)
+ *   - the source argument is missing
  *
  * Null falls through to the existing `calleeName === 'signal' | ...`
- * recognition chain. The conservative bail means a missing method case
- * still produces the original silent-drop bug — strictly no regression
- * vs `main` until each rx method is added here.
+ * recognition chain. Unknown methods get a directed warning instead of
+ * the original silent-drop — strictly better than `main`.
  */
 function tryRxNamespaceLowering(
   name: string,
@@ -807,65 +850,31 @@ function tryRxNamespaceLowering(
     )
     return null
   }
-  // v1 supported set — `rxMethod → nativeMethod` mapping. The values are
-  // method names valid on BOTH Swift `[T]` and Kotlin `List<T>`. Extending
-  // this set covers ~5 more methods mechanically; the divergent set (rx
-  // `count` → Swift `count` / Kotlin `size`, rx `take` → Swift
-  // `prefix` + Array-wrap / Kotlin `take`, etc.) needs per-target
-  // dispatch and lives in the immediate follow-up PR.
-  //
-  // The names are different from the rx method names in a few cases:
-  //   - `rx.reverse(s)` returns a new collection; the IMMUTABLE native
-  //     equivalent is `.reversed()` (not `.reverse()` which MUTATES on
-  //     both Swift `Array.reverse` and Kotlin `MutableList.reverse`).
-  //   - `filter` / `map` keep their names — Swift's `Array.filter(_:)`
-  //     and Kotlin's `Iterable.filter(...)` both match the JS shape.
-  const RX_METHOD_TO_NATIVE: Record<string, string> = {
-    filter: 'filter',
-    map: 'map',
-    reverse: 'reversed',
-  }
-  const nativeMethod = RX_METHOD_TO_NATIVE[methodName]
-  if (!nativeMethod) {
+  if (!RX_V1_METHODS.has(methodName)) {
     ctx.warnings.push(
-      `Declaration ${name}: rx.${methodName} is not yet lowered to native (RX-1 supports filter / map / reverse; other methods are silent-drop pending follow-up).`,
+      `Declaration ${name}: rx.${methodName} is not yet lowered to native (v1 covers ${[...RX_V1_METHODS].join(' / ')}; remaining methods need Strategy B runtime ports — see docs/docs/multiplatform-libraries.md).`,
     )
     return null
   }
 
-  // Build the lowered IR. Source `rx.filter(todos, t => !t.done)` becomes
-  // `computed(() => todos().filter(t => !t.done))`:
+  // Build the rx-call IR. The source signal becomes `signalName()` (a
+  // no-arg call expression that the per-target emit lowers to the
+  // unwrapped state binding). Args are method args (predicate, count,
+  // initial value, etc.) — passed through verbatim.
   //
-  //   ExprIR call {
-  //     callee: member {
-  //       object: call { callee: identifier 'todos', args: [] },
-  //       property: 'filter',
-  //     },
-  //     args: [arrow { params: ['t'], body: unary '!' (...) }]
-  //   }
-  //
-  // The signal-call wrap (`todos()` not `todos`) is what threads the
-  // reactivity through — the emit pipelines treat signal identifiers
-  // as their underlying state binding (`@State todos` on Swift; `val
-  // todos by remember { mutableStateOf(...) }` on Kotlin), and a
-  // computed-property reading `todos.value` / `todos` is the equivalent
-  // of Pyreon's `computed(() => todos())`.
+  // The rx-call IR is target-agnostic: each emitter switches on
+  // `method` and produces idiomatic Swift / Kotlin. See
+  // `emitSwiftExpr` / `emitKotlinExpr` `case 'rx-call':` blocks.
   const sourceExpr = parseExpr(sourceArg, ctx)
-  // Wrap the source in a no-arg call so the emit treats it as a signal
-  // read. For a direct signal identifier (`todos`), this produces
-  // `todos()` in IR which the emitters lower to `todos` (Swift @State)
-  // / `todos` (Kotlin by-delegated value). For a non-identifier source
-  // (e.g. nested `rx.filter(rx.map(...), ...)` — also a computed
-  // returning a collection), the call wrap is still semantically
-  // correct: `nested()` resolves the nested computed's value.
   const sourceCall: ExprIR = { kind: 'call', callee: sourceExpr, args: [] }
   const restArgs = args.slice(1).map((a) => parseExpr(a, ctx))
-  const loweredExpr: ExprIR = {
-    kind: 'call',
-    callee: { kind: 'member', object: sourceCall, property: nativeMethod },
+  const rxCallExpr: ExprIR = {
+    kind: 'rx-call',
+    method: methodName,
+    source: sourceCall,
     args: restArgs,
   }
-  return { kind: 'computed', name, expr: loweredExpr }
+  return { kind: 'computed', name, expr: rxCallExpr }
 }
 
 /**

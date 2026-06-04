@@ -58,6 +58,7 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // body native collection calls. swiftc-parse passing here proves the
     // lowering produces well-formed Swift.
     'rx-lowering.tsx',
+    'rx-full.tsx',
   ] as const
 
   for (const fixture of fixtures) {
