@@ -48,6 +48,11 @@
       "import": "./lib/no-optimize.js",
       "types": "./lib/types/no-optimize.d.ts"
     },
+    "./use-resource-hints": {
+      "bun": "./src/use-resource-hints.ts",
+      "import": "./lib/use-resource-hints.js",
+      "types": "./lib/types/use-resource-hints.d.ts"
+    },
     "./link": {
       "bun": "./src/link.tsx",
       "import": "./lib/link.js",
