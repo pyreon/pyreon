@@ -14,6 +14,8 @@
  *   explain_error             — Assemble a failure dossier from a full error report (incl. reactiveTrace)
  *   get_routes                — List all routes in the current project
  *   get_components            — List all components with their props and signals
+ *   get_content_collection    — Enumerate @pyreon/zero-content collections (or one by name)
+ *   get_content_entry         — Fetch a single content entry's frontmatter + heading outline
  *   get_browser_smoke_status  — Report which browser-categorized packages have smoke coverage
  *   get_pattern               — Fetch a "how do I do X" pattern body from docs/patterns/
  *   get_anti_patterns         — Browse the anti-patterns catalog, optionally filtered by category
@@ -39,7 +41,7 @@ import {
   migrateReactCode,
 } from '@pyreon/compiler'
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { z } from 'zod'
 import packageJson from '../package.json' with { type: 'json' }
 import {
@@ -58,6 +60,11 @@ import {
   suggestChangelogs,
 } from './changelog'
 import {
+  getContentCollection,
+  getContentCollections,
+  getContentEntry,
+} from './content'
+import {
   findPattern,
   formatPatternBody,
   formatPatternIndex,
@@ -74,6 +81,11 @@ import { generateContext, type ProjectContext } from './project-scanner'
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] }
+}
+
+function relativeToCwd(abs: string, cwd: string): string {
+  const rel = relative(cwd, abs)
+  return rel.startsWith('..') ? abs : rel
 }
 
 export function createServer(): McpServer {
@@ -362,6 +374,130 @@ server.tool('get_components', {}, async () => {
 
   return textResult(`**Components (${ctx.components.length}):**\n\n${compList}`)
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tool: get_content_collection
+// ═══════════════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'get_content_collection',
+  {
+    name: z.string().optional(),
+  },
+  async ({ name }) => {
+    const cwd = process.cwd()
+    if (name) {
+      const collection = getContentCollection(cwd, name)
+      if (!collection) {
+        const all = getContentCollections(cwd)
+        if (all.length === 0) {
+          return textResult(
+            'No `content.config.{ts,mts,js,mjs}` found in this project. ' +
+              '`get_content_collection` works with `@pyreon/zero-content`-shaped apps.',
+          )
+        }
+        const names = all.map((c) => c.name).join(', ')
+        return textResult(
+          `Collection \`${name}\` not found. Known collections: ${names}`,
+        )
+      }
+      const header = `# Collection: \`${collection.name}\` (${collection.type})`
+      const meta = [
+        `- **Config**: \`${relativeToCwd(collection.configPath, cwd)}\``,
+        `- **Content dir**: \`${relativeToCwd(collection.contentDir, cwd)}\``,
+        `- **Entries**: ${collection.entries.length}`,
+      ].join('\n')
+      const rows = collection.entries
+        .map(
+          (e) =>
+            `- \`${e.slug || '(index)'}\` — ${e.title ?? '*(missing title)*'} (\`${e.relPath}\`)`,
+        )
+        .join('\n')
+      return textResult(
+        `${header}\n\n${meta}\n\n## Entries\n\n${rows || '*(no markdown entries found)*'}`,
+      )
+    }
+    // No name → list all collections.
+    const all = getContentCollections(cwd)
+    if (all.length === 0) {
+      return textResult(
+        'No `content.config.{ts,mts,js,mjs}` found in this project. ' +
+          '`get_content_collection` works with `@pyreon/zero-content`-shaped apps.',
+      )
+    }
+    const rows = all
+      .map(
+        (c) =>
+          `- \`${c.name}\` (${c.type}) — ${c.entries.length} entr${c.entries.length === 1 ? 'y' : 'ies'} at \`${relativeToCwd(c.contentDir, cwd)}\``,
+      )
+      .join('\n')
+    return textResult(`# Content collections (${all.length})\n\n${rows}`)
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tool: get_content_entry
+// ═══════════════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'get_content_entry',
+  {
+    collection: z.string(),
+    slug: z.string(),
+  },
+  async ({ collection, slug }) => {
+    const cwd = process.cwd()
+    const entry = getContentEntry(cwd, collection, slug)
+    if (!entry) {
+      const c = getContentCollection(cwd, collection)
+      if (!c) {
+        const all = getContentCollections(cwd)
+        if (all.length === 0) {
+          return textResult(
+            'No `content.config.{ts,mts,js,mjs}` found in this project.',
+          )
+        }
+        const names = all.map((cc) => cc.name).join(', ')
+        return textResult(
+          `Collection \`${collection}\` not found. Known collections: ${names}`,
+        )
+      }
+      const close = c.entries
+        .filter((e) => e.slug.includes(slug) || slug.includes(e.slug))
+        .slice(0, 5)
+        .map((e) => `  - \`${e.slug}\``)
+        .join('\n')
+      return textResult(
+        `Entry \`${collection}/${slug}\` not found.${
+          close ? `\n\nNearest matches:\n${close}` : ''
+        }`,
+      )
+    }
+    const headings = entry.headings
+      .map((h) => `${'  '.repeat(Math.max(0, h.level - 1))}- ${h.text}`)
+      .join('\n')
+    const fmRows = Object.entries(entry.frontmatter)
+      .map(([k, v]) => `- **${k}**: ${v}`)
+      .join('\n')
+    return textResult(
+      [
+        `# \`${collection}/${entry.slug || '(index)'}\``,
+        '',
+        `- **Path**: \`${entry.relPath}\``,
+        `- **Title**: ${entry.title ?? '*(missing)*'}`,
+        `- **Bytes**: ${entry.bytes}`,
+        '',
+        '## Frontmatter',
+        '',
+        fmRows || '*(none)*',
+        '',
+        '## Heading outline',
+        '',
+        headings || '*(no headings)*',
+      ].join('\n'),
+    )
+  },
+)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tool: get_browser_smoke_status
