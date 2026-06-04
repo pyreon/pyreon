@@ -53,6 +53,10 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     '13-canonical-overlay.tsx',
     '14-canonical-content.tsx',
     '15-canonical-link.tsx',
+    // RX-1: rx namespace lowering proof — same as Swift fixture loop;
+    // kotlinc passing here proves the lowering produces well-formed
+    // Compose code.
+    'rx-lowering.tsx',
   ] as const
 
   for (const fixture of fixtures) {

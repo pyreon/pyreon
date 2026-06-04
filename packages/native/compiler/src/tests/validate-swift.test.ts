@@ -53,6 +53,11 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     '13-canonical-overlay.tsx',
     '14-canonical-content.tsx',
     '15-canonical-link.tsx',
+    // RX-1: rx namespace lowering proof — exercises rx.filter / rx.map /
+    // rx.reverse, which `tryRxNamespaceLowering` rewrites into computed-
+    // body native collection calls. swiftc-parse passing here proves the
+    // lowering produces well-formed Swift.
+    'rx-lowering.tsx',
   ] as const
 
   for (const fixture of fixtures) {
