@@ -1148,11 +1148,16 @@ describe('bun adapter — runtime contract', () => {
   )
 
   it.skipIf(!hasBun)(
-    'emitted entry boots — real asset served with cache-control; GET / SSRs',
+    'emitted entry boots — /assets/* immutable, non-hashed root .js NOT immutable; GET / SSRs',
     async () => {
       await setupMockBuild()
-      // A real static asset alongside the template shell.
-      await writeFile(join(MOCK_CLIENT, 'app.js'), 'console.log("static asset")')
+      const { mkdir } = await import('node:fs/promises')
+      // A content-hashed asset under /assets/ — safe to cache forever.
+      await mkdir(join(MOCK_CLIENT, 'assets'), { recursive: true })
+      await writeFile(join(MOCK_CLIENT, 'assets', 'index-abc123.js'), 'console.log("hashed")')
+      // A non-hashed root file (service worker / public config) — must NOT be
+      // immutable (the pre-fix handler keyed immutable on the .js extension).
+      await writeFile(join(MOCK_CLIENT, 'sw.js'), 'console.log("service worker")')
       const outDir = join(TMP, 'bun-runtime-static')
       const port = await pickFreePort()
       const adapter = bunAdapter()
@@ -1166,11 +1171,17 @@ describe('bun adapter — runtime contract', () => {
 
       const stop = await startBunServer(join(outDir, 'index.ts'), port)
       try {
-        // Real asset → served statically with a cache-control header.
-        const asset = await fetch(`http://127.0.0.1:${port}/app.js`)
-        expect(asset.status).toBe(200)
-        expect(await asset.text()).toBe('console.log("static asset")')
-        expect(asset.headers.get('cache-control')).toContain('max-age')
+        // Hashed asset under /assets/ → immutable.
+        const hashed = await fetch(`http://127.0.0.1:${port}/assets/index-abc123.js`)
+        expect(hashed.status).toBe(200)
+        expect(await hashed.text()).toBe('console.log("hashed")')
+        expect(hashed.headers.get('cache-control')).toContain('immutable')
+        // Non-hashed root .js → revalidatable, NEVER immutable (poisoning guard).
+        const sw = await fetch(`http://127.0.0.1:${port}/sw.js`)
+        expect(sw.status).toBe(200)
+        expect(await sw.text()).toBe('console.log("service worker")')
+        expect(sw.headers.get('cache-control')).not.toContain('immutable')
+        expect(sw.headers.get('cache-control')).toContain('max-age=3600')
         // GET / → SSR handler ("ok"), NOT the static template shell — same
         // SSR-mode contract as the node adapter.
         const root = await fetch(`http://127.0.0.1:${port}/`)
@@ -1340,21 +1351,25 @@ describe('node adapter — runtime contract', () => {
   )
 
   it.skipIf(!hasNode)(
-    'emitted entry boots — static .js file served with immutable cache-control',
+    'emitted entry boots — /assets/* is immutable-cached, a non-hashed root .js is NOT (deploy-poisoning guard)',
     async () => {
       await setupMockBuild()
-      // Add a .js file to the mock client dir so the static branch has
-      // something to find. The default mock only has index.html.
-      const { writeFile } = await import('node:fs/promises')
+      const { writeFile, mkdir } = await import('node:fs/promises')
+      // A content-hashed asset under /assets/ — safe to cache forever.
+      await mkdir(join(MOCK_CLIENT, 'assets'), { recursive: true })
       await writeFile(
-        join(MOCK_CLIENT, 'app.js'),
-        'console.log("static asset")',
+        join(MOCK_CLIENT, 'assets', 'index-abc123.js'),
+        'console.log("hashed")',
       )
+      // A non-hashed root file (e.g. a service worker / public config) — must
+      // NEVER be immutable-cached, or a stale copy is unevictable for a year.
+      // The pre-fix handler keyed immutable on the .js EXTENSION, so this WAS
+      // cached for a year (the bug).
+      await writeFile(join(MOCK_CLIENT, 'sw.js'), 'console.log("service worker")')
 
       const outDir = join(TMP, 'node-runtime-js')
       const port = await pickFreePort()
-      const adapter = nodeAdapter()
-      await adapter.build({
+      await nodeAdapter().build({
         kind: 'ssr',
         serverEntry: join(MOCK_SERVER, 'entry-server.js'),
         clientOutDir: MOCK_CLIENT,
@@ -1364,11 +1379,16 @@ describe('node adapter — runtime contract', () => {
 
       const stop = await startNodeServer(join(outDir, 'index.js'), port)
       try {
-        const res = await fetch(`http://127.0.0.1:${port}/app.js`)
-        expect(res.status).toBe(200)
-        expect(await res.text()).toBe('console.log("static asset")')
-        expect(res.headers.get('content-type')).toContain('javascript')
-        expect(res.headers.get('cache-control')).toContain('immutable')
+        const hashed = await fetch(`http://127.0.0.1:${port}/assets/index-abc123.js`)
+        expect(hashed.status).toBe(200)
+        expect(hashed.headers.get('content-type')).toContain('javascript')
+        expect(hashed.headers.get('cache-control')).toContain('immutable')
+
+        const sw = await fetch(`http://127.0.0.1:${port}/sw.js`)
+        expect(sw.status).toBe(200)
+        expect(await sw.text()).toBe('console.log("service worker")')
+        expect(sw.headers.get('cache-control')).not.toContain('immutable')
+        expect(sw.headers.get('cache-control')).toContain('max-age=3600')
       } finally {
         await stop()
         await cleanup()

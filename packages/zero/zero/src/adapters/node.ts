@@ -88,11 +88,19 @@ const server = createServer(async (req, res) => {
         }
         const data = await readFile(filePath)
         const mime = MIME_TYPES[ext] || "application/octet-stream"
+        // Immutable cache ONLY for content-hashed assets under /assets/ (Vite's
+        // hashed output dir — the same scope vercel/netlify use). Keying on the
+        // EXTENSION would 1-year-immutable-cache a non-hashed root file like
+        // public/sw.js or public/config.js — a deploy-poisoning bug (a stale
+        // service worker becomes unevictable). HTML must always revalidate
+        // (prerendered pages change on every content edit).
         res.writeHead(200, {
           "content-type": mime,
-          "cache-control": ext === ".js" || ext === ".css"
+          "cache-control": url.pathname.startsWith("/assets/")
             ? "public, max-age=31536000, immutable"
-            : "public, max-age=3600",
+            : ext === ".html"
+              ? "public, max-age=0, must-revalidate"
+              : "public, max-age=3600",
         })
         res.end(data)
         return

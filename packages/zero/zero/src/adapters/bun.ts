@@ -87,11 +87,19 @@ Bun.serve({
         }
         const file = Bun.file(candidate)
         if (await file.exists()) {
+          // Immutable cache ONLY for content-hashed assets under /assets/
+          // (Vite's hashed output dir — the same scope vercel/netlify use).
+          // Keying on the EXTENSION would 1-year-immutable-cache a non-hashed
+          // root file like public/sw.js or public/config.js — a deploy-poisoning
+          // bug (a stale service worker becomes unevictable). HTML must always
+          // revalidate (prerendered pages change on every content edit).
           return new Response(file, {
             headers: {
-              "cache-control": candidate.endsWith(".js") || candidate.endsWith(".css")
+              "cache-control": decoded.startsWith("/assets/")
                 ? "public, max-age=31536000, immutable"
-                : "public, max-age=3600",
+                : decoded.endsWith(".html")
+                  ? "public, max-age=0, must-revalidate"
+                  : "public, max-age=3600",
             },
           })
         }
