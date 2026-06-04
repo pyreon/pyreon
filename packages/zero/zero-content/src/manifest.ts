@@ -24,7 +24,9 @@ export default defineManifest({
     'Astro-style typed content collections via zod schema inference + emitted .pyreon/content-types.d.ts',
     'Three-tier MDX component resolution: built-ins → src/mdx/ convention scan → per-.md imports → escape-hatch defineComponents',
     'Auto-generated catch-all routes per type:"pages" collection under src/routes/_content/ (no fs-router fork)',
-    'Built-in components: Callout, CodeGroup, PackageBadge, Playground, Tabs',
+    'Built-in components: Callout, CodeGroup, CodeBlock, PackageBadge, Playground, Tabs',
+    'Shiki syntax highlighting with shared instance + dual light/dark theme baked into one emit (no runtime cost)',
+    'Custom markdown blocks: :::tip / :::warning / :::note / :::danger / :::info / :::code-group via remark-directive',
     'Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")',
     'Inherits zero\'s perf stack — image/font auto-wire, script defer default, resource hints, view transitions',
   ],
@@ -134,6 +136,63 @@ for (const post of posts) {
       mistakes: [
         'Calling `getCollection` in a component body without `await`. It returns a Promise. Wrap in an async setup function, use a loader, or await it during SSG render.',
         "Passing a string that isn't a defined collection. TypeScript catches this once `.pyreon/content-types.d.ts` is generated; without it, you'd get a runtime error.",
+      ],
+    },
+    {
+      name: 'Callout',
+      kind: 'component',
+      signature: '<Callout type="tip"|"warning"|"note"|"danger"|"info" title? children?>',
+      summary:
+        'Built-in callout box. Emitted automatically by the `:::tip` / `:::warning` / `:::note` / `:::danger` / `:::info` container syntax in markdown. Each type carries a default icon + title; pass `title` to override. Body content renders through the full markdown pipeline (bold, links, code, lists all work inside).',
+      example: `// In markdown:
+:::tip{title="Pro tip"}
+Use **signals** for fine-grained reactivity. See [reactivity rules](/docs/reactivity).
+:::
+
+// In JSX (when used directly):
+<Callout type="warning" title="Breaking change">…</Callout>`,
+      mistakes: [
+        'Forgetting the closing `:::` line — the rest of the markdown file becomes part of the callout silently.',
+        'Using `:::tip` to highlight code — Shiki + dual themes already make code blocks visually distinct; callouts are for prose context (warnings, tips, side-notes).',
+        'Putting a `:::code-group` inside a `:::tip` — directives don\'t nest reliably; refactor to sibling blocks.',
+      ],
+    },
+    {
+      name: 'CodeGroup',
+      kind: 'component',
+      signature: '<CodeGroup labels={["npm","bun","pnpm"]} initial? children>',
+      summary:
+        'Tabbed code blocks. Emitted by the `:::code-group` container syntax — each child code fence carries `[label]` in its meta string. The active tab is a signal; SSR ships tab 0 visible, client-side hydration enables tab switching with zero per-mount cost (tabs are CSS class swaps, not VNode reconciliation).',
+      example: `// In markdown:
+:::code-group
+\\\`\\\`\\\`bash [npm]
+npm install @pyreon/zero
+\\\`\\\`\\\`
+\\\`\\\`\\\`bash [bun]
+bun add @pyreon/zero
+\\\`\\\`\\\`
+:::`,
+      mistakes: [
+        'Omitting the `[label]` on a code fence inside `:::code-group` — the unlabelled block is silently dropped from the group (consistent with the prototype, but easy to miss). Always label every fence.',
+        'Mixing languages without labels — `:::code-group` is for the same task in different syntaxes (npm vs bun vs pnpm), not arbitrary unrelated code.',
+        'Hand-writing `<CodeGroup>` JSX with mismatched labels-to-children count — write markdown instead so the codegroup plugin keeps them in sync.',
+      ],
+    },
+    {
+      name: 'CodeBlock',
+      kind: 'component',
+      signature: '<CodeBlock lang? filename? dangerouslySetInnerHTML={{ __html }}>',
+      summary:
+        'Wrapper around a Shiki-rendered code block. Emitted automatically when highlighting is enabled — Shiki produces a full `<pre><code>` with per-token coloring + dual light/dark themes baked into one `<span>` tree, and CodeBlock wraps it for filename labels + copy buttons (future) without forcing the markdown pipeline to know about them. The `dangerouslySetInnerHTML` here is safe because Shiki output is build-time HTML, not user input — round-tripping it through the JSX emitter would throw away the precomputed coloring.',
+      example: `// Output from \\\`\\\`\\\`ts\\nconst x = 1\\n\\\`\\\`\\\` becomes:
+<CodeBlock lang="ts" dangerouslySetInnerHTML={{ __html: "<pre class=\\"shiki\\">…</pre>" }} />
+
+// Hand-using is rare; the pipeline emits it for you.
+<CodeBlock lang="ts" filename="signal.ts" dangerouslySetInnerHTML={{ __html: shikiOutput }} />`,
+      mistakes: [
+        'Hand-emitting CodeBlock without Shiki-shaped HTML in `__html` — you lose dual-theme support; just write a code fence in markdown.',
+        'Trying to read or mutate the rendered HTML at runtime — it\'s baked at build time. To customize coloring, swap themes via the plugin\'s `highlighter` option.',
+        'Building a copy-to-clipboard button by parsing the `__html` — use the original code value before highlighting (PR 4 will expose the raw value alongside the rendered HTML).',
       ],
     },
   ],

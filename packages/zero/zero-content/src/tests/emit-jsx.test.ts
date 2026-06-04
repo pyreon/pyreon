@@ -10,34 +10,39 @@ import { describe, expect, it } from 'vitest'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 import type { Root } from 'mdast'
-import { emitJsx, escapeJsxText, slugify } from '../pipeline/emit-jsx'
+import {
+  emitJsx,
+  escapeJsxText,
+  jsStringLiteral,
+  slugify,
+} from '../pipeline/emit-jsx'
 
-function compile(md: string): string {
+async function compile(md: string): Promise<string> {
   const tree = unified().use(remarkParse).parse(md) as Root
-  return emitJsx(tree).body
+  return (await emitJsx(tree)).body
 }
 
-function compileHeadings(md: string) {
+async function compileHeadings(md: string) {
   const tree = unified().use(remarkParse).parse(md) as Root
-  return emitJsx(tree).headings
+  return (await emitJsx(tree)).headings
 }
 
 describe('emitJsx — heading nodes', () => {
-  it('emits <h1>/<h2>/<h3>/<h4>/<h5>/<h6>', () => {
-    expect(compile('# A')).toContain('<h1')
-    expect(compile('## B')).toContain('<h2')
-    expect(compile('### C')).toContain('<h3')
-    expect(compile('#### D')).toContain('<h4')
-    expect(compile('##### E')).toContain('<h5')
-    expect(compile('###### F')).toContain('<h6')
+  it('emits <h1>/<h2>/<h3>/<h4>/<h5>/<h6>', async () => {
+    expect(await compile('# A')).toContain('<h1')
+    expect(await compile('## B')).toContain('<h2')
+    expect(await compile('### C')).toContain('<h3')
+    expect(await compile('#### D')).toContain('<h4')
+    expect(await compile('##### E')).toContain('<h5')
+    expect(await compile('###### F')).toContain('<h6')
   })
 
-  it('attaches an id attribute derived from heading text', () => {
-    expect(compile('## Hello World')).toContain('id={"hello-world"}')
+  it('attaches an id attribute derived from heading text', async () => {
+    expect(await compile('## Hello World')).toContain('id={"hello-world"}')
   })
 
-  it('captures level 2-3 headings (not h1 / h4+) for TOC', () => {
-    const headings = compileHeadings(`
+  it('captures level 2-3 headings (not h1 / h4+) for TOC', async () => {
+    const headings = await compileHeadings(`
 # top
 ## section
 ### subsection
@@ -48,117 +53,117 @@ describe('emitJsx — heading nodes', () => {
     expect(headings[1]).toEqual({ level: 3, text: 'subsection', slug: 'subsection' })
   })
 
-  it('strips inline formatting from captured heading text', () => {
+  it('strips inline formatting from captured heading text', async () => {
     // text is captured BEFORE inline emphasis tags, so the TOC entry
     // shows plain text instead of `<em>` markers.
-    const headings = compileHeadings('## *Reactivity* signals')
+    const headings = await compileHeadings('## *Reactivity* signals')
     expect(headings[0]!.text).toBe('Reactivity signals')
   })
 })
 
 describe('emitJsx — text + inline formatting', () => {
-  it('renders plain paragraphs', () => {
-    expect(compile('Hello')).toBe('<p>Hello</p>')
+  it('renders plain paragraphs', async () => {
+    expect(await compile('Hello')).toBe('<p>Hello</p>')
   })
 
-  it('emits <strong> for bold', () => {
-    expect(compile('**bold**')).toBe('<p><strong>bold</strong></p>')
+  it('emits <strong> for bold', async () => {
+    expect(await compile('**bold**')).toBe('<p><strong>bold</strong></p>')
   })
 
-  it('emits <em> for italic', () => {
-    expect(compile('*italic*')).toBe('<p><em>italic</em></p>')
+  it('emits <em> for italic', async () => {
+    expect(await compile('*italic*')).toBe('<p><em>italic</em></p>')
   })
 
-  it('emits inline <code>', () => {
-    expect(compile('use `signal()`')).toContain('<code>signal()</code>')
+  it('emits inline <code>', async () => {
+    expect(await compile('use `signal()`')).toContain('<code>signal()</code>')
   })
 
-  it('emits <br /> for line breaks', () => {
+  it('emits <br /> for line breaks', async () => {
     // mdast emits a `break` node for `\\` + newline OR two trailing spaces.
-    expect(compile('a  \nb')).toContain('<br />')
+    expect(await compile('a  \nb')).toContain('<br />')
   })
 })
 
 describe('emitJsx — block elements', () => {
-  it('emits <hr /> for thematic breaks', () => {
-    expect(compile('---')).toBe('<hr />')
+  it('emits <hr /> for thematic breaks', async () => {
+    expect(await compile('---')).toBe('<hr />')
   })
 
-  it('emits <blockquote> for blockquotes', () => {
-    expect(compile('> quote')).toContain('<blockquote>')
-    expect(compile('> quote')).toContain('<p>quote</p>')
+  it('emits <blockquote> for blockquotes', async () => {
+    expect(await compile('> quote')).toContain('<blockquote>')
+    expect(await compile('> quote')).toContain('<p>quote</p>')
   })
 
-  it('emits <ul><li> for bullet lists', () => {
-    const out = compile('- a\n- b')
+  it('emits <ul><li> for bullet lists', async () => {
+    const out = await compile('- a\n- b')
     expect(out).toContain('<ul>')
     expect(out).toContain('<li>')
   })
 
-  it('emits <ol> for ordered lists', () => {
-    expect(compile('1. a\n2. b')).toContain('<ol>')
+  it('emits <ol> for ordered lists', async () => {
+    expect(await compile('1. a\n2. b')).toContain('<ol>')
   })
 
-  it('emits start attribute for ordered lists not starting at 1', () => {
-    expect(compile('3. a\n4. b')).toContain('start={3}')
+  it('emits start attribute for ordered lists not starting at 1', async () => {
+    expect(await compile('3. a\n4. b')).toContain('start={3}')
   })
 
-  it('emits nested lists', () => {
-    const out = compile('- a\n  - nested\n- b')
+  it('emits nested lists', async () => {
+    const out = await compile('- a\n  - nested\n- b')
     // outer <ul> contains an inner <ul>
     expect(out.match(/<ul>/g)?.length).toBe(2)
   })
 })
 
 describe('emitJsx — code blocks', () => {
-  it('emits <pre><code> for fenced code', () => {
-    const out = compile('```\nconst x = 1\n```')
+  it('emits <pre><code> for fenced code', async () => {
+    const out = await compile('```\nconst x = 1\n```')
     expect(out).toContain('<pre')
     expect(out).toContain('<code>const x = 1')
   })
 
-  it('preserves language tag on data-lang', () => {
-    expect(compile('```ts\nconst x = 1\n```')).toContain('data-lang={"ts"}')
+  it('preserves language tag on data-lang', async () => {
+    expect(await compile('```ts\nconst x = 1\n```')).toContain('data-lang={"ts"}')
   })
 
-  it('defaults language to "text" when none given', () => {
-    expect(compile('```\nx\n```')).toContain('data-lang={"text"}')
+  it('defaults language to "text" when none given', async () => {
+    expect(await compile('```\nx\n```')).toContain('data-lang={"text"}')
   })
 
-  it('escapes JSX-sensitive characters inside code blocks', () => {
+  it('escapes JSX-sensitive characters inside code blocks', async () => {
     // `<` and `{` in code must be escaped to JSX entities so Pyreon's
     // compiler treats them as literal text, not JSX/expressions.
-    const out = compile('```\n<div>{x}</div>\n```')
+    const out = await compile('```\n<div>{x}</div>\n```')
     expect(out).toContain('&lt;div&gt;')
     expect(out).toContain('&#123;x&#125;')
   })
 })
 
 describe('emitJsx — links', () => {
-  it('emits <a href> for links', () => {
-    expect(compile('[label](/x)')).toContain('<a href={"/x"}>label</a>')
+  it('emits <a href> for links', async () => {
+    expect(await compile('[label](/x)')).toContain('<a href={"/x"}>label</a>')
   })
 
-  it('preserves the title attribute when present', () => {
-    expect(compile('[a](/x "the title")')).toContain('title={"the title"}')
+  it('preserves the title attribute when present', async () => {
+    expect(await compile('[a](/x "the title")')).toContain('title={"the title"}')
   })
 
-  it('escapes label content', () => {
-    expect(compile('[a<b](/x)')).toContain('a&lt;b')
+  it('escapes label content', async () => {
+    expect(await compile('[a<b](/x)')).toContain('a&lt;b')
   })
 })
 
 describe('emitJsx — images', () => {
-  it('emits <img src alt />', () => {
-    expect(compile('![Alt](/hero.png)')).toContain('<img src={"/hero.png"} alt={"Alt"} />')
+  it('emits <img src alt />', async () => {
+    expect(await compile('![Alt](/hero.png)')).toContain('<img src={"/hero.png"} alt={"Alt"} />')
   })
 
-  it('emits empty alt when alt is omitted', () => {
-    expect(compile('![](/x.png)')).toContain('alt={""}')
+  it('emits empty alt when alt is omitted', async () => {
+    expect(await compile('![](/x.png)')).toContain('alt={""}')
   })
 
-  it('preserves title attribute', () => {
-    expect(compile('![alt](/x.png "tt")')).toContain('title={"tt"}')
+  it('preserves title attribute', async () => {
+    expect(await compile('![alt](/x.png "tt")')).toContain('title={"tt"}')
   })
 })
 
@@ -175,6 +180,40 @@ describe('slugify', () => {
     ['', ''],
   ])('slugify(%j) === %j', (input, expected) => {
     expect(slugify(input)).toBe(expected)
+  })
+})
+
+describe('jsStringLiteral', () => {
+  it('wraps simple input in double quotes', () => {
+    expect(jsStringLiteral('hello')).toBe('"hello"')
+  })
+
+  it('escapes backslashes', () => {
+    expect(jsStringLiteral('a\\b')).toBe('"a\\\\b"')
+  })
+
+  it('escapes embedded double quotes', () => {
+    expect(jsStringLiteral('say "hi"')).toBe('"say \\"hi\\""')
+  })
+
+  it('escapes newlines and carriage returns', () => {
+    expect(jsStringLiteral('a\nb\rc')).toBe('"a\\nb\\rc"')
+  })
+
+  it('escapes U+2028 / U+2029 line separators (they break ES strings)', () => {
+    const ls = ' '
+    const ps = ' '
+    expect(jsStringLiteral(`a${ls}b${ps}c`)).toBe('"a\\u2028b\\u2029c"')
+  })
+
+  it('produces output that round-trips through JSON.parse', () => {
+    const inputs = ['hello', 'with "quotes"', 'with\\backslash', 'multi\nline']
+    for (const input of inputs) {
+      const literal = jsStringLiteral(input)
+      // JSON.parse expects valid JSON string syntax — our literal must
+      // be a valid JSON-encoded string.
+      expect(JSON.parse(literal)).toBe(input)
+    }
   })
 })
 

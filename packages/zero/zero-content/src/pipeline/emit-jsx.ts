@@ -53,39 +53,64 @@ export interface EmitResult {
   headings: Heading[]
 }
 
-/**
- * Walk an mdast root and emit a JSX string + heading metadata.
- */
-export function emitJsx(root: Root): EmitResult {
-  const headings: Heading[] = []
-  const body = root.children.map((n) => emitNode(n as Nodes, headings)).join('')
-  return { body, headings }
+export interface EmitOptions {
+  /**
+   * Optional code highlighter — receives the raw code string + lang,
+   * returns a pre-highlighted HTML string (typically a `<pre>...</pre>`).
+   * The emitter wraps it via `dangerouslySetInnerHTML` since Shiki's
+   * output is build-time HTML, not Pyreon JSX.
+   *
+   * Without this option, code blocks render as plain `<pre><code>`
+   * (PR 1 behavior).
+   */
+  highlight?: (code: string, lang: string | undefined) => Promise<string>
 }
 
-function emitNode(node: Nodes, headings: Heading[]): string {
+/**
+ * Walk an mdast root and emit a JSX string + heading metadata.
+ * Returns a Promise because the optional `highlight` callback is async
+ * (Shiki's `codeToHtml` returns a Promise).
+ */
+export async function emitJsx(root: Root, opts: EmitOptions = {}): Promise<EmitResult> {
+  const headings: Heading[] = []
+  const parts = await Promise.all(
+    root.children.map((n) => emitNode(n as Nodes, headings, opts)),
+  )
+  return { body: parts.join(''), headings }
+}
+
+async function emitNode(
+  node: Nodes,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
   switch (node.type) {
     case 'heading':
-      return emitHeading(node as MdastHeading, headings)
+      return emitHeading(node as MdastHeading, headings, opts)
     case 'paragraph':
-      return emitParagraph(node as Paragraph, headings)
+      return emitParagraph(node as Paragraph, headings, opts)
     case 'text':
       return escapeJsxText((node as Text).value)
-    case 'strong':
-      return `<strong>${(node as Strong).children.map((c) => emitNode(c as Nodes, headings)).join('')}</strong>`
-    case 'emphasis':
-      return `<em>${(node as Emphasis).children.map((c) => emitNode(c as Nodes, headings)).join('')}</em>`
+    case 'strong': {
+      const inner = await emitChildren((node as Strong).children as Nodes[], headings, opts)
+      return `<strong>${inner}</strong>`
+    }
+    case 'emphasis': {
+      const inner = await emitChildren((node as Emphasis).children as Nodes[], headings, opts)
+      return `<em>${inner}</em>`
+    }
     case 'inlineCode':
       return `<code>${escapeJsxText((node as InlineCode).value)}</code>`
     case 'code':
-      return emitCode(node as Code)
+      return emitCode(node as Code, opts)
     case 'link':
-      return emitLink(node as Link, headings)
+      return emitLink(node as Link, headings, opts)
     case 'list':
-      return emitList(node as List, headings)
+      return emitList(node as List, headings, opts)
     case 'listItem':
-      return emitListItem(node as ListItem, headings)
+      return emitListItem(node as ListItem, headings, opts)
     case 'blockquote':
-      return emitBlockquote(node as Blockquote, headings)
+      return emitBlockquote(node as Blockquote, headings, opts)
     case 'thematicBreak':
       return emitThematicBreak(node as ThematicBreak)
     case 'image':
@@ -93,10 +118,11 @@ function emitNode(node: Nodes, headings: Heading[]): string {
     case 'break':
       return '<br />'
     case 'html':
-      // Raw HTML in markdown. PR 3 (remark-mdx) will replace this with
-      // proper JSX handling; for v1 we pass it through inside a
-      // fragment so it parses. First-party content, not user input.
-      return `{/* raw html */}<>${escapeJsxText((node as { value: string }).value)}</>`
+      // Raw HTML — comes from our own remark plugins (callout +
+      // codegroup wrappers) OR rare hand-written HTML in markdown.
+      // First-party content; pass through verbatim. Output is JSX so
+      // tag-shaped content parses natively.
+      return (node as { value: string }).value
     default:
       // Unknown node type — emit a comment so the build doesn't drop
       // content silently. PR 3 covers MDX-specific node types.
@@ -104,56 +130,96 @@ function emitNode(node: Nodes, headings: Heading[]): string {
   }
 }
 
-function emitHeading(node: MdastHeading, headings: Heading[]): string {
+async function emitChildren(
+  nodes: Nodes[],
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
+  const parts = await Promise.all(nodes.map((n) => emitNode(n, headings, opts)))
+  return parts.join('')
+}
+
+async function emitHeading(
+  node: MdastHeading,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
   const tag = `h${node.depth}`
   const text = mdastChildrenToText(node.children as Nodes[])
   const slug = slugify(text)
   if (node.depth >= 2 && node.depth <= 3) {
     headings.push({ level: node.depth, text, slug })
   }
-  const inner = node.children.map((c) => emitNode(c as Nodes, headings)).join('')
+  const inner = await emitChildren(node.children as Nodes[], headings, opts)
   return `<${tag} id={${JSON.stringify(slug)}}>${inner}</${tag}>`
 }
 
-function emitParagraph(node: Paragraph, headings: Heading[]): string {
-  const inner = node.children.map((c) => emitNode(c as Nodes, headings)).join('')
+async function emitParagraph(
+  node: Paragraph,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
+  const inner = await emitChildren(node.children as Nodes[], headings, opts)
   return `<p>${inner}</p>`
 }
 
-function emitCode(node: Code): string {
-  // Per the plan, PR 2 introduces Shiki via remark and replaces this
-  // with `<CodeBlock>`-wrapped pre-highlighted HTML. For PR 1 we emit
-  // a plain `<pre><code>` so codeblocks render readably without
-  // syntax color.
+async function emitCode(node: Code, opts: EmitOptions): Promise<string> {
+  // When a highlighter is supplied (PR 2 wires Shiki via parse.ts),
+  // delegate to it. Shiki emits a full `<pre class="shiki">...</pre>`
+  // HTML string with both light + dark themes; we wrap in a Pyreon
+  // <CodeBlock> via dangerouslySetInnerHTML (the only place where
+  // dangerouslySetInnerHTML is acceptable — Shiki output is build-time
+  // HTML, not user input, and re-walking it through emit-jsx would
+  // throw away all the precomputed coloring).
   const lang = node.lang ?? 'text'
+  if (opts.highlight) {
+    const html = await opts.highlight(node.value, lang)
+    // Embed as inner HTML on a Pyreon component wrapper so the styler /
+    // copy-button can attach later. The CodeBlock component is shipped
+    // as a built-in (PR 2 components/CodeBlock.tsx).
+    const escaped = jsStringLiteral(html)
+    return `<CodeBlock lang={${JSON.stringify(lang)}} dangerouslySetInnerHTML={{ __html: ${escaped} }} />`
+  }
+  // No highlighter — emit a plain `<pre><code>` (matches PR 1 behavior).
   const value = escapeJsxText(node.value)
   return `<pre data-lang={${JSON.stringify(lang)}}><code>${value}</code></pre>`
 }
 
-function emitLink(node: Link, headings: Heading[]): string {
-  // PR 3 swaps internal links for zero's `<Link>` component. For PR 1
-  // emit `<a>` for everything; preserves behavior, no router coupling
-  // for the foundation PR.
+async function emitLink(
+  node: Link,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
+  // PR 3 swaps internal links for zero's `<Link>` component. For PR 2
+  // we still emit `<a>` for everything; the link-rewriter remark plugin
+  // lands in PR 3 alongside MDX integration.
   const href = node.url
   const title = node.title ?? undefined
-  const inner = node.children.map((c) => emitNode(c as Nodes, headings)).join('')
+  const inner = await emitChildren(node.children as Nodes[], headings, opts)
   const titleAttr = title ? ` title={${JSON.stringify(title)}}` : ''
   return `<a href={${JSON.stringify(href)}}${titleAttr}>${inner}</a>`
 }
 
-function emitList(node: List, headings: Heading[]): string {
+async function emitList(
+  node: List,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
   const tag = node.ordered ? 'ol' : 'ul'
   const start = node.ordered && typeof node.start === 'number' && node.start !== 1
     ? ` start={${node.start}}`
     : ''
-  const inner = node.children.map((c) => emitNode(c as Nodes, headings)).join('')
+  const inner = await emitChildren(node.children as Nodes[], headings, opts)
   return `<${tag}${start}>${inner}</${tag}>`
 }
 
-function emitListItem(node: ListItem, headings: Heading[]): string {
-  const inner = node.children.map((c) => emitNode(c as Nodes, headings)).join('')
+async function emitListItem(
+  node: ListItem,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
+  const inner = await emitChildren(node.children as Nodes[], headings, opts)
   // GFM task list checkbox support — comes from remark-gfm in PR 2.
-  // For PR 1 we ignore `checked` (will be undefined without remark-gfm).
   const checked = (node as ListItem & { checked?: boolean | null }).checked
   if (typeof checked === 'boolean') {
     const cb = checked
@@ -164,8 +230,12 @@ function emitListItem(node: ListItem, headings: Heading[]): string {
   return `<li>${inner}</li>`
 }
 
-function emitBlockquote(node: Blockquote, headings: Heading[]): string {
-  const inner = node.children.map((c) => emitNode(c as Nodes, headings)).join('')
+async function emitBlockquote(
+  node: Blockquote,
+  headings: Heading[],
+  opts: EmitOptions,
+): Promise<string> {
+  const inner = await emitChildren(node.children as Nodes[], headings, opts)
   return `<blockquote>${inner}</blockquote>`
 }
 
@@ -233,4 +303,21 @@ export function escapeJsxText(input: string): string {
     .replace(/>/g, '&gt;')
     .replace(/\{/g, '&#123;')
     .replace(/\}/g, '&#125;')
+}
+
+/**
+ * Escape a string for safe embedding inside a JS double-quoted string
+ * literal. Used for the `dangerouslySetInnerHTML` payload (Shiki's
+ * pre-highlighted HTML) where JSX text-escape would mangle the HTML
+ * tags.
+ *
+ * @internal exported for testing
+ */
+export function jsStringLiteral(input: string): string {
+  return `"${input
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/[\u2028\u2029]/g, (c) => '\\u' + c.charCodeAt(0).toString(16))}"`
 }
