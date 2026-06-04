@@ -84,6 +84,7 @@
         "packages/core/server/src/client.ts",
         "examples/**",
         "scripts/**/*.ts",
+        "scripts/**/*.mjs",
         "packages/**/scripts/**",
         "packages/tools/cli/src/**",
         "packages/tools/mcp/src/**",

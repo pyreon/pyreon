@@ -962,6 +962,25 @@ The mount pipeline is optimized for zero unnecessary allocations in production:
 - **Lazy mountCleanups**: Only allocated when an `onMount` callback actually returns a cleanup function.
 - **Per 150-component page**: ~2,020 allocations + ~1,050 operations eliminated vs naive implementation.
 
+### Memory characteristics — measured
+
+Run `bun run measure-memory` (`scripts/measure-memory.mjs`, `node --expose-gc`, `NODE_ENV=production`) for reproducible **retained bytes per reactive primitive**. This fills the one instrumentation gap the other gates didn't cover — bundle-budgets gates *bundle* bytes (deterministic, CI-gated), perf-harness journeys gate *allocation counts*, leak-sweep gates *heap-growth slope*, but nothing measured per-primitive retained heap. It is a TOOL, not a CI gate (runtime heap is ±~10% noisy run-to-run; gating it would flake — use it for RELATIVE before/after checks on a reactivity change).
+
+Production per-primitive cost (V8 heapUsed, N=100k, stable):
+
+| primitive | retained bytes |
+| --- | --- |
+| `signal` | **~152 B** (≈ the ~170 B the in-browser perf-harness reads on `reactivitySignalCreate-100k ≈ 17 MB`; node V8 reads slightly leaner) |
+| `signal + effect` | ~930 B (combined) |
+| `signal + computed` | ~1.65 KB (combined — a computed is **~10× a signal**: dep tracking + recompute closure + value cache; prefer plain signals where derivation isn't needed) |
+| `effectScope` | **~64 B** (the lazy-null-array design — `_effects`/`_updateHooks` start `null`; an empty scope is barely more than its object header) |
+
+The signal struct is near its floor: 1 read closure + 5 fields, methods on a shared `SignalProto` via ONE `setPrototypeOf` (not 6 per-instance assignments; monomorphic + `instanceof Function` preserved), `_s`/`_d` lazy-null, single-subscriber inline `_d1` (no `Set` for the dominant `<For>`-row case). **Important: the measurement MUST run under `NODE_ENV=production`** — in dev the reactive-devtools machinery (per-primitive `new Error()` source-capture + always-on registry) dominates and OOMs at 100k; that overhead is real but prod-gated (tree-shaken), so it is not what consumers pay.
+
+**`@pyreon/runtime-dom` bundle tree-shakes correctly** (`sideEffects: false`, pure modules — measured, esbuild prod+gzip): a `mount`-only import is **~7.4 KB gz**; core (`mount`+`hydrateRoot`+`mountChild`) ~8.6 KB; the full kitchen-sink (incl. `Transition`/`TransitionGroup`/`KeepAlive`) ~9.8 KB. The optional animation/keep-alive features (~1.2 KB) tree-shake OUT when unused AND have subpath exports — a minimal app ships ~7.4 KB, not the 12 KB kitchen-sink budget figure. No main-entry split is warranted (it would break back-compat for zero gain).
+
+**App-level: virtualize large lists.** Fine-grained reactivity allocates per reactive node — a 10k-row `<For>` = ~10k signals (~1.5 MB) + cleanup closures + key map (the ~13%-over-Vanilla bulk-create cost; Solid pays it identically). The signal is already near its floor, so the lever is **`@pyreon/virtual`** (`useVirtualizer` renders only visible rows → only ~visible-count signals), not a smaller signal.
+
 ### Mount-loop closure hazards — reactive entry points read marker.parentNode live
 
 Any framework primitive that (a) accepts `parent` as a setup arg, (b) inserts a marker into that `parent`, and (c) calls `parent.insertBefore(...)` from inside an effect re-run is structurally unsafe under `mountFor`'s frag-then-move pattern. `mountFor` builds its children into a `DocumentFragment` and commits via `liveParent.insertBefore(frag, tailMarker)` — the move carries markers and all sibling DOM along, but inner mount loops still hold the original (now-empty) fragment as `parent`. Next signal-driven re-run → `insertBefore(node, marker)` against the stale fragment → `NotFoundError` → child-loss.
