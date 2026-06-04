@@ -94,6 +94,23 @@ just a tip
     const code = await out(md)
     expect(code).not.toContain('<CodeGroup')
   })
+
+  it('skips non-code children (paragraphs) inside :::code-group', async () => {
+    // The walker iterates ALL children; non-code ones hit the `continue`
+    // branch. Asserts the labeled fence still wraps correctly + the
+    // paragraph doesn't leak into the CodeGroup wrapper.
+    const md = `:::code-group
+This paragraph is dropped.
+
+\`\`\`bash [npm]
+labelled
+\`\`\`
+:::`
+    const code = await out(md)
+    expect(code).toContain('<CodeGroup labels={["npm"]}>')
+    expect(code).toContain('labelled')
+    expect(code).not.toContain('This paragraph is dropped')
+  })
 })
 
 describe('parseLabel — unit', () => {

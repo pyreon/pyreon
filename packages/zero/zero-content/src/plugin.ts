@@ -75,19 +75,36 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
  * Whether a Vite module id refers to a markdown file we should handle.
  * Strips trailing query/hash before matching the extension.
  *
+ * Implemented with string ops rather than a regex so adversarial ids
+ * with many `?` / `#` characters can't trigger polynomial backtracking
+ * (ReDoS). The `cleaned` value is fed to a simple extension check.
+ *
  * @internal exported for testing
  */
 export function isMarkdownId(id: string): boolean {
-  const cleaned = id.replace(/[?#].*$/, '')
-  return /\.(md|mdx)$/i.test(cleaned)
+  // Strip from the FIRST `?` or `#` to the end — Vite's id strings have
+  // at most one of each (e.g. `/path/to/x.md?raw#anchor`).
+  let cleaned = id
+  const queryIdx = cleaned.indexOf('?')
+  if (queryIdx >= 0) cleaned = cleaned.slice(0, queryIdx)
+  const hashIdx = cleaned.indexOf('#')
+  if (hashIdx >= 0) cleaned = cleaned.slice(0, hashIdx)
+  // Extension check (case-insensitive) — `lastIndexOf` + slice avoids a
+  // second regex pass.
+  const dotIdx = cleaned.lastIndexOf('.')
+  if (dotIdx < 0) return false
+  const ext = cleaned.slice(dotIdx + 1).toLowerCase()
+  return ext === 'md' || ext === 'mdx'
 }
 
 /**
  * Best-effort short path for error messages — keeps the meaningful
  * suffix (after `/src/` if present), avoids dumping a 200-char absolute
  * path into the console.
+ *
+ * @internal exported for testing
  */
-function shortId(id: string): string {
+export function shortId(id: string): string {
   const idx = id.lastIndexOf('/src/')
   if (idx >= 0) return id.slice(idx + 1)
   return id

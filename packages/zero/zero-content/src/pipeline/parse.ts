@@ -143,16 +143,53 @@ ${indent(opts.body, '      ')}
  *   /abs/project/src/content/index.md       → index
  *   /abs/project/random.md                   → random
  *
+ * Implemented with string ops rather than a `/[/]content[/](.+?)\\.(md|mdx)$/i`
+ * regex so adversarial paths with many `/content/` segments can't trigger
+ * polynomial backtracking (ReDoS). All work is O(n) length walks.
+ *
  * @internal exported for testing
  */
 export function deriveSlug(absPath: string): string {
-  const normalized = absPath.replace(/\\/g, '/')
-  const contentSegment = normalized.match(/[/]content[/](.+?)\.(md|mdx)$/i)
-  if (contentSegment) {
-    return contentSegment[1]!.replace(/[/]?index$/, '')
+  const normalized = absPath.split('\\').join('/')
+  const stripped = stripMdExtension(normalized)
+  if (stripped === null) {
+    // No `.md` / `.mdx` extension — fall back to the basename verbatim.
+    return basename(normalized)
   }
-  const basename = normalized.split('/').pop() ?? ''
-  return basename.replace(/\.(md|mdx)$/i, '')
+  // Look for the FIRST `/content/` segment (case-insensitive) and trim
+  // everything up to + including it. `lastIndexOf` would be safer against
+  // accidental `/content/` in user directories, but the convention is
+  // `src/content/...` so the first match is correct.
+  const lower = stripped.toLowerCase()
+  const marker = '/content/'
+  const idx = lower.indexOf(marker)
+  if (idx >= 0) {
+    let body = stripped.slice(idx + marker.length)
+    // Strip a trailing `/index` (so `docs/index.md` → `docs`) or a bare
+    // `index` (so `content/index.md` → '').
+    if (body.endsWith('/index')) body = body.slice(0, -'/index'.length)
+    else if (body === 'index') body = ''
+    return body
+  }
+  return basename(stripped)
+}
+
+/** Last path segment of `/foo/bar` → `bar`. Empty input → empty. */
+function basename(path: string): string {
+  const idx = path.lastIndexOf('/')
+  return idx >= 0 ? path.slice(idx + 1) : path
+}
+
+/**
+ * Strip a `.md` / `.mdx` suffix (case-insensitive). Returns the path
+ * without the extension when one matched; `null` when no match.
+ */
+function stripMdExtension(path: string): string | null {
+  const dotIdx = path.lastIndexOf('.')
+  if (dotIdx < 0) return null
+  const ext = path.slice(dotIdx + 1).toLowerCase()
+  if (ext === 'md' || ext === 'mdx') return path.slice(0, dotIdx)
+  return null
 }
 
 /**

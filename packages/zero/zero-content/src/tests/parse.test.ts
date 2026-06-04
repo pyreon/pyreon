@@ -81,6 +81,43 @@ body`
   })
 })
 
+describe('compileMarkdown — GFM task lists (remark-gfm wired)', () => {
+  it('emits a checked checkbox for [x]', async () => {
+    const result = await compileMarkdown('- [x] done', '/abs/x.md', {
+      highlight: false,
+    })
+    expect(result.code).toContain('<input type="checkbox" checked disabled />')
+  })
+
+  it('emits an unchecked checkbox for [ ]', async () => {
+    const result = await compileMarkdown('- [ ] todo', '/abs/x.md', {
+      highlight: false,
+    })
+    expect(result.code).toContain('<input type="checkbox" disabled />')
+    // Make sure it's NOT the checked variant.
+    expect(result.code).not.toContain('checkbox" checked')
+  })
+
+  it('falls through to a plain <li> for normal bullets', async () => {
+    const result = await compileMarkdown('- normal', '/abs/x.md', {
+      highlight: false,
+    })
+    expect(result.code).toContain('<li>')
+    expect(result.code).not.toContain('checkbox')
+  })
+
+  it('preserves blank lines inside code blocks (covers indent empty-line branch)', async () => {
+    // A code block with an embedded blank line surfaces as a body string
+    // containing `\n\n`. The `indent` helper then iterates through the
+    // empty line via `(line.length === 0 ? line : prefix + line)`, which
+    // returns the empty string as-is — covering the empty-line arm.
+    const md = '```\nfirst\n\nthird\n```'
+    const result = await compileMarkdown(md, '/abs/x.md', { highlight: false })
+    expect(result.code).toContain('first')
+    expect(result.code).toContain('third')
+  })
+})
+
 describe('deriveSlug', () => {
   it.each([
     ['/abs/project/src/content/docs/zero.md', 'docs/zero'],
@@ -96,5 +133,35 @@ describe('deriveSlug', () => {
 
   it('handles windows-style paths', () => {
     expect(deriveSlug('C:\\proj\\src\\content\\docs\\zero.md')).toBe('docs/zero')
+  })
+
+  it('handles paths without a .md/.mdx extension by returning the basename', () => {
+    // No .md / .mdx → stripMdExtension returns null → fallback path
+    // `return basename(normalized)` runs.
+    expect(deriveSlug('/abs/random.txt')).toBe('random.txt')
+    expect(deriveSlug('/abs/no-extension')).toBe('no-extension')
+    // A path with no `/` at all — basename returns the input verbatim.
+    expect(deriveSlug('random.txt')).toBe('random.txt')
+  })
+
+  it('handles .md inside /content/ subdirectory with no /index suffix', () => {
+    expect(deriveSlug('/proj/src/content/post.md')).toBe('post')
+  })
+
+  it('runs in O(n) on adversarial input (ReDoS regression)', () => {
+    // CodeQL flagged the old `/[/]content[/](.+?)\\.(md|mdx)$/i` regex as
+    // polynomial. This adversarial input — a deep `/content/a/content/a/...`
+    // chain — used to take seconds with the regex; the string-ops rewrite
+    // is O(n).
+    const segment = '/content/a'
+    const adversarial = '/abs' + segment.repeat(500) + '.md'
+    const t0 = performance.now()
+    const result = deriveSlug(adversarial)
+    const elapsed = performance.now() - t0
+    // The first /content/ match wins by design.
+    expect(result.endsWith('.md')).toBe(false)
+    expect(result.startsWith('a/content/')).toBe(true)
+    // Loose budget — strictly <5ms but CI noise can spike.
+    expect(elapsed).toBeLessThan(50)
   })
 })
