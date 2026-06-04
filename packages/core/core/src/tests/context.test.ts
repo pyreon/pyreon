@@ -6,6 +6,7 @@ import {
   popContext,
   provide,
   pushContext,
+  removeContextFrame,
   setContextStackProvider,
   useContext,
   withContext,
@@ -117,6 +118,40 @@ describe('pushContext / popContext', () => {
     popContext()
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
+  })
+})
+
+describe('removeContextFrame', () => {
+  // Identity-based removal used by the `*-compat` layers, which run their own
+  // stack-based provide/inject (`pushContext`) independent of Pyreon's
+  // owner-based context. Removal is by reference (LIFO match), so a NON-top
+  // frame can be removed without disturbing the frames above it — the property
+  // compat-layer out-of-order teardown relies on.
+  test('removes a frame by reference identity, leaving other frames intact', () => {
+    const ctx = createContext('default')
+    const base = getContextStackLength()
+    const outer = new Map<symbol, unknown>([[ctx.id, 'outer']])
+    const inner = new Map<symbol, unknown>([[ctx.id, 'inner']])
+    pushContext(outer)
+    pushContext(inner)
+    expect(useContext(ctx)).toBe('inner')
+
+    // Remove the NON-top frame by reference — the top (inner) still resolves.
+    removeContextFrame(outer)
+    expect(getContextStackLength()).toBe(base + 1)
+    expect(useContext(ctx)).toBe('inner')
+
+    // Remove the remaining frame → back to the default.
+    removeContextFrame(inner)
+    expect(getContextStackLength()).toBe(base)
+    expect(useContext(ctx)).toBe('default')
+  })
+
+  test('a frame not on the stack is a silent no-op', () => {
+    const base = getContextStackLength()
+    const orphan = new Map<symbol, unknown>([[Symbol('orphan'), 1]])
+    expect(() => removeContextFrame(orphan)).not.toThrow()
+    expect(getContextStackLength()).toBe(base)
   })
 })
 
