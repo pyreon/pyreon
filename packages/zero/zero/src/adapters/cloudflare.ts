@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { materialize } from './stage'
+import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -66,11 +66,12 @@ export function cloudflareAdapter(): Adapter {
       await mkdir(outDir, { recursive: true })
 
       // Cloudflare serves static files from the root, so the client stays where
-      // the build left it (clientOutDir === outDir → `materialize` no-ops).
-      await materialize(options.clientOutDir, outDir)
-
-      // Copy server build into _server/ (disjoint subtree → copy).
-      await materialize(join(options.serverEntry, '..'), join(outDir, '_server'))
+      // the build left it (clientDest === outDir → the client stage no-ops);
+      // the server build is copied into _server/.
+      await stageClientThenServer(options, {
+        clientDest: outDir,
+        serverDest: join(outDir, '_server'),
+      })
 
       // Generate Cloudflare Pages _worker.js (ES module format).
       //

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { materialize } from '../adapters/stage'
+import { materialize, stageClientThenServer } from '../adapters/stage'
 
 // Real-fs tests for the adapter staging primitive. The bug this guards
 // (Bug A — "SSR/ISR unrunnable") is a copy-into-self EINVAL that fires ONLY
@@ -111,5 +111,49 @@ describe('materialize', () => {
     // Client assets PRESERVED at the root (copied, not moved) so the flat
     // outDir still serves under `vite preview`.
     expect(distEntries).toContain('index.html')
+  })
+})
+
+describe('stageClientThenServer', () => {
+  it('stages client + server, AUTO-preserving the server segment (no hand-maintained preserve)', async () => {
+    // The zero SSR-plugin shape: clientOutDir === outDir, server bundle at
+    // outDir/server, client dest a subdir (node/bun shape).
+    const dist = join(TMP, 'deploy')
+    await mkdir(join(dist, 'assets'), { recursive: true })
+    await mkdir(join(dist, 'server'), { recursive: true })
+    await writeFile(join(dist, 'index.html'), '<html></html>')
+    await writeFile(join(dist, 'assets', 'app.js'), 'x')
+    await writeFile(join(dist, 'server', 'entry-server.js'), 'export default () => {}')
+
+    await stageClientThenServer(
+      { clientOutDir: dist, serverEntry: join(dist, 'server', 'entry-server.js') },
+      { clientDest: join(dist, 'client'), serverDest: join(dist, 'server') },
+    )
+
+    // Client materialized into client/.
+    expect(existsSync(join(dist, 'client', 'index.html'))).toBe(true)
+    expect(existsSync(join(dist, 'client', 'assets', 'app.js'))).toBe(true)
+    // The server bundle was NOT swept into client/ — auto-preserved from the
+    // serverEntry basename WITHOUT the caller listing 'server' in preserve.
+    expect(existsSync(join(dist, 'client', 'server'))).toBe(false)
+    // Server stays in place (same-dir dest → no-op).
+    expect(existsSync(join(dist, 'server', 'entry-server.js'))).toBe(true)
+  })
+
+  it('copies the server bundle to a disjoint dest (vercel/netlify/cloudflare shape)', async () => {
+    const dist = join(TMP, 'deploy2')
+    await mkdir(join(dist, 'server'), { recursive: true })
+    await writeFile(join(dist, 'index.html'), '<html></html>')
+    await writeFile(join(dist, 'server', 'entry-server.js'), 'export default () => {}')
+
+    await stageClientThenServer(
+      { clientOutDir: dist, serverEntry: join(dist, 'server', 'entry-server.js') },
+      { clientDest: join(dist, 'pub'), serverDest: join(dist, 'fn', '_server') },
+    )
+
+    expect(existsSync(join(dist, 'pub', 'index.html'))).toBe(true)
+    expect(existsSync(join(dist, 'fn', '_server', 'entry-server.js'))).toBe(true)
+    // Server not swept into the client dest.
+    expect(existsSync(join(dist, 'pub', 'server'))).toBe(false)
   })
 })
