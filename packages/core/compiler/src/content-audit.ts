@@ -361,22 +361,25 @@ export function readFrontmatter(source: string): {
 /**
  * Pull the bare `title:` value from a YAML frontmatter body. Returns
  * null if missing. Handles quoted + unquoted values.
+ *
+ * String-based parse — the equivalent `^title:\s*(.+)$` regex was
+ * flagged by CodeQL as polynomial-time on adversarial inputs (long
+ * runs of whitespace after `title:`). Linear ops eliminate the
+ * backtrack risk while preserving the same surface contract.
  */
 export function readTitleFromFrontmatter(body: string): string | null {
   for (const line of body.split('\n')) {
-    const m = line.match(/^title:\s*(.+)$/)
-    if (m) {
-      const v = (m[1] ?? '').trim()
-      if (!v) return null
-      // Strip surrounding quotes if any.
-      if (
-        (v.startsWith('"') && v.endsWith('"')) ||
-        (v.startsWith("'") && v.endsWith("'"))
-      ) {
-        return v.slice(1, -1)
-      }
-      return v
+    if (!line.startsWith('title:')) continue
+    let v = line.slice('title:'.length).trim()
+    if (!v) return null
+    // Strip surrounding quotes if any.
+    if (
+      (v.startsWith('"') && v.endsWith('"')) ||
+      (v.startsWith("'") && v.endsWith("'"))
+    ) {
+      v = v.slice(1, -1)
     }
+    return v
   }
   return null
 }
