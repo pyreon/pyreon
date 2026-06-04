@@ -24,27 +24,29 @@ export function CodeGroup(props: CodeGroupProps): VNodeChild {
   const active = signal(props.initial ?? 0)
   const labels = props.labels
 
+  // `.map()` runs ONCE at component setup — labels is a static array.
+  // Per-button signal reactivity lives on each prop accessor (`aria-selected`,
+  // `tabIndex`, `class`) so a tab switch patches attributes in place
+  // without remounting buttons or reconciling the tablist.
   return (
     <section class="code-group" aria-label="Code examples">
       <div class="code-group__tabs" role="tablist">
-        {() =>
-          labels.map((label, i) => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={active() === i ? 'true' : 'false'}
-              tabIndex={active() === i ? 0 : -1}
-              class={
-                active() === i
-                  ? 'code-group__tab code-group__tab--active'
-                  : 'code-group__tab'
-              }
-              onClick={() => active.set(i)}
-            >
-              {label}
-            </button>
-          ))
-        }
+        {labels.map((label, i) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={() => (active() === i ? 'true' : 'false')}
+            tabIndex={() => (active() === i ? 0 : -1)}
+            class={() =>
+              active() === i
+                ? 'code-group__tab code-group__tab--active'
+                : 'code-group__tab'
+            }
+            onClick={() => active.set(i)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       <div class="code-group__panels">{props.children}</div>
     </section>

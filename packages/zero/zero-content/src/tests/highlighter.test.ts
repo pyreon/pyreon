@@ -30,6 +30,21 @@ describe('getHighlighter', () => {
     const b = await getHighlighter()
     expect(a).toBe(b)
   })
+
+  it('dedupes concurrent init calls onto the same Promise', async () => {
+    _resetHighlighterForTesting()
+    // Both calls fire before the first resolves → both must observe the
+    // same in-flight promise (covers the `if (_initPromise) return`
+    // branch).
+    const [a, b] = await Promise.all([getHighlighter(), getHighlighter()])
+    expect(a).toBe(b)
+  })
+
+  it('_resetHighlighterForTesting is a no-op when no highlighter exists', () => {
+    _resetHighlighterForTesting()
+    // Second consecutive call hits the `if (_highlighter)` false branch.
+    expect(() => _resetHighlighterForTesting()).not.toThrow()
+  })
 })
 
 describe('highlightCode', () => {
