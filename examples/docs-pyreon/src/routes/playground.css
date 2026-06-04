@@ -1,0 +1,124 @@
+/**
+ * Playground chrome — port of the Vue Playground.vue scoped styles
+ * into a plain CSS file using the same brand tokens.
+ */
+
+.pyr-playground {
+  margin: 24px 0;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: 0 1px 0 var(--hairline);
+}
+.pyr-pg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-well);
+}
+.pyr-pg-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pyr-pg-icon {
+  color: var(--ember-core);
+  font-size: 11px;
+}
+.pyr-pg-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pyr-pg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+}
+.pyr-pg-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--hairline);
+}
+.pyr-pg-run {
+  background: var(--ember-core);
+  color: var(--ink-core);
+  border-color: var(--ember-core);
+}
+.pyr-pg-run:hover {
+  background: var(--ember-core);
+  color: var(--ink-core);
+  opacity: 0.9;
+}
+.pyr-pg-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 720px) {
+  .pyr-pg-body {
+    grid-template-columns: 1fr;
+  }
+}
+.pyr-pg-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 200px;
+}
+.pyr-pg-editor {
+  border-right: 1px solid var(--hairline);
+}
+@media (max-width: 720px) {
+  .pyr-pg-editor {
+    border-right: none;
+    border-bottom: 1px solid var(--hairline);
+  }
+}
+.pyr-pg-pane-label {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+  opacity: 0.6;
+}
+.pyr-pg-cm {
+  flex: 1 1 auto;
+  min-height: 200px;
+  overflow: auto;
+}
+.pyr-pg-cm .cm-editor {
+  height: 100%;
+}
+.pyr-pg-preview iframe {
+  width: 100%;
+  border: none;
+  background: var(--bg);
+  display: block;
+}

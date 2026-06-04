@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pyreon — docs (native)</title>
+    <meta
+      name="description"
+      content="Pyreon's documentation site, built with Pyreon. Signal-based UI, no virtual DOM."
+    />
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+    />
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
+    <script>
+      ;(function () {
+        try {
+          var a = localStorage.getItem('pyreon-theme')
+          var d = !a || a === 'dark' || (a === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.dataset.theme = d ? 'dark' : 'light'
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark'
+        }
+      })()
+    </script>
+    <!--pyreon-head-->
+  </head>
+  <body>
+    <div id="app"><!--pyreon-app--></div>
+    <!--pyreon-scripts-->
+    <script type="module" src="/src/entry-client.ts"></script>
+  </body>
+</html>
