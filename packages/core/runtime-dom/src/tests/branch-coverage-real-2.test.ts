@@ -5,7 +5,7 @@
  * NO v8-ignore annotations.
  */
 import type { ComponentFn } from '@pyreon/core'
-import { Fragment, h } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   KeepAlive as _KeepAlive,
@@ -126,9 +126,9 @@ describe('TransitionGroup — items + render variants', () => {
     mount(
       h(TransitionGroup, {
         name: 'list',
-        items: () => [],
-        keyFn: (_, i) => i,
-        render: (item) => h('div', { class: 'item' }, String(item)),
+        items: () => [] as string[],
+        keyFn: (_item: string, i: number) => i,
+        render: (item: string) => h('div', { class: 'item' }, String(item)),
       }),
       root,
     )
@@ -142,8 +142,8 @@ describe('TransitionGroup — items + render variants', () => {
       h(TransitionGroup, {
         name: 'list',
         items: () => ['A', 'B', 'C'],
-        keyFn: (item) => item,
-        render: (item) => h('div', { class: 'item' }, item),
+        keyFn: (item: string) => item,
+        render: (item: string) => h('div', { class: 'item' }, item),
       }),
       root,
     )
@@ -158,8 +158,8 @@ describe('TransitionGroup — items + render variants', () => {
         name: 'list',
         tag: 'ul',
         items: () => ['A', 'B'],
-        keyFn: (item) => item,
-        render: (item) => h('li', null, item),
+        keyFn: (item: string) => item,
+        render: (item: string) => h('li', null, item),
       }),
       root,
     )
