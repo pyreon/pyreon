@@ -618,6 +618,23 @@ const MATRIX: Cell[] = [
     },
   },
   {
+    // ISR shares the SSR staging path (node adapter) but wraps the handler
+    // with createISRHandler at runtime. The build-artifact shape is identical
+    // to SSR — this cell proves `mode: 'isr'` produces the same runnable,
+    // hydration-ready staged artifact (the caching SEMANTICS are unit-covered
+    // by isr.test.ts; the runtime serve+cache is the `isr-node` e2e gate).
+    example: 'ssr-showcase',
+    mode: 'isr',
+    smoke: (dist) => {
+      assertFileContains(join(dist, 'client', 'index.html'), '<!--pyreon-app-->')
+      assertFileExists(join(dist, 'server', 'entry-server.js'))
+      assertFileExists(join(dist, 'index.js'))
+      // Hydration-ready: the production template (hashed <script>) is staged.
+      assertFileExists(join(dist, 'server', 'template.html'))
+      assertFileContains(join(dist, 'server', 'template.html'), '/assets/')
+    },
+  },
+  {
     example: 'ssr-showcase',
     mode: 'ssg',
     ssgPaths: ['/', '/about'],

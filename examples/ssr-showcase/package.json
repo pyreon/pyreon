@@ -11,6 +11,7 @@
     "build:i18n-prefix": "vite build --config vite.config.i18n-prefix.ts",
     "build:islands": "vite build --config vite.config.islands.ts",
     "build:ssr": "vite build --config vite.config.ssr.ts",
+    "build:isr": "vite build --config vite.config.isr.ts",
     "start:ssr": "node dist/index.js",
     "preview": "vite preview",
     "preview:subpath": "vite preview --config vite.config.subpath.ts",

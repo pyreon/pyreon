@@ -172,6 +172,14 @@ const SUITES: Suite[] = [
     triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssr-node.spec.ts'],
   },
   {
+    // ISR node-deploy artifact — shares the SSR staging/template path, wraps
+    // the handler with createISRHandler. End-to-end "ISR-mode artifact runs +
+    // serves + hydrates + cache-consistent" proof.
+    name: 'isr-node',
+    script: 'test:e2e:isr-node',
+    triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/isr-node.spec.ts'],
+  },
+  {
     name: 'zero-hmr',
     script: 'test:e2e:zero-hmr',
     triggers: [
