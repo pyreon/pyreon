@@ -722,6 +722,16 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 - \`mergeProps(props, defaults)\` — wrong order. Defaults go FIRST, actual props last (last source wins)`,
   },
 
+  'core/removeUndefinedProps': {
+    signature: 'removeUndefinedProps<T>(props: T): { [K in keyof T as T[K] extends undefined ? never : K]: T[K] }',
+    example: `const filtered = removeUndefinedProps(props) // undefined keys gone, getters live
+const merged = mergeProps(defaults, filtered)`,
+    notes: 'Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactive) prop verbatim. The descriptor-aware filter a prop-forwarding HOC runs before `mergeProps`: an `undefined` consumer prop must not shadow a default, but a compiler-emitted reactive prop must survive with its subscription intact. Copies property descriptors (never values) — a value-copy would fire each getter at setup time and collapse the live signal to a static snapshot. `null` / `0` / `""` / `false` are kept; only `undefined` data props are dropped, and getter descriptors are always kept (cannot peek without firing). See also: mergeProps, splitProps, makeReactiveProps.',
+    mistakes: `- \`result[key] = props[key]\` to filter — fires getter-shaped reactive props, collapsing the subscription. Use this helper (it copies descriptors)
+- Expecting \`null\` / \`0\` / \`false\` to be dropped — only \`undefined\` data values are removed
+- Calling on \`undefined\` — \`Object.getOwnPropertyDescriptors(undefined)\` throws; guard the input`,
+  },
+
   'core/createUniqueId': {
     signature: 'createUniqueId(): string',
     example: `const LabeledInput = (props: { label: string }) => {

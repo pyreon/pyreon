@@ -3,35 +3,13 @@ import type { MultiKeys } from '../types/dimensions'
 // --------------------------------------------------------
 // remove undefined props
 // --------------------------------------------------------
-/**
- * Strips keys with `undefined` values so they don't shadow default props during merging.
- *
- * Copies own property DESCRIPTORS rather than values so that reactive
- * getter-shaped props (compiler-emitted `_rp(() => signal())` converted
- * to getters by `makeReactiveProps`) survive the pipeline with their
- * subscription intact. Reading `props[key]` here would fire the getter
- * at HOC setup time (outside any tracking scope) and collapse the prop
- * to a static value — every downstream JSX accessor that reads
- * `props.x` would see the captured-once value, not the live signal.
- *
- * For getter descriptors we keep the descriptor as-is (the
- * undefined-filter doesn't apply — we can't peek into the getter
- * without firing it). For data descriptors we drop entries whose
- * value is `undefined` to preserve the original merge semantics.
- */
-type RemoveUndefinedProps = <T extends Record<string, any>>(props: T) => Partial<T>
-
-export const removeUndefinedProps: RemoveUndefinedProps = (props) => {
-  const result: Partial<typeof props> = {}
-  const descriptors = Object.getOwnPropertyDescriptors(props)
-  for (const key of Object.keys(descriptors)) {
-    const d = descriptors[key]!
-    if (d.get || d.value !== undefined) {
-      Object.defineProperty(result, key, d)
-    }
-  }
-  return result
-}
+// The reactive-prop-aware "drop undefined, keep getter descriptors" filter is a
+// `@pyreon/core` primitive (it operates on core's own `_rp` / `makeReactiveProps`
+// encoding) — re-exported here so the rocketstyle attrs HOC keeps importing it
+// from `../utils/attrs`. Previously hand-rolled identically in both this package
+// and `@pyreon/attrs`; consolidating removes the divergence that let the attrs
+// copy ship a value-copy reactivity bug.
+export { removeUndefinedProps } from '@pyreon/core'
 
 // --------------------------------------------------------
 // pick styled props
