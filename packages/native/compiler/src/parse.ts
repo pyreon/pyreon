@@ -564,6 +564,32 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
   if (init.type !== 'CallExpression') return null
 
+  // RX-1 — `@pyreon/rx` namespace lowering. Source like
+  //   const active = rx.filter(todos, t => !t.done)
+  //   const top5   = rx.take(active, 5)
+  //   const cnt    = rx.count(active)
+  // PMTC's recognition list previously knew only top-level callee names
+  // (`signal`, `useStorage`, …). `rx.METHOD(...)` is a MemberExpression
+  // callee, so the previous code path treated the whole declaration as
+  // an unknown CallExpression and silently dropped it from emit (see
+  // PR #1317's `tier2-rx-silent-drop.test.ts` regression-lock).
+  //
+  // This block recognises the `rx.*` namespace and rewrites each
+  // supported method into the equivalent expression on the underlying
+  // signal-carried collection — `rx.filter(s, p)` becomes a `computed`
+  // whose body is `s().filter(p)`. The native collection methods on
+  // Swift `[T]` and Kotlin `List<T>` carry identical names for the
+  // v1 set (`filter` / `map` / `reverse`); per-method per-target
+  // dispatch for the divergent set (`count`/`size`, `take`/`prefix`,
+  // `every`/`allSatisfy`, …) is the immediate follow-up — the existing
+  // computed-emit pipeline handles everything once the IR is built.
+  //
+  // Per-target compileability of the resulting emit is locked by the
+  // hand-crafted proof in `docs/docs/multiplatform-libraries.md`
+  // ("Compileability proof" — `swiftc -parse` + `kotlinc` both exit 0).
+  const rxLowered = tryRxNamespaceLowering(name, init, ctx)
+  if (rxLowered !== null) return rxLowered
+
   const calleeName = init.callee?.name as string | undefined
   if (calleeName === 'signal') {
     const type = parseGenericTypeArg(init, ctx)
@@ -734,6 +760,112 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return { kind: 'color-scheme', name }
   }
   return null
+}
+
+/**
+ * RX-1 — `@pyreon/rx` namespace lowering. See the long-form rationale at
+ * the call site in `tryExtractDecl`.
+ *
+ * Detects `const name = rx.METHOD(signal, ...)` shapes and rewrites them
+ * into a `computed` DeclIR whose body invokes the equivalent native
+ * collection method on the unwrapped signal. The emit pipelines (Swift +
+ * Kotlin) already render `kind: 'computed'` declarations correctly, so
+ * once we synthesise the right ExprIR no further per-target work is
+ * needed for the same-name native methods (the v1 set: `filter` / `map`
+ * / `reverse`).
+ *
+ * Returns `null` when:
+ *   - the callee isn't a MemberExpression
+ *   - the MemberExpression's object isn't a bare `rx` identifier
+ *   - the rx method isn't in the v1 supported set
+ *   - any argument fails to parse (delegated to parseExpr's bail behavior)
+ *
+ * Null falls through to the existing `calleeName === 'signal' | ...`
+ * recognition chain. The conservative bail means a missing method case
+ * still produces the original silent-drop bug — strictly no regression
+ * vs `main` until each rx method is added here.
+ */
+function tryRxNamespaceLowering(
+  name: string,
+  init: AnyNode,
+  ctx: ParseCtx,
+): DeclIR | null {
+  const callee = init.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression') return null
+  const obj = callee.object as AnyNode | undefined
+  if (obj?.type !== 'Identifier' || (obj.name as string | undefined) !== 'rx') return null
+  const prop = callee.property as AnyNode | undefined
+  if (prop?.type !== 'Identifier') return null
+  const methodName = prop.name as string | undefined
+  if (!methodName) return null
+
+  const args = (init.arguments as AnyNode[] | undefined) ?? []
+  const sourceArg = args[0]
+  if (!sourceArg) {
+    ctx.warnings.push(
+      `Declaration ${name}: rx.${methodName} requires a signal source as its first argument.`,
+    )
+    return null
+  }
+  // v1 supported set — `rxMethod → nativeMethod` mapping. The values are
+  // method names valid on BOTH Swift `[T]` and Kotlin `List<T>`. Extending
+  // this set covers ~5 more methods mechanically; the divergent set (rx
+  // `count` → Swift `count` / Kotlin `size`, rx `take` → Swift
+  // `prefix` + Array-wrap / Kotlin `take`, etc.) needs per-target
+  // dispatch and lives in the immediate follow-up PR.
+  //
+  // The names are different from the rx method names in a few cases:
+  //   - `rx.reverse(s)` returns a new collection; the IMMUTABLE native
+  //     equivalent is `.reversed()` (not `.reverse()` which MUTATES on
+  //     both Swift `Array.reverse` and Kotlin `MutableList.reverse`).
+  //   - `filter` / `map` keep their names — Swift's `Array.filter(_:)`
+  //     and Kotlin's `Iterable.filter(...)` both match the JS shape.
+  const RX_METHOD_TO_NATIVE: Record<string, string> = {
+    filter: 'filter',
+    map: 'map',
+    reverse: 'reversed',
+  }
+  const nativeMethod = RX_METHOD_TO_NATIVE[methodName]
+  if (!nativeMethod) {
+    ctx.warnings.push(
+      `Declaration ${name}: rx.${methodName} is not yet lowered to native (RX-1 supports filter / map / reverse; other methods are silent-drop pending follow-up).`,
+    )
+    return null
+  }
+
+  // Build the lowered IR. Source `rx.filter(todos, t => !t.done)` becomes
+  // `computed(() => todos().filter(t => !t.done))`:
+  //
+  //   ExprIR call {
+  //     callee: member {
+  //       object: call { callee: identifier 'todos', args: [] },
+  //       property: 'filter',
+  //     },
+  //     args: [arrow { params: ['t'], body: unary '!' (...) }]
+  //   }
+  //
+  // The signal-call wrap (`todos()` not `todos`) is what threads the
+  // reactivity through — the emit pipelines treat signal identifiers
+  // as their underlying state binding (`@State todos` on Swift; `val
+  // todos by remember { mutableStateOf(...) }` on Kotlin), and a
+  // computed-property reading `todos.value` / `todos` is the equivalent
+  // of Pyreon's `computed(() => todos())`.
+  const sourceExpr = parseExpr(sourceArg, ctx)
+  // Wrap the source in a no-arg call so the emit treats it as a signal
+  // read. For a direct signal identifier (`todos`), this produces
+  // `todos()` in IR which the emitters lower to `todos` (Swift @State)
+  // / `todos` (Kotlin by-delegated value). For a non-identifier source
+  // (e.g. nested `rx.filter(rx.map(...), ...)` — also a computed
+  // returning a collection), the call wrap is still semantically
+  // correct: `nested()` resolves the nested computed's value.
+  const sourceCall: ExprIR = { kind: 'call', callee: sourceExpr, args: [] }
+  const restArgs = args.slice(1).map((a) => parseExpr(a, ctx))
+  const loweredExpr: ExprIR = {
+    kind: 'call',
+    callee: { kind: 'member', object: sourceCall, property: nativeMethod },
+    args: restArgs,
+  }
+  return { kind: 'computed', name, expr: loweredExpr }
 }
 
 /**
