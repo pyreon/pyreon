@@ -120,7 +120,7 @@ describe('Context stack — growth under repeated remounts', () => {
     unmount()
   })
 
-  it('contextSnapshot used in restoreContextStack still finds inherited providers post-remount', () => {
+  it('context owner restored on reactive re-run still finds inherited providers post-remount', () => {
     // Read-side correctness: the snapshot mechanism's whole point is that
     // useContext from a descendant inside a reactive boundary still finds
     // the ancestor provider. The fix must not break this.

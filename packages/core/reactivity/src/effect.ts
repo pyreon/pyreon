@@ -30,22 +30,23 @@ export interface EffectOptions {
   __sourceLocation?: { file: string; line: number; col: number }
 }
 
-// ─── Effect-scoped snapshot capture (DI from `@pyreon/core`) ─────────────────
+// ─── Effect-scoped context-owner capture (DI from `@pyreon/core`) ────────────
 //
 // Effects re-run reactively in response to signal changes. When that re-run
-// happens AFTER the synchronous mount that set the effect up, the surrounding
-// context stack (from `@pyreon/core`'s provide() calls) may have been
-// destructively truncated by `mountReactive`'s `restoreContextStack` cleanup.
-// Without restoring the captured context, signal-driven re-runs of `_bind` /
-// `renderEffect` / `effect` see a half-empty stack and `useContext()` falls
-// back to the default value — silently breaking provider-backed APIs like
-// `useMode()`, `useTheme()`, `useRouter()`, etc. on every reactive update.
+// happens AFTER the synchronous mount that set the effect up, the active
+// context OWNER (the `@pyreon/core` scope whose `_contexts` provide() wrote to)
+// may differ from setup time — e.g. `mountReactive` swaps owners via
+// `runWithContextOwner` when it mounts deferred children. Without restoring the
+// owner captured at setup, signal-driven re-runs of `_bind` / `renderEffect` /
+// `effect` would resolve `useContext()` through whatever owner happens to be
+// current when the scheduler fires — silently breaking provider-backed APIs
+// like `useMode()`, `useTheme()`, `useRouter()`, etc. on every reactive update.
 //
 // `@pyreon/reactivity` is below `@pyreon/core` in the dep order, so it can't
-// import `captureContextStack` / `restoreContextStack` directly. Core
-// registers its capture+restore pair via `setSnapshotCapture` at module load.
-// When unset (raw reactivity-only consumers), effects skip context handling
-// — same behavior as before this hook existed.
+// read the context owner that core manages directly. Core registers a
+// capture+restore pair via `setSnapshotCapture` at module load (backed by
+// `getContextOwner` / `runWithContextOwner`). When unset (raw reactivity-only
+// consumers), effects skip context handling — same behavior as before.
 export interface ReactiveSnapshotCapture {
   capture: () => unknown
   /** Run `fn` with the previously-captured snapshot active. */
@@ -186,11 +187,11 @@ export function effect(
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
-  // Capture the external (core-context) snapshot AND the hook reference at
-  // SETUP. Reactive re-runs restore it before invoking fn, so provider lookups
-  // stay correct even when the global context stack has been destructively
-  // truncated by mountReactive's restoreContextStack cleanup. See `_bind` for
-  // the full rationale. `cap` is a stable closure capture for the lifetime of
+  // Capture the external (core-context) owner AND the hook reference at SETUP.
+  // Reactive re-runs restore it before invoking fn, so provider lookups stay
+  // correct even when the active context owner differs at re-run time
+  // (mountReactive swaps owners via runWithContextOwner). See `_bind` for the
+  // full rationale. `cap` is a stable closure capture for the lifetime of
   // this effect (matches setup-time semantics; runtime hook null-out doesn't
   // affect already-set-up effects).
   const cap = _snapshotCapture
