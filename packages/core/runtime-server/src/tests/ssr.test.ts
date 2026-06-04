@@ -701,6 +701,154 @@ describe('renderToString — class and style edge cases', () => {
     expect(html).not.toContain('read-only')
     expect(html).toContain('maxlength="50"')
   })
+
+  // PR E expansion — additional HTML camelCase attrs that the spec
+  // defines as lowercase-no-dash. Pre-fix these all kebabed wrong
+  // (`useMap → use-map`, `frameBorder → frame-border`, etc.) and
+  // browsers silently ignored them.
+  test('maps form-level / iframe / media camelCase attrs to lowercase HTML', async () => {
+    const html = await renderToString(
+      h('form', { noValidate: true },
+        h('iframe', {
+          frameBorder: 0,
+          marginHeight: 0,
+          marginWidth: 0,
+          allowFullScreen: true,
+        }),
+        h('img', { useMap: '#m1' }),
+        h('video', {
+          controlsList: 'nodownload',
+          disablePictureInPicture: true,
+          disableRemotePlayback: true,
+        }),
+        h('input', { radioGroup: 'g1' }),
+        h('track', { srcLang: 'en' }),
+        h('button', { popoverTarget: 'p1', popoverTargetAction: 'show' }),
+      ),
+    )
+    expect(html).toContain('novalidate')
+    expect(html).toContain('frameborder="0"')
+    expect(html).toContain('marginheight="0"')
+    expect(html).toContain('marginwidth="0"')
+    expect(html).toContain('allowfullscreen')
+    expect(html).toContain('usemap="#m1"')
+    expect(html).toContain('controlslist="nodownload"')
+    expect(html).toContain('disablepictureinpicture')
+    expect(html).toContain('disableremoteplayback')
+    expect(html).toContain('radiogroup="g1"')
+    expect(html).toContain('srclang="en"')
+    expect(html).toContain('popovertarget="p1"')
+    expect(html).toContain('popovertargetaction="show"')
+    // Negative — no kebab forms anywhere.
+    expect(html).not.toContain('no-validate')
+    expect(html).not.toContain('frame-border')
+    expect(html).not.toContain('use-map')
+    expect(html).not.toContain('allow-full-screen')
+    expect(html).not.toContain('controls-list')
+    expect(html).not.toContain('popover-target')
+  })
+})
+
+describe('renderToString — SVG attribute mapping (PR E)', () => {
+  // SVG attrs split into TWO classes per the SVG spec:
+  //   1. camelCase canonical — `viewBox`, `preserveAspectRatio`, etc.
+  //      MUST stay camelCase or the browser ignores them.
+  //   2. CSS-property style kebab — `stroke-width`, `text-anchor`,
+  //      etc. MUST be kebab-cased; SVG inherits CSS property names.
+  //
+  // The default `toAttrName` fallback (replace [A-Z] with `-<lower>`)
+  // is WRONG for class 1: `viewBox` becomes `view-box`. PR E adds
+  // SVG_ATTRIBUTE_MAP to handle both classes correctly.
+  //
+  // Before this PR, user-written `<svg>` JSX hit the bug silently —
+  // theme.tsx + favicon.ts authors wrote `stroke-width` manually as
+  // a workaround. The framework now handles either source spelling
+  // correctly.
+
+  test('SVG camelCase attrs preserve canonical form (viewBox, preserveAspectRatio)', async () => {
+    const html = await renderToString(
+      h('svg', { viewBox: '0 0 24 24', preserveAspectRatio: 'xMidYMid meet' }),
+    )
+    expect(html).toContain('viewBox="0 0 24 24"')
+    expect(html).toContain('preserveAspectRatio="xMidYMid meet"')
+    expect(html).not.toContain('view-box')
+    expect(html).not.toContain('preserve-aspect-ratio')
+  })
+
+  test('SVG presentation attrs become kebab CSS-property style (strokeWidth → stroke-width)', async () => {
+    const html = await renderToString(
+      h('path', {
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        fillOpacity: 0.5,
+        textAnchor: 'middle',
+      }),
+    )
+    expect(html).toContain('stroke-width="2"')
+    expect(html).toContain('stroke-linecap="round"')
+    expect(html).toContain('stroke-linejoin="round"')
+    expect(html).toContain('fill-opacity="0.5"')
+    expect(html).toContain('text-anchor="middle"')
+    // Negative — none collapse to a single lowercase token.
+    expect(html).not.toContain('strokewidth')
+    expect(html).not.toContain('strokelinecap')
+    expect(html).not.toContain('textanchor')
+  })
+
+  test('SVG gradient / pattern / filter camelCase attrs preserved', async () => {
+    const html = await renderToString(
+      h('linearGradient', {
+        gradientUnits: 'userSpaceOnUse',
+        gradientTransform: 'rotate(45)',
+      }),
+    )
+    expect(html).toContain('gradientUnits="userSpaceOnUse"')
+    expect(html).toContain('gradientTransform="rotate(45)"')
+  })
+
+  test('SVG single-word attrs (cx, cy, r, fill, stroke) — already lowercase, pass through unchanged', async () => {
+    // These have no uppercase chars, so the toAttrName fallback never
+    // fires. The test locks the no-mutation behavior.
+    const html = await renderToString(
+      h('circle', { cx: 12, cy: 12, r: 5, fill: 'red', stroke: 'blue' }),
+    )
+    expect(html).toContain('cx="12"')
+    expect(html).toContain('cy="12"')
+    expect(html).toContain('r="5"')
+    expect(html).toContain('fill="red"')
+    expect(html).toContain('stroke="blue"')
+  })
+
+  test('user-written kebab SVG attrs (stroke-width via kebab) ALSO work (back-compat)', async () => {
+    // theme.tsx + favicon.ts use kebab directly. Must keep working —
+    // toAttrName handles them via the fallback (no uppercase → pass
+    // through unchanged).
+    const html = await renderToString(
+      h('path', { 'stroke-width': '2', 'stroke-linecap': 'round' }),
+    )
+    expect(html).toContain('stroke-width="2"')
+    expect(html).toContain('stroke-linecap="round"')
+  })
+
+  test('SVG markerEnd / clipPath / floodColor — CSS-property style kebab', async () => {
+    const html = await renderToString(
+      h('g', {
+        markerEnd: 'url(#arrow)',
+        markerStart: 'url(#dot)',
+        clipPath: 'url(#clip)',
+        clipRule: 'evenodd',
+        floodColor: 'red',
+        stopColor: 'blue',
+      }),
+    )
+    expect(html).toContain('marker-end="url(#arrow)"')
+    expect(html).toContain('marker-start="url(#dot)"')
+    expect(html).toContain('clip-path="url(#clip)"')
+    expect(html).toContain('clip-rule="evenodd"')
+    expect(html).toContain('flood-color="red"')
+    expect(html).toContain('stop-color="blue"')
+  })
 })
 
 describe('renderToString — URL injection blocking', () => {

@@ -857,19 +857,150 @@ const HTML_ATTRIBUTE_MAP: Record<string, string> = {
   itemType: 'itemtype',
   spellCheck: 'spellcheck',
   contentEditable: 'contenteditable',
+  noValidate: 'novalidate',
+  useMap: 'usemap',
+  frameBorder: 'frameborder',
+  marginHeight: 'marginheight',
+  marginWidth: 'marginwidth',
+  allowFullScreen: 'allowfullscreen',
+  allowTransparency: 'allowtransparency',
+  mediaGroup: 'mediagroup',
+  controlsList: 'controlslist',
+  disablePictureInPicture: 'disablepictureinpicture',
+  disableRemotePlayback: 'disableremoteplayback',
+  radioGroup: 'radiogroup',
+  srcLang: 'srclang',
+  popoverTarget: 'popovertarget',
+  popoverTargetAction: 'popovertargetaction',
   // camelCase → kebab-case (HTML spec uses the dash)
   acceptCharset: 'accept-charset',
   httpEquiv: 'http-equiv',
 }
 
+/**
+ * SVG attribute name map. SVG is case-sensitive: some attrs MUST be
+ * camelCase (`viewBox`, `preserveAspectRatio`), some are kebab-case
+ * CSS-style properties (`stroke-width`, `text-anchor`), and some map
+ * to either form depending on context. React maintains a complete
+ * mapping (`SVGDOMPropertyConfig.js`); this covers the production set
+ * of attrs a Pyreon user is likely to write in JSX.
+ *
+ * Why a separate map: HTML's default for camelCase is "lowercase"
+ * (in HTML_ATTRIBUTE_MAP) or kebab (the fallback); SVG breaks both
+ * rules. `viewBox` MUST stay `viewBox` — browser silently ignores
+ * `view-box` or `viewbox`. `strokeWidth` MUST become `stroke-width`
+ * (CSS-style kebab) — browser doesn't know `strokewidth`.
+ *
+ * Lookup order in `toAttrName`: HTML_ATTRIBUTE_MAP first (the
+ * authoritative source for HTML attrs), then SVG_ATTRIBUTE_MAP, then
+ * the kebab fallback. Some attrs (like `tabIndex`) are shared between
+ * HTML + SVG and live in HTML_ATTRIBUTE_MAP; the SVG-only entries
+ * here cover what the HTML map doesn't.
+ */
+const SVG_ATTRIBUTE_MAP: Record<string, string> = {
+  // camelCase preserved (SVG canonical form)
+  viewBox: 'viewBox',
+  preserveAspectRatio: 'preserveAspectRatio',
+  gradientUnits: 'gradientUnits',
+  gradientTransform: 'gradientTransform',
+  patternUnits: 'patternUnits',
+  patternContentUnits: 'patternContentUnits',
+  patternTransform: 'patternTransform',
+  attributeName: 'attributeName',
+  attributeType: 'attributeType',
+  baseFrequency: 'baseFrequency',
+  calcMode: 'calcMode',
+  clipPathUnits: 'clipPathUnits',
+  diffuseConstant: 'diffuseConstant',
+  edgeMode: 'edgeMode',
+  filterRes: 'filterRes',
+  filterUnits: 'filterUnits',
+  kernelMatrix: 'kernelMatrix',
+  kernelUnitLength: 'kernelUnitLength',
+  keyPoints: 'keyPoints',
+  keySplines: 'keySplines',
+  keyTimes: 'keyTimes',
+  lengthAdjust: 'lengthAdjust',
+  limitingConeAngle: 'limitingConeAngle',
+  markerHeight: 'markerHeight',
+  markerUnits: 'markerUnits',
+  markerWidth: 'markerWidth',
+  maskContentUnits: 'maskContentUnits',
+  maskUnits: 'maskUnits',
+  numOctaves: 'numOctaves',
+  pathLength: 'pathLength',
+  pointsAtX: 'pointsAtX',
+  pointsAtY: 'pointsAtY',
+  pointsAtZ: 'pointsAtZ',
+  repeatCount: 'repeatCount',
+  repeatDur: 'repeatDur',
+  requiredExtensions: 'requiredExtensions',
+  requiredFeatures: 'requiredFeatures',
+  specularConstant: 'specularConstant',
+  specularExponent: 'specularExponent',
+  spreadMethod: 'spreadMethod',
+  startOffset: 'startOffset',
+  stdDeviation: 'stdDeviation',
+  stitchTiles: 'stitchTiles',
+  surfaceScale: 'surfaceScale',
+  systemLanguage: 'systemLanguage',
+  tableValues: 'tableValues',
+  targetX: 'targetX',
+  targetY: 'targetY',
+  textLength: 'textLength',
+  xChannelSelector: 'xChannelSelector',
+  yChannelSelector: 'yChannelSelector',
+  zoomAndPan: 'zoomAndPan',
+  // camelCase → kebab-case (SVG CSS-property style)
+  strokeWidth: 'stroke-width',
+  strokeLinecap: 'stroke-linecap',
+  strokeLinejoin: 'stroke-linejoin',
+  strokeOpacity: 'stroke-opacity',
+  strokeDasharray: 'stroke-dasharray',
+  strokeDashoffset: 'stroke-dashoffset',
+  strokeMiterlimit: 'stroke-miterlimit',
+  fillOpacity: 'fill-opacity',
+  fillRule: 'fill-rule',
+  clipPath: 'clip-path',
+  clipRule: 'clip-rule',
+  floodColor: 'flood-color',
+  floodOpacity: 'flood-opacity',
+  stopColor: 'stop-color',
+  stopOpacity: 'stop-opacity',
+  textAnchor: 'text-anchor',
+  alignmentBaseline: 'alignment-baseline',
+  baselineShift: 'baseline-shift',
+  dominantBaseline: 'dominant-baseline',
+  letterSpacing: 'letter-spacing',
+  lightingColor: 'lighting-color',
+  markerEnd: 'marker-end',
+  markerStart: 'marker-start',
+  markerMid: 'marker-mid',
+  pointerEvents: 'pointer-events',
+  shapeRendering: 'shape-rendering',
+  textDecoration: 'text-decoration',
+  textRendering: 'text-rendering',
+  vectorEffect: 'vector-effect',
+  wordSpacing: 'word-spacing',
+  writingMode: 'writing-mode',
+  imageRendering: 'image-rendering',
+  colorInterpolation: 'color-interpolation',
+  colorInterpolationFilters: 'color-interpolation-filters',
+  colorRendering: 'color-rendering',
+  glyphOrientationHorizontal: 'glyph-orientation-horizontal',
+  glyphOrientationVertical: 'glyph-orientation-vertical',
+}
+
 function toAttrName(key: string): string {
-  const mapped = HTML_ATTRIBUTE_MAP[key]
-  if (mapped !== undefined) return mapped
+  const html = HTML_ATTRIBUTE_MAP[key]
+  if (html !== undefined) return html
+  const svg = SVG_ATTRIBUTE_MAP[key]
+  if (svg !== undefined) return svg
   // Fallback: camelCase → kebab-case. Preserves the existing convention
   // for unknown / user-defined camelCase props (e.g. `dataTestId` →
-  // `data-test-id`). The allow-list above carves out the HTML-spec
-  // attrs that the spec defines as LOWERCASE-NO-DASH; everything else
-  // falls through here. Tests in `ssr.test.ts:650` lock the convention.
+  // `data-test-id`). The allow-lists above carve out the HTML- and
+  // SVG-spec attrs that have non-kebab canonical forms; everything else
+  // falls through here. Tests in `ssr.test.ts:650` lock the fallback.
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 
