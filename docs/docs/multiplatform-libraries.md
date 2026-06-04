@@ -32,30 +32,180 @@ The source you write is identical across targets. PMTC compiles it; native runti
 
 **Real-world proof**: `examples/native-todomvc-{web,ios,android}` shares ONE `App.tsx` source across all 3 targets. The shared source uses `signal`, `useStorage`, `<Stack>`, `<Inline>`, `<Field>`, `<Toggle>`, `<Button>`, `<For>`, `<Show>` — and renders idiomatically on every target.
 
-### Tier 2 — pure-logic packages (should compile via PMTC, unverified end-to-end)
+### Tier 2 — pure-logic packages (partially verified, blocked on PMTC namespace recognition)
 
-These packages are signal-driven business logic with no DOM dependency. They should compile cleanly via PMTC, but most haven't been **explicitly verified** through the swiftc + kotlinc gates yet. Each needs a dedicated TodoMVC-shape integration test before we can confidently claim 100%.
+The original audit theory: each Tier-2 package is signal-driven business logic with no DOM dependency, so PMTC should compile each cleanly — verifying it is just mechanical fixture work.
 
-| Package | What it provides | Verification status |
+**The Tier-2 verification sweep refuted that theory.** PRs [#1317](https://github.com/pyreon/pyreon/pull/1317) (rx) and [#1319](https://github.com/pyreon/pyreon/pull/1319) (machine) shipped fixtures + bisect-verified tests that surface two distinct PMTC bug patterns common to every namespaced Pyreon package:
+
+#### Pattern A — silent-drop (rx)
+
+PMTC sees `rx.filter(todos, fn)` as a `CallExpression` whose callee is a `MemberExpression` (`rx.filter`), not a recognised top-level identifier. The unknown call is **dropped entirely from emit** with no warning. Bisect-locked by [`tier2-rx-silent-drop.test.ts`](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/src/tests/tier2-rx-silent-drop.test.ts).
+
+#### Pattern B — structurally-broken (machine)
+
+PMTC sees `createMachine(...)` as a `CallExpression` to a non-recognised callee. The binding (`var m`) drops, but the method-call sites (`m.send(...)` / `m.matches(...)`) survive into Swift/Kotlin function bodies — producing emit that references an **undefined** `m`, a hard `swiftc` / `kotlinc` error rather than a silent drop. Bisect-locked by [`tier2-machine-emit-broken.test.ts`](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/src/tests/tier2-machine-emit-broken.test.ts).
+
+#### Root cause + implication
+
+Both patterns trace to **one root cause**: PMTC's recognition list in [`parse.ts`](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/src/parse.ts) is hardcoded to ~6 hooks (`signal` / `computed` / `effect` / `useStorage` / `useNavigate` / `useParams` / `useLoaderData`) and the 15 canonical primitives. Every other `@pyreon/*` package falls into Pattern A or B. **Continuing the per-package fixture sweep without first closing the recognition gap yields the same finding 8 more times.**
+
+#### Verified status by package
+
+| Package | Pattern | Verification PR | Strategy (see spec below) |
+|---|---|---|---|
+| `@pyreon/rx` | A — silent-drop | [#1317](https://github.com/pyreon/pyreon/pull/1317) | Per-method lowering to native collection ops |
+| `@pyreon/machine` | B — structurally-broken | [#1319](https://github.com/pyreon/pyreon/pull/1319) | Runtime port (`PyreonMachine`) + binding recognition |
+| `@pyreon/store` | B (expected) | — | Runtime port + binding recognition (same shape as machine) |
+| `@pyreon/state-tree` | B (expected) | — | Same shape as store |
+| `@pyreon/permissions` | partially A | — | `usePermissions` already recognised; `.can(...)` calls need lowering |
+| `@pyreon/validation` | A (expected) | — | Per-validator lowering (Zod/Valibot/ArkType each different) |
+| `@pyreon/validate` | A (expected) | — | Same as validation |
+| `@pyreon/i18n/core` | B (expected) | — | Runtime port + `t(...)` call lowering |
+| `@pyreon/feature` | composite | — | Blocked on every dependency below |
+
+**Not "unverified" any more — verified-as-broken until the spec below lands.**
+
+> `@pyreon/sized-map` was [reclassified out of Tier 2](https://github.com/pyreon/pyreon/pull/1317) — it's a generic `Map<K, V>` wrapper used internally by `@pyreon/runtime-dom`'s template cache and `@pyreon/lint`'s AST cache, never in user component code. PMTC compiles `.tsx` component bodies, not standalone classes; sized-map sits outside the multiplatform user-code surface.
+
+### PMTC namespace recognition — spec for closing the gap
+
+This section proposes the architectural fix. It's the unblock for all 10 Tier-2 packages.
+
+#### Two lowering strategies (pick per namespace)
+
+| Strategy | When to use | Cost | Examples |
+|---|---|---|---|
+| **A — Native-collection lowering** | Pure transforms on signal-carried collections / values; semantics map 1:1 to a native primitive | Low (compile-only) | `rx.filter` → Swift `.filter { }` / Kotlin `.filter { }`; `rx.count` → `.count`; `rx.map` → `.map { }` |
+| **B — Runtime port + binding recognition** | The library carries state OR has non-trivial semantics that don't reduce to a native primitive | Higher (runtime impl + binding type) | `machine` → `PyreonMachine` Swift+Kotlin class; `store` → `PyreonStore`; `i18n` → `PyreonI18n` |
+
+#### Strategy A worked example — `@pyreon/rx`
+
+Source PMTC must accept:
+
+```tsx
+import { rx } from '@pyreon/rx'
+import { signal } from '@pyreon/reactivity'
+
+const todos = signal<Todo[]>([])
+const active = rx.filter(todos, t => !t.done)
+const top5 = rx.take(active, 5)
+const activeCount = rx.count(active)
+const avgPriority = rx.average(rx.map(active, t => t.priority))
+```
+
+**Target Swift emit** (verified clean against `swiftc -parse` — see "Compileability proof" below):
+
+```swift
+struct RxProbe: View {
+    @State private var todos: [Todo] = []
+    private var active: [Todo] { todos.filter { !$0.done } }
+    private var top5: [Todo] { Array(active.prefix(5)) }
+    private var activeCount: Int { active.count }
+    private var avgPriority: Double {
+        let xs = active.map { $0.priority }
+        return xs.isEmpty ? 0 : Double(xs.reduce(0, +)) / Double(xs.count)
+    }
+    var body: some View { /* ... */ }
+}
+```
+
+**Target Kotlin emit** (verified clean against `kotlinc` with Compose stubs — see "Compileability proof"):
+
+```kotlin
+@Composable
+fun RxProbe() {
+    val todos by remember { mutableStateOf<List<Todo>>(emptyList()) }
+    val active by remember { derivedStateOf { todos.filter { !it.done } } }
+    val top5 by remember { derivedStateOf { active.take(5) } }
+    val activeCount by remember { derivedStateOf { active.size } }
+    val avgPriority by remember {
+        derivedStateOf {
+            val xs = active.map { it.priority }
+            if (xs.isEmpty()) 0.0 else xs.sum().toDouble() / xs.size
+        }
+    }
+}
+```
+
+**Per-method lowering table** (proposed; one row per common rx function):
+
+| rx function | Swift lowering | Kotlin lowering |
 |---|---|---|
-| `@pyreon/store` | `defineStore`, composition stores returning `StoreApi<T>` | Unverified |
-| `@pyreon/state-tree` | `model({ state, views, actions })` | Unverified |
-| `@pyreon/machine` | `createMachine` constrained signals | ⚠️ Moved to Tier 3 — see [audit correction below](#audit-corrections-june-2026). |
-| `@pyreon/permissions` | `createPermissions`, RBAC + ABAC checks | Unverified |
-| `@pyreon/validation` | Standard Schema adapters (Zod / Valibot / ArkType) | Unverified — depends on whether the underlying validator compiles |
-| `@pyreon/validate` | DX overlay on Standard Schema | Unverified |
-| `@pyreon/i18n/core` | `createI18n` + `interpolate` + plural rules | Unverified (the `/core` entry is intentionally framework-agnostic; the JSX `<Trans>` component needs PMTC's JSX path) |
-| `@pyreon/feature` | Schema-driven CRUD primitives | Composes other Tier-2/3 packages; verify after dependencies |
+| `rx.filter(s, p)` | `s.filter { p }` | `s.filter { p }` |
+| `rx.map(s, f)` | `s.map { f }` | `s.map { f }` |
+| `rx.sortBy(s, k)` | `s.sorted { a, b in a.k < b.k }` | `s.sortedBy { it.k }` |
+| `rx.take(s, n)` | `Array(s.prefix(n))` | `s.take(n)` |
+| `rx.skip(s, n)` | `Array(s.dropFirst(n))` | `s.drop(n)` |
+| `rx.count(s)` | `s.count` | `s.size` |
+| `rx.sum(s)` | `s.reduce(0, +)` | `s.sum()` |
+| `rx.average(s)` | `s.isEmpty ? 0 : Double(s.reduce(0, +)) / Double(s.count)` | `if (s.isEmpty()) 0.0 else s.sum().toDouble() / s.size` |
+| `rx.some(s, p)` | `s.contains(where: { p })` | `s.any { p }` |
+| `rx.every(s, p)` | `s.allSatisfy { p }` | `s.all { p }` |
+| `rx.find(s, p)` | `s.first(where: { p })` | `s.find { p }` |
+| `rx.unique(s)` | (needs `Hashable` — emit `Array(Set(s))`) | `s.distinct()` |
+| `rx.reverse(s)` | `s.reversed()` | `s.reversed()` |
 
-#### Audit corrections (June 2026)
+(`debounce` / `throttle` / `pipe` / `combine` / `zip` / `merge` need Strategy B — they carry state / scheduling.)
 
-The following packages were initially classified as Tier-2 but verification surfaced they belong elsewhere:
+#### Strategy B worked example — `@pyreon/machine`
 
-- **`@pyreon/rx`** — moved to **Tier 3**. PMTC transform silently drops all `rx.*` calls from the emitted output. The user writes `rx.filter(signal, predicate)` and gets nothing on native. This is a silent correctness bug, not a compile failure. Adding rx support means either teaching PMTC's parser the `rx.*` namespace (so `rx.filter(sig, pred)` emits as `computed(() => sig().filter(pred))`) OR shipping per-target rx runtime ports. Regression-locked by `packages/native/compiler/src/tests/tier2-rx-silent-drop.test.ts`.
+Source PMTC must accept:
 
-- **`@pyreon/machine`** — moved to **Tier 3**. PMTC silently drops the `const m = createMachine({...})` binding but PRESERVES the call sites `m.send(...)` and `m.matches(...)` — yielding emit that references undefined `m`. This is a **hard swiftc/kotlinc compile error** at the platform-compile layer, with **no warning at the PMTC-transform layer**. Worse-than-rx in that the emit is structurally broken (not just behaviourally wrong); better-than-rx in that the bug is loud once you actually run the platform compiler. Fix paths same as rx: PMTC parser learns `createMachine` (cheapest — lowers binding to `@State`/`mutableStateOf` + native equivalents for `.send`/`.matches`) OR per-target Swift/Kotlin machine runtime ports. Regression-locked by `packages/native/compiler/src/tests/tier2-machine-emit-broken.test.ts`.
+```tsx
+import { createMachine } from '@pyreon/machine'
 
-- **`@pyreon/sized-map`** — **removed from Tier-2 classification**. SizedMap is a `class SizedMap<K, V>` data structure backed by a generic `Map<K, V>`. It's used INTERNALLY by `@pyreon/runtime-dom`'s template cache and `@pyreon/lint`'s AST cache — not in user component code. PMTC compiles `.tsx` component bodies, not generic standalone classes. This package is **internal infrastructure**, outside the multiplatform user-code surface; it doesn't need a tier.
+const m = createMachine({
+  initial: 'idle',
+  states: { idle: { on: { FETCH: 'loading' } }, loading: {...} },
+})
+const start = () => m.send('FETCH')
+const isLoading = () => m.matches('loading')
+```
+
+Required deliverables to land this:
+
+1. **Swift runtime**: `PyreonMachine` class in `packages/native/runtime-swift/Sources/PyreonRuntime/`, exposing `init(initial:transitions:)` + `send(_ event: String)` + `matches(_ state: String) -> Bool`.
+2. **Kotlin runtime**: `PyreonMachine` class in `packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/`, same surface.
+3. **PMTC change**: `parse.ts` recognises `createMachine` calleeName → emits new `DeclIR` kind `machine` → `emit-swift.ts` / `emit-kotlin.ts` emit `let m = PyreonMachine(initial: "idle", transitions: ...)` / `val m = remember { PyreonMachine(...) }`.
+
+Target emit shape:
+
+```swift
+@State private var m = PyreonMachine(initial: "idle", transitions: [
+    "idle":    ["FETCH": "loading"],
+    "loading": ["SUCCESS": "done", "ERROR": "error"],
+])
+private func start() { m.send("FETCH") }
+private func isLoading() -> Bool { m.matches("loading") }
+```
+
+#### Compileability proof
+
+To prove these emit shapes are real native code (not a speculation), the rx Swift + Kotlin targets above were hand-written and compiled:
+
+```bash
+# Swift — parse-only typecheck
+swiftc -parse RxLoweringTarget.swift  # exit 0
+
+# Kotlin — full compile against PMTC's existing Compose stubs
+kotlinc compose-stubs.kt RxLoweringTarget.kt -d out  # exit 0, warnings only
+```
+
+Both succeed. The proposed emit shapes are **compilable native code today**; the only missing piece is the PMTC parser/emitter rewrite that produces them.
+
+#### Sequencing — the spec → ship path
+
+| Step | Scope | Lands |
+|---|---|---|
+| **1.** Strategy-A unblock (`rx`) — **first slice ✅ merged in [#1326](https://github.com/pyreon/pyreon/pull/1326)** | `parse.ts` recognises `rx.METHOD` MemberExpression callees; v1 set (`filter` / `map` / `reverse`) lowered to native collection ops; out-of-set methods emit directed warnings | Partially-promoted `rx` (3 of 21 methods done; divergent methods like `count`/`take`/`sum` are the next slice — see "What's NOT in this PR" in #1326) |
+| **2.** Strategy-B unblock #1 (`machine`) | `PyreonMachine` runtime ports (Swift + Kotlin) + `parse.ts` `createMachine` recognition + new `DeclIR.machine` kind | Promotes `machine` to Tier 1; ~1-week PR |
+| **3.** Strategy-B unblock #2 (`store`) | Same shape as machine — `PyreonStore` runtime ports + `defineStore` recognition | Promotes `store` to Tier 1; ~1-week PR |
+| **4.** Strategy-B unblock #3 (`i18n/core`) | `PyreonI18n` runtime ports + `createI18n` recognition; `t(...)` call lowering | Promotes `i18n/core` to Tier 1; ~1-week PR |
+| **5.** Composite (`feature` / `state-tree`) | Builds on steps 2-3 | Promotes `feature` / `state-tree` to Tier 1; ~1-week PR |
+| **6.** Strategy-A residuals (`validation` / `validate`) | Per-validator lowering (Zod-only as proof; Valibot/ArkType as follow-ups) | Promotes a subset; multi-week |
+
+Total ~4-6 weeks of focused PMTC work to bring all 10 Tier-2 packages into Tier 1. Tracks alongside Tier-3 work (`@pyreon/query`-native, `@pyreon/form` native, etc.); the two streams don't conflict.
 
 ### Tier 3 — needs Pyreon-blessed native impl (the Storage pattern at scale)
 
