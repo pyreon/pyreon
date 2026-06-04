@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { transform as esbuildTransform } from 'esbuild'
 import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
 import { compileMarkdown } from './pipeline/parse'
 import type { HighlighterOptions } from './pipeline/highlighter'
@@ -68,6 +69,12 @@ export interface ContentPluginOptions {
    * with non-standard structure. Default: `path.join(config.root, 'src', 'mdx')`.
    */
   mdxDir?: string
+  /**
+   * Skip the final esbuild JSX→h() pass. Tests assert on the raw
+   * emit-jsx output; production builds always want the JSX compiled.
+   * Default: `true` (compile JSX).
+   */
+  compileJsx?: boolean
 }
 
 // Virtual modules the plugin serves.
@@ -330,7 +337,31 @@ export {}
           }
         }
 
-        return { code: result.code, map: null }
+        // Compile the emitted JSX to plain JS (h() calls). Downstream
+        // tooling sees the original .md/.mdx extension and won't run
+        // its own JSX transform; we run esbuild here so the module is
+        // bundle-ready out of the box.
+        //
+        // We emit `h(...)` calls + `Fragment` markers — Pyreon's `h`
+        // takes (tag, props, ...children) just like React's
+        // `createElement`, so the esbuild-emitted call shape works
+        // unmodified. The markdown body doesn't contain user-written
+        // signal-driven JSX (just structural article wrappers around
+        // compiled prose), so the @pyreon/vite-plugin signal auto-call
+        // optimization isn't needed here.
+        if (options.compileJsx === false) {
+          return { code: result.code, map: null }
+        }
+        const compiled = await esbuildTransform(result.code, {
+          loader: 'tsx',
+          jsx: 'transform',
+          jsxFactory: 'h',
+          jsxFragment: 'Fragment',
+          format: 'esm',
+          target: 'esnext',
+          banner: `import { h, Fragment } from '@pyreon/core'`,
+        })
+        return { code: compiled.code, map: null }
       } catch (err) {
         const message = (err as Error).message
         this.error(
