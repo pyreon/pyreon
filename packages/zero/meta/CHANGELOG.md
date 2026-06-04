@@ -1,5 +1,45 @@
 # @pyreon/meta
 
+## 0.30.0
+
+### Patch Changes
+
+- Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/attrs@1.0.0
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/storage@1.0.0
+  - @pyreon/state-tree@1.0.0
+  - @pyreon/charts@1.0.0
+  - @pyreon/code@1.0.0
+  - @pyreon/dnd@1.0.0
+  - @pyreon/document@1.0.0
+  - @pyreon/feature@1.0.0
+  - @pyreon/flow@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/hotkeys@1.0.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/machine@1.0.0
+  - @pyreon/permissions@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/rx@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/table@1.0.0
+  - @pyreon/toast@1.0.0
+  - @pyreon/url-state@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/virtual@1.0.0
+  - @pyreon/connector-document@1.0.0
+  - @pyreon/coolgrid@1.0.0
+  - @pyreon/document-primitives@1.0.0
+  - @pyreon/elements@1.0.0
+  - @pyreon/kinetic@1.0.0
+  - @pyreon/styler@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/unistyle@1.0.0
+  - @pyreon/kinetic-presets@1.0.0
+
 ## 0.29.0
 
 ### Patch Changes
