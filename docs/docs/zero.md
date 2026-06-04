@@ -655,6 +655,33 @@ export default {
 
 `fontVariables({ Inter: "'Inter', sans-serif" })` generates CSS custom properties.
 
+### `usePreloadFont` — per-route runtime preload
+
+For fonts that **aren't** in the global `fontPlugin` declaration — a route-specific display face, a conditionally-loaded variable font, a CDN-hosted brand font — use `usePreloadFont` to emit a `<link rel="preload" as="font">` into `<head>` at render time:
+
+```ts
+import { usePreloadFont } from '@pyreon/zero'
+
+export default function HeroRoute() {
+  usePreloadFont('/fonts/display-bold.woff2')
+  return <h1 style="font-family: 'Display Bold'">…</h1>
+}
+```
+
+Emitted tag (SSR-visible to the preload scanner):
+
+```html
+<link rel="preload" as="font" href="/fonts/display-bold.woff2" type="font/woff2" crossorigin="anonymous">
+```
+
+Subtleties handled automatically:
+
+- **`crossorigin="anonymous"` is required** for every font preload — even same-origin. Without it, the CSS Fonts CORS rule forces a double-fetch (preload, then refetch under CORS). The helper sets it by default.
+- **`type` is required** — preload-scanner ignores `as=font` without a matching MIME. Auto-inferred from the extension: `.woff2`/`.woff`/`.ttf`/`.otf`/`.eot`. Pass `type` to override.
+- **Dedup** — two `usePreloadFont(href)` calls with the same href emit ONE preload (via `@pyreon/head`'s LinkTag href-keying).
+
+Use `usePreloadFont` per-route; for fonts declared globally via `zero({ font: { google, local } })`, `fontPlugin` already emits the preload at build time.
+
 ## Image Processing
 
 `imagePlugin` (`@pyreon/zero/image-plugin`) provides build-time image optimization via [sharp](https://sharp.pixelplumbing.com/) (copies as-is with a warning if sharp isn't installed). Import an image with `?optimize` to get a `ProcessedImage` (`{ src, srcset, width, height, placeholder, formats }`):

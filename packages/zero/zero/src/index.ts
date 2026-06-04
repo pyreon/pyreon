@@ -40,6 +40,8 @@ export type {
 	ImageRegistryOptions,
 } from "./image-registry";
 export { createImageRegistry } from "./image-registry";
+export type { PreloadFontOptions } from "./use-preload-font";
+export { inferFontMimeType, usePreloadFont } from "./use-preload-font";
 export type { LinkProps, LinkRenderProps, UseLinkReturn } from "./link";
 export { createLink, Link, prefetchRoute, useLink } from "./link";
 export type { ScriptProps, ScriptRenderProps, ScriptStrategy, UseScriptReturn } from "./script";
