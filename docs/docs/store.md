@@ -51,17 +51,35 @@ console.log(store.count()) // 1
 console.log(store.doubled()) // 2
 ```
 
-<Playground title="Counter Store" :height="100">
+<Playground title="Counter store — signals + derived" :height="220">
+// A store is just signals + computeds + actions, scoped together.
+// Here we model it inline; the real defineStore() adds an id, plugin
+// hooks, and SSR-safe singleton resolution on top of this shape.
 const count = signal(0)
 const doubled = computed(() => count() * 2)
+const sign = computed(() => count() === 0 ? 'zero' : count() > 0 ? 'positive' : 'negative')
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', {}, () => 'Count: ' + count()),
-  h('div', {}, () => 'Doubled: ' + doubled()),
-  h('button', { onClick: () => count.update(n => n + 1) }, '+1'),
-  h('button', { onClick: () => count.update(n => n - 1), style: { marginLeft: '8px' } }, '-1'),
-  h('button', { onClick: () => count.set(0), style: { marginLeft: '8px' } }, 'Reset'),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'card' },
+    h('div', null,
+      h('span', { class: 'muted' }, 'count: '),
+      h('strong', null, () => count()),
+    ),
+    h('div', { style: { marginTop: '4px' } },
+      h('span', { class: 'muted' }, 'doubled: '),
+      h('strong', null, () => doubled()),
+    ),
+    h('div', { style: { marginTop: '4px' } },
+      h('span', { class: 'muted' }, 'sign: '),
+      h('span', { class: 'badge' }, () => sign()),
+    ),
+  ),
+  h('div', { class: 'row' },
+    h('button', { onClick: () => count.update(n => n + 1) }, '＋1'),
+    h('button', { onClick: () => count.update(n => n - 1) }, '−1'),
+    h('button', { onClick: () => count.set(0) }, 'reset'),
+  ),
 )
 mount(ui, app)
 </Playground>
@@ -200,29 +218,59 @@ The `Signal` type is also re-exported for TypeScript usage:
 import type { Signal } from '@pyreon/store'
 ```
 
-<Playground title="Todo Store" :height="140">
+<Playground title="Todo store — list + derived count" :height="320">
 const todos = signal([
   { id: 1, text: 'Learn Pyreon', done: true },
   { id: 2, text: 'Build an app', done: false },
 ])
-const input = signal('')
+const draft = signal('')
 let nextId = 3
 
 const remaining = computed(() => todos().filter(t => !t.done).length)
 
+const add = () => {
+  const text = draft().trim()
+  if (!text) return
+  todos.update(t => [...t, { id: nextId++, text, done: false }])
+  draft.set('')
+}
+const toggle = (id) => todos.update(all =>
+  all.map(t => t.id === id ? { ...t, done: !t.done } : t)
+)
+const remove = (id) => todos.update(all => all.filter(t => t.id !== id))
+
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
-    h('input', { placeholder: 'New todo', value: input, onInput: (e) => input.set(e.target.value) }),
-    h('button', { onClick: () => { if (input()) { todos.update(t => [...t, { id: nextId++, text: input(), done: false }]); input.set('') } } }, 'Add'),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('input', {
+      placeholder: 'What needs doing?',
+      style: { flex: 1, minWidth: '0' },
+      onInput: (e) => draft.set(e.target.value),
+      onKeydown: (e) => { if (e.key === 'Enter') add() },
+    }),
+    h('button', { onClick: add }, 'Add'),
   ),
-  h('div', {}, () => todos().map(t =>
-    h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
-      h('input', { type: 'checkbox', checked: t.done, onInput: () => todos.update(all => all.map(x => x.id === t.id ? { ...x, done: !x.done } : x)) }),
-      h('span', { style: { textDecoration: t.done ? 'line-through' : 'none' } }, t.text),
-    )
-  )),
-  h('div', { style: { marginTop: '8px', fontSize: '13px', color: '#666' } }, () => remaining() + ' remaining'),
+  h('div', { class: 'card' }, () =>
+    todos().length === 0
+      ? h('div', { class: 'muted' }, 'No todos yet.')
+      : h('div', { class: 'col' },
+          ...todos().map((t) =>
+            h('div', { class: 'row', style: { justifyContent: 'space-between' } },
+              h('label', { class: 'row', style: { gap: '8px', cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: t.done, onChange: () => toggle(t.id) }),
+                h('span', {
+                  style: { textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.6 : 1 },
+                }, t.text),
+              ),
+              h('button', {
+                onClick: () => remove(t.id),
+                style: { padding: '2px 8px', fontSize: '12px' },
+              }, '✕'),
+            ),
+          ),
+        ),
+  ),
+  h('div', { class: 'muted' }, () => remaining() + ' remaining'),
 )
 mount(ui, app)
 </Playground>

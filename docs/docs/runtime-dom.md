@@ -60,17 +60,38 @@ The `mount` function performs three steps internally:
 
 The returned `unmount` function is safe to call multiple times -- subsequent calls are no-ops after the first.
 
-<Playground title="Mounting + Reactive DOM" :height="100">
+<Playground title="mount() + reactive children" :height="240">
+// mount() takes a VNode tree and inserts it into a host element.
+// The list child thunk re-evaluates when items() changes; the
+// runtime keys VDOM-style and reconciles with minimal DOM churn.
 const items = signal(['Apple', 'Banana', 'Cherry'])
-const input = signal('')
+const draft = signal('')
+
+const add = () => {
+  const v = draft().trim()
+  if (!v) return
+  items.update(i => [...i, v])
+  draft.set('')
+}
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
-    h('input', { placeholder: 'Add item', value: input, onInput: (e) => input.set(e.target.value) }),
-    h('button', { onClick: () => { if (input()) { items.update(i => [...i, input()]); input.set('') } } }, 'Add'),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('input', {
+      placeholder: 'Add an item…',
+      style: { flex: 1, minWidth: '0' },
+      onInput: (e) => draft.set(e.target.value),
+      onKeydown: (e) => { if (e.key === 'Enter') add() },
+    }),
+    h('button', { onClick: add }, 'Add'),
   ),
-  h('ul', {}, () => items().map(item => h('li', {}, item))),
+  h('div', { class: 'card' }, () =>
+    items().length === 0
+      ? h('div', { class: 'muted' }, 'Empty list — try adding an item.')
+      : h('ul', { style: { margin: 0, paddingLeft: '20px' } },
+          ...items().map(item => h('li', { style: { padding: '2px 0' } }, item)),
+        ),
+  ),
 )
 mount(ui, app)
 </Playground>

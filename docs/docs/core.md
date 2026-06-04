@@ -49,14 +49,23 @@ const Counter = defineComponent((props: { initial: number }) => {
 })
 ```
 
-<Playground title="Component (runs once)" :height="80">
+<Playground title="Component body runs once — only thunks re-run" :height="200">
+// The component body (this whole code) executes ONCE at mount.
+// Only the thunks (the `() => ...` callbacks) re-run when a signal
+// they read changes. That's why h() takes both static values AND
+// thunks — the static parts are baked in at mount.
 const count = signal(0)
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('span', { style: { fontSize: '24px', fontWeight: 'bold' } }, () => String(count())),
-  h('button', { onClick: () => count.update(n => n + 1), style: { marginLeft: '12px' } }, '+1'),
-  h('button', { onClick: () => count.update(n => n - 1), style: { marginLeft: '4px' } }, '-1'),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'card', style: { textAlign: 'center', fontSize: '32px', fontWeight: '700' } },
+    () => count(),
+  ),
+  h('div', { class: 'row' },
+    h('button', { onClick: () => count.update(n => n + 1) }, '＋1'),
+    h('button', { onClick: () => count.update(n => n - 1) }, '−1'),
+    h('button', { onClick: () => count.set(0) }, 'reset'),
+  ),
 )
 mount(ui, app)
 </Playground>
@@ -306,16 +315,25 @@ import { h, Fragment } from '@pyreon/core'
 <div style={() => ({ color: isError() ? "red" : "green" })} />
 ```
 
-<Playground title="Creating Elements" :height="80">
+<Playground title="h() — reactive children + reactive class" :height="180">
+// h() accepts thunks as children AND as attribute values.
+// Thunks track the signals they read and patch in place — the
+// button's class flips between 'badge' and a static class without
+// re-rendering the rest of the tree.
 const active = signal(true)
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('button', {
-    onClick: () => active.update(v => !v),
-    style: { padding: '8px 16px', borderRadius: '6px' },
-  }, () => active() ? 'Active' : 'Inactive'),
-  h('span', { style: { marginLeft: '12px' } }, () => 'Status: ' + (active() ? 'ON' : 'OFF')),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('button', { onClick: () => active.update(v => !v) },
+      () => active() ? 'Turn off' : 'Turn on',
+    ),
+    h('span', {
+      class: () => active() ? 'badge' : 'muted',
+      style: { padding: '4px 10px' },
+    }, () => active() ? 'ON' : 'OFF'),
+  ),
+  h('div', { class: 'muted' }, 'Body runs once; class + label both patch in place.'),
 )
 mount(ui, app)
 </Playground>
