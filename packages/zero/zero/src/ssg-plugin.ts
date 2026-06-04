@@ -23,7 +23,7 @@
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { withSilent } from '@pyreon/reactivity'
 import type { BuildOptions, Plugin } from 'vite'
@@ -41,6 +41,13 @@ import {
   mkdirOnce,
   writeFileAtomic,
 } from './ssr-build-shared'
+import {
+  type ViteManifest,
+  computeEntryHrefs,
+  computeRoutePreloadHrefs,
+  parseExistingModulePreloads,
+  renderModulePreloadLinks,
+} from './ssg-modulepreload'
 import { ensureNoindexMeta } from './not-found'
 import type { ZeroConfig } from './types'
 
@@ -208,7 +215,19 @@ export default async function renderPath(path, options) {
     const loaderScript = hasData
       ? \`<script>window.__PYREON_LOADER_DATA__=\${stringifyLoaderData(loaderData)}</script>\`
       : ""
-    return { kind: "html", appHtml, head: finalHead, loaderScript }
+
+    // Per-route modulepreload (SSG): expose the matched chain's source module
+    // paths. \`_hmrId\` (the route file each \`lazy(() => import(...))\` points at)
+    // lives on the lazy COMPONENT wrapper — \`record.component._hmrId\` — not the
+    // record (the record keeps the lazy wrapper; the resolved fn goes to a
+    // separate cache). The outer plugin maps these to the client manifest's
+    // chunk graph and injects <link rel=modulepreload> for the STATIC closure
+    // only. Non-lazy records (synthetic 404 leaf, eager components) have none.
+    const routeModules = router
+      .currentRoute()
+      .matched.map((r) => r.component && r.component._hmrId)
+      .filter((id) => typeof id === "string")
+    return { kind: "html", appHtml, head: finalHead, loaderScript, routeModules }
   })
 }
 
@@ -952,11 +971,30 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   // Track whether this plugin instance is running inside the inner SSR
   // sub-build (where it must be a no-op) vs. the outer client build.
   const isInnerBuild = process.env[SSG_BUILD_FLAG] === '1'
+  // Whether the USER explicitly enabled Vite's build manifest. When they did,
+  // closeBundle must NOT delete it post-build (it's theirs); when only the
+  // modulepreload feature enabled it, closeBundle cleans it up (internal).
+  let userEnabledManifest = false
 
   return {
     name: 'pyreon-zero-ssg',
     apply: 'build',
     enforce: 'post',
+
+    config(userViteConfig, env) {
+      // Enable Vite's build manifest on the OUTER client build so closeBundle
+      // can map each route → its chunk graph for per-route modulepreload.
+      // Skip the inner SSR sub-build (no-op there) and any SSR build. The
+      // manifest is read + deleted post-SSG — it's an internal build artifact,
+      // never shipped to the host. Opt out via `zero({ ssg: { modulePreload: false } })`.
+      if (isInnerBuild || env.isSsrBuild) return null
+      if (config.ssg?.modulePreload === false) return null
+      // If the user already enabled the manifest themselves, it's theirs —
+      // don't delete it post-build.
+      const m = userViteConfig.build?.manifest
+      userEnabledManifest = m === true || typeof m === 'string'
+      return { build: { manifest: true } }
+    },
 
     configResolved(resolved) {
       root = resolved.root
@@ -1070,7 +1108,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         default: (
           path: string,
         ) => Promise<
-          | { kind: 'html'; appHtml: string; head: string; loaderScript: string }
+          | {
+              kind: 'html'
+              appHtml: string
+              head: string
+              loaderScript: string
+              routeModules?: string[]
+            }
           | { kind: 'redirect'; from: string; to: string; status: number }
         >
         // PR A — getStaticPaths registry collected from the routes tree.
@@ -1105,6 +1149,30 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // the placeholders, we fall back to inserting before `</head>` and
       // `</body>` respectively so a bare `index.html` still works.
       const template = await readFile(indexHtmlPath, 'utf-8')
+
+      // Per-route modulepreload: read the client build manifest (enabled via
+      // the `config()` hook) so each route's STATIC chunk closure can be
+      // pre-declared in its <head>. Graceful at every step — a missing or
+      // malformed manifest just disables the feature for this build.
+      // `modulepreload` is a non-load-bearing hint, never a correctness dep.
+      const modulePreloadEnabled = config.ssg?.modulePreload !== false
+      const preloadBase = config.base ?? '/'
+      let preloadManifest: ViteManifest | null = null
+      let entryPreloadedHrefs: Set<string> = new Set()
+      if (modulePreloadEnabled) {
+        try {
+          const manifestRaw = await readFile(join(distDir, '.vite', 'manifest.json'), 'utf-8')
+          preloadManifest = JSON.parse(manifestRaw) as ViteManifest
+          // The entry's static graph + Vite's own modulepreloads are already
+          // in the template — subtract them so each route emits only its delta.
+          entryPreloadedHrefs = new Set([
+            ...computeEntryHrefs(preloadManifest, preloadBase),
+            ...parseExistingModulePreloads(template),
+          ])
+        } catch {
+          preloadManifest = null
+        }
+      }
 
       // Errors from getStaticPaths run AND per-page render are collected
       // into the same array so the post-render summary catches both. The
@@ -1206,6 +1274,25 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             return
           }
 
+          // Inject per-route <link rel=modulepreload> into this page's <head>
+          // (the route component chunk + its STATIC closure, minus the entry
+          // graph). Islands-safe: only manifest `imports` are followed, never
+          // `dynamicImports`. No-op if the manifest is unavailable or the route
+          // has no resolvable modules.
+          if (preloadManifest && result.routeModules && result.routeModules.length > 0) {
+            const hrefs = computeRoutePreloadHrefs({
+              manifest: preloadManifest,
+              routeModules: result.routeModules,
+              root,
+              base: preloadBase,
+              alreadyPreloaded: entryPreloadedHrefs,
+              relativeFn: relative,
+            })
+            if (hrefs.length > 0) {
+              result.head = `${renderModulePreloadLinks(hrefs)}\n${result.head}`
+            }
+          }
+
           const html = injectIntoTemplate(template, result)
 
           const filePath = resolveOutputPath(distDir, p)
@@ -1286,6 +1373,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
         }
       })
+
+      // Clean up the Vite build manifest — it's an internal artifact this
+      // plugin enabled (via `config()`) only to drive per-route modulepreload;
+      // it should not ship to the host. Skip when the USER enabled it.
+      if (modulePreloadEnabled && !userEnabledManifest) {
+        await rm(join(distDir, '.vite', 'manifest.json'), { force: true }).catch(() => {})
+      }
 
       // PR F — Sitemap path manifest.
       //
