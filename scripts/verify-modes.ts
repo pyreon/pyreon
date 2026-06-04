@@ -1163,6 +1163,61 @@ const MATRIX: Cell[] = [
           `image-priority-probe: preload missing crossorigin (the src is cross-origin → double-fetch without it)`,
         )
       }
+
+      // usePreloadFont SSG gate. The probe route calls usePreloadFont
+      // three times — two distinct hrefs + one duplicate of the first.
+      // Expected emission:
+      //   - <link rel="preload" as="font" href="/fonts/display-bold.woff2"
+      //     type="font/woff2" crossorigin="anonymous">  (×1 — dedup'd)
+      //   - <link rel="preload" as="font" href="https://cdn.example.com/brand.woff2"
+      //     type="font/woff2" crossorigin="anonymous">  (×1)
+      // Bisect-verifiable: drop the dedup branch in @pyreon/head's
+      // LinkTag normalization → href="/fonts/display-bold.woff2"
+      // appears TWICE. Drop the crossorigin default in usePreloadFont
+      // → crossorigin missing for the local-origin entry.
+      const fontProbePath = join(dist, 'font-preload-probe', 'index.html')
+      assertFileExists(fontProbePath)
+      const fontProbeHtml = readFileSync(fontProbePath, 'utf-8')
+      const fontHead = fontProbeHtml.slice(0, fontProbeHtml.indexOf('</head>'))
+      // Both preloads present.
+      if (!fontHead.includes('href="/fonts/display-bold.woff2"')) {
+        throw new Error(
+          `font-preload-probe: head missing preload for /fonts/display-bold.woff2`,
+        )
+      }
+      if (!fontHead.includes('href="https://cdn.example.com/brand.woff2"')) {
+        throw new Error(
+          `font-preload-probe: head missing preload for cross-origin brand font`,
+        )
+      }
+      // rel + as attrs.
+      if (!fontHead.includes('rel="preload"')) {
+        throw new Error(`font-preload-probe: head missing rel="preload"`)
+      }
+      if (!fontHead.includes('as="font"')) {
+        throw new Error(`font-preload-probe: head missing as="font"`)
+      }
+      // type — must be present per preload-scanner contract.
+      if (!fontHead.includes('type="font/woff2"')) {
+        throw new Error(
+          `font-preload-probe: preload missing type="font/woff2" (scanner ignores as=font without type)`,
+        )
+      }
+      // crossorigin — CSS Fonts spec requires it. Without it the
+      // browser double-fetches (preload + CORS refetch).
+      if (!fontHead.includes('crossorigin="anonymous"')) {
+        throw new Error(
+          `font-preload-probe: preload missing crossorigin="anonymous"`,
+        )
+      }
+      // Dedup contract: the duplicate href emits ONE preload, not two.
+      const displayBoldMatches =
+        fontHead.match(/href="\/fonts\/display-bold\.woff2"/g) ?? []
+      if (displayBoldMatches.length !== 1) {
+        throw new Error(
+          `font-preload-probe: dedup broken — found ${displayBoldMatches.length} preloads for the same href; expected 1`,
+        )
+      }
     },
   },
 

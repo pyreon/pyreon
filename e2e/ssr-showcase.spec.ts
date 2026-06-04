@@ -255,3 +255,40 @@ test.describe('<Image priority> preload', () => {
     expect(probeSlice).toContain('loading="eager"')
   })
 })
+
+// ─── usePreloadFont (closes #1359 e2e coverage) ──────────────────────────────
+
+test.describe('usePreloadFont — runtime font preload', () => {
+  // The browser's preload scanner reads the raw HTML response BEFORE
+  // hydration. `usePreloadFont` must emit a `<link rel="preload" as="font">`
+  // into <head> at SSR time, with the type + crossorigin contracts the
+  // helper documents. This mirrors the <Image priority> preload spec but
+  // for fonts.
+
+  test('font preloads are present in the initial HTML response', async ({ page }) => {
+    const response = await page.goto('/font-preload-probe')
+    const html = await response!.text()
+    const head = html.slice(0, html.indexOf('</head>'))
+    // Both distinct hrefs present.
+    expect(head).toContain('href="/fonts/display-bold.woff2"')
+    expect(head).toContain('href="https://cdn.example.com/brand.woff2"')
+    // rel + as.
+    expect(head).toContain('rel="preload"')
+    expect(head).toContain('as="font"')
+    // type — required by the preload scanner.
+    expect(head).toContain('type="font/woff2"')
+    // crossorigin — CSS Fonts spec.
+    expect(head).toContain('crossorigin="anonymous"')
+  })
+
+  test('dedup: two usePreloadFont calls with the same href emit ONE preload', async ({ page }) => {
+    // The probe route calls `usePreloadFont('/fonts/display-bold.woff2')`
+    // twice. The output must contain that href exactly once — dedup is
+    // handled by @pyreon/head's LinkTag href-keying.
+    const response = await page.goto('/font-preload-probe')
+    const html = await response!.text()
+    const head = html.slice(0, html.indexOf('</head>'))
+    const matches = head.match(/href="\/fonts\/display-bold\.woff2"/g) ?? []
+    expect(matches.length).toBe(1)
+  })
+})
