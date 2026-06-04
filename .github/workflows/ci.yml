@@ -62,17 +62,29 @@ permissions:
 # ── Shared cache keys ──────────────────────────────────────────────────────
 # Defined here so every job uses the exact same strings.
 #
-# BOOTSTRAP_KEY: the source-hashed key is constructed at the bootstrap
-# job's step level using hashFiles(...). That function isn't allowed in
-# workflow-level `env:` (GHA restricts hashFiles to step-context only).
-# The actions/cache restore + save steps inline the key directly. The
-# restore-keys prefix `bootstrap-ubuntu-` lets a partial-hit (a different
-# source hash since the previous run) fall back to that previous run's
-# cache. The Build step's `if: cache-hit != 'true'` only skips on an
-# EXACT key match — partial-hits still rebuild lib/ to avoid chunk-
-# filename inconsistency between cached and freshly-built modules.
+# TWO-LAYER bootstrap cache strategy:
+#
+# 1. BOOTSTRAP_KEY (per-run-id) — what every DOWNSTREAM job restores via
+#    the setup-pyreon composite action. Bootstrap saves under this key
+#    after building lib/; downstream jobs restore under the same key for
+#    an exact-match guaranteed-fresh artifact set. Same shape + composite-
+#    action contract as pre-this-PR.
+#
+# 2. Source-hashed cross-run key — what the Bootstrap job ADDITIONALLY
+#    saves under. Constructed at step level via hashFiles(...) because
+#    that function isn't allowed in workflow-level `env:`. The Bootstrap
+#    job FIRST tries to restore from this cross-run key; on EXACT match,
+#    the build step skips entirely (saves ~236s). The save step writes
+#    under BOTH keys so the source-hashed key is populated for future
+#    cross-run hits AND the per-run-id key is populated for THIS run's
+#    downstream jobs.
+#
+# The two-layer design preserves the existing downstream-job contract
+# (composite action's `key: ${{ env.BOOTSTRAP_KEY }}` works unchanged)
+# while adding cross-run reuse for the source-stable case.
 env:
   NM_KEY: node-modules-${{ github.run_id }}
+  BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
 
 jobs:
   # ── Install: checkout + install + bootstrap, then save caches ───────────
@@ -198,28 +210,24 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
-      # Source-hashed cache restore: when no package source has changed
-      # since the previous CI run that built lib/, we get an EXACT cache
-      # hit and the build step below is a no-op (~3s instead of ~236s).
-      # The `restore-keys` prefix lets a partial-hit (e.g. examples-only
-      # change matches a previous source hash) fall through cleanly.
+      # Layer 2: source-hashed cross-run cache. When no package source
+      # has changed since the previous CI run that built lib/, we get an
+      # EXACT cache hit here and the Build step below is a no-op
+      # (~3s instead of ~236s).
       #
-      # hashFiles(...) is inlined here — GHA disallows it in workflow-
-      # level `env:`, so we can't extract it to a shared variable. Keep
-      # the inputs in sync with the comment block at the top of the file
-      # (and with the save step below — they MUST be identical or the
-      # save uses a different key than the restore looked up).
+      # hashFiles(...) is inlined — GHA disallows it in workflow-level
+      # `env:`. Keep inputs in sync between this restore and the save
+      # below; mismatched keys would skip the save (no future hits).
       - name: Restore source-hashed lib/ cache
         id: bootstrap-cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
           key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
-          restore-keys: bootstrap-ubuntu-
-      # Skip the build on EXACT cache hit. A partial-hit (restore-keys
-      # match but not the primary key) still runs the build — the lib/
-      # restored from a stale-source key would mix with current-source
-      # rebuilds and produce inconsistent chunk filenames.
+      # Skip the build on EXACT cache hit only. Partial-hits aren't
+      # restored (we deliberately omit `restore-keys`) — partial-source
+      # cache would mix with current-source rebuilds and produce
+      # inconsistent chunk filenames between cached + freshly-built modules.
       - name: Build lib/
         if: steps.bootstrap-cache.outputs.cache-hit != 'true'
         run: bun scripts/bootstrap.ts
@@ -230,13 +238,27 @@ jobs:
           else
             echo "::notice title=Bootstrap cache miss::source changed since last cached build — rebuilt lib/"
           fi
-      - name: Save bootstrap (source-hash key) for next runs
+      # Save under the source-hashed key (cross-run reuse). Only when
+      # we just BUILT (no point re-saving identical bytes on cache-hit).
+      - name: Save source-hashed lib/ cache for next runs
         if: steps.bootstrap-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
           # Key MUST match the restore step above — keep in sync.
           key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+      # Layer 1: per-run-id key. ALWAYS save under this key (whether the
+      # build ran or the source-hashed cache hit). Every downstream job
+      # in this run (test, e2e, verify-modes, etc.) restores lib/ via
+      # the setup-pyreon composite action's `key: ${{ env.BOOTSTRAP_KEY }}`.
+      # This preserves the per-run-id contract pre-this-PR — downstream
+      # jobs see the same lib/ they always have, no composite-action edits
+      # needed.
+      - name: Save lib/ under per-run-id key for downstream jobs
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
 
   # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
   # Every downstream job: checkout → setup-bun → restore run_id caches.
