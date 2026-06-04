@@ -17,9 +17,10 @@ Post-review quality fixes to the SSR/ISR deploy path:
   production template (`dist/server/template.html`) when the caller customized
   NEITHER `template` NOR `clientEntry` — previously an explicit `clientEntry`
   alongside the auto-template injected two module scripts. JSDoc now documents
-  pairing a hand-supplied built `template` with `clientEntry: false`, and a
-  production-only warning fires if the staged template is missing (the page
-  would server-render but silently not hydrate).
+  pairing a hand-supplied built `template` with `clientEntry: false`. (A missing
+  template in the zero-config path is a build error the SSR plugin reports at
+  build time + verify-modes / the ssr-node·isr-node e2e gate it — no runtime
+  warning needed.)
 - **Shared `stageClientThenServer` adapter helper.** All six deploy adapters
   staged client+server with a hand-maintained `'server'` entry in each
   `preserve` list (a silent-stomp foot-gun if one forgot it). The new helper
