@@ -1,5 +1,66 @@
 # @pyreon/runtime-server
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1321](https://github.com/pyreon/pyreon/pull/1321) [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: derive the singleton-sentinel version from package.json (was a stale hardcoded `0.24.6`)
+
+  Every `@pyreon/*` package called `registerSingleton('@pyreon/X', '0.24.6', import.meta.url)`
+  with a hardcoded version literal that the release process never bumped — so the
+  duplicate-instance sentinel reported `0.24.6` for packages actually shipping
+  `0.28.x`. The version is diagnostic-only (detection keys on module location, not
+  version), but its diagnostic VALUE is exactly to surface a version skew between
+  two installed copies — which a frozen literal silently defeats.
+
+  Name + version are now derived from each package's own `package.json`
+  (`import { name, version } from '../package.json' with { type: 'json' }`), so the
+  diagnostic is always accurate and can never drift on release. The build inlines
+  the strings (no `package.json` bloat); dev reads the live file. No new tooling
+  needed — drift is structurally impossible.
+
+- [#1314](https://github.com/pyreon/pyreon/pull/1314) [`9a863b7`](https://github.com/pyreon/pyreon/commit/9a863b71e946898ab2a8dac7051cef30adada7b4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-server): allow `data:image/*` placeholders through the SSR URL guard
+
+  SSR/SSG stripped **all** `data:` URIs from URL-bearing attributes, silently
+  dropping the `imagePlugin` blur/color placeholders (`data:image/webp;base64,…`,
+  `data:image/svg+xml,…`) from prerendered static HTML — `<img>`/`<video>` shipped
+  with no `src`/`poster`. The client-side guard fix (`@pyreon/runtime-dom`, 0.28.1)
+  only repaired post-hydration; the static markup `renderToString` /
+  `renderToStream` emit was unchanged.
+
+  Ports the client allowlist to the SSR renderer: a raster
+  (`png`/`jpeg`/`gif`/`webp`/`avif`/…) or non-scripted-SVG `data:image/*` URI on an
+  image-source attribute (`src`/`srcset`/`poster`) of an image-context element
+  (`<img>`/`<source>`/`<video>`) now renders. Everything previously blocked stays
+  blocked: `data:text/html` on `<iframe>`/`<object>`, `data:image` on
+  non-image-context elements (`<a>`, `<embed>`), SVG carrying `<script>`/`on*=`
+  handlers (base64 + url-encoded payloads decoded and scanned), and `javascript:`
+  everywhere. `renderProp` now receives the element tag so the guard can check
+  image context.
+
+- [#1316](https://github.com/pyreon/pyreon/pull/1316) [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(core,runtime-dom,runtime-server): single-source the URL-attribute injection guard
+
+  Extracts `URL_ATTRS`, `UNSAFE_URL_RE`, and `isSafeImageDataUri` into
+  `@pyreon/core/url-guard` (`@internal`), imported by both renderers — the client
+  `@pyreon/runtime-dom` (`setStaticProp` + the DOMParser sanitizer) and the SSR
+  `@pyreon/runtime-server` (`renderProp`).
+
+  Previously each renderer carried an independent copy of the guard. That drift is
+  exactly what shipped the `data:image/*` placeholder allowlist to the client
+  ([#1212](https://github.com/pyreon/pyreon/issues/1212), 0.28.1) but not to SSG static HTML (fixed in [#1314](https://github.com/pyreon/pyreon/issues/1314)) — collapsing both
+  into one source means the two can no longer diverge. `isSafeImageDataUri` now
+  takes a string `tagName` (matched case-insensitively), so the client passes
+  `el.tagName` and the server passes the JSX tag.
+
+  No behavior change: the exhaustive allow/block matrix now lives once in
+  `@pyreon/core`'s `url-guard.test.ts`; each renderer keeps its existing matrix as
+  a wiring regression guard, and the full `<Image>` → SSR placeholder pipeline is
+  locked by a new `@pyreon/zero` integration test.
+
+- Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.28.1
 
 ## 0.28.0

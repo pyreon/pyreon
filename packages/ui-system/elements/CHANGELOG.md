@@ -1,5 +1,60 @@
 # @pyreon/elements
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1332](https://github.com/pyreon/pyreon/pull/1332) [`8726411`](https://github.com/pyreon/pyreon/commit/872641168a22ba0423d4888e394f6c799ad4dd1c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(elements): add 5 real tests for Iterator simple-array path
+
+  `branch-coverage-95-floor.test.tsx` adds:
+
+  - Iterator `itemKey` as function for SIMPLE array (existing tests use complex arrays)
+  - Iterator empty simple array → null
+  - Iterator empty complex array → null
+  - Iterator without data → null
+  - Element WRAPPER_DEV_PROPS prod-mode arm via vi.resetModules
+
+  Branches: 91.27% → 91.98% (+0.71pp). Threshold unchanged (91); doc-comment
+  added to vitest.config.ts noting structural ceiling for unit tests.
+
+  The remaining gap to MINIMUM_BRANCH_FLOOR=95 is in browser-only paths
+  (Element equalize ResizeObserver, useOverlay positioning, Iterator/Wrapper
+  defensives) exercised by elements.browser.test.tsx + ui-showcase e2e.
+
+- [#1308](https://github.com/pyreon/pyreon/pull/1308) [`7aa2c8f`](https://github.com/pyreon/pyreon/commit/7aa2c8f584f348d73f2ca1f8dca818cf3936b3af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(elements): remove cosmetic v8-ignore annotations; honest threshold
+
+  Removes the 18 `/* v8 ignore */` annotations introduced by PR [#1299](https://github.com/pyreon/pyreon/issues/1299) across 6 files. The pre-cosmetic baseline was already strong at 91.27% branches — the v8-ignores existed only to lift the gate to 95%.
+
+  Coverage trajectory:
+
+  - Pre-PR-1299 baseline: 91.27% branches
+  - PR [#1299](https://github.com/pyreon/pyreon/issues/1299) (cosmetic): 96.19% via v8-ignores (gaming the gate)
+  - Now: 91.27% branches via removal (no real-test change)
+
+  Threshold lowered from 95 → 91. The remaining ~37 uncov branches are defensive guards in Element's equalize layout effect (ResizeObserver fallback paths), useOverlay dev-mode warns + positioning fallbacks, and Iterator/Wrapper optional-prop arms. These are exercised by `elements.browser.test.tsx` + ui-showcase e2e in a real browser; vitest measures unit-test-process coverage only.
+
+- [#1321](https://github.com/pyreon/pyreon/pull/1321) [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: derive the singleton-sentinel version from package.json (was a stale hardcoded `0.24.6`)
+
+  Every `@pyreon/*` package called `registerSingleton('@pyreon/X', '0.24.6', import.meta.url)`
+  with a hardcoded version literal that the release process never bumped — so the
+  duplicate-instance sentinel reported `0.24.6` for packages actually shipping
+  `0.28.x`. The version is diagnostic-only (detection keys on module location, not
+  version), but its diagnostic VALUE is exactly to surface a version skew between
+  two installed copies — which a frozen literal silently defeats.
+
+  Name + version are now derived from each package's own `package.json`
+  (`import { name, version } from '../package.json' with { type: 'json' }`), so the
+  diagnostic is always accurate and can never drift on release. The build inlines
+  the strings (no `package.json` bloat); dev reads the live file. No new tooling
+  needed — drift is structurally impossible.
+
+- Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/unistyle@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.28.1
 
 ### Patch Changes

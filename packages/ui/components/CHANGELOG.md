@@ -1,5 +1,22 @@
 # @pyreon/ui-components
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [[`8726411`](https://github.com/pyreon/pyreon/commit/872641168a22ba0423d4888e394f6c799ad4dd1c), [`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`7aa2c8f`](https://github.com/pyreon/pyreon/commit/7aa2c8f584f348d73f2ca1f8dca818cf3936b3af), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`f4ea1a1`](https://github.com/pyreon/pyreon/commit/f4ea1a1e5af38b37b4eb2feb14f4594e3c3c3482), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
+  - @pyreon/elements@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/styler@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/coolgrid@1.0.0
+  - @pyreon/unistyle@1.0.0
+  - @pyreon/ui-primitives@1.0.0
+  - @pyreon/ui-theme@0.13.16
+
 ## 0.18.0
 
 ### Patch Changes

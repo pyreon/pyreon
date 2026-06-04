@@ -1,5 +1,50 @@
 # @pyreon/styler
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1321](https://github.com/pyreon/pyreon/pull/1321) [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: derive the singleton-sentinel version from package.json (was a stale hardcoded `0.24.6`)
+
+  Every `@pyreon/*` package called `registerSingleton('@pyreon/X', '0.24.6', import.meta.url)`
+  with a hardcoded version literal that the release process never bumped — so the
+  duplicate-instance sentinel reported `0.24.6` for packages actually shipping
+  `0.28.x`. The version is diagnostic-only (detection keys on module location, not
+  version), but its diagnostic VALUE is exactly to surface a version skew between
+  two installed copies — which a frozen literal silently defeats.
+
+  Name + version are now derived from each package's own `package.json`
+  (`import { name, version } from '../package.json' with { type: 'json' }`), so the
+  diagnostic is always accurate and can never drift on release. The build inlines
+  the strings (no `package.json` bloat); dev reads the live file. No new tooling
+  needed — drift is structurally impossible.
+
+- [#1304](https://github.com/pyreon/pyreon/pull/1304) [`f4ea1a1`](https://github.com/pyreon/pyreon/commit/f4ea1a1e5af38b37b4eb2feb14f4594e3c3c3482) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(styler): SSR fast path for reactive `DynamicStyled` components
+
+  On the server every render is a single pass with no client reactivity, yet
+  `DynamicStyled`'s reactive branch (when `$rocketstyle`/`$rocketstate` are
+  accessors — i.e. every rocketstyle component) allocated a `computed`
+  subscription, a `ref` closure, and a `renderEffect` per component. All three
+  are client-only dead weight server-side: refs never fire during
+  `renderToString`, and no signal changes within a single SSR pass — so they
+  allocate and subscribe but emit zero HTML.
+
+  `DynamicStyled` now branches on a module-level `IS_SERVER` (`typeof document
+=== 'undefined'`): on the server it resolves the class once and emits,
+  skipping the computed/ref/renderEffect entirely. The emitted className is
+  byte-identical to the reactive path's initial value, so hydration (where the
+  client re-establishes the reactive machinery) sees no mismatch.
+
+  Measured via `renderToString` of 2,000 reactive styled components, tight
+  drift-controlled A/B (8 pairs): ~9.7ms → ~1.95ms (~5×, 95% CI
+  [+7.54, +7.91ms], 8/8 faster). The win scales with the cache-hit rate —
+  largest for pages that repeat the same components (buttons/cards), where the
+  reactive-machinery allocation dominates the cached resolve.
+
+- Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.28.1
 
 ### Patch Changes

@@ -1,5 +1,35 @@
 # @pyreon/kinetic
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1334](https://github.com/pyreon/pyreon/pull/1334) [`74f1de0`](https://github.com/pyreon/pyreon/commit/74f1de08a1982cb5a0d46d4f850091b121ea9c72) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(kinetic): +4 real tests for Stagger; branches 91.15 → 92.47
+
+  Stagger prop-default arms — interval/appear/reverseLeave/timeout nullish defaults; reverseLeave + show:false; non-array single child; explicit override path.
+
+  Threshold bumped 91 → 92. Remaining ~3pp gap to MINIMUM_BRANCH_FLOOR=95 in animation lifecycle defensive arms exercised by kinetic.browser.test.tsx + ui-showcase e2e.
+
+- [#1307](https://github.com/pyreon/pyreon/pull/1307) [`6ac8811`](https://github.com/pyreon/pyreon/commit/6ac88117ebc3de07c0904c226a98a7754185b2fd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(kinetic): remove cosmetic v8-ignore annotations; honest threshold
+
+  Removes the 23 `/* v8 ignore */` annotations introduced in PR [#1298](https://github.com/pyreon/pyreon/issues/1298) across 9 files. The pre-cosmetic baseline was already strong at 91.15% branches — the v8-ignores existed only to lift the gate to 95%, not to cover real-test gaps.
+
+  Coverage trajectory:
+
+  - Pre-PR-1298 baseline: 91.15% branches (real tests, no annotations)
+  - PR [#1298](https://github.com/pyreon/pyreon/issues/1298) (cosmetic): 95.38% via v8-ignores (gaming the gate)
+  - Now: 91.15% branches via removal (no real-test change — baseline was honest)
+
+  Threshold lowered from 95 → 91 with documented rationale. The remaining 40 uncov branches are optional-CSS-property fallbacks and animation-lifecycle defensive guards (config.leaveStyle, config.enterTransition, ref-null during onEnd) reached only under very specific timing + config permutations. The real-Chromium e2e suite at `e2e/ui-showcase-regression.spec.ts` exercises these in a real browser; vitest measures the unit-test-process coverage only.
+
+  Reaching 95% would require either v8-ignores (gaming) or a combinatorial test matrix that doesn't scale to the maintenance cost.
+
+- Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`d65d779`](https://github.com/pyreon/pyreon/commit/d65d77982284b3ce8ec871fd536069b5cd36f770), [`34872f9`](https://github.com/pyreon/pyreon/commit/34872f9832564fce87e408411d5f416785c6b484), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.28.1
 
 ### Patch Changes

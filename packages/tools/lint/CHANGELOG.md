@@ -1,5 +1,25 @@
 # @pyreon/lint
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1315](https://github.com/pyreon/pyreon/pull/1315) [`3ab6d0d`](https://github.com/pyreon/pyreon/commit/3ab6d0d3e645b65c73bef9ec353dc1526ea840c5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(lint): add 10 real tests for runner.ts applyFixes + lintFile contracts
+
+  10 new tests in `branch-coverage-real.test.ts` covering:
+
+  - `applyFixes` empty-diagnostics fast path (line 254)
+  - single-fix application
+  - multi-fix reverse-order offset preservation
+  - mixed fixable + non-fixable diagnostic handling
+  - `lintFile` basic surface (clean file, empty rules, .tsx, .js, .d.ts skip)
+
+  Branches lifted 90.32% → 90.47% via real tests.
+
+- Updated dependencies [[`8524e24`](https://github.com/pyreon/pyreon/commit/8524e24651184d275d5bf7520d65caade2ef25b8), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
+  - @pyreon/compiler@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.28.1
 
 ### Patch Changes

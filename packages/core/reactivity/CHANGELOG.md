@@ -1,5 +1,64 @@
 # @pyreon/reactivity
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1331](https://github.com/pyreon/pyreon/pull/1331) [`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(reactivity): add 17 real tests; branches 94.22% → 95.04% (clears MINIMUM_BRANCH_FLOOR=95)
+
+  `branch-coverage-95-floor.test.ts` covers previously-uncov arms:
+
+  - Signal idempotent dispose — second call hits `else if (self._d)` falsy arm (line 228)
+  - Computed idempotent dispose for both computedLazy + computedWithEquals paths (lines 202, 342)
+  - `NODE_ENV='production'` false arms in computedWithEquals via `vi.stubEnv` + `options.equals` dispatch (lines 268, 292, 358) — covers dev-counter `_rdRecordFire` and post-factory `_rdRegister` gates
+  - renderEffect disposed-during-batch hits early-return (line 453 truthy arm) — write + dispose within same batch, run() flushes with disposed=true
+
+  Threshold bumped: `branches: 94 → 95` in vitest.config.ts. Reactivity now clears the planned `MINIMUM_BRANCH_FLOOR=95` (PR [#1329](https://github.com/pyreon/pyreon/issues/1329)).
+
+- [#1303](https://github.com/pyreon/pyreon/pull/1303) [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(reactivity): lift branches 88.03% → 94.22% via real tests (no v8-ignore)
+
+  Added 96 real tests in `branch-coverage-real.test.ts` that exercise actually-uncovered branches via the public API. NO `/* v8 ignore */` annotations — every coverage gain comes from real observable behavior.
+
+  Tests cover:
+
+  - tracking.ts: cleanupEffect WeakMap path, notifySubscribers non-batching arms
+  - batch.ts: MAX_PASSES bailout + labelled effects + production-mode gate
+  - cell.ts: listen promotion, subscribe disposer across \_l/\_s
+  - computed.ts: error catch in body, custom-equals short-circuit + throw, direct subscriber promotion-aware disposer
+  - createSelector.ts: source effect short-circuit on Object.is-equal, dispose, subscribe-after-dispose
+  - reconcile.ts: circular-source skip, raw-object assign, DANGEROUS_KEYS skip
+  - scope.ts: addUpdateHook stopped/multi, notifyEffectRan dedup + throw, onScopeDispose no-scope
+  - signal.ts: direct subscriber tiers, promotion-race disposer, signal-write-as-call warn, trace listener throw
+  - singleton-sentinel.ts: PYREON_SINGLE_INSTANCE env override (warn/silent/throw), withSilent + withSilentSync refcount, legacy state backfill, negative-depth guard
+  - lpih.ts: cwd-throw fallback, writeLpihCache + startLpihPolling fail paths, race-during-dispose
+  - reactive-devtools.ts: same-location collision, host with null subs, JSC stack format, \_rdRecordFire on unregistered node, loc-resolution failure skip
+  - debug.ts: inspectSignal subscriber-count fallback, anonymous-signal label
+  - reactive-trace.ts: anonymous-function preview fallback
+  - production-mode gates: dedicated `process.env.NODE_ENV='production'` test suite hitting dev-gate FALSE arms
+
+  Adjust vitest thresholds to honest values:
+
+  - statements: 95 → 98
+  - branches: 88 → 94 (was 88 with comment "tracking.ts non-batching effectively unreachable"; sharpened to specifically document the 6 structurally-unreachable defensive arms)
+  - lines: 94 → 99
+
+  The remaining ~6 uncovered branches are structurally unreachable from the public API (notifyDirect non-batching, structurally-dead defensive arms, browser-only typeof process guards). Honestly named in the vitest.config.ts comment rather than papered over with annotations.
+
+- [#1321](https://github.com/pyreon/pyreon/pull/1321) [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: derive the singleton-sentinel version from package.json (was a stale hardcoded `0.24.6`)
+
+  Every `@pyreon/*` package called `registerSingleton('@pyreon/X', '0.24.6', import.meta.url)`
+  with a hardcoded version literal that the release process never bumped — so the
+  duplicate-instance sentinel reported `0.24.6` for packages actually shipping
+  `0.28.x`. The version is diagnostic-only (detection keys on module location, not
+  version), but its diagnostic VALUE is exactly to surface a version skew between
+  two installed copies — which a frozen literal silently defeats.
+
+  Name + version are now derived from each package's own `package.json`
+  (`import { name, version } from '../package.json' with { type: 'json' }`), so the
+  diagnostic is always accurate and can never drift on release. The build inlines
+  the strings (no `package.json` bloat); dev reads the live file. No new tooling
+  needed — drift is structurally impossible.
+
 ## 0.28.1
 
 ### Patch Changes

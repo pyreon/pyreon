@@ -1,5 +1,78 @@
 # @pyreon/runtime-dom
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1327](https://github.com/pyreon/pyreon/pull/1327) [`d65d779`](https://github.com/pyreon/pyreon/commit/d65d77982284b3ce8ec871fd536069b5cd36f770) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(runtime-dom): add 28 more real tests; branches 86.43% → 86.88%
+
+  Two new test files:
+
+  **branch-coverage-real-2.test.ts (16 tests)**:
+
+  - Transition component-child warn path, string-text child, null child, array child, show toggle false→true and true→false, no `name` prop, custom classnames
+  - TransitionGroup empty list, multi-item, custom tag, items-signal-change
+  - KeepAlive basic mount, active=true, active=false, toggle false→true→false
+
+  **branch-coverage-prod-mode.test.ts (12 tests)**:
+
+  - `NODE_ENV='production'` arms in mount.ts (void-element warn skipped, nested elements, reactive child, null-return component validation skipped) and props.ts (non-function event handler no-warn, unsafe URL still blocked but no warn, event delegation, class/style/dangerouslySetInnerHTML/innerHTML).
+
+  Threshold stays at 86 (current 86.88%) with updated rationale comment.
+
+- [#1313](https://github.com/pyreon/pyreon/pull/1313) [`34872f9`](https://github.com/pyreon/pyreon/commit/34872f9832564fce87e408411d5f416785c6b484) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(runtime-dom): add 29 real tests for props.ts; honest threshold
+
+  29 new tests in `branch-coverage-real.test.ts` covering:
+
+  - `applyProp` event handler edge cases (function / undefined / null / string warn / multi-word events / non-delegated)
+  - innerHTML branches (string / undefined → empty)
+  - dangerouslySetInnerHTML branches (\_\_html / null / undefined)
+  - class / className normalizations (string / array / cx fallback)
+  - style prop (string cssText / object / null clears prev keys / CSS custom property)
+  - URL-safety guards (javascript: blocked / data:text/html blocked / safe data:image:png allowed / http: allowed)
+  - boolean / null / custom-element / SVG dispatch matrix
+
+  Branches lifted 86.03% → 86.43% via real tests. Threshold lowered 88 → 86 to reflect honest measurement (was previously aspirational; coverage drifted as template.ts/nodes.ts/hydrate.ts/mount.ts gained branches from new features without matching test additions). Remaining uncov in those files is covered by real-Chromium Playwright e2e.
+
+- [#1321](https://github.com/pyreon/pyreon/pull/1321) [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: derive the singleton-sentinel version from package.json (was a stale hardcoded `0.24.6`)
+
+  Every `@pyreon/*` package called `registerSingleton('@pyreon/X', '0.24.6', import.meta.url)`
+  with a hardcoded version literal that the release process never bumped — so the
+  duplicate-instance sentinel reported `0.24.6` for packages actually shipping
+  `0.28.x`. The version is diagnostic-only (detection keys on module location, not
+  version), but its diagnostic VALUE is exactly to surface a version skew between
+  two installed copies — which a frozen literal silently defeats.
+
+  Name + version are now derived from each package's own `package.json`
+  (`import { name, version } from '../package.json' with { type: 'json' }`), so the
+  diagnostic is always accurate and can never drift on release. The build inlines
+  the strings (no `package.json` bloat); dev reads the live file. No new tooling
+  needed — drift is structurally impossible.
+
+- [#1316](https://github.com/pyreon/pyreon/pull/1316) [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(core,runtime-dom,runtime-server): single-source the URL-attribute injection guard
+
+  Extracts `URL_ATTRS`, `UNSAFE_URL_RE`, and `isSafeImageDataUri` into
+  `@pyreon/core/url-guard` (`@internal`), imported by both renderers — the client
+  `@pyreon/runtime-dom` (`setStaticProp` + the DOMParser sanitizer) and the SSR
+  `@pyreon/runtime-server` (`renderProp`).
+
+  Previously each renderer carried an independent copy of the guard. That drift is
+  exactly what shipped the `data:image/*` placeholder allowlist to the client
+  ([#1212](https://github.com/pyreon/pyreon/issues/1212), 0.28.1) but not to SSG static HTML (fixed in [#1314](https://github.com/pyreon/pyreon/issues/1314)) — collapsing both
+  into one source means the two can no longer diverge. `isSafeImageDataUri` now
+  takes a string `tagName` (matched case-insensitively), so the client passes
+  `el.tagName` and the server passes the JSX tag.
+
+  No behavior change: the exhaustive allow/block matrix now lives once in
+  `@pyreon/core`'s `url-guard.test.ts`; each renderer keeps its existing matrix as
+  a wiring regression guard, and the full `<Image>` → SSR placeholder pipeline is
+  locked by a new `@pyreon/zero` integration test.
+
+- Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.28.1
 
 ### Patch Changes
