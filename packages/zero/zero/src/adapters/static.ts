@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { materialize } from './stage'
 
 /**
  * Static adapter — just copies the client build output.
@@ -21,10 +22,10 @@ export function staticAdapter(): Adapter {
         // SSG dist is already at outDir — nothing to copy or rewrite.
         return
       }
-      const { cp, mkdir } = await import('node:fs/promises')
-
-      await mkdir(options.outDir, { recursive: true })
-      await cp(options.clientOutDir, options.outDir, { recursive: true })
+      // The zero SSR plugin passes clientOutDir === outDir — the client build
+      // already wrote everything to outDir, so `materialize` no-ops. When a
+      // caller passes a distinct clientOutDir it falls through to a copy.
+      await materialize(options.clientOutDir, options.outDir)
     },
     async revalidate(_path: string): Promise<AdapterRevalidateResult> {
       // Static hosts have no platform-driven ISR. Revalidation requires

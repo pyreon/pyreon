@@ -573,25 +573,48 @@ const MATRIX: Cell[] = [
     example: 'ssr-showcase',
     mode: 'ssr',
     smoke: (dist) => {
-      // SSR client build emits a template index.html that gets injected
-      // by the server at request time. Assert the placeholders are intact.
-      assertFileContains(join(dist, 'index.html'), '<!--pyreon-app-->')
-      assertFileContains(join(dist, 'index.html'), '<!--pyreon-head-->')
-      // ssrPlugin must produce a deployable SSR bundle at
-      // `dist/server/entry-server.js`. Pre-fix (no ssrPlugin wired into
-      // the chain) the SSR build emitted ONLY the client bundle and no
-      // server entry — `Adapter.build({ kind: 'ssr' })` was implemented
-      // for all 6 adapters but never invoked. Same typed-but-
-      // unimplemented bug class the SSG plugin closed in PR-J. Bisect-
-      // verifiable: revert the `ssrPlugin(userConfig)` push in
-      // `packages/zero/zero/src/vite-plugin.ts:zeroPlugin` and this
-      // assertion fails with `expected file: dist/server/entry-server.js`.
+      // SSR-mode produces a STAGED deploy artifact via the node adapter
+      // (the default). The adapter relocates the build into the canonical
+      // standalone-server layout: dist/{client,server,index.js,package.json}.
+      //
+      // Bug A/C lock: pre-fix the adapter's `cp(clientOutDir, outDir/client)`
+      // was a copy-into-self (clientOutDir === outDir === dist) → EINVAL,
+      // caught by ssr-plugin and NOT rethrown, so the artifact was never
+      // staged and `dist/index.js` (the runnable HTTP server) never existed
+      // — SSR/ISR builds shipped a client bundle with no server. The
+      // `materialize` helper (packages/zero/zero/src/adapters/stage.ts)
+      // moves the client into client/ and no-ops the already-in-place
+      // server copy. Bisect-verifiable: revert `materialize` to a raw
+      // `cp(src, dest)` → the adapter throws EINVAL, staging never happens,
+      // and `dist/index.js` is absent → this cell fails.
+
+      // The SSR template (with its injection placeholders) now lives under
+      // client/, NOT at the dist root — `/` is server-rendered, not served
+      // as this static shell.
+      assertFileContains(join(dist, 'client', 'index.html'), '<!--pyreon-app-->')
+      assertFileContains(join(dist, 'client', 'index.html'), '<!--pyreon-head-->')
+
+      // The SSR handler bundle the runtime entry imports.
       const serverEntry = join(dist, 'server', 'entry-server.js')
       assertFileExists(serverEntry)
       const serverBytes = readFileSync(serverEntry, 'utf-8')
       if (serverBytes.length === 0) {
         throw new Error(`expected ${serverEntry} to be non-empty (got 0 bytes)`)
       }
+
+      // The runnable HTTP server entry + its package.json (`type: module`).
+      // Their presence proves the adapter staged successfully (no EINVAL).
+      assertFileExists(join(dist, 'index.js'))
+      assertFileContains(join(dist, 'package.json'), '"type": "module"')
+
+      // The production SSR template staged next to the server bundle. It
+      // carries the hashed client `<script>` so the page HYDRATES in
+      // production — without it the handler ships the dev "/src/entry-client.ts"
+      // path, which 404s (server-renders but never hydrates). Bisect: disable
+      // `readBuiltTemplate` in entry-server.ts → the e2e ssr-node hydration
+      // spec fails; remove this copyFile in ssr-plugin.ts → this assert fails.
+      assertFileExists(join(dist, 'server', 'template.html'))
+      assertFileContains(join(dist, 'server', 'template.html'), '/assets/')
     },
   },
   {
@@ -671,7 +694,10 @@ const MATRIX: Cell[] = [
     example: 'app-showcase',
     mode: 'ssr',
     smoke: (dist) => {
-      assertFileContains(join(dist, 'index.html'), '<!--pyreon-app-->')
+      // Node adapter stages the SSR artifact into dist/{client,server,
+      // index.js} — see the ssr-showcase × ssr cell for the Bug A/C lock.
+      assertFileContains(join(dist, 'client', 'index.html'), '<!--pyreon-app-->')
+      assertFileExists(join(dist, 'index.js'))
     },
   },
   {
@@ -842,7 +868,9 @@ const MATRIX: Cell[] = [
     example: 'playground',
     mode: 'ssr',
     smoke: (dist) => {
-      assertFileContains(join(dist, 'index.html'), '<!--pyreon-app-->')
+      // Staged SSR artifact (see ssr-showcase × ssr — Bug A/C lock).
+      assertFileContains(join(dist, 'client', 'index.html'), '<!--pyreon-app-->')
+      assertFileExists(join(dist, 'index.js'))
     },
   },
   {

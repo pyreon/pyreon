@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { materialize } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -55,7 +56,7 @@ export function vercelAdapter(): Adapter {
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, cp, mkdir } = await import('node:fs/promises')
+      const { writeFile, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const vercelDir = join(options.outDir, '.vercel', 'output')
@@ -65,11 +66,14 @@ export function vercelAdapter(): Adapter {
       await mkdir(staticDir, { recursive: true })
       await mkdir(funcDir, { recursive: true })
 
-      // Copy client assets to static/
-      await cp(options.clientOutDir, staticDir, { recursive: true })
+      // Stage client assets into static/. clientOutDir === outDir, so the
+      // static dir is a subtree of the client source — `materialize` moves the
+      // client files in (preserving the server bundle for the copy below) to
+      // avoid a copy-into-self EINVAL. See stage.ts.
+      await materialize(options.clientOutDir, staticDir, { preserve: ['server'] })
 
-      // Copy server build to function directory
-      await cp(join(options.serverEntry, '..'), funcDir, { recursive: true })
+      // Copy server build to function directory (disjoint subtree → copy).
+      await materialize(join(options.serverEntry, '..'), funcDir)
 
       // Generate serverless function entry.
       //

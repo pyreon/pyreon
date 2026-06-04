@@ -63,8 +63,15 @@ export interface HandlerOptions {
    * Defaults to a minimal HTML5 template.
    */
   template?: string
-  /** Path to the client entry module (default: "/src/entry-client.ts") */
-  clientEntry?: string
+  /**
+   * Path to the client entry module (default: "/src/entry-client.ts").
+   *
+   * Pass `false` to suppress the client-entry `<script>` injection entirely —
+   * use this when `template` is a BUILT index.html that already carries the
+   * production hashed `<script type="module" src="/assets/…">` tag (the
+   * production SSR path). Loader-data injection still happens.
+   */
+  clientEntry?: string | false
   /** Middleware chain — runs before rendering */
   middleware?: Middleware[]
   /**
@@ -117,7 +124,10 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
 
   // Pre-compile once at handler creation — avoids 3x string scan per request
   const compiled = compileTemplate(template)
-  const clientEntryTag = buildClientEntryTag(clientEntry)
+  // `clientEntry: false` → no client-entry <script> (the template already
+  // carries the production hashed module script). buildScriptsFast('', …)
+  // then injects only the loader-data inline script.
+  const clientEntryTag = clientEntry === false ? '' : buildClientEntryTag(clientEntry)
 
   return async function handler(req: Request): Promise<Response> {
     const url = new URL(req.url)

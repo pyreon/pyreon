@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { materialize } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -50,7 +51,7 @@ export function netlifyAdapter(): Adapter {
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, cp, mkdir } = await import('node:fs/promises')
+      const { writeFile, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const outDir = options.outDir
@@ -60,13 +61,16 @@ export function netlifyAdapter(): Adapter {
       await mkdir(publishDir, { recursive: true })
       await mkdir(functionsDir, { recursive: true })
 
-      // Copy client assets to publish/
-      await cp(options.clientOutDir, publishDir, { recursive: true })
-
-      // Copy server build to functions directory
-      await cp(join(options.serverEntry, '..'), join(functionsDir, '_server'), {
-        recursive: true,
+      // Stage client assets into publish/. clientOutDir === outDir, so publish/
+      // is a subtree of the client source — `materialize` moves the client in
+      // (preserving the `netlify` functions dir + the server bundle) to avoid a
+      // copy-into-self EINVAL. See stage.ts.
+      await materialize(options.clientOutDir, publishDir, {
+        preserve: ['netlify', 'server'],
       })
+
+      // Copy server build to functions directory (disjoint subtree → copy).
+      await materialize(join(options.serverEntry, '..'), join(functionsDir, '_server'))
 
       // Generate Netlify Function (v2 format — ESM, Web-standard Request/Response).
       const funcEntry = `
