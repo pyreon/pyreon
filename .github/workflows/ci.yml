@@ -61,9 +61,18 @@ permissions:
 
 # ── Shared cache keys ──────────────────────────────────────────────────────
 # Defined here so every job uses the exact same strings.
+#
+# BOOTSTRAP_KEY: the source-hashed key is constructed at the bootstrap
+# job's step level using hashFiles(...). That function isn't allowed in
+# workflow-level `env:` (GHA restricts hashFiles to step-context only).
+# The actions/cache restore + save steps inline the key directly. The
+# restore-keys prefix `bootstrap-ubuntu-` lets a partial-hit (a different
+# source hash since the previous run) fall back to that previous run's
+# cache. The Build step's `if: cache-hit != 'true'` only skips on an
+# EXACT key match — partial-hits still rebuild lib/ to avoid chunk-
+# filename inconsistency between cached and freshly-built modules.
 env:
   NM_KEY: node-modules-${{ github.run_id }}
-  BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
 
 jobs:
   # ── Install: checkout + install + bootstrap, then save caches ───────────
@@ -189,13 +198,45 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
+      # Source-hashed cache restore: when no package source has changed
+      # since the previous CI run that built lib/, we get an EXACT cache
+      # hit and the build step below is a no-op (~3s instead of ~236s).
+      # The `restore-keys` prefix lets a partial-hit (e.g. examples-only
+      # change matches a previous source hash) fall through cleanly.
+      #
+      # hashFiles(...) is inlined here — GHA disallows it in workflow-
+      # level `env:`, so we can't extract it to a shared variable. Keep
+      # the inputs in sync with the comment block at the top of the file
+      # (and with the save step below — they MUST be identical or the
+      # save uses a different key than the restore looked up).
+      - name: Restore source-hashed lib/ cache
+        id: bootstrap-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: bootstrap-ubuntu-
+      # Skip the build on EXACT cache hit. A partial-hit (restore-keys
+      # match but not the primary key) still runs the build — the lib/
+      # restored from a stale-source key would mix with current-source
+      # rebuilds and produce inconsistent chunk filenames.
       - name: Build lib/
+        if: steps.bootstrap-cache.outputs.cache-hit != 'true'
         run: bun scripts/bootstrap.ts
-      - name: Save bootstrap for this run
+      - name: Cache-hit summary
+        run: |
+          if [ "${{ steps.bootstrap-cache.outputs.cache-hit }}" = "true" ]; then
+            echo "::notice title=Bootstrap cache hit::source-hashed cache hit — skipped ~236s of build"
+          else
+            echo "::notice title=Bootstrap cache miss::source changed since last cached build — rebuilt lib/"
+          fi
+      - name: Save bootstrap (source-hash key) for next runs
+        if: steps.bootstrap-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
-          key: ${{ env.BOOTSTRAP_KEY }}
+          # Key MUST match the restore step above — keep in sync.
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
 
   # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
   # Every downstream job: checkout → setup-bun → restore run_id caches.
@@ -382,6 +423,15 @@ jobs:
           # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
           # tests; default `restore-bootstrap: 'true'` is correct.
       - name: Run tests (${{ matrix.category }})
+        # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
+        # PR-time fast path. Today this skips `bootstrap-exit-codes.test.ts`
+        # in test (internals) — which takes ~190s on CI due to 8 subprocess
+        # spawns of bun + the bootstrap.ts walk. The contract is covered by
+        # the dedicated `bootstrap-exit-codes` cell below, which runs WITHOUT
+        # this env var when scripts/bootstrap.ts itself changes. push:main +
+        # merge_group also run the full suite (no env var passed).
+        env:
+          PYREON_SKIP_SLOW_TESTS: ${{ github.event_name == 'pull_request' && '1' || '' }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin "${{ github.base_ref }}" --depth=1 || true
@@ -434,6 +484,68 @@ jobs:
           fi
           echo "::error::One or more test cells failed ($RESULT)"
           exit 1
+
+  # ── Dedicated cell for `bootstrap-exit-codes.test.ts` ──────────────────
+  # That single test file spawns 8 bun subprocesses, each running the
+  # full bootstrap.ts walk over ~80 packages. Locally this runs in ~5s;
+  # on GHA's slower runners it took ~190s (entirely dominating `test
+  # (internals)`'s ~196s wall-clock). The PR-time test (internals) job
+  # now sets PYREON_SKIP_SLOW_TESTS=1 to skip this file; this dedicated
+  # cell runs WITHOUT the env var, but ONLY when `scripts/bootstrap.ts`
+  # itself can have changed — that's the only path that can regress the
+  # exit-code contract this suite protects.
+  #
+  # push:main / merge_group always run (safety: main never merges without
+  # the full contract validation).
+  bootstrap-exit-codes:
+    name: bootstrap-exit-codes
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          node-version: '24'
+          restore-bootstrap: 'false' # this test doesn't read lib/
+      - name: Detect whether bootstrap-exit-codes inputs changed
+        id: changes
+        run: |
+          # push:main / merge_group always run.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Full run forced (event: ${{ github.event_name }})"
+            exit 0
+          fi
+          git fetch origin "${{ github.base_ref }}" --depth=1 || true
+          BASE="origin/${{ github.base_ref }}"
+          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
+            # Couldn't determine diff — safe default = run.
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RELEVANT=false
+          for prefix in \
+            scripts/bootstrap.ts \
+            scripts/install-git-hooks.ts \
+            packages/internals/test-utils/src/tests/bootstrap-exit-codes.test.ts \
+            .github/workflows/ci.yml; do
+            if echo "$CHANGED" | grep -qE "^$prefix"; then
+              RELEVANT=true
+              echo "Matched trigger: $prefix"
+              break
+            fi
+          done
+          echo "run=$RELEVANT" >> "$GITHUB_OUTPUT"
+          if [ "$RELEVANT" = "false" ]; then
+            echo "No bootstrap.ts changes — skipping bootstrap-exit-codes cell (saves ~190s)"
+          fi
+      - name: Run bootstrap-exit-codes
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          bun run --filter='@pyreon/test-utils' test src/tests/bootstrap-exit-codes.test.ts
 
   test-browser:
     name: Test (browser)
@@ -738,13 +850,19 @@ jobs:
     # P3c — runs the full test suite, same lib/-requiring tests as
     # `test-cell`. Needs Bootstrap.
     #
-    # Now runs on EVERY trigger (push:main, merge_group, AND pull_request)
-    # — the floor-only Coverage gate proves the exemption invariant holds,
-    # but `Coverage (Full)` is the only thing that catches an actual
-    # regression in coverage numbers (e.g. a PR drops a package from 95%
-    # to 92% while staying above the configured threshold of 90% — the
-    # floor gate accepts it, the Full gate fails it). Trade-off: ~30s
-    # added to PR CI; gain: main can't silently regress through merges.
+    # Scoped to push:main + merge_group ONLY — NOT every PR. The original
+    # "runs on every trigger" claim estimated ~30s added to PR CI; actual
+    # CI measurement showed 262s (4.4 min) — 9× the estimate. That's a
+    # 262s slice off the PR critical path for a check that only catches
+    # numeric regressions main / merge_queue already gate on, and is
+    # functionally duplicated for PR-visible feedback by the
+    # `Coverage` floor gate (runs always, ~5s).
+    #
+    # Trade-off restored: a PR that drops a package's actual coverage from
+    # 92% to 88% (still above the floor) passes `Coverage` but fails
+    # `Coverage (Full)` at merge-queue time. Same safety as before; the
+    # signal just lands at merge-time instead of PR-time.
+    if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
     needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -998,12 +1116,84 @@ jobs:
   # `scaffold-smoke-aggregate` mirrors the e2e aggregator pattern: a
   # stable required check name regardless of which cells ran (matches
   # branch-protection's expectations even if a cell gets renamed).
+  #
+  # ## Path-scoping (perf): PRs that don't touch the scaffolder OR any
+  # template skip the matrix entirely. All 6 cells share the same
+  # scaffold-relevant input surface (the cells differ only in template ×
+  # adapter combinations — the SCAFFOLDER + the templates are the same
+  # source) so it's all-or-nothing. The `scaffold-smoke-decide` job below
+  # gates the matrix; the `scaffold-smoke` aggregator runs always (empty
+  # matrix is a green skip, same shape as e2e).
+  # push:main + merge_group ALWAYS run the full matrix — main is never
+  # allowed to merge an undetected scaffold regression.
+  scaffold-smoke-decide:
+    name: Scaffold Smoke (decide)
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      has: ${{ steps.pick.outputs.has }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+      - name: Detect scaffold-relevant changes
+        id: pick
+        run: |
+          # Non-PR triggers always run the full matrix — main / merge_group
+          # is the protected path. Per-suite skipping is a PR-only opt.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+            echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
+            exit 0
+          fi
+          git fetch origin "${{ github.base_ref }}" --depth=1 || true
+          BASE="origin/${{ github.base_ref }}"
+          # Changed files (handles fetch failures cleanly — fall back to
+          # running the matrix if we can't determine the diff).
+          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+            echo "Could not determine changes — running full matrix (safety)"
+            exit 0
+          fi
+          # Scaffold-relevant paths: the templates, the scaffolder, the
+          # CLI, the zero runtime (which templates depend on), and the
+          # test driver + workflow itself. Generous superset — false
+          # positives are fine; false negatives would skip a real bug.
+          # Also include scripts/affected.ts (the shared infra) and the
+          # workflow file (this gate definition).
+          TRIGGERS=$(cat <<'EOF'
+          packages/zero/zero/
+          packages/zero/zero-cli/
+          packages/zero/create-zero/
+          packages/zero/meta/
+          packages/core/
+          scripts/scaffold-smoke.ts
+          scripts/affected.ts
+          .github/workflows/ci.yml
+          bun.lock
+          package.json
+          EOF
+          )
+          HAS=false
+          while IFS= read -r prefix; do
+            if echo "$CHANGED" | grep -qE "^$prefix"; then
+              HAS=true
+              echo "Matched trigger: $prefix"
+              break
+            fi
+          done <<< "$TRIGGERS"
+          echo "has=$HAS" >> "$GITHUB_OUTPUT"
+          if [ "$HAS" = "false" ]; then
+            echo "No scaffold-relevant changes — skipping matrix (saves ~265s/cell)"
+          fi
   scaffold-smoke-cell:
     name: Scaffold Smoke (${{ matrix.cell }})
     # P3c — each cell runs `bun install` + `vite build` of the scaffolded app.
     # Needs Bootstrap so the workspace lib/ is resolvable when the app pulls
     # in @pyreon/* via the node condition.
-    needs: bootstrap
+    needs: [bootstrap, scaffold-smoke-decide]
+    if: ${{ needs.scaffold-smoke-decide.outputs.has == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -1037,8 +1227,15 @@ jobs:
       - name: Aggregate scaffold-smoke matrix
         run: |
           RESULT="${{ needs.scaffold-smoke-cell.result }}"
-          if [ "$RESULT" = "success" ]; then
-            echo "All scaffold-smoke cells passed."
+          # `skipped` happens when scaffold-smoke-decide says no relevant
+          # changes — that's a green outcome (matches e2e's empty-matrix
+          # pattern). `success` is the normal pass. Anything else fails.
+          if [ "$RESULT" = "success" ] || [ "$RESULT" = "skipped" ]; then
+            if [ "$RESULT" = "skipped" ]; then
+              echo "No scaffold-relevant changes — matrix skipped."
+            else
+              echo "All scaffold-smoke cells passed."
+            fi
             exit 0
           fi
           echo "::error::One or more scaffold-smoke cells failed (result=$RESULT)"
