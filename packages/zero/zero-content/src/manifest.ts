@@ -21,6 +21,9 @@ export default defineManifest({
   category: 'server',
   features: [
     'Compile-time .md/.mdx → Pyreon JSX (no dangerouslySetInnerHTML — full reactivity + tree-shaking preserved)',
+    'MDX support: JSX-in-markdown + top-of-file `import` statements hoisted to the compiled .tsx',
+    'src/mdx/ convention scan — drop a PascalCase .tsx file, use the component in any .md by name (no wiring)',
+    'Virtual module `virtual:zero-content/components` re-exports the scanned set + the built-ins',
     'Astro-style typed content collections via zod schema inference + emitted .pyreon/content-types.d.ts',
     'Three-tier MDX component resolution: built-ins → src/mdx/ convention scan → per-.md imports → escape-hatch defineComponents',
     'Auto-generated catch-all routes per type:"pages" collection under src/routes/_content/ (no fs-router fork)',
@@ -28,6 +31,7 @@ export default defineManifest({
     'Shiki syntax highlighting with shared instance + dual light/dark theme baked into one emit (no runtime cost)',
     'Custom markdown blocks: :::tip / :::warning / :::note / :::danger / :::info / :::code-group via remark-directive',
     'Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")',
+    'HMR for src/mdx/ changes — invalidates the virtual module, re-renders dependent .md pages without reload',
     'Inherits zero\'s perf stack — image/font auto-wire, script defer default, resource hints, view transitions',
   ],
   longExample: `// vite.config.ts
