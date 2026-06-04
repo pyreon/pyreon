@@ -105,11 +105,16 @@ export function getContentEntry(
   }
   const fm = readFrontmatter(body)
   const frontmatter: Record<string, string> = {}
+  // String-based parse — the equivalent
+  // `^([A-Za-z_][\w.-]*):\s*(.*)$` regex was flagged by CodeQL as
+  // polynomial on runs of whitespace. Linear ops eliminate the
+  // backtrack risk while preserving the same surface contract.
   for (const line of fm.body.split('\n')) {
-    const m = line.match(/^([A-Za-z_][\w.-]*):\s*(.*)$/)
-    if (!m) continue
-    const k = m[1]!
-    let v = (m[2] ?? '').trim()
+    const colon = line.indexOf(':')
+    if (colon <= 0) continue
+    const k = line.slice(0, colon)
+    if (!isYamlKey(k)) continue
+    let v = line.slice(colon + 1).trim()
     if (
       (v.startsWith('"') && v.endsWith('"')) ||
       (v.startsWith("'") && v.endsWith("'"))
@@ -207,10 +212,39 @@ function extractHeadings(markdown: string): { level: number; text: string }[] {
       continue
     }
     if (inFence) continue
-    const m = line.match(/^(#{1,6})\s+(.+?)\s*#*$/)
-    if (m) {
-      out.push({ level: m[1]!.length, text: m[2]!.trim() })
-    }
+    // String-based parse — the equivalent `^(#{1,6})\s+(.+?)\s*#*$`
+    // regex was flagged by CodeQL as polynomial on runs of whitespace
+    // / trailing `#`. Linear ops eliminate the backtrack risk.
+    if (!line.startsWith('#')) continue
+    let i = 0
+    while (i < line.length && i < 6 && line[i] === '#') i++
+    if (i === 0 || i === line.length) continue
+    if (line[i] !== ' ' && line[i] !== '\t') continue
+    let text = line.slice(i + 1).trim()
+    // Strip trailing closing `#` markers (ATX-closed headings).
+    let end = text.length
+    while (end > 0 && text[end - 1] === '#') end--
+    text = text.slice(0, end).trimEnd()
+    if (!text) continue
+    out.push({ level: i, text })
   }
   return out
+}
+
+/**
+ * Recognise a frontmatter key (YAML identifier): leading
+ * `[A-Za-z_]`, then any of `[\w.-]`. Linear-time scan.
+ */
+function isYamlKey(s: string): boolean {
+  if (s.length === 0) return false
+  const c0 = s.charCodeAt(0)
+  const isAlpha = (c: number) =>
+    (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 // [A-Za-z_]
+  const isWord = (c: number) =>
+    isAlpha(c) || (c >= 48 && c <= 57) || c === 46 || c === 45 // + 0-9 . -
+  if (!isAlpha(c0)) return false
+  for (let i = 1; i < s.length; i++) {
+    if (!isWord(s.charCodeAt(i))) return false
+  }
+  return true
 }
