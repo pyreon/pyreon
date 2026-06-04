@@ -154,7 +154,7 @@ clearStorage('all') // clear every backend
 
 ## Internal `_v` getter contract
 
-Every storage signal wraps a base `signal()` with a callable that **forwards `_v` via getter** — required by the compiler-emitted `_bindText` / `_bindDirect` fast paths, which read `source._v` directly (skipping the function call) for cached signals. Without the getter forwarding, every binding writes `''` on initial render and on every subscriber notification. This contract is enforced by the `pyreon/storage-signal-v-forwarding` lint rule — any custom wrapper-signal package built on `@pyreon/reactivity` MUST forward `_v`. The shared `wrapBaseSignal()` helper inside this package is the canonical shape; see `packages/fundamentals/storage/src/wrap-base-signal.ts`.
+Every storage signal wraps a base `signal()` with a facade that **forwards `_v` (and `.direct`)** — required by the compiler-emitted `_bindText` / `_bindDirect` fast paths, which read `source._v` directly (skipping the function call) and subscribe via `source.direct(...)` for cached signals. Without the forwarding, every binding writes `''` on initial render and on every subscriber notification. **The canonical way to build such a facade is `wrapSignal(base, { set })` from `@pyreon/reactivity`** — it forwards `_v` / `.direct` / `.peek` / `.subscribe` / `.label` by construction, so the contract can't be forgotten. (Every storage backend here uses it.) The `pyreon/storage-signal-v-forwarding` lint rule still guards against HAND-ROLLED facades that delegate `.direct` but forget `_v`.
 
 ## Types
 
@@ -171,7 +171,7 @@ Every storage signal wraps a base `signal()` with a callable that **forwards `_v
 
 - **Same key returns the SAME signal instance per backend** — two `useStorage('theme', 'light')` calls in different components share state. This is by design; do NOT expect a fresh signal per call.
 - **`useStorage` cross-tab listener is ref-counted** — attached on first `useStorage`, removed when the last signal disposes via `.remove()`. Pre-fix the listener leaked across the page lifetime.
-- **The internal `_v` getter is load-bearing** — if you write a custom wrapper-signal on top of `@pyreon/reactivity` and forget to forward `_v`, the compiler-emitted fast path binds to `undefined` and renders empty (the bug class PR #546 fixed). Enforced by the `pyreon/storage-signal-v-forwarding` lint rule. The package's `wrapBaseSignal()` helper handles this — use it for any new backend.
+- **The internal `_v` getter is load-bearing** — if you hand-roll a wrapper-signal on top of `@pyreon/reactivity` and forget to forward `_v` (or `.direct`), the compiler-emitted fast path binds to `undefined` and renders empty (the bug class PR #546 fixed). **Use `wrapSignal()` from `@pyreon/reactivity` for any new backend** — it forwards both by construction so the bug is impossible. The `pyreon/storage-signal-v-forwarding` lint rule guards the hand-rolled case.
 - **Cookies need `setCookieSource(header)` on the server** — `document.cookie` doesn't exist in SSR. Without it, `useCookie` returns the default value during render.
 - **IndexedDB writes are debounced** (default 100ms) — the signal updates immediately; persistence trails. On unload, in-flight writes complete (most browsers honor pending IndexedDB transactions).
 - **`useMemoryStorage` doesn't persist** — values clear on reload. Useful for SSR, tests, and request-scoped state that should NOT survive navigation.

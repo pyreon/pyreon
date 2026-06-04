@@ -1,8 +1,7 @@
-import { signal } from '@pyreon/reactivity'
+import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, removeEntry, setEntry } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
 import { deserialize, serialize } from './utils'
-import { wrapBaseSignal } from './wrap-base-signal'
 
 // ─── createStorage ───────────────────────────────────────────────────────────
 
@@ -49,22 +48,18 @@ export function createStorage(
 
     const sig = signal<T>(initialValue)
 
-    // Shared base wrapper — see `wrap-base-signal.ts` for the full contract.
-    const storageSig = wrapBaseSignal(sig) as unknown as StorageSignal<T>
-
-    storageSig.set = (value: T) => {
-      sig.set(value)
-      try {
-        backend.set(key, serialize(value, options?.serializer))
-      } catch {
-        // Write failed — signal still updates
-      }
-    }
-
-    storageSig.update = (fn: (current: T) => T) => {
-      const newValue = fn(sig.peek())
-      storageSig.set(newValue)
-    }
+    // `wrapSignal` delegates reads (incl. `.direct` + `_v`) to the shared base
+    // `sig` and routes writes through the custom backend; `.update` defaults.
+    const storageSig = wrapSignal(sig, {
+      set: (value: T) => {
+        sig.set(value)
+        try {
+          backend.set(key, serialize(value, options?.serializer))
+        } catch {
+          // Write failed — signal still updates
+        }
+      },
+    }) as unknown as StorageSignal<T>
 
     storageSig.remove = () => {
       sig.set(defaultValue)
