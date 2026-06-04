@@ -1,5 +1,58 @@
 # @pyreon/compiler
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1328](https://github.com/pyreon/pyreon/pull/1328) [`8524e24`](https://github.com/pyreon/pyreon/commit/8524e24651184d275d5bf7520d65caade2ef25b8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(compiler): add 20 real branch-coverage tests; branches 84.63% → 85.34% (clears MINIMUM_BRANCH_FLOOR=85)
+
+  `branch-coverage-real.test.ts` covers uncov arms in 3 small-helper modules:
+
+  - **reactivity-lens.ts** (68.75% → 81.25%): `analyzeReactivity({ knownSignals })` truthy/falsy arms; `formatReactivityLens` code-badge branch (footgun vs no-code finding); parse-failure catch path
+  - **lpih.ts** (82.6% → 97.1%): `mergeFireDataIntoFindings` nullish rate1s + kind aggregation arms; `firesToCreationSiteFindings` same-line aggregation with lastFire flip + kind-undefined fallback; sort comparator column branch
+  - **test-audit.ts** (85.54% → 95.18%): `formatTestAudit` risk-level / singular-vs-plural arms (1 literal vs 2 literals, etc.), `importsH`-no-calls path, `describeRisk` low arm via `minRisk: 'low'`
+
+  Threshold lifted: branches 84 → 85 in `vitest.config.ts`. `BELOW_FLOOR_EXEMPTIONS` entry updated: `currentBranches: 84 → 85`. Compiler now clears `MINIMUM_BRANCH_FLOOR=85`; exemption persists for STATEMENTS only (92.65% vs floor 95).
+
+  Bisect-verified: with new file removed, branches fall to 84.63%, gate fails with `Coverage for branches (84.63%) does not meet global threshold (85%)`. Restored → 85.34%, gate passes.
+
+- [#1325](https://github.com/pyreon/pyreon/pull/1325) [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: islands work natively in @pyreon/zero (self-hydrating island())
+
+  Declaring an island in a `@pyreon/zero` route was broken: the build crashed
+  (duplicate-`@pyreon/server` singleton sentinel) and, even forced past it, the
+  island never hydrated (the route error boundary caught a thrown async render).
+  Root cause: zero's route is a **reactive child of RouterView**, so on the client
+  the SSR route DOM is **discarded and re-mounted** (not hydrated in place). That
+  defeats the islands model — an inline async `island()` render throws inside the
+  host mount/hydrate (no Suspense boundary), and the one-shot `hydrateIslandsAuto`
+  scan races the async lazy-route mount.
+
+  `island()` now **self-hydrates on the client**: it renders only the
+  `<pyreon-island>` marker, then `onMount` loads the chunk and mounts the
+  component into the marker per the `data-hydrate` strategy (load/idle/visible/
+  interaction/media), reusing the existing schedulers (`scheduleHydration` /
+  `schedulePrefetch`, now exported from `@pyreon/server/client` and dynamically
+  imported so they stay out of the SSR graph). The island owns its own hydration
+  lifecycle, so it's robust whether the host hydrates the page (a static islands
+  app) or re-mounts the route (`@pyreon/zero`). The server branch is unchanged
+  (async `loader()` → marker + content for SSR/SEO/first-paint).
+
+  `@pyreon/zero` re-exports `island` (+ `IslandOptions`/`IslandMeta`) from the
+  client-safe `@pyreon/server/client`, so a zero app declares islands with
+  `import { island } from '@pyreon/zero'` — no `@pyreon/server` dependency, just
+  `startClient({ routes })`, no manual `hydrateIslandsAuto`.
+
+  Verified end-to-end in real Chromium (`e2e/zero-islands.spec.ts`: a
+  `hydrate:'visible'` island hydrates with zero manual wiring and a click drives
+  its signal — no sentinel, no `reading 'ref'` crash) with the 9 islands-showcase
+  strategy specs (the static model) staying green.
+
+  `@pyreon/compiler`: the `dead-island` islands-audit detector
+  (`pyreon doctor --check-islands` / MCP `audit_islands`) no longer false-positives
+  on islands declared in `src/routes/**` files. fs-router routes are auto-loaded
+  entry points (the generated virtual route module `lazy()`-imports them), so no
+  hand-written source imports the file — the heuristic now skips route files.
+
 ## 0.28.1
 
 ### Patch Changes

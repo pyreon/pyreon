@@ -1,5 +1,27 @@
 # @pyreon/cli
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1312](https://github.com/pyreon/pyreon/pull/1312) [`00a6d70`](https://github.com/pyreon/pyreon/commit/00a6d70fac25baf38c90d582cff3c59110bd9aad) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(cli): add 17 real tests for doctor render + check-dedup gates
+
+  17 new tests in `branch-coverage-real.test.ts` covering:
+
+  - `renderText` finding-location branch matrix (no location / path only / line only / line+column / relPath / relatedLocations / fix suggestion)
+  - severity icon rendering (error/warning/info)
+  - clean state (no findings) + multiple-gates rendering
+  - `runDocClaimsGate` graceful handling of missing CLAUDE.md
+  - `runCheckDedupGate` graceful handling of missing lockfiles
+  - `_parseBunLock`/`_parseNpmLock`/`_parsePnpmLock` minimal-lockfile parsing
+  - `_detectDuplicates` find vs empty matrix
+
+  Branches lifted 85.28% → 86.28%. Incremental real-test coverage on the doctor render layer and check-dedup gate.
+
+- Updated dependencies [[`8524e24`](https://github.com/pyreon/pyreon/commit/8524e24651184d275d5bf7520d65caade2ef25b8), [`3ab6d0d`](https://github.com/pyreon/pyreon/commit/3ab6d0d3e645b65c73bef9ec353dc1526ea840c5), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
+  - @pyreon/compiler@1.0.0
+  - @pyreon/lint@1.0.0
+
 ## 0.28.1
 
 ### Patch Changes

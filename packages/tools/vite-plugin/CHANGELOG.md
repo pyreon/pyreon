@@ -1,5 +1,33 @@
 # @pyreon/vite-plugin
 
+## 0.29.0
+
+### Patch Changes
+
+- [#1323](https://github.com/pyreon/pyreon/pull/1323) [`99f9bad`](https://github.com/pyreon/pyreon/commit/99f9bad4df69aac46ec947e8176ff75a68722bcd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - test(vite-plugin): add 48 real tests for helper functions
+
+  48 new tests in `branch-coverage-real.test.ts` covering the exported
+  helper API: `_isTruthyEnv` truth table, `_getCompatTarget` redirect
+  matrix for all 5 frameworks (react/preact/vue/solid/svelte) + jsx-runtime
+
+  - jsx-dev-runtime variants, `_isPyreonWorkspaceFile` path filters (empty,
+    query-strip, null-byte, non-packages, examples-exclusion, walk-to-root,
+    cache hit), `_skipStringLiteral` end-position semantics (escaped quotes,
+    single-quote, unterminated), `_extractBalancedArgs` (nested parens,
+    string-with-parens, unbalanced), `_maskStringsAndComments` /
+    `_maskCommentsAndStrings` length-preservation, `_computeLineStarts` /
+    `_offsetToLineCol` mapping, `_collectImportedNames` named/namespace/type
+    imports, `buildLpihClientScript` / `resolveLpihCachePath` smoke.
+
+  Branches lifted 88.35% → 88.52%. Modest gain since most remaining uncov
+  is in the plugin runtime hooks (config/resolveId/transform/watchChange)
+  which require integration tests with a real Vite instance.
+
+- Updated dependencies [[`8524e24`](https://github.com/pyreon/pyreon/commit/8524e24651184d275d5bf7520d65caade2ef25b8), [`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`d65d779`](https://github.com/pyreon/pyreon/commit/d65d77982284b3ce8ec871fd536069b5cd36f770), [`34872f9`](https://github.com/pyreon/pyreon/commit/34872f9832564fce87e408411d5f416785c6b484), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
+  - @pyreon/compiler@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+
 ## 0.28.1
 
 ### Patch Changes

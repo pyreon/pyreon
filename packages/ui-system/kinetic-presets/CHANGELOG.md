@@ -1,5 +1,7 @@
 # @pyreon/kinetic-presets
 
+## 0.29.0
+
 ## 0.28.1
 
 ### Patch Changes

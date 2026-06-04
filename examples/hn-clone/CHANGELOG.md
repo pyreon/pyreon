@@ -1,5 +1,48 @@
 # hn-clone
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`8726411`](https://github.com/pyreon/pyreon/commit/872641168a22ba0423d4888e394f6c799ad4dd1c), [`74f1de0`](https://github.com/pyreon/pyreon/commit/74f1de08a1982cb5a0d46d4f850091b121ea9c72), [`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`6b97bcc`](https://github.com/pyreon/pyreon/commit/6b97bcc78493586d7fb2134c85714a0b990ff1c9), [`d65d779`](https://github.com/pyreon/pyreon/commit/d65d77982284b3ce8ec871fd536069b5cd36f770), [`34872f9`](https://github.com/pyreon/pyreon/commit/34872f9832564fce87e408411d5f416785c6b484), [`64b7feb`](https://github.com/pyreon/pyreon/commit/64b7feb2ea133dd67915d3c3924781cb8fc4a3c3), [`601ad29`](https://github.com/pyreon/pyreon/commit/601ad29f41df0bf96a50136111355b26e8fd6bfe), [`e940031`](https://github.com/pyreon/pyreon/commit/e940031e4d5f754fb47b01187e1a1016b55b965d), [`f5e6ff8`](https://github.com/pyreon/pyreon/commit/f5e6ff8d24cbf1e152717d4b192576200cd3c83d), [`7aa2c8f`](https://github.com/pyreon/pyreon/commit/7aa2c8f584f348d73f2ca1f8dca818cf3936b3af), [`6ac8811`](https://github.com/pyreon/pyreon/commit/6ac88117ebc3de07c0904c226a98a7754185b2fd), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`78feab2`](https://github.com/pyreon/pyreon/commit/78feab2aaa4d6051a4aa726a7d0f4c2a02cb6cde), [`9a863b7`](https://github.com/pyreon/pyreon/commit/9a863b71e946898ab2a8dac7051cef30adada7b4), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe), [`88a42f7`](https://github.com/pyreon/pyreon/commit/88a42f7620f4c9a4a3df0d6b730294a4f91c94ae), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
+  - @pyreon/elements@1.0.0
+  - @pyreon/kinetic@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/zero@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/charts@1.0.0
+  - @pyreon/dnd@1.0.0
+  - @pyreon/document@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/hotkeys@1.0.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/state-tree@1.0.0
+  - @pyreon/storage@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/toast@1.0.0
+  - @pyreon/url-state@1.0.0
+  - @pyreon/code@1.0.0
+  - @pyreon/feature@1.0.0
+  - @pyreon/flow@1.0.0
+  - @pyreon/machine@1.0.0
+  - @pyreon/permissions@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/rx@1.0.0
+  - @pyreon/table@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/virtual@1.0.0
+  - @pyreon/connector-document@1.0.0
+  - @pyreon/coolgrid@1.0.0
+  - @pyreon/document-primitives@1.0.0
+  - @pyreon/kinetic-presets@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.0.9
 
 ### Patch Changes
