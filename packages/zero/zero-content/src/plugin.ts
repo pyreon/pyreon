@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { Plugin, ResolvedConfig } from 'vite'
+import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
 import { compileMarkdown } from './pipeline/parse'
 import type { HighlighterOptions } from './pipeline/highlighter'
 import {
@@ -12,6 +12,19 @@ import {
   formatValidationError,
   validateComponentRefs,
 } from './mdx-scan/validate'
+import {
+  defaultLoader,
+  findConfigFile,
+  loadConfig,
+  type LoadedConfig,
+} from './config-loader'
+import { renderVirtualCollections } from './virtual-collections'
+import { writeContentTypes } from './type-emit/content-types'
+import {
+  formatSchemaIssues,
+  isStandardSchema,
+  validateAgainstSchema,
+} from './schema-validate'
 
 // ─── @pyreon/zero-content Vite plugin ──────────────────────────────────────
 //
@@ -53,13 +66,18 @@ export interface ContentPluginOptions {
   mdxDir?: string
 }
 
-// Virtual module the plugin serves so markdown can import user-side
-// components by name without any wiring. The user puts components in
-// `src/mdx/`, the scanner discovers them, the virtual module re-exports
-// them, and the markdown→TSX pipeline emits `import { ... } from
-// VIRTUAL_COMPONENTS_ID` per file.
+// Virtual modules the plugin serves.
+//
+//   - `virtual:zero-content/components` — re-exports every component
+//     discovered in `src/mdx/`. Markdown auto-imports from this module
+//     for any uppercase JSX tag.
+//   - `virtual:zero-content/collections` — runtime registry that
+//     `getCollection` / `getEntry` read from. Uses `import.meta.glob`
+//     to lazy-load each collection's entries.
 export const VIRTUAL_COMPONENTS_ID = 'virtual:zero-content/components'
 const RESOLVED_VIRTUAL_COMPONENTS_ID = '\0' + VIRTUAL_COMPONENTS_ID
+export const VIRTUAL_COLLECTIONS_ID = 'virtual:zero-content/collections'
+const RESOLVED_VIRTUAL_COLLECTIONS_ID = '\0' + VIRTUAL_COLLECTIONS_ID
 
 /**
  * The Vite plugin. Default export so users write:
@@ -73,8 +91,10 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
   // single in-flight scan promise so concurrent virtual-module loads
   // don't trigger N concurrent scans.
   let resolvedConfig: ResolvedConfig | null = null
+  let viteServer: ViteDevServer | null = null
   let cachedScan: ScanResult | null = null
   let scanInFlight: Promise<ScanResult> | null = null
+  let loadedConfig: LoadedConfig | null = null
 
   const getMdxDir = (): string => {
     if (options.mdxDir) return options.mdxDir
@@ -104,33 +124,141 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
     return !rel.startsWith('..') && !path.isAbsolute(rel)
   }
 
+  const maybeEmitTypes = async (cfg: LoadedConfig): Promise<void> => {
+    if (!resolvedConfig) return
+    await writeContentTypes({
+      root: resolvedConfig.root,
+      configFile: cfg.configFile,
+      collectionNames: Object.keys(cfg.config.collections),
+    })
+  }
+
+  /**
+   * Look up which collection (if any) the given markdown file belongs
+   * to. Used by `transform` to apply the right schema.
+   *
+   * Match by path-prefix — every collection has a `path` (default
+   * `src/content/<name>`). The first collection whose path is a prefix
+   * of `id` wins.
+   */
+  const findCollectionForFile = (id: string): string | null => {
+    if (loadedConfig === null) return null
+    const root = resolvedConfig?.root ?? process.cwd()
+    for (const [name, def] of Object.entries(loadedConfig.config.collections)) {
+      const collectionPath = def.path ?? `src/content/${name}`
+      const abs = path.isAbsolute(collectionPath)
+        ? collectionPath
+        : path.join(root, collectionPath)
+      const rel = path.relative(abs, id)
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) return name
+    }
+    return null
+  }
+
   return {
     name: 'pyreon-zero-content',
     enforce: 'pre',
 
-    configResolved(config) {
+    async configResolved(config) {
       resolvedConfig = config
+      // Try to load content.config.{ts,...} at configResolved time so
+      // the rest of the plugin has the collection map ready before any
+      // transform fires. The default loader (dynamic import) works for
+      // `.js` / `.mjs`; `.ts` is loaded via Vite's ssrLoadModule once
+      // the dev server is available (handled in configureServer).
+      const configFile = await findConfigFile(config.root)
+      if (configFile === null) return
+      // For `.js` / `.mjs` we can load right away.
+      if (/\.(m?js)$/.test(configFile)) {
+        try {
+          loadedConfig = await loadConfig(config.root, defaultLoader)
+          if (loadedConfig) await maybeEmitTypes(loadedConfig)
+        } catch (err) {
+          config.logger.warn(
+            `[@pyreon/zero-content] Failed to load content config: ${(err as Error).message}`,
+          )
+        }
+      }
+    },
+
+    async configureServer(server) {
+      viteServer = server
+      // For `.ts` / `.mts` configs we need Vite's ssrLoadModule so
+      // TypeScript transforms apply. Now's the time.
+      if (loadedConfig === null && resolvedConfig) {
+        try {
+          loadedConfig = await loadConfig(
+            resolvedConfig.root,
+            async (file) =>
+              server.ssrLoadModule(file) as Promise<{ default?: unknown }>,
+          )
+          if (loadedConfig) await maybeEmitTypes(loadedConfig)
+        } catch (err) {
+          server.config.logger.warn(
+            `[@pyreon/zero-content] Failed to load content config: ${(err as Error).message}`,
+          )
+        }
+      }
+    },
+
+    async buildStart() {
+      // Build mode (not dev) needs an ssrLoadModule fallback too. We
+      // use Rollup's resolution by importing the file directly via
+      // `import()`. This works when the consumer's bundler can resolve
+      // their content.config.ts (Vite always can, since it sets up the
+      // esbuild loader at process boot).
+      if (loadedConfig === null && resolvedConfig) {
+        try {
+          loadedConfig = await loadConfig(
+            resolvedConfig.root,
+            defaultLoader,
+          )
+          if (loadedConfig) await maybeEmitTypes(loadedConfig)
+        } catch {
+          // Silently skip — `.ts` configs in non-Vite contexts are out
+          // of scope for the default loader. The user gets a clearer
+          // error from `getCollection` at query time.
+        }
+      }
     },
 
     resolveId(source) {
       if (source === VIRTUAL_COMPONENTS_ID) return RESOLVED_VIRTUAL_COMPONENTS_ID
+      if (source === VIRTUAL_COLLECTIONS_ID) return RESOLVED_VIRTUAL_COLLECTIONS_ID
       return null
     },
 
     async load(id) {
-      if (id !== RESOLVED_VIRTUAL_COMPONENTS_ID) return null
-      const scan = await ensureScan()
-      // Surface duplicates as a build-time error so users notice them.
-      // `this.warn` is enough at the plugin level — it shows in Vite's
-      // dev console and CI build log.
-      if (scan.duplicates.length > 0) {
-        for (const dup of scan.duplicates) {
-          this.warn(
-            `[@pyreon/zero-content] Duplicate component name "${dup.name}" found in: ${dup.files.join(', ')}. Only the first is exposed via virtual:zero-content/components; rename one to disambiguate.`,
-          )
+      if (id === RESOLVED_VIRTUAL_COMPONENTS_ID) {
+        const scan = await ensureScan()
+        // Surface duplicates as a build-time error so users notice them.
+        // `this.warn` is enough at the plugin level — it shows in Vite's
+        // dev console and CI build log.
+        if (scan.duplicates.length > 0) {
+          for (const dup of scan.duplicates) {
+            this.warn(
+              `[@pyreon/zero-content] Duplicate component name "${dup.name}" found in: ${dup.files.join(', ')}. Only the first is exposed via virtual:zero-content/components; rename one to disambiguate.`,
+            )
+          }
         }
+        return renderVirtualModule(scan)
       }
-      return renderVirtualModule(scan)
+      if (id === RESOLVED_VIRTUAL_COLLECTIONS_ID) {
+        if (loadedConfig === null) {
+          // No content.config — emit an empty registry so the runtime
+          // throws an instructive error if someone calls getCollection.
+          return `// Auto-generated by @pyreon/zero-content. No content.config found.
+import { _setRegistry } from '@pyreon/zero-content'
+_setRegistry({})
+export {}
+`
+        }
+        return renderVirtualCollections({
+          config: loadedConfig.config,
+          root: resolvedConfig?.root ?? process.cwd(),
+        })
+      }
+      return null
     },
 
     async transform(code, id) {
@@ -164,6 +292,25 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
           }
         }
 
+        // Validate frontmatter against the owning collection's schema.
+        // Errors halt the build with a path-prefixed message naming
+        // every issue (path + message).
+        const collectionName = findCollectionForFile(id)
+        if (collectionName !== null && loadedConfig) {
+          const def = loadedConfig.config.collections[collectionName]!
+          if (isStandardSchema(def.schema)) {
+            const v = await validateAgainstSchema(
+              def.schema,
+              result.frontmatter,
+            )
+            if (!v.ok) {
+              this.error(
+                formatSchemaIssues(v.issues, shortId(id), collectionName),
+              )
+            }
+          }
+        }
+
         return { code: result.code, map: null }
       } catch (err) {
         const message = (err as Error).message
@@ -174,18 +321,49 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
     },
 
     async handleHotUpdate(ctx) {
-      // Invalidate the virtual components module when any `src/mdx/`
-      // source file changes. The next request will trigger a fresh
-      // scan + re-render of the module. Vite's module graph propagates
-      // the invalidation to every `.md` file that imported it.
-      if (!isUnderMdxDir(ctx.file)) return undefined
-      cachedScan = null
-      const mod = ctx.server.moduleGraph.getModuleById(
-        RESOLVED_VIRTUAL_COMPONENTS_ID,
-      )
-      if (mod) {
-        ctx.server.moduleGraph.invalidateModule(mod)
-        return [mod, ...ctx.modules]
+      // 1. src/mdx/ — invalidate the components virtual module.
+      if (isUnderMdxDir(ctx.file)) {
+        cachedScan = null
+        const mod = ctx.server.moduleGraph.getModuleById(
+          RESOLVED_VIRTUAL_COMPONENTS_ID,
+        )
+        if (mod) {
+          ctx.server.moduleGraph.invalidateModule(mod)
+          return [mod, ...ctx.modules]
+        }
+        return undefined
+      }
+      // 2. content.config — re-load the config, re-emit types, and
+      // invalidate the collections virtual module. Dependent .md files
+      // get re-validated automatically because Vite propagates the
+      // collection-module invalidation through their import graph.
+      if (loadedConfig && ctx.file === loadedConfig.configFile) {
+        try {
+          loadedConfig = await loadConfig(
+            resolvedConfig?.root ?? process.cwd(),
+            async (file) => {
+              if (viteServer) {
+                return viteServer.ssrLoadModule(file) as Promise<{
+                  default?: unknown
+                }>
+              }
+              return defaultLoader(file)
+            },
+          )
+          if (loadedConfig) await maybeEmitTypes(loadedConfig)
+        } catch (err) {
+          ctx.server.config.logger.warn(
+            `[@pyreon/zero-content] Failed to reload content config on HMR: ${(err as Error).message}`,
+          )
+        }
+        const mod = ctx.server.moduleGraph.getModuleById(
+          RESOLVED_VIRTUAL_COLLECTIONS_ID,
+        )
+        if (mod) {
+          ctx.server.moduleGraph.invalidateModule(mod)
+          return [mod, ...ctx.modules]
+        }
+        return undefined
       }
       return undefined
     },

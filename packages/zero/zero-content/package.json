@@ -27,6 +27,11 @@
       "bun": "./src/plugin.ts",
       "import": "./lib/plugin.js",
       "types": "./lib/types/plugin.d.ts"
+    },
+    "./schema": {
+      "bun": "./src/schema.ts",
+      "import": "./lib/schema.js",
+      "types": "./lib/types/schema.d.ts"
     }
   },
   "files": [
@@ -56,6 +61,7 @@
     "fast-glob": "^3.3.2",
     "gray-matter": "^4.0.3",
     "mdast-util-to-string": "^4.0.0",
+    "minisearch": "^7.1.0",
     "remark-directive": "^4.0.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.0",
