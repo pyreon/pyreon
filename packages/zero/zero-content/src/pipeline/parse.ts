@@ -1,9 +1,14 @@
 import matter from 'gray-matter'
+import remarkDirective from 'remark-directive'
 import remarkFrontmatter from 'remark-frontmatter'
+import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 import type { Root } from 'mdast'
-import { emitJsx } from './emit-jsx'
+import { emitJsx, type EmitOptions } from './emit-jsx'
+import { remarkCallout } from './remark-plugins/callout'
+import { remarkCodeGroup } from './remark-plugins/codegroup'
+import { highlightCode, type HighlighterOptions } from './highlighter'
 import type { Heading } from '../types'
 
 // ─── Markdown → Pyreon TSX pipeline ────────────────────────────────────────
@@ -30,12 +35,27 @@ export interface CompileResult {
   slug: string
 }
 
+export interface CompileOptions {
+  /**
+   * Disable Shiki code highlighting. Useful for tests + situations
+   * where highlighting would be redundant (e.g. previewing raw
+   * markdown). Default: enabled.
+   */
+  highlight?: boolean
+  /** Shiki theme + language config. */
+  highlighter?: HighlighterOptions
+}
+
 /**
  * Compile a markdown source string + file id into a Pyreon `.tsx`
  * module. The `id` is the absolute file path Vite passes to
  * `transform`; we use it to derive a stable slug.
  */
-export function compileMarkdown(source: string, id: string): CompileResult {
+export async function compileMarkdown(
+  source: string,
+  id: string,
+  options: CompileOptions = {},
+): Promise<CompileResult> {
   // 1. Split frontmatter (uses gray-matter directly — remark-frontmatter
   //    keeps the YAML in the mdast tree but doesn't parse it; gray-matter
   //    parses it as JS values).
@@ -43,14 +63,31 @@ export function compileMarkdown(source: string, id: string): CompileResult {
   const body = parsed.content
   const frontmatter = parsed.data as Record<string, unknown>
 
-  // 2. Parse the body to mdast. remark-frontmatter is included so any
-  //    leftover frontmatter inside the body (rare) doesn't pollute
-  //    the tree as a paragraph.
-  const processor = unified().use(remarkParse).use(remarkFrontmatter, ['yaml'])
-  const tree = processor.parse(body) as Root
+  // 2. Build the unified pipeline. Order matters:
+  //      parse → frontmatter → gfm → directive → custom (callout/codegroup)
+  //    `parse` produces mdast; the rest are transformers that walk it.
+  const processor = unified()
+    .use(remarkParse)
+    .use(remarkFrontmatter, ['yaml'])
+    .use(remarkGfm)
+    .use(remarkDirective)
+    .use(remarkCallout)
+    .use(remarkCodeGroup)
 
-  // 3. Walk → JSX string + heading capture.
-  const { body: jsxBody, headings } = emitJsx(tree)
+  // `parse` (sync) → `run` (async; lets remark plugins return promises
+  // for future Shiki-as-remark-plugin moves). Currently all our plugins
+  // are sync so the await is cheap.
+  const raw = processor.parse(body) as Root
+  const tree = (await processor.run(raw)) as Root
+
+  // 3. Build emit options (Shiki highlight callback if enabled).
+  const emitOpts: EmitOptions = {}
+  if (options.highlight !== false) {
+    emitOpts.highlight = (code, lang) => highlightCode(code, lang, options.highlighter)
+  }
+
+  // 4. Walk → JSX string + heading capture.
+  const { body: jsxBody, headings } = await emitJsx(tree, emitOpts)
 
   // 4. Derive a stable slug. The file `id` is the absolute path Vite
   //    passes; pick whatever comes after `/content/` (the documented

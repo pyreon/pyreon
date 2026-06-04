@@ -12,36 +12,36 @@ describe('content() Vite plugin', () => {
     expect(plugin.enforce).toBe('pre')
   })
 
-  it('transforms .md files into TSX modules', () => {
-    const plugin = content()
+  it('transforms .md files into TSX modules', async () => {
+    const plugin = content({ highlight: false })
     const transform = plugin.transform as (
       code: string,
       id: string,
-    ) => { code: string; map: null } | null
-    const result = transform.call({} as never, '# Title', '/abs/x.md')
+    ) => Promise<{ code: string; map: null } | null>
+    const result = await transform.call({} as never, '# Title', '/abs/x.md')
     expect(result).not.toBeNull()
     expect(result!.code).toContain('export default function ContentPage()')
     expect(result!.code).toContain('<h1')
   })
 
-  it('passes through non-markdown files (returns null)', () => {
-    const plugin = content()
+  it('passes through non-markdown files (returns null)', async () => {
+    const plugin = content({ highlight: false })
     const transform = plugin.transform as (
       code: string,
       id: string,
-    ) => unknown
-    expect(transform.call({} as never, '// js', '/abs/x.ts')).toBeNull()
-    expect(transform.call({} as never, '<div/>', '/abs/x.tsx')).toBeNull()
-    expect(transform.call({} as never, '{}', '/abs/x.json')).toBeNull()
+    ) => Promise<unknown>
+    expect(await transform.call({} as never, '// js', '/abs/x.ts')).toBeNull()
+    expect(await transform.call({} as never, '<div/>', '/abs/x.tsx')).toBeNull()
+    expect(await transform.call({} as never, '{}', '/abs/x.json')).toBeNull()
   })
 
-  it('transforms .mdx files (foundation; PR 3 makes them MDX-aware)', () => {
-    const plugin = content()
+  it('transforms .mdx files (foundation; PR 3 makes them MDX-aware)', async () => {
+    const plugin = content({ highlight: false })
     const transform = plugin.transform as (
       code: string,
       id: string,
-    ) => { code: string } | null
-    const result = transform.call({} as never, '# Title', '/abs/x.mdx')
+    ) => Promise<{ code: string } | null>
+    const result = await transform.call({} as never, '# Title', '/abs/x.mdx')
     expect(result).not.toBeNull()
   })
 })

@@ -19,6 +19,20 @@ export {
   mergeComponents,
 } from './config'
 
+// ─── Built-in components ───────────────────────────────────────────────────
+//
+// Auto-available in every `.md` file — referenced by name without an
+// import. Emitted by the matching remark plugins (callout, codegroup,
+// shiki). Re-exported here so consumers can also use them directly in
+// `.tsx` (e.g. for a custom layout that wraps content with a Callout).
+
+export { Callout } from './components/Callout'
+export type { CalloutProps, CalloutType } from './components/Callout'
+export { CodeGroup } from './components/CodeGroup'
+export type { CodeGroupProps } from './components/CodeGroup'
+export { CodeBlock } from './components/CodeBlock'
+export type { CodeBlockProps } from './components/CodeBlock'
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 export type {

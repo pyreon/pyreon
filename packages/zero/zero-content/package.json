@@ -55,17 +55,21 @@
     "@pyreon/router": "workspace:^",
     "gray-matter": "^4.0.3",
     "mdast-util-to-string": "^4.0.0",
+    "remark-directive": "^4.0.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.0",
     "remark-parse": "^11.0.0",
+    "shiki": "^1.29.2",
     "unified": "^11.0.5",
+    "unist-util-visit": "^5.0.0",
     "vite": "^8.0.16"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@types/mdast": "^4.0.4"
+    "@types/mdast": "^4.0.4",
+    "mdast-util-directive": "^3.0.0"
   },
   "publishConfig": {
     "access": "public"
