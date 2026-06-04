@@ -58,6 +58,7 @@
   "dependencies": {
     "@pyreon/head": "workspace:^",
     "@pyreon/router": "workspace:^",
+    "esbuild": "^0.28.0",
     "fast-glob": "^3.3.2",
     "gray-matter": "^4.0.3",
     "mdast-util-to-string": "^4.0.0",

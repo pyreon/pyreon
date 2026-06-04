@@ -95,7 +95,7 @@ describe('content() plugin — transform with validation', () => {
   }
 
   it('accepts built-in component references without error', async () => {
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const transform = plugin.transform as (
       this: { error: (msg: string) => void; warn: (msg: string) => void },
       code: string,
@@ -114,7 +114,7 @@ describe('content() plugin — transform with validation', () => {
 
   it('accepts scanned components without error', async () => {
     await writeFile('Playground.tsx', 'export const Playground = () => null')
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const transform = plugin.transform as (
       this: { error: (msg: string) => void; warn: (msg: string) => void },
       code: string,
@@ -131,7 +131,7 @@ describe('content() plugin — transform with validation', () => {
   })
 
   it('accepts components brought in by per-md hoisted imports', async () => {
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const transform = plugin.transform as (
       this: { error: (msg: string) => void; warn: (msg: string) => void },
       code: string,
@@ -152,7 +152,7 @@ describe('content() plugin — transform with validation', () => {
   })
 
   it('surfaces unknown component with did-you-mean suggestion', async () => {
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const transform = plugin.transform as (
       this: { error: (msg: string) => void; warn: (msg: string) => void },
       code: string,
@@ -173,7 +173,7 @@ describe('content() plugin — transform with validation', () => {
   })
 
   it('surfaces unknown component without suggestion when nothing close', async () => {
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const transform = plugin.transform as (
       this: { error: (msg: string) => void; warn: (msg: string) => void },
       code: string,
@@ -194,7 +194,7 @@ describe('content() plugin — transform with validation', () => {
     // No options.mdxDir set + no configResolved → plugin uses
     // process.cwd() + 'src/mdx'. Just check the transform still works
     // (no scan returns empty because cwd's src/mdx doesn't exist).
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const transform = plugin.transform as (
       this: { error: (msg: string) => void; warn: (msg: string) => void },
       code: string,
@@ -212,7 +212,7 @@ describe('content() plugin — transform with validation', () => {
 
   it('configResolved drives the scan root from config.root', async () => {
     await writeFile('src/mdx/Foo.tsx', 'export const Foo = () => null')
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string },
