@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Reactive `<head>` tag management — useHead(), HeadProvider, renderWithHead() for SSR',
   description:
-    'Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app.',
+    'Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app. External `<script>` tags (those with `src`) default to `defer` for non-blocking page load — module scripts, import maps, and inline scripts are left untouched; the `ScriptTag` type carries the full attribute surface (`integrity` / `nomodule` / `referrerpolicy` / `fetchpriority` / …).',
   category: 'browser',
   features: [
     'useHead(input | () => input) — register head tags from any component',
@@ -17,6 +17,7 @@ export default defineManifest({
     'Keyed deduplication — innermost component wins per key',
     'JSON-LD shorthand: `jsonLd: {...}` auto-wraps as `<script type="application/ld+json">`',
     'Speculation Rules shorthand: `speculationRules: {...}` auto-wraps as `<script type="speculationrules">` — native browser prefetch/prerender, opt-in',
+    'useHead({ script }) — external scripts default to defer for non-blocking load; ScriptTag carries the full attribute surface (integrity / nomodule / fetchpriority / …)',
   ],
   longExample: `import { useHead, HeadProvider } from '@pyreon/head'
 import { renderWithHead } from '@pyreon/head'

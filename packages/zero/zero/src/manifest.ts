@@ -16,7 +16,7 @@ export default defineManifest({
   tagline:
     'Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n',
   description:
-    "Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static).",
+    "Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.",
   category: 'server',
   longExample: `import { defineConfig } from 'vite'
 import pyreon from '@pyreon/vite-plugin'
@@ -68,6 +68,13 @@ export default function PostPage() { /* component body */ }`,
     'Per-locale 404 + hreflang sitemap (auto-detects i18n config)',
     'Loader-thrown redirect → _redirects manifest (Netlify/Cloudflare/Vercel)',
     'Subpath / base-path single source of truth — zero({ base }) propagates to Vite + router',
+    '<Image src={descriptor | URL}> — bi-modal optimized image (dims inferred from ?optimize, or w+h required for a runtime URL)',
+    '<OptimizedImage source={descriptor}> one-prop form; <NoOptimize> / useNoOptimize() subtree opt-out boundary; optimize prop per-image',
+    'createImageRegistry(map) — typed name → ?optimize descriptor registry (autocomplete over imported assets)',
+    'usePreconnect / useDnsPrefetch / usePreload — typed resource-hint primitives (each emits the right <link rel>)',
+    'usePreloadFont(href) + ?font import — font preload + auto @font-face / hashed-URL FontDescriptor',
+    'zero({ image, font }) — auto-wires imagePlugin / fontPlugin into the Vite plugin chain',
+    'SSG injects per-route <link rel=modulepreload> — islands-safe (follows static imports, never dynamicImports)',
   ],
   // MCP-density entries: dense summary + 6+ mistakes per flagship API.
   // Scope: the SSG roadmap surface (i18n, ISR, adapter, getStaticPaths,
