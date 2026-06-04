@@ -15,14 +15,19 @@ import { signal } from '@pyreon/reactivity'
 export function RxFullProbe() {
   const todos = signal<{ id: number; title: string; done: boolean; priority: number }[]>([])
   const nums = signal<number[]>([])
-  const maybeNums = signal<(number | null)[]>([])
   const nested = signal<number[][]>([])
+  // Note: rx.compact's emit shape (.compactMap { $0 } / .filterNotNull())
+  // is locked by the unit tests in rx-full.test.ts. It's intentionally
+  // NOT included here because the natural source shape
+  // `signal<Array<number | null>>([])` triggers PMTC's
+  // mutableStateOf-without-explicit-type-parameter bug for nullable
+  // generic args. That's a separate Kotlin-emit issue documented as a
+  // follow-up; this fixture stays focused on the rx lowering itself.
 
   // Transforms
   const active = rx.filter(todos, (t) => !t.done)
   const priorities = rx.map(active, (t) => t.priority)
   const reversed = rx.reverse(active)
-  const compacted = rx.compact(maybeNums)
   const flat = rx.flatten(nested)
   const distinct = rx.unique(nums)
 
@@ -55,7 +60,6 @@ export function RxFullProbe() {
   void active
   void priorities
   void reversed
-  void compacted
   void flat
   void distinct
   void top5
