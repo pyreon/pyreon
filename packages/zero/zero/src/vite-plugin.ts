@@ -56,6 +56,8 @@ import {
 } from "./fs-router";
 import { expandRoutesForLocales } from "./i18n-routing";
 import { render404Page } from "./not-found";
+import { fontPlugin } from "./font";
+import { imagePlugin } from "./image-plugin";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
 import type { ZeroConfig } from "./types";
@@ -596,6 +598,24 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	const plugins: Plugin[] = [mainPlugin];
 	if (config.mode === "ssg") plugins.push(ssgPlugin(userConfig));
 	if (config.mode === "ssr" || config.mode === "isr") plugins.push(ssrPlugin(userConfig));
+
+	// W20 — auto-wire imagePlugin and fontPlugin so `<Image>` / `<Font>` work
+	// out of the box. Each is opt-out via `image: false` / `font: false`.
+	// Auto-wired with `{}` (default config) when the field is undefined.
+	// User-supplied object overrides per-field defaults.
+	//
+	// Why default-on: the original goal — "out of the box optimization, can
+	// be disabled". A user installs `@pyreon/zero`, imports an image, and
+	// expects AVIF/WebP/blur-placeholder/srcset to Just Work without
+	// learning the imagePlugin API. Same for fontPlugin — declared fonts
+	// are self-hosted, preloaded, font-display: swap'd, all from one config.
+	if (userConfig.image !== false) {
+		plugins.push(imagePlugin(userConfig.image ?? {}));
+	}
+	if (userConfig.font !== false) {
+		plugins.push(fontPlugin(userConfig.font ?? {}));
+	}
+
 	return plugins;
 }
 
