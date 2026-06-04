@@ -26,5 +26,20 @@ downloads, emitted assets, and the inlined CSS.
 - **Self-host only** — no effect with `selfHost: false` or in dev.
 - **Fail-safe** — an allowlist that matches no subset (a typo), or a CSS with no
   recognizable labels, keeps all subsets rather than ship a fontless build.
-- The subset allowlist is part of the `node_modules/.cache/zero-fonts` cache key,
-  so two configs differing only in `subsets` can't collide on a stale entry.
+- The subset allowlist is part of the `node_modules/.cache/zero-fonts` cache key
+  (`fontCacheKey`), so two configs differing only in `subsets` can't collide on a
+  stale entry.
+
+Also fixes a **pre-existing preload bug**: the self-host preload previously
+emitted `<link rel=preload>` for `selfHostedFontFiles.slice(0, familyCount)` —
+i.e. the FIRST file, which is css2's `cyrillic-ext` block (Google returns subsets
+cyrillic-ext → … → latin). A Latin-only site therefore preloaded a Cyrillic
+`woff2` it never renders **and** failed to preload the latin font it does. The
+preload now targets the **primary subset** (`subsets?.[0] ?? 'latin'`) via the
+exported `pickPreloadHrefs`, capped at the same one-per-family budget, falling
+back to the first files only when the primary subset is absent.
+
+The subset CSS parsing (`filterCssBySubsets` + `pickPreloadHrefs`, sharing an
+internal `splitSubsetBlocks`) uses a linear label-index scan rather than a
+lazy-body-plus-look-ahead regex — the latter is flagged as polynomial-ReDoS on
+untrusted fetched CSS.

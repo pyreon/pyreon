@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   filterCssBySubsets,
+  fontCacheKey,
   fontVariables,
   googleFontsUrl,
   parseGoogleFamily,
+  pickPreloadHrefs,
   resolveGoogleFont,
 } from '../font'
 
@@ -357,5 +359,82 @@ describe('filterCssBySubsets', () => {
 
   it('an empty allowlist is a no-op (keeps all)', () => {
     expect(filterCssBySubsets(CSS2, [])).toBe(CSS2)
+  })
+
+  it('parses very large input in linear time (no pathological backtracking)', () => {
+    // The label-index scan is O(n). This is a forward-looking guard: it does
+    // NOT distinguish the old lazy-body-plus-look-ahead form (V8 happens not
+    // to blow up on this particular input — CodeQL flags that shape
+    // statically, and the real fix is removing it), but it WOULD catch a
+    // future rewrite reintroducing a genuinely super-linear pattern (many do
+    // blow up in V8).
+    const large = '/*-*/'.repeat(50_000)
+    const start = performance.now()
+    const out = filterCssBySubsets(large, ['latin'])
+    expect(performance.now() - start).toBeLessThan(500)
+    // None of the bogus `-` labels match `latin` → fail-safe keeps input.
+    expect(out).toBe(large)
+  })
+})
+
+describe('pickPreloadHrefs', () => {
+  // Rewritten (self-hosted) CSS: local /assets/fonts/ urls, subsets ordered
+  // as css2 returns them — cyrillic-ext FIRST, latin LAST.
+  const SELF_HOSTED = `/* cyrillic-ext */
+@font-face { font-family: 'Ubuntu'; src: url(/assets/fonts/cyr-ext.woff2) format('woff2'); }
+/* greek */
+@font-face { font-family: 'Ubuntu'; src: url(/assets/fonts/greek.woff2) format('woff2'); }
+/* latin-ext */
+@font-face { font-family: 'Ubuntu'; src: url(/assets/fonts/lat-ext.woff2) format('woff2'); }
+/* latin */
+@font-face { font-family: 'Ubuntu'; src: url(/assets/fonts/lat.woff2) format('woff2'); }
+`
+
+  it('preloads the LATIN file, not the cyrillic-ext file css2 returns first', () => {
+    expect(pickPreloadHrefs(SELF_HOSTED, 'latin', 1)).toEqual(['/assets/fonts/lat.woff2'])
+  })
+
+  it('honors a non-latin primary subset', () => {
+    expect(pickPreloadHrefs(SELF_HOSTED, 'greek', 1)).toEqual(['/assets/fonts/greek.woff2'])
+  })
+
+  it('caps the result at `limit` (the original one-per-family budget)', () => {
+    expect(pickPreloadHrefs(SELF_HOSTED, 'latin', 1)).toHaveLength(1)
+    expect(pickPreloadHrefs(SELF_HOSTED, 'latin', 0)).toEqual([])
+  })
+
+  it('FALLS BACK to the first files when the primary subset is absent', () => {
+    // No `vietnamese` block → fall back to the first `limit` files, in order.
+    expect(pickPreloadHrefs(SELF_HOSTED, 'vietnamese', 1)).toEqual(['/assets/fonts/cyr-ext.woff2'])
+  })
+
+  it('composes with subset filtering (latin-only CSS still preloads latin)', () => {
+    const latinOnly = filterCssBySubsets(SELF_HOSTED, ['latin'])
+    expect(pickPreloadHrefs(latinOnly, 'latin', 1)).toEqual(['/assets/fonts/lat.woff2'])
+  })
+
+  it('returns [] when there are no local font urls', () => {
+    expect(pickPreloadHrefs("/* latin */\n@font-face { font-family: X; }", 'latin', 2)).toEqual([])
+  })
+})
+
+describe('fontCacheKey', () => {
+  const url = 'https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap'
+
+  it('is stable for the same url + subsets', () => {
+    expect(fontCacheKey(url, ['latin'])).toBe(fontCacheKey(url, ['latin']))
+  })
+
+  it('DIFFERS when only the subset allowlist differs (the collision fix)', () => {
+    expect(fontCacheKey(url, ['latin'])).not.toBe(fontCacheKey(url, ['latin', 'cyrillic']))
+    expect(fontCacheKey(url, ['latin'])).not.toBe(fontCacheKey(url))
+  })
+
+  it('treats undefined and an empty allowlist as the same (both keep all)', () => {
+    expect(fontCacheKey(url, undefined)).toBe(fontCacheKey(url, []))
+  })
+
+  it('is filesystem-safe (base64url — no / or +)', () => {
+    expect(fontCacheKey(url, ['latin', 'latin-ext'])).not.toMatch(/[/+]/)
   })
 })

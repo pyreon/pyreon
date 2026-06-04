@@ -145,7 +145,7 @@ At build time the plugin:
 
 - Downloads each Google Font woff2 file and writes to `dist/assets/fonts/`
 - Generates `@font-face` declarations referencing the self-hosted files
-- Injects `<link rel="preload" as="font" type="font/woff2" crossorigin>` into `<head>`
+- Injects `<link rel="preload" as="font" type="font/woff2" crossorigin>` into `<head>` for the **primary subset** (`latin` by default, or the first `subsets` entry) — not whichever subset Google happens to return first
 - Adds `font-display: swap` to prevent Flash of Invisible Text (FOIT)
 - Optionally applies size-adjusted fallback metrics to reduce CLS during font swap
 

@@ -352,17 +352,75 @@ export function filterCssBySubsets(css: string, allowed: string[]): string {
   const allow = new Set(allowed)
   if (allow.size === 0) return css
 
-  // Each block = `/* <label> */` then everything up to the next such
-  // comment (or EOF). The lazy body never swallows the next label
-  // because of the look-ahead boundary.
-  const blockRe = /\/\*\s*([\w-]+)\s*\*\/[\s\S]*?(?=\/\*\s*[\w-]+\s*\*\/|$)/g
-  const blocks = [...css.matchAll(blockRe)]
+  const blocks = splitSubsetBlocks(css)
   if (blocks.length === 0) return css
 
-  const kept = blocks.filter((m) => allow.has(m[1] ?? '')).map((m) => m[0] ?? '')
+  const kept = blocks.filter((b) => allow.has(b.subset)).map((b) => b.text)
   if (kept.length === 0) return css
 
   return `${kept.join('').trimEnd()}\n`
+}
+
+/**
+ * Split a css2 response into its per-subset blocks, in order — each block is
+ * led by a comment label (`latin`, `cyrillic`, …) and runs to the next label
+ * (or EOF).
+ *
+ * Deliberately a label-INDEX scan, NOT a single lazy-body-plus-look-ahead
+ * regex: that form is flagged as polynomial (ReDoS) by static analysis on
+ * adversarial input with many repeated comment delimiters, and the fetched
+ * CSS is untrusted. The comment-anchored label match is linear (each
+ * delimiter is visited once) and slicing between consecutive label offsets
+ * is linear in the input — so the whole pass is O(n) with no backtracking.
+ */
+function splitSubsetBlocks(css: string): Array<{ subset: string; text: string }> {
+  const labelRe = /\/\*\s*([\w-]+)\s*\*\//g
+  const marks: Array<{ subset: string; start: number }> = []
+  for (const m of css.matchAll(labelRe)) {
+    marks.push({ subset: m[1] ?? '', start: m.index ?? 0 })
+  }
+  return marks.map((mk, i) => ({
+    subset: mk.subset,
+    text: css.slice(mk.start, marks[i + 1]?.start ?? css.length),
+  }))
+}
+
+/**
+ * Choose the local font URLs to `<link rel=preload>`, preferring the
+ * primary subset (the first configured `subsets` entry, else `latin`).
+ *
+ * Google returns subsets in a fixed order with `cyrillic-ext` FIRST, so the
+ * old `slice(0, familyCount)` preloaded the cyrillic-ext file — i.e. it
+ * eagerly fetched a subset the page never renders AND failed to preload the
+ * latin font that it does. This picks the primary-subset file(s) instead,
+ * capped at `limit` to preserve the original preload budget, and falls back
+ * to the first `limit` files when no block matches (never preloads nothing).
+ *
+ * Operates on the rewritten self-hosted CSS (local `/assets/fonts/…` URLs),
+ * so it composes with `subsets` filtering for free.
+ */
+export function pickPreloadHrefs(css: string, primarySubset: string, limit: number): string[] {
+  if (limit <= 0) return []
+  const hrefOf = (text: string): string | undefined => text.match(/url\((\/[^)]+)\)/)?.[1]
+  const blocks = splitSubsetBlocks(css)
+  const all = blocks.map((b) => hrefOf(b.text)).filter((h): h is string => h !== undefined)
+  const primary = blocks
+    .filter((b) => b.subset === primarySubset)
+    .map((b) => hrefOf(b.text))
+    .filter((h): h is string => h !== undefined)
+  const chosen = primary.length > 0 ? primary : all
+  return chosen.slice(0, limit)
+}
+
+/**
+ * Cache key for a self-host request. The subset allowlist is folded into the
+ * identity so two configs that differ ONLY in `subsets` cannot collide on a
+ * stale `node_modules/.cache/zero-fonts` entry (filtering happens AFTER the
+ * download, so a `cssUrl`-only key would serve wrong-subset output on a warm
+ * rebuild).
+ */
+export function fontCacheKey(cssUrl: string, allowedSubsets?: string[]): string {
+  return Buffer.from(`${cssUrl}|subsets=${allowedSubsets?.join(',') ?? ''}`).toString('base64url')
 }
 
 /**
@@ -383,13 +441,8 @@ async function selfHostFonts(
   fontFiles: Array<{ name: string; content: Buffer }>
 }> {
   // Cache fonts between builds to avoid re-downloading (~6s penalty).
-  // The subset allowlist is part of the cache identity — two configs
-  // that differ ONLY in `subsets` must not collide on a stale entry.
   const cacheDir = join(root, 'node_modules', '.cache', 'zero-fonts')
-  const cacheKey = Buffer.from(
-    `${cssUrl}|subsets=${allowedSubsets?.join(',') ?? ''}`,
-  ).toString('base64url')
-  const cachePath = join(cacheDir, `${cacheKey}.json`)
+  const cachePath = join(cacheDir, `${fontCacheKey(cssUrl, allowedSubsets)}.json`)
 
   try {
     const cached = JSON.parse(await readFile(cachePath, 'utf-8'))
@@ -512,10 +565,10 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
       collectGoogleFontTags(tags, {
         isBuild,
         selfHostedCSS,
-        selfHostedFontFiles,
         shouldPreload,
         googleFamilies,
         display,
+        subsets: config.subsets,
       })
       collectLocalFontTags(tags, config, shouldPreload, display)
 
@@ -530,21 +583,23 @@ function collectGoogleFontTags(
   opts: {
     isBuild: boolean
     selfHostedCSS: string
-    selfHostedFontFiles: Array<{ name: string; content: Buffer }>
     shouldPreload: boolean
     googleFamilies: ResolvedFont[]
     display: FontDisplay
+    subsets?: string[] | undefined
   },
 ) {
   if (opts.isBuild && opts.selfHostedCSS) {
     tags.push(`<style>${opts.selfHostedCSS}</style>`)
     if (opts.shouldPreload) {
-      for (const file of opts.selfHostedFontFiles.slice(0, opts.googleFamilies.length)) {
-        const ext = file.name.split('.').pop()
+      // Preload the PRIMARY subset's file(s) — `latin` by default, or the
+      // first configured subset — never the cyrillic-ext file css2 happens
+      // to return first. Budget preserved at one file per family.
+      const primary = opts.subsets?.[0] ?? 'latin'
+      for (const href of pickPreloadHrefs(opts.selfHostedCSS, primary, opts.googleFamilies.length)) {
+        const ext = href.split('.').pop()
         const type = ext === 'woff2' ? 'font/woff2' : 'font/woff'
-        tags.push(
-          `<link rel="preload" href="/assets/fonts/${file.name}" as="font" type="${type}" crossorigin>`,
-        )
+        tags.push(`<link rel="preload" href="${href}" as="font" type="${type}" crossorigin>`)
       }
     }
   } else if (opts.googleFamilies.length > 0) {
