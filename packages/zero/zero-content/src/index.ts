@@ -33,6 +33,21 @@ export type { CodeGroupProps } from './components/CodeGroup'
 export { CodeBlock } from './components/CodeBlock'
 export type { CodeBlockProps } from './components/CodeBlock'
 
+// ─── Search ────────────────────────────────────────────────────────────────
+
+export {
+  _resetSearchForTesting,
+  loadSearchIndex,
+  Search,
+  useSearch,
+} from './search/search-runtime'
+export type {
+  SearchCatalog,
+  SearchProps,
+  UseSearchOptions,
+  UseSearchResult,
+} from './search/search-runtime'
+
 // ─── Runtime queries (getCollection / getEntry / getEntries) ──────────────
 //
 // Read from the plugin-emitted `virtual:zero-content/collections`
