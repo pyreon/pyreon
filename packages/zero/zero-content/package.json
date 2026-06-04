@@ -27,6 +27,11 @@
       "bun": "./src/plugin.ts",
       "import": "./lib/plugin.js",
       "types": "./lib/types/plugin.d.ts"
+    },
+    "./schema": {
+      "bun": "./src/schema.ts",
+      "import": "./lib/schema.js",
+      "types": "./lib/types/schema.d.ts"
     }
   },
   "files": [

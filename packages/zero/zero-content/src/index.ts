@@ -33,6 +33,23 @@ export type { CodeGroupProps } from './components/CodeGroup'
 export { CodeBlock } from './components/CodeBlock'
 export type { CodeBlockProps } from './components/CodeBlock'
 
+// ─── Runtime queries (getCollection / getEntry / getEntries) ──────────────
+//
+// Read from the plugin-emitted `virtual:zero-content/collections`
+// module — the virtual module imports `_setRegistry` from here at app
+// boot.
+
+export {
+  _getRegistry,
+  _listCollections,
+  _resetRegistryForTesting,
+  _setRegistry,
+  getCollection,
+  getEntries,
+  getEntry,
+} from './runtime'
+export type { CollectionRegistry, CollectionRuntime } from './runtime'
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 export type {
