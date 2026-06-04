@@ -7,13 +7,13 @@ import content, { isMarkdownId, shortId } from '../plugin'
 
 describe('content() Vite plugin', () => {
   it('has the expected name + `pre` ordering', () => {
-    const plugin = content()
+    const plugin = content({ compileJsx: false })
     expect(plugin.name).toBe('pyreon-zero-content')
     expect(plugin.enforce).toBe('pre')
   })
 
   it('transforms .md files into TSX modules', async () => {
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const transform = plugin.transform as (
       code: string,
       id: string,
@@ -25,7 +25,7 @@ describe('content() Vite plugin', () => {
   })
 
   it('passes through non-markdown files (returns null)', async () => {
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const transform = plugin.transform as (
       code: string,
       id: string,
@@ -36,7 +36,7 @@ describe('content() Vite plugin', () => {
   })
 
   it('transforms .mdx files (foundation; PR 3 makes them MDX-aware)', async () => {
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const transform = plugin.transform as (
       code: string,
       id: string,
@@ -52,6 +52,7 @@ describe('content() Vite plugin', () => {
     const plugin = content({
       highlight: true,
       highlighter: { themes: { light: 'github-light', dark: 'github-dark' } },
+      compileJsx: false,
     })
     const transform = plugin.transform as (
       code: string,
@@ -69,7 +70,7 @@ describe('content() Vite plugin', () => {
   it('forwards only `highlight` when `highlighter` is omitted', async () => {
     // Covers the asymmetric `highlight !== undefined` branch without
     // setting `highlighter`.
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const transform = plugin.transform as (
       code: string,
       id: string,
@@ -88,6 +89,7 @@ describe('content() Vite plugin', () => {
     // false), so the supplied highlighter still flows through.
     const plugin = content({
       highlighter: { themes: { light: 'github-light', dark: 'github-dark' } },
+      compileJsx: false,
     })
     const transform = plugin.transform as (
       code: string,
@@ -104,7 +106,7 @@ describe('content() Vite plugin', () => {
   it('surfaces compile errors via this.error() with a shortened id', async () => {
     // gray-matter throws on malformed YAML frontmatter. We capture the
     // call to `this.error()` via a stub and assert the message shape.
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const transform = plugin.transform as (
       this: { error: (msg: string) => void },
       code: string,

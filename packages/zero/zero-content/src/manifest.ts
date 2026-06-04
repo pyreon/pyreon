@@ -35,6 +35,8 @@ export default defineManifest({
     'Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")',
     'HMR for src/mdx/ changes + content.config.ts edits — invalidates virtual modules, re-renders dependent .md pages without reload',
     'Built-in search — minisearch-backed `<Search>` component with Cmd+K + debounced query + SPA navigation + lazy index loading',
+    'Built-in layout components — `<Sidebar>` with groups + active highlighting, `<Toc>` with scroll-spy via IntersectionObserver',
+    'Frontmatter JSON Schema + .vscode-settings emission — autocomplete + validation in any .md file via the YAML extension',
     'Inherits zero\'s perf stack — image/font auto-wire, script defer default, resource hints, view transitions',
   ],
   longExample: `// vite.config.ts

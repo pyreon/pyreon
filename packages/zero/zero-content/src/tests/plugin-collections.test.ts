@@ -45,7 +45,7 @@ describe('content() plugin — virtual:zero-content/collections', () => {
   }
 
   it('resolves the virtual collections module id', () => {
-    const plugin = content({ highlight: false })
+    const plugin = content({ highlight: false, compileJsx: false })
     const resolveId = plugin.resolveId as (id: string) => string | null
     expect(resolveId.call({} as never, VIRTUAL_COLLECTIONS_ID)).toBe(
       RESOLVED_VIRTUAL_COLLECTIONS,
@@ -53,7 +53,7 @@ describe('content() plugin — virtual:zero-content/collections', () => {
   })
 
   it('serves an empty registry when no content.config is present', async () => {
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     // Skip configResolved - simulate plain consumer with no config.
     const load = plugin.load as (this: unknown, id: string) => Promise<string | null>
     const result = await load.call(
@@ -70,7 +70,7 @@ describe('content() plugin — virtual:zero-content/collections', () => {
       'content.config.js',
       `export default { collections: { docs: { type: 'pages', schema: {} } } }`,
     )
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -94,7 +94,7 @@ describe('content() plugin — virtual:zero-content/collections', () => {
       'content.config.js',
       `export default { collections: { docs: { type: 'pages', schema: {} } } }`,
     )
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -116,7 +116,7 @@ describe('content() plugin — virtual:zero-content/collections', () => {
       'content.config.js',
       `export default { collections: { broken: { type: 'invalid', schema: {} } } }`,
     )
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const warn = vi.fn()
     const configResolved = plugin.configResolved as (
       this: unknown,
@@ -176,7 +176,7 @@ describe('content() plugin — frontmatter schema validation', () => {
       'docs',
       'hello.md',
     )
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -217,7 +217,7 @@ body
       'docs',
       'hello.md',
     )
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -259,7 +259,7 @@ body
     )
     const mdxDir = path.join(tmpDir, 'src', 'mdx')
     await fs.mkdir(mdxDir, { recursive: true })
-    const plugin = content({ highlight: false, mdxDir })
+    const plugin = content({ highlight: false, mdxDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -282,7 +282,7 @@ body
     )
     const mdxDir = path.join(tmpDir, 'src', 'mdx')
     await fs.mkdir(mdxDir, { recursive: true })
-    const plugin = content({ highlight: false, mdxDir })
+    const plugin = content({ highlight: false, mdxDir, compileJsx: false })
     // configResolved sets resolvedConfig but the .js arm fires synchronously
     // so loadedConfig IS already set. To force buildStart to run the
     // load, we just call configResolved first then buildStart — the
@@ -312,7 +312,7 @@ body
     )
     const mdxDir = path.join(tmpDir, 'src', 'mdx')
     await fs.mkdir(mdxDir, { recursive: true })
-    const plugin = content({ highlight: false, mdxDir })
+    const plugin = content({ highlight: false, mdxDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -343,7 +343,7 @@ body
   it('configureServer loads .ts config via ssrLoadModule', async () => {
     // .ts files need Vite's ssrLoadModule; we supply a fake server.
     await writeProjectFile('content.config.ts', `export default { collections: { docs: { type: 'pages', schema: {} } } }`)
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     // configResolved with .ts present but no fast load (the .ts arm
     // is gated to .js/.mjs).
     const configResolved = plugin.configResolved as (
@@ -389,7 +389,7 @@ body
     // HMR through the components branch).
     const mdxDir = path.join(tmpDir, 'src', 'mdx')
     await fs.mkdir(mdxDir, { recursive: true })
-    const plugin = content({ highlight: false, mdxDir })
+    const plugin = content({ highlight: false, mdxDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -446,7 +446,7 @@ body
     )
     const mdxDir = path.join(tmpDir, 'src', 'mdx')
     await fs.mkdir(mdxDir, { recursive: true })
-    const plugin = content({ highlight: false, mdxDir })
+    const plugin = content({ highlight: false, mdxDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
@@ -504,7 +504,7 @@ body
       'content.config.js',
       `export default { collections: { docs: { type: 'pages', schema: ${titleRequiredSchema} } } }`,
     )
-    const plugin = content({ highlight: false, mdxDir: tmpDir })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: { root: string; logger: { warn: typeof vi.fn } },
