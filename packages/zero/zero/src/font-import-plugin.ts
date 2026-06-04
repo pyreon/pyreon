@@ -92,15 +92,13 @@ export interface FontDescriptor {
   fontFace: string
 }
 
-/** Plugin config. Currently no options — everything's per-file via query params. */
-export interface FontImportPluginConfig {
-  /**
-   * Whether to scope `@font-face` declarations behind the `:root` selector
-   * or emit them at the stylesheet top level. Default `false` (top level —
-   * standard CSS).
-   */
-  scoped?: boolean
-}
+/**
+ * Plugin config. Currently empty — all per-file options are passed
+ * via query params on the `?font` import. Reserved as an extension
+ * point for future global defaults (e.g. a global `display` override).
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface FontImportPluginConfig {}
 
 /** ─── Pure helpers (exported for testing) ─────────────────────────────── */
 
@@ -334,7 +332,7 @@ export function fontImportPlugin(config: FontImportPluginConfig = {}): Plugin {
   // Mirrors imagePlugin's per-build cache.
   const emittedAssets = new Map<string, { hashedName: string; descriptor: FontDescriptor }>()
 
-  // Suppress the unused warning until `scoped` lands.
+  // Empty-object config today — reserved for future global defaults.
   void config
 
   return {
