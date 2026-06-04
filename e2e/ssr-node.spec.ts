@@ -34,6 +34,33 @@ test.describe('SSR node deploy artifact', () => {
     expect(html).not.toContain('<!--pyreon-app-->')
   })
 
+  test('GET /posts is server-rendered FROM ITS LOADER (data + hydration payload)', async ({ page }) => {
+    // The real-app surface: a route with a `loader` + `useLoaderData`. Proves
+    // the production server runs the loader server-side, renders the data
+    // (not an empty shell), and emits the hydration payload so the client can
+    // hydrate the loaded data — not just that static routes render.
+    const resp = await page.request.get('/posts')
+    expect(resp.status()).toBe(200)
+    const html = await resp.text()
+    expect(html).toContain('data-pyreon-router-view')
+    expect(html).not.toContain('<!--pyreon-app-->')
+    // Loader data serialized for client hydration.
+    expect(html).toContain('__PYREON_LOADER_DATA__')
+  })
+
+  test('dynamic [id] route + API route are served', async ({ page }) => {
+    // Dynamic-route loader (/posts/1) renders ...
+    const dyn = await page.request.get('/posts/1')
+    expect(dyn.status()).toBe(200)
+    expect(await dyn.text()).not.toContain('<!--pyreon-app-->')
+    // ... and API routes are dispatched by the production server (not 404ed).
+    const api = await page.request.get('/api/posts')
+    expect(api.status()).toBe(200)
+    expect(api.headers()['content-type']).toContain('json')
+    const body = await api.json()
+    expect(Array.isArray(body) && body.length > 0).toBe(true)
+  })
+
   test('static client assets are served', async ({ page }) => {
     const html = await (await page.request.get('/')).text()
     const match = html.match(/\/assets\/[\w.-]+\.js/)
