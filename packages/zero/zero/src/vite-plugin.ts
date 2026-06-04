@@ -57,6 +57,7 @@ import {
 import { expandRoutesForLocales } from "./i18n-routing";
 import { render404Page } from "./not-found";
 import { fontPlugin } from "./font";
+import { fontImportPlugin } from "./font-import-plugin";
 import { imagePlugin } from "./image-plugin";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
@@ -614,6 +615,10 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	}
 	if (userConfig.font !== false) {
 		plugins.push(fontPlugin(userConfig.font ?? {}));
+		// `?font` import plugin pairs with `fontPlugin` — both are part of
+		// the font integration; same opt-out flag. The plugin only acts
+		// when a `?font` query is actually used; no cost otherwise.
+		plugins.push(fontImportPlugin());
 	}
 
 	return plugins;
