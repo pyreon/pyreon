@@ -39,6 +39,14 @@ export { createScript, Script, useScript } from "./script";
 export type { MetaProps } from "./meta";
 export { buildMetaTags, Meta } from "./meta";
 
+// ─── Islands (browser-safe) ──────────────────────────────────────────────────
+// `island()` is re-exported from the client-safe `@pyreon/server/client`
+// subentry so zero apps declare islands with `import { island } from
+// "@pyreon/zero"` — no `@pyreon/server` dependency, no server-barrel leak.
+// Hydration is automatic via the plugin + `startClient` (see `./client`).
+export type { IslandMeta, IslandOptions } from "@pyreon/server/client";
+export { island } from "@pyreon/server/client";
+
 // ─── Theme (browser-safe) ───────────────────────────────────────────────────
 
 export type { Theme } from "./theme";

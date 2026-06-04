@@ -497,6 +497,14 @@ function detectDeadIslands(
 ): void {
   for (const d of decls) {
     if (importedFiles.has(d.loc.path)) continue
+    // fs-router routes (`src/routes/**` — the @pyreon/zero / fs-router
+    // convention) are AUTO-LOADED entry points: the framework's generated
+    // virtual route module `lazy(() => import('<abs route path>'))`s them, so
+    // no hand-written source statically OR dynamically imports the file. The
+    // dead-island heuristic can't see that generated import, so an island
+    // declared in a route would false-positive as "dead" even though the route
+    // renders it. Skip route files. (Non-route islands stay covered.)
+    if (/(?:^|\/)src\/routes\//.test(d.loc.relPath)) continue
     findings.push({
       code: 'dead-island',
       message: `island "${d.name}" is declared in ${d.loc.relPath} but no other file in the project imports from this module (statically OR dynamically). The island's component will never reach a rendered tree — it's effectively unreachable code. Either (1) wire it up by importing + rendering the component from a route, or (2) remove the \`island()\` declaration. Note: the audit's heuristic flags files that no other source imports; if your island is registered via \`hydrateIslandsAuto()\`, the auto-registry's \`() => import('PATH')\` loader DOES count as an import, so a flagged island is genuinely orphaned.`,

@@ -350,6 +350,27 @@ describe('auditIslands — dead-island', () => {
     }
   })
 
+  it('does NOT flag an island in an fs-router route (src/routes/ — auto-loaded entry point)', () => {
+    const f = makeFixture()
+    try {
+      // A route file under src/routes/ is auto-loaded by fs-router's generated
+      // virtual route module (a lazy dynamic import the audit can't see) — no
+      // hand-written source statically imports it, but it is NOT dead (the
+      // route renders it). The dead-island heuristic must skip route files.
+      f.write(
+        'a/src/routes/island-demo.tsx',
+        `import { island } from '@pyreon/zero'
+         export const Probe = island(() => import('../components/Probe'), { name: 'Probe', hydrate: 'visible' })
+         export default function IslandDemo() { return null }`,
+      )
+      f.write('a/src/components/Probe.tsx', `export default () => null`)
+      const r = auditIslands(f.root)
+      expect(findingCodes(r)).not.toContain('dead-island')
+    } finally {
+      f.cleanup()
+    }
+  })
+
   it('does NOT flag an island whose file IS imported (fixed shape — static import)', () => {
     const f = makeFixture()
     try {

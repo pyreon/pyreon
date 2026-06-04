@@ -44,6 +44,7 @@
     "test:e2e:ssg-subpath": "bunx playwright test --config=e2e-configs/ssg-subpath.config.ts",
     "test:e2e:ssg-i18n": "bunx playwright test --config=e2e-configs/ssg-i18n.config.ts",
     "test:e2e:ssg-i18n-prefix": "bunx playwright test --config=e2e-configs/ssg-i18n-prefix.config.ts",
+    "test:e2e:zero-islands": "bunx playwright test --config=e2e-configs/zero-islands.config.ts",
     "test:e2e:zero-hmr": "bunx playwright test --config=e2e-configs/zero-hmr.config.ts",
     "test:e2e:cpa": "bunx playwright test --config=e2e-configs/cpa.config.ts",
     "test:e2e:perf-dashboard": "bunx playwright test --config=e2e-configs/perf-dashboard.config.ts",

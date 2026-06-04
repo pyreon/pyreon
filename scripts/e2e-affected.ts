@@ -138,6 +138,17 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'zero-islands',
+    script: 'test:e2e:zero-islands',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/core/server/',
+      'packages/zero/zero/',
+      'examples/ssr-showcase/',
+      'e2e/zero-islands.spec.ts',
+    ],
+  },
+  {
     name: 'ssg-subpath',
     script: 'test:e2e:ssg-subpath',
     triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssg-subpath'],
