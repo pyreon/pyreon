@@ -1,5 +1,15 @@
 # @pyreon/test-utils
 
+## 0.13.18
+
+### Patch Changes
+
+- Updated dependencies [[`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/ui-core@1.0.0
+
 ## 0.13.17
 
 ### Patch Changes

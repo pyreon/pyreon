@@ -1,5 +1,546 @@
 # @pyreon/zero
 
+## 0.30.0
+
+### Minor Changes
+
+- [#1360](https://github.com/pyreon/pyreon/pull/1360) [`c80700f`](https://github.com/pyreon/pyreon/commit/c80700f31834347db9691a74c1abcde3fe73f541) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `?font` import — auto-generated `@font-face` + hashed-URL descriptor.
+
+  The original DX gap: even with `usePreloadFont('/fonts/display-bold.woff2')` (PR [#1359](https://github.com/pyreon/pyreon/issues/1359)), users still had to hand-write `@font-face` CSS AND keep a string path in sync with the file location. Now:
+
+  ```tsx
+  import display from "./fonts/display-bold.woff2?font";
+
+  export default function Hero() {
+    return <h1 style={`font-family: ${display.family}`}>Hero</h1>;
+  }
+  ```
+
+  Mirrors `?optimize` for images. Build-time plugin:
+
+  1. **Hashes + copies** to `dist/assets/fonts/<name>-<hash8>.woff2` (content-addressed; same content at different paths dedup to one file)
+  2. **Auto-generates `@font-face`** — bundled as a side-effect CSS import, no user CSS needed
+  3. **Auto-extracts `family` / `weight` / `style`** from filename:
+     - `display-bold.woff2` → `{ family: 'display', weight: 700, style: 'normal' }` (`bold` is a known weight keyword)
+     - `inter-700.woff2` → `{ family: 'inter', weight: 700, style: 'normal' }`
+     - `inter-700-italic.woff2` → `{ family: 'inter', weight: 700, style: 'italic' }`
+     - Override via query: `?font&family=Display&weight=900&style=italic`
+  4. **Returns a typed `FontDescriptor`** with `toString()` / `valueOf()` / `Symbol.toPrimitive` all returning the family name (so `font-family: ${descriptor}` interpolation works — same compat-guardrail shape as `ProcessedImage`)
+  5. **`Object.freeze`d** — accidental mutation throws `TypeError`
+
+  **Auto-wired** by `zero({ font })` — same opt-out flag as `fontPlugin`. `zero({ font: false })` opts both out. `zero()` (default) wires `pyreon-zero-images` + `pyreon-zero-fonts` + `pyreon-zero-font-import`. No cost when no `?font` queries are used.
+
+  **Ambient types** ship at `@pyreon/zero/font-types` — one `/// <reference types="@pyreon/zero/font-types" />` in any tsconfig-covered `.d.ts` makes all five extensions (`.woff2` / `.woff` / `.ttf` / `.otf` / `.eot`) type-check out of the box.
+
+  **Pair with `usePreloadFont`** for LCP-critical fonts — pass `descriptor.src` directly (or the descriptor itself once PR [#1359](https://github.com/pyreon/pyreon/issues/1359) merges and the helper accepts FontDescriptor):
+
+  ```tsx
+  import display from "./fonts/display-bold.woff2?font";
+  import { usePreloadFont } from "@pyreon/zero";
+
+  export default function Hero() {
+    usePreloadFont(display.src); // hashed URL — never drifts
+    return <h1 style={`font-family: ${display.family}`}>Hero</h1>;
+  }
+  ```
+
+  **56 specs** lock the contract:
+
+  - **40 helper specs** in `font-import-plugin-helpers.test.ts`: `fontMimeType` / `fontFormat` per-extension + case-insensitive; `inferFontMeta` family/weight/style extraction (all 15 weight keywords, italic/oblique, underscore tokenizer, non-3-digit numeric edge cases, full-path stripping); `parseFontQueryOverrides` (family/weight/style/garbage-rejection/empty); `hashFontFilename` (deterministic, content-addressed dedup, extension preservation); `buildFontFace` (declarations + structure); `emitFontDescriptorModule` (side-effect import + frozen + toString chain + JSON escaping).
+  - **16 plugin lifecycle specs** in `font-import-plugin.test.ts`: `resolveId` (catches `?font`, preserves overrides, ignores non-font + unknown extensions, accepts all 5, passes CSS virtual ids through); `load` build mode (emits Vite asset + descriptor); `load` dev mode (`/@fs/` src); descriptor structure (frozen, toString); filename inference vs query overrides; CSS virtual id (returns `@font-face` rule); error handling (missing file).
+  - **9 auto-wire specs** in `zero-auto-wire-plugins.test.ts` updated for the new `pyreon-zero-font-import` plugin.
+  - **6 packaging specs** in `font-types-export.test.ts` lock the published surface (buildable .ts source, no stray .d.ts, package.json exports, self-ref import, all 5 extensions declared, no top-level import/export).
+
+  **Bisect-verified at 2 layers**: (a) removing the `fontImportPlugin()` push from the auto-wire block fails 2/9 auto-wire specs with `expected to include 'pyreon-zero-font-import'`; (b) flipping `resolveId`'s CSS-virtual-id branch fails the `returns CSS virtual ids as-is` spec; restored → 71/71 PR D specs pass.
+
+  **23/23 verify-modes** cells stay green (SSG/SSR/ISR/SPA × per-adapter × islands × native).
+
+  `@pyreon/zero/font-import-plugin` exports: `fontImportPlugin` (Vite plugin), `FontDescriptor` + `FontImportPluginConfig` (types), and the pure helpers `fontMimeType` / `fontFormat` / `inferFontMeta` / `parseFontQueryOverrides` / `hashFontFilename` / `buildFontFace` / `emitFontDescriptorModule` (exposed for testing + advanced integrations).
+
+- [#1353](https://github.com/pyreon/pyreon/pull/1353) [`3c775b8`](https://github.com/pyreon/pyreon/commit/3c775b8debe114b6623e94c84d9ca5daf5313789) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Image DX — bi-modal `<Image>` + descriptor toString guardrail + `createImageRegistry` + priority preload.
+
+  - **Bi-modal `<Image>`.** Accepts either a `ProcessedImage` descriptor (from `import hero from './hero.png?optimize'`) OR a URL string with required `width` + `height`. The descriptor form drops the explicit-dims requirement (the descriptor carries them) and inherits `srcset` / `placeholder` / `formats` automatically. Explicit overrides on either form win on the same key — descriptor's `width` is the default; user-supplied `width` overrides it. Reactive props survive the merge (uses `mergeProps`, not plain spread).
+  - **`optimize={false}` bypass.** Drops the optimization wrapper and renders a bare `<img>` with the descriptor's `src` (or the explicit URL) plus intrinsic `width` / `height`. Useful for sub-grid icons where the wrapper would distort layout.
+  - **`priority` preload.** When a priority image has either a responsive `srcset` OR a `formats[]` array (i.e. there's a non-trivial best-source to preload), `<Image>` emits a `<link rel="preload" as="image" fetchpriority="high">` into the document head via `useHead`. Carries `imagesrcset` + `imagesizes` so the preload scanner picks the same size the body's `<img>` will. For cross-origin URLs, also carries `crossorigin="anonymous"` to avoid double-fetch. Two priority `<Image>`s with the same `src` dedup to one preload via `@pyreon/head`'s LinkTag href-keying. Closes [#1351](https://github.com/pyreon/pyreon/issues/1351).
+  - **Descriptor compat guardrail.** `import hero from './hero.png?optimize'` now produces a descriptor object whose `toString()` / `valueOf()` / `[Symbol.toPrimitive]` returns the URL — foreign code that does `<img src={hero}>` (a non-Pyreon component, a script that template-literals the import) continues to render the right image. Non-enumerable, doesn't show up in `JSON.stringify`. The descriptor is `Object.freeze`d so accidental mutation surfaces immediately.
+  - **`createImageRegistry<K>(entries, { keyBy })`.** Build an asset registry from a directory of imports (typically `import.meta.glob({ eager: true })`). Default `keyBy: 'auto'` adds basename and basename-without-extension aliases so `<Logo image={logos('strv')}/>` works without typing the full path. `keyBy: 'path'` disables aliases. Dev-mode throws a descriptive "no image registered for X — registered keys: A, B, C" on miss; production uses the fallback parameter. The fallback can be `null` for opt-in skip-rendering.
+
+  New tests: 35 specs across `image-bi-modal.test.tsx` (8), `image-priority-preload.test.tsx` (7, bisect-verified), `image-descriptor-tostring.test.ts` (8), `image-registry.test.ts` (12). The 7 priority-preload specs lock issue [#1351](https://github.com/pyreon/pyreon/issues/1351)'s validation matrix: positive emission with imagesrcset/imagesizes, crossorigin on cross-origin, no crossorigin on same-origin, no preload when non-priority (the negative), no preload when priority has no srcset/formats, dedup for same-src, and fallback srcset (not AVIF/WebP) when descriptor carries `formats`.
+
+  Breaking change: the imagePlugin's emitted module for `?optimize` imports is no longer pure JSON. Anything that did `JSON.parse(emitted)` will break — use `import hero from './hero.png?optimize'` and read `hero.src` / `hero.srcset` directly (the descriptor is a real object). One test in the repo (`image-plugin-resolve.test.ts`) updated to extract via the new emit shape.
+
+- [#1363](https://github.com/pyreon/pyreon/pull/1363) [`7b2eabf`](https://github.com/pyreon/pyreon/commit/7b2eabf34cf849b93f40da8bdf9bc679db0bec7f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<NoOptimize>` — subtree-scoped image optimization opt-out.
+
+  Closes the third tier of the image opt-out grammar:
+
+  | Tier         | API                                     | Shipped in                                               |
+  | ------------ | --------------------------------------- | -------------------------------------------------------- |
+  | **Per-call** | `<Image src={hero} optimize={false} />` | PR [#1353](https://github.com/pyreon/pyreon/issues/1353) |
+  | **Subtree**  | `<NoOptimize><Image .../></NoOptimize>` | **this PR**                                              |
+  | **Global**   | `zero({ image: false })`                | PR [#1356](https://github.com/pyreon/pyreon/issues/1356) |
+
+  ```tsx
+  import { NoOptimize, Image } from "@pyreon/zero";
+
+  // Whole route renders bare <img>s (no aspect-ratio wrapper, no lazy load):
+  export default function IconLibraryRoute() {
+    return (
+      <NoOptimize>
+        <Image src={icon1} alt="Heart" width={24} height={24} />
+        <Image src={icon2} alt="Star" width={24} height={24} />
+      </NoOptimize>
+    );
+  }
+  ```
+
+  **Override grammar (any-of triggers bypass, but per-call `true` wins):**
+
+  1. **Per-call `optimize={false}`** — local opt-out.
+  2. **Surrounding `<NoOptimize>` boundary** — subtree opt-out.
+  3. **Per-call `optimize={true}`** — explicit re-enable that overrides a parent `<NoOptimize>` (caller intent wins).
+  4. **Inner `<NoOptimize disabled>`** — subtree-scoped opt-back-in for a region.
+
+  ```tsx
+  <NoOptimize>
+    <Image src={icon} alt="bare" /> {/* bypassed by boundary */}
+    <Image src={hero} alt="forced" optimize={true} /> {/* opt back IN per-call */}
+    <NoOptimize disabled>
+      <Image src={hero} alt="re-enabled" /> {/* opt back IN for subtree */}
+    </NoOptimize>
+  </NoOptimize>
+  ```
+
+  **Use cases:**
+
+  - Whole routes that render only icons / sub-grid images (the optimization wrapper would distort the layout).
+  - Subtrees server-rendered + statically cached (HTML emails, PDF documents, share cards) — wrapper overhead is wasted.
+  - Hand-crafted `<picture>` markup where Pyreon's auto-`<picture>` would compete.
+
+  **Type-level surface change**: `ImageDescriptorProps.optimize` and `ImageUrlProps.optimize` widen from `false` to `boolean`. `optimize={true}` was previously a TypeScript error; it now means "force optimization ON inside an outer `<NoOptimize>`." Existing `optimize={false}` callers are unaffected.
+
+  **8 specs** lock the contract:
+
+  - Drops every `<Image>` in subtree to bare `<img>` (no `aspect-ratio:` container)
+  - Respects descriptor `src` in the bare img
+  - Handles string-URL Image inside the boundary
+  - Does NOT affect `<Image>`s OUTSIDE the boundary (positive both, isolation negative)
+  - Inner `<NoOptimize disabled>` re-enables optimization for its subtree
+  - Per-call `optimize={true}` overrides parent boundary (caller wins)
+  - No boundary → behaves as before (default optimization)
+  - Empty `<NoOptimize>` renders cleanly (no throw)
+
+  **Bisect-verified** — replacing `useNoOptimize()` with `false` fails 3 of 8 specs (the boundary-dependent ones); 5 boundary-independent specs still pass.
+
+  `23/23` verify-modes • `1271/1272` zero tests pass (+8 new) • typecheck + lint + 11/11 validate-fast clean.
+
+  Subpath export at `@pyreon/zero/no-optimize`. Main entry re-exports `NoOptimize` + `useNoOptimize`. `NoOptimizeContext` is exported from the subpath only for advanced consumers wiring custom render paths.
+
+- [#1366](https://github.com/pyreon/pyreon/pull/1366) [`75af4aa`](https://github.com/pyreon/pyreon/commit/75af4aac41cc60abecfd0a25f9522f4850bf9ece) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Resource hint primitives — `usePreconnect` / `useDnsPrefetch` / `usePreload`.
+
+  Three documented Web Vitals resource hints with type-safe ergonomics. Each wraps `useHead` with the correct defaults + dedup behavior.
+
+  ```tsx
+  import { usePreconnect, useDnsPrefetch, usePreload } from "@pyreon/zero";
+
+  export default function HomeRoute() {
+    // Strong connection hint: full DNS + TCP + TLS handshake
+    // (~100-300ms saved per origin). Use for 1-3 most-critical origins.
+    usePreconnect("https://fonts.gstatic.com");
+    usePreconnect("https://cdn.example.com");
+
+    // Weak hint: DNS resolution only. Cheap fallback for older browsers
+    // OR for origins that are likely-but-not-certain to be hit.
+    useDnsPrefetch("https://analytics.example.com");
+
+    // Strong fetch hint: tells the browser "fetch this NOW with this
+    // priority bucket." Use for non-Image-priority LCP resources.
+    usePreload("/hero.jpg", { as: "image" });
+    usePreload("/critical.css", { as: "style" });
+    usePreload("/api/critical.json", {
+      as: "fetch",
+      type: "application/json",
+      crossorigin: "anonymous",
+    });
+
+    return <h1>Home</h1>;
+  }
+  ```
+
+  **Correctness contracts handled automatically:**
+
+  - **`usePreconnect`** defaults to `crossorigin="anonymous"` — without it the connection isn't reused by the credentialed fetch (defeats the hint for cross-origin fonts/APIs). Pass `{ credentials: true }` for the rare credentialed case.
+  - **`useDnsPrefetch`** intentionally does NOT emit `crossorigin` — DNS resolution is scheme-agnostic.
+  - **`usePreload`** REQUIRES `as` at the type level — the preload scanner ignores `<link rel="preload">` without it. Optional fields are only emitted when supplied.
+  - **Dedup** — multiple calls with the same href emit ONE tag (via `@pyreon/head`'s LinkTag keying).
+
+  **Why three primitives instead of one mega-hook**: each has different semantics. `preconnect` opens the full TLS connection (~3KB memory per origin); `dns-prefetch` is the cheaper-but-weaker fallback; `preload` requires per-resource type info (`as`, `type`, `imagesrcset`). Splitting prevents API soup.
+
+  **Pairs with existing primitives:**
+
+  - `usePreloadFont` (PR [#1359](https://github.com/pyreon/pyreon/issues/1359)) — font-specific preload with auto-MIME + CORS default
+  - `<Image priority>` (PR [#1351](https://github.com/pyreon/pyreon/issues/1351) / [#1357](https://github.com/pyreon/pyreon/issues/1357)) — auto-preload of LCP images
+  - `usePreload` — generic primitive for everything else (CSS at runtime, fetch responses, Web Workers, ServiceWorker scripts)
+
+  **Combined Web Vitals impact** (with PR [#1356](https://github.com/pyreon/pyreon/issues/1356) image+font auto-wire + PR [#1365](https://github.com/pyreon/pyreon/issues/1365) script defer default + this PR's resource hints): a Pyreon app declaring 2-3 preconnects + 1 LCP preload via `usePreload` in its layout typically scores 95+ on Lighthouse's Performance category WITHOUT manual `<link>` plumbing.
+
+  **API**:
+
+  ```ts
+  function usePreconnect(
+    origin: string,
+    opts?: { credentials?: boolean }
+  ): void;
+  function useDnsPrefetch(origin: string): void;
+  function usePreload(href: string, opts: PreloadOptions): void;
+
+  interface PreloadOptions {
+    as:
+      | "script"
+      | "style"
+      | "image"
+      | "font"
+      | "fetch"
+      | "document"
+      | "audio"
+      | "video"
+      | "track"
+      | "object"
+      | "embed"
+      | "worker";
+    type?: string;
+    crossorigin?: "anonymous" | "use-credentials";
+    media?: string; // mobile-only preload, etc.
+    imagesrcset?: string; // responsive image preload
+    imagesizes?: string;
+    fetchpriority?: "high" | "low" | "auto";
+  }
+  ```
+
+  **14 specs** lock the contract:
+
+  - usePreconnect: default crossorigin, credentials override, dedup
+  - useDnsPrefetch: rel/href shape, no-crossorigin contract, dedup
+  - usePreload: basic shape, type emit, responsive image attrs, fetchpriority, media, no-extra-attrs negative, dedup
+  - Cross-hint composition: three hooks coexist with three distinct link tags
+
+  **Bisect-verified**: replacing the `crossorigin: 'anonymous'` default in `usePreconnect` with `undefined` fails the load-bearing default spec; 13 other specs continue to pass.
+
+  Subpath export at `@pyreon/zero/use-resource-hints`. Main entry re-exports all three hooks + the `PreloadOptions` type.
+
+  23/23 verify-modes • 1278/1279 zero tests pass (+14 new) • 11/11 validate-fast • typecheck + lint clean.
+
+- [#1358](https://github.com/pyreon/pyreon/pull/1358) [`2226a27`](https://github.com/pyreon/pyreon/commit/2226a2729de1fbc793cb5c79c082a743a0d1c5b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): SSG injects per-route `<link rel="modulepreload">` (islands-safe) — closes [#1355](https://github.com/pyreon/pyreon/issues/1355)
+
+  Vite already modulepreloads the single ENTRY's static graph, and the SSG
+  pipeline preserves those links — but a route's own component chunk is
+  lazy-imported, so the browser discovers it LATE in the network waterfall
+  (each chunk only after the previous one parses). SSG now pre-declares the
+  **per-route delta** in each prerendered page's `<head>`: the matched route
+  chain's chunk(s) + their STATIC import closure, minus the entry graph the
+  template already loads. The browser fetches the whole route graph in parallel
+  from t=0.
+
+  **Islands-safe by construction — the load-bearing constraint.** The closure
+  follows only the Vite manifest's `imports` (static), NEVER `dynamicImports`.
+  A route's `dynamicImports` are exactly the chunks the author DEFERRED — islands
+  (`hydrate: 'never' | 'visible' | …`), `lazy()` components, heavy-module-in-handler.
+  Preloading those would pull deferred code onto the first-paint critical path and
+  defeat the islands model (a net perf regression). Following only `imports`
+  structurally excludes them — verified end-to-end: an `island-demo` route's own
+  chunk + the `island()` runtime are preloaded, but the deferred `IslandProbe`
+  component chunk never is.
+
+  - Default-on in `mode: 'ssg'`. Opt out with `zero({ ssg: { modulePreload: false } })`.
+  - Enables Vite's `build.manifest` on the client build; the manifest is read +
+    deleted post-build (internal artifact, never shipped to the host — unless the
+    user enabled the manifest themselves, in which case it's left alone).
+  - Degrades gracefully at every step: a missing/malformed manifest or an
+    unresolvable route just yields no preload for that path. `modulepreload` is a
+    non-load-bearing hint, so the page always still works.
+
+  Gated by `verify-modes` (ssr-showcase × ssg): per-route delta present, per-route
+  specificity (home page does NOT preload the about chunk), the IslandProbe chunk
+  NEVER appears in any modulepreload (bisect-verified — making the closure follow
+  `dynamicImports` fails the gate), and the build manifest is cleaned up. Plus 19
+  unit specs over the resolver. Font preload was already shipped (`font.ts`); this
+  PR is modulepreload only.
+
+- [#1359](https://github.com/pyreon/pyreon/pull/1359) [`0eae5c8`](https://github.com/pyreon/pyreon/commit/0eae5c88fe01fc5129c2bef09135c325d7eb0337) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `usePreloadFont(href, opts?)` — runtime font-preload primitive.
+
+  For fonts NOT in the global `zero({ font: { google, local } })` declaration — a route-specific display face, a conditionally-loaded variable font, a CDN-hosted brand font — `usePreloadFont` emits a `<link rel="preload" as="font">` into the document `<head>` at render time (via `useHead`, SSR-visible to the preload scanner).
+
+  ```ts
+  import { usePreloadFont } from "@pyreon/zero";
+
+  export default function HeroRoute() {
+    usePreloadFont("/fonts/display-bold.woff2");
+    return <h1 style="font-family: 'Display Bold'">…</h1>;
+  }
+  ```
+
+  Emitted:
+
+  ```html
+  <link
+    rel="preload"
+    as="font"
+    href="/fonts/display-bold.woff2"
+    type="font/woff2"
+    crossorigin="anonymous"
+  />
+  ```
+
+  **Three correctness contracts handled automatically:**
+
+  1. **`crossorigin="anonymous"` by default** — the CSS Fonts spec requires CORS for every font fetch. Without `crossorigin`, the preload double-fetches (preload bypass + refetch under CORS, defeating the purpose). The helper sets it by default; override via `opts.crossorigin: 'use-credentials'` for the rare credential-bearing case.
+
+  2. **`type` auto-inferred from extension** — preload scanner ignores `as=font` preloads without a matching MIME type. Mapping: `.woff2 → font/woff2`, `.woff → font/woff`, `.ttf → font/ttf`, `.otf → font/otf`, `.eot → application/vnd.ms-fontobject`. Case-insensitive; strips query string + fragment before matching. Unknown extension falls back to `font/woff2`. Pass `opts.type` to override.
+
+  3. **Dedup** — two `usePreloadFont(href)` calls with the same href emit ONE preload (via `@pyreon/head`'s LinkTag href-keying).
+
+  Exports: `usePreloadFont` (helper), `PreloadFontOptions` (options interface), `inferFontMimeType` (the pure MIME-inference fn — exposed for testing + custom integrations).
+
+  **Bisect-verified.** 19 unit tests (10 `inferFontMimeType` cases + 9 SSR `renderWithHead` round-trips). Dropping the `crossorigin: 'anonymous'` default fails 2 of 9 SSR specs with `expected to contain crossorigin="anonymous"`.
+
+  Documented in `docs/docs/zero.md` → Font Optimization → `usePreloadFont`.
+
+- [#1356](https://github.com/pyreon/pyreon/pull/1356) [`960d075`](https://github.com/pyreon/pyreon/commit/960d075e71df0bb1830777157cc0f7dd39a2ba85) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero({ image, font })` — auto-wire imagePlugin and fontPlugin out of the box.
+
+  `@pyreon/zero` now auto-wires `imagePlugin()` and `fontPlugin()` into the Vite plugin chain. The original "out of the box optimization" goal — a user adds `pyreon()` + `zero()` to vite.config and `<Image src={import('./hero.png?optimize')} />` Just Works without knowing the imagePlugin API.
+
+  ```ts
+  // vite.config.ts — before: 4 plugins, must know each one
+  import { pyreon } from "@pyreon/vite-plugin";
+  import { zero } from "@pyreon/zero";
+  import { imagePlugin } from "@pyreon/zero/image-plugin";
+  import { fontPlugin } from "@pyreon/zero/font";
+
+  export default {
+    plugins: [
+      pyreon(),
+      zero(),
+      imagePlugin({ formats: ["avif", "webp"] }),
+      fontPlugin({ google: ["Inter:wght@400;700"] }),
+    ],
+  };
+
+  // After: 2 plugins, config flows through zero()
+  export default {
+    plugins: [
+      pyreon(),
+      zero({
+        image: { formats: ["avif", "webp"] },
+        font: { google: ["Inter:wght@400;700"] },
+      }),
+    ],
+  };
+  ```
+
+  Opt-out:
+
+  - `zero({ image: false })` — skip the imagePlugin entirely (no `?optimize` import handling, no AVIF/WebP, no sharp pulled in)
+  - `zero({ font: false })` — skip the fontPlugin
+
+  `{}` (or omitted) auto-wires with the plugin's own default config. Pass a config object to override. Same shape every Vite-plugin auto-wire follows — no special API.
+
+  Verified across all 23 verify-modes cells (SSG / SSR / ISR / SPA / per-adapter / islands / native) — no mode is affected by the auto-wire. Bisect-verified at the unit layer: the 9-spec `zero-auto-wire-plugins.test.ts` gate fails with `expected names to include 'pyreon-zero-images'` when the auto-wire branch is removed.
+
+  The previous `mode → companion plugin wiring` tests in `vite-plugin-config.test.ts` were updated to pass `image: false, font: false` so they keep asserting the mode-companion contract (orthogonal to auto-wire).
+
+### Patch Changes
+
+- [#1361](https://github.com/pyreon/pyreon/pull/1361) [`1cfb381`](https://github.com/pyreon/pyreon/commit/1cfb3811bff4986e23965e1ec60c22ed7c3e369d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): adapters scope immutable cache to the served `<base><assetsDir>` URL prefix, not a hardcoded `/assets/`
+
+  Every deploy adapter pinned its 1-year `immutable` cache rule to `/assets/*` —
+  the _default_ Vite `build.assetsDir` at the root `base`. Two real deploy shapes
+  silently lost the long-cache treatment (hashed chunks re-fetched every release,
+  even though the hashes never change):
+
+  - a **custom `assetsDir`** (`build: { assetsDir: 'static' }`) → chunks at `/static/`
+  - a **subpath deploy** (`zero({ base: '/blog/' })`) → chunks at `/blog/assets/`
+
+  The resolved `assetsDir` (from `configResolved`) is now threaded into
+  `adapter.build(options)` via `AdapterBuildOptions.assetsDir`, and the **CDN
+  adapters** scope their rule to the full served URL prefix `<base><assetsDir>`
+  (via a new exported `assetUrlPrefix(base, assetsDir)` helper):
+
+  - **vercel** — `config.json` route `src: '<base><assetsDir>/(.*)'` (SSG + SSR)
+  - **netlify** — `netlify.toml [[headers]] for = "<base><assetsDir>/*"` (SSG + SSR)
+  - **cloudflare** — `_headers` `<base><assetsDir>/*` + `_routes.json` exclude (SSG + SSR)
+
+  **node / bun stay `assetsDir`-only (no base) by design** — their self-hosted
+  handler serves files by raw `url.pathname` with no base-stripping, so a subpath
+  deploy isn't supported there regardless; threading `base` into only the cache
+  check would imply support that doesn't exist (documented inline).
+
+  Defaults to root `/` + `'assets'` when absent — **no behavior change for the
+  common case**. Bisect-verified by `adapters.test.ts` (custom `assetsDir` and
+  `base: '/blog/'` each scope every CDN adapter; node/bun honor `assetsDir` but
+  NOT `base`; default stays `/assets/`) + two end-to-end `examples/ssr-showcase`
+  builds — one with `assetsDir: 'static'` asserting `/static/(.*)`, one with
+  `base: '/blog/'` + `assetsDir: 'static'` asserting `/blog/static/(.*)` matches
+  the actual asset URLs in the rendered HTML.
+
+- [#1352](https://github.com/pyreon/pyreon/pull/1352) [`52c6d2b`](https://github.com/pyreon/pyreon/commit/52c6d2b23e2c886a6156a0bc19ed58598f2672d7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): node/bun adapters cached `immutable` by file EXTENSION, not by hashed-asset path — deploy-poisoning bug
+
+  The self-hosted `nodeAdapter` / `bunAdapter` emitted-server handlers set
+  `Cache-Control: public, max-age=31536000, immutable` for **any** `.js`/`.css`
+  file, keyed on the extension. Vite only content-hashes files under `/assets/`;
+  a non-hashed root file — `public/sw.js` (service worker), `public/config.js`,
+  any unhashed `.css` — therefore got a **1-year immutable cache**, making a stale
+  copy effectively **unevictable** (a poisoned service worker is the classic
+  deploy-breaking case). The platform adapters (vercel / netlify) were already
+  correct — they scope immutable to `/assets/(.*)`.
+
+  The handlers now immutable-cache **only** paths under `/assets/` (Vite's hashed
+  output dir, matching vercel/netlify), serve `*.html` with
+  `public, max-age=0, must-revalidate` (prerendered pages change every deploy —
+  previously they could be served stale for up to an hour), and fall back to
+  `public, max-age=3600` for everything else (non-hashed `.js`/`.css`, images,
+  fonts, public assets).
+
+  Bisect-verified by the node + bun spawn-and-curl runtime-contract tests
+  (`adapters.test.ts`): a `/assets/*.js` returns `immutable` while a root `/sw.js`
+  must NOT — reverting to the extension-keyed handler fails both.
+
+- [#1354](https://github.com/pyreon/pyreon/pull/1354) [`18bb9ce`](https://github.com/pyreon/pyreon/commit/18bb9ce8324cd6975fd7ce9e3a8061ea191f1b15) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): cloudflareAdapter emits `_headers` pinning `/assets/*` immutable
+
+  The Cloudflare adapter emitted `_routes.json` (function routing) but **no cache
+  config** — so content-hashed `/assets/*` chunks inherited Cloudflare Pages'
+  short default and got re-fetched on every release window, even though they never
+  change. Vercel (`config.json` routes) and Netlify (`netlify.toml [[headers]]`)
+  already emit the `/assets/*` immutable rule; Cloudflare was the gap.
+
+  `cloudflareAdapter().build()` now writes `dist/_headers` (Cloudflare Pages +
+  Netlify format) for both SSG and SSR:
+
+  ```
+  /assets/*
+    Cache-Control: public, max-age=31536000, immutable
+  ```
+
+  Only `/assets/*` (Vite's content-hashed output) is immutable — HTML, favicon,
+  sitemap, robots all fall through to the host's revalidating default, so a deploy
+  is never served stale. A **user-provided `_headers`** (e.g. copied from
+  `public/_headers`) is respected: if it already declares an `/assets/` policy
+  it's left untouched; otherwise the framework block is appended so user and
+  framework rules coexist.
+
+  The `staticAdapter` deliberately stays a no-op (it's host-agnostic; a
+  Netlify/CF-specific `_headers` would be scope-creep — static deploys to GitHub
+  Pages / S3 don't read it).
+
+  Bisect-verified by `adapters.test.ts` (cloudflare SSG: `_headers` carries the
+  `/assets/*` immutable rule and does NOT target favicon/sitemap/`.html`; user
+  `/assets/` policy preserved; user `/api/*` rule + framework `/assets/*` rule
+  coexist).
+
+- [#1346](https://github.com/pyreon/pyreon/pull/1346) [`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: Cloudflare (workerd) SSR deploy — guard singleton sentinel against undefined import.meta.url + inline the built SSR template
+
+  Cloudflare Pages SSR (`mode: "ssr"` / `"isr"` with `adapter: "cloudflare"`) ran in workerd, where two assumptions of the SSR path broke (verified in the real runtime via `wrangler pages dev` — a Node-side test can't catch either):
+
+  - **`@pyreon/reactivity`** — `normalizeLocation` no longer crashes when a runtime passes `undefined`/empty `import.meta.url` (workerd does). A bare `url.indexOf('?')` threw `Cannot read properties of undefined (reading 'indexOf')` at module init, taking down every `@pyreon`-based Cloudflare Worker at startup. The guard returns `"<unknown>"`; duplicate detection keys on the package name + location, so a single re-registering instance is idempotent (same-location early-return) and the only degraded case (two genuinely-distinct `<unknown>` instances → missed duplicate) is the documented safe failure mode and structurally unreachable in workerd's single bundle.
+  - **`@pyreon/zero`** — the cloudflare adapter inlines the built `index.html` (with the hashed client entry) into `globalThis.__PYREON_SSR_TEMPLATE__` in `_worker.js` and dynamic-imports the handler, so the global is set before `createServer → readBuiltTemplate` evaluates. workerd has no filesystem, so the prior `readFileSync` template path couldn't reach the staged sibling → SSR rendered but shipped the dev `entry-client.ts` and never hydrated. `readBuiltTemplate` now reads the global first, falling back to `readFileSync` for Node runtimes (node/bun/vercel/netlify). Requires the `nodejs_compat` flag (the create-zero cloudflare scaffold sets it).
+
+  Both `patch` — bug fixes, no public API change.
+
+- [#1357](https://github.com/pyreon/pyreon/pull/1357) [`4c9844d`](https://github.com/pyreon/pyreon/commit/4c9844d4a408549ad48e3d93bbf686ba946032da) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Image priority>` coverage bundle — closes 3 gates left open by [#1353](https://github.com/pyreon/pyreon/issues/1353) + fixes a real framework bug surfaced during e2e.
+
+  **Framework bug fixed.** Pyreon's SSR `toAttrName` kebab-cased ALL camelCase props (`srcSet → src-set`, `fetchPriority → fetch-priority`, `crossOrigin → cross-origin`) — but these are STANDARD HTML attributes the spec defines as LOWERCASE-NO-DASH. Browsers silently ignore `fetch-priority`/`src-set`/`cross-origin`, so a body `<img fetchPriority="high" srcSet="…">` rendered correctly to Pyreon's eyes but produced HTML the preload scanner couldn't act on.
+
+  Fix: a `HTML_ATTRIBUTE_MAP` allow-list in `@pyreon/runtime-server`'s `toAttrName` carves out the React-style camelCase props that map to lowercase HTML attrs. Mirrors React's `possibleStandardNames`. Pre-existing kebab default still applies to user-defined / unknown camelCase props (e.g. `dataTestId → data-test-id` — test in `ssr.test.ts:650` still passes).
+
+  | JSX prop         | Before            | After                                 |
+  | ---------------- | ----------------- | ------------------------------------- |
+  | `srcSet`         | `src-set`         | `srcset`                              |
+  | `fetchPriority`  | `fetch-priority`  | `fetchpriority`                       |
+  | `crossOrigin`    | `cross-origin`    | `crossorigin`                         |
+  | `referrerPolicy` | `referrer-policy` | `referrerpolicy`                      |
+  | `tabIndex`       | `tab-index`       | `tabindex`                            |
+  | `readOnly`       | `read-only`       | `readonly`                            |
+  | `maxLength`      | `max-length`      | `maxlength`                           |
+  | `colSpan`        | `col-span`        | `colspan`                             |
+  | `autoComplete`   | `auto-complete`   | `autocomplete`                        |
+  | `acceptCharset`  | `accept-charset`  | `accept-charset` (kebab — HTML spec)  |
+  | `httpEquiv`      | `http-equiv`      | `http-equiv` (kebab — HTML spec)      |
+  | `dataTestId`     | `data-test-id`    | `data-test-id` (unchanged — fallback) |
+
+  3 new regression tests in `runtime-server/src/tests/ssr.test.ts` lock the allow-list (lowercase, kebab, boolean attrs). Bisect-verified: reverting the allow-list to the old kebab default fails 2 of 3 specs with `expected '<img src-set=…' to contain 'srcset='`. Restored → 169/169 pass.
+
+  **Coverage closures for PR [#1353](https://github.com/pyreon/pyreon/issues/1353):**
+
+  - **`docs/docs/images-and-fonts.md`** — new documentation page covering the bi-modal `<Image>` API (descriptor + string forms), descriptor `toString` compat, `createImageRegistry`, priority preload semantics, font self-hosting + preload, and the `image: false` / `font: false` opt-out grammar (PR [#1356](https://github.com/pyreon/pyreon/issues/1356)). Wired into the VitePress sidebar between SSG and Create Zero.
+  - **verify-modes cell** — the existing `ssr-showcase × ssg` autodetect cell now asserts `dist/image-priority-probe/index.html` carries `<link rel="preload" as="image" fetchpriority="high" imagesrcset="…" crossorigin="anonymous">` in `<head>`. **Bisect-verified end-to-end**: stashing the `useHead` block fails the cell with the documented error message; restoring → 23/23 modes green.
+  - **Real-Chromium e2e** — 2 specs in `e2e/ssr-showcase.spec.ts`: (a) preload `<link>` is present in the initial HTML response (before hydration runs — preload scanner can see it), (b) body `<img>` carries `fetchpriority="high"` + `loading="eager"`. The second spec is what surfaced the framework bug above.
+  - **`examples/ssr-showcase/src/routes/image-priority-probe.tsx`** — minimal route exercising `<Image priority>` with `srcset` + cross-origin URL. Drives both gates above.
+
+  **Validation:** 23/23 verify-modes • 1193/1194 zero • 169/169 runtime-server (+3 new) • 2/2 priority preload e2e • 117/117 ssr-showcase e2e • 11/11 validate-fast gates • typecheck + lint clean.
+
+- [#1339](https://github.com/pyreon/pyreon/pull/1339) [`1b1f4d3`](https://github.com/pyreon/pyreon/commit/1b1f4d326dc18c84672db82699f592869831bf0f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): SSR/ISR deploy follow-ups from code review (static .html, no double client-entry, adapter dedup)
+
+  Post-review quality fixes to the SSR/ISR deploy path:
+
+  - **Static `.html` assets are served again.** The node/bun production servers
+    excluded ALL `.html` from static serving to stop `/` shipping the SSR
+    template shell — but that also 404'd legit `public/*.html` assets (they fell
+    through to the SSR handler with no matching route). Removing the `/` →
+    `index.html` mapping already makes `/` server-render; the servers now serve
+    any existing file (incl. `.html`), so a static `/legal.html` works while `/`
+    still SSRs.
+  - **No double client-entry script.** `createServer` only auto-loads the built
+    production template (`dist/server/template.html`) when the caller customized
+    NEITHER `template` NOR `clientEntry` — previously an explicit `clientEntry`
+    alongside the auto-template injected two module scripts. JSDoc now documents
+    pairing a hand-supplied built `template` with `clientEntry: false`. (A missing
+    template in the zero-config path is a build error the SSR plugin reports at
+    build time + verify-modes / the ssr-node·isr-node e2e gate it — no runtime
+    warning needed.)
+  - **Shared `stageClientThenServer` adapter helper.** All six deploy adapters
+    staged client+server with a hand-maintained `'server'` entry in each
+    `preserve` list (a silent-stomp foot-gun if one forgot it). The new helper
+    derives the server segment from `serverEntry` and always preserves it,
+    removing that duplication across node/bun/vercel/netlify/cloudflare.
+
+  Pure refactor + edge-case fixes — no change to the happy-path deploy output
+  (verify-modes + ssr-node/isr-node e2e unchanged green); adds a static-`.html`
+  runtime test (bisect-verified) + `stageClientThenServer` unit tests.
+
+- [#1364](https://github.com/pyreon/pyreon/pull/1364) [`102617b`](https://github.com/pyreon/pyreon/commit/102617b06110394a9c32b7de9cf01da0286489ee) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `usePreloadFont` (PR [#1359](https://github.com/pyreon/pyreon/issues/1359)) — verify-modes cell + real-Chromium e2e coverage.
+
+  Closes the coverage gap disclosed in PR [#1359](https://github.com/pyreon/pyreon/issues/1359): previously only SSR-extraction unit tests asserted the head-string shape via `renderWithHead`. Now the runtime behavior is locked at three layers:
+
+  1. **`examples/ssr-showcase/src/routes/font-preload-probe.tsx`** — exercises three `usePreloadFont` calls: a local-origin font, a cross-origin CDN font with explicit type override, and a duplicate of the first (forces the dedup contract).
+
+  2. **verify-modes** `ssr-showcase × ssg` cell — asserts the prerendered `dist/font-preload-probe/index.html` contains:
+
+     - `<link rel="preload" as="font" href="/fonts/display-bold.woff2" type="font/woff2" crossorigin="anonymous">` (×1 — dedup'd)
+     - `<link rel="preload" as="font" href="https://cdn.example.com/brand.woff2" type="font/woff2" crossorigin="anonymous">`
+     - **Dedup contract**: 2 calls with the same href → exactly 1 preload tag.
+     - **Type contract**: `type="font/woff2"` present (scanner ignores `as=font` without matching MIME).
+     - **CORS contract**: `crossorigin="anonymous"` present (CSS Fonts spec — without it the browser double-fetches).
+
+  3. **Real-Chromium e2e** (2 specs in `e2e/ssr-showcase.spec.ts`):
+     - Both distinct preloads present in the **initial HTML response** (before hydration — the preload scanner can act on them).
+     - Same-href dedup: exactly 1 preload tag for the duplicated href.
+
+  **Bisect-verified end-to-end**: removing the `crossorigin: 'anonymous'` default in `usePreloadFont` → verify-modes SSG cell fails with `font-preload-probe: preload missing crossorigin="anonymous"`. Restored → 23/23 cells + 2/2 e2e specs pass.
+
+  Same coverage shape PR [#1357](https://github.com/pyreon/pyreon/issues/1357) brought to `<Image priority>`. The combination of (a) build-artifact assertion in verify-modes + (b) real-Chromium SSR HTML inspection in e2e is the framework's regression gate for any feature emitting tags via `useHead` at render time.
+
+  23/23 verify-modes • 2/2 new e2e specs • 11/11 validate-fast • typecheck + lint clean.
+
+- Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`4c9844d`](https://github.com/pyreon/pyreon/commit/4c9844d4a408549ad48e3d93bbf686ba946032da), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`a158aba`](https://github.com/pyreon/pyreon/commit/a158abac7a04f940a56608425ab63a4c8d72fb35), [`d040055`](https://github.com/pyreon/pyreon/commit/d040055e793c3b3e68cd58a286327655aee7ab6e), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/vite-plugin@1.0.0
+  - @pyreon/meta@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.29.0
 
 ### Minor Changes

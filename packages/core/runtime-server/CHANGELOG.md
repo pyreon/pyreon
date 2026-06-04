@@ -1,5 +1,79 @@
 # @pyreon/runtime-server
 
+## 0.30.0
+
+### Minor Changes
+
+- [#1357](https://github.com/pyreon/pyreon/pull/1357) [`4c9844d`](https://github.com/pyreon/pyreon/commit/4c9844d4a408549ad48e3d93bbf686ba946032da) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Image priority>` coverage bundle — closes 3 gates left open by [#1353](https://github.com/pyreon/pyreon/issues/1353) + fixes a real framework bug surfaced during e2e.
+
+  **Framework bug fixed.** Pyreon's SSR `toAttrName` kebab-cased ALL camelCase props (`srcSet → src-set`, `fetchPriority → fetch-priority`, `crossOrigin → cross-origin`) — but these are STANDARD HTML attributes the spec defines as LOWERCASE-NO-DASH. Browsers silently ignore `fetch-priority`/`src-set`/`cross-origin`, so a body `<img fetchPriority="high" srcSet="…">` rendered correctly to Pyreon's eyes but produced HTML the preload scanner couldn't act on.
+
+  Fix: a `HTML_ATTRIBUTE_MAP` allow-list in `@pyreon/runtime-server`'s `toAttrName` carves out the React-style camelCase props that map to lowercase HTML attrs. Mirrors React's `possibleStandardNames`. Pre-existing kebab default still applies to user-defined / unknown camelCase props (e.g. `dataTestId → data-test-id` — test in `ssr.test.ts:650` still passes).
+
+  | JSX prop         | Before            | After                                 |
+  | ---------------- | ----------------- | ------------------------------------- |
+  | `srcSet`         | `src-set`         | `srcset`                              |
+  | `fetchPriority`  | `fetch-priority`  | `fetchpriority`                       |
+  | `crossOrigin`    | `cross-origin`    | `crossorigin`                         |
+  | `referrerPolicy` | `referrer-policy` | `referrerpolicy`                      |
+  | `tabIndex`       | `tab-index`       | `tabindex`                            |
+  | `readOnly`       | `read-only`       | `readonly`                            |
+  | `maxLength`      | `max-length`      | `maxlength`                           |
+  | `colSpan`        | `col-span`        | `colspan`                             |
+  | `autoComplete`   | `auto-complete`   | `autocomplete`                        |
+  | `acceptCharset`  | `accept-charset`  | `accept-charset` (kebab — HTML spec)  |
+  | `httpEquiv`      | `http-equiv`      | `http-equiv` (kebab — HTML spec)      |
+  | `dataTestId`     | `data-test-id`    | `data-test-id` (unchanged — fallback) |
+
+  3 new regression tests in `runtime-server/src/tests/ssr.test.ts` lock the allow-list (lowercase, kebab, boolean attrs). Bisect-verified: reverting the allow-list to the old kebab default fails 2 of 3 specs with `expected '<img src-set=…' to contain 'srcset='`. Restored → 169/169 pass.
+
+  **Coverage closures for PR [#1353](https://github.com/pyreon/pyreon/issues/1353):**
+
+  - **`docs/docs/images-and-fonts.md`** — new documentation page covering the bi-modal `<Image>` API (descriptor + string forms), descriptor `toString` compat, `createImageRegistry`, priority preload semantics, font self-hosting + preload, and the `image: false` / `font: false` opt-out grammar (PR [#1356](https://github.com/pyreon/pyreon/issues/1356)). Wired into the VitePress sidebar between SSG and Create Zero.
+  - **verify-modes cell** — the existing `ssr-showcase × ssg` autodetect cell now asserts `dist/image-priority-probe/index.html` carries `<link rel="preload" as="image" fetchpriority="high" imagesrcset="…" crossorigin="anonymous">` in `<head>`. **Bisect-verified end-to-end**: stashing the `useHead` block fails the cell with the documented error message; restoring → 23/23 modes green.
+  - **Real-Chromium e2e** — 2 specs in `e2e/ssr-showcase.spec.ts`: (a) preload `<link>` is present in the initial HTML response (before hydration runs — preload scanner can see it), (b) body `<img>` carries `fetchpriority="high"` + `loading="eager"`. The second spec is what surfaced the framework bug above.
+  - **`examples/ssr-showcase/src/routes/image-priority-probe.tsx`** — minimal route exercising `<Image priority>` with `srcset` + cross-origin URL. Drives both gates above.
+
+  **Validation:** 23/23 verify-modes • 1193/1194 zero • 169/169 runtime-server (+3 new) • 2/2 priority preload e2e • 117/117 ssr-showcase e2e • 11/11 validate-fast gates • typecheck + lint clean.
+
+- [#1362](https://github.com/pyreon/pyreon/pull/1362) [`d040055`](https://github.com/pyreon/pyreon/commit/d040055e793c3b3e68cd58a286327655aee7ab6e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SVG attribute mapping + expanded HTML attr coverage in SSR.
+
+  **The bug class:** PR [#1357](https://github.com/pyreon/pyreon/issues/1357) added `HTML_ATTRIBUTE_MAP` to fix React-camelCase attrs the SSR kebab default broke (`fetchPriority → fetch-priority` was browser-ignored). The audit for other framework components surfaced TWO remaining gaps:
+
+  1. **SVG attributes** — user-written JSX `<svg viewBox=...>` kebabs to `view-box` (browser-ignored). `<path strokeWidth=2>` kebabs to `stroke-width` which actually happens to match SVG's CSS-property convention, but the framework's behavior was "accidentally correct" not "knows what SVG needs." `theme.tsx` + `favicon.ts` authors wrote `stroke-width` directly in JSX as a workaround — the framework now handles either source spelling.
+  2. **Additional HTML attrs** — `useMap`, `frameBorder`, `marginHeight`/`marginWidth`, `allowFullScreen`, `mediaGroup`, `controlsList`, `disablePictureInPicture`, `disableRemotePlayback`, `radioGroup`, `srcLang`, `popoverTarget` / `popoverTargetAction`, `noValidate`, `allowTransparency` — 15 standard React-camelCase HTML attrs that pre-fix kebabed wrong (`<form noValidate>` → `<form no-validate>`, browser-ignored).
+
+  **Fix:**
+
+  - **`HTML_ATTRIBUTE_MAP` extended** with the 15 missing standard HTML attrs.
+  - **`SVG_ATTRIBUTE_MAP` added** with ~90 SVG attrs split into two classes per the SVG spec:
+    - **Canonical camelCase preserved** (51 entries): `viewBox`, `preserveAspectRatio`, `gradientUnits`, `gradientTransform`, `patternUnits`, `attributeName`, `keySplines`, `numOctaves`, `pathLength`, `stdDeviation`, etc. SVG is case-sensitive; the kebab default emits `view-box` which browsers silently ignore.
+    - **CSS-property style kebab** (33 entries): `strokeWidth → stroke-width`, `strokeLinecap → stroke-linecap`, `textAnchor → text-anchor`, `markerEnd → marker-end`, `clipPath → clip-path`, `floodColor → flood-color`, `stopColor → stop-color`, etc. These coincide with the kebab fallback but the explicit map documents the contract.
+  - **Lookup order** in `toAttrName`: HTML_ATTRIBUTE_MAP → SVG_ATTRIBUTE_MAP → kebab fallback. HTML wins when an attr is in both maps (e.g. `tabIndex` is in HTML).
+
+  **Back-compat preserved**: kebab-cased SVG attrs in user JSX (`<path stroke-width="2">`) continue to work — they pass through the fallback unchanged (no uppercase chars to replace).
+
+  **Validation:**
+
+  - ✅ **+7 regression specs** in `ssr.test.ts`:
+    - 1 for the 13 new HTML attrs (positive + negative kebab assertions)
+    - 5 for SVG (camelCase preservation, CSS-property kebab, gradient/pattern, single-word pass-through, back-compat kebab source)
+    - 1 for marker-style kebab attrs (`markerEnd`/`clipPath`/`floodColor`)
+  - ✅ **Bisect-verified at 2 layers**:
+    - Removing `SVG_ATTRIBUTE_MAP` → 2 SVG canonical-camelCase specs fail (`view-box`/`gradient-units`)
+    - Removing the new HTML entries → 1 spec fails with the 13 broken attrs listed
+  - ✅ **176/176** runtime-server tests pass; **1262/1263** zero pass; **23/23** verify-modes; **11/11** validate-fast.
+
+  The SVG_ATTRIBUTE_MAP and the extended HTML_ATTRIBUTE_MAP together cover the production set of standard attributes a Pyreon user is likely to write in JSX. Exotic SVG attrs (`xChannelSelector` etc.) are included; mathematical SVG filter attrs are covered. Framework-internal author workarounds (`stroke-width` written directly in JSX) keep working unchanged.
+
+  **Why this matters now**: PR [#1357](https://github.com/pyreon/pyreon/issues/1357) fixed `<Image priority>`'s body `<img fetchPriority="high">`. Users writing custom SVG in their own components hit the same bug class — `<svg viewBox=...>` is a far more common shape than `<img fetchPriority=...>`. Closes the audit gap proactively before any user reports the silent SVG breakage.
+
+### Patch Changes
+
+- Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+
 ## 0.29.0
 
 ### Patch Changes

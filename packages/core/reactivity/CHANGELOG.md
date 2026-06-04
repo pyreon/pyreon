@@ -1,5 +1,86 @@
 # @pyreon/reactivity
 
+## 0.30.0
+
+### Minor Changes
+
+- [#1338](https://github.com/pyreon/pyreon/pull/1338) [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(core): owner-based context — replace the global context stack
+
+  Context resolution moved from a global mutable `Map[]` stack to an **owner
+  chain**: each mounted component's `EffectScope` doubles as a context owner
+  (`_parent` + `_contexts`), linked by the renderer so the chain mirrors the
+  component tree. `provide()` writes onto the current owner; `useContext()` walks
+  the owner chain; context is released when the scope is disposed.
+
+  This deletes ~190 lines of snapshot / restore / dedup / identity-removal
+  machinery whose only job was to fake tree-position across deferred mounts
+  (`<Show>` / `<For>`) — and which was itself the source of the 321k-frame leak,
+  the position-pop bug, and orphan frames. `@pyreon/core/src/context.ts` shrank
+  425 → 236 lines, and the entire context-stack bug class is now structurally
+  impossible.
+
+  - **`@pyreon/reactivity`** (minor): `EffectScope` gains `_parent` / `_contexts`
+    - `provideContext` / `lookupContext`; new exports `getContextOwner`,
+      `setContextOwner`, `runWithContextOwner`.
+  - **`@pyreon/core`** (minor): `provide` / `useContext` are owner-based
+    (owner-first, stack-fallback for SSR + the `*-compat` layers' own
+    stack-based provide/inject). The internal `captureContextStack`,
+    `restoreContextStack`, and the `ContextSnapshot` type are no longer exported.
+  - **`@pyreon/runtime-dom`** (patch): `mount` / `hydrate` establish the owner
+    chain per component; `mountReactive` captures a single owner reference
+    instead of a deduped stack snapshot.
+
+  SSR is unchanged — it keeps the request-scoped stack (a synchronous top-down
+  walk needs no band-aids). `provide` / `useContext` user APIs are unchanged.
+
+  Perf (tight A/B vs the stack model): headline component create is neutral
+  (within noise); the deferred-mount `<Show>` path is ~4% faster (the dedup +
+  restore work is gone). Verified: ~3,200 unit tests + verify-modes 19/19 + 156
+  real-Chromium e2e. A latent cross-test context leak (a `RouterContext` frame
+  bleeding between tests) was exposed and fixed by the per-mount isolation.
+
+- [#1345](https://github.com/pyreon/pyreon/pull/1345) [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(reactivity): `wrapSignal` primitive — fixes a latent state-tree bind bug + retires hand-rolled signal facades
+
+  `@pyreon/reactivity` had no primitive for "a signal whose write runs a side
+  effect" (persist, emit a patch, validate). So **two** packages hand-rolled the
+  same signal-facade — `@pyreon/storage`'s `wrapBaseSignal` and
+  `@pyreon/state-tree`'s `trackedSignal` — and a dedicated lint rule
+  (`pyreon/storage-signal-v-forwarding`) existed only to police the contract.
+  **A lint rule enforcing a wrapper invariant is the proof the primitive is
+  missing.**
+
+  New `wrapSignal(base, { set, update? })` builds a signal facade over `base`
+  that delegates ALL reads — including the internal `_v` field and `.direct`
+  that the compiler's `_bindText` / `_bindDirect` fast paths read directly,
+  bypassing the call — by construction, and routes writes through `set`. The
+  `_v`/`.direct` forwarding can no longer be forgotten.
+
+  **Latent bug fixed:** `state-tree`'s `trackedSignal` forwarded neither
+  `.direct` nor `_v`, so a model field bound via `{() => model.field()}` (the
+  text fast path) rendered empty and stayed empty — the exact class
+  `wrapBaseSignal` was created to prevent in storage, present and unfixed in
+  state-tree. Routing it through `wrapSignal` fixes it. Bisect-verified by
+  `state-tree/src/tests/tracked-signal-bind-contract.test.ts`.
+
+  - `@pyreon/reactivity`: new `wrapSignal` + `WrapSignalOptions` exports.
+  - `@pyreon/storage`: all 5 backends use `wrapSignal`; `wrap-base-signal.ts`
+    deleted.
+  - `@pyreon/state-tree`: `trackedSignal` uses `wrapSignal` (bug fix).
+
+  `provide`/`useContext`-style user APIs are unchanged. The lint rule stays as
+  defense for any future hand-rolled facade that bypasses the primitive.
+
+### Patch Changes
+
+- [#1346](https://github.com/pyreon/pyreon/pull/1346) [`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: Cloudflare (workerd) SSR deploy — guard singleton sentinel against undefined import.meta.url + inline the built SSR template
+
+  Cloudflare Pages SSR (`mode: "ssr"` / `"isr"` with `adapter: "cloudflare"`) ran in workerd, where two assumptions of the SSR path broke (verified in the real runtime via `wrangler pages dev` — a Node-side test can't catch either):
+
+  - **`@pyreon/reactivity`** — `normalizeLocation` no longer crashes when a runtime passes `undefined`/empty `import.meta.url` (workerd does). A bare `url.indexOf('?')` threw `Cannot read properties of undefined (reading 'indexOf')` at module init, taking down every `@pyreon`-based Cloudflare Worker at startup. The guard returns `"<unknown>"`; duplicate detection keys on the package name + location, so a single re-registering instance is idempotent (same-location early-return) and the only degraded case (two genuinely-distinct `<unknown>` instances → missed duplicate) is the documented safe failure mode and structurally unreachable in workerd's single bundle.
+  - **`@pyreon/zero`** — the cloudflare adapter inlines the built `index.html` (with the hashed client entry) into `globalThis.__PYREON_SSR_TEMPLATE__` in `_worker.js` and dynamic-imports the handler, so the global is set before `createServer → readBuiltTemplate` evaluates. workerd has no filesystem, so the prior `readFileSync` template path couldn't reach the staged sibling → SSR rendered but shipped the dev `entry-client.ts` and never hydrated. `readBuiltTemplate` now reads the global first, falling back to `readFileSync` for Node runtimes (node/bun/vercel/netlify). Requires the `nodejs_compat` flag (the create-zero cloudflare scaffold sets it).
+
+  Both `patch` — bug fixes, no public API change.
+
 ## 0.29.0
 
 ### Patch Changes

@@ -1,5 +1,107 @@
 # @pyreon/core
 
+## 0.30.0
+
+### Minor Changes
+
+- [#1348](https://github.com/pyreon/pyreon/pull/1348) [`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(core): `removeUndefinedProps` — the reactive-prop-aware undefined filter moves into core, retiring two hand-rolled copies
+
+  `@pyreon/core/props.ts` owns Pyreon's reactive-prop encoding (`_rp`,
+  `makeReactiveProps`, `REACTIVE_PROP`) and the descriptor-preserving merge/split
+  utilities (`mergeProps`, `splitProps`). It did NOT own the **one remaining
+  operation on that encoding** every prop-forwarding HOC needs: "copy a props
+  object, dropping `undefined` data keys while preserving getter-shaped reactive
+  props verbatim."
+
+  So `@pyreon/attrs` and `@pyreon/rocketstyle` each hand-rolled it
+  (`utils/attrs.ts:removeUndefinedProps`) — byte-identical bodies. **And the
+  `@pyreon/attrs` copy historically shipped as a value-copy** (`result[key] =
+props[key]`), which fires getter-shaped reactive props at HOC-setup time and
+  collapses the live signal to a static snapshot — silently breaking reactive-prop
+  forwarding for any consumer using `attrs(Component)` directly (its own docstring
+  records this). Two divergent copies of an operation core should own = the exact
+  shape that lets one regress while the other stays correct.
+
+  New `removeUndefinedProps` is exported from `@pyreon/core`, next to `mergeProps`
+  / `splitProps` / `makeReactiveProps`. Both `@pyreon/attrs` and
+  `@pyreon/rocketstyle` now re-export it from core (call sites import from
+  `../utils/attrs` unchanged); the duplicate implementations are deleted.
+
+  - `@pyreon/core`: new `removeUndefinedProps` export (+ manifest entry, 6 specs).
+  - `@pyreon/attrs`: `utils/attrs.ts` re-exports from core (hand-roll deleted).
+  - `@pyreon/rocketstyle`: `utils/attrs.ts` re-exports from core (hand-roll deleted).
+
+  Bisect-verified (`core/src/tests/remove-undefined-props.test.ts`): replacing
+  the descriptor-copy with a value-copy fails the getter-preservation specs (the
+  getter fires + the prop becomes a static value); restored → 6/6. No behavior
+  change — both copies were already the correct descriptor-copy form.
+
+- [#1338](https://github.com/pyreon/pyreon/pull/1338) [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(core): owner-based context — replace the global context stack
+
+  Context resolution moved from a global mutable `Map[]` stack to an **owner
+  chain**: each mounted component's `EffectScope` doubles as a context owner
+  (`_parent` + `_contexts`), linked by the renderer so the chain mirrors the
+  component tree. `provide()` writes onto the current owner; `useContext()` walks
+  the owner chain; context is released when the scope is disposed.
+
+  This deletes ~190 lines of snapshot / restore / dedup / identity-removal
+  machinery whose only job was to fake tree-position across deferred mounts
+  (`<Show>` / `<For>`) — and which was itself the source of the 321k-frame leak,
+  the position-pop bug, and orphan frames. `@pyreon/core/src/context.ts` shrank
+  425 → 236 lines, and the entire context-stack bug class is now structurally
+  impossible.
+
+  - **`@pyreon/reactivity`** (minor): `EffectScope` gains `_parent` / `_contexts`
+    - `provideContext` / `lookupContext`; new exports `getContextOwner`,
+      `setContextOwner`, `runWithContextOwner`.
+  - **`@pyreon/core`** (minor): `provide` / `useContext` are owner-based
+    (owner-first, stack-fallback for SSR + the `*-compat` layers' own
+    stack-based provide/inject). The internal `captureContextStack`,
+    `restoreContextStack`, and the `ContextSnapshot` type are no longer exported.
+  - **`@pyreon/runtime-dom`** (patch): `mount` / `hydrate` establish the owner
+    chain per component; `mountReactive` captures a single owner reference
+    instead of a deduped stack snapshot.
+
+  SSR is unchanged — it keeps the request-scoped stack (a synchronous top-down
+  walk needs no band-aids). `provide` / `useContext` user APIs are unchanged.
+
+  Perf (tight A/B vs the stack model): headline component create is neutral
+  (within noise); the deferred-mount `<Show>` path is ~4% faster (the dedup +
+  restore work is gone). Verified: ~3,200 unit tests + verify-modes 19/19 + 156
+  real-Chromium e2e. A latent cross-test context leak (a `RouterContext` frame
+  bleeding between tests) was exposed and fixed by the per-mount isolation.
+
+### Patch Changes
+
+- [#1349](https://github.com/pyreon/pyreon/pull/1349) [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(core): unblock Coverage (Full) — add 7 tests for owner-based context ([#1338](https://github.com/pyreon/pyreon/issues/1338))
+
+  PR [#1338](https://github.com/pyreon/pyreon/issues/1338)'s owner-based context refactor consolidated 600 lines into 250 but
+  the new arms (owner-present branches in `provide` / `withContext`, the
+  `setSnapshotCapture` round-trip, defensive `popContext` / `removeContextFrame`
+  when stack is empty / frame missing) had no direct unit coverage. `@pyreon/core`
+  fell to 94.74% statements + 93.51% functions, failing both the package
+  threshold and unblocking nobody's PR.
+
+  This hotfix adds `context-coverage.test.ts` with 7 specs:
+
+  - `withContext` owner-present path (lines 211-214)
+  - `provide` owner-present path (lines 197-198)
+  - `withContext` no-owner SSR fallback throws-and-pops correctly
+  - `popContext` no-op when stack is empty (defensive arm)
+  - `removeContextFrame` no-op when frame not on stack (lastIndexOf -1)
+  - `removeContextFrame` finds + removes by identity (the load-bearing path)
+  - SSR-style nested push/pop walks correctly
+
+  Coverage delta:
+
+  - statements 94.74% → 96.10% ✅
+  - functions 93.51% → 94.44% ✅
+  - branches 93.11% → 94.01%
+  - lines 96.16% → 97.51%
+
+- Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
+  - @pyreon/reactivity@1.0.0
+
 ## 0.29.0
 
 ### Patch Changes

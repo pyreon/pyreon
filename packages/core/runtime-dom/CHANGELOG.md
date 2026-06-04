@@ -1,5 +1,49 @@
 # @pyreon/runtime-dom
 
+## 0.30.0
+
+### Patch Changes
+
+- [#1338](https://github.com/pyreon/pyreon/pull/1338) [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(core): owner-based context — replace the global context stack
+
+  Context resolution moved from a global mutable `Map[]` stack to an **owner
+  chain**: each mounted component's `EffectScope` doubles as a context owner
+  (`_parent` + `_contexts`), linked by the renderer so the chain mirrors the
+  component tree. `provide()` writes onto the current owner; `useContext()` walks
+  the owner chain; context is released when the scope is disposed.
+
+  This deletes ~190 lines of snapshot / restore / dedup / identity-removal
+  machinery whose only job was to fake tree-position across deferred mounts
+  (`<Show>` / `<For>`) — and which was itself the source of the 321k-frame leak,
+  the position-pop bug, and orphan frames. `@pyreon/core/src/context.ts` shrank
+  425 → 236 lines, and the entire context-stack bug class is now structurally
+  impossible.
+
+  - **`@pyreon/reactivity`** (minor): `EffectScope` gains `_parent` / `_contexts`
+    - `provideContext` / `lookupContext`; new exports `getContextOwner`,
+      `setContextOwner`, `runWithContextOwner`.
+  - **`@pyreon/core`** (minor): `provide` / `useContext` are owner-based
+    (owner-first, stack-fallback for SSR + the `*-compat` layers' own
+    stack-based provide/inject). The internal `captureContextStack`,
+    `restoreContextStack`, and the `ContextSnapshot` type are no longer exported.
+  - **`@pyreon/runtime-dom`** (patch): `mount` / `hydrate` establish the owner
+    chain per component; `mountReactive` captures a single owner reference
+    instead of a deduped stack snapshot.
+
+  SSR is unchanged — it keeps the request-scoped stack (a synchronous top-down
+  walk needs no band-aids). `provide` / `useContext` user APIs are unchanged.
+
+  Perf (tight A/B vs the stack model): headline component create is neutral
+  (within noise); the deferred-mount `<Show>` path is ~4% faster (the dedup +
+  restore work is gone). Verified: ~3,200 unit tests + verify-modes 19/19 + 156
+  real-Chromium e2e. A latent cross-test context leak (a `RouterContext` frame
+  bleeding between tests) was exposed and fixed by the per-mount isolation.
+
+- Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.29.0
 
 ### Patch Changes
