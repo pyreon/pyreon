@@ -1315,6 +1315,45 @@ describe('node adapter — runtime contract', () => {
   )
 
   it.skipIf(!hasNode)(
+    'emitted entry boots — a static public .html asset IS served (not 404ed to SSR)',
+    async () => {
+      // Regression guard: the static-serve branch must NOT blanket-exclude
+      // .html — a legit public asset like /legal.html would then fall through
+      // to the SSR handler (no route → 404). Only "/" (which has no index.html
+      // mapping) should server-render; existing files of any extension serve.
+      await setupMockBuild()
+      const { writeFile } = await import('node:fs/promises')
+      await writeFile(join(MOCK_CLIENT, 'legal.html'), '<html><body>LEGAL</body></html>')
+
+      const outDir = join(TMP, 'node-runtime-html')
+      const port = await pickFreePort()
+      await nodeAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        // The static .html asset is served verbatim ...
+        const asset = await fetch(`http://127.0.0.1:${port}/legal.html`)
+        expect(asset.status).toBe(200)
+        expect(await asset.text()).toContain('LEGAL')
+        expect(asset.headers.get('content-type')).toContain('html')
+        // ... while "/" still falls through to SSR (the mock handler's "ok").
+        const root = await fetch(`http://127.0.0.1:${port}/`)
+        expect(await root.text()).toBe('ok')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  it.skipIf(!hasNode)(
     'emitted entry boots — GET / is SERVER-RENDERED, not the static template shell',
     async () => {
       // SSR-mode contract (the Bug C fix): in `mode: 'ssr'` the client build

@@ -1,4 +1,4 @@
-import { join, relative, resolve, sep } from 'node:path'
+import { basename, join, relative, resolve, sep } from 'node:path'
 
 /**
  * Stage a built directory tree so its contents end up at `dest`, correctly
@@ -80,4 +80,32 @@ export async function materialize(
   }
 
   await cp(s, d, { recursive: true })
+}
+
+/**
+ * Stage a deploy adapter's client + server builds in the canonical order:
+ * client → `clientDest`, then server → `serverDest`. Every SSR deploy adapter
+ * does exactly this; the only per-adapter variation is the two destinations +
+ * any extra top-level entries to preserve during the client stage (scaffold
+ * files the adapter writes next, a sibling functions dir, …).
+ *
+ * Centralizing it removes a silent-stomp foot-gun: the client source is the
+ * build's `outDir`, which CONTAINS the server bundle's subdir — that segment
+ * MUST be in the client stage's `preserve` or the client copy sweeps the
+ * server bundle into the client dir. Rather than hand-maintain that `'server'`
+ * entry in every adapter (easy to forget), this derives it from `serverEntry`
+ * (`basename(serverEntry/..)`) and always preserves it.
+ *
+ * @param options  `clientOutDir` + `serverEntry` (the adapter's build inputs).
+ * @param layout   `clientDest` / `serverDest` + extra `preserve` entries.
+ */
+export async function stageClientThenServer(
+  options: { clientOutDir: string; serverEntry: string },
+  layout: { clientDest: string; serverDest: string; preserve?: readonly string[] },
+): Promise<void> {
+  const serverSrc = join(options.serverEntry, '..')
+  await materialize(options.clientOutDir, layout.clientDest, {
+    preserve: [basename(serverSrc), ...(layout.preserve ?? [])],
+  })
+  await materialize(serverSrc, layout.serverDest)
 }

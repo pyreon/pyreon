@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { materialize } from './stage'
+import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -28,10 +28,11 @@ export function bunAdapter(): Adapter {
       // Stage client → outDir/client and server → outDir/server. See node.ts /
       // stage.ts for why a plain cp is a copy-into-self here (clientOutDir ===
       // outDir, server already at outDir/server).
-      await materialize(options.clientOutDir, join(outDir, 'client'), {
-        preserve: ['server', 'index.ts'],
+      await stageClientThenServer(options, {
+        clientDest: join(outDir, 'client'),
+        serverDest: join(outDir, 'server'),
+        preserve: ['index.ts'],
       })
-      await materialize(join(options.serverEntry, '..'), join(outDir, 'server'))
 
       const port = options.config.port ?? 3000
       const serverEntry = `
@@ -69,11 +70,12 @@ Bun.serve({
       if (decoded.includes("\\0")) {
         return new Response("Forbidden", { status: 403 })
       }
-      // Serve real static assets only. "/" and ANY .html path fall through
-      // to the SSR handler so the home route + HTML routes are SERVER-
-      // RENDERED, not shipped as the unfilled <!--pyreon-app--> shell. In
-      // SSR mode clientDir holds the template, not prerendered pages.
-      if (decoded !== "/" && !decoded.endsWith(".html")) {
+      // Serve existing static files (incl. prerendered / public *.html). Only
+      // "/" falls through to the SSR handler (no index.html mapping) — the fix
+      // for "/" shipping the unfilled <!--pyreon-app--> shell; a missing file
+      // also falls through. (Explicit "/index.html" serves the template shell,
+      // a harmless non-canonical edge the client hydrates.)
+      if (decoded !== "/") {
         // Prepend clientDir then normalize. If the normalized result
         // no longer starts with clientDir, a \`..\` segment escaped —
         // reject. Using string-startsWith with clientDir (which ends

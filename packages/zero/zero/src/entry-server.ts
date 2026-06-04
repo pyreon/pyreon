@@ -34,9 +34,23 @@ export interface CreateServerOptions {
 	routeMiddleware?: RouteMiddlewareEntry[];
 	/** API route entries from virtual:zero/api-routes. */
 	apiRoutes?: ApiRouteEntry[];
-	/** HTML template override. */
+	/**
+	 * HTML template override (must contain the `<!--pyreon-app-->` /
+	 * `<!--pyreon-head-->` / `<!--pyreon-scripts-->` placeholders).
+	 *
+	 * When omitted AND `clientEntry` is also omitted, `createServer`
+	 * auto-loads the built `dist/server/template.html` staged by the SSR
+	 * plugin (which carries the hashed client `<script>`) and sets
+	 * `clientEntry: false`. If you pass a BUILT template here that already
+	 * references the hashed entry, pair it with `clientEntry: false` so the
+	 * handler doesn't inject a second (dev) client script.
+	 */
 	template?: string;
-	/** Client entry path. Pass `false` to suppress the client-entry script. */
+	/**
+	 * Client entry path (default `/src/entry-client.ts`). Pass `false` to
+	 * suppress the client-entry `<script>` entirely — use this when `template`
+	 * already carries the production hashed module script.
+	 */
 	clientEntry?: string | false;
 	/** Component to render when no route matches (from _404.tsx). */
 	notFoundComponent?: ComponentFn;
@@ -192,27 +206,47 @@ export function createServer(options: CreateServerOptions) {
 		...(config.base && config.base !== "/" ? { base: config.base } : {}),
 	});
 
-	// Production SSR template resolution. When the caller passes no explicit
-	// template, look for a built `template.html` sibling of this server bundle.
-	// The SSR build copies the built client index.html there (see
-	// ssr-plugin.ts), and every deploy adapter copies the whole server dir, so
-	// it travels with entry-server.js to node/bun/vercel/netlify/cloudflare
-	// alike. That built template carries the hashed client `<script>` + CSS
-	// `<link>` + the injection placeholders, so we use it AND suppress the
-	// client-entry injection (clientEntry: false — the template already
-	// references the hashed entry). WITHOUT this the handler falls back to
-	// DEFAULT_TEMPLATE + the DEV "/src/entry-client.ts" path, which 404s in
-	// production: the page server-renders but never hydrates. In dev / tests
-	// the sibling doesn't exist → undefined → the handler's defaults apply
-	// (dev SSR renders via a separate path that reads the real index.html).
-	const autoTemplate = options.template ? undefined : readBuiltTemplate();
-	const resolvedTemplate = options.template ?? autoTemplate;
-	const resolvedClientEntry =
-		options.clientEntry !== undefined
-			? options.clientEntry
-			: autoTemplate
-				? (false as const)
-				: undefined;
+	// Production SSR template resolution (the zero-config path). ONLY when the
+	// caller customized NEITHER `template` NOR `clientEntry` do we look for a
+	// built `template.html` sibling of this server bundle — the SSR build copies
+	// the built client index.html there (see ssr-plugin.ts) and every deploy
+	// adapter copies the whole server dir, so it travels with entry-server.js to
+	// node/bun/vercel/netlify/cloudflare alike. That built template carries the
+	// hashed client `<script>` + CSS `<link>` + injection placeholders, so we
+	// use it AND suppress the handler's client-entry injection (the template
+	// already references the hashed entry). If the caller customized EITHER
+	// option we leave both untouched — auto-loading the template alongside an
+	// explicit `clientEntry` would inject two module scripts. In dev / tests the
+	// sibling doesn't exist → `readBuiltTemplate` returns undefined → the
+	// handler's defaults apply (dev SSR renders via a separate path).
+	const zeroConfigTemplate = !options.template && options.clientEntry === undefined;
+	const autoTemplate = zeroConfigTemplate ? readBuiltTemplate() : undefined;
+	if (
+		zeroConfigTemplate &&
+		autoTemplate === undefined &&
+		process.env.NODE_ENV === "production"
+	) {
+		// The deploy is missing the staged production template (a non-zero /
+		// custom build that didn't run the SSR plugin's copy step). Surfacing
+		// this in production is the point — silently it server-renders but ships
+		// the dev "/src/entry-client.ts" entry, which 404s → no hydration.
+		// eslint-disable-next-line no-console
+		console.warn(
+			'[zero:ssr] No production template (dist/server/template.html) found next to the server bundle. Falling back to DEFAULT_TEMPLATE + the dev client entry "/src/entry-client.ts", which 404s in production — the page will server-render but NOT hydrate. Ensure the SSR build staged the template, or pass `template` + `clientEntry: false` explicitly.',
+		);
+	}
+
+	// Prefer an explicit template; else the auto-resolved built one. `||` (not
+	// `??`) so an empty-string template falls back too — consistent with the
+	// truthy `!options.template` check above.
+	const resolvedTemplate = options.template || autoTemplate;
+	// The auto-loaded built template already carries the hashed client
+	// <script>, so suppress the handler's injection. An explicit `clientEntry`
+	// (including `false`) always wins.
+	let resolvedClientEntry = options.clientEntry;
+	if (resolvedClientEntry === undefined && autoTemplate) {
+		resolvedClientEntry = false;
+	}
 
 	const baseHandler = createHandler({
 		App,

@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { materialize } from './stage'
+import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -28,13 +28,14 @@ export function nodeAdapter(): Adapter {
       // Stage client → outDir/client and server → outDir/server. The zero SSR
       // plugin passes clientOutDir === outDir with the server bundle already at
       // outDir/server, so a naive cp would copy a directory into its own
-      // subtree (client) or onto itself (server) → EINVAL. `materialize` moves
-      // the client into client/ (preserving the server subdir + the scaffold
-      // files we write next) and no-ops the already-in-place server copy.
-      await materialize(options.clientOutDir, join(outDir, 'client'), {
-        preserve: ['server', 'index.js', 'package.json'],
+      // subtree → EINVAL. `stageClientThenServer` per-entry-copies the client
+      // into client/ (auto-preserving the server subdir + the scaffold files we
+      // write next) and no-ops the already-in-place server copy.
+      await stageClientThenServer(options, {
+        clientDest: join(outDir, 'client'),
+        serverDest: join(outDir, 'server'),
+        preserve: ['index.js', 'package.json'],
       })
-      await materialize(join(options.serverEntry, '..'), join(outDir, 'server'))
 
       // Generate standalone server entry
       const port = options.config.port ?? 3000
@@ -64,15 +65,17 @@ const MIME_TYPES = {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
 
-  // Serve real static assets only (js / css / images / fonts). The SSR
-  // template index.html — and ANY .html path — deliberately falls through
-  // to the SSR handler so "/" and HTML routes are SERVER-RENDERED, not
-  // shipped as the unfilled <!--pyreon-app--> shell. In SSR mode clientDir
-  // holds the template, not prerendered pages, so static-serving index.html
-  // at "/" would defeat SSR for the home route entirely.
+  // Serve existing static files (js / css / images / fonts / prerendered
+  // .html / public assets). The root "/" deliberately has NO index.html
+  // mapping, so with no file extension it falls through to the SSR handler —
+  // that's the fix for "/" shipping the unfilled <!--pyreon-app--> shell.
+  // Any other path serves its file if present (incl. legit public/*.html);
+  // a missing file falls through to SSR. (An explicit "/index.html" request
+  // serves the template shell — a harmless non-canonical edge the client
+  // still hydrates.)
   if (req.method === "GET") {
     const ext = extname(url.pathname)
-    if (ext && ext !== ".html") {
+    if (ext) {
       try {
         const filePath = join(clientDir, url.pathname)
         // Prevent path traversal — ensure resolved path stays within clientDir.
