@@ -28,8 +28,7 @@
  *   - `::: code-group\n\`\`\`bash [npm]...\n\`\`\`bash [bun]...\n:::` —
  *     tabbed install / language variants.
  */
-import { readFileSync } from 'node:fs'
-import { dirname, relative } from 'node:path'
+import { relative } from 'node:path'
 import type { Plugin } from 'vite'
 import MarkdownIt from 'markdown-it'
 import anchor from 'markdown-it-anchor'
@@ -103,7 +102,7 @@ function preprocess(src: string, md: MarkdownIt): string {
   out = out.replace(
     /<Playground([^>]*)>([\s\S]*?)<\/Playground>/g,
     (_, attrs: string, body: string) => {
-      const title = (attrs.match(/title="([^"]*)"/) || [, ''])[1]!
+      const title = (attrs.match(/title="([^"]*)"/) || [undefined, ''])[1]!
       const heightMatch = attrs.match(/:?height=(?:"|\{)(\d+)(?:"|\})/)
       const height = heightMatch ? heightMatch[1]! : '200'
       const code = body.trim()

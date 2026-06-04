@@ -4,16 +4,30 @@ interface Heading {
   id: string
 }
 
-export function Toc(props: { headings: Heading[] }) {
-  if (props.headings.length === 0) return null
+/**
+ * Right-rail TOC. Accepts either a static array (for already-loaded
+ * pages) or an accessor (for the dynamic markdown route, where the
+ * headings come in once the lazy chunk resolves).
+ */
+export function Toc(props: { headings: Heading[] | (() => Heading[]) }) {
+  const get = (): Heading[] =>
+    typeof props.headings === 'function' ? props.headings() : props.headings
   return (
     <aside class="toc">
-      <div class="label">On this page</div>
-      {props.headings.map((h) => (
-        <a href={'#' + h.id} data-level={String(h.level)}>
-          {h.text}
-        </a>
-      ))}
+      {() => {
+        const items = get()
+        if (items.length === 0) return null as unknown as never
+        return (
+          <>
+            <div class="label">On this page</div>
+            {items.map((h) => (
+              <a href={'#' + h.id} data-level={String(h.level)}>
+                {h.text}
+              </a>
+            ))}
+          </>
+        )
+      }}
     </aside>
   )
 }

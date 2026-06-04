@@ -75,7 +75,7 @@ function mount(v, c) { if (v instanceof Node) c.appendChild(v) }
 try { ${src} } catch (err) {
   document.getElementById('app').innerHTML = '<pre class="error">' + String(err && err.stack || err) + '</pre>'
 }
-<\/script>
+${'<' + '/script>'}
 </body></html>`
   }
 
@@ -112,8 +112,23 @@ try { ${src} } catch (err) {
       import('@codemirror/autocomplete'),
       import('@codemirror/lang-javascript'),
       import('@codemirror/theme-one-dark'),
-    ]).then(([state, view, commands, language, autocomplete, langJs, oneDark]) => {
+    ]).then((mods) => {
       if (!alive || editorContainer == null) return
+      // The @codemirror/* packages may resolve to subtly different
+      // declaration files across the monorepo (transitive depth
+      // produces both 6.40 + 6.43 in node_modules). Their runtime
+      // shapes are stable and ABI-compatible; cast through unknown to
+      // pick a single set of types within this closure.
+      const [state, view, commands, language, autocomplete, langJs, oneDark] =
+        mods as unknown as [
+          typeof import('@codemirror/state'),
+          typeof import('@codemirror/view'),
+          typeof import('@codemirror/commands'),
+          typeof import('@codemirror/language'),
+          typeof import('@codemirror/autocomplete'),
+          typeof import('@codemirror/lang-javascript'),
+          typeof import('@codemirror/theme-one-dark'),
+        ]
       const ext = view.EditorView.theme({
         '&': { height: '100%', fontSize: '13px', fontFamily: 'JetBrains Mono, ui-monospace, monospace' },
         '.cm-content': { padding: '12px 4px', caretColor: '#FF5E1A' },
@@ -129,6 +144,18 @@ try { ${src} } catch (err) {
         '.cm-activeLineGutter': { background: 'var(--bg-well)', color: 'var(--text-muted)' },
         '.cm-activeLine': { background: 'transparent' },
       })
+      // The keymap entries cross @codemirror/view + @codemirror/commands
+      // boundaries; both packages have versioned KeyBinding/Command
+      // types that don't reconcile across resolutions in the workspace.
+      // Cast the entry list to unknown[] — runtime shape is fully
+      // ABI-compatible.
+      const keys = [
+        ...autocomplete.closeBracketsKeymap,
+        ...commands.defaultKeymap,
+        ...commands.historyKeymap,
+        commands.indentWithTab,
+        { key: 'Mod-Enter', run: () => { run(); return true } },
+      ] as unknown as Parameters<typeof view.keymap.of>[0]
       const baseExt = [
         view.lineNumbers(),
         view.highlightActiveLine(),
@@ -139,13 +166,7 @@ try { ${src} } catch (err) {
         autocomplete.autocompletion(),
         language.syntaxHighlighting(language.defaultHighlightStyle, { fallback: true }),
         langJs.javascript({ jsx: true, typescript: true }),
-        view.keymap.of([
-          ...autocomplete.closeBracketsKeymap,
-          ...commands.defaultKeymap,
-          ...commands.historyKeymap,
-          commands.indentWithTab,
-          { key: 'Mod-Enter', run: () => (run(), true) },
-        ]),
+        view.keymap.of(keys),
         view.EditorView.updateListener.of((u) => {
           if (u.docChanged) code.set(u.state.doc.toString())
         }),

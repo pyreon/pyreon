@@ -1,4 +1,5 @@
-import { lazy } from '@pyreon/core'
+import { type ComponentFn, lazy } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { useParams } from '@pyreon/router'
 import { Sidebar } from '../../components/Sidebar'
 import { Toc } from '../../components/Toc'
@@ -15,33 +16,38 @@ import { Toc } from '../../components/Toc'
  * import map and route through it at runtime.
  */
 
-// Statically-analyzable glob — Vite produces a `Record<string, () => Promise<Module>>`
-// keyed by absolute paths under `src/content/`.
-const pages = import.meta.glob('../../content/**/*.md', { eager: false }) as Record<
+interface PageHeading {
+  level: number
+  text: string
+  id: string
+}
+interface PageModule {
+  default: ComponentFn<Record<string, never>>
+  meta: { title: string; description?: string; slug: string; headings: PageHeading[] }
+}
+
+// Statically-analyzable glob — Vite produces a record keyed by paths
+// under `src/content/`. The compiled markdown module shape is asserted
+// via `as` because the glob types vite emits don't carry our `meta`.
+const pages = import.meta.glob('../../content/**/*.md') as unknown as Record<
   string,
-  () => Promise<{
-    default: () => unknown
-    meta: { title: string; description?: string; slug: string; headings: { level: number; text: string; id: string }[] }
-  }>
+  () => Promise<PageModule>
 >
 
-function resolveLoader(slug: string) {
-  // Match `src/content/<slug>.md` or `src/content/<slug>/index.md`
-  const candidates = [
-    `../../content/${slug}.md`,
-    `../../content/${slug}/index.md`,
-  ]
-  for (const c of candidates) {
-    if (pages[c]) return pages[c]!
-  }
+function resolveLoader(slug: string): (() => Promise<PageModule>) | null {
+  const candidates = [`../../content/${slug}.md`, `../../content/${slug}/index.md`]
+  for (const c of candidates) if (pages[c]) return pages[c]!
   return null
 }
 
 export default function DocPage() {
-  const params = useParams<{ slug: string | string[] }>()
+  // fs-router types `useParams` as `Record<string, string>` even though
+  // catch-all routes deliver an array. Narrow via a runtime cast.
+  const params = useParams() as unknown as { slug: string | string[] }
   const raw = params.slug
   const slug = Array.isArray(raw) ? raw.join('/') : raw
   const loader = resolveLoader(slug)
+
   if (!loader) {
     return (
       <div class="app-shell">
@@ -60,14 +66,17 @@ export default function DocPage() {
     )
   }
 
-  const PageBody = lazy(loader)
-
-  // Headings come from the lazy chunk's `meta` export — fetch once on
-  // load and feed it into the TOC. Until it resolves the TOC is empty,
-  // which is fine (no flash since the chunk loads sub-100ms in dev).
-  let headings: { level: number; text: string; id: string }[] = []
+  // lazy() expects `() => Promise<{ default: ComponentFn<P> }>`. Our
+  // page modules also carry a `meta` export — wrap the loader so the
+  // shape lazy sees is exactly what it expects, and read `meta` from a
+  // separate then() into a signal that drives the TOC.
+  const headings = signal<PageHeading[]>([])
   loader().then((mod) => {
-    headings = mod.meta.headings
+    headings.set(mod.meta.headings)
+  })
+  const PageBody = lazy<Record<string, never>>(async () => {
+    const mod = await loader()
+    return { default: mod.default }
   })
 
   return (
@@ -76,7 +85,7 @@ export default function DocPage() {
       <main>
         <PageBody />
       </main>
-      <Toc headings={headings} />
+      <Toc headings={() => headings()} />
     </div>
   )
 }
