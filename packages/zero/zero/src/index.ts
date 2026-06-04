@@ -40,6 +40,7 @@ export type {
 	ImageRegistryOptions,
 } from "./image-registry";
 export { createImageRegistry } from "./image-registry";
+export { NoOptimize, useNoOptimize } from "./no-optimize";
 export type { PreloadFontOptions } from "./use-preload-font";
 export { inferFontMimeType, usePreloadFont } from "./use-preload-font";
 export type { LinkProps, LinkRenderProps, UseLinkReturn } from "./link";
