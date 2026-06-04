@@ -14,17 +14,15 @@
  */
 import { mount, unmount, flushSync } from 'svelte'
 import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
+import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 import Bench from './Bench.svelte'
 import { state, type SvelteRow } from './bench-state.svelte'
 
-// `flushSync()` forces Svelte's queued effects (DOM updates) to apply
-// immediately. Svelte 5 batches updates by default — without flushSync,
-// the DOM wouldn't reflect the mutation by the time we measure.
-// `tick()` after is the layout flush (same as every other framework).
-async function commit(): Promise<void> {
+// flushSync applies Svelte's queued effects (DOM updates) SYNCHRONOUSLY —
+// the DOM is committed when it returns, so no extra macrotask wait is needed
+// (the harness's uniform getBoundingClientRect handles the layout flush).
+function commit(): void {
   flushSync()
-  await tick()
 }
 
 export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
@@ -115,7 +113,14 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
     async () => {
       await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
     },
-    { verify: expectRowsWithSelected(1_000, 1) },
+    {
+      // deselect (untimed) so each timed run does a REAL selection,
+      // not a no-op re-select of the already-selected row
+      reset: async () => {
+        await setSelected(null)
+      },
+      verify: expectRowsWithSelected(1_000, 1),
+    },
   )
 
   await bench(
@@ -144,7 +149,14 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
       currentRows = []
       await setRows([])
     },
-    { verify: expectRows(0) },
+    {
+      // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
+      // not an already-empty one (median was 0µs without this)
+      reset: async () => {
+        await setRows(toSvelteRows(buildRows(1_000)))
+      },
+      verify: expectRows(0),
+    },
   )
 
   currentRows = toSvelteRows(buildRows(1_000))

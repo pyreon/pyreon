@@ -12,7 +12,7 @@
  *
  * Solid renders synchronously, so await tick() is just a layout flush.
  */
-import { createComponent, createEffect, createSelector, createSignal, For } from 'solid-js'
+import { createComponent, createRenderEffect, createSelector, createSignal, For } from 'solid-js'
 import { insert, render, template } from 'solid-js/web'
 import type { BenchSuite } from '../runner'
 import { bench, buildRowsWith, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
@@ -61,12 +61,14 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
             const td1 = el.children[0] as HTMLElement
             const td2 = el.children[1] as HTMLElement
             td1.textContent = String(row.id)
-            // Reactive label — only this row's td2 updates when label changes
-            createEffect(() => {
-              td2.textContent = row.label()
-            })
+            // Idiomatic Solid: insert() is exactly what Solid's JSX compiler
+            // emits for `<td>{row.label()}</td>` — a reactively-updated text
+            // node, the fair equivalent of Pyreon's _bindText. The previous
+            // hand-written `createRenderEffect(() => td2.textContent = …)` was
+            // non-idiomatic and inflated Solid's partial-update by ~5×.
+            insert(td2, () => row.label())
             // O(1) selection via createSelector — only 2 effects fire per change
-            createEffect(() => {
+            createRenderEffect(() => {
               el.className = isSelected(row.id) ? 'selected' : ''
             })
             return el
@@ -134,7 +136,14 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
       const r = rows()
       setSelected(r[Math.floor(r.length / 2)]?.id ?? null)
     },
-    { verify: expectRowsWithSelected(1_000, 1) },
+    {
+      // deselect (untimed) so each timed run does a REAL selection,
+      // not a no-op re-select of the already-selected row
+      reset: () => {
+        setSelected(null)
+      },
+      verify: expectRowsWithSelected(1_000, 1),
+    },
   )
 
   await bench(
@@ -161,7 +170,14 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     async () => {
       setRows([])
     },
-    { verify: expectRows(0) },
+    {
+      // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
+      // not an already-empty one (median was 0µs without this)
+      reset: () => {
+        setRows(mkRows(1_000))
+      },
+      verify: expectRows(0),
+    },
   )
 
   setRows(mkRows(1_000))

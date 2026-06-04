@@ -100,7 +100,12 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
       const r = rows()
       selectedId.set(r[Math.floor(r.length / 2)]?.id ?? null)
     },
-    { verify: expectRowsWithSelected(1_000, 1) },
+    {
+      // deselect (untimed) so each timed run does a REAL selection,
+      // not a no-op re-select of the already-selected row
+      reset: () => selectedId.set(null),
+      verify: expectRowsWithSelected(1_000, 1),
+    },
   )
 
   await bench(
@@ -127,7 +132,12 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
     async () => {
       rows.set([])
     },
-    { verify: expectRows(0) },
+    {
+      // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
+      // not an already-empty one (median was 0µs without this)
+      reset: () => rows.set(mkRows(1_000)),
+      verify: expectRows(0),
+    },
   )
 
   rows.set(mkRows(1_000))
