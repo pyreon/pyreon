@@ -789,10 +789,87 @@ function isVoidElement(tag: string): boolean {
   return VOID_ELEMENTS.has(tag.toLowerCase())
 }
 
-/** camelCase prop → kebab-case HTML attribute (e.g. className → class, htmlFor → for) */
+/**
+ * camelCase JSX prop → HTML attribute name.
+ *
+ * Pyreon's JSX types use React-style camelCase (`srcSet`, `fetchPriority`,
+ * etc.) for ergonomics + type-checking, but the rendered HTML must use
+ * the HTML-spec attribute name. Most are LOWERCASE (no dash) per the
+ * spec — `srcSet → srcset`, `fetchPriority → fetchpriority`,
+ * `crossOrigin → crossorigin`. A handful are genuinely kebab —
+ * `accept-charset`, `http-equiv` — and the rest map to a different
+ * name entirely (`className → class`, `htmlFor → for`).
+ *
+ * The naïve fallback (replace `[A-Z]` with `-<lower>`) is WRONG for
+ * standard HTML attrs: it emits `fetch-priority` / `src-set` /
+ * `cross-origin` — non-standard names browsers silently ignore. This
+ * is the root cause of the `<Image priority>` body-`<img>` bug (PR #1353
+ * preload worked in head via `useHead` lowercasing, but the body's
+ * `<img fetchPriority="high">` emitted `fetch-priority="high"` which the
+ * preload scanner / network stack ignored).
+ *
+ * The allow-list below mirrors React's `possibleStandardNames` for the
+ * cases that diverge from the naïve kebab default. `data-*` / `aria-*` /
+ * SVG `viewBox` / `clipPath` / `xlink:*` pass through their original
+ * casing (the kebab fallback never fires because the JSX types model
+ * them with `-`/`:` in the name already).
+ */
+const HTML_ATTRIBUTE_MAP: Record<string, string> = {
+  // Renamed entirely
+  className: 'class',
+  htmlFor: 'for',
+  // camelCase → all-lowercase (no dash)
+  srcSet: 'srcset',
+  fetchPriority: 'fetchpriority',
+  imageSrcSet: 'imagesrcset',
+  imageSizes: 'imagesizes',
+  crossOrigin: 'crossorigin',
+  referrerPolicy: 'referrerpolicy',
+  playsInline: 'playsinline',
+  noModule: 'nomodule',
+  tabIndex: 'tabindex',
+  readOnly: 'readonly',
+  maxLength: 'maxlength',
+  minLength: 'minlength',
+  colSpan: 'colspan',
+  rowSpan: 'rowspan',
+  formNoValidate: 'formnovalidate',
+  formEncType: 'formenctype',
+  formMethod: 'formmethod',
+  formTarget: 'formtarget',
+  formAction: 'formaction',
+  autoFocus: 'autofocus',
+  autoComplete: 'autocomplete',
+  autoPlay: 'autoplay',
+  autoCapitalize: 'autocapitalize',
+  autoCorrect: 'autocorrect',
+  dateTime: 'datetime',
+  dirName: 'dirname',
+  encType: 'enctype',
+  inputMode: 'inputmode',
+  enterKeyHint: 'enterkeyhint',
+  hrefLang: 'hreflang',
+  isMap: 'ismap',
+  itemId: 'itemid',
+  itemProp: 'itemprop',
+  itemRef: 'itemref',
+  itemScope: 'itemscope',
+  itemType: 'itemtype',
+  spellCheck: 'spellcheck',
+  contentEditable: 'contenteditable',
+  // camelCase → kebab-case (HTML spec uses the dash)
+  acceptCharset: 'accept-charset',
+  httpEquiv: 'http-equiv',
+}
+
 function toAttrName(key: string): string {
-  if (key === 'className') return 'class'
-  if (key === 'htmlFor') return 'for'
+  const mapped = HTML_ATTRIBUTE_MAP[key]
+  if (mapped !== undefined) return mapped
+  // Fallback: camelCase → kebab-case. Preserves the existing convention
+  // for unknown / user-defined camelCase props (e.g. `dataTestId` →
+  // `data-test-id`). The allow-list above carves out the HTML-spec
+  // attrs that the spec defines as LOWERCASE-NO-DASH; everything else
+  // falls through here. Tests in `ssr.test.ts:650` lock the convention.
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 

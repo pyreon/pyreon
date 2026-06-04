@@ -1098,6 +1098,40 @@ const MATRIX: Cell[] = [
       if ('/about' in manifest.revalidate) {
         throw new Error(`expected /about NOT in manifest (no revalidate export)`)
       }
+
+      // <Image priority> preload gate (closes #1351). The probe route
+      // mounts `<Image priority>` with a responsive `srcset`; the
+      // preload emit path runs at render time via `useHead`, so the
+      // prerendered HTML's <head> must carry a `<link rel="preload"
+      // as="image" fetchpriority="high" imagesrcset="…" imagesizes="100vw"
+      // crossorigin="anonymous">`. Bisect-verifiable: stash the `useHead`
+      // block in image.tsx → the assertion fails with `expected … to
+      // contain 'rel="preload"'`. Restore → assertion passes.
+      const probePath = join(dist, 'image-priority-probe', 'index.html')
+      assertFileExists(probePath)
+      const probeHtml = readFileSync(probePath, 'utf-8')
+      const head = probeHtml.slice(0, probeHtml.indexOf('</head>'))
+      if (!head.includes('rel="preload"')) {
+        throw new Error(
+          `image-priority-probe: head missing <link rel="preload"> — <Image priority> didn't emit preload via useHead`,
+        )
+      }
+      if (!head.includes('as="image"')) {
+        throw new Error(`image-priority-probe: preload missing as="image"`)
+      }
+      if (!head.includes('fetchpriority="high"')) {
+        throw new Error(`image-priority-probe: preload missing fetchpriority="high"`)
+      }
+      if (!head.includes('imagesrcset')) {
+        throw new Error(
+          `image-priority-probe: preload missing imagesrcset (the body's <img> uses srcset, so preload must match)`,
+        )
+      }
+      if (!head.includes('crossorigin="anonymous"')) {
+        throw new Error(
+          `image-priority-probe: preload missing crossorigin (the src is cross-origin → double-fetch without it)`,
+        )
+      }
     },
   },
 
