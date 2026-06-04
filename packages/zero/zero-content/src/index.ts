@@ -32,6 +32,10 @@ export { CodeGroup } from './components/CodeGroup'
 export type { CodeGroupProps } from './components/CodeGroup'
 export { CodeBlock } from './components/CodeBlock'
 export type { CodeBlockProps } from './components/CodeBlock'
+export { Sidebar, groupEntries } from './components/Sidebar'
+export type { SidebarEntry, SidebarProps } from './components/Sidebar'
+export { Toc, filterHeadings } from './components/Toc'
+export type { TocProps } from './components/Toc'
 
 // ─── Search ────────────────────────────────────────────────────────────────
 

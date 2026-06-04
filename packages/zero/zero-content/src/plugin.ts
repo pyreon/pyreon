@@ -21,6 +21,10 @@ import {
 import { renderVirtualCollections } from './virtual-collections'
 import { writeContentTypes } from './type-emit/content-types'
 import {
+  emitFrontmatterSchemas,
+  writeVscodeSnippetFile,
+} from './type-emit/frontmatter-schema'
+import {
   formatSchemaIssues,
   isStandardSchema,
   validateAgainstSchema,
@@ -131,6 +135,21 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
       configFile: cfg.configFile,
       collectionNames: Object.keys(cfg.config.collections),
     })
+    // Frontmatter JSON Schema + .vscode-settings snippet — written
+    // alongside content-types.d.ts so the consumer's tsconfig + IDE
+    // setup picks them up automatically.
+    try {
+      const artifacts = await emitFrontmatterSchemas({
+        config: cfg.config,
+        root: resolvedConfig.root,
+      })
+      await writeVscodeSnippetFile(
+        { config: cfg.config, root: resolvedConfig.root },
+        artifacts,
+      )
+    } catch {
+      // Schema emission is best-effort. Failures don't block the build.
+    }
   }
 
   /**
