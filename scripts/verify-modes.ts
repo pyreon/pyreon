@@ -170,6 +170,14 @@ function assertFileDoesNotExist(path: string): void {
   if (existsSync(path)) throw new Error(`expected ${path} to NOT exist`)
 }
 
+function assertFileDoesNotContain(path: string, needle: string): void {
+  assertFileExists(path)
+  const content = readFileSync(path, 'utf-8')
+  if (content.includes(needle)) {
+    throw new Error(`expected ${path} to NOT contain "${needle}", but it does`)
+  }
+}
+
 /**
  * Assert the `rs-collapse-probe` route chunk actually collapsed in a
  * REAL production `vite build`.
@@ -719,7 +727,7 @@ const MATRIX: Cell[] = [
   {
     example: 'ssr-showcase',
     mode: 'ssg',
-    ssgPaths: ['/', '/about'],
+    ssgPaths: ['/', '/about', '/island-demo'],
     smoke: (dist) => {
       // SSG must produce per-route HTML files with route-correct content.
       // Identical files for both paths = the per-path router URL isn't
@@ -749,6 +757,29 @@ const MATRIX: Cell[] = [
       // disappears.
       assertFileExists(join(dist, '404.html'))
       assertFileContains(join(dist, '404.html'), 'data-testid="not-found-page"')
+      // Per-route modulepreload (issue #1355). Each prerendered page declares
+      // <link rel=modulepreload> for ITS route chunk's STATIC closure — the
+      // per-route delta on top of the shared entry graph Vite already preloads.
+      // (The `href=… crossorigin` attribute order is Pyreon's emitter; Vite's
+      // own entry links use `crossorigin href=…` — so this needle matches ONLY
+      // the per-route links, not Vite's.)
+      assertFileContains(aboutPath, '<link rel="modulepreload" href="/assets/about-')
+      // Per-route specificity: the home page must NOT preload the about chunk.
+      // Identical preload sets across routes = the per-route mapping is broken.
+      assertFileDoesNotContain(homePath, 'modulepreload" href="/assets/about-')
+      // Islands-safety negative gate (THE load-bearing assertion): island-demo
+      // statically imports the island() runtime AND dynamically imports the
+      // IslandProbe component (hydrate:'visible'). Its own chunk must be
+      // preloaded; the DEFERRED IslandProbe chunk must NEVER be — preloading it
+      // would pull a deferred island onto the first-paint critical path, the
+      // exact regression this feature must avoid. Bisect: make the closure
+      // follow `dynamicImports` and the IslandProbe assertion fails.
+      const islandDemoPath = join(dist, 'island-demo', 'index.html')
+      assertFileContains(islandDemoPath, '<link rel="modulepreload" href="/assets/island-demo-')
+      assertFileDoesNotContain(islandDemoPath, 'modulepreload" href="/assets/IslandProbe-')
+      // The Vite build manifest is an internal artifact enabled only to drive
+      // the preload mapping — it must be deleted, not shipped to the host.
+      assertFileDoesNotExist(join(dist, '.vite', 'manifest.json'))
       // PR L5 — 404 layout chrome. The not-found component is rendered
       // THROUGH the router with a synthetic non-matching probe URL, so
       // the matched chain is `[rootLayout, syntheticLeaf]` and the

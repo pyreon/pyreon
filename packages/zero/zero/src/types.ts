@@ -269,6 +269,20 @@ export interface ZeroConfig {
     /** Paths to prerender (or function returning paths). */
     paths?: string[] | (() => string[] | Promise<string[]>)
     /**
+     * Inject `<link rel="modulepreload">` into each prerendered page's
+     * `<head>` for the route component's chunk + its STATIC import closure,
+     * so the browser fetches the whole route graph in parallel instead of
+     * discovering each chunk only after the previous one parses. Vite already
+     * preloads the entry graph; this adds the per-route delta.
+     *
+     * Islands-safe by construction: only the manifest's `imports` (static)
+     * are followed, NEVER `dynamicImports` — so deferred island / `lazy()`
+     * chunks stay off the critical path. Enables Vite's `build.manifest`
+     * (read + deleted post-build; never shipped to the host). Default: `true`.
+     * Set `false` to opt out.
+     */
+    modulePreload?: boolean
+    /**
      * Auto-emit `dist/404.html` from the route tree's `_404.tsx` /
      * `_not-found.tsx` convention. fs-router already wires `_404.tsx` as
      * `notFoundComponent` on its parent layout route; the SSG plugin walks
