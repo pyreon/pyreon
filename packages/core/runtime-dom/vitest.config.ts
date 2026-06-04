@@ -18,7 +18,11 @@ export default defineNodeConfig({
   // Real-test coverage for props.ts (29 tests in branch-coverage-real.test.ts
   // covering event handler edge cases, innerHTML/dangerouslySetInnerHTML,
   // class/style normalization, URL-safety guards, boolean/null/custom-element
-  // dispatch) lifted from 86.03% → 86.43%. The remaining uncov in template/
-  // nodes/hydrate/mount is covered by Playwright in real Chromium.
+  // dispatch) lifted from 86.03% → 86.43%. Then branch-coverage-real-2.test.ts
+  // (16 Transition/TransitionGroup/KeepAlive component tests) +
+  // branch-coverage-prod-mode.test.ts (12 NODE_ENV='production' tests for
+  // runtime/props dev-gates) lifted further to 86.88%.
+  // The remaining uncov in template/nodes/hydrate/mount is covered by
+  // Playwright in real Chromium.
   coverageThresholds: { statements: 95, lines: 94, branches: 86 },
 })
