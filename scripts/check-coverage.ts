@@ -21,7 +21,7 @@
  * regress, but PRs get fast feedback instead of paying the 200s+ cost
  * on every iteration.
  *
- * ## Coverage floor (PR #323 → #324 → #1266 → #1279)
+ * ## Coverage floor (PR #323 → #324 → #1266 → #1279 → THIS PR)
  *
  * MINIMUM_FLOOR is the lowest STATEMENT threshold any package may
  * configure without an explicit entry in BELOW_FLOOR_EXEMPTIONS.
@@ -29,9 +29,16 @@
  *   PR #323 established the 85% statement floor;
  *   PR #324 raised it to 90% + added an explicit 80% branch floor;
  *   PR #1266 raised statements 90 → 94 + branches 80 → 85;
- *   PR #1279 raised statements 94 → 95 (cov-95 floor).
- * The branch floor stays at 85% for now — lifting every package's
- * branches to 95 is multi-week per-package work tracked separately.
+ *   PR #1279 raised statements 94 → 95 (cov-95 floor);
+ *   THIS PR raises branches 85 → 95 (cov-95-branches floor).
+ *
+ * The packages below 95 branches each get an explicit
+ * BELOW_FLOOR_EXEMPTIONS entry carrying their current branch
+ * threshold + reason. Same structural pattern PR #1279 used for
+ * statements: aspiration is clearly 95, each below-95 package is
+ * visible debt with documented justification, new packages can't
+ * silently slip in below 95. Lifting each package to 95 branches
+ * is per-package multi-PR work tracked separately.
  *
  * BELOW_FLOOR_EXEMPTIONS is the visible-debt list — every entry must
  * carry the package's currently-configured statement + branch
@@ -52,7 +59,7 @@ const PACKAGE_DIRS = [
 ]
 const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
-const MINIMUM_BRANCH_FLOOR = 85
+const MINIMUM_BRANCH_FLOOR = 95
 const CONCURRENCY = 4
 
 /**
@@ -72,12 +79,101 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
-  // ── Branch < MINIMUM_BRANCH_FLOOR (statements OK) ───────────────────
+  // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/compiler': {
     currentStatements: 92,
     currentBranches: 85,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Branches lifted to 85% (was 84) via branch-coverage-real.test.ts targeting reactivity-lens / lpih / test-audit small-helper modules; now clears MINIMUM_BRANCH_FLOOR=85 — exemption persists for STATEMENTS only (92.65% vs floor 95). Residual statement gap is in jsx.ts (~3000-line file with progressively rarer compiler-edge-case AST branches needing targeted fixtures, not opportunistic test adds). Lifting statements to 95 is multi-PR work tracked as a long-tail effort — every other published Pyreon package is at ≥ 95% statements as of this PR.',
+      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Branches lifted to 85% via PR #1328. Statements at 92.65%, branches at 85.34% — both below MINIMUM_FLOOR=95 / MINIMUM_BRANCH_FLOOR=95. Residual gap is in jsx.ts (~3000-line file with progressively rarer compiler-edge-case AST branches needing targeted fixtures). Lifting compiler to 95/95 is multi-PR work tracked as a long-tail effort.',
+  },
+  // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
+  // Each entry's `currentBranches` mirrors the package's vitest.config.ts
+  // branches threshold. Drift detection enforces both stay in sync.
+  // Per-package roadmaps:
+  // - Compat layers: residual gaps are React/Vue/Solid/Svelte API surface
+  //   covered by real-Chromium e2e (`e2e/compat-layers/*.spec.ts`).
+  // - Build/dev infra (vite-plugin, zero, lint, cli): residual gaps are
+  //   cross-process integration paths hard to drive from happy-dom vitest.
+  // - UI layer (styler, runtime-dom, elements, kinetic, router):
+  //   residual gaps are compiler-emitted fast paths and timing-sensitive
+  //   animation/transition arms, covered by real-Chromium e2e.
+  '@pyreon/cli': {
+    currentStatements: 95,
+    currentBranches: 85,
+    reason:
+      'CLI tool. Branches at ~85% — residual gap in pyreon doctor subprocess orchestration + interactive prompt paths. Multi-PR per-subcommand work.',
+  },
+  '@pyreon/server': {
+    currentStatements: 95,
+    currentBranches: 86,
+    reason:
+      'SSR server. Branches at ~86% — residual gap is client-side island() path (browser-only client.ts hydration scheduling) covered by islands.browser.test.tsx in real Chromium but unreachable from node-process vitest. PRs #1335 + #1336 added happy-dom coverage for bare island() invocation; further lift to 95 requires real-browser mount tests.',
+  },
+  '@pyreon/styler': {
+    currentStatements: 95,
+    currentBranches: 85,
+    reason:
+      'CSS-in-JS engine. Branches at ~85% — residual gap in StyleSheet recovery paths only exercised by real-Chromium. Covered by ui-showcase real-app regression gate.',
+  },
+  '@pyreon/zero': {
+    currentStatements: 95,
+    currentBranches: 85,
+    reason:
+      'Full-stack meta-framework. Branches at ~85% — residual gap in adapter-build SSG/SSR/ISR plugin chains, fs-router auto-detect, image plugin sharp paths exercised by `verify-modes` build matrix + Playwright e2e rather than unit tests.',
+  },
+  '@pyreon/runtime-dom': {
+    currentStatements: 95,
+    currentBranches: 86,
+    reason:
+      'DOM renderer. Branches at 86.88% — residual gap in template fast paths, hydrate NativeItem swaps, transition timing arms only reachable via compiler-emitted templates in real Chromium (covered by ui-showcase e2e).',
+  },
+  '@pyreon/vue-compat': {
+    currentStatements: 95,
+    currentBranches: 86,
+    reason:
+      'Vue 3 compat shim. Branches at ~86% — residual gap in Transition/TransitionGroup class-prop forwarders. Real-Chromium e2e (`e2e/compat-layers/vue-compat.spec.ts`) covers production shapes.',
+  },
+  '@pyreon/router': {
+    currentStatements: 95,
+    currentBranches: 88,
+    reason:
+      'Router. Branches at ~88% — residual gap in View Transitions API integration (browser-only), scroll restoration timing arms, prefetch IntersectionObserver paths exercised by Playwright e2e (ssr-showcase, ssg-i18n).',
+  },
+  '@pyreon/vite-plugin': {
+    currentStatements: 95,
+    currentBranches: 88,
+    reason:
+      'Vite plugin. Branches at 88.52% — residual gap in Vite plugin hooks invoked by Vite itself (not directly testable from vitest). 48 helper-function tests landed in PR #1323; further lift needs integration tests covered by `verify-modes`.',
+  },
+  '@pyreon/solid-compat': {
+    currentStatements: 95,
+    currentBranches: 89,
+    reason:
+      'Solid compat shim. Branches at ~89% — residual gap in createResource / createMutable proxy traps. Real-Chromium e2e covers production shapes.',
+  },
+  '@pyreon/svelte-compat': {
+    currentStatements: 95,
+    currentBranches: 89,
+    reason:
+      'Svelte compat shim. Branches at ~89% — residual gap in store-contract derived/readable edge arms + Svelte 5 runes adapter. Real-Chromium e2e covers production shapes.',
+  },
+  '@pyreon/lint': {
+    currentStatements: 95,
+    currentBranches: 90,
+    reason:
+      'Lint engine. Branches at ~90% — residual gap in 89-rule AST detectors against rare/synthetic source shapes.',
+  },
+  '@pyreon/elements': {
+    currentStatements: 95,
+    currentBranches: 91,
+    reason:
+      'Element primitives. Branches at ~91% — residual gap in 4-overload prop forwarders + void-tag children-slot branches only exercised by compiler-emitted templates. Covered by `e2e/ui-showcase-regression.spec.ts`.',
+  },
+  '@pyreon/kinetic': {
+    currentStatements: 95,
+    currentBranches: 92,
+    reason:
+      'Animation primitives. Branches at 92.47% — residual gap in Transition timing fallbacks + Stagger/Collapse height-measurement paths only reachable in real browser. PR #1334 added Stagger prop-default tests (+1.32pp); further lift requires extending kinetic.browser.test.tsx.',
   },
 }
 
