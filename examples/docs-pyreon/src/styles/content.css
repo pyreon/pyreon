@@ -1,0 +1,243 @@
+/**
+ * Typography + element rules for content rendered from markdown.
+ * Scoped under `.content` so it can't leak into chrome.
+ */
+
+.content {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.content h1 {
+  font-size: 36px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+.content h2 {
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 48px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.content h3 {
+  font-size: 19px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 32px 0 8px;
+}
+.content h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 24px 0 6px;
+}
+
+/* Anchor links beside headings */
+.content h2 a.h-anchor,
+.content h3 a.h-anchor,
+.content h4 a.h-anchor {
+  margin-left: 8px;
+  color: var(--text-dim);
+  opacity: 0;
+  font-weight: 400;
+  transition: opacity 80ms;
+}
+.content h2:hover a.h-anchor,
+.content h3:hover a.h-anchor,
+.content h4:hover a.h-anchor {
+  opacity: 1;
+}
+
+.content p {
+  margin: 12px 0;
+}
+.content ul,
+.content ol {
+  margin: 12px 0;
+  padding-left: 26px;
+}
+.content li {
+  margin: 4px 0;
+}
+.content li > p {
+  margin: 4px 0;
+}
+
+.content blockquote {
+  margin: 16px 0;
+  padding: 8px 16px;
+  border-left: 3px solid var(--ember-core);
+  background: color-mix(in srgb, var(--ember-core) 6%, transparent);
+  color: var(--text-muted);
+}
+.content blockquote p {
+  margin: 4px 0;
+}
+
+.content hr {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  margin: 32px 0;
+}
+
+/* Inline code */
+.content :where(p, li, td, th) > code {
+  padding: 1px 6px;
+  background: var(--bg-well);
+  border-radius: 4px;
+  font-size: 0.88em;
+  color: var(--syn-keyword, var(--ember-core));
+  font-weight: 500;
+}
+
+/* Code blocks (shiki emits .shiki + inline color styles) */
+.content pre {
+  margin: 16px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--bg-deep);
+  overflow-x: auto;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+.content pre.shiki {
+  background: var(--bg-deep);
+}
+.content pre.has-lang {
+  position: relative;
+}
+.content pre.has-lang::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+/* Tables */
+.content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+}
+.content th,
+.content td {
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  text-align: left;
+  vertical-align: top;
+}
+.content th {
+  background: var(--bg-well);
+  font-weight: 600;
+}
+
+/* Callouts */
+.callout {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--bg-well);
+}
+.callout > .icon {
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.callout > .body {
+  flex: 1;
+  min-width: 0;
+}
+.callout > .body > :first-child {
+  margin-top: 0;
+}
+.callout > .body > :last-child {
+  margin-bottom: 0;
+}
+.callout--info {
+  border-color: color-mix(in srgb, var(--link) 40%, var(--hairline));
+}
+.callout--info > .icon {
+  color: var(--link);
+}
+.callout--warning {
+  border-color: color-mix(in srgb, var(--ember-warm) 40%, var(--hairline));
+  background: color-mix(in srgb, var(--ember-warm) 6%, transparent);
+}
+.callout--warning > .icon {
+  color: var(--ember-warm);
+}
+.callout--danger {
+  border-color: color-mix(in srgb, var(--ember-plasma) 40%, var(--hairline));
+  background: color-mix(in srgb, var(--ember-plasma) 6%, transparent);
+}
+.callout--danger > .icon {
+  color: var(--ember-plasma);
+}
+
+/* Code-group tabs */
+.code-group {
+  margin: 16px 0;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+.code-group .tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-well);
+}
+.code-group .tabs button {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.code-group .tabs button.active {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--hairline);
+}
+.code-group .panel {
+  display: none;
+}
+.code-group .panel.active {
+  display: block;
+}
+.code-group .panel pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-deep);
+}

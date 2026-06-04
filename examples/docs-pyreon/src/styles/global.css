@@ -1,0 +1,234 @@
+/**
+ * Global chrome — uses the semantic brand tokens in tokens.css.
+ * Light + dark resolved purely by the `data-theme` attribute the
+ * pre-paint script in index.html sets.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Space Grotesk', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+  transition: color 80ms;
+}
+a:hover {
+  color: var(--ember-warm);
+}
+
+code,
+pre {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+::selection {
+  background: var(--ember-core);
+  color: var(--ink-core);
+}
+
+/* App layout shell — three columns: sidebar, content, TOC */
+.app-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 220px;
+  gap: 0;
+  min-height: calc(100vh - 56px);
+}
+.app-shell > main {
+  padding: 32px 40px 96px;
+  max-width: 920px;
+  min-width: 0;
+}
+@media (max-width: 1080px) {
+  .app-shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+  .app-shell > aside.toc {
+    display: none;
+  }
+}
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .app-shell > aside.sidebar {
+    display: none;
+  }
+  .app-shell > main {
+    padding: 20px 18px 64px;
+  }
+}
+
+/* Top bar */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(140%) blur(8px);
+  -webkit-backdrop-filter: saturate(140%) blur(8px);
+}
+.topbar .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.topbar .brand .mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--ink-core);
+  color: var(--ember-core);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 13px;
+}
+.topbar nav.main {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 32px;
+}
+.topbar nav.main a {
+  padding: 6px 12px;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 14px;
+}
+.topbar nav.main a:hover,
+.topbar nav.main a.active {
+  background: var(--bg-well);
+  color: var(--text);
+}
+.topbar .spacer {
+  flex: 1;
+}
+.topbar .actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Sidebar */
+aside.sidebar {
+  position: sticky;
+  top: 56px;
+  align-self: start;
+  height: calc(100vh - 56px);
+  overflow: auto;
+  padding: 24px 16px 24px 24px;
+  border-right: 1px solid var(--hairline);
+}
+aside.sidebar .section-title {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 18px 0 6px;
+  padding: 0 8px;
+}
+aside.sidebar .section-title:first-child {
+  margin-top: 0;
+}
+aside.sidebar a {
+  display: block;
+  padding: 4px 10px;
+  margin: 1px 0;
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+aside.sidebar a:hover {
+  background: var(--bg-well);
+  color: var(--text);
+}
+aside.sidebar a.active {
+  background: color-mix(in srgb, var(--ember-core) 12%, transparent);
+  color: var(--ember-core);
+  font-weight: 600;
+}
+
+/* TOC */
+aside.toc {
+  position: sticky;
+  top: 56px;
+  align-self: start;
+  height: calc(100vh - 56px);
+  overflow: auto;
+  padding: 24px 16px 24px 8px;
+}
+aside.toc .label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+aside.toc a {
+  display: block;
+  padding: 3px 12px;
+  border-left: 2px solid var(--hairline);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+aside.toc a:hover,
+aside.toc a.active {
+  color: var(--text);
+  border-left-color: var(--ember-core);
+}
+aside.toc a[data-level='3'] {
+  padding-left: 24px;
+}
+
+/* Theme toggle button */
+button.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 80ms;
+}
+button.theme-toggle:hover {
+  background: var(--bg-well);
+  color: var(--text);
+  border-color: var(--hairline);
+}
