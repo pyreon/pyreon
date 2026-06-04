@@ -277,6 +277,38 @@ Scans the project directory for exported component functions. For each component
 - Props interface fields
 - Signal declarations within the component
 
+### get_content_collection
+
+Enumerates `@pyreon/zero-content` collections in the current project (or fetches one by name). Reads each declared collection's content directory, derives slugs the same way the runtime does (strip extension + trailing `/index`), and reports the title from every entry's frontmatter. Lets an AI agent answer "what pages exist in the docs collection?" without scraping `import.meta.glob` patterns.
+
+**Parameters:**
+
+- `name` (optional) — Collection name (e.g. `"docs"`). If omitted, lists every collection.
+
+**Response shape:**
+
+- Without `name` — `# Content collections (N)` followed by one bullet per collection with type + entry count + content dir.
+- With `name` — `# Collection: <name> (<type>)` header + config / content dir / entry count metadata + a slug + title + path bullet per entry.
+
+Falls back with a clear message when no `content.config.{ts,mts,js,mjs}` exists in the project.
+
+### get_content_entry
+
+Fetches a single entry from a `@pyreon/zero-content` collection. Returns the entry's frontmatter (parsed key→value), full heading outline (with levels), source size in bytes, and the file's relative path. Pairs with `get_content_collection` to let an AI agent navigate the docs corpus structurally — discover collections, list entries, drill into one.
+
+**Parameters:**
+
+- `collection` (required) — Collection name (e.g. `"docs"`)
+- `slug` (required) — Entry slug (e.g. `"getting-started"`). Use `""` for the index.
+
+**Response includes:**
+
+- Path + title + bytes
+- Frontmatter as a `key: value` list
+- Heading outline as a depth-indented bullet list, code-fence-aware (skips `## heading` shaped lines inside fenced blocks)
+
+Returns nearest-match suggestions when the slug isn't found within an existing collection.
+
 ### get_browser_smoke_status
 
 Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`. Reads the same `.claude/rules/browser-packages.json` single source of truth as the rule and the CI script. Lets an AI agent check coverage **before** writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs.
