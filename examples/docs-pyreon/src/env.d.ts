@@ -28,6 +28,9 @@ declare module 'virtual:pyreon-docs/nav' {
   export const nav: NavSection[]
 }
 
+declare module 'virtual:zero-content/collections'
+declare module 'virtual:zero-content/components'
+
 /**
  * A compiled markdown page — emitted by `markdown-to-pyreon.ts`.
  * Exports:

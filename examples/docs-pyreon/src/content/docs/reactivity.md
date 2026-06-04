@@ -22,7 +22,7 @@ count.set(5)
 count.update((n) => n + 1) // now 6
 ```
 
-::: callout info
+:::info
 Signals use `Object.is` for equality — setting a signal to the same value is a no-op. This is the dedup mechanism that prevents fan-out cascades for unchanged data.
 :::
 
@@ -30,8 +30,7 @@ Signals use `Object.is` for equality — setting a signal to the same value is a
 
 This playground is a real Pyreon component rendered by this docs site, which was itself rendered by Pyreon. The editor uses CodeMirror, the preview runs in a sandboxed iframe with `@pyreon/reactivity` loaded from esm.sh.
 
-<Playground title="Signals — read, write, react" :height="180">
-const count = signal(0)
+<Playground title="Signals — read, write, react" height="180" code={`const count = signal(0)
 
 const app = document.getElementById('app')
 const ui = h('div', { class: 'col' },
@@ -44,8 +43,7 @@ const ui = h('div', { class: 'col' },
     h('span', { class: 'badge' }, () => count()),
   ),
 )
-mount(ui, app)
-</Playground>
+mount(ui, app)`} />
 
 ## Computed values
 
@@ -63,7 +61,7 @@ firstName.set('Bob')
 console.log(fullName()) // "Bob Smith"
 ```
 
-::: callout warning
+:::warning
 A computed re-evaluates on read when dirty — but its OUTPUT is cached. Reading twice in a row without a dependency change does NOT re-run the body.
 :::
 
@@ -85,7 +83,7 @@ count.set(1) // Logs: "count is 1"
 count.set(2) // Logs: "count is 2"
 ```
 
-::: callout danger
+:::danger
 Async effect bodies have a sharp edge: anything after the first `await` runs detached from the tracking scope. Read every tracked signal BEFORE the first await, or split into separate effects.
 :::
 

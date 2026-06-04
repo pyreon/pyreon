@@ -18,7 +18,8 @@
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/server": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
-    "@pyreon/zero": "workspace:*"
+    "@pyreon/zero": "workspace:*",
+    "@pyreon/zero-content": "workspace:*"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",

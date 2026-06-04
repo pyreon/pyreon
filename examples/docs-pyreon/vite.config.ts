@@ -1,15 +1,14 @@
 import pyreon from '@pyreon/vite-plugin'
+import content from '@pyreon/zero-content/plugin'
 import zero from '@pyreon/zero/server'
 import { defineConfig } from 'vite'
-import { markdownToPyreon } from './src/plugins/markdown-to-pyreon'
 
+// Migrated from a local markdown-to-pyreon plugin to @pyreon/zero-content
+// (PR 7 of the zero-content rollout). The local plugin lives at
+// `src/plugins/markdown-to-pyreon.ts` and remains as a reference / for
+// future contributors who want to see what the bare implementation looks
+// like — but the build path is now entirely through @pyreon/zero-content.
 export default defineConfig({
-  // SPA mode: the inner SSR/SSG sub-build that zero kicks off in production
-  // spins up its own Vite instance and only carries pyreon() + zeroPlugin().
-  // Our markdown → Pyreon plugin isn't part of that closure, so we skip the
-  // SSR pass for now and ship as a client-rendered SPA. Adding markdown
-  // pre-rendering is a separate enhancement (it'd need either a manifest
-  // hook into zero's inner-build or a build-time codegen step before vite).
-  plugins: [markdownToPyreon(), pyreon(), zero({ mode: 'spa' })],
+  plugins: [content(), pyreon(), zero({ mode: 'spa' })],
   server: { port: 5180 },
 })
