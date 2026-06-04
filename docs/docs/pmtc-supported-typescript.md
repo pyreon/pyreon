@@ -115,7 +115,7 @@ The `props.X` member access is rewritten per target. **The annotation type is th
 | `props.fieldName` for an annotated field | ✅ Full | Rewritten to platform-native field |
 | `props.fieldName` for an UN-annotated field | ❌ Silent drop | Field not in annotation = parser doesn't know about it. No warning at this granularity (only for the parent — see "untyped props parameter" above) |
 | Destructure (`const { title } = props`) | 🟡 Skipped | Falls through silently — not yet emitted; use `props.title` directly |
-| Spread (`<Child {...props}>`) | ❌ Unsupported | Silently dropped (the spread attribute is ignored; explicit attrs win) |
+| Spread attributes (e.g. `Child` element with `{...props}`) | ❌ Unsupported | Silently dropped (the spread attribute is ignored; explicit attrs win) |
 
 ### ✅ Routing
 
@@ -166,7 +166,7 @@ return <RouterProvider router={router}><RouterView /></RouterProvider>
 | Conditional `{cond && <X>}` | ✅ Full | Standard JSX shape |
 | Ternary `{cond ? <A /> : <B />}` | ✅ Full | Standard JSX shape |
 | Element fragment (`<>…</>`) | 🟡 Phase 1+ | Wrap in `<Stack>` for now |
-| Hook calls inside JSX expressions (`<For>{() => { const x = signal(0); …}}` ) | ❌ Warning (PR #1136) | "Hook signal(…) declared inside <For> render callback — PMTC only extracts hooks at component-body scope. Lift the declaration to the parent component." |
+| Hook calls inside JSX expressions (`<For>{() => { const x = signal(0); …}}` ) | ❌ Warning (PR #1136) | "Hook signal(…) declared inside `<For>` render callback — PMTC only extracts hooks at component-body scope. Lift the declaration to the parent component." |
 
 ## Comprehensive silent-drop catalogue
 
@@ -221,7 +221,7 @@ The audit's Phase B/C/D roadmap explicitly does NOT cover:
 
 - **Class components** — Pyreon's web side hasn't shipped classes either; not a multi-target concern.
 - **Hooks rules** (call-from-render-context-only, etc.) — Pyreon doesn't have React's hook rules; the compiler-level constraint is "hook declarations live at component body scope".
-- **JSX namespacing** (`<svg:rect>`) — not in v1.
+- **JSX namespacing** (e.g. `svg:rect` element prefix syntax) — not in v1.
 - **Generic type parameters** on user types — explicitly Phase 3 work.
 - **Conditional types** (`T extends U ? A : B`) — not parsed; treat as opaque.
 - **Decorators** — not in v1.

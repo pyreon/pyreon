@@ -49,6 +49,16 @@
     "docs": {
       "name": "@pyreon/docs",
       "version": "0.0.0",
+      "dependencies": {
+        "@codemirror/autocomplete": "^6.20.3",
+        "@codemirror/commands": "^6.10.3",
+        "@codemirror/lang-javascript": "^6.2.5",
+        "@codemirror/language": "^6.12.3",
+        "@codemirror/state": "^6.6.0",
+        "@codemirror/theme-one-dark": "^6.1.3",
+        "@codemirror/view": "^6.43.0",
+        "codemirror": "^6.0.2",
+      },
       "devDependencies": {
         "vitepress": "^1.6.4",
         "vue": "^3.5.35",
@@ -147,7 +157,7 @@
     },
     "examples/chat": {
       "name": "chat",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/form": "workspace:*",
@@ -175,7 +185,7 @@
     },
     "examples/cpa-pw-app": {
       "name": "cpa-pw-app",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
@@ -204,7 +214,7 @@
     },
     "examples/cpa-pw-app-preact": {
       "name": "cpa-pw-app-preact",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
@@ -234,7 +244,7 @@
     },
     "examples/cpa-pw-app-react": {
       "name": "cpa-pw-app-react",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
@@ -264,7 +274,7 @@
     },
     "examples/cpa-pw-app-solid": {
       "name": "cpa-pw-app-solid",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
@@ -294,7 +304,7 @@
     },
     "examples/cpa-pw-app-vue": {
       "name": "cpa-pw-app-vue",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
@@ -324,7 +334,7 @@
     },
     "examples/cpa-pw-blog": {
       "name": "cpa-pw-blog",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/head": "workspace:^",
@@ -347,7 +357,7 @@
     },
     "examples/cpa-pw-dash": {
       "name": "cpa-pw-dash",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@pyreon/connector-document": "workspace:^",
         "@pyreon/core": "workspace:^",
@@ -450,7 +460,7 @@
     },
     "examples/hn-clone": {
       "name": "hn-clone",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/charts": "workspace:*",
         "@pyreon/code": "workspace:*",
@@ -521,7 +531,7 @@
     },
     "examples/kanban": {
       "name": "kanban",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/dnd": "workspace:*",
@@ -571,7 +581,7 @@
     },
     "examples/native-router-demo-web": {
       "name": "@pyreon/example-native-router-demo-web",
-      "version": "0.0.7",
+      "version": "0.0.9",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/primitives": "workspace:*",
@@ -606,7 +616,7 @@
     },
     "examples/native-todomvc-web": {
       "name": "@pyreon/example-native-todomvc-web",
-      "version": "0.0.7",
+      "version": "0.0.9",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/primitives": "workspace:*",
@@ -692,7 +702,7 @@
     },
     "examples/real-bench": {
       "name": "@pyreon/real-bench",
-      "version": "0.0.0",
+      "version": "0.0.2",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -817,7 +827,7 @@
     },
     "packages/core/compiler": {
       "name": "@pyreon/compiler",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "magic-string": "^0.30.21",
         "oxc-parser": "^0.133.0",
@@ -846,35 +856,35 @@
     },
     "packages/core/compiler/npm/darwin-arm64": {
       "name": "@pyreon/compiler-darwin-arm64",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/core/compiler/npm/darwin-x64": {
       "name": "@pyreon/compiler-darwin-x64",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/core/compiler/npm/linux-arm64-gnu": {
       "name": "@pyreon/compiler-linux-arm64-gnu",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/core/compiler/npm/linux-arm64-musl": {
       "name": "@pyreon/compiler-linux-arm64-musl",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/core/compiler/npm/linux-x64-gnu": {
       "name": "@pyreon/compiler-linux-x64-gnu",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/core/compiler/npm/linux-x64-musl": {
       "name": "@pyreon/compiler-linux-x64-musl",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/core/compiler/npm/win32-x64-msvc": {
       "name": "@pyreon/compiler-win32-x64-msvc",
-      "version": "0.28.0",
+      "version": "0.29.0",
     },
     "packages/core/core": {
       "name": "@pyreon/core",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -885,7 +895,7 @@
     },
     "packages/core/head": {
       "name": "@pyreon/head",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/runtime-server": "workspace:^",
       },
@@ -908,7 +918,7 @@
     },
     "packages/core/primitives": {
       "name": "@pyreon/primitives",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/runtime-dom": "workspace:^",
@@ -925,7 +935,7 @@
     },
     "packages/core/reactivity": {
       "name": "@pyreon/reactivity",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
@@ -934,7 +944,7 @@
     },
     "packages/core/router": {
       "name": "@pyreon/router",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/sized-map": "workspace:*",
       },
@@ -954,7 +964,7 @@
     },
     "packages/core/runtime-dom": {
       "name": "@pyreon/runtime-dom",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/sized-map": "workspace:*",
       },
@@ -978,7 +988,7 @@
     },
     "packages/core/runtime-server": {
       "name": "@pyreon/runtime-server",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -990,7 +1000,7 @@
     },
     "packages/core/server": {
       "name": "@pyreon/server",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/head": "workspace:^",
         "@pyreon/router": "workspace:^",
@@ -1011,7 +1021,7 @@
     },
     "packages/core/sized-map": {
       "name": "@pyreon/sized-map",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^4.1.8",
@@ -1019,7 +1029,7 @@
     },
     "packages/fundamentals/charts": {
       "name": "@pyreon/charts",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
@@ -1036,7 +1046,7 @@
     },
     "packages/fundamentals/code": {
       "name": "@pyreon/code",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.2",
         "@codemirror/commands": "^6.10.3",
@@ -1080,7 +1090,7 @@
     },
     "packages/fundamentals/dnd": {
       "name": "@pyreon/dnd",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
         "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.1.5",
@@ -1099,7 +1109,7 @@
     },
     "packages/fundamentals/document": {
       "name": "@pyreon/document",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1124,7 +1134,7 @@
     },
     "packages/fundamentals/feature": {
       "name": "@pyreon/feature",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/form": "workspace:^",
         "@pyreon/query": "workspace:^",
@@ -1146,7 +1156,7 @@
     },
     "packages/fundamentals/flow": {
       "name": "@pyreon/flow",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "elkjs": "^0.11.1",
       },
@@ -1166,7 +1176,7 @@
     },
     "packages/fundamentals/form": {
       "name": "@pyreon/form",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1180,7 +1190,7 @@
     },
     "packages/fundamentals/hooks": {
       "name": "@pyreon/hooks",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/styler": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
@@ -1198,7 +1208,7 @@
     },
     "packages/fundamentals/hotkeys": {
       "name": "@pyreon/hotkeys",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1212,7 +1222,7 @@
     },
     "packages/fundamentals/i18n": {
       "name": "@pyreon/i18n",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1226,7 +1236,7 @@
     },
     "packages/fundamentals/machine": {
       "name": "@pyreon/machine",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1239,7 +1249,7 @@
     },
     "packages/fundamentals/permissions": {
       "name": "@pyreon/permissions",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1253,7 +1263,7 @@
     },
     "packages/fundamentals/query": {
       "name": "@pyreon/query",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@tanstack/query-core": "^5.100.14",
       },
@@ -1270,7 +1280,7 @@
     },
     "packages/fundamentals/rx": {
       "name": "@pyreon/rx",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/typescript": "workspace:^",
@@ -1282,7 +1292,7 @@
     },
     "packages/fundamentals/state-tree": {
       "name": "@pyreon/state-tree",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/validation": "workspace:^",
       },
@@ -1302,7 +1312,7 @@
     },
     "packages/fundamentals/storage": {
       "name": "@pyreon/storage",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1316,7 +1326,7 @@
     },
     "packages/fundamentals/store": {
       "name": "@pyreon/store",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/validation": "workspace:^",
       },
@@ -1336,7 +1346,7 @@
     },
     "packages/fundamentals/table": {
       "name": "@pyreon/table",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@tanstack/table-core": "^8.21.3",
       },
@@ -1353,7 +1363,7 @@
     },
     "packages/fundamentals/toast": {
       "name": "@pyreon/toast",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1368,7 +1378,7 @@
     },
     "packages/fundamentals/url-state": {
       "name": "@pyreon/url-state",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
@@ -1381,7 +1391,7 @@
     },
     "packages/fundamentals/validate": {
       "name": "@pyreon/validate",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/validation": "workspace:^",
@@ -1397,7 +1407,7 @@
     },
     "packages/fundamentals/validation": {
       "name": "@pyreon/validation",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/form": "workspace:^",
       },
@@ -1425,7 +1435,7 @@
     },
     "packages/fundamentals/virtual": {
       "name": "@pyreon/virtual",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@tanstack/virtual-core": "^3.16.0",
       },
@@ -1442,7 +1452,7 @@
     },
     "packages/internals/ansi": {
       "name": "@pyreon/ansi",
-      "version": "0.13.1",
+      "version": "0.13.2",
       "devDependencies": {
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^4.1.8",
@@ -1450,7 +1460,7 @@
     },
     "packages/internals/manifest": {
       "name": "@pyreon/manifest",
-      "version": "0.13.1",
+      "version": "0.13.2",
       "devDependencies": {
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^4.1.8",
@@ -1458,7 +1468,7 @@
     },
     "packages/internals/perf-harness": {
       "name": "@pyreon/perf-harness",
-      "version": "0.13.1",
+      "version": "0.13.2",
       "devDependencies": {
         "@pyreon/compiler": "workspace:^",
         "@pyreon/core": "workspace:^",
@@ -1485,7 +1495,7 @@
     },
     "packages/internals/test-utils": {
       "name": "@pyreon/test-utils",
-      "version": "0.13.15",
+      "version": "0.13.17",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
@@ -1504,7 +1514,7 @@
     },
     "packages/internals/vitest-config": {
       "name": "@pyreon/vitest-config",
-      "version": "0.13.1",
+      "version": "0.13.2",
       "devDependencies": {
         "@vitest/coverage-v8": "^4.1.8",
         "@vitus-labs/tools-vitest": "^2.5.0",
@@ -1521,7 +1531,7 @@
     },
     "packages/native/cli": {
       "name": "@pyreon/native-cli",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "bin": {
         "pyreon-native": "./src/cli.ts",
       },
@@ -1562,7 +1572,7 @@
     },
     "packages/tools/cli": {
       "name": "@pyreon/cli",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "bin": {
         "pyreon": "./lib/index.js",
       },
@@ -1592,7 +1602,7 @@
     },
     "packages/tools/lint": {
       "name": "@pyreon/lint",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "bin": {
         "pyreon-lint": "./bin/pyreon-lint.js",
       },
@@ -1610,7 +1620,7 @@
     },
     "packages/tools/mcp": {
       "name": "@pyreon/mcp",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "bin": {
         "pyreon-mcp": "./lib/index.js",
       },
@@ -1629,7 +1639,7 @@
     },
     "packages/tools/preact-compat": {
       "name": "@pyreon/preact-compat",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/test-utils": "workspace:^",
@@ -1645,7 +1655,7 @@
     },
     "packages/tools/react-compat": {
       "name": "@pyreon/react-compat",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/test-utils": "workspace:^",
@@ -1661,7 +1671,7 @@
     },
     "packages/tools/solid-compat": {
       "name": "@pyreon/solid-compat",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/test-utils": "workspace:^",
@@ -1677,7 +1687,7 @@
     },
     "packages/tools/storybook": {
       "name": "@pyreon/storybook",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -1692,7 +1702,7 @@
     },
     "packages/tools/svelte-compat": {
       "name": "@pyreon/svelte-compat",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/test-utils": "workspace:^",
@@ -1708,7 +1718,7 @@
     },
     "packages/tools/typescript": {
       "name": "@pyreon/typescript",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/core": ">=0.13.0",
       },
@@ -1718,7 +1728,7 @@
     },
     "packages/tools/vite-plugin": {
       "name": "@pyreon/vite-plugin",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -1734,7 +1744,7 @@
     },
     "packages/tools/vue-compat": {
       "name": "@pyreon/vue-compat",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/test-utils": "workspace:^",
@@ -1750,7 +1760,7 @@
     },
     "packages/ui-system/attrs": {
       "name": "@pyreon/attrs",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/ui-core": "workspace:^",
       },
@@ -1765,7 +1775,7 @@
     },
     "packages/ui-system/connector-document": {
       "name": "@pyreon/connector-document",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/document": "workspace:^",
       },
@@ -1783,7 +1793,7 @@
     },
     "packages/ui-system/coolgrid": {
       "name": "@pyreon/coolgrid",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/styler": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
@@ -1803,7 +1813,7 @@
     },
     "packages/ui-system/document-primitives": {
       "name": "@pyreon/document-primitives",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/connector-document": "workspace:^",
         "@pyreon/document": "workspace:^",
@@ -1828,7 +1838,7 @@
     },
     "packages/ui-system/elements": {
       "name": "@pyreon/elements",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/ui-core": "workspace:^",
@@ -1850,7 +1860,7 @@
     },
     "packages/ui-system/kinetic": {
       "name": "@pyreon/kinetic",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/sized-map": "workspace:*",
       },
@@ -1870,7 +1880,7 @@
     },
     "packages/ui-system/kinetic-presets": {
       "name": "@pyreon/kinetic-presets",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
@@ -1879,7 +1889,7 @@
     },
     "packages/ui-system/rocketstyle": {
       "name": "@pyreon/rocketstyle",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/styler": "workspace:^",
@@ -1899,7 +1909,7 @@
     },
     "packages/ui-system/styler": {
       "name": "@pyreon/styler",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
@@ -1915,7 +1925,7 @@
     },
     "packages/ui-system/ui-core": {
       "name": "@pyreon/ui-core",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/styler": "workspace:^",
         "@pyreon/unistyle": "workspace:^",
@@ -1933,7 +1943,7 @@
     },
     "packages/ui-system/unistyle": {
       "name": "@pyreon/unistyle",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/styler": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
@@ -1953,7 +1963,7 @@
     },
     "packages/ui/components": {
       "name": "@pyreon/ui-components",
-      "version": "0.18.0",
+      "version": "0.19.0",
       "dependencies": {
         "@pyreon/coolgrid": "workspace:^",
         "@pyreon/elements": "workspace:^",
@@ -1980,7 +1990,7 @@
     },
     "packages/ui/primitives": {
       "name": "@pyreon/ui-primitives",
-      "version": "0.18.0",
+      "version": "0.19.0",
       "dependencies": {
         "@pyreon/elements": "workspace:^",
         "@pyreon/hooks": "workspace:^",
@@ -1999,7 +2009,7 @@
     },
     "packages/ui/theme": {
       "name": "@pyreon/ui-theme",
-      "version": "0.13.15",
+      "version": "0.13.16",
       "dependencies": {
         "@pyreon/rocketstyle": "workspace:^",
         "@pyreon/unistyle": "workspace:^",
@@ -2013,7 +2023,7 @@
     },
     "packages/zero/cli": {
       "name": "@pyreon/zero-cli",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "bin": {
         "zero": "./bin/zero.js",
       },
@@ -2028,7 +2038,7 @@
     },
     "packages/zero/create-multiplatform": {
       "name": "@pyreon/create-multiplatform",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "bin": {
         "create-multiplatform": "./bin/create-multiplatform.js",
       },
@@ -2039,7 +2049,7 @@
     },
     "packages/zero/create-zero": {
       "name": "@pyreon/create-zero",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "bin": {
         "create-pyreon-app": "./bin/create-pyreon-app.js",
         "create-zero": "./bin/create-zero.js",
@@ -2053,7 +2063,7 @@
     },
     "packages/zero/meta": {
       "name": "@pyreon/meta",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/attrs": "workspace:^",
         "@pyreon/charts": "workspace:^",
@@ -2098,7 +2108,7 @@
     },
     "packages/zero/zero": {
       "name": "@pyreon/zero",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "dependencies": {
         "@pyreon/head": "workspace:^",
         "@pyreon/meta": "workspace:^",
@@ -2326,6 +2336,8 @@
     "@codemirror/search": ["@codemirror/search@6.7.0", "", { "dependencies": { "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.37.0", "crelt": "^1.0.5" } }, "sha512-ZvGm99wc/s2cITtMT15LFdn8aH/aS+V+DqyGq/N5ZlV5vWtH+nILvC2nw0zX7ByNoHHDZ2IxxdW38O0tc5nVHg=="],
 
     "@codemirror/state": ["@codemirror/state@6.6.0", "", { "dependencies": { "@marijn/find-cluster-break": "^1.0.0" } }, "sha512-4nbvra5R5EtiCzr9BTHiTLc+MLXK2QGiAVYMyi8PkQd3SR+6ixar/Q/01Fa21TBIDOZXgeWV4WppsQolSreAPQ=="],
+
+    "@codemirror/theme-one-dark": ["@codemirror/theme-one-dark@6.1.3", "", { "dependencies": { "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.0.0", "@lezer/highlight": "^1.0.0" } }, "sha512-NzBdIvEJmx6fjeremiGp3t/okrLPYT0d9orIc7AFun8oZcRk58aejkqhv6spnz4MLAevrKNPMQYXEWMg4s+sKA=="],
 
     "@codemirror/view": ["@codemirror/view@6.43.0", "", { "dependencies": { "@codemirror/state": "^6.6.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-V7ZCLQO3Jus9hzh2jVCCPW3mO4IBMr43O37PqSUYautJSnnJF41YlgLw21x0fLJTYvJ+Vkm6Gp+qKGH9pltgXA=="],
 
@@ -4578,6 +4590,8 @@
     "@npmcli/promise-spawn/which": ["which@3.0.1", "", { "dependencies": { "isexe": "^2.0.0" }, "bin": { "node-which": "bin/which.js" } }, "sha512-XA1b62dzQzLfaEOSQFTCOd5KFf/1VSzZo7/7TUjnya6u0vGGKzU96UQBZTAThCb2j4/xjBAyii1OhRLJEivHvg=="],
 
     "@npmcli/run-script/which": ["which@3.0.1", "", { "dependencies": { "isexe": "^2.0.0" }, "bin": { "node-which": "bin/which.js" } }, "sha512-XA1b62dzQzLfaEOSQFTCOd5KFf/1VSzZo7/7TUjnya6u0vGGKzU96UQBZTAThCb2j4/xjBAyii1OhRLJEivHvg=="],
+
+    "@pyreon/docs/@codemirror/autocomplete": ["@codemirror/autocomplete@6.20.3", "", { "dependencies": { "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.17.0", "@lezer/common": "^1.0.0" } }, "sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g=="],
 
     "@pyreon/real-bench/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

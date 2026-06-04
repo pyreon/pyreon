@@ -40,17 +40,26 @@ The library exposes four main primitives:
 - **Stagger** -- sequences transitions across a list of children with a configurable delay between each.
 - **Collapse** -- animates height between `0` and `auto` for expand/collapse patterns.
 
-<Playground title="CSS Transition" :height="100">
+<Playground title="Animated transition — opacity + transform" :height="240">
+// kinetic wraps a CSS transition over a signal-driven boolean.
+// Here the visible signal drives both opacity AND a Y translation
+// for a polished show/hide motion.
 const visible = signal(true)
-const opacity = signal(1)
-
-effect(() => { opacity.set(visible() ? 1 : 0) })
+const toggle = () => visible.update(v => !v)
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('button', { onClick: () => visible.update(v => !v) }, () => visible() ? 'Hide' : 'Show'),
-  h('div', { style: () => ({ opacity: opacity(), transition: 'opacity 0.3s ease', padding: '12px', marginTop: '8px', background: '#f0f0f0', borderRadius: '6px' }) },
-    'Animated content',
+const ui = h('div', { class: 'col' },
+  h('button', { onClick: toggle }, () => visible() ? '▼ Hide' : '▶ Show'),
+  h('div', { class: 'card', style: {
+    transition: 'opacity 260ms ease, transform 260ms ease',
+    opacity: () => visible() ? 1 : 0,
+    transform: () => visible() ? 'translateY(0)' : 'translateY(-8px)',
+    pointerEvents: () => visible() ? 'auto' : 'none',
+  } },
+    h('div', { style: { fontWeight: '600' } }, 'Animated panel'),
+    h('div', { class: 'muted', style: { marginTop: '4px' } },
+      'opacity + transform driven by a signal — kinetic generalises this.',
+    ),
   ),
 )
 mount(ui, app)

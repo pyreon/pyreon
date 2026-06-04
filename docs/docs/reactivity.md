@@ -48,14 +48,25 @@ count.set(5)
 count.update((n) => n + 1) // now 6
 ```
 
-<Playground title="Signals" :height="80">
+<Playground title="Signals — read, write, react" :height="160">
+// A signal is a reactive container. Read it as a function: count()
+// Write with .set() or .update(). Any signal call inside a thunk
+// re-runs that thunk when the signal changes.
 const count = signal(0)
 
 const app = document.getElementById('app')
-const btn = h('button', { onClick: () => count.update(n => n + 1) },
-  () => 'Count: ' + count()
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('button', { onClick: () => count.update(n => n + 1) }, '＋ Increment'),
+    h('button', { onClick: () => count.update(n => n - 1) }, '− Decrement'),
+    h('button', { onClick: () => count.set(0) }, 'Reset'),
+  ),
+  h('div', { class: 'card' },
+    h('span', { class: 'muted' }, 'count: '),
+    h('span', { class: 'badge' }, () => count()),
+  ),
 )
-mount(btn, app)
+mount(ui, app)
 </Playground>
 
 ### Signal Interface
@@ -209,16 +220,31 @@ firstName.set('Bob')
 console.log(fullName()) // "Bob Smith"
 ```
 
-<Playground title="Computed Values" :height="80">
+<Playground title="Computed — derived values" :height="200">
+// A computed derives from signals (and other computeds). It re-evaluates
+// lazily — only when something reads it AND its dependencies changed.
 const firstName = signal('Alice')
 const lastName = signal('Smith')
 const fullName = computed(() => firstName() + ' ' + lastName())
+const greeting = computed(() => 'Hello, ' + fullName() + '!')
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', {}, () => 'Full name: ' + fullName()),
-  h('button', { onClick: () => firstName.set('Bob') }, 'Change to Bob'),
-  h('button', { onClick: () => lastName.set('Jones'), style: { marginLeft: '8px' } }, 'Change to Jones'),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'card' },
+    h('div', null,
+      h('span', { class: 'muted' }, 'fullName → '),
+      h('strong', null, () => fullName()),
+    ),
+    h('div', { style: { marginTop: '6px' } },
+      h('span', { class: 'muted' }, 'greeting → '),
+      h('strong', null, () => greeting()),
+    ),
+  ),
+  h('div', { class: 'row' },
+    h('button', { onClick: () => firstName.set('Bob') }, 'firstName = Bob'),
+    h('button', { onClick: () => lastName.set('Jones') }, 'lastName = Jones'),
+    h('button', { onClick: () => { firstName.set('Alice'); lastName.set('Smith') } }, 'reset'),
+  ),
 )
 mount(ui, app)
 </Playground>
@@ -335,18 +361,37 @@ e.dispose() // stops the effect
 count.set(3) // nothing logged
 ```
 
-<Playground title="Effects" :height="140">
+<Playground title="Effects — side effects on signal change" :height="240">
+// An effect runs once at setup, then re-runs whenever any signal
+// it READ during the previous run changes. Use it for side effects:
+// DOM mutation, logging, fetch — anything the rest of the world sees.
 const count = signal(0)
-const log = signal('')
+const log = signal([])
 
 effect(() => {
-  log.update(prev => prev + 'Count is: ' + count() + '\n')
+  // Read count() so this effect re-runs on every change.
+  // Use .peek() / .update() to write WITHOUT establishing a dep.
+  const c = count()
+  log.update((arr) => [...arr, 'count = ' + c].slice(-6))
 })
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('button', { onClick: () => count.update(n => n + 1) }, 'Increment'),
-  h('pre', { class: 'output' }, () => log()),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('button', { onClick: () => count.update(n => n + 1) }, '＋ Increment'),
+    h('button', { onClick: () => count.set(0) }, 'Reset'),
+  ),
+  h('div', { class: 'card' },
+    h('div', { class: 'muted', style: { marginBottom: '6px' } }, 'effect log (last 6):'),
+    h('div', {
+      style: {
+        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+        fontSize: '12px',
+        lineHeight: '1.6',
+        whiteSpace: 'pre',
+      },
+    }, () => log().join('\n')),
+  ),
 )
 mount(ui, app)
 </Playground>

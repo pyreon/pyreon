@@ -147,27 +147,61 @@ const query = useQuery(() => ({
 }))
 ```
 
-<Playground title="Reactive Data Fetching" :height="120">
+<Playground title="useQuery — fetch + cache by key" :height="280">
+// Distilled version: stale-while-revalidate via a Map keyed by id.
+// The real useQuery() adds retry, dedup, focus refetch, and
+// suspense integration — same key model underneath.
+const cache = new Map()
 const userId = signal(1)
-const loading = signal(false)
+const status = signal('idle') // idle | loading | success | error
 const data = signal(null)
+const error = signal(null)
+let token = 0
 
-const fetchUser = async () => {
-  loading.set(true)
-  const res = await fetch('https://jsonplaceholder.typicode.com/users/' + userId())
-  data.set(await res.json())
-  loading.set(false)
+const fetchUser = async (id) => {
+  if (cache.has(id)) { status.set('success'); data.set(cache.get(id)); return }
+  const myToken = ++token
+  status.set('loading')
+  try {
+    const res = await fetch('https://jsonplaceholder.typicode.com/users/' + id)
+    const json = await res.json()
+    if (myToken !== token) return // stale — newer call won
+    cache.set(id, json)
+    data.set(json); status.set('success')
+  } catch (e) {
+    if (myToken !== token) return
+    error.set(e); status.set('error')
+  }
 }
-fetchUser()
+
+effect(() => { fetchUser(userId()) })
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
-    h('button', { onClick: () => { userId.set(1); fetchUser() } }, 'User 1'),
-    h('button', { onClick: () => { userId.set(2); fetchUser() } }, 'User 2'),
-    h('button', { onClick: () => { userId.set(3); fetchUser() } }, 'User 3'),
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('span', { class: 'muted' }, 'user id:'),
+    ...[1, 2, 3, 4, 5].map(id =>
+      h('button', {
+        onClick: () => userId.set(id),
+        style: {
+          fontWeight: () => userId() === id ? '700' : '400',
+          background: () => userId() === id ? 'var(--accent)' : null,
+          color: () => userId() === id ? 'var(--bg)' : null,
+        },
+      }, '#' + id),
+    ),
   ),
-  h('div', {}, () => loading() ? 'Loading...' : data() ? data().name + ' (' + data().email + ')' : ''),
+  h('div', { class: 'card', style: { minHeight: '80px' } }, () => {
+    if (status() === 'loading') return h('div', { class: 'muted' }, 'fetching…')
+    if (status() === 'error')   return h('div', { style: { color: '#FF1F8C' } }, String(error()))
+    if (!data())                return h('div', { class: 'muted' }, '∅')
+    return h('div', { class: 'col' },
+      h('div', { style: { fontWeight: '700', fontSize: '16px' } }, data().name),
+      h('div', { class: 'muted' }, data().email),
+      h('div', { class: 'muted' }, data().company?.name || '—'),
+    )
+  }),
+  h('div', { class: 'muted' }, () => 'cache size: ' + cache.size + (cache.has(userId()) ? ' · hit' : ' · miss')),
 )
 mount(ui, app)
 </Playground>
