@@ -83,6 +83,16 @@
       "import": "./lib/image-types.js",
       "types": "./lib/types/image-types.d.ts"
     },
+    "./font-import-plugin": {
+      "bun": "./src/font-import-plugin.ts",
+      "import": "./lib/font-import-plugin.js",
+      "types": "./lib/types/font-import-plugin.d.ts"
+    },
+    "./font-types": {
+      "bun": "./src/font-types.ts",
+      "import": "./lib/font-types.js",
+      "types": "./lib/types/font-types.d.ts"
+    },
     "./actions": {
       "bun": "./src/actions.ts",
       "import": "./lib/actions.js",

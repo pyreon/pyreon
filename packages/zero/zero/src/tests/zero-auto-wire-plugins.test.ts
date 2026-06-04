@@ -25,35 +25,43 @@ function pluginNames(plugins: ReturnType<typeof zeroPlugin>): string[] {
 }
 
 describe('zero({ image, font }) — auto-wire contract', () => {
-  it('default zero() auto-wires both imagePlugin and fontPlugin', () => {
+  it('default zero() auto-wires imagePlugin + fontPlugin + fontImportPlugin', () => {
     const plugins = zeroPlugin()
     const names = pluginNames(plugins)
     expect(names).toContain('pyreon-zero')
     expect(names).toContain('pyreon-zero-images')
     expect(names).toContain('pyreon-zero-fonts')
+    // fontImportPlugin pairs with fontPlugin under the same opt-out flag.
+    expect(names).toContain('pyreon-zero-font-import')
   })
 
   it('zero({ image: false }) skips the imagePlugin', () => {
     const plugins = zeroPlugin({ image: false })
     const names = pluginNames(plugins)
     expect(names).not.toContain('pyreon-zero-images')
-    // font still on by default
+    // font + font-import still on by default
     expect(names).toContain('pyreon-zero-fonts')
+    expect(names).toContain('pyreon-zero-font-import')
   })
 
-  it('zero({ font: false }) skips the fontPlugin', () => {
+  it('zero({ font: false }) skips both fontPlugin AND fontImportPlugin', () => {
     const plugins = zeroPlugin({ font: false })
     const names = pluginNames(plugins)
     expect(names).not.toContain('pyreon-zero-fonts')
+    // `?font` import support is part of the font integration — opting
+    // out of `font` opts out of BOTH plugins (no good reason to keep
+    // the `?font` transformer when build-time font emission is off).
+    expect(names).not.toContain('pyreon-zero-font-import')
     // image still on by default
     expect(names).toContain('pyreon-zero-images')
   })
 
-  it('zero({ image: false, font: false }) skips both', () => {
+  it('zero({ image: false, font: false }) skips all three', () => {
     const plugins = zeroPlugin({ image: false, font: false })
     const names = pluginNames(plugins)
     expect(names).not.toContain('pyreon-zero-images')
     expect(names).not.toContain('pyreon-zero-fonts')
+    expect(names).not.toContain('pyreon-zero-font-import')
     expect(names).toContain('pyreon-zero')
   })
 
