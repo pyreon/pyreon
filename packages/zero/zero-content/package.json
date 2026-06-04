@@ -53,11 +53,13 @@
   "dependencies": {
     "@pyreon/head": "workspace:^",
     "@pyreon/router": "workspace:^",
+    "fast-glob": "^3.3.2",
     "gray-matter": "^4.0.3",
     "mdast-util-to-string": "^4.0.0",
     "remark-directive": "^4.0.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.0",
+    "remark-mdx": "^3.1.0",
     "remark-parse": "^11.0.0",
     "shiki": "^1.29.2",
     "unified": "^11.0.5",
@@ -69,7 +71,8 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@types/mdast": "^4.0.4",
-    "mdast-util-directive": "^3.0.0"
+    "mdast-util-directive": "^3.0.0",
+    "mdast-util-mdx-jsx": "^3.2.0"
   },
   "publishConfig": {
     "access": "public"
