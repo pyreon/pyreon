@@ -474,6 +474,32 @@ export interface ZeroConfig {
 
   /** Server port for dev/preview. Default: 3000 */
   port?: number
+
+  /**
+   * Image optimization — auto-wires `imagePlugin` into the build pipeline.
+   *
+   * Pass `false` to skip the auto-wire (no `?optimize` imports, no AVIF/WebP
+   * generation). Pass a config object to override defaults. Default `{}`
+   * means: AVIF + WebP fallback, blur placeholder, quality 80, sharp-backed.
+   *
+   * Image users typically rely on the optimization out of the box —
+   * `<Image src={import('./hero.png?optimize')} />` Just Works without
+   * adding `imagePlugin()` to the Vite config manually.
+   */
+  image?: import('./image-plugin').ImagePluginConfig | false
+
+  /**
+   * Font optimization — auto-wires `fontPlugin` into the build pipeline.
+   *
+   * Pass `false` to skip the auto-wire. Pass a config to declare Google
+   * Fonts / local fonts; the plugin self-hosts at build time, injects
+   * preload + preconnect tags, and applies font-display: swap.
+   *
+   * Default `{}` (auto-wire enabled but no fonts declared) means the
+   * plugin is harmless — it only activates when `google` / `local` are
+   * supplied. Pass `false` to remove it from the chain entirely.
+   */
+  font?: import('./font').FontConfig | false
 }
 
 // ─── File-system route ───────────────────────────────────────────────────────

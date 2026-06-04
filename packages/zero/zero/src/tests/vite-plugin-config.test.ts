@@ -169,10 +169,16 @@ describe('zero vite-plugin config', () => {
   //   - `ssr` / `isr` → ssrPlugin (bundle the SSR handler into
   //     dist/server/entry-server.js + dispatch adapter.build)
   //   - `spa` → no companion (SPA ships a client bundle only)
+  //
+  // These tests target the MODE→COMPANION wiring specifically; the orthogonal
+  // image/font auto-wire (default-on) is covered exhaustively by
+  // `zero-auto-wire-plugins.test.ts`. We pass `image: false, font: false`
+  // here to keep the chain mode-focused — otherwise every length+order
+  // assertion below would have to account for two extra plugins.
   describe('mode → companion plugin wiring', () => {
     it('mode: "spa" returns a single-plugin array (no companion needed)', async () => {
       const { zeroPlugin } = await vitePluginModulePromise
-      const plugins = zeroPlugin({ mode: 'spa' }) as any
+      const plugins = zeroPlugin({ mode: 'spa', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
       expect(plugins).toHaveLength(1)
       expect(plugins[0].name).toBe('pyreon-zero')
@@ -180,7 +186,7 @@ describe('zero vite-plugin config', () => {
 
     it('mode: "ssg" returns main plugin AND ssg plugin', async () => {
       const { zeroPlugin } = await vitePluginModulePromise
-      const plugins = zeroPlugin({ mode: 'ssg' }) as any
+      const plugins = zeroPlugin({ mode: 'ssg', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
       expect(plugins).toHaveLength(2)
       expect(plugins[0].name).toBe('pyreon-zero')
@@ -193,7 +199,7 @@ describe('zero vite-plugin config', () => {
       // types-only — `Adapter.build({ kind: 'ssr' })` was implemented
       // for all 6 adapters but never invoked.
       const { zeroPlugin } = await vitePluginModulePromise
-      const plugins = zeroPlugin({ mode: 'ssr' }) as any
+      const plugins = zeroPlugin({ mode: 'ssr', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
       expect(plugins).toHaveLength(2)
       expect(plugins[0].name).toBe('pyreon-zero')
@@ -205,7 +211,7 @@ describe('zero vite-plugin config', () => {
       // runtime via `wireRenderMode`. Same bundle, different runtime
       // wrapper.
       const { zeroPlugin } = await vitePluginModulePromise
-      const plugins = zeroPlugin({ mode: 'isr' }) as any
+      const plugins = zeroPlugin({ mode: 'isr', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
       expect(plugins).toHaveLength(2)
       expect(plugins[0].name).toBe('pyreon-zero')
@@ -216,7 +222,7 @@ describe('zero vite-plugin config', () => {
       // Defaults from `resolveConfig`: `mode: "ssr"`. So the default
       // chain includes the SSR companion.
       const { zeroPlugin } = await vitePluginModulePromise
-      const plugins = zeroPlugin() as any
+      const plugins = zeroPlugin({ image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
       expect(plugins).toHaveLength(2)
       expect(plugins[0].name).toBe('pyreon-zero')
