@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { writeAssetCacheHeaders } from './cache-headers'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -71,6 +72,11 @@ export function cloudflareAdapter(): Adapter {
           join(options.outDir, '_routes.json'),
           JSON.stringify(routesConfig, null, 2),
         )
+        // Cloudflare Pages reads `_headers` for per-path cache control; without
+        // it, hashed `/assets/*` chunks inherit the host's short default
+        // (re-fetched needlessly on every release window). Matches the
+        // `/assets/*` immutable rule vercel.json / netlify.toml already emit.
+        await writeAssetCacheHeaders(options.outDir)
         return
       }
       await validateBuildInputs(options)
@@ -148,6 +154,9 @@ export default {
       }
 
       await writeFile(join(outDir, '_routes.json'), JSON.stringify(routesConfig, null, 2))
+      // `/assets/*` is excluded from the worker above and served by Pages'
+      // static layer — pin it immutable via `_headers` (same as SSG).
+      await writeAssetCacheHeaders(outDir)
     },
     async revalidate(path: string): Promise<AdapterRevalidateResult> {
       // Cloudflare Pages ISR via Cache API delete + zone purge.

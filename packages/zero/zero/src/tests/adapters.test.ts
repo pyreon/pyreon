@@ -811,6 +811,54 @@ describe('cloudflare adapter — SSG mode (PR J)', () => {
     expect(existsSync(join(ssgDist, '_worker.js'))).toBe(false)
     await cleanup()
   })
+
+  it('emits _headers pinning /assets/* immutable (Cloudflare Pages cache control)', async () => {
+    const ssgDist = await setupSsgDist()
+    await cloudflareAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    const headersPath = join(ssgDist, '_headers')
+    expect(existsSync(headersPath)).toBe(true)
+    const headers = await readFile(headersPath, 'utf-8')
+    expect(headers).toContain('/assets/*')
+    expect(headers).toContain('Cache-Control: public, max-age=31536000, immutable')
+    // Negative: the immutable rule must NOT target non-hashed files or HTML.
+    expect(headers).not.toContain('/favicon')
+    expect(headers).not.toContain('/sitemap.xml')
+    expect(headers).not.toContain('.html')
+    await cleanup()
+  })
+
+  it('respects a user-provided _headers — does not override an existing /assets/ policy', async () => {
+    const ssgDist = await setupSsgDist()
+    const { writeFile } = await import('node:fs/promises')
+    // User declares their own asset policy (e.g. via public/_headers).
+    await writeFile(
+      join(ssgDist, '_headers'),
+      '/assets/*\n  Cache-Control: public, max-age=600\n',
+    )
+    await cloudflareAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    const headers = await readFile(join(ssgDist, '_headers'), 'utf-8')
+    // User's policy is preserved verbatim — the framework does NOT clobber it.
+    expect(headers).toContain('max-age=600')
+    expect(headers).not.toContain('immutable')
+    await cleanup()
+  })
+
+  it('appends the framework block to a user _headers that has no /assets/ rule', async () => {
+    const ssgDist = await setupSsgDist()
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(join(ssgDist, '_headers'), '/api/*\n  Cache-Control: no-store\n')
+    await cloudflareAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    const headers = await readFile(join(ssgDist, '_headers'), 'utf-8')
+    // Both coexist: the user's /api/* rule AND the framework's /assets/* rule.
+    expect(headers).toContain('/api/*')
+    expect(headers).toContain('no-store')
+    expect(headers).toContain('/assets/*')
+    expect(headers).toContain('immutable')
+    await cleanup()
+  })
 })
 
 describe('netlify adapter — SSG mode (PR J)', () => {
