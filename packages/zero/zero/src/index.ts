@@ -25,13 +25,21 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 export type { IconMode, IconProps, NamedIconProps, SvgComponent } from "./icon";
 export { createIcon, createNamedIcon, Icon } from "./icon";
 export type {
+	ImageDescriptorProps,
 	ImageProps,
 	ImageRenderProps,
 	ImageSource,
+	ImageUrlProps,
 	OptimizedImageProps,
 	UseImageReturn,
 } from "./image";
 export { createImage, Image, OptimizedImage, useImage } from "./image";
+export type {
+	ImageRegistry,
+	ImageRegistryKeyStrategy,
+	ImageRegistryOptions,
+} from "./image-registry";
+export { createImageRegistry } from "./image-registry";
 export type { LinkProps, LinkRenderProps, UseLinkReturn } from "./link";
 export { createLink, Link, prefetchRoute, useLink } from "./link";
 export type { ScriptProps, ScriptRenderProps, ScriptStrategy, UseScriptReturn } from "./script";

@@ -183,6 +183,33 @@ export interface ProcessedImage {
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|avif)$/i
 
 /**
+ * Emit the descriptor as the module's default export with `toString()`,
+ * `Symbol.toPrimitive` and `valueOf` overrides returning the URL.
+ *
+ * This is the **compatibility guardrail** for the bi-modal `<Image>` design.
+ * Without it, code that does `<img src={imageImport}>` would render
+ * `[object Object]` because attribute serialization stringifies via the
+ * runtime's normal path. With it, descriptors **coerce to their URL** in
+ * any string context (template literals, attribute values, `String(x)`,
+ * `${x}`) so third-party components and pasted snippets keep working
+ * unchanged. The descriptor still carries its rich shape — `<Image>`
+ * reads `width` / `height` / `srcset` / `placeholder` off it directly,
+ * and consumers can still spread it. Frozen to prevent accidental
+ * mutation in the shared module-level descriptor.
+ *
+ * Emitted inline (no shared runtime import) to keep the per-image
+ * payload at ~120 bytes — three property defs over the JSON.
+ */
+function emitDescriptor(d: ProcessedImage): string {
+  return `const _d = ${JSON.stringify(d)};
+const _s = () => _d.src;
+Object.defineProperty(_d, 'toString', { value: _s });
+Object.defineProperty(_d, 'valueOf', { value: _s });
+Object.defineProperty(_d, Symbol.toPrimitive, { value: _s });
+export default Object.freeze(_d);`
+}
+
+/**
  * Zero image processing Vite plugin.
  *
  * Transforms image imports with query params into optimized responsive images:
@@ -357,7 +384,7 @@ export default function SvgComponent(props) {
           })),
           sources,
         }
-        return `export default ${JSON.stringify(result)}`
+        return emitDescriptor(result)
       }
 
       if (!isBuild) {
@@ -367,7 +394,7 @@ export default function SvgComponent(props) {
           placeholderStrategy,
           placeholderSize,
         )
-        return `export default ${JSON.stringify(result)}`
+        return emitDescriptor(result)
       }
 
       const processed = await processImage(absPath, {
@@ -383,7 +410,7 @@ export default function SvgComponent(props) {
       await emitProcessedSources(processed, outSubDir, this)
       rebuildFormatSrcsets(processed, absPath)
 
-      return `export default ${JSON.stringify(processed)}`
+      return emitDescriptor(processed)
     },
   }
 }

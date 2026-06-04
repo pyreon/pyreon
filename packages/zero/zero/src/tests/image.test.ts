@@ -427,20 +427,27 @@ describe('createImage — HOC composition (bisect-verifies render-props contract
     expect(vnode.props.src).toBe('/hero.jpg')
   })
 
-  it('default Image (built on createImage) returns a wrapper VNode pointing at its inner function', async () => {
+  it('default Image (bi-modal dispatcher) returns a VNode whose type is the inner component function', async () => {
     const { Image } = await import('../image')
+    // The bi-modal `Image` dispatches to a private `ImageInner` (which is the
+    // real createImage-wrapped component carrying the render-props contract).
+    // From the outside, `Image({...})` returns `h(ImageInner, props)` — so we
+    // can assert (a) the type is a function (ImageInner, not a string tag),
+    // and (b) the user-supplied props are forwarded verbatim. The
+    // render-props slots (`containerRef` / `image`) only materialize when
+    // ImageInner's body runs — covered by the real-mount tests below and the
+    // `createImage` contract tests above.
     const vnode = Image({
       src: '/hero.jpg',
       alt: 'Hero',
       width: 400,
       height: 300,
     }) as { type: unknown; props: Record<string, unknown> }
-    // The default Image's wrapped component is the inline `({ ... }) => <div>...</div>`
-    // that createImage receives — confirmed by the VNode having a function `type`
-    // and the same render-props slots as the createImage contract.
     expect(typeof vnode.type).toBe('function')
-    expect(vnode.props.containerRef).toBeDefined()
-    expect(vnode.props.image).toBeDefined()
+    expect(vnode.props.src).toBe('/hero.jpg')
+    expect(vnode.props.alt).toBe('Hero')
+    expect(vnode.props.width).toBe(400)
+    expect(vnode.props.height).toBe(300)
   })
 })
 
