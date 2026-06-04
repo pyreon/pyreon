@@ -124,9 +124,13 @@ In-memory LRU SSR cache with TTL revalidation. **Default keys cache by `url.path
 ## Built-in components
 
 ```tsx
-import { Image, Link, Script, Meta, Icon, createIcon, createNamedIcon, ThemeToggle } from '@pyreon/zero'
+import { Image, OptimizedImage, NoOptimize, Link, Script, Meta, Icon, createIcon, createNamedIcon, ThemeToggle } from '@pyreon/zero'
+import hero from './hero.jpg?optimize'
 
-<Image src="/hero.jpg" width={1200} height={600} placeholder="blur" />
+<Image src={hero} alt="Hero" priority />                  {/* bi-modal: ?optimize descriptor… */}
+<Image src="/remote.jpg" alt="" width={1200} height={600} /> {/* …or a runtime URL (w+h required) */}
+<OptimizedImage source={hero} alt="Hero" />               {/* whole descriptor in one prop */}
+<NoOptimize><Image src={logo} alt="Logo" /></NoOptimize>  {/* subtree opt-out → bare <img> */}
 <Link to="/about" prefetch="intent">About</Link>
 <Script strategy="afterInteractive" src="https://analytics.example.com/script.js" />
 <Meta title="..." description="..." />
@@ -134,7 +138,9 @@ import { Image, Link, Script, Meta, Icon, createIcon, createNamedIcon, ThemeTogg
 <ThemeToggle />                            {/* light/dark/system mode */}
 ```
 
-`<Image>` ships with `imagePlugin` (build-time WebP/AVIF + blur/color placeholders). `<Link>` is `@pyreon/router`'s `RouterLink` re-exported. `<Meta>` writes via `@pyreon/head`.
+`<Image>` is **bi-modal** — `src` takes a `?optimize` descriptor (dims/srcset/formats inferred) OR a runtime string URL (`width`+`height` then required, to prevent CLS); the `optimize` prop and `<NoOptimize>` boundary opt individual images / subtrees out. Built on `imagePlugin` (build-time WebP/AVIF + blur/color placeholders). `<Link>` is `@pyreon/router`'s `RouterLink` re-exported. `<Meta>` writes via `@pyreon/head`.
+
+**Resource hints & fonts.** `usePreconnect` / `useDnsPrefetch` / `usePreload` emit typed `<link rel>` hints; `usePreloadFont(href)` preloads a critical font; the `?font` import (`import Inter from './Inter.woff2?font'`) auto-emits an `@font-face` + hashed-URL descriptor. See [docs/images-and-fonts](https://pyreon.dev/images-and-fonts).
 
 ## Vite plugins (server-only)
 

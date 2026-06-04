@@ -26,6 +26,7 @@ describe('gen-docs — head snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).sort()).toEqual([
       'head/HeadProvider',
+      'head/ScriptTag',
       'head/createHeadContext',
       'head/renderWithHead',
       'head/useHead',

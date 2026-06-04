@@ -642,6 +642,54 @@ getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)`,
       ],
       seeAlso: ['activateReactiveDevtools', 'getReactiveTrace', 'onSignalUpdate'],
     },
+    {
+      name: 'wrapSignal',
+      kind: 'function',
+      signature: '<T>(base: Signal<T>, options: WrapSignalOptions<T>) => Signal<T>',
+      summary: 'Create a signal facade over a base signal with custom write behavior. The canonical way to build a signal whose write runs a side effect (persistence, validation, patch emission). Reads and the internal `_v` field are delegated to `base`, so the facade satisfies the full signal contract the compiler\'s fast paths depend on — a facade that exposes `.direct()` but forgets `_v` (or vice-versa) silently binds to `undefined` and renders empty. `wrapSignal` forwards both by construction, making hand-rolled facades structurally impossible to get wrong.',
+      example: `const base = signal(0)
+const wrapped = wrapSignal(base, {
+  set: (v) => {
+    base.set(v)
+    localStorage.setItem('key', JSON.stringify(v))
+  },
+})
+wrapped.set(5)  // writes through custom logic
+console.log(wrapped())  // 5 (reads from base)`,
+      mistakes: [
+        'Forgetting to call `base.set(value)` inside the custom `set` handler — the signal\'s internal `_v` never updates, so reads stall at the old value and compiled fast paths see stale data.',
+        'Hand-rolling a facade that exposes `.direct()` but not the `_v` property — the compiler\'s `_bindText` fast path reads `source._v` directly to skip the function call; without it, text bindings render empty even though `()` works.',
+        'Capturing the `base` signal reference in closure and forgetting to return the facade itself — callers that track per-instance subscription identity (e.g. `.remove()` on shared state) break because every call returns the same identity.',
+        'Using `wrapSignal` to add tracking to a signal that\'s written from multiple code paths without coordinating in the custom `set` handler — the side effect runs on EVERY write, including batch-deferred ones; if other code writes directly to `base` it bypasses the facade.',
+        'Expecting the custom `update` option to be optional AND have a default — if not provided, it defaults to `set(fn(base.peek()))`, which may not match your intent if `set` has expensive side effects (it will run for every update, even pure derive ops).',
+      ],
+      seeAlso: ['signal', 'effect', 'computed'],
+    },
+    {
+      name: 'WrapSignalOptions',
+      kind: 'type',
+      signature: 'interface WrapSignalOptions<T> { set: (value: T) => void; update?: (fn: (current: T) => T) => void }',
+      summary: 'Configuration object for `wrapSignal()`. The `set` handler runs in place of the base signal\'s `.set()`; call through to `base.set(value)` when the value should actually update. The optional `update` handler defaults to `set(fn(peek()))` — override it if you need custom batch or coalescing behavior that `.set()` alone doesn\'t express.',
+      example: `const store = createStore({ count: 0 })
+const countSig = signal(store.count)
+const wrapped = wrapSignal(countSig, {
+  set: (v) => {
+    countSig.set(v)
+    store.count = v  // dual-write to store
+  },
+  update: (fn) => {
+    const next = fn(countSig.peek())
+    wrapped.set(next)  // coordinated update
+  },
+})`,
+      mistakes: [
+        '`set` handler not calling through to `base.set()` — the wrapped signal\'s value never updates internally, all reads stall.',
+        'Providing `update` that doesn\'t eventually call `set` — reads won\'t reflect the update unless `set` is involved in the chain.',
+        'Expecting the default `update` to coalesce rapid-fire calls — it calls `set()` directly, so if `set` has side effects (persist, emit), they fire on every update call without coalescing.',
+        'Using the same `options` object for multiple `wrapSignal()` calls on different bases — the `set` and `update` closures capture the wrong `base` reference if reused.',
+      ],
+      seeAlso: ['wrapSignal', 'Signal'],
+    },
   ],
   gotchas: [
     {
