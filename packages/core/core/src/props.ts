@@ -122,6 +122,52 @@ export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): 
 }
 
 /**
+ * Copy a props object, dropping keys whose DATA value is `undefined` while
+ * preserving every getter-shaped (reactive) prop verbatim.
+ *
+ * This is the descriptor-aware filter every prop-forwarding HOC needs BEFORE
+ * merging consumer props over defaults: an `undefined` value from the consumer
+ * must not shadow a default, but a compiler-emitted reactive prop
+ * (`_rp(() => signal())` that {@link makeReactiveProps} converts to a property
+ * getter) must survive with its subscription intact. A plain
+ * `result[key] = props[key]` value-copy would FIRE each getter at HOC-setup
+ * time (outside any tracking scope), capture the resolved value, and store it
+ * as a static data property — collapsing the live signal to a one-shot
+ * snapshot so the downstream `applyProp` / `_bind` has nothing to track.
+ *
+ * Getter descriptors are kept as-is (we can't peek the value without firing
+ * the getter, so the `undefined` filter doesn't apply to them). Data
+ * descriptors are dropped only when their value is exactly `undefined` —
+ * `null`, `0`, `''`, `false` are kept.
+ *
+ * Lives here, next to {@link mergeProps} / {@link splitProps} / {@link makeReactiveProps},
+ * because filtering this object is an operation on `@pyreon/core`'s own
+ * reactive-prop encoding — `@pyreon/attrs` and `@pyreon/rocketstyle` both
+ * hand-rolled it before, and one copy silently shipped the value-copy bug.
+ *
+ * @example
+ * const filtered = removeUndefinedProps(props) // undefined keys gone, getters live
+ * const merged = mergeProps(defaults, filtered)
+ */
+type RemoveUndefinedProps = <T extends Record<string, any>>(
+  props: T,
+) => { [I in keyof T as T[I] extends undefined ? never : I]: T[I] }
+
+export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) => {
+  const result: Record<string, unknown> = {}
+  const descriptors = Object.getOwnPropertyDescriptors(props)
+  for (const key of Object.keys(descriptors)) {
+    const d = descriptors[key] as PropertyDescriptor
+    // Keep getter-shaped descriptors verbatim (reactive props). For data
+    // descriptors, drop `value === undefined` so they don't shadow defaults.
+    if (d.get || d.value !== undefined) {
+      Object.defineProperty(result, key, d)
+    }
+  }
+  return result
+}) as RemoveUndefinedProps
+
+/**
  * Brand symbol for compiler-emitted reactive prop wrappers.
  * Distinguishes `() => expr` wrappers from user-written accessor props
  * (like Show's `when={() => condition()}`).

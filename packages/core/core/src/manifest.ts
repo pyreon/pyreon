@@ -69,7 +69,7 @@ const LazyApp = () => (
     'For — keyed reactive list rendering with by prop',
     'Suspense / ErrorBoundary — async and error boundaries',
     'lazy() / Dynamic — code splitting and dynamic component rendering',
-    'splitProps / mergeProps — reactivity-preserving props utilities',
+    'splitProps / mergeProps / removeUndefinedProps — reactivity-preserving props utilities',
     'cx() — class value combiner (strings, objects, arrays, nested)',
     'createUniqueId — SSR-safe unique ID generation',
   ],
@@ -416,6 +416,21 @@ cx(["a", ["b", { c: true }]])            // nested arrays
         '`mergeProps(props, defaults)` — wrong order. Defaults go FIRST, actual props last (last source wins)',
       ],
       seeAlso: ['splitProps', 'cx'],
+    },
+    {
+      name: 'removeUndefinedProps',
+      kind: 'function',
+      signature: 'removeUndefinedProps<T>(props: T): { [K in keyof T as T[K] extends undefined ? never : K]: T[K] }',
+      summary:
+        'Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactive) prop verbatim. The descriptor-aware filter a prop-forwarding HOC runs before `mergeProps`: an `undefined` consumer prop must not shadow a default, but a compiler-emitted reactive prop must survive with its subscription intact. Copies property descriptors (never values) — a value-copy would fire each getter at setup time and collapse the live signal to a static snapshot. `null` / `0` / `""` / `false` are kept; only `undefined` data props are dropped, and getter descriptors are always kept (cannot peek without firing).',
+      example: `const filtered = removeUndefinedProps(props) // undefined keys gone, getters live
+const merged = mergeProps(defaults, filtered)`,
+      mistakes: [
+        '`result[key] = props[key]` to filter — fires getter-shaped reactive props, collapsing the subscription. Use this helper (it copies descriptors)',
+        'Expecting `null` / `0` / `false` to be dropped — only `undefined` data values are removed',
+        'Calling on `undefined` — `Object.getOwnPropertyDescriptors(undefined)` throws; guard the input',
+      ],
+      seeAlso: ['mergeProps', 'splitProps', 'makeReactiveProps'],
     },
     {
       name: 'createUniqueId',

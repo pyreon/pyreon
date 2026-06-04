@@ -85,8 +85,9 @@ describe('gen-docs — core snapshot', () => {
 
   it('renders @pyreon/core to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(coreManifest)
-    expect(Object.keys(record).length).toBe(31)
+    expect(Object.keys(record).length).toBe(32)
     expect(Object.keys(record)).toContain('core/h')
+    expect(Object.keys(record)).toContain('core/removeUndefinedProps')
     // Compat-mode native marker — added so framework JSX components opt out
     // of `@pyreon/{react,preact,vue,solid}-compat` wrapping.
     expect(Object.keys(record)).toContain('core/nativeCompat')

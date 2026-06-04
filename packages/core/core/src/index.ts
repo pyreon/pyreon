@@ -72,6 +72,7 @@ export {
   makeReactiveProps,
   mergeProps,
   REACTIVE_PROP,
+  removeUndefinedProps,
   splitProps,
 } from './props'
 export type { Ref, RefCallback, RefProp } from './ref'

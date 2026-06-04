@@ -642,10 +642,11 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 
 - `splitProps(props, keys)` — split props object preserving signal reactivity
 - `mergeProps(...sources)` — merge default props with component props, last source wins
+- `removeUndefinedProps(props)` — copy props dropping keys whose DATA value is `undefined`, preserving getter-shaped reactive props verbatim (descriptor-copy, never value-copy). The filter every prop-forwarding HOC runs before `mergeProps`. `@pyreon/attrs` + `@pyreon/rocketstyle` previously hand-rolled this identically (one shipped a value-copy reactivity bug); both now re-export it from core
 - `createUniqueId()` — SSR-safe unique ID generation
 - `untrack(fn)` — alias for `runUntracked`, reads signals without subscribing
 - **Component-JSX spread `<Comp {...rest}>` preserves reactivity end-to-end.** The compiler emits `<Comp {..._wrapSpread(rest)}>`, which re-brands getter-shaped reactive props as `_rp` thunks. `makeReactiveProps` converts them back to getters on the consumer side. No need to think about which props are reactive when forwarding through spread — it just works. Fast path: sources with no getters return unchanged (zero cost). Reference pattern: `docs/docs/patterns/reactive-spread.md` (MCP `get_pattern('reactive-spread')`).
-- **Manual prop-merging helpers must copy descriptors, not values.** If you write a helper function that copies props in plain JS (not through JSX spread), use `Object.getOwnPropertyDescriptors` + `Object.defineProperty` rather than `result[key] = source[key]` — the latter fires getters at copy time and collapses reactive props to static snapshots. Better: just use `mergeProps` / `splitProps` from `@pyreon/core` (they preserve descriptors). The framework's own HOC pipelines (`@pyreon/rocketstyle`, `@pyreon/styler`, `@pyreon/ui-core`, `@pyreon/elements`) follow this rule.
+- **Manual prop-merging helpers must copy descriptors, not values.** If you write a helper function that copies props in plain JS (not through JSX spread), use `Object.getOwnPropertyDescriptors` + `Object.defineProperty` rather than `result[key] = source[key]` — the latter fires getters at copy time and collapses reactive props to static snapshots. Better: just use `mergeProps` / `splitProps` / `removeUndefinedProps` from `@pyreon/core` (they preserve descriptors). The framework's own HOC pipelines (`@pyreon/rocketstyle`, `@pyreon/styler`, `@pyreon/ui-core`, `@pyreon/elements`) follow this rule.
 
 ### JSX Types
 
