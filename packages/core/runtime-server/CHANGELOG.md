@@ -1,5 +1,13 @@
 # @pyreon/runtime-server
 
+## 0.31.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.30.0
 
 ### Minor Changes
