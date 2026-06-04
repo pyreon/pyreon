@@ -77,6 +77,7 @@
 
 import type { ComponentFn, Props, VNode } from '@pyreon/core'
 import { h, onMount } from '@pyreon/core'
+import { getContextOwner } from '@pyreon/reactivity'
 import { encodeIslandProps } from './island-codec'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -156,6 +157,17 @@ export function island<P extends Props = Props>(
     if (typeof document !== 'undefined') {
       if (hydrate === 'never') return h('pyreon-island', attrs)
       let islandEl: HTMLElement | null = null
+      // Capture the context owner NOW, synchronously during this component's
+      // render — while its owner (and the ancestor provider chain: PyreonUI
+      // theme, etc.) is active. Hydration is deferred (idle / visible /
+      // interaction) and runs after an async `import()`, so the active owner
+      // is long gone by then. Threading this captured owner into
+      // `scheduleHydration` lets the island's hydration root re-parent to it,
+      // so a rocketstyle (or any context-reading) component inside the island
+      // resolves the theme instead of crashing on `undefined`. #1338's
+      // owner-based context removed the global stack that previously let a
+      // late mount find ancestor providers.
+      const capturedOwner = getContextOwner()
       onMount(() => {
         if (!islandEl) return
         // Scheduler is client-only — the dynamic import keeps it out of the SSR
@@ -164,7 +176,7 @@ export function island<P extends Props = Props>(
           if (!islandEl) return
           const isleLoader = loader as () => Promise<{ default: ComponentFn } | ComponentFn>
           if (prefetch !== 'none') schedulePrefetch(islandEl, isleLoader, prefetch)
-          scheduleHydration(islandEl, isleLoader, serializedProps, hydrate)
+          scheduleHydration(islandEl, isleLoader, serializedProps, hydrate, capturedOwner)
         })
       })
       return h('pyreon-island', {

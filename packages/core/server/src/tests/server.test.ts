@@ -1,6 +1,6 @@
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { RouterView } from '@pyreon/router'
+import { lazy, RouterView } from '@pyreon/router'
 import { accessInternal } from '@pyreon/test-utils'
 import { createHandler } from '../handler'
 import {
@@ -164,6 +164,31 @@ describe('createHandler', () => {
     const html = await res.text()
     expect(html).toContain('__PYREON_LOADER_DATA__')
     expect(html).toContain('"items"')
+  })
+
+  test('renders a LAZY route component through RouterView (SSR empty-page regression)', async () => {
+    // zero's fs-router emits every route as `lazy(() => import(...))`. The
+    // handler must resolve those into the component cache BEFORE the
+    // synchronous render (it calls `router.preload`), or `RouterView` hits its
+    // empty lazy fallback and ships a BLANK page wrapped in the layout (status
+    // 200, template shell) — the 0.30.0 `mode: 'ssr'`/`'isr'` regression. SSG
+    // was unaffected because it already used `router.preload`. Bisect: revert
+    // the handler to `prefetchLoaderData` (loaders-only) → the lazy component
+    // is never resolved → the rendered HTML lacks the page content → fails.
+    const LazyPage: ComponentFn = () =>
+      h('div', { 'data-testid': 'lazy-page' }, h('h1', null, 'Lazy Loaded'))
+    const lazyRoutes = [
+      { path: '/', component: lazy(() => Promise.resolve({ default: LazyPage })) },
+    ]
+    // App renders <RouterView/> so the matched chain (the lazy page) renders
+    // at depth 0 — the real shape, vs the other tests passing the page as App.
+    const App: ComponentFn = () => h(RouterView, null)
+    const handler = createHandler({ App, routes: lazyRoutes })
+    const res = await handler(new Request('http://localhost/'))
+    const html = await res.text()
+    expect(res.status).toBe(200)
+    expect(html).toContain('data-testid="lazy-page"')
+    expect(html).toContain('<h1>Lazy Loaded</h1>')
   })
 
   test('returns 500 on render error', async () => {

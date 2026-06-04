@@ -30,6 +30,7 @@ import { h } from '@pyreon/core'
 import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from '@pyreon/router'
 import { decodeIslandProps } from './island-codec'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
+import { type EffectScope, runWithContextOwner } from '@pyreon/reactivity'
 import type { HydrationStrategy, PrefetchStrategy } from './island'
 
 // `island()` is client-safe — it only renders the `<pyreon-island>` marker via
@@ -343,13 +344,23 @@ export function scheduleHydration(
   loader: IslandLoader,
   propsJson: string,
   strategy: HydrationStrategy,
+  // Context owner captured at the island marker's render time (while its
+  // owner — and thus the ancestor PyreonUI/theme provider chain — was active).
+  // Hydration is deferred (idle / visible / interaction), so by the time the
+  // island mounts the active owner is gone; re-establishing this captured
+  // owner lets the hydrated component's `useContext()` walk up to ancestor
+  // providers. Without it (#1338 owner-based context, no global stack), a
+  // rocketstyle component inside the island reads an undefined theme and
+  // crashes. `null`/omitted (static islands apps via `hydrateIslands`) keeps
+  // the prior detached-root behavior.
+  owner?: EffectScope | null,
 ): (() => void) | null {
   /* v8 ignore next */
   if (typeof window === 'undefined') return null
   let cancelled = false
   const hydrate = (): Promise<void> => {
     if (cancelled) return Promise.resolve()
-    return hydrateIsland(el, loader, propsJson)
+    return hydrateIsland(el, loader, propsJson, owner)
   }
 
   switch (strategy) {
@@ -610,6 +621,7 @@ async function hydrateIsland(
   el: HTMLElement,
   loader: IslandLoader,
   propsJson: string,
+  owner?: EffectScope | null,
 ): Promise<void> {
   const name = el.getAttribute('data-component') ?? 'unknown'
   try {
@@ -633,7 +645,11 @@ async function hydrateIsland(
 
     const mod = await loader()
     const Comp = typeof mod === 'function' ? mod : mod.default
-    hydrateRoot(el, h(Comp, props))
+    // Re-establish the marker's captured owner so the island's hydration root
+    // parents to it (hydrate.ts sets `scope._parent = getContextOwner()`),
+    // letting the component's `useContext()` reach ancestor providers
+    // (PyreonUI theme, etc.). `null` owner → detached root (static islands).
+    runWithContextOwner(owner ?? null, () => hydrateRoot(el, h(Comp, props)))
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.hydrated')
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
