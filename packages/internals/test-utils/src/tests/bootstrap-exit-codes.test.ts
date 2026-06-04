@@ -1,6 +1,30 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { describe } from 'vitest'
+
+/**
+ * CI gate: this file is the slow part of `test (internals)`. Locally
+ * it runs in ~5s; on GHA's slower runners it takes ~190s because each
+ * test spawns a bun subprocess that walks the package tree + invokes
+ * `bun scripts/bootstrap.ts` end-to-end. The dirty-detection walk +
+ * subprocess startup is what dominates — locally cached, slow on CI.
+ *
+ * The `test (internals)` job (which runs on every PR) sets
+ * `PYREON_SKIP_SLOW_TESTS=1` so this suite is a no-op for PRs that
+ * don't touch the bootstrap infrastructure. The dedicated
+ * `bootstrap-exit-codes` CI cell DOES run the suite (with the env var
+ * unset) when `scripts/bootstrap.ts` itself changes — that's the
+ * only path that can regress the exit-code contract. push:main +
+ * merge_group always run the full suite.
+ *
+ * The cost-of-skip is zero — the contract this file protects can only
+ * regress through a `scripts/bootstrap.ts` edit, and the dedicated
+ * cell catches that. Local `bun run test` continues to run everything
+ * (no env var set), preserving the existing dev workflow.
+ */
+const SKIP_SLOW = process.env.PYREON_SKIP_SLOW_TESTS === '1'
+const describeIfFull = SKIP_SLOW ? describe.skip : describe
 
 /**
  * Subprocess regression test for `scripts/bootstrap.ts` exit-code
@@ -91,7 +115,7 @@ function runBootstrap(
   }
 }
 
-describe('scripts/bootstrap.ts exit-code policy', () => {
+describeIfFull('scripts/bootstrap.ts exit-code policy', () => {
   it('bootstrap.ts exists at the expected path', () => {
     expect(existsSync(BOOTSTRAP)).toBe(true)
   })
