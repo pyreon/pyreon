@@ -2,9 +2,9 @@
  * Vue 3 benchmark — reactive refs + template rendering via h().
  * No JSX transform needed — uses Vue's h() directly.
  */
-import { createApp, defineComponent, h, ref } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
+import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 
 export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
@@ -37,7 +37,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
 
   const app = createApp(App)
   app.mount(container)
-  await tick()
+  await nextTick()
 
   let currentRows: Row[] = []
 
@@ -46,7 +46,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
     suite,
     async () => {
       rows.value = currentRows = buildRows(1_000)
-      await tick()
+      await nextTick()
     },
     { verify: expectRows(1_000) },
   )
@@ -56,7 +56,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
     suite,
     async () => {
       rows.value = currentRows = buildRows(1_000)
-      await tick()
+      await nextTick()
     },
     { verify: expectRows(1_000) },
   )
@@ -72,7 +72,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
         if (row) updated[i] = { ...row, label: `${row.label} !!!` }
       }
       rows.value = currentRows = updated
-      await tick()
+      await nextTick()
     },
     {
       // Reset labels before each run
@@ -82,7 +82,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
           return orig !== undefined ? { ...row, label: orig } : row
         })
         rows.value = currentRows
-        await tick()
+        await nextTick()
       },
       verify: expectRows(1_000),
     },
@@ -91,16 +91,24 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   // Re-create clean rows for remaining tests
   rows.value = currentRows = buildRows(1_000)
   originalLabels = currentRows.map((r) => r.label)
-  await tick()
+  await nextTick()
 
   await bench(
     'select row',
     suite,
     async () => {
       selectedId.value = currentRows[Math.floor(currentRows.length / 2)]?.id ?? null
-      await tick()
+      await nextTick()
     },
-    { verify: expectRowsWithSelected(1_000, 1) },
+    {
+      // deselect (untimed) so each timed run does a REAL selection,
+      // not a no-op re-select of the already-selected row
+      reset: async () => {
+        selectedId.value = null
+        await nextTick()
+      },
+      verify: expectRowsWithSelected(1_000, 1),
+    },
   )
 
   await bench(
@@ -114,7 +122,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
         updated[998] = tmp
       }
       rows.value = currentRows = updated
-      await tick()
+      await nextTick()
     },
     { verify: expectRows(1_000) },
   )
@@ -124,20 +132,28 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
     suite,
     async () => {
       rows.value = currentRows = []
-      await tick()
+      await nextTick()
     },
-    { verify: expectRows(0) },
+    {
+      // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
+      // not an already-empty one (median was 0µs without this)
+      reset: async () => {
+        rows.value = currentRows = buildRows(1_000)
+        await nextTick()
+      },
+      verify: expectRows(0),
+    },
   )
 
   rows.value = currentRows = buildRows(1_000)
-  await tick()
+  await nextTick()
 
   await bench(
     'create 10,000 rows',
     suite,
     async () => {
       rows.value = currentRows = buildRows(10_000)
-      await tick()
+      await nextTick()
     },
     { verify: expectRows(10_000) },
   )

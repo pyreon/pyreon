@@ -103,7 +103,17 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
       selectedTr = trElements[500] as HTMLElement
       selectedTr.className = 'selected'
     },
-    { verify: expectRowsWithSelected(1_000, 1) },
+    {
+      // deselect (untimed) so each timed run does a REAL selection,
+      // not a no-op re-select of the already-selected row
+      reset: () => {
+        if (selectedTr) {
+          selectedTr.className = ''
+          selectedTr = null
+        }
+      },
+      verify: expectRowsWithSelected(1_000, 1),
+    },
   )
 
   await bench(
@@ -137,7 +147,14 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
     async () => {
       renderAll([])
     },
-    { verify: expectRows(0) },
+    {
+      // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
+      // not an already-empty one (median was 0µs without this)
+      reset: () => {
+        renderAll(buildRows(1_000))
+      },
+      verify: expectRows(0),
+    },
   )
 
   // Re-create for the big test

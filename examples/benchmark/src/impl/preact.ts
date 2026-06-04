@@ -9,9 +9,9 @@ import { useEffect, useState } from 'preact/hooks'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 
-/** Wait for Preact's async batch flush (microtask + one macro turn) */
+/** Preact batches hook updates on a microtask — wait exactly that, no rAF. */
 function afterCommit(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+  return Promise.resolve()
 }
 
 interface Setters {
@@ -127,7 +127,14 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
     async () => {
       await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
     },
-    { verify: expectRowsWithSelected(1_000, 1) },
+    {
+      // deselect (untimed) so each timed run does a REAL selection,
+      // not a no-op re-select of the already-selected row
+      reset: async () => {
+        await setSelected(null)
+      },
+      verify: expectRowsWithSelected(1_000, 1),
+    },
   )
 
   await bench(
@@ -156,7 +163,14 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
       currentRows = []
       await setRows([])
     },
-    { verify: expectRows(0) },
+    {
+      // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
+      // not an already-empty one (median was 0µs without this)
+      reset: async () => {
+        await setRows(buildRows(1_000))
+      },
+      verify: expectRows(0),
+    },
   )
 
   currentRows = buildRows(1_000)

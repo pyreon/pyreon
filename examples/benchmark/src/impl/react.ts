@@ -8,15 +8,11 @@
  */
 import * as React from 'react'
 import * as ReactDOM from 'react-dom/client'
+import { flushSync } from 'react-dom'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 
 const { createElement: r, useState, useEffect, memo } = React
-
-/** Wait for React's DefaultLane commit: MessageChannel fires before rAF fires */
-function afterCommit(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
-}
 
 interface Setters {
   setRows: (rows: Row[]) => void
@@ -67,14 +63,14 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
   root.render(r(App, { onMounted: resolveSetters }))
   const { setRows: reactSetRows, setSelected: reactSetSelected } = await settersPromise
 
+  // flushSync forces React's commit SYNCHRONOUSLY — isolates reconcile+commit
+  // CPU from scheduler latency (no rAF / MessageChannel wait).
   const setRows = async (rows: Row[]) => {
-    reactSetRows(rows)
-    await afterCommit()
+    flushSync(() => reactSetRows(rows))
   }
 
   const setSelected = async (id: number | null) => {
-    reactSetSelected(id)
-    await afterCommit()
+    flushSync(() => reactSetSelected(id))
   }
 
   let currentRows: Row[] = []
@@ -136,7 +132,14 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
     async () => {
       await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
     },
-    { verify: expectRowsWithSelected(1_000, 1) },
+    {
+      // deselect (untimed) so each timed run does a REAL selection,
+      // not a no-op re-select of the already-selected row
+      reset: async () => {
+        await setSelected(null)
+      },
+      verify: expectRowsWithSelected(1_000, 1),
+    },
   )
 
   await bench(
@@ -165,7 +168,14 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
       currentRows = []
       await setRows([])
     },
-    { verify: expectRows(0) },
+    {
+      // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
+      // not an already-empty one (median was 0µs without this)
+      reset: async () => {
+        await setRows(buildRows(1_000))
+      },
+      verify: expectRows(0),
+    },
   )
 
   currentRows = buildRows(1_000)

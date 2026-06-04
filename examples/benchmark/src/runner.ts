@@ -93,24 +93,25 @@ export interface BenchOptions {
    * forces the layout flush. Use this to wait for the framework's
    * scheduler to commit pending DOM updates.
    *
-   * Frameworks that need this:
-   * - **React, Preact**: `rAF + setTimeout(0)` for MessageChannel scheduler
-   * - **Vue**: `Promise.resolve()` (microtask) for its update queue
-   * - **Svelte 5**: `flushSync()` from the runtime
+   * Each impl uses the TIGHTEST commit that still passes DOM verification,
+   * so the timed region isolates framework work and minimises scheduler
+   * latency (objectivity pass — see CLAUDE.md → "Benchmark Results"):
+   * - **React, Svelte 5**: `flushSync()` — commits SYNCHRONOUSLY, zero
+   *   scheduler wait, measures pure reconcile+commit CPU.
+   * - **Vue**: `await nextTick()` — one microtask (Vue's real flush
+   *   boundary), no rAF.
+   * - **Preact**: `await Promise.resolve()` — one microtask (Preact's real
+   *   batch-flush boundary), no rAF.
+   * - **Vanilla / Pyreon (raw + compiled) / Solid**: nothing — signal/DOM
+   *   writes are synchronous; the DOM is committed when `fn()` returns.
    *
-   * Frameworks that DON'T need this (omit the option):
-   * - **Vanilla**: truly synchronous DOM writes
-   * - **Pyreon (raw + compiled)**: signal write → effects → DOM synchronously
-   * - **Solid**: same as Pyreon
-   *
-   * Pre-fix: every impl awaited `tick()` (setTimeout(0)) inside its bench
-   * callback. That works for VDOM frameworks (their scheduler needs the
-   * macrotask) but adds ~4ms of macrotask-floor delay to synchronous
-   * signal frameworks that don't need any wait. The fix: opt-in per
-   * framework. Synchronous frameworks now measure their TRUE commit cost;
-   * VDOM frameworks measure scheduler-wait-included cost (as they always
-   * needed to). Both are honest. The audit + measurement that drove this
-   * is documented in CLAUDE.md → "Benchmark Results" → "Methodology".
+   * The earlier methodology used `rAF + setTimeout(0)` for React/Preact,
+   * which folded a full animation-frame of browser scheduling latency into
+   * their timed region and inflated their small-list numbers. `flushSync`
+   * (React/Svelte) and a single microtask (Vue/Preact) are the tightest
+   * waits that still commit the DOM, so the comparison is closer to pure
+   * framework CPU. Trade-off: `flushSync` is not React's default async path,
+   * so these numbers are CPU-objective, not real-world-async-latency.
    */
   commit?: () => void | Promise<void>
 }
