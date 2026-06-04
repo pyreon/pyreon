@@ -223,7 +223,13 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
   }
 }
 
-function schedulePrefetch(
+// Exported so `island()` (in `./island`) can SELF-HYDRATE in hosts that
+// re-mount route content client-side (e.g. `@pyreon/zero`, where the route is
+// a reactive child of RouterView — the SSR DOM is discarded + re-mounted, so a
+// one-shot `hydrateIslandsAuto` scan races the async route mount). island()
+// dynamically imports these from its `onMount`, so the scheduler stays
+// client-only + out of the SSR graph, and there's no static client↔island cycle.
+export function schedulePrefetch(
   el: HTMLElement,
   loader: IslandLoader,
   prefetch: PrefetchStrategy,
@@ -332,7 +338,7 @@ export function hydrateIslandsAuto(registry: AutoIslandRegistry): () => void {
   return hydrateIslands(registry.__pyreonIslandRegistry)
 }
 
-function scheduleHydration(
+export function scheduleHydration(
   el: HTMLElement,
   loader: IslandLoader,
   propsJson: string,

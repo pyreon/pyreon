@@ -76,7 +76,7 @@
  */
 
 import type { ComponentFn, Props, VNode } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
 import { encodeIslandProps } from './island-codec'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -128,9 +128,7 @@ export function island<P extends Props = Props>(
 ): ComponentFn<P> & IslandMeta {
   const { name, hydrate = 'load', prefetch = 'none' } = options
 
-  const IslandWrapper = async function IslandWrapper(props: P): Promise<VNode | null> {
-    const mod = await loader()
-    const Comp = typeof mod === 'function' ? mod : mod.default
+  const IslandWrapper = function IslandWrapper(props: P): VNode | Promise<VNode | null> {
     const serializedProps = serializeIslandProps(props, name)
 
     // Only emit data-prefetch when it actually changes behavior. `none` is the
@@ -144,7 +142,45 @@ export function island<P extends Props = Props>(
       attrs['data-prefetch'] = prefetch
     }
 
-    return h('pyreon-island', attrs, h(Comp, props))
+    // ── CLIENT: the island OWNS its hydration lifecycle ──────────────────────
+    // Render the `<pyreon-island>` marker, then on mount load the chunk + mount
+    // the component INTO the marker per the `hydrate` strategy. This is robust
+    // whether the host hydrated the page (a static islands app — where island()
+    // only ever runs on the server, so this branch never fires there) or
+    // RE-MOUNTED the route client-side. `@pyreon/zero` does the latter: its
+    // route is a reactive child of RouterView, so the SSR DOM is discarded and
+    // re-mounted, which (a) makes an async inline render here throw with no
+    // Suspense boundary, and (b) races/defeats a one-shot external
+    // `hydrateIslandsAuto` scan. Owning hydration here sidesteps both: no inline
+    // async render, no dependency on external scan timing.
+    if (typeof document !== 'undefined') {
+      if (hydrate === 'never') return h('pyreon-island', attrs)
+      let islandEl: HTMLElement | null = null
+      onMount(() => {
+        if (!islandEl) return
+        // Scheduler is client-only — the dynamic import keeps it out of the SSR
+        // module graph and avoids a static `client` ↔ `island` import cycle.
+        void import('./client').then(({ scheduleHydration, schedulePrefetch }) => {
+          if (!islandEl) return
+          const isleLoader = loader as () => Promise<{ default: ComponentFn } | ComponentFn>
+          if (prefetch !== 'none') schedulePrefetch(islandEl, isleLoader, prefetch)
+          scheduleHydration(islandEl, isleLoader, serializedProps, hydrate)
+        })
+      })
+      return h('pyreon-island', {
+        ...attrs,
+        ref: (e: Element | null) => {
+          islandEl = e as HTMLElement | null
+        },
+      })
+    }
+
+    // ── SERVER (SSR/SSG): render the component INSIDE the marker ─────────────
+    // so the static HTML carries the island content (SEO / no-JS / first paint).
+    return loader().then((mod) => {
+      const Comp = typeof mod === 'function' ? mod : mod.default
+      return h('pyreon-island', attrs, h(Comp, props))
+    })
   }
 
   // Attach metadata so tooling (CLI project scanner, MCP, future codegen) can

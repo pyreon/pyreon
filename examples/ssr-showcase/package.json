@@ -9,10 +9,12 @@
     "build:subpath": "vite build --config vite.config.subpath.ts",
     "build:i18n": "vite build --config vite.config.i18n.ts",
     "build:i18n-prefix": "vite build --config vite.config.i18n-prefix.ts",
+    "build:islands": "vite build --config vite.config.islands.ts",
     "preview": "vite preview",
     "preview:subpath": "vite preview --config vite.config.subpath.ts",
     "preview:i18n": "vite preview --config vite.config.i18n.ts",
     "preview:i18n-prefix": "vite preview --config vite.config.i18n-prefix.ts",
+    "preview:islands": "vite preview --config vite.config.islands.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
