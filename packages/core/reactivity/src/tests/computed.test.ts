@@ -472,4 +472,69 @@ describe('computed', () => {
       expect(outerRuns).toBe(2) // not 3 or more (no double-fire)
     })
   })
+
+  describe('memory shape — prototype + plain fields (perf optimization lock)', () => {
+    // Locks the ~45%-smaller computed shape (PR perf/computed-prototype-shape):
+    // `direct` + the `_v` getter live on a shared `ComputedProto` (NOT own
+    // per-instance properties), and `_d1`/`_d` are plain DATA fields (NOT
+    // `Object.defineProperty` accessor getters, which forced V8 dictionary /
+    // slow-properties mode). Bisect-verified: reverting computed.ts to the
+    // per-instance-closures + 3×defineProperty shape flips every assertion
+    // here (own `_v`/`direct`, accessor `_d1`).
+    test('lazy computed: methods on prototype, state as plain data fields', () => {
+      const s = signal(2)
+      const c = computed(() => s() * 2)
+      c() // initialize
+
+      // `_v` + `direct` are inherited from the shared prototype, not own props.
+      expect(Object.hasOwn(c, '_v')).toBe(false)
+      expect(Object.hasOwn(c, 'direct')).toBe(false)
+      // …but still fully functional through the prototype chain.
+      expect((c as unknown as { _v: number })._v).toBe(4)
+      expect(typeof c.direct).toBe('function')
+
+      // `_d1` is a plain DATA field — no accessor getter (the dictionary-mode
+      // trigger we removed). Pre-refactor this was a defineProperty getter.
+      const d1Desc = Object.getOwnPropertyDescriptor(c, '_d1')
+      expect(d1Desc).toBeDefined()
+      expect(d1Desc?.get).toBeUndefined()
+      expect(Object.hasOwn(c, '_d1')).toBe(true)
+      expect(Object.hasOwn(c, '_d')).toBe(true)
+
+      // setPrototypeOf(_, Function.prototype) contract preserved.
+      expect(c instanceof Function).toBe(true)
+
+      // Functional sanity on the new shape: reactivity + direct + dispose.
+      let direct = 0
+      const stop = c.direct(() => {
+        direct++
+      })
+      s.set(5)
+      expect(c()).toBe(10)
+      expect(direct).toBe(1)
+      stop()
+      c.dispose()
+    })
+
+    test('equals computed: same prototype shape', () => {
+      const s = signal(1)
+      const c = computed(() => (s() > 5 ? 'big' : 'small'), { equals: (a, b) => a === b })
+      c() // 'small'
+      expect(Object.hasOwn(c, '_v')).toBe(false)
+      expect(Object.hasOwn(c, 'direct')).toBe(false)
+      expect(Object.getOwnPropertyDescriptor(c, '_d1')?.get).toBeUndefined()
+      expect(c instanceof Function).toBe(true)
+      // equals still suppresses notifications when the dep changes but the
+      // derived value doesn't, on the new shape.
+      let runs = 0
+      c.direct(() => {
+        runs++
+      })
+      s.set(3) // dep changed (1→3) but result 'small' unchanged → suppressed
+      expect(runs).toBe(0)
+      s.set(9) // result 'small' → 'big' → notifies
+      expect(c()).toBe('big')
+      expect(runs).toBe(1)
+    })
+  })
 })
