@@ -289,6 +289,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 ## Zero (Full-Stack Framework)
 
 - @pyreon/zero — Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n. mode: 'ssg' returns Plugin[] (the SSG plugin auto-attaches a companion `ssgPlugin()`); Vite's plugins array flattens nested arrays so `plugins: [pyreon(), zero()]` works as-is.
+- @pyreon/zero-content — Compile-time .md/.mdx → Pyreon JSX, typed content collections, convention-scanned MDX components
 
 @pyreon/zero — full-stack meta-framework built on Pyreon + Vite:
 - Client-safe main entry: `@pyreon/zero` = client components only, `@pyreon/zero/server` = server-only

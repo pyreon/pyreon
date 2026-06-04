@@ -1,0 +1,74 @@
+{
+  "name": "@pyreon/zero-content",
+  "version": "0.0.0",
+  "description": "Pyreon Zero — content layer for markdown-driven Pyreon sites. Compile-time .md/.mdx → Pyreon JSX, typed content collections (zod), convention-scanned MDX components.",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/zero-content#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/zero/zero-content"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./plugin": {
+      "bun": "./src/plugin.ts",
+      "import": "./lib/plugin.js",
+      "types": "./lib/types/plugin.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "!src/tests",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/zero": "workspace:^"
+  },
+  "dependencies": {
+    "@pyreon/head": "workspace:^",
+    "@pyreon/router": "workspace:^",
+    "gray-matter": "^4.0.3",
+    "mdast-util-to-string": "^4.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/test-utils": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
+    "@types/mdast": "^4.0.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Vit Bokisch"
+}

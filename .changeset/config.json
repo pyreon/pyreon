@@ -68,6 +68,7 @@
       "@pyreon/ui-core",
       "@pyreon/unistyle",
       "@pyreon/zero-cli",
+      "@pyreon/zero-content",
       "@pyreon/create-zero",
       "@pyreon/meta",
       "@pyreon/zero",

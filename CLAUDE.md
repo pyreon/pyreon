@@ -227,9 +227,10 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 ### Zero (Full-Stack Meta-Framework)
 
-| Package        | Description                                                                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@pyreon/zero` | Full-stack meta-framework: file-system routing, SSR/SSG/ISR/SPA, API routes, server actions, theme, fonts, image optimization, SEO, adapters |
+| Package                | Description                                                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/zero`         | Full-stack meta-framework: file-system routing, SSR/SSG/ISR/SPA, API routes, server actions, theme, fonts, image optimization, SEO, adapters                         |
+| `@pyreon/zero-content` | Content layer for markdown-driven Pyreon sites: compile-time `.md` → Pyreon JSX, typed collections (zod), MDX components scanned from `src/mdx/`, tight zero coupling |
 
 #### @pyreon/zero — Key Features
 
