@@ -1073,3 +1073,187 @@ const Dashboard = defineComponent(() => {
 | `HeadContextValue`     | The context value interface             |
 | `HeadProviderProps`    | Props for `HeadProvider`                |
 | `RenderWithHeadResult` | Return type of `renderWithHead`         |
+
+## Script Tags & Defer Default
+
+Pyreon's `useHead()` automatically optimizes `<script>` tags for non-blocking page load. External scripts (those with a `src` attribute) default to `defer` unless you explicitly choose a different load strategy.
+
+### Defer by Default: Modern Web Performance
+
+By default, any external script without an explicit load strategy gets `defer`:
+
+```tsx
+useHead({
+  script: [
+    { src: 'https://cdn.example.com/app.js' },
+  ],
+})
+// Renders: <script src="https://cdn.example.com/app.js" defer></script>
+```
+
+This aligns with [Lighthouse "Eliminate render-blocking resources"](https://developers.google.com/web/tools/lighthouse) and [Core Web Vitals](https://web.dev/vitals/) — render-blocking scripts harm page load performance and SEO. By deferring by default, Pyreon follows modern best practice: the script fetches in parallel with HTML parsing and executes after the document is ready.
+
+### When the Default is Applied
+
+The defer default is added **only when ALL of these are true:**
+
+1. The script has a `src` attribute (external)
+2. No `type` is set (or would default to empty, not a special type)
+3. No `async` is set
+4. No `defer` is already set
+
+```tsx
+useHead({
+  script: [
+    { src: '/app.js' },  // ✓ Defer applied: <script src="/app.js" defer></script>
+    { src: '/app.js', async: '' },  // ✗ Defer NOT applied; author chose async
+    { src: '/app.js', defer: '' },  // ✗ Defer NOT applied; already set
+    { src: '/app.js', type: 'module' },  // ✗ Defer NOT applied; modules defer by spec
+    { src: '/app.js', type: 'importmap' },  // ✗ Defer NOT applied; importmap must run synchronously
+  ],
+})
+```
+
+### Inline Scripts (No `src`)
+
+Inline scripts are **never** modified — they are explicitly synchronous by design:
+
+```tsx
+useHead({
+  script: [
+    { children: 'console.log("runs immediately")' },
+  ],
+})
+// Renders: <script>console.log("runs immediately")</script>  (no defer added)
+```
+
+Inline scripts execute synchronously during parsing. If you need async behavior with inline content, use the `async: ''` attribute on an external script file or restructure your code.
+
+### Module Scripts (`type="module"`)
+
+Module scripts are **never** given an explicit `defer` attribute because modules defer by the HTML spec:
+
+```tsx
+useHead({
+  script: [
+    { src: '/app.mjs', type: 'module' },
+  ],
+})
+// Renders: <script src="/app.mjs" type="module"></script>
+// (defer is implicit per spec, no need to add it)
+```
+
+Module scripts also:
+- Parse and execute in document order
+- Support `import` / `export` syntax
+- Are exempt from `<script>` tag injection and inline `eval()` restrictions under strict CSP
+
+### Import Maps
+
+Import maps **must** execute synchronously and are never deferred, even when they have a `src`:
+
+```tsx
+useHead({
+  script: [
+    { src: '/import-map.json', type: 'importmap' },
+  ],
+})
+// Renders: <script src="/import-map.json" type="importmap"></script>
+// (No defer; importmap must run before any module executes)
+```
+
+### Async Scripts
+
+Set `async: ''` to load and execute the script as soon as it downloads (parallel to parsing, non-blocking):
+
+```tsx
+useHead({
+  script: [
+    { src: 'https://cdn.example.com/analytics.js', async: '' },
+  ],
+})
+// Renders: <script src="https://cdn.example.com/analytics.js" async></script>
+```
+
+The `async` attribute is suitable for independent scripts (analytics, ads) that don't depend on the DOM or other scripts.
+
+### Opting Out: Explicit Author Intent
+
+If you need a render-blocking script (e.g., a critical polyfill), explicitly set `type` or `async` to override the default:
+
+```tsx
+// Override by setting type
+useHead({
+  script: [
+    { src: '/critical-polyfill.js', type: '' },  // Explicit empty type disables defer default
+  ],
+})
+// Renders: <script src="/critical-polyfill.js"></script>
+// (Blocks parsing; use sparingly and only for critical content)
+```
+
+Or use a custom wrapper if you need this pattern frequently:
+
+```tsx
+function criticalScript(src: string) {
+  return { src, type: '' }  // type: '' blocks the defer default
+}
+
+useHead({
+  script: [criticalScript('/critical.js')],
+})
+```
+
+### JSON-LD Structured Data
+
+The `jsonLd` convenience property is unaffected by the defer default — it emits `type="application/ld+json"`, which is not executable JavaScript:
+
+```tsx
+useHead({
+  jsonLd: {
+    '@type': 'Article',
+    headline: 'My Post',
+  },
+})
+// Renders: <script type="application/ld+json">{"@type":"Article",...}</script>
+// (No defer, because type is set)
+```
+
+### Recap: Script Attributes for `useHead`
+
+| Attribute | Type | Purpose |
+| --- | --- | --- |
+| `src` | string | External script URL |
+| `type` | string | MIME type or module type (e.g. `"module"`, `"importmap"`, `"application/ld+json"`) |
+| `async` | string | Load asynchronously (blocks on download, not parsing) |
+| `defer` | string | Defer execution until document is parsed |
+| `crossorigin` | string | CORS mode (`"anonymous"`, `"use-credentials"`) |
+| `integrity` | string | Subresource Integrity (SRI) hash |
+| `nomodule` | string | Exclude from module-supporting browsers |
+| `referrerpolicy` | string | Referrer policy for the fetch |
+| `fetchpriority` | string | Fetch priority hint (`"high"`, `"low"`, `"auto"`) |
+| `children` | string | Inline script content (mutually exclusive with `src`) |
+
+### Real-World Example
+
+```tsx
+function App() {
+  useHead({
+    script: [
+      // Defer applied automatically — analytics can wait
+      { src: 'https://cdn.example.com/analytics.js' },
+      
+      // Async — ad server, independent of page
+      { src: 'https://ads.example.com/ads.js', async: '' },
+      
+      // Module — modern browser feature detection, defers by spec
+      { src: '/feature-detect.mjs', type: 'module' },
+      
+      // Inline — critical config (if truly needed, keep small)
+      { children: 'window.config = { apiUrl: "/api" };' },
+    ],
+  })
+
+  return <div>My App</div>
+}
+```

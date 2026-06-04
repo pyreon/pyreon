@@ -76,7 +76,8 @@ describe('gen-docs — reactivity snapshot', () => {
     // Vue parity (markRaw, shallowReactive, onScopeDispose) + 1
     // getReactiveTrace (reactive-trace error-report enrichment) + 2
     // reactive-devtools bridge (activateReactiveDevtools, getReactiveGraph).
-    expect(Object.keys(record).length).toBe(28)
+    expect(Object.keys(record).length).toBe(30)
+    expect(Object.keys(record)).toContain('reactivity/wrapSignal')
     expect(Object.keys(record)).toContain('reactivity/signal')
     expect(Object.keys(record)).toContain('reactivity/createResource')
     // Spot-check the flagship API — signal is the core primitive

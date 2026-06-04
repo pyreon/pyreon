@@ -1705,3 +1705,129 @@ editor.redo() // current() === "Hello, World"
 <APICard name="why" type="function" signature="why(): void" description="Traces the next signal update to console, showing which signal triggered which effects." />
 
 <APICard name="inspectSignal" type="function" signature="inspectSignal(signal: Signal<unknown>): void" description="Prints a signal's current state, subscribers, and debug info to console." />
+
+## Signal Facades with `wrapSignal`
+
+When you need a signal whose write performs a side effect—persisting to localStorage, emitting a patch to a server, validating input—use `wrapSignal()` to build a facade over a base signal.
+
+```ts
+import { signal, wrapSignal } from '@pyreon/reactivity'
+
+const base = signal(0)
+const wrapped = wrapSignal(base, {
+  set: (v) => {
+    base.set(v)                    // update the base
+    localStorage.setItem('key', JSON.stringify(v))  // persist
+  },
+})
+
+wrapped.set(5)
+console.log(wrapped())  // 5 (reads from base)
+console.log(localStorage.getItem('key'))  // "5"
+```
+
+### Why not hand-roll a facade?
+
+The canonical foot-gun is building a facade by hand—wrapping the signal in an object shape:
+
+```ts
+// ❌ BROKEN — hand-rolled facade
+const facade = {
+  ...base,
+  set: (v) => { base.set(v); persist() },
+}
+```
+
+This LOOKS like a signal but silently breaks compiled templates. The Pyreon compiler emits `_bindText(facade, textNode)` for text bindings, which reads `facade._v` directly to skip the function call. A hand-rolled facade exposes `.direct()` from `base` but forgets `_v`—so the fast path sees `undefined` and renders the binding empty.
+
+`wrapSignal()` guards against this by construction: it forwards BOTH `_v` (via `Object.defineProperty` getter) and `.direct()` together, so the mistake is structurally impossible.
+
+```ts
+// ✅ CORRECT — wrapSignal handles it
+const wrapped = wrapSignal(base, {
+  set: (v) => { base.set(v); persist() },
+})
+// The wrapped facade forwards _v, .direct(), .peek(), .subscribe()...
+// compiled bindings work, hand-rolled ones don't.
+```
+
+### Per-consumer identity
+
+`wrapSignal()` returns a distinct callable each time, so if you need independent subscription/refcount semantics over a SHARED base, you get it for free:
+
+```ts
+const base = signal(0)
+const a = wrapSignal(base, { set: (v) => base.set(v) })
+const b = wrapSignal(base, { set: (v) => base.set(v) })
+
+expect(a).not.toBe(b)  // different identities
+expect(a()).toBe(b())  // same value (shared base)
+
+a.set(5)
+expect(b()).toBe(5)  // both read the shared base
+```
+
+This is essential for subscription patterns where consumers track `.subscribe()` handles for independent cleanup.
+
+### Custom `update` behavior
+
+By default, `update(fn)` is sugar for `set(fn(peek()))`. Override it for custom coalescing or batch semantics:
+
+```ts
+const writes: number[] = []
+const wrapped = wrapSignal(base, {
+  set: (v) => {
+    writes.push(v)
+    base.set(v)
+  },
+  update: (fn) => {
+    const next = fn(base.peek())
+    // Custom update: maybe debounce, maybe validate before calling set
+    if (next >= 0) {
+      wrapped.set(next)  // routes through custom set
+    }
+  },
+})
+
+wrapped.update(n => n + 1)  // custom update runs
+expect(writes).toContain(1)
+```
+
+### Real-world: persistence + reactivity
+
+A common pattern is wrapping a persisted signal:
+
+```ts
+const baseCount = signal(JSON.parse(localStorage.getItem('count') ?? '0'))
+
+const count = wrapSignal(baseCount, {
+  set: (v) => {
+    baseCount.set(v)
+    localStorage.setItem('count', JSON.stringify(v))
+  },
+})
+
+effect(() => {
+  console.log('Count is now:', count())
+})
+
+count.set(5)  // persists + triggers effect
+```
+
+### Delegation chain
+
+All reads delegate to `base`:
+
+- `wrapped()` → `base()`
+- `wrapped.peek()` → `base.peek()`
+- `wrapped.subscribe(listener)` → `base.subscribe(listener)`
+- `wrapped.direct(updater)` → `base.direct(updater)`
+- `wrapped.debug()` → `base.debug()`
+- `wrapped.label` (get/set) ↔ `base.label`
+
+Writes are intercepted:
+
+- `wrapped.set(v)` → custom `set` handler
+- `wrapped.update(fn)` → custom `update` handler (or default `set(fn(peek()))`)
+
+The internal `_v` field is forwarded live via property getter, so the compiler's fast path always sees the current value.

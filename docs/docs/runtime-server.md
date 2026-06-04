@@ -1170,3 +1170,108 @@ The `<!--k:key-->` comments allow the client-side hydrator to match server-rende
 | `renderToStream(root)`            | `(VNode \| null) => ReadableStream<string>`                    | Render VNode tree to progressive HTML stream          |
 | `runWithRequestContext(fn)`       | `<T>(fn: () => Promise<T>) => Promise<T>`                      | Run function with isolated context and store registry |
 | `configureStoreIsolation(setter)` | `(fn: (provider: () => Map<string, unknown>) => void) => void` | Enable per-request store isolation for concurrent SSR |
+
+## HTML & SVG Attribute Mapping
+
+The SSR renderer automatically maps JSX camelCase prop names to their canonical HTML or SVG attribute forms. This ensures that framework-ergonomic prop names compile to spec-compliant HTML.
+
+### HTML Attribute Conversion
+
+Pyreon's JSX types use camelCase for all props (following React conventions for TypeScript ergonomics), but the renderer maps them to their correct HTML form:
+
+**Renamed attributes:**
+- `className` → `class`
+- `htmlFor` → `for`
+
+**CamelCase → all-lowercase (no dash):**
+
+Standard HTML attributes that the spec defines as lowercase with no separators are mapped exactly:
+
+```tsx
+<img
+  srcSet="/a.jpg 1x, /b.jpg 2x"
+  fetchPriority="high"
+  crossOrigin="anonymous"
+  referrerPolicy="no-referrer"
+/>
+// => <img srcset="/a.jpg 1x, /b.jpg 2x" fetchpriority="high" crossorigin="anonymous" referrerpolicy="no-referrer" />
+```
+
+Without this mapping, the kebab-case fallback (`src-set`, `fetch-priority`, etc.) would be emitted — non-standard names that browsers silently ignore. This was the root cause of the `<Image priority>` bug: the `fetchpriority` hint on `<img>` tags was being emitted as `fetch-priority`, which the preload scanner ignored.
+
+A comprehensive list of mapped lowercase attrs: `srcSet`, `fetchPriority`, `imageSrcSet`, `imageSizes`, `crossOrigin`, `referrerPolicy`, `playsInline`, `noModule`, `tabIndex`, `readOnly`, `maxLength`, `minLength`, `colSpan`, `rowSpan`, `formNoValidate`, `formEncType`, `formMethod`, `formTarget`, `formAction`, `autoFocus`, `autoComplete`, `autoPlay`, `autoCapitalize`, `autoCorrect`, `dateTime`, `dirName`, `encType`, `inputMode`, `enterKeyHint`, `hrefLang`, `isMap`, `itemId`, `itemProp`, `itemRef`, `itemScope`, `itemType`, `spellCheck`, `contentEditable`, `noValidate`, `useMap`, `frameBorder`, `marginHeight`, `marginWidth`, `allowFullScreen`, `allowTransparency`, `mediaGroup`, `controlsList`, `disablePictureInPicture`, `disableRemotePlayback`, `radioGroup`, `srcLang`, `popoverTarget`, `popoverTargetAction`.
+
+**Kebab-case attributes:**
+
+Two HTML attributes are genuinely kebab-case in the spec and must use dashes:
+
+```tsx
+<form acceptCharset="UTF-8">
+  <meta httpEquiv="refresh" />
+</form>
+// => <form accept-charset="UTF-8"><meta http-equiv="refresh" /></form>
+```
+
+### SVG Attribute Conversion
+
+SVG attributes split into two classes per the SVG specification:
+
+**Preserved camelCase (SVG canonical form):**
+
+These attributes MUST stay in their exact camelCase form or browsers silently ignore them:
+
+```tsx
+<svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" />
+// => <svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" />
+```
+
+Other camelCase SVG attrs that must be preserved: `gradientUnits`, `gradientTransform`, `patternUnits`, `patternContentUnits`, `patternTransform`, `attributeName`, `attributeType`, `baseFrequency`, `calcMode`, `clipPathUnits`, `diffuseConstant`, `edgeMode`, `filterRes`, `filterUnits`, `kernelMatrix`, `kernelUnitLength`, `keyPoints`, `keySplines`, `keyTimes`, `lengthAdjust`, `limitingConeAngle`, `markerHeight`, `markerUnits`, `markerWidth`, `maskContentUnits`, `maskUnits`, `numOctaves`, `pathLength`, `pointsAtX`, `pointsAtY`, `pointsAtZ`, `repeatCount`, `repeatDur`, `requiredExtensions`, `requiredFeatures`, `specularConstant`, `specularExponent`, `spreadMethod`, `startOffset`, `stdDeviation`, `stitchTiles`, `surfaceScale`, `systemLanguage`, `tableValues`, `targetX`, `targetY`, `textLength`, `xChannelSelector`, `yChannelSelector`, `zoomAndPan`.
+
+**CSS-property style kebab-case (SVG presentation attributes):**
+
+SVG presentation attributes follow CSS property naming: camelCase JSX props become kebab-case in the rendered attribute:
+
+```tsx
+<path
+  strokeWidth={2}
+  strokeLinecap="round"
+  strokeLinejoin="round"
+  fillOpacity={0.5}
+  textAnchor="middle"
+/>
+// => <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill-opacity="0.5" text-anchor="middle" />
+```
+
+A comprehensive list of SVG presentation attributes that become kebab-case: `strokeWidth`, `strokeLinecap`, `strokeLinejoin`, `strokeOpacity`, `strokeDasharray`, `strokeDashoffset`, `strokeMiterlimit`, `fillOpacity`, `fillRule`, `clipPath`, `clipRule`, `floodColor`, `floodOpacity`, `stopColor`, `stopOpacity`, `textAnchor`, `alignmentBaseline`, `baselineShift`, `dominantBaseline`, `letterSpacing`, `lightingColor`, `markerEnd`, `markerStart`, `markerMid`, `pointerEvents`, `shapeRendering`, `textDecoration`, `textRendering`, `vectorEffect`, `wordSpacing`, `writingMode`, `imageRendering`, `colorInterpolation`, `colorInterpolationFilters`, `colorRendering`, `glyphOrientationHorizontal`, `glyphOrientationVertical`.
+
+### The Attribute Resolution Algorithm
+
+The `toAttrName` function uses a three-tier lookup:
+
+1. **HTML_ATTRIBUTE_MAP first** — covers all HTML-spec renames and special cases
+2. **SVG_ATTRIBUTE_MAP second** — covers SVG-specific camelCase preservation and presentation attr kebab mappings
+3. **Fallback: camelCase → kebab-case** — for unknown props (preserves custom data attributes like `dataTestId` → `data-test-id`)
+
+This order ensures that shared attrs (like `tabIndex` in both HTML and SVG) use the HTML definition, and SVG-only attrs are handled correctly.
+
+### Back-Compatibility: User-Written Kebab Attrs
+
+Code that manually writes kebab attributes still works:
+
+```tsx
+// Both forms render identically:
+<path strokeWidth={2} />
+<path {'stroke-width'}: {2} />
+// Both produce: stroke-width="2"
+```
+
+The renderer passes through any prop name that has no uppercase characters, so user-written kebab-case is never munged.
+
+### Single-Word SVG Attrs
+
+Lowercase SVG attributes (`cx`, `cy`, `r`, `fill`, `stroke`) have no uppercase characters and pass through unchanged:
+
+```tsx
+<circle cx={12} cy={12} r={5} fill="red" stroke="blue" />
+// => <circle cx="12" cy="12" r="5" fill="red" stroke="blue" />
+```

@@ -453,6 +453,46 @@ getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)`,
 - Reading \`node.value\` for non-string state as the real value — it is a bounded, safely-stringified PREVIEW (never a raw ref — no pinning). Inspect the signal directly for the live value
 - Expecting fires for every write in a long-running app — \`getReactiveFires()\` is a fixed-size ring; older entries roll off`,
   },
+
+  'reactivity/wrapSignal': {
+    signature: '<T>(base: Signal<T>, options: WrapSignalOptions<T>) => Signal<T>',
+    example: `const base = signal(0)
+const wrapped = wrapSignal(base, {
+  set: (v) => {
+    base.set(v)
+    localStorage.setItem('key', JSON.stringify(v))
+  },
+})
+wrapped.set(5)  // writes through custom logic
+console.log(wrapped())  // 5 (reads from base)`,
+    notes: `Create a signal facade over a base signal with custom write behavior. The canonical way to build a signal whose write runs a side effect (persistence, validation, patch emission). Reads and the internal \`_v\` field are delegated to \`base\`, so the facade satisfies the full signal contract the compiler's fast paths depend on — a facade that exposes \`.direct()\` but forgets \`_v\` (or vice-versa) silently binds to \`undefined\` and renders empty. \`wrapSignal\` forwards both by construction, making hand-rolled facades structurally impossible to get wrong. See also: signal, effect, computed.`,
+    mistakes: `- Forgetting to call \`base.set(value)\` inside the custom \`set\` handler — the signal's internal \`_v\` never updates, so reads stall at the old value and compiled fast paths see stale data.
+- Hand-rolling a facade that exposes \`.direct()\` but not the \`_v\` property — the compiler's \`_bindText\` fast path reads \`source._v\` directly to skip the function call; without it, text bindings render empty even though \`()\` works.
+- Capturing the \`base\` signal reference in closure and forgetting to return the facade itself — callers that track per-instance subscription identity (e.g. \`.remove()\` on shared state) break because every call returns the same identity.
+- Using \`wrapSignal\` to add tracking to a signal that's written from multiple code paths without coordinating in the custom \`set\` handler — the side effect runs on EVERY write, including batch-deferred ones; if other code writes directly to \`base\` it bypasses the facade.
+- Expecting the custom \`update\` option to be optional AND have a default — if not provided, it defaults to \`set(fn(base.peek()))\`, which may not match your intent if \`set\` has expensive side effects (it will run for every update, even pure derive ops).`,
+  },
+
+  'reactivity/WrapSignalOptions': {
+    signature: 'interface WrapSignalOptions<T> { set: (value: T) => void; update?: (fn: (current: T) => T) => void }',
+    example: `const store = createStore({ count: 0 })
+const countSig = signal(store.count)
+const wrapped = wrapSignal(countSig, {
+  set: (v) => {
+    countSig.set(v)
+    store.count = v  // dual-write to store
+  },
+  update: (fn) => {
+    const next = fn(countSig.peek())
+    wrapped.set(next)  // coordinated update
+  },
+})`,
+    notes: `Configuration object for \`wrapSignal()\`. The \`set\` handler runs in place of the base signal's \`.set()\`; call through to \`base.set(value)\` when the value should actually update. The optional \`update\` handler defaults to \`set(fn(peek()))\` — override it if you need custom batch or coalescing behavior that \`.set()\` alone doesn't express. See also: wrapSignal, Signal.`,
+    mistakes: `- \`set\` handler not calling through to \`base.set()\` — the wrapped signal's value never updates internally, all reads stall.
+- Providing \`update\` that doesn't eventually call \`set\` — reads won't reflect the update unless \`set\` is involved in the chain.
+- Expecting the default \`update\` to coalesce rapid-fire calls — it calls \`set()\` directly, so if \`set\` has side effects (persist, emit), they fire on every update call without coalescing.
+- Using the same \`options\` object for multiple \`wrapSignal()\` calls on different bases — the \`set\` and \`update\` closures capture the wrong \`base\` reference if reused.`,
+  },
   // <gen-docs:api-reference:end @pyreon/reactivity>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1322,6 +1362,25 @@ provide(HeadContext, ctx)
 // ... render tree that calls useHead() ...
 const { tags, htmlAttrs, bodyAttrs } = ctx.resolve()`,
     notes: 'Manual factory for a `HeadContextValue` — only needed when wiring up a custom SSR pipeline that bypasses `renderWithHead`, or when running multiple isolated head contexts in the same process. The value exposes `add` / `remove` / `resolve` / `resolveTitleTemplate` / `resolveHtmlAttrs` / `resolveBodyAttrs` for full programmatic control. See also: HeadProvider, renderWithHead.',
+  },
+
+  'head/ScriptTag': {
+    signature: 'interface ScriptTag { src?: string; type?: string; async?: string; defer?: string; crossorigin?: string; integrity?: string; nomodule?: string; referrerpolicy?: string; fetchpriority?: string; children?: string }',
+    example: `// External script auto-gets defer unless author overrides
+useHead({
+  script: [
+    { src: '/app.js' },  // becomes: <script src="/app.js" defer></script>
+    { src: '/async.js', async: '' },  // author intent: <script src="/async.js" async></script>
+    { src: '/module.js', type: 'module' },  // module defers by spec: <script src="/module.js" type="module"></script>
+    { children: 'console.log(1)' },  // inline: <script>console.log(1)</script> (no defer added)
+  ]
+})`,
+    notes: `Standard \`<script>\` tag attributes passed to \`useHead({ script: [...] })\`. External scripts (with \`src\`) default to \`defer=''\` unless the author explicitly sets \`type\` (e.g. \`module\`), \`async\`, or \`defer\`. This prevents render-blocking—aligns with Lighthouse / Core Web Vitals best practice. Inline scripts (no \`src\`) are never touched; \`type="module"\` and \`type="importmap"\` skip the defer default per HTML spec (modules defer by spec; importmap executes synchronously). See also: UseHeadInput, useHead.`,
+    mistakes: `- Wrapping external scripts in \`defer: 'true'\` (boolean string) — use \`defer: ''\` (empty string) or omit it and let the default apply
+- Assuming inline scripts get deferred — they don't; defer only applies to external src + no explicit load strategy
+- Setting \`type="module"\` expecting defer to be added — modules are deferred by spec; adding defer is a no-op (and the code skips it)
+- Passing \`type="text/javascript"\` or \`type="application/javascript"\` then expecting defer — the \`type\` field blocks the default; use no \`type\` attr to get the default
+- Expecting JSON-LD via \`jsonLd\` convenience property to be affected by defer logic — \`jsonLd\` auto-wraps as \`type="application/ld+json"\`, so defer is never added (type blocks it)`,
   },
   // <gen-docs:api-reference:end @pyreon/head>
 
@@ -4787,24 +4846,34 @@ export const Brand = createNamedIcon({ logo }, { mode: 'image' })
   },
 
   'zero/Image': {
-    signature: '<Image src={url} alt={alt} width={w} height={h} priority={false} loading="lazy" placeholder={blurUrl} />',
+    signature: '<Image src={descriptor | url} alt={alt} width? height? optimize? priority loading="lazy" placeholder={blurUrl} /> — bi-modal `src`: a `?optimize` ProcessedImage descriptor (Shape A, dims inferred) OR a runtime string URL (Shape B, width+height then REQUIRED)',
     example: `import { Image } from '@pyreon/zero/image'
 import hero from './hero.jpg?optimize'
 
-// With imagePlugin — spreads optimized srcset + formats + dimensions
-<Image {...hero} alt="Hero" priority />
+// Shape A — descriptor as src (dims + srcset + formats inferred)
+<Image src={hero} alt="Hero" priority />
+// (legacy spread form still works: <Image {...hero} alt="Hero" />)
 
-// Manual
+// Shape B — runtime string URL: width + height REQUIRED
 <Image src="/hero.jpg" alt="Hero" width={1200} height={630} />
 
-// Raw mode — skip all optimization wrappers (custom layout)
+// Opt out of optimization for one image (bare <img>)
+<Image src={logo} alt="Logo" optimize={false} />
+
+// Force optimization back ON inside a <NoOptimize> boundary
+<NoOptimize>
+  <Image src={hero} alt="Hero" optimize />
+</NoOptimize>
+
+// Raw mode — skip ALL wrappers (custom layout)
 <Image src="/bg.jpg" alt="" width={400} height={300} raw />`,
-    notes: 'Default optimized image — lazy loading via IntersectionObserver, automatic width/height for CLS prevention, responsive srcset, multi-format via `<picture>`, blur-up placeholder, `fetchPriority="high"` for LCP images. Built on `createImage` so consumers can layer rocketstyle / custom wrappers on top via `createImage(MyStyledImage)` without losing the optimization pipeline. The `raw: true` escape hatch returns a bare `<img>` (no container, no lazy load, no aspect-ratio enforcement). See also: useImage, createImage, OptimizedImage, ImageProps, ImageRenderProps.',
-    mistakes: `- Forgetting \`width\` + \`height\` — both are REQUIRED for CLS prevention. The \`aspect-ratio\` CSS is computed from these; omitting them produces layout shift when the image loads
+    notes: `Default optimized image. **Bi-modal \`src\` (post-0.28)**: pass a \`?optimize\` descriptor as \`src\` (Shape A — width / height / srcset / formats / placeholder all carried by the descriptor, you supply only display props) OR a runtime string URL (Shape B — \`width\` + \`height\` are REQUIRED at the type level so a remote / signal-driven URL can't silently cause CLS). Optimization = lazy loading via IntersectionObserver, automatic aspect-ratio for CLS prevention, responsive srcset, multi-format \`<picture>\`, blur-up placeholder, \`fetchPriority="high"\` for LCP images. The \`optimize\` prop opts out / back in: \`false\` bypasses the pipeline and renders a bare \`<img>\`; \`true\` forces optimization ON even inside an outer \`<NoOptimize>\` boundary (caller intent wins); omitted respects the surrounding \`<NoOptimize>\` if present, else full optimization. Built on \`createImage\` so consumers layer rocketstyle / custom wrappers via \`createImage(MyStyledImage)\` without losing the pipeline. \`raw: true\` is the hard escape hatch — a bare \`<img>\` with no container, no lazy load, no aspect-ratio enforcement. See also: useImage, createImage, OptimizedImage, NoOptimize, ImageProps, ImageRenderProps.`,
+    mistakes: `- Passing a runtime string URL (Shape B) without \`width\` + \`height\` — both are REQUIRED at the type level for that shape (CLS prevention). Only the \`?optimize\` descriptor form (Shape A) infers them
 - Setting \`priority\` on below-the-fold images — \`priority\` disables lazy loading AND adds \`fetchPriority="high"\`. Reserve it for the LCP image only (typically the hero)
 - Setting \`loading="eager"\` AND \`priority\` — they're redundant; \`priority\` already implies eager. Pick one (\`priority\` is the LCP-marker; \`loading="eager"\` is the no-priority eager hint)
 - Using \`placeholder\` as a full-resolution image — it should be a tiny base64 data URI or a /placeholder.jpg (~1-2 KB). Large placeholders defeat the purpose by blocking initial paint
-- Spreading \`imagePlugin\` output (\`{...hero}\`) WITHOUT \`alt\` — \`alt\` is required for accessibility AND not auto-derived by the plugin. The TypeScript type enforces this
+- Expecting \`optimize={false}\` to still emit a srcset — \`false\` bypasses the WHOLE pipeline (bare \`<img>\`). It's for opting a single image OUT; use \`<NoOptimize>\` for a subtree and \`optimize\` (true) to opt one image back in
+- Reaching for the legacy spread (\`<Image {...hero} />\`) when the descriptor-as-\`src\` form (\`<Image src={hero} />\`) is now canonical and keeps \`alt\` a required, separate prop the type system enforces
 - Wrapping \`<Image>\` in a \`<picture>\` manually for WebP/AVIF — \`formats\` already does this via \`imagePlugin\`. Manual \`<picture>\` defeats the optimization`,
   },
 
@@ -4937,6 +5006,299 @@ const StatusScript = createScript((props) => (
 - Building a custom strategy machine in the wrapped component — the strategy is already resolved by \`useScript\`. The wrapped component just observes the resulting signals
 - Forwarding \`props.sentinelRef\` to multiple elements — \`useIntersectionObserver\` observes ONE element. Multi-ref forwarding produces undefined behavior (the last-attached element wins)
 - Expecting the wrapped component to fire \`onLoad\` / \`onError\` — those callbacks are on the \`ScriptProps\` (passed to the OUTER component), not on the wrapped component. The wrapped component reads \`props.loaded()\` / \`props.errored()\` signals to react to the same events`,
+  },
+
+  'zero/createImageRegistry': {
+    signature: '(entries: GlobRecord | Record<K, GlobEntry>, options?: ImageRegistryOptions): ImageRegistry<K>',
+    example: `const logos = createImageRegistry(
+  import.meta.glob('../assets/partners/*.png', { eager: true })
+)
+
+function PartnerLogos({ partners }: { partners: string[] }) {
+  return partners.map((name) => (
+    <Image src={logos(name)} alt={name + ' logo'} />
+  ))
+}`,
+    notes: `Collapses N hand-written image imports into one typed accessor. Takes Vite's \`import.meta.glob\` output (or a \`Record<string, ProcessedImage>\`) and returns a function that resolves a name to its full descriptor — width, height, srcset, placeholder, formats preserved end-to-end. Enables the icon-set / logo-list pattern: render the right image from a lookup, composing with the full optimization pipeline for free. By default aliases both \`basename.ext\` and \`basename\` (no extension) so you have multiple lookup styles; pass \`keyBy: 'path'\` to disable aliases when you have filename collisions across directories. See also: Image, OptimizedImage, ProcessedImage.`,
+    mistakes: `- Forgetting \`{ eager: true }\` on the glob — lazy imports return Promises, not descriptors, and the registry can't use them synchronously
+- Calling \`logos(name)\` without a fallback when the name might not exist throws in dev and crashes in prod — use \`logos(name, defaultDesc)\` instead
+- Relying on basename aliases when you have collisions (e.g., \`logos/strv.png\` and \`icons/strv.png\` both named \`strv.png\`) — use \`keyBy: 'path'\` to disambiguate
+- Assuming the registry preserves the full glob path — it aliases to basename by default, so \`r('strv')\` and \`r('logos/strv.png')\` both work
+- Not calling \`.has(name)\` before \`.get(name)\` when the name is user-supplied, leaving yourself vulnerable to throwing errors`,
+  },
+
+  'zero/NoOptimize': {
+    signature: '(props: { disabled?: boolean, children?: VNodeChild }): VNodeChild',
+    example: `// Disable optimization for an entire icon library
+export default function IconLibraryRoute() {
+  return (
+    <NoOptimize>
+      <Image src={icon1} alt="Heart" width={24} height={24} />
+      <Image src={icon2} alt="Star"  width={24} height={24} />
+    </NoOptimize>
+  )
+}
+
+// Mixed: outer disables, inner re-enables
+<NoOptimize>
+  <Icons />
+  <NoOptimize disabled>
+    <Image src={hero} alt="Hero" /> {/* still optimized */}
+  </NoOptimize>
+</NoOptimize>`,
+    notes: 'Subtree boundary that disables `<Image>` optimization for every descendant — drops them all to bare `<img>` elements (no IntersectionObserver wrapper, no aspect-ratio container, no lazy loading). Useful for icon-heavy routes, server-rendered cached HTML (emails, PDFs, OG cards), or hand-crafted `<picture>` markup. Set `disabled: true` to re-enable optimization for a specific inner subtree (nested override pattern). Per-call `optimize={true}` on an `<Image>` also overrides a parent boundary — caller intent wins. See also: Image, useNoOptimize.',
+    mistakes: `- Wrapping \`<NoOptimize>\` around non-Image components expects them to respect the context — they don't, only \`<Image>\` reads it
+- Using \`disabled={false}\` (or omitting it) on a nested \`<NoOptimize>\` is a no-op — pass \`disabled={true}\` to override a parent boundary
+- Relying on \`<NoOptimize>\` when you actually need \`zero({ image: false })\` for a global opt-out — boundaries are subtree-scoped only
+- Combining \`<NoOptimize>\` with \`optimize={false}\` on the same \`<Image>\` is redundant (both disable, but double-disabling is confusing to readers)
+- Expecting \`<NoOptimize>\` to affect external third-party image components — it only works with Pyreon's \`<Image>\``,
+  },
+
+  'zero/imagePlugin': {
+    signature: '(config?: ImagePluginConfig): Plugin',
+    example: `// vite.config.ts — explicit wiring (optional if using zero plugin)
+import { imagePlugin } from '@pyreon/zero/image-plugin'
+
+export default {
+  plugins: [
+    pyreon(),
+    zero(),
+    imagePlugin({ 
+      widths: [480, 960, 1440], 
+      quality: 85,
+      placeholder: 'blur' 
+    }),
+  ],
+}
+
+// In a component — import with ?optimize
+import hero from './images/hero.jpg?optimize'
+<Image src={hero} alt="Hero" priority />`,
+    notes: `Vite plugin that transforms image imports with \`?optimize\` / \`?component\` / \`?raw\` query params into optimized responsive images at build time. Generates multiple widths, modern formats (WebP, AVIF), tiny blur placeholders (base64 inline), and outputs optimized images to the build directory. Automatically wired by \`zero({ image: {} })\` — you typically don't need to add it manually to vite.config. In dev, uses \`/@fs/\` URLs; in build, emits assets and bakes the descriptor (src, srcset, width, height, placeholder, formats) into the JS module. See also: Image, ProcessedImage, ImagePluginConfig.`,
+    mistakes: `- Forgetting \`{ eager: true }\` on glob-based image registries — async imports return Promises, not descriptors
+- Misconfiguring widths (e.g., widths larger than the source) — plugin still generates them, wasting build time and space
+- Not installing sharp (bun add -D sharp) — the plugin warns and falls back to copying unoptimized images, silently losing srcset/formats
+- Tuning per-format quality without understanding codec tolerances — AVIF tolerates 55 where WebP needs 75 for the same perceived quality
+- Mixing CDN mode (\`cdn\` provider set) with local processing expectations — CDN mode rewrites URLs, doesn't generate local assets`,
+  },
+
+  'zero/usePreloadFont': {
+    signature: 'function usePreloadFont(href: string, opts?: PreloadFontOptions): void',
+    example: `export default function HeroRoute() {
+  usePreloadFont('/fonts/display-bold.woff2')
+  return <h1 style="font-family: 'Display Bold'">Hero</h1>
+}
+
+// With explicit type override (rare):
+usePreloadFont('https://cdn.example.com/brand.woff2', {
+  type: 'font/woff2',
+  crossorigin: 'anonymous'
+})`,
+    notes: 'Runtime hook to emit `<link rel="preload" as="font">` tags for fonts not declared in the global config (per-route hero fonts, conditional loads, or CDN-hosted faces). Auto-infers MIME type from file extension and enforces the `crossorigin="anonymous"` attribute required by the CSS Fonts CORS spec — without it, browsers preload then refuse to use the file and re-fetch it, causing a double-fetch penalty. See also: inferFontMimeType, PreloadFontOptions, fontPlugin.',
+    mistakes: `- Forgetting that \`usePreloadFont\` must be called at component render time (during SSR), not in loaders or global code — it relies on \`@pyreon/head\`'s render-time collection
+- Omitting the MIME type for non-standard extensions (e.g. \`.custom\`) — the auto-infer defaults to \`font/woff2\`, which silently breaks the preload if the extension is actually a different format; pass \`type\` explicitly
+- Thinking the \`crossorigin\` attribute is optional for same-origin fonts — the CSS Fonts spec requires CORS for all font loads, even local files; the default \`'anonymous'\` is required
+- Calling \`usePreloadFont\` multiple times with the same href expecting multiple preload tags — \`@pyreon/head\` deduplicates by href, so only one tag is emitted (the correct behavior)
+- Using \`usePreloadFont\` for fonts already declared in \`zero({ font: { google, local } })\` — the global fontPlugin emits preload tags at build time; runtime preloads are for per-route or conditional fonts only`,
+  },
+
+  'zero/inferFontMimeType': {
+    signature: 'function inferFontMimeType(href: string): string',
+    example: `import { inferFontMimeType } from '@pyreon/zero'
+
+const mimeType = inferFontMimeType('/fonts/inter.woff2')
+console.log(mimeType) // 'font/woff2'
+
+// Handles query strings and fragments:
+inferFontMimeType('/fonts/x.woff2?v=123') // 'font/woff2'
+inferFontMimeType('/fonts/x.ttf#variant=bold') // 'font/ttf'`,
+    notes: 'Pure function that maps file extensions to IANA-registry MIME types for use in font preload `<link type=...>` tags. Handles `.woff2` → `font/woff2`, `.woff` → `font/woff`, `.ttf` → `font/ttf`, `.otf` → `font/otf`, `.eot` → `application/vnd.ms-fontobject`, and defaults unknown extensions to `font/woff2` (wrong type is less harmful than missing type, which the preload-scanner silently ignores). See also: usePreloadFont, fontImportPlugin.',
+    mistakes: `- Relying on the MIME type for formats outside the five standard types (.woff2, .woff, .ttf, .otf, .eot) — the fallback is always \`font/woff2\`, which may not match your format
+- Assuming the function parses the full URL — it does, but only to strip query strings and fragments before extension matching; pass only the file extension if you have a non-standard URL shape
+- Using the result for purposes other than preload \`type\` attributes — MIME type inference is specifically for the CSS preload-scanner contract, not for Content-Type headers or browser format detection
+- Not stripping the extension yourself if you have a custom URL parser — the function expects a path/URL with a recognizable extension, not a bare format name`,
+  },
+
+  'zero/PreloadFontOptions': {
+    signature: `interface PreloadFontOptions { type?: string crossorigin?: 'anonymous' | 'use-credentials' }`,
+    example: `usePreloadFont('/fonts/inter.woff2')
+// Emits: <link rel="preload" as="font" href="/fonts/inter.woff2" type="font/woff2" crossorigin="anonymous">
+
+usePreloadFont('/fonts/custom', { type: 'font/woff2' })
+// Emits with explicit type override for unknown extension
+
+usePreloadFont('/fonts/auth-required.woff2', { crossorigin: 'use-credentials' })
+// For credential-bearing same-origin fonts (uncommon)`,
+    notes: `Options for \`usePreloadFont\`. Both fields are optional — \`type\` is auto-inferred from the file extension, and \`crossorigin\` defaults to \`'anonymous'\` (required by the CSS Fonts CORS spec). Override \`type\` for unknown extensions; use \`'use-credentials'\` for rare credential-bearing same-origin fonts only. See also: usePreloadFont.`,
+    mistakes: `- Setting \`crossorigin: 'anonymous'\` explicitly when it's the default — unnecessary but harmless; rely on the default unless you have a specific reason to use \`'use-credentials'\`
+- Using \`'use-credentials'\` for cross-origin fonts — the CSS Fonts spec only allows this for same-origin loads; cross-origin fonts must use \`'anonymous'\`
+- Passing a MIME type with \`charset\` (e.g. \`'font/woff2; charset=utf-8'\`) — font MIME types do not accept charset; preload-scanner will fail to match`,
+  },
+
+  'zero/fontPlugin': {
+    signature: 'function fontPlugin(config: FontConfig = {}): Plugin',
+    example: `// In vite.config.ts with the zero plugin:
+import { zeroPlugin } from '@pyreon/zero/vite-plugin'
+
+export default {
+  plugins: [
+    zeroPlugin({
+      font: {
+        google: ['Inter:wght@400;500;700', 'JetBrains Mono:wght@400'],
+        local: [
+          { family: 'Display', src: '/fonts/display-bold.woff2', weight: 700 }
+        ],
+        display: 'swap',
+        fallbacks: {
+          'Inter': { fallback: 'Arial', sizeAdjust: 1.07, ascentOverride: 90 }
+        }
+      }
+    })
+  ]
+}`,
+    notes: 'Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `/assets/fonts/` with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`. See also: fontImportPlugin, FontConfig, usePreloadFont.',
+    mistakes: `- Declaring fonts in both \`google\` and \`local\` with the same family name — the plugin applies all CSS at once; duplicate families cause cascade conflicts
+- Using \`display: 'block'\` for all fonts — this causes FOIT (Flash of Invisible Text); \`'swap'\` is the default for a reason and avoids invisible text during font load
+- Forgetting to add fallback metrics when using variable-weight fonts — without CLS-reduction fallback overrides, layout shift occurs when the custom font replaces the system fallback
+- Declaring heavy fonts (e.g. all weights 100-900 of a variable font) without assessing the build-time download penalty — Google Fonts self-hosting downloads at build time; monitor your build duration
+- Setting \`selfHost: false\` in dev mode thinking it skips the download — \`selfHost\` controls the BUILD mode behavior; dev always uses CDN for speed`,
+  },
+
+  'zero/fontImportPlugin': {
+    signature: 'function fontImportPlugin(config: FontImportPluginConfig = {}): Plugin',
+    example: `// In a component:
+import display from './fonts/display-bold.woff2?font'
+import inter700 from './fonts/inter.woff2?font&family=Inter&weight=700'
+
+export default function Hero() {
+  return (
+    <>
+      <h1 style={{ fontFamily: display.family }}>Display Font</h1>
+      <p style={{ fontFamily: inter700.family, fontWeight: 700 }}>Body</p>
+    </>
+  )
+}
+
+// Or with usePreloadFont:
+usePreloadFont(display)
+// Emits preload + uses auto-generated @font-face`,
+    notes: `Vite plugin that transforms \`import x from './path.woff2?font'\` into typed \`FontDescriptor\` modules with auto-generated \`@font-face\` CSS and hashed font URLs. Auto-extracts family/weight/style from the filename (e.g. \`inter-700.woff2\` → family='inter', weight=700), generates the \`@font-face\` rule as a side-effect CSS import, emits the font file with a content-addressed hash to \`/assets/fonts/\` in production, and serves it via \`/@fs/\` in dev. Auto-wired by the zero plugin alongside \`fontPlugin\` unless \`zero({ font: false })\` is set. See also: usePreloadFont, FontDescriptor, fontPlugin.`,
+    mistakes: `- Forgetting to include font-types ambient declarations in tsconfig — without \`/// <reference types="@pyreon/zero/font-types" />\` or \`"types": ["@pyreon/zero/font-types"]\`, the \`?font\` import returns \`unknown\` instead of a typed \`FontDescriptor\`
+- Assuming filename inference applies to all tokens — weight keywords like \`bold\`, \`semibold\`, etc. are recognized, but \`inter-bold-italic.woff2\` extracts \`family='inter'\`, \`weight=700\`, \`style='italic'\`, NOT \`family='inter-bold'\`
+- Overriding \`family\` in the query without matching the CSS rule — the plugin generates \`@font-face { font-family: '...' }\` with the FAMILY from your override, so \`?font&family=Custom\` must match the CSS you reference
+- Using the descriptor's \`src\` directly in custom CSS without the \`?font\` query context — the src changes per mode (dev=\`/@fs/...\`, build=Vite asset placeholder); always use the descriptor object to stay synchronized
+- Stacking multiple query parameters in the wrong order — the plugin parses \`?font&family=X&weight=700\`, so always put \`?font\` first`,
+  },
+
+  'zero/FontDescriptor': {
+    signature: `interface FontDescriptor { family: string src: string weight: number style: 'normal' | 'italic' | 'oblique' display: 'auto' | 'block' | 'swap' | 'fallback' | 'optional' type: string fontFace: string }`,
+    example: `import display from './fonts/display-bold.woff2?font'
+
+// Display is typed as FontDescriptor:
+console.log(display.family)    // 'display'
+console.log(display.weight)    // 700
+console.log(display.style)     // 'normal'
+console.log(display.type)      // 'font/woff2'
+console.log(display.src)       // '/assets/fonts/display-abc123.woff2' (build) or '/@fs/...' (dev)
+
+// toString() for interpolation:
+const style = \`font-family: \${display};\` // 'font-family: display;'
+
+// Use with usePreloadFont:
+usePreloadFont(display)
+// Preload href matches display.src perfectly (no drift)`,
+    notes: `Descriptor object returned by \`import x from './path.woff2?font'\`. Contains the CSS family name, hashed src URL (auto-updated per build), font-weight/style/display values inferred from or overridden via query params, MIME type for preload contracts, and the auto-generated \`@font-face\` CSS rule string. The descriptor's \`toString()\` returns the family name, so it interpolates directly in template literals: \`font-family: \${descriptor}\`. The object is frozen to prevent accidental mutations. See also: fontImportPlugin, usePreloadFont.`,
+    mistakes: `- Calling \`JSON.stringify(descriptor)\` and expecting it to be safe — the descriptor contains a \`fontFace\` string with user-facing CSS; for logging, use a property selector instead
+- Attempting to mutate descriptor properties (e.g. \`descriptor.weight = 500\`) — the object is frozen; reassign to a new variable or create a new import with query overrides
+- Assuming \`descriptor.src\` is stable across dev/build — in dev it's \`/@fs/...\`; in build it's a Vite asset hash like \`/assets/fonts/...\`; always reference the descriptor, never hardcode the src
+- Using \`descriptor.fontFace\` directly instead of relying on Vite's CSS pipeline — the \`?font\` import side-effects a CSS module; if you want the rule in a stylesheet, use the descriptor's family/weight/style to build a fresh \`@font-face\``,
+  },
+
+  'zero/usePreconnect': {
+    signature: 'function usePreconnect(origin: string, opts?: { credentials?: boolean }): void',
+    example: `usePreconnect('https://fonts.gstatic.com')
+usePreconnect('https://api.example.com', { credentials: true })`,
+    notes: 'Emit a `<link rel="preconnect" href="..." crossorigin>` into the head. Opens the connection (DNS + TCP + TLS) to a remote origin before any resource is requested, saving ~100-300ms on the first fetch from that origin. Use `credentials: true` only for credentialed cross-origin fetches (rare); the default `crossorigin="anonymous"` is correct for 99% of cases. Avoid preconnecting to more than 3-4 origins — the marginal benefit drops fast past ~4. See also: useDnsPrefetch, usePreload, PreloadOptions.',
+    mistakes: `- Preconnecting to more than 3-4 origins — each connection costs memory + battery; the benefit plateaus quickly, and too many preconnects slow down the entire request queue
+- Forgetting that \`credentials: false\` (default) emits \`crossorigin="anonymous"\` — this is the correct value for fonts, cross-origin images, and anonymous fetches; without it the credentialed fetch doesn't reuse the connection
+- Expecting \`usePreconnect\` alone to warm up the connection under SSG — it only emits the tag; the browser must visit the page to open the connection. During SSG prerender, no connection is made
+- Mixing preconnect for an origin that will never be used on this page — you're paying the connection cost for zero benefit; reserve it for the 1-3 most-critical external origins
+- Using \`credentials: true\` for a cross-origin API that doesn't require CORS — \`crossorigin="use-credentials"\` is an unnecessary hint; the default \`anonymous\` works fine`,
+  },
+
+  'zero/useDnsPrefetch': {
+    signature: 'function useDnsPrefetch(origin: string): void',
+    example: `useDnsPrefetch('https://analytics.example.com')
+// Fallback pair:
+usePreconnect('https://api.example.com')
+useDnsPrefetch('https://api.example.com')`,
+    notes: `Emit a \`<link rel="dns-prefetch" href="...">\` into the head. A cheaper but weaker hint than \`preconnect\` — only resolves the DNS, doesn't open the TCP/TLS connection. Use for origins that are LIKELY but not certain to be hit (analytics endpoints that may not fire, third-party widgets that may not render). Does NOT take \`crossorigin\` (DNS resolution is scheme-agnostic). Pair with \`preconnect\` for browser fallback — preconnect-capable browsers ignore the dns-prefetch, while older browsers without preconnect support still get the DNS hint. See also: usePreconnect, usePreload, PreloadOptions.`,
+    mistakes: `- Using dns-prefetch for a resource you're CERTAIN will be hit — use \`preconnect\` instead; the full connection pre-open is worth the extra cost
+- Expecting dns-prefetch to work on very old browsers — it's only a fallback hint; modern browsers prefer preconnect. If you need deep browser coverage, pair both
+- Adding \`crossorigin\` to a dns-prefetch tag — DNS resolution doesn't use CORS; the attribute is ignored. Only \`preconnect\` uses \`crossorigin\`
+- Dns-prefetching 20+ third-party domains — DNS lookups still have latency and memory cost; reserve it for the most-likely fallback origins, not every possible dependency
+- Forgetting that dns-prefetch, like all resource hints, is advisory — the browser may ignore it due to network conditions, Save-Data preference, or memory pressure; it's never a guarantee`,
+  },
+
+  'zero/usePreload': {
+    signature: 'function usePreload(href: string, opts: PreloadOptions): void',
+    example: `// LCP image not using <Image priority>:
+usePreload('/hero.jpg', { as: 'image' })
+
+// Style sheet loaded at runtime:
+usePreload('/extra.css', { as: 'style' })
+
+// Responsive image with srcset:
+usePreload('/hero.jpg', { as: 'image', imagesrcset: '/hero-640.jpg 640w, /hero-1920.jpg 1920w', imagesizes: '100vw' })
+
+// Font (requires type):
+usePreload('/font.woff2', { as: 'font', type: 'font/woff2', crossorigin: 'anonymous' })`,
+    notes: `Emit a \`<link rel="preload" as="..." href="..." crossorigin>\` for a specific resource that the page will hit in the critical path. Unlike generic preload markup, this hook enforces the \`as\` parameter (required — the preload scanner ignores \`<link rel="preload">\` without it). Use for LCP images (when not using \`<Image priority>\`), CSS/fonts loaded at runtime, JSON responses the critical path needs, and web worker scripts. Deduplicates via \`@pyreon/head\`'s href-keying — two \`usePreload(h)\` calls with the same href emit ONE preload tag. See also: usePreconnect, useDnsPrefetch, PreloadOptions.`,
+    mistakes: `- Forgetting \`as\` — it is REQUIRED; the preload scanner ignores \`<link rel="preload">\` without it, defeating the entire hint
+- Using \`as: 'font'\` without \`type\` — the browser's preload scanner ignores font preloads without a matching MIME type. Always pair with \`type: 'font/woff2'\` (or the actual format)
+- Preloading a cross-origin resource without \`crossorigin: 'anonymous'\` — the browser preload-fetches it early, but then the actual fetch with CORS headers is a second fetch (double-fetch penalty). Add \`crossorigin\` to reuse the preloaded response
+- Preloading too many resources — each preload competes for bandwidth with the critical path. Reserve preload for the 2-5 most-critical resources (fonts, LCP images, critical JSON)
+- Not using \`imagesrcset\` + \`imagesizes\` for responsive image preloads — without them the preload scanner picks a fixed size; responsive images should provide both to let the scanner choose the right variant for the viewport`,
+  },
+
+  'zero/PreloadOptions': {
+    signature: `interface PreloadOptions { as: 'script' | 'style' | 'image' | 'font' | 'fetch' | 'document' | 'audio' | 'video' | 'track' | 'object' | 'embed' | 'worker'; type?: string; crossorigin?: 'anonymous' | 'use-credentials'; media?: string; imagesrcset?: string; imagesizes?: string; fetchpriority?: 'high' | 'low' | 'auto'; }`,
+    example: `// Image with responsive variants:
+{ as: 'image', imagesrcset: '/hero-sm.jpg 640w, /hero-lg.jpg 1920w', imagesizes: '100vw' }
+
+// Font (requires type + crossorigin):
+{ as: 'font', type: 'font/woff2', crossorigin: 'anonymous' }
+
+// Fetch with type and CORS:
+{ as: 'fetch', type: 'application/json', crossorigin: 'anonymous' }
+
+// Mobile-only preload:
+{ as: 'style', media: '(max-width: 600px)' }
+
+// High-priority script:
+{ as: 'script', fetchpriority: 'high' }`,
+    notes: `Configuration shape for \`usePreload(href, opts)\`. \`as\` is REQUIRED and tells the browser what kind of resource is being preloaded (affects Accept header, priority bucket, download size budget). \`type\` is required for \`as: 'font'\` (preload scanner ignores font preloads without matching MIME type) and for \`as: 'fetch'\` with a specific response shape. \`crossorigin\` is required for fonts ('anonymous') and for cross-origin \`fetch\`/\`image\` preloads that will be read with CORS (prevents double-fetch). \`media\` enables conditional preloads (e.g. mobile-only). \`imagesrcset\` + \`imagesizes\` let the preload scanner pick the right responsive variant. \`fetchpriority\` hints the browser's fetch scheduler. See also: usePreload, usePreconnect, useDnsPrefetch.`,
+    mistakes: `- Omitting \`type\` for \`as: 'font'\` — the preload scanner requires a matching MIME type to recognize font preloads; without it the hint is silently ignored
+- Using \`type: 'application/json'\` for a fetch preload that will be parsed as JSON — while not strictly required, the browser uses the type to set the Accept header correctly; always include it for specificity
+- Specifying \`crossorigin: 'use-credentials'\` when \`'anonymous'\` is sufficient — use-credentials adds cookie/header overhead; only use it for credentialed cross-origin requests
+- Providing \`imagesrcset\` without \`imagesizes\` — the scanner can't make a sizing decision without the media-relative size; both must be present for responsive image preloads
+- Setting \`fetchpriority: 'high'\` for non-critical resources — the browser's fetch scheduler is already smart about prioritization; high priority is reserved for true LCP/critical-path resources`,
+  },
+
+  'zero/useNoOptimize': {
+    signature: 'function useNoOptimize(): boolean',
+    example: `// Inside Image component (internal usage pattern)
+const noOptimizeBoundary = useNoOptimize()
+const isBypass =
+  local.optimize === false || (noOptimizeBoundary && local.optimize !== true)
+
+if (isBypass) {
+  return renderBareImg(props)
+}`,
+    notes: 'Reads the current `<NoOptimize>` boundary state. Returns `true` if the render scope is within a `<NoOptimize>` boundary (optimization disabled), `false` otherwise. Primarily used internally by `<Image>` to decide whether to bypass optimization; not intended for public application code. See also: NoOptimize, NoOptimizeContext.',
+    mistakes: `- Calling \`useNoOptimize()\` outside the component tree where \`<NoOptimize>\` is mounted — returns \`false\` (falsy but valid; the contract is non-router-aware)
+- Relying on \`useNoOptimize()\` to enforce optimization boundaries in custom code — the hook is read-only; use \`<NoOptimize>\` to set the boundary
+- Assuming the hook's value is stable across re-renders — it responds dynamically to boundary mount/unmount, so guards/memoization may be needed`,
   },
   // <gen-docs:api-reference:end @pyreon/zero>
 }

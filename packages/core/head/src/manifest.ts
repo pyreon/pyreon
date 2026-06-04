@@ -137,6 +137,29 @@ provide(HeadContext, ctx)
 const { tags, htmlAttrs, bodyAttrs } = ctx.resolve()`,
       seeAlso: ['HeadProvider', 'renderWithHead'],
     },
+    {
+      name: 'ScriptTag',
+      kind: 'type',
+      signature: 'interface ScriptTag { src?: string; type?: string; async?: string; defer?: string; crossorigin?: string; integrity?: string; nomodule?: string; referrerpolicy?: string; fetchpriority?: string; children?: string }',
+      summary: 'Standard `<script>` tag attributes passed to `useHead({ script: [...] })`. External scripts (with `src`) default to `defer=\'\'` unless the author explicitly sets `type` (e.g. `module`), `async`, or `defer`. This prevents render-blocking—aligns with Lighthouse / Core Web Vitals best practice. Inline scripts (no `src`) are never touched; `type="module"` and `type="importmap"` skip the defer default per HTML spec (modules defer by spec; importmap executes synchronously).',
+      example: `// External script auto-gets defer unless author overrides
+useHead({
+  script: [
+    { src: '/app.js' },  // becomes: <script src="/app.js" defer></script>
+    { src: '/async.js', async: '' },  // author intent: <script src="/async.js" async></script>
+    { src: '/module.js', type: 'module' },  // module defers by spec: <script src="/module.js" type="module"></script>
+    { children: 'console.log(1)' },  // inline: <script>console.log(1)</script> (no defer added)
+  ]
+})`,
+      mistakes: [
+        'Wrapping external scripts in `defer: \'true\'` (boolean string) — use `defer: \'\'` (empty string) or omit it and let the default apply',
+        'Assuming inline scripts get deferred — they don\'t; defer only applies to external src + no explicit load strategy',
+        'Setting `type="module"` expecting defer to be added — modules are deferred by spec; adding defer is a no-op (and the code skips it)',
+        'Passing `type="text/javascript"` or `type="application/javascript"` then expecting defer — the `type` field blocks the default; use no `type` attr to get the default',
+        'Expecting JSON-LD via `jsonLd` convenience property to be affected by defer logic — `jsonLd` auto-wraps as `type="application/ld+json"`, so defer is never added (type blocks it)',
+      ],
+      seeAlso: ['UseHeadInput', 'useHead'],
+    },
   ],
   gotchas: [
     {

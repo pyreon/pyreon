@@ -169,6 +169,25 @@ c.get(); c.set(1); c.subscribe(listener)
 
 `cell()` is a class-based primitive with a single-listener fast path and one allocation per cell. It is **not** callable and **does not** participate in effect tracking — use it only for cross-cutting state where the signal-tracking overhead would be wasteful.
 
+## wrapSignal — writable side-effect facade
+
+```ts
+import { signal, wrapSignal } from '@pyreon/reactivity'
+
+const base = signal(load())
+// A callable that reads like a signal but persists on every write:
+const stored = wrapSignal(base, {
+  set: (next) => {
+    localStorage.setItem('k', JSON.stringify(next)) // side effect
+    base.set(next)                                   // then write through
+  },
+})
+stored()            // read (tracks)
+stored.set(value)   // runs your custom set: side effect, then base.set
+```
+
+`wrapSignal(base, { set, update? })` is the canonical primitive for "a signal whose writes carry a side effect" (persistence, cross-tab sync, patch emission, validation). It wraps a base `signal()` with a callable whose reads — `()`, `.peek`, `.subscribe`, `.direct` — AND the internal `_v` field delegate to `base`, while `.set` runs your custom handler (do the side effect, then call `base.set(value)` to commit). The `_v` forwarding is load-bearing: the compiler's `_bindText` fast path reads `source._v` directly, so a hand-rolled facade missing it binds `''` forever — the exact bug class this primitive retires. `update` is optional (defaults to `set(fn(peek()))`). `@pyreon/storage` (all 5 backends) and `@pyreon/state-tree` were migrated onto it; the `pyreon/storage-signal-v-forwarding` lint rule exists precisely because this primitive was missing before.
+
 ## Debugging
 
 ```ts
