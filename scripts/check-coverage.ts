@@ -121,6 +121,12 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'Full-stack meta-framework. Branches at ~85% — residual gap in adapter-build SSG/SSR/ISR plugin chains, fs-router auto-detect, image plugin sharp paths exercised by `verify-modes` build matrix + Playwright e2e rather than unit tests.',
   },
+  '@pyreon/zero-content': {
+    currentStatements: 95,
+    currentBranches: 92,
+    reason:
+      'Markdown content layer. Branches at ~92% — residual gap in plugin lifecycle error paths (configureServer/buildStart catch blocks under synthetic loader failures, HMR reload-error paths) and runtime overload alternative arms in getCollection/getEntry/getEntries. PR 5-7 will lift this as more integration paths land via real-app spike (PR 7).',
+  },
   '@pyreon/runtime-dom': {
     currentStatements: 95,
     currentBranches: 86,
