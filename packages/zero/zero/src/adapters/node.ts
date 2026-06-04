@@ -39,6 +39,9 @@ export function nodeAdapter(): Adapter {
 
       // Generate standalone server entry
       const port = options.config.port ?? 3000
+      // The hashed-asset URL prefix (`/assets/` by default) is baked into the
+      // emitted handler so a custom `build.assetsDir` still gets immutable cache.
+      const assetPrefix = `/${options.assetsDir ?? 'assets'}/`
       const serverEntry = `
 import { createServer } from "node:http"
 import { readFile } from "node:fs/promises"
@@ -96,7 +99,7 @@ const server = createServer(async (req, res) => {
         // (prerendered pages change on every content edit).
         res.writeHead(200, {
           "content-type": mime,
-          "cache-control": url.pathname.startsWith("/assets/")
+          "cache-control": url.pathname.startsWith(${JSON.stringify(assetPrefix)})
             ? "public, max-age=31536000, immutable"
             : ext === ".html"
               ? "public, max-age=0, must-revalidate"

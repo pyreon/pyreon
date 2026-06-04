@@ -73,10 +73,10 @@ export function cloudflareAdapter(): Adapter {
           JSON.stringify(routesConfig, null, 2),
         )
         // Cloudflare Pages reads `_headers` for per-path cache control; without
-        // it, hashed `/assets/*` chunks inherit the host's short default
+        // it, hashed `/<assetsDir>/*` chunks inherit the host's short default
         // (re-fetched needlessly on every release window). Matches the
-        // `/assets/*` immutable rule vercel.json / netlify.toml already emit.
-        await writeAssetCacheHeaders(options.outDir)
+        // immutable rule vercel.json / netlify.toml already emit.
+        await writeAssetCacheHeaders(options.outDir, options.assetsDir)
         return
       }
       await validateBuildInputs(options)
@@ -84,6 +84,7 @@ export function cloudflareAdapter(): Adapter {
       const { join } = await import('node:path')
 
       const outDir = options.outDir
+      const assetsDir = options.assetsDir ?? 'assets'
       await mkdir(outDir, { recursive: true })
 
       // Cloudflare serves static files from the root, so the client stays where
@@ -150,13 +151,19 @@ export default {
       const routesConfig = {
         version: 1,
         include: ['/*'],
-        exclude: ['/assets/*', '/favicon.*', '/site.webmanifest', '/robots.txt', '/sitemap.xml'],
+        exclude: [
+          `/${assetsDir}/*`,
+          '/favicon.*',
+          '/site.webmanifest',
+          '/robots.txt',
+          '/sitemap.xml',
+        ],
       }
 
       await writeFile(join(outDir, '_routes.json'), JSON.stringify(routesConfig, null, 2))
-      // `/assets/*` is excluded from the worker above and served by Pages'
+      // `/<assetsDir>/*` is excluded from the worker above and served by Pages'
       // static layer — pin it immutable via `_headers` (same as SSG).
-      await writeAssetCacheHeaders(outDir)
+      await writeAssetCacheHeaders(outDir, assetsDir)
     },
     async revalidate(path: string): Promise<AdapterRevalidateResult> {
       // Cloudflare Pages ISR via Cache API delete + zone purge.

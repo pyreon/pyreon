@@ -47,7 +47,7 @@ export function vercelAdapter(): Adapter {
           routes: [
             // Long-cache hashed assets; mirrors the SSR config above.
             {
-              src: '/assets/(.*)',
+              src: `/${options.assetsDir ?? 'assets'}/(.*)`,
               headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
             },
           ],
@@ -123,7 +123,7 @@ export default async function vercelHandler(req) {
         routes: [
           // Serve static assets directly
           {
-            src: '/assets/(.*)',
+            src: `/${options.assetsDir ?? 'assets'}/(.*)`,
             headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
           },
           // Favicon and manifest

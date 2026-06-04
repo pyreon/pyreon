@@ -39,11 +39,12 @@ export function netlifyAdapter(): Adapter {
         // Netlify reads both.
         const { writeFile } = await import('node:fs/promises')
         const { join } = await import('node:path')
+        const assetsDir = options.assetsDir ?? 'assets'
         const toml = `[build]
   publish = "."
 
 [[headers]]
-  for = "/assets/*"
+  for = "/${assetsDir}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 `
@@ -105,7 +106,7 @@ export const config = {
   functions = "netlify/functions"
 
 [[headers]]
-  for = "/assets/*"
+  for = "/${options.assetsDir ?? 'assets'}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 

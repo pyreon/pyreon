@@ -35,6 +35,9 @@ export function bunAdapter(): Adapter {
       })
 
       const port = options.config.port ?? 3000
+      // The hashed-asset URL prefix (`/assets/` by default) is baked into the
+      // emitted handler so a custom `build.assetsDir` still gets immutable cache.
+      const assetPrefix = `/${options.assetsDir ?? 'assets'}/`
       const serverEntry = `
 import { normalize } from "node:path"
 
@@ -95,7 +98,7 @@ Bun.serve({
           // revalidate (prerendered pages change on every content edit).
           return new Response(file, {
             headers: {
-              "cache-control": decoded.startsWith("/assets/")
+              "cache-control": decoded.startsWith(${JSON.stringify(assetPrefix)})
                 ? "public, max-age=31536000, immutable"
                 : decoded.endsWith(".html")
                   ? "public, max-age=0, must-revalidate"

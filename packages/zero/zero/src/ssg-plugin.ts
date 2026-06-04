@@ -1534,7 +1534,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // already in the file aren't displaced.
       const adapter = resolveAdapter(config)
       try {
-        await adapter.build({ kind: 'ssg', outDir: distDir, config })
+        await adapter.build({ kind: 'ssg', outDir: distDir, config, assetsDir })
       } catch (adapterError) {
         errors.push({ path: `(adapter:${adapter.name})`, error: adapterError })
       }

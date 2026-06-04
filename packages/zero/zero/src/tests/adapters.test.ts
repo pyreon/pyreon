@@ -352,6 +352,84 @@ describe('bun adapter build', () => {
   })
 })
 
+// A custom Vite `build.assetsDir` (e.g. `static`) puts content-hashed chunks at
+// `/static/` instead of `/assets/`. Every adapter must scope its immutable
+// cache rule to the RESOLVED assetsDir, or hashed chunks under a custom dir
+// silently lose the long-cache treatment (re-fetched every release). The
+// plugins thread `assetsDir` into `adapter.build(options)`; absent it defaults
+// to `'assets'` (unchanged for the common case).
+describe('adapters — custom build.assetsDir scoping', () => {
+  it('vercel: config.json route scopes cache to /<assetsDir>/ (SSG)', async () => {
+    const ssgDist = await setupSsgDist()
+    await vercelAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {}, assetsDir: 'static' })
+    const cfg = JSON.parse(
+      await readFile(join(ssgDist, '.vercel', 'output', 'config.json'), 'utf-8'),
+    )
+    expect(cfg.routes.some((r: { src: string }) => r.src === '/static/(.*)')).toBe(true)
+    expect(cfg.routes.some((r: { src: string }) => r.src === '/assets/(.*)')).toBe(false)
+    await cleanup()
+  })
+
+  it('netlify: netlify.toml header scopes to /<assetsDir>/ (SSG)', async () => {
+    const ssgDist = await setupSsgDist()
+    await netlifyAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {}, assetsDir: 'static' })
+    const toml = await readFile(join(ssgDist, 'netlify.toml'), 'utf-8')
+    expect(toml).toContain('for = "/static/*"')
+    expect(toml).not.toContain('/assets/*')
+    await cleanup()
+  })
+
+  it('cloudflare: _headers + _routes.json exclude scope to /<assetsDir>/ (SSG)', async () => {
+    const ssgDist = await setupSsgDist()
+    await cloudflareAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {}, assetsDir: 'static' })
+    const headers = await readFile(join(ssgDist, '_headers'), 'utf-8')
+    expect(headers).toContain('/static/*')
+    expect(headers).not.toContain('/assets/*')
+    await cleanup()
+  })
+
+  it('node: emitted handler caches /<assetsDir>/ immutable, NOT /assets/ (SSR)', async () => {
+    await setupMockBuild()
+    const outDir = join(TMP, 'node-assetsdir')
+    await nodeAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+      clientOutDir: MOCK_CLIENT,
+      outDir,
+      config: {},
+      assetsDir: 'static',
+    })
+    const entry = await readFile(join(outDir, 'index.js'), 'utf-8')
+    expect(entry).toContain('startsWith("/static/")')
+    expect(entry).not.toContain('startsWith("/assets/")')
+    await cleanup()
+  })
+
+  it('bun: emitted handler caches /<assetsDir>/ immutable, NOT /assets/ (SSR)', async () => {
+    await setupMockBuild()
+    const outDir = join(TMP, 'bun-assetsdir')
+    await bunAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+      clientOutDir: MOCK_CLIENT,
+      outDir,
+      config: {},
+      assetsDir: 'static',
+    })
+    const entry = await readFile(join(outDir, 'index.ts'), 'utf-8')
+    expect(entry).toContain('startsWith("/static/")')
+    expect(entry).not.toContain('startsWith("/assets/")')
+    await cleanup()
+  })
+
+  it('default (no assetsDir) still scopes to /assets/ — common case unchanged', async () => {
+    const ssgDist = await setupSsgDist()
+    await netlifyAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {} })
+    expect(await readFile(join(ssgDist, 'netlify.toml'), 'utf-8')).toContain('for = "/assets/*"')
+    await cleanup()
+  })
+})
+
 describe('static adapter build', () => {
   it('copies client output to outDir', async () => {
     await setupMockBuild()

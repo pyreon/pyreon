@@ -704,6 +704,14 @@ export type AdapterBuildOptions =
       /** Final output directory. */
       outDir: string
       config: ZeroConfig
+      /**
+       * Vite's resolved `build.assetsDir` (the directory under the output
+       * root where content-hashed chunks land — default `'assets'`). Adapters
+       * scope their immutable cache-control rules to `/<assetsDir>/*` instead
+       * of a hardcoded `/assets/*`, so a custom `assetsDir` still gets the
+       * long-cache treatment. Falls back to `'assets'` when absent.
+       */
+      assetsDir?: string | undefined
     }
   | {
       kind: 'ssg'
@@ -715,4 +723,6 @@ export type AdapterBuildOptions =
        */
       outDir: string
       config: ZeroConfig
+      /** Vite's resolved `build.assetsDir` — see the `'ssr'` variant. */
+      assetsDir?: string | undefined
     }
