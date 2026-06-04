@@ -1,0 +1,16 @@
+{
+  "extends": "@pyreon/typescript/app",
+  "compilerOptions": {
+    "noEmit": true,
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "jsxImportSource": "@pyreon/core",
+    "customConditions": ["bun"],
+    "exactOptionalPropertyTypes": true,
+    "types": ["@types/bun"]
+  },
+  "include": ["src", "vite.config.ts", "content.config.ts"]
+}

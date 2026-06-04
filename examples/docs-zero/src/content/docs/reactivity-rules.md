@@ -1,0 +1,304 @@
+---
+title: 'Reactivity Rules'
+description: What is reactive and what is static in Pyreon — the one page you need to understand.
+---
+
+# Reactivity Rules
+
+Pyreon components run **once**. Unlike React (which re-renders the entire function), Pyreon executes your component function a single time during setup. Reactivity happens at the individual expression level through signals and the compiler.
+
+This page explains exactly what's reactive and what's static.
+
+## The Core Rule
+
+**Signal reads inside reactive scopes re-evaluate when the signal changes. Signal reads outside reactive scopes evaluate once and become static.**
+
+A "reactive scope" is:
+- An `effect()` callback
+- A `computed()` callback
+- A `() =>` wrapper in JSX (compiler-generated or manual)
+- A `renderEffect()` callback (internal)
+
+## DOM Text Children — Reactive
+
+Signal calls in JSX text positions are automatically wrapped by the compiler:
+
+```tsx
+const name = signal('World')
+
+function Hello() {
+  return <div>Hello {name()}</div>
+  // Compiler output: <div>Hello {() => name()}</div>
+  // ✓ Updates when name changes
+}
+```
+
+Each text expression gets its own independent binding. In a list:
+
+```tsx
+<For each={items} by={r => r.id}>
+  {r => <li>{r.name()} - {r.email()}</li>}
+</For>
+// ✓ r.name() changing does NOT re-evaluate r.email()
+// Each text node has its own _bind
+```
+
+## DOM Attributes — Reactive
+
+Signal calls in DOM attributes are wrapped by the compiler:
+
+```tsx
+<div class={active() ? 'on' : 'off'} />
+// Compiler wraps: class={() => active() ? 'on' : 'off'}
+// ✓ Updates when active changes
+```
+
+Static attributes are baked into the HTML template at compile time:
+
+```tsx
+<div class="static" id="header" />
+// No wrapping needed — baked into _tpl("<div class=\"static\" id=\"header\"></div>")
+```
+
+## Component Props — Reactive (via compiler)
+
+The compiler wraps signal reads in component props with `_rp()`:
+
+```tsx
+<MyComponent title={name()} count={total()} />
+// Compiler output:
+// <MyComponent title={_rp(() => name())} count={_rp(() => total())} />
+// ✓ title updates when name changes
+// ✓ count updates when total changes
+```
+
+**Important**: access props via `props.title` inside the component — don't destructure:
+
+```tsx
+// ✗ BAD — destructuring captures the value once (static)
+function Bad({ title }) {
+  return <div>{title}</div>  // never updates
+}
+
+// ✓ GOOD — props.title is a getter (reactive)
+function Good(props) {
+  return <div>{props.title}</div>  // updates when title changes
+}
+```
+
+## Context — Reactive vs Static
+
+Pyreon has two context types:
+
+```tsx
+// Static context — value captured once
+const ThemeCtx = createContext<Theme>(defaultTheme)
+const theme = useContext(ThemeCtx) // Theme object, static reference
+
+// Reactive context — returns accessor
+const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
+const getMode = useContext(ModeCtx) // () => 'light' | 'dark'
+getMode() // call it to read — reactive in effects/JSX
+```
+
+Rule: if the value can change, use `createReactiveContext`. If it's set once (like a theme config object), use `createContext`.
+
+## Effects — Reactive
+
+Effects automatically track all signal reads inside them:
+
+```tsx
+const count = signal(0)
+const doubled = computed(() => count() * 2) // ✓ re-computes when count changes
+
+effect(() => {
+  console.log(count())  // ✓ re-runs when count changes
+  console.log(doubled()) // ✓ also tracked
+})
+```
+
+## Prop-Derived `const` Variables — Reactive (compiler-inlined)
+
+The compiler detects `const` variables derived from `props.*` or `splitProps` results and **inlines them back** at JSX use sites, making them reactive automatically:
+
+```tsx
+function MyComponent(props) {
+  const name = props.name ?? 'Anonymous'
+  const label = name + '!'  // transitive — derived from props-derived const
+
+  return <div>{label}</div>
+  // Compiler inlines to: _bind(() => { t.data = ((props.name ?? 'Anonymous') + '!') })
+  // ✓ Updates when props.name changes
+}
+```
+
+**Rules:**
+
+- Only `const` declarations are inlined (`let`/`var` are mutable, unsafe to inline)
+- Transitive resolution: `const a = props.x; const b = a + 1` inlines `b` as `((props.x) + 1)`
+- Works with `splitProps` results: `const [own] = splitProps(props, ['x']); const v = own.x`
+- Non-JSX usage stays static: `console.log(name)` uses the captured value (correct behavior)
+
+## What Is NOT Reactive
+
+### `let`/`var` variables and signal reads at setup time
+
+```tsx
+function MyComponent(props) {
+  let name = props.name    // ✗ let — mutable, not inlined
+  const value = count()    // ✗ signal read captured once — static
+
+  return <div>{name}</div> // never updates
+}
+```
+
+### Destructured props
+
+```tsx
+function MyComponent({ name, count }) {
+  // ✗ name and count are captured values, not getters
+  return <div>{name} - {count}</div> // never updates
+}
+```
+
+Use `splitProps` if you need to separate props:
+
+```tsx
+function MyComponent(props) {
+  const [local, rest] = splitProps(props, ['name'])
+  // ✓ local.name is still a getter — reactive
+  return <div {...rest}>{local.name}</div>
+}
+```
+
+### Conditional logic outside reactive scopes
+
+```tsx
+function MyComponent(props) {
+  // ✗ This runs once — the condition is evaluated at setup time
+  if (props.variant === 'dark') {
+    // This block either runs or doesn't, once
+  }
+
+  // ✓ Use Show for reactive conditions
+  return (
+    <Show when={() => props.variant === 'dark'}>
+      <DarkContent />
+    </Show>
+  )
+}
+```
+
+## Conditional Reads Hide Tracking — Read Both Sides
+
+A subtle property of fine-grained reactivity (shared with Solid, Preact-signals,
+MobX): **a reactive accessor subscribes only to signals it actually reads
+during the run**. Ternaries and `&&` short-circuit, so a signal read inside
+one branch is NOT tracked when the other branch is taken.
+
+```tsx
+// ✗ Subtle bug: when `touched` is false, `error()` is never read → never
+// tracked. Later, when the form validator sets the error, the accessor
+// does NOT re-run because it wasn't subscribed to `error`.
+<div class="field-error">
+  {() => fields.title.touched() ? fields.title.error() ?? '' : ''}
+</div>
+```
+
+**The trap fires when the conditional flips alongside the dependent signal**.
+In the form case above, both `touched` and `error` flip together on submit:
+the validator marks every field touched AND sets errors in one batch. The
+accessor re-runs because `touched` changed, but at re-run time `error` is
+*still* `undefined` (the validator hasn't finished). When `error.set('...')`
+fires later, the accessor doesn't re-subscribe — the bug is silent.
+
+```tsx
+// ✓ Read both signals before the conditional, so the effect subscribes
+// to both from the first render.
+<div class="field-error">
+  {() => {
+    const touched = fields.title.touched()
+    const err = fields.title.error()
+    return touched ? err ?? '' : ''
+  }}
+</div>
+```
+
+The fix is mechanical: extract every signal read to a `const` at the top
+of the accessor, then build the result. The `unused-vars` lint rule does
+NOT flag this — the const is "used" by being read.
+
+**Heuristic for spotting it**: look at every reactive accessor with a
+conditional that involves a signal call. If the call appears in ONLY the
+truthy or falsy branch (not both, and not above the conditional), it's a
+candidate. Both `cond ? sig() : other` and `cond && sig()` have this
+shape.
+
+**When this matters most**: form field errors (touched + error flip
+together), tab content (active + tab.data flip together), accordion
+panels (open + data flip together). Anything where two signals change
+in the same batch AND one gates display of the other.
+
+> 💡 **Discovered by**: HN-clone audit #942 W11. Documented now so other
+> users don't burn the same 15 minutes of "the signal IS set, why isn't
+> the DOM updating".
+
+## Quick Reference
+
+| Expression | Reactive? | Why |
+|-----------|-----------|-----|
+| `<div>{count()}</div>` | ✓ | Compiler wraps text children |
+| `<div class={active() ? 'a' : 'b'} />` | ✓ | Compiler wraps attributes with calls |
+| `<Comp title={name()} />` | ✓ | Compiler wraps with `_rp()` |
+| `props.title` in JSX | ✓ | Getter property (from `_rp`) |
+| `const x = props.title` in JSX | ✓ | Compiler inlines `props.title` at use site |
+| `let x = props.title` | ✗ | `let` not inlined (mutable) |
+| `const { title } = props` | ✗ | Destructured = static |
+| `effect(() => count())` | ✓ | Effect tracks signals |
+| `computed(() => a() + b())` | ✓ | Computed tracks signals |
+| `const x = count()` at setup | ✗ | Evaluated once, stored |
+| `<Show when={() => x()}>` | ✓ | Explicit accessor |
+| `<For each={items} by={...}>` | ✓ | Keyed reactive list |
+| `items().map(...)` | ✗ | Use `<For>` instead |
+
+## Common Mistakes
+
+### Using `.map()` instead of `<For>`
+
+```tsx
+// ✗ Re-creates all elements when array changes
+<div>{items().map(item => <li>{item.name()}</li>)}</div>
+
+// ✓ Only updates changed items
+<For each={items} by={item => item.id}>
+  {item => <li>{item.name()}</li>}
+</For>
+```
+
+### Using ternary instead of `<Show>`
+
+```tsx
+// ✗ Both branches evaluated, no conditional mounting
+<div>{isOpen() ? <Modal /> : null}</div>
+
+// ✓ Modal only mounts when isOpen is true
+<Show when={isOpen}>
+  <Modal />
+</Show>
+```
+
+### Reading a signal to pass as static value
+
+```tsx
+// ✗ Reads count() once, passes static number
+<ProgressBar value={count()} max={100} />
+
+// The compiler actually fixes this — _rp(() => count()) makes it reactive.
+// But if you store a signal READ (not a props member) in a variable:
+const current = count()  // ✗ static (signal read, not props access)
+<ProgressBar value={current} max={100} />  // never updates
+
+// Note: const from PROPS is now reactive (compiler inlines):
+const current = props.value  // ✓ compiler inlines props.value at JSX use sites
+<ProgressBar value={current} max={100} />  // updates!
+```
