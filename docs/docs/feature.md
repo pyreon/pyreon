@@ -100,48 +100,94 @@ const CreateTask = defineComponent(() => {
 })
 ```
 
-<Playground title="CRUD List from Schema" :height="260">
-// Mini feature — in-memory store, schema-driven list + create
+<Playground title="defineFeature — CRUD from a schema" :height="380">
+// defineFeature() auto-generates list/by-id/create/update/delete
+// hooks from a schema. Here we model the surface inline with
+// signals so you can see what's reactive — the real thing wires
+// the same shape to TanStack Query + @pyreon/form + @pyreon/store.
 const tasks = signal([
-  { id: '1', title: 'Write docs', status: 'done' },
-  { id: '2', title: 'Ship feature', status: 'in-progress' },
+  { id: '1', title: 'Write docs',    status: 'done' },
+  { id: '2', title: 'Ship feature',  status: 'in-progress' },
+  { id: '3', title: 'Review PRs',    status: 'todo' },
 ])
-const nextId = signal(3)
+let nextId = 4
 
-const title = signal('')
-const status = signal('todo')
+const draft = signal('')
+const newStatus = signal('todo')
 
 const create = () => {
-  if (!title()) return
-  tasks.update(t => [...t, { id: String(nextId()), title: title(), status: status() }])
-  nextId.update(n => n + 1)
-  title.set('')
+  const t = draft().trim()
+  if (!t) return
+  tasks.update((all) => [...all, { id: String(nextId++), title: t, status: newStatus() }])
+  draft.set('')
 }
+const remove = (id) => tasks.update((all) => all.filter((t) => t.id !== id))
+const advance = (id) => tasks.update((all) =>
+  all.map((t) => {
+    if (t.id !== id) return t
+    const next = { todo: 'in-progress', 'in-progress': 'done', done: 'todo' }[t.status]
+    return { ...t, status: next }
+  }),
+)
 
-const remove = (id) => tasks.update(t => t.filter(x => x.id !== id))
+const dot = (status) =>
+  h('span', {
+    class: 'badge',
+    style: {
+      background: {
+        todo: 'transparent',
+        'in-progress': '#FFC83D',
+        done: '#4ade80',
+      }[status],
+      color: status === 'todo' ? 'var(--muted)' : '#0A0A0E',
+      border: status === 'todo' ? '1px solid var(--border)' : 'none',
+    },
+  }, status)
 
-const color = (s) => s === 'done' ? '#4caf50' : s === 'in-progress' ? '#ff9800' : '#9e9e9e'
+const stats = computed(() => {
+  const byStatus = { todo: 0, 'in-progress': 0, done: 0 }
+  for (const t of tasks()) byStatus[t.status]++
+  return byStatus
+})
 
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '6px', marginBottom: '10px' } },
-    h('input', { value: () => title(), onInput: (e) => title.set(e.target.value), placeholder: 'New task…', style: { flex: 1, padding: '6px 10px', border: '1px solid #ccc', borderRadius: '4px' } }),
-    h('select', { value: () => status(), onChange: (e) => status.set(e.target.value), style: { padding: '6px', border: '1px solid #ccc', borderRadius: '4px' } },
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('input', {
+      placeholder: 'New task…',
+      style: { flex: 1, minWidth: '0' },
+      onInput: (e) => draft.set(e.target.value),
+      onKeydown: (e) => { if (e.key === 'Enter') create() },
+    }),
+    h('select', {
+      onChange: (e) => newStatus.set(e.target.value),
+    },
       h('option', { value: 'todo' }, 'To Do'),
       h('option', { value: 'in-progress' }, 'In Progress'),
       h('option', { value: 'done' }, 'Done'),
     ),
-    h('button', { onClick: create, style: { padding: '6px 14px', background: '#2196f3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' } }, 'Create'),
+    h('button', { onClick: create }, '＋ Create'),
   ),
-  h('ul', { style: { listStyle: 'none', padding: 0, margin: 0 } },
-    () => tasks().map(t =>
-      h('li', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderBottom: '1px solid #eee' } },
-        h('span', { style: { width: '10px', height: '10px', borderRadius: '50%', background: color(t.status) } }),
-        h('span', { style: { flex: 1 } }, t.title),
-        h('span', { style: { fontSize: '12px', color: '#666' } }, t.status),
-        h('button', { onClick: () => remove(t.id), style: { border: 'none', background: 'transparent', cursor: 'pointer', color: '#f44336', fontSize: '16px' } }, '×'),
+  h('div', { class: 'card' }, () =>
+    h('div', { class: 'col', style: { gap: '4px' } },
+      ...tasks().map((t) =>
+        h('div', { class: 'row', style: { justifyContent: 'space-between', padding: '4px 0' } },
+          h('span', { style: { flex: 1 } }, t.title),
+          dot(t.status),
+          h('button', {
+            onClick: () => advance(t.id),
+            style: { padding: '2px 8px', fontSize: '12px' },
+          }, '↻ next'),
+          h('button', {
+            onClick: () => remove(t.id),
+            style: { padding: '2px 8px', fontSize: '12px' },
+          }, '✕'),
+        ),
       ),
     ),
+  ),
+  h('div', { class: 'muted' }, () =>
+    'todo: ' + stats().todo + ' · in-progress: ' + stats()['in-progress'] + ' · done: ' + stats().done,
   ),
 )
 mount(ui, app)

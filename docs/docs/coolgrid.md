@@ -51,32 +51,57 @@ import { Container, Row, Col } from '@pyreon/coolgrid'
 
 This creates a three-column layout that stacks to two columns at medium screens and one column on mobile.
 
-<Playground title="12-Column Responsive Grid" :height="200">
+<Playground title="12-column responsive grid" :height="300">
+// Coolgrid distilled: a Row is a flex container of children whose
+// widths are expressed as a 0–12 share of the row. The real
+// Container / Row / Col add responsive breakpoints (xs/sm/md/lg/xl),
+// gutters, and offset support — same underlying model.
 const cols = signal([4, 4, 4])
 
 const presets = {
-  'Thirds': [4, 4, 4],
-  'Halves': [6, 6],
-  'Sidebar': [3, 9],
-  'Header': [12],
-  'Quarters': [3, 3, 3, 3],
+  thirds:   [4, 4, 4],
+  halves:   [6, 6],
+  sidebar:  [3, 9],
+  header:   [12],
+  quarters: [3, 3, 3, 3],
+  asymmetric: [2, 7, 3],
 }
 
+const total = computed(() => cols().reduce((a, b) => a + b, 0))
+
 const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', { style: { marginBottom: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' } },
-    ...Object.keys(presets).map(name =>
+const ui = h('div', { class: 'col' },
+  h('div', { class: 'row' },
+    h('span', { class: 'muted' }, 'preset:'),
+    ...Object.keys(presets).map((name) =>
       h('button', {
         onClick: () => cols.set(presets[name]),
-        style: { padding: '4px 10px', border: '1px solid #ccc', borderRadius: '4px', background: '#fff', cursor: 'pointer', fontSize: '13px' },
+        style: {
+          fontWeight: () => JSON.stringify(cols()) === JSON.stringify(presets[name]) ? '700' : '400',
+          background: () => JSON.stringify(cols()) === JSON.stringify(presets[name]) ? 'var(--accent)' : null,
+          color: () => JSON.stringify(cols()) === JSON.stringify(presets[name]) ? 'var(--bg)' : null,
+        },
       }, name),
     ),
   ),
-  h('div', { style: { display: 'flex', gap: '8px', padding: '8px', background: '#f5f5f5', borderRadius: '6px' } },
-    () => cols().map(span =>
-      h('div', { style: { flex: span, padding: '16px 8px', background: '#2196f3', color: 'white', borderRadius: '4px', textAlign: 'center', fontSize: '13px' } }, `col ${span}/12`),
+  h('div', {
+    style: { display: 'flex', gap: '8px', padding: '8px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' },
+  }, () =>
+    cols().map((span) =>
+      h('div', {
+        style: {
+          flex: span,
+          padding: '20px 8px',
+          background: 'var(--accent)',
+          color: 'var(--bg)',
+          borderRadius: '6px',
+          textAlign: 'center',
+          fontWeight: '600',
+        },
+      }, span + ' / 12'),
     ),
   ),
+  h('div', { class: 'muted' }, () => 'sum: ' + total() + ' / 12'),
 )
 mount(ui, app)
 </Playground>
