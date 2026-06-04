@@ -1,8 +1,7 @@
-import { signal } from '@pyreon/reactivity'
+import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
 import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
-import { wrapBaseSignal } from './wrap-base-signal'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
@@ -132,30 +131,24 @@ export function createStorageSignal<T>(
 ): StorageSignal<T> {
   const storage = getWebStorage(backend)
 
-  // Shared base wrapper — callable + `.peek` / `.subscribe` / `.direct` /
-  // `.debug` / `.label` / forwarded `_v`. See `wrap-base-signal.ts` for
-  // the full contract (including why `_v` forwarding is load-bearing for
-  // the compiler-emitted `_bindText` fast path).
-  const storageSig = wrapBaseSignal(sig) as unknown as StorageSignal<T>
-
-  // Override set to persist
-  storageSig.set = (value: T) => {
-    sig.set(value)
-    /* v8 ignore next — defensive null storage guard */
-    if (storage) {
-      try {
-        storage.setItem(key, serialize(value, options?.serializer))
-      } catch {
-        // Storage full or blocked — signal still updates
+  // `wrapSignal` (from @pyreon/reactivity) delegates reads (incl. `.direct` +
+  // `_v` for the compiler's `_bindText` fast path) to the SHARED base `sig` and
+  // routes writes through our persist function; `.update` defaults to
+  // `set(fn(peek()))`. Each call returns a distinct facade, so per-consumer
+  // `.remove()` refcounting works over the shared base.
+  const storageSig = wrapSignal(sig, {
+    set: (value: T) => {
+      sig.set(value)
+      /* v8 ignore next — defensive null storage guard */
+      if (storage) {
+        try {
+          storage.setItem(key, serialize(value, options?.serializer))
+        } catch {
+          // Storage full or blocked — signal still updates
+        }
       }
-    }
-  }
-
-  // Override update to persist
-  storageSig.update = (fn: (current: T) => T) => {
-    const newValue = fn(sig.peek())
-    storageSig.set(newValue)
-  }
+    },
+  }) as unknown as StorageSignal<T>
 
   // Add remove method.
   //

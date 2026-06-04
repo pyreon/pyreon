@@ -1,8 +1,7 @@
-import { signal } from '@pyreon/reactivity'
+import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, removeEntry, setEntry } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
-import { wrapBaseSignal } from './wrap-base-signal'
 
 // ─── Server-side cookie source ───────────────────────────────────────────────
 
@@ -126,18 +125,14 @@ export function useCookie<T>(
 
   const sig = signal<T>(initialValue)
 
-  // Shared base wrapper — see `wrap-base-signal.ts` for the full contract.
-  const storageSig = wrapBaseSignal(sig) as unknown as StorageSignal<T>
-
-  storageSig.set = (value: T) => {
-    sig.set(value)
-    writeCookie(key, value, options)
-  }
-
-  storageSig.update = (fn: (current: T) => T) => {
-    const newValue = fn(sig.peek())
-    storageSig.set(newValue)
-  }
+  // `wrapSignal` delegates reads (incl. `.direct` + `_v`) to the shared base
+  // `sig` and routes writes through our cookie writer; `.update` defaults.
+  const storageSig = wrapSignal(sig, {
+    set: (value: T) => {
+      sig.set(value)
+      writeCookie(key, value, options)
+    },
+  }) as unknown as StorageSignal<T>
 
   storageSig.remove = () => {
     sig.set(defaultValue)

@@ -1,5 +1,5 @@
 import type { Signal } from '@pyreon/reactivity'
-import { batch } from '@pyreon/reactivity'
+import { batch, wrapSignal } from '@pyreon/reactivity'
 import { instanceMeta, isModelInstance } from './registry'
 import type { Patch, PatchListener } from './types'
 
@@ -21,30 +21,26 @@ export function trackedSignal<T>(
   emitPatch: (patch: Patch) => void,
   hasListeners?: () => boolean,
 ): Signal<T> {
-  const read = (): T => inner()
-
-  read.peek = (): T => inner.peek()
-
-  read.subscribe = (listener: () => void): (() => void) => inner.subscribe(listener)
-
-  read.set = (newValue: T): void => {
-    const prev = inner.peek()
-    inner.set(newValue)
-    // Skip patch emission entirely when no one is listening — avoids object
-    // allocation and (for nested instances) a full recursive snapshot.
-    if (!Object.is(prev, newValue) && (!hasListeners || hasListeners())) {
-      // For model instances, emit the snapshot rather than the live object
-      // so patches are always plain JSON-serializable values.
-      const patchValue = isModelInstance(newValue) ? snapshotValue(newValue as object) : newValue
-      emitPatch({ op: 'replace', path, value: patchValue })
-    }
-  }
-
-  read.update = (fn: (current: T) => T): void => {
-    read.set(fn(inner.peek()))
-  }
-
-  return read as Signal<T>
+  // `wrapSignal` delegates reads (incl. `.direct` + `_v` for the compiler's
+  // `_bindText` fast path) to `inner` and routes writes through our patch
+  // emitter; `.update` defaults to `set(fn(peek()))`. Previously this was a
+  // hand-rolled facade that forwarded neither `.direct` nor `_v` — so a model
+  // field bound via `{() => model.field()}` (the text fast path) would render
+  // empty and stay empty. The primitive forwards both by construction.
+  return wrapSignal(inner, {
+    set: (newValue: T): void => {
+      const prev = inner.peek()
+      inner.set(newValue)
+      // Skip patch emission entirely when no one is listening — avoids object
+      // allocation and (for nested instances) a full recursive snapshot.
+      if (!Object.is(prev, newValue) && (!hasListeners || hasListeners())) {
+        // For model instances, emit the snapshot rather than the live object
+        // so patches are always plain JSON-serializable values.
+        const patchValue = isModelInstance(newValue) ? snapshotValue(newValue as object) : newValue
+        emitPatch({ op: 'replace', path, value: patchValue })
+      }
+    },
+  })
 }
 
 /** Shallow snapshot helper (avoids importing snapshot.ts to prevent circular deps). */

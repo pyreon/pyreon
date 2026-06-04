@@ -1,8 +1,7 @@
-import { signal } from '@pyreon/reactivity'
+import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, removeEntry, setEntry } from './registry'
 import type { IndexedDBOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
-import { wrapBaseSignal } from './wrap-base-signal'
 
 
 // ─── Database management ─────────────────────────────────────────────────────
@@ -155,18 +154,14 @@ export function useIndexedDB<T>(
     writeTimer = setTimeout(flushWrite, debounceMs)
   }
 
-  // Shared base wrapper — see `wrap-base-signal.ts` for the full contract.
-  const storageSig = wrapBaseSignal(sig) as unknown as StorageSignal<T>
-
-  storageSig.set = (value: T) => {
-    sig.set(value)
-    scheduleWrite(value)
-  }
-
-  storageSig.update = (fn: (current: T) => T) => {
-    const newValue = fn(sig.peek())
-    storageSig.set(newValue)
-  }
+  // `wrapSignal` delegates reads (incl. `.direct` + `_v`) to the shared base
+  // `sig` and routes writes through the debounced IDB writer; `.update` defaults.
+  const storageSig = wrapSignal(sig, {
+    set: (value: T) => {
+      sig.set(value)
+      scheduleWrite(value)
+    },
+  }) as unknown as StorageSignal<T>
 
   storageSig.remove = () => {
     sig.set(defaultValue)
