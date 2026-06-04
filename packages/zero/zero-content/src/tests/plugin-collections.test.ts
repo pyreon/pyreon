@@ -10,10 +10,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import content, {
-  VIRTUAL_COLLECTIONS_ID,
-  VIRTUAL_COMPONENTS_ID,
-} from '../plugin'
+import content, { VIRTUAL_COLLECTIONS_ID } from '../plugin'
 
 // Use a workspace-local tmp dir so Bun's dynamic-import resolver accepts
 // the path. `/tmp` files fail with "Cannot find module" under Bun.
@@ -25,7 +22,6 @@ const WORKSPACE_TMP_ROOT = path.join(
 )
 
 const RESOLVED_VIRTUAL_COLLECTIONS = '\0' + VIRTUAL_COLLECTIONS_ID
-const RESOLVED_VIRTUAL_COMPONENTS = '\0' + VIRTUAL_COMPONENTS_ID
 
 describe('content() plugin — virtual:zero-content/collections', () => {
   let tmpDir: string
