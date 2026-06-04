@@ -49,6 +49,90 @@ export interface ComputedOptions<T> {
   __sourceLocation?: { file: string; line: number; col: number }
 }
 
+// Internal shape of a computed read function — state stored as PLAIN FIELDS on
+// the function object (fast in-object properties, exactly like `signal`), with
+// the shareable methods on `ComputedProto`. This replaced a per-instance shape
+// that carried THREE `Object.defineProperty` accessor getters (`_v`/`_d`/`_d1`)
+// — accessor properties force the function into V8 dictionary (slow-properties)
+// mode — plus a per-instance `direct` closure and a separate `host` object. A
+// structurally-faithful A/B (node --expose-gc, NODE_ENV=production, 100k items)
+// measured the accessor+closure shape at ~55% MORE retained heap per computed
+// than this plain-field + shared-prototype shape. `read` and `recompute` MUST
+// stay per-instance closures — their identity is stored in dependency
+// subscriber Sets and passed to `_markRecompute` — so only the shareable
+// methods (`direct`, the `_v` getter) move to the prototype.
+interface ComputedFn<T> {
+  (): T
+  /** @internal cached value */
+  _value: T
+  /** @internal dirty flag — true when a dependency changed since last read */
+  _dirty: boolean
+  /** @internal disposed flag */
+  _disposed: boolean
+  /**
+   * @internal subscriber set — who depends on THIS computed. Inlined onto the
+   * read fn (was a separate `host` object), so `trackSubscriber(read)` works
+   * exactly like `signal`. Eliminates one object allocation per computed.
+   */
+  _s: Set<() => void> | null
+  /** @internal single direct-updater inline slot — mirrors `signal._d1` */
+  _d1: (() => void) | null
+  /** @internal direct-updater Set — allocated on PROMOTION from `_d1` (≥2 subscribers) */
+  _d: Set<() => void> | null
+  /** Cached value for compiler-emitted direct bindings — recomputes if dirty. */
+  _v: T
+  dispose(): void
+  direct(updater: () => void): () => void
+}
+
+/**
+ * Shared prototype for every computed — `direct` + the `_v` getter live here
+ * (one allocation total) instead of a per-instance closure + a per-instance
+ * `Object.defineProperty`. Mirrors `signal.ts`'s `SignalProto`, including the
+ * `setPrototypeOf(_, Function.prototype)` step so computeds keep
+ * `instanceof Function === true` (consumers across the ecosystem discriminate
+ * reactive values via `x instanceof Function`). `read` + `recompute` + `dispose`
+ * stay per-instance closures (identity / per-variant cleanup semantics).
+ *
+ * The two-tier direct-updater storage (`_d1` inline slot → `_d` Set on 2nd
+ * subscribe) is identical between the lazy and equals variants, so it is shared
+ * here verbatim. The `_v` getter is also identical (recompute-if-dirty, return
+ * value), so both variants share it.
+ */
+const ComputedProto = {
+  direct(this: ComputedFn<unknown>, updater: () => void): () => void {
+    // Tier 1: empty → inline-slot the single subscriber (zero Set allocation).
+    if (this._d1 === null && this._d === null) {
+      this._d1 = updater
+      const self = this
+      return () => {
+        // Promotion-aware disposer (mirrors signal's pattern): a 2nd subscriber
+        // may have migrated `_d1` into `_d` before this dispose fires.
+        if (self._d1 === updater) self._d1 = null
+        else if (self._d) self._d.delete(updater)
+      }
+    }
+    // Tier 2: promote inline slot → Set, then add the new entry.
+    if (this._d === null) {
+      this._d = new Set()
+      this._d.add(this._d1 as () => void)
+      this._d1 = null
+    }
+    const set = this._d
+    set.add(updater)
+    return () => {
+      set.delete(updater)
+    }
+  },
+  get _v() {
+    // Getters can't declare a `this` param (TS2784); narrow inline.
+    const self = this as unknown as ComputedFn<unknown>
+    if (self._dirty) self() // ensure value is fresh
+    return self._value
+  },
+}
+Object.setPrototypeOf(ComputedProto, Function.prototype)
+
 /** Remove a computed from all dependency subscriber sets (local deps array). */
 function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
   for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn)
@@ -103,42 +187,18 @@ function computedLazy<T>(
   fn: () => T,
   injectedLoc?: { file: string; line: number; col: number },
 ): Computed<T> {
-  let value: T
-  let dirty = true
-  let disposed = false
+  // `tracked` and `deps` are touched only by the per-instance `read` + `dispose`
+  // closures (never by a prototype method), so they stay closure-captured.
   let tracked = false
   const deps: Set<() => void>[] = []
-  const host: { _s: Set<() => void> | null } = { _s: null }
-  // Set, not a never-compacted flat array. The array form's disposal
-  // only nulled the slot (`arr[idx] = null`) and never shrank, so a
-  // long-lived computed (a derived theme/locale/auth value, or one read
-  // inside churning `<For>` rows) bound by mount/unmount churn grew one
-  // permanent dead slot per ever-registered binding — app-lifetime
-  // memory growth AND `recompute` iterating O(total-ever) instead of
-  // O(live). Identical bug class already fixed for `signal._d`
-  // (signal.ts `_directFn`); `computed` was left on the broken pattern.
-  //
-  // Two-tier storage (mirrors `signal()._d` after PR #1177): `directFn1`
-  // is the inline slot for the FIRST direct subscriber (zero Set
-  // allocation, zero iterator overhead); promotion to `directFns: Set`
-  // happens on 2nd subscribe. Smaller win than for signal in practice
-  // — computeds rarely have many direct subscribers — but applied for
-  // symmetry and to verify the inline-slot pattern generalizes cleanly.
-  let directFn1: (() => void) | null = null
-  let directFns: Set<() => void> | null = null
+  // Forward-declared so the `read` body can reference it; assigned below. `read`
+  // is never invoked until after `recompute` is wired (signal change / first
+  // read both happen post-setup).
+  let recompute: () => void
 
-  const recompute = () => {
-    if (disposed || dirty) return
-    dirty = true
-    if (host._s) notifySubscribers(host._s)
-    if (directFn1) directFn1()
-    else if (directFns) for (const f of directFns) f()
-  }
-  _markRecompute(recompute)
-
-  const read = (): T => {
-    trackSubscriber(host)
-    if (dirty) {
+  const read = (() => {
+    trackSubscriber(read as unknown as { _s: Set<() => void> | null })
+    if (read._dirty) {
       if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('reactivity.computedRecompute')
         _rdRecordFire(read)
@@ -150,84 +210,59 @@ function computedLazy<T>(
           // Still need withTracking so activeEffect is set correctly
           // for any NEW signals read on this evaluation.
           setSkipDepsCollection(true)
-          value = withTracking(recompute, fn)
+          read._value = withTracking(recompute, fn)
           setSkipDepsCollection(false)
         } else {
-          value = trackWithLocalDeps(deps, recompute, fn)
+          read._value = trackWithLocalDeps(deps, recompute, fn)
           tracked = true
         }
       } catch (err) {
         _errorHandler(err)
       }
-      dirty = false
+      read._dirty = false
     }
-    return value as T
+    return read._value
+  }) as unknown as ComputedFn<T>
+
+  // Plain-field state (fast in-object properties) + shared prototype — see the
+  // `ComputedFn` / `ComputedProto` comments above for the why.
+  Object.setPrototypeOf(read, ComputedProto)
+  read._value = undefined as T
+  read._dirty = true
+  read._disposed = false
+  read._s = null
+  read._d1 = null
+  read._d = null
+
+  recompute = () => {
+    if (read._disposed || read._dirty) return
+    read._dirty = true
+    if (read._s) notifySubscribers(read._s)
+    if (read._d1) read._d1()
+    else if (read._d) for (const f of read._d) f()
   }
+  _markRecompute(recompute)
 
   read.dispose = () => {
-    disposed = true
+    read._disposed = true
     cleanupLocalDeps(deps, recompute)
-  }
-
-  Object.defineProperty(read, '_v', {
-    get: () => {
-      if (dirty) read() // ensure value is fresh
-      return value
-    },
-    enumerable: false,
-  })
-
-  // @internal — mirrors `signal._d` / `signal._d1` (PR #1177 two-tier).
-  // Single subscriber lives in `_d1` inline slot; promotion to `_d` Set
-  // happens on 2nd subscribe. Both getters exposed so tests + future
-  // tooling can inspect storage tier directly.
-  Object.defineProperty(read, '_d', {
-    get: () => directFns,
-    enumerable: false,
-  })
-  Object.defineProperty(read, '_d1', {
-    get: () => directFn1,
-    enumerable: false,
-  })
-
-  read.direct = (updater: () => void): (() => void) => {
-    // Tier 1: empty → inline-slot the single subscriber.
-    if (directFn1 === null && directFns === null) {
-      directFn1 = updater
-      return () => {
-        // Promotion-aware disposer (mirrors signal's pattern). If a 2nd
-        // subscriber arrived before this dispose fires, `directFn1` was
-        // migrated into `directFns` and cleared — check both tiers.
-        if (directFn1 === updater) directFn1 = null
-        else if (directFns) directFns.delete(updater)
-      }
-    }
-    // Tier 2: promote inline slot → Set, then add the new entry.
-    if (directFns === null) {
-      directFns = new Set()
-      directFns.add(directFn1!)
-      directFn1 = null
-    }
-    const set = directFns
-    set.add(updater)
-    return () => {
-      set.delete(updater)
-    }
   }
 
   if (process.env.NODE_ENV !== 'production')
     // skipFrames=2: skip computedLazy/computedWithEquals + computed, capture user's call site.
+    // `read` is now the subscriber host (carries `_s`), so it's passed as the
+    // host arg (was the separate `host` object).
     _rdRegister(
       read,
       'derived',
-      host,
+      read as unknown as { _s: Set<() => void> | null },
       recompute,
       undefined,
       injectedLoc ?? _captureCallerLocation(2),
     )
 
   getCurrentScope()?.add({ dispose: read.dispose })
-  return read as Computed<T>
+  return read as unknown as Computed<T>
 }
 
 /**
@@ -241,30 +276,38 @@ function computedWithEquals<T>(
   equals: (prev: T, next: T) => boolean,
   injectedLoc?: { file: string; line: number; col: number },
 ): Computed<T> {
-  let value: T
-  let dirty = true
+  // `initialized` and `deps` are touched only by per-instance closures.
   let initialized = false
-  let disposed = false
   const deps: Set<() => void>[] = []
-  const host: { _s: Set<() => void> | null } = { _s: null }
-  // Set, not a never-compacted flat array. The array form's disposal
-  // only nulled the slot (`arr[idx] = null`) and never shrank, so a
-  // long-lived computed (a derived theme/locale/auth value, or one read
-  // inside churning `<For>` rows) bound by mount/unmount churn grew one
-  // permanent dead slot per ever-registered binding — app-lifetime
-  // memory growth AND `recompute` iterating O(total-ever) instead of
-  // O(live). Identical bug class already fixed for `signal._d`
-  // (signal.ts `_directFn`); `computed` was left on the broken pattern.
-  //
-  // Two-tier storage (mirrors `signal()._d` after PR #1177): `directFn1`
-  // is the inline slot for the FIRST direct subscriber; promotion to
-  // `directFns: Set` happens on 2nd subscribe. See computedLazy above
-  // for the same pattern.
-  let directFn1: (() => void) | null = null
-  let directFns: Set<() => void> | null = null
+  let recompute: () => void
 
-  const recompute = () => {
-    if (disposed) return
+  const read = (() => {
+    trackSubscriber(read as unknown as { _s: Set<() => void> | null })
+    if (read._dirty) {
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('reactivity.computedRecompute')
+      cleanupLocalDeps(deps, recompute)
+      try {
+        read._value = trackWithLocalDeps(deps, recompute, fn)
+      } catch (err) {
+        _errorHandler(err)
+      }
+      read._dirty = false
+      initialized = true
+    }
+    return read._value
+  }) as unknown as ComputedFn<T>
+
+  Object.setPrototypeOf(read, ComputedProto)
+  read._value = undefined as T
+  read._dirty = true
+  read._disposed = false
+  read._s = null
+  read._d1 = null
+  read._d = null
+
+  recompute = () => {
+    if (read._disposed) return
     if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('reactivity.computedRecompute')
       _rdRecordFire(read)
@@ -272,87 +315,24 @@ function computedWithEquals<T>(
     cleanupLocalDeps(deps, recompute)
     try {
       const next = trackWithLocalDeps(deps, recompute, fn)
-      if (initialized && equals(value as T, next)) return
-      value = next
-      dirty = false
+      if (initialized && equals(read._value, next)) return
+      read._value = next
+      read._dirty = false
       initialized = true
     } catch (err) {
       _errorHandler(err)
       return
     }
-    if (host._s) notifySubscribers(host._s)
-    if (directFn1) directFn1()
-    else if (directFns) for (const f of directFns) f()
+    if (read._s) notifySubscribers(read._s)
+    if (read._d1) read._d1()
+    else if (read._d) for (const f of read._d) f()
   }
   _markRecompute(recompute)
 
-  const read = (): T => {
-    trackSubscriber(host)
-    if (dirty) {
-      if (process.env.NODE_ENV !== 'production')
-        _countSink.__pyreon_count__?.('reactivity.computedRecompute')
-      cleanupLocalDeps(deps, recompute)
-      try {
-        value = trackWithLocalDeps(deps, recompute, fn)
-      } catch (err) {
-        _errorHandler(err)
-      }
-      dirty = false
-      initialized = true
-    }
-    return value as T
-  }
-
   read.dispose = () => {
-    disposed = true
+    read._disposed = true
     cleanupLocalDeps(deps, recompute)
     cleanupEffect(recompute)
-  }
-
-  Object.defineProperty(read, '_v', {
-    get: () => {
-      if (dirty) read()
-      return value
-    },
-    enumerable: false,
-  })
-
-  // @internal — mirrors `signal._d` / `signal._d1` (PR #1177 two-tier).
-  // Single subscriber lives in `_d1` inline slot; promotion to `_d` Set
-  // happens on 2nd subscribe. Both getters exposed so tests + future
-  // tooling can inspect storage tier directly.
-  Object.defineProperty(read, '_d', {
-    get: () => directFns,
-    enumerable: false,
-  })
-  Object.defineProperty(read, '_d1', {
-    get: () => directFn1,
-    enumerable: false,
-  })
-
-  read.direct = (updater: () => void): (() => void) => {
-    // Tier 1: empty → inline-slot the single subscriber.
-    if (directFn1 === null && directFns === null) {
-      directFn1 = updater
-      return () => {
-        // Promotion-aware disposer (mirrors signal's pattern). If a 2nd
-        // subscriber arrived before this dispose fires, `directFn1` was
-        // migrated into `directFns` and cleared — check both tiers.
-        if (directFn1 === updater) directFn1 = null
-        else if (directFns) directFns.delete(updater)
-      }
-    }
-    // Tier 2: promote inline slot → Set, then add the new entry.
-    if (directFns === null) {
-      directFns = new Set()
-      directFns.add(directFn1!)
-      directFn1 = null
-    }
-    const set = directFns
-    set.add(updater)
-    return () => {
-      set.delete(updater)
-    }
   }
 
   if (process.env.NODE_ENV !== 'production')
@@ -360,12 +340,12 @@ function computedWithEquals<T>(
     _rdRegister(
       read,
       'derived',
-      host,
+      read as unknown as { _s: Set<() => void> | null },
       recompute,
       undefined,
       injectedLoc ?? _captureCallerLocation(2),
     )
 
   getCurrentScope()?.add({ dispose: read.dispose })
-  return read as Computed<T>
+  return read as unknown as Computed<T>
 }
