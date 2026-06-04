@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { writeAssetCacheHeaders } from './cache-headers'
+import { assetUrlPrefix, writeAssetCacheHeaders } from './cache-headers'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -73,10 +73,13 @@ export function cloudflareAdapter(): Adapter {
           JSON.stringify(routesConfig, null, 2),
         )
         // Cloudflare Pages reads `_headers` for per-path cache control; without
-        // it, hashed `/<assetsDir>/*` chunks inherit the host's short default
-        // (re-fetched needlessly on every release window). Matches the
+        // it, hashed `<base><assetsDir>/*` chunks inherit the host's short
+        // default (re-fetched needlessly on every release window). Matches the
         // immutable rule vercel.json / netlify.toml already emit.
-        await writeAssetCacheHeaders(options.outDir, options.assetsDir)
+        await writeAssetCacheHeaders(
+          options.outDir,
+          assetUrlPrefix(options.config.base, options.assetsDir),
+        )
         return
       }
       await validateBuildInputs(options)
@@ -84,7 +87,7 @@ export function cloudflareAdapter(): Adapter {
       const { join } = await import('node:path')
 
       const outDir = options.outDir
-      const assetsDir = options.assetsDir ?? 'assets'
+      const assetPrefix = assetUrlPrefix(options.config.base, options.assetsDir)
       await mkdir(outDir, { recursive: true })
 
       // Cloudflare serves static files from the root, so the client stays where
@@ -152,7 +155,7 @@ export default {
         version: 1,
         include: ['/*'],
         exclude: [
-          `/${assetsDir}/*`,
+          `${assetPrefix}/*`,
           '/favicon.*',
           '/site.webmanifest',
           '/robots.txt',
@@ -161,9 +164,9 @@ export default {
       }
 
       await writeFile(join(outDir, '_routes.json'), JSON.stringify(routesConfig, null, 2))
-      // `/<assetsDir>/*` is excluded from the worker above and served by Pages'
-      // static layer — pin it immutable via `_headers` (same as SSG).
-      await writeAssetCacheHeaders(outDir, assetsDir)
+      // `<base><assetsDir>/*` is excluded from the worker above and served by
+      // Pages' static layer — pin it immutable via `_headers` (same as SSG).
+      await writeAssetCacheHeaders(outDir, assetPrefix)
     },
     async revalidate(path: string): Promise<AdapterRevalidateResult> {
       // Cloudflare Pages ISR via Cache API delete + zone purge.

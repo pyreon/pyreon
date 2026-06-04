@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { assetUrlPrefix } from './cache-headers'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -39,12 +40,11 @@ export function netlifyAdapter(): Adapter {
         // Netlify reads both.
         const { writeFile } = await import('node:fs/promises')
         const { join } = await import('node:path')
-        const assetsDir = options.assetsDir ?? 'assets'
         const toml = `[build]
   publish = "."
 
 [[headers]]
-  for = "/${assetsDir}/*"
+  for = "${assetUrlPrefix(options.config.base, options.assetsDir)}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 `
@@ -106,7 +106,7 @@ export const config = {
   functions = "netlify/functions"
 
 [[headers]]
-  for = "/${options.assetsDir ?? 'assets'}/*"
+  for = "${assetUrlPrefix(options.config.base, options.assetsDir)}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 

@@ -35,8 +35,13 @@ export function bunAdapter(): Adapter {
       })
 
       const port = options.config.port ?? 3000
-      // The hashed-asset URL prefix (`/assets/` by default) is baked into the
-      // emitted handler so a custom `build.assetsDir` still gets immutable cache.
+      // The hashed-asset URL prefix (`/<assetsDir>/`, default `/assets/`) baked
+      // into the emitted handler so a custom `build.assetsDir` still gets
+      // immutable cache. NOTE: `base` is deliberately NOT included — this
+      // self-hosted handler serves files by raw `url.pathname` (no base-strip),
+      // so a subpath deploy isn't supported here regardless; threading base into
+      // only the cache check would imply support that doesn't exist. (The CDN
+      // adapters DO scope their rules to `<base><assetsDir>`.)
       const assetPrefix = `/${options.assetsDir ?? 'assets'}/`
       const serverEntry = `
 import { normalize } from "node:path"

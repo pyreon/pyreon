@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { assetUrlPrefix } from './cache-headers'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -45,9 +46,10 @@ export function vercelAdapter(): Adapter {
         const config = {
           version: 3,
           routes: [
-            // Long-cache hashed assets; mirrors the SSR config above.
+            // Long-cache hashed assets; mirrors the SSR config above. Scoped to
+            // `<base><assetsDir>` so subpath / custom-assetsDir deploys match.
             {
-              src: `/${options.assetsDir ?? 'assets'}/(.*)`,
+              src: `${assetUrlPrefix(options.config.base, options.assetsDir)}/(.*)`,
               headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
             },
           ],
@@ -121,9 +123,9 @@ export default async function vercelHandler(req) {
       const config = {
         version: 3,
         routes: [
-          // Serve static assets directly
+          // Serve static assets directly (scoped to `<base><assetsDir>`).
           {
-            src: `/${options.assetsDir ?? 'assets'}/(.*)`,
+            src: `${assetUrlPrefix(options.config.base, options.assetsDir)}/(.*)`,
             headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
           },
           // Favicon and manifest
