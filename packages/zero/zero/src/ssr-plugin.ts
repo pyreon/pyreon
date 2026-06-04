@@ -259,6 +259,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           clientOutDir,
           outDir: distDir,
           config,
+          assetsDir,
         })
       } catch (adapterError) {
         const cause

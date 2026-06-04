@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { assetUrlPrefix } from './cache-headers'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -43,7 +44,7 @@ export function netlifyAdapter(): Adapter {
   publish = "."
 
 [[headers]]
-  for = "/assets/*"
+  for = "${assetUrlPrefix(options.config.base, options.assetsDir)}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 `
@@ -105,7 +106,7 @@ export const config = {
   functions = "netlify/functions"
 
 [[headers]]
-  for = "/assets/*"
+  for = "${assetUrlPrefix(options.config.base, options.assetsDir)}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
