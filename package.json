@@ -42,6 +42,7 @@
     "test:e2e:compat": "bunx playwright test --config=e2e-configs/compat-layers.config.ts",
     "test:e2e:app-showcase": "bunx playwright test --config=e2e-configs/app-showcase.config.ts",
     "test:e2e:islands": "bunx playwright test --config=e2e-configs/islands-showcase.config.ts",
+    "test:e2e:docs-zero": "bunx playwright test --config=e2e-configs/docs-zero.config.ts",
     "test:e2e:ssr-node": "bunx playwright test --config=e2e-configs/ssr-node.config.ts",
     "test:e2e:isr-node": "bunx playwright test --config=e2e-configs/isr-node.config.ts",
     "test:e2e:ssg-subpath": "bunx playwright test --config=e2e-configs/ssg-subpath.config.ts",
