@@ -1,21 +1,36 @@
 interface PackageBadgeProps {
   name: string
+  href?: string
+  status?: 'stable' | 'beta' | 'alpha' | 'deprecated'
 }
 
-// Renders an inline pill that links to the package's npm page. The
-// VitePress version also rendered a download badge from shields.io —
-// that's a follow-up; this stub is enough to make the markdown compile
-// and render cleanly.
+const STATUS_COLORS: Record<string, string> = {
+  stable: 'var(--c-green)',
+  beta: 'var(--c-yellow)',
+  alpha: 'var(--c-orange)',
+  deprecated: 'var(--c-red)',
+}
+
+// Ported from docs/.vitepress/theme/components/PackageBadge.vue. Renders
+// an inline pill with a status dot, the package name, and the status
+// label. When `href` is set, the wrapper becomes an anchor.
 export function PackageBadge(props: PackageBadgeProps) {
-  const npmUrl = `https://www.npmjs.com/package/${props.name}`
+  const status = props.status ?? 'stable'
+  const dotColor = STATUS_COLORS[status] ?? STATUS_COLORS.stable!
+  if (props.href) {
+    return (
+      <a class="package-badge" href={props.href}>
+        <span class="package-badge-dot" style={`background-color: ${dotColor}`} />
+        <span class="package-badge-name">{props.name}</span>
+        <span class="package-badge-status">{status}</span>
+      </a>
+    )
+  }
   return (
-    <a
-      class="docs-package-badge"
-      href={npmUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      <code>{props.name}</code>
-    </a>
+    <span class="package-badge">
+      <span class="package-badge-dot" style={`background-color: ${dotColor}`} />
+      <span class="package-badge-name">{props.name}</span>
+      <span class="package-badge-status">{status}</span>
+    </span>
   )
 }

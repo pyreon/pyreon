@@ -1125,17 +1125,16 @@ const UserCard = defineComponent<UserCardProps>({
     )
 
     return () => (
-      <div class="user-card">
-        {props.avatar ? (
-          <img src={props.avatar} alt={props.name} />
-        ) : (
-          <div class="avatar-placeholder">{initials.value}</div>
-        )}
-        <h3>{props.name}</h3>
-        <p>{props.email}</p>
-      </div>
-    )
-  },
+      {props.avatar ? (
+        <img src={props.avatar} alt={props.name} />
+      ) : (
+        <div class="avatar-placeholder">{initials.value}</div>
+      )}
+      <h3>{props.name}</h3>
+      <p>{props.email}</p>
+    </div>
+  )
+},
 })
 ```
 
@@ -1146,18 +1145,18 @@ The setup function can return either a render function (called on every re-rende
 ```tsx
 // Returning a render function (recommended for reactive components)
 const Dynamic = defineComponent({
-  setup() {
-    const count = ref(0)
-    // This function is called on every render
-    return () => <p>{count.value}</p>
-  },
+setup() {
+  const count = ref(0)
+  // This function is called on every render
+  return () => <p>{count.value}</p>
+},
 })
 
 // Returning a VNode directly (for static content)
 const Static = defineComponent({
-  setup() {
-    return <p>I never change</p>
-  },
+setup() {
+  return <p>I never change</p>
+},
 })
 ```
 
@@ -1171,11 +1170,11 @@ These map Vue 3's built-in components onto the equivalent Pyreon primitives. Bec
 
 ```ts
 function KeepAlive(props: {
-  active?: () => boolean
-  include?: string | RegExp | (string | RegExp)[]
-  exclude?: string | RegExp | (string | RegExp)[]
-  max?: number
-  children?: VNodeChild
+active?: () => boolean
+include?: string | RegExp | (string | RegExp)[]
+exclude?: string | RegExp | (string | RegExp)[]
+max?: number
+children?: VNodeChild
 }): VNodeChild
 ```
 
@@ -1185,17 +1184,17 @@ Keeps a child subtree alive (mounted, state preserved) instead of destroying and
 import { KeepAlive, ref } from '@pyreon/vue-compat'
 
 const App = defineComponent({
-  setup() {
-    const showA = ref(true)
-    return () => (
-      <div>
-        <button onClick={() => (showA.value = !showA.value)}>Toggle</button>
-        <KeepAlive active={() => showA.value}>
-          <ExpensiveTab />
-        </KeepAlive>
-      </div>
-    )
-  },
+setup() {
+  const showA = ref(true)
+  return () => (
+    <div>
+      <button onClick={() => (showA.value = !showA.value)}>Toggle</button>
+      <KeepAlive active={() => showA.value}>
+        <ExpensiveTab />
+      </KeepAlive>
+    </div>
+  )
+},
 })
 ```
 
@@ -1207,22 +1206,22 @@ When `active` is omitted, the children are always mounted and visible -- nothing
 
 ```ts
 function Transition(props: {
-  name?: string
-  show?: () => boolean
-  appear?: boolean
-  enterFromClass?: string
-  enterActiveClass?: string
-  enterToClass?: string
-  leaveFromClass?: string
-  leaveActiveClass?: string
-  leaveToClass?: string
-  mode?: 'in-out' | 'out-in' | 'default'
-  css?: boolean
-  onBeforeEnter?: (el: HTMLElement) => void
-  onAfterEnter?: (el: HTMLElement) => void
-  onBeforeLeave?: (el: HTMLElement) => void
-  onAfterLeave?: (el: HTMLElement) => void
-  children?: VNodeChild
+name?: string
+show?: () => boolean
+appear?: boolean
+enterFromClass?: string
+enterActiveClass?: string
+enterToClass?: string
+leaveFromClass?: string
+leaveActiveClass?: string
+leaveToClass?: string
+mode?: 'in-out' | 'out-in' | 'default'
+css?: boolean
+onBeforeEnter?: (el: HTMLElement) => void
+onAfterEnter?: (el: HTMLElement) => void
+onBeforeLeave?: (el: HTMLElement) => void
+onAfterLeave?: (el: HTMLElement) => void
+children?: VNodeChild
 }): VNodeChild
 ```
 
@@ -1232,17 +1231,17 @@ Adds CSS enter/leave animation classes to a single child, controlled by a reacti
 import { Transition, ref } from '@pyreon/vue-compat'
 
 const App = defineComponent({
-  setup() {
-    const visible = ref(false)
-    return () => (
-      <div>
-        <button onClick={() => (visible.value = !visible.value)}>Toggle</button>
-        <Transition name="fade" show={() => visible.value}>
-          <div class="modal">Hello</div>
-        </Transition>
-      </div>
-    )
-  },
+setup() {
+  const visible = ref(false)
+  return () => (
+    <div>
+      <button onClick={() => (visible.value = !visible.value)}>Toggle</button>
+      <Transition name="fade" show={() => visible.value}>
+        <div class="modal">Hello</div>
+      </Transition>
+    </div>
+  )
+},
 })
 
 // CSS:
@@ -1258,23 +1257,23 @@ The Vue `name` convention (`name="fade"` → `fade-enter-from` …) is preserved
 
 ```ts
 function TransitionGroup<T = unknown>(props: {
-  tag?: string
-  name?: string
-  appear?: boolean
-  enterFromClass?: string
-  enterActiveClass?: string
-  enterToClass?: string
-  leaveFromClass?: string
-  leaveActiveClass?: string
-  leaveToClass?: string
-  moveClass?: string
-  items: () => T[]
-  keyFn: (item: T, index: number) => string | number
-  render: (item: T, index: number) => VNode
-  onBeforeEnter?: (el: HTMLElement) => void
-  onAfterEnter?: (el: HTMLElement) => void
-  onBeforeLeave?: (el: HTMLElement) => void
-  onAfterLeave?: (el: HTMLElement) => void
+tag?: string
+name?: string
+appear?: boolean
+enterFromClass?: string
+enterActiveClass?: string
+enterToClass?: string
+leaveFromClass?: string
+leaveActiveClass?: string
+leaveToClass?: string
+moveClass?: string
+items: () => T[]
+keyFn: (item: T, index: number) => string | number
+render: (item: T, index: number) => VNode
+onBeforeEnter?: (el: HTMLElement) => void
+onAfterEnter?: (el: HTMLElement) => void
+onBeforeLeave?: (el: HTMLElement) => void
+onAfterLeave?: (el: HTMLElement) => void
 }): VNodeChild
 ```
 
@@ -1284,18 +1283,18 @@ Animates a keyed reactive list with CSS enter/leave plus FLIP move animations. W
 import { TransitionGroup, ref } from '@pyreon/vue-compat'
 
 const App = defineComponent({
-  setup() {
-    const items = ref([{ id: 1 }, { id: 2 }])
-    return () => (
-      <TransitionGroup
-        tag="ul"
-        name="list"
-        items={() => items.value}
-        keyFn={(it) => it.id}
-        render={(it) => <li class="item">{it.id}</li>}
-      />
-    )
-  },
+setup() {
+  const items = ref([{ id: 1 }, { id: 2 }])
+  return () => (
+    <TransitionGroup
+      tag="ul"
+      name="list"
+      items={() => items.value}
+      keyFn={(it) => it.id}
+      render={(it) => <li class="item">{it.id}</li>}
+    />
+  )
+},
 })
 ```
 
@@ -1305,9 +1304,9 @@ const App = defineComponent({
 
 ```ts
 function Suspense(props: {
-  fallback?: VNodeChild
-  timeout?: number
-  children?: VNodeChild
+fallback?: VNodeChild
+timeout?: number
+children?: VNodeChild
 }): VNodeChild
 ```
 
@@ -1319,13 +1318,13 @@ import { Suspense, defineAsyncComponent } from '@pyreon/vue-compat'
 const AsyncPage = defineAsyncComponent(() => import('./Page'))
 
 const App = defineComponent({
-  setup() {
-    return () => (
-      <Suspense fallback={<div>Loading…</div>}>
-        <AsyncPage />
-      </Suspense>
-    )
-  },
+setup() {
+  return () => (
+    <Suspense fallback={<div>Loading…</div>}>
+      <AsyncPage />
+    </Suspense>
+  )
+},
 })
 ```
 
@@ -1341,11 +1340,11 @@ These shim Vue 3's internal component-instance APIs that composable libraries (v
 function getCurrentInstance(): ComponentInternalInstance | null
 
 interface ComponentInternalInstance {
-  uid: number
-  proxy: Record<string, unknown>
-  slots: Record<string, (() => VNodeChild) | undefined>
-  attrs: Record<string, unknown>
-  isMounted: boolean
+uid: number
+proxy: Record<string, unknown>
+slots: Record<string, (() => VNodeChild) | undefined>
+attrs: Record<string, unknown>
+isMounted: boolean
 }
 ```
 
@@ -1355,8 +1354,8 @@ Returns a handle to the current component instance, or `null` if called outside 
 import { getCurrentInstance } from '@pyreon/vue-compat'
 
 function useUid() {
-  const inst = getCurrentInstance()
-  return inst ? inst.uid : -1
+const inst = getCurrentInstance()
+return inst ? inst.uid : -1
 }
 ```
 
@@ -1376,10 +1375,10 @@ Returns the current component's slots -- a map of slot-name → render function.
 import { useSlots } from '@pyreon/vue-compat'
 
 const Wrapper = defineComponent({
-  setup() {
-    const slots = useSlots()
-    return () => <div class="box">{slots.default?.()}</div>
-  },
+setup() {
+  const slots = useSlots()
+  return () => <div class="box">{slots.default?.()}</div>
+},
 })
 ```
 
@@ -1397,10 +1396,10 @@ Returns the current component's attributes.
 import { useAttrs } from '@pyreon/vue-compat'
 
 const Passthrough = defineComponent({
-  setup() {
-    const attrs = useAttrs()
-    return () => <input {...attrs} />
-  },
+setup() {
+  const attrs = useAttrs()
+  return () => <input {...attrs} />
+},
 })
 ```
 
@@ -1421,8 +1420,7 @@ Re-export of Pyreon's `h()` and `Fragment` for manual render function usage.
 ```tsx
 // <div class="card"><p>Hello</p></div>
 <div class="card">
-  <p>Hello</p>
-</div>
+<p>Hello</p>
 ```
 
 **Components:**

@@ -785,22 +785,21 @@ List renders an empty Fragment (or empty wrapper) when data is an empty array. H
 function ItemList(props: { items: Item[] }) {
   if (props.items.length === 0) {
     return (
-      <div class="empty-state">
-        <p>No items found.</p>
-        <button>Add your first item</button>
-      </div>
-    )
-  }
-
-  return (
-    <List
-      data={props.items}
-      tag="ul"
-      class="item-list"
-    >{(item) =>
-      <li key={item.id}>{item.name}</li>
-    }</List>
+      <p>No items found.</p>
+      <button>Add your first item</button>
+    </div>
   )
+}
+
+return (
+  <List
+    data={props.items}
+    tag="ul"
+    class="item-list"
+  >{(item) =>
+    <li key={item.id}>{item.name}</li>
+  }</List>
+)
 }
 ```
 
@@ -817,17 +816,17 @@ import { Overlay } from '@pyreon/elements'
 import { h } from '@pyreon/core'
 
 <Overlay
-  trigger={({ toggle, isOpen }) =>
-    <button onClick={toggle}>
-      {() => isOpen() ? 'Close' : 'Open'}
-    </button>
-  }
-  content={({ close }) =>
-    <div class="dropdown-menu">
-      <button onClick={close}>Option A</button>
-      <button onClick={close}>Option B</button>
-    </div>
-  }
+trigger={({ toggle, isOpen }) =>
+  <button onClick={toggle}>
+    {() => isOpen() ? 'Close' : 'Open'}
+  </button>
+}
+content={({ close }) =>
+  <div class="dropdown-menu">
+    <button onClick={close}>Option A</button>
+    <button onClick={close}>Option B</button>
+  </div>
+}
 />
 ```
 
@@ -866,40 +865,40 @@ Each Overlay instance has its own independent signal, so multiple overlays on th
 
 ```ts
 function DropdownMenu(props: { label: string; items: { id: string; label: string; onClick: () => void }[] }) {
-  return (
-    <Overlay
-      trigger={({ toggle, isOpen }) =>
-        <Element
-          tag="button"
-          onClick={toggle}
-          afterContent={<span>{() => isOpen() ? '\u25B2' : '\u25BC'}</span>}
-          gap={8}
-          class="dropdown-trigger"
-          aria-expanded={() => String(isOpen())}
-          aria-haspopup="true"
-        >{props.label}</Element>
-      }
-      content={({ close }) =>
-        <div
-          class="dropdown-panel"
-          style="position: absolute; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 4px 0; min-width: 160px; z-index: 100;"
-          role="menu"
-        >
-          <List
-            data={props.items}
-          >{(item) =>
-            <button
-              key={item.id}
-              onClick={() => { item.onClick(); close() }}
-              class="dropdown-item"
-              style="display: block; width: 100%; padding: 8px 16px; border: none; background: none; text-align: left; cursor: pointer;"
-              role="menuitem"
-            >{item.label}</button>
-          }</List>
-        </div>
-      }
-    />
-  )
+return (
+  <Overlay
+    trigger={({ toggle, isOpen }) =>
+      <Element
+        tag="button"
+        onClick={toggle}
+        afterContent={<span>{() => isOpen() ? '\u25B2' : '\u25BC'}</span>}
+        gap={8}
+        class="dropdown-trigger"
+        aria-expanded={() => String(isOpen())}
+        aria-haspopup="true"
+      >{props.label}</Element>
+    }
+    content={({ close }) =>
+      <div
+        class="dropdown-panel"
+        style="position: absolute; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 4px 0; min-width: 160px; z-index: 100;"
+        role="menu"
+      >
+        <List
+          data={props.items}
+        >{(item) =>
+          <button
+            key={item.id}
+            onClick={() => { item.onClick(); close() }}
+            class="dropdown-item"
+            style="display: block; width: 100%; padding: 8px 16px; border: none; background: none; text-align: left; cursor: pointer;"
+            role="menuitem"
+          >{item.label}</button>
+        }</List>
+      </div>
+    }
+  />
+)
 }
 ```
 
@@ -907,31 +906,31 @@ function DropdownMenu(props: { label: string; items: { id: string; label: string
 
 ```ts
 function Tooltip(props: { text: string; children: VNodeChild }) {
-  return (
-    <Overlay
-      trigger={({ open, close }) =>
-        <span
-          onMouseenter={open}
-          onMouseleave={close}
-          onFocus={open}
-          onBlur={close}
-          tabindex={0}
-        >{props.children}</span>
-      }
-      content={() =>
-        <div
-          class="tooltip"
-          style="position: absolute; background: #333; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap; z-index: 1000;"
-          role="tooltip"
-        >{props.text}</div>
-      }
-    />
-  )
+return (
+  <Overlay
+    trigger={({ open, close }) =>
+      <span
+        onMouseenter={open}
+        onMouseleave={close}
+        onFocus={open}
+        onBlur={close}
+        tabindex={0}
+      >{props.children}</span>
+    }
+    content={() =>
+      <div
+        class="tooltip"
+        style="position: absolute; background: #333; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap; z-index: 1000;"
+        role="tooltip"
+      >{props.text}</div>
+    }
+  />
+)
 }
 
 // Usage
 <Tooltip text="Click to edit">
-  <button>Edit</button>
+<button>Edit</button>
 </Tooltip>
 ```
 
@@ -939,46 +938,46 @@ function Tooltip(props: { text: string; children: VNodeChild }) {
 
 ```ts
 function ConfirmDialog(props: {
-  triggerLabel: string
-  message: string
-  onConfirm: () => void
+triggerLabel: string
+message: string
+onConfirm: () => void
 }) {
-  return (
-    <Overlay
-      trigger={({ open }) =>
-        <button
-          onClick={open}
-          class="btn-danger"
-        >{props.triggerLabel}</button>
-      }
-      content={({ close }) =>
-        <Portal target={document.body}>
+return (
+  <Overlay
+    trigger={({ open }) =>
+      <button
+        onClick={open}
+        class="btn-danger"
+      >{props.triggerLabel}</button>
+    }
+    content={({ close }) =>
+      <Portal target={document.body}>
+        <div
+          class="dialog-backdrop"
+          style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;"
+          onClick={close}
+        >
           <div
-            class="dialog-backdrop"
-            style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;"
-            onClick={close}
+            class="dialog-content"
+            style="background: white; padding: 24px; border-radius: 8px; max-width: 400px;"
+            onClick={(e: Event) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
           >
-            <div
-              class="dialog-content"
-              style="background: white; padding: 24px; border-radius: 8px; max-width: 400px;"
-              onClick={(e: Event) => e.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-            >
-              <p>{props.message}</p>
-              <Element gap={8} alignX="right" block={true} style="margin-top: 16px;">
-                <button onClick={close}>Cancel</button>
-                <button
-                  onClick={() => { props.onConfirm(); close() }}
-                  class="btn-danger"
-                >Confirm</button>
-              </Element>
-            </div>
+            <p>{props.message}</p>
+            <Element gap={8} alignX="right" block={true} style="margin-top: 16px;">
+              <button onClick={close}>Cancel</button>
+              <button
+                onClick={() => { props.onConfirm(); close() }}
+                class="btn-danger"
+              >Confirm</button>
+            </Element>
           </div>
-        </Portal>
-      }
-    />
-  )
+        </div>
+      </Portal>
+    }
+  />
+)
 }
 ```
 
@@ -986,43 +985,43 @@ function ConfirmDialog(props: {
 
 ```ts
 function UserPopover(props: { user: { name: string; email: string; avatar: string } }) {
-  return (
-    <Overlay
-      trigger={({ toggle }) =>
-        <button
-          onClick={toggle}
-          class="user-avatar-btn"
+return (
+  <Overlay
+    trigger={({ toggle }) =>
+      <button
+        onClick={toggle}
+        class="user-avatar-btn"
+      >
+        <img src={props.user.avatar} alt={props.user.name} style="width: 32px; height: 32px; border-radius: 50%;" />
+      </button>
+    }
+    content={({ close }) =>
+      <div
+        class="user-popover"
+        style="position: absolute; background: white; border: 1px solid #ddd; border-radius: 8px; padding: 16px; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"
+      >
+        <Element
+          beforeContent={<img
+            src={props.user.avatar}
+            alt=""
+            style="width: 48px; height: 48px; border-radius: 50%;"
+          />}
+          gap={12}
+          block={true}
+          style="margin-bottom: 12px;"
         >
-          <img src={props.user.avatar} alt={props.user.name} style="width: 32px; height: 32px; border-radius: 50%;" />
-        </button>
-      }
-      content={({ close }) =>
-        <div
-          class="user-popover"
-          style="position: absolute; background: white; border: 1px solid #ddd; border-radius: 8px; padding: 16px; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"
-        >
-          <Element
-            beforeContent={<img
-              src={props.user.avatar}
-              alt=""
-              style="width: 48px; height: 48px; border-radius: 50%;"
-            />}
-            gap={12}
-            block={true}
-            style="margin-bottom: 12px;"
-          >
-            <div>
-              <Text tag="div" class="font-bold">{props.user.name}</Text>
-              <Text tag="div" class="text-gray">{props.user.email}</Text>
-            </div>
-          </Element>
-          <hr style="margin: 8px 0; border: none; border-top: 1px solid #eee;" />
-          <button onClick={close} class="popover-action">View Profile</button>
-          <button onClick={close} class="popover-action">Sign Out</button>
-        </div>
-      }
-    />
-  )
+          <div>
+            <Text tag="div" class="font-bold">{props.user.name}</Text>
+            <Text tag="div" class="text-gray">{props.user.email}</Text>
+          </div>
+        </Element>
+        <hr style="margin: 8px 0; border: none; border-top: 1px solid #eee;" />
+        <button onClick={close} class="popover-action">View Profile</button>
+        <button onClick={close} class="popover-action">Sign Out</button>
+      </div>
+    }
+  />
+)
 }
 ```
 
@@ -1033,15 +1032,14 @@ Each Overlay instance has its own independent reactive signal. Opening one overl
 ```ts
 // These two overlays are completely independent
 <div>
-  <Overlay
-    trigger={({ toggle }) => <button onClick={toggle}>Menu 1</button>}
-    content={() => <div>Content 1</div>}
-  />
-  <Overlay
-    trigger={({ toggle }) => <button onClick={toggle}>Menu 2</button>}
-    content={() => <div>Content 2</div>}
-  />
-</div>
+<Overlay
+  trigger={({ toggle }) => <button onClick={toggle}>Menu 1</button>}
+  content={() => <div>Content 1</div>}
+/>
+<Overlay
+  trigger={({ toggle }) => <button onClick={toggle}>Menu 2</button>}
+  content={() => <div>Content 2</div>}
+/>
 ```
 
 ### Accessibility Considerations

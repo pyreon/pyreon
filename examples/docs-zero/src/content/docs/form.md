@@ -1394,32 +1394,32 @@ Create a signal-based form.
 **Options (`UseFormOptions<TValues>`):**
 
 <APICard name="initialValues" type="property" signature="initialValues: TValues" description="Initial values for each field. Required." />
-<APICard name="onSubmit" type="property" signature="onSubmit: (values: TValues) => void | Promise<void>" description="Submit handler called with validated values. Required." />
-<APICard name="validators" type="property" signature="validators?: Partial<{ [K in keyof TValues]: ValidateFn }>" description="Per-field validator functions. Each receives the field value and all form values, returning an error string or undefined." />
-<APICard name="schema" type="property" signature="schema?: SchemaValidateFn<TValues>" description="Schema-level validator that runs after all field-level validators. Returns a partial record of field names to error messages." />
+<APICard name="onSubmit" type="property" signature={"onSubmit: (values: TValues) => void | Promise<void>"} description="Submit handler called with validated values. Required." />
+<APICard name="validators" type="property" signature={"validators?: Partial<{ [K in keyof TValues]: ValidateFn }>"} description="Per-field validator functions. Each receives the field value and all form values, returning an error string or undefined." />
+<APICard name="schema" type="property" signature={"schema?: SchemaValidateFn<TValues>"} description="Schema-level validator that runs after all field-level validators. Returns a partial record of field names to error messages." />
 <APICard name="validateOn" type="property" signature="validateOn?: 'blur' | 'change' | 'submit'" description="Controls when field-level validation runs. Defaults to 'blur'." />
 <APICard name="debounceMs" type="property" signature="debounceMs?: number" description="Debounce delay in milliseconds for field validators. When set, rapid changes only trigger one validation after the delay." />
 
 **Returns `FormState<TValues>`:**
 
-<APICard name="fields" type="property" signature="fields: { [K in keyof TValues]: FieldState<TValues[K]> }" description="Individual field states with fine-grained reactive signals." />
-<APICard name="isSubmitting" type="property" signature="isSubmitting: Signal<boolean>" description="Whether the onSubmit handler is currently running." />
-<APICard name="isValidating" type="property" signature="isValidating: Signal<boolean>" description="Whether async validation is currently running." />
-<APICard name="isValid" type="property" signature="isValid: Accessor<boolean>" description="Whether all fields are currently valid (no errors). Read-only computed." />
-<APICard name="isDirty" type="property" signature="isDirty: Accessor<boolean>" description="Whether any field differs from its initial value. Read-only computed." />
-<APICard name="submitCount" type="property" signature="submitCount: Signal<number>" description="Number of times submit has been attempted." />
-<APICard name="submitError" type="property" signature="submitError: Signal<unknown>" description="Error thrown by onSubmit, if any." />
+<APICard name="fields" type="property" signature={"fields: { [K in keyof TValues]: FieldState<TValues[K]> }"} description="Individual field states with fine-grained reactive signals." />
+<APICard name="isSubmitting" type="property" signature={"isSubmitting: Signal<boolean>"} description="Whether the onSubmit handler is currently running." />
+<APICard name="isValidating" type="property" signature={"isValidating: Signal<boolean>"} description="Whether async validation is currently running." />
+<APICard name="isValid" type="property" signature={"isValid: Accessor<boolean>"} description="Whether all fields are currently valid (no errors). Read-only computed." />
+<APICard name="isDirty" type="property" signature={"isDirty: Accessor<boolean>"} description="Whether any field differs from its initial value. Read-only computed." />
+<APICard name="submitCount" type="property" signature={"submitCount: Signal<number>"} description="Number of times submit has been attempted." />
+<APICard name="submitError" type="property" signature={"submitError: Signal<unknown>"} description="Error thrown by onSubmit, if any." />
 <APICard name="values" type="function" signature="values(): TValues" description="Get all current form values as a plain object." />
-<APICard name="errors" type="function" signature="errors(): Partial<Record<keyof TValues, string | undefined>>" description="Get all current errors as a partial record. Only fields with errors are included." />
+<APICard name="errors" type="function" signature={"errors(): Partial<Record<keyof TValues, string | undefined>>"} description="Get all current errors as a partial record. Only fields with errors are included." />
 <APICard name="setFieldValue" type="function" signature="setFieldValue(field: keyof TValues, value: TValues[K]): void" description="Programmatically set a single field's value. Marks the field as dirty if the new value differs from the initial value." />
 <APICard name="setFieldError" type="function" signature="setFieldError(field: keyof TValues, error: string | undefined): void" description="Programmatically set a single field's error. Pass undefined to clear." />
-<APICard name="setErrors" type="function" signature="setErrors(errors: Partial<Record<keyof TValues, string | undefined>>): void" description="Set multiple field errors at once." />
+<APICard name="setErrors" type="function" signature={"setErrors(errors: Partial<Record<keyof TValues, string | undefined>>): void"} description="Set multiple field errors at once." />
 <APICard name="clearErrors" type="function" signature="clearErrors(): void" description="Clear all field errors at once." />
 <APICard name="resetField" type="function" signature="resetField(field: keyof TValues): void" description="Reset a single field to its initial value without affecting other fields." />
 <APICard name="register" type="function" signature="register(field: keyof TValues, opts?: { type: 'checkbox' | 'number' }): FieldRegisterProps" description="Get input binding props for a field. Returns value, onInput, onBlur. Pass { type: 'checkbox' } for a checked accessor, or { type: 'number' } to use valueAsNumber." />
-<APICard name="handleSubmit" type="function" signature="handleSubmit(event?: Event): Promise<void>" description="Submit the form. Prevents default, validates all fields, and calls onSubmit if valid." />
+<APICard name="handleSubmit" type="function" signature={"handleSubmit(event?: Event): Promise<void>"} description="Submit the form. Prevents default, validates all fields, and calls onSubmit if valid." />
 <APICard name="reset" type="function" signature="reset(): void" description="Reset the entire form to initial values, clearing all errors, touched, dirty states, submit count, and submit error." />
-<APICard name="validate" type="function" signature="validate(): Promise<boolean>" description="Manually validate all fields. Returns whether the form is valid. Bypasses debounce." />
+<APICard name="validate" type="function" signature={"validate(): Promise<boolean>"} description="Manually validate all fields. Returns whether the form is valid. Bypasses debounce." />
 
 ### `useFieldArray(initial?)`
 
@@ -1481,15 +1481,15 @@ function useFormContext<TValues>(): FormState<TValues>
 
 ## Type Exports
 
-<APICard name="Accessor" type="type" signature="Accessor<T> = Signal<T> | Computed<T>" description="A reactive value that can be read by calling it. Both Signal and Computed satisfy this interface." />
-<APICard name="FormState" type="type" signature="FormState<TValues>" description="Full form state object returned by useForm." />
-<APICard name="UseFormOptions" type="type" signature="UseFormOptions<TValues>" description="Options for useForm." />
-<APICard name="FieldState" type="type" signature="FieldState<T>" description="Per-field reactive state with value, error, touched, and dirty signals." />
-<APICard name="FieldRegisterProps" type="type" signature="FieldRegisterProps<T>" description="Props returned by register() for input binding." />
+<APICard name="Accessor" type="type" signature={"Accessor<T> = Signal<T> | Computed<T>"} description="A reactive value that can be read by calling it. Both Signal and Computed satisfy this interface." />
+<APICard name="FormState" type="type" signature={"FormState<TValues>"} description="Full form state object returned by useForm." />
+<APICard name="UseFormOptions" type="type" signature={"UseFormOptions<TValues>"} description="Options for useForm." />
+<APICard name="FieldState" type="type" signature={"FieldState<T>"} description="Per-field reactive state with value, error, touched, and dirty signals." />
+<APICard name="FieldRegisterProps" type="type" signature={"FieldRegisterProps<T>"} description="Props returned by register() for input binding." />
 <APICard name="ValidationError" type="type" signature="ValidationError = string | undefined" description="A validation error message, or undefined if valid." />
-<APICard name="ValidateFn" type="type" signature="ValidateFn<T, TValues>" description="Per-field validator function that receives the field value and all form values." />
-<APICard name="SchemaValidateFn" type="type" signature="SchemaValidateFn<TValues>" description="Schema-level validator function that receives all form values and returns a partial error record." />
-<APICard name="FieldArrayItem" type="type" signature="FieldArrayItem<T> = { key: number; value: Signal<T> }" description="Item in a field array with a stable key for keyed rendering." />
-<APICard name="UseFieldArrayResult" type="type" signature="UseFieldArrayResult<T>" description="Return type of useFieldArray with methods for array manipulation." />
-<APICard name="UseFieldResult" type="type" signature="UseFieldResult<T>" description="Return type of useField with the field's signals, setters, and convenience computeds." />
-<APICard name="FormStateSummary" type="type" signature="FormStateSummary<TValues>" description="Shape returned by useFormState containing isSubmitting, isValid, isDirty, errors, and more." />
+<APICard name="ValidateFn" type="type" signature={"ValidateFn<T, TValues>"} description="Per-field validator function that receives the field value and all form values." />
+<APICard name="SchemaValidateFn" type="type" signature={"SchemaValidateFn<TValues>"} description="Schema-level validator function that receives all form values and returns a partial error record." />
+<APICard name="FieldArrayItem" type="type" signature={"FieldArrayItem<T> = { key: number; value: Signal<T> }"} description="Item in a field array with a stable key for keyed rendering." />
+<APICard name="UseFieldArrayResult" type="type" signature={"UseFieldArrayResult<T>"} description="Return type of useFieldArray with methods for array manipulation." />
+<APICard name="UseFieldResult" type="type" signature={"UseFieldResult<T>"} description="Return type of useField with the field's signals, setters, and convenience computeds." />
+<APICard name="FormStateSummary" type="type" signature={"FormStateSummary<TValues>"} description="Shape returned by useFormState containing isSubmitting, isValid, isDirty, errors, and more." />

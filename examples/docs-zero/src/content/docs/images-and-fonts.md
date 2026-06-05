@@ -608,13 +608,12 @@ The `<NoOptimize>` boundary is the middle tier — wrap a subtree and every `<Im
 export default function IconLibrary() {
   return (
     <NoOptimize>
-      <div class="icon-grid">
-        <Image src={icon1} alt="Heart" width={24} height={24} />
-        <Image src={icon2} alt="Star" width={24} height={24} />
-        <Image src={icon3} alt="Moon" width={24} height={24} />
-      </div>
-    </NoOptimize>
-  )
+      <Image src={icon1} alt="Heart" width={24} height={24} />
+      <Image src={icon2} alt="Star" width={24} height={24} />
+      <Image src={icon3} alt="Moon" width={24} height={24} />
+    </div>
+  </NoOptimize>
+)
 }
 ```
 
@@ -622,13 +621,13 @@ export default function IconLibrary() {
 ```tsx
 // HTML email template cached as a static asset
 export function EmailTemplate(props: EmailProps) {
-  return (
-    <NoOptimize>
-      <img src={companyLogo} alt="Company" width={200} height={60} />
-      <h1>Welcome</h1>
-      <Image src={illustration} alt="Illustration" width={400} height={300} />
-    </NoOptimize>
-  )
+return (
+  <NoOptimize>
+    <img src={companyLogo} alt="Company" width={200} height={60} />
+    <h1>Welcome</h1>
+    <Image src={illustration} alt="Illustration" width={400} height={300} />
+  </NoOptimize>
+)
 }
 ```
 
@@ -640,13 +639,13 @@ Use `<NoOptimize disabled>` to override an outer boundary and restore full optim
 
 ```tsx
 <NoOptimize>
-  <Icon src={smallIcon} alt="Small" />
-  <Icon src={anotherIcon} alt="Another" />
+<Icon src={smallIcon} alt="Small" />
+<Icon src={anotherIcon} alt="Another" />
 
-  {/* Re-enable optimization for the hero image */}
-  <NoOptimize disabled>
-    <Image src={hero} alt="Hero" priority />
-  </NoOptimize>
+{/* Re-enable optimization for the hero image */}
+<NoOptimize disabled>
+  <Image src={hero} alt="Hero" priority />
+</NoOptimize>
 </NoOptimize>
 ```
 
@@ -656,11 +655,11 @@ The explicit re-enable form that wins over a parent `<NoOptimize>` boundary:
 
 ```tsx
 <NoOptimize>
-  {/* Renders as bare <img> */}
-  <Image src={icon} alt="Icon" optimize={false} />
+{/* Renders as bare <img> */}
+<Image src={icon} alt="Icon" optimize={false} />
 
-  {/* Forced to optimize, overriding the boundary */}
-  <Image src={featured} alt="Featured" optimize={true} />
+{/* Forced to optimize, overriding the boundary */}
+<Image src={featured} alt="Featured" optimize={true} />
 </NoOptimize>
 ```
 
@@ -676,14 +675,13 @@ The explicit re-enable form that wins over a parent `<NoOptimize>` boundary:
 
 ```tsx
 <div>
-  <NoOptimize>
-    <Image src={icon1} alt="Icon 1" />
-    {/* Renders bare <img> */}
-  </NoOptimize>
+<NoOptimize>
+  <Image src={icon1} alt="Icon 1" />
+  {/* Renders bare <img> */}
+</NoOptimize>
 
-  <Image src={hero} alt="Hero" />
-  {/* Still fully optimized (aspect-ratio wrapper, lazy-load, etc.) */}
-</div>
+<Image src={hero} alt="Hero" />
+{/* Still fully optimized (aspect-ratio wrapper, lazy-load, etc.) */}
 ```
 
 Multiple or nested `<NoOptimize>` boundaries work, but the innermost context value takes precedence — context doesn't stack:
