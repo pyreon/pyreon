@@ -15,7 +15,7 @@
  * `loadSearchIndex` data-flow here and lean on the existing unit
  * tests for the state machine.
  */
-import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
+import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   _resetSearchForTesting,
