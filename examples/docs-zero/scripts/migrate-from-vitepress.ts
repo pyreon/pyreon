@@ -428,63 +428,6 @@ function convertTagAttributes(tag: string): string {
   return head + outInner + tail
 }
 
-// Strip a JSX-shaped component invocation whose attribute values may
-// contain literal JSX (so a naïve `<NAME[^>]*?/>` regex would miss the
-// real terminator). Tracks quote state to find the real closing `>`.
-function stripComponentInvocation(
-  source: string,
-  componentName: string,
-  conversions: string[],
-): string {
-  const startToken = `<${componentName}`
-  let i = 0
-  let result = ''
-  let count = 0
-  while (i < source.length) {
-    const j = source.indexOf(startToken, i)
-    if (j < 0) {
-      result += source.slice(i)
-      break
-    }
-    // Ensure it's a real component reference (next char is space/newline/`/`/`>`).
-    const next = source[j + startToken.length]
-    if (next !== ' ' && next !== '\n' && next !== '\t' && next !== '/' && next !== '>') {
-      result += source.slice(i, j + 1)
-      i = j + 1
-      continue
-    }
-    result += source.slice(i, j)
-    // Scan for the real end `>`, respecting single/double quotes.
-    let k = j + startToken.length
-    let inQuote: '"' | "'" | null = null
-    while (k < source.length) {
-      const c = source[k]
-      if (inQuote) {
-        if (c === inQuote) inQuote = null
-        k++
-        continue
-      }
-      if (c === '"' || c === "'") {
-        inQuote = c
-        k++
-        continue
-      }
-      if (c === '>') {
-        k++
-        break
-      }
-      k++
-    }
-    result += `{/* ${componentName} (VitePress custom component — migration deferred) */}`
-    i = k
-    count++
-  }
-  if (count > 0) {
-    conversions.push(`<${componentName} /> stripped (×${count})`)
-  }
-  return result
-}
-
 function needsYamlQuote(value: string): boolean {
   // YAML treats `@`, `&`, `*`, `!`, `|`, `>`, `'`, `"`, `#`, `%`, `,`,
   // `?`, `:`, `-`, `<`, `=` etc. as reserved when leading. Quote

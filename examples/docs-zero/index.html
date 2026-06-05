@@ -8,6 +8,37 @@
       name="description"
       content="Pyreon is a full-stack UI framework with fine-grained reactivity (signals). SSR, SSG, islands, SPA."
     />
+    <!--
+      FOUC-safe theme sync — mirrors VitePress's pre-paint script.
+      Reads the stored appearance + OS preference and sets `data-theme`
+      BEFORE first paint so tokens.css resolves the correct palette
+      with no flash. Same storage key the ThemeToggle component reads.
+    -->
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('pyreon-docs-appearance')
+          var dark
+          if (stored === 'dark' || stored === 'light') {
+            dark = stored === 'dark'
+          } else {
+            dark =
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches
+          }
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark'
+        }
+      })()
+    </script>
+    <!-- Brand fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
   </head>
   <body>
     <div id="app"></div>

@@ -120,6 +120,7 @@ th {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   height: 56px;
   padding: 0 1.25rem;
   background: color-mix(in srgb, var(--bg) 92%, transparent);
@@ -127,6 +128,13 @@ th {
   -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--hairline);
 }
+.docs-header__left,
+.docs-header__right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .docs-logo {
   font-family: var(--font-mono);
   font-weight: 700;
@@ -147,9 +155,162 @@ th {
 }
 .docs-nav a:hover { color: var(--link); text-decoration: none; }
 
+@media (max-width: 768px) {
+  .docs-nav { display: none; }
+  .docs-search-btn__label { display: none; }
+}
+
+.docs-search-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 32px;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-well);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 120ms, color 120ms;
+}
+.docs-search-btn:hover { border-color: var(--link); color: var(--text); }
+.docs-search-btn kbd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-hint);
+}
+
+.docs-theme-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-well);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 120ms, color 120ms;
+}
+.docs-theme-toggle:hover { border-color: var(--link); color: var(--text); }
+
+.docs-hamburger {
+  display: none;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-well);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
 .docs-main {
   flex: 1;
 }
+
+/* ── Mobile sidebar drawer ─────────────────────────────────────────── */
+
+.docs-mobile-toggle {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-well);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+@media (max-width: 768px) {
+  .docs-mobile-toggle { display: inline-flex; }
+}
+
+.docs-sidebar-wrap {
+  display: contents;
+}
+.docs-sidebar-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  .docs-sidebar-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: block;
+    pointer-events: none;
+    visibility: hidden;
+    transition: visibility 0s linear 220ms;
+  }
+  .docs-sidebar-wrap--open {
+    visibility: visible;
+    pointer-events: auto;
+    transition: visibility 0s;
+  }
+  .docs-sidebar-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transition: opacity 200ms;
+  }
+  .docs-sidebar-wrap--open .docs-sidebar-backdrop { opacity: 1; }
+  .docs-sidebar-wrap .pyreon-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(80vw, 320px);
+    padding: 1rem;
+    background: var(--bg);
+    border-right: 1px solid var(--hairline);
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
+    max-height: none;
+    z-index: 1;
+  }
+  .docs-sidebar-wrap--open .pyreon-sidebar { transform: translateX(0); }
+}
+
+/* Sidebar group title — interactive button */
+.pyreon-sidebar__group-title {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.4rem;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.pyreon-sidebar__group-title:hover { color: var(--text); }
+.pyreon-sidebar__chevron {
+  display: inline-flex;
+  transition: transform 160ms;
+}
+.pyreon-sidebar__group-title--expanded .pyreon-sidebar__chevron {
+  transform: rotate(90deg);
+}
+.pyreon-sidebar__list--collapsed { display: none; }
 
 /* ── Docs page grid (sidebar + content + toc) ──────────────────────── */
 

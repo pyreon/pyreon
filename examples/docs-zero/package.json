@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "test": "bun test scripts/migrate-from-vitepress.test.ts",
+    "migrate": "bun scripts/migrate-from-vitepress.ts"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",

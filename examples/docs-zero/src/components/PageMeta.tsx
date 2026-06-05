@@ -25,7 +25,7 @@ export function PageMeta(props: PageMetaProps) {
       {lastUpdated ? (
         <span>
           Last updated:{' '}
-          <time dateTime={lastUpdated.iso}>{lastUpdated.label}</time>
+          <time {...{ datetime: lastUpdated.iso }}>{lastUpdated.label}</time>
         </span>
       ) : null}
     </footer>

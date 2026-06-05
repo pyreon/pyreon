@@ -59,7 +59,7 @@ export function Playground(props: PlaygroundProps) {
         <div class="playground__editor">
           <textarea
             class="playground__textarea"
-            spellcheck={false}
+            spellCheck={false}
             value={() => code()}
             onInput={(e: Event) =>
               code.set((e.target as HTMLTextAreaElement).value)
@@ -210,7 +210,7 @@ ${code}
 } catch (err) {
   document.getElementById('app').innerHTML = '<pre class="error">' + String(err && err.stack || err) + '</pre>'
 }
-<\/script>
+${'<'}/script>
 </body>
 </html>`
 }

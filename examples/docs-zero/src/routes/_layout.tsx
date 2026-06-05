@@ -1,20 +1,15 @@
-import { RouterLink, RouterView } from '@pyreon/router'
+import { RouterView } from '@pyreon/router'
+import { Header } from '../components/Header'
 
-// The root layout — wraps every route. Renders a simple sticky top bar
-// + the route content area. Sidebar/Toc are mounted by the docs route
-// itself so the landing page (index.tsx) can render a different layout.
+// Root layout — wraps every route with a sticky header + theme toggle
+// + the main content area. The mobile sidebar drawer wiring lives in
+// the docs route itself ([...slug].tsx) because it needs the current
+// slug for active highlighting; the header just shows a non-functional
+// hamburger on non-docs pages (it's hidden via CSS).
 export function layout() {
   return (
     <div class="docs-shell">
-      <header class="docs-header">
-        <RouterLink to="/" class="docs-logo">
-          Pyreon
-        </RouterLink>
-        <nav class="docs-nav">
-          <RouterLink to="/docs/getting-started">Docs</RouterLink>
-          <a href="https://github.com/pyreon/pyreon" rel="noopener">GitHub</a>
-        </nav>
-      </header>
+      <Header />
       <main class="docs-main">
         <RouterView />
       </main>
