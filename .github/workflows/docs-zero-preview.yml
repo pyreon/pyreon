@@ -49,11 +49,12 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build docs-zero
+        # `--base=` CLI flag is honored by zero's `config()` hook via the
+        # argvHasBaseFlag() carve-out (mirrors the equivalent --port
+        # handling that already shipped). Same pattern the rest of the
+        # Vite ecosystem expects.
         run: |
           cd examples/docs-zero
-          # Build with the `--base=/pyreon/preview/` prefix so the
-          # site can be deployed under that subpath alongside the
-          # legacy VitePress site at /pyreon/.
           bunx vite build --base=/pyreon/preview/
 
       - name: Pack the preview into the existing site bundle
