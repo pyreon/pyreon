@@ -1,0 +1,83 @@
+name: Deploy Docs (zero-content preview)
+
+# Side-by-side deploy of the docs-zero example. Builds the
+# zero-content-powered docs and uploads to GitHub Pages alongside the
+# existing VitePress deploy. The runtime serves docs-zero at the
+# `/pyreon/preview/` subpath so it can be visually compared with the
+# legacy /pyreon/ site for one bake week before the production
+# cut-over (see docs/CUTOVER.md).
+#
+# Once the cut-over PR lands, this workflow is REMOVED and the main
+# `docs.yml` is flipped to build docs-zero instead.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'examples/docs-zero/**'
+      - 'packages/zero/zero-content/**'
+      - '.github/workflows/docs-zero-preview.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-docs-zero-preview
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build docs-zero
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Need the full history so `git log -1 --format=%aI <file>` in
+          # the last-updated plugin returns the real timestamp instead
+          # of the shallow-clone-only commit.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install workspace deps
+        run: bun install --frozen-lockfile
+
+      - name: Build docs-zero
+        run: |
+          cd examples/docs-zero
+          # Build with the `--base=/pyreon/preview/` prefix so the
+          # site can be deployed under that subpath alongside the
+          # legacy VitePress site at /pyreon/.
+          bunx vite build --base=/pyreon/preview/
+
+      - name: Pack the preview into the existing site bundle
+        run: |
+          # Build the legacy VitePress site as the OUTER artifact.
+          cd docs && bun install --frozen-lockfile && bun run build && cd ..
+          # Drop the docs-zero build into preview/ of the VitePress dist.
+          mkdir -p docs/.vitepress/dist/preview
+          cp -r examples/docs-zero/dist/* docs/.vitepress/dist/preview/
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
