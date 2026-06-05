@@ -117,16 +117,15 @@ const SearchBox = defineComponent((props: { placeholder: string }) => {
 
   // --- Return the render tree (once) ---
   return (
-    <div class="search-box">
-      <input
-        ref={inputRef}
-        placeholder={props.placeholder}
-        value={() => query()}
-        onInput={(e) => query.set(e.currentTarget.value)}
-      />
-      <ul>{() => results().map((r) => <li>{r}</li>)}</ul>
-    </div>
-  )
+    <input
+      ref={inputRef}
+      placeholder={props.placeholder}
+      value={() => query()}
+      onInput={(e) => query.set(e.currentTarget.value)}
+    />
+    <ul>{() => results().map((r) => <li>{r}</li>)}</ul>
+  </div>
+)
 })
 ```
 
@@ -136,7 +135,7 @@ For simpler components that do not need lifecycle hooks or complex setup, you ca
 
 ```tsx
 const Greeting = (props: { name: string }) => {
-  return <h1>Hello, {props.name}!</h1>
+return <h1>Hello, {props.name}!</h1>
 }
 ```
 
@@ -144,7 +143,7 @@ For components with dynamic rendering logic, return a reactive accessor function
 
 ```tsx
 const ConditionalGreeting = (props: { name: () => string; show: () => boolean }) => {
-  return () => (props.show() ? <h1>Hello, {props.name()}!</h1> : null)
+return () => (props.show() ? <h1>Hello, {props.name()}!</h1> : null)
 }
 ```
 
@@ -160,20 +159,20 @@ type ComponentFn<P extends Props = Props> = (props: P) => VNodeChild
 
 // Type your props explicitly
 interface UserCardProps {
-  name: string
-  email: string
-  avatar?: string
-  onClick?: (e: MouseEvent) => void
+name: string
+email: string
+avatar?: string
+onClick?: (e: MouseEvent) => void
 }
 
 const UserCard: ComponentFn<UserCardProps> = (props) => {
-  return (
-    <div class="user-card" onClick={props.onClick}>
-      {props.avatar && <img src={props.avatar} alt={props.name} />}
-      <h3>{props.name}</h3>
-      <p>{props.email}</p>
-    </div>
-  )
+return (
+  <div class="user-card" onClick={props.onClick}>
+    {props.avatar && <img src={props.avatar} alt={props.name} />}
+    <h3>{props.name}</h3>
+    <p>{props.email}</p>
+  </div>
+)
 }
 ```
 
@@ -181,22 +180,22 @@ Children are passed via `props.children`:
 
 ```tsx
 interface CardProps {
-  title: string
-  children?: VNodeChild
+title: string
+children?: VNodeChild
 }
 
 const Card = defineComponent((props: CardProps) => {
-  return (
-    <div class="card">
-      <h2>{props.title}</h2>
-      <div class="card-body">{props.children}</div>
-    </div>
-  )
+return (
+  <div class="card">
+    <h2>{props.title}</h2>
+    <div class="card-body">{props.children}</div>
+  </div>
+)
 })
 
 // Usage
 <Card title="Welcome">
-  <p>Card content goes here</p>
+<p>Card content goes here</p>
 </Card>
 ```
 
@@ -208,30 +207,30 @@ Pass named children via props for flexible composition:
 
 ```tsx
 interface LayoutProps {
-  header: VNodeChild
-  sidebar: VNodeChild
-  children?: VNodeChild
-  footer?: VNodeChild
+header: VNodeChild
+sidebar: VNodeChild
+children?: VNodeChild
+footer?: VNodeChild
 }
 
 const Layout = defineComponent((props: LayoutProps) => {
-  return (
-    <div class="layout">
-      <header>{props.header}</header>
-      <aside>{props.sidebar}</aside>
-      <main>{props.children}</main>
-      {props.footer && <footer>{props.footer}</footer>}
-    </div>
-  )
+return (
+  <div class="layout">
+    <header>{props.header}</header>
+    <aside>{props.sidebar}</aside>
+    <main>{props.children}</main>
+    {props.footer && <footer>{props.footer}</footer>}
+  </div>
+)
 })
 
 // Usage
 <Layout
-  header={<Nav />}
-  sidebar={<Sidebar />}
-  footer={<FooterLinks />}
+header={<Nav />}
+sidebar={<Sidebar />}
+footer={<FooterLinks />}
 >
-  <PageContent />
+<PageContent />
 </Layout>
 ```
 
@@ -241,28 +240,28 @@ Pass a function as a child for flexible rendering:
 
 ```tsx
 interface MouseTrackerProps {
-  children: (pos: { x: () => number; y: () => number }) => VNodeChild
+children: (pos: { x: () => number; y: () => number }) => VNodeChild
 }
 
 const MouseTracker = defineComponent((props: MouseTrackerProps) => {
-  const x = signal(0)
-  const y = signal(0)
+const x = signal(0)
+const y = signal(0)
 
-  onMount(() => {
-    const handler = (e: MouseEvent) => {
-      x.set(e.clientX)
-      y.set(e.clientY)
-    }
-    window.addEventListener("mousemove", handler)
-    return () => window.removeEventListener("mousemove", handler)
-  })
+onMount(() => {
+  const handler = (e: MouseEvent) => {
+    x.set(e.clientX)
+    y.set(e.clientY)
+  }
+  window.addEventListener("mousemove", handler)
+  return () => window.removeEventListener("mousemove", handler)
+})
 
-  return <div>{props.children({ x, y })}</div>
+return <div>{props.children({ x, y })}</div>
 })
 
 // Usage
 <MouseTracker>
-  {(pos) => <p>Mouse at ({pos.x()}, {pos.y()})</p>}
+{(pos) => <p>Mouse at ({pos.x()}, {pos.y()})</p>}
 </MouseTracker>
 ```
 
@@ -272,13 +271,13 @@ Wrap components to add behavior:
 
 ```tsx
 function withLogging<P extends Props>(Inner: ComponentFn<P>): ComponentFn<P> {
-  return defineComponent((props: P) => {
-    onMount(() => {
-      console.log(`${Inner.name} mounted`)
-      return () => console.log(`${Inner.name} unmounted`)
-    })
-    return <Inner {...props} />
+return defineComponent((props: P) => {
+  onMount(() => {
+    console.log(`${Inner.name} mounted`)
+    return () => console.log(`${Inner.name} unmounted`)
   })
+  return <Inner {...props} />
+})
 }
 
 const LoggedCounter = withLogging(Counter)
@@ -321,16 +320,16 @@ const active = signal(true)
 
 const app = document.getElementById('app')
 const ui = h('div', { class: 'col' },
-  h('div', { class: 'row' },
-    h('button', { onClick: () => active.update(v => !v) },
-      () => active() ? 'Turn off' : 'Turn on',
-    ),
-    h('span', {
-      class: () => active() ? 'badge' : 'muted',
-      style: { padding: '4px 10px' },
-    }, () => active() ? 'ON' : 'OFF'),
+h('div', { class: 'row' },
+  h('button', { onClick: () => active.update(v => !v) },
+    () => active() ? 'Turn off' : 'Turn on',
   ),
-  h('div', { class: 'muted' }, 'Body runs once; class + label both patch in place.'),
+  h('span', {
+    class: () => active() ? 'badge' : 'muted',
+    style: { padding: '4px 10px' },
+  }, () => active() ? 'ON' : 'OFF'),
+),
+h('div', { class: 'muted' }, 'Body runs once; class + label both patch in place.'),
 )
 mount(ui, app)`} />
 
@@ -339,10 +338,9 @@ mount(ui, app)`} />
 ```tsx
 // Multiple children
 <div>
-  <h1>Title</h1>
-  <p>Paragraph one</p>
-  <p>Paragraph two</p>
-</div>
+<h1>Title</h1>
+<p>Paragraph one</p>
+<p>Paragraph two</p>
 
 // Mixed children: strings, numbers, VNodes
 <div>
@@ -442,9 +440,7 @@ The JSX runtime exports `jsx`, `jsxs`, and `Fragment`. The bundler rewrites JSX 
 
 ```tsx
 // Source JSX
-;<div class="box">
-  <span>{name()}</span>
-</div>
+;<span>{name()}</span>
 
 // Compiled output
 import { jsx, jsxs } from '@pyreon/core/jsx-runtime'
@@ -1039,7 +1035,14 @@ Conditionally render children based on a reactive condition. The `when` prop acc
 
 For reactive cases, pass an accessor (`when={() => signal()}`) so the framework re-evaluates on signal change. The value form (`when={true}`, `when={signal()}`) is accepted for static booleans and to gracefully handle the compiler's signal auto-call (which rewrites bare `when={mySignal}` to `when={mySignal()}`).
 
-{/* PropTable (props omitted in migration) */}
+<PropTable
+  title="Show Props"
+  props={[
+    { name: "when", type: "unknown | (() => unknown)", required: true, description: "Truthy condition. Accessor for reactive cases; value for static cases." },
+    { name: "fallback", type: "VNodeChild", description: "Content to render when the condition is falsy." },
+    { name: "children", type: "VNodeChild", required: true, description: "Content to render when the condition is truthy." },
+  ]}
+/>
 
 ```tsx
 import { Show } from '@pyreon/core'
@@ -1160,7 +1163,14 @@ function NotificationBanner(props: { notification: () => Notification }) {
 
 Efficient reactive list rendering with keyed reconciliation. Unlike a plain `.map()`, `For` never re-creates VNodes for existing keys -- only new keys invoke the render function. Structural mutations (swap, sort, filter) are O(n) key scan + O(k) DOM moves where k is the number of actually displaced entries.
 
-{/* PropTable (props omitted in migration) */}
+<PropTable
+  title="For Props"
+  props={[
+    { name: "each", type: "() => T[]", required: true, description: "Reactive accessor returning the source array to iterate over." },
+    { name: "by", type: "(item: T, index: number) => string | number", required: true, description: "Key function for unique, stable identifiers. Used for reconciliation." },
+    { name: "children", type: "(item: T) => VNode", required: true, description: "Render function called once per unique key." },
+  ]}
+/>
 
 ```tsx
 import { For } from '@pyreon/core'
@@ -2057,41 +2067,41 @@ Dispatch an error to the nearest active `ErrorBoundary`. Returns `true` if the b
 
 ## Exports Summary
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="defineComponent" type="component" signature={"defineComponent<P>(setup: (props: P) => VNode | (() => VNode)): Component<P>"} description="Marks a function as a Pyreon component for tooling and compiler optimizations." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="h" type="function" signature="h(type: string | ComponentFn | symbol, props: Props | null, ...children: VNodeChild[]): VNode" description="Hyperscript function and JSX compile target. Creates VNode objects that describe the UI tree." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="Show" type="component" signature={"Show(props: { when: () => boolean; fallback?: VNodeChild; children: VNodeChild }): VNode"} description="Conditionally renders children when the reactive `when` accessor returns a truthy value. Renders `fallback` otherwise." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="For" type="component" signature={"For<T>(props: { each: () => T[]; by: (item: T, index: number) => string | number; children: (item: T) => VNode }): VNode"} description="Keyed reactive list rendering with O(n) reconciliation. Only new keys invoke the render function; existing keys reuse cached VNodes." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="Switch/Match" type="component" signature="Switch(props: { fallback?: VNodeChild; children: Match[] }): VNode" description="Multi-branch conditional rendering. Evaluates each Match child in order and renders the first whose `when()` is truthy." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="Portal" type="component" signature="Portal(props: { target: Element; children: VNodeChild }): VNode" description="Renders children into a different DOM node, escaping the current parent tree. Useful for modals, tooltips, and overlays." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="Suspense" type="component" signature="Suspense(props: { fallback: VNodeChild; children: VNodeChild }): VNode" description="Shows a fallback while lazy child components are loading. Detects the `__loading()` signal on lazy component types." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="ErrorBoundary" type="component" signature={"ErrorBoundary(props: { fallback: (err: unknown, reset: () => void) => VNodeChild; children: VNodeChild }): VNode"} description="Catches errors thrown by child components and renders a fallback UI with an optional reset function." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="createRef" type="function" signature={"createRef<T = unknown>(): Ref<T>"} description="Creates a mutable ref container ({ current: T | null }) for holding DOM element references. The runtime sets and clears `current` automatically." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="provide/inject" type="function" signature={"createContext<T>(defaultValue: T): Context<T> / useContext<T>(ctx: Context<T>): T / withContext<T>(ctx: Context<T>, value: T, fn: () => void): void"} description="Context system for dependency injection without prop-drilling. Create a context, provide values down the tree, and read the nearest value with useContext." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="onMount" type="hook" signature={"onMount(callback: () => void | (() => void)): void"} description="Registers a callback to run after the component mounts to the DOM. Optionally return a cleanup function that runs on unmount." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="onUnmount" type="hook" signature={"onUnmount(callback: () => void): void"} description="Registers a callback to run when the component is removed from the DOM. Use for cleanup not covered by onMount's return value." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="onCleanup" type="hook" signature={"onCleanup(fn: () => void): void"} description="Registers a cleanup function for the current reactive scope. Inside effects, runs before each re-execution and on disposal. Inside components, runs on unmount." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="onUpdate" type="hook" signature={"onUpdate(callback: () => void): void"} description="Registers a callback to run after each reactive update within the component. Fires via microtask after effects settle, so the DOM is up-to-date." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="splitProps" type="function" signature={"splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]"} description="Splits a props object into two parts preserving reactivity. First part has the specified keys, second has the rest." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="mergeProps" type="function" signature={"mergeProps<T extends object[]>(...sources: T): MergedProps<T>"} description="Merges multiple props objects with later sources overriding earlier ones. Preserves reactivity through lazy property access." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="createUniqueId" type="function" signature="createUniqueId(): string" description="Generates a unique string ID that is stable across server and client renders. Use for ARIA attributes and label-input linking." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="cx" type="function" signature="cx(...args: ClassValue[]): string" description="Utility for composing class names from strings, arrays, objects, or nested combinations. Used internally by the class prop." />
 
 ## Type Exports
 

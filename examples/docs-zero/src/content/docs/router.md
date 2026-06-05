@@ -2433,120 +2433,120 @@ router.push({ name: 'user', params: { id: '42' } })
 
 ### Functions
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="createRouter" type="function" signature="createRouter(options: RouterOptions | RouteRecord[]): Router" description="Create a router instance with the given options or shorthand route array." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="lazy" type="function" signature={"lazy(loader: () => Promise<ComponentFn | { default: ComponentFn }>, options?: { loading?: ComponentFn; error?: ComponentFn }): LazyComponent"} description="Lazy-load a route component with automatic retries and stale chunk detection." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="resolveRoute" type="function" signature="resolveRoute(path: string, routes: RouteRecord[]): ResolvedRoute" description="Resolve a raw path (including query string and hash) against the route tree." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="buildPath" type="function" signature={"buildPath(pattern: string, params: Record<string, string>): string"} description="Build a path string from a route pattern and params. Handles optional params and splat params." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="buildNameIndex" type="function" signature={"buildNameIndex(routes: RouteRecord[]): Map<string, RouteRecord>"} description="Pre-build a name→RouteRecord Map for O(1) named navigation lookups." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="findRouteByName" type="function" signature="findRouteByName(name: string, routes: RouteRecord[]): RouteRecord | null" description="Find a route record by name with recursive search." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="parseQuery" type="function" signature={"parseQuery(query: string): Record<string, string>"} description="Parse a query string into a record of single string values. Duplicate keys are overwritten (last wins)." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="parseQueryMulti" type="function" signature={"parseQueryMulti(query: string): Record<string, string | string[]>"} description="Parse a query string preserving duplicate keys as arrays." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="stringifyQuery" type="function" signature={"stringifyQuery(params: Record<string, string>): string"} description="Convert a query object to a query string with a leading '?'. Returns empty string if the object is empty." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="prefetchLoaderData" type="function" signature={"prefetchLoaderData(router: Router, url: string): Promise<void>"} description="SSR: prefetch all loader data for the matched route at the given URL." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="serializeLoaderData" type="function" signature={"serializeLoaderData(router: Router): Record<string, unknown>"} description="SSR: serialize the router's loader data for embedding in HTML." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="hydrateLoaderData" type="function" signature={"hydrateLoaderData(router: Router, data: Record<string, unknown>): void"} description="Client: hydrate serialized loader data into the router so the initial render uses server-fetched data." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="redirect" type="function" signature="redirect(url: string, status?: RedirectStatus): never" description="Throw inside a loader to redirect the navigation before the layout renders. Default status 307." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="isRedirectError" type="function" signature="isRedirectError(err: unknown): boolean" description="Type guard — true when err is a redirect() sentinel. Re-throw it from custom error boundaries." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="getRedirectInfo" type="function" signature="getRedirectInfo(err: unknown): { url: string; status: RedirectStatus } | null" description="Extract the target URL and status from a redirect() error, or null if not a redirect." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="notFound" type="function" signature="notFound(message?: string): never" description="Throw inside a loader or component to trigger the nearest NotFoundBoundary." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="isNotFoundError" type="function" signature="isNotFoundError(err: unknown): boolean" description="Type guard — true when err is a notFound() sentinel." />
 
 ### Components
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouterProvider" type="component" signature={"<RouterProvider :router='router'>...</RouterProvider>"} description="Provide the router instance to the component tree via context." />
 
-{/* APICard (VitePress custom component — migration deferred) */}" description="Render the matched route component for the current route. Nest inside layouts for nested routing." />
+<APICard name="RouterView" type="component" signature={"<RouterView />"} description="Render the matched route component for the current route. Nest inside layouts for nested routing." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouterLink" type="component" signature={"<RouterLink to=\"/path\" activeClass=\"active\" exactActiveClass=\"exact-active\">...</RouterLink>"} description="Navigation link that applies active classes and supports prefetching on hover/focus." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="NotFoundBoundary" type="component" signature={"<NotFoundBoundary fallback={() => <NotFound />}>...</NotFoundBoundary>"} description="Renders its fallback when a descendant throws notFound()." />
 
 ### Hooks
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useRouter" type="hook" signature="useRouter(): Router" description="Access the router instance from within the component tree." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useRoute" type="hook" signature={"useRoute(): () => ResolvedRoute"} description="Access the current resolved route as a reactive signal." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useLoaderData" type="hook" signature={"useLoaderData<T>(): T"} description="Read data returned by the current route's loader function." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): TypedSearchParams<T>"} description="Type-safe search params with automatic coercion from URL strings." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useValidatedSearch" type="hook" signature={"useValidatedSearch<T>(): () => T"} description="Reactive accessor for the route's validateSearch result, with structural sharing." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useIsActive" type="hook" signature={"useIsActive(path: string, exact?: boolean): () => boolean"} description="Reactive boolean for whether a path matches the current route (segment-aware prefix match)." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useTransition" type="hook" signature={"useTransition(): () => boolean"} description="Reactive accessor — true while a route transition is in progress." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useMiddlewareData" type="hook" signature={"useMiddlewareData(): () => Record<string, unknown>"} description="Reactive accessor for data set by the route's middleware chain." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="useBlocker" type="hook" signature="useBlocker(fn: BlockerFn): { remove(): void }" description="Register a navigation blocker. Returns true to block, false to allow. Also handles beforeunload." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="onBeforeRouteLeave" type="hook" signature={"onBeforeRouteLeave(guard: NavigationGuard): () => void"} description="In-component guard called before navigating away from the current route." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="onBeforeRouteUpdate" type="hook" signature={"onBeforeRouteUpdate(guard: NavigationGuard): () => void"} description="In-component guard called when the route changes but the component is reused." />
 
 ### Context
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouterContext" type="constant" signature={"RouterContext: Context<Router>"} description="The router context object for advanced use cases." />
 
 ### Types
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="Router" type="type" signature="interface Router" description="The router instance interface with push, replace, back, guards, and signals." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouterOptions" type="type" signature="interface RouterOptions" description="Options for createRouter: routes, mode, scrollBehavior, and url (SSR)." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouteRecord" type="type" signature="interface RouteRecord" description="Route record with path, component, name, meta, guards, loader, children, and redirect." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouteComponent" type="type" signature="type RouteComponent = ComponentFn | LazyComponent" description="A route component: either a regular component function or a lazy-loaded component." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="LazyComponent" type="type" signature="type LazyComponent" description="Lazy component wrapper returned by the lazy() helper." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="ResolvedRoute" type="type" signature="interface ResolvedRoute" description="A resolved route with path, params, query, hash, matched records, and merged meta." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouteMeta" type="type" signature="interface RouteMeta" description="Route metadata interface. Extendable via TypeScript module augmentation." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="NavigationGuard" type="type" signature={"type NavigationGuard = (to: ResolvedRoute, from: ResolvedRoute) => NavigationGuardResult | Promise<NavigationGuardResult>"} description="Guard function called before navigation commits." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="NavigationGuardResult" type="type" signature="type NavigationGuardResult = boolean | string | undefined" description="Guard return type: true/undefined to allow, false to cancel, string to redirect." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="AfterEachHook" type="type" signature={"type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void"} description="Hook function called after navigation commits. Cannot affect navigation." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="LoaderContext" type="type" signature={"interface LoaderContext { params: Record<string, string>; query: Record<string, string>; signal: AbortSignal; request?: Request }"} description="Context passed to route loader functions. request is populated only during SSR." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouteLoaderFn" type="type" signature={"type RouteLoaderFn = (ctx: LoaderContext) => Promise<unknown>"} description="Async loader function for fetching route data before navigation commits." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouteMiddleware" type="type" signature={"type RouteMiddleware = (ctx: RouteMiddlewareContext) => void | false | string | Promise<void | false | string>"} description="Per-route middleware run before guards. Return false to cancel, string to redirect." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouteMiddlewareContext" type="type" signature={"interface RouteMiddlewareContext { to: ResolvedRoute; from: ResolvedRoute; data: Record<string, unknown> }"} description="Context passed through the middleware chain. Accumulate state on ctx.data." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RedirectStatus" type="type" signature="type RedirectStatus = 301 | 302 | 303 | 307 | 308" description="HTTP status for redirect(). Default 307 (method-preserving)." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="ScrollBehaviorFn" type="type" signature={"type ScrollBehaviorFn = (to: ResolvedRoute, from: ResolvedRoute, savedPosition: number | null) => \"top\" | \"restore\" | \"none\" | number"} description="Custom scroll behavior function for advanced scroll control." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="BlockerFn" type="type" signature={"type BlockerFn = (to: ResolvedRoute, from: ResolvedRoute) => boolean | Promise<boolean>"} description="Blocker function for useBlocker. Return true to block navigation." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="ExtractParams" type="type" signature={"type ExtractParams<T extends string>"} description="Utility type that extracts typed param keys from a path pattern string." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouterProviderProps" type="type" signature="interface RouterProviderProps" description="Props for the RouterProvider component." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouterViewProps" type="type" signature="interface RouterViewProps" description="Props for the RouterView component." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="RouterLinkProps" type="type" signature="interface RouterLinkProps" description="Props for the RouterLink component." />

@@ -1,36 +1,47 @@
 import { RouterLink } from '@pyreon/router'
-
-interface NavEntry {
-  title: string
-  slug: string
-}
+import { SIDEBAR } from '../sidebar-config'
 
 interface SidebarProps {
-  entries: () => NavEntry[]
   currentSlug: string
 }
 
+// Sidebar renders the configured groups + items from sidebar-config.ts
+// (single source of truth for nav, ported from the VitePress
+// `sidebar: { '/docs/': [...] }` config). Active highlighting matches
+// on slug equality; the link element flips its own active class.
 export function Sidebar(props: SidebarProps) {
   return (
-    <nav class="docs-sidebar" aria-label="Documentation">
-      <ul class="docs-sidebar__list">
-        {() =>
-          props.entries().map((entry) => (
-            <li class="docs-sidebar__item">
-              <RouterLink
-                to={`/docs/${entry.slug}`}
-                class={
-                  entry.slug === props.currentSlug
-                    ? 'docs-sidebar__link docs-sidebar__link--active'
-                    : 'docs-sidebar__link'
-                }
-              >
-                {entry.title}
-              </RouterLink>
-            </li>
-          ))
-        }
-      </ul>
+    <nav class="pyreon-sidebar" aria-label="Documentation sidebar">
+      {SIDEBAR.map((group) => (
+        <div class="pyreon-sidebar__group">
+          <h3 class="pyreon-sidebar__group-title">{group.text}</h3>
+          <ul class="pyreon-sidebar__list">
+            {group.items.map((item) => {
+              const isActive = item.slug === props.currentSlug
+              const linkClass = isActive
+                ? 'pyreon-sidebar__link pyreon-sidebar__link--active'
+                : 'pyreon-sidebar__link'
+              const to = item.slug === '' ? '/docs/' : `/docs/${item.slug}`
+              if (isActive) {
+                return (
+                  <li class="pyreon-sidebar__item">
+                    <RouterLink to={to} class={linkClass} aria-current="page">
+                      {item.text}
+                    </RouterLink>
+                  </li>
+                )
+              }
+              return (
+                <li class="pyreon-sidebar__item">
+                  <RouterLink to={to} class={linkClass}>
+                    {item.text}
+                  </RouterLink>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
     </nav>
   )
 }

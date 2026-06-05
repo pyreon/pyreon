@@ -107,7 +107,9 @@ name.label = 'currentUserName'
 
 The `name` option sets a debug label that appears in devtools, `debug()` output, and signal tracing.
 
-{/* PropTable (props omitted in migration) */}
+<PropTable title="SignalOptions" props={[
+  { name: "name", type: "string", description: "Debug label for devtools and signal tracing" },
+]} />
 
 ### Peeking Without Tracking
 
@@ -1648,55 +1650,55 @@ editor.redo() // current() === "Hello, World"
 
 ### Core Primitives
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="signal" type="function" signature={"signal<T>(value: T, options?: { name?: string }): Signal<T>"} description="Creates a reactive signal — the fundamental unit of reactivity in Pyreon." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="computed" type="function" signature={"computed<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }): Computed<T>"} description="Creates a lazy derived value that re-evaluates when its dependencies change." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="effect" type="function" signature={"effect(fn: () => void): Effect"} description="Runs a function and re-runs it whenever its reactive dependencies change." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="watch" type="function" signature={"watch<T>(source: () => T, cb: (value: T, prev: T) => (() => void) | void): () => void"} description="Watches a reactive source with old/new values and optional cleanup." />
 
 ### Batching & Scheduling
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="batch" type="function" signature={"batch(fn: () => void): void"} description="Batches multiple signal updates into a single reactive flush." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="nextTick" type="function" signature={"nextTick(): Promise<void>"} description="Returns a promise that resolves after the current microtask flush." />
 
 ### Stores
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="createStore" type="function" signature={"createStore<T extends object>(initial: T): T"} description="Creates a deep reactive proxy store with automatic nested tracking." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="shallowReactive" type="function" signature={"shallowReactive<T extends object>(initial: T): T"} description="Vue-3 parity. Creates a SHALLOWLY reactive store: top-level writes notify, nested mutations don't." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="markRaw" type="function" signature={"markRaw<T extends object>(value: T): T"} description="Vue-3 parity. Mark an object so createStore / shallowReactive return it unwrapped (class instances, third-party objects, DOM nodes)." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="isStore" type="function" signature="isStore(value: unknown): boolean" description="Type guard — returns true if the value is a Pyreon reactive store proxy." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="reconcile" type="function" signature={"reconcile<T>(store: T, data: T): void"} description="Surgically diffs new data into an existing store, minimizing reactive updates." />
 
 ### Resources
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="createResource" type="function" signature={"createResource<T>(fetcher: () => Promise<T>): Resource<T>"} description="Creates an async reactive resource with loading/error/data signals." />
 
 ### Scopes & Utilities
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="effectScope" type="function" signature="effectScope(): EffectScope" description="Creates a new EffectScope for grouping and disposing effects together." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="runUntracked" type="function" signature={"runUntracked<T>(fn: () => T): T"} description="Runs a function without tracking any reactive dependencies." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="untrack" type="function" signature={"untrack<T>(fn: () => T): T"} description="Alias for runUntracked. Shorter name, identical behavior." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="createSelector" type="function" signature={"createSelector<T>(source: () => T): (key: T) => boolean"} description="Creates an O(1) equality selector for efficient list item matching." />
 
 ### Debug Utilities
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="setErrorHandler" type="function" signature={"setErrorHandler(handler: (error: unknown) => void): void"} description="Sets the global error handler for uncaught errors in effects." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="onSignalUpdate" type="function" signature={"onSignalUpdate(listener: (signal: Signal<unknown>) => void): () => void"} description="Registers a listener called on every signal write. Useful for devtools." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="why" type="function" signature="why(): void" description="Traces the next signal update to console, showing which signal triggered which effects." />
 
-{/* APICard (VitePress custom component — migration deferred) */}
+<APICard name="inspectSignal" type="function" signature={"inspectSignal(signal: Signal<unknown>): void"} description="Prints a signal's current state, subscribers, and debug info to console." />
 
 ## Signal Facades with `wrapSignal`
 

@@ -43,11 +43,10 @@ interface MigrationResult {
 }
 
 async function main() {
-  const entries = await fs.readdir(SOURCE_DIR, { withFileTypes: true })
-  const mdFiles = entries.filter(
-    (e) => e.isFile() && e.name.endsWith('.md'),
-  )
   await fs.mkdir(TARGET_DIR, { recursive: true })
+  // Walk the source tree recursively so subdirectories like
+  // docs/docs/patterns/ get migrated too.
+  const mdFiles = await collectMarkdownFiles(SOURCE_DIR)
 
   console.log(`Migrating ${mdFiles.length} files from`)
   console.log(`  ${SOURCE_DIR}`)
@@ -56,9 +55,10 @@ async function main() {
   console.log()
 
   const results: MigrationResult[] = []
-  for (const file of mdFiles) {
-    const sourcePath = path.join(SOURCE_DIR, file.name)
-    const targetPath = path.join(TARGET_DIR, file.name)
+  for (const relPath of mdFiles) {
+    const sourcePath = path.join(SOURCE_DIR, relPath)
+    const targetPath = path.join(TARGET_DIR, relPath)
+    await fs.mkdir(path.dirname(targetPath), { recursive: true })
     let source = await fs.readFile(sourcePath, 'utf8')
     let conversions: string[]
 
@@ -77,8 +77,8 @@ async function main() {
 
     await fs.writeFile(targetPath, source, 'utf8')
     results.push({
-      source: file.name,
-      target: file.name,
+      source: relPath,
+      target: relPath,
       bytesIn: Buffer.byteLength(source, 'utf8'),
       bytesOut: Buffer.byteLength(source, 'utf8'),
       conversions,
@@ -96,6 +96,27 @@ async function main() {
   console.log(
     `✓ Migrated ${results.length} files (${totalConversions} conversions applied)`,
   )
+}
+
+// Walk a directory recursively, returning every .md path RELATIVE to
+// `rootDir`. Stable depth-first order so output is reproducible.
+async function collectMarkdownFiles(rootDir: string): Promise<string[]> {
+  const out: string[] = []
+  async function walk(dir: string, relBase: string) {
+    const entries = await fs.readdir(dir, { withFileTypes: true })
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (e.name.startsWith('.')) continue
+      const full = path.join(dir, e.name)
+      const rel = relBase ? `${relBase}/${e.name}` : e.name
+      if (e.isDirectory()) {
+        await walk(full, rel)
+      } else if (e.isFile() && (e.name.endsWith('.md') || e.name.endsWith('.mdx'))) {
+        out.push(rel)
+      }
+    }
+  }
+  await walk(rootDir, '')
+  return out
 }
 
 export function convertMarkdown(source: string): {
@@ -200,16 +221,13 @@ export function convertMarkdown(source: string): {
   //    fences. MDX parses `<5` as the start of an invalid JSX tag.
   out = escapeLtDigitOutsideFences(out, conversions)
 
-  // 8. Strip <APICard /> / <CompatMatrix /> / <PropTable /> / etc. — they
-  //    were VitePress-specific Vue components whose attribute values
-  //    contain literal JSX (e.g. `signature='<RouterLink>...'`) that the
-  //    MDX parser can't reason about. The migration replaces each call
-  //    site with a JSX comment naming the deferred component. PR 9
-  //    polish will port these to first-party Pyreon components and
-  //    restore the API-reference rendering.
-  for (const name of ['APICard', 'PropTable', 'CompatMatrix']) {
-    out = stripComponentInvocation(out, name, conversions)
-  }
+  // 8. Vue → JSX: convert APICard / CompatMatrix / PropTable to MDX-
+  //    compatible JSX. APICard's `signature="..."` attribute values
+  //    may contain literal `<RouterLink>...` JSX that confuses the MDX
+  //    parser — escape `<` / `>` inside string-attribute values.
+  //    CompatMatrix's + PropTable's `:propname='[...]'` Vue array
+  //    bindings need to become `propname={[...]}` JSX expressions.
+  out = convertComponentInvocations(out, conversions)
 
   // 9. YAML frontmatter title starting with `@` — must be quoted (YAML
   //    treats unquoted `@` as a reserved character).
@@ -258,62 +276,158 @@ function escapeLtDigitOutsideFences(
   return out.join('\n')
 }
 
-// Strip a JSX-shaped component invocation whose attribute values may
-// contain literal JSX (so a naïve `<NAME[^>]*?/>` regex would miss the
-// real terminator). Tracks quote state to find the real closing `>`.
-function stripComponentInvocation(
+// Convert each <APICard /> / <PropTable /> / <CompatMatrix /> Vue-shaped
+// invocation to MDX-valid JSX:
+//   - `:propname='[...]'` (Vue array binding) → `propname={[...]}`
+//   - `signature="...<RouterLink ...>..."` (literal JSX in attribute) →
+//     `signature="...&lt;RouterLink ...&gt;..."` so the MDX parser
+//     doesn't try to descend into the string value.
+function convertComponentInvocations(
   source: string,
-  componentName: string,
   conversions: string[],
 ): string {
-  const startToken = `<${componentName}`
-  let i = 0
-  let result = ''
+  let out = source
   let count = 0
-  while (i < source.length) {
-    const j = source.indexOf(startToken, i)
-    if (j < 0) {
-      result += source.slice(i)
-      break
-    }
-    // Ensure it's a real component reference (next char is space/newline/`/`/`>`).
-    const next = source[j + startToken.length]
-    if (next !== ' ' && next !== '\n' && next !== '\t' && next !== '/' && next !== '>') {
-      result += source.slice(i, j + 1)
-      i = j + 1
-      continue
-    }
-    result += source.slice(i, j)
-    // Scan for the real end `>`, respecting single/double quotes.
-    let k = j + startToken.length
-    let inQuote: '"' | "'" | null = null
-    while (k < source.length) {
-      const c = source[k]
-      if (inQuote) {
-        if (c === inQuote) inQuote = null
-        k++
-        continue
-      }
-      if (c === '"' || c === "'") {
-        inQuote = c
-        k++
-        continue
-      }
-      if (c === '>') {
-        k++
+  for (const name of ['APICard', 'PropTable', 'CompatMatrix']) {
+    let i = 0
+    let result = ''
+    const startToken = `<${name}`
+    while (i < out.length) {
+      const j = out.indexOf(startToken, i)
+      if (j < 0) {
+        result += out.slice(i)
         break
       }
-      k++
+      const next = out[j + startToken.length]
+      if (
+        next !== ' ' &&
+        next !== '\n' &&
+        next !== '\t' &&
+        next !== '/' &&
+        next !== '>'
+      ) {
+        result += out.slice(i, j + 1)
+        i = j + 1
+        continue
+      }
+      // Find the closing `>` of the tag opener (could be `/>` or `>`).
+      let k = j + startToken.length
+      let inQuote: '"' | "'" | null = null
+      while (k < out.length) {
+        const c = out[k]
+        if (inQuote) {
+          if (c === inQuote) inQuote = null
+          k++
+          continue
+        }
+        if (c === '"' || c === "'") {
+          inQuote = c
+          k++
+          continue
+        }
+        if (c === '>') {
+          k++
+          break
+        }
+        k++
+      }
+      // Tag span is [j, k) — including trailing `>`.
+      const tag = out.slice(j, k)
+      const converted = convertTagAttributes(tag)
+      result += out.slice(i, j) + converted
+      i = k
+      count++
     }
-    result += `{/* ${componentName} (VitePress custom component — migration deferred) */}`
-    i = k
-    count++
+    out = result
   }
-  if (count > 0) {
-    conversions.push(`<${componentName} /> stripped (×${count})`)
-  }
-  return result
+  if (count > 0) conversions.push(`<APICard|PropTable|CompatMatrix> normalised (×${count})`)
+  return out
 }
+
+// Walk a single tag's body and rewrite attributes:
+//   - `:name='value'` → `name={value}` (Vue array/expression binding)
+//   - `name='value'`  → `name="value"` with `<`/`>` HTML-escaped (the
+//     value may contain literal `<RouterLink>...</RouterLink>` JSX that
+//     MDX would otherwise descend into).
+//   - `name="value"`  → same (escape `<`/`>` in the value)
+//   - boolean attrs / closing `/>` / `>` pass through unchanged.
+function convertTagAttributes(tag: string): string {
+  // Tag looks like `<Name attr1=...  attr2=... />` (or `>`).
+  // Find the position after `<Name` so we only rewrite the attribute
+  // portion.
+  const nameMatch = tag.match(/^<([A-Za-z][\w.]*)/)
+  if (!nameMatch) return tag
+  const headLen = nameMatch[0].length
+  const head = tag.slice(0, headLen)
+  // Trailing terminator: `/>`, `>`.
+  let tailStart = tag.length
+  if (tag.endsWith('/>')) tailStart = tag.length - 2
+  else if (tag.endsWith('>')) tailStart = tag.length - 1
+  const tail = tag.slice(tailStart)
+  const inner = tag.slice(headLen, tailStart)
+  // Tokenise inner: each match captures `[: ]name=(['"])(value)\1` OR
+  // a boolean attribute (`name` alone).
+  let i = 0
+  let outInner = ''
+  while (i < inner.length) {
+    // Skip whitespace.
+    while (i < inner.length && /\s/.test(inner[i] ?? '')) {
+      outInner += inner[i++]
+    }
+    if (i >= inner.length) break
+    // Match `:` prefix (Vue binding).
+    let isBinding = false
+    if (inner[i] === ':') {
+      isBinding = true
+      i++
+    }
+    // Match attribute name.
+    const nameStart = i
+    while (i < inner.length && /[\w-]/.test(inner[i] ?? '')) i++
+    const attrName = inner.slice(nameStart, i)
+    if (!attrName) {
+      // Unrecognized — emit verbatim and bail.
+      outInner += inner.slice(i)
+      break
+    }
+    // Optional `=value` part.
+    if (inner[i] !== '=') {
+      // Boolean attribute.
+      outInner += attrName
+      continue
+    }
+    i++ // consume `=`
+    const quote = inner[i]
+    if (quote !== '"' && quote !== "'") {
+      // Unquoted (could be `{expr}` already) — emit verbatim.
+      const valueStart = i
+      while (i < inner.length && !/\s/.test(inner[i] ?? '')) i++
+      outInner += `${attrName}=${inner.slice(valueStart, i)}`
+      continue
+    }
+    i++ // consume opening quote
+    const valueStart = i
+    while (i < inner.length && inner[i] !== quote) i++
+    const value = inner.slice(valueStart, i)
+    if (inner[i] === quote) i++ // consume closing quote
+    if (isBinding) {
+      // Vue binding → JSX expression.
+      outInner += `${attrName}={${value}}`
+    } else if (value.includes('<') || value.includes('>') || value.includes('"')) {
+      // Plain string attribute whose value contains characters MDX
+      // would otherwise mis-parse (e.g. literal JSX in the signature).
+      // Emit as a JSX expression containing a JS string literal —
+      // JS escapes survive MDX intact, so the runtime sees the value
+      // verbatim.
+      outInner += `${attrName}={${JSON.stringify(value)}}`
+    } else {
+      // Simple value — emit as a normal string attribute.
+      outInner += `${attrName}="${value.replace(/&/g, '&amp;')}"`
+    }
+  }
+  return head + outInner + tail
+}
+
 
 function needsYamlQuote(value: string): boolean {
   // YAML treats `@`, `&`, `*`, `!`, `|`, `>`, `'`, `"`, `#`, `%`, `,`,

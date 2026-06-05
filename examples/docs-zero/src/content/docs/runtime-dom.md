@@ -478,9 +478,7 @@ When the Pyreon compiler detects a static JSX element tree, it emits `_tpl(html,
 **Before optimization (h calls):**
 
 ```tsx
-<div class="box">
-  <span>{text()}</span>
-</div>
+<span>{text()}</span>
 ```
 
 **After optimization (\_tpl):**

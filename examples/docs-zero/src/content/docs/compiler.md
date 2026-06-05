@@ -269,9 +269,7 @@ JSX element trees with two or more DOM elements (no components, no spread attrib
 
 ```tsx
 // Input
-;<div class="box">
-  <span>{text()}</span>
-</div>
+;<span>{text()}</span>
 
 // Output
 import { _tpl } from '@pyreon/runtime-dom'
@@ -312,10 +310,8 @@ Static parts of the template are baked directly into the HTML string, avoiding a
 
 ```tsx
 // Input
-<div class="container">
-  <input disabled />
-  <span>Static text</span>
-</div>
+<input disabled />
+<span>Static text</span>
 
 // The HTML string contains all static attributes and text:
 // "<div class=\"container\"><input disabled><span>Static text</span></div>"
