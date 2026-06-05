@@ -151,6 +151,34 @@ export function argvHasPortFlag(argv: readonly string[] = process.argv): boolean
 }
 
 /**
+ * Detects `--base` / `--base=PATH` in `process.argv`. Same shape as
+ * `argvHasPortFlag` — the plugin's `config()` hook returns `base:
+ * config.base` (default `/`) which empirically beats Vite's `--base`
+ * CLI flag in the merge order, silently swallowing it. When the CLI
+ * was invoked with `--base=X`, the plugin must skip its default so
+ * the CLI flag wins (see the comment at the base-handling block in
+ * `zeroPlugin()` for the full precedence model).
+ *
+ * The same bug class was already fixed for `--port`; this is the
+ * `base` counterpart. Bisect-verified: removing the
+ * `argvHasBaseFlag() && !zeroBaseExplicit` guard at the call site
+ * causes `vite build --base=/sub/` to emit assets at root paths
+ * instead of `/sub/assets/…`.
+ *
+ * Exported for testing only (the plugin uses it internally).
+ *
+ * @internal
+ */
+export function argvHasBaseFlag(argv: readonly string[] = process.argv): boolean {
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i];
+		if (a === "--base") return true;
+		if (a !== undefined && a.startsWith("--base=")) return true;
+	}
+	return false;
+}
+
+/**
  * Zero Vite plugin — adds file-based routing and zero-config conventions
  * on top of @pyreon/vite-plugin.
  *
@@ -185,6 +213,21 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 		configResolved(resolvedConfig) {
 			root = resolvedConfig.root;
 			routesDir = `${root}/src/routes`;
+			// Sync `__ZERO_BASE__` to the FINAL resolved base. The config()
+			// hook above seeds it with `config.base` (the zero({base})
+			// value), but when `vite --base=/X/` wins precedence (because
+			// argvHasBaseFlag fires and userConfig.base was undefined), the
+			// resolved base differs. Without this sync, `startClient` and
+			// the SSG entry would set the router base to '/' while Vite
+			// serves assets at /X/ — RouterLink hrefs would resolve to the
+			// wrong paths and 404 on navigation. configResolved runs before
+			// any transform sees the define values, so mutating it here is
+			// the supported way to keep the build-time constant aligned.
+			if (resolvedConfig.define && resolvedConfig.base !== undefined) {
+				resolvedConfig.define.__ZERO_BASE__ = JSON.stringify(
+					resolvedConfig.base,
+				);
+			}
 		},
 
 		handleHotUpdate(ctx) {
@@ -554,23 +597,37 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					: { server: { port: config.port } }),
 				// Propagate `zero({ base })` to Vite's `base` config — that's
 				// what controls asset URL rewriting in the built HTML/JS
-				// (`<script src="/blog/assets/…">`). Pre-fix this was a
-				// typed-but-unimplemented field: `__ZERO_BASE__` was defined
-				// as a Vite global but no consumer existed, AND Vite's own
-				// `base` had to be set manually in vite.config.ts. Setting
-				// it here makes `zero({ base: '/blog/' })` the canonical
-				// single-source-of-truth surface; the value flows through
-				// to (a) Vite's HTML/asset URL rewriter, (b) `createRouter`
-				// via `__ZERO_BASE__` in `startClient` / `createApp`, (c)
-				// the SSG entry's `createApp({ base })` call.
+				// (`<script src="/blog/assets/…">`).
 				//
-				// Vite's config-merge semantics: plugin-returned config is
-				// the BASE; user's `vite.config.ts` top-level overrides.
-				// So a user who sets BOTH `zero({ base: '/blog/' })` AND
-				// `vite.config.base: '/foo/'` gets the latter — the user's
-				// explicit override wins. The default `/` is a no-op
-				// (matches Vite's default), so always-setting is safe.
-				base: config.base,
+				// Precedence (CLI > user vite.config > zero({base}) > '/'):
+				//   1. `vite --base=/X/` → argvHasBaseFlag() === true AND
+				//      userConfig.base undefined → plugin omits `base`
+				//      entirely → CLI value wins.
+				//   2. `vite.config.ts { base: '/X/' }` → user config beats
+				//      plugin in Vite's merge order automatically — no
+				//      special handling needed.
+				//   3. `zero({ base: '/X/' })` → resolved into `config.base`
+				//      → returned here.
+				//   4. Default `/` — when no other source set a base.
+				//
+				// Pre-fix this was unconditional `base: config.base`, which
+				// silently swallowed the CLI `--base` flag (plugin BASE
+				// returns of the default `/` won the merge against CLI in
+				// every empirically tested case — the same bug class already
+				// fixed for `--port` via argvHasPortFlag). Symptom: `vite
+				// build --base=/sub/` emitted `<script src="/assets/…">`
+				// instead of `/sub/assets/…`, so every asset 404'd on a
+				// subpath deploy. Discovered when docs-zero's preview
+				// deploy at /pyreon/preview/ shipped a white screen.
+				//
+				// `__ZERO_BASE__` define ALWAYS reflects config.base here
+				// because that's what `startClient` / `createApp` read for
+				// router base prefix matching. When the CLI flag is what's
+				// actually applied (case 1), `configResolved` overrides
+				// this define with the FINAL resolved value.
+				...(userConfig.base === undefined && argvHasBaseFlag()
+					? {}
+					: { base: config.base }),
 				define: {
 					__ZERO_MODE__: JSON.stringify(config.mode),
 					__ZERO_BASE__: JSON.stringify(config.base),
