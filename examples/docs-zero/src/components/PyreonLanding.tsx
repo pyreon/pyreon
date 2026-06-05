@@ -1,5 +1,6 @@
 import { onMount, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { PyreonHeroMark } from './PyreonHeroMark'
 
 // Ported from docs/.vitepress/theme/components/PyreonLanding.vue
 // (898 LOC). Same eight sections: Hero · Benchmark · Mechanism ·
@@ -97,6 +98,7 @@ export function PyreonLanding() {
       {/* ── 0 · HERO ─────────────────────────────────────────── */}
       <section class="px-hero">
         <div class="px-hero-text">
+          <PyreonHeroMark />
           <p class="pyreon-eyebrow">signal-based · full-stack · ai-native</p>
           <h1 class="px-h1">
             Reactivity that knows
@@ -299,6 +301,13 @@ export function PyreonLanding() {
       {/* ── 6 · FOOTER ───────────────────────────────────────── */}
       <footer class="px-footer">
         <div class="px-footer-grid">
+          <div class="px-footer-brand">
+            <PyreonHeroMark noMotion />
+            <p>
+              The signal-based UI framework — fine-grained reactivity,
+              full-stack, AI-native.
+            </p>
+          </div>
           {FOOTER_GROUPS.map((g) => (
             <div>
               <div class="px-footer-h">{g.h}</div>
@@ -311,7 +320,7 @@ export function PyreonLanding() {
           ))}
         </div>
         <p class="px-footer-foot">
-          Pyreon · signal-based UI · MIT
+          Pyreon · signal-based UI · MIT · forged in prague · eu
         </p>
       </footer>
     </div>

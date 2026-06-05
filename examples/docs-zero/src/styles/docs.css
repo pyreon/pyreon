@@ -1230,3 +1230,838 @@ th {
     animation: none;
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   PyreonHeroMark — verbatim port from
+   docs/.vitepress/theme/components/PyreonHeroMark.vue's <style scoped>.
+   Selectors NOT prefixed with `.px-heromark` shouldn't exist here; the
+   handoff's `[data-theme="light"]` overrides at the bottom of the file
+   are rebased onto the docs' <html data-theme="light"> root (driven by
+   tokens.css + the FOUC script in index.html).
+   ───────────────────────────────────────────────────────────────────── */
+/* ── Base · the ON glyph + wordmark composition ────────────────── */
+.px-heromark {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  aspect-ratio: 720 / 360;
+}
+.px-heromark svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.px-heromark .pyr-grid line {
+  stroke: #23232e;
+  stroke-width: 1;
+}
+.px-heromark .pyr-grid {
+  opacity: 0.3;
+}
+
+/* The ON glyph — same path, same coords across every variant. */
+.px-heromark .pyr-disc {
+  fill: url(#pyr-ember);
+}
+.px-heromark .pyr-n {
+  stroke: #f4efe6;
+  stroke-width: 10;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  fill: none;
+}
+
+/* The wordmark — set in Space Grotesk 600. */
+.px-heromark .pyr-word {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 96px;
+  letter-spacing: -3.8px;
+  fill: #f4efe6;
+}
+
+/* ── 01 · Stroke-trace · canonical (recommended) ──────────────── */
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-edge {
+  animation: pyr-trace-edge 360ms var(--d, 0ms) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='trace'] .pyr-trace-edge {
+  stroke-dashoffset: 320;
+  opacity: 0;
+}
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-disc {
+  animation: pyr-trace-disc 280ms 380ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-n {
+  animation: pyr-trace-n 340ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='trace'] .pyr-trace-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-word {
+  animation: pyr-fade-in 280ms 880ms forwards;
+}
+.px-heromark[data-variant='trace'] .pyr-trace-word {
+  opacity: 0;
+}
+@keyframes pyr-trace-edge {
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+@keyframes pyr-trace-disc {
+  0% {
+    transform: scale(0);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 1));
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+@keyframes pyr-trace-n {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes pyr-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 02 · Pulse cascade · 3 beats ──────────────────────────────── */
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-disc {
+  animation: pyr-pulse-disc 320ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-n {
+  animation: pyr-pulse-n 200ms 320ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='pulse'] .pyr-pulse-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-ring {
+  animation: pyr-pulse-ring 360ms 320ms ease-out forwards;
+}
+.px-heromark[data-variant='pulse'] .pyr-pulse-ring {
+  opacity: 0;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-word {
+  animation: pyr-fade-in 280ms 640ms forwards;
+}
+.px-heromark[data-variant='pulse'] .pyr-pulse-word {
+  opacity: 0;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-under {
+  animation: pyr-pulse-under 320ms 640ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes pyr-pulse-disc {
+  0% {
+    transform: scale(0.4);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 1));
+  }
+  50% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+@keyframes pyr-pulse-n {
+  0% {
+    stroke-dashoffset: 180;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.7));
+  }
+  100% {
+    stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+@keyframes pyr-pulse-ring {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+@keyframes pyr-pulse-under {
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+/* ── 03 · Wavefront sweep ─────────────────────────────────────── */
+.px-heromark[data-variant='wave'][data-state='entering'] .pyr-wave-mask {
+  animation: pyr-wave-sweep 700ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='wave'] .pyr-wave-mask {
+  transform: translateX(-820px);
+}
+.px-heromark[data-variant='wave'][data-state='entering'] .pyr-wave-bar {
+  animation: pyr-wave-bar 700ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='wave'] .pyr-wave-bar {
+  transform: translateX(-60px);
+  opacity: 0.85;
+}
+@keyframes pyr-wave-sweep {
+  from {
+    transform: translateX(-820px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes pyr-wave-bar {
+  from {
+    transform: translateX(-60px);
+    opacity: 0.85;
+  }
+  90% {
+    opacity: 0.85;
+  }
+  to {
+    transform: translateX(720px);
+    opacity: 0;
+  }
+}
+
+/* ── 04 · Particles converge ──────────────────────────────────── */
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part {
+  animation: pyr-part-fly 500ms var(--d, 0ms) cubic-bezier(0.3, 0.8, 0.2, 1) backwards;
+}
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part-disc {
+  animation: pyr-part-disc 220ms 500ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part-n {
+  animation: pyr-trace-n 280ms 660ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='particles'] .pyr-part-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part-word {
+  animation: pyr-fade-in 260ms 840ms forwards;
+}
+.px-heromark[data-variant='particles'] .pyr-part-word {
+  opacity: 0;
+}
+@keyframes pyr-part-fly {
+  from {
+    transform: translate(var(--fx), var(--fy));
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+}
+@keyframes pyr-part-disc {
+  from {
+    transform: scale(0);
+    filter: drop-shadow(0 0 12px rgba(255, 94, 26, 1));
+  }
+  to {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── 05 · Fuse · ember bead runs a polyline path ─────────────── */
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-trail {
+  animation: pyr-fuse-draw 700ms cubic-bezier(0.3, 0.8, 0.2, 1) forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-trail {
+  stroke-dasharray: 900;
+  stroke-dashoffset: 900;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-bead {
+  animation: pyr-fuse-bead 700ms cubic-bezier(0.3, 0.8, 0.2, 1) forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-bead {
+  offset-distance: 100%;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-disc {
+  animation: pyr-fade-in 220ms 380ms forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-disc {
+  opacity: 0;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-n {
+  animation: pyr-fade-in 220ms 480ms forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-n {
+  opacity: 0;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-word {
+  animation: pyr-fade-in 280ms 720ms forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-word {
+  opacity: 0;
+}
+@keyframes pyr-fuse-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes pyr-fuse-bead {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+/* ── 06 · Terminal type-on ─────────────────────────────────────── */
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-clip {
+  animation: pyr-term-clip 600ms 80ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='term'] .pyr-term-clip {
+  clip-path: inset(0 0 0 0);
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-cursor {
+  animation:
+    pyr-term-cursor 600ms 80ms cubic-bezier(0.5, 0, 0.3, 1) forwards,
+    pyr-blink 0.9s steps(1) infinite;
+}
+.px-heromark[data-variant='term'] .pyr-term-cursor {
+  transform: translateX(160px);
+}
+.px-heromark[data-variant='term'] .pyr-term-disc {
+  opacity: 1;
+  transform: scale(1);
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-disc {
+  animation: pyr-term-disc 280ms 760ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-n {
+  animation: pyr-trace-n 280ms 940ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='term'] .pyr-term-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-word {
+  animation: pyr-fade-in 280ms 820ms forwards;
+}
+.px-heromark[data-variant='term'] .pyr-term-word {
+  opacity: 0;
+}
+@keyframes pyr-term-clip {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0% 0 0);
+  }
+}
+@keyframes pyr-term-cursor {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(160px);
+  }
+}
+@keyframes pyr-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes pyr-term-disc {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 0.9));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── 07 · Concentric rings ──────────────────────────────────── */
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-ring {
+  animation: pyr-ring 700ms var(--d, 0ms) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='rings'] .pyr-ring {
+  opacity: 0;
+}
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-rings-disc {
+  animation: pyr-trace-disc 300ms 300ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-rings-n {
+  animation: pyr-trace-n 280ms 550ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='rings'] .pyr-rings-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-rings-word {
+  animation: pyr-fade-in 280ms 760ms forwards;
+}
+.px-heromark[data-variant='rings'] .pyr-rings-word {
+  opacity: 0;
+}
+@keyframes pyr-ring {
+  0% {
+    r: 20;
+    opacity: 1;
+    stroke-width: 2.5;
+  }
+  60% {
+    opacity: 0.8;
+  }
+  100% {
+    r: 200;
+    opacity: 0;
+    stroke-width: 0.5;
+  }
+}
+
+/* ── 08 · Orbit collapse ────────────────────────────────────── */
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbiter {
+  animation:
+    pyr-orbit 500ms var(--d, 0ms) cubic-bezier(0.5, 0, 0.4, 1) forwards,
+    pyr-snap 240ms calc(500ms + var(--d, 0ms)) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbit-disc {
+  animation: pyr-orbit-disc 200ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbit-n {
+  animation: pyr-trace-n 240ms 660ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='orbit'] .pyr-orbit-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbit-word {
+  animation: pyr-fade-in 280ms 820ms forwards;
+}
+.px-heromark[data-variant='orbit'] .pyr-orbit-word {
+  opacity: 0;
+}
+@keyframes pyr-orbit {
+  from {
+    transform: rotate(var(--a)) translateX(80px);
+    fill: #22d3ee;
+  }
+  to {
+    transform: rotate(calc(var(--a) + 540deg)) translateX(80px);
+    fill: #22d3ee;
+  }
+}
+@keyframes pyr-snap {
+  from {
+    transform: rotate(calc(var(--a) + 540deg)) translateX(80px);
+    fill: #22d3ee;
+    opacity: 1;
+  }
+  to {
+    transform: rotate(calc(var(--a) + 540deg)) translateX(0);
+    fill: #ff5e1a;
+    opacity: 0;
+  }
+}
+@keyframes pyr-orbit-disc {
+  from {
+    transform: scale(0.3);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 0.9));
+  }
+  to {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── 09 · Channel-split resolve ─────────────────────────────── */
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-chan-l {
+  animation: pyr-chan-l 900ms cubic-bezier(0.5, 0, 0.3, 1) both;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-chan-m {
+  animation: pyr-chan-m 900ms cubic-bezier(0.5, 0, 0.3, 1) both;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-chan-r {
+  animation: pyr-chan-r 900ms cubic-bezier(0.5, 0, 0.3, 1) both;
+}
+.px-heromark[data-variant='split'] .pyr-chan-l,
+.px-heromark[data-variant='split'] .pyr-chan-m,
+.px-heromark[data-variant='split'] .pyr-chan-r {
+  opacity: 0;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-split-final {
+  animation: pyr-fade-in 200ms 780ms forwards;
+}
+.px-heromark[data-variant='split'] .pyr-split-final {
+  opacity: 0;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-split-disc {
+  animation: pyr-term-disc 240ms 880ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-split-n {
+  animation: pyr-trace-n 240ms 1020ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='split'] .pyr-split-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='split'] .pyr-split-disc {
+  opacity: 1;
+  transform: scale(1);
+}
+@keyframes pyr-chan-l {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-8px, -3px);
+    opacity: 0.9;
+  }
+  45% {
+    transform: translate(-22px, -6px);
+    opacity: 0.9;
+  }
+  65% {
+    transform: translate(-22px, -6px);
+    opacity: 0.9;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes pyr-chan-m {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(1px, 2px);
+    opacity: 0.9;
+  }
+  45% {
+    transform: translate(3px, 6px);
+    opacity: 0.9;
+  }
+  65% {
+    transform: translate(3px, 6px);
+    opacity: 0.9;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes pyr-chan-r {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(8px, 3px);
+    opacity: 0.9;
+  }
+  45% {
+    transform: translate(22px, 6px);
+    opacity: 0.9;
+  }
+  65% {
+    transform: translate(22px, 6px);
+    opacity: 0.9;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── 10 · Spotlight focus ───────────────────────────────────── */
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot {
+  animation: pyr-spot 600ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot {
+  transform: scale(0.4);
+}
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot-disc {
+  animation: pyr-spot-disc 240ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot-disc {
+  opacity: 0;
+}
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot-n {
+  animation: pyr-trace-n 260ms 700ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot-word {
+  animation: pyr-fade-in 260ms 820ms forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot-word {
+  opacity: 0;
+}
+@keyframes pyr-spot {
+  from {
+    transform: scale(2);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+}
+@keyframes pyr-spot-disc {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+    filter: drop-shadow(0 0 20px rgba(255, 94, 26, 1));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── 11 · ECG sync sweep ─────────────────────────────────────── */
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-scan {
+  animation: pyr-ecg-scan 900ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-scan {
+  transform: translateX(720px);
+  opacity: 0;
+}
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-disc {
+  animation: pyr-ecg-disc 200ms 280ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-disc {
+  opacity: 0;
+}
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-n {
+  animation: pyr-trace-n 240ms 460ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-word {
+  animation: pyr-fade-in 240ms 720ms forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-word {
+  opacity: 0;
+}
+@keyframes pyr-ecg-scan {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(720px);
+    opacity: 0;
+  }
+}
+@keyframes pyr-ecg-disc {
+  from {
+    opacity: 0;
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 14px rgba(255, 94, 26, 0.8));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── Light theme overrides · driven by the docs' <html data-theme="light">
+   root (tokens.css + the FOUC script in config.ts). Recolours inline SVG
+   fills / strokes / gradient stops via attribute selectors — no markup
+   changes. Verbatim palette from the handoff. ─────────────────────── */
+[data-theme='light'] .px-heromark .pyr-grid line {
+  stroke: #e6dfd2;
+}
+[data-theme='light'] .px-heromark .pyr-word {
+  fill: #14141c;
+}
+[data-theme='light'] .px-heromark .pyr-n {
+  stroke: #14141c;
+}
+/* Ember palette · desaturated for paper · same role (the "hot" signal) */
+[data-theme='light'] .px-heromark stop[stop-color='#FF1F8C'] {
+  stop-color: #e40c70;
+}
+[data-theme='light'] .px-heromark stop[stop-color='#FF5E1A'] {
+  stop-color: #e84a0f;
+}
+[data-theme='light'] .px-heromark stop[stop-color='#FFC83D'] {
+  stop-color: #e0a510;
+}
+[data-theme='light'] .px-heromark [fill='#FF5E1A'] {
+  fill: #e84a0f;
+}
+[data-theme='light'] .px-heromark [fill='#FFC83D'] {
+  fill: #e0a510;
+}
+[data-theme='light'] .px-heromark [fill='#FF1F8C'] {
+  fill: #e40c70;
+}
+[data-theme='light'] .px-heromark [stroke='#FF5E1A'] {
+  stroke: #e84a0f;
+}
+/* Cyan · AA-darkened for body-text contrast on paper */
+[data-theme='light'] .px-heromark stop[stop-color='#22D3EE'] {
+  stop-color: #0891b2;
+}
+[data-theme='light'] .px-heromark [fill='#22D3EE'] {
+  fill: #0891b2;
+}
+[data-theme='light'] .px-heromark .pyr-orbiter {
+  fill: #0891b2;
+}
+/* Cold underlayer · paper tones replace inky ones */
+[data-theme='light'] .px-heromark [fill='#23232E'] {
+  fill: #e6dfd2;
+}
+[data-theme='light'] .px-heromark [fill='#181822'] {
+  fill: #ede6d6;
+}
+[data-theme='light'] .px-heromark [stroke='#23232E'] {
+  stroke: #e6dfd2;
+}
+[data-theme='light'] .px-heromark [stroke='#2E2E3B'] {
+  stroke: #e6dfd2;
+}
+[data-theme='light'] .px-heromark path[stroke='#23232E'] {
+  stroke: #c9c4b8;
+}
+[data-theme='light'] .px-heromark [fill='#F4EFE6'] {
+  fill: #14141c;
+}
+[data-theme='light'] .px-heromark [stroke='#F4EFE6'] {
+  stroke: #14141c;
+}
+
+/* ── Universal · reduced motion · hero variants ─────────────────
+   Snaps every animated element to its end-state with no animation.
+   Verbatim from the handoff. ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .px-heromark * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .px-heromark .pyr-trace-edge,
+  .px-heromark .pyr-trace-n,
+  .px-heromark .pyr-pulse-n,
+  .px-heromark .pyr-part-n,
+  .px-heromark .pyr-rings-n,
+  .px-heromark .pyr-orbit-n,
+  .px-heromark .pyr-spot-n,
+  .px-heromark .pyr-ecg-n,
+  .px-heromark .pyr-fuse-trail {
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+  }
+  .px-heromark .pyr-trace-word,
+  .px-heromark .pyr-pulse-word,
+  .px-heromark .pyr-pulse-ring,
+  .px-heromark .pyr-part-word,
+  .px-heromark .pyr-rings-word,
+  .px-heromark .pyr-orbit-word,
+  .px-heromark .pyr-spot-word,
+  .px-heromark .pyr-ecg-word,
+  .px-heromark .pyr-fuse-disc,
+  .px-heromark .pyr-fuse-n,
+  .px-heromark .pyr-fuse-word,
+  .px-heromark .pyr-split-final {
+    opacity: 1 !important;
+  }
+  .px-heromark .pyr-wave-mask,
+  .px-heromark .pyr-wave-bar,
+  .px-heromark .pyr-ecg-scan {
+    transform: translateX(0) !important;
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-trace-disc,
+  .px-heromark .pyr-part-disc,
+  .px-heromark .pyr-rings-disc,
+  .px-heromark .pyr-orbit-disc,
+  .px-heromark .pyr-spot-disc,
+  .px-heromark .pyr-ecg-disc {
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+  .px-heromark .pyr-pulse-under {
+    transform: scaleX(1) !important;
+  }
+  .px-heromark .pyr-term-clip {
+    clip-path: inset(0 0 0 0) !important;
+  }
+  .px-heromark .pyr-term-cursor {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-term-disc {
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+  .px-heromark .pyr-term-n,
+  .px-heromark .pyr-term-word {
+    opacity: 1 !important;
+    stroke-dashoffset: 0 !important;
+  }
+  .px-heromark .pyr-fuse-bead {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-spot {
+    transform: scale(0.4) !important;
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-orbiter {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-ring {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-chan-l,
+  .px-heromark .pyr-chan-m,
+  .px-heromark .pyr-chan-r {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-split-disc {
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+  .px-heromark .pyr-split-n {
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+  }
+}

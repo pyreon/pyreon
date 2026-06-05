@@ -586,9 +586,9 @@ function Page() {
 
 ## Related
 
-- [`useHead`](/head) — the underlying head-management hook that powers these primitives
-- [`@pyreon/head`](/head) — declarative document head management
-- [`<Image priority>`](/zero#image) — for optimized LCP images (preferred over `usePreload`)
+- [`useHead`](/docs/head) — the underlying head-management hook that powers these primitives
+- [`@pyreon/head`](/docs/head) — declarative document head management
+- [`<Image priority>`](/docs/zero#image) — for optimized LCP images (preferred over `usePreload`)
 
 ## `<NoOptimize>` — subtree-scoped image optimization opt-out
 

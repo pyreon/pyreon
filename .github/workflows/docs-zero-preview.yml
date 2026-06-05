@@ -57,12 +57,20 @@ jobs:
           bunx vite build --base=/pyreon/preview/
 
       - name: Pack the preview into the existing site bundle
+        # set -e so the step exits non-zero on the FIRST failing command
+        # — keeps the failure mode visible instead of letting a later
+        # `cp` mask a broken VitePress build with a confusing "cannot
+        # stat" error (the actual root cause was a partial-chain cwd
+        # leftover when `cd docs && … && cd ..` broke mid-chain).
         run: |
+          set -e
           # Build the legacy VitePress site as the OUTER artifact.
-          cd docs && bun install --frozen-lockfile && bun run build && cd ..
+          (cd docs && bun install --frozen-lockfile && bun run build)
           # Drop the docs-zero build into preview/ of the VitePress dist.
+          # All paths are workspace-root-relative — no cwd leakage from
+          # the previous subshell.
           mkdir -p docs/.vitepress/dist/preview
-          cp -r examples/docs-zero/dist/* docs/.vitepress/dist/preview/
+          cp -r examples/docs-zero/dist/. docs/.vitepress/dist/preview/
 
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
