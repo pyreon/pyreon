@@ -48,6 +48,10 @@ export {
   type SsgAuditGateOptions,
 } from './ssg-audit'
 export {
+  runContentAuditGate,
+  type ContentAuditGateOptions,
+} from './content-audit'
+export {
   runCheckDedupGate,
   type CheckDedupGateOptions,
 } from './check-dedup'

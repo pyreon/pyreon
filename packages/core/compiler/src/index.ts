@@ -57,3 +57,22 @@ export type {
   SsgLocation,
 } from './ssg-audit'
 export { auditSsg, formatSsgAudit } from './ssg-audit'
+// PR 9 follow-up — `pyreon doctor --check-content` audit.
+export type {
+  AuditContentOptions,
+  CollectionDecl,
+  ContentAuditResult,
+  ContentFinding,
+  ContentFindingCode,
+  ContentLocation,
+} from './content-audit'
+export {
+  auditContent,
+  deriveSlug,
+  extractInternalLinks,
+  findContentConfigs,
+  formatContentFindings,
+  parseContentConfig,
+  readFrontmatter,
+  readTitleFromFrontmatter,
+} from './content-audit'
