@@ -1,0 +1,236 @@
+---
+title: Getting Started
+description: Install and configure Pyreon in your project.
+---
+
+## Installation
+
+Install the core packages:
+
+::: code-group
+
+```bash [npm]
+npm install @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
+```
+
+```bash [bun]
+bun add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
+```
+
+```bash [pnpm]
+pnpm add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
+```
+
+```bash [yarn]
+yarn add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
+```
+
+:::
+
+## Vite Setup
+
+Add the Pyreon plugin to your Vite config. The plugin is a default export — convention is to name the import `pyreon`:
+
+```ts
+import { defineConfig } from 'vite'
+import pyreon from '@pyreon/vite-plugin'
+
+export default defineConfig({
+  plugins: [pyreon()],
+})
+```
+
+## Your First Component
+
+```tsx
+import { signal, computed } from '@pyreon/reactivity'
+import { Show } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
+
+const count = signal(0)
+
+function App() {
+  const doubled = computed(() => count() * 2)
+
+  return (
+    <div>
+      <h1>Hello Pyreon!</h1>
+      <button onClick={() => count.update((n) => n + 1)}>
+        Clicks: {count()}
+      </button>
+      <p>Doubled: {doubled()}</p>
+      <Show when={() => count() > 0}>
+        <p>You've started clicking!</p>
+      </Show>
+    </div>
+  )
+}
+
+mount(<App />, document.getElementById('app')!)
+```
+
+::: tip Signal writes
+Write to a signal with `signal.set(value)` or `signal.update(fn)` — calling `count(value)` is a READ that discards the argument (the framework's lint rule flags this). Reading a signal inside JSX (`{count()}`) is reactive thanks to the compiler.
+:::
+
+::: tip Components are functions
+Pyreon components are plain functions that return JSX — no `defineComponent` wrapper required. The `defineComponent` helper from `@pyreon/core` exists only for cases that need explicit lifecycle hooks attached to the function reference.
+:::
+
+## HTML Entry Point
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pyreon App</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+## Adding SSR
+
+For server-side rendering, install the server runtime:
+
+::: code-group
+
+```bash [npm]
+npm install @pyreon/runtime-server
+```
+
+```bash [bun]
+bun add @pyreon/runtime-server
+```
+
+```bash [pnpm]
+pnpm add @pyreon/runtime-server
+```
+
+```bash [yarn]
+yarn add @pyreon/runtime-server
+```
+
+:::
+
+```tsx
+import { renderToString } from '@pyreon/runtime-server'
+import App from './App'
+
+export async function render() {
+  return await renderToString(<App />)
+}
+```
+
+For streaming SSR with Suspense support:
+
+```tsx
+import { renderToStream } from '@pyreon/runtime-server'
+import App from './App'
+
+export function render(res: WritableStream) {
+  return renderToStream(<App />, res)
+}
+```
+
+## Adding Routing
+
+::: code-group
+
+```bash [npm]
+npm install @pyreon/router
+```
+
+```bash [bun]
+bun add @pyreon/router
+```
+
+```bash [pnpm]
+pnpm add @pyreon/router
+```
+
+```bash [yarn]
+yarn add @pyreon/router
+```
+
+:::
+
+```tsx
+import { createRouter } from '@pyreon/router'
+
+export const router = createRouter({
+  routes: [
+    { path: '/', component: () => import('./pages/Home') },
+    { path: '/about', component: () => import('./pages/About') },
+    { path: '/users/:id', component: () => import('./pages/User') },
+  ],
+})
+```
+
+```tsx
+import { RouterProvider, RouterView, RouterLink } from '@pyreon/router'
+import { router } from './router'
+
+export default function App() {
+  return (
+    <RouterProvider router={router}>
+      <nav>
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/about">About</RouterLink>
+      </nav>
+      <RouterView />
+    </RouterProvider>
+  )
+}
+```
+
+## Using a Compatibility Layer
+
+If you're coming from React, you can use familiar hooks:
+
+::: code-group
+
+```bash [npm]
+npm install @pyreon/react-compat
+```
+
+```bash [bun]
+bun add @pyreon/react-compat
+```
+
+```bash [pnpm]
+pnpm add @pyreon/react-compat
+```
+
+```bash [yarn]
+yarn add @pyreon/react-compat
+```
+
+:::
+
+```tsx
+import { useState, useEffect, memo } from '@pyreon/react-compat'
+
+const Counter = memo(() => {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    document.title = `Count: ${count}`
+  }, [count])
+
+  return <button onClick={() => setCount(count + 1)}>Count: {count}</button>
+})
+```
+
+## What's Next?
+
+- Learn about [Reactivity](/docs/reactivity) — the signal engine at the core
+- Explore the [Component Model](/docs/core) — component functions, lifecycle, control flow
+- Set up [Routing](/docs/router) — type-safe nested routes
+- Add [State Management](/docs/store) — Pinia-inspired stores
+- Style with [Styler](/docs/styler) — CSS-in-JS for signals
