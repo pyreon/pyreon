@@ -13,9 +13,44 @@ name: Deploy Docs (zero-content preview)
 on:
   push:
     branches: [main]
+    # Auto-redeploy on any change to a package the preview transitively
+    # builds with. Pre-fix the filter only watched `examples/docs-zero`
+    # + `packages/zero/zero-content` — so framework fixes that affect the
+    # docs-zero build (e.g. the @pyreon/zero `--base` CLI carve-out in
+    # PR #1395) didn't trigger a redeploy. The preview compiles a real
+    # zero app, so any of these can change what ships:
+    #
+    #   - @pyreon/zero            — fs-router, SSG/SSR/SPA modes, the
+    #                                base/port CLI carve-outs, image +
+    #                                font auto-wire
+    #   - @pyreon/zero-content    — the markdown-to-JSX content pipeline
+    #   - @pyreon/vite-plugin     — JSX transform + HMR
+    #   - @pyreon/router          — RouterView, RouterLink, base prefix
+    #                                resolution
+    #   - @pyreon/runtime-dom     — mount, hydrate, signal-driven DOM
+    #   - @pyreon/reactivity      — signal / computed / effect (every
+    #                                framework re-export uses this)
+    #   - @pyreon/core            — VNode / h() / JSX runtime
+    #   - @pyreon/compiler        — JSX → _tpl / _bind compile step
+    #   - @pyreon/runtime-server  — SSR primitives (used by zero's SSG)
+    #   - @pyreon/head            — useHead / Meta / link injection
+    #
+    # When the cut-over lands, this whole workflow is replaced by the
+    # production `docs.yml` (which doesn't need a path filter — every
+    # push to main is a deploy candidate). Until then, this list keeps
+    # the side-by-side preview honest against framework regressions.
     paths:
       - 'examples/docs-zero/**'
+      - 'packages/zero/zero/**'
       - 'packages/zero/zero-content/**'
+      - 'packages/tools/vite-plugin/**'
+      - 'packages/core/router/**'
+      - 'packages/core/runtime-dom/**'
+      - 'packages/core/reactivity/**'
+      - 'packages/core/core/**'
+      - 'packages/core/compiler/**'
+      - 'packages/core/runtime-server/**'
+      - 'packages/core/head/**'
       - '.github/workflows/docs-zero-preview.yml'
   workflow_dispatch:
 
