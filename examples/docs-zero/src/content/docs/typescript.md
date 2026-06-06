@@ -37,7 +37,7 @@ yarn add @pyreon/typescript
 
 The foundation configuration that all other presets extend. Includes strict TypeScript settings and Pyreon-specific JSX configuration.
 
-```json
+```json title="tsconfig.json"
 {
   "extends": "@pyreon/typescript/base"
 }
@@ -61,7 +61,7 @@ The foundation configuration that all other presets extend. Includes strict Type
 
 For application projects (SPAs, SSR apps, examples). Extends the base preset and adds `noEmit: true` since applications are bundled by Vite, not compiled directly by `tsc`.
 
-```json
+```json title="tsconfig.json"
 {
   "extends": "@pyreon/typescript/app"
 }
@@ -79,7 +79,7 @@ This is the recommended preset for Pyreon applications and examples. Since `noEm
 
 For library packages that need to emit declaration files. Extends the base preset and enables declaration output.
 
-```json
+```json title="tsconfig.json"
 {
   "extends": "@pyreon/typescript/lib"
 }
@@ -100,7 +100,7 @@ For library packages that need to emit declaration files. Extends the base prese
 
 For a Pyreon SPA or SSR application:
 
-```json
+```json title="tsconfig.json"
 {
   "extends": "@pyreon/typescript/app",
   "include": ["src"],
@@ -117,7 +117,7 @@ For a Pyreon SPA or SSR application:
 
 For a reusable Pyreon library:
 
-```json
+```json title="tsconfig.json"
 {
   "extends": "@pyreon/typescript/lib",
   "include": ["src"],
@@ -132,7 +132,7 @@ For a reusable Pyreon library:
 
 For a monorepo root `tsconfig.json` that references workspace packages:
 
-```json
+```json title="tsconfig.json"
 {
   "extends": "@pyreon/typescript/base",
   "compilerOptions": {

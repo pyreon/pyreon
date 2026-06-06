@@ -223,7 +223,7 @@ The hydration strategy is "walk-and-claim" -- it walks the VNode tree in paralle
 - **Static text** is reused as-is.
 - **Reactive text** is reused with a reactive effect attached to `.data`.
 - **Components** are called, and their output is matched against the DOM subtree.
-- **For lists** use SSR hydration markers (`{/* pyreon-for */}`) for boundary detection.
+- **For lists** use SSR hydration markers (`<!--pyreon-for-->`) for boundary detection.
 - **Fragments** are transparent -- children matched directly against DOM nodes.
 - **Portals** always remount into their target container.
 
@@ -478,7 +478,9 @@ When the Pyreon compiler detects a static JSX element tree, it emits `_tpl(html,
 **Before optimization (h calls):**
 
 ```tsx
-<span>{text()}</span>
+<div class="box">
+  <span>{text()}</span>
+</div>
 ```
 
 **After optimization (\_tpl):**

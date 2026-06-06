@@ -116,7 +116,7 @@ The renderer walks the VNode tree recursively and handles each node type:
 | DOM element                     | Opening tag with attributes, children, closing tag          |
 | Component function              | Called with props, output rendered recursively              |
 | Async component                 | Awaited, then rendered recursively                          |
-| `For` list                      | Items rendered with hydration markers (`{/* pyreon-for */}`) |
+| `For` list                      | Items rendered with hydration markers (`<!--pyreon-for-->`) |
 | Reactive accessor `() => value` | Called synchronously to snapshot the current value          |
 
 ### Context Isolation
@@ -171,10 +171,11 @@ Async components (components that return a `Promise<VNode>`) are fully supported
 async function UserProfile(props: { userId: string }) {
   const user = await fetchUser(props.userId)
   return (
-    <h1>{user.name}</h1>
-    <p>{user.bio}</p>
-  </div>
-)
+    <div class="profile">
+      <h1>{user.name}</h1>
+      <p>{user.bio}</p>
+    </div>
+  )
 }
 
 const html = await renderToString(<UserProfile userId="123" />)
@@ -191,16 +192,16 @@ import { signal } from '@pyreon/reactivity'
 const items = signal(['apple', 'banana', 'cherry'])
 
 const vnode = (
-<For each={() => items()} by={(item) => item}>
-  {(item) => <li>{item}</li>}
-</For>
+  <For each={() => items()} by={(item) => item}>
+    {(item) => <li>{item}</li>}
+  </For>
 )
 
 const html = await renderToString(vnode)
-// => '{/* pyreon-for */}<li>apple</li><li>banana</li><li>cherry</li>{/* /pyreon-for */}'
+// => '<!--pyreon-for--><li>apple</li><li>banana</li><li>cherry</li><!--/pyreon-for-->'
 ```
 
-The `{/* pyreon-for */}` and `{/* /pyreon-for */}` markers are used by the client-side hydrator to match server-rendered list items with their reactive counterparts.
+The `<!--pyreon-for-->` and `<!--/pyreon-for-->` markers are used by the client-side hydrator to match server-rendered list items with their reactive counterparts.
 
 ### Fragment Rendering
 
@@ -210,10 +211,10 @@ Fragments render their children without any wrapper element:
 import { Fragment, h } from '@pyreon/core'
 
 const html = await renderToString(
-<>
-  <span>a</span>
-  <span>b</span>
-</>,
+  <>
+    <span>a</span>
+    <span>b</span>
+  </>,
 )
 // => '<span>a</span><span>b</span>'
 ```
@@ -224,13 +225,13 @@ When children are passed via `h(Component, props, child1, child2)`, they are mer
 
 ```tsx
 function Wrapper(props: { children: VNode }) {
-return <div class="wrapper">{props.children}</div>
+  return <div class="wrapper">{props.children}</div>
 }
 
 const html = await renderToString(
-<Wrapper>
-  <span>child content</span>
-</Wrapper>,
+  <Wrapper>
+    <span>child content</span>
+  </Wrapper>,
 )
 // => '<div class="wrapper"><span>child content</span></div>'
 ```
@@ -239,14 +240,14 @@ Multiple children are passed as an array:
 
 ```tsx
 function Layout(props: { children: VNode[] }) {
-return <div>{...props.children}</div>
+  return <div>{...props.children}</div>
 }
 
 const html = await renderToString(
-<Layout>
-  <header>Header</header>
-  <main>Content</main>
-</Layout>,
+  <Layout>
+    <header>Header</header>
+    <main>Content</main>
+  </Layout>,
 )
 ```
 
@@ -268,7 +269,7 @@ import { App } from './App'
 const stream = renderToStream(<App />)
 
 return new Response(stream, {
-headers: { 'Content-Type': 'text/html' },
+  headers: { 'Content-Type': 'text/html' },
 })
 ```
 
@@ -284,14 +285,14 @@ The key advantage of streaming is that the browser can start parsing and renderi
 
 ```tsx
 async function SlowChild() {
-await new Promise((r) => setTimeout(r, 1000))
-return <span>loaded</span>
+  await new Promise((r) => setTimeout(r, 1000))
+  return <span>loaded</span>
 }
 
 const stream = renderToStream(
-<div>
-  <SlowChild />
-</div>,
+  <div>
+    <SlowChild />
+  </div>,
 )
 
 // Stream chunks arrive as:
@@ -309,9 +310,9 @@ const chunks: string[] = []
 const reader = stream.getReader()
 
 while (true) {
-const { done, value } = await reader.read()
-if (done) break
-chunks.push(value)
+  const { done, value } = await reader.read()
+  if (done) break
+  chunks.push(value)
 }
 
 // chunks[0] === "<div>"
@@ -338,14 +339,14 @@ The first time a Suspense boundary is encountered, a small inline `<script>` is 
 
 ```html
 <script>
-function __NS(s, t) {
-  var e = document.getElementById(s),
-    l = document.getElementById(t)
-  if (e && l) {
-    e.replaceWith(l.content.cloneNode(!0))
-    l.remove()
+  function __NS(s, t) {
+    var e = document.getElementById(s),
+      l = document.getElementById(t)
+    if (e && l) {
+      e.replaceWith(l.content.cloneNode(!0))
+      l.remove()
+    }
   }
-}
 </script>
 ```
 
@@ -355,7 +356,8 @@ The fallback UI is wrapped in a `<div>` with a unique ID and emitted immediately
 
 ```html
 <div id="pyreon-s-0">
-<p>Loading...</p>
+  <p>Loading...</p>
+</div>
 ```
 
 **Step 3: Continue streaming the rest of the page**
@@ -1149,14 +1151,14 @@ All text content and attribute values within Suspense templates go through the s
 When rendering `<For>` lists during SSR, each item now includes a key marker comment for precise hydration matching:
 
 ```html
-{/* pyreon-for */}
-{/* k:apple */}<li>apple</li>
-{/* k:banana */}<li>banana</li>
-{/* k:cherry */}<li>cherry</li>
-{/* /pyreon-for */}
+<!--pyreon-for-->
+<!--k:apple--><li>apple</li>
+<!--k:banana--><li>banana</li>
+<!--k:cherry--><li>cherry</li>
+<!--/pyreon-for-->
 ```
 
-The `{/* k:key */}` comments allow the client-side hydrator to match server-rendered items with their reactive counterparts by key rather than by position. This improves hydration accuracy when list items are reordered between server render and client hydration.
+The `<!--k:key-->` comments allow the client-side hydrator to match server-rendered items with their reactive counterparts by key rather than by position. This improves hydration accuracy when list items are reordered between server render and client hydration.
 
 ---
 
