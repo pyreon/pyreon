@@ -83,12 +83,28 @@ export interface ContentConfig {
 }
 
 /**
- * The shape returned by `defineComponents({...})`. Plain objects passed
- * to a `components:` field will fail validation — the brand symbol is
- * how the plugin distinguishes user-supplied component bundles from
- * accidentally raw objects.
+ * Runtime symbol attached to every `defineComponents({...})` return.
+ * The plugin checks for this symbol on every `components:` value it
+ * sees so a raw `{...}` object passed by mistake fails loudly at
+ * config-load time instead of being silently accepted.
  *
- * The runtime form is just the record; the brand is type-only.
+ * Pre-fix (PR-A audit C4) the brand existed in types only — the
+ * manifest promised "the plugin can refuse raw objects" but no
+ * runtime check ever fired. Now `validateComponentsRegistry` (called
+ * from the plugin) reads this symbol and emits an actionable error.
+ *
+ * Registered via `Symbol.for` so multiple package instances (rare, but
+ * possible under workspace hoisting edge cases) all share the same
+ * symbol identity.
+ */
+export const COMPONENTS_BRAND = Symbol.for('pyreon:zero-content:components-registry')
+
+/**
+ * The shape returned by `defineComponents({...})`. Carries both a
+ * type-level brand (so a raw `{...}` literal doesn't fit the
+ * `ComponentsRegistry` parameter at compile time) AND the runtime
+ * symbol above (so the plugin can detect a `{...}` that bypassed
+ * the type check via `as ComponentsRegistry`).
  */
 declare const componentsBrand: unique symbol
 export type ComponentsRegistry = Record<string, ComponentFn<any>> & {

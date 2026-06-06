@@ -24,6 +24,7 @@ import type { ContainerDirective } from 'mdast-util-directive'
 type CalloutType = 'tip' | 'warning' | 'note' | 'danger' | 'info'
 
 const VALID_TYPES = new Set<CalloutType>(['tip', 'warning', 'note', 'danger', 'info'])
+const VALID_TYPES_LIST: CalloutType[] = ['tip', 'warning', 'note', 'danger', 'info']
 
 /**
  * Whether a directive name maps to a callout type. Exported for the
@@ -36,13 +37,156 @@ export function isCalloutType(name: string): name is CalloutType {
   return VALID_TYPES.has(name as CalloutType)
 }
 
-export function remarkCallout() {
+/**
+ * Optional collector for diagnostics surfaced during the callout pass.
+ * The Vite plugin passes one in and pipes every message through
+ * `this.warn(...)` so authors see actionable feedback (unknown name
+ * with a "did you mean…?" hint; an unclosed `:::` fence heuristic).
+ * Pre-fix (PR-A audit C9 + H6) both shapes failed silently.
+ *
+ * @internal
+ */
+export interface CalloutWarnings {
+  push(message: string): void
+}
+
+interface RemarkCalloutOptions {
+  /** Source markdown text — used by the unclosed-fence heuristic. */
+  source?: string
+  /** Diagnostics collector. */
+  warnings?: CalloutWarnings
+}
+
+/**
+ * Levenshtein edit distance — classic small-N DP, reused for the
+ * `:::warn` → "did you mean `:::warning`?" hint. Same shape as
+ * `mdx-scan/validate.ts:editDistance` but inlined here to avoid the
+ * remark plugin depending on the validator (which carries fs-glob
+ * infrastructure we don't need at this layer).
+ *
+ * @internal exported for testing
+ */
+export function calloutEditDistance(a: string, b: string): number {
+  if (a === b) return 0
+  if (a.length === 0) return b.length
+  if (b.length === 0) return a.length
+  const prev = new Array(b.length + 1)
+  const curr = new Array(b.length + 1)
+  for (let j = 0; j <= b.length; j++) prev[j] = j
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j]
+  }
+  return prev[b.length]
+}
+
+/**
+ * Find the closest known callout type for a typo (`warn` →
+ * `warning`). Returns `null` when no candidate is within edit
+ * distance 3 — `warn` → `warning` is exactly 3 (insertions of
+ * `i`, `n`, `g`) which is the prototypical typo we want to catch;
+ * anything further turns into noise (`foobarbaz` to every known
+ * type is ≥ 7).
+ *
+ * @internal exported for testing
+ */
+export function suggestCalloutType(name: string): string | null {
+  let best: { name: string; dist: number; ref: string } | null = null
+  for (const t of VALID_TYPES_LIST) {
+    const d = calloutEditDistance(name, t)
+    if (best === null || d < best.dist) best = { name: t, dist: d, ref: t }
+  }
+  if (best === null) return null
+  // Accept either:
+  //   - small absolute distance for short inputs (≤ 2), OR
+  //   - ratio-bound for longer inputs (distance < 50% of longer string).
+  //
+  // The ratio bound is the key: `warn` (4) → `warning` (7) has distance
+  // 3 / 7 ≈ 0.43, suggested. `qux` (3) → `tip` (3) has distance 3 / 3
+  // = 1.0, NOT suggested. `foobarbaz` (9) → anything ≥ 6, NOT suggested.
+  const longer = Math.max(name.length, best.ref.length)
+  if (best.dist <= 2) return best.name
+  if (longer > 0 && best.dist / longer < 0.5) return best.name
+  return null
+}
+
+/**
+ * Heuristic: when a callout's body spans many headings AND extends
+ * near the file end, it's likely an unclosed `:::` fence — remark-
+ * directive silently consumed every subsequent line into the
+ * directive's `children`. Pre-fix (PR-A audit C9) the foot-gun ate
+ * the rest of the file with no signal; now we warn.
+ *
+ * Thresholds (tunable):
+ *   - body spans ≥ 2 headings — a real callout almost never does
+ *   - OR child count ≥ 30 — wildly more than a typical callout
+ *   - AND the directive's end line is within 3 of the source end
+ *
+ * Either signal alone is too noisy; the AND-of-both is the
+ * conservative trigger we ship.
+ *
+ * @internal exported for testing
+ */
+export function looksUnclosed(
+  directive: ContainerDirective,
+  sourceLineCount: number,
+): boolean {
+  const endLine = directive.position?.end?.line ?? 0
+  const nearEnd = sourceLineCount - endLine <= 3
+  if (!nearEnd) return false
+  const children = directive.children ?? []
+  let headingCount = 0
+  for (const c of children) if ((c as { type: string }).type === 'heading') headingCount++
+  return headingCount >= 2 || children.length >= 30
+}
+
+export function remarkCallout(options: RemarkCalloutOptions = {}) {
+  const sourceLineCount = options.source ? options.source.split('\n').length : 0
+  const warnings = options.warnings ?? null
+
   return (tree: Root) => {
     visit(tree, (node, index, parent) => {
       if (node.type !== 'containerDirective') return
       const directive = node as ContainerDirective
-      if (!isCalloutType(directive.name)) return
       if (parent == null || index == null) return
+
+      // (H6) Unknown directive name — suggest the closest callout
+      // type. We only emit a "did you mean…?" hint for plausibly-
+      // close typos; the codegroup plugin handles `code-group` and
+      // doesn't want this warning either, so it explicitly registers
+      // its own name AFTER this plugin runs (the visitor short-
+      // circuits on `isCalloutType` so codegroup is left intact for
+      // its own pass).
+      if (!isCalloutType(directive.name)) {
+        // Skip ones we know belong to other plugins — `code-group`
+        // is the codegroup directive name; anything else is
+        // unknown.
+        if (directive.name !== 'code-group' && warnings) {
+          const hint = suggestCalloutType(directive.name)
+          warnings.push(
+            hint
+              ? `[@pyreon/zero-content] Unknown callout directive \`:::${directive.name}\` — did you mean \`:::${hint}\`?`
+              : `[@pyreon/zero-content] Unknown callout directive \`:::${directive.name}\` — valid types: tip, warning, note, danger, info.`,
+          )
+        }
+        return
+      }
+
+      // (C9) Unclosed-fence heuristic — surface the silent consumption
+      // before the rest of the file becomes part of the callout body.
+      if (sourceLineCount > 0 && looksUnclosed(directive, sourceLineCount)) {
+        if (warnings) {
+          warnings.push(
+            `[@pyreon/zero-content] Suspected unclosed \`:::${directive.name}\` directive — the body spans ${
+              directive.children.length
+            } block(s) up to line ${directive.position?.end?.line ?? '?'}. Add a closing \`:::\` line.`,
+          )
+        }
+      }
 
       const type = directive.name
       const title = typeof directive.attributes?.title === 'string'

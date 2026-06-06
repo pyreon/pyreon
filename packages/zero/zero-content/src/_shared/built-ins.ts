@@ -1,0 +1,20 @@
+// ─── Built-in MDX component names ─────────────────────────────────────────
+//
+// SINGLE source of truth. Both the MDX validator (`mdx-scan/validate.ts`)
+// and the virtual-components renderer (`mdx-scan/scanner.ts`) MUST import
+// from here so the two sides can never drift on order / contents.
+//
+// Pre-fix history (PR-A audit L10): the same list lived as a `const` in
+// `mdx-scan/scanner.ts` (order `[Callout, CodeGroup, CodeBlock]`) AND
+// as an `export const` in `mdx-scan/validate.ts` (order
+// `[Callout, CodeBlock, CodeGroup]`). Two reasonable orderings → silent
+// future drift the moment one side adds a new built-in without the
+// other. Locked here with a frozen alphabetical canonical order so any
+// new built-in lands in ONE place.
+export const BUILT_IN_COMPONENTS = Object.freeze([
+  'Callout',
+  'CodeBlock',
+  'CodeGroup',
+] as const)
+
+export type BuiltInComponentName = (typeof BUILT_IN_COMPONENTS)[number]

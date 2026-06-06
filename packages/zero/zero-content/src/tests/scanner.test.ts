@@ -268,7 +268,10 @@ describe('renderVirtualModule', () => {
     expect(out).toContain('export const Callout = __components.Callout')
     expect(out).toContain('export const CodeGroup = __components.CodeGroup')
     expect(out).toContain('export const CodeBlock = __components.CodeBlock')
-    expect(out).toContain('export const __components_meta__ = ["Callout","CodeGroup","CodeBlock"]')
+    // Canonical alphabetical order — locked in `_shared/built-ins.ts`
+    // so the scanner + validator can't drift. Was `[Callout, CodeGroup,
+    // CodeBlock]` pre-PR-A L10 fix when each side had its own list.
+    expect(out).toContain('export const __components_meta__ = ["Callout","CodeBlock","CodeGroup"]')
   })
 
   it('emits per-component imports + a default __components map alongside built-ins', () => {
@@ -280,10 +283,11 @@ describe('renderVirtualModule', () => {
       duplicates: [],
       files: ['/abs/Foo.tsx', '/abs/Bar.tsx'],
     })
-    // Built-ins re-exported via aliased imports __b0..__b2.
+    // Built-ins re-exported via aliased imports __b0..__b2 in
+    // alphabetical order (single-source-of-truth from `_shared`).
     expect(out).toContain("import { Callout as __b0 } from '@pyreon/zero-content'")
-    expect(out).toContain("import { CodeGroup as __b1 } from '@pyreon/zero-content'")
-    expect(out).toContain("import { CodeBlock as __b2 } from '@pyreon/zero-content'")
+    expect(out).toContain("import { CodeBlock as __b1 } from '@pyreon/zero-content'")
+    expect(out).toContain("import { CodeGroup as __b2 } from '@pyreon/zero-content'")
     // User scan continues at __c3 / __c4 (idx starts after built-ins).
     expect(out).toContain('import { Foo as __c3 } from "/abs/Foo.tsx"')
     expect(out).toContain('import __c4 from "/abs/Bar.tsx"')
@@ -292,7 +296,7 @@ describe('renderVirtualModule', () => {
     expect(out).toContain('export const Bar = __components.Bar')
     expect(out).toContain('export const Callout = __components.Callout')
     expect(out).toContain(
-      'export const __components_meta__ = ["Callout","CodeGroup","CodeBlock","Foo","Bar"]',
+      'export const __components_meta__ = ["Callout","CodeBlock","CodeGroup","Foo","Bar"]',
     )
   })
 

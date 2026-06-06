@@ -1,8 +1,9 @@
 import type { ComponentFn } from '@pyreon/core'
-import type {
-  CollectionDefinition,
-  ComponentsRegistry,
-  ContentConfig,
+import {
+  COMPONENTS_BRAND,
+  type CollectionDefinition,
+  type ComponentsRegistry,
+  type ContentConfig,
 } from './types'
 
 // ─── User-facing config helpers ────────────────────────────────────────────
@@ -58,16 +59,51 @@ export function defineCollection<TSchema>(
 export function defineComponents<TComponents extends Record<string, ComponentFn<any>>>(
   components: TComponents,
 ): TComponents & ComponentsRegistry {
-  if (__DEV__) {
-    for (const [key, value] of Object.entries(components)) {
-      if (typeof value !== 'function') {
-        throw new TypeError(
-          `[@pyreon/zero-content] defineComponents: '${key}' is ${typeof value}; expected a component function. Likely cause: import path typo or circular dependency.`,
-        )
-      }
+  // Runtime validation — every value must be a component function.
+  // Runs in BOTH dev AND production (PR-A audit L1 was a separate
+  // issue; this used to be dev-only behind `__DEV__` which meant a CI
+  // build with `NODE_ENV=production` silently accepted `{ X: undefined }`
+  // typos. Cheap per-key loop; fires once per call so the cost is
+  // negligible at production scale).
+  for (const [key, value] of Object.entries(components)) {
+    if (typeof value !== 'function') {
+      throw new TypeError(
+        `[@pyreon/zero-content] defineComponents: '${key}' is ${typeof value}; expected a component function. Likely cause: import path typo or circular dependency.`,
+      )
     }
   }
+  // Attach the runtime brand symbol. Non-enumerable + non-writable so
+  // it survives `Object.assign({}, components)` (which the merge helper
+  // does deliberately as a shallow copy) only when the merge code also
+  // copies symbol-keyed slots — `mergeComponents` does, so the brand
+  // propagates. The plugin's `validateComponentsRegistry` checks for
+  // this symbol's presence to refuse raw `{...}` literals.
+  Object.defineProperty(components, COMPONENTS_BRAND, {
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
   return components as TComponents & ComponentsRegistry
+}
+
+/**
+ * Whether `value` is a properly-branded ComponentsRegistry — i.e.
+ * the result of a `defineComponents({...})` call. Used by the Vite
+ * plugin to refuse raw object literals passed to a `components:`
+ * field. Pre-fix (PR-A audit C4) the brand existed in types only
+ * and the manifest promised a build error that never fired.
+ *
+ * @internal exported for the plugin + tests
+ */
+export function isBrandedComponentsRegistry(
+  value: unknown,
+): value is ComponentsRegistry {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    (value as Record<symbol, unknown>)[COMPONENTS_BRAND] === true
+  )
 }
 
 /**
@@ -92,5 +128,16 @@ export function mergeComponents(
       result[key] = value as ComponentFn<any>
     }
   }
+  // Stamp the merged result with the runtime brand so a
+  // `mergeComponents(a, b)` value can be passed to a `components:`
+  // field without the plugin's `isBrandedComponentsRegistry` check
+  // rejecting it as a raw object. Mirrors `defineComponents` —
+  // non-enumerable, non-writable.
+  Object.defineProperty(result, COMPONENTS_BRAND, {
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
   return result as ComponentsRegistry
 }

@@ -16,8 +16,10 @@ export {
   defineConfig,
   defineCollection,
   defineComponents,
+  isBrandedComponentsRegistry,
   mergeComponents,
 } from './config'
+export { COMPONENTS_BRAND } from './types'
 
 // ─── Built-in components ───────────────────────────────────────────────────
 //

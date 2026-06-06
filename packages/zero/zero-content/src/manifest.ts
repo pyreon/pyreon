@@ -17,19 +17,18 @@ export default defineManifest({
   tagline:
     'Compile-time .md/.mdx → Pyreon JSX, typed content collections, convention-scanned MDX components',
   description:
-    "Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: per-route LCP optimization inherits from zero's image/font/script-defer/resource-hint stack, markdown pages route through zero's fs-router via auto-generated catch-all routes, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via zod schema inference: `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<PackageBadge>`, `<Playground>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.",
+    "Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: markdown pages route through zero's fs-router, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via Standard Schema inference (use zod / valibot / arktype — the package itself ships no validator runtime): `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<CodeBlock>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.",
   category: 'server',
   features: [
     'Compile-time .md/.mdx → Pyreon JSX (no dangerouslySetInnerHTML — full reactivity + tree-shaking preserved)',
     'MDX support: JSX-in-markdown + top-of-file `import` statements hoisted to the compiled .tsx',
     'src/mdx/ convention scan — drop a PascalCase .tsx file, use the component in any .md by name (no wiring)',
     'Virtual module `virtual:zero-content/components` re-exports the scanned set + the built-ins',
-    'Astro-style typed content collections via zod schema inference + emitted .pyreon/content-types.d.ts',
+    'Astro-style typed content collections via Standard Schema inference + emitted .pyreon/content-types.d.ts',
     'getCollection<K>(name) / getEntry<K, S>(...) / getEntries<K>(...) runtime queries with full type inference',
-    'Standard Schema-compatible frontmatter validation (zod / valibot / arktype / typia all work via duck-typing)',
+    'Standard Schema-compatible frontmatter validation — BYO validator (zod, valibot, arktype, typia; all work via duck-typing, no validator runtime in this package)',
     'Three-tier MDX component resolution: built-ins → src/mdx/ convention scan → per-.md imports → escape-hatch defineComponents',
-    'Auto-generated catch-all routes per type:"pages" collection under src/routes/_content/ (no fs-router fork)',
-    'Built-in components: Callout, CodeGroup, CodeBlock, PackageBadge, Playground, Tabs',
+    'Built-in components: Callout, CodeGroup, CodeBlock (more candidates — Playground, PackageBadge, Tabs — live in `examples/docs-zero/src/mdx/` and are author-side until promoted)',
     'Shiki syntax highlighting with shared instance + dual light/dark theme baked into one emit (no runtime cost)',
     'Custom markdown blocks: :::tip / :::warning / :::note / :::danger / :::info / :::code-group via remark-directive',
     'Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")',
@@ -46,8 +45,11 @@ import content from '@pyreon/zero-content/plugin'
 
 export default { plugins: [pyreon(), zero(), content()] }
 
-// content.config.ts
-import { defineConfig, defineCollection, z } from '@pyreon/zero-content'
+// content.config.ts — Standard Schema-compatible validators only; the
+// package itself does NOT re-export zod. Bring your own (zod / valibot /
+// arktype / typia). See @pyreon/validation for the curated adapters.
+import { defineConfig, defineCollection } from '@pyreon/zero-content'
+import { z } from 'zod'
 
 export default defineConfig({
   collections: {
@@ -63,7 +65,7 @@ export default defineConfig({
   },
 })
 
-// User code anywhere — typed via zod inference
+// User code anywhere — typed via Standard Schema inference
 import { getCollection } from '@pyreon/zero-content'
 
 const docs = await getCollection('docs')
@@ -76,7 +78,9 @@ const docs = await getCollection('docs')
       signature: 'defineConfig(config: ContentConfig): ContentConfig',
       summary:
         "Top-level configuration helper. Pass-through factory that preserves the literal type of `collections` so downstream type inference works. Lives in `content.config.ts` at the project root; the plugin auto-discovers it.",
-      example: `import { defineConfig, defineCollection, z } from '@pyreon/zero-content'
+      example: `// content.config.ts — BYO validator (zod / valibot / arktype / typia)
+import { defineConfig, defineCollection } from '@pyreon/zero-content'
+import { z } from 'zod'
 
 export default defineConfig({
   collections: {
@@ -87,6 +91,7 @@ export default defineConfig({
   },
 })`,
       mistakes: [
+        'Importing `z` from `@pyreon/zero-content` — the package does NOT re-export zod. Bring your own validator (zod, valibot, arktype, typia all duck-type onto Standard Schema). See @pyreon/validation for curated adapters.',
         'Adding components in `vite.config.ts` instead of `content.config.ts`. The vite config is build orchestration; content components live in user space.',
         'Forgetting the `default export`. The plugin reads `content.config.ts` via dynamic import and reads the default export.',
         'Putting collections under a path that doesn\'t exist. Default `path` is `src/content/<collection-name>`; either create that directory or override with `path:`.',

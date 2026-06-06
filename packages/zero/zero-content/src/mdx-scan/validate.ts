@@ -25,11 +25,15 @@ export interface ValidationResult {
  * the virtual module re-exports built-ins so users don't need to write
  * the import manually.
  *
- * The virtual module's `renderVirtualModule` is the source of truth for
- * what's actually wired up; this list mirrors the names. PR 4+ will add
- * more (Playground, PackageBadge, Tabs).
+ * Imported from `_shared/built-ins` — single source of truth shared with
+ * `mdx-scan/scanner.ts:renderVirtualModule` so the validator and the
+ * virtual-module emitter can never drift on contents OR order. Re-
+ * exported with the historical name + shape so existing tests + the
+ * validator's downstream `did-you-mean` suggestions don't need to know
+ * about the move.
  */
-export const BUILT_IN_COMPONENTS = ['Callout', 'CodeBlock', 'CodeGroup']
+import { BUILT_IN_COMPONENTS as _BUILT_INS } from '../_shared/built-ins'
+export const BUILT_IN_COMPONENTS: readonly string[] = _BUILT_INS
 
 export interface ValidationContext {
   /** Component names available from the `src/mdx/` scan. */

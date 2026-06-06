@@ -10,6 +10,7 @@ import { emitJsx, type EmitOptions } from './emit-jsx'
 import { remarkCallout } from './remark-plugins/callout'
 import { remarkCodeGroup } from './remark-plugins/codegroup'
 import { highlightCode, type HighlighterOptions } from './highlighter'
+import { slugFromPath } from '../_shared/derive-slug'
 import type { Heading } from '../types'
 
 // ─── Markdown → Pyreon TSX pipeline ────────────────────────────────────────
@@ -46,6 +47,15 @@ export interface CompileResult {
    * module so per-`.md` imports flow through unchanged.
    */
   hoistedEsm: string[]
+  /**
+   * Non-fatal compile diagnostics emitted by remark plugins —
+   * unknown `:::xxx` directives with a "did you mean...?" hint
+   * (PR-A audit H6), and the unclosed-fence heuristic for
+   * `:::tip` etc. that swallowed the rest of the file (PR-A audit
+   * C9). The Vite plugin pipes each through `this.warn(...)` so
+   * the author sees a clickable file location.
+   */
+  warnings: string[]
 }
 
 export interface CompileOptions {
@@ -104,12 +114,17 @@ export async function compileMarkdown(
   //    codegroup plugins) so its tokenizer doesn't conflict with the
   //    `:::` directive syntax.
   const mdxEnabled = options.mdx ?? defaultMdxEnabled(id)
+  // Collector for non-fatal callout diagnostics — unknown name typos,
+  // forgotten-`:::`-close heuristic. The remark plugin pushes onto
+  // this; we return it on the CompileResult so the Vite plugin can
+  // surface each through `this.warn(...)` with file context.
+  const compileWarnings: string[] = []
   const base = unified()
     .use(remarkParse)
     .use(remarkFrontmatter, ['yaml'])
     .use(remarkGfm)
     .use(remarkDirective)
-    .use(remarkCallout)
+    .use(remarkCallout, { source: body, warnings: compileWarnings })
     .use(remarkCodeGroup)
   // remark-mdx widens the processor's transformer types (it transforms
   // the tree from `Root` to `Root` while introducing mdx* nodes). Cast
@@ -175,6 +190,7 @@ export async function compileMarkdown(
     slug,
     componentRefs: componentRefList,
     hoistedEsm: [...hoistedEsm],
+    warnings: compileWarnings,
   }
 }
 
@@ -278,14 +294,13 @@ export function deriveSlug(absPath: string): string {
   const lower = stripped.toLowerCase()
   const marker = '/content/'
   const idx = lower.indexOf(marker)
-  if (idx >= 0) {
-    let body = stripped.slice(idx + marker.length)
-    // Strip a trailing `/index` (so `docs/index.md` → `docs`) or a bare
-    // `index` (so `content/index.md` → '').
-    if (body.endsWith('/index')) body = body.slice(0, -'/index'.length)
-    else if (body === 'index') body = ''
-    return body
-  }
+  // `slugFromPath` does the index-collapse + extension-strip + leading-
+  // slash normalisation. We've already stripped the extension here
+  // (re-doing it inside slugFromPath is a no-op — the `MD_EXT_RE`
+  // matcher is exhaustive), so we pass the post-`/content/` remainder
+  // straight through. Single source of truth shared with the runtime
+  // `__zcSlug` emitted by `virtual-collections.ts`.
+  if (idx >= 0) return slugFromPath(stripped.slice(idx + marker.length))
   return basename(stripped)
 }
 
