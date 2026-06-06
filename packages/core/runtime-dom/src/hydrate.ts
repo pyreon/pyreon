@@ -47,11 +47,64 @@ const noop: Cleanup = () => {
 
 // ─── DOM cursor helpers ───────────────────────────────────────────────────────
 
-/** Skip comment and whitespace-only text nodes, return first "real" node */
+/**
+ * Async-component sentinel markers, emitted by `@pyreon/runtime-server`
+ * around the awaited output of an `async function Component()`. The
+ * client hydrate uses them to locate the SSR DOM range corresponding to
+ * the still-pending Promise so it can hydrate the resolved subtree
+ * in-place once it settles. Naming chosen for SSR HTML brevity + low
+ * collision risk with user content (`$p` = Pyreon, `as`/`ae` = async
+ * start/end).
+ */
+const ASYNC_START_MARKER = '$pas'
+const ASYNC_END_MARKER = '$pae'
+
+/** True if `node` is the `<!--$pas-->` async-start comment. */
+function isAsyncStartMarker(node: ChildNode | null): boolean {
+  return (
+    node !== null &&
+    node.nodeType === Node.COMMENT_NODE &&
+    (node as Comment).data === ASYNC_START_MARKER
+  )
+}
+
+/**
+ * Walk forward from a `<!--$pas-->` comment to its matching `<!--$pae-->`,
+ * tracking nesting depth so an inner async component's markers don't
+ * close the outer one. Returns the matching end comment, or `null` if
+ * the SSR output is malformed (no matching close).
+ */
+function findMatchingAsyncEnd(start: Comment): Comment | null {
+  let depth = 1
+  let node: ChildNode | null = start.nextSibling
+  while (node) {
+    if (node.nodeType === Node.COMMENT_NODE) {
+      const data = (node as Comment).data
+      if (data === ASYNC_START_MARKER) depth++
+      else if (data === ASYNC_END_MARKER) {
+        depth--
+        if (depth === 0) return node as Comment
+      }
+    }
+    node = node.nextSibling
+  }
+  return null
+}
+
+/**
+ * Skip whitespace-only text nodes and formatting comments — but STOP at
+ * structural comment markers (`$pas` async-start, `$pae` async-end, and
+ * the For-list `k:`-prefixed key markers from runtime-server). Those are
+ * load-bearing signals the hydrate walker must see.
+ */
 function firstReal(initialNode: ChildNode | null): ChildNode | null {
   let node = initialNode
   while (node) {
     if (node.nodeType === Node.COMMENT_NODE) {
+      const data = (node as Comment).data
+      // Structural markers — return as-is so the caller can handle them.
+      if (data === ASYNC_START_MARKER || data === ASYNC_END_MARKER) return node
+      if (data.startsWith('k:')) return node
       node = node.nextSibling
       continue
     }
@@ -410,36 +463,71 @@ function hydrateComponent(
   }
 
   if (output instanceof Promise) {
-    // Async component support — parity with `renderToString` which
-    // awaits Promise outputs. The SSR HTML for this subtree was already
-    // baked at SSG time (renderToString awaited the same Promise);
-    // skip hydration here (let the existing SSR DOM stand) and resolve
-    // the Promise in the background so any reactive side-effects of the
-    // async function (signal subscriptions, etc.) settle. This avoids
-    // the `Cannot read properties of undefined (reading 'ref')` crash
-    // that hit any route using an async function component (e.g.
-    // `examples/docs-zero/src/routes/docs/[...slug].tsx`).
+    // Async component support — proper hydration. SSR (runtime-server)
+    // wraps the awaited output in sentinel comments: `<!--$pas-->` and
+    // `<!--$pae-->` (start / end). We:
+    //   1. Find the matching end marker (depth-tracked so nested async
+    //      components don't confuse the walker).
+    //   2. Snapshot the DOM range bounded by the markers.
+    //   3. Advance the parent's sibling cursor past the end marker (sync)
+    //      so the parent's hydration continues normally.
+    //   4. Await the Promise. Once resolved, hydrate the resolved VNode
+    //      against the snapshotted DOM range — this wires up events,
+    //      lifecycle, signal subscriptions on every node in the subtree
+    //      (the part missing from earlier versions of this branch).
+    //
+    // Fallback: if markers are absent (older runtime-server, or some
+    // edge case where the SSR pipeline didn't emit them), we skip
+    // hydration of the async subtree and just leave the SSR DOM
+    // standing — same as the pre-marker behaviour. Dev mode warns.
     let resolvedCleanup: Cleanup = noop
     let cancelled = false
+
+    const startMarker = isAsyncStartMarker(domNode) ? (domNode as Comment) : null
+    const endMarker = startMarker ? findMatchingAsyncEnd(startMarker) : null
+    const rangeStart = startMarker ? startMarker.nextSibling : null
+
+    if (startMarker && endMarker) {
+      // Advance the parent's DOM cursor PAST the end marker — synchronous,
+      // so the parent's hydration loop continues normally for siblings.
+      nextDom = endMarker.nextSibling
+    } else {
+      // Markers missing — fall back to "do not touch SSR DOM" behaviour.
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] Hydration: async component <${componentName}> SSR markers ` +
+            'not found. Reactivity for this subtree will NOT be attached. ' +
+            'Ensure `@pyreon/runtime-server` is on the version that emits ' +
+            '<!--$pas-->/<!--$pae--> around awaited component output.',
+        )
+      }
+      nextDom = null
+    }
+
     output
       .then((resolved) => {
         if (cancelled) return
-        if (resolved != null) {
-          try {
-            // SSR baked the resolved DOM already; mountChild here would
-            // duplicate. We only register lifecycle on resolved value
-            // by walking via hydrate fallback path — but conservatively
-            // we just discard the resolved VNode since the DOM is right.
-            // Future: walk-and-hydrate the resolved subtree if needed.
-            void resolved
-          } catch (err) {
-            const handled = dispatchToErrorBoundary(err)
-            if (!handled && process.env.NODE_ENV !== 'production') {
-              console.error(
-                `[Pyreon] <${componentName}> threw during async hydration:`,
-                err,
-              )
-            }
+        if (resolved == null) return
+        if (!startMarker || !endMarker) return
+        try {
+          // Hydrate the resolved subtree against the SSR DOM range.
+          // `anchor = endMarker` bounds the sibling walk; hydrateChild
+          // returns when it has consumed the range or hit the end marker.
+          const [childCleanup] = hydrateChild(
+            resolved as VNodeChild,
+            rangeStart,
+            parent,
+            endMarker,
+            `${path}:async`,
+          )
+          resolvedCleanup = childCleanup
+        } catch (err) {
+          const handled = dispatchToErrorBoundary(err)
+          if (!handled && process.env.NODE_ENV !== 'production') {
+            console.error(
+              `[Pyreon] <${componentName}> threw during async hydration:`,
+              err,
+            )
           }
         }
       })
@@ -453,16 +541,16 @@ function hydrateComponent(
           )
         }
       })
+
     subtreeCleanup = () => {
       cancelled = true
       resolvedCleanup()
+      // Remove the SSR markers themselves on unmount so re-mount doesn't
+      // confuse the walker. The DOM range between them is owned by the
+      // resolved cleanup (subtree's mount cleanup removes its nodes).
+      if (startMarker?.parentNode) startMarker.parentNode.removeChild(startMarker)
+      if (endMarker?.parentNode) endMarker.parentNode.removeChild(endMarker)
     }
-    // Walk the existing DOM forward past this component's children:
-    // the SSR-baked subtree may span multiple sibling nodes (Fragment
-    // root). We conservatively advance to the next non-child sibling.
-    // Without this, the parent's sibling-walk would re-process the
-    // already-rendered DOM.
-    nextDom = null
   } else if (output != null) {
     const [childCleanup, next] = hydrateChild(output, domNode, parent, anchor, path)
     subtreeCleanup = childCleanup
