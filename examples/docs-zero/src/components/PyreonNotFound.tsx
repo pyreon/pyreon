@@ -1,6 +1,12 @@
+import { RouterLink } from '@pyreon/router'
+
 // Branded 404 — ported from
 // docs/.vitepress/theme/components/PyreonNotFound.vue.
 // Same SVG graph + same copy + same semantic-token CSS.
+//
+// Uses `<RouterLink>` for internal navigation so the configured router
+// `base` prefix is applied — fixing the previous hardcoded `href="/docs/"`
+// and `href="/"` which broke under subpath deploys (`/pyreon/preview/`).
 export function PyreonNotFound() {
   return (
     <div class="px-nf">
@@ -38,12 +44,12 @@ export function PyreonNotFound() {
         doesn't subscribe to it. Check the spelling, the imports, the scope.
       </p>
       <div class="px-nf-cta">
-        <a class="px-nf-btn" href="/docs/">
+        <RouterLink to="/docs/getting-started" class="px-nf-btn">
           ↗ docs index
-        </a>
-        <a class="px-nf-link" href="/">
+        </RouterLink>
+        <RouterLink to="/" class="px-nf-link">
           back to home
-        </a>
+        </RouterLink>
       </div>
     </div>
   )

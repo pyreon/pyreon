@@ -149,6 +149,30 @@ export interface BuildSsrBundleOptions {
   assetsInlineLimit?: BuildOptions['assetsInlineLimit']
   /** The OUTER build's `build.assetsDir` — same URL-consistency rationale. */
   assetsDir?: string | undefined
+  /**
+   * USER plugins from the outer Vite config — propagated into the inner
+   * SSR sub-build so non-zero plugins (`@pyreon/zero-content`'s
+   * `content()`, custom Vite plugins, etc.) can still resolve their
+   * virtual modules + transform their file types inside the SSG path
+   * enumeration + per-page render passes.
+   *
+   * Pre-fix the inner build's plugin chain was hardcoded to
+   * `[pyreon(), zeroPlugin()]`. The SSG plugin's `getStaticPaths`
+   * enumeration evaluates the user's route files in the inner SSR
+   * module graph; if any route imports a virtual module from a user
+   * plugin (e.g. `virtual:zero-content/collections`), or imports a
+   * file type the user plugin transforms (e.g. `.md` for
+   * `@pyreon/zero-content`), Rolldown couldn't resolve it and the
+   * build failed with `Cannot assign to this expression` for `.md`
+   * files or `Failed to resolve import` for virtual ids.
+   *
+   * Excluded from the forwarded set: any plugin whose name starts
+   * with `pyreon-zero` or `pyreon-vite-plugin` — those are added back
+   * by the inner build's own `[pyreon(), zeroPlugin()]` array. Adding
+   * them twice would double-register hooks and crash with duplicate-
+   * virtual-module errors.
+   */
+  userPlugins?: readonly Plugin[]
 }
 
 /**
@@ -220,13 +244,74 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     ])
     const pyreon = (pyreonModule as { default: () => unknown }).default
 
+    // Forward user-supplied plugins from the outer Vite config so non-
+    // zero plugins (most importantly @pyreon/zero-content's content()
+    // plugin which transforms .md → .tsx and serves
+    // virtual:zero-content/* modules) work inside the SSG path-
+    // enumeration + per-page render passes.
+    //
+    // Two categories of plugins are EXCLUDED from inner-build forwarding:
+    //
+    // 1. Re-added by the inner build via `[pyreon(), zeroPlugin()]` —
+    //    adding them twice crashes with duplicate-hook / duplicate-
+    //    virtual-module / duplicate-helper-declaration errors.
+    //    The pyreon JSX plugin is registered with name `pyreon` (see
+    //    `packages/tools/vite-plugin/src/index.ts:625`), NOT
+    //    `pyreon-vite-plugin` (which is the PACKAGE name). zeroPlugin
+    //    auto-mounts `ssg`/`ssr`/`images`/`fonts`/`font-import` based on
+    //    user config — those also re-instantiate inside the inner build.
+    //
+    // 2. Stateful plugins from `@pyreon/zero` that the user imports +
+    //    adds to the chain themselves. These capture `distDir` from
+    //    their OUTER `configResolved` hook but their `closeBundle` runs
+    //    AFTER the inner build returns control to the outer flow.
+    //    Forwarding the plugin INSTANCE causes the inner build's
+    //    `configResolved` to mutate the captured `distDir` to the inner
+    //    sub-dist (`<dist>/.zero-ssg-server`), so the outer
+    //    `closeBundle` then writes output to the WRONG location.
+    //    Symptom: `sitemap.xml` disappears from `dist/` because
+    //    `seoPlugin`'s distDir got rewritten. Same shape would apply
+    //    to `og-image`, `favicon`, `ai`, `i18n-routing`.
+    //    These plugins DON'T need to be in the inner build anyway —
+    //    they're output-emission plugins, not source-transform or
+    //    virtual-module-serving plugins.
+    //
+    // EVERY OTHER plugin (including `pyreon-zero-content` which is the
+    // most important non-zero plugin in practice — it transforms `.md`
+    // → `.tsx` AND serves `virtual:zero-content/*` modules, both needed
+    // inside the SSG inner build for `getStaticPaths` enumeration) is
+    // forwarded as-is.
+    const RE_ADDED_PLUGIN_NAMES = new Set([
+      // Category 1 — re-added by the inner build:
+      'pyreon',
+      'pyreon-zero',
+      'pyreon-zero-ssg',
+      'pyreon-zero-ssr',
+      'pyreon-zero-images',
+      'pyreon-zero-fonts',
+      'pyreon-zero-font-import',
+      // Category 2 — stateful output-emission plugins that mutate
+      // captured state in `configResolved` (see comment above):
+      'pyreon-zero-seo',
+      'pyreon-zero-og-image',
+      'pyreon-zero-favicon',
+      'pyreon-zero-ai',
+      'pyreon-zero-i18n-routing',
+    ])
+    const userPlugins = (options.userPlugins ?? []).filter((p) => {
+      const name =
+        typeof p === 'object' && p !== null ? (p as { name?: string }).name : ''
+      if (!name) return true
+      return !RE_ADDED_PLUGIN_NAMES.has(name)
+    })
+
     await build({
       root: options.root,
       mode: 'production',
       logLevel: 'error',
       configFile: false,
       publicDir: false,
-      plugins: [pyreon(), zeroPlugin(options.userConfig)] as Plugin[],
+      plugins: [pyreon(), zeroPlugin(options.userConfig), ...userPlugins] as Plugin[],
       resolve: { conditions: ['bun'] },
       build: buildInnerBuildOptions(options),
     })
