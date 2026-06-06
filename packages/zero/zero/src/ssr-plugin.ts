@@ -114,6 +114,11 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // See `buildInnerBuildOptions` / `ssg-plugin.ts`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
+  // USER plugins captured for forwarding into the inner SSR sub-build.
+  // See `ssg-plugin.ts` userPlugins doc + `buildSsrBundle`'s userPlugins
+  // option for the filtering rules. Same propagation pattern keeps SSR
+  // and SSG modes consistent.
+  let userPlugins: readonly Plugin[] = []
   // Capture inner-build state once at plugin instantiation. The inner
   // build re-loads zero's plugin chain (same as SSG); without this gate
   // the inner plugin instance would re-enter its own closeBundle.
@@ -130,6 +135,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       distDir = resolve(root, resolved.build.outDir)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
+      userPlugins = resolved.plugins as readonly Plugin[]
     },
 
     async closeBundle() {
@@ -187,6 +193,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           userConfig,
           assetsInlineLimit,
           assetsDir,
+          userPlugins,
         })
       } catch (buildError) {
         // Surface with structured context — mode + entry + output +

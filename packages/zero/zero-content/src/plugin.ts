@@ -19,6 +19,11 @@ import {
   loadConfig,
   type LoadedConfig,
 } from './config-loader'
+import {
+  buildSearchIndex,
+  type CollectionEntryForIndex,
+  stripMarkdown,
+} from './search/index-builder'
 import { renderVirtualCollections } from './virtual-collections'
 import { writeContentTypes } from './type-emit/content-types'
 import {
@@ -106,6 +111,13 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
   let cachedScan: ScanResult | null = null
   let scanInFlight: Promise<ScanResult> | null = null
   let loadedConfig: LoadedConfig | null = null
+  // Per-collection entries accumulated by transform() for the build-time
+  // search index. Populated for every .md/.mdx under a collection path;
+  // consumed once in closeBundle to write dist/search-index.json +
+  // dist/search-index-<collection>.json files. Cleared per build via
+  // buildStart so dev → build doesn't carry stale dev-mode entries.
+  const searchEntries: Map<string, Map<string, CollectionEntryForIndex>> =
+    new Map()
 
   const getMdxDir = (): string => {
     if (options.mdxDir) return options.mdxDir
@@ -228,6 +240,11 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
     },
 
     async buildStart() {
+      // Clear stale per-build state. Vite reuses the plugin instance
+      // across consecutive builds (e.g. SSG's inner SSR sub-build);
+      // without this, a fresh build inherits the previous run's
+      // searchEntries and emits duplicate / stale documents.
+      searchEntries.clear()
       // Build mode (not dev) needs an ssrLoadModule fallback too. We
       // use Rollup's resolution by importing the file directly via
       // `import()`. This works when the consumer's bundler can resolve
@@ -335,6 +352,49 @@ export {}
               )
             }
           }
+          // Stash the entry for build-time search index emission. The
+          // body text comes from the ORIGINAL markdown source (not the
+          // JSX-compiled output) — `stripMarkdown` undoes code fences,
+          // HTML tags, link syntax, headings, and emphasis markers.
+          // Skipped when the collection opts out of search (data
+          // collections default to non-searchable; pages default in).
+          // Skipped in dev because the catalog write happens in
+          // closeBundle which Vite only fires in build mode anyway.
+          if (resolvedConfig?.command === 'build') {
+            const collectionPath =
+              loadedConfig.config.collections[collectionName]!.path ??
+              `src/content/${collectionName}`
+            const absCollectionPath = path.isAbsolute(collectionPath)
+              ? collectionPath
+              : path.join(resolvedConfig.root, collectionPath)
+            const slug = path
+              .relative(absCollectionPath, id)
+              .replace(/\.(md|mdx)$/, '')
+              .split(path.sep)
+              .join('/')
+            const frontmatter = result.frontmatter as Record<string, unknown>
+            const title = String(frontmatter.title ?? slug)
+            const description =
+              typeof frontmatter.description === 'string'
+                ? frontmatter.description
+                : undefined
+            const headings = (result.headings ?? []).map((h) => h.text)
+            const body = stripMarkdown(code)
+            let collMap = searchEntries.get(collectionName)
+            if (!collMap) {
+              collMap = new Map<string, CollectionEntryForIndex>()
+              searchEntries.set(collectionName, collMap)
+            }
+            const entry: CollectionEntryForIndex = {
+              slug,
+              title,
+              headings,
+              body,
+              url: `/${collectionName}/${slug}`,
+            }
+            if (description !== undefined) entry.description = description
+            collMap.set(slug, entry)
+          }
         }
 
         // Compile the emitted JSX to plain JS (h() calls). Downstream
@@ -366,6 +426,50 @@ export {}
         const message = (err as Error).message
         this.error(
           `[@pyreon/zero-content] failed to compile ${shortId(id)}: ${message}`,
+        )
+      }
+    },
+
+    async closeBundle() {
+      // Build-time search index emission. Walks the per-collection
+      // entries the transform() hook accumulated and writes
+      // `dist/search-index.json` (catalog) + `dist/search-index-<name>.json`
+      // (per-collection chunk). The runtime <Search> from
+      // @pyreon/zero-content/search lazy-fetches the catalog on first
+      // Cmd+K open. Closes the "PR 5: search index emission" TODO that
+      // shipped at the top of this file.
+      //
+      // Build mode only — dev mode does nothing (no closeBundle fires
+      // for `vite dev`). SSR sub-builds skip via `command !== 'build'`
+      // check at the transform-collection step.
+      if (!loadedConfig || resolvedConfig?.command !== 'build') return
+      if (searchEntries.size === 0) return
+      const outDir = path.join(
+        resolvedConfig.root,
+        resolvedConfig.build.outDir,
+      )
+      // Walk each collection's accumulated entries, sorted by slug for
+      // deterministic output (same slug order across builds keeps git
+      // diffs minimal if the artifact ever gets committed).
+      const entriesByCollection: Record<string, CollectionEntryForIndex[]> = {}
+      for (const [name, m] of searchEntries.entries()) {
+        entriesByCollection[name] = Array.from(m.values()).sort((a, b) =>
+          a.slug.localeCompare(b.slug),
+        )
+      }
+      try {
+        const result = await buildSearchIndex({
+          config: loadedConfig.config,
+          entries: entriesByCollection,
+          root: resolvedConfig.root,
+          outDir,
+        })
+        for (const w of result.warnings) {
+          this.warn(w)
+        }
+      } catch (err) {
+        this.error(
+          `[@pyreon/zero-content] failed to write search index: ${(err as Error).message}`,
         )
       }
     },

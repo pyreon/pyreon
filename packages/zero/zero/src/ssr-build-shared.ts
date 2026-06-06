@@ -149,6 +149,30 @@ export interface BuildSsrBundleOptions {
   assetsInlineLimit?: BuildOptions['assetsInlineLimit']
   /** The OUTER build's `build.assetsDir` — same URL-consistency rationale. */
   assetsDir?: string | undefined
+  /**
+   * USER plugins from the outer Vite config — propagated into the inner
+   * SSR sub-build so non-zero plugins (`@pyreon/zero-content`'s
+   * `content()`, custom Vite plugins, etc.) can still resolve their
+   * virtual modules + transform their file types inside the SSG path
+   * enumeration + per-page render passes.
+   *
+   * Pre-fix the inner build's plugin chain was hardcoded to
+   * `[pyreon(), zeroPlugin()]`. The SSG plugin's `getStaticPaths`
+   * enumeration evaluates the user's route files in the inner SSR
+   * module graph; if any route imports a virtual module from a user
+   * plugin (e.g. `virtual:zero-content/collections`), or imports a
+   * file type the user plugin transforms (e.g. `.md` for
+   * `@pyreon/zero-content`), Rolldown couldn't resolve it and the
+   * build failed with `Cannot assign to this expression` for `.md`
+   * files or `Failed to resolve import` for virtual ids.
+   *
+   * Excluded from the forwarded set: any plugin whose name starts
+   * with `pyreon-zero` or `pyreon-vite-plugin` — those are added back
+   * by the inner build's own `[pyreon(), zeroPlugin()]` array. Adding
+   * them twice would double-register hooks and crash with duplicate-
+   * virtual-module errors.
+   */
+  userPlugins?: readonly Plugin[]
 }
 
 /**
@@ -220,13 +244,46 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     ])
     const pyreon = (pyreonModule as { default: () => unknown }).default
 
+    // Forward user-supplied plugins from the outer Vite config so non-
+    // zero plugins (most importantly @pyreon/zero-content's content()
+    // plugin which transforms .md → .tsx and serves
+    // virtual:zero-content/* modules) work inside the SSG path-
+    // enumeration + per-page render passes.
+    //
+    // Filter out ONLY the plugins the inner build re-adds itself via
+    // `[pyreon(), zeroPlugin(userConfig)]` — adding them twice crashes
+    // with duplicate-hook + duplicate-virtual-module errors. zeroPlugin
+    // auto-mounts ssg/ssr/images/fonts/font-import based on user config.
+    // EVERY OTHER plugin (including `pyreon-zero-content`, `pyreon-zero-ai`,
+    // `pyreon-zero-seo`, `pyreon-zero-i18n-routing`, `pyreon-zero-og-image`,
+    // `pyreon-zero-favicon`, and any user plugin) gets forwarded.
+    //
+    // Use a precise allowlist of names — NOT a `startsWith('pyreon-zero')`
+    // prefix match, which would drop `pyreon-zero-content` (the most
+    // important non-zero user plugin in practice).
+    const RE_ADDED_PLUGIN_NAMES = new Set([
+      'pyreon-vite-plugin',
+      'pyreon-zero',
+      'pyreon-zero-ssg',
+      'pyreon-zero-ssr',
+      'pyreon-zero-images',
+      'pyreon-zero-fonts',
+      'pyreon-zero-font-import',
+    ])
+    const userPlugins = (options.userPlugins ?? []).filter((p) => {
+      const name =
+        typeof p === 'object' && p !== null ? (p as { name?: string }).name : ''
+      if (!name) return true
+      return !RE_ADDED_PLUGIN_NAMES.has(name)
+    })
+
     await build({
       root: options.root,
       mode: 'production',
       logLevel: 'error',
       configFile: false,
       publicDir: false,
-      plugins: [pyreon(), zeroPlugin(options.userConfig)] as Plugin[],
+      plugins: [pyreon(), zeroPlugin(options.userConfig), ...userPlugins] as Plugin[],
       resolve: { conditions: ['bun'] },
       build: buildInnerBuildOptions(options),
     })

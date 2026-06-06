@@ -424,9 +424,11 @@
       "version": "0.0.1",
       "dependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/head": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
         "@pyreon/server": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/zero": "workspace:*",
