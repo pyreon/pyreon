@@ -63,7 +63,7 @@ export function Header(props: HeaderProps) {
   return (
     <header class="docs-header">
       <div class="docs-header__inner">
-        {/* Brand: SVG mark + wordmark */}
+        {/* LEFT: brand (SVG mark + wordmark) */}
         <RouterLink to="/" class="docs-brand" aria-label="Pyreon home">
           <img
             class="docs-brand__mark docs-brand__mark--dark"
@@ -84,23 +84,8 @@ export function Header(props: HeaderProps) {
           <span class="docs-brand__wordmark">pyreon</span>
         </RouterLink>
 
-        {/* Primary navigation links — hidden on mobile via CSS */}
-        <nav class="docs-header__nav" aria-label="Primary">
-          <RouterLink to="/docs/getting-started" class="docs-header__link">
-            Docs
-          </RouterLink>
-          <a
-            class="docs-header__link"
-            href="https://github.com/pyreon/pyreon"
-            rel="noopener"
-            target="_blank"
-          >
-            GitHub
-          </a>
-        </nav>
-
-        {/* Right-side controls: search trigger, theme toggle, github icon, hamburger */}
-        <div class="docs-header__controls">
+        {/* CENTER: search trigger — prominent, fills the center column */}
+        <div class="docs-header__search-wrap">
           <button
             type="button"
             class="docs-header__search-btn"
@@ -122,11 +107,20 @@ export function Header(props: HeaderProps) {
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
-            <span class="docs-header__search-label">Search</span>
+            <span class="docs-header__search-label">Search docs…</span>
             <kbd class="docs-header__search-kbd">
               {() => (isMac() ? '⌘' : 'Ctrl')}K
             </kbd>
           </button>
+        </div>
+
+        {/* RIGHT: nav links + theme + GitHub + mobile hamburger */}
+        <div class="docs-header__controls">
+          <nav class="docs-header__nav" aria-label="Primary">
+            <RouterLink to="/docs/getting-started" class="docs-header__link">
+              Docs
+            </RouterLink>
+          </nav>
 
           <ThemeToggle />
 
