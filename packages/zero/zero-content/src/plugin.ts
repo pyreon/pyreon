@@ -95,6 +95,86 @@ const RESOLVED_VIRTUAL_COMPONENTS_ID = '\0' + VIRTUAL_COMPONENTS_ID
 export const VIRTUAL_COLLECTIONS_ID = 'virtual:zero-content/collections'
 const RESOLVED_VIRTUAL_COLLECTIONS_ID = '\0' + VIRTUAL_COLLECTIONS_ID
 
+// ─── Cross-build cache for the markdown pipeline ──────────────────────────
+//
+// PR-A audit C2 — pre-fix the markdown pipeline ran TWICE per build:
+// once for the outer client build, once for the SSG inner SSR sub-build.
+// Both invocations have their own plugin instance (so per-instance state
+// can't bridge), but they share the same Node process (the SSG inner
+// build is spawned via `buildSsrBundle`, not a child process). A module-
+// level cache survives across plugin-instance boundaries within the
+// process and lets the second transform skip remark + Shiki entirely.
+//
+// Cache key combines:
+//   - the file id (so two `.md` files with identical content don't
+//     collide on slug derivation),
+//   - a FNV-1a hash of the source code (HMR + content changes invalidate
+//     naturally),
+//   - a hash of the highlight/highlighter options (a theme swap in
+//     `content.config.ts` reaches us as a different opts shape, so the
+//     cache key shifts and the entry rebuilds).
+//
+// The cache holds the FINAL esbuild-compiled output so we skip BOTH the
+// remark pass AND the esbuild JSX→h() pass on the hit path. Storage is a
+// plain `Map` with a soft cap — the per-build entry count is bounded by
+// the markdown-file count, so unbounded growth in long-lived processes
+// (e.g. dev server) is the only concern; the LRU cap addresses that.
+interface CompiledCacheEntry {
+  code: string
+  componentRefs: string[]
+  hoistedEsm: string[]
+  frontmatter: Record<string, unknown>
+  headings: Array<{ level: number; text: string; slug: string }>
+  slug: string
+  /** Original source — used to populate the search-index body that the
+   * cached-path skip would otherwise miss. */
+  source: string
+}
+
+const COMPILE_CACHE = new Map<string, CompiledCacheEntry>()
+const COMPILE_CACHE_LIMIT = 4096
+
+/** FNV-1a 32-bit string hash. Cheap, allocation-free, good enough for
+ * cache discrimination — we want fast equality buckets, not crypto. */
+function fnv1aHash(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0
+  }
+  return h.toString(36)
+}
+
+function computeCompileCacheKey(
+  id: string,
+  code: string,
+  opts: import('./pipeline/parse').CompileOptions,
+  compileJsxEnabled: boolean,
+): string {
+  // `JSON.stringify(opts)` is cheap because opts is shallow; the same
+  // value passed every transform produces the same key string.
+  const optsKey = JSON.stringify({
+    h: opts.highlight ?? null,
+    hl: opts.highlighter ?? null,
+    j: compileJsxEnabled,
+  })
+  return `${id}|${code.length}|${fnv1aHash(code)}|${fnv1aHash(optsKey)}`
+}
+
+function setCompileCacheEntry(key: string, entry: CompiledCacheEntry): void {
+  if (COMPILE_CACHE.size >= COMPILE_CACHE_LIMIT) {
+    // Trim the oldest insertion (Map preserves insertion order).
+    const firstKey = COMPILE_CACHE.keys().next().value
+    if (firstKey !== undefined) COMPILE_CACHE.delete(firstKey)
+  }
+  COMPILE_CACHE.set(key, entry)
+}
+
+/** Test-only — wipe the cross-build cache so suites don't leak state. */
+export function _resetCompileCacheForTesting(): void {
+  COMPILE_CACHE.clear()
+}
+
 /**
  * The Vite plugin. Default export so users write:
  *
@@ -317,6 +397,75 @@ export {}
         if (options.highlight !== undefined) opts.highlight = options.highlight
         if (options.highlighter !== undefined)
           opts.highlighter = options.highlighter
+        const compileJsxEnabled = options.compileJsx !== false
+        const cacheKey = computeCompileCacheKey(id, code, opts, compileJsxEnabled)
+        const cached = COMPILE_CACHE.get(cacheKey)
+
+        // Cache HIT — pre-pulled `code` for the inner SSR sub-build,
+        // OR a repeated transform of an unchanged file. Skip remark +
+        // Shiki + esbuild entirely. We still need to keep the search-
+        // index population path consistent for the OUTER client build,
+        // but the inner SSR build's `searchEntries` map is discarded
+        // (only the outer's `closeBundle` writes the index), so on the
+        // cache-hit path we ONLY populate when no entry exists yet for
+        // this collection+slug.
+        if (cached !== undefined) {
+          // Re-run the search-index stash for the outer build's first
+          // pass IF it wasn't already populated. Cheap structural work
+          // — no remark/Shiki.
+          if (resolvedConfig?.command === 'build') {
+            const collectionName = findCollectionForFile(id)
+            if (collectionName !== null && loadedConfig) {
+              const collMap = searchEntries.get(collectionName)
+              const collectionPath =
+                loadedConfig.config.collections[collectionName]!.path ??
+                `src/content/${collectionName}`
+              const absCollectionPath = path.isAbsolute(collectionPath)
+                ? collectionPath
+                : path.join(resolvedConfig.root, collectionPath)
+              const slug = path
+                .relative(absCollectionPath, id)
+                .replace(/\.(md|mdx)$/, '')
+                .split(path.sep)
+                .join('/')
+              if (!collMap || !collMap.has(slug)) {
+                const frontmatter = cached.frontmatter
+                const title = String(frontmatter.title ?? slug)
+                const description =
+                  typeof frontmatter.description === 'string'
+                    ? frontmatter.description
+                    : undefined
+                const headings = (cached.headings ?? []).map((h) => h.text)
+                const SEARCH_BODY_MAX = 1500
+                let body = stripMarkdown(cached.source)
+                if (body.length > SEARCH_BODY_MAX) {
+                  const slice = body.slice(0, SEARCH_BODY_MAX)
+                  const lastSpace = slice.lastIndexOf(' ')
+                  body =
+                    lastSpace > SEARCH_BODY_MAX * 0.8
+                      ? slice.slice(0, lastSpace)
+                      : slice
+                }
+                let m = collMap
+                if (!m) {
+                  m = new Map<string, CollectionEntryForIndex>()
+                  searchEntries.set(collectionName, m)
+                }
+                const entry: CollectionEntryForIndex = {
+                  slug,
+                  title,
+                  headings,
+                  body,
+                  url: `/${collectionName}/${slug}`,
+                }
+                if (description !== undefined) entry.description = description
+                m.set(slug, entry)
+              }
+            }
+          }
+          return { code: cached.code, map: null }
+        }
+
         const result = await compileMarkdown(code, id, opts)
 
         // Validate component references against built-ins + scan +
@@ -428,6 +577,18 @@ export {}
         // compiled prose), so the @pyreon/vite-plugin signal auto-call
         // optimization isn't needed here.
         if (options.compileJsx === false) {
+          // Cache the JSX-only output so a repeat compile (or the inner
+          // SSR sub-build) re-uses it (PR-A audit C2 — the markdown
+          // pipeline used to run twice per SSG build).
+          setCompileCacheEntry(cacheKey, {
+            code: result.code,
+            componentRefs: result.componentRefs,
+            hoistedEsm: result.hoistedEsm,
+            frontmatter: result.frontmatter,
+            headings: result.headings,
+            slug: result.slug,
+            source: code,
+          })
           return { code: result.code, map: null }
         }
         const compiled = await esbuildTransform(result.code, {
@@ -438,6 +599,15 @@ export {}
           format: 'esm',
           target: 'esnext',
           banner: `import { h, Fragment } from '@pyreon/core'`,
+        })
+        setCompileCacheEntry(cacheKey, {
+          code: compiled.code,
+          componentRefs: result.componentRefs,
+          hoistedEsm: result.hoistedEsm,
+          frontmatter: result.frontmatter,
+          headings: result.headings,
+          slug: result.slug,
+          source: code,
         })
         return { code: compiled.code, map: null }
       } catch (err) {
