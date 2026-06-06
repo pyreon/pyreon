@@ -385,7 +385,7 @@ When you outgrow the per-request render cost but the content can tolerate brief 
 
 1. Change `mode: 'ssr'` → `mode: 'isr'`
 2. Add `isr: { revalidate: 60 }` (or whatever staleness window your content tolerates)
-3. **If your loaders read cookies / Authorization headers**, supply `cacheKey: (req) => `${pathname}::${session}`` — the auto-warning at handler init names this trade-off
+3. **If your loaders read cookies / Authorization headers**, supply ``cacheKey: (req) => `${pathname}::${session}` `` — the auto-warning at handler init names this trade-off
 4. **If your URLs have high-cardinality query params** (`utm_*`, `fbclid`), supply `cacheKey: (req) => new URL(req.url).pathname` to strip them
 5. Consider a shared `store` (Redis / KV) for multi-instance deploys
 

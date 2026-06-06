@@ -221,6 +221,17 @@ async function emitCode(node: Code, opts: EmitOptions): Promise<string> {
     // Embed as inner HTML on a Pyreon component wrapper so the styler /
     // copy-button can attach later. The CodeBlock component is shipped
     // as a built-in (PR 2 components/CodeBlock.tsx).
+    //
+    // CRITICAL: register `CodeBlock` as a component reference so
+    // `compileMarkdown` adds it to the `import { ... } from
+    // 'virtual:zero-content/components'` statement at the top of the
+    // emitted `.tsx`. Without this, the compiled module references
+    // `CodeBlock` as a free name → `ReferenceError: CodeBlock is not
+    // defined` at SSG render time. Same applies to anywhere else in
+    // emit-jsx that emits a built-in component tag (see `emitMdxJsx`
+    // for the MDX-author-driven path, which already calls the
+    // callback).
+    opts.mdxComponentRef?.('CodeBlock')
     const escaped = jsStringLiteral(html)
     return `<CodeBlock lang={${JSON.stringify(lang)}} dangerouslySetInnerHTML={{ __html: ${escaped} }} />`
   }

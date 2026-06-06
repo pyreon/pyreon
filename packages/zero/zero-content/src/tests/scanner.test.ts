@@ -255,13 +255,23 @@ describe('scanMdxComponents (convenience wrapper)', () => {
 })
 
 describe('renderVirtualModule', () => {
-  it('emits empty re-export when no components are scanned', () => {
+  it('re-exports the built-in components even when no user components are scanned', () => {
+    // The markdown compiler emits `<Callout>` / `<CodeGroup>` /
+    // `<CodeBlock>` references via mdxComponentRef → `compileMarkdown`
+    // generates `import { CodeBlock } from
+    // 'virtual:zero-content/components'`. Even on a project with no
+    // `src/mdx/` directory the virtual module MUST re-export those
+    // three built-ins, otherwise the compiled .tsx fails with
+    // `MISSING_EXPORT "CodeBlock"`.
     const out = renderVirtualModule({ components: [], duplicates: [], files: [] })
-    expect(out).toContain('export {}')
-    expect(out).toContain('No src/mdx/ components found')
+    expect(out).toContain("from '@pyreon/zero-content'")
+    expect(out).toContain('export const Callout = __components.Callout')
+    expect(out).toContain('export const CodeGroup = __components.CodeGroup')
+    expect(out).toContain('export const CodeBlock = __components.CodeBlock')
+    expect(out).toContain('export const __components_meta__ = ["Callout","CodeGroup","CodeBlock"]')
   })
 
-  it('emits per-component imports + a default __components map', () => {
+  it('emits per-component imports + a default __components map alongside built-ins', () => {
     const out = renderVirtualModule({
       components: [
         { name: 'Foo', filePath: '/abs/Foo.tsx', kind: 'named' },
@@ -270,11 +280,40 @@ describe('renderVirtualModule', () => {
       duplicates: [],
       files: ['/abs/Foo.tsx', '/abs/Bar.tsx'],
     })
-    expect(out).toContain('import { Foo as __c0 } from "/abs/Foo.tsx"')
-    expect(out).toContain('import __c1 from "/abs/Bar.tsx"')
+    // Built-ins re-exported via aliased imports __b0..__b2.
+    expect(out).toContain("import { Callout as __b0 } from '@pyreon/zero-content'")
+    expect(out).toContain("import { CodeGroup as __b1 } from '@pyreon/zero-content'")
+    expect(out).toContain("import { CodeBlock as __b2 } from '@pyreon/zero-content'")
+    // User scan continues at __c3 / __c4 (idx starts after built-ins).
+    expect(out).toContain('import { Foo as __c3 } from "/abs/Foo.tsx"')
+    expect(out).toContain('import __c4 from "/abs/Bar.tsx"')
     expect(out).toContain('export default __components')
     expect(out).toContain('export const Foo = __components.Foo')
     expect(out).toContain('export const Bar = __components.Bar')
-    expect(out).toContain('export const __components_meta__ = ["Foo","Bar"]')
+    expect(out).toContain('export const Callout = __components.Callout')
+    expect(out).toContain(
+      'export const __components_meta__ = ["Callout","CodeGroup","CodeBlock","Foo","Bar"]',
+    )
+  })
+
+  it('user-scanned components override built-ins of the same name (escape hatch)', () => {
+    // A project wanting a custom Callout drops `src/mdx/Callout.tsx`;
+    // the user-scanned export takes precedence over the built-in
+    // re-export so there's no duplicate-export crash.
+    const out = renderVirtualModule({
+      components: [
+        { name: 'Callout', filePath: '/abs/Callout.tsx', kind: 'default' },
+      ],
+      duplicates: [],
+      files: ['/abs/Callout.tsx'],
+    })
+    // Built-in Callout NOT imported.
+    expect(out).not.toContain("import { Callout as __b")
+    // User Callout IS imported.
+    expect(out).toContain('import __c2 from "/abs/Callout.tsx"')
+    expect(out).toContain('export const Callout = __components.Callout')
+    // Other built-ins still re-exported.
+    expect(out).toContain("import { CodeGroup as __b")
+    expect(out).toContain("import { CodeBlock as __b")
   })
 })
