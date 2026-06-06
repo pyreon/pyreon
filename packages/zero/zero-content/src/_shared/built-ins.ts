@@ -15,6 +15,10 @@ export const BUILT_IN_COMPONENTS = Object.freeze([
   'Callout',
   'CodeBlock',
   'CodeGroup',
+  // PR-M audit M6+M7+M8 — math, mermaid, details
+  'Details',
+  'Math',
+  'Mermaid',
 ] as const)
 
 export type BuiltInComponentName = (typeof BUILT_IN_COMPONENTS)[number]

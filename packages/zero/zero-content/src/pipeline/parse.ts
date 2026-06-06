@@ -9,6 +9,7 @@ import type { Root } from 'mdast'
 import { emitJsx, type EmitOptions } from './emit-jsx'
 import { remarkCallout } from './remark-plugins/callout'
 import { remarkCodeGroup } from './remark-plugins/codegroup'
+import { remarkMathMermaidDetails } from './remark-plugins/math-mermaid-details'
 import { highlightCode, type HighlighterOptions } from './highlighter'
 import { slugFromPath } from '../_shared/derive-slug'
 import type { Heading } from '../types'
@@ -76,6 +77,18 @@ function getProcessor(mdxEnabled: boolean): Processor {
   return _processorNoMdx
 }
 
+/** Thin wrapper around `remarkMathMermaidDetails` that pulls its
+ * options (the source string for verbatim math/mermaid extraction)
+ * from the same thread-local context used by remarkCallout. */
+function remarkMathMermaidDetailsThreadLocal() {
+  return function transformer(tree: Root): void {
+    const ctx = _currentCalloutContext
+    const opts = ctx ? { source: ctx.source } : {}
+    const inner = remarkMathMermaidDetails(opts)
+    ;(inner as (t: Root) => void)(tree)
+  }
+}
+
 function buildProcessor(mdxEnabled: boolean): Processor {
   const base = unified()
     .use(remarkParse)
@@ -84,6 +97,11 @@ function buildProcessor(mdxEnabled: boolean): Processor {
     .use(remarkDirective)
     .use(remarkCalloutThreadLocal)
     .use(remarkCodeGroup)
+    // PR-M audit M6+M7+M8 — recognise `:::math` / `:::mermaid` /
+    // `:::details` directives. Runs AFTER callout + codegroup so
+    // unknown names land in those plugins' diagnostic surfaces
+    // first; this one only handles its own three.
+    .use(remarkMathMermaidDetailsThreadLocal)
   return mdxEnabled
     ? (base.use(remarkMdx) as unknown as Processor)
     : (base as unknown as Processor)

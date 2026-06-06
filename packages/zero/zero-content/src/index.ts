@@ -42,6 +42,13 @@ export { CodeGroup } from './components/CodeGroup'
 export type { CodeGroupProps } from './components/CodeGroup'
 export { CodeBlock } from './components/CodeBlock'
 export type { CodeBlockProps } from './components/CodeBlock'
+// PR-M audit M6+M7+M8 — math, mermaid, details
+export { Details } from './components/Details'
+export type { DetailsProps } from './components/Details'
+export { Math } from './components/Math'
+export type { MathProps } from './components/Math'
+export { Mermaid } from './components/Mermaid'
+export type { MermaidProps } from './components/Mermaid'
 export {
   defineSidebar,
   groupEntries,
