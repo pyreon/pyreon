@@ -41,7 +41,11 @@ export interface GenerateSitemapArgs {
  * @internal exported for testing
  */
 export function joinUrl(baseUrl: string, pagePath: string): string {
-  const cleanedBase = baseUrl.replace(/\/+$/, '')
+  // O(n) — no quantifier regex. CodeQL flagged `/\/+$/` as polynomial
+  // ReDoS on `/`-heavy input. Strip trailing slashes by index walk.
+  let end = baseUrl.length
+  while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) end--
+  const cleanedBase = baseUrl.slice(0, end)
   if (pagePath.length === 0) return cleanedBase
   const cleanedPath = pagePath.startsWith('/') ? pagePath : '/' + pagePath
   return cleanedBase + cleanedPath
