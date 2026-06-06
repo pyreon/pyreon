@@ -1,8 +1,14 @@
-import { type ComponentFn, lazy } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
 import { useParams } from '@pyreon/router'
 import { getEntry } from '@pyreon/zero-content'
 import type { GetStaticPaths } from '@pyreon/zero/server'
+// Side-effect import — populates the @pyreon/zero-content collection
+// registry. `entry-client.ts` does the same for runtime; SSG render
+// time needs it too because the route module is evaluated in the
+// inner SSR build's module graph (which doesn't go through
+// entry-client). With user-plugins forwarding (fixed in @pyreon/zero),
+// the content plugin's `virtual:zero-content/collections` resolveId
+// hook is available in the SSG inner build.
+import 'virtual:zero-content/collections'
 import { PageMeta } from '../../components/PageMeta'
 import { Toc } from '../../components/Toc'
 
@@ -34,66 +40,53 @@ export const getStaticPaths: GetStaticPaths<{ slug: string }> = () => {
 }
 
 /**
- * Catch-all docs route.
+ * Catch-all docs route — renders as an ASYNC component so the SSG
+ * renderer awaits `getEntry()` + `entry.render()` BEFORE producing
+ * the article HTML. `renderToString` from `@pyreon/runtime-server`
+ * awaits async components per its documented contract; this is the
+ * canonical way to pre-resolve content at SSG time.
  *
- * Renders the SSG shell synchronously + loads markdown content via
- * `lazy()` after hydration. The prerendered HTML carries the full
- * page chrome (header, sidebar, footer) but the article body is
- * blank — it fills in client-side once `getEntry` + `entry.render()`
- * resolve.
+ * Result: the prerendered HTML carries the full article body (text,
+ * headings, code blocks, MDX components) inline — no client-side
+ * fill-in needed for SEO / first paint / no-JS users.
  *
- * **Known limitation**: an `async function DocPage()` (which
- * `renderToString` would await) WOULD pre-render the body, but the
- * SSG inner build's chunked markdown modules don't resolve the
- * `virtual:zero-content/components` re-export of built-in components
- * (`CodeBlock`, `Callout`, etc.) — they appear as undefined free
- * variables at module-eval, producing `ReferenceError: CodeBlock is
- * not defined`. The framework gap is in `@pyreon/zero`'s inner-build
- * bundling of dynamically-imported chunks that reference virtual
- * modules served by user plugins. Tracked as a follow-up; the
- * client-side fill-in here is the deliberate workaround for the bake
- * window.
+ * The sidebar / chrome is mounted by `_layout.tsx`; this route only
+ * renders the article body + the right-rail TOC + the page footer
+ * (edit-on-github + last updated). Keeps the layout stable across
+ * landing → docs navigation.
  */
-export default function DocPage() {
+export default async function DocPage() {
   const params = useParams() as unknown as { slug: string | string[] }
   const raw = params.slug
   const slug = Array.isArray(raw) ? raw.join('/') : raw
 
-  const headings = signal<PageHeading[]>([])
-  const notFound = signal(false)
+  const entry = await getEntry('docs', slug)
 
-  const PageBody = lazy<Record<string, never>>(async () => {
-    const entry = await getEntry('docs', slug)
-    if (!entry) {
-      notFound.set(true)
-      const Empty: ComponentFn<Record<string, never>> = () => null
-      return { default: Empty }
-    }
-    headings.set(entry.headings as PageHeading[])
-    const Component = await entry.render()
-    return { default: Component as ComponentFn<Record<string, never>> }
-  })
+  if (!entry) {
+    return (
+      <div class="docs-page" data-page-slug={slug}>
+        <article class="docs-content vp-doc">
+          <div class="docs-404">
+            <h1>404 — page not found</h1>
+            <p>
+              No content under <code>{slug}</code>.
+            </p>
+          </div>
+        </article>
+      </div>
+    )
+  }
+
+  const Content = await entry.render()
+  const headings = (entry.headings ?? []) as PageHeading[]
 
   return (
-    <div class="docs-page" data-page-slug={() => slug}>
+    <div class="docs-page" data-page-slug={slug}>
       <article class="docs-content vp-doc">
-        {() =>
-          notFound() ? (
-            <div class="docs-404">
-              <h1>404 — page not found</h1>
-              <p>
-                No content under <code>{slug}</code>.
-              </p>
-            </div>
-          ) : (
-            <>
-              <PageBody />
-              <PageMeta slug={slug} />
-            </>
-          )
-        }
+        <Content />
+        <PageMeta slug={slug} />
       </article>
-      <Toc headings={() => headings()} />
+      <Toc headings={() => headings} />
     </div>
   )
 }

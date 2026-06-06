@@ -98,10 +98,10 @@ mount(ui, app)`} />
 
 ## Defining a Model
 
-`model()` carries one piece of state declaration — `state` (plain mode) OR `schema` (schema mode). Both modes return the same chainable {{ModelDefinition}}; `views` and `actions` are added exclusively via `.views(...)` / `.actions(...)`.
+`model()` carries one piece of state declaration — `state` (plain mode) OR `schema` (schema mode). Both modes return the same chainable `ModelDefinition`; `views` and `actions` are added exclusively via `.views(...)` / `.actions(...)`.
 
 - **state** -- Plain JS object. Each key becomes a `Signal<T>` on the instance. Plain mode.
-- **schema** -- A {{TypedSchemaAdapter}} (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`) or a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Schema mode — adds runtime validation and `set` / `patch` / `reset` helpers.
+- **schema** -- A `TypedSchemaAdapter` (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`) or a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Schema mode — adds runtime validation and `set` / `patch` / `reset` helpers.
 - **`.views(self => ...)`** -- Chainable. Each call adds a layer of derived values; subsequent layers see prior ones via `self`.
 - **`.actions(self => ...)`** -- Chainable. Each call adds a layer of methods; can be `async` out of the box.
 
