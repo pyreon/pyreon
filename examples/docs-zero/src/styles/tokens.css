@@ -93,8 +93,14 @@
   --ember-bg:     rgba(255, 94, 26, .06);     /* faint backing for hot rows */
   --ember-ring:   rgba(255, 94, 26, .35);
 
-  --link:         var(--cyan);
-  --link-bg:      rgba(34, 211, 238, .06);
+  /* Brand-aligned link color: ember-warm (gold) reads as ecosystem
+     accent without competing with ember-core / ember-plasma reserved
+     for "active / hot" UI states. Previously cyan, which broke brand
+     cohesion (mixed orange/pink ember palette with stray blue-cyan
+     links). Variable name kept so downstream `var(--link)` selectors
+     keep working. */
+  --link:         var(--ember-warm);
+  --link-bg:      rgba(255, 200, 61, .08);
 
   /* Syntax theme — dark */
   --syn-bg:        var(--ink-1);

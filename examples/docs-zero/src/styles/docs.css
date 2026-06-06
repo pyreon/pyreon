@@ -269,20 +269,23 @@ th {
 .pyreon-toc__link,
 .docs-toc__item a {
   display: block;
-  padding: 0.3rem 0 0.3rem 0.6rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.6rem;
   margin-left: -0.6rem;
   color: var(--text-muted);
   font-size: 0.825rem;
   text-decoration: none;
-  border-left: 2px solid transparent;
+  /* Thicker rail (3px) so the active state has a more prominent track
+     to highlight against. Idle links still read calm because the rail
+     is transparent. */
+  border-left: 3px solid transparent;
+  border-radius: 0 4px 4px 0;
   line-height: 1.4;
-  /* Smooth color + indent transition as you scroll between sections.
-     The TOC link's color, border, font-weight, and transform all
-     animate so the active-link change reads as motion rather than a
-     jarring snap. `prefers-reduced-motion` zeroes this out below. */
+  /* Smooth color + indent + background transition as you scroll between
+     sections. `prefers-reduced-motion` zeroes this out below. */
   transition:
     color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
     border-left-color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
     transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
     font-weight 0.22s ease;
 }
@@ -290,27 +293,35 @@ th {
 .docs-toc__item a:hover {
   color: var(--text);
   text-decoration: none;
+  background: rgba(255, 200, 61, 0.06);
   transform: translateX(2px);
 }
 .pyreon-toc__link--active {
-  color: var(--ember);
-  border-left-color: var(--ember);
+  /* Active TOC entry: strong rail (ember-core, 3px), tinted background
+     (ember-bg), color shift to full text + bold weight. The
+     combination reads as unmistakably active even at a glance from
+     the corner of the eye — previously the 2px rail + color shift
+     alone was too subtle. */
+  color: var(--ember-core);
+  border-left-color: var(--ember-core);
+  background: var(--ember-bg);
   font-weight: 600;
-  /* Subtle right-shift gives the active link a "pulled into view" feel
-     as you scroll past each heading. Combined with the color fade
-     above this reads as kinetic without animating layout for siblings. */
   transform: translateX(3px);
 }
 .pyreon-toc__link--active::before {
-  /* Ember tick — anchor-style indicator on the active TOC entry. */
+  /* Ember dot at the start of the active row — anchor-style indicator
+     reinforcing the rail. Sized as a small disc rather than a thin
+     line so it reads from further away. */
   content: '';
   position: absolute;
-  left: -2px;
-  width: 2px;
-  height: 1.1em;
-  background: var(--ember);
-  border-radius: 1px;
-  box-shadow: 0 0 6px var(--ember);
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  background: var(--ember-core);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--ember-ring);
 }
 .pyreon-toc__item {
   position: relative;
@@ -2180,12 +2191,21 @@ html { scroll-behavior: smooth; }
   font-size: 1.05rem;
 }
 .docs-header__nav {
-  /* Sits in the grid's center column (auto / 1fr / auto) — `justify-self`
-     centers the nav cluster within that column so it lands in the
-     visual middle of the viewport. */
+  /* Now lives INSIDE the right-side controls cluster (logo left,
+     search center, controls right). Acts as an inline group of
+     primary links sitting before the theme toggle / GitHub icon. */
   display: flex;
   gap: 1rem;
   align-items: center;
+}
+.docs-header__search-wrap {
+  /* Center column of the grid. Constrains the search trigger's max
+     width so it doesn't stretch edge-to-edge on wide viewports —
+     prominent but not overwhelming. */
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 480px;
   justify-self: center;
 }
 .docs-header__link {
@@ -2203,23 +2223,31 @@ html { scroll-behavior: smooth; }
   align-items: center;
 }
 .docs-header__search-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.35rem 0.65rem 0.35rem 0.55rem;
-  border-radius: 6px;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
   background: var(--bg-well);
   border: 1px solid var(--hairline);
   color: var(--text-muted);
   font: inherit;
   cursor: pointer;
-  transition: border-color 0.18s ease, color 0.18s ease;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+  /* Fill the center column so the search trigger reads as the primary
+     header action — matches Algolia DocSearch / VitePress wide-search UX. */
+  width: 100%;
+  text-align: left;
 }
 .docs-header__search-btn:hover {
-  border-color: var(--border);
+  border-color: var(--ember-ring);
   color: var(--text);
+  background: var(--bg);
 }
-.docs-header__search-label { font-size: 0.85rem; }
+.docs-header__search-label {
+  font-size: 0.875rem;
+  flex: 1;
+}
 .docs-header__search-kbd {
   font-family: var(--font-mono);
   font-size: 0.7rem;
@@ -2418,6 +2446,11 @@ html { scroll-behavior: smooth; }
     grid-template-columns: minmax(0, 1fr);
   }
   .docs-header__nav { display: none; }
+  /* Collapse the search trigger to an icon on small viewports so the
+     three-zone grid still fits. The wrap stays so the column track
+     keeps its place — the trigger just shrinks. */
+  .docs-header__search-wrap { max-width: none; }
+  .docs-header__search-btn { width: auto; padding: 0.5rem 0.6rem; }
   .docs-header__search-label { display: none; }
   .docs-header__search-kbd { display: none; }
   .docs-header__hamburger { display: inline-flex; }
@@ -2623,13 +2656,23 @@ html { scroll-behavior: smooth; }
    colors inlined as `style="--shiki-light:#abc;--shiki-dark:#def"`
    (Shiki's `themes: { light, dark }` output format). The browser uses
    `color: var(--shiki-light)` by default; switch to `--shiki-dark` for
-   dark theme so syntax tokens flip to the dark palette. Same for
-   background-color and font-style.
+   dark theme so syntax tokens flip to the dark palette.
 
    Without these rules the inline `--shiki-light` value is unread (no
    property references it) → tokens fall back to the parent's `color`
    → all code blocks render as single-color text with no syntax
-   highlighting in either theme. */
+   highlighting in either theme.
+
+   We deliberately DROP `background-color: var(--shiki-light-bg)` from
+   these rules. Shiki's theme bg often doesn't match our token palette
+   in dark mode (default themes ship a near-black `#0d1117`-ish while
+   our `--bg-elevated` is the ink-1 token). The parent `pre` rule above
+   already sets `background: var(--bg-elevated)` which gives every code
+   block the same harmonized container background as the rest of the
+   docs surface. Letting Shiki paint EVERY span's bg also fragmented
+   the look — token-by-token mismatched stripes against the container.
+   Color + font weight + style stay (those ARE the syntax
+   highlighting); bg is the container's job. */
 .shiki,
 .shiki span,
 .docs-content .shiki,
@@ -2637,7 +2680,6 @@ html { scroll-behavior: smooth; }
 .vp-doc .shiki,
 .vp-doc .shiki span {
   color: var(--shiki-light);
-  background-color: var(--shiki-light-bg);
   font-style: var(--shiki-light-font-style);
   font-weight: var(--shiki-light-font-weight);
   text-decoration: var(--shiki-light-text-decoration);
@@ -2649,10 +2691,21 @@ html { scroll-behavior: smooth; }
 [data-theme='dark'] .vp-doc .shiki,
 [data-theme='dark'] .vp-doc .shiki span {
   color: var(--shiki-dark);
-  background-color: var(--shiki-dark-bg);
   font-style: var(--shiki-dark-font-style);
   font-weight: var(--shiki-dark-font-weight);
   text-decoration: var(--shiki-dark-text-decoration);
+}
+/* Override Shiki's container background back to our token so every
+   code block reads as part of the same surface family — light + dark.
+   `!important` is load-bearing: Shiki ships `style="background-color:
+   #0d1117"` (or similar) inline on the `<pre class="shiki">`, which
+   has higher specificity than the `pre { background: ... }` rule
+   above. Without `!important` the inline wins and dark mode shows
+   the wrong (mismatched) bg. */
+.shiki,
+.docs-content .shiki,
+.vp-doc .shiki {
+  background-color: var(--bg-elevated) !important;
 }
 
 /* ── (I) Scrollbars — quiet ───────────────────────────────────── */
