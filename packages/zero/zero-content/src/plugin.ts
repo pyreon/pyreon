@@ -38,21 +38,24 @@ import {
 
 // ─── @pyreon/zero-content Vite plugin ──────────────────────────────────────
 //
-// Explicit plugin (NOT auto-wired by zero — per the design discussion,
-// content is opt-in unlike image/font).
+// Explicit plugin (NOT auto-wired by zero — content is opt-in, unlike
+// image/font/script which are universally beneficial).
 //
-// PR 1 scope: register a `transform` hook for `.md` files, emit a `.tsx`
-// module via the markdown pipeline.
-// PR 2 scope: pass-through Shiki highlighting + callout/codegroup support
-// via the remark pipeline.
-// PR 3 scope: MDX (JSX-in-markdown) + the `src/mdx/**/*.tsx` convention
-// scanner + the `virtual:zero-content/components` virtual module + HMR
-// for `src/mdx/` changes.
-//
-// Future PR scope:
-//   PR 4: collections + zod schemas + catch-all route generation
-//   PR 5: search index emission
-//   PR 6: sidebar config + JSON Schema for frontmatter
+// Responsibilities:
+//   - `transform`        — compile `.md` / `.mdx` to a `.tsx` module via
+//                          the markdown pipeline; emit a build-time
+//                          search index entry per page
+//   - `resolveId` / `load` — serve the two virtual modules:
+//                            * `virtual:zero-content/components`
+//                            * `virtual:zero-content/collections`
+//   - `configResolved`   — auto-discover + load `content.config.{ts,...}`,
+//                          stamp Vite root for diagnostics path-labels
+//   - `buildStart`       — clear per-build state (SSG inner sub-build
+//                          reuses the plugin instance)
+//   - `closeBundle`      — emit `dist/search-index*.json`
+//   - `handleHotUpdate`  — invalidate the components virtual module on
+//                          `src/mdx/` edits; invalidate `content-types.d.ts`
+//                          on `content.config.ts` edits
 
 export interface ContentPluginOptions {
   /**
@@ -199,6 +202,11 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
 
     async configResolved(config) {
       resolvedConfig = config
+      // Record root for `reportPath` so plugin diagnostics carry
+      // clickable Vite-root-relative paths (PR-A audit H5). Pre-fix
+      // `shortId` stripped to the last `/src/` segment, which broke
+      // click-to-open in monorepos with several `src/` directories.
+      _setResolvedRootForPaths(config.root)
       // Try to load content.config.{ts,...} at configResolved time so
       // the rest of the plugin has the collection map ready before any
       // transform fires. The default loader (dynamic import) works for
@@ -319,6 +327,17 @@ export {}
           opts.highlighter = options.highlighter
         const result = await compileMarkdown(code, id, opts)
 
+        // Surface non-fatal compile warnings (unknown directive name
+        // typos with "did you mean…?" hints + the unclosed-`:::`
+        // heuristic from `remark-callout`). Each is piped through
+        // `this.warn` so Vite + the dev server show the file path
+        // clickably. Pre-fix (PR-A audit C9 + H6) these failed
+        // silently — `:::warn` became visible literal text and
+        // `:::tip` without `:::` ate the rest of the file.
+        for (const w of result.warnings) {
+          this.warn(`${w} (${reportPath(id)})`)
+        }
+
         // Validate component references against built-ins + scan +
         // hoisted imports. Unknown names → build error with a
         // did-you-mean hint.
@@ -331,7 +350,7 @@ export {}
             referencedNames: result.componentRefs,
           })
           if (!validation.ok) {
-            this.error(formatValidationError(validation, shortId(id)))
+            this.error(formatValidationError(validation, reportPath(id)))
           }
         }
 
@@ -348,7 +367,7 @@ export {}
             )
             if (!v.ok) {
               this.error(
-                formatSchemaIssues(v.issues, shortId(id), collectionName),
+                formatSchemaIssues(v.issues, reportPath(id), collectionName),
               )
             }
           }
@@ -443,7 +462,7 @@ export {}
       } catch (err) {
         const message = (err as Error).message
         this.error(
-          `[@pyreon/zero-content] failed to compile ${shortId(id)}: ${message}`,
+          `[@pyreon/zero-content] failed to compile ${reportPath(id)}: ${message}`,
         )
       }
     },
@@ -454,8 +473,7 @@ export {}
       // `dist/search-index.json` (catalog) + `dist/search-index-<name>.json`
       // (per-collection chunk). The runtime <Search> from
       // @pyreon/zero-content/search lazy-fetches the catalog on first
-      // Cmd+K open. Closes the "PR 5: search index emission" TODO that
-      // shipped at the top of this file.
+      // Cmd+K open.
       //
       // Build mode only — dev mode does nothing (no closeBundle fires
       // for `vite dev`). SSR sub-builds skip via `command !== 'build'`
@@ -573,10 +591,66 @@ export function isMarkdownId(id: string): boolean {
  * suffix (after `/src/` if present), avoids dumping a 200-char absolute
  * path into the console.
  *
+ * Pre-fix (PR-A audit H5) the only available helper trimmed `id` to
+ * the segment after the LAST `/src/` and emitted a bare
+ * `src/content/docs/zero.md`. In monorepos with several `src/`
+ * segments (`packages/foo/src/...`) the trimmed result was wrong AND
+ * not click-resolvable from a terminal at the repo root. `reportPath`
+ * below replaces this with a `Vite root`-relative path that IDEs
+ * recognise as clickable.
+ *
+ * Kept exported for back-compat with downstream code that may have
+ * imported it; new call sites should use `reportPath` (which falls
+ * back to this when no root is known).
+ *
  * @internal exported for testing
+ * @deprecated prefer `reportPath(id, root)` — `shortId` is left in for
+ *   back-compat and as a fallback used by `reportPath` when no Vite
+ *   root has been resolved yet (config-resolution edge case).
  */
 export function shortId(id: string): string {
   const idx = id.lastIndexOf('/src/')
   if (idx >= 0) return id.slice(idx + 1)
   return id
+}
+
+let _resolvedRootForPaths: string | null = null
+
+/**
+ * Record the resolved Vite root so `reportPath` can produce
+ * repo-relative paths in plugin error messages. Called from
+ * `configResolved`. Pure side-effect; pure read at error-emission.
+ *
+ * @internal exported for testing
+ */
+export function _setResolvedRootForPaths(root: string | null): void {
+  _resolvedRootForPaths = root
+}
+
+/**
+ * Produce a clickable, repo-relative path for a file id. Prefers the
+ * captured Vite root over the last-`/src/`-segment heuristic, prefixes
+ * with `./` so terminals recognise it as a path, and normalises
+ * Windows separators so the output is consistent across platforms.
+ *
+ * @internal exported for testing
+ */
+export function reportPath(id: string): string {
+  const root = _resolvedRootForPaths
+  if (root) {
+    // Strip the root + leading separator, normalise to POSIX-style
+    // separators, and stamp a leading `./` so the output is a real
+    // relative path (terminals + IDE jump-to-source widgets are
+    // happy with `./packages/foo/src/...`).
+    const normalisedId = id.split('\\').join('/')
+    const normalisedRoot = root.split('\\').join('/').replace(/\/+$/, '')
+    if (
+      normalisedId === normalisedRoot ||
+      normalisedId.startsWith(normalisedRoot + '/')
+    ) {
+      const rel = normalisedId.slice(normalisedRoot.length).replace(/^\/+/, '')
+      return rel.length > 0 ? `./${rel}` : './'
+    }
+  }
+  return shortId(id)
 }

@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { isBrandedComponentsRegistry } from './config'
 import type { ContentConfig } from './types'
 
 // ─── content.config.ts loader ─────────────────────────────────────────────
@@ -127,6 +128,24 @@ export function validateConfigShape(
         `[@pyreon/zero-content] ${where}: collection "${name}" is missing a schema.`,
       )
     }
+    // PR-A audit C4 — a `components:` value must come from
+    // `defineComponents({...})` or `mergeComponents(...)`. The brand
+    // symbol is the runtime tell. Raw `{...}` literals would be
+    // silently accepted pre-fix; now we throw with a fix hint.
+    const components = (def as { components?: unknown }).components
+    if (components !== undefined && !isBrandedComponentsRegistry(components)) {
+      throw new Error(
+        `[@pyreon/zero-content] ${where}: collection "${name}".components must be the result of \`defineComponents({...})\` or \`mergeComponents(...)\`, not a raw object literal. Wrap your map:\n\n  import { defineComponents } from '@pyreon/zero-content'\n  components: defineComponents({ ... })`,
+      )
+    }
+  }
+  // Top-level `components:` on `defineConfig({...})` carries the same
+  // contract.
+  const topLevel = (config as { components?: unknown }).components
+  if (topLevel !== undefined && !isBrandedComponentsRegistry(topLevel)) {
+    throw new Error(
+      `[@pyreon/zero-content] ${where}: top-level \`components:\` must be the result of \`defineComponents({...})\` or \`mergeComponents(...)\`, not a raw object literal.`,
+    )
   }
 }
 

@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { emitRuntimeSlugHelper } from './_shared/derive-slug'
 import type { ContentConfig } from './types'
 
 // ─── virtual:zero-content/collections module renderer ──────────────────────
@@ -78,14 +79,7 @@ import { _setRegistry } from '@pyreon/zero-content'
 
 ${lines.join('\n')}
 
-function __zcSlug(file, base) {
-  let rel = file.startsWith(base) ? file.slice(base.length) : file
-  if (rel.startsWith('/')) rel = rel.slice(1)
-  rel = rel.replace(/\\.(md|mdx)$/i, '')
-  if (rel.endsWith('/index')) rel = rel.slice(0, -'/index'.length)
-  if (rel === 'index') rel = ''
-  return rel
-}
+${emitRuntimeSlugHelper()}
 
 _setRegistry({
 ${registryLines.join(',\n')}

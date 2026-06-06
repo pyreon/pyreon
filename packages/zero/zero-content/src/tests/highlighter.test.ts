@@ -25,7 +25,8 @@ afterAll(() => {
 })
 
 describe('getHighlighter', () => {
-  it('returns the same instance on repeat calls', async () => {
+  it('returns the same instance on repeat calls with EQUAL opts', async () => {
+    _resetHighlighterForTesting()
     const a = await getHighlighter()
     const b = await getHighlighter()
     expect(a).toBe(b)
@@ -44,6 +45,44 @@ describe('getHighlighter', () => {
     _resetHighlighterForTesting()
     // Second consecutive call hits the `if (_highlighter)` false branch.
     expect(() => _resetHighlighterForTesting()).not.toThrow()
+  })
+
+  // PR-A audit C10 — pre-fix, the first call's opts were sticky for the
+  // process lifetime. A theme swap in `content.config.ts` (HMR) was
+  // ignored until full restart. Now the cache key is `opts`-shaped so
+  // a different `themes` map rebuilds.
+  it('rebuilds the highlighter when `themes` changes (C10 regression)', async () => {
+    _resetHighlighterForTesting()
+    const a = await getHighlighter({ themes: { light: 'github-light', dark: 'github-dark' } })
+    const b = await getHighlighter({ themes: { light: 'min-light', dark: 'min-dark' } })
+    expect(a).not.toBe(b)
+    // The previous instance was disposed and is no longer reachable
+    // via the module's cache — a third call with the SAME (new) opts
+    // returns the second instance.
+    const c = await getHighlighter({ themes: { light: 'min-light', dark: 'min-dark' } })
+    expect(c).toBe(b)
+  })
+
+  it('rebuilds the highlighter when `langs` changes (C10 regression)', async () => {
+    _resetHighlighterForTesting()
+    const a = await getHighlighter({ langs: ['typescript'] })
+    const b = await getHighlighter({ langs: ['typescript', 'rust'] })
+    expect(a).not.toBe(b)
+  })
+
+  it('cache key is order-independent across theme map keys', async () => {
+    _resetHighlighterForTesting()
+    // Both calls describe the SAME (light, dark) theme pair, just
+    // with the object keys in different declaration order. The shared
+    // instance must NOT rebuild — the JSON-stringify replacer sorts
+    // object keys before serialising.
+    const a = await getHighlighter({
+      themes: { light: 'github-light', dark: 'github-dark' },
+    })
+    const b = await getHighlighter({
+      themes: { dark: 'github-dark', light: 'github-light' } as any,
+    })
+    expect(a).toBe(b)
   })
 })
 

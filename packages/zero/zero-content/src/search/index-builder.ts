@@ -64,15 +64,13 @@ export interface BuildIndexResult {
 
 // minisearch's default options tuned for docs prose. Title + headings
 // get higher boost than body; results stay relevant on short queries.
-const DEFAULT_MS_OPTIONS = {
-  fields: ['title', 'description', 'headings', 'body'] as string[],
-  storeFields: ['title', 'description', 'url', 'collection', 'slug'] as string[],
-  searchOptions: {
-    boost: { title: 3, headings: 2, description: 1.5 },
-    prefix: true,
-    fuzzy: 0.15,
-  },
-}
+//
+// Sourced from the shared `_shared/minisearch-options` module so the
+// runtime `search-runtime.tsx` consumer ALWAYS gets the same shape —
+// MiniSearch's `loadJSON` requires build-time + runtime options to
+// match or scoring silently diverges. Pre-fix the two were duplicated
+// inline (PR-A audit L12); aligning them is structural here.
+import { MINISEARCH_OPTIONS as DEFAULT_MS_OPTIONS } from '../_shared/minisearch-options'
 
 /**
  * Whether a collection is searchable. `data` collections default to

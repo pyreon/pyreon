@@ -2596,7 +2596,7 @@ export default function PostPage() { /* component body */ }
 
 ## @pyreon/zero-content — Zero Content — markdown-driven Pyreon sites
 
-Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: per-route LCP optimization inherits from zero's image/font/script-defer/resource-hint stack, markdown pages route through zero's fs-router via auto-generated catch-all routes, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via zod schema inference: `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<PackageBadge>`, `<Playground>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
+Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: markdown pages route through zero's fs-router, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via Standard Schema inference (use zod / valibot / arktype — the package itself ships no validator runtime): `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<CodeBlock>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
 
 ```typescript
 // vite.config.ts
@@ -2606,8 +2606,11 @@ import content from '@pyreon/zero-content/plugin'
 
 export default { plugins: [pyreon(), zero(), content()] }
 
-// content.config.ts
-import { defineConfig, defineCollection, z } from '@pyreon/zero-content'
+// content.config.ts — Standard Schema-compatible validators only; the
+// package itself does NOT re-export zod. Bring your own (zod / valibot /
+// arktype / typia). See @pyreon/validation for the curated adapters.
+import { defineConfig, defineCollection } from '@pyreon/zero-content'
+import { z } from 'zod'
 
 export default defineConfig({
   collections: {
@@ -2623,7 +2626,7 @@ export default defineConfig({
   },
 })
 
-// User code anywhere — typed via zod inference
+// User code anywhere — typed via Standard Schema inference
 import { getCollection } from '@pyreon/zero-content'
 
 const docs = await getCollection('docs')

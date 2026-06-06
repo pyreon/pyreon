@@ -18,15 +18,12 @@ export interface SearchCatalog {
   collections: Array<{ name: string; url: string }>
 }
 
-const MS_OPTIONS = {
-  fields: ['title', 'description', 'headings', 'body'] as string[],
-  storeFields: ['title', 'description', 'url', 'collection', 'slug'] as string[],
-  searchOptions: {
-    boost: { title: 3, headings: 2, description: 1.5 },
-    prefix: true,
-    fuzzy: 0.15,
-  },
-}
+// Shared with the build-time `search/index-builder.ts` — MiniSearch's
+// `loadJSON` requires runtime options to MATCH the indexed-time ones
+// on `fields` / `storeFields` / `searchOptions` so document refs and
+// scoring stay consistent. Pre-fix (PR-A audit L12) these existed twice
+// inline; structurally locked here.
+import { MINISEARCH_OPTIONS as MS_OPTIONS } from '../_shared/minisearch-options'
 
 /**
  * Load + merge all collection indexes into one MiniSearch instance.

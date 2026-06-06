@@ -235,11 +235,14 @@ export function isPascalCase(s: string): boolean {
  * compiled module fails with `"CodeBlock" is not exported by
  * "virtual:zero-content/components"`.
  */
-// Subset of components actually exported from `@pyreon/zero-content`'s
-// public API. The manifest documents additional names (PackageBadge,
-// Playground, Tabs) that are conventionally provided by the user via
-// `src/mdx/` — the user-scanned component path picks those up.
-const BUILT_IN_COMPONENTS = ['Callout', 'CodeGroup', 'CodeBlock'] as const
+// Imported from `_shared/built-ins` — single source of truth shared with
+// `mdx-scan/validate.ts` so the validator's "did you mean…?" suggestions
+// and the virtual-module re-export stay in lock-step.
+//
+// Previously this was a local `const ['Callout', 'CodeGroup', 'CodeBlock']`
+// while `validate.ts` carried its own `['Callout', 'CodeBlock', 'CodeGroup']`
+// — silent drift waiting to happen when a new built-in lands.
+import { BUILT_IN_COMPONENTS } from '../_shared/built-ins'
 
 export function renderVirtualModule(scan: ScanResult): string {
   const imports: string[] = []
