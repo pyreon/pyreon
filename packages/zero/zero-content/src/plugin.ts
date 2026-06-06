@@ -645,8 +645,7 @@ export {}
         // URL. We thread the current file's collection (if any) so
         // we can resolve relative `.md` references against the
         // collection's base path.
-        const linkResolver = makeInternalLinkResolver(id)
-        if (linkResolver !== null) opts.resolveInternalLink = linkResolver
+        opts.resolveInternalLink = makeInternalLinkResolver(id)
         const compileJsxEnabled = options.compileJsx !== false
         const cacheKey = computeCompileCacheKey(id, code, opts, compileJsxEnabled)
         const cached = COMPILE_CACHE.get(cacheKey)
@@ -1101,7 +1100,7 @@ export function isRelativePath(href: string): boolean {
  */
 export function makeInternalLinkResolver(
   fileId: string,
-): ((href: string) => string | null) | null {
+): (href: string) => string | null {
   return (href) => {
     if (!isRelativePath(href)) return null
     // Split off the `#anchor` so we resolve only the path portion.
