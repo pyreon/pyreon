@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <PropTable> — props reference table (PR-K audit H2) ──────────────────
@@ -58,7 +59,7 @@ export function PropTable(props: PropTableProps): VNodeChild {
 
   return (
     <div
-      class={`pyreon-proptable${props.class ? ' ' + props.class : ''}`}
+      class={cx(['pyreon-proptable', props.class])}
     >
       <table class="pyreon-proptable__table">
         <thead>

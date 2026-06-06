@@ -1,4 +1,5 @@
 import { signal } from '@pyreon/reactivity'
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <Tabs> — generic tab strip (PR-K audit H2) ───────────────────────────
@@ -42,7 +43,7 @@ export function Tabs(props: TabsProps): VNodeChild {
   const active = signal(Math.min(Math.max(props.initial ?? 0, 0), items.length - 1))
 
   return (
-    <div class={`pyreon-tabs${props.class ? ' ' + props.class : ''}`}>
+    <div class={cx(['pyreon-tabs', props.class])}>
       <div role="tablist" class="pyreon-tabs__list">
         {items.map((item, i) => (
           <button

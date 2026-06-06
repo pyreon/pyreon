@@ -1,5 +1,5 @@
 import { signal, computed } from '@pyreon/reactivity'
-import { onMount } from '@pyreon/core'
+import { cx, onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { Heading } from '../types'
 
@@ -116,7 +116,7 @@ export function Toc(props: TocProps): VNodeChild {
 
   return (
     <aside
-      class={() => `pyreon-toc${props.class ? ' ' + props.class : ''}`}
+      class={() => cx(['pyreon-toc', props.class])}
       aria-label="On this page"
     >
       <nav class="pyreon-toc__nav">

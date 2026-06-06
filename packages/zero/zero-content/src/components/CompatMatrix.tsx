@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <CompatMatrix> — feature/platform compatibility table (PR-K) ─────────
@@ -60,7 +61,7 @@ export function renderCompatCell(value: CompatCellValue): {
 export function CompatMatrix(props: CompatMatrixProps): VNodeChild {
   return (
     <div
-      class={`pyreon-compatmatrix${props.class ? ' ' + props.class : ''}`}
+      class={cx(['pyreon-compatmatrix', props.class])}
     >
       <table class="pyreon-compatmatrix__table">
         {props.caption && (

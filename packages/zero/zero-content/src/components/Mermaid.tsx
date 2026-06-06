@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { onMount } from '@pyreon/core'
+import { createUniqueId, cx, onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <Mermaid> — mermaid-rendered diagram (PR-M audit M7) ─────────────────
@@ -34,12 +34,6 @@ interface MermaidModule {
   render: (id: string, src: string) => Promise<{ svg: string }>
 }
 
-let _idCounter = 0
-function nextId(): string {
-  _idCounter = (_idCounter + 1) % 1000000
-  return `pyreon-mermaid-${_idCounter}`
-}
-
 export function Mermaid(props: MermaidProps): VNodeChild {
   const source = typeof props.children === 'string' ? props.children : ''
   const svg = signal<string | null>(null)
@@ -57,7 +51,7 @@ export function Mermaid(props: MermaidProps): VNodeChild {
         } & MermaidModule
         const mermaid = mod.default ?? mod
         mermaid.initialize?.({ startOnLoad: false })
-        const id = props.id ?? nextId()
+        const id = props.id ?? `pyreon-mermaid-${createUniqueId()}`
         const result = await mermaid.render(id, source)
         svg.set(result.svg)
       } catch {
@@ -70,7 +64,7 @@ export function Mermaid(props: MermaidProps): VNodeChild {
   return (
     <div
       class={() =>
-        `pyreon-mermaid${props.class ? ' ' + props.class : ''}`}
+        cx(['pyreon-mermaid', props.class])}
     >
       {() => {
         const rendered = svg()

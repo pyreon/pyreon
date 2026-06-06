@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <Details> — collapsible disclosure section (PR-M audit M8) ───────────
@@ -32,7 +33,7 @@ export interface DetailsProps {
 export function Details(props: DetailsProps): VNodeChild {
   return (
     <details
-      class={() => `pyreon-details${props.class ? ' ' + props.class : ''}`}
+      class={() => cx(['pyreon-details', props.class])}
       open={props.open ? true : undefined}
     >
       {props.summary !== undefined && (
