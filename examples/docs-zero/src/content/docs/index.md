@@ -5,10 +5,12 @@ description: A signal-based UI framework with fine-grained reactivity and a rich
 
 Pyreon is a signal-based UI framework that renders directly to the DOM without a virtual DOM. It provides fine-grained reactivity, streaming SSR, a JSX compiler, and compatibility layers for React, Vue, Solid, and Preact.
 
-<PackageBadge name="@pyreon/core" href="/docs/core" />
-<PackageBadge name="@pyreon/reactivity" href="/docs/reactivity" />
-<PackageBadge name="@pyreon/zero" href="/docs/zero" />
-<PackageBadge name="@pyreon/router" href="/docs/router" />
+<div class="flex flex-wrap gap-2 my-6">
+  <PackageBadge name="@pyreon/core" href="/docs/core" />
+  <PackageBadge name="@pyreon/reactivity" href="/docs/reactivity" />
+  <PackageBadge name="@pyreon/zero" href="/docs/zero" />
+  <PackageBadge name="@pyreon/router" href="/docs/router" />
+</div>
 
 ## Core Framework
 
@@ -42,20 +44,20 @@ Use the API you already know, powered by Pyreon's signal engine.
 
 <CompatMatrix
   features={[
-    "Signals / reactive state",
-    "Computed / derived values",
-    "Effects / watchers",
-    "Lifecycle hooks",
-    "Control flow components",
-    "Component model",
-    "Context / provide-inject",
-    "Store / state management",
+    'Signals / reactive state',
+    'Computed / derived values',
+    'Effects / watchers',
+    'Lifecycle hooks',
+    'Control flow components',
+    'Component model',
+    'Context / provide-inject',
+    'Store / state management',
   ]}
   layers={[
-    { name: "React", support: ["full", "full", "full", "full", "partial", "full", "full", "partial"] },
-    { name: "Preact", support: ["full", "full", "full", "full", "partial", "full", "full", "partial"] },
-    { name: "Solid", support: ["full", "full", "full", "full", "full", "full", "full", "full"] },
-    { name: "Vue", support: ["full", "full", "full", "full", "partial", "full", "full", "full"] },
+    { name: 'React', support: ['full', 'full', 'full', 'full', 'partial', 'full', 'full', 'partial'] },
+    { name: 'Preact', support: ['full', 'full', 'full', 'full', 'partial', 'full', 'full', 'partial'] },
+    { name: 'Solid', support: ['full', 'full', 'full', 'full', 'full', 'full', 'full', 'full'] },
+    { name: 'Vue', support: ['full', 'full', 'full', 'full', 'partial', 'full', 'full', 'full'] },
   ]}
 />
 

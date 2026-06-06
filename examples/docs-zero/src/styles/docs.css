@@ -269,24 +269,73 @@ th {
 .pyreon-toc__link,
 .docs-toc__item a {
   display: block;
-  padding: 0.25rem 0;
+  padding: 0.3rem 0 0.3rem 0.6rem;
+  margin-left: -0.6rem;
   color: var(--text-muted);
   font-size: 0.825rem;
   text-decoration: none;
   border-left: 2px solid transparent;
-  padding-left: 0.5rem;
-  margin-left: -0.5rem;
   line-height: 1.4;
+  /* Smooth color + indent transition as you scroll between sections.
+     The TOC link's color, border, font-weight, and transform all
+     animate so the active-link change reads as motion rather than a
+     jarring snap. `prefers-reduced-motion` zeroes this out below. */
+  transition:
+    color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    border-left-color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    font-weight 0.22s ease;
 }
 .pyreon-toc__link:hover,
 .docs-toc__item a:hover {
   color: var(--text);
   text-decoration: none;
+  transform: translateX(2px);
 }
 .pyreon-toc__link--active {
-  color: var(--link);
-  border-left-color: var(--link);
-  font-weight: 500;
+  color: var(--ember);
+  border-left-color: var(--ember);
+  font-weight: 600;
+  /* Subtle right-shift gives the active link a "pulled into view" feel
+     as you scroll past each heading. Combined with the color fade
+     above this reads as kinetic without animating layout for siblings. */
+  transform: translateX(3px);
+}
+.pyreon-toc__link--active::before {
+  /* Ember tick — anchor-style indicator on the active TOC entry. */
+  content: '';
+  position: absolute;
+  left: -2px;
+  width: 2px;
+  height: 1.1em;
+  background: var(--ember);
+  border-radius: 1px;
+  box-shadow: 0 0 6px var(--ember);
+}
+.pyreon-toc__item {
+  position: relative;
+}
+/* Fade-in on first hydration so the TOC doesn't pop. */
+.pyreon-toc {
+  animation: pyreon-toc-fade 360ms ease-out;
+}
+@keyframes pyreon-toc-fade {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pyreon-toc { animation: none; }
+  .pyreon-toc__link,
+  .docs-toc__item a,
+  .pyreon-toc__link--active {
+    transition: none;
+    transform: none;
+  }
+}
+/* Browser-native smooth scroll for `#hash` jumps from the TOC. */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
 }
 
 /* ── Landing hero ──────────────────────────────────────────────────── */
@@ -2095,7 +2144,13 @@ th {
   border-bottom: 1px solid var(--hairline);
 }
 .docs-header__inner {
-  display: flex;
+  /* 3-zone layout: brand left, nav CENTER, controls right.
+     CSS grid with three columns — outer columns size to their content,
+     the center column flexes. The center child gets `justify-self: center`
+     so the nav cluster sits in the visual middle of the viewport
+     regardless of the brand/controls widths. */
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 1.25rem;
   height: 100%;
@@ -2125,10 +2180,13 @@ th {
   font-size: 1.05rem;
 }
 .docs-header__nav {
+  /* Sits in the grid's center column (auto / 1fr / auto) — `justify-self`
+     centers the nav cluster within that column so it lands in the
+     visual middle of the viewport. */
   display: flex;
   gap: 1rem;
   align-items: center;
-  margin-left: 0.5rem;
+  justify-self: center;
 }
 .docs-header__link {
   color: var(--text-muted);
@@ -2138,10 +2196,11 @@ th {
 }
 .docs-header__link:hover { color: var(--text); }
 .docs-header__controls {
+  /* Right column of the grid — no `margin-left: auto` needed since
+     the grid template already pushes this to the end track. */
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  margin-left: auto;
 }
 .docs-header__search-btn {
   display: inline-flex;
@@ -2258,6 +2317,44 @@ th {
   color: var(--text-dim);
 }
 .pyreon-sidebar__chevron--collapsed { transform: rotate(-90deg); }
+
+/* Sidebar group collapse — smooth height + fade.
+   CSS grid `1fr ↔ 0fr` is animatable in modern browsers; the inner
+   wrapper has `min-height: 0; overflow: hidden` so the ul collapses
+   to zero height without clipping mid-row. */
+.pyreon-sidebar__collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease-out;
+}
+.pyreon-sidebar__collapse[data-collapsed='true'] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.pyreon-sidebar__collapse > .pyreon-sidebar__list {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pyreon-sidebar__collapse { transition: none; }
+}
+/* Stagger fade-in for sidebar links on first render — quiet polish.
+   Each item delays by its sibling index using CSS `animation-delay`
+   set via `--i` custom property (set inline by the renderer) when
+   present. Falls back to a single fade for the whole list otherwise. */
+.pyreon-sidebar__list {
+  animation: pyreon-sidebar-fade 220ms ease-out both;
+}
+@keyframes pyreon-sidebar-fade {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pyreon-sidebar__list { animation: none; }
+}
 
 /* Active link ember stripe — restore handoff §6.1 */
 .pyreon-sidebar__link {
@@ -2519,6 +2616,43 @@ th {
   font-size: 0.85em;
   line-height: 1.55;
   margin: 1rem 0;
+}
+
+/* ── Shiki dual-theme code highlighting (light + dark) ────────────────
+   `@pyreon/zero-content` emits every code-block token with BOTH theme
+   colors inlined as `style="--shiki-light:#abc;--shiki-dark:#def"`
+   (Shiki's `themes: { light, dark }` output format). The browser uses
+   `color: var(--shiki-light)` by default; switch to `--shiki-dark` for
+   dark theme so syntax tokens flip to the dark palette. Same for
+   background-color and font-style.
+
+   Without these rules the inline `--shiki-light` value is unread (no
+   property references it) → tokens fall back to the parent's `color`
+   → all code blocks render as single-color text with no syntax
+   highlighting in either theme. */
+.shiki,
+.shiki span,
+.docs-content .shiki,
+.docs-content .shiki span,
+.vp-doc .shiki,
+.vp-doc .shiki span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+  text-decoration: var(--shiki-light-text-decoration);
+}
+[data-theme='dark'] .shiki,
+[data-theme='dark'] .shiki span,
+[data-theme='dark'] .docs-content .shiki,
+[data-theme='dark'] .docs-content .shiki span,
+[data-theme='dark'] .vp-doc .shiki,
+[data-theme='dark'] .vp-doc .shiki span {
+  color: var(--shiki-dark);
+  background-color: var(--shiki-dark-bg);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+  text-decoration: var(--shiki-dark-text-decoration);
 }
 
 /* ── (I) Scrollbars — quiet ───────────────────────────────────── */

@@ -117,30 +117,37 @@ export function Sidebar(props: SidebarProps) {
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          {() =>
-            isCollapsed(group) ? null : (
-              <ul class="pyreon-sidebar__list">
-                {group.items.map((item) => {
-                  const to = item.slug === '' ? '/docs/' : `/docs/${item.slug}`
-                  return (
-                    <li class="pyreon-sidebar__item">
-                      <RouterLink
-                        to={to}
-                        class={() =>
-                          currentSlug() === item.slug
-                            ? 'pyreon-sidebar__link pyreon-sidebar__link--active'
-                            : 'pyreon-sidebar__link'
-                        }
-                        onClick={() => props.onNavigate?.()}
-                      >
-                        {item.text}
-                      </RouterLink>
-                    </li>
-                  )
-                })}
-              </ul>
-            )
-          }
+          {/* Keep the list mounted always so the collapse animation
+              (CSS grid-template-rows 1fr ↔ 0fr) has something to
+              animate. The `data-collapsed` attribute drives the open
+              state; CSS in `docs.css` handles the smooth height/opacity
+              transition and `aria-hidden` for assistive tech. */}
+          <div
+            class="pyreon-sidebar__collapse"
+            data-collapsed={() => (isCollapsed(group) ? 'true' : 'false')}
+            aria-hidden={() => (isCollapsed(group) ? 'true' : 'false')}
+          >
+            <ul class="pyreon-sidebar__list">
+              {group.items.map((item) => {
+                const to = item.slug === '' ? '/docs/' : `/docs/${item.slug}`
+                return (
+                  <li class="pyreon-sidebar__item">
+                    <RouterLink
+                      to={to}
+                      class={() =>
+                        currentSlug() === item.slug
+                          ? 'pyreon-sidebar__link pyreon-sidebar__link--active'
+                          : 'pyreon-sidebar__link'
+                      }
+                      onClick={() => props.onNavigate?.()}
+                    >
+                      {item.text}
+                    </RouterLink>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         </div>
       ))}
     </nav>
