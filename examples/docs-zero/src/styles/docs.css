@@ -2652,60 +2652,73 @@ html { scroll-behavior: smooth; }
 }
 
 /* ── Shiki dual-theme code highlighting (light + dark) ────────────────
-   `@pyreon/zero-content` emits every code-block token with BOTH theme
-   colors inlined as `style="--shiki-light:#abc;--shiki-dark:#def"`
-   (Shiki's `themes: { light, dark }` output format). The browser uses
-   `color: var(--shiki-light)` by default; switch to `--shiki-dark` for
-   dark theme so syntax tokens flip to the dark palette.
+   `@pyreon/zero-content` runs Shiki in dual-theme mode and emits each
+   token's INLINE style in this exact shape:
 
-   Without these rules the inline `--shiki-light` value is unread (no
-   property references it) → tokens fall back to the parent's `color`
-   → all code blocks render as single-color text with no syntax
-   highlighting in either theme.
+       style="color:#14141C; --shiki-dark:#E6E0D2"
 
-   We deliberately DROP `background-color: var(--shiki-light-bg)` from
-   these rules. Shiki's theme bg often doesn't match our token palette
-   in dark mode (default themes ship a near-black `#0d1117`-ish while
-   our `--bg-elevated` is the ink-1 token). The parent `pre` rule above
-   already sets `background: var(--bg-elevated)` which gives every code
-   block the same harmonized container background as the rest of the
-   docs surface. Letting Shiki paint EVERY span's bg also fragmented
-   the look — token-by-token mismatched stripes against the container.
-   Color + font weight + style stay (those ARE the syntax
-   highlighting); bg is the container's job. */
+   ie. the LIGHT theme is inlined as a DIRECT CSS property (`color`,
+   `background-color`, etc.) and the DARK theme is inlined as a CSS
+   VARIABLE (`--shiki-dark`, `--shiki-dark-bg`, ...). NO `--shiki-light`
+   variable is emitted — the light theme is the default and needs no
+   selector to apply.
+
+   So in LIGHT mode: zero CSS rules needed. The inline `color:#…`
+   already paints every token correctly.
+
+   In DARK mode we must OVERRIDE the inline direct property using the
+   per-token `--shiki-dark` variable Shiki inlined. `!important` is
+   load-bearing on every override: inline styles beat regular
+   selectors (inline specificity is 1000). Without `!important` the
+   light theme color leaks through on every span in dark mode — every
+   keyword/string/number renders in its LIGHT-mode color against the
+   dark container, which is the bug the previous fix attempt left
+   behind.
+
+   Container `<pre class="shiki">`: its inline `background-color` is
+   the literal light-mode bg (e.g. #FAF5EB). We override to
+   `--bg-elevated` so the code block harmonizes with our token surface
+   in BOTH themes (light: white #FFFFFF, dark: ink-2 #111118) instead
+   of jumping between Shiki's hardcoded paper/ink values.
+
+   Spans inside .shiki carry their own inline `color:#…` (light theme
+   default) and `--shiki-dark:#…` (variable for dark). The dark
+   override below reads the per-token variable and wins via
+   `!important`. */
+
+/* Container BG — both themes use our elevated token. Inline wins
+   without `!important`. Applied to both themes. */
 .shiki,
-.shiki span,
 .docs-content .shiki,
-.docs-content .shiki span,
-.vp-doc .shiki,
-.vp-doc .shiki span {
-  color: var(--shiki-light);
-  font-style: var(--shiki-light-font-style);
-  font-weight: var(--shiki-light-font-weight);
-  text-decoration: var(--shiki-light-text-decoration);
+.vp-doc .shiki {
+  background-color: var(--bg-elevated) !important;
 }
+
+/* Dark theme: flip every per-token color/style to the dark variable
+   Shiki inlined. Spans only — the `.shiki` container's `color` is
+   irrelevant (no direct text on it). `!important` beats inline
+   per the inline-vs-!important specificity rule. */
 [data-theme='dark'] .shiki,
 [data-theme='dark'] .shiki span,
 [data-theme='dark'] .docs-content .shiki,
 [data-theme='dark'] .docs-content .shiki span,
 [data-theme='dark'] .vp-doc .shiki,
 [data-theme='dark'] .vp-doc .shiki span {
-  color: var(--shiki-dark);
-  font-style: var(--shiki-dark-font-style);
-  font-weight: var(--shiki-dark-font-weight);
-  text-decoration: var(--shiki-dark-text-decoration);
+  color: var(--shiki-dark) !important;
+  font-style: var(--shiki-dark-font-style, inherit) !important;
+  font-weight: var(--shiki-dark-font-weight, inherit) !important;
+  text-decoration: var(--shiki-dark-text-decoration, inherit) !important;
 }
-/* Override Shiki's container background back to our token so every
-   code block reads as part of the same surface family — light + dark.
-   `!important` is load-bearing: Shiki ships `style="background-color:
-   #0d1117"` (or similar) inline on the `<pre class="shiki">`, which
-   has higher specificity than the `pre { background: ... }` rule
-   above. Without `!important` the inline wins and dark mode shows
-   the wrong (mismatched) bg. */
-.shiki,
-.docs-content .shiki,
-.vp-doc .shiki {
-  background-color: var(--bg-elevated) !important;
+
+/* Dark theme: also kill any inline `background-color` Shiki put on
+   spans (for highlighted lines / focused tokens). Without this, the
+   light-theme literal bg leaks through and produces the "fragmented
+   stripes against the container" look (each line's bg is the light
+   theme's paper color, against our dark elevated container — fights
+   the eye). The override drops them all to transparent so the dark
+   container's bg shows through cleanly. */
+[data-theme='dark'] .shiki span {
+  background-color: transparent !important;
 }
 
 /* ── (I) Scrollbars — quiet ───────────────────────────────────── */
