@@ -49,6 +49,31 @@ export { Math } from './components/Math'
 export type { MathProps } from './components/Math'
 export { Mermaid } from './components/Mermaid'
 export type { MermaidProps } from './components/Mermaid'
+// PR-K — extended built-in component set (audit H2 + H14)
+export { APICard, deriveApiId } from './components/APICard'
+export type { APICardProps } from './components/APICard'
+export {
+  CompatMatrix,
+  renderCompatCell,
+} from './components/CompatMatrix'
+export type {
+  CompatCellValue,
+  CompatMatrixProps,
+} from './components/CompatMatrix'
+export {
+  PackageBadge,
+  renderInstallRows,
+} from './components/PackageBadge'
+export type {
+  PackageBadgeProps,
+  PackageManager,
+} from './components/PackageBadge'
+export { buildSrcdoc, Playground } from './components/Playground'
+export type { PlaygroundProps } from './components/Playground'
+export { PropTable } from './components/PropTable'
+export type { PropRow, PropTableProps } from './components/PropTable'
+export { Tabs } from './components/Tabs'
+export type { TabsProps } from './components/Tabs'
 export {
   defineSidebar,
   groupEntries,
