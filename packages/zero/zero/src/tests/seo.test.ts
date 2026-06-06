@@ -6,11 +6,13 @@ import {
   clusterPathsByLocale,
   formatLoc,
   generateRobots,
+  generateRssFeed,
   generateSitemap,
   jsonLd,
   resolveHreflangI18n,
   seoPlugin,
   stripLocalePrefix,
+  toRfc822,
 } from '../seo'
 
 describe('formatLoc (trailingSlash policy)', () => {
@@ -596,5 +598,96 @@ describe('seoPlugin — useSsgPaths (PR F)', () => {
     } finally {
       f.cleanup()
     }
+  })
+})
+
+describe('generateRssFeed', () => {
+  it('emits a minimal feed with channel metadata + one item', () => {
+    const xml = generateRssFeed({
+      title: 'Blog',
+      origin: 'https://x.com',
+      items: [{ title: 'Post', link: '/blog/post' }],
+    })
+    expect(xml).toContain('<rss version="2.0">')
+    expect(xml).toContain('<title>Blog</title>')
+    expect(xml).toContain('<link>https://x.com</link>')
+    expect(xml).toContain('<title>Post</title>')
+    expect(xml).toContain('<link>https://x.com/blog/post</link>')
+    expect(xml).toContain('<guid isPermaLink="true">https://x.com/blog/post</guid>')
+  })
+
+  it.each([
+    ['2025-01-15T12:00:00Z', 'Wed, 15 Jan 2025 12:00:00 GMT'],
+    ['2025-12-31T23:59:59Z', 'Wed, 31 Dec 2025 23:59:59 GMT'],
+  ])('toRfc822(%j) === %j', (iso, expected) => {
+    expect(toRfc822(iso)).toBe(expected)
+  })
+
+  it('passes invalid dates through verbatim', () => {
+    expect(toRfc822('not a date')).toBe('not a date')
+  })
+
+  it('emits lastBuildDate from explicit override OR first item pubDate', () => {
+    const explicit = generateRssFeed({
+      title: 't',
+      origin: 'https://x.com',
+      items: [],
+      lastBuildDate: '2025-06-01T00:00:00Z',
+    })
+    expect(explicit).toContain('<lastBuildDate>Sun, 01 Jun 2025 00:00:00 GMT</lastBuildDate>')
+
+    const fromItem = generateRssFeed({
+      title: 't',
+      origin: 'https://x.com',
+      items: [{ title: 'p', link: '/p', pubDate: '2024-01-02T00:00:00Z' }],
+    })
+    expect(fromItem).toContain('<lastBuildDate>Tue, 02 Jan 2024 00:00:00 GMT</lastBuildDate>')
+  })
+
+  it('renders item categories', () => {
+    const xml = generateRssFeed({
+      title: 't',
+      origin: 'https://x.com',
+      items: [{ title: 'p', link: '/p', categories: ['pyreon', 'release'] }],
+    })
+    expect(xml).toContain('<category>pyreon</category>')
+    expect(xml).toContain('<category>release</category>')
+  })
+
+  it('honors a custom GUID with isPermaLink=false', () => {
+    const xml = generateRssFeed({
+      title: 't',
+      origin: 'https://x.com',
+      items: [{ title: 'p', link: '/p', guid: 'urn:custom-id' }],
+    })
+    expect(xml).toContain('<guid isPermaLink="false">urn:custom-id</guid>')
+  })
+
+  it('XML-escapes title / link / description', () => {
+    const xml = generateRssFeed({
+      title: 'A & B',
+      origin: 'https://x.com',
+      items: [
+        {
+          title: 'Post with <tag>',
+          link: '/p?a=1&b=2',
+          description: 'has "quotes" & ampersand',
+        },
+      ],
+    })
+    expect(xml).toContain('<title>A &amp; B</title>')
+    expect(xml).toContain('<title>Post with &lt;tag&gt;</title>')
+    expect(xml).toContain('a=1&amp;b=2')
+    expect(xml).toContain('has &quot;quotes&quot; &amp; ampersand')
+  })
+
+  it('strips trailing slashes from origin to avoid `//path`', () => {
+    const xml = generateRssFeed({
+      title: 't',
+      origin: 'https://x.com/',
+      items: [{ title: 'p', link: '/p' }],
+    })
+    expect(xml).toContain('<link>https://x.com/p</link>')
+    expect(xml).not.toContain('https://x.com//p')
   })
 })

@@ -130,3 +130,13 @@ export type {
 	RouteModule,
 	ZeroConfig,
 } from "./types";
+
+// ─── SEO — RSS 2.0 (pure builder, client-safe) ──────────────────────────────
+//
+// The other SEO generators (sitemap, robots, llms.txt, seoPlugin)
+// live in `@pyreon/zero/server` because they read the filesystem at
+// build time. RSS is a pure string builder and ships from the main
+// client entry so consumer code can import it directly without
+// pulling server-only modules.
+export type { RssConfig, RssItem } from "./seo-rss";
+export { generateRssFeed, toRfc822 } from "./seo-rss";

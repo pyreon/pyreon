@@ -3,6 +3,8 @@ import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Middleware } from '@pyreon/server'
 import type { Plugin } from 'vite'
+import { generateRssFeed } from './seo-rss'
+import type { RssConfig } from './seo-rss'
 import type { I18nRoutingConfig } from './i18n-routing'
 
 // ─── SEO utilities ──────────────────────────────────────────────────────────
@@ -455,6 +457,17 @@ export function generateRobots(config: RobotsConfig = {}): string {
   return lines.join('\n')
 }
 
+
+// ─── RSS 2.0 feed — re-exported from `./seo-rss` ────────────────────────────
+//
+// The RSS builder lives in its own client-safe file so it can be
+// exported from `@pyreon/zero`'s main client entry. Re-exported here
+// so existing `import { generateRssFeed } from '@pyreon/zero/seo'`
+// imports keep working AND `seoPlugin` can wire it into the Vite
+// build hook below.
+export type { RssConfig, RssItem } from './seo-rss'
+export { generateRssFeed, toRfc822 } from './seo-rss'
+
 // ─── Structured data (JSON-LD) ──────────────────────────────────────────────
 
 export type JsonLdType =
@@ -496,6 +509,24 @@ export interface SeoPluginConfig {
   sitemap?: SitemapConfig
   /** Robots.txt configuration. */
   robots?: RobotsConfig
+  /**
+   * RSS 2.0 feed configuration. Emits `dist/rss.xml` during the
+   * client build. Items aren't auto-derived from routes (zero has no
+   * built-in notion of "blog posts") — the user supplies an
+   * up-front list.
+   *
+   * For collection-driven sites, derive items from your data source
+   * inside `vite.config.ts`:
+   *
+   *     seoPlugin({
+   *       rss: {
+   *         title: 'My Blog',
+   *         origin: 'https://example.com',
+   *         items: posts.map((p) => ({ title: p.title, link: `/blog/${p.slug}` })),
+   *       },
+   *     })
+   */
+  rss?: RssConfig
 }
 
 /**
@@ -576,6 +607,17 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
           source: robots,
         })
       }
+
+      // Generate rss.xml — items are supplied up-front (no
+      // auto-derivation from routes; zero has no notion of "posts").
+      if (config.rss) {
+        const rss = generateRssFeed(config.rss)
+        this.emitFile({
+          type: 'asset',
+          fileName: 'rss.xml',
+          source: rss,
+        })
+      }
     },
 
     async closeBundle() {
@@ -645,17 +687,24 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
   }
 }
 
-// ─── SEO middleware (serve sitemap/robots in dev) ────────────────────────────
+// ─── SEO middleware (serve sitemap/robots/rss in dev) ──────────────────────
 
 /**
  * SEO middleware for dev server.
- * Serves sitemap.xml and robots.txt dynamically during development.
+ * Serves sitemap.xml, robots.txt, and rss.xml dynamically during
+ * development.
  */
 export function seoMiddleware(config: SeoPluginConfig = {}): Middleware {
   return async (ctx) => {
     if (ctx.url.pathname === '/robots.txt' && config.robots) {
       return new Response(generateRobots(config.robots), {
         headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
+    if (ctx.url.pathname === '/rss.xml' && config.rss) {
+      return new Response(generateRssFeed(config.rss), {
+        headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' },
       })
     }
 
