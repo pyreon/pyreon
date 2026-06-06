@@ -42,10 +42,38 @@ export { CodeGroup } from './components/CodeGroup'
 export type { CodeGroupProps } from './components/CodeGroup'
 export { CodeBlock } from './components/CodeBlock'
 export type { CodeBlockProps } from './components/CodeBlock'
-export { Sidebar, groupEntries } from './components/Sidebar'
-export type { SidebarEntry, SidebarProps } from './components/Sidebar'
-export { Toc, filterHeadings } from './components/Toc'
+export {
+  defineSidebar,
+  groupEntries,
+  groupsFromConfig,
+  Sidebar,
+} from './components/Sidebar'
+export type {
+  SidebarConfig,
+  SidebarConfigGroup,
+  SidebarConfigItem,
+  SidebarEntry,
+  SidebarProps,
+} from './components/Sidebar'
+export { filterHeadings, Toc } from './components/Toc'
 export type { TocProps } from './components/Toc'
+// PR-I — navigation widgets (audit M9 + M10)
+export { PrevNext, resolvePrevNext } from './components/PrevNext'
+export type { PrevNextProps } from './components/PrevNext'
+export {
+  Breadcrumbs,
+  buildBreadcrumbs,
+  humanize,
+} from './components/Breadcrumbs'
+export type { BreadcrumbCrumb, BreadcrumbsProps } from './components/Breadcrumbs'
+// PR-I — per-page layout override (audit M11)
+export { resolvePageLayout } from './frontmatter-layout'
+export type {
+  ContentLayout,
+  ContentLayoutRegistry,
+  ResolvedPageLayout,
+  ResolvePageLayoutArgs,
+} from './frontmatter-layout'
 
 // ─── Search ────────────────────────────────────────────────────────────────
 

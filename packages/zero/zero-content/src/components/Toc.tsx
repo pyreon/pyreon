@@ -26,6 +26,15 @@ export interface TocProps {
   /** Reactive accessor; defaults to listening to the IntersectionObserver
    *  internally. Pass a custom accessor to drive scroll-spy externally. */
   activeSlug?: () => string | null
+  /** PR-I audit H13 — when true, clicking a TOC link smooth-scrolls to
+   *  the section AND updates the URL hash without a full page jump.
+   *  Falls back to the browser's native jump when `scrollIntoView`
+   *  isn't supported (older runtimes, SSR). Default `true`. */
+  smoothScroll?: boolean
+  /** PR-I audit H13 — extra pixel offset applied when smooth-scrolling
+   *  to a heading. Useful for sites with a sticky header that would
+   *  otherwise cover the scrolled-to heading. Default `0`. */
+  scrollOffset?: number
 }
 
 /**
@@ -44,9 +53,30 @@ export function filterHeadings(
 export function Toc(props: TocProps): VNodeChild {
   const minLevel = props.minLevel ?? 2
   const maxLevel = props.maxLevel ?? 3
+  const smoothScroll = props.smoothScroll !== false
+  const scrollOffset = props.scrollOffset ?? 0
   const filtered = computed(() =>
     filterHeadings(props.headings, minLevel, maxLevel),
   )
+
+  // PR-I audit H13 — smooth-scroll on click handler. The native
+  // `<a href="#slug">` click already jumps via `:target`; intercepting
+  // it gives us animated scroll + sticky-header offset. Falls through
+  // to the browser default when smoothScroll is off.
+  const handleClick = (slug: string) => (e: Event) => {
+    if (!smoothScroll) return
+    if (typeof document === 'undefined') return
+    const el = document.getElementById(slug)
+    if (el === null) return
+    e.preventDefault()
+    const rect = el.getBoundingClientRect()
+    const target = (window.pageYOffset || 0) + rect.top - scrollOffset
+    window.scrollTo({ top: target, behavior: 'smooth' })
+    // Update history hash WITHOUT triggering the browser's native jump.
+    if (typeof history !== 'undefined' && history.replaceState) {
+      history.replaceState(null, '', `#${slug}`)
+    }
+  }
 
   // Internal scroll-spy state. Used only when no external `activeSlug`
   // accessor is supplied.
@@ -107,6 +137,7 @@ export function Toc(props: TocProps): VNodeChild {
                         ? 'location'
                         : false) as never
                   }
+                  onClick={handleClick(h.slug)}
                 >
                   {h.text}
                 </a>
