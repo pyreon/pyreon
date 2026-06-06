@@ -194,6 +194,42 @@ export function _resetCompileCacheForTesting(): void {
 }
 
 /**
+ * PR-J audit H10 — given an absolute file id, a collections map, and
+ * the Vite root, return the name of the LONGEST-prefix-matching
+ * collection or `null` when no collection's path is an ancestor of
+ * the id. Pure — exported so tests can drive it without booting a
+ * real Vite plugin instance.
+ *
+ * Why longest-prefix: nested collection paths (`src/content/docs` AND
+ * `src/content/docs/api`) would otherwise route every `docs/api/*`
+ * file to whichever collection was declared first in the config
+ * object. The first-match shape ignored the declared object order
+ * stability anyway (depending on JS object iteration order). Longest-
+ * prefix is the deterministic, intuitive rule.
+ *
+ * @internal exported for testing
+ */
+export function findCollectionForFileImpl(
+  id: string,
+  collections: Record<string, { path?: string }>,
+  root: string,
+): string | null {
+  let best: { name: string; abs: string } | null = null
+  for (const [name, def] of Object.entries(collections)) {
+    const collectionPath = def.path ?? `src/content/${name}`
+    const abs = path.isAbsolute(collectionPath)
+      ? collectionPath
+      : path.join(root, collectionPath)
+    const rel = path.relative(abs, id)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) continue
+    if (best === null || abs.length > best.abs.length) {
+      best = { name, abs }
+    }
+  }
+  return best?.name ?? null
+}
+
+/**
  * The Vite plugin. Default export so users write:
  *
  *   import content from '@pyreon/zero-content/plugin'
@@ -280,15 +316,7 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
   const findCollectionForFile = (id: string): string | null => {
     if (loadedConfig === null) return null
     const root = resolvedConfig?.root ?? process.cwd()
-    for (const [name, def] of Object.entries(loadedConfig.config.collections)) {
-      const collectionPath = def.path ?? `src/content/${name}`
-      const abs = path.isAbsolute(collectionPath)
-        ? collectionPath
-        : path.join(root, collectionPath)
-      const rel = path.relative(abs, id)
-      if (!rel.startsWith('..') && !path.isAbsolute(rel)) return name
-    }
-    return null
+    return findCollectionForFileImpl(id, loadedConfig.config.collections, root)
   }
 
   return {

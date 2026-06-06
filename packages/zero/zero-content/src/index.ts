@@ -105,7 +105,19 @@ export {
   getEntries,
   getEntry,
 } from './runtime'
-export type { CollectionRegistry, CollectionRuntime } from './runtime'
+export type {
+  CollectionRegistry,
+  CollectionRuntime,
+  GetCollectionOptions,
+} from './runtime'
+// PR-J — cross-collection references (audit M14)
+export {
+  isReference,
+  reference,
+  resolveReference,
+  resolveReferences,
+} from './references'
+export type { Reference } from './references'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 

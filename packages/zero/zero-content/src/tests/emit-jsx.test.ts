@@ -41,16 +41,21 @@ describe('emitJsx — heading nodes', () => {
     expect(await compile('## Hello World')).toContain('id={"hello-world"}')
   })
 
-  it('captures level 2-3 headings (not h1 / h4+) for TOC', async () => {
+  it('captures level 2-6 headings (drops only h1) for TOC', async () => {
+    // PR-J audit H3 — pre-fix the emitter hard-capped at h3, silently
+    // dropping h4/h5/h6 from the TOC. Levels 2..6 are now captured;
+    // h1 (the page title) is intentionally skipped.
     const headings = await compileHeadings(`
 # top
 ## section
 ### subsection
 #### deeper
+##### fifth
+###### sixth
 `)
-    expect(headings).toHaveLength(2)
-    expect(headings[0]).toEqual({ level: 2, text: 'section', slug: 'section' })
-    expect(headings[1]).toEqual({ level: 3, text: 'subsection', slug: 'subsection' })
+    expect(headings).toHaveLength(5)
+    expect(headings[0]!.level).toBe(2)
+    expect(headings[4]!.level).toBe(6)
   })
 
   it('strips inline formatting from captured heading text', async () => {

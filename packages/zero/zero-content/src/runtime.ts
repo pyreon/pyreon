@@ -78,13 +78,35 @@ export function _getRegistry(): CollectionRegistry {
  * page component. The renderer is async because content modules are
  * lazy-loaded by default (Vite splits them into per-route chunks).
  */
+/**
+ * PR-J audit M13 — options accepted by `getCollection`.
+ *
+ *   - `includeDrafts`: when `false` (default in PRODUCTION builds),
+ *     entries whose frontmatter has `draft: true` are skipped. In dev
+ *     mode the default flips to `true` so authors can preview drafts.
+ *     Pass an explicit boolean to override.
+ *
+ *   - `filter`: optional predicate run against each entry's data —
+ *     return `false` to drop it. Useful for tag-based listings,
+ *     date-range filters, etc.
+ */
+export interface GetCollectionOptions<TData = Record<string, unknown>> {
+  includeDrafts?: boolean
+  filter?: (entry: CollectionEntry<TData>) => boolean
+}
+
 export async function getCollection<K extends keyof CollectionSchemas & string>(
   name: K,
+  options?: GetCollectionOptions<CollectionSchemas[K]>,
 ): Promise<CollectionEntry<CollectionSchemas[K]>[]>
 export async function getCollection(
   name: string,
+  options?: GetCollectionOptions,
 ): Promise<CollectionEntry<Record<string, unknown>>[]>
-export async function getCollection(name: string): Promise<CollectionEntry[]> {
+export async function getCollection(
+  name: string,
+  options?: GetCollectionOptions,
+): Promise<CollectionEntry[]> {
   const collection = _getRegistry()[name]
   if (!collection) {
     const available = Object.keys(_getRegistry()).sort().join(', ') || '(none)'
@@ -104,7 +126,23 @@ export async function getCollection(name: string): Promise<CollectionEntry[]> {
       }
     }),
   )
-  return entries
+  // PR-J audit M13 — draft filtering. The default is environment-aware:
+  // production builds skip drafts (so a `draft: true` page can be
+  // staged in source without leaking to a public deploy); dev mode
+  // shows them so authors preview their work-in-progress freely.
+  const includeDrafts =
+    options?.includeDrafts
+    ?? (typeof process !== 'undefined'
+      ? process.env['NODE_ENV'] !== 'production'
+      : true)
+  let result = entries
+  if (!includeDrafts) {
+    result = result.filter((e) => e.data['draft'] !== true)
+  }
+  if (options?.filter) {
+    result = result.filter(options.filter)
+  }
+  return result
 }
 
 /**
