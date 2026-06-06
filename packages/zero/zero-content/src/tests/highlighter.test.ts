@@ -126,12 +126,16 @@ describe('markdown pipeline with highlighter enabled', () => {
     expect(result.code).toContain('shiki')
   })
 
-  it('still emits plain <pre><code> when highlight: false', async () => {
+  it('still emits CodeBlock with plain <pre><code> payload when highlight: false', async () => {
+    // PR-H audit M12 — even with Shiki disabled, code blocks ship
+    // through <CodeBlock> so authoring features (filename, copy, line
+    // numbers) stay consistent. The payload is plain HTML rather than
+    // Shiki's themed output.
     const md = '```typescript\nconst x = 1\n```'
     const result = await compileMarkdown(md, '/abs/x.md', { highlight: false })
-    expect(result.code).not.toContain('<CodeBlock')
-    expect(result.code).toContain('<pre data-lang={"typescript"}>')
-    expect(result.code).toContain('<code>const x = 1')
+    expect(result.code).toContain('<CodeBlock')
+    expect(result.code).toContain('lang={"typescript"}')
+    expect(result.code).toContain('<pre><code>const x = 1')
   })
 
   it('escapes special characters in the Shiki HTML to survive the JS string literal', async () => {
