@@ -2165,11 +2165,20 @@ html { scroll-behavior: smooth; }
      CSS grid with three columns — outer columns size to their content,
      the center column flexes. The center child gets `justify-self: center`
      so the nav cluster sits in the visual middle of the viewport
-     regardless of the brand/controls widths. */
+     regardless of the brand/controls widths.
+
+     `width: 100%` is load-bearing: the parent `.docs-header` is
+     `display: flex` (set earlier in the cascade). Without `width: 100%`
+     the inner grid collapses to its content width (~466px) as a flex
+     item, the `1fr` column then has no space to flex into and also
+     collapses to content, and the whole header sits as a small cluster
+     in the middle of the viewport. Verified live: brand was at
+     left=426 instead of left=20. */
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 1.25rem;
+  width: 100%;
   height: 100%;
   max-width: 1440px;
   margin: 0 auto;

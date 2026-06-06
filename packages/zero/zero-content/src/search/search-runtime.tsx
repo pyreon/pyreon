@@ -320,10 +320,21 @@ export function Search(props: SearchProps): VNodeChild {
   })
 
   // Focus the input on open.
+  //
+  // `preventScroll: true` is load-bearing: the `<search>` element is
+  // typically mounted near the END of the document tree (e.g. at the
+  // bottom of the app shell) so its dialog renders in document flow
+  // at that position even though the `.pyreon-search__backdrop`
+  // parent is `position: fixed`. The browser's default focus
+  // behaviour scrolls the focused input into view — which on a tall
+  // scrollable page scrolls the document to the bottom (where the
+  // dialog's source position lives) while the visible fixed backdrop
+  // stays anchored. Result: click search → page yanks down by several
+  // thousand pixels even though search opens correctly.
   onMount(() => {
     const unsub = state.open.subscribe(() => {
       if (state.open() && inputEl) {
-        queueMicrotask(() => inputEl?.focus())
+        queueMicrotask(() => inputEl?.focus({ preventScroll: true }))
       }
     })
     return () => unsub()
