@@ -1,5 +1,5 @@
 import { onMount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
 
 interface Heading {
   level: number
@@ -13,10 +13,21 @@ interface TocProps {
 
 // Right-rail TOC with real IntersectionObserver scroll-spy.
 //
-// The component sets up an IntersectionObserver in `onMount` that
-// watches every heading element by `id` (matching the heading's slug).
-// When a heading scrolls into view, the active signal flips → the
-// link's aria-current + active class update reactively.
+// Mounts after the static SSR markup. The markdown body that contains
+// the heading elements with matching `id`s is rendered inside a
+// `<Suspense>` boundary that resolves AFTER this component's `onMount`,
+// so `document.getElementById(slug)` returns null the first time. We
+// retry on `requestAnimationFrame` until the headings appear (up to
+// ~2 seconds), then set up the IntersectionObserver + scroll listener
+// + DOM-patching effect.
+//
+// Why a direct DOM-patching effect instead of `class={() => ...}`?
+// Empirically the reactive class accessor on links nested inside a
+// mapped child accessor doesn't re-fire when `activeSlug.set()` is
+// called — the per-link class accessor stays at its initial-evaluation
+// value after hydration. Selecting the active link by `href="#<slug>"`
+// and toggling the class via `classList` sidesteps the entire reactive-
+// prop wiring problem.
 //
 // SSR-safe: when IntersectionObserver isn't defined (server / no JS),
 // the component emits the static list without scroll-spy state.
@@ -28,77 +39,104 @@ export function Toc(props: TocProps) {
     const headings = props.headings()
     if (headings.length === 0) return undefined
 
-    // Watch every heading in the document — the slug-to-id mapping is
-    // 1:1 (each heading is rendered with id={slug}).
-    const elements = headings
-      .map((h) => document.getElementById(h.slug))
-      .filter((el): el is HTMLElement => el !== null)
-    if (elements.length === 0) return undefined
+    let cancelled = false
+    let cleanupFn: (() => void) | null = null
 
-    // Track which headings are currently above the "active line" (the
-    // top fifth of the viewport, BELOW the sticky header). The active
-    // heading is the LOWEST one that has scrolled past the line — i.e.
-    // the section the user is currently reading.
-    //
-    // The observer fires when a heading crosses the band edge (entering
-    // or leaving the top 0-20% of the viewport). We rebuild the active
-    // set by inspecting `boundingClientRect.top` of EVERY watched
-    // heading (not just the ones in the callback batch) — the active
-    // pick must consider all of them, even ones that didn't fire this
-    // tick.
-    //
-    // Pre-fix the observer used `rootMargin: '-25% 0px -75% 0px'` which
-    // creates a ZERO-height observation band (100% - 25% - 75% = 0%).
-    // A heading can never be "intersecting" a 0-height band, so
-    // `entries.filter(e => e.isIntersecting)` was always empty and
-    // `activeSlug` never updated. The fix below uses a real-height
-    // band (top 20% of the viewport, with a 64px offset for the
-    // sticky header) — but more importantly, drives the active pick
-    // from each heading's CURRENT rect rather than the (often empty)
-    // intersection list.
-    const pickActive = () => {
+    const setupScrollSpy = (elements: HTMLElement[]) => {
       // Find the heading whose top is closest to the active line —
       // anywhere from -∞ up to the line counts as "passed". The one
       // with the LARGEST top (closest to but not past the line) wins.
-      // If no heading has scrolled past yet (top of page), the first
-      // heading is the active fallback.
-      const activeLine = 80 // header-height offset
-      let best: { id: string; top: number } | null = null
-      for (const el of elements) {
-        const top = el.getBoundingClientRect().top
-        if (top - activeLine < 1) {
-          if (best === null || top > best.top) {
-            best = { id: el.id, top }
+      // If no heading has scrolled past yet (top of page), fall back
+      // to the first heading.
+      const pickActive = () => {
+        const activeLine = 80 // header-height offset
+        let best: { id: string; top: number } | null = null
+        for (const el of elements) {
+          const top = el.getBoundingClientRect().top
+          if (top - activeLine < 1) {
+            if (best === null || top > best.top) {
+              best = { id: el.id, top }
+            }
           }
         }
+        if (best !== null) {
+          activeSlug.set(best.id)
+        } else if (elements.length > 0) {
+          activeSlug.set(elements[0]!.id)
+        }
       }
-      if (best !== null) {
-        activeSlug.set(best.id)
-      } else if (elements.length > 0) {
-        // Above the first heading — default to first
-        activeSlug.set(elements[0]!.id)
+
+      // Pre-fix the observer used `rootMargin: '-25% 0px -75% 0px'`
+      // which creates a ZERO-height observation band (100% - 25% - 75%
+      // = 0%). A heading can never be "intersecting" a 0-height band,
+      // so the observer never fired. The fix below uses a real-height
+      // band AND drives the active pick from each heading's current
+      // bbox rather than the intersection list — IntersectionObserver
+      // only fires on band crossings, not continuously while scrolling.
+      const observer = new IntersectionObserver(pickActive, {
+        rootMargin: '-64px 0px -80% 0px',
+        threshold: [0, 1],
+      })
+      for (const el of elements) observer.observe(el)
+      const onScroll = () => pickActive()
+      window.addEventListener('scroll', onScroll, { passive: true })
+      // Initial pick — fires the effect below with the right slug.
+      pickActive()
+
+      // Direct DOM patch instead of relying on `class={() => ...}` on
+      // each link (which empirically doesn't re-fire after hydration
+      // when nested inside a mapped child accessor).
+      const eff = effect(() => {
+        const slug = activeSlug()
+        const prev = document.querySelector('.pyreon-toc__link--active')
+        if (prev !== null && prev.getAttribute('href') !== `#${slug}`) {
+          prev.classList.remove('pyreon-toc__link--active')
+          prev.removeAttribute('aria-current')
+        }
+        if (slug !== null) {
+          const next = document.querySelector(
+            `.pyreon-toc__link[href="#${slug}"]`,
+          )
+          if (next !== null) {
+            next.classList.add('pyreon-toc__link--active')
+            next.setAttribute('aria-current', 'location')
+          }
+        }
+      })
+
+      cleanupFn = () => {
+        observer.disconnect()
+        window.removeEventListener('scroll', onScroll)
+        eff.dispose()
       }
     }
-    const observer = new IntersectionObserver(pickActive, {
-      // Top 20% band (with 64px header inset). Any heading
-      // crossing this band fires the callback; the callback then
-      // re-evaluates ALL headings to pick the right one.
-      rootMargin: '-64px 0px -80% 0px',
-      threshold: [0, 1],
-    })
-    for (const el of elements) observer.observe(el)
-    // Also fire on scroll — IntersectionObserver only fires on band
-    // CROSSINGS, so a long section where the user scrolls without
-    // crossing a heading boundary wouldn't refresh the active pick.
-    // `passive: true` keeps the scroll perf identical to no listener.
-    const onScroll = () => pickActive()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    // Initial pick (the observer may not fire immediately if no
-    // heading is in the band on first paint).
-    pickActive()
+
+    // Retry-until-DOM-ready loop. The Suspense boundary that contains
+    // the heading elements resolves asynchronously. We poll on rAF
+    // until at least one heading is in the DOM, then proceed. Bail
+    // after ~2 seconds (120 frames @ 60fps) if nothing ever shows —
+    // probably a no-headings page where the static fallback is fine.
+    let attempts = 0
+    const MAX_ATTEMPTS = 120
+    const tryFind = () => {
+      if (cancelled) return
+      const elements = headings
+        .map((h) => document.getElementById(h.slug))
+        .filter((el): el is HTMLElement => el !== null)
+      if (elements.length > 0) {
+        setupScrollSpy(elements)
+        return
+      }
+      attempts++
+      if (attempts < MAX_ATTEMPTS) {
+        requestAnimationFrame(tryFind)
+      }
+    }
+    requestAnimationFrame(tryFind)
+
     return () => {
-      observer.disconnect()
-      window.removeEventListener('scroll', onScroll)
+      cancelled = true
+      cleanupFn?.()
     }
   })
 
@@ -115,14 +153,7 @@ export function Toc(props: TocProps) {
                 <li class={`pyreon-toc__item pyreon-toc__item--l${h.level}`}>
                   <a
                     href={`#${h.slug}`}
-                    class={() =>
-                      activeSlug() === h.slug
-                        ? 'pyreon-toc__link pyreon-toc__link--active'
-                        : 'pyreon-toc__link'
-                    }
-                    {...(activeSlug() === h.slug
-                      ? { 'aria-current': 'location' as const }
-                      : {})}
+                    class="pyreon-toc__link"
                   >
                     {h.text}
                   </a>
