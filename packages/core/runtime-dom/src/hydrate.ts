@@ -434,7 +434,7 @@ function hydrateComponent(
             void resolved
           } catch (err) {
             const handled = dispatchToErrorBoundary(err)
-            if (!handled) {
+            if (!handled && process.env.NODE_ENV !== 'production') {
               console.error(
                 `[Pyreon] <${componentName}> threw during async hydration:`,
                 err,
@@ -446,7 +446,7 @@ function hydrateComponent(
       .catch((err) => {
         if (cancelled) return
         const handled = dispatchToErrorBoundary(err)
-        if (!handled) {
+        if (!handled && process.env.NODE_ENV !== 'production') {
           console.error(
             `[Pyreon] <${componentName}> async hydration rejected:`,
             err,

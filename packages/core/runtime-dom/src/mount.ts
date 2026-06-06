@@ -529,7 +529,7 @@ function mountComponent(
           }
         } catch (err) {
           const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
-          if (!handled) {
+          if (!handled && process.env.NODE_ENV !== 'production') {
             console.error(`[Pyreon] <${componentName}> threw during async render:`, err)
           }
         }
@@ -537,7 +537,7 @@ function mountComponent(
       .catch((err) => {
         if (cancelled) return
         const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
-        if (!handled) {
+        if (!handled && process.env.NODE_ENV !== 'production') {
           console.error(`[Pyreon] <${componentName}> async render rejected:`, err)
         }
       })
