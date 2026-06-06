@@ -261,8 +261,13 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     // Use a precise allowlist of names — NOT a `startsWith('pyreon-zero')`
     // prefix match, which would drop `pyreon-zero-content` (the most
     // important non-zero user plugin in practice).
+    // The pyreon JSX plugin is registered with name "pyreon" (see
+    // packages/tools/vite-plugin/src/index.ts:625), NOT "pyreon-vite-plugin"
+    // (which is the package name, not the plugin name). Double-registering
+    // it causes the inner build to crash with `Identifier '_rp' has already
+    // been declared` — both pyreon instances try to emit the helper.
     const RE_ADDED_PLUGIN_NAMES = new Set([
-      'pyreon-vite-plugin',
+      'pyreon',
       'pyreon-zero',
       'pyreon-zero-ssg',
       'pyreon-zero-ssr',
