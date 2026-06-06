@@ -138,8 +138,13 @@
   --ember-bg:     rgba(232, 74, 15, .05);
   --ember-ring:   rgba(232, 74, 15, .35);
 
-  --link:         var(--cyan-l);
-  --link-bg:      rgba(8, 145, 178, .06);
+  /* Brand-aligned link color (light theme): use the LIGHT ember-core
+     for AA contrast on cream paper. Was cyan-l, which broke brand
+     cohesion (matching the dark-theme fix above). Variable name kept
+     so downstream `var(--link)` selectors keep working in both
+     themes. */
+  --link:         var(--ember-core-l);
+  --link-bg:      rgba(232, 74, 15, .06);
 
   /* Syntax theme — light · AA-verified on bg */
   --syn-bg:        var(--paper-3);
