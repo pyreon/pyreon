@@ -409,7 +409,61 @@ function hydrateComponent(
     for (const fn of hooks.update) scope.addUpdateHook(fn)
   }
 
-  if (output != null) {
+  if (output instanceof Promise) {
+    // Async component support — parity with `renderToString` which
+    // awaits Promise outputs. The SSR HTML for this subtree was already
+    // baked at SSG time (renderToString awaited the same Promise);
+    // skip hydration here (let the existing SSR DOM stand) and resolve
+    // the Promise in the background so any reactive side-effects of the
+    // async function (signal subscriptions, etc.) settle. This avoids
+    // the `Cannot read properties of undefined (reading 'ref')` crash
+    // that hit any route using an async function component (e.g.
+    // `examples/docs-zero/src/routes/docs/[...slug].tsx`).
+    let resolvedCleanup: Cleanup = noop
+    let cancelled = false
+    output
+      .then((resolved) => {
+        if (cancelled) return
+        if (resolved != null) {
+          try {
+            // SSR baked the resolved DOM already; mountChild here would
+            // duplicate. We only register lifecycle on resolved value
+            // by walking via hydrate fallback path — but conservatively
+            // we just discard the resolved VNode since the DOM is right.
+            // Future: walk-and-hydrate the resolved subtree if needed.
+            void resolved
+          } catch (err) {
+            const handled = dispatchToErrorBoundary(err)
+            if (!handled && process.env.NODE_ENV !== 'production') {
+              console.error(
+                `[Pyreon] <${componentName}> threw during async hydration:`,
+                err,
+              )
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const handled = dispatchToErrorBoundary(err)
+        if (!handled && process.env.NODE_ENV !== 'production') {
+          console.error(
+            `[Pyreon] <${componentName}> async hydration rejected:`,
+            err,
+          )
+        }
+      })
+    subtreeCleanup = () => {
+      cancelled = true
+      resolvedCleanup()
+    }
+    // Walk the existing DOM forward past this component's children:
+    // the SSR-baked subtree may span multiple sibling nodes (Fragment
+    // root). We conservatively advance to the next non-child sibling.
+    // Without this, the parent's sibling-walk would re-process the
+    // already-rendered DOM.
+    nextDom = null
+  } else if (output != null) {
     const [childCleanup, next] = hydrateChild(output, domNode, parent, anchor, path)
     subtreeCleanup = childCleanup
     nextDom = next

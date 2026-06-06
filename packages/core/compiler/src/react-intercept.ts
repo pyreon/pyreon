@@ -1126,6 +1126,16 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
+    pattern: /Cannot read properties of undefined \(reading 'ref'\)/,
+    diagnose: () => ({
+      cause:
+        'Pyreon\'s client mount/hydrate hit a Promise where it expected a VNode — typically an `async function Component()` returned to a route or other JSX call site on a runtime-dom version older than this fix. SSR awaits the Promise and inlines content; the older client read `.props.ref` straight off the Promise and crashed.',
+      fix: 'Upgrade `@pyreon/runtime-dom` to the version that ships async-function-component support on the client (parity with `renderToString`). On older versions, refactor to one of the documented sync patterns:\n  • `lazy(() => import(...))` + `<Suspense>`\n  • move the await into `onMount(async () => { ... signal.set(result) })` and render from the signal',
+      fixCode:
+        '// Old pattern (crashes on the client):\nasync function DocBody({ slug }) {\n  const entry = await getEntry("docs", slug)\n  return <article>...</article>\n}\n\n// Sync + signal alternative (works on every version):\nfunction DocBody({ slug }) {\n  const data = signal(null)\n  onMount(async () => {\n    const entry = await getEntry("docs", slug)\n    data.set(entry)\n  })\n  return () => {\n    const d = data()\n    if (!d) return <article class="loading" />\n    return <article>...</article>\n  }\n}',
+    }),
+  },
+  {
     pattern: /(\w+) is not a function/,
     diagnose: (m) => ({
       cause: `'${m[1]}' is not callable. If this is a signal, you need to call it: ${m[1]}()`,
