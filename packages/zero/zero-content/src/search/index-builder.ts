@@ -51,6 +51,15 @@ export interface BuildIndexArgs {
   /** Chunk threshold in bytes. Default 300 KB; fail-loud at 1 MB. */
   chunkWarnBytes?: number
   chunkErrorBytes?: number
+  /**
+   * Vite `base` value (e.g. `/pyreon/preview/`). When the site is
+   * deployed under a subpath, the catalog URLs emitted INTO
+   * `search-index.json` must be prefixed with this so the browser's
+   * `fetch('/search-index-docs.json')` doesn't escape the subpath
+   * and 404. Default `/` (no prefix). The base is collapsed to ensure
+   * exactly one leading slash and one trailing slash.
+   */
+  base?: string
 }
 
 export interface BuildIndexResult {
@@ -145,6 +154,19 @@ export async function buildSearchIndex(
   const chunkWarn = args.chunkWarnBytes ?? 300 * 1024
   const chunkError = args.chunkErrorBytes ?? 1024 * 1024
 
+  // Normalize the configured base into the prefix we'll emit into
+  // catalog URLs. `'/' → ''` (no prefix needed for root deploys),
+  // `'/pyreon/preview/' → '/pyreon/preview'` (kept with exactly one
+  // leading slash and NO trailing slash so the `/${filename}` join
+  // produces a single slash between prefix and filename).
+  let basePrefix = ''
+  if (args.base && args.base !== '/' && args.base.length > 0) {
+    let b = args.base
+    if (!b.startsWith('/')) b = '/' + b
+    if (b.endsWith('/')) b = b.slice(0, -1)
+    basePrefix = b
+  }
+
   const files: Record<string, string> = {}
   const bytes: Record<string, number> = {}
   const warnings: string[] = []
@@ -174,7 +196,10 @@ export async function buildSearchIndex(
     await fs.writeFile(filepath, json, 'utf8')
     files[name] = filepath
     bytes[name] = byteSize
-    catalog.collections.push({ name, url: `/${filename}` })
+    // Prefix with the configured base (empty for root deploys) so
+    // the runtime's `fetch()` lands on the right asset under any
+    // subpath deployment.
+    catalog.collections.push({ name, url: `${basePrefix}/${filename}` })
   }
 
   if (catalog.collections.length > 0) {
