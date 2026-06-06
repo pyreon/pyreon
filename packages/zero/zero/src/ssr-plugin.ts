@@ -114,6 +114,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // See `buildInnerBuildOptions` / `ssg-plugin.ts`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
+  let resolvedBase: string = '/'
   // USER plugins captured for forwarding into the inner SSR sub-build.
   // See `ssg-plugin.ts` userPlugins doc + `buildSsrBundle`'s userPlugins
   // option for the filtering rules. Same propagation pattern keeps SSR
@@ -135,6 +136,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       distDir = resolve(root, resolved.build.outDir)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
+      resolvedBase = resolved.base
       userPlugins = resolved.plugins as readonly Plugin[]
     },
 
@@ -194,6 +196,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsInlineLimit,
           assetsDir,
           userPlugins,
+          base: resolvedBase,
         })
       } catch (buildError) {
         // Surface with structured context — mode + entry + output +

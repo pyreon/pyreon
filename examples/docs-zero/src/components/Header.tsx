@@ -41,6 +41,25 @@ export function Header(props: HeaderProps) {
   // passes an accessor and a callback.
   const drawerOpen = props.drawerOpen ?? (() => false)
 
+  // Base-aware asset paths. `__ZERO_BASE__` is the build-time global
+  // zero's vite-plugin defines with the resolved `base` value (e.g.
+  // `/pyreon/preview/` for the preview deploy). Relative paths like
+  // `./brand/...` would resolve against the CURRENT page URL
+  // (`/pyreon/preview/docs/X/`), which produces `/pyreon/preview/docs/
+  // brand/...` and 404s. The base-prefixed URL stays correct on every
+  // page regardless of depth.
+  //
+  // We deliberately don't use `import.meta.env.BASE_URL` because the
+  // SSG inner SSR sub-build re-runs Vite with `configFile: false` and
+  // doesn't always pick up the outer `base` for that env var.
+  // `__ZERO_BASE__` is set by zero's plugin `config()` hook AND
+  // `configResolved` sync (PR #1395), so it always reflects the final
+  // resolved base in both the outer build and the inner SSR build.
+  const base =
+    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/'
+      ? __ZERO_BASE__
+      : '/'
+
   return (
     <header class="docs-header">
       <div class="docs-header__inner">
@@ -48,7 +67,7 @@ export function Header(props: HeaderProps) {
         <RouterLink to="/" class="docs-brand" aria-label="Pyreon home">
           <img
             class="docs-brand__mark docs-brand__mark--dark"
-            src="./brand/logo-on-mono-dark.svg"
+            src={`${base}brand/logo-on-mono-dark.svg`}
             alt=""
             width="32"
             height="32"
@@ -56,7 +75,7 @@ export function Header(props: HeaderProps) {
           />
           <img
             class="docs-brand__mark docs-brand__mark--light"
-            src="./brand/logo-on-mono-light.svg"
+            src={`${base}brand/logo-on-mono-light.svg`}
             alt=""
             width="32"
             height="32"
