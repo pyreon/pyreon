@@ -39,11 +39,18 @@ describe('content() plugin — virtual:zero-content/components', () => {
     expect(resolveId.call({} as never, 'some-other-module')).toBeNull()
   })
 
-  it('serves an empty virtual module when src/mdx/ does not exist', async () => {
+  it('serves a built-ins-only virtual module when src/mdx/ does not exist', async () => {
+    // Built-ins (Callout, CodeGroup, CodeBlock) are ALWAYS re-exported
+    // — the markdown compiler emits `<CodeBlock>` for fenced code with
+    // a highlighter and references it via the virtual module's import.
+    // Without the always-on re-export, every page with a code block
+    // crashes with `MISSING_EXPORT "CodeBlock"`.
     const plugin = content({ mdxDir: tmpDir })
     const load = plugin.load as (this: unknown, id: string) => Promise<string | null>
     const result = await load.call({ warn: vi.fn() } as never, RESOLVED_VIRTUAL)
-    expect(result).toContain('No src/mdx/ components found')
+    expect(result).toContain("from '@pyreon/zero-content'")
+    expect(result).toContain('export const Callout = __components.Callout')
+    expect(result).toContain('export const CodeBlock = __components.CodeBlock')
   })
 
   it('returns null when loading any other module id', async () => {
