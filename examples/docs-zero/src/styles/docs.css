@@ -275,59 +275,32 @@ th {
 .pyreon-toc__link,
 .docs-toc__item a {
   display: block;
-  padding: 0.3rem 0.5rem 0.3rem 0.6rem;
-  margin-left: -0.6rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.85rem;
   color: var(--text-muted);
   font-size: 0.825rem;
   text-decoration: none;
-  /* Thicker rail (3px) so the active state has a more prominent track
-     to highlight against. Idle links still read calm because the rail
-     is transparent. */
-  border-left: 3px solid transparent;
-  border-radius: 0 4px 4px 0;
+  /* Single 2px ember rail on the active state — no extra background
+     tint, no decorative dot. The rail alone is the canonical "current
+     section" indicator (matches VitePress / Astro / Nextra
+     convention). Previously a 3px rail + dot + bg-tint stacked three
+     competing accents and read as visually cluttered. */
+  border-left: 2px solid transparent;
   line-height: 1.4;
-  /* Smooth color + indent + background transition as you scroll between
-     sections. `prefers-reduced-motion` zeroes this out below. */
   transition:
     color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    border-left-color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    background-color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    font-weight 0.22s ease;
+    border-left-color 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .pyreon-toc__link:hover,
 .docs-toc__item a:hover {
   color: var(--text);
   text-decoration: none;
-  background: rgba(255, 200, 61, 0.06);
-  transform: translateX(2px);
 }
 .pyreon-toc__link--active {
-  /* Active TOC entry: strong rail (ember-core, 3px), tinted background
-     (ember-bg), color shift to full text + bold weight. The
-     combination reads as unmistakably active even at a glance from
-     the corner of the eye — previously the 2px rail + color shift
-     alone was too subtle. */
+  /* Active TOC entry: ember rail + ember text + bold weight. No
+     background tint, no dot. */
   color: var(--ember-core);
   border-left-color: var(--ember-core);
-  background: var(--ember-bg);
   font-weight: 600;
-  transform: translateX(3px);
-}
-.pyreon-toc__link--active::before {
-  /* Ember dot at the start of the active row — anchor-style indicator
-     reinforcing the rail. Sized as a small disc rather than a thin
-     line so it reads from further away. */
-  content: '';
-  position: absolute;
-  left: -7px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 8px;
-  height: 8px;
-  background: var(--ember-core);
-  border-radius: 50%;
-  box-shadow: 0 0 8px var(--ember-ring);
 }
 .pyreon-toc__item {
   position: relative;
