@@ -1,4 +1,5 @@
 import { signal } from '@pyreon/reactivity'
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <Playground> — code editor + preview iframe (PR-K audit H2) ──────────
@@ -71,7 +72,7 @@ export function Playground(props: PlaygroundProps): VNodeChild {
 
   return (
     <div
-      class={`pyreon-playground${props.class ? ' ' + props.class : ''}`}
+      class={cx(['pyreon-playground', props.class])}
     >
       {props.title && (
         <header class="pyreon-playground__title">{props.title}</header>

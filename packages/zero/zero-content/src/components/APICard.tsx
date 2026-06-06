@@ -1,3 +1,4 @@
+import { cx } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <APICard> — API signature card (PR-K audit H2) ───────────────────────
@@ -58,7 +59,7 @@ export function APICard(props: APICardProps): VNodeChild {
   return (
     <section
       id={id}
-      class={`pyreon-apicard${props.class ? ' ' + props.class : ''}`}
+      class={cx(['pyreon-apicard', props.class])}
     >
       <header class="pyreon-apicard__header">
         <h3 class="pyreon-apicard__name">

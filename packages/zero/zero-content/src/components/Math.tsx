@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { onMount } from '@pyreon/core'
+import { cx, onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <Math> — KaTeX-rendered formula (PR-M audit M6) ──────────────────────
@@ -72,10 +72,8 @@ export function Math(props: MathProps): VNodeChild {
 
   return (
     <span
-      class={() => {
-        const base = props.inline ? 'pyreon-math pyreon-math--inline' : 'pyreon-math'
-        return props.class ? `${base} ${props.class}` : base
-      }}
+      class={() =>
+        cx(['pyreon-math', props.inline && 'pyreon-math--inline', props.class])}
     >
       {() => {
         const rendered = html()
