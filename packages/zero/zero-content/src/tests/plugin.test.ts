@@ -80,7 +80,11 @@ describe('content() Vite plugin', () => {
       '```ts\nx\n```',
       '/abs/x.md',
     )
-    expect(result!.code).not.toContain('<CodeBlock')
+    // PR-H audit M12 — plain code blocks now ship through <CodeBlock>
+    // too. Authoring features (filename, copy button, line numbers)
+    // stay consistent regardless of whether Shiki is enabled.
+    expect(result!.code).toContain('<CodeBlock')
+    expect(result!.code).toContain('<pre><code>x')
   })
 
   it('forwards only `highlighter` when `highlight` is omitted', async () => {

@@ -117,25 +117,33 @@ describe('emitJsx — block elements', () => {
 
 describe('emitJsx — code blocks', () => {
   it('emits <pre><code> for fenced code', async () => {
+    // PR-H audit M12 — code blocks now ship through <CodeBlock> on both
+    // the highlighted and the plain paths so authoring features
+    // (filename header, line numbers, highlight, copy) stay consistent.
     const out = await compile('```\nconst x = 1\n```')
-    expect(out).toContain('<pre')
-    expect(out).toContain('<code>const x = 1')
+    expect(out).toContain('<CodeBlock')
+    expect(out).toContain('<pre><code>const x = 1')
   })
 
-  it('preserves language tag on data-lang', async () => {
-    expect(await compile('```ts\nconst x = 1\n```')).toContain('data-lang={"ts"}')
+  it('preserves language tag on the lang prop', async () => {
+    // PR-H audit M12 — `lang` lands on the <CodeBlock> component,
+    // which renders a `data-lang` attribute on its outer wrapper.
+    expect(await compile('```ts\nconst x = 1\n```')).toContain('lang={"ts"}')
   })
 
   it('defaults language to "text" when none given', async () => {
-    expect(await compile('```\nx\n```')).toContain('data-lang={"text"}')
+    expect(await compile('```\nx\n```')).toContain('lang={"text"}')
   })
 
-  it('escapes JSX-sensitive characters inside code blocks', async () => {
-    // `<` and `{` in code must be escaped to JSX entities so Pyreon's
-    // compiler treats them as literal text, not JSX/expressions.
+  it('escapes HTML-sensitive characters inside code blocks', async () => {
+    // PR-H audit M12 — plain (no-highlighter) path now emits the code
+    // as a Shiki-style pre-rendered HTML string inside the
+    // `dangerouslySetInnerHTML` slot. `<` / `>` / `&` are HTML-
+    // escaped so the rendered <pre><code> survives without re-parsing
+    // as actual tags. Inner `{ }` braces are fine because the entire
+    // HTML lives behind dangerouslySetInnerHTML, not in JSX text.
     const out = await compile('```\n<div>{x}</div>\n```')
     expect(out).toContain('&lt;div&gt;')
-    expect(out).toContain('&#123;x&#125;')
   })
 })
 

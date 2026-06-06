@@ -1,4 +1,5 @@
 import type { Heading } from '../types'
+import { parseCodeFenceMeta } from './code-meta'
 import type {
   Blockquote,
   Code,
@@ -91,6 +92,17 @@ export interface EmitOptions {
    * are forwarded the same way; the virtual module re-exports them.
    */
   mdxComponentRef?: (name: string) => void
+  /**
+   * PR-H audit M16 — callback fired when the emitter encounters an
+   * unhandled mdast node type. Pre-fix the emitter silently emitted a
+   * JSX comment (`unhandled mdast node: X`) that vanished from
+   * production builds (JSX comments tree-shake), so authors using a
+   * markdown feature the pipeline did not yet handle (math nodes,
+   * table cells with subtypes, future remark plugin outputs) saw
+   * their content drop with no signal. The callback lets the Vite
+   * plugin surface a `this.warn(...)` with file context.
+   */
+  onUnhandledNode?: (nodeType: string) => void
 }
 
 /**
@@ -167,10 +179,42 @@ async function emitNode(
       // in place. See `compileMarkdown` for the hoist wiring.
       if (opts.mdxEsmHoist) opts.mdxEsmHoist((node as { value: string }).value)
       return ''
+    // ─── PR-H audit M5 — footnotes via remark-gfm ────────────────────
+    case 'footnoteReference': {
+      // Reference site → `<sup><a id="..." href="#fn-..."> N </a></sup>`
+      const { identifier, label } = node as {
+        identifier: string
+        label?: string
+      }
+      const display = label ?? identifier
+      const id = `fnref-${slugify(identifier)}`
+      const href = `#fn-${slugify(identifier)}`
+      return `<sup class="footnote-ref"><a id={${JSON.stringify(id)}} href={${JSON.stringify(href)}}>${escapeJsxText(display)}</a></sup>`
+    }
+    case 'footnoteDefinition': {
+      // Definition body → `<li id="fn-...">...<a href="#fnref-..."> ↩ </a></li>`
+      // remark-gfm emits these as siblings in the document body; the
+      // emit walker outputs them in source order. We wrap each
+      // definition individually in <li>; a downstream CSS pass can
+      // group them into an <ol class="footnotes"> if desired.
+      const { identifier, children } = node as {
+        identifier: string
+        children: Nodes[]
+      }
+      const inner = await emitChildren(children, headings, opts)
+      const id = `fn-${slugify(identifier)}`
+      const back = `#fnref-${slugify(identifier)}`
+      return `<li id={${JSON.stringify(id)}} class="footnote-definition">${inner}<a href={${JSON.stringify(back)}} class="footnote-back" aria-label="Back to reference">↩</a></li>`
+    }
     default:
-      // Unknown node type — emit a comment so the build doesn't drop
-      // content silently.
-      return `{/* unhandled mdast node: ${node.type} */}`
+      // PR-H audit M16 — unknown node type. Fire the callback so the
+      // Vite plugin surfaces a `this.warn(...)` with file context, AND
+      // emit a visible HTML comment in the rendered output so the
+      // omission is grep-able post-build (JSX braces strip in prod;
+      // HTML comments survive). Authors get a signal at BOTH build
+      // time (warning) and run time (DOM comment).
+      opts.onUnhandledNode?.(node.type)
+      return `{${JSON.stringify(`/* zero-content: unhandled mdast node "${node.type}" */`)}}`
   }
 }
 
@@ -216,8 +260,47 @@ async function emitCode(node: Code, opts: EmitOptions): Promise<string> {
   // HTML, not user input, and re-walking it through emit-jsx would
   // throw away all the precomputed coloring).
   const lang = node.lang ?? 'text'
+
+  // PR-H audit M1+M2+M3+M12 — parse the code-fence meta string for
+  // line highlights (`{1,3-5}`), line numbers (`showLineNumbers`),
+  // copy-button opt-out (`noCopy`), and filename header
+  // (`filename="config.ts"`). Unknown tokens are surfaced as compile
+  // warnings via the `onUnhandledNode` callback (reused — same
+  // surface as the unhandled-mdast warning since both are
+  // "author wrote something the pipeline could not interpret").
+  const meta = parseCodeFenceMeta(node.meta)
+  if (meta.unknown.length > 0 && opts.onUnhandledNode) {
+    for (const u of meta.unknown) {
+      opts.onUnhandledNode(`code-fence meta token "${u}"`)
+    }
+  }
+
+  // PR-H audit M3 — total source line count for the copy-button hook.
+  // Kept as a raw string literal on the CodeBlock; the component
+  // runs `navigator.clipboard.writeText` against it.
+  const rawSource = node.value
+  // PR-H audit M2 — line count drives the line-number gutter.
+  const lineCount = rawSource.length === 0 ? 0 : rawSource.split('\n').length
+
+  // Common props that BOTH the highlighted + plain branches emit so
+  // `<CodeBlock>` renders a consistent surface (data-lang, copy, line
+  // numbers, highlights, filename).
+  const sharedProps =
+    ` lang={${JSON.stringify(lang)}}`
+    + (meta.filename
+      ? ` filename={${JSON.stringify(meta.filename)}}`
+      : '')
+    + (meta.showLineNumbers ? ` showLineNumbers={true}` : '')
+    + (meta.highlightLines.length > 0
+      ? ` highlightLines={${JSON.stringify(meta.highlightLines)}}`
+      : '')
+    + (meta.copyable
+      ? ` source={${jsStringLiteral(rawSource)}}`
+      : ` copyable={false}`)
+    + ` lineCount={${lineCount}}`
+
   if (opts.highlight) {
-    const html = await opts.highlight(node.value, lang)
+    const html = await opts.highlight(rawSource, lang)
     // Embed as inner HTML on a Pyreon component wrapper so the styler /
     // copy-button can attach later. The CodeBlock component is shipped
     // as a built-in (PR 2 components/CodeBlock.tsx).
@@ -233,11 +316,27 @@ async function emitCode(node: Code, opts: EmitOptions): Promise<string> {
     // callback).
     opts.mdxComponentRef?.('CodeBlock')
     const escaped = jsStringLiteral(html)
-    return `<CodeBlock lang={${JSON.stringify(lang)}} dangerouslySetInnerHTML={{ __html: ${escaped} }} />`
+    return `<CodeBlock${sharedProps} dangerouslySetInnerHTML={{ __html: ${escaped} }} />`
   }
-  // No highlighter — emit a plain `<pre><code>` (matches PR 1 behavior).
-  const value = escapeJsxText(node.value)
-  return `<pre data-lang={${JSON.stringify(lang)}}><code>${value}</code></pre>`
+  // No highlighter — emit through CodeBlock anyway so authoring features
+  // (filename header, line numbers, highlights, copy button) are
+  // CONSISTENT regardless of whether Shiki is enabled. The pre-formatted
+  // code lands as plain `<pre><code>` HTML so the CodeBlock's
+  // dangerouslySetInnerHTML hook stays the single render surface.
+  // PR-H audit M12 — both branches now ship through the same component,
+  // so `data-lang` is emitted in one place and stays consistent.
+  opts.mdxComponentRef?.('CodeBlock')
+  const plainHtml = `<pre><code>${escapeHtml(rawSource)}</code></pre>`
+  const escaped = jsStringLiteral(plainHtml)
+  return `<CodeBlock${sharedProps} dangerouslySetInnerHTML={{ __html: ${escaped} }} />`
+}
+
+/** Minimal HTML escape for the no-highlighter fallback path. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 async function emitLink(

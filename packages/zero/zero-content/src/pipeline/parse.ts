@@ -235,6 +235,21 @@ export async function compileMarkdown(
   const emitOpts: EmitOptions = {
     mdxEsmHoist: (esm) => hoistedEsm.push(esm),
     mdxComponentRef: (name) => componentRefs.add(name),
+    // PR-H audit M16 — surface unhandled mdast nodes as visible
+    // compile warnings. Authors using a markdown feature the
+    // pipeline doesn't yet emit get a build-time signal instead of
+    // silent content drop. Dedupe per (nodeType, file) so a thousand
+    // unhandled cells in one table don't flood the log.
+    onUnhandledNode: (() => {
+      const seen = new Set<string>()
+      return (nodeType: string) => {
+        if (seen.has(nodeType)) return
+        seen.add(nodeType)
+        compileWarnings.push(
+          `[zero-content] unhandled mdast node "${nodeType}" — content was dropped from the rendered output. Open an issue if this node type should be handled.`,
+        )
+      }
+    })(),
   }
   if (options.highlight !== false) {
     emitOpts.highlight = (code, lang) => highlightCode(code, lang, options.highlighter)
