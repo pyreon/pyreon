@@ -29,3 +29,27 @@ declare module 'virtual:zero/api-routes' {
 
 declare module 'virtual:zero-content/collections'
 declare module 'virtual:zero-content/components'
+
+// Markdown imports — `@pyreon/zero-content`'s Vite plugin transforms
+// every `.md` / `.mdx` under a collection path into a TSX module
+// exporting a default Pyreon component + `frontmatter` + `headings` +
+// `slug`. Without this ambient declaration `tsc --noEmit` rejects
+// `import IndexContent from './foo.md'` even though Vite resolves it
+// at build time.
+declare module '*.md' {
+  import type { ComponentFn } from '@pyreon/core'
+  const Content: ComponentFn<Record<string, never>>
+  export default Content
+  export const frontmatter: Record<string, unknown>
+  export const headings: Array<{ level: number; text: string; slug: string }>
+  export const slug: string
+}
+
+declare module '*.mdx' {
+  import type { ComponentFn } from '@pyreon/core'
+  const Content: ComponentFn<Record<string, never>>
+  export default Content
+  export const frontmatter: Record<string, unknown>
+  export const headings: Array<{ level: number; text: string; slug: string }>
+  export const slug: string
+}
