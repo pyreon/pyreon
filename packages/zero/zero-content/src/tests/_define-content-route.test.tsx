@@ -139,3 +139,86 @@ describe('PR-A H1 — defineContentRoute', () => {
     expect(html).toContain('rendered content')
   })
 })
+
+describe('defineContentRoute — useHead integration', () => {
+  beforeEach(() => {
+    _resetRegistryForTesting()
+  })
+
+  // The `defaultHeadFromEntry` helper is pure; this exercise locks
+  // the auto-derivation shape from frontmatter (title +
+  // description → <title> + meta description + og:title + og:description).
+  it('defaultHeadFromEntry maps title + description from frontmatter', async () => {
+    const { defaultHeadFromEntry } = await import('../route-helpers')
+    const entry = {
+      slug: 's',
+      data: { title: 'My Page', description: 'A demo' },
+      render: async () => FakeContent,
+      headings: [],
+    }
+    const head = defaultHeadFromEntry(entry)
+    expect(head.title).toBe('My Page')
+    expect(head.meta).toContainEqual({ name: 'description', content: 'A demo' })
+    expect(head.meta).toContainEqual({
+      property: 'og:description',
+      content: 'A demo',
+    })
+    expect(head.meta).toContainEqual({
+      property: 'og:title',
+      content: 'My Page',
+    })
+  })
+
+  it('defaultHeadFromEntry omits title when frontmatter has no title', async () => {
+    const { defaultHeadFromEntry } = await import('../route-helpers')
+    const entry = {
+      slug: 's',
+      data: { description: 'Body only' },
+      render: async () => FakeContent,
+      headings: [],
+    }
+    const head = defaultHeadFromEntry(entry)
+    expect(head.title).toBeUndefined()
+    expect(head.meta).toContainEqual({
+      name: 'description',
+      content: 'Body only',
+    })
+  })
+
+  it('defaultHeadFromEntry returns an empty input when frontmatter has neither', async () => {
+    const { defaultHeadFromEntry } = await import('../route-helpers')
+    const entry = {
+      slug: 's',
+      data: {},
+      render: async () => FakeContent,
+      headings: [],
+    }
+    const head = defaultHeadFromEntry(entry)
+    expect(head.title).toBeUndefined()
+    expect(head.meta).toBeUndefined()
+  })
+
+  it('head: false opts out of useHead emission entirely', async () => {
+    // The contract is purely opt-out — no observable runtime effect
+    // to assert beyond "no throw and the route still renders". The
+    // useHead call site itself is structurally absent inside the
+    // async body. This exercise locks the option exists + behaves
+    // when set.
+    setupRegistry('guide')
+    mockParams = { slug: 'guide' }
+    const Route = defineContentRoute('docs', { head: false })
+    const html = await renderToString(h(Route, null))
+    expect(html).toContain('rendered content')
+  })
+
+  it('custom head function receives the resolved entry', async () => {
+    setupRegistry('guide')
+    mockParams = { slug: 'guide' }
+    const spy = vi.fn(() => ({ title: 'Custom Title' }))
+    const Route = defineContentRoute('docs', { head: spy })
+    const html = await renderToString(h(Route, null))
+    expect(html).toContain('rendered content')
+    expect(spy).toHaveBeenCalled()
+    expect(spy.mock.calls[0]![0].slug).toBe('guide')
+  })
+})
