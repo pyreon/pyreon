@@ -2,7 +2,7 @@ import {
   generateRssFeed as generateRssFeedZero,
   toRfc822 as toRfc822Zero,
   type RssItem as RssItemZero,
-} from '@pyreon/zero/server'
+} from '@pyreon/zero'
 
 // ─── RSS 2.0 feed — thin adapter over `@pyreon/zero/seo` ──────────────────
 //
