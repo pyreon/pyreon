@@ -60,16 +60,19 @@ body`
     expect(result.frontmatter).toEqual({})
   })
 
-  it('captures headings level 2-3 only', async () => {
+  it('captures headings level 2-6 (drops only h1)', async () => {
+    // PR-J audit H3 — pre-fix the emitter hard-capped at h3, silently
+    // dropping h4/h5/h6 from the captured `headings` export.
     const md = `# h1
 ## h2
 ### h3
 #### h4
+##### h5
+###### h6
 `
     const result = await compileMarkdown(md, '/abs/x.md', { highlight: false })
-    expect(result.headings).toHaveLength(2)
-    expect(result.headings[0]!.level).toBe(2)
-    expect(result.headings[1]!.level).toBe(3)
+    expect(result.headings).toHaveLength(5)
+    expect(result.headings.map((h) => h.level)).toEqual([2, 3, 4, 5, 6])
   })
 
   it('does not crash on empty input', async () => {

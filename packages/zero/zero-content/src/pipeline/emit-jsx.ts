@@ -103,6 +103,28 @@ export interface EmitOptions {
    * plugin surface a `this.warn(...)` with file context.
    */
   onUnhandledNode?: (nodeType: string) => void
+  /**
+   * PR-J audit H3 — minimum heading level captured into the
+   * `headings` export. Default `2` (skip the page's main `<h1>`).
+   */
+  headingsMinLevel?: number
+  /**
+   * PR-J audit H3 — maximum heading level captured. Default `6`
+   * (capture everything down to `<h6>`). Pre-fix the emitter hard-
+   * capped at level 3, dropping `<h4>` / `<h5>` / `<h6>` from the
+   * TOC export entirely — a real authoring footgun for sections
+   * that nested deeper than h3.
+   */
+  headingsMaxLevel?: number
+  /**
+   * PR-J audit L7 — used-slug set, threaded through the recursive
+   * emit walk. Initialized fresh per `emitJsx` call so re-entrant
+   * walks don't share state. Each heading consults + mutates it to
+   * derive a unique slug; the unique slug also lands as the
+   * `<h*>`'s id attribute so deep-links resolve to the right anchor
+   * when several headings share text.
+   */
+  _usedSlugs?: Set<string>
 }
 
 /**
@@ -112,8 +134,16 @@ export interface EmitOptions {
  */
 export async function emitJsx(root: Root, opts: EmitOptions = {}): Promise<EmitResult> {
   const headings: Heading[] = []
+  // PR-J audit L7 — initialize the dedup set once per emit call. The
+  // shared set is threaded through the walk via opts so the same
+  // `_usedSlugs` reference is consulted for every heading inside one
+  // markdown source.
+  const walkOpts: EmitOptions = {
+    ...opts,
+    _usedSlugs: opts._usedSlugs ?? new Set<string>(),
+  }
   const parts = await Promise.all(
-    root.children.map((n) => emitNode(n as Nodes, headings, opts)),
+    root.children.map((n) => emitNode(n as Nodes, headings, walkOpts)),
   )
   return { body: parts.join(''), headings }
 }
@@ -234,12 +264,37 @@ async function emitHeading(
 ): Promise<string> {
   const tag = `h${node.depth}`
   const text = mdastChildrenToText(node.children as Nodes[])
-  const slug = slugify(text)
-  if (node.depth >= 2 && node.depth <= 3) {
+  const baseSlug = slugify(text)
+  // PR-J audit L7 — dedupe slugs by suffixing `-2`, `-3`, ... when a
+  // page contains two headings sharing the same slugified text. Both
+  // the heading's `id` attribute AND the captured `slug` field land
+  // on the deduped value so deep links resolve to the right anchor.
+  const usedSlugs = opts._usedSlugs ?? new Set<string>()
+  const slug = dedupeSlug(baseSlug, usedSlugs)
+  usedSlugs.add(slug)
+  // PR-J audit H3 — capture levels 2..6 by default (was h2/h3 only).
+  // Authors who needed h4+ in their TOC had no recourse; the
+  // hard-coded cap dropped them silently.
+  const minLevel = opts.headingsMinLevel ?? 2
+  const maxLevel = opts.headingsMaxLevel ?? 6
+  if (node.depth >= minLevel && node.depth <= maxLevel) {
     headings.push({ level: node.depth, text, slug })
   }
   const inner = await emitChildren(node.children as Nodes[], headings, opts)
   return `<${tag} id={${JSON.stringify(slug)}}>${inner}</${tag}>`
+}
+
+/**
+ * PR-J audit L7 — suffix a slug with `-N` (`-2`, `-3`, ...) until it
+ * doesn't collide with an entry in `used`. Pure — exported for testing.
+ *
+ * @internal exported for testing
+ */
+export function dedupeSlug(base: string, used: Set<string>): string {
+  if (base === '' || !used.has(base)) return base
+  let n = 2
+  while (used.has(`${base}-${n}`)) n++
+  return `${base}-${n}`
 }
 
 async function emitParagraph(
