@@ -248,7 +248,25 @@ export async function compileMarkdown(
   let tree: Root
   try {
     const processor = getProcessor(mdxEnabled)
-    raw = processor.parse(body) as Root
+    // VitePress / Starlight / Docusaurus directive syntax tolerates
+    // `::: name` (one or more spaces between the fence and the
+    // directive name); remark-directive only accepts `:::name`. Most
+    // existing Pyreon docs were authored in the VitePress form, so
+    // normalize before parsing — strip the space(s) so remark sees
+    // the canonical form and the callout / codegroup / details
+    // plugins can fire. Without this, `::: code-group` rendered as
+    // literal paragraph text in every page that used it.
+    //
+    // The regex is anchored at line start (`m` flag), allows leading
+    // whitespace, requires `:::` followed by at least one space and
+    // a valid identifier (lowercase letter then alphanum/dash). The
+    // identifier rule is conservative so we don't accidentally
+    // rewrite a code line that happens to start with `::: ` in prose.
+    const normalized = body.replace(
+      /^(\s*):::\s+([a-z][a-z0-9-]*)/gm,
+      '$1:::$2',
+    )
+    raw = processor.parse(normalized) as Root
     // `parse` (sync) → `run` (async; lets remark plugins return promises
     // for future Shiki-as-remark-plugin moves). Currently all our plugins
     // are sync so the await is cheap. The thread-local read in
