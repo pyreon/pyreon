@@ -46,9 +46,12 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     />
 
-    <!-- Brand favicon — rounded ink tile + ember disc. Served from
-         public/favicon.svg → /<base>/favicon.svg after build. -->
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <!-- Brand favicon — rounded ink tile + ember disc. Leading slash
+         so Vite's index.html transform base-prefixes it to
+         `/<base>/favicon.svg`. Relative `./favicon.svg` would resolve
+         against the current page URL and 404 on deep routes like
+         `/pyreon/preview/docs/X/` (→ tried to load `/docs/favicon.svg`). -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
     <!-- Open Graph + Twitter card. og:image is absolute because social
          scrapers don't resolve site-relative paths. The OG asset is an

@@ -146,6 +146,24 @@ export interface BuildSsrBundleOptions {
    * `undefined` → the inner build keeps Vite's default (no behaviour change
    * for apps that don't set it).
    */
+  /**
+   * The OUTER (client) build's resolved `base` URL. Without forwarding
+   * this to the inner SSR build, the inner build defaults to `/` and
+   * any SSR-rendered asset URL constructed from `__ZERO_BASE__` (e.g.
+   * `<img src={`${__ZERO_BASE__}brand/logo.svg`} />` in user components)
+   * gets BAKED into the prerendered HTML with the wrong prefix. The
+   * client-side hydration then renders the correct prefix and triggers
+   * a hydration mismatch — OR users see 404s on initial load before the
+   * client patches the DOM.
+   *
+   * Pre-fix the configResolved-sync of `__ZERO_BASE__` in vite-plugin.ts
+   * only worked for the OUTER build; the inner build's `resolvedConfig.base`
+   * was always `/` because `configFile: false` doesn't replay the outer
+   * vite.config.ts and the inner `build({...})` call didn't receive
+   * `base`. Captured from the outer's `configResolved` and threaded
+   * here so both builds agree on the asset prefix.
+   */
+  base?: string
   assetsInlineLimit?: BuildOptions['assetsInlineLimit']
   /** The OUTER build's `build.assetsDir` — same URL-consistency rationale. */
   assetsDir?: string | undefined
@@ -305,13 +323,27 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       return !RE_ADDED_PLUGIN_NAMES.has(name)
     })
 
+    // Synthesize the inner build's zero config with the outer build's
+    // resolved base. The plugin's `config()` return BEATS the inline
+    // `build({base})` arg in Vite's merge order (the PR #1395 trap), so
+    // we must inject the base via `zeroPlugin(userConfig)` not via the
+    // top-level build call. Defaulting back to `userConfig` when no
+    // base was forwarded (e.g. older callers).
+    const innerZeroConfig: ZeroConfig =
+      options.base !== undefined && options.base !== '/'
+        ? { ...options.userConfig, base: options.base }
+        : options.userConfig
+
     await build({
       root: options.root,
       mode: 'production',
       logLevel: 'error',
       configFile: false,
       publicDir: false,
-      plugins: [pyreon(), zeroPlugin(options.userConfig), ...userPlugins] as Plugin[],
+      // Also pass at top-level for any non-zero consumer that reads
+      // `resolvedConfig.base` directly (forwarded plugins, etc.).
+      ...(options.base !== undefined ? { base: options.base } : {}),
+      plugins: [pyreon(), zeroPlugin(innerZeroConfig), ...userPlugins] as Plugin[],
       resolve: { conditions: ['bun'] },
       build: buildInnerBuildOptions(options),
     })

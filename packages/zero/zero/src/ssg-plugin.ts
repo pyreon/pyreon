@@ -968,6 +968,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   // client build emits hashed files. See `buildInnerBuildOptions`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
+  let resolvedBase: string = '/'
   // USER plugins captured from the OUTER build's resolved plugin chain.
   // Forwarded into the inner SSR sub-build so non-zero plugins (e.g.
   // @pyreon/zero-content's content() plugin which transforms .md →
@@ -1010,6 +1011,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       distDir = resolve(root, resolved.build.outDir)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
+      resolvedBase = resolved.base
       // Capture the resolved plugin chain — `buildSsrBundle` filters
       // out the zero + pyreon plugins (which the inner build adds back
       // itself) and forwards everything else.
@@ -1079,6 +1081,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsInlineLimit,
           assetsDir,
           userPlugins,
+          base: resolvedBase,
         })
       } finally {
         // Remove the synthetic entry file so it never lands in user's
