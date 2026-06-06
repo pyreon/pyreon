@@ -491,24 +491,66 @@ function mountComponent(
   }
 
   if (process.env.NODE_ENV !== 'production' && output != null && typeof output === 'object') {
-    if (output instanceof Promise) {
-      console.warn(
-        `[Pyreon] Component <${componentName}> returned a Promise. ` +
-          'Components must be synchronous — use lazy() + Suspense for async loading, ' +
-          'or fetch data in onMount and store it in a signal.',
-      )
-    } else if (!('type' in output) && !Array.isArray(output) && !(output as any).__isNative) {
+    if (!(output instanceof Promise) && !('type' in output) && !Array.isArray(output) && !(output as any).__isNative) {
       // Objects without `type` that are NOT arrays (valid VNodeChild[])
-      // and NOT NativeItems (from _tpl()) are invalid. Arrays come from
-      // Fragment returns, NativeItems come from compiled templates.
+      // and NOT NativeItems (from _tpl()) and NOT Promises (handled below)
+      // are invalid. Arrays come from Fragment returns, NativeItems come
+      // from compiled templates.
       console.warn(
-        `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, function, or array.`,
+        `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, function, Promise, or array.`,
       )
     }
   }
 
   if (hooks.update) {
     for (const fn of hooks.update) scope.addUpdateHook(fn)
+  }
+
+  // Async component support — parity with `renderToString` which awaits
+  // Promise outputs. Insert a placeholder comment at the mount point,
+  // then mount the resolved value once the Promise settles. Until then
+  // the DOM has just the placeholder; an outer <Suspense> (which only
+  // recognizes lazy()-style __loading markers) won't help here, so this
+  // path is the canonical "async function component" support on the
+  // client. Renders nothing visible during the await — callers wanting
+  // a fallback should use lazy() + Suspense, OR put a sibling fallback
+  // element inside a Suspense boundary.
+  if (output instanceof Promise) {
+    const placeholder = document.createComment('async')
+    parent.insertBefore(placeholder, anchor)
+    let resolvedCleanup: Cleanup = noop
+    let cancelled = false
+    output
+      .then((resolved) => {
+        if (cancelled || !placeholder.parentNode) return
+        try {
+          if (resolved != null) {
+            resolvedCleanup = mountChild(resolved as VNodeChild, parent, placeholder)
+          }
+        } catch (err) {
+          const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
+          if (!handled) {
+            console.error(`[Pyreon] <${componentName}> threw during async render:`, err)
+          }
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
+        if (!handled) {
+          console.error(`[Pyreon] <${componentName}> async render rejected:`, err)
+        }
+      })
+
+    if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
+
+    return () => {
+      cancelled = true
+      resolvedCleanup()
+      if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder)
+      scope.stop()
+      setContextOwner(prevOwner)
+    }
   }
 
   let subtreeCleanup: Cleanup = noop

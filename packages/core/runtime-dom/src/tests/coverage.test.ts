@@ -361,15 +361,20 @@ describe('mount.ts — uncovered branches', () => {
     warnSpy.mockRestore()
   })
 
-  test('component returning Promise triggers dev warning', () => {
+  test('component returning Promise is supported (async components mount on resolve)', async () => {
     const el = container()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    const AsyncComp = (() => Promise.resolve(null)) as unknown as ComponentFn
+    const AsyncComp = (async () => h('span', null, 'resolved')) as unknown as ComponentFn
     mount(h(AsyncComp, null), el)
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('returned a Promise'))
+    // No deprecation warning — async components are first-class now (parity with renderToString).
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('returned a Promise'))
     warnSpy.mockRestore()
+
+    // Promise placeholder until resolve — then DOM gets the resolved content.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(el.textContent).toContain('resolved')
   })
 
   test('void element with children triggers dev warning', () => {
