@@ -337,8 +337,21 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
       vnode.type as ComponentFn,
       mergeChildrenIntoProps(vnode),
     )
-    const resolved = output instanceof Promise ? await output : output
-    if (resolved !== null) await streamNode(resolved, enqueue)
+    // Async components: emit sentinel markers around the resolved output so
+    // the client hydrate can find the SSR DOM range corresponding to the
+    // (still-pending) Promise. Without these, hydrate has no way to know
+    // where the async subtree begins / ends in the SSR DOM, so it can't
+    // attach reactivity to it. `<!--$pas-->` (Pyreon async start) +
+    // `<!--$pae-->` (end). Markers nest correctly with sibling/child async
+    // components — the hydrate walker matches the nearest unclosed start.
+    if (output instanceof Promise) {
+      enqueue('<!--$pas-->')
+      const resolved = await output
+      if (resolved !== null) await streamNode(resolved, enqueue)
+      enqueue('<!--$pae-->')
+    } else if (output !== null) {
+      await streamNode(output, enqueue)
+    }
   } catch (err) {
     if (__DEV__) {
       const name = (vnode.type as ComponentFn).name || 'Anonymous'
@@ -623,12 +636,20 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
   const stackLenBefore = getContextStackLength()
   const { vnode: output } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
 
-  // Async component function (async function Component()) — await the promise
+  // Async component function (async function Component()) — await the promise.
+  // We bracket the resolved HTML with `<!--$pas-->/<!--$pae-->` sentinel
+  // comments so the client hydrate can locate the SSR DOM range
+  // corresponding to the (still-pending) Promise and attach reactivity to
+  // it. Without these markers, hydrate has no way to know where the async
+  // subtree begins/ends — events, lifecycle hooks, and signal subscriptions
+  // would never wire up on the server-rendered nodes. (Mirrors the
+  // `streamComponentNode` marker emit on the streaming path.)
   let html: string
   try {
     if (output instanceof Promise) {
       const resolved = await output
-      html = resolved === null ? '' : await renderNode(resolved)
+      const inner = resolved === null ? '' : await renderNode(resolved)
+      html = `<!--$pas-->${inner}<!--$pae-->`
     } else if (output === null) {
       html = ''
     } else {

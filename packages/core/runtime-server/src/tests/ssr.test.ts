@@ -208,7 +208,10 @@ describe('renderToStream', () => {
     }
     // First chunk must be the opening tag, not the full string
     expect(chunks[0]).toBe('<div>')
-    expect(chunks.join('')).toBe('<div><span>done</span></div>')
+    // Async-component output is wrapped in `<!--$pas-->/<!--$pae-->`
+    // sentinel markers so the client hydrate can find the SSR DOM range
+    // corresponding to the still-pending Promise and attach reactivity.
+    expect(chunks.join('')).toBe('<div><!--$pas--><span>done</span><!--$pae--></div>')
   })
 
   test('streams async component output', async () => {
@@ -217,7 +220,8 @@ describe('renderToStream', () => {
       return h('p', null, 'async')
     }
     const html = await collect(renderToStream(h(Async as unknown as ComponentFn, null)))
-    expect(html).toBe('<p>async</p>')
+    // Async component output is bracketed with async-hydrate markers.
+    expect(html).toBe('<!--$pas--><p>async</p><!--$pae-->')
   })
 })
 
@@ -263,8 +267,10 @@ describe('concurrent SSR — context isolation', () => {
       renderToString(h(makeApp('R2'), null)),
     ])
 
-    expect(html1).toBe('<div>R1</div>')
-    expect(html2).toBe('<div>R2</div>')
+    // Async-component output is bracketed with `<!--$pas-->/<!--$pae-->`
+    // sentinel markers — the hydrate-side handshake for attaching reactivity.
+    expect(html1).toBe('<!--$pas--><div>R1</div><!--$pae-->')
+    expect(html2).toBe('<!--$pas--><div>R2</div><!--$pae-->')
   })
 })
 
@@ -503,7 +509,8 @@ describe('concurrent SSR — context isolation', () => {
     )
 
     results.forEach((html, i) => {
-      expect(html).toBe(`<span>id-${i}</span>`)
+      // Async-component output is bracketed with async-hydrate sentinel markers.
+      expect(html).toBe(`<!--$pas--><span>id-${i}</span><!--$pae-->`)
     })
   })
 })
@@ -1369,7 +1376,9 @@ describe('edge-case branches', () => {
       return null
     }
     const html = await renderToString(h(NullComp as unknown as ComponentFn, null))
-    expect(html).toBe('')
+    // Markers bracket the (empty) resolved output — the client hydrate
+    // walker can still find them and confirm the async subtree is empty.
+    expect(html).toBe('<!--$pas--><!--$pae-->')
   })
 
   test('Suspense in stream without streaming context (renderToString path)', async () => {
