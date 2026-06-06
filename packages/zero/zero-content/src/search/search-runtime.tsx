@@ -337,7 +337,13 @@ export function Search(props: SearchProps): VNodeChild {
         state.open() ? 'pyreon-search pyreon-search--open' : 'pyreon-search'
       }
     >
-      {() => state.open() && (
+      {/* Reactive child returns EITHER a VNode (open) OR null (closed) —
+          using `&& VNode` returns `false` on the closed branch, which
+          some runtime paths stringify as `[object Object]` in the open
+          branch (the falsy short-circuit + reactive-child path
+          doesn't always normalize the VNode return correctly). Ternary
+          → null is the canonical form. */}
+      {() => state.open() ? (
         <div class="pyreon-search__backdrop">
           <dialog
             class="pyreon-search__panel"
@@ -398,7 +404,7 @@ export function Search(props: SearchProps): VNodeChild {
             </ul>
           </dialog>
         </div>
-      )}
+      ) : null}
     </search>
   )
 }

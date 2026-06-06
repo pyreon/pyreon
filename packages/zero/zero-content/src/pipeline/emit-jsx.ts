@@ -264,6 +264,62 @@ async function emitNode(
       // in place. See `compileMarkdown` for the hoist wiring.
       if (opts.mdxEsmHoist) opts.mdxEsmHoist((node as { value: string }).value)
       return ''
+    // ─── Tables via remark-gfm — emit standard <table> markup ────────
+    // remark-gfm produces:
+    //   { type: 'table', align: ['left'|'right'|'center'|null, ...],
+    //     children: [<tableRow header>, <tableRow body>, ...] }
+    //   { type: 'tableRow', children: [<tableCell>, ...] }
+    //   { type: 'tableCell', children: [<inline>...] }
+    // The first row is always the header; subsequent rows are body
+    // cells. Column alignment lives on the parent `table` node — we
+    // thread it down via the walker so each cell emits the matching
+    // `style="text-align: X"` (the canonical mapping that prerendered
+    // HTML uses for GFM table alignment).
+    case 'table': {
+      const { align, children } = node as {
+        align?: Array<'left' | 'right' | 'center' | null>
+        children: Nodes[]
+      }
+      // First row = thead; rest = tbody. GFM tables always have
+      // exactly one header row; remark normalizes single-row tables
+      // to header-only (no body) which is fine to emit as <thead>
+      // alone.
+      const rows = children.filter((c): c is Nodes & { type: 'tableRow' } =>
+        c.type === 'tableRow',
+      )
+      const [headerRow, ...bodyRows] = rows
+      const renderRow = async (
+        row: Nodes & { type: 'tableRow' },
+        isHeader: boolean,
+      ): Promise<string> => {
+        const cells = (row.children as Nodes[]).filter(
+          (c): c is Nodes & { type: 'tableCell' } => c.type === 'tableCell',
+        )
+        const cellHtml = await Promise.all(
+          cells.map(async (cell, colIdx) => {
+            const tag = isHeader ? 'th' : 'td'
+            const a = align?.[colIdx]
+            const style = a ? ` style={{ textAlign: ${JSON.stringify(a)} }}` : ''
+            const inner = await emitChildren(
+              cell.children as Nodes[],
+              headings,
+              opts,
+            )
+            return `<${tag}${style}>${inner}</${tag}>`
+          }),
+        )
+        return `<tr>${cellHtml.join('')}</tr>`
+      }
+      const head = headerRow ? `<thead>${await renderRow(headerRow, true)}</thead>` : ''
+      const body = bodyRows.length > 0
+        ? `<tbody>${(await Promise.all(bodyRows.map((r) => renderRow(r, false)))).join('')}</tbody>`
+        : ''
+      return `<table>${head}${body}</table>`
+    }
+    // `tableRow` / `tableCell` are only valid as children of `table`
+    // and consumed inside the `table` case above. If the walker hits
+    // one standalone (malformed AST), fall through to the default
+    // unhandled-node branch so the issue is loud, not silent.
     // ─── PR-H audit M5 — footnotes via remark-gfm ────────────────────
     case 'footnoteReference': {
       // Reference site → `<sup><a id="..." href="#fn-..."> N </a></sup>`
