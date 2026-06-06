@@ -2508,7 +2508,18 @@ html { scroll-behavior: smooth; }
 }
 
 /* ── (G) Search overlay (Cmd+K) ──────────────────────────────── */
-.pyreon-search { contain: layout style; }
+/* DO NOT set `contain: layout` on .pyreon-search. The CSS containment
+   spec defines `contain: layout` as making the element "a containing
+   block for absolute and fixed-position descendants" — so the
+   `.pyreon-search__backdrop { position: fixed; inset: 0 }` below
+   positions relative to the `<search>` element (which sits in
+   document flow at the bottom of the app shell), not the viewport.
+   Result: the search dialog appears at the top-left of where
+   `<search>` was rendered, partially off-screen. Use `contain: style`
+   alone (which is harmless and offers minor isolation), or drop the
+   `contain` property entirely. We drop it entirely — the dialog is
+   the only contained-ish thing here and its layout is already
+   `position: fixed`. */
 .pyreon-search__backdrop {
   position: fixed;
   inset: 0;
@@ -2522,6 +2533,14 @@ html { scroll-behavior: smooth; }
   backdrop-filter: blur(4px);
 }
 .pyreon-search__panel {
+  /* `<dialog>` has browser-default `position: absolute; inset: 0;
+     margin: auto` (etc.) which takes it OUT of the parent flex flow
+     — so `justify-content: center` on the backdrop has no effect on
+     the dialog's position. Force `position: relative` so the dialog
+     participates in flex layout. */
+  position: relative;
+  inset: auto;
+  margin: 0;
   display: flex;
   flex-direction: column;
   width: min(640px, 90vw);
