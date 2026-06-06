@@ -83,6 +83,20 @@ export interface ContentPluginOptions {
    * Default: `true` (compile JSX).
    */
   compileJsx?: boolean
+  /**
+   * Maximum body length (in characters) indexed per page for search.
+   * Pre-fix (PR-D audit M23) this was a hardcoded 1500 with no
+   * configuration surface and no log of pages truncated, so authors
+   * had no way to discover that content past the first ~1500 chars
+   * never appeared in search results.
+   *
+   * Defaults remain 1500 to keep the docs-zero shipped index size
+   * within the existing 300 KB warn threshold. Set higher for blog
+   * collections that lean on full-text recall; set to `Infinity` to
+   * disable truncation entirely (the chunkWarn / chunkError bounds
+   * still apply at the per-collection JSON level).
+   */
+  searchBodyMax?: number
 }
 
 // Virtual modules the plugin serves.
@@ -444,7 +458,7 @@ export {}
                     ? frontmatter.description
                     : undefined
                 const headings = (cached.headings ?? []).map((h) => h.text)
-                const SEARCH_BODY_MAX = 1500
+                const SEARCH_BODY_MAX = options.searchBodyMax ?? 1500
                 let body = stripMarkdown(cached.source)
                 if (body.length > SEARCH_BODY_MAX) {
                   const slice = body.slice(0, SEARCH_BODY_MAX)
@@ -559,7 +573,7 @@ export {}
             // could move to ContentPluginOptions when a real use case
             // for tuning per project surfaces; 1500 covers the average
             // first-section ("the lede") for most technical docs.
-            const SEARCH_BODY_MAX = 1500
+            const SEARCH_BODY_MAX = options.searchBodyMax ?? 1500
             let body = stripMarkdown(code)
             if (body.length > SEARCH_BODY_MAX) {
               const slice = body.slice(0, SEARCH_BODY_MAX)

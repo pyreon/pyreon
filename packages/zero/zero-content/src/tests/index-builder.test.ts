@@ -150,8 +150,29 @@ describe('stripMarkdown', () => {
     expect(stripMarkdown('see [the docs](/x) now')).toBe('see the docs now')
   })
 
-  it('removes heading markers but keeps the text', () => {
-    expect(stripMarkdown('## Heading')).toBe('Heading')
+  it('drops heading LINES entirely (PR-D audit C7 — heading text is already in the `headings` field)', () => {
+    // Pre-fix headings were double-indexed: once in the doc's
+    // dedicated `headings` field AND again as plain prose in `body`,
+    // shipping ~26 KB of duplicates on docs-zero. Now `stripMarkdown`
+    // drops the full heading line.
+    expect(stripMarkdown('## Heading')).toBe('')
+    expect(stripMarkdown('# T\n\nbody\n\n## Sub\n\nmore')).toBe('body more')
+  })
+
+  it('drops the leading YAML frontmatter block (PR-D audit C7)', () => {
+    // Pre-fix the frontmatter was indexed verbatim (`title:`,
+    // `description:`, etc.) — ~12 KB of noise on docs-zero. Now the
+    // builder strips the leading `---...\n---` block.
+    const md = '---\ntitle: Zero\ndescription: Hello\n---\n\nthe body'
+    expect(stripMarkdown(md)).toBe('the body')
+  })
+
+  it('handles a malformed (unclosed) frontmatter block without freezing', () => {
+    // An unclosed `---` block is rare but possible — the matcher
+    // bails to the file end without backtracking.
+    const md = '---\ntitle: Zero\n(no close)\n\nthe body'
+    // The strip leaves the body as-is when no closing `---` is found.
+    expect(stripMarkdown(md)).toContain('the body')
   })
 
   it('removes emphasis markers', () => {
