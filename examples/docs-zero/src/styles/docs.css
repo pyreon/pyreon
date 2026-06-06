@@ -151,28 +151,12 @@ th {
   flex: 1;
 }
 
-/* ── Docs page grid (sidebar + content + toc) ──────────────────────── */
-
-.docs-page {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 240px;
-  max-width: 1440px;
-  margin: 0 auto;
-  gap: 2rem;
-  padding: 1.5rem;
-  align-items: start;
-}
-
-@media (max-width: 1100px) {
-  .docs-page { grid-template-columns: 240px minmax(0, 1fr); }
-  .docs-toc { display: none; }
-}
-@media (max-width: 768px) {
-  .docs-page {
-    grid-template-columns: 1fr;
-    padding: 1rem;
-  }
-}
+/* ── Docs page grid: see the .docs-page rule in the 1:1 PARITY OVERHAUL
+   block at the END of this file (subsection E). Sidebar lives in
+   .docs-aside (outside .docs-page); .docs-page now only contains the
+   article content + right-rail TOC. Older 3-col rules removed —
+   they were conflicting with the override block's 2-col layout and
+   forcing the wrong template-columns to win. */
 
 .docs-content {
   min-width: 0;
@@ -2302,14 +2286,24 @@ th {
   background: var(--ember);
 }
 
-/* ── (E) Docs page grid — only content + toc (sidebar lives in aside) ── */
+/* ── (E) Docs page grid — only content + toc (sidebar lives in aside) ──
+   Bigger `max-width` than the previous 1080px because on a wide monitor
+   the docs page was visually pinned LEFT (sidebar 280px) with vast
+   empty space to the right. VitePress' default theme caps the content
+   area at ~752px content + ~250px aside = ~1000px, but does it within
+   a tight container that also caps total `.container` to ~1440px.
+   We don't cap the shell (the header sticks full-bleed across the
+   viewport), so the content area needs room to fill the visible
+   space — 1200px max with `margin: 0 auto` centers it inside
+   `.docs-main`'s available column, matching VitePress' look without
+   the extra container layer. */
 .docs-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;
-  max-width: 1080px;
+  max-width: 1200px;
   margin: 0 auto;
   gap: 2rem;
-  padding: 1.5rem;
+  padding: 1.5rem 2rem;
   align-items: start;
 }
 @media (max-width: 1100px) {
