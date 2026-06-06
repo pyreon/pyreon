@@ -61,6 +61,13 @@ function escapeXml(input: string): string {
     .replace(/'/g, '&apos;')
 }
 
+/**
+ * @deprecated Use `generateSitemap` + `seoPlugin` from `@pyreon/zero`
+ *   instead. Zero's surface is richer (hreflang/i18n, trailing-slash
+ *   policy, SSG path-manifest integration) and runs as a Vite plugin
+ *   so consumers don't write a build script. This zero-content
+ *   builder will be removed in a future major version.
+ */
 export function generateSitemap(args: GenerateSitemapArgs): string {
   const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>']
   lines.push('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')

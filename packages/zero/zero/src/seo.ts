@@ -455,6 +455,130 @@ export function generateRobots(config: RobotsConfig = {}): string {
   return lines.join('\n')
 }
 
+// ─── RSS 2.0 feed ───────────────────────────────────────────────────────────
+
+export interface RssItem {
+  /** Item title. */
+  title: string
+  /** Relative URL — joined to `origin` at render time. */
+  link: string
+  /** ISO-8601 date string. Will be converted to RFC-822 in the output. */
+  pubDate?: string
+  /** One-line summary. */
+  description?: string
+  /** Optional author (RFC-2822: `email (Name)` or just a name). */
+  author?: string
+  /** Free-form categories / tags. */
+  categories?: string[]
+  /** Optional GUID — defaults to the joined URL. */
+  guid?: string
+}
+
+export interface RssConfig {
+  /** Feed title (channel-level). */
+  title: string
+  /** Site origin (no trailing slash). e.g. "https://example.com" */
+  origin: string
+  /** Channel-level description. */
+  description?: string
+  /** Language code (`en-us`, `cs-cz`, ...). */
+  language?: string
+  /** Feed items — usually newest first. */
+  items: RssItem[]
+  /** Fixed `lastBuildDate` override (ISO 8601). Defaults to the first
+   *  item's pubDate, or omitted entirely when no items carry one. */
+  lastBuildDate?: string
+}
+
+/**
+ * Convert an ISO-8601 date string to RFC-822 (the format RSS 2.0
+ * requires for `pubDate` / `lastBuildDate`).
+ *
+ * Falls back to the input verbatim when the date can't be parsed.
+ *
+ * @internal exported for testing
+ */
+export function toRfc822(isoDate: string): string {
+  const date = new Date(isoDate)
+  if (Number.isNaN(date.getTime())) return isoDate
+  return date.toUTCString()
+}
+
+function joinRssUrl(origin: string, path: string): string {
+  let end = origin.length
+  while (end > 0 && origin.charCodeAt(end - 1) === 47) end--
+  const cleanedOrigin = origin.slice(0, end)
+  if (path.length === 0) return cleanedOrigin
+  const cleanedPath = path.startsWith('/') ? path : '/' + path
+  return cleanedOrigin + cleanedPath
+}
+
+/**
+ * Generate an RSS 2.0 feed string. Use for blog / changelog / podcast
+ * content. Items are emitted in supplied order — sort newest-first
+ * before passing in.
+ *
+ * @example
+ * import { generateRssFeed } from "@pyreon/zero/seo"
+ *
+ * const xml = generateRssFeed({
+ *   title: "My Blog",
+ *   origin: "https://example.com",
+ *   description: "Latest posts",
+ *   items: posts.map((p) => ({
+ *     title: p.data.title,
+ *     link: `/blog/${p.slug}`,
+ *     pubDate: p.data.publishDate,
+ *     description: p.data.description,
+ *   })),
+ * })
+ */
+export function generateRssFeed(config: RssConfig): string {
+  const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>']
+  lines.push('<rss version="2.0">')
+  lines.push('  <channel>')
+  lines.push(`    <title>${escapeXml(config.title)}</title>`)
+  lines.push(`    <link>${escapeXml(config.origin)}</link>`)
+  if (config.description) {
+    lines.push(`    <description>${escapeXml(config.description)}</description>`)
+  }
+  if (config.language) {
+    lines.push(`    <language>${escapeXml(config.language)}</language>`)
+  }
+  const lastBuild =
+    config.lastBuildDate
+    ?? config.items.find((i) => i.pubDate)?.pubDate
+  if (lastBuild) {
+    lines.push(`    <lastBuildDate>${toRfc822(lastBuild)}</lastBuildDate>`)
+  }
+  for (const item of config.items) {
+    const link = joinRssUrl(config.origin, item.link)
+    lines.push('    <item>')
+    lines.push(`      <title>${escapeXml(item.title)}</title>`)
+    lines.push(`      <link>${escapeXml(link)}</link>`)
+    const guid = item.guid ?? link
+    lines.push(
+      `      <guid isPermaLink="${item.guid ? 'false' : 'true'}">${escapeXml(guid)}</guid>`,
+    )
+    if (item.pubDate) {
+      lines.push(`      <pubDate>${toRfc822(item.pubDate)}</pubDate>`)
+    }
+    if (item.author) lines.push(`      <author>${escapeXml(item.author)}</author>`)
+    if (item.categories) {
+      for (const cat of item.categories) {
+        lines.push(`      <category>${escapeXml(cat)}</category>`)
+      }
+    }
+    if (item.description) {
+      lines.push(`      <description>${escapeXml(item.description)}</description>`)
+    }
+    lines.push('    </item>')
+  }
+  lines.push('  </channel>')
+  lines.push('</rss>')
+  return lines.join('\n') + '\n'
+}
+
 // ─── Structured data (JSON-LD) ──────────────────────────────────────────────
 
 export type JsonLdType =
@@ -496,6 +620,24 @@ export interface SeoPluginConfig {
   sitemap?: SitemapConfig
   /** Robots.txt configuration. */
   robots?: RobotsConfig
+  /**
+   * RSS 2.0 feed configuration. Emits `dist/rss.xml` during the
+   * client build. Items aren't auto-derived from routes (zero has no
+   * built-in notion of "blog posts") — the user supplies an
+   * up-front list.
+   *
+   * For collection-driven sites, derive items from your data source
+   * inside `vite.config.ts`:
+   *
+   *     seoPlugin({
+   *       rss: {
+   *         title: 'My Blog',
+   *         origin: 'https://example.com',
+   *         items: posts.map((p) => ({ title: p.title, link: `/blog/${p.slug}` })),
+   *       },
+   *     })
+   */
+  rss?: RssConfig
 }
 
 /**
@@ -576,6 +718,17 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
           source: robots,
         })
       }
+
+      // Generate rss.xml — items are supplied up-front (no
+      // auto-derivation from routes; zero has no notion of "posts").
+      if (config.rss) {
+        const rss = generateRssFeed(config.rss)
+        this.emitFile({
+          type: 'asset',
+          fileName: 'rss.xml',
+          source: rss,
+        })
+      }
     },
 
     async closeBundle() {
@@ -645,17 +798,24 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
   }
 }
 
-// ─── SEO middleware (serve sitemap/robots in dev) ────────────────────────────
+// ─── SEO middleware (serve sitemap/robots/rss in dev) ──────────────────────
 
 /**
  * SEO middleware for dev server.
- * Serves sitemap.xml and robots.txt dynamically during development.
+ * Serves sitemap.xml, robots.txt, and rss.xml dynamically during
+ * development.
  */
 export function seoMiddleware(config: SeoPluginConfig = {}): Middleware {
   return async (ctx) => {
     if (ctx.url.pathname === '/robots.txt' && config.robots) {
       return new Response(generateRobots(config.robots), {
         headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
+    if (ctx.url.pathname === '/rss.xml' && config.rss) {
+      return new Response(generateRssFeed(config.rss), {
+        headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' },
       })
     }
 

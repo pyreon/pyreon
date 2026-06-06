@@ -60,6 +60,13 @@ export interface GenerateLlmsTxtArgs {
   sections: LlmsTxtSection[]
 }
 
+/**
+ * @deprecated Use `aiPlugin` from `@pyreon/zero` instead. Zero's
+ *   `aiPlugin` auto-generates `llms.txt` + `llms-full.txt` from
+ *   route + manifest data and serves them via the dev server / SSG
+ *   build. This zero-content builder will be removed in a future
+ *   major version.
+ */
 export function generateLlmsTxt(args: GenerateLlmsTxtArgs): string {
   const lines: string[] = []
   lines.push(`# ${args.title}`)

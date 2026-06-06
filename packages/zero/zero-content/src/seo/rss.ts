@@ -1,122 +1,52 @@
-import { joinUrl } from './sitemap'
+import {
+  generateRssFeed as generateRssFeedZero,
+  toRfc822 as toRfc822Zero,
+  type RssItem as RssItemZero,
+} from '@pyreon/zero/server'
 
-// ─── RSS 2.0 feed emitter (PR-L audit M19) ────────────────────────────────
+// ─── RSS 2.0 feed — thin adapter over `@pyreon/zero/seo` ──────────────────
 //
-// Pure builder that produces an RSS 2.0 XML feed for a collection of
-// dated entries (typically a blog or changelog). Authors call this
-// from a build script with the entries:
+// The actual RSS generator now lives in `@pyreon/zero` so it can be
+// integrated with `seoPlugin` + `seoMiddleware` and served from a
+// single canonical source. This file is a backward-compat shim that
+// preserves the zero-content API surface (`baseUrl` instead of zero's
+// `origin`, named export `generateRssFeed`).
 //
-//     import { generateRssFeed, getCollection } from '@pyreon/zero-content'
-//     const posts = await getCollection('blog')
-//     const xml = generateRssFeed({
-//       title: 'My Blog',
-//       description: 'Latest posts',
-//       baseUrl: 'https://example.com',
-//       items: posts.map((p) => ({
-//         title: p.data.title,
-//         link: `/blog/${p.slug}`,
-//         pubDate: p.data.publishDate,
-//         description: p.data.description,
-//       })),
-//     })
+// **New code should import directly from `@pyreon/zero`** — same
+// generator, simpler integration:
+//
+//     import { generateRssFeed, seoPlugin } from '@pyreon/zero'
 
-export interface RssItem {
-  title: string
-  /** Relative URL — joined to baseUrl at render time. */
-  link: string
-  /** ISO-8601 date string. Will be converted to RFC-822 in the output. */
-  pubDate?: string
-  /** One-line summary. */
-  description?: string
-  /** Optional author name (or `email (Name)` per RFC-2822). */
-  author?: string
-  /** Optional categorization (free-form tags). */
-  categories?: string[]
-  /** Optional GUID — defaults to the joined URL. */
-  guid?: string
-}
+export type RssItem = RssItemZero
 
 export interface GenerateRssFeedArgs {
-  /** Feed title. */
   title: string
   /** Site origin (no trailing slash). */
   baseUrl: string
-  /** Optional feed description (channel-level). */
   description?: string
-  /** Optional language code (`en-us`, `cs-cz`, ...). */
   language?: string
-  /** Items in display order — usually newest first. */
   items: RssItem[]
-  /** Optional fixed `lastBuildDate` override (ISO 8601). Defaults to
-   *  the first item's pubDate, or omitted entirely when no items
-   *  carry one. */
   lastBuildDate?: string
 }
 
-/** Escape XML-sensitive characters. */
-function escapeXml(input: string): string {
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
+/**
+ * @deprecated Import `generateRssFeed` from `@pyreon/zero` directly.
+ *   The zero-content shim re-maps `baseUrl` → `origin`; new code
+ *   should use `@pyreon/zero`'s native `RssConfig` shape.
+ */
+export function generateRssFeed(args: GenerateRssFeedArgs): string {
+  const config: Parameters<typeof generateRssFeedZero>[0] = {
+    title: args.title,
+    origin: args.baseUrl,
+    items: args.items,
+  }
+  if (args.description) config.description = args.description
+  if (args.language) config.language = args.language
+  if (args.lastBuildDate) config.lastBuildDate = args.lastBuildDate
+  return generateRssFeedZero(config)
 }
 
 /**
- * Convert an ISO-8601 date string to RFC-822 (the format RSS 2.0
- * requires for `pubDate` / `lastBuildDate`).
- *
- * Falls back to the input verbatim when the date can't be parsed.
- *
- * @internal exported for testing
+ * @deprecated Import `toRfc822` from `@pyreon/zero` directly.
  */
-export function toRfc822(isoDate: string): string {
-  const date = new Date(isoDate)
-  if (Number.isNaN(date.getTime())) return isoDate
-  return date.toUTCString()
-}
-
-export function generateRssFeed(args: GenerateRssFeedArgs): string {
-  const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>']
-  lines.push('<rss version="2.0">')
-  lines.push('  <channel>')
-  lines.push(`    <title>${escapeXml(args.title)}</title>`)
-  lines.push(`    <link>${escapeXml(args.baseUrl)}</link>`)
-  if (args.description) {
-    lines.push(`    <description>${escapeXml(args.description)}</description>`)
-  }
-  if (args.language) {
-    lines.push(`    <language>${escapeXml(args.language)}</language>`)
-  }
-  const lastBuild =
-    args.lastBuildDate
-    ?? args.items.find((i) => i.pubDate)?.pubDate
-  if (lastBuild) {
-    lines.push(`    <lastBuildDate>${toRfc822(lastBuild)}</lastBuildDate>`)
-  }
-  for (const item of args.items) {
-    const link = joinUrl(args.baseUrl, item.link)
-    lines.push('    <item>')
-    lines.push(`      <title>${escapeXml(item.title)}</title>`)
-    lines.push(`      <link>${escapeXml(link)}</link>`)
-    const guid = item.guid ?? link
-    lines.push(`      <guid isPermaLink="${item.guid ? 'false' : 'true'}">${escapeXml(guid)}</guid>`)
-    if (item.pubDate) {
-      lines.push(`      <pubDate>${toRfc822(item.pubDate)}</pubDate>`)
-    }
-    if (item.author) lines.push(`      <author>${escapeXml(item.author)}</author>`)
-    if (item.categories) {
-      for (const cat of item.categories) {
-        lines.push(`      <category>${escapeXml(cat)}</category>`)
-      }
-    }
-    if (item.description) {
-      lines.push(`      <description>${escapeXml(item.description)}</description>`)
-    }
-    lines.push('    </item>')
-  }
-  lines.push('  </channel>')
-  lines.push('</rss>')
-  return lines.join('\n') + '\n'
-}
+export const toRfc822 = toRfc822Zero
