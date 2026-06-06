@@ -642,13 +642,21 @@ export function reportPath(id: string): string {
     // separators, and stamp a leading `./` so the output is a real
     // relative path (terminals + IDE jump-to-source widgets are
     // happy with `./packages/foo/src/...`).
+    //
+    // We trim trailing/leading `/` via while-loops rather than regex
+    // (`/\/+$/`, `/^\/+/`) — CodeQL flags the quantified char class
+    // as "polynomial regex on uncontrolled input" since `id` comes
+    // from Vite's file resolver. The replacement is O(n) on the
+    // trailing slash count with no engine overhead.
     const normalisedId = id.split('\\').join('/')
-    const normalisedRoot = root.split('\\').join('/').replace(/\/+$/, '')
+    let normalisedRoot = root.split('\\').join('/')
+    while (normalisedRoot.endsWith('/')) normalisedRoot = normalisedRoot.slice(0, -1)
     if (
       normalisedId === normalisedRoot ||
       normalisedId.startsWith(normalisedRoot + '/')
     ) {
-      const rel = normalisedId.slice(normalisedRoot.length).replace(/^\/+/, '')
+      let rel = normalisedId.slice(normalisedRoot.length)
+      while (rel.startsWith('/')) rel = rel.slice(1)
       return rel.length > 0 ? `./${rel}` : './'
     }
   }
