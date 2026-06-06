@@ -202,23 +202,44 @@ export function humanBytes(n: number): string {
 }
 
 /**
- * Strip markdown body text down to plain prose. Removes code fences,
- * fenced math, HTML tags, link syntax, headings, inline emphasis
- * markers. Imperfect — the goal is to make the indexer's job easier,
- * not to produce a perfect rendition.
+ * Strip markdown body text down to plain prose. Removes the leading
+ * YAML frontmatter block, code fences + inline code, HTML tags, link
+ * syntax, headings, inline emphasis markers. Imperfect by design —
+ * the goal is to make the indexer's job easier, not to produce a
+ * perfect rendition.
+ *
+ * Pre-fix (PR-D audit C7) the frontmatter block was indexed as part
+ * of the body, leaking `title:` / `description:` / `since:` etc. into
+ * search results (~12.3 KB on docs-zero, mostly weighted prose like
+ * descriptions).
  *
  * @internal exported for testing
  */
 export function stripMarkdown(source: string): string {
+  // Drop the leading frontmatter block `^---\n...\n---\n` (a single
+  // YAML header at start of file). We anchor on `^---` and capture up
+  // to the next `---` line that's surrounded by line boundaries.
+  // Bounded character-class enumeration ensures no polynomial
+  // backtracking — the inner pattern matches any character (`[\s\S]`)
+  // without a nested quantifier, so a malformed (unclosed) block ends
+  // at file end and is trimmed.
+  let out = source
+  if (out.startsWith('---')) {
+    const m = out.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
+    if (m) out = out.slice(m[0].length)
+  }
   // Drop fenced code blocks AND inline code.
-  let out = source.replace(/```[\s\S]*?```/g, ' ')
+  out = out.replace(/```[\s\S]*?```/g, ' ')
   out = out.replace(/`[^`]*`/g, ' ')
   // Drop HTML tags.
   out = out.replace(/<[^>]+>/g, ' ')
   // Drop image/link syntax — keep the text.
   out = out.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-  // Drop heading markers.
-  out = out.replace(/^#{1,6}\s+/gm, '')
+  // Drop heading lines entirely (NOT just the marker) — the heading
+  // text is ALREADY stored in the doc's `headings` field, so leaving
+  // it in `body` double-indexes it. Pre-fix (PR-D audit C7) docs-zero
+  // shipped ~26 KB of duplicated heading text across its 93 pages.
+  out = out.replace(/^#{1,6}\s+.*$/gm, '')
   // Drop emphasis markers.
   out = out.replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, '$1')
   // Collapse whitespace.

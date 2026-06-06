@@ -1,6 +1,7 @@
 import { signal, computed } from '@pyreon/reactivity'
 import { onMount, onUnmount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
+import { RouterLink } from '@pyreon/router'
 import MiniSearch, { type SearchResult } from 'minisearch'
 
 // ─── Runtime search ────────────────────────────────────────────────────────
@@ -29,11 +30,19 @@ const MS_OPTIONS = {
 }
 
 /**
- * Load + merge all collection indexes into one MiniSearch instance.
- * Idempotent at module scope — multiple calls return the same instance.
+ * Lazy-loaded MiniSearch instance.
+ *
+ * Pre-fix (PR-D audit H9) the cache was module-scope `let _instance`
+ * that pinned ~200 KB worth of MiniSearch state for the app lifetime
+ * even if `<Search>` was unmounted. Now the cache lives keyed on the
+ * catalog URL — and reference-counted via `_subscribers`. When the
+ * last subscriber unmounts, the instance is released so a long-lived
+ * SPA without a header `<Search>` reclaims the memory.
  */
 let _instance: MiniSearch | null = null
 let _loading: Promise<MiniSearch> | null = null
+let _instanceUrl: string | null = null
+let _subscribers = 0
 
 /**
  * Reset the cached MiniSearch instance. Test-only.
@@ -43,6 +52,31 @@ let _loading: Promise<MiniSearch> | null = null
 export function _resetSearchForTesting(): void {
   _instance = null
   _loading = null
+  _instanceUrl = null
+  _subscribers = 0
+}
+
+/**
+ * Acquire a refcount on the cached search instance. Returns a release
+ * callback the caller MUST invoke on unmount; when refcount hits zero
+ * the instance is released.
+ *
+ * @internal
+ */
+function acquireSearchInstance(): () => void {
+  _subscribers++
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    _subscribers--
+    if (_subscribers <= 0) {
+      _instance = null
+      _loading = null
+      _instanceUrl = null
+      _subscribers = 0
+    }
+  }
 }
 
 /**
@@ -55,8 +89,9 @@ export async function loadSearchIndex(
   catalogUrl = '/search-index.json',
   fetchFn: typeof fetch = globalThis.fetch,
 ): Promise<MiniSearch> {
-  if (_instance) return _instance
-  if (_loading) return _loading
+  if (_instance && _instanceUrl === catalogUrl) return _instance
+  if (_loading && _instanceUrl === catalogUrl) return _loading
+  _instanceUrl = catalogUrl
   _loading = (async () => {
     const catalogRes = await fetchFn(catalogUrl)
     if (!catalogRes.ok) {
@@ -109,6 +144,16 @@ export interface UseSearchOptions {
   debounceMs?: number
   /** Max number of results to show. Default 8. */
   maxResults?: number
+  /**
+   * Minimum query length before the search fires. Default 2 — single
+   * letters hit too broad a result set on docs-sized corpora. Set to
+   * `1` for shorter sites or `3` for blogs that lean on exact-word
+   * matches.
+   *
+   * PR-D audit M22 — pre-fix the runtime fired on every keystroke
+   * including 1-char queries.
+   */
+  minQueryLength?: number
   /** Override the fetch impl (testing). */
   fetchFn?: typeof fetch
 }
@@ -122,8 +167,12 @@ export function useSearch(
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const debounceMs = options.debounceMs ?? 150
+  const minQueryLength = Math.max(1, options.minQueryLength ?? 2)
 
   // Eagerly load on first open (don't wait for the first query).
+  // The release callback is recorded via `acquireSearchInstance` on
+  // mount so the module-level cache is reference-counted (PR-D audit
+  // H9 — pre-fix the cached MiniSearch pinned ~200 KB module-scope).
   let indexPromise: Promise<MiniSearch> | null = null
   const ensureIndex = (): Promise<MiniSearch> => {
     if (!indexPromise) {
@@ -132,47 +181,55 @@ export function useSearch(
     return indexPromise
   }
 
-  // Debounce the user's typing.
-  const subscribeToQuery = () => {
-    return query.subscribe(() => {
+  const _results = signal<SearchResult[]>([])
+  let queryRunCount = 0
+
+  // PR-D audit C8 — pre-fix `debounced.subscribe(() => ...)` never
+  // disposed. Every `useSearch()` call accumulated a subscriber that
+  // outlived the component. Now we capture the unsub + run it from
+  // `onMount`'s cleanup.
+  onMount(() => {
+    const releaseIndex = acquireSearchInstance()
+
+    const unsubQuery = query.subscribe(() => {
       if (debounceTimer !== null) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         debounced.set(query())
       }, debounceMs)
     })
-  }
 
-  // Keep the index hot when open.
-  let unsubOpen: (() => void) | null = null
-  onMount(() => {
-    const unsubQuery = subscribeToQuery()
-    unsubOpen = open.subscribe(() => {
+    const unsubOpen = open.subscribe(() => {
       if (open()) void ensureIndex()
     })
+
+    const unsubDebounced = debounced.subscribe(() => {
+      const q = debounced().trim()
+      if (q.length < minQueryLength) {
+        _results.set([])
+        return
+      }
+      const runId = ++queryRunCount
+      void ensureIndex().then((ms) => {
+        // Discard stale results from earlier slow searches.
+        if (runId !== queryRunCount) return
+        _results.set(ms.search(q).slice(0, options.maxResults ?? 8))
+      })
+    })
+
     return () => {
       unsubQuery()
-      unsubOpen?.()
+      unsubOpen()
+      unsubDebounced()
       if (debounceTimer !== null) clearTimeout(debounceTimer)
+      releaseIndex()
     }
   })
 
-  const _results = signal<SearchResult[]>([])
-  // Run search when debounced query changes.
-  let queryRunCount = 0
-  debounced.subscribe(() => {
-    const q = debounced().trim()
-    if (q.length === 0) {
-      _results.set([])
-      return
-    }
-    const runId = ++queryRunCount
-    void ensureIndex().then((ms) => {
-      // Discard stale results from earlier slow searches.
-      if (runId !== queryRunCount) return
-      _results.set(ms.search(q).slice(0, options.maxResults ?? 8))
-    })
-  })
-
+  // PR-D audit H9 — `_results` + `results` were duplicated computeds
+  // (the inner `signal<SearchResult[]>` AND an outer `computed(() =>
+  // _results())` that just unwrapped it). Collapsed to ONE — the
+  // public `results` is now the `computed` directly so consumers
+  // subscribe to the same tracking primitive.
   const results = computed(() => _results())
 
   const toggle = () => open.set(!open())
@@ -196,15 +253,25 @@ export interface SearchProps {
   debounceMs?: number
   /** Max number of results to show. Default 8. */
   maxResults?: number
+  /** Minimum query length before search fires. Default 2. */
+  minQueryLength?: number
 }
 
 export function Search(props: SearchProps): VNodeChild {
   const opts: UseSearchOptions = {
     debounceMs: props.debounceMs ?? 150,
     maxResults: props.maxResults ?? 8,
+    minQueryLength: props.minQueryLength ?? 2,
   }
   if (props.catalogUrl !== undefined) opts.catalogUrl = props.catalogUrl
   const state = useSearch(opts)
+
+  // PR-D audit M21 — focus management: capture the previously-focused
+  // element on open, focus the input on open, restore the previous
+  // focus on close. Keeps keyboard users from getting dumped to
+  // `<body>` after a Cmd+K → Escape sequence.
+  let lastFocused: HTMLElement | null = null
+  let inputEl: HTMLInputElement | null = null
 
   // Keyboard shortcut wiring.
   const shortcut = props.shortcut ?? 'mod+k'
@@ -215,15 +282,34 @@ export function Search(props: SearchProps): VNodeChild {
       const wantKey = shortcut === 'mod+k' ? 'k' : '/'
       if (isMod && e.key === wantKey) {
         e.preventDefault()
+        if (!state.open()) {
+          // About to open — capture focus first.
+          lastFocused = (document.activeElement as HTMLElement) ?? null
+        } else {
+          // About to close — restore previous focus next tick.
+          queueMicrotask(() => lastFocused?.focus?.())
+        }
         state.toggle()
       }
       if (e.key === 'Escape' && state.open()) {
         state.close()
+        queueMicrotask(() => lastFocused?.focus?.())
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   })
+
+  // Focus the input on open.
+  onMount(() => {
+    const unsub = state.open.subscribe(() => {
+      if (state.open() && inputEl) {
+        queueMicrotask(() => inputEl?.focus())
+      }
+    })
+    return () => unsub()
+  })
+
   onUnmount(() => state.close())
 
   return (
@@ -241,6 +327,9 @@ export function Search(props: SearchProps): VNodeChild {
             open
           >
             <input
+              ref={(el: HTMLInputElement | null) => {
+                inputEl = el
+              }}
               type="search"
               class="pyreon-search__input"
               placeholder="Search…"
@@ -254,7 +343,10 @@ export function Search(props: SearchProps): VNodeChild {
               type="button"
               class="pyreon-search__close"
               aria-label="Close search"
-              onClick={() => state.close()}
+              onClick={() => {
+                state.close()
+                queueMicrotask(() => lastFocused?.focus?.())
+              }}
             >
               Close
             </button>
@@ -262,8 +354,14 @@ export function Search(props: SearchProps): VNodeChild {
               {() =>
                 state.results().map((r) => (
                   <li class="pyreon-search__result">
-                    <a
-                      href={String(r.url ?? '#')}
+                    {/* PR-D audit M20 — was a raw `<a href>` which
+                        triggered a full page reload on every click.
+                        `RouterLink` does SPA navigation, and we
+                        close the overlay BEFORE the navigation push
+                        so the surrounding `<dialog>` doesn't flicker
+                        across the route change. */}
+                    <RouterLink
+                      to={String(r.url ?? '#')}
                       onClick={() => state.close()}
                     >
                       <span class="pyreon-search__title">
@@ -274,7 +372,7 @@ export function Search(props: SearchProps): VNodeChild {
                           {String(r.description)}
                         </span>
                       )}
-                    </a>
+                    </RouterLink>
                   </li>
                 ))
               }
