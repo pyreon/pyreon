@@ -2651,6 +2651,120 @@ html { scroll-behavior: smooth; }
   margin: 1rem 0;
 }
 
+/* ── @pyreon/zero-content <CodeBlock> chrome ──────────────────────────
+   The `<CodeBlock>` component renders this structure:
+
+     .code-block
+       .code-block__header           (when title= is set)
+         .code-block__filename
+       .code-block__body             (flex container — pre + copy)
+         .code-block__pre            (the Shiki-rendered <pre>)
+         .code-block__copy           (copy-to-clipboard button)
+
+   Without these rules the copy button rendered as a bare default-
+   styled <button> sitting AFTER the code block (block-level), looking
+   completely out of place. These rules make it a top-right corner
+   pill that fades in on hover — the established docs convention
+   (VitePress, MDX, Astro all use this shape). */
+.code-block {
+  /* Reset margin — the existing `pre` rule above already gave us
+     the bordered card visual; we don't want it doubled. The
+     code-block wrapper IS the card now. */
+  margin: 1rem 0;
+  /* Position context so the absolutely-positioned copy button anchors
+     to the block, not the page. */
+  position: relative;
+}
+.code-block__header {
+  /* Filename tab — sits on top of the body, sharing the rounded top
+     corner so it reads as a tab attached to the code card. */
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.85rem;
+  background: var(--bg-well);
+  border: 1px solid var(--hairline);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+.code-block__filename {
+  /* The filename string itself — slightly stronger weight so it
+     reads as a label, not just dim text. */
+  font-weight: 500;
+}
+/* When a header is present, the body's top corners shouldn't be
+   rounded (they'd peek out above the tab). Round only the bottom. */
+.code-block__header + .code-block__body .code-block__pre,
+.code-block__header + .code-block__body .code-block__pre > pre {
+  border-radius: 0 0 6px 6px;
+}
+.code-block__body {
+  /* Wraps the pre + copy button. Position context for the absolute
+     copy button. */
+  position: relative;
+}
+.code-block__pre > pre {
+  /* The Shiki-rendered <pre> inside .code-block__pre. We want it
+     edge-to-edge with the wrapper (margin collapsing handled by the
+     wrapper). */
+  margin: 0;
+}
+.code-block__copy {
+  /* Top-right corner pill. Fades in on hover/focus to stay out of
+     the way of the code reading. */
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.75em;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease,
+    border-color 0.18s ease;
+  /* z-index so the button always sits above the Shiki output's
+     focusable elements. */
+  z-index: 1;
+}
+.code-block:hover .code-block__copy,
+.code-block:focus-within .code-block__copy {
+  opacity: 1;
+}
+.code-block__copy:hover {
+  color: var(--text);
+  background: var(--bg);
+  border-color: var(--ember-ring);
+}
+.code-block__copy:focus-visible {
+  /* Keyboard focus — always visible regardless of hover */
+  opacity: 1;
+  outline: 2px solid var(--ember-core);
+  outline-offset: 1px;
+}
+/* Confirm-state — when the user clicked Copy. Brief ember tint so
+   the button signals "got it" before fading. */
+.code-block__copy[data-copied='true'],
+.code-block__copy:active {
+  color: var(--ember-core);
+  border-color: var(--ember-core);
+  background: var(--ember-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-block__copy {
+    transition: none;
+    opacity: 1;
+  }
+}
+
 /* ── Shiki dual-theme code highlighting (light + dark) ────────────────
    `@pyreon/zero-content` runs Shiki in dual-theme mode and emits each
    token's INLINE style in this exact shape:

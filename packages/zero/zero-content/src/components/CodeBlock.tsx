@@ -120,6 +120,7 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
             type="button"
             class="code-block__copy"
             aria-label="Copy code"
+            data-copied={() => (copied() ? 'true' : undefined)}
             onClick={handleCopy}
           >
             {() => (copied() ? 'Copied' : 'Copy')}

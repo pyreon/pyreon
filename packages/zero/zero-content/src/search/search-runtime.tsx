@@ -77,15 +77,37 @@ function acquireSearchInstance(): () => void {
 }
 
 /**
+ * Default catalog URL — prefixed with Vite's resolved `base` via
+ * `import.meta.env.BASE_URL` (the standard Vite client global) so
+ * subpath deploys (GitHub Pages preview, app-mounted-under-subdir)
+ * fetch from the right path. Falls back to `/search-index.json` for
+ * root deploys or environments where `import.meta.env` is undefined
+ * (raw Node, some test runners).
+ *
+ * `BASE_URL` always has a trailing slash per Vite spec; we trim it so
+ * the join produces exactly one slash.
+ */
+interface ViteEnvMeta {
+  readonly env?: { readonly BASE_URL?: string }
+}
+function defaultCatalogUrl(): string {
+  const base = (import.meta as ViteEnvMeta).env?.BASE_URL
+  if (!base || base === '/' || base.length === 0) return '/search-index.json'
+  const trimmed = base.endsWith('/') ? base.slice(0, -1) : base
+  return `${trimmed}/search-index.json`
+}
+
+/**
  * Load the search index lazily. Fetches the catalog, then each
  * per-collection chunk, and merges them into one MiniSearch. The
- * default `catalogUrl` is `/search-index.json` (matching what the
- * builder emits).
+ * default `catalogUrl` is `/search-index.json`, prefixed with the
+ * configured `__ZERO_BASE__` for subpath deploys.
  */
 export async function loadSearchIndex(
-  catalogUrl = '/search-index.json',
+  catalogUrl?: string,
   fetchFn: typeof fetch = globalThis.fetch,
 ): Promise<MiniSearch> {
+  if (catalogUrl === undefined) catalogUrl = defaultCatalogUrl()
   if (_instance && _instanceUrl === catalogUrl) return _instance
   if (_loading && _instanceUrl === catalogUrl) return _loading
   _instanceUrl = catalogUrl

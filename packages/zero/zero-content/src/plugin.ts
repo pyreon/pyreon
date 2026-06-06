@@ -910,6 +910,13 @@ export {}
           entries: entriesByCollection,
           root: resolvedConfig.root,
           outDir,
+          // Thread Vite's resolved `base` into the index builder so
+          // catalog URLs emitted into `dist/search-index.json` are
+          // prefixed correctly under subpath deploys (e.g.
+          // `/pyreon/preview/search-index-docs.json`). Without this
+          // the runtime's `fetch('/search-index-docs.json')` escapes
+          // the subpath and 404s on GitHub Pages preview deploys.
+          base: resolvedConfig.base,
         })
         for (const w of result.warnings) {
           this.warn(w)
