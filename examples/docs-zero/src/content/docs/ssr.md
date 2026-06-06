@@ -7,7 +7,7 @@ This is the dedicated reference for `@pyreon/zero`'s server-side rendering. For 
 
 When `mode: "ssr"` or `mode: "isr"` is set, `vite build` runs the normal client build, then `ssrPlugin`'s `closeBundle` hook spins up a programmatic Vite SSR sub-build of either your `src/entry-server.ts` (if it exists) or a synthetic entry, and writes `dist/server/entry-server.js`. The configured adapter's `build({ kind: 'ssr', … })` is invoked so platform adapters (vercel / cloudflare / netlify) can wrap the bundle into a deployable serverless function.
 
-```ts
+```ts title="vite.config.ts"
 import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'
 
@@ -35,7 +35,7 @@ Per-route override: any route file may `export const renderMode = 'ssg'` / `'ssr
 
 The minimum:
 
-```ts
+```ts title="vite.config.ts"
 import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'
 
@@ -70,7 +70,7 @@ The framework looks for `src/entry-server.ts` and uses **that file** as the SSR 
 - configure `actions: { corsOrigins }`
 - wrap `createServer({...})` in a request-logging or tracing decorator
 
-```ts
+```ts title="src/entry-server.ts"
 import { routes } from 'virtual:zero/routes'
 import { routeMiddleware } from 'virtual:zero/route-middleware'
 import { apiRoutes } from 'virtual:zero/api-routes'
@@ -106,7 +106,7 @@ The recursive SSR sub-build is gated by `PYREON_ZERO_SSR_INNER_BUILD` (distinct 
 
 Route files export a `loader` that runs at SSR time before rendering. The result is serialized into the HTML, then hydrated on the client so the first-render UI has the data without a fetch waterfall.
 
-```tsx
+```tsx title="src/routes/posts/[id].tsx"
 import type { LoaderContext } from '@pyreon/zero/server'
 
 export const loader = async ({ params, request }: LoaderContext) => {
@@ -219,7 +219,7 @@ Build-time ISR (per-route `export const revalidate = 60` + platform-driven rebui
 
 A `src/routes/_404.tsx` (or `_not-found.tsx`) is auto-registered as the not-found component. SSR returns HTTP 404 for unmatched URLs and renders the component **inside the parent layout's chrome** (header, sidebar, navigation, `<PyreonUI>` provider) — same router-driven render path as regular pages.
 
-```tsx
+```tsx title="src/routes/_404.tsx"
 import { Meta } from '@pyreon/zero'
 
 export default function NotFound() {
@@ -243,7 +243,7 @@ The framework injects `<meta name="robots" content="noindex, nofollow">` into ev
 
 Any route file can override the global mode independently:
 
-```tsx
+```tsx title="src/routes/blog/index.tsx"
 // This page is statically prerendered even though the app is mode: 'ssr'
 export const renderMode = 'ssg'
 

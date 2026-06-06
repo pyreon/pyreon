@@ -60,9 +60,9 @@ interface HandlerOptions {
   routes: RouteRecord[]
   /**
    * HTML template with comment placeholders:
-   *   {/* pyreon-head */}     — head tags (title, meta, link, etc.)
-   *   {/* pyreon-app */}      — rendered app HTML
-   *   {/* pyreon-scripts */}  — client entry script + inline loader data
+   *   <!--pyreon-head-->     — head tags (title, meta, link, etc.)
+   *   <!--pyreon-app-->      — rendered app HTML
+   *   <!--pyreon-scripts-->  — client entry script + inline loader data
    *
    * Defaults to DEFAULT_TEMPLATE (a minimal HTML5 shell).
    */
@@ -94,7 +94,7 @@ Every incoming request goes through these steps:
 
 ### Basic example — Bun
 
-```ts
+```ts title="server.ts"
 import { createHandler } from '@pyreon/server'
 import { App } from './src/App'
 import { routes } from './src/routes'
@@ -113,18 +113,18 @@ console.log('Listening on http://localhost:3000')
 
 The default template is a minimal HTML5 document. For production, provide your own:
 
-```html
+```html title="index.html"
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/assets/style.css" />
-    {/* pyreon-head */}
+    <!--pyreon-head-->
   </head>
   <body>
-    <div id="app">{/* pyreon-app */}</div>
-    {/* pyreon-scripts */}
+    <div id="app"><!--pyreon-app--></div>
+    <!--pyreon-scripts-->
   </body>
 </html>
 ```
@@ -133,9 +133,9 @@ The three comment placeholders are required:
 
 | Placeholder             | Replaced with                                                    |
 | ----------------------- | ---------------------------------------------------------------- |
-| `{/* pyreon-head */}`    | Collected `<title>`, `<meta>`, `<link>` tags from `@pyreon/head` |
-| `{/* pyreon-app */}`     | Rendered application HTML                                        |
-| `{/* pyreon-scripts */}` | Client entry `<script>` tag + inline loader data                 |
+| `<!--pyreon-head-->`    | Collected `<title>`, `<meta>`, `<link>` tags from `@pyreon/head` |
+| `<!--pyreon-app-->`     | Rendered application HTML                                        |
+| `<!--pyreon-scripts-->` | Client entry `<script>` tag + inline loader data                 |
 
 ### Custom client entry
 
@@ -163,10 +163,10 @@ const handler = createHandler({
 
 In streaming mode:
 
-- The HTML shell (everything before `{/* pyreon-app */}`) is flushed immediately.
+- The HTML shell (everything before `<!--pyreon-app-->`) is flushed immediately.
 - App content streams progressively as components resolve.
 - Suspense boundaries resolve out-of-order via inline `<template>` elements and swap scripts.
-- The closing shell (after `{/* pyreon-app */}`) is sent after all content is flushed.
+- The closing shell (after `<!--pyreon-app-->`) is sent after all content is flushed.
 
 This gives the browser a head start on parsing CSS and fetching resources while the app renders.
 
@@ -355,7 +355,7 @@ interface PrerenderResult {
 
 ### Basic SSG build script
 
-```ts
+```ts title="ssg.ts"
 import { createHandler, prerender } from '@pyreon/server'
 import { App } from './src/App'
 import { routes } from './src/routes'
@@ -379,7 +379,7 @@ if (result.errors.length > 0) {
 
 The `paths` option accepts an async function for dynamic route discovery:
 
-```ts
+```ts title="ssg.ts"
 import { createHandler, prerender } from '@pyreon/server'
 import { App } from './src/App'
 import { routes } from './src/routes'
@@ -409,7 +409,7 @@ const result = await prerender({
   onPage: (path, html) => {
     console.log(`  ✓ ${path} (${html.length} bytes)`)
     // Return false to skip writing
-    if (html.includes('{/* draft */}')) return false
+    if (html.includes('<!-- draft -->')) return false
   },
 })
 ```
@@ -439,7 +439,7 @@ The `@pyreon/server/client` entry provides two functions for client-side hydrati
 
 For traditional SSR where the entire app is interactive:
 
-```ts
+```ts title="src/entry-client.ts"
 import { startClient } from '@pyreon/server/client'
 import { App } from './App'
 import { routes } from './routes'
@@ -512,7 +512,7 @@ startClient({ App, routes })
 
 For island architecture where only specific components are interactive:
 
-```ts
+```ts title="src/entry-client.ts"
 import { hydrateIslands } from '@pyreon/server/client'
 
 const cleanup = hydrateIslands({
@@ -538,7 +538,7 @@ Only components actually present in the HTML are loaded — if a page doesn't us
 
 When using `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin auto-scans the source tree for every `island()` declaration and emits a virtual module containing the registry. Use `hydrateIslandsAuto(registry)` to consume it without writing the registry by hand:
 
-```ts
+```ts title="src/entry-client.ts"
 import { hydrateIslandsAuto } from '@pyreon/server/client'
 import islandsRegistry from 'virtual:pyreon/islands-registry'
 
@@ -601,11 +601,11 @@ console.log(DEFAULT_TEMPLATE)
 // <head>
 //   <meta charset="UTF-8">
 //   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-//   {/* pyreon-head */}
+//   <!--pyreon-head-->
 // </head>
 // <body>
-//   <div id="app">{/* pyreon-app */}</div>
-//   {/* pyreon-scripts */}
+//   <div id="app"><!--pyreon-app--></div>
+//   <!--pyreon-scripts-->
 // </body>
 // </html>
 ```
@@ -674,9 +674,9 @@ interface CompiledTemplate {
 }
 ```
 
-The four parts correspond to: before `{/* pyreon-head */}`, between head and app, between app and scripts, and after `{/* pyreon-scripts */}`.
+The four parts correspond to: before `<!--pyreon-head-->`, between head and app, between app and scripts, and after `<!--pyreon-scripts-->`.
 
-Throws if the template does not contain `{/* pyreon-app */}`.
+Throws if the template does not contain `<!--pyreon-app-->`.
 
 ### `buildScriptsFast`
 
@@ -719,7 +719,7 @@ my-app/
 
 ### Server entry
 
-```ts
+```ts title="src/server.ts"
 import { createHandler } from '@pyreon/server'
 import { App } from './App'
 import { routes } from './routes'
@@ -749,7 +749,7 @@ console.log(`Server running at http://localhost:3000`)
 
 ### Client entry
 
-```ts
+```ts title="src/entry-client.ts"
 import { startClient } from '@pyreon/server/client'
 import { App } from './App'
 import { routes } from './routes'
@@ -759,7 +759,7 @@ startClient({ App, routes })
 
 ### Routes
 
-```ts
+```ts title="src/routes.ts"
 import type { RouteRecord } from '@pyreon/router'
 
 export const routes: RouteRecord[] = [
@@ -784,7 +784,7 @@ export const routes: RouteRecord[] = [
 
 ### Server
 
-```ts
+```ts title="src/server.ts"
 import { createHandler, island } from "@pyreon/server"
 import { defineComponent, h } from "@pyreon/core"
 
@@ -827,7 +827,7 @@ Bun.serve({ fetch: handler, port: 3000 })
 
 ### Client (islands mode)
 
-```ts
+```ts title="src/entry-client.ts"
 import { hydrateIslands } from '@pyreon/server/client'
 
 hydrateIslands({
@@ -840,7 +840,7 @@ hydrateIslands({
 
 ## Full Example — Static Site Generation
 
-```ts
+```ts title="ssg.ts"
 import { createHandler, prerender } from '@pyreon/server'
 import { App } from './src/App'
 import { routes } from './src/routes'

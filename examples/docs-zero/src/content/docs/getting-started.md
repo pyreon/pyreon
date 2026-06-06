@@ -31,7 +31,7 @@ yarn add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 
 Add the Pyreon plugin to your Vite config. The plugin is a default export — convention is to name the import `pyreon`:
 
-```ts
+```ts title="vite.config.ts"
 import { defineConfig } from 'vite'
 import pyreon from '@pyreon/vite-plugin'
 
@@ -42,7 +42,7 @@ export default defineConfig({
 
 ## Your First Component
 
-```tsx
+```tsx title="src/main.tsx"
 import { signal, computed } from '@pyreon/reactivity'
 import { Show } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
@@ -79,7 +79,7 @@ Pyreon components are plain functions that return JSX — no `defineComponent` w
 
 ## HTML Entry Point
 
-```html
+```html title="index.html"
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -118,7 +118,7 @@ yarn add @pyreon/runtime-server
 
 :::
 
-```tsx
+```tsx title="src/entry-server.tsx"
 import { renderToString } from '@pyreon/runtime-server'
 import App from './App'
 
@@ -129,7 +129,7 @@ export async function render() {
 
 For streaming SSR with Suspense support:
 
-```tsx
+```tsx title="src/entry-server.tsx"
 import { renderToStream } from '@pyreon/runtime-server'
 import App from './App'
 
@@ -160,7 +160,7 @@ yarn add @pyreon/router
 
 :::
 
-```tsx
+```tsx title="src/router.ts"
 import { createRouter } from '@pyreon/router'
 
 export const router = createRouter({
@@ -172,7 +172,7 @@ export const router = createRouter({
 })
 ```
 
-```tsx
+```tsx title="src/App.tsx"
 import { RouterProvider, RouterView, RouterLink } from '@pyreon/router'
 import { router } from './router'
 

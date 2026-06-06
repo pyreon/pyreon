@@ -7,7 +7,7 @@ This is the dedicated reference for `@pyreon/zero`'s Static Site Generation. For
 
 When `mode: "ssg"` is set, `vite build` runs the normal client build, then `ssgPlugin`'s `closeBundle` hook spins up a programmatic Vite SSR sub-build of a synthetic entry, loads the resulting renderer, and writes one static HTML file per resolved path. The temporary `dist/.zero-ssg-server/` artifacts are removed automatically.
 
-```ts
+```ts title="vite.config.ts"
 import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'
 
@@ -36,7 +36,7 @@ Per-route override: any route file may `export const renderMode = 'ssg'` to opt 
 
 By default, omitting `ssg.paths` auto-detects every **static** route (no `[param]` / `[...catchall]` segment) from the file-system route tree:
 
-```ts
+```ts title="zero.config.ts"
 import { defineConfig } from '@pyreon/zero/server'
 
 export default defineConfig({ mode: 'ssg' })
@@ -71,7 +71,7 @@ If no static routes exist (only dynamic routes, no `getStaticPaths`), a single `
 
 Dynamic routes (`/posts/[id].tsx`) are skipped by auto-detect unless they `export const getStaticPaths` (sync or async). The SSG plugin enumerates the params and expands the URL pattern, rendering one HTML file per entry. Mirrors Astro's per-route convention.
 
-```tsx
+```tsx title="src/routes/posts/[id].tsx"
 import type { GetStaticPaths } from '@pyreon/zero/server'
 
 export const getStaticPaths: GetStaticPaths<{ id: string }> = async () => {
@@ -104,7 +104,7 @@ and ensure each URL is produced by exactly one route.
 
 Drop a `_404.tsx` (or `_not-found.tsx`) anywhere in the routes tree and SSG auto-emits `dist/404.html`, rendered through the **same** head/styler pipeline as every other page (so `@pyreon/styler` CSS and `@pyreon/head` metadata land correctly). Static hosts (Netlify, Cloudflare Pages, GitHub Pages, S3 + CloudFront) serve `404.html` for unmatched URLs by convention.
 
-```tsx
+```tsx title="src/routes/_404.tsx"
 import { Meta } from '@pyreon/zero'
 
 export default function NotFound() {
@@ -125,7 +125,7 @@ Disable with `ssg.emit404: false`. Skipped silently when no `_404.tsx` exists. P
 
 Throw `redirect(url, status?)` from a route loader and SSG catches it **before** rendering (rendering past a redirect would emit HTML for the wrong page and leak an auth-gated layout to anonymous crawlers):
 
-```tsx
+```tsx title="src/routes/blog/[slug].tsx"
 import { redirect } from '@pyreon/router'
 
 export const loader = ({ params }) => {
@@ -227,7 +227,7 @@ The on-disk `dist/` layout stays **unprefixed** (`dist/about/index.html`, not `d
 
 `zero({ i18n: { locales, defaultLocale, strategy } })` fans every route into per-locale variants **at build time** (`expandRoutesForLocales`). This is independent from the request-time `i18nRouting()` middleware — both can be used together.
 
-```ts
+```ts title="zero.config.ts"
 import { defineConfig } from '@pyreon/zero/server'
 
 export default defineConfig({
@@ -266,7 +266,7 @@ So search engines and users see a 404 in the right language with the right navig
 
 By default `seoPlugin`'s sitemap walks the file-system route tree and silently skips dynamic routes (their concrete values aren't knowable at scan time). In SSG mode, opt into the real prerendered path set:
 
-```ts
+```ts title="vite.config.ts"
 import { seoPlugin } from '@pyreon/zero/seo'
 
 export default {
@@ -311,7 +311,7 @@ The default stays `'preserve'` rather than auto-switching on adapter, because no
 
 Distinct from runtime ISR (`mode: 'isr'`, in-memory LRU cache — see [Zero → ISR](/docs/zero#isr-incremental-static-regeneration-runtime)). **Build-time ISR** is static prerender + platform-driven rebuild-on-stale. A route opts in by exporting a `revalidate` literal:
 
-```tsx
+```tsx title="src/routes/posts/[id].tsx"
 export const revalidate = 60 // seconds. Or `false` for never-revalidate.
 
 export const getStaticPaths = () => [{ params: { id: '1' } }, { params: { id: '2' } }]
@@ -343,7 +343,7 @@ const { regenerated } = await adapter.revalidate('/posts/1')
 
 The scaffold for the convention the Vercel adapter POSTs to. Mount it as an API route:
 
-```ts
+```ts title="src/routes/api/_pyreon-revalidate.ts"
 import { vercelRevalidateHandler } from '@pyreon/zero/server'
 
 export const POST = vercelRevalidateHandler({

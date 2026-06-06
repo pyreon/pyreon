@@ -89,7 +89,7 @@ For non-Vite bundlers, you need the equivalent configuration manually:
 
 Zero is configured as a set of Vite plugins in your `vite.config.ts`. The default export of `@pyreon/zero/server` is the Zero Vite plugin:
 
-```ts
+```ts title="vite.config.ts"
 import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
@@ -109,7 +109,7 @@ export default {
 
 For type-safe config, use `defineConfig` from `@pyreon/zero/server` (or `@pyreon/zero/config`):
 
-```ts
+```ts title="zero.config.ts"
 import { defineConfig } from '@pyreon/zero/server'
 
 export default defineConfig({
@@ -185,7 +185,7 @@ import { apiRoutes } from 'virtual:zero/api-routes'
 
 Add their types to `env.d.ts`:
 
-```ts
+```ts title="env.d.ts"
 declare module 'virtual:zero/route-middleware' {
   import type { RouteMiddlewareEntry } from '@pyreon/zero'
   export const routeMiddleware: RouteMiddlewareEntry[]
@@ -553,7 +553,7 @@ function InlineScript() {
 
 API routes are `.ts` files in `src/routes/api/` that export HTTP method handlers and return `Response` objects.
 
-```ts
+```ts title="src/routes/api/posts.ts"
 import type { ApiContext } from '@pyreon/zero'
 
 export function GET(ctx: ApiContext) {
@@ -574,7 +574,7 @@ export async function POST(ctx: ApiContext) {
 
 Wire them via the virtual module. They run before SSR and dispatch by URL + HTTP method; unsupported methods return `405` with an `Allow` header. API routes also work in dev (the plugin dispatches them in the dev server).
 
-```ts
+```ts title="src/entry-server.ts"
 import { routes } from 'virtual:zero/routes'
 import { apiRoutes } from 'virtual:zero/api-routes'
 import { createServer } from '@pyreon/zero/server'
@@ -586,7 +586,7 @@ export default createServer({ routes, apiRoutes })
 
 Server-side mutations callable from the client, mounted at `/_zero/actions/*`.
 
-```ts
+```ts title="src/features/posts.ts"
 import { defineAction } from '@pyreon/zero/actions'
 
 export const createPost = defineAction(async (ctx) => {
@@ -595,7 +595,7 @@ export const createPost = defineAction(async (ctx) => {
 })
 ```
 
-```ts
+```ts title="src/entry-server.ts"
 import { createActionMiddleware } from '@pyreon/zero/actions'
 import { createServer } from '@pyreon/zero/server'
 
@@ -613,7 +613,7 @@ The `ActionContext` exposes `request`, `json` (parsed JSON body), `formData` (fo
 
 `seoPlugin` (from `@pyreon/zero/seo` or `@pyreon/zero/server`) auto-generates `sitemap.xml` and `robots.txt` at build time:
 
-```ts
+```ts title="vite.config.ts"
 import { seoPlugin } from '@pyreon/zero/seo'
 
 export default {
@@ -632,7 +632,7 @@ export default {
 
 `fontPlugin` (`@pyreon/zero/font`) downloads Google Fonts at build time and self-hosts them; in dev it falls back to the CDN.
 
-```ts
+```ts title="vite.config.ts"
 import { fontPlugin } from '@pyreon/zero/font'
 
 export default {
@@ -686,7 +686,7 @@ Use `usePreloadFont` per-route; for fonts declared globally via `zero({ font: { 
 
 `imagePlugin` (`@pyreon/zero/image-plugin`) provides build-time image optimization via [sharp](https://sharp.pixelplumbing.com/) (copies as-is with a warning if sharp isn't installed). Import an image with `?optimize` to get a `ProcessedImage` (`{ src, srcset, width, height, placeholder, formats }`):
 
-```ts
+```ts title="vite.config.ts"
 import { imagePlugin } from '@pyreon/zero/image-plugin'
 
 export default {
@@ -739,7 +739,7 @@ This makes `import hero from './x.jpg?optimize'` resolve to `ProcessedImage` (an
 
 `faviconPlugin` (`@pyreon/zero/favicon`) generates the full favicon set from a **single source** (SVG or PNG) and injects every `<head>` tag automatically — no manual `<link>`/`<meta>` wiring. Like `imagePlugin`, it uses [sharp](https://sharp.pixelplumbing.com/) for image generation.
 
-```ts
+```ts title="vite.config.ts"
 import { faviconPlugin } from '@pyreon/zero/favicon'
 
 export default {

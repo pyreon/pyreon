@@ -60,7 +60,7 @@ Choosing wrong has user-visible consequences:
 
 The default. The island fetches its JS chunk and hydrates synchronously on page load. Use for any interactive component the user is meant to engage with on first paint.
 
-```tsx
+```tsx title="src/islands.ts"
 import { island } from '@pyreon/server'
 
 export const Counter = island(() => import('./components/Counter'), {
@@ -168,7 +168,7 @@ Prefetch is suppressed (no `data-prefetch` attribute emitted) when paired with `
 
 Under `@pyreon/vite-plugin` (default-on as of post-#461), the client-side registry is **auto-discovered from your source code**. The plugin pre-scans for `island(() => import('PATH'), { name, hydrate })` calls and emits a virtual module you import in `entry-client.ts`.
 
-```ts
+```ts title="src/entry-client.ts"
 import { hydrateIslandsAuto } from '@pyreon/server/client'
 // @ts-expect-error virtual module — provided by @pyreon/vite-plugin
 import * as autoRegistry from 'virtual:pyreon/islands-registry'
