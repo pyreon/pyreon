@@ -4,6 +4,7 @@ import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
 import { compileMarkdown } from './pipeline/parse'
 import type { HighlighterOptions } from './pipeline/highlighter'
 import {
+  renderPerComponentVirtual,
   renderVirtualModule,
   scanMdxDir,
   type ScanResult,
@@ -368,7 +369,14 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
     },
 
     resolveId(source) {
+      // Barrel (legacy): `virtual:zero-content/components`
       if (source === VIRTUAL_COMPONENTS_ID) return RESOLVED_VIRTUAL_COMPONENTS_ID
+      // Per-component virtual sub-module: `virtual:zero-content/components/Foo`
+      // (PR-G audit C3). HMR-invalidates ONLY pages that import the
+      // changed component, instead of the barrel's all-pages cascade.
+      if (source.startsWith(VIRTUAL_COMPONENTS_ID + '/')) {
+        return '\0' + source
+      }
       if (source === VIRTUAL_COLLECTIONS_ID) return RESOLVED_VIRTUAL_COLLECTIONS_ID
       return null
     },
@@ -387,6 +395,20 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
           }
         }
         return renderVirtualModule(scan)
+      }
+      // PR-G audit C3 — per-component virtual sub-modules. Emits a
+      // tiny module that re-exports ONLY the named component from the
+      // main components virtual module so edits to that component's
+      // file invalidate just the consumers that imported it, not
+      // every .md page in the project.
+      if (id.startsWith('\0' + VIRTUAL_COMPONENTS_ID + '/')) {
+        const name = id.slice(('\0' + VIRTUAL_COMPONENTS_ID + '/').length)
+        // Validate it's a real component name (built-in OR scanned). An
+        // unknown name → fall through to a build-time error from the
+        // re-exported barrel binding, which yields a clearer message
+        // than a vanishing virtual module would.
+        if (!/^[A-Z][A-Za-z0-9_]*$/.test(name)) return null
+        return renderPerComponentVirtual(name)
       }
       if (id === RESOLVED_VIRTUAL_COLLECTIONS_ID) {
         if (loadedConfig === null) {
@@ -711,7 +733,16 @@ export {}
       // invalidate the collections virtual module. Dependent .md files
       // get re-validated automatically because Vite propagates the
       // collection-module invalidation through their import graph.
+      //
+      // PR-G audit H4 — also blow away the compile cache. The cache
+      // key is content-based (FNV-1a of the source) and does NOT
+      // include schema identity, so a stricter schema added to
+      // content.config.ts would otherwise let unchanged `.md` files
+      // skip the re-validate pass and silently violate the new rules.
+      // Clearing the cache forces every dependent `.md` to recompile
+      // AND re-validate the next time it transforms.
       if (loadedConfig && ctx.file === loadedConfig.configFile) {
+        COMPILE_CACHE.clear()
         try {
           loadedConfig = await loadConfig(
             resolvedConfig?.root ?? process.cwd(),

@@ -125,23 +125,29 @@ body
 })
 
 describe('compileMarkdown — auto-import from virtual:zero-content/components', () => {
-  it('emits a single import for components referenced in the body', async () => {
+  // PR-G audit C3 — the compiler emits ONE import per referenced
+  // component, each from `virtual:zero-content/components/<Name>`,
+  // so an `src/mdx/Foo.tsx` edit invalidates ONLY pages that import
+  // `Foo` instead of every `.md` page (the pre-fix barrel cascade).
+  it('emits a per-component import for components referenced in the body', async () => {
     const result = await out('<Callout type="tip">x</Callout>')
     expect(result.componentRefs).toContain('Callout')
     expect(result.code).toContain(
-      `import { Callout } from "virtual:zero-content/components"`,
+      `import { Callout } from "virtual:zero-content/components/Callout"`,
     )
   })
 
-  it('groups multiple referenced components into one import', async () => {
+  it('emits a separate per-component import line for each referenced component', async () => {
     const result = await out(
       '<Callout type="tip">x</Callout>\n\n<CodeGroup labels={["a"]}>y</CodeGroup>',
     )
     expect(result.componentRefs).toContain('Callout')
     expect(result.componentRefs).toContain('CodeGroup')
-    // One import line, two names, sorted alphabetically
     expect(result.code).toContain(
-      `import { Callout, CodeGroup } from "virtual:zero-content/components"`,
+      `import { Callout } from "virtual:zero-content/components/Callout"`,
+    )
+    expect(result.code).toContain(
+      `import { CodeGroup } from "virtual:zero-content/components/CodeGroup"`,
     )
   })
 
@@ -156,7 +162,7 @@ describe('compileMarkdown — auto-import from virtual:zero-content/components',
     )
     // No auto-import for Callout — the hoisted import takes precedence.
     expect(result.code).not.toContain(
-      'from "virtual:zero-content/components"',
+      'from "virtual:zero-content/components/Callout"',
     )
   })
 

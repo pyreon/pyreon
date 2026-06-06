@@ -4,7 +4,7 @@ import remarkFrontmatter from 'remark-frontmatter'
 import remarkGfm from 'remark-gfm'
 import remarkMdx from 'remark-mdx'
 import remarkParse from 'remark-parse'
-import { unified } from 'unified'
+import { unified, type Processor } from 'unified'
 import type { Root } from 'mdast'
 import { emitJsx, type EmitOptions } from './emit-jsx'
 import { remarkCallout } from './remark-plugins/callout'
@@ -12,6 +12,92 @@ import { remarkCodeGroup } from './remark-plugins/codegroup'
 import { highlightCode, type HighlighterOptions } from './highlighter'
 import { slugFromPath } from '../_shared/derive-slug'
 import type { Heading } from '../types'
+
+// ─── PR-G audit H12 — processor cache ─────────────────────────────────────
+//
+// The remark/unified processor's plugin chain (parse → frontmatter →
+// gfm → directive → callout → codegroup → optional mdx) is identical
+// across every file in the project. Pre-fix we built a fresh
+// `unified()` instance per `compileMarkdown` call — 7-8 `.use(...)`
+// allocations + the chain initialization × N files. That's wasted
+// work the audit (H12) called out.
+//
+// We can't share the FULL processor because `remarkCallout` is
+// parameterized per-file (`{ source, warnings }` — it reads the body
+// to detect unclosed `:::` fences and pushes diagnostics into the
+// caller's array). The fix: pass that context via a module-level
+// thread-local set right before `processor.parse(body)` and read by
+// a thin parameterless wrapper plugin. Single-threaded JS makes this
+// safe — no other code runs between the assignment and the parse.
+
+let _currentCalloutContext: {
+  source: string
+  warnings: string[]
+} | null = null
+
+/** Internal — thin wrapper around `remarkCallout` that pulls its
+ * options from the module-level thread-local set by `compileMarkdown`
+ * right before `processor.run`. Keeps the cached processor's plugin
+ * configuration parameterless. The OUTER call (at `.use(...)` time,
+ * processor build) returns the transformer; the INNER read of
+ * `_currentCalloutContext` happens at `processor.run` time when the
+ * caller has set the context. */
+function remarkCalloutThreadLocal(this: unknown) {
+  // Return a transformer that, per-run, reads the thread-local + the
+  // already-cached `remarkCallout` factory. `remarkCallout(opts)` is
+  // a cheap factory (constructs a closure); the structural saving is
+  // in the OTHER plugins (parse, gfm, mdx) staying built once.
+  return function transformer(tree: Root): void {
+    const ctx = _currentCalloutContext
+    if (ctx === null) {
+      throw new Error(
+        '[@pyreon/zero-content] internal: remarkCalloutThreadLocal invoked without context — compileMarkdown contract violated',
+      )
+    }
+    const innerTransformer = remarkCallout({
+      source: ctx.source,
+      warnings: ctx.warnings,
+    })
+    ;(innerTransformer as (t: Root) => void)(tree)
+  }
+}
+
+// Two cached processors, keyed by the `mdxEnabled` flag — the only
+// configuration that varies between calls. Lazy-built on first use.
+let _processorMdx: Processor | null = null
+let _processorNoMdx: Processor | null = null
+
+function getProcessor(mdxEnabled: boolean): Processor {
+  if (mdxEnabled) {
+    if (_processorMdx === null) _processorMdx = buildProcessor(true)
+    return _processorMdx
+  }
+  if (_processorNoMdx === null) _processorNoMdx = buildProcessor(false)
+  return _processorNoMdx
+}
+
+function buildProcessor(mdxEnabled: boolean): Processor {
+  const base = unified()
+    .use(remarkParse)
+    .use(remarkFrontmatter, ['yaml'])
+    .use(remarkGfm)
+    .use(remarkDirective)
+    .use(remarkCalloutThreadLocal)
+    .use(remarkCodeGroup)
+  return mdxEnabled
+    ? (base.use(remarkMdx) as unknown as Processor)
+    : (base as unknown as Processor)
+}
+
+/**
+ * @internal Reset the cached processors. Test-only — lets a spec
+ * exercise the build-from-scratch path without relying on module
+ * unloading order.
+ */
+export function _resetProcessorCacheForTesting(): void {
+  _processorMdx = null
+  _processorNoMdx = null
+}
 
 // ─── Markdown → Pyreon TSX pipeline ────────────────────────────────────────
 //
@@ -119,26 +205,27 @@ export async function compileMarkdown(
   // this; we return it on the CompileResult so the Vite plugin can
   // surface each through `this.warn(...)` with file context.
   const compileWarnings: string[] = []
-  const base = unified()
-    .use(remarkParse)
-    .use(remarkFrontmatter, ['yaml'])
-    .use(remarkGfm)
-    .use(remarkDirective)
-    .use(remarkCallout, { source: body, warnings: compileWarnings })
-    .use(remarkCodeGroup)
-  // remark-mdx widens the processor's transformer types (it transforms
-  // the tree from `Root` to `Root` while introducing mdx* nodes). Cast
-  // through `unknown` to keep the union narrow at the `processor.parse`
-  // call site.
-  const processor = mdxEnabled
-    ? (base.use(remarkMdx) as unknown as typeof base)
-    : base
-
-  // `parse` (sync) → `run` (async; lets remark plugins return promises
-  // for future Shiki-as-remark-plugin moves). Currently all our plugins
-  // are sync so the await is cheap.
-  const raw = processor.parse(body) as Root
-  const tree = (await processor.run(raw)) as Root
+  // PR-G audit H12 — reuse the cached processor instead of rebuilding
+  // it per file. The callout plugin's per-file `{ source, warnings }`
+  // ride along through a module-level thread-local read by the
+  // `remarkCalloutThreadLocal` wrapper; safe because JS is
+  // single-threaded and we never `await` between the assignment and
+  // the synchronous `processor.parse`.
+  _currentCalloutContext = { source: body, warnings: compileWarnings }
+  let raw: Root
+  let tree: Root
+  try {
+    const processor = getProcessor(mdxEnabled)
+    raw = processor.parse(body) as Root
+    // `parse` (sync) → `run` (async; lets remark plugins return promises
+    // for future Shiki-as-remark-plugin moves). Currently all our plugins
+    // are sync so the await is cheap. The thread-local read in
+    // `remarkCalloutThreadLocal` happens before the await, so clearing
+    // it after `run()` resolves is safe.
+    tree = (await processor.run(raw)) as Root
+  } finally {
+    _currentCalloutContext = null
+  }
 
   // 3. Build emit options. Highlight callback for Shiki + MDX hoist
   //    collectors so we can prepend ESM imports + component-imports to
@@ -239,9 +326,29 @@ function renderTsxModule(opts: {
   const autoImports = opts.componentRefs.filter(
     (name) => !new RegExp(`\\b${escapeForRegex(name)}\\b`).test(hoistedJoined),
   )
+  // PR-G audit C3 — emit ONE import per referenced component, each
+  // from `virtual:zero-content/components/<Name>` (per-component
+  // sub-module) instead of the barrel. The barrel previously meant a
+  // touch to ANY `src/mdx/` file invalidated EVERY `.md` page; with
+  // per-component sub-modules, only pages that imported the changed
+  // component invalidate. The sub-module is a thin re-export of the
+  // barrel's named binding (so identity / dedup is preserved). Custom
+  // `componentsModule` opt-in is preserved by treating it as the base
+  // path (`<custom>/<Name>`) when it isn't the default barrel id.
+  const useBarrelDirectly = opts.componentsModule
+    .startsWith('virtual:zero-content/components')
+    ? false
+    : true
   const autoImportLine =
     autoImports.length > 0
-      ? `import { ${autoImports.join(', ')} } from ${JSON.stringify(opts.componentsModule)}\n`
+      ? useBarrelDirectly
+        ? `import { ${autoImports.join(', ')} } from ${JSON.stringify(opts.componentsModule)}\n`
+        : autoImports
+            .map(
+              (name) =>
+                `import { ${name} } from ${JSON.stringify(opts.componentsModule.replace(/\/$/, '') + '/' + name)}`,
+            )
+            .join('\n') + '\n'
       : ''
 
   return `// Generated by @pyreon/zero-content. Do not edit.
