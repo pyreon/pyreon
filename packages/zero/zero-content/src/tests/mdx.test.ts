@@ -196,9 +196,18 @@ describe('compileMarkdown — mdx: false opt-out', () => {
       mdx: false,
     })
     // Without remark-mdx, `<Callout>` is a raw HTML block — emit-jsx
-    // passes it through verbatim.
+    // passes it through verbatim, BUT the HTML emitter still scans
+    // raw values for PascalCase tag references and registers them so
+    // the output's `<Callout>` resolves to a component at compile
+    // time. Without this registration, the rendered `.tsx` would
+    // reference `Callout` as a free name and throw
+    // `ReferenceError: Callout is not defined` at SSG time — exactly
+    // the bug surfaced by the directive-syntax normalization (where
+    // the codegroup plugin emits `<CodeGroup>` as raw HTML and would
+    // otherwise produce the same error). Treating user-typed
+    // `<Callout>` the same way is consistent and safe.
     expect(result.code).toContain('<Callout')
-    expect(result.componentRefs).toEqual([])
+    expect(result.componentRefs).toEqual(['Callout'])
   })
 
   it('still parses callout directives even with mdx: false', async () => {
