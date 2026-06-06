@@ -12,13 +12,19 @@
 // other. Locked here with a frozen alphabetical canonical order so any
 // new built-in lands in ONE place.
 export const BUILT_IN_COMPONENTS = Object.freeze([
+  'APICard',
   'Callout',
   'CodeBlock',
   'CodeGroup',
+  'CompatMatrix',
   // PR-M audit M6+M7+M8 — math, mermaid, details
   'Details',
   'Math',
   'Mermaid',
+  'PackageBadge',
+  'Playground',
+  'PropTable',
+  'Tabs',
 ] as const)
 
 export type BuiltInComponentName = (typeof BUILT_IN_COMPONENTS)[number]
