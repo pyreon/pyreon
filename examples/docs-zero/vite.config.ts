@@ -2,6 +2,7 @@ import pyreon from '@pyreon/vite-plugin'
 import content from '@pyreon/zero-content/plugin'
 import zero from '@pyreon/zero/server'
 import { defineConfig } from 'vite'
+import { pyreonSyntaxDark, pyreonSyntaxLight } from './src/styles/pyreon-syntax'
 import lastUpdated from './vite-plugins/last-updated'
 
 // docs-zero: the zero-content-powered successor to the VitePress docs/.
@@ -26,7 +27,15 @@ import lastUpdated from './vite-plugins/last-updated'
 // __ZERO_BASE__, and the SSG entry's createApp call.
 export default defineConfig({
   plugins: [
-    content(),
+    // The custom pyreon-syntax Shiki themes mirror the brand handoff §3/§6.7
+    // tokens (`--syn-*` in tokens.css). VitePress applied them via its
+    // `markdown.theme: { light, dark }` config — same surface here, only
+    // wired through `@pyreon/zero-content`'s highlighter option.
+    content({
+      highlighter: {
+        themes: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
+      },
+    }),
     pyreon(),
     zero({ mode: 'ssg' }),
     lastUpdated({ contentDir: 'src/content/docs' }),
