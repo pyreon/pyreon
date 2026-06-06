@@ -21,6 +21,14 @@ export {
 } from './config'
 export { COMPONENTS_BRAND } from './types'
 
+// ─── Route helpers — content-collection-shaped routes ─────────────────────
+//
+// `defineContentRoute('docs')` collapses the docs-zero Suspense
+// boilerplate into one call. See `route-helpers.tsx` for the full
+// rationale (PR-A audit H1).
+export { defineContentRoute } from './route-helpers'
+export type { DefineContentRouteOptions } from './route-helpers'
+
 // ─── Built-in components ───────────────────────────────────────────────────
 //
 // Auto-available in every `.md` file — referenced by name without an
