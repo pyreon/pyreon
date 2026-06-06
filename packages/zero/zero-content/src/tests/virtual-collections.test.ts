@@ -82,11 +82,17 @@ describe('renderContentTypes', () => {
       collectionNames: ['docs', 'blog'],
       root: '/abs/proj',
     })
+    // PR-E audit C6 — `typeof import('...')` (type position) instead
+    // of `ContentConfig.default.collections...` so the file works
+    // under both `moduleResolution: bundler` AND `nodenext` without
+    // needing `allowImportingTsExtensions`.
+    expect(out).toContain(`"docs": StandardSchemaV1.InferOutput<`)
     expect(out).toContain(
-      `"docs": StandardSchemaV1.InferOutput<typeof ContentConfig.default.collections["docs"]["schema"]>`,
+      `(typeof import("../content.config"))['default']['collections']["docs"]['schema']`,
     )
+    expect(out).toContain(`"blog": StandardSchemaV1.InferOutput<`)
     expect(out).toContain(
-      `"blog": StandardSchemaV1.InferOutput<typeof ContentConfig.default.collections["blog"]["schema"]>`,
+      `(typeof import("../content.config"))['default']['collections']["blog"]['schema']`,
     )
   })
 
@@ -108,9 +114,10 @@ describe('renderContentTypes', () => {
       root: '/abs/proj',
     })
     // Generated file lives in /abs/proj/.pyreon/ — the relative
-    // path back to the config is "../content.config".
+    // path back to the config is "../content.config". PR-E audit
+    // C6 changed the form to `typeof import()`.
     expect(out).toContain(
-      `import type * as ContentConfig from "../content.config"`,
+      `(typeof import("../content.config"))`,
     )
   })
 })
