@@ -2526,13 +2526,28 @@ html { scroll-behavior: smooth; }
 }
 .pyreon-search__input {
   width: 100%;
-  padding: 1rem 1.25rem;
+  /* Right padding makes room for the absolutely-positioned Close
+     button so the input's own text doesn't slide underneath it. */
+  padding: 1rem 5rem 1rem 1.25rem;
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--hairline);
   color: var(--text);
   font-size: 1.05rem;
   outline: none;
+}
+/* WebKit / Chromium renders a default cancel (×) button at the right
+   edge of `<input type="search">` once the user types. Because the
+   input is `width: 100%` and the Close button is absolutely
+   positioned over its right edge, the browser × ends up visually
+   stacked behind the Close button label — looks like a bug. We
+   have an explicit Close button for the same job, so hide the
+   browser one. */
+.pyreon-search__input::-webkit-search-cancel-button,
+.pyreon-search__input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
 }
 .pyreon-search__close {
   position: absolute;
