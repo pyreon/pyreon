@@ -286,7 +286,8 @@ describe('SSR integration — context isolation', () => {
     )
 
     results.forEach((html, i) => {
-      expect(html).toBe(`<span>req-${i}</span>`)
+      // Async component output is bracketed with async-hydrate sentinel markers.
+      expect(html).toBe(`<!--$pas--><span>req-${i}</span><!--$pae-->`)
     })
   })
 
