@@ -192,6 +192,20 @@ export interface CompileOptions {
    * for tests + non-Vite consumers.
    */
   componentsModule?: string
+  /**
+   * Resolve a markdown link's `href` to a route URL. Used by the
+   * emit-jsx layer to rewrite `[foo](./bar.md)` → `/<collection>/<slug>`
+   * (PR-F audit H8). Return `null` to leave the link unchanged.
+   */
+  resolveInternalLink?: (href: string) => string | null
+  /**
+   * Resolve a markdown image's `src` to a TSX expression spliced into
+   * `<Image src={...}>`. The default plugin resolver returns
+   * `import('./hero.png?optimize')` for `./` / `../` paths; absolute
+   * URLs and data URIs return `null` and fall through to `<img>`
+   * (PR-F audit H7).
+   */
+  resolveLocalImage?: (src: string) => string | null
 }
 
 /**
@@ -271,6 +285,22 @@ export async function compileMarkdown(
   }
   if (options.highlight !== false) {
     emitOpts.highlight = (code, lang) => highlightCode(code, lang, options.highlighter)
+  }
+  if (options.resolveInternalLink !== undefined) {
+    emitOpts.resolveInternalLink = options.resolveInternalLink
+  }
+  if (options.resolveLocalImage !== undefined) {
+    // Wrap the resolver so that when an image is rewritten, we ALSO
+    // register `Image` as a component reference — that auto-imports
+    // the built-in re-export through `virtual:zero-content/components`
+    // (PR-F audit H7). The user's markdown doesn't need to write
+    // `import { Image } from '@pyreon/zero'`.
+    const userResolver = options.resolveLocalImage
+    emitOpts.resolveLocalImage = (src) => {
+      const out = userResolver(src)
+      if (out !== null) componentRefs.add('Image')
+      return out
+    }
   }
 
   // 4. Walk → JSX string + heading capture.
