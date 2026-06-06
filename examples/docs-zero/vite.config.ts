@@ -5,15 +5,30 @@ import { defineConfig } from 'vite'
 import lastUpdated from './vite-plugins/last-updated'
 
 // docs-zero: the zero-content-powered successor to the VitePress docs/.
+//
 // Plugin order: content() first (compiles .md → JSX → JS via esbuild),
 // then pyreon() (JSX optimizations), zero() (fs-router + SSG), then
 // last-updated which injects a per-page modified-timestamp registry
 // into the entry HTML for the PageMeta footer.
+//
+// `mode: 'ssg'` prerenders every doc URL to its own
+// `dist/<path>/index.html` so deep links resolve on plain static
+// hosts (GitHub Pages, Netlify, Cloudflare Pages) without SPA
+// fallback. Catch-all route `/docs/[...slug]` is enumerated at
+// build time by its own `getStaticPaths` export.
+//
+// `base` defaults to `/` for local dev; the preview deploy passes
+// `--base=/pyreon/preview/` via CLI (the `argvHasBaseFlag` carve-out
+// in @pyreon/zero now correctly honors this — fixed in PR #1395).
+// Once the cut-over PR lands, the legacy `/pyreon/` base will be
+// used for production. Per CLAUDE.md PR E "base single-source-of-
+// truth wiring": `zero({ base })` flows to vite.config.base,
+// __ZERO_BASE__, and the SSG entry's createApp call.
 export default defineConfig({
   plugins: [
     content(),
     pyreon(),
-    zero({ mode: 'spa' }),
+    zero({ mode: 'ssg' }),
     lastUpdated({ contentDir: 'src/content/docs' }),
   ],
   server: { port: 5191 },

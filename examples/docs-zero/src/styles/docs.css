@@ -2065,3 +2065,467 @@ th {
     opacity: 1 !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   1:1 PARITY OVERHAUL
+   ────────────────────────────────────────────────────────────────────────
+   This block overrides + extends the earlier sections to match the
+   legacy VitePress chrome and typography exactly. Audit Section 7 of
+   the parity report tracked the gaps; each subsection below closes one.
+   Keep this block at the END so cascade order works (later rules win).
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── (A) MDX component color tokens ──────────────────────────────────
+   APICard + PackageBadge reference --c-blue / --c-green / etc. Map to
+   the brand functional palette already in tokens.css. */
+:root {
+  --c-blue: var(--link);
+  --c-green: var(--ok);
+  --c-yellow: var(--warn);
+  --c-orange: var(--ember);
+  --c-red: var(--err);
+  --c-purple: var(--syn-keyword);
+  --c-cyan: var(--cyan);
+}
+
+/* ── (B) Layout shell — grid with header + aside + main ──────────── */
+.docs-shell {
+  display: grid;
+  grid-template-rows: 56px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+/* ── (C) Header (top chrome) — replaces .docs-logo / .docs-nav block ── */
+.docs-header {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 56px;
+  padding: 0;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  backdrop-filter: saturate(140%) blur(12px);
+  border-bottom: 1px solid var(--hairline);
+}
+.docs-header__inner {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  height: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+.docs-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text);
+  text-decoration: none;
+}
+.docs-brand:hover { color: var(--text); }
+.docs-brand__mark {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+[data-theme='dark'] .docs-brand__mark--light { display: none; }
+[data-theme='light'] .docs-brand__mark--dark { display: none; }
+.docs-brand__wordmark {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-size: 1.05rem;
+}
+.docs-header__nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-left: 0.5rem;
+}
+.docs-header__link {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: color 0.18s ease;
+}
+.docs-header__link:hover { color: var(--text); }
+.docs-header__controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-left: auto;
+}
+.docs-header__search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.55rem;
+  border-radius: 6px;
+  background: var(--bg-well);
+  border: 1px solid var(--hairline);
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+.docs-header__search-btn:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+.docs-header__search-label { font-size: 0.85rem; }
+.docs-header__search-kbd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  color: var(--text-dim);
+}
+.docs-header__icon-link,
+.docs-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.docs-header__icon-link:hover,
+.docs-theme-toggle:hover {
+  background: var(--bg-well);
+  color: var(--text);
+}
+.docs-header__hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.docs-header__hamburger span {
+  height: 2px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  transition: transform 0.18s ease;
+}
+.docs-header__hamburger:hover { background: var(--bg-well); }
+
+/* ── (D) Aside (sidebar container) ─────────────────────────────── */
+.docs-aside {
+  grid-row: 2;
+  grid-column: 1;
+  position: sticky;
+  top: 56px;
+  align-self: start;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+  padding: 1.5rem 0 1.5rem 1.25rem;
+  border-right: 1px solid var(--hairline);
+}
+.docs-main {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+}
+.docs-drawer-backdrop { display: none; }
+
+/* Sidebar group title now a button — restore handoff treatment.
+   Mono UPPERCASE 11px letter-spacing 0.12em color text-dim. */
+.pyreon-sidebar__group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  background: transparent;
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+.pyreon-sidebar__group-title:hover { color: var(--text-muted); }
+.pyreon-sidebar__chevron {
+  flex-shrink: 0;
+  transform: rotate(0deg);
+  transition: transform 0.18s ease;
+  color: var(--text-dim);
+}
+.pyreon-sidebar__chevron--collapsed { transform: rotate(-90deg); }
+
+/* Active link ember stripe — restore handoff §6.1 */
+.pyreon-sidebar__link {
+  position: relative;
+  display: block;
+  padding: 0.3rem 0.75rem 0.3rem 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.18s ease;
+}
+.pyreon-sidebar__link:hover { color: var(--text); }
+.pyreon-sidebar__link--active {
+  color: var(--text);
+  font-weight: 600;
+}
+.pyreon-sidebar__link--active::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--ember);
+}
+
+/* ── (E) Docs page grid — only content + toc (sidebar lives in aside) ── */
+.docs-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  max-width: 1080px;
+  margin: 0 auto;
+  gap: 2rem;
+  padding: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .docs-page {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 760px;
+  }
+  .docs-page .pyreon-toc,
+  .docs-page .docs-toc { display: none; }
+}
+
+/* ── (F) Mobile drawer (768px and below) ───────────────────────── */
+@media (max-width: 768px) {
+  .docs-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .docs-header__nav { display: none; }
+  .docs-header__search-label { display: none; }
+  .docs-header__search-kbd { display: none; }
+  .docs-header__hamburger { display: inline-flex; }
+  .docs-aside {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    width: 280px;
+    height: calc(100vh - 56px);
+    background: var(--bg);
+    border-right: 1px solid var(--hairline);
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 40;
+  }
+  .docs-aside--drawer-open { transform: translateX(0); }
+  .docs-drawer-backdrop {
+    position: fixed;
+    inset: 56px 0 0 0;
+    background: color-mix(in srgb, var(--bg) 60%, transparent);
+    z-index: 35;
+    display: none;
+  }
+  .docs-shell--drawer-open .docs-drawer-backdrop { display: block; }
+}
+
+/* ── (G) Search overlay (Cmd+K) ──────────────────────────────── */
+.pyreon-search { contain: layout style; }
+.pyreon-search__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: color-mix(in srgb, #000 60%, transparent);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.pyreon-search__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 90vw);
+  max-height: 70vh;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 40px color-mix(in srgb, #000 50%, transparent);
+}
+.pyreon-search__input {
+  width: 100%;
+  padding: 1rem 1.25rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text);
+  font-size: 1.05rem;
+  outline: none;
+}
+.pyreon-search__close {
+  position: absolute;
+  top: 0.75rem;
+  right: 1rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.pyreon-search__results {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.pyreon-search__result a {
+  display: block;
+  padding: 0.65rem 1.25rem;
+  color: var(--text);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.pyreon-search__result a:hover {
+  background: var(--bg-well);
+  border-left-color: var(--ember);
+}
+.pyreon-search__title {
+  display: block;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+.pyreon-search__desc {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── (H) Doc body typography — port of VitePress .vp-doc rules ──── */
+.docs-content,
+.vp-doc {
+  color: var(--text);
+}
+.docs-content h1,
+.vp-doc h1 {
+  margin: 0 0 1rem;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  font-size: 2.5rem;
+  line-height: 1.1;
+}
+.docs-content h2,
+.vp-doc h2 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: 1.6rem;
+  border-top: 1px solid var(--hairline);
+  padding-top: 1.6rem;
+  margin-top: 2.6rem;
+}
+.docs-content h3,
+.vp-doc h3 {
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  font-size: 1.25rem;
+  margin-top: 2rem;
+}
+.docs-content p,
+.vp-doc p {
+  text-wrap: pretty;
+  line-height: 1.6;
+  margin: 0.8rem 0;
+}
+.docs-content a,
+.vp-doc a {
+  color: var(--link);
+  font-weight: 500;
+  text-underline-offset: 3px;
+  text-decoration: none;
+}
+.docs-content a:hover,
+.vp-doc a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+}
+
+/* Inline code — handoff §4 ember treatment */
+.docs-content :not(pre) > code,
+.vp-doc :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--ember);
+  background: var(--ember-bg);
+  border: 1px solid var(--ember-ring);
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+
+/* Tables — mono uppercase headers */
+.docs-content th,
+.vp-doc th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+}
+.docs-content td,
+.vp-doc td {
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.65rem 0.85rem;
+}
+
+/* Code fences — quiet bordered card */
+.docs-content pre,
+.vp-doc pre,
+.docs-content div[class*='language-'],
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  line-height: 1.55;
+  margin: 1rem 0;
+}
+
+/* ── (I) Scrollbars — quiet ───────────────────────────────────── */
+* { scrollbar-color: var(--border) transparent; }

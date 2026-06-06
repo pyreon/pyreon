@@ -49,6 +49,8 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'State management', slug: 'patterns/state-management' },
       { text: 'Styling & theming', slug: 'patterns/styler-theming' },
       { text: 'Imperative toasts', slug: 'patterns/imperative-toasts' },
+      { text: 'Islands', slug: 'patterns/islands' },
+      { text: 'Reactive spread', slug: 'patterns/reactive-spread' },
     ],
   },
   {
