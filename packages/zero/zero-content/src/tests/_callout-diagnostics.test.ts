@@ -17,7 +17,6 @@ import { describe, expect, it } from 'vitest'
 import {
   calloutEditDistance,
   looksUnclosed,
-  remarkCallout,
   suggestCalloutType,
 } from '../pipeline/remark-plugins/callout'
 import { compileMarkdown } from '../pipeline/parse'
