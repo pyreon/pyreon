@@ -2529,3 +2529,51 @@ th {
 
 /* ── (I) Scrollbars — quiet ───────────────────────────────────── */
 * { scrollbar-color: var(--border) transparent; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   PORTED FROM VitePress custom.css (only the handful of shared tokens
+   that hooked into PyreonLanding from the VitePress default theme's
+   custom.css — never went into tokens.css and were missed by the first
+   parity sweep). Without these, the hero eyebrow and "firing" pill
+   render as unstyled inline text on the landing page.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* Mono eyebrow utility — UPPERCASE · dim · +.12em (handoff §4) */
+.pyreon-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 0.75rem;
+}
+
+/* Pills (firing / version) — mono, handoff §6 */
+.pyreon-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--bg-well);
+}
+.pyreon-pill--ember {
+  color: var(--ember);
+  border-color: var(--ember-ring);
+  background: var(--ember-bg);
+}
+.pyreon-pill--ember::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ember);
+  animation: px-pulse 1.8s ease-out infinite; /* keyframe in tokens.css */
+}
