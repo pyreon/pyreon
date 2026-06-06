@@ -48,7 +48,14 @@ export function CodeGroup(props: CodeGroupProps): VNodeChild {
           </button>
         ))}
       </div>
-      <div class="code-group__panels">{props.children}</div>
+      {/* Reactive `data-active` indexes the active panel. CSS in the
+          consumer's stylesheet uses `[data-active="N"] > :nth-child(N+1)`
+          rules to gate panel visibility — keeps the component
+          children-opaque (no per-child wrapping) while letting tab
+          switches patch one attribute, never remount the panels. */}
+      <div class="code-group__panels" data-active={() => String(active())}>
+        {props.children}
+      </div>
     </section>
   )
 }

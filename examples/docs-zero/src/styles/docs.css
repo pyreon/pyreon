@@ -221,12 +221,18 @@ th {
   color: var(--text);
   text-decoration: none;
 }
-.pyreon-sidebar__link--active,
 .docs-sidebar__link--active {
   background: var(--link-bg);
   color: var(--link);
   font-weight: 500;
 }
+/* `.pyreon-sidebar__link--active` is styled FURTHER DOWN at line
+   ~2398 with the canonical ember-bar treatment (vertical ember tick
+   on the left, no background tint). Defining it here was a duplicate
+   rule that overrode the cleaner styling with a flat tinted
+   rectangle — looked particularly bad in dark mode (a dark-on-dark
+   block that read as "selection" not "active link"). Removed the
+   duplicate; the 2398 rule wins. */
 
 /* ── TOC ────────────────────────────────────────────────────────────── */
 
@@ -2396,7 +2402,10 @@ html { scroll-behavior: smooth; }
 }
 .pyreon-sidebar__link:hover { color: var(--text); }
 .pyreon-sidebar__link--active {
-  color: var(--text);
+  /* Defensive: reset any earlier `background` so the ember-bar (the
+     `::before` tick below) reads as the only active-state cue. */
+  background: transparent;
+  color: var(--ember-core);
   font-weight: 600;
 }
 .pyreon-sidebar__link--active::before {
@@ -2430,6 +2439,18 @@ html { scroll-behavior: smooth; }
   gap: 2rem;
   padding: 1.5rem 2rem;
   align-items: start;
+}
+/* The route component wraps the article + the right-rail Toc in a
+   `<div class="docs-route">` so the matching `closeBundle` cleanup
+   keeps both elements tied together. But we want the grid columns to
+   apply to the article + aside DIRECTLY, not to the div wrapper.
+   `display: contents` makes the wrapper transparent to layout — its
+   children become grid items of `.docs-page` as if the wrapper
+   wasn't there. Without this, the TOC stacked BELOW the content
+   inside a single grid cell, instead of sitting in the second
+   240px column. */
+.docs-route {
+  display: contents;
 }
 @media (max-width: 1100px) {
   .docs-page {
@@ -2651,6 +2672,75 @@ html { scroll-behavior: smooth; }
   margin: 1rem 0;
 }
 
+/* ── @pyreon/zero-content <CodeGroup> chrome ──────────────────────────
+   `:::code-group` containers in markdown render as:
+
+     .code-group
+       .code-group__tabs       (role="tablist" — buttons w/ aria-selected)
+         .code-group__tab[--active]
+       .code-group__panels[data-active="N"]
+         .code-block (panel 0)
+         .code-block (panel 1)
+         ...
+
+   Without these rules, the tabs read as default buttons + every
+   panel renders stacked. The component sets `data-active` reactively;
+   CSS gates visibility via `:nth-child(N+1)` so the active panel
+   shows + all others hide. Supports up to 8 tabs (practical ceiling
+   for any real code-group). */
+.code-group {
+  margin: 1rem 0;
+}
+.code-group__tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 0.25rem;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: -1px;
+}
+.code-group__tab {
+  padding: 0.45rem 0.85rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.18s ease, border-bottom-color 0.18s ease,
+    background 0.18s ease;
+}
+.code-group__tab:hover {
+  color: var(--text);
+  background: var(--bg-well);
+}
+.code-group__tab--active {
+  color: var(--ember-core);
+  border-bottom-color: var(--ember-core);
+  font-weight: 600;
+}
+.code-group__tab:focus-visible {
+  outline: 2px solid var(--ember-core);
+  outline-offset: 2px;
+}
+.code-group__panels > * {
+  display: none;
+}
+.code-group__panels[data-active='0'] > :nth-child(1),
+.code-group__panels[data-active='1'] > :nth-child(2),
+.code-group__panels[data-active='2'] > :nth-child(3),
+.code-group__panels[data-active='3'] > :nth-child(4),
+.code-group__panels[data-active='4'] > :nth-child(5),
+.code-group__panels[data-active='5'] > :nth-child(6),
+.code-group__panels[data-active='6'] > :nth-child(7),
+.code-group__panels[data-active='7'] > :nth-child(8) {
+  display: block;
+}
+.code-group__panels .code-block {
+  margin-top: 0;
+}
+
 /* ── @pyreon/zero-content <CodeBlock> chrome ──────────────────────────
    The `<CodeBlock>` component renders this structure:
 
@@ -2711,6 +2801,33 @@ html { scroll-behavior: smooth; }
      wrapper). */
   margin: 0;
 }
+/* Language indicator in the top-right corner — matches VitePress's
+   convention. Reads from the `data-lang` attribute the CodeBlock
+   sets on its wrapper. Hidden when a `.code-block__header` (filename
+   label) is present so the two don't compete. */
+.code-block:not(:has(.code-block__header))::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-hint);
+  font-family: var(--font-mono);
+  font-size: 0.7em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  pointer-events: none;
+  /* On hover the copy button slides up over this slot, so the lang
+     label fades out so they don't overlap. */
+  transition: opacity 0.18s ease;
+}
+.code-block:hover::before {
+  opacity: 0;
+}
+
 .code-block__copy {
   /* Top-right corner pill. Fades in on hover/focus to stay out of
      the way of the code reading. */

@@ -217,12 +217,36 @@ async function emitNode(
       return emitImage(node as MdastImage, opts)
     case 'break':
       return '<br />'
-    case 'html':
+    case 'html': {
       // Raw HTML — comes from our own remark plugins (callout +
       // codegroup wrappers) OR rare hand-written HTML in markdown.
       // First-party content; pass through verbatim. Output is JSX so
       // tag-shaped content parses natively.
-      return (node as { value: string }).value
+      const value = (node as { value: string }).value
+      // Detect PascalCase JSX component references inside the raw
+      // value (e.g. `<CodeGroup labels={...}>` emitted by the
+      // codegroup plugin, `<Callout type="tip">` by callout) and
+      // register them via `mdxComponentRef` so the upstream emit
+      // pipeline adds the matching imports. Without this, the docs
+      // page compiles JSX that references `CodeGroup` as a free
+      // name → `ReferenceError: CodeGroup is not defined` at render
+      // time, exactly the bug surfaced by the directive-syntax
+      // normalization (which started actually FIRING the codegroup
+      // plugin for the 87 `::: code-group` sites in the docs).
+      if (opts.mdxComponentRef) {
+        const componentRe = /<([A-Z][A-Za-z0-9]*)/g
+        let m: RegExpExecArray | null
+        const seen = new Set<string>()
+        while ((m = componentRe.exec(value)) !== null) {
+          const name = m[1] as string
+          if (!seen.has(name)) {
+            seen.add(name)
+            opts.mdxComponentRef(name)
+          }
+        }
+      }
+      return value
+    }
     // ─── MDX nodes (PR 3 — produced by remark-mdx) ───────────────────
     case 'mdxJsxFlowElement':
     case 'mdxJsxTextElement':
