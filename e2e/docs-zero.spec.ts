@@ -85,4 +85,97 @@ test.describe('docs-zero rendering', () => {
     // First card should have a name + signature.
     await expect(apiCards.first().locator('.api-name')).toBeVisible()
   })
+
+  test('header chrome renders: brand logo, search button, theme toggle, GitHub link', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    // SVG brand mark (one for light, one for dark — only one visible at a time)
+    await expect(page.locator('.docs-brand__mark').first()).toBeVisible()
+    await expect(page.locator('.docs-brand__wordmark')).toHaveText('pyreon')
+    // Cmd+K search trigger button
+    await expect(page.locator('.docs-header__search-btn')).toBeVisible()
+    await expect(page.locator('.docs-header__search-btn')).toContainText(
+      /Search/,
+    )
+    // Theme toggle button — defaults to sun icon (dark mode)
+    await expect(page.locator('.docs-theme-toggle')).toBeVisible()
+    // GitHub icon link
+    const githubIcon = page.locator('.docs-header__icon-link')
+    await expect(githubIcon).toBeVisible()
+    await expect(githubIcon).toHaveAttribute('href', /github\.com\/pyreon/)
+  })
+
+  test('theme toggle flips data-theme on <html> and persists to localStorage', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    // Wait for FOUC script to set the initial theme.
+    const initial = await page.locator('html').getAttribute('data-theme')
+    expect(initial).toBe('dark')
+    // Click the toggle and expect data-theme to flip to light.
+    await page.locator('.docs-theme-toggle').click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    // localStorage was updated (same key as VitePress for seamless
+    // cut-over).
+    const stored = await page.evaluate(() =>
+      localStorage.getItem('vitepress-theme-appearance'),
+    )
+    expect(stored).toBe('light')
+    // Toggle back — round-trip.
+    await page.locator('.docs-theme-toggle').click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  })
+
+  test('Cmd+K opens search overlay; Escape closes it', async ({ page }) => {
+    await page.goto('/docs/getting-started')
+    await page.waitForLoadState('networkidle')
+    // Trigger the keyboard shortcut. The Search component listens for
+    // metaKey OR ctrlKey + k depending on userAgent.
+    await page.keyboard.press('Meta+k')
+    // Overlay should be open with input focused.
+    await expect(page.locator('.pyreon-search__panel')).toBeVisible()
+    await expect(page.locator('.pyreon-search__input')).toBeVisible()
+    // Type a query and expect results from the build-time index.
+    await page.locator('.pyreon-search__input').fill('signal')
+    // Debounce + index fetch may take a moment.
+    await page.waitForTimeout(400)
+    const resultCount = await page.locator('.pyreon-search__result').count()
+    expect(resultCount).toBeGreaterThan(0)
+    // Escape closes the overlay.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
+  })
+
+  test('sidebar group collapse state persists to localStorage', async ({
+    page,
+  }) => {
+    await page.goto('/docs/getting-started')
+    await page.waitForLoadState('networkidle')
+    // Find the "Patterns" group and collapse it.
+    const patternsTitle = page.locator('.pyreon-sidebar__group-title', {
+      hasText: 'Patterns',
+    })
+    await expect(patternsTitle).toBeVisible()
+    // Before click — expanded (the items list is in the DOM)
+    const before = await page
+      .locator(
+        '.pyreon-sidebar__group:has(> button:has-text("Patterns")) .pyreon-sidebar__list',
+      )
+      .count()
+    expect(before).toBe(1)
+    await patternsTitle.click()
+    // After click — collapsed (no list element in the group)
+    const after = await page
+      .locator(
+        '.pyreon-sidebar__group:has(> button:has-text("Patterns")) .pyreon-sidebar__list',
+      )
+      .count()
+    expect(after).toBe(0)
+    // localStorage records the toggle.
+    const stored = await page.evaluate(() =>
+      localStorage.getItem('pyreon-docs-sidebar-collapsed'),
+    )
+    expect(stored).toContain('Patterns')
+  })
 })

@@ -14,33 +14,14 @@ interface PageHeading {
 
 /**
  * Enumerate every docs slug at build time so the SSG plugin emits a
- * per-page HTML file (`dist/docs/<slug>/index.html`). Without this,
- * `mode: 'ssg'` would silently skip the dynamic catch-all route and
- * every deep URL would 404 on the static host.
- *
- * Uses `import.meta.glob` directly — NOT `getCollection('docs')` —
- * because the SSG plugin's inner SSR sub-build (`buildSsrBundle` in
- * `@pyreon/zero/src/ssr-build-shared.ts:229`) only registers
- * `[pyreon(), zeroPlugin()]` and does NOT propagate user plugins
- * like `@pyreon/zero-content`. So the virtual collection registry
- * `virtual:zero-content/collections` is unresolvable at build-time
- * SSG enumeration. `import.meta.glob` is Vite-native and works in
- * both the inner SSR build and the client build.
- *
- * Follow-up: extend `buildSsrBundle` to merge user plugins from the
- * outer Vite config so `getCollection()` works at SSG time too. Until
- * then, dynamic routes have to enumerate via glob.
+ * per-page HTML file (`dist/docs/<slug>/index.html`). Uses
+ * `import.meta.glob` to walk the markdown directory at config-time —
+ * loaders are NOT called, only the keys are enumerated.
  *
  * Catch-all routes (`[...slug]`) accept slashes in the param:
  * `{ params: { slug: 'patterns/data-fetching' } }` resolves to the
  * URL `/docs/patterns/data-fetching`.
  */
-// `import.meta.glob` with NO query — gives just the path-keyed map. The
-// loaders are lazy-evaluated (we never call them), so this only walks
-// the directory at config-time and the markdown files are never
-// pre-imported. The `Object.keys` enumeration is what drives the SSG
-// path list. Same Vite primitive `@pyreon/zero-content` uses internally
-// in `renderVirtualCollections`.
 const slugGlob = import.meta.glob('../../content/docs/**/*.md')
 export const getStaticPaths: GetStaticPaths<{ slug: string }> = () => {
   return Object.keys(slugGlob)
@@ -52,10 +33,27 @@ export const getStaticPaths: GetStaticPaths<{ slug: string }> = () => {
     .map((slug) => ({ params: { slug } }))
 }
 
-// Reads from `virtual:zero-content/collections`. The sidebar / chrome
-// is mounted by `_layout.tsx`; this route only renders the article
-// body + the right-rail TOC + the page footer (edit-on-github + last
-// updated). Keeps the layout stable across landing → docs navigation.
+/**
+ * Catch-all docs route.
+ *
+ * Renders the SSG shell synchronously + loads markdown content via
+ * `lazy()` after hydration. The prerendered HTML carries the full
+ * page chrome (header, sidebar, footer) but the article body is
+ * blank — it fills in client-side once `getEntry` + `entry.render()`
+ * resolve.
+ *
+ * **Known limitation**: an `async function DocPage()` (which
+ * `renderToString` would await) WOULD pre-render the body, but the
+ * SSG inner build's chunked markdown modules don't resolve the
+ * `virtual:zero-content/components` re-export of built-in components
+ * (`CodeBlock`, `Callout`, etc.) — they appear as undefined free
+ * variables at module-eval, producing `ReferenceError: CodeBlock is
+ * not defined`. The framework gap is in `@pyreon/zero`'s inner-build
+ * bundling of dynamically-imported chunks that reference virtual
+ * modules served by user plugins. Tracked as a follow-up; the
+ * client-side fill-in here is the deliberate workaround for the bake
+ * window.
+ */
 export default function DocPage() {
   const params = useParams() as unknown as { slug: string | string[] }
   const raw = params.slug

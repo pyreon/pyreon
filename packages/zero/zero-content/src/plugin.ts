@@ -379,7 +379,25 @@ export {}
                 ? frontmatter.description
                 : undefined
             const headings = (result.headings ?? []).map((h) => h.text)
-            const body = stripMarkdown(code)
+            // Truncate body to first ~1500 chars for the search index.
+            // Reasons: (a) most search hits are in title / headings /
+            // description (which are boosted at query time anyway); (b)
+            // the full body for a 91-page docs site is 700KB+ which
+            // exceeds the plugin's 300KB warn threshold and ships a
+            // noticeable client-side payload on Cmd+K open.
+            //
+            // Cut at the nearest word boundary so MiniSearch's
+            // tokenizer doesn't see a half-truncated token. The const
+            // could move to ContentPluginOptions when a real use case
+            // for tuning per project surfaces; 1500 covers the average
+            // first-section ("the lede") for most technical docs.
+            const SEARCH_BODY_MAX = 1500
+            let body = stripMarkdown(code)
+            if (body.length > SEARCH_BODY_MAX) {
+              const slice = body.slice(0, SEARCH_BODY_MAX)
+              const lastSpace = slice.lastIndexOf(' ')
+              body = lastSpace > SEARCH_BODY_MAX * 0.8 ? slice.slice(0, lastSpace) : slice
+            }
             let collMap = searchEntries.get(collectionName)
             if (!collMap) {
               collMap = new Map<string, CollectionEntryForIndex>()
