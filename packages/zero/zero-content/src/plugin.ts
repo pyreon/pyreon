@@ -25,6 +25,9 @@ import {
   type CollectionEntryForIndex,
   stripMarkdown,
 } from './search/index-builder'
+import { generateLlmsTxt } from './seo/llms-txt'
+import { generateRssFeed } from './seo/rss'
+import { generateSitemap, type SitemapPage } from './seo/sitemap'
 import { renderVirtualCollections } from './virtual-collections'
 import { writeContentTypes } from './type-emit/content-types'
 import {
@@ -98,6 +101,46 @@ export interface ContentPluginOptions {
    * still apply at the per-collection JSON level).
    */
   searchBodyMax?: number
+  /**
+   * PR-L audit M19 — SEO + build output emission. When configured,
+   * `closeBundle` writes a sitemap.xml / RSS feed / llms.txt into
+   * `dist/` after the search index. Each output is opt-in; omitting
+   * a key skips that artifact.
+   *
+   * Pages are derived by walking each collection's accumulated
+   * entries; the consumer maps `collection → urlPrefix` so the same
+   * helpers serve docs at `/docs/<slug>` AND a blog at
+   * `/blog/<slug>` from the same content tree.
+   */
+  seo?: SeoEmitOptions
+}
+
+export interface SeoEmitOptions {
+  /** Site origin (no trailing slash). Required for any SEO output. */
+  baseUrl?: string
+  /** Map collection name → URL prefix. Defaults to `/<collection>`
+   *  when omitted. Pass `null` to skip a collection entirely. */
+  collectionUrls?: Record<string, string | null>
+  /** Emit `dist/sitemap.xml`. */
+  sitemap?: boolean | { changefreq?: SitemapPage['changefreq']; priority?: number }
+  /** Emit `dist/rss.xml`. Pass an object to scope to one collection
+   *  (typically `blog` / `news`). */
+  rss?:
+    | boolean
+    | {
+      collection: string
+      title: string
+      description?: string
+      language?: string
+    }
+  /** Emit `dist/llms.txt`. Pass an object to override the site title /
+   *  description; defaults to "Site" otherwise. */
+  llms?:
+    | boolean
+    | {
+      title?: string
+      description?: string
+    }
 }
 
 // Virtual modules the plugin serves.
@@ -227,6 +270,128 @@ export function findCollectionForFileImpl(
     }
   }
   return best?.name ?? null
+}
+
+/**
+ * PR-L audit M19 — write configured SEO outputs (sitemap.xml / rss.xml /
+ * llms.txt) to `outDir`. Pure-ish — the only side effect is `writeFile`.
+ *
+ * @internal exported for testing
+ */
+export async function emitSeoOutputs(
+  seo: SeoEmitOptions,
+  entriesByCollection: Record<string, CollectionEntryForIndex[]>,
+  outDir: string,
+  warn: (message: string) => void,
+): Promise<void> {
+  const fs = await import('node:fs/promises')
+  const baseUrl = seo.baseUrl
+  if (!baseUrl) {
+    warn(
+      '[@pyreon/zero-content] SEO emission skipped — `seo.baseUrl` is required',
+    )
+    return
+  }
+  await fs.mkdir(outDir, { recursive: true })
+
+  const urlFor = (collection: string, slug: string): string | null => {
+    const override = seo.collectionUrls?.[collection]
+    if (override === null) return null
+    const prefix = override ?? `/${collection}`
+    return `${prefix}/${slug}`
+  }
+
+  if (seo.sitemap) {
+    const sitemapOpts = typeof seo.sitemap === 'object' ? seo.sitemap : {}
+    const pages: SitemapPage[] = []
+    for (const [collection, entries] of Object.entries(entriesByCollection)) {
+      for (const entry of entries) {
+        const url = urlFor(collection, entry.slug)
+        if (url === null) continue
+        const page: SitemapPage = { path: url }
+        if (sitemapOpts.changefreq) page.changefreq = sitemapOpts.changefreq
+        if (typeof sitemapOpts.priority === 'number') {
+          page.priority = sitemapOpts.priority
+        }
+        pages.push(page)
+      }
+    }
+    const xml = generateSitemap({ baseUrl, pages })
+    await fs.writeFile(path.join(outDir, 'sitemap.xml'), xml, 'utf8')
+  }
+
+  if (seo.rss) {
+    const rssOpts = typeof seo.rss === 'object' ? seo.rss : null
+    if (rssOpts === null) {
+      warn(
+        '[@pyreon/zero-content] `seo.rss: true` requires an object with `collection`/`title` to scope the feed',
+      )
+    } else {
+      const list = entriesByCollection[rssOpts.collection] ?? []
+      const items = list
+        .map((entry) => {
+          const url = urlFor(rssOpts.collection, entry.slug)
+          if (url === null) return null
+          const item: {
+            title: string
+            link: string
+            description?: string
+          } = { title: entry.title, link: url }
+          if (entry.description) item.description = entry.description
+          return item
+        })
+        .filter((i): i is NonNullable<typeof i> => i !== null)
+      const rssArgs: {
+        title: string
+        baseUrl: string
+        items: typeof items
+        description?: string
+        language?: string
+      } = { title: rssOpts.title, baseUrl, items }
+      if (rssOpts.description) rssArgs.description = rssOpts.description
+      if (rssOpts.language) rssArgs.language = rssOpts.language
+      const xml = generateRssFeed(rssArgs)
+      await fs.writeFile(path.join(outDir, 'rss.xml'), xml, 'utf8')
+    }
+  }
+
+  if (seo.llms) {
+    const llmsOpts = typeof seo.llms === 'object' ? seo.llms : {}
+    const sections = []
+    for (const [collection, entries] of Object.entries(entriesByCollection)) {
+      const pages = entries
+        .map((entry) => {
+          const url = urlFor(collection, entry.slug)
+          if (url === null) return null
+          const page: { title: string; path: string; description?: string } = {
+            title: entry.title,
+            path: url,
+          }
+          if (entry.description) page.description = entry.description
+          return page
+        })
+        .filter((p): p is NonNullable<typeof p> => p !== null)
+      if (pages.length > 0) {
+        sections.push({
+          name: collection[0]!.toUpperCase() + collection.slice(1),
+          pages,
+        })
+      }
+    }
+    const llmsArgs: {
+      title: string
+      baseUrl: string
+      sections: typeof sections
+      description?: string
+    } = {
+      title: llmsOpts.title ?? 'Site',
+      baseUrl,
+      sections,
+    }
+    if (llmsOpts.description) llmsArgs.description = llmsOpts.description
+    const text = generateLlmsTxt(llmsArgs)
+    await fs.writeFile(path.join(outDir, 'llms.txt'), text, 'utf8')
+  }
 }
 
 /**
@@ -741,6 +906,24 @@ export {}
         this.error(
           `[@pyreon/zero-content] failed to write search index: ${(err as Error).message}`,
         )
+      }
+
+      // PR-L audit M19 — emit SEO outputs (sitemap / RSS / llms.txt)
+      // when configured. Each output is opt-in via the `seo` plugin
+      // option; missing options skip the artifact.
+      if (options.seo && options.seo.baseUrl) {
+        try {
+          await emitSeoOutputs(
+            options.seo,
+            entriesByCollection,
+            outDir,
+            (msg) => this.warn(msg),
+          )
+        } catch (err) {
+          this.warn(
+            `[@pyreon/zero-content] failed to write SEO outputs: ${(err as Error).message}`,
+          )
+        }
       }
     },
 

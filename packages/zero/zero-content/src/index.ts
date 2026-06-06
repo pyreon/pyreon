@@ -126,6 +126,29 @@ export {
 } from './references'
 export type { Reference } from './references'
 
+// ─── SEO + build outputs (PR-L audit M19) ─────────────────────────────────
+//
+// Pure builders for sitemap.xml / RSS 2.0 / llms.txt. Callable from
+// any build script — no Vite plugin coupling. The plugin's
+// `seo: { ... }` option auto-emits these into `dist/` at build close
+// when configured.
+export {
+  generateSitemap,
+  joinUrl,
+} from './seo/sitemap'
+export type {
+  GenerateSitemapArgs,
+  SitemapPage,
+} from './seo/sitemap'
+export { generateRssFeed, toRfc822 } from './seo/rss'
+export type { GenerateRssFeedArgs, RssItem } from './seo/rss'
+export { generateLlmsTxt } from './seo/llms-txt'
+export type {
+  GenerateLlmsTxtArgs,
+  LlmsTxtPage,
+  LlmsTxtSection,
+} from './seo/llms-txt'
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 export type {
