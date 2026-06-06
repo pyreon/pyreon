@@ -271,10 +271,9 @@ describe('renderVirtualModule', () => {
     // Canonical alphabetical order — locked in `_shared/built-ins.ts`
     // so the scanner + validator can't drift. Was `[Callout, CodeGroup,
     // CodeBlock]` pre-PR-A L10 fix when each side had its own list.
-    // PR-K audit H2 (APICard/CompatMatrix/PackageBadge/Playground/
-    // PropTable/Tabs) + PR-M audit M6+M7+M8 (Details/Math/Mermaid).
+    // PR-K (H2) + PR-M (M6+M7+M8) + PR-F (H7 — Image) — 13 built-ins.
     expect(out).toContain(
-      'export const __components_meta__ = ["APICard","Callout","CodeBlock","CodeGroup","CompatMatrix","Details","Math","Mermaid","PackageBadge","Playground","PropTable","Tabs"]',
+      'export const __components_meta__ = ["APICard","Callout","CodeBlock","CodeGroup","CompatMatrix","Details","Image","Math","Mermaid","PackageBadge","Playground","PropTable","Tabs"]',
     )
   })
 
@@ -289,25 +288,26 @@ describe('renderVirtualModule', () => {
     })
     // Built-ins re-exported via aliased imports __b0..__b11 in
     // alphabetical order (single-source-of-truth from `_shared`).
-    // PR-K (H2) + PR-M (M6+M7+M8) — built-ins now total 12.
+    // PR-K (H2) + PR-M (M6+M7+M8) + PR-F (H7 — Image) — 13 built-ins.
     expect(out).toContain("import { APICard as __b0 } from '@pyreon/zero-content'")
     expect(out).toContain("import { Callout as __b1 } from '@pyreon/zero-content'")
     expect(out).toContain("import { CodeBlock as __b2 } from '@pyreon/zero-content'")
     expect(out).toContain("import { CodeGroup as __b3 } from '@pyreon/zero-content'")
     expect(out).toContain("import { CompatMatrix as __b4 } from '@pyreon/zero-content'")
     expect(out).toContain("import { Details as __b5 } from '@pyreon/zero-content'")
-    expect(out).toContain("import { Math as __b6 } from '@pyreon/zero-content'")
-    expect(out).toContain("import { Mermaid as __b7 } from '@pyreon/zero-content'")
-    expect(out).toContain("import { Tabs as __b11 } from '@pyreon/zero-content'")
-    // User scan continues at __c12 / __c13 (idx starts after 12 built-ins).
-    expect(out).toContain('import { Foo as __c12 } from "/abs/Foo.tsx"')
-    expect(out).toContain('import __c13 from "/abs/Bar.tsx"')
+    expect(out).toContain("import { Image as __b6 } from '@pyreon/zero-content'")
+    expect(out).toContain("import { Math as __b7 } from '@pyreon/zero-content'")
+    expect(out).toContain("import { Mermaid as __b8 } from '@pyreon/zero-content'")
+    expect(out).toContain("import { Tabs as __b12 } from '@pyreon/zero-content'")
+    // User scan continues at __c13 / __c14 (idx starts after 13 built-ins).
+    expect(out).toContain('import { Foo as __c13 } from "/abs/Foo.tsx"')
+    expect(out).toContain('import __c14 from "/abs/Bar.tsx"')
     expect(out).toContain('export default __components')
     expect(out).toContain('export const Foo = __components.Foo')
     expect(out).toContain('export const Bar = __components.Bar')
     expect(out).toContain('export const Callout = __components.Callout')
     expect(out).toContain(
-      'export const __components_meta__ = ["APICard","Callout","CodeBlock","CodeGroup","CompatMatrix","Details","Math","Mermaid","PackageBadge","Playground","PropTable","Tabs","Foo","Bar"]',
+      'export const __components_meta__ = ["APICard","Callout","CodeBlock","CodeGroup","CompatMatrix","Details","Image","Math","Mermaid","PackageBadge","Playground","PropTable","Tabs","Foo","Bar"]',
     )
   })
 
@@ -324,10 +324,10 @@ describe('renderVirtualModule', () => {
     })
     // Built-in Callout NOT imported.
     expect(out).not.toContain("import { Callout as __b")
-    // User Callout IS imported. With 11 built-ins remaining
-    // (Callout removed from the 12-entry list), the user import
-    // lands at idx 11 (`__c11`).
-    expect(out).toContain('import __c11 from "/abs/Callout.tsx"')
+    // User Callout IS imported. With 12 built-ins remaining
+    // (Callout removed from the 13-entry list), the user import
+    // lands at idx 12 (`__c12`).
+    expect(out).toContain('import __c12 from "/abs/Callout.tsx"')
     expect(out).toContain('export const Callout = __components.Callout')
     // Other built-ins still re-exported.
     expect(out).toContain("import { CodeGroup as __b")

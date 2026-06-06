@@ -74,6 +74,9 @@ export { PropTable } from './components/PropTable'
 export type { PropRow, PropTableProps } from './components/PropTable'
 export { Tabs } from './components/Tabs'
 export type { TabsProps } from './components/Tabs'
+// PR-F audit H7 — `<Image>` re-exported as a built-in so the emit-jsx
+// local-image rewrite resolves via `virtual:zero-content/components`.
+export { Image } from './components/Image'
 export {
   defineSidebar,
   groupEntries,

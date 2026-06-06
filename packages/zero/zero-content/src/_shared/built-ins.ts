@@ -19,6 +19,11 @@ export const BUILT_IN_COMPONENTS = Object.freeze([
   'CompatMatrix',
   // PR-M audit M6+M7+M8 — math, mermaid, details
   'Details',
+  // PR-F audit H7 — built-in `<Image>` so the emit-jsx layer's
+  // local-image rewrite (`![alt](./hero.png)` → `<Image src={import(...)
+  // }>`) can auto-import from `virtual:zero-content/components`. Re-
+  // exported from `@pyreon/zero` (an existing peer dep).
+  'Image',
   'Math',
   'Mermaid',
   'PackageBadge',

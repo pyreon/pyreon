@@ -125,6 +125,37 @@ export interface EmitOptions {
    * when several headings share text.
    */
   _usedSlugs?: Set<string>
+  /**
+   * Resolver for internal `[text](./foo.md)` markdown links. Receives
+   * the raw `href` from the markdown source; returns the rewritten
+   * URL (e.g. `/docs/foo`), or `null` to leave the link unchanged.
+   *
+   * PR-F audit H8 — pre-fix every `[foo](./bar.md)` link shipped to
+   * production as a literal `./bar.md` href, 404-ing on every static
+   * host (and confusing the in-app router on others). The plugin
+   * threads a resolver here that knows about the collection map and
+   * the current file's collection so relative `.md` paths rewrite to
+   * route URLs.
+   *
+   * The resolver is called for every link, including external ones,
+   * so it can defensively bail (`return null`) for absolute URLs /
+   * mail-to / etc.
+   */
+  resolveInternalLink?: (href: string) => string | null
+  /**
+   * Resolver for local image `![alt](./hero.png)` references.
+   * Receives the raw `src`; returns either:
+   *   - a string of TSX code to splice INTO the `<Image>` JSX `src`
+   *     attribute (e.g. `import('./hero.png?optimize')`), OR
+   *   - `null` to emit the existing fallback `<img src={...}>`.
+   *
+   * PR-F audit H7 — pre-fix every local image was emitted as a plain
+   * `<img>`, bypassing zero's image-optimization pipeline (auto
+   * srcset, blur placeholder, lazy-loading). The plugin's default
+   * resolver returns the dynamic-import-with-?optimize form for
+   * relative paths; absolute / data URLs fall through to `<img>`.
+   */
+  resolveLocalImage?: (src: string) => string | null
 }
 
 /**
@@ -183,7 +214,7 @@ async function emitNode(
     case 'thematicBreak':
       return emitThematicBreak(node as ThematicBreak)
     case 'image':
-      return emitImage(node as MdastImage)
+      return emitImage(node as MdastImage, opts)
     case 'break':
       return '<br />'
     case 'html':
@@ -399,10 +430,15 @@ async function emitLink(
   headings: Heading[],
   opts: EmitOptions,
 ): Promise<string> {
-  // PR 3 swaps internal links for zero's `<Link>` component. For PR 2
-  // we still emit `<a>` for everything; the link-rewriter remark plugin
-  // lands in PR 3 alongside MDX integration.
-  const href = node.url
+  // PR-F audit H8 — `[foo](./bar.md)` style links rewrite to the
+  // route URL via the plugin-supplied resolver. The resolver returns
+  // `null` for unrecognised shapes (absolute URLs, mailto:, etc.) so
+  // we leave those as-is.
+  let href = node.url
+  if (opts.resolveInternalLink) {
+    const rewritten = opts.resolveInternalLink(href)
+    if (rewritten !== null) href = rewritten
+  }
   const title = node.title ?? undefined
   const inner = await emitChildren(node.children as Nodes[], headings, opts)
   const titleAttr = title ? ` title={${JSON.stringify(title)}}` : ''
@@ -497,13 +533,22 @@ function emitMdxAttribute(attr: MdxJsxAttribute | MdxJsxExpressionAttribute): st
   return `${name}={${attr.value.value}}`
 }
 
-function emitImage(node: MdastImage): string {
-  // PR 3 will swap local images for `<Image src={import(...)}>` from
-  // zero. For v1 emit a plain `<img>`.
+function emitImage(node: MdastImage, opts: EmitOptions): string {
+  // PR-F audit H7 — local images route through zero's <Image>
+  // pipeline when the plugin-supplied resolver returns a non-null
+  // TSX expression. The default resolver in `plugin.ts` returns
+  // `import('./hero.png?optimize')` for `./` / `../` paths; absolute
+  // URLs and data URIs return `null` and fall through to `<img>`.
   const src = node.url
   const alt = node.alt ?? ''
   const title = node.title ?? undefined
   const titleAttr = title ? ` title={${JSON.stringify(title)}}` : ''
+  if (opts.resolveLocalImage) {
+    const expr = opts.resolveLocalImage(src)
+    if (expr !== null) {
+      return `<Image src={${expr}} alt={${JSON.stringify(alt)}}${titleAttr} />`
+    }
+  }
   return `<img src={${JSON.stringify(src)}} alt={${JSON.stringify(alt)}}${titleAttr} />`
 }
 

@@ -634,6 +634,19 @@ export {}
         if (options.highlight !== undefined) opts.highlight = options.highlight
         if (options.highlighter !== undefined)
           opts.highlighter = options.highlighter
+        // PR-F audit H7 — local images route through zero's <Image>.
+        // Returns a TSX expression spliced into `<Image src={...}>`;
+        // null falls through to a plain <img>.
+        opts.resolveLocalImage = (src) => {
+          if (!isRelativePath(src)) return null
+          return `import(${JSON.stringify(src + '?optimize')})`
+        }
+        // PR-F audit H8 — `[foo](./bar.md)` rewrites to the route
+        // URL. We thread the current file's collection (if any) so
+        // we can resolve relative `.md` references against the
+        // collection's base path.
+        const linkResolver = makeInternalLinkResolver(id)
+        if (linkResolver !== null) opts.resolveInternalLink = linkResolver
         const compileJsxEnabled = options.compileJsx !== false
         const cacheKey = computeCompileCacheKey(id, code, opts, compileJsxEnabled)
         const cached = COMPILE_CACHE.get(cacheKey)
@@ -1061,6 +1074,66 @@ export function _setResolvedRootForPaths(root: string | null): void {
  *
  * @internal exported for testing
  */
+/**
+ * Whether `href` is a relative path (`./` or `../` prefix). Used to
+ * decide whether the link/image rewriter should fire. Absolute URLs,
+ * protocol-relative URLs, `mailto:`, `tel:`, `data:`, `#anchor`-only
+ * fragments, and bare-no-prefix paths all return `false`.
+ *
+ * @internal exported for testing
+ */
+export function isRelativePath(href: string): boolean {
+  if (!href) return false
+  return href.startsWith('./') || href.startsWith('../')
+}
+
+/**
+ * Build a resolver for `[foo](./bar.md)` style internal links. The
+ * resolver returns the route URL for relative `.md`/`.mdx` paths
+ * (e.g. `/<collection>/<slug>`), preserves any `#anchor` suffix, and
+ * returns `null` for unrecognised shapes so the emitter passes the
+ * href through.
+ *
+ * PR-F audit H8 — pre-fix every `[foo](./bar.md)` shipped as-is and
+ * 404'd in production.
+ *
+ * @internal exported for testing
+ */
+export function makeInternalLinkResolver(
+  fileId: string,
+): ((href: string) => string | null) | null {
+  return (href) => {
+    if (!isRelativePath(href)) return null
+    // Split off the `#anchor` so we resolve only the path portion.
+    let frag = ''
+    let pathPart = href
+    const hashIdx = href.indexOf('#')
+    if (hashIdx >= 0) {
+      pathPart = href.slice(0, hashIdx)
+      frag = href.slice(hashIdx)
+    }
+    // Only rewrite `.md` / `.mdx` paths — leave other relative paths
+    // (`./schema.json` etc.) untouched.
+    if (!/\.(md|mdx)$/i.test(pathPart)) return null
+    // Resolve against the current file's directory then strip extension.
+    const fileDir = path.dirname(fileId)
+    const targetAbs = path.resolve(fileDir, pathPart)
+    // Find the `/content/<collection>/` prefix to compute the URL.
+    // Mirrors `deriveSlug` but yields the route URL form.
+    const norm = targetAbs.split('\\').join('/')
+    const lower = norm.toLowerCase()
+    const marker = '/content/'
+    const idx = lower.indexOf(marker)
+    if (idx < 0) return null
+    const rel = norm.slice(idx + marker.length).replace(/\.(md|mdx)$/i, '')
+    // Collapse `/index` so `docs/index` → `docs`.
+    const collapsed = rel.endsWith('/index') ? rel.slice(0, -'/index'.length) : rel
+    // The route URL convention is `/<collection-and-rest>` — emit a
+    // leading slash so the resulting `<a href>` is absolute.
+    return `/${collapsed}${frag}`
+  }
+}
+
 export function reportPath(id: string): string {
   const root = _resolvedRootForPaths
   if (root) {
