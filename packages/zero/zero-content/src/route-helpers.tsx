@@ -31,6 +31,8 @@
  */
 import { h, Suspense } from '@pyreon/core'
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import type { UseHeadInput } from '@pyreon/head'
 import { useParams } from '@pyreon/router'
 import { getEntry } from './runtime'
 import type { CollectionEntry } from './types'
@@ -68,6 +70,23 @@ export interface DefineContentRouteOptions {
    * and have `wrap()` handle layout entirely.
    */
   articleClass?: string | null
+  /**
+   * Build the `<head>` tags (title / meta / link / script) for the
+   * resolved entry. Called per-render after the entry has loaded;
+   * the return value is forwarded to `@pyreon/head`'s `useHead`.
+   *
+   * **Default** (when omitted): a sensible auto-derivation from
+   * frontmatter — `frontmatter.title` becomes the `<title>` and
+   * `frontmatter.description` becomes `<meta name="description">` /
+   * `<meta property="og:title">` / `<meta property="og:description">`.
+   * Title-less entries don't emit `<title>` (the parent layout's
+   * default stays in effect).
+   *
+   * Set to `false` to skip head emission entirely. Set to a function
+   * to fully override. Useful for OG image generation, JSON-LD,
+   * canonical URLs from frontmatter, etc.
+   */
+  head?: false | ((entry: CollectionEntry) => UseHeadInput)
 }
 
 /**
@@ -81,6 +100,35 @@ export interface DefineContentRouteOptions {
 type AsyncBody = (props: { slug: string }) => Promise<VNodeChild>
 
 const DEFAULT_ARTICLE_CLASS = 'docs-content vp-doc'
+
+/**
+ * Default `head` builder. Picks up `title` + `description` from
+ * frontmatter and emits the matching `<title>` / `<meta>` /
+ * `<meta property="og:*">` tags. Authors override via the `head`
+ * option for richer behavior (canonical, OG image, JSON-LD).
+ *
+ * @internal exported for testing
+ */
+export function defaultHeadFromEntry(entry: CollectionEntry): UseHeadInput {
+  const data = entry.data as Record<string, unknown>
+  const title = typeof data['title'] === 'string' ? (data['title'] as string) : undefined
+  const description =
+    typeof data['description'] === 'string' ? (data['description'] as string) : undefined
+  const input: UseHeadInput = {}
+  if (title !== undefined) {
+    input.title = title
+  }
+  const meta: NonNullable<UseHeadInput['meta']> = []
+  if (description !== undefined) {
+    meta.push({ name: 'description', content: description })
+    meta.push({ property: 'og:description', content: description })
+  }
+  if (title !== undefined) {
+    meta.push({ property: 'og:title', content: title })
+  }
+  if (meta.length > 0) input.meta = meta
+  return input
+}
 
 const DefaultNotFound: ComponentFn<{ slug: string }> = (props) =>
   h(
@@ -136,9 +184,23 @@ export function defineContentRoute<TCollection extends string>(
   // mount() can't handle Promise return values directly, hence the
   // wrap (the cast through `unknown` works around the type-level
   // mismatch between `async function` and `ComponentFn<P>`).
+  const headBuilder =
+    options.head === false
+      ? null
+      : options.head ?? defaultHeadFromEntry
+
   const AsyncBody: AsyncBody = async ({ slug }) => {
     const entry = await getEntry(collection, slug)
     if (!entry) return h(NotFound, { slug })
+    // Emit page-level head tags BEFORE rendering the body so the
+    // collected tags are part of the same component's setup pass.
+    // `@pyreon/head`'s `useHead` is idempotent on re-resolve (Suspense
+    // re-runs the async body on stream replay), and the head context
+    // dedupes by `key` so repeat title/description registrations
+    // collapse to a single tag.
+    if (headBuilder !== null) {
+      useHead(headBuilder(entry))
+    }
     const Content = await entry.render()
     const body = h(Content, null)
     if (options.wrap) return options.wrap(entry, body)
