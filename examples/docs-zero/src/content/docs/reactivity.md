@@ -385,7 +385,7 @@ const ui = h('div', { class: 'col' },
         lineHeight: '1.6',
         whiteSpace: 'pre',
       },
-    }, () => log().join('\n')),
+    }, () => log().join('\\n')),
   ),
 )
 mount(ui, app)`} />
