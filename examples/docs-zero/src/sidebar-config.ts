@@ -23,6 +23,7 @@ export const SIDEBAR: SidebarGroup[] = [
     items: [
       { text: 'Overview', slug: '' },
       { text: 'Getting Started', slug: 'getting-started' },
+      { text: 'Live examples (new DX)', slug: 'example-dx' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
       { text: 'Multi-Platform (PMTC)', slug: 'multiplatform' },

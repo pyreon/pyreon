@@ -1,8 +1,20 @@
 import { routes } from 'virtual:zero/routes'
 import { startClient } from '@pyreon/zero/client'
+import { registerExamples } from '@pyreon/zero-content'
 import 'virtual:zero-content/collections'
 import './styles/tokens.css'
 import './styles/docs.css'
+
+// Register the consumer's example files for `<Example file="./..." />`.
+// `import.meta.glob` is compile-time resolved relative to THIS file —
+// the registry has no other way to reach the consumer's source tree.
+// Each entry maps a relative path to a lazy `() => Promise<module>`.
+registerExamples(
+  import.meta.glob('./examples/**/*.tsx') as Record<
+    string,
+    () => Promise<unknown>
+  >,
+)
 
 // Stale-chunk recovery — every new deploy invalidates the previous
 // deploy's chunk hashes. Users with cached HTML referencing old
