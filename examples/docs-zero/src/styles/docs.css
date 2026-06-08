@@ -2439,8 +2439,66 @@ html { scroll-behavior: smooth; }
     grid-template-columns: minmax(0, 1fr);
     max-width: 760px;
   }
+  /* Mobile/narrow viewports: surface the TOC as a collapsible "On
+     this page" panel ABOVE the article content. Without this rule
+     mobile users had no way to reach the page outline at all (the
+     desktop right-rail TOC is hidden on narrow viewports, and the
+     mobile hamburger only opens the section sidebar). The original
+     VitePress design had explicit "Menu" / "On this page" buttons
+     in a secondary bar; this is the docs-zero equivalent.
+
+     `order: -1` puts the TOC FIRST in the grid stack so the user
+     sees it before scrolling into the article (matches reading
+     order). `position: static` overrides the desktop sticky right-
+     rail behavior — sticky doesn't make sense in single-column
+     mobile flow. `border-left: 0` drops the desktop hairline. */
   .docs-page .pyreon-toc,
-  .docs-page .docs-toc { display: none; }
+  .docs-page .docs-toc {
+    display: block;
+    order: -1;
+    position: static;
+    max-height: none;
+    padding: 0.5rem 0;
+    margin: 0 0 1rem 0;
+    border-left: 0;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+  }
+  /* `<details>`-style collapsible without requiring a `<details>`
+     element: the label is the trigger, the list is the content.
+     Use a max-height transition for animation. */
+  .docs-page .pyreon-toc__label,
+  .docs-page .docs-toc__label {
+    cursor: pointer;
+    padding: 0.5rem 0;
+    margin: 0;
+    user-select: none;
+    /* Show the disclosure arrow */
+  }
+  .docs-page .pyreon-toc__label::before,
+  .docs-page .docs-toc__label::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 0.4rem;
+    transition: transform 0.18s ease;
+  }
+  .docs-page .pyreon-toc.is-open .pyreon-toc__label::before,
+  .docs-page .docs-toc.is-open .docs-toc__label::before {
+    transform: rotate(90deg);
+  }
+  .docs-page .pyreon-toc__list,
+  .docs-page .docs-toc__list {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.28s ease;
+  }
+  .docs-page .pyreon-toc.is-open .pyreon-toc__list,
+  .docs-page .docs-toc.is-open .docs-toc__list {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-top: 0.4rem;
+    padding-bottom: 0.5rem;
+  }
 }
 
 /* ── (F) Mobile drawer (768px and below) ───────────────────────── */

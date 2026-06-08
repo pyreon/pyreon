@@ -141,7 +141,32 @@ export function Toc(props: TocProps) {
   })
 
   return (
-    <aside class="pyreon-toc" aria-label="On this page">
+    <aside
+      class="pyreon-toc"
+      aria-label="On this page"
+      ref={(el: HTMLElement | null) => {
+        if (!el) return
+        // Mobile collapsible behavior: clicking the label toggles
+        // `is-open` on the aside. The CSS at the narrow-viewport
+        // media query uses this to animate the list open/closed.
+        // Desktop ignores the class (CSS doesn't reference it for
+        // wide viewports).
+        const label = el.querySelector('.pyreon-toc__label')
+        if (label) {
+          label.addEventListener('click', () => {
+            el.classList.toggle('is-open')
+          })
+        }
+        // Auto-close when a link is clicked (so the TOC doesn't
+        // stay open over the section the user jumped to).
+        el.addEventListener('click', (e) => {
+          const target = e.target as HTMLElement
+          if (target.classList?.contains('pyreon-toc__link')) {
+            el.classList.remove('is-open')
+          }
+        })
+      }}
+    >
       {() => {
         const list = props.headings()
         if (list.length === 0) return null
