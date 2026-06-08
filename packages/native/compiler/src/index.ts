@@ -12,9 +12,15 @@ export type { TargetLanguage, EmitOptions, TransformResult } from './types'
 
 export function transform(source: string, options: EmitOptions): TransformResult {
   const parsed = parsePyreon(source)
-  const code =
+  const emitted =
     options.target === 'swift'
       ? emitSwift(parsed.components, parsed.enums, parsed.structs, parsed.moduleDecls)
       : emitKotlin(parsed.components, parsed.enums, parsed.structs, parsed.moduleDecls)
-  return { code, warnings: parsed.warnings }
+  // Phase 3 native-readiness gap fix (2026-06-05): emit-time warnings
+  // (walled-tag silent-drop diagnostics, etc.) merge with parse-time
+  // warnings so consumers see them under a single contract.
+  return {
+    code: emitted.code,
+    warnings: [...parsed.warnings, ...emitted.warnings],
+  }
 }

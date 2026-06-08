@@ -114,12 +114,28 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
   return names
 }
 
+/**
+ * Emit-time warnings. Same shape + rationale as emit-swift's. See
+ * `_pushKotlinEmitWarning` for the canonical use site (walled-tag
+ * silent-drop diagnostics).
+ */
+let _emitWarnings: string[] = []
+
+export function _peekKotlinEmitWarnings(): string[] {
+  return [..._emitWarnings]
+}
+
+export function _pushKotlinEmitWarning(msg: string): void {
+  _emitWarnings.push(msg)
+}
+
 export function emitKotlin(
   components: ComponentIR[],
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
-): string {
+): { code: string; warnings: string[] } {
+  _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
@@ -152,7 +168,9 @@ export function emitKotlin(
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
-  return parts.join('\n\n')
+  const warnings = [..._emitWarnings]
+  _emitWarnings = []
+  return { code: parts.join('\n\n'), warnings }
 }
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
@@ -1354,6 +1372,27 @@ function emitKotlinWalledTagAsChildren(
       : tag === 'ErrorBoundary'
         ? 'no render-time try/catch on Compose'
         : 'no native state-cache across unmount on Compose'
+  // Phase 3 native-readiness gap fix (2026-06-05) — mirror of Swift.
+  // Surface dropped feature-bearing props as user-visible warnings.
+  // Same catalog + rationale; see emit-swift.ts for the full doc.
+  const droppableProps =
+    tag === 'Suspense' || tag === 'ErrorBoundary' ? ['fallback'] : ['when', 'include', 'exclude']
+  const droppedAttrs = e.attrs
+    .filter((a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr')
+    .map((a) => a.name)
+    .filter((name) => droppableProps.includes(name))
+  if (droppedAttrs.length > 0) {
+    _emitWarnings.push(
+      `<${tag}> on Kotlin target: dropped prop(s) [${droppedAttrs.join(', ')}] — ` +
+        `${limitation}; children render but ${
+          tag === 'Suspense'
+            ? 'fallback never shows during async loads'
+            : tag === 'ErrorBoundary'
+              ? 'fallback never shows on render errors'
+              : 'cache behaviour is inert (children re-create on every mount)'
+        }. Use a per-target adapter (Layer 4: <NativeAndroid>) for full semantic parity.`,
+    )
+  }
   return (
     `// [Pyreon] <${tag}> unsupported on Android — rendering children only (${limitation}); fallback / cache behaviour inert.\n` +
     `${p}Box {\n${body}\n${p}}`
