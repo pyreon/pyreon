@@ -1,4 +1,5 @@
 import { signal } from '@pyreon/reactivity'
+import { onUnmount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 // ─── <CodeBlock> — Shiki-highlighted code wrapper ──────────────────────────
@@ -58,6 +59,16 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
   // Reactive copied-state for the button label flip. The copy handler
   // runs only in the browser; SSR renders the initial "Copy" label.
   const copied = signal(false)
+  // Track the reset timer so it can be cleared on unmount. Without
+  // this, navigating away within 2s of a copy click leaves a pending
+  // `setTimeout` that fires on a disposed signal (silent no-op today
+  // but classic Class-I leak shape — see anti-patterns.md). Capture
+  // + clear is idempotent: re-clicking copy clears the prior timer
+  // before scheduling a new one.
+  let _resetTimer: ReturnType<typeof setTimeout> | null = null
+  onUnmount(() => {
+    if (_resetTimer !== null) clearTimeout(_resetTimer)
+  })
 
   const handleCopy = () => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return
@@ -67,8 +78,13 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
       .then(() => {
         copied.set(true)
         // Reset after 2s — matches `@pyreon/hooks:useClipboard`
-        // convention.
-        setTimeout(() => copied.set(false), 2000)
+        // convention. Clear any in-flight timer so a quick second
+        // click restarts the 2s window cleanly.
+        if (_resetTimer !== null) clearTimeout(_resetTimer)
+        _resetTimer = setTimeout(() => {
+          copied.set(false)
+          _resetTimer = null
+        }, 2000)
       })
       .catch(() => {
         // Clipboard rejection (permissions, secure-context) — silently

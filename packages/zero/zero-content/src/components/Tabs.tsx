@@ -54,8 +54,8 @@ export function Tabs(props: TabsProps): VNodeChild {
                 ? 'pyreon-tabs__tab pyreon-tabs__tab--active'
                 : 'pyreon-tabs__tab'
             }
-            aria-selected={() => (active() === i ? 'true' : 'false') as never}
-            tabIndex={() => (active() === i ? 0 : -1) as never}
+            aria-selected={() => active() === i ? 'true' : 'false'}
+            tabIndex={() => active() === i ? 0 : -1}
             onClick={() => active.set(i)}
           >
             {item.label}
@@ -70,7 +70,7 @@ export function Tabs(props: TabsProps): VNodeChild {
               ? 'pyreon-tabs__panel pyreon-tabs__panel--active'
               : 'pyreon-tabs__panel'
           }
-          hidden={() => (active() === i ? undefined : true) as never}
+          hidden={() => active() !== i}
         >
           {item.content}
         </div>

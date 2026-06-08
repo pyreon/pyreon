@@ -33,6 +33,7 @@ export interface ValidationResult {
  * about the move.
  */
 import { BUILT_IN_COMPONENTS as _BUILT_INS } from '../_shared/built-ins'
+import { levenshtein } from '../_shared/levenshtein'
 export const BUILT_IN_COMPONENTS: readonly string[] = _BUILT_INS
 
 export interface ValidationContext {
@@ -108,36 +109,15 @@ Available components include: ${BUILT_IN_COMPONENTS.join(', ')}, plus any Pascal
 }
 
 /**
- * Levenshtein edit distance (insertions, deletions, substitutions).
- * Naive O(n*m) — fast enough for the small alphabets we feed it.
+ * Levenshtein edit distance — case-insensitive variant for component-
+ * name typos (`<callout>` → `<Callout>`). Thin re-export over the
+ * shared `_shared/levenshtein` primitive so the validator + the
+ * callout plugin share one DP implementation.
  *
  * @internal exported for testing
  */
 export function editDistance(a: string, b: string): number {
-  if (a === b) return 0
-  if (a.length === 0) return b.length
-  if (b.length === 0) return a.length
-  const aLow = a.toLowerCase()
-  const bLow = b.toLowerCase()
-  // Two-row DP to keep memory O(min(len)).
-  const m = aLow.length
-  const n = bLow.length
-  let prev = new Array<number>(n + 1)
-  let curr = new Array<number>(n + 1)
-  for (let j = 0; j <= n; j++) prev[j] = j
-  for (let i = 1; i <= m; i++) {
-    curr[0] = i
-    for (let j = 1; j <= n; j++) {
-      const cost = aLow.charCodeAt(i - 1) === bLow.charCodeAt(j - 1) ? 0 : 1
-      curr[j] = Math.min(
-        curr[j - 1]! + 1, // insert
-        prev[j]! + 1, // delete
-        prev[j - 1]! + cost, // substitute
-      )
-    }
-    ;[prev, curr] = [curr, prev]
-  }
-  return prev[n]!
+  return levenshtein(a, b, { caseInsensitive: true })
 }
 
 /**
