@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect } from '@pyreon/reactivity'
 import type {
   DefaultError,
   InfiniteData,
@@ -11,10 +11,33 @@ import type {
 } from '@tanstack/query-core'
 import { InfiniteQueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
+import { makeResultProto } from './result-proto'
 
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
+// Shared result prototype — the 13 accessor getters live here (one allocation,
+// module init) instead of as per-call closures in an object literal (which also
+// forced the result into V8 dictionary mode). See result-proto.ts. The three
+// page-fetch methods stay as own arrow closures (detachment-safe).
+const InfiniteQueryResultProto = makeResultProto<
+  InfiniteQueryObserverResult<InfiniteData<unknown>, unknown>
+>({
+  result: (c) => c,
+  data: (c) => c.data,
+  error: (c) => c.error ?? null,
+  status: (c) => c.status,
+  isPending: (c) => c.isPending,
+  isLoading: (c) => c.isLoading,
+  isFetching: (c) => c.isFetching,
+  isFetchingNextPage: (c) => c.isFetchingNextPage,
+  isFetchingPreviousPage: (c) => c.isFetchingPreviousPage,
+  isError: (c) => c.isError,
+  isSuccess: (c) => c.isSuccess,
+  hasNextPage: (c) => c.hasNextPage,
+  hasPreviousPage: (c) => c.hasPreviousPage,
+})
 
 export interface UseInfiniteQueryResult<TQueryFnData, TError = DefaultError> {
   /** Raw signal — full observer result. */
@@ -123,54 +146,15 @@ export function useInfiniteQuery<
 
   onUnmount(() => unsub())
 
-  return {
-    get result() {
-      return (slots.result ??= signal<Result>(observer.getCurrentResult()))
-    },
-    get data() {
-      return (slots.data ??= signal<InfiniteData<TQueryFnData> | undefined>(
-        observer.getCurrentResult().data,
-      ))
-    },
-    get error() {
-      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
-    },
-    get status() {
-      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
-        observer.getCurrentResult().status,
-      ))
-    },
-    get isPending() {
-      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
-    },
-    get isLoading() {
-      return (slots.isLoading ??= signal(observer.getCurrentResult().isLoading))
-    },
-    get isFetching() {
-      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
-    },
-    get isFetchingNextPage() {
-      return (slots.isFetchingNextPage ??= signal(observer.getCurrentResult().isFetchingNextPage))
-    },
-    get isFetchingPreviousPage() {
-      return (slots.isFetchingPreviousPage ??= signal(
-        observer.getCurrentResult().isFetchingPreviousPage,
-      ))
-    },
-    get isError() {
-      return (slots.isError ??= signal(observer.getCurrentResult().isError))
-    },
-    get isSuccess() {
-      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
-    },
-    get hasNextPage() {
-      return (slots.hasNextPage ??= signal(observer.getCurrentResult().hasNextPage))
-    },
-    get hasPreviousPage() {
-      return (slots.hasPreviousPage ??= signal(observer.getCurrentResult().hasPreviousPage))
-    },
+  // Shared getters-only prototype + own detachment-safe page-fetch arrows.
+  // `slots`/`observer` are the same objects the subscribe callback writes to.
+  const result = {
+    _slots: slots,
+    _observer: observer,
     fetchNextPage: () => observer.fetchNextPage(),
     fetchPreviousPage: () => observer.fetchPreviousPage(),
     refetch: () => observer.refetch(),
   }
+  Object.setPrototypeOf(result, InfiniteQueryResultProto)
+  return result as unknown as UseInfiniteQueryResult<TQueryFnData, TError>
 }

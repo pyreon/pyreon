@@ -1,7 +1,7 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect } from '@pyreon/reactivity'
 import type {
   DefaultError,
   InfiniteData,
@@ -13,6 +13,7 @@ import type {
 } from '@tanstack/query-core'
 import { InfiniteQueryObserver, QueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
+import { makeResultProto } from './result-proto'
 
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -55,6 +56,36 @@ export interface UseSuspenseInfiniteQueryResult<TQueryFnData, TError = DefaultEr
   fetchPreviousPage: () => Promise<InfiniteQueryObserverResult<InfiniteData<TQueryFnData>, TError>>
   refetch: () => Promise<QueryObserverResult<InfiniteData<TQueryFnData>, TError>>
 }
+
+// Shared result prototypes — accessor getters live here (one allocation, module
+// init) instead of per-call closures in object literals (which also forced the
+// results into V8 dictionary mode). See result-proto.ts. The fetch/refetch
+// methods stay as own arrow closures (detachment-safe).
+const SuspenseQueryResultProto = makeResultProto<QueryObserverResult<unknown, unknown>>({
+  result: (c) => c,
+  data: (c) => c.data,
+  error: (c) => c.error ?? null,
+  status: (c) => c.status,
+  isPending: (c) => c.isPending,
+  isFetching: (c) => c.isFetching,
+  isError: (c) => c.isError,
+  isSuccess: (c) => c.isSuccess,
+})
+const SuspenseInfiniteQueryResultProto = makeResultProto<
+  InfiniteQueryObserverResult<InfiniteData<unknown>, unknown>
+>({
+  result: (c) => c,
+  data: (c) => c.data,
+  error: (c) => c.error ?? null,
+  status: (c) => c.status,
+  isFetching: (c) => c.isFetching,
+  isFetchingNextPage: (c) => c.isFetchingNextPage,
+  isFetchingPreviousPage: (c) => c.isFetchingPreviousPage,
+  isError: (c) => c.isError,
+  isSuccess: (c) => c.isSuccess,
+  hasNextPage: (c) => c.hasNextPage,
+  hasPreviousPage: (c) => c.hasPreviousPage,
+})
 
 // ─── QuerySuspense ──────────────────────────────────────────────────────────
 
@@ -181,37 +212,13 @@ export function useSuspenseQuery<
   })
   onUnmount(() => unsub())
 
-  return {
-    get result() {
-      return (slots.result ??= signal<QueryObserverResult<TData, TError>>(
-        observer.getCurrentResult(),
-      ))
-    },
-    get data() {
-      return (slots.data ??= signal<TData>(observer.getCurrentResult().data as TData))
-    },
-    get error() {
-      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
-    },
-    get status() {
-      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
-        observer.getCurrentResult().status,
-      ))
-    },
-    get isPending() {
-      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
-    },
-    get isFetching() {
-      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
-    },
-    get isError() {
-      return (slots.isError ??= signal(observer.getCurrentResult().isError))
-    },
-    get isSuccess() {
-      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
-    },
+  const result = {
+    _slots: slots,
+    _observer: observer,
     refetch: () => observer.refetch(),
   }
+  Object.setPrototypeOf(result, SuspenseQueryResultProto)
+  return result as unknown as UseSuspenseQueryResult<TData, TError>
 }
 
 // ─── useSuspenseInfiniteQuery ───────────────────────────────────────────────
@@ -284,48 +291,13 @@ export function useSuspenseInfiniteQuery<
   })
   onUnmount(() => unsub())
 
-  return {
-    get result() {
-      return (slots.result ??= signal<Result>(observer.getCurrentResult()))
-    },
-    get data() {
-      return (slots.data ??= signal<InfiniteData<TQueryFnData>>(
-        observer.getCurrentResult().data as InfiniteData<TQueryFnData>,
-      ))
-    },
-    get error() {
-      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
-    },
-    get status() {
-      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
-        observer.getCurrentResult().status,
-      ))
-    },
-    get isFetching() {
-      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
-    },
-    get isFetchingNextPage() {
-      return (slots.isFetchingNextPage ??= signal(observer.getCurrentResult().isFetchingNextPage))
-    },
-    get isFetchingPreviousPage() {
-      return (slots.isFetchingPreviousPage ??= signal(
-        observer.getCurrentResult().isFetchingPreviousPage,
-      ))
-    },
-    get isError() {
-      return (slots.isError ??= signal(observer.getCurrentResult().isError))
-    },
-    get isSuccess() {
-      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
-    },
-    get hasNextPage() {
-      return (slots.hasNextPage ??= signal(observer.getCurrentResult().hasNextPage))
-    },
-    get hasPreviousPage() {
-      return (slots.hasPreviousPage ??= signal(observer.getCurrentResult().hasPreviousPage))
-    },
+  const result = {
+    _slots: slots,
+    _observer: observer,
     fetchNextPage: () => observer.fetchNextPage(),
     fetchPreviousPage: () => observer.fetchPreviousPage(),
     refetch: () => observer.refetch(),
   }
+  Object.setPrototypeOf(result, SuspenseInfiniteQueryResultProto)
+  return result as unknown as UseSuspenseInfiniteQueryResult<TQueryFnData, TError>
 }

@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect } from '@pyreon/reactivity'
 import type {
   DefaultError,
   QueryKey,
@@ -9,6 +9,27 @@ import type {
 } from '@tanstack/query-core'
 import { QueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
+import { makeResultProto } from './result-proto'
+
+// Shared result prototype — getters live here (one allocation, module init)
+// instead of as 9 per-call accessor closures in an object literal (which also
+// forced the result into V8 dictionary mode). See result-proto.ts for the
+// measured ~85%-per-result-object rationale. Built once with a loose
+// observer/result type; each useQuery casts its strongly-typed result.
+const QueryResultProto = makeResultProto<
+  QueryObserverResult<unknown, unknown>,
+  QueryObserver<unknown, unknown, unknown, unknown, QueryKey>
+>({
+  result: (c) => c,
+  data: (c) => c.data,
+  error: (c) => c.error ?? null,
+  status: (c) => c.status,
+  isPending: (c) => c.isPending,
+  isLoading: (c) => c.isLoading,
+  isFetching: (c) => c.isFetching,
+  isError: (c) => c.isError,
+  isSuccess: (c) => c.isSuccess,
+})
 
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -108,36 +129,18 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
   // Unsubscribe the observer on unmount (effect disposal is handled by EffectScope).
   onUnmount(() => unsub())
 
-  return {
-    get result() {
-      return (slots.result ??= signal<QueryObserverResult<TData, TError>>(observer.getCurrentResult()))
-    },
-    get data() {
-      return (slots.data ??= signal<TData | undefined>(observer.getCurrentResult().data))
-    },
-    get error() {
-      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
-    },
-    get status() {
-      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
-        observer.getCurrentResult().status,
-      ))
-    },
-    get isPending() {
-      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
-    },
-    get isLoading() {
-      return (slots.isLoading ??= signal(observer.getCurrentResult().isLoading))
-    },
-    get isFetching() {
-      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
-    },
-    get isError() {
-      return (slots.isError ??= signal(observer.getCurrentResult().isError))
-    },
-    get isSuccess() {
-      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
-    },
+  // Build the result on the shared getters-only prototype: 2 plain fields + a
+  // detachment-safe `refetch` arrow closure + setPrototypeOf, instead of 9
+  // per-instance accessor getters. `slots` and `observer` are the SAME objects
+  // the subscribe callback above writes to, so the lazy-materialize-on-first-
+  // access slot semantics are unchanged. `refetch` stays an own arrow (not a
+  // proto method) so `onClick={query.refetch}` / `const r = query.refetch; r()`
+  // keep working when detached.
+  const result = {
+    _slots: slots,
+    _observer: observer,
     refetch: () => observer.refetch(),
   }
+  Object.setPrototypeOf(result, QueryResultProto)
+  return result as unknown as UseQueryResult<TData, TError>
 }

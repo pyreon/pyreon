@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, signal } from '@pyreon/reactivity'
+import { batch } from '@pyreon/reactivity'
 import type {
   DefaultError,
   MutateFunction,
@@ -9,10 +9,30 @@ import type {
 } from '@tanstack/query-core'
 import { MutationObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
+import { makeResultProto } from './result-proto'
 
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
+// Shared result prototype — the 8 accessor getters live here (one allocation,
+// module init) instead of as per-call closures in an object literal (which also
+// forced the result into V8 dictionary mode). See result-proto.ts. Methods
+// (mutate/mutateAsync/reset) stay as own arrow closures on each result (they're
+// routinely detached: `onClick={m.mutate}`), so only getters move here.
+const MutationResultProto = makeResultProto<
+  MutationObserverResult<unknown, unknown, unknown, unknown>,
+  MutationObserver<unknown, unknown, unknown, unknown>
+>({
+  result: (c) => c,
+  data: (c) => c.data,
+  error: (c) => c.error ?? null,
+  status: (c) => c.status,
+  isPending: (c) => c.isPending,
+  isSuccess: (c) => c.isSuccess,
+  isError: (c) => c.isError,
+  isIdle: (c) => c.isIdle,
+})
 
 export interface UseMutationResult<
   TData,
@@ -141,40 +161,30 @@ export function useMutation<
 
   onUnmount(() => unsub())
 
-  return {
-    get result() {
-      return (slots.result ??= signal<Result>(observer.getCurrentResult()))
-    },
-    get data() {
-      return (slots.data ??= signal<TData | undefined>(observer.getCurrentResult().data))
-    },
-    get error() {
-      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
-    },
-    get status() {
-      return (slots.status ??= signal<'idle' | 'pending' | 'success' | 'error'>(
-        observer.getCurrentResult().status,
-      ))
-    },
-    get isPending() {
-      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
-    },
-    get isSuccess() {
-      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
-    },
-    get isError() {
-      return (slots.isError ??= signal(observer.getCurrentResult().isError))
-    },
-    get isIdle() {
-      return (slots.isIdle ??= signal(observer.getCurrentResult().isIdle))
-    },
-    mutate: (vars, callbackOptions) => {
+  // Build the result on the shared getters-only prototype (2 plain fields +
+  // detachment-safe method arrows + setPrototypeOf) instead of 8 per-instance
+  // accessor getters. `slots`/`observer` are the same objects the subscribe
+  // callback writes to. Method params are annotated explicitly because the
+  // `as unknown as` cast below breaks the contextual typing the inline literal
+  // got from the return-type annotation.
+  const result = {
+    _slots: slots,
+    _observer: observer,
+    mutate: (
+      vars: TVariables,
+      callbackOptions?: Parameters<MutateFunction<TData, TError, TVariables, TContext>>[1],
+    ) => {
       observer.mutate(vars, callbackOptions).catch(() => {
         // Error is already captured in the error signal via the observer subscription.
         // This catch prevents an unhandled promise rejection for fire-and-forget callers.
       })
     },
-    mutateAsync: (vars, callbackOptions) => observer.mutate(vars, callbackOptions),
+    mutateAsync: (
+      vars: TVariables,
+      callbackOptions?: Parameters<MutateFunction<TData, TError, TVariables, TContext>>[1],
+    ) => observer.mutate(vars, callbackOptions),
     reset: () => observer.reset(),
   }
+  Object.setPrototypeOf(result, MutationResultProto)
+  return result as unknown as UseMutationResult<TData, TError, TVariables, TContext>
 }
