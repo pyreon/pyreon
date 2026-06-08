@@ -511,7 +511,34 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
       // `.js` / `.mjs`; `.ts` is loaded via Vite's ssrLoadModule once
       // the dev server is available (handled in configureServer).
       const configFile = await findConfigFile(config.root)
-      if (configFile === null) return
+      if (configFile === null) {
+        // No config file found. Detect whether the user has any `.md`
+        // / `.mdx` files under the conventional `src/content/` tree and
+        // surface a one-time DX-grade warning naming the missing setup
+        // step. Cheap fs scan limited to one top-level dir; we don't
+        // walk every `src/` subtree (false-positive risk on monorepos).
+        if (await hasMarkdownInContentDir(config.root)) {
+          config.logger.warn(
+            `[@pyreon/zero-content] Found markdown under src/content/ but no content.config.{ts,js,mjs} at project root. Create one:
+
+  // src/content.config.ts
+  import { defineCollection, defineConfig, z } from '@pyreon/zero-content'
+
+  export default defineConfig({
+    collections: {
+      docs: defineCollection({
+        type: 'pages',
+        path: 'src/content/docs',
+        schema: z.object({ title: z.string() }),
+      }),
+    },
+  })
+
+Until this file exists, getCollection() / getEntry() will throw "No content collection registry available" at runtime.`,
+          )
+        }
+        return
+      }
       // For `.js` / `.mjs` we can load right away.
       if (/\.(m?js)$/.test(configFile)) {
         try {
@@ -801,17 +828,12 @@ export {}
             const collectionName = findCollectionForFile(id)
             if (collectionName !== null && loadedConfig) {
               const collMap = searchEntries.get(collectionName)
-              const collectionPath =
-                loadedConfig.config.collections[collectionName]!.path ??
-                `src/content/${collectionName}`
-              const absCollectionPath = path.isAbsolute(collectionPath)
-                ? collectionPath
-                : path.join(resolvedConfig.root, collectionPath)
-              const slug = path
-                .relative(absCollectionPath, id)
-                .replace(/\.(md|mdx)$/, '')
-                .split(path.sep)
-                .join('/')
+              // PERF — reuse the slug we already computed at first-
+              // compile time (stored on the cache entry). Pre-fix this
+              // path re-ran `path.relative + .replace + .split.join`
+              // on every cache-hit, doing O(path-length) work per
+              // file × N hits per build for zero new information.
+              const slug = cached.slug
               if (!collMap || !collMap.has(slug)) {
                 const frontmatter = cached.frontmatter
                 const title = String(frontmatter.title ?? slug)
@@ -1288,6 +1310,40 @@ export function makeInternalLinkResolver(
     // leading slash so the resulting `<a href>` is absolute.
     return `/${collapsed}${frag}`
   }
+}
+
+/**
+ * Cheap probe: does the project have any `.md` / `.mdx` files under
+ * `src/content/`? Used by `configResolved` to decide whether to warn
+ * about a missing `content.config.*` file. Walks a single subtree
+ * with a bounded depth so it stays fast on monorepos.
+ *
+ * @internal exported for testing
+ */
+export async function hasMarkdownInContentDir(root: string): Promise<boolean> {
+  const dir = path.join(root, 'src', 'content')
+  const MAX_DEPTH = 4
+  const walk = async (
+    current: string,
+    depth: number,
+  ): Promise<boolean> => {
+    if (depth > MAX_DEPTH) return false
+    let dirents: import('node:fs').Dirent[]
+    try {
+      dirents = await fsp.readdir(current, { withFileTypes: true })
+    } catch {
+      return false
+    }
+    for (const d of dirents) {
+      if (d.isFile() && /\.(md|mdx)$/i.test(d.name)) return true
+      if (d.isDirectory()) {
+        const hit = await walk(path.join(current, d.name), depth + 1)
+        if (hit) return true
+      }
+    }
+    return false
+  }
+  return walk(dir, 0)
 }
 
 export function reportPath(id: string): string {

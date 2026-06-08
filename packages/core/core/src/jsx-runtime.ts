@@ -173,7 +173,15 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   'aria-expanded'?: Booleanish | (() => Booleanish) | undefined
   'aria-selected'?: Booleanish | (() => Booleanish) | undefined
   'aria-checked'?: Booleanish | 'mixed' | (() => Booleanish | 'mixed') | undefined
-  'aria-current'?: Booleanish | 'page' | 'step' | 'location' | 'date' | 'time' | undefined
+  'aria-current'?:
+    | Booleanish
+    | 'page'
+    | 'step'
+    | 'location'
+    | 'date'
+    | 'time'
+    | (() => Booleanish | 'page' | 'step' | 'location' | 'date' | 'time' | undefined)
+    | undefined
   'aria-live'?: 'off' | 'assertive' | 'polite' | undefined
   'aria-atomic'?: Booleanish | undefined
   'aria-busy'?: Booleanish | undefined

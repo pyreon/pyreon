@@ -160,11 +160,8 @@ export function Sidebar(props: SidebarProps): VNodeChild {
                         ? 'pyreon-sidebar__link pyreon-sidebar__link--active'
                         : 'pyreon-sidebar__link'
                     }
-                    aria-current={
-                      (() =>
-                        props.currentPath() === entry.url
-                          ? 'page'
-                          : false) as never
+                    aria-current={() =>
+                      props.currentPath() === entry.url ? 'page' : undefined
                     }
                   >
                     {entry.title}

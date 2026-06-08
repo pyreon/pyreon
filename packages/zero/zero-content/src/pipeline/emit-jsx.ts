@@ -1,4 +1,5 @@
 import type { Heading } from '../types'
+import { escapeHtmlText } from '../_shared/html-escape'
 import { parseCodeFenceMeta } from './code-meta'
 import type {
   Blockquote,
@@ -497,13 +498,13 @@ async function emitCode(node: Code, opts: EmitOptions): Promise<string> {
   return `<CodeBlock${sharedProps} dangerouslySetInnerHTML={{ __html: ${escaped} }} />`
 }
 
-/** Minimal HTML escape for the no-highlighter fallback path. */
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
+/**
+ * HTML escape for the no-highlighter fallback path.
+ *
+ * Thin re-export of the shared `_shared/html-escape:escapeHtmlText`
+ * helper so emit-jsx + remark callout + error-overlay share one impl.
+ */
+const escapeHtml = escapeHtmlText
 
 async function emitLink(
   node: Link,

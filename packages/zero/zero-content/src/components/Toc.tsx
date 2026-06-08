@@ -131,11 +131,8 @@ export function Toc(props: TocProps): VNodeChild {
                       ? 'pyreon-toc__link pyreon-toc__link--active'
                       : 'pyreon-toc__link'
                   }
-                  aria-current={
-                    (() =>
-                      activeSlug() === h.slug
-                        ? 'location'
-                        : false) as never
+                  aria-current={() =>
+                    activeSlug() === h.slug ? 'location' : undefined
                   }
                   onClick={handleClick(h.slug)}
                 >
