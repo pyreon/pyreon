@@ -21,10 +21,14 @@ import {
   type LoadedConfig,
 } from './config-loader'
 import {
+  buildIndexJson,
   buildSearchIndex,
   type CollectionEntryForIndex,
+  isSearchable,
+  makeSearchDoc,
   stripMarkdown,
 } from './search/index-builder'
+import { promises as fsp } from 'node:fs'
 import { generateLlmsTxt } from './seo/llms-txt'
 import { generateRssFeed } from './seo/rss'
 import { generateSitemap, type SitemapPage } from './seo/sitemap'
@@ -410,6 +414,12 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
   let cachedScan: ScanResult | null = null
   let scanInFlight: Promise<ScanResult> | null = null
   let loadedConfig: LoadedConfig | null = null
+  // Whether the dev-mode `/search-index.json` middleware has walked
+  // the collection paths + force-transformed every `.md` file at least
+  // once. Set on first request, cleared in `handleHotUpdate` when a
+  // `.md` / `.mdx` file changes so newly-added files surface on the
+  // next request without a dev-server restart.
+  let _devIndexWarmed = false
   // Per-collection entries accumulated by transform() for the build-time
   // search index. Populated for every .md/.mdx under a collection path;
   // consumed once in closeBundle to write dist/search-index.json +
@@ -533,6 +543,131 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
           )
         }
       }
+
+      // ── Dev-mode /search-index*.json middleware ────────────────────────
+      //
+      // In production, `closeBundle` writes the catalog + per-collection
+      // JSON files to `dist/`. In dev there is no closeBundle, so any
+      // request for `/search-index.json` falls through to the SPA
+      // fallback which serves `index.html` — minisearch then parses it
+      // as JSON and throws `Unexpected token '<', "<!DOCTYPE "...`.
+      //
+      // The fix walks each searchable collection's `path` config on disk
+      // when the URL is requested, transforms each `.md` file via the
+      // plugin's own pipeline (so `searchEntries` populates), then
+      // serves the canonical JSON shape `buildSearchIndex` writes to
+      // disk in production. Cached once per dev-server lifetime (the
+      // `_devIndexWarmed` flag) so repeat Cmd+K opens don't re-walk.
+      const SEARCH_CATALOG_URL = '/search-index.json'
+      const SEARCH_COLLECTION_URL_RE = /^\/search-index-([a-z0-9_-]+)\.json$/i
+      const warmDevSearchIndex = async (): Promise<void> => {
+        if (_devIndexWarmed) return
+        if (!loadedConfig) return
+        const rootDir = resolvedConfig?.root ?? process.cwd()
+        // Walk each searchable collection's `.md` / `.mdx` files and
+        // ssrLoadModule each so the plugin's transform fires and the
+        // search entry gets stashed in `searchEntries`. Idempotent.
+        const walkers = Object.entries(loadedConfig.config.collections)
+          .filter(([, def]) => isSearchable(def))
+          .map(async ([name, def]) => {
+            const collectionPath = def.path ?? `src/content/${name}`
+            const absRoot = path.isAbsolute(collectionPath)
+              ? collectionPath
+              : path.join(rootDir, collectionPath)
+            const files: string[] = []
+            const walk = async (dir: string): Promise<void> => {
+              let dirents: import('node:fs').Dirent[]
+              try {
+                dirents = await fsp.readdir(dir, { withFileTypes: true })
+              } catch {
+                return
+              }
+              for (const d of dirents) {
+                const full = path.join(dir, d.name)
+                if (d.isDirectory()) await walk(full)
+                else if (d.isFile() && /\.(md|mdx)$/i.test(d.name))
+                  files.push(full)
+              }
+            }
+            await walk(absRoot)
+            // Force the plugin's transform hook by loading each file as
+            // an SSR module — Vite's pipeline calls every plugin's
+            // `transform` for `.md` / `.mdx` files, including ours,
+            // which populates `searchEntries`.
+            await Promise.all(
+              files.map((f) =>
+                server.ssrLoadModule(f).catch(() => {
+                  /* one bad file shouldn't kill the index */
+                }),
+              ),
+            )
+          })
+        await Promise.all(walkers)
+        _devIndexWarmed = true
+      }
+      // Build the catalog + per-collection JSON in-memory from
+      // `searchEntries`. Mirrors the structure `closeBundle` writes to
+      // disk so the runtime code path is identical in dev + prod.
+      const buildDevCatalogJson = (): string => {
+        const collections: Array<{ name: string; url: string }> = []
+        if (loadedConfig) {
+          for (const [name, def] of Object.entries(
+            loadedConfig.config.collections,
+          )) {
+            if (!isSearchable(def)) continue
+            const m = searchEntries.get(name)
+            if (!m || m.size === 0) continue
+            collections.push({ name, url: `/search-index-${name}.json` })
+          }
+        }
+        return JSON.stringify({ collections })
+      }
+      const buildDevCollectionJson = (name: string): string | null => {
+        const m = searchEntries.get(name)
+        if (!m) return null
+        const entries = Array.from(m.values()).sort((a, b) =>
+          a.slug.localeCompare(b.slug),
+        )
+        const docs = entries.map((e) => makeSearchDoc(name, e))
+        return buildIndexJson(docs)
+      }
+
+      // Guard against partial-mock test environments where
+      // `server.middlewares` is undefined; the production Vite shape
+      // always carries it.
+      if (
+        !server.middlewares ||
+        typeof server.middlewares.use !== 'function'
+      ) {
+        return
+      }
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url ?? ''
+        // Strip query string + fragment so `/search-index.json?t=…`
+        // (HMR cache-buster) still matches.
+        const cleanUrl = url.split('?')[0]!.split('#')[0]!
+        if (cleanUrl !== SEARCH_CATALOG_URL) {
+          const m = SEARCH_COLLECTION_URL_RE.exec(cleanUrl)
+          if (!m) return next()
+          await warmDevSearchIndex()
+          const collectionName = m[1]!
+          const json = buildDevCollectionJson(collectionName)
+          if (json === null) {
+            res.statusCode = 404
+            res.setHeader('Content-Type', 'application/json')
+            res.end(`{"error":"unknown collection: ${collectionName}"}`)
+            return
+          }
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.end(json)
+          return
+        }
+        await warmDevSearchIndex()
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.setHeader('Cache-Control', 'no-cache')
+        res.end(buildDevCatalogJson())
+      })
     },
 
     async buildStart() {
@@ -761,15 +896,22 @@ export {}
               )
             }
           }
-          // Stash the entry for build-time search index emission. The
-          // body text comes from the ORIGINAL markdown source (not the
-          // JSX-compiled output) — `stripMarkdown` undoes code fences,
-          // HTML tags, link syntax, headings, and emphasis markers.
-          // Skipped when the collection opts out of search (data
-          // collections default to non-searchable; pages default in).
-          // Skipped in dev because the catalog write happens in
-          // closeBundle which Vite only fires in build mode anyway.
-          if (resolvedConfig?.command === 'build') {
+          // Stash the entry for the search index. The body text comes
+          // from the ORIGINAL markdown source (not the JSX-compiled
+          // output) — `stripMarkdown` undoes code fences, HTML tags,
+          // link syntax, headings, and emphasis markers. Skipped when
+          // the collection opts out of search (data collections default
+          // to non-searchable; pages default in).
+          //
+          // Pre-fix this was gated on `command === 'build'` — fine for
+          // the closeBundle filesystem write, but it meant the dev-mode
+          // `configureServer` middleware (which serves /search-index*.json
+          // on demand) had an EMPTY `searchEntries` until a build was
+          // run. Symptom: Cmd+K search returned 0 results in dev mode
+          // because the middleware's response was an empty catalog,
+          // even though the on-disk markdown files were healthy.
+          // Population is now always-on; closeBundle stays build-only.
+          if (resolvedConfig) {
             const collectionPath =
               loadedConfig.config.collections[collectionName]!.path ??
               `src/content/${collectionName}`
@@ -947,6 +1089,14 @@ export {}
     },
 
     async handleHotUpdate(ctx) {
+      // Any `.md` / `.mdx` edit invalidates the dev search-index cache
+      // so the next /search-index*.json request rebuilds + serves the
+      // freshly-transformed entry shape (`searchEntries` itself updates
+      // automatically via the re-running transform hook). Cheap — the
+      // warming step's `ssrLoadModule` calls are idempotent.
+      if (isMarkdownId(ctx.file)) {
+        _devIndexWarmed = false
+      }
       // 1. src/mdx/ — invalidate the components virtual module.
       if (isUnderMdxDir(ctx.file)) {
         cachedScan = null

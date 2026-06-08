@@ -8,6 +8,7 @@ import type { GetStaticPaths } from '@pyreon/zero/server'
 import 'virtual:zero-content/collections'
 import { h } from '@pyreon/core'
 import { PageMeta } from '../../components/PageMeta'
+import { PyreonNotFound } from '../../components/PyreonNotFound'
 import { Toc } from '../../components/Toc'
 
 interface PageHeading {
@@ -56,4 +57,13 @@ export default defineContentRoute('docs', {
   // `wrap` provides the article wrapper itself, so disable the
   // helper's default `<article>` so we don't get nested wrappers.
   articleClass: null,
+  // For unknown slugs under /docs/* — render the branded
+  // PyreonNotFound page (with the `.px-nf` graph + "This path has no
+  // readers" copy) instead of the helper's default plain
+  // `<div class="docs-404">` text. The fs-router top-level `_404.tsx`
+  // ONLY fires for routes that don't match any pattern; the docs
+  // catch-all DOES match (`[...slug]`), so the not-found path runs
+  // here. Single source of truth for the 404 visual lives in
+  // PyreonNotFound.
+  notFound: () => h(PyreonNotFound, null),
 })
