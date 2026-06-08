@@ -373,6 +373,200 @@ final class PyreonRouterTests: XCTestCase {
         XCTAssertEqual(afterCount, 0)
     }
 
+    // MARK: - Per-route beforeEnter (Phase 2 native-readiness gap fix, 2026-06-05)
+    //
+    // Per-route beforeEnter is the RuntimeApi-level analog of the web
+    // router's `beforeEnter:` route config. Each RouteRecord carries an
+    // optional guard; on push/replace, the matched record's guard runs
+    // after the global beforeEach passes. Returning false BLOCKS
+    // navigation entirely (URL unchanged) — matches web parity exactly.
+    // Composed with global beforeEach: global first (short-circuits if
+    // any deny), then per-route (same short-circuit semantic).
+
+    /// A matched record's beforeEnter returning true → navigation proceeds.
+    func testBeforeEnterAllowsWhenTrue() throws {
+        let router = PyreonRouter()
+        router.routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in true },
+            ),
+        ]
+        router.push("/admin")
+        XCTAssertEqual(router.path, ["/admin"])
+        XCTAssertEqual(router.currentPath, "/admin")
+    }
+
+    /// A matched record's beforeEnter returning false → push BLOCKED;
+    /// path stays untouched. Same semantic as web's `beforeEnter` blocking
+    /// — the canonical auth-gate pattern.
+    func testBeforeEnterBlocksWhenFalse() throws {
+        let router = PyreonRouter()
+        router.routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in false },
+            ),
+        ]
+        router.push("/admin")
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/")
+    }
+
+    /// Replace is also gated by per-route beforeEnter.
+    func testBeforeEnterBlocksReplace() throws {
+        let router = PyreonRouter(initialPath: ["/home"])
+        router.routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in false },
+            ),
+        ]
+        router.replace("/admin")
+        XCTAssertEqual(router.path, ["/home"])
+    }
+
+    /// beforeEnter receives the candidate path so guards can
+    /// path-discriminate (e.g. allow same-route refresh, block cross-
+    /// route nav).
+    func testBeforeEnterReceivesCandidatePath() throws {
+        let router = PyreonRouter()
+        var seen: [String] = []
+        router.routes = [
+            RouteRecord(
+                path: "/users/:id",
+                component: { AnyView(Text("user")) },
+                beforeEnter: { p in seen.append(p); return true },
+            ),
+        ]
+        router.push("/users/42")
+        XCTAssertEqual(seen, ["/users/42"])
+    }
+
+    /// Global beforeEach runs BEFORE per-route beforeEnter. When the
+    /// global guard short-circuits false, the per-route guard MUST NOT
+    /// fire — order matters for cost (per-route guards may do expensive
+    /// auth lookups; global cheap guards should gate first).
+    func testGlobalBeforeEachShortCircuitsBeforeRouteEnter() throws {
+        let router = PyreonRouter()
+        var perRouteCalled = false
+        router.beforeEachGuards.append { _ in false }
+        router.routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in perRouteCalled = true; return true },
+            ),
+        ]
+        router.push("/admin")
+        XCTAssertFalse(perRouteCalled, "Per-route guard should not run when global guard denies")
+        XCTAssertEqual(router.path, [])
+    }
+
+    /// Routes WITHOUT a beforeEnter pass through unchanged.
+    func testRouteWithoutBeforeEnterPasses() throws {
+        let router = PyreonRouter()
+        router.routes = [
+            RouteRecord(
+                path: "/home",
+                component: { AnyView(Text("home")) },
+            ),
+        ]
+        router.push("/home")
+        XCTAssertEqual(router.path, ["/home"])
+    }
+
+    /// afterEach skipped when beforeEnter blocks (parity with the
+    /// global-beforeEach short-circuit).
+    func testAfterEachSkippedWhenBeforeEnterBlocks() throws {
+        let router = PyreonRouter()
+        var afterCount = 0
+        router.afterEachHooks.append { _ in afterCount += 1 }
+        router.routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in false },
+            ),
+        ]
+        router.push("/admin")
+        XCTAssertEqual(afterCount, 0)
+    }
+
+    /// Nested-route chain: parent's beforeEnter runs first, then child's.
+    /// If parent denies, child is never checked.
+    func testBeforeEnterRunsParentBeforeChild() throws {
+        let router = PyreonRouter()
+        var order: [String] = []
+        router.routes = [
+            RouteRecord(
+                path: "/app",
+                component: { AnyView(Text("layout")) },
+                children: [
+                    RouteRecord(
+                        path: "/app/dashboard",
+                        component: { AnyView(Text("dash")) },
+                        beforeEnter: { _ in order.append("child"); return true },
+                    ),
+                ],
+                beforeEnter: { _ in order.append("parent"); return true },
+            ),
+        ]
+        router.push("/app/dashboard")
+        XCTAssertEqual(order, ["parent", "child"])
+        XCTAssertEqual(router.path, ["/app/dashboard"])
+    }
+
+    /// Nested chain: parent denies → child never runs → navigation blocked.
+    func testBeforeEnterParentDenyBlocksChild() throws {
+        let router = PyreonRouter()
+        var childCalled = false
+        router.routes = [
+            RouteRecord(
+                path: "/app",
+                component: { AnyView(Text("layout")) },
+                children: [
+                    RouteRecord(
+                        path: "/app/dashboard",
+                        component: { AnyView(Text("dash")) },
+                        beforeEnter: { _ in childCalled = true; return true },
+                    ),
+                ],
+                beforeEnter: { _ in false },
+            ),
+        ]
+        router.push("/app/dashboard")
+        XCTAssertFalse(childCalled)
+        XCTAssertEqual(router.path, [])
+    }
+
+    /// Redirect-from-beforeEnter pattern: per-route guard calls
+    /// `router.redirect("/login")` then returns false. The `_inGuard`
+    /// re-entry flag breaks recursion; final state lands at /login.
+    func testBeforeEnterCanRedirect() throws {
+        var router: PyreonRouter!
+        router = PyreonRouter()
+        router.routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in
+                    router.redirect("/login")
+                    return false
+                },
+            ),
+            RouteRecord(
+                path: "/login",
+                component: { AnyView(Text("login")) },
+            ),
+        ]
+        router.push("/admin")
+        XCTAssertEqual(router.currentPath, "/login")
+    }
+
     // MARK: - Throw-redirect pattern
 
     /// `router.redirect("/login")` from outside a guard behaves

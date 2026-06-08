@@ -50,14 +50,41 @@ public struct RouteRecord {
     /// just `[this]`.
     public let children: [RouteRecord]?
 
+    /// Phase 2 native-readiness gap fix (2026-06-05) — per-route
+    /// navigation guard. Runs during `push`/`replace` BEFORE the
+    /// navigation commits. Returning `false` blocks navigation entirely
+    /// (the URL stays unchanged). Returning `true` allows the
+    /// navigation to proceed.
+    ///
+    /// Web `@pyreon/router` parity: same semantic as `beforeEnter` in
+    /// the route config. Apps that want to redirect from a beforeEnter
+    /// call `router.redirect("/login")` then return `false` — same
+    /// pattern as the global `beforeEachGuards` re-entry contract
+    /// (`_inGuard` flag breaks recursion).
+    ///
+    /// COMPLEMENTS the compiler's inline emit (which wraps the route's
+    /// view body with `if guard { view } else { denyFallback }`).
+    /// Defense in depth — both layers fire for the same source-level
+    /// `beforeEnter:` config:
+    ///   - Runtime (this field): blocks navigation, URL unchanged,
+    ///     matches web semantic exactly.
+    ///   - Compiler inline: renders denyFallback if user reaches the
+    ///     route by other means (deep-link, direct push of a guarded
+    ///     path inside a guard's re-entry, etc.).
+    /// The runtime layer is sufficient for the common-case web parity;
+    /// the inline layer is the safety net.
+    public let beforeEnter: ((String) -> Bool)?
+
     public init(
         path: String,
         component: @escaping () -> AnyView,
         children: [RouteRecord]? = nil,
+        beforeEnter: ((String) -> Bool)? = nil,
     ) {
         self.path = path
         self.component = component
         self.children = children
+        self.beforeEnter = beforeEnter
     }
 }
 
@@ -367,6 +394,13 @@ public final class PyreonRouter {
     /// the disposable `_disposableBeforeEachGuards` list. Legacy first
     /// (preserves any existing precedence apps relied on); disposable
     /// second.
+    ///
+    /// Phase 2 native-readiness gap fix (2026-06-05): after global
+    /// guards pass, ALSO run the matched route's `beforeEnter` (if any).
+    /// Per-route gate runs LAST so global short-circuits still apply
+    /// first (parity with web: global beforeEach precedes per-route
+    /// beforeEnter). The matched-route lookup is non-recursive over
+    /// the route table — same shape as `resolveCurrentChain`.
     private func allowNavigation(to candidate: String) -> Bool {
         _inGuard = true
         defer { _inGuard = false }
@@ -375,6 +409,19 @@ public final class PyreonRouter {
         }
         for entry in _disposableBeforeEachGuards {
             if !entry.fn(candidate) { return false }
+        }
+        // Per-route beforeEnter — find matched chain (leaf or nested
+        // child). If a parent layout AND its child both have
+        // beforeEnter, both are checked, parent first (chain order).
+        // No chain match → no per-route gate (route table doesn't
+        // recognize the path; existing wildcard-404 / EmptyView
+        // fallback handles render).
+        if let chain = resolveChainIn(routes, candidate) {
+            for (record, _) in chain {
+                if let guardFn = record.beforeEnter, !guardFn(candidate) {
+                    return false
+                }
+            }
         }
         return true
     }
