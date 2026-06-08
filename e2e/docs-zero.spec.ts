@@ -28,18 +28,32 @@ test.describe('docs-zero rendering', () => {
     page,
   }) => {
     await page.goto('/docs/getting-started')
+    // Wait for the dev-mode async content-route resolution + Suspense
+    // unwrap before asserting on the rendered article. `defineContentRoute`
+    // dynamically imports the markdown body chunk; under cold-start the
+    // chunk fetch + transform + JSX-emit pipeline can take >5s, which
+    // was the documented PR #1438 flake. `networkidle` is the
+    // load-bearing wait — the chunk completes before then.
+    await page.waitForLoadState('networkidle')
     await expect(
       page.locator('article.docs-content h1, article.docs-content h2').first(),
-    ).toBeVisible()
-    // Click a Sidebar link to /docs/router and verify navigation.
-    await page.locator('.pyreon-sidebar__link', { hasText: 'Router' }).click()
+    ).toBeVisible({ timeout: 15_000 })
+    // Click the Core Framework "Router" sidebar link. Exact-match
+    // selector — `hasText: 'Router'` would also pick up "Router setup"
+    // in the Patterns group (strict-mode violation).
+    await page
+      .locator('a.pyreon-sidebar__link[href="/docs/router"]')
+      .click()
     await page.waitForURL('**/docs/router')
+    await page.waitForLoadState('networkidle')
     await expect(
       page.locator('article.docs-content h1, article.docs-content h2').first(),
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 15_000 })
     // The active class flips to the new route's sidebar entry.
     await expect(
-      page.locator('.pyreon-sidebar__link--active', { hasText: 'Router' }),
+      page.locator(
+        'a.pyreon-sidebar__link--active[href="/docs/router"]',
+      ),
     ).toBeVisible()
   })
 
@@ -69,7 +83,12 @@ test.describe('docs-zero rendering', () => {
     page,
   }) => {
     await page.goto('/docs/this-page-does-not-exist-deliberately')
-    await expect(page.locator('.px-nf')).toBeVisible()
+    // The docs catch-all wires `notFound: PyreonNotFound` into
+    // `defineContentRoute('docs', { ... })` so unknown `/docs/<slug>`
+    // URLs render the SAME branded 404 as fs-router's top-level
+    // `_404.tsx`. Wait for the Suspense-resolved 404 to mount.
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('.px-nf')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('.px-nf-h1')).toContainText(
       /This path has no readers/,
     )
@@ -139,12 +158,17 @@ test.describe('docs-zero rendering', () => {
     // Overlay should be open with input focused.
     await expect(page.locator('.pyreon-search__panel')).toBeVisible()
     await expect(page.locator('.pyreon-search__input')).toBeVisible()
-    // Type a query and expect results from the build-time index.
+    // Type a query and expect results from the index. In dev the
+    // plugin's `configureServer` middleware serves the index in-memory
+    // on first request (walking + transforming every `.md` to populate
+    // `searchEntries`), which can take a moment on cold-start. Use
+    // toPass-style polling with a generous timeout so flakes from
+    // dev-server warm-up don't fail the gate.
     await page.locator('.pyreon-search__input').fill('signal')
-    // Debounce + index fetch may take a moment.
-    await page.waitForTimeout(400)
-    const resultCount = await page.locator('.pyreon-search__result').count()
-    expect(resultCount).toBeGreaterThan(0)
+    await expect(async () => {
+      const resultCount = await page.locator('.pyreon-search__result').count()
+      expect(resultCount).toBeGreaterThan(0)
+    }).toPass({ timeout: 15_000 })
     // Escape closes the overlay.
     await page.keyboard.press('Escape')
     await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
