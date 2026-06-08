@@ -53,6 +53,22 @@ export interface ResultInstance<
  * ever call `getCurrentResult()`, so call sites with awkward observer generic
  * arity (infinite / suspense) can pass just `C`.
  */
+/**
+ * Build one lazy-materialize getter. Extracted to a top-level factory (not an
+ * inline closure in `makeResultProto`'s loop) so the `signal()` call lives in a
+ * deferred getter body lexically OUTSIDE any loop — the slot is materialized on
+ * first property access, not per iteration. (Also keeps `pyreon/no-signal-in-loop`
+ * from false-positiving on the loop that wires the getters onto the prototype.)
+ */
+function lazyGetter<C, O extends { getCurrentResult(): C }>(
+  name: string,
+  read: (cur: C) => unknown,
+): (this: ResultInstance<C, O>) => Signal<unknown> {
+  return function (this: ResultInstance<C, O>) {
+    return (this._slots[name] ??= signal(read(this._observer.getCurrentResult())))
+  }
+}
+
 export function makeResultProto<
   C,
   O extends { getCurrentResult(): C } = { getCurrentResult(): C },
@@ -61,9 +77,7 @@ export function makeResultProto<
   for (const name in getters) {
     const read = getters[name] as (cur: C) => unknown
     Object.defineProperty(proto, name, {
-      get(this: ResultInstance<C, O>) {
-        return (this._slots[name] ??= signal(read(this._observer.getCurrentResult())))
-      },
+      get: lazyGetter<C, O>(name, read),
       // NON-enumerable: these are accessors, not data. Keeps result internals
       // (_slots/_observer) + the signals out of Object.keys / for-in / spread,
       // and avoids object pretty-printers (e.g. vitest diffs) walking the
