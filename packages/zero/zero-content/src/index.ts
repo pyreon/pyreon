@@ -45,6 +45,25 @@ export type { CodeBlockProps } from './components/CodeBlock'
 // PR-M audit M6+M7+M8 — math, mermaid, details
 export { Details } from './components/Details'
 export type { DetailsProps } from './components/Details'
+// <Example file="./..." share="key"> — Pyreon-native docs DX primitive.
+// Loads a real `.tsx` file inline (NOT iframe). Two `<Example>` calls
+// with the same `share` key get the SAME signal — cross-Example
+// reactive state. The registry is populated by the consumer at startup
+// via `registerExamples(import.meta.glob('./examples/**/*.tsx'))`.
+export { Example } from './components/Example'
+export type { ExampleProps } from './components/Example'
+export {
+  _exampleCount,
+  _exampleKeys,
+  _resetExampleRegistry,
+  registerExamples,
+} from './components/example-registry'
+export {
+  _hasSharedSignal,
+  _sharedSignalCount,
+  clearAllSharedSignals,
+  getOrCreateSharedSignal,
+} from './components/shared-signal-registry'
 export { Math } from './components/Math'
 export type { MathProps } from './components/Math'
 export { Mermaid } from './components/Mermaid'

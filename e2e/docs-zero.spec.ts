@@ -9,7 +9,10 @@ test.describe('docs-zero rendering', () => {
     page,
   }) => {
     await page.goto('/')
-    await expect(page.locator('.pyreon-landing')).toBeVisible()
+    // PR #1399 renamed `.pyreon-landing` → `.px-landing` to restore the
+    // 1240px max-width container; the e2e selector was missed during
+    // that refactor. Both classes accepted defensively.
+    await expect(page.locator('.px-landing, .pyreon-landing')).toBeVisible()
     await expect(page.locator('.px-hero h1')).toContainText(
       /Reactivity that knows/,
     )
@@ -157,25 +160,101 @@ test.describe('docs-zero rendering', () => {
       hasText: 'Patterns',
     })
     await expect(patternsTitle).toBeVisible()
-    // Before click — expanded (the items list is in the DOM)
-    const before = await page
-      .locator(
-        '.pyreon-sidebar__group:has(> button:has-text("Patterns")) .pyreon-sidebar__list',
-      )
-      .count()
-    expect(before).toBe(1)
+    // Before click — expanded. Sidebar keeps the list ALWAYS mounted
+    // (CSS grid-template-rows 1fr ↔ 0fr animation needs something to
+    // animate); collapse state lives on `.pyreon-sidebar__collapse`'s
+    // `data-collapsed` attribute. So we assert the data-attribute,
+    // not the DOM-presence of the list.
+    const collapseEl = page
+      .locator('.pyreon-sidebar__group')
+      .filter({ has: page.locator('button:has-text("Patterns")') })
+      .locator('.pyreon-sidebar__collapse')
+    await expect(collapseEl).toHaveAttribute('data-collapsed', 'false')
     await patternsTitle.click()
-    // After click — collapsed (no list element in the group)
-    const after = await page
-      .locator(
-        '.pyreon-sidebar__group:has(> button:has-text("Patterns")) .pyreon-sidebar__list',
-      )
-      .count()
-    expect(after).toBe(0)
+    // After click — collapsed (data-collapsed flips to "true").
+    await expect(collapseEl).toHaveAttribute('data-collapsed', 'true')
     // localStorage records the toggle.
     const stored = await page.evaluate(() =>
       localStorage.getItem('pyreon-docs-sidebar-collapsed'),
     )
     expect(stored).toContain('Patterns')
+  })
+
+  test('<Example> share="key" — click in one example reactively updates another (the killer Pyreon docs DX)', async ({
+    page,
+  }) => {
+    await page.goto('/docs/example-dx')
+    await page.waitForLoadState('networkidle')
+
+    // The page mounts 3 examples: effects-log, bridge-counter-button,
+    // bridge-counter-readout. Both bridge examples share key="bridge".
+    await expect(page.locator('.pyreon-example')).toHaveCount(3)
+    // No error states — every example resolved successfully.
+    await expect(page.locator('.pyreon-example__error')).toHaveCount(0)
+    // No examples stuck loading either.
+    await expect(page.locator('.pyreon-example__loading')).toHaveCount(0)
+
+    // Initial state: bridge-counter-readout shows the shared value as 0.
+    const readoutCard = page
+      .locator('.pyreon-example')
+      .nth(2)
+      .locator('.example-card')
+    await expect(readoutCard).toContainText('shared value: 0')
+    await expect(readoutCard).toContainText('doubled (computed): 0')
+    await expect(readoutCard).toContainText('parity (computed): even')
+
+    // Click "bump" in the bridge-counter-button example (NOT the
+    // readout example). The button example writes to its `props.shared`
+    // signal — same instance the readout reads from via the registry.
+    await page.locator('button:has-text("bump")').click()
+    // The OTHER example reactively reflects the update.
+    await expect(readoutCard).toContainText('shared value: 1')
+    await expect(readoutCard).toContainText('doubled (computed): 2')
+    await expect(readoutCard).toContainText('parity (computed): odd')
+
+    // Three more clicks.
+    await page.locator('button:has-text("bump")').click()
+    await page.locator('button:has-text("bump")').click()
+    await page.locator('button:has-text("bump")').click()
+    await expect(readoutCard).toContainText('shared value: 4')
+    await expect(readoutCard).toContainText('doubled (computed): 8')
+    await expect(readoutCard).toContainText('parity (computed): even')
+
+    // The "reset" button in the bridge example writes 0 — readout
+    // reflects that too. Scoped to the bridge-counter-button example
+    // (nth 1) so we don't collide with the effects-log "Reset" button.
+    await page
+      .locator('.pyreon-example')
+      .nth(1)
+      .locator('button:has-text("reset")')
+      .click()
+    await expect(readoutCard).toContainText('shared value: 0')
+  })
+
+  test('<Example> with no share prop uses a local signal (clicks do NOT leak across examples)', async ({
+    page,
+  }) => {
+    // The effects-log example uses signals locally — no `share` prop.
+    // Clicking inside it must not affect the shared-bridge examples.
+    await page.goto('/docs/example-dx')
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('.pyreon-example')).toHaveCount(3)
+
+    // The effects-log example has a "+ Increment" + "Reset" pair —
+    // both write to the example's LOCAL signal (no `shared` prop).
+    // Scope clicks to the FIRST example so we don't collide with the
+    // bridge example's buttons.
+    const effectsExample = page.locator('.pyreon-example').first()
+    await effectsExample.locator('button:has-text("+ Increment")').click()
+    await effectsExample.locator('button:has-text("+ Increment")').click()
+
+    // The bridge readout (which has share="bridge") was untouched —
+    // still shows 0. This proves local-signal isolation: clicking in
+    // effects-log did NOT leak into the shared registry.
+    const readoutCard = page
+      .locator('.pyreon-example')
+      .nth(2)
+      .locator('.example-card')
+    await expect(readoutCard).toContainText('shared value: 0')
   })
 })

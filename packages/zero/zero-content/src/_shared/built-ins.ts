@@ -19,6 +19,11 @@ export const BUILT_IN_COMPONENTS = Object.freeze([
   'CompatMatrix',
   // PR-M audit M6+M7+M8 — math, mermaid, details
   'Details',
+  // <Example file="./..." share="key"> — Pyreon-native docs DX
+  // primitive. Loads + mounts a real `.tsx` file inline (NOT iframe).
+  // Cross-Example signal-sharing via a module-level registry — two
+  // examples with the same `share` key get the SAME signal instance.
+  'Example',
   // PR-F audit H7 — built-in `<Image>` so the emit-jsx layer's
   // local-image rewrite (`![alt](./hero.png)` → `<Image src={import(...)
   // }>`) can auto-import from `virtual:zero-content/components`. Re-
