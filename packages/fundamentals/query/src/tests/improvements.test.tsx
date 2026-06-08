@@ -166,3 +166,67 @@ describe('signal isolation', () => {
     delete (window as any).__refetch
   })
 })
+
+// ─── Result object memory shape (prototype optimization lock) ────────────────
+//
+// Locks the ~85%-smaller-per-result shape (PR perf/query-result-prototype):
+// the accessor getters live on a shared prototype (NOT as per-call own
+// accessors, which forced V8 dictionary mode + allocated a closure per field
+// per result), while detachable methods (refetch/mutate/reset/…) stay as OWN
+// arrow closures so `const r = q.refetch; r()` / `onClick={q.refetch}` keep
+// working when detached. Bisect-verified: reverting a hook to the inline
+// object-literal-getters shape flips the `Object.hasOwn(..., 'data')` assertion;
+// putting a method on the prototype breaks the detachment-safety assertion.
+describe('result object memory shape (prototype optimization lock)', () => {
+  it('useQuery: getters on prototype, refetch own + detachment-safe', () => {
+    const client = createClient()
+    const ctr = document.createElement('div')
+    let q: ReturnType<typeof useQuery<number>> | undefined
+    const Comp = () => {
+      q = useQuery<number>(() => ({ queryKey: ['shape'], queryFn: () => Promise.resolve(1) }))
+      return null
+    }
+    mount(h(QueryClientProvider, { client }, h(Comp, {})), ctr)
+    const r = q as NonNullable<typeof q>
+
+    // Accessor getters are inherited from the shared prototype, not own props.
+    expect(Object.hasOwn(r, 'data')).toBe(false)
+    expect(Object.hasOwn(r, 'isFetching')).toBe(false)
+    expect(Object.getPrototypeOf(r)).not.toBe(Object.prototype)
+    // …but fully functional through the chain (data returns a Signal).
+    expect(typeof r.data).toBe('function')
+
+    // refetch is an OWN arrow closure (detachment-safe), NOT a proto method.
+    expect(Object.hasOwn(r, 'refetch')).toBe(true)
+    // Internal fields present (the plain-field shape).
+    expect(Object.hasOwn(r, '_slots')).toBe(true)
+    expect(Object.hasOwn(r, '_observer')).toBe(true)
+
+    // Detachment safety — the bug the suite caught: extract + call unbound.
+    const detached = r.refetch
+    expect(() => detached()).not.toThrow()
+  })
+
+  it('useMutation: getters on prototype, mutate/reset own + detachment-safe', () => {
+    const client = createClient()
+    const ctr = document.createElement('div')
+    let m: ReturnType<typeof useMutation<number, Error, number>> | undefined
+    const Comp = () => {
+      m = useMutation<number, Error, number>({ mutationFn: (x: number) => Promise.resolve(x) })
+      return null
+    }
+    mount(h(QueryClientProvider, { client }, h(Comp, {})), ctr)
+    const r = m as NonNullable<typeof m>
+
+    expect(Object.hasOwn(r, 'data')).toBe(false)
+    expect(Object.getPrototypeOf(r)).not.toBe(Object.prototype)
+    expect(Object.hasOwn(r, 'mutate')).toBe(true)
+    expect(Object.hasOwn(r, 'reset')).toBe(true)
+
+    // Detach + call unbound — must not throw (own arrows capture observer).
+    const mutate = r.mutate
+    const reset = r.reset
+    expect(() => reset()).not.toThrow()
+    expect(() => mutate(1)).not.toThrow()
+  })
+})
