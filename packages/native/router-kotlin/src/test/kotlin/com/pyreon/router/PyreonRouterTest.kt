@@ -277,6 +277,177 @@ fun main() {
         expectEq(afterCount, 0, "afterEach did NOT fire on blocked push")
     }
 
+    // ── Per-route beforeEnter (Phase 2 native-readiness gap fix, 2026-06-05) ──
+    //
+    // Per-route beforeEnter is the RuntimeApi-level analog of the web
+    // router's `beforeEnter:` route config. Each RouteRecord carries an
+    // optional guard; on push/replace, the matched record's guard runs
+    // after the global beforeEach passes. Returning false BLOCKS
+    // navigation entirely (URL unchanged) — matches web parity exactly.
+    // Composed with global beforeEach: global first (short-circuits if
+    // any deny), then per-route (same short-circuit semantic).
+
+    runTest("beforeEnter allows when true") {
+        val router = PyreonRouter()
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/admin",
+                component = {},
+                beforeEnter = { _ -> true },
+            ),
+        )
+        router.push("/admin")
+        expectEq(router.path.value, listOf("/admin"), "beforeEnter true → navigation proceeds")
+        expectEq(router.currentPath, "/admin", "currentPath is the new route")
+    }
+
+    runTest("beforeEnter blocks when false") {
+        val router = PyreonRouter()
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/admin",
+                component = {},
+                beforeEnter = { _ -> false },
+            ),
+        )
+        router.push("/admin")
+        expectEq(router.path.value, emptyList<String>(), "beforeEnter false → push blocked")
+        expectEq(router.currentPath, "/", "currentPath stays at root")
+    }
+
+    runTest("beforeEnter blocks replace too") {
+        val router = PyreonRouter(initialPath = listOf("/home"))
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/admin",
+                component = {},
+                beforeEnter = { _ -> false },
+            ),
+        )
+        router.replace("/admin")
+        expectEq(router.path.value, listOf("/home"), "replace blocked by beforeEnter")
+    }
+
+    runTest("beforeEnter receives the candidate path") {
+        val router = PyreonRouter()
+        val seen = mutableListOf<String>()
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/users/:id",
+                component = {},
+                beforeEnter = { p -> seen.add(p); true },
+            ),
+        )
+        router.push("/users/42")
+        expectEq(seen.toList(), listOf("/users/42"), "beforeEnter sees the candidate")
+    }
+
+    runTest("global beforeEach short-circuits before per-route beforeEnter") {
+        val router = PyreonRouter()
+        var perRouteCalled = false
+        router.beforeEachGuards.add { _ -> false }
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/admin",
+                component = {},
+                beforeEnter = { _ -> perRouteCalled = true; true },
+            ),
+        )
+        router.push("/admin")
+        expectEq(perRouteCalled, false, "per-route gate skipped when global denies")
+        expectEq(router.path.value, emptyList<String>(), "blocked")
+    }
+
+    runTest("route without beforeEnter passes") {
+        val router = PyreonRouter()
+        router.routes.value = listOf(
+            RouteRecord(path = "/home", component = {}),
+        )
+        router.push("/home")
+        expectEq(router.path.value, listOf("/home"), "no guard → no block")
+    }
+
+    runTest("afterEach skipped when beforeEnter blocks") {
+        val router = PyreonRouter()
+        var afterCount = 0
+        router.afterEachHooks.add { _ -> afterCount += 1 }
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/admin",
+                component = {},
+                beforeEnter = { _ -> false },
+            ),
+        )
+        router.push("/admin")
+        expectEq(afterCount, 0, "afterEach skipped when beforeEnter blocks")
+    }
+
+    runTest("beforeEnter runs parent before child in nested chain") {
+        val router = PyreonRouter()
+        val order = mutableListOf<String>()
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/app",
+                children = listOf(
+                    RouteRecord(
+                        path = "/app/dashboard",
+                        component = {},
+                        beforeEnter = { _ -> order.add("child"); true },
+                    ),
+                ),
+                beforeEnter = { _ -> order.add("parent"); true },
+                component = {},
+            ),
+        )
+        router.push("/app/dashboard")
+        expectEq(order.toList(), listOf("parent", "child"), "parent runs before child")
+        expectEq(router.path.value, listOf("/app/dashboard"), "navigation commits")
+    }
+
+    runTest("beforeEnter parent deny blocks child") {
+        val router = PyreonRouter()
+        var childCalled = false
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/app",
+                children = listOf(
+                    RouteRecord(
+                        path = "/app/dashboard",
+                        component = {},
+                        beforeEnter = { _ -> childCalled = true; true },
+                    ),
+                ),
+                beforeEnter = { _ -> false },
+                component = {},
+            ),
+        )
+        router.push("/app/dashboard")
+        expectEq(childCalled, false, "child gate skipped when parent denies")
+        expectEq(router.path.value, emptyList<String>(), "blocked")
+    }
+
+    runTest("beforeEnter can redirect via router.redirect") {
+        var routerVar: PyreonRouter? = null
+        val router = PyreonRouter()
+        routerVar = router
+        router.routes.value = listOf(
+            RouteRecord(
+                path = "/admin",
+                component = {},
+                beforeEnter = { _ ->
+                    routerVar?.redirect("/login")
+                    false
+                },
+            ),
+            RouteRecord(
+                path = "/login",
+                component = {},
+            ),
+        )
+        router.push("/admin")
+        expectEq(router.currentPath, "/login", "redirect inside beforeEnter lands at /login")
+    }
+
     // Throw-redirect pattern — router.redirect(path) inside a guard.
 
     runTest("redirect outside guard acts like replace") {

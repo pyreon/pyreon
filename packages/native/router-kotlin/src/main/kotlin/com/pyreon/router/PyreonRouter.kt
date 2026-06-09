@@ -76,6 +76,29 @@ public class RouteRecord(
      *  Position: declared BEFORE `component` so Kotlin's trailing-lambda
      *  continues to bind to `component` — the more common shape. */
     public val children: List<RouteRecord>? = null,
+    /** Phase 2 native-readiness gap fix (2026-06-05) — per-route
+     *  navigation guard. Runs during `push`/`replace` BEFORE the
+     *  navigation commits. Returning `false` blocks navigation entirely
+     *  (the URL stays unchanged). Returning `true` allows the navigation
+     *  to proceed.
+     *
+     *  Web `@pyreon/router` parity: same semantic as `beforeEnter` in
+     *  the route config. Apps that want to redirect from a beforeEnter
+     *  call `router.redirect("/login")` then return `false` — same
+     *  pattern as the global `beforeEachGuards` re-entry contract
+     *  (`_inGuard` flag breaks recursion).
+     *
+     *  COMPLEMENTS the compiler's inline emit (which wraps the route's
+     *  view body with `if guard { view } else { denyFallback }`).
+     *  Defense in depth — both layers fire for the same source-level
+     *  `beforeEnter:` config:
+     *    - Runtime (this field): blocks navigation, URL unchanged,
+     *      matches web semantic exactly.
+     *    - Compiler inline: renders denyFallback if user reaches the
+     *      route by other means.
+     *  The runtime layer is sufficient for the common-case web parity;
+     *  the inline layer is the safety net. */
+    public val beforeEnter: ((String) -> Boolean)? = null,
     public val component: @Composable () -> Unit,
 )
 
@@ -371,6 +394,21 @@ public class PyreonRouter(
             }
             for ((_, fn) in _disposableBeforeEachGuards) {
                 if (!fn(candidate)) return false
+            }
+            // Phase 2 native-readiness gap fix (2026-06-05): after
+            // global guards pass, ALSO run the matched route's
+            // beforeEnter (if any). Per-route gate runs LAST so global
+            // short-circuits still apply first (parity with web: global
+            // beforeEach precedes per-route beforeEnter). No chain
+            // match → no per-route gate (route table doesn't recognize
+            // the path; existing wildcard-404 fallback handles render).
+            // `routes` is `MutableState<List<...>>` — unwrap with `.value`.
+            val chain = resolveChainIn(routes.value, candidate)
+            if (chain != null) {
+                for ((record, _) in chain) {
+                    val guardFn = record.beforeEnter
+                    if (guardFn != null && !guardFn(candidate)) return false
+                }
             }
             return true
         } finally {
