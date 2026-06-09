@@ -96,6 +96,11 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // site emit produces valid Compose Kotlin (remember +
     // mutableStateOf).
     'lifecycle-errorboundary.tsx',
+    // Gap 3 PR-3.4: real KeepAlive emit (visibility-preservation).
+    // Proves the PyreonKeepAliveWrapper @Composable + per-KeepAlive
+    // site emit produces valid Compose Kotlin (Modifier.alpha +
+    // remember + LaunchedEffect).
+    'lifecycle-keepalive.tsx',
   ] as const
 
   for (const fixture of fixtures) {

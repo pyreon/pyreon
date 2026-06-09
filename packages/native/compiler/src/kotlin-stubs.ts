@@ -338,6 +338,10 @@ object Modifier {
   // it from androidx.compose.ui.platform; same call shape.
   @Suppress("UNUSED_PARAMETER")
   fun testTag(tag: String): Modifier = this
+  // PR-3.4 — alpha for KeepAlive visibility-preservation. Real
+  // Compose ships it from androidx.compose.ui.draw; same call shape.
+  @Suppress("UNUSED_PARAMETER")
+  fun alpha(alpha: Float): Modifier = this
   // --- Phase P2.2: <Scroll> + <Spacer> modifiers. Real Compose ships
   // verticalScroll/horizontalScroll from androidx.compose.foundation and
   // weight as a Row/Column-scope extension; the stub exposes them as
