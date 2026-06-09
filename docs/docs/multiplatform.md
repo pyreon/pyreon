@@ -459,6 +459,100 @@ explicit Phase 6 DX follow-up. The package is `@pyreon/native-compiler`
 (private / workspace-only); consumers using `transform()` directly are
 the path until a public published API lands.
 
+## DX surfaces on native (honest scope)
+
+The "one source" promise extends to **WRITING** the source, not just
+shipping it. Pyreon ships several developer-experience surfaces;
+which of them work on the native targets is a structural question —
+some are pre-emit (source-level) and target-agnostic, others depend
+on the Pyreon runtime that PMTC erases when emitting Swift/Kotlin.
+
+### Works on native source (✅ — same DX as web)
+
+These analyze your `.tsx` source BEFORE PMTC emits anything, so they
+are target-agnostic by construction.
+
+- **Reactivity Lens** (`analyzeReactivity` from `@pyreon/compiler`).
+  Returns the same structural reactivity facts (`reactive` /
+  `reactive-prop` / `static-text` / `hoisted-static`) and footgun
+  findings (`props-destructured`, `signal-write-as-call`, …) on a
+  PMTC source file as it does on a web-only source. Verified end-to-
+  end against a `<Stack>`/`<Button>`/`<Text>` Counter fixture: the
+  Lens correctly flags `const { x } = props` as `footgun` and the
+  signal reads inside `{count()}` as `reactive`, identical to the
+  output it produces for the same shape in a web component.
+- **`@pyreon/lint` rules + `pyreon doctor`**. Every rule runs on the
+  source AST; none of them load the runtime. `pyreon/no-window-in-
+  ssr`, `pyreon/signal-write-as-call`, `pyreon/props-destructured`,
+  `pyreon/no-iterate-children-without-resolve`, the islands audit,
+  the SSG audit, the test-environment audit — all surface the same
+  findings on a PMTC source file. The `pyreon/no-window-in-ssr`
+  rule is actually MORE valuable on native sources (the emit target
+  literally has no `window`), but the surface is the same.
+- **Static type checking + `audit-types`**. `tsc --noEmit` and the
+  typed-but-unimplemented gate care only about TypeScript types, so
+  they work identically across targets.
+- **MCP tools** (`validate`, `get_api`, `get_pattern`,
+  `get_anti_patterns`, `get_changelog`, `audit_test_environment`,
+  `audit_islands`). All operate on source / repo metadata, not the
+  runtime. An AI agent driving a native source through `validate`
+  gets the same anti-pattern catalog as it would for a web file.
+
+### Web-only by structural design (❌ — not coming to native)
+
+These surfaces depend on the Pyreon RUNTIME (signal registry,
+effect graph, devtools hook). PMTC erases that runtime when it
+emits to SwiftUI `@State` / Compose `mutableStateOf` — there is no
+Pyreon-side data structure to introspect on a native target;
+SwiftUI's `_GraphInputs` and Compose's `SlotTable` own the reactive
+graph end-to-end. This is **structural-infeasibility**, not
+engineering effort.
+
+- **LPIH** (Live Program Inlay Hints — fire counts / re-run
+  counters at the source line). Requires the dev-mode
+  `@pyreon/reactivity` registry (`activateReactiveDevtools` +
+  `getFireSummaries`) to be alive in the running app. On native
+  builds the entire reactivity package is tree-shaken — the
+  `signal(0)` call you wrote is emitted as `@State var count = 0`,
+  there is no Pyreon-side wrapper to count fires. **Use on web
+  during development; the inlay hints don't reach a running iOS /
+  Android build, by design.**
+- **Devtools panel** (the Chrome extension under
+  `packages/tools/devtools`). Connects to
+  `window.__PYREON_DEVTOOLS__` (a hook attached by
+  `@pyreon/runtime-dom`'s `installDevTools()`) to walk the
+  component tree, highlight nodes, watch signals fire. On a native
+  build there is no `window`, no `__PYREON_DEVTOOLS__`, and no
+  Pyreon component tree — SwiftUI and Compose own the view
+  hierarchy. For native runtime debugging use **Xcode's View
+  Hierarchy Debugger** (iOS) and **Android Studio's Layout
+  Inspector** (Android); they're the native equivalents of the
+  Pyreon devtools panel and they work on the emitted view tree
+  directly.
+- **Pyreon HMR + `@pyreon/vite-plugin` signal-preserving HMR**.
+  Web-only by construction (Vite is a web dev server). iOS uses
+  Xcode's incremental compile + Simulator hot-reload; Android uses
+  Gradle's incremental build + Compose's `LiveLiterals` /
+  `recomposeHighlighter`. These are platform-native HMR equivalents
+  — there is no shared Pyreon HMR surface across targets.
+
+### Partial — works for the source-level part, runtime part is on the platform
+
+- **`pyreon-native build` warnings** (the silent-drop diagnostic
+  surface from PRs #1235 / #1441). Pre-emit warnings about dropped
+  `useLoaderData()` reads, dropped `<Suspense fallback>` props,
+  etc. ARE shown — they're emitted at compile time, surfaced via
+  `transform()` `result.warnings` and the CLI's
+  `[pyreon-native] N warning(s)` stderr aggregation. The actual
+  runtime-state debugging is per-target (Xcode + Android Studio
+  above).
+
+If you adopt PMTC for a real production app, the practical
+workflow is: write + debug source-level concerns on web (Lens,
+devtools, HMR, lint) where the iteration loop is fastest; verify +
+debug native-runtime concerns on the device with the platform's
+own tooling. Same `.tsx`, two debugging surfaces.
+
 ## Verifiable today (compile contract)
 
 - **Web**: `@pyreon/runtime-dom` renders any Pyreon JSX. Full ecosystem available.
