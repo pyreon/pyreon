@@ -242,11 +242,11 @@ function tryStoreDefnFromTopLevel(
         for (const d of (stmt.declarations as AnyNode[]) ?? []) {
           if (d.id?.type !== 'Identifier') continue
           const name = d.id.name as string
-          const init = d.init
-          if (init?.type !== 'CallExpression') continue
-          if ((init.callee?.name as string | undefined) !== 'signal') continue
+          const sigCall = d.init
+          if (sigCall?.type !== 'CallExpression') continue
+          if ((sigCall.callee?.name as string | undefined) !== 'signal') continue
           // Pull the initial value + type generic if present.
-          const sigArgs = (init.arguments as AnyNode[]) ?? []
+          const sigArgs = (sigCall.arguments as AnyNode[]) ?? []
           const initialNode = sigArgs[0]
           const initial: ExprIR = initialNode
             ? parseExpr(initialNode, ctx)
@@ -254,7 +254,7 @@ function tryStoreDefnFromTopLevel(
           // Infer type from generic OR initial value. `parseGenericTypeArg`
           // returns `{kind:'unknown'}` (not undefined) when no generic is
           // present, so we check for the unknown sentinel + fall back.
-          const generic = parseGenericTypeArg(init, ctx)
+          const generic = parseGenericTypeArg(sigCall, ctx)
           const inferredType: TypeIR =
             generic.kind === 'unknown' ? inferTypeFromInitial(initial) : generic
           signalDecls.push({ name, type: inferredType, initial })
