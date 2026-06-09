@@ -87,6 +87,11 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // rewriting (`counter.field` → `PyreonModel_counter.shared.field`)
     // emits as valid Swift.
     'tier2-state-tree.tsx',
+    // Gap 3 PR-3.2: real Suspense emit (mount-time splash). Proves
+    // the PyreonSuspenseWrapper module-scope struct + per-Suspense
+    // site emit produces valid SwiftUI that compiles through
+    // swiftc-parse.
+    'lifecycle-suspense.tsx',
   ] as const
 
   for (const fixture of fixtures) {

@@ -92,6 +92,13 @@ fun <T> derivedStateOf(block: () -> T): State<T> = MutableState(block())
 @Composable
 fun <T> remember(calculation: () -> T): T = calculation()
 
+// LaunchedEffect — used by PyreonSuspenseWrapper (PR-3.2). Stub
+// just invokes the block synchronously; runtime semantics are
+// irrelevant for stub-compilation.
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
+
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.
 @Composable
