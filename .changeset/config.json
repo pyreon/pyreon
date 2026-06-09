@@ -103,6 +103,7 @@
     "@pyreon/example-svelte-compat",
     "@pyreon/example-perf-dashboard",
     "@pyreon/experiments",
-    "@pyreon/islands-showcase"
+    "@pyreon/islands-showcase",
+    "@pyreon/example-sync-yjs"
   ]
 }
