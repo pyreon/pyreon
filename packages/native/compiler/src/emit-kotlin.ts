@@ -301,18 +301,23 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
-  // First pass: walk decls, synthesizing data classes for anonymous object
-  // types found in array-of-object signals. The decls themselves are
-  // emitted in the second pass so the synthesized type names are stable.
+  // Pass 1: walk decls — emits decl bodies AND discovers synthesized
+  // types from decl annotations. The actual decl text is buffered into
+  // `declTexts` so it can be emitted later inside the function body
+  // (after the signature line).
   const declTexts = c.decls.map((d) => emitKotlinDecl(d, ctx))
-  const lines: string[] = []
-  for (const synth of ctx.synthesizedDataClasses) {
-    lines.push(emitKotlinDataClass(synth))
-    lines.push('')
-  }
-  // Props become Composable function parameters. Compose canonical
-  // pattern — parent code calls `Card(title = "...", body = "...")`,
-  // params are immutable per call.
+  // Pass 2: walk props — formats prop annotations AND ALSO discovers
+  // synthesized types from PROP annotations. This pass must run BEFORE
+  // emitting synth-class declarations: a prop like
+  // `items: { id: number; name: string }[]` registers `MyListItem` into
+  // `ctx.synthesizedDataClasses`. Pre-fix this pass ran AFTER the
+  // synth-class emit, so prop-discovered types were silently dropped
+  // from the emit and kotlinc reported `unresolved reference 'MyListItem'`.
+  // Closes Gap 5 scaffold limitation #1 + #3 (showcase-tasks.tsx's
+  // `tasks: { id, title, done }[]` prop type).
+  //
+  // Compose canonical pattern — parent code calls
+  // `Card(title = "...", body = "...")`, params are immutable per call.
   //
   // `kotlinIdent` backtick-escapes Kotlin-reserved keywords. User code
   // commonly accepts `class` as a prop name (React/HTML attr leakage)
@@ -321,6 +326,16 @@ function emitKotlinComponent(c: ComponentIR): string {
   const propsParts = c.props.map(
     (p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`,
   )
+  // Pass 3: emit ALL synthesized data classes (from BOTH decl pass +
+  // prop pass) at the top of the output, ahead of the @Composable
+  // function. Kotlin requires data class declarations before any
+  // reference, and since props + decls can both reference them, this
+  // emit MUST come after both discovery passes complete.
+  const lines: string[] = []
+  for (const synth of ctx.synthesizedDataClasses) {
+    lines.push(emitKotlinDataClass(synth))
+    lines.push('')
+  }
   // Phase 3 (nested routes) — a LAYOUT component gains a trailing
   // `content: @Composable () -> Unit` slot; its `<RouterView />` becomes
   // `content()` so the matched child fills it.

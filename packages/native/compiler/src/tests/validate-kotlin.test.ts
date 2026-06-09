@@ -58,6 +58,11 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // Compose code.
     'rx-lowering.tsx',
     'rx-full.tsx',
+    // Regression fixture for the Kotlin synthetic-data-class emit fix
+    // that closes Gap 5 scaffold limitation #1 + #3 — inline object
+    // types in prop annotations now emit `data class` declarations
+    // alongside their type-reference uses.
+    'synth-prop-types.tsx',
   ] as const
 
   for (const fixture of fixtures) {
