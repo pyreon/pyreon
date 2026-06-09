@@ -20,6 +20,7 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodFieldConstraints,
   ZodSchemaDefnIR,
 } from './types'
 
@@ -730,21 +731,55 @@ function tryNamespacedSchemaDefnFromTopLevel(
           : undefined
     if (!fieldName) continue
 
-    // Walk the chain to find the BASE <prefix>.X() call.
-    // e.g. z.string().min(2).email() → unwrap to z.string()
+    // Walk the chain twice: once to find the BASE <prefix>.X() call,
+    // and once (top-down) to collect constraint modifiers.
+    // e.g. z.string().min(2).email() → base = z.string(),
+    //                                    constraints = { min: 2, email: true }
+    const constraints: ZodFieldConstraints = {}
     let value = unwrapTypeLayers(prop.value as AnyNode | undefined) as AnyNode | undefined
-    while (value && value.type === 'CallExpression') {
-      const callee = value.callee as AnyNode | undefined
-      // If callee is `<base>.modifier(...)`, recurse into <base>.
+    // First pass — collect modifiers from outermost call inward.
+    let cursor: AnyNode | undefined = value
+    while (cursor && cursor.type === 'CallExpression') {
+      const callee = cursor.callee as AnyNode | undefined
       if (
         callee?.type === 'MemberExpression' &&
-        callee.object?.type === 'CallExpression'
+        callee.object?.type === 'CallExpression' &&
+        callee.property?.type === 'Identifier'
       ) {
-        value = callee.object as AnyNode
+        const modName = callee.property.name as string
+        const args = (cursor.arguments as AnyNode[] | undefined) ?? []
+        const firstArg = args[0]
+        if (modName === 'min') {
+          if (
+            firstArg &&
+            firstArg.type === 'Literal' &&
+            typeof firstArg.value === 'number'
+          ) {
+            constraints.min = firstArg.value
+          }
+        } else if (modName === 'max') {
+          if (
+            firstArg &&
+            firstArg.type === 'Literal' &&
+            typeof firstArg.value === 'number'
+          ) {
+            constraints.max = firstArg.value
+          }
+        } else if (modName === 'email') {
+          constraints.email = true
+        } else if (modName === 'url') {
+          constraints.url = true
+        } else if (modName === 'uuid') {
+          constraints.uuid = true
+        }
+        // length / int / positive / negative / etc. are silently skipped
+        // in v2.1 — extend the if-chain to capture more constraints.
+        cursor = callee.object as AnyNode
         continue
       }
       break
     }
+    value = cursor
     // value should now be a CallExpression whose callee is `<prefix>.X`.
     if (!value || value.type !== 'CallExpression') {
       ctx.warnings.push(
@@ -765,10 +800,19 @@ function tryNamespacedSchemaDefnFromTopLevel(
       continue
     }
     const method = baseCallee.property.name as string
+    const hasConstraints = Object.keys(constraints).length > 0
     if (method === 'string') {
-      fields.push({ name: fieldName, type: 'string' })
+      fields.push(
+        hasConstraints
+          ? { name: fieldName, type: 'string', constraints }
+          : { name: fieldName, type: 'string' },
+      )
     } else if (method === 'number') {
-      fields.push({ name: fieldName, type: 'number' })
+      fields.push(
+        hasConstraints
+          ? { name: fieldName, type: 'number', constraints }
+          : { name: fieldName, type: 'number' },
+      )
     } else if (method === 'boolean') {
       fields.push({ name: fieldName, type: 'boolean' })
     } else {
