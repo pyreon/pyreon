@@ -13,7 +13,7 @@
 //   defineStore     → @pyreon/store
 //   createMachine   → @pyreon/machine
 //   createI18n      → @pyreon/i18n/core
-//   createModel     → @pyreon/state-tree
+//   model (.create()-chain shape) → @pyreon/state-tree
 //   defineFeature   → @pyreon/feature
 //
 // Bisect-verify (per .claude/rules/testing.md):
@@ -47,15 +47,15 @@ const TIER2_CASES = [
   // longer fires for it. The "emits NO silent-drop warning for
   // createI18n post-port" spec in tier2-i18n-emit.test.ts is the
   // regression lock.
-  {
-    callee: 'createModel',
-    pkg: '@pyreon/state-tree',
-    snippet: `const Counter = createModel({
-  state: { count: 0 },
-  actions: { inc: (self) => { self.count++ } },
-})`,
-    bindingName: 'Counter',
-  },
+  // model REMOVED — Gap 4 state-tree v2 follow-up ships full
+  // Strategy-B port for @pyreon/state-tree (top-level
+  // `const X = model({...}).create()` shape). The silent-drop
+  // diagnostic no longer fires for the inline-chain shape because
+  // PMTC now emits a real PyreonModel_<id> singleton at module
+  // scope + rewrites `X.field` use sites. The two-step shape
+  // (`const X = model({...})` alone) still falls through to the
+  // tier2StrategyB silent-drop — same incremental promotion
+  // pattern createMachine + createI18n followed.
   {
     callee: 'defineFeature',
     pkg: '@pyreon/feature',
@@ -117,7 +117,6 @@ describe('Tier-2 Strategy-B silent-drop warnings', () => {
         w.startsWith('defineStore()') ||
         w.startsWith('createMachine()') ||
         w.startsWith('createI18n()') ||
-        w.startsWith('createModel()') ||
         w.startsWith('defineFeature()'),
     )
     expect(tier2Warnings.length).toBe(0)
@@ -133,6 +132,39 @@ describe('Tier-2 Strategy-B silent-drop warnings', () => {
     )
     expect(tier2Warnings.length).toBe(1)
     expect(tier2Warnings[0]!).toContain('(destructured)')
+  })
+
+  it('emits NO silent-drop warning for top-level model({state}).create() — Gap 4 state-tree v2 port post-promotion lock', () => {
+    // Mirror of the createMachine + createI18n post-port specs.
+    // Once #1468's v2 emit ships, `const X = model({...}).create()`
+    // at TOP LEVEL is parsed into a ModelDefnIR and emitted as a
+    // PyreonModel_<id> singleton — the silent-drop should NOT fire.
+    const src = `
+import { model } from '@pyreon/state-tree'
+import { Stack, Text } from '@pyreon/primitives'
+
+const counter = model({ state: { count: 0, label: 'counter' } }).create()
+
+export function ModelView() {
+  return (
+    <Stack>
+      <Text>{counter.label}</Text>
+      <Text>Count: {counter.count}</Text>
+    </Stack>
+  )
+}
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const result = transform(src, { target })
+      const modelWarnings = result.warnings.filter((w) =>
+        w.startsWith('model()'),
+      )
+      expect(modelWarnings.length).toBe(0)
+      // Sanity: emit produced code (not empty).
+      expect(result.code.length).toBeGreaterThan(0)
+      // Sanity: emit produced the per-model class.
+      expect(result.code).toContain('PyreonModel_counter')
+    }
   })
 
   it('emits identical warning structure across Swift and Kotlin targets', () => {

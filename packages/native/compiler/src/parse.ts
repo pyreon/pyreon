@@ -12,6 +12,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  ModelDefnIR,
   ModuleDeclIR,
   ParseResult,
   RouteIR,
@@ -41,6 +42,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const structs: StructIR[] = []
   const moduleDecls: ModuleDeclIR[] = []
   const stores: StoreDefnIR[] = []
+  const models: ModelDefnIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
@@ -66,6 +68,15 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       // module-level binding with an unresolved initializer.
       continue
     }
+    // Gap 4 follow-up v2 — state-tree model. `const counter =
+    // model({ state: { ... } }).create()` extracted as ModelDefnIR.
+    // Emits a PyreonModel_<id> class at module scope + @State /
+    // remember binding inside the consuming component.
+    const md = tryModelDefnFromTopLevel(node, ctx)
+    if (md) {
+      models.push(md)
+      continue
+    }
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -74,7 +85,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     if (mds) moduleDecls.push(...mds)
   }
 
-  return { components, enums, structs, moduleDecls, stores, warnings: ctx.warnings }
+  return { components, enums, structs, moduleDecls, stores, models, warnings: ctx.warnings }
 }
 
 /**
@@ -327,6 +338,137 @@ function tryStoreDefnFromTopLevel(
   const exportedFields = signalDecls.filter((s) => returnedNames.includes(s.name))
 
   return { hookName, storeId, fields: exportedFields }
+}
+
+/**
+ * Gap 4 follow-up v2 — `@pyreon/state-tree` `model({ state }).create()`
+ * top-level recognizer. Extracts the literal initial state into a
+ * `ModelDefnIR` so the emit pipeline can produce a per-model class
+ * AT MODULE SCOPE plus a `@State` / `remember` binding.
+ *
+ * Shape (v2):
+ *   const counter = model({
+ *     state: { count: 0, label: 'counter' },
+ *   }).create()
+ *
+ * Deferred:
+ *   - actions / views
+ *   - `.create(initialOverride)`
+ *   - `.asHook(id)`
+ *   - non-literal state values (computed defaults)
+ *   - two-step shape `const Counter = model({...}); const c = Counter.create()`
+ *
+ * Bails (returns null + warning) when the chain doesn't match the
+ * v2 shape — silent-drop falls through to the tier2 diagnostic.
+ */
+function tryModelDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): ModelDefnIR | null {
+  // ExportNamedDeclaration → VariableDeclaration → VariableDeclarator
+  let varDecl: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  } else if (node.type === 'VariableDeclaration') {
+    varDecl = node
+  }
+  if (!varDecl) return null
+  const declarators = varDecl.declarations as AnyNode[]
+  if (declarators.length !== 1) return null
+  const declarator = declarators[0]
+  if (!declarator) return null
+  if (declarator.id?.type !== 'Identifier') return null
+  const instanceName = declarator.id.name as string
+
+  // RHS must be a CallExpression whose callee is `model({...}).create`.
+  const init = declarator.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  const createCallee = init.callee as AnyNode | undefined
+  if (createCallee?.type !== 'MemberExpression') return null
+  if (createCallee.property?.type !== 'Identifier') return null
+  if ((createCallee.property.name as string) !== 'create') return null
+  // .create() must be called on a `model({...})` call.
+  const modelCall = createCallee.object as AnyNode | undefined
+  if (modelCall?.type !== 'CallExpression') return null
+  if (modelCall.callee?.type !== 'Identifier') return null
+  if ((modelCall.callee.name as string) !== 'model') return null
+
+  const configArg = (modelCall.arguments as AnyNode[] | undefined)?.[0]
+  if (!configArg || configArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `model declaration \`${instanceName}\`: model() config argument is not an object literal — v2 emit needs the literal { state: { ... } } shape. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  // Locate the `state: { ... }` property.
+  let stateNode: AnyNode | undefined
+  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (keyName === 'state') {
+      stateNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    }
+    // `actions`, `views` keys deliberately ignored in v2.
+  }
+
+  if (!stateNode || stateNode.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `model declaration \`${instanceName}\`: \`state\` field is missing or not an object literal — required by v2 emit. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  // Extract literal state fields { name, type, initial }.
+  const fields: ModelDefnIR['fields'] = []
+  for (const entry of (stateNode.properties as AnyNode[] | undefined) ?? []) {
+    if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
+    const eKey = entry.key as AnyNode | undefined
+    const fieldName =
+      eKey?.type === 'Identifier'
+        ? (eKey.name as string)
+        : eKey?.type === 'Literal'
+          ? String(eKey.value)
+          : undefined
+    if (!fieldName) continue
+    const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
+    if (eVal?.type !== 'Literal') {
+      ctx.warnings.push(
+        `model declaration \`${instanceName}\`: state field \`${fieldName}\` is not a literal value — v2 emit only supports string / number / boolean literals. Silently dropping this field.`,
+      )
+      continue
+    }
+    const v = eVal.value
+    if (typeof v === 'string') {
+      fields.push({ name: fieldName, type: 'string', initial: v })
+    } else if (typeof v === 'number') {
+      fields.push({ name: fieldName, type: 'number', initial: v })
+    } else if (typeof v === 'boolean') {
+      fields.push({ name: fieldName, type: 'boolean', initial: v })
+    } else {
+      ctx.warnings.push(
+        `model declaration \`${instanceName}\`: state field \`${fieldName}\` is not a string / number / boolean literal. Silently dropping.`,
+      )
+    }
+  }
+
+  if (fields.length === 0) {
+    ctx.warnings.push(
+      `model declaration \`${instanceName}\`: no recognizable state fields. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  return { instanceName, modelId: instanceName, fields }
 }
 
 /** Tiny initial-value type inference for store signals.
@@ -695,7 +837,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const calleeName = init.callee?.name as string | undefined
     const tier2StrategyB: Record<string, string> = {
       defineStore: '@pyreon/store',
-      createModel: '@pyreon/state-tree',
+      // `@pyreon/state-tree`'s public export is `model`, not
+      // `createModel`. Earlier audit doc + diagnostic used the wrong
+      // name → silent-drop never fired against real user code. Fixed
+      // in Gap 4 follow-up (state-tree foundation PR).
+      model: '@pyreon/state-tree',
       defineFeature: '@pyreon/feature',
     }
     if (calleeName && calleeName in tier2StrategyB) {

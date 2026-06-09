@@ -14,8 +14,22 @@ export function transform(source: string, options: EmitOptions): TransformResult
   const parsed = parsePyreon(source)
   const emitted =
     options.target === 'swift'
-      ? emitSwift(parsed.components, parsed.enums, parsed.structs, parsed.moduleDecls, parsed.stores)
-      : emitKotlin(parsed.components, parsed.enums, parsed.structs, parsed.moduleDecls, parsed.stores)
+      ? emitSwift(
+          parsed.components,
+          parsed.enums,
+          parsed.structs,
+          parsed.moduleDecls,
+          parsed.stores,
+          parsed.models,
+        )
+      : emitKotlin(
+          parsed.components,
+          parsed.enums,
+          parsed.structs,
+          parsed.moduleDecls,
+          parsed.stores,
+          parsed.models,
+        )
   // Phase 3 native-readiness gap fix (2026-06-05): emit-time warnings
   // (walled-tag silent-drop diagnostics, etc.) merge with parse-time
   // warnings so consumers see them under a single contract.

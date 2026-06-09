@@ -60,7 +60,7 @@ describe('Tier-2 — @pyreon/machine Strategy-B emit (Gap 4 PR-2)', () => {
   it('transform emits NO silent-drop warning for createMachine post-port', () => {
     // Post-PR-2 + rebase, createMachine is removed from the
     // tier2StrategyB list in parse.ts. The other 4 callees
-    // (defineStore / createI18n / createModel / defineFeature)
+    // (defineStore / createI18n / model / defineFeature)
     // still warn until their own ports ship.
     const src = readFileSync(FIXTURE, 'utf8')
     const swift = transform(src, { target: 'swift' })

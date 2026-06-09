@@ -701,6 +701,25 @@ export interface StoreDefnIR {
   fields: { name: string; type: TypeIR; initial: ExprIR }[]
 }
 
+/**
+ * Gap 4 follow-up v2 — @pyreon/state-tree model defined via the
+ * inline `const X = model({ state: { ... literal ... } }).create()`
+ * shape. PMTC emits a per-model PyreonModel_<id> class at module
+ * scope + a `@State` / `remember` binding inside the component body.
+ *
+ * v2 scope: literal state values only (string / number / boolean).
+ * Actions, views, .asHook(), getSnapshot, onPatch, etc. are
+ * deferred follow-ups.
+ */
+export interface ModelDefnIR {
+  /** User-side instance binding name (e.g. `counter`). */
+  instanceName: string
+  /** Suffix used to derive the emitted class name (PyreonModel_<id>). */
+  modelId: string
+  /** State fields extracted from the literal `state: { ... }` config. */
+  fields: { name: string; type: 'string' | 'number' | 'boolean'; initial: string | number | boolean }[]
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
@@ -711,6 +730,13 @@ export interface ParseResult {
   moduleDecls: ModuleDeclIR[]
   /** Gap 4 v1: top-level defineStore declarations. */
   stores: StoreDefnIR[]
+  /**
+   * Gap 4 follow-up: state-tree model declarations from
+   * `const X = model({...}).create()`. Each one emits a
+   * per-model class at module scope + a `@State` binding inside
+   * the consuming component body.
+   */
+  models: ModelDefnIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }
