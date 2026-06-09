@@ -69,6 +69,14 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). Emits @State PyreonI18n with literal locale + messages.
     'tier2-i18n.tsx',
+    // Gap 4 PR-2: @pyreon/machine Strategy-B port. Pre-port, this
+    // fixture was deliberately NOT in the loop because emit was
+    // structurally broken (referenced undefined `m`). Post-port it
+    // emits @State PyreonMachine + intact method calls — swiftc-parse
+    // passes (PyreonMachine is a reference to the runtime port,
+    // resolved at compile time in real apps; -parse skips symbol
+    // resolution so the fixture passes regardless).
+    'tier2-machine.tsx',
   ] as const
 
   for (const fixture of fixtures) {

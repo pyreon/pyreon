@@ -93,6 +93,15 @@ let _activeEnumType: string | undefined
  */
 let _signalNames: Set<string> = new Set()
 /**
+ * Per-component: every machine decl name in scope (DeclIR.machine —
+ * Gap 4 PR-2). PyreonMachine's `callAsFunction()` requires `m()`
+ * (parens preserved) to read current state, NOT bare `m` (which
+ * would emit as a property reference and return the PyreonMachine
+ * instance itself). Disambiguates `m()` from signal `count()`
+ * (parens dropped) and from function `addTodo()` (parens preserved).
+ */
+let _machineNames: Set<string> = new Set()
+/**
  * Per-component: every function decl name in scope (DeclIR.function —
  * Parser-A). Disambiguates `addTodo()` (function call — keeps parens)
  * from `count()` (signal read — drops parens). Without this set the
@@ -328,6 +337,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read).
   _functionNames = new Set()
+  // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
+  // callAsFunction).
+  _machineNames = new Set()
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -356,6 +368,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     // with G1; could rename to `_propertyNames` in a follow-up cleanup.)
     if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
     if (d.kind === 'function') _functionNames.add(d.name)
+    // Gap 4 PR-2: PyreonMachine reads via `m()` (callAsFunction).
+    // Keep machine names OUT of _signalNames (parens preserved) and
+    // OUT of _functionNames (it's a property, not a free function).
+    if (d.kind === 'machine') _machineNames.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -660,6 +676,32 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
         : ''
     return `@State private var ${swiftIdent(d.name)} = PyreonI18n(locale: ${JSON.stringify(d.locale)}, messages: ${msgLit}${fbArg})`
   }
+  // Gap 4 PR-2: `const m = createMachine({ initial, states })` → an
+  // @State PyreonMachine seeded with the literal initial state +
+  // transitions table. Method calls (`m.send`/`m.matches`/`m.can`/
+  // `m.nextEvents`) flow through unchanged because the runtime
+  // container defines them. The `m()` read-current-state syntax
+  // also works unchanged via Swift's `callAsFunction()`.
+  if (d.kind === 'machine') {
+    const transEntries = Object.entries(d.transitions)
+      .map(([state, events]) => {
+        const eventEntries = Object.entries(events)
+          .map(
+            ([event, next]) =>
+              `${JSON.stringify(event)}: ${JSON.stringify(next)}`,
+          )
+          .join(', ')
+        // Empty inner event map → `[:]` (Swift empty-dict literal);
+        // a bare `[]` parses as empty Array, not Dictionary, and
+        // fails typecheck against the [String: String] inner value.
+        const inner = eventEntries === '' ? '[:]' : `[${eventEntries}]`
+        return `${JSON.stringify(state)}: ${inner}`
+      })
+      .join(', ')
+    // Empty outer transitions map → `[:]` for the same reason.
+    const transLit = transEntries === '' ? '[:]' : `[${transEntries}]`
+    return `@State private var ${swiftIdent(d.name)} = PyreonMachine(initial: ${JSON.stringify(d.initial)}, transitions: ${transLit})`
+  }
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
   // (added at the component-emit level via _usesColorScheme). Returns
@@ -954,6 +996,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the snapshot doesn't expose lurking gaps prematurely.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
+          return `${swiftIdent(e.callee.name)}()`
+        }
+        // Gap 4 PR-2: PyreonMachine names need parens preserved so
+        // `m()` invokes `callAsFunction()` and reads the current state.
+        if (_machineNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}()`
         }
         return swiftIdent(e.callee.name)

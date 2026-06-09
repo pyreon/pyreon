@@ -1,26 +1,18 @@
-// Tier-2 verification — @pyreon/machine still emits structurally
-// broken code BUT now emits a diagnostic warning naming the
-// silent-drop (Gap 4 first PR — "honest gate" before the full
-// Strategy-B runtime port lands).
+// Tier-2 verification — @pyreon/machine emit works correctly post
+// Gap 4 PR-2 Strategy-B port. (Pre-port history below.)
 //
-// machine's API: `const m = createMachine({...})` returns a constrained
-// signal-like value with `.send(event)` and `.matches(state)` methods.
+// machine's API: `const m = createMachine({ initial, states })` returns
+// a constrained signal-like value with `.send(event)` / `.matches(state)`
+// / `.can(event)` / `.nextEvents()` methods, plus `m()` reads current
+// state.
 //
-// PMTC behaviour (post-Gap-4-PR-1):
-//   - The `createMachine(...)` declaration is recognized at the
-//     parser layer and emits a CLEAR WARNING naming the binding +
-//     package + Layer-4 workaround.
-//   - The actual binding is STILL silently dropped (no DeclIR yet —
-//     full Strategy-B runtime port is multi-PR follow-up); the
-//     downstream `.send(...)` / `.matches(...)` references still
-//     reference undefined `m` in emitted code.
-//   - swiftc/kotlinc still rejects the emit (the platform-compile
-//     layer surfaces the breakage), but the PMTC transform now
-//     ALSO surfaces it, so authors aren't blindsided.
-//
-// When the full Strategy-B port for @pyreon/machine lands, this test
-// flips again: the warning goes away, the emit becomes correct, and
-// machine moves from Tier 2 → Tier 1.
+// PRE-FIX HISTORY:
+//   - PR #1317 surfaced @pyreon/rx Tier-2 silent-drop
+//   - PR #1319 LOCKED the broken machine state (silent drop)
+//   - PR #1444 added Tier-2 silent-drop diagnostics for all 5 Strategy-B
+//     callees including createMachine
+//   - THIS PR ships the full Strategy-B port + REMOVES createMachine
+//     from the tier2StrategyB diagnostic list (rebase contract).
 //
 // Reference: docs/docs/multiplatform-libraries.md → "Tier 2"
 
@@ -33,45 +25,73 @@ import { transform } from '../index'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURE = resolve(HERE, '..', 'fixtures', 'tier2-machine.tsx')
 
-describe('Tier-2 audit — @pyreon/machine structurally-broken emit (known bug)', () => {
-  it('Swift: emit drops the createMachine binding but keeps the method calls (broken)', () => {
+describe('Tier-2 — @pyreon/machine Strategy-B emit (Gap 4 PR-2)', () => {
+  it('Swift: emits @State PyreonMachine with literal initial + transitions', () => {
     const src = readFileSync(FIXTURE, 'utf8')
     const result = transform(src, { target: 'swift' })
-    // The createMachine binding is silently dropped — NO `var m` /
-    // `let m` / `m =` anywhere in the emitted struct body.
-    expect(result.code).not.toContain('createMachine')
-    expect(result.code).not.toMatch(/\b(var|let)\s+m\b/)
-    // But the method calls are preserved, referencing the dropped m.
+    expect(result.code).toContain('@State private var m = PyreonMachine(')
+    expect(result.code).toContain('initial: "idle"')
+    expect(result.code).toContain('"idle": ["FETCH": "loading"]')
+    expect(result.code).toContain(
+      '"loading": ["SUCCESS": "done", "ERROR": "error"]',
+    )
+    expect(result.code).toContain('"done": [:]')
+    expect(result.code).toContain('"error": ["RETRY": "loading"]')
     expect(result.code).toContain('m.send("FETCH")')
     expect(result.code).toContain('m.send("SUCCESS")')
     expect(result.code).toContain('m.matches("loading")')
   })
 
-  it('Kotlin: same bug shape — dropped binding, kept method calls', () => {
+  it('Kotlin: emits val + remember PyreonMachine with literal config', () => {
     const src = readFileSync(FIXTURE, 'utf8')
     const result = transform(src, { target: 'kotlin' })
-    expect(result.code).not.toContain('createMachine')
-    expect(result.code).not.toMatch(/\b(var|val)\s+m\b/)
+    expect(result.code).toContain('val m = remember { PyreonMachine(')
+    expect(result.code).toContain('initial = "idle"')
+    expect(result.code).toContain('"idle" to mapOf("FETCH" to "loading")')
+    expect(result.code).toContain(
+      '"loading" to mapOf("SUCCESS" to "done", "ERROR" to "error")',
+    )
+    expect(result.code).toContain('"done" to mapOf()')
+    expect(result.code).toContain('"error" to mapOf("RETRY" to "loading")')
     expect(result.code).toContain('m.send("FETCH")')
     expect(result.code).toContain('m.matches("loading")')
   })
 
-  it('the transform NOW emits a diagnostic warning naming the silent-drop (Gap 4 first PR)', () => {
+  it('transform emits NO silent-drop warning for createMachine post-port', () => {
+    // Post-PR-2 + rebase, createMachine is removed from the
+    // tier2StrategyB list in parse.ts. The other 4 callees
+    // (defineStore / createI18n / createModel / defineFeature)
+    // still warn until their own ports ship.
     const src = readFileSync(FIXTURE, 'utf8')
     const swift = transform(src, { target: 'swift' })
     const kotlin = transform(src, { target: 'kotlin' })
     const machineWarnings = (warnings: string[]) =>
-      warnings.filter((w) => /createMachine|@pyreon\/machine/i.test(w))
-    // Both targets surface the warning naming binding + package +
-    // Layer-4 workaround pointer. Same shape as Gap-3's lifecycle
-    // walled-tag warnings (#1441).
-    const swiftMachine = machineWarnings(swift.warnings ?? [])
-    const kotlinMachine = machineWarnings(kotlin.warnings ?? [])
-    expect(swiftMachine.length).toBe(1)
-    expect(kotlinMachine.length).toBe(1)
-    expect(swiftMachine[0]!).toContain('@pyreon/machine')
-    expect(swiftMachine[0]!).toContain('Layer 4')
-    expect(swiftMachine[0]!).toContain('NativeIOS')
-    expect(kotlinMachine[0]!).toContain('NativeAndroid')
+      warnings.filter((w) => w.startsWith('createMachine()'))
+    expect(machineWarnings(swift.warnings ?? [])).toEqual([])
+    expect(machineWarnings(kotlin.warnings ?? [])).toEqual([])
+  })
+
+  it('`m()` reads current state via callAsFunction / operator invoke', () => {
+    // Without _machineNames tracking, `m()` would emit as bare `m`.
+    const source = `
+import { createMachine } from '@pyreon/machine'
+import { Stack, Text } from '@pyreon/primitives'
+
+export function StateView() {
+  const m = createMachine({
+    initial: 'idle' as const,
+    states: { idle: { on: { FETCH: 'loading' } }, loading: {} },
+  })
+  return (
+    <Stack>
+      <Text>{m()}</Text>
+    </Stack>
+  )
+}
+`
+    const swift = transform(source, { target: 'swift' })
+    const kotlin = transform(source, { target: 'kotlin' })
+    expect(swift.code).toMatch(/m\(\)/)
+    expect(kotlin.code).toMatch(/m\(\)/)
   })
 })

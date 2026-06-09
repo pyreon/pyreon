@@ -37,20 +37,16 @@ const TIER2_CASES = [
 })`,
     bindingName: 'useCounter',
   },
-  {
-    callee: 'createMachine',
-    pkg: '@pyreon/machine',
-    snippet: `const toggle = createMachine({
-  initial: "off",
-  states: { off: { on: { TOGGLE: "on" } }, on: { on: { TOGGLE: "off" } } },
-})`,
-    bindingName: 'toggle',
-  },
-  // createI18n REMOVED — Gap 4 PR-3 (THIS PR) ships the full
-  // Strategy-B port for @pyreon/i18n/core, so the silent-drop
-  // diagnostic no longer fires for it. The "emits NO silent-drop
-  // warning for createI18n post-port" spec in tier2-i18n-emit.test.ts
-  // is the regression lock.
+  // createMachine REMOVED — Gap 4 PR-2 ships the full Strategy-B
+  // port for @pyreon/machine, so the silent-drop diagnostic no
+  // longer fires for it. The "transform emits NO silent-drop
+  // warning for createMachine post-port" spec in
+  // tier2-machine-emit-broken.test.ts is the regression lock.
+  // createI18n REMOVED — Gap 4 PR-3 ships the full Strategy-B
+  // port for @pyreon/i18n/core, so the silent-drop diagnostic no
+  // longer fires for it. The "emits NO silent-drop warning for
+  // createI18n post-port" spec in tier2-i18n-emit.test.ts is the
+  // regression lock.
   {
     callee: 'createModel',
     pkg: '@pyreon/state-tree',

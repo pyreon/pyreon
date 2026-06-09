@@ -316,6 +316,33 @@ export type DeclIR =
       messages: Record<string, Record<string, string>>
       fallbackLocale?: string
     }
+  /**
+   * Gap 4 (2026-06-05 native-readiness audit) Strategy-B first port —
+   * `createMachine({ initial, states })` from `@pyreon/machine`. Emits
+   * the PyreonMachine reactive container the runtime ports ship:
+   *   Swift  → @State private var m = PyreonMachine(initial: "idle",
+   *               transitions: ["idle": ["FETCH": "loading"], ...])
+   *   Kotlin → val m = remember { PyreonMachine(initial = "idle",
+   *               transitions = mapOf("idle" to mapOf("FETCH" to "loading"), ...)) }
+   *
+   * Method calls flow through unchanged (`m.send("X")` / `m.matches("Y")`
+   * / `m.can("Z")` / `m.nextEvents()`) — the runtime container defines
+   * them. The `m()` read-current-state syntax also works unchanged via
+   * Swift `callAsFunction()` and Kotlin `operator fun invoke()`.
+   *
+   * `initial` is the string-literal state name from the config's
+   * `initial: 'X' as const` (the `as const` is stripped). `transitions`
+   * is the parsed `{ state: { event: nextState } }` map from the
+   * `states` config field. Closed PR #1319's "machine emit structurally
+   * broken" silent-drop AND PR #1444's Tier-2 diagnostic warning (it
+   * disappears now that emit is correct).
+   */
+  | {
+      kind: 'machine'
+      name: string
+      initial: string
+      transitions: Record<string, Record<string, string>>
+    }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
