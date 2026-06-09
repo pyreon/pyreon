@@ -1,0 +1,13 @@
+# Gradle + Android Studio generated dirs
+.gradle/
+build/
+.idea/
+local.properties
+.cxx/
+
+# Pyreon-emitted Kotlin lands inside the source tree but is gitignored —
+# `scripts/build.sh` regenerates it on every Gradle build.
+app/src/main/kotlin/com/pyreon/generated/
+
+# node_modules
+node_modules/
