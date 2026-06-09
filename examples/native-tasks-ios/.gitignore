@@ -1,0 +1,12 @@
+# Xcode + xcodegen generated artifacts
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# Pyreon-emitted Swift lands inside generated/ but is gitignored —
+# `scripts/build.sh` regenerates it on every Xcode build.
+generated/
+
+# node_modules
+node_modules/

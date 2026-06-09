@@ -1,0 +1,127 @@
+# XcodeGen project spec — turns this directory into an iOS Xcode
+# project. Mirror of `examples/native-router-demo-ios/project.yml`
+# (same xcodegen pattern + same SPM PyreonRouter dep + same
+# preBuildScript shape).
+#
+# Usage:
+#   xcodegen generate   (run from this directory)
+#   open PyreonTasks.xcodeproj
+#
+# Bound shells out to `scripts/build.sh` which compiles the SHARED
+# `../native-tasks/src/TasksApp.tsx` source from #1449's scaffold.
+
+name: PyreonTasks
+
+options:
+  bundleIdPrefix: com.pyreon
+  deploymentTarget:
+    iOS: '17.0'
+
+# Pre-build script — runs the Pyreon compile loop BEFORE Swift
+# compilation. Same shape as native-router-demo-ios.
+preBuildScripts:
+  - script: |
+      cd "${SRCROOT}"
+      bash scripts/build.sh
+    name: '[Pyreon] Compile .tsx → generated/TasksApp.swift'
+    runOnlyWhenInstalling: false
+    basedOnDependencyAnalysis: false
+
+# Single iOS app target hosting the compiler-emitted TasksApp.
+targets:
+  PyreonTasks:
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: ios
+        type: group
+      - path: generated
+        type: group
+        optional: true
+
+    # @pyreon/native-router-swift package — required because
+    # TasksApp.tsx uses createRouter + RouterProvider + RouterView
+    # + useNavigate + per-route beforeEnter. Same SPM ref as
+    # native-router-demo-ios.
+    dependencies:
+      - package: PyreonRouter
+
+    info:
+      path: ios/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: '6.0'
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: 0.0.1
+        CFBundleVersion: '1'
+        LSRequiresIPhoneOS: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities:
+          - armv7
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTasks
+        ENABLE_BITCODE: NO
+        SWIFT_VERSION: '5.0'
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
+
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+
+  # XCUITest launch + multi-screen-navigation + auth-gate smoke.
+  # Mirror of native-router-demo-ios' PyreonRouterDemoUITests target.
+  PyreonTasksUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: iosUITests
+        type: group
+
+    dependencies:
+      - target: PyreonTasks
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTasksUITests
+        TEST_TARGET_NAME: PyreonTasks
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: '5.0'
+
+# Explicit scheme — same wiring pattern as router-demo + counter.
+schemes:
+  PyreonTasks:
+    build:
+      targets:
+        PyreonTasks: all
+        PyreonTasksUITests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - PyreonTasksUITests
+    run:
+      config: Debug
+
+# Local SPM package reference — @pyreon/native-router-swift lives
+# in the monorepo at packages/native/router-swift.
+packages:
+  PyreonRouter:
+    path: ../../packages/native/router-swift
