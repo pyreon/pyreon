@@ -32,6 +32,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
   StoreDefnIR,
@@ -222,6 +223,7 @@ export function emitSwift(
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
+  models: ModelDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -235,6 +237,9 @@ export function emitSwift(
   // Gap 4 v1: track store-hook names → store id so the use-site chain
   // rewriter (`<hook>().store.<X>`) can map to the right singleton class.
   _storeHooks = new Map(stores.map((s) => [s.hookName, s.storeId]))
+  // Gap 4 v2 follow-up: track model instance names → modelId so use-site
+  // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
+  _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -242,12 +247,16 @@ export function emitSwift(
   // Gap 4 v1: emit per-store @Observable singleton class BEFORE
   // components so call sites can reference the type.
   for (const s of stores) parts.push(emitSwiftStore(s))
+  // Gap 4 v2 follow-up: emit per-model singleton class BEFORE components
+  // so `<instance>.<field>` use sites resolve to PyreonModel_<id>.shared.
+  for (const m of models) parts.push(emitSwiftModel(m))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
+  _modelInstances = new Map()
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -255,6 +264,9 @@ export function emitSwift(
 
 /** Map of useStoreName → storeId (e.g. `useCounter` → `"counter"`). */
 let _storeHooks: Map<string, string> = new Map()
+
+/** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
+let _modelInstances: Map<string, string> = new Map()
 
 /**
  * Emit a per-store @Observable singleton class:
@@ -281,6 +293,44 @@ function emitSwiftStore(s: StoreDefnIR): string {
     const t = swiftType(f.type)
     const init = emitSwiftExpr(f.initial, 4)
     lines.push(`    var ${f.name}: ${t} = ${init}`)
+  }
+  lines.push(`    private init() {}`)
+  lines.push(`}`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up v2 — emit a per-model @Observable singleton class
+ * for `const X = model({ state: { ... } }).create()`. Mirror of
+ * `emitSwiftStore` for state-tree's instance-shaped surface.
+ *
+ *   @available(iOS 17.0, macOS 14.0, *)
+ *   @Observable
+ *   final class PyreonModel_counter: PyreonModelProtocol {
+ *       static let shared = PyreonModel_counter()
+ *       var count: Int = 0
+ *       var label: String = "counter"
+ *       private init() {}
+ *   }
+ *
+ * Use-site rewriting (`counter.field` → `PyreonModel_counter.shared.field`)
+ * happens at expression-emit time via `_modelInstances`.
+ */
+function emitSwiftModel(m: ModelDefnIR): string {
+  const lines: string[] = []
+  lines.push(`@available(iOS 17.0, macOS 14.0, *)`)
+  lines.push(`@Observable`)
+  lines.push(`final class PyreonModel_${m.modelId}: PyreonModelProtocol {`)
+  lines.push(`    static let shared = PyreonModel_${m.modelId}()`)
+  for (const f of m.fields) {
+    const t = f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Bool'
+    const initial =
+      f.type === 'string'
+        ? JSON.stringify(f.initial)
+        : f.type === 'boolean'
+          ? String(f.initial)
+          : String(f.initial)
+    lines.push(`    var ${f.name}: ${t} = ${initial}`)
   }
   lines.push(`    private init() {}`)
   lines.push(`}`)
@@ -1156,6 +1206,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const storeId = _storeHooks.get(e.object.object.callee.name)!
         return `PyreonStore_${storeId}.shared.${swiftIdent(e.property)}`
+      }
+      // Gap 4 v2 follow-up: rewrite `<instance>.<field>` for top-level
+      // state-tree model instances. `const counter = model({...}).create()`
+      // produces a singleton PyreonModel_counter; user reads `counter.label`
+      // emit as `PyreonModel_counter.shared.label`.
+      if (
+        e.object.kind === 'identifier' &&
+        _modelInstances.has(e.object.name)
+      ) {
+        const modelId = _modelInstances.get(e.object.name)!
+        return `PyreonModel_${modelId}.shared.${swiftIdent(e.property)}`
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct struct properties in

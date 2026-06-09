@@ -27,6 +27,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
   StoreDefnIR,
@@ -145,6 +146,7 @@ export function emitKotlin(
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
+  models: ModelDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -159,31 +161,27 @@ export function emitKotlin(
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
   const parts: string[] = []
-  // TS-method compat preamble (Phase 2 follow-up). Kotlin's String has
-  // `.length` but Collection<T> uses `.size` — so `array.length` (valid
-  // TS) is a compile error in Kotlin. The extension below adds `.length`
-  // as an extension property on `List<T>`, restoring TS surface parity.
-  // Always emitted — minimal cost, harmless when unused (Kotlin's dead-
-  // code-elimination handles unreferenced extensions).
-  //
-  // Other TS-method differences are rewritten at the call site (see
-  // emitKotlinExpr's `call` case): `.some(p)` → `.any(p)`, etc.
   if (components.length > 0 || structs.length > 0) {
     parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Int get() = size')
   }
   // Gap 4 v1: store-hook → store id map for use-site chain rewriting.
   _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
+  // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
+  _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
   // Gap 4 v1: emit per-store singleton class.
   for (const s of stores) parts.push(emitKotlinStore(s))
+  // Gap 4 v2 follow-up: emit per-model singleton object.
+  for (const m of models) parts.push(emitKotlinModel(m))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
+  _modelInstancesKotlin = new Map()
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -191,6 +189,9 @@ export function emitKotlin(
 
 /** Map of useStoreName → storeId for Kotlin emit chain rewriting. */
 let _storeHooksKotlin: Map<string, string> = new Map()
+
+/** Map of model instance name → modelId for Kotlin use-site rewriting. */
+let _modelInstancesKotlin: Map<string, string> = new Map()
 
 /**
  * Emit a per-store Kotlin object singleton:
@@ -210,6 +211,35 @@ function emitKotlinStore(s: StoreDefnIR): string {
   for (const f of s.fields) {
     const init = emitKotlinExpr(f.initial, 4)
     lines.push(`    var ${f.name} by mutableStateOf(${init})`)
+  }
+  lines.push(`}`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up v2 — emit a per-model Kotlin singleton object for
+ * `const X = model({ state: { ... } }).create()`. Mirror of
+ * `emitKotlinStore` for state-tree's instance-shaped surface.
+ *
+ *   object PyreonModel_counter : PyreonModelProtocol {
+ *       var count by mutableStateOf(0)
+ *       var label by mutableStateOf("counter")
+ *   }
+ *
+ * Use-site rewriting (`counter.field` → `PyreonModel_counter.field`)
+ * happens at expression-emit time via `_modelInstancesKotlin`.
+ */
+function emitKotlinModel(m: ModelDefnIR): string {
+  const lines: string[] = []
+  lines.push(`object PyreonModel_${m.modelId} : PyreonModelProtocol {`)
+  for (const f of m.fields) {
+    const initial =
+      f.type === 'string'
+        ? JSON.stringify(f.initial)
+        : f.type === 'boolean'
+          ? String(f.initial)
+          : String(f.initial)
+    lines.push(`    var ${f.name} by mutableStateOf(${initial})`)
   }
   lines.push(`}`)
   return lines.join('\n')
@@ -1039,6 +1069,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         const storeId = _storeHooksKotlin.get(e.object.object.callee.name)!
         return `PyreonStore_${storeId}.${kotlinIdent(e.property)}`
+      }
+      // Gap 4 v2 follow-up: rewrite `<instance>.<field>` for top-level
+      // state-tree model instances. `const counter = model({...}).create()`
+      // produces a singleton object PyreonModel_counter; user reads
+      // `counter.label` emit as `PyreonModel_counter.label`.
+      if (
+        e.object.kind === 'identifier' &&
+        _modelInstancesKotlin.has(e.object.name)
+      ) {
+        const modelId = _modelInstancesKotlin.get(e.object.name)!
+        return `PyreonModel_${modelId}.${kotlinIdent(e.property)}`
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct function parameters
