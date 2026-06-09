@@ -1396,6 +1396,20 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
+    "packages/fundamentals/sync": {
+      "name": "@pyreon/sync",
+      "version": "0.31.0",
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.9.0",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitus-labs/tools-lint": "^2.5.0",
+        "bun-types": "^1.3.14",
+      },
+      "peerDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
     "packages/fundamentals/table": {
       "name": "@pyreon/table",
       "version": "0.31.0",
@@ -3003,6 +3017,8 @@
     "@pyreon/styler": ["@pyreon/styler@workspace:packages/ui-system/styler"],
 
     "@pyreon/svelte-compat": ["@pyreon/svelte-compat@workspace:packages/tools/svelte-compat"],
+
+    "@pyreon/sync": ["@pyreon/sync@workspace:packages/fundamentals/sync"],
 
     "@pyreon/table": ["@pyreon/table@workspace:packages/fundamentals/table"],
 
