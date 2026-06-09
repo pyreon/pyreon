@@ -1,6 +1,7 @@
 import { visit } from 'unist-util-visit'
 import type { Root } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
+import { escapeHtmlAttr as escapeAttr } from '../../_shared/html-escape'
 
 // ─── pyreon-remark-callout ────────────────────────────────────────────────
 //
@@ -57,31 +58,19 @@ interface RemarkCalloutOptions {
   warnings?: CalloutWarnings
 }
 
+import { levenshtein } from '../../_shared/levenshtein'
+
 /**
- * Levenshtein edit distance — classic small-N DP, reused for the
- * `:::warn` → "did you mean `:::warning`?" hint. Same shape as
- * `mdx-scan/validate.ts:editDistance` but inlined here to avoid the
- * remark plugin depending on the validator (which carries fs-glob
- * infrastructure we don't need at this layer).
+ * Levenshtein edit distance — case-sensitive variant for callout-name
+ * typos (`:::warn` → `:::warning`). Thin re-export over the shared
+ * `_shared/levenshtein` primitive so the validator + this plugin
+ * share the same DP implementation; the case-sensitivity choice
+ * stays explicit at the call site.
  *
  * @internal exported for testing
  */
 export function calloutEditDistance(a: string, b: string): number {
-  if (a === b) return 0
-  if (a.length === 0) return b.length
-  if (b.length === 0) return a.length
-  const prev = new Array(b.length + 1)
-  const curr = new Array(b.length + 1)
-  for (let j = 0; j <= b.length; j++) prev[j] = j
-  for (let i = 1; i <= a.length; i++) {
-    curr[0] = i
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1
-      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
-    }
-    for (let j = 0; j <= b.length; j++) prev[j] = curr[j]
-  }
-  return prev[b.length]
+  return levenshtein(a, b)
 }
 
 /**
@@ -209,6 +198,3 @@ export function remarkCallout(options: RemarkCalloutOptions = {}) {
   }
 }
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}

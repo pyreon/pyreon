@@ -53,7 +53,7 @@ export function CodeGroup(props: CodeGroupProps): VNodeChild {
           rules to gate panel visibility — keeps the component
           children-opaque (no per-child wrapping) while letting tab
           switches patch one attribute, never remount the panels. */}
-      <div class="code-group__panels" data-active={() => String(active())}>
+      <div class="code-group__panels" data-active={() => active()}>
         {props.children}
       </div>
     </section>

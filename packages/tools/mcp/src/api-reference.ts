@@ -1206,7 +1206,7 @@ export async function loader(ctx: LoaderContext) {
   // SSR: read from request headers; CSR: read from document.cookie
   const cookie = ctx.request?.headers.get("cookie")
     ?? (typeof document !== "undefined" ? document.cookie : "")
-  const sid = /(?:^|;\s*)sid=([^;]+)/.exec(cookie)?.[1]
+  const sid = /(?:^|;\\s*)sid=([^;]+)/.exec(cookie)?.[1]
   if (!sid) redirect("/login")
   const session = await getSession(sid)
   if (!session) redirect("/login")
@@ -1313,7 +1313,7 @@ useHead(() => ({
     mistakes: `- Using \`\${...}\` in a \`titleTemplate\` string — the placeholder is \`%s\` (or pass a function form \`(title) => …\`)
 - Calling \`useHead()\` outside any \`HeadProvider\` / \`renderWithHead()\` boundary — silent no-op, the entries simply go nowhere
 - Wrapping the input in \`computed()\` instead of a thunk — pass a plain \`() => ({...})\` arrow; \`useHead\` registers its own effect
-- Expecting \`</script>\` inside an inline script body to render verbatim — the SSR escaper rewrites it as \`<\/script>\` to prevent breaking out of the inline tag
+- Expecting \`</script>\` inside an inline script body to render verbatim — the SSR escaper rewrites it as \`<\\/script>\` to prevent breaking out of the inline tag
 - Treating \`speculationRules\` as a guaranteed perf win — it is a declarative HINT (like \`<link rel=prefetch>\`); supported browsers prefetch/prerender at their own discretion, unsupported ones ignore it. It is opt-in and zero-runtime-JS; it does not replace \`RouterLink prefetch\` (which warms loader data for client-side nav)`,
   },
 
@@ -1350,7 +1350,7 @@ const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
 const doc = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bodyAttrs}>\${html}</body></html>\``,
     notes: 'SSR companion to `HeadProvider`. Renders the app to HTML via `renderToString` while collecting every `useHead()` call from the tree, then serializes the resolved tags into a single `head` string plus separate `htmlAttrs` / `bodyAttrs` strings. Async components that call `useHead()` in their body work — the renderer awaits suspended subtrees before serialization. See also: useHead, HeadProvider.',
     mistakes: `- Awaiting \`renderWithHead\` and then NOT splicing \`head\` into the \`<head>\` element — every \`useHead()\` call quietly disappears
-- Forgetting to interpolate \`htmlAttrs\` / \`bodyAttrs\` (the leading space is included in each string) — \`htmlAttrs.lang\` and \`bodyAttrs.class\` set via \`useHead\` won\'t reach the DOM`,
+- Forgetting to interpolate \`htmlAttrs\` / \`bodyAttrs\` (the leading space is included in each string) — \`htmlAttrs.lang\` and \`bodyAttrs.class\` set via \`useHead\` won\\'t reach the DOM`,
   },
 
   'head/createHeadContext': {
@@ -1404,7 +1404,7 @@ export default createHandler({
     mistakes: `- Omitting \`<!--pyreon-app-->\` from the custom template — throws at handler-creation, not per request
 - Returning a \`Response\` from middleware and expecting downstream middleware to still run — the chain short-circuits on the first \`Response\`
 - Reading \`ctx.locals\` from inside the component without \`useRequestLocals()\` — the component tree only sees locals when bridged through that hook
-- Forgetting to escape user data inserted into a custom template — \`createHandler\` only escapes its own loader-data injection (\`</script>\` → \`<\/script>\`); your template content is your responsibility`,
+- Forgetting to escape user data inserted into a custom template — \`createHandler\` only escapes its own loader-data injection (\`</script>\` → \`<\\/script>\`); your template content is your responsibility`,
   },
 
   'server/island': {
@@ -1433,7 +1433,7 @@ const CommandPalette = island(
 - Setting any \`prefetch\` on a \`hydrate: "never"\` island — defeats the whole zero-JS point of \`never\` (silently suppressed)
 - Registering a \`hydrate: "never"\` island in \`hydrateIslands({ ... })\` — defeats the strategy by pulling the component module into the client bundle. The whole point of \`never\` is zero client JS. The runtime short-circuits never-strategy before the registry lookup so missing entries are silent (no \`data-island-error="no-loader"\`); the auto-registry omits never-strategy islands by design.
 - Using \`"interaction"\` for visible-on-load components — defeats the strategy. Use \`"load"\` for above-the-fold interactive content; reserve \`"interaction"\` for modals / dropdowns / command palettes that are interactive but only shown on user demand
-- Relying on focus/pointerenter to trigger the SAME action as click for \`"interaction"\` — only clicks are replayed post-hydration. Non-click events trigger hydration but no replay (focus can\'t be reliably re-dispatched once the user has tabbed past; pointerenter is passive)`,
+- Relying on focus/pointerenter to trigger the SAME action as click for \`"interaction"\` — only clicks are replayed post-hydration. Non-click events trigger hydration but no replay (focus can\\'t be reliably re-dispatched once the user has tabbed past; pointerenter is passive)`,
   },
 
   'server/hydrateIslands': {
@@ -1460,7 +1460,7 @@ import * as registry from "virtual:pyreon/islands-registry"
 
 hydrateIslandsAuto(registry)`,
     notes: 'Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle. See also: hydrateIslands, island.',
-    mistakes: `- Calling without the registry argument — the function takes the imported virtual module explicitly. The user-side \`import\` is what lets the plugin\'s \`resolveId\` hook run; importing from inside \`@pyreon/server/client\` would fail at build time because Rolldown\'s static-import analysis runs before plugin resolveId hooks for workspace sources.
+    mistakes: `- Calling without the registry argument — the function takes the imported virtual module explicitly. The user-side \`import\` is what lets the plugin\\'s \`resolveId\` hook run; importing from inside \`@pyreon/server/client\` would fail at build time because Rolldown\\'s static-import analysis runs before plugin resolveId hooks for workspace sources.
 - Using under a non-Vite bundler — the virtual module only exists under \`@pyreon/vite-plugin\`. Fall back to manual \`hydrateIslands({ ... })\` for non-Vite consumers.
 - Setting \`pyreon({ islands: false })\` and still calling \`hydrateIslandsAuto()\` — the plugin emits a stub registry that throws at runtime with a clear error message. Either re-enable islands (the default) or use \`hydrateIslands({ ... })\` instead.`,
   },
@@ -1474,7 +1474,7 @@ hydrateIslandsAuto(registry)`,
 })`,
     notes: 'Static-site generator built on `createHandler`. Walks the `paths` array (or async generator), invokes the handler for each path, and writes the rendered HTML to `outDir/<path>.html`. The `onPage(path, html)` callback fires per page so callers can post-process or stream output. Validates `outDir` against path traversal (`../` segments are rejected). Errors per-page are collected in the result, not thrown. See also: createHandler.',
     mistakes: `- Passing a relative \`outDir\` and being surprised when it resolves against \`process.cwd()\` — pass an absolute path for predictability
-- Expecting per-page errors to throw — they\'re collected in \`result.errors\`; check the array after \`await\`
+- Expecting per-page errors to throw — they\\'re collected in \`result.errors\`; check the array after \`await\`
 - Generating thousands of paths without batching — the function processes the array sequentially; if you need parallelism, batch the \`paths\` array yourself`,
   },
   // <gen-docs:api-reference:end @pyreon/server>
@@ -1564,7 +1564,7 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
   'runtime-dom/_tpl': {
     signature: '_tpl(html: string): () => DocumentFragment',
     example: `// Compiler output (not hand-written):
-const _$t0 = _tpl("<div class=\"container\"><span></span></div>")`,
+const _$t0 = _tpl("<div class=\\"container\\"><span></span></div>")`,
     notes: 'Compiler-internal: create a template factory from an HTML string. First call parses the HTML into a `<template>` element; subsequent calls use `cloneNode(true)` for zero-parse instantiation. Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
   },
 
@@ -3379,7 +3379,7 @@ if (__DEV__) console.warn('hello')`,
     example: `// Agent-side
 get_api({ package: 'flow', symbol: 'createFlow' })
 get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })`,
-    notes: `Look up any Pyreon API by \`package\` (e.g. \`"flow"\` or \`"@pyreon/flow"\`) and \`symbol\` (e.g. \`"createFlow"\`). Returns the canonical signature, example, foot-gun catalogue, and cross-references — drawn from \`api-reference.ts\`, which is regenerated from each package\'s \`manifest.ts\`. The single agent-facing entry point for "what does this API do and how do I avoid the common mistakes." See also: validate, get_pattern.`,
+    notes: `Look up any Pyreon API by \`package\` (e.g. \`"flow"\` or \`"@pyreon/flow"\`) and \`symbol\` (e.g. \`"createFlow"\`). Returns the canonical signature, example, foot-gun catalogue, and cross-references — drawn from \`api-reference.ts\`, which is regenerated from each package\\'s \`manifest.ts\`. The single agent-facing entry point for "what does this API do and how do I avoid the common mistakes." See also: validate, get_pattern.`,
     mistakes: `- Passing the package name with a typo or wrong scope — \`get_api({ package: "pyreon-flow", ... })\` returns nothing. Use \`"flow"\` or \`"@pyreon/flow"\`; the tool accepts both.
 - Expecting \`symbol\` to match a method on a returned instance (e.g. \`Posts.useList\`) — only TOP-LEVEL exports are in api-reference. Method-on-instance APIs are documented in the parent symbol's \`summary\` / \`example\`.
 - Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (~33 of ~55 packages migrated). Check the docs page or source as a fallback when get_api returns empty.
@@ -3488,7 +3488,7 @@ get_pattern({})
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
 get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
 get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
-    notes: `Browse the anti-patterns catalog from \`.claude/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
+    notes: `Browse the anti-patterns catalog from \`.claude/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
     mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
 - Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need \`{ name }\`, \`{ category }\`, or \`{ full: true }\``,
   },
@@ -3508,7 +3508,7 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
     signature: `tool: audit_test_environment({ minRisk?: 'high' | 'medium' | 'low'; limit?: number }) → AuditReport`,
     example: `audit_test_environment({ minRisk: 'medium', limit: 10 })
 // → grouped report with HIGH / MEDIUM / LOW sections`,
-    notes: `Scan every \`*.test.{ts,tsx}\` under \`packages/\` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real \`h()\` calls + \`@pyreon/core\` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change. See also: get_browser_smoke_status, audit_islands.`,
+    notes: `Scan every \`*.test.{ts,tsx}\` under \`packages/\` for the mock-vnode anti-pattern that caused PR #197\\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real \`h()\` calls + \`@pyreon/core\` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change. See also: get_browser_smoke_status, audit_islands.`,
     mistakes: `- Treating a HIGH finding as "this test is broken" — HIGH means the test relies HEAVILY on mock vnodes. The test may still be correct given its scope (e.g. testing a helper that only operates on vnode shapes); review the file and pair with a real-\`h()\` companion test if the contract assertion matters.
 - Calling with \`minRisk: "low"\` and getting overwhelmed — LOW includes any file that even mentions a mock vnode helper. Use \`medium\` for actionable signal, \`high\` for "would have prevented PR #197"-tier risk.
 - Running outside the monorepo root — the scanner walks \`packages/\` from \`process.cwd()\`. From a subpackage dir, you get a partial result.
@@ -3522,7 +3522,7 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
 
 audit_islands({ json: true })
 // → machine-readable { root, findings: [...], summary: {...} }`,
-    notes: `Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks \`packages/\` + \`examples/\` and runs five detectors that auto-registry can\'t reach (manual \`hydrateIslands({...})\` for non-Vite consumers / library authors) AND PR G\'s per-file \`island-never-with-registry-entry\` detector misses (it only catches the same-file shape): \`duplicate-name\`, \`never-with-registry-entry\`, \`registry-mismatch\`, \`nested-island\`, \`dead-island\`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the \`pyreon doctor --check-islands\` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping \`--json\` and grepping \`findings.length > 0\`. See also: audit_test_environment, get_anti_patterns.`,
+    notes: `Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks \`packages/\` + \`examples/\` and runs five detectors that auto-registry can\\'t reach (manual \`hydrateIslands({...})\` for non-Vite consumers / library authors) AND PR G\\'s per-file \`island-never-with-registry-entry\` detector misses (it only catches the same-file shape): \`duplicate-name\`, \`never-with-registry-entry\`, \`registry-mismatch\`, \`nested-island\`, \`dead-island\`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the \`pyreon doctor --check-islands\` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping \`--json\` and grepping \`findings.length > 0\`. See also: audit_test_environment, get_anti_patterns.`,
     mistakes: `- Running outside a project that uses islands — the audit walks \`packages/\` + \`examples/\` from \`process.cwd()\`. A project with zero \`island()\` declarations returns an empty findings array (not an error).
 - Treating \`registry-mismatch\` as a hard error in auto-registry apps — it only fires for MANUAL \`hydrateIslands({ ... })\` calls. Apps using \`hydrateIslandsAuto()\` (Vite plugin default) won't see this finding even if they'd be vulnerable to the same drift in a manual setup.
 - Expecting \`dead-island\` to catch every never-used island — the detector tracks static imports of the loader path. Dynamic-import chains routed through a registry indirection may not be statically traceable; verify by source-grepping the loader path before deleting.
@@ -3550,7 +3550,7 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 
 // mode="system" auto-detects OS dark mode via prefers-color-scheme
 // inversed flips the resolved mode (light↔dark)`,
-    notes: `Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched \`theme\` object (merge with defaults via \`enrichTheme()\`), a \`mode\` of \`'light' | 'dark' | 'system'\`, and an optional \`inversed\` flip. When \`mode='system'\`, the provider subscribes to \`matchMedia('(prefers-color-scheme: dark)')\` and re-resolves the mode reactively. Calls \`init()\` internally so consumers don\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. See also: useMode, enrichTheme, init.`,
+    notes: `Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched \`theme\` object (merge with defaults via \`enrichTheme()\`), a \`mode\` of \`'light' | 'dark' | 'system'\`, and an optional \`inversed\` flip. When \`mode='system'\`, the provider subscribes to \`matchMedia('(prefers-color-scheme: dark)')\` and re-resolves the mode reactively. Calls \`init()\` internally so consumers don\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. See also: useMode, enrichTheme, init.`,
     mistakes: `- Using \`ThemeProvider\` + \`ModeProvider\` + \`ConfigProvider\` separately — \`PyreonUI\` is the single replacement covering all three
 - Forgetting \`enrichTheme()\` — raw theme objects miss default breakpoints / spacing / unit utilities
 - Destructuring \`props\` inside the provider — components run once; destructuring captures values at setup. Read \`props.mode\` lazily inside reactive scopes
@@ -3633,7 +3633,7 @@ makeItResponsive({ value: { xs: 8, md: 16, xl: 24 }, property: 'padding', theme 
 const theme = enrichTheme({ colors: { primary: '#3b82f6' } })
 const css = styles(theme)
 // → ':root { --color-primary: #3b82f6; --spacing-xs: 4px; ... }'`,
-    notes: `Generate the CSS string for a complete theme — colors, spacing, fonts, breakpoints, the works. Used to produce the cascade of CSS variables / global declarations that backs every styled component. Most consumers don\'t call this directly; the \`PyreonUI\` provider invokes it internally on theme mount. See also: enrichTheme, extendCss.`,
+    notes: `Generate the CSS string for a complete theme — colors, spacing, fonts, breakpoints, the works. Used to produce the cascade of CSS variables / global declarations that backs every styled component. Most consumers don\\'t call this directly; the \`PyreonUI\` provider invokes it internally on theme mount. See also: enrichTheme, extendCss.`,
   },
 
   'unistyle/alignContent': {
@@ -3645,7 +3645,7 @@ alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
 
 alignContent({ alignX: 'spaceBetween', direction: 'inline' })
 // → 'justify-content: space-between;'`,
-    notes: `Resolve \`alignX\` / \`alignY\` / \`direction\` shorthand to the matching flex / grid CSS (\`justify-content\`, \`align-items\`). The Element / Row / Column primitives use this internally — it\'s exposed for custom layout components that want the same alignment semantics. \`direction: "inline"\` maps to \`row\`; \`direction: "rows"\` maps to \`column\`. See also: makeItResponsive.`,
+    notes: `Resolve \`alignX\` / \`alignY\` / \`direction\` shorthand to the matching flex / grid CSS (\`justify-content\`, \`align-items\`). The Element / Row / Column primitives use this internally — it\\'s exposed for custom layout components that want the same alignment semantics. \`direction: "inline"\` maps to \`row\`; \`direction: "rows"\` maps to \`column\`. See also: makeItResponsive.`,
   },
 
   'unistyle/extendCss': {
@@ -4227,7 +4227,7 @@ const tree = extractDocNode(() => (
 ))
 await download(tree, 'report.pdf')
 await download(tree, 'report.docx')`,
-    notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\'s \`render()\` to consume. \`DocDocument\`\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\'s props directly — every primitive\'s metadata was silently dropped during export until that fix landed. See also: createDocumentExport.`,
+    notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\\'s \`render()\` to consume. \`DocDocument\`\\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\\'s props directly — every primitive\\'s metadata was silently dropped during export until that fix landed. See also: createDocumentExport.`,
     mistakes: `- Calling \`props.title()\` at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: \`<DocDocument title={() => get().name}>\`
 - DocRow direction: layout props (direction, gap) go in \`.attrs()\` not \`.theme()\`. Element accepts \`'inline'\` | \`'rows'\` | \`'reverseInline'\` | \`'reverseRows'\` — \`'row'\` is NOT valid
 - For text children reactivity, pass a signal accessor and read inside body: \`<DocText>{() => store.field()}</DocText>\`
@@ -4302,7 +4302,7 @@ const tree = helper.getDocNode()`,
     <DocText>Value</DocText>
   </DocColumn>
 </DocRow>`,
-    notes: `A column inside a row layout. Optional \`width\` controls the column\'s share of the row — accepts a number (interpreted as pixels) or a string (\`"50%"\`, \`"1fr"\`). When omitted, columns share available width equally. Most common shape is \`<DocRow><DocColumn width="30%" /> <DocColumn width="70%" /></DocRow>\`. See also: DocRow, DocSection.`,
+    notes: `A column inside a row layout. Optional \`width\` controls the column\\'s share of the row — accepts a number (interpreted as pixels) or a string (\`"50%"\`, \`"1fr"\`). When omitted, columns share available width equally. Most common shape is \`<DocRow><DocColumn width="30%" /> <DocColumn width="70%" /></DocRow>\`. See also: DocRow, DocSection.`,
   },
 
   'document-primitives/DocHeading': {
@@ -4390,7 +4390,7 @@ const tree = helper.getDocNode()`,
     </DocList>
   </DocListItem>
 </DocList>`,
-    notes: `Single item inside a \`DocList\`. Children may be plain text, \`DocText\`, nested \`DocList\` for sublists, or any other inline primitive. Visual marker (bullet vs number) is decided by the parent list\'s \`ordered\` prop, not by the item. See also: DocList.`,
+    notes: `Single item inside a \`DocList\`. Children may be plain text, \`DocText\`, nested \`DocList\` for sublists, or any other inline primitive. Visual marker (bullet vs number) is decided by the parent list\\'s \`ordered\` prop, not by the item. See also: DocList.`,
   },
 
   'document-primitives/DocCode': {
@@ -5301,4 +5301,176 @@ if (isBypass) {
 - Assuming the hook's value is stable across re-renders — it responds dynamically to boundary mount/unmount, so guards/memoization may be needed`,
   },
   // <gen-docs:api-reference:end @pyreon/zero>
+
+  // <gen-docs:api-reference:start @pyreon/zero-content>
+
+  'zero-content/defineConfig': {
+    signature: 'defineConfig(config: ContentConfig): ContentConfig',
+    example: `// content.config.ts — BYO validator (zod / valibot / arktype / typia)
+import { defineConfig, defineCollection } from '@pyreon/zero-content'
+import { z } from 'zod'
+
+export default defineConfig({
+  collections: {
+    docs: defineCollection({
+      type: 'pages',
+      schema: z.object({ title: z.string() }),
+    }),
+  },
+})`,
+    notes: 'Top-level configuration helper. Pass-through factory that preserves the literal type of `collections` so downstream type inference works. Lives in `content.config.ts` at the project root; the plugin auto-discovers it.',
+    mistakes: `- Importing \`z\` from \`@pyreon/zero-content\` — the package does NOT re-export zod. Bring your own validator (zod, valibot, arktype, typia all duck-type onto Standard Schema). See @pyreon/validation for curated adapters.
+- Adding components in \`vite.config.ts\` instead of \`content.config.ts\`. The vite config is build orchestration; content components live in user space.
+- Forgetting the \`default export\`. The plugin reads \`content.config.ts\` via dynamic import and reads the default export.
+- Putting collections under a path that doesn't exist. Default \`path\` is \`src/content/<collection-name>\`; either create that directory or override with \`path:\`.`,
+  },
+
+  'zero-content/defineCollection': {
+    signature: 'defineCollection<TSchema>({ type, path?, schema, components?, searchable? }): CollectionDefinition<TSchema>',
+    example: `defineCollection({
+  type: 'pages',
+  path: 'src/content/docs',
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    sidebar: z.object({ order: z.number(), group: z.string() }).optional(),
+  }),
+})`,
+    notes: `Per-collection definition. \`type: 'pages'\` triggers route generation under \`src/routes/_content/<name>/[...slug].tsx\` (auto-gitignored); \`type: 'data'\` is queryable via \`getCollection\`/\`getEntry\` but not routed. Schema is a zod schema — frontmatter is validated against it at build with file:line errors on mismatch.`,
+    mistakes: `- Returning raw \`z.object(...)\` schemas without wrapping in \`defineCollection\`. The plugin needs the wrapper to know the collection name + type.
+- Setting \`type: "pages"\` for a collection that should not be routed (e.g. blog posts queried via \`getCollection\` for an index page). Use \`type: "data"\`.
+- Schema mismatches that surface only at build time. Use \`pyreon doctor --check-content\` (PR 9) at edit time, or watch the dev server output during \`bun run dev\`.`,
+  },
+
+  'zero-content/defineComponents': {
+    signature: 'defineComponents<T extends Record<string, ComponentFn>>(components: T): T & ComponentsRegistry',
+    example: `import { defineComponents } from '@pyreon/zero-content'
+import { Playground, APIReference } from './components'
+
+export default defineComponents({ Playground, APIReference })`,
+    notes: 'Wrap a map of MDX components. The brand symbol distinguishes user bundles from accidentally raw objects (which fail the build). Dev-mode validates each value is a function — catches `{ Playground: undefined }` typos. Compose with `mergeComponents`.',
+    mistakes: `- Passing a raw \`{...}\` object to a \`components:\` field. The plugin refuses raw objects with a build error pointing at the call site.
+- Mixing component imports inside \`vite.config.ts\`. Imports live in user-space files (content.config.ts or _-prefixed files under src/mdx/), never in build orchestration.`,
+  },
+
+  'zero-content/getCollection': {
+    signature: 'getCollection<K extends keyof CollectionSchemas>(name: K): Promise<CollectionEntry<CollectionSchemas[K]>[]>',
+    example: `import { getCollection } from '@pyreon/zero-content'
+
+const posts = await getCollection('blog')
+//    ^? Array<{ slug: string; data: { title: string; author: string; date: Date; ... }; render(); headings }>
+
+for (const post of posts) {
+  console.log(post.data.title, post.slug)
+}`,
+    notes: `Runtime query — returns every entry in a collection. Data shape inferred from the collection's zod schema via the generated \`.pyreon/content-types.d.ts\`. Each entry exposes a \`render()\` lazy loader to get the page component.`,
+    mistakes: `- Calling \`getCollection\` in a component body without \`await\`. It returns a Promise. Wrap in an async setup function, use a loader, or await it during SSG render.
+- Passing a string that isn't a defined collection. TypeScript catches this once \`.pyreon/content-types.d.ts\` is generated; without it, you'd get a runtime error.`,
+  },
+
+  'zero-content/Callout': {
+    signature: '<Callout type="tip"|"warning"|"note"|"danger"|"info" title? children?>',
+    example: `// In markdown:
+:::tip{title="Pro tip"}
+Use **signals** for fine-grained reactivity. See [reactivity rules](/docs/reactivity).
+:::
+
+// In JSX (when used directly):
+<Callout type="warning" title="Breaking change">…</Callout>`,
+    notes: 'Built-in callout box. Emitted automatically by the `:::tip` / `:::warning` / `:::note` / `:::danger` / `:::info` container syntax in markdown. Each type carries a default icon + title; pass `title` to override. Body content renders through the full markdown pipeline (bold, links, code, lists all work inside).',
+    mistakes: `- Forgetting the closing \`:::\` line — the rest of the markdown file becomes part of the callout silently.
+- Using \`:::tip\` to highlight code — Shiki + dual themes already make code blocks visually distinct; callouts are for prose context (warnings, tips, side-notes).
+- Putting a \`:::code-group\` inside a \`:::tip\` — directives don't nest reliably; refactor to sibling blocks.`,
+  },
+
+  'zero-content/CodeGroup': {
+    signature: '<CodeGroup labels={["npm","bun","pnpm"]} initial? children>',
+    example: `// In markdown:
+:::code-group
+\\\`\\\`\\\`bash [npm]
+npm install @pyreon/zero
+\\\`\\\`\\\`
+\\\`\\\`\\\`bash [bun]
+bun add @pyreon/zero
+\\\`\\\`\\\`
+:::`,
+    notes: 'Tabbed code blocks. Emitted by the `:::code-group` container syntax — each child code fence carries `[label]` in its meta string. The active tab is a signal; SSR ships tab 0 visible, client-side hydration enables tab switching with zero per-mount cost (tabs are CSS class swaps, not VNode reconciliation).',
+    mistakes: `- Omitting the \`[label]\` on a code fence inside \`:::code-group\` — the unlabelled block is silently dropped from the group (consistent with the prototype, but easy to miss). Always label every fence.
+- Mixing languages without labels — \`:::code-group\` is for the same task in different syntaxes (npm vs bun vs pnpm), not arbitrary unrelated code.
+- Hand-writing \`<CodeGroup>\` JSX with mismatched labels-to-children count — write markdown instead so the codegroup plugin keeps them in sync.`,
+  },
+
+  'zero-content/CodeBlock': {
+    signature: '<CodeBlock lang? filename? dangerouslySetInnerHTML={{ __html }}>',
+    example: `// Output from \\\`\\\`\\\`ts\\nconst x = 1\\n\\\`\\\`\\\` becomes:
+<CodeBlock lang="ts" dangerouslySetInnerHTML={{ __html: "<pre class=\\"shiki\\">…</pre>" }} />
+
+// Hand-using is rare; the pipeline emits it for you.
+<CodeBlock lang="ts" filename="signal.ts" dangerouslySetInnerHTML={{ __html: shikiOutput }} />`,
+    notes: 'Wrapper around a Shiki-rendered code block. Emitted automatically when highlighting is enabled — Shiki produces a full `<pre><code>` with per-token coloring + dual light/dark themes baked into one `<span>` tree, and CodeBlock wraps it for filename labels + copy buttons (future) without forcing the markdown pipeline to know about them. The `dangerouslySetInnerHTML` here is safe because Shiki output is build-time HTML, not user input — round-tripping it through the JSX emitter would throw away the precomputed coloring.',
+    mistakes: `- Hand-emitting CodeBlock without Shiki-shaped HTML in \`__html\` — you lose dual-theme support; just write a code fence in markdown.
+- Trying to read or mutate the rendered HTML at runtime — it's baked at build time. To customize coloring, swap themes via the plugin's \`highlighter\` option.
+- Building a copy-to-clipboard button by parsing the \`__html\` — use the original code value before highlighting (PR 4 will expose the raw value alongside the rendered HTML).`,
+  },
+
+  'zero-content/Example': {
+    signature: '<Example file="./path/to/example" share?="key" shareInitial?={value} title?="…" class?="…">',
+    example: `// In markdown:
+<Example file="./examples/counter" share="cnt" />
+<Example file="./examples/readout" share="cnt" />
+
+// examples/counter.tsx — a real Pyreon component file
+import { signal, type Signal } from '@pyreon/reactivity'
+export default function Counter(props: { shared?: Signal<number> }) {
+  const count = props.shared ?? signal(0)
+  return (
+    <div>
+      <button onClick={() => count.update(n => n + 1)}>+</button>
+      <span>{() => count()}</span>
+    </div>
+  )
+}
+
+// entry-client.ts — one-time consumer-side registration
+import { registerExamples } from '@pyreon/zero-content'
+registerExamples(import.meta.glob('./examples/⁎⁎/⁎.tsx'))`,
+    notes: 'The Pyreon-native replacement for iframe-sandboxed `<Playground>`. Loads a real `.tsx` file inline (NOT iframe) — no escape passes, no srcdoc string-blob, no SyntaxError when a string contains a backslash. Two `<Example>` calls with the same `share` key receive the SAME signal instance via a module-level registry, so a click in one example reactively updates the rendered output of another mounted example on the same page. Build-time-resolved via `import.meta.glob` registered at startup with `registerExamples()` — no runtime overhead beyond the dynamic `import()` of the resolved chunk.',
+    mistakes: `- Forgetting \`registerExamples(import.meta.glob(...))\` in \`entry-client.ts\` — the registry stays empty and every \`<Example>\` renders the "not found" error message. \`import.meta.glob\` is resolved at COMPILE TIME relative to the file it's called in, so the registration MUST live in the consumer's source tree (this package can't do it for you).
+- Passing children to an example: \`<Example file="./x">content</Example>\` — children are dropped during JSON serialization of props. Render content inside the example file itself.
+- Using \`share="key"\` with a value the receiving component can't consume — the example component must accept \`{ shared?: Signal<T> }\` and fall back to a local signal when undefined. Without that fallback, the example breaks when used WITHOUT \`share\`.`,
+  },
+
+  'zero-content/registerExamples': {
+    signature: 'registerExamples(glob: Record<string, () => Promise<unknown>>): void',
+    example: `// entry-client.ts
+import { registerExamples } from '@pyreon/zero-content'
+registerExamples(
+  import.meta.glob('./examples/⁎⁎/⁎.tsx') as Record<
+    string,
+    () => Promise<unknown>
+  >,
+)`,
+    notes: `Register the consumer's example files for \`<Example file="./...">\` lookups. Call once at app boot from \`entry-client.ts\` (or equivalent), passing the result of \`import.meta.glob('./examples/**/*.tsx')\`. Idempotent: re-registering replaces the previous registry (useful for hot-reload scenarios).`,
+    mistakes: `- Calling \`registerExamples\` at module scope of a server-only file — the glob must be evaluated in the client bundle. Put it in \`entry-client.ts\`, not \`entry-server.ts\`.
+- Passing the wrong glob shape (resolved path strings instead of loaders) — \`import.meta.glob\` returns \`Record<path, lazy loader>\`. Don't wrap it.
+- Forgetting that the glob is COMPILE-TIME-RESOLVED relative to the file. If you \`registerExamples(import.meta.glob('./x/**/*.tsx'))\` in \`src/foo/entry.ts\`, the glob walks \`src/foo/x/\`, NOT \`src/x/\`.`,
+  },
+
+  'zero-content/getOrCreateSharedSignal': {
+    signature: 'getOrCreateSharedSignal<T>(key: string, initial: T): Signal<T>',
+    example: `import { getOrCreateSharedSignal } from '@pyreon/zero-content'
+
+// Two components on the same page receive the SAME signal:
+const a = getOrCreateSharedSignal<number>('cnt', 0)
+const b = getOrCreateSharedSignal<number>('cnt', 99)
+console.log(a === b) // true
+console.log(a()) // 0 (initial from FIRST lookup; second arg ignored)
+b.set(5)
+console.log(a()) // 5`,
+    notes: 'Module-level registry of `Signal<T>` instances keyed by string. First lookup for a key creates a signal with the supplied initial value; subsequent lookups return the SAME instance (ignoring `initial` after the first). Powers the `share="key"` prop on `<Example>` but can be used directly for cross-component shared state without a context. Companion `clearAllSharedSignals()` resets the whole registry (test-helper / page-nav use case).',
+    mistakes: `- Disagreeing on \`T\` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).
+- Calling \`clearAllSharedSignals()\` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
+- Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/zero-content>
 }

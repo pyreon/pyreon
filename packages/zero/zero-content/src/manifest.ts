@@ -209,5 +209,77 @@ bun add @pyreon/zero
         'Building a copy-to-clipboard button by parsing the `__html` — use the original code value before highlighting (PR 4 will expose the raw value alongside the rendered HTML).',
       ],
     },
+    {
+      name: 'Example',
+      kind: 'component',
+      signature: '<Example file="./path/to/example" share?="key" shareInitial?={value} title?="…" class?="…">',
+      summary:
+        'The Pyreon-native replacement for iframe-sandboxed `<Playground>`. Loads a real `.tsx` file inline (NOT iframe) — no escape passes, no srcdoc string-blob, no SyntaxError when a string contains a backslash. Two `<Example>` calls with the same `share` key receive the SAME signal instance via a module-level registry, so a click in one example reactively updates the rendered output of another mounted example on the same page. Build-time-resolved via `import.meta.glob` registered at startup with `registerExamples()` — no runtime overhead beyond the dynamic `import()` of the resolved chunk.',
+      example: `// In markdown:
+<Example file="./examples/counter" share="cnt" />
+<Example file="./examples/readout" share="cnt" />
+
+// examples/counter.tsx — a real Pyreon component file
+import { signal, type Signal } from '@pyreon/reactivity'
+export default function Counter(props: { shared?: Signal<number> }) {
+  const count = props.shared ?? signal(0)
+  return (
+    <div>
+      <button onClick={() => count.update(n => n + 1)}>+</button>
+      <span>{() => count()}</span>
+    </div>
+  )
+}
+
+// entry-client.ts — one-time consumer-side registration
+import { registerExamples } from '@pyreon/zero-content'
+registerExamples(import.meta.glob('./examples/⁎⁎/⁎.tsx'))`,
+      mistakes: [
+        'Forgetting `registerExamples(import.meta.glob(...))` in `entry-client.ts` — the registry stays empty and every `<Example>` renders the "not found" error message. `import.meta.glob` is resolved at COMPILE TIME relative to the file it\'s called in, so the registration MUST live in the consumer\'s source tree (this package can\'t do it for you).',
+        'Passing children to an example: `<Example file="./x">content</Example>` — children are dropped during JSON serialization of props. Render content inside the example file itself.',
+        'Using `share="key"` with a value the receiving component can\'t consume — the example component must accept `{ shared?: Signal<T> }` and fall back to a local signal when undefined. Without that fallback, the example breaks when used WITHOUT `share`.',
+      ],
+    },
+    {
+      name: 'registerExamples',
+      kind: 'function',
+      signature: 'registerExamples(glob: Record<string, () => Promise<unknown>>): void',
+      summary:
+        'Register the consumer\'s example files for `<Example file="./...">` lookups. Call once at app boot from `entry-client.ts` (or equivalent), passing the result of `import.meta.glob(\'./examples/**/*.tsx\')`. Idempotent: re-registering replaces the previous registry (useful for hot-reload scenarios).',
+      example: `// entry-client.ts
+import { registerExamples } from '@pyreon/zero-content'
+registerExamples(
+  import.meta.glob('./examples/⁎⁎/⁎.tsx') as Record<
+    string,
+    () => Promise<unknown>
+  >,
+)`,
+      mistakes: [
+        'Calling `registerExamples` at module scope of a server-only file — the glob must be evaluated in the client bundle. Put it in `entry-client.ts`, not `entry-server.ts`.',
+        'Passing the wrong glob shape (resolved path strings instead of loaders) — `import.meta.glob` returns `Record<path, lazy loader>`. Don\'t wrap it.',
+        'Forgetting that the glob is COMPILE-TIME-RESOLVED relative to the file. If you `registerExamples(import.meta.glob(\'./x/**/*.tsx\'))` in `src/foo/entry.ts`, the glob walks `src/foo/x/`, NOT `src/x/`.',
+      ],
+    },
+    {
+      name: 'getOrCreateSharedSignal',
+      kind: 'function',
+      signature: 'getOrCreateSharedSignal<T>(key: string, initial: T): Signal<T>',
+      summary:
+        'Module-level registry of `Signal<T>` instances keyed by string. First lookup for a key creates a signal with the supplied initial value; subsequent lookups return the SAME instance (ignoring `initial` after the first). Powers the `share="key"` prop on `<Example>` but can be used directly for cross-component shared state without a context. Companion `clearAllSharedSignals()` resets the whole registry (test-helper / page-nav use case).',
+      example: `import { getOrCreateSharedSignal } from '@pyreon/zero-content'
+
+// Two components on the same page receive the SAME signal:
+const a = getOrCreateSharedSignal<number>('cnt', 0)
+const b = getOrCreateSharedSignal<number>('cnt', 99)
+console.log(a === b) // true
+console.log(a()) // 0 (initial from FIRST lookup; second arg ignored)
+b.set(5)
+console.log(a()) // 5`,
+      mistakes: [
+        'Disagreeing on `T` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).',
+        'Calling `clearAllSharedSignals()` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).',
+        'Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.',
+      ],
+    },
   ],
 })
