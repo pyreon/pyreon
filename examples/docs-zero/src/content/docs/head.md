@@ -9,7 +9,7 @@ description: Declarative document head management for title, meta tags, scripts,
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/head
@@ -770,7 +770,7 @@ const { html, head } = await renderWithHead(
 </HeadProvider>
 ```
 
-::: warning Nested providers inherit, not isolate
+:::warning{title="Nested providers inherit, not isolate"}
 A `HeadProvider` nested inside another one (or inside `renderWithHead`) **inherits** the outer context by default -- both providers write into the same registry. If you genuinely want isolation, pass `context={createHeadContext()}` explicitly. Earlier versions auto-created a fresh context unconditionally, which silently shadowed the outer registry; the inheritance behavior is the structural fix.
 :::
 

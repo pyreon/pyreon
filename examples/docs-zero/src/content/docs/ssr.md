@@ -16,7 +16,7 @@ export default {
 }
 ```
 
-::: info
+:::info
 `zeroPlugin()` returns `[mainPlugin, ssrPlugin]` for `mode: 'ssr' | 'isr'` (just `[mainPlugin]` for SPA, `[mainPlugin, ssgPlugin]` for SSG). `plugins: [pyreon(), zero()]` works unchanged — Vite flattens nested plugin arrays.
 :::
 
@@ -98,7 +98,7 @@ export default createServer({ routes, routeMiddleware, apiRoutes })
 
 The synthetic entry is cleaned up after the build completes. A user-authored `src/entry-server.ts` is **never** removed — the cleanup discipline only deletes files the plugin created.
 
-::: tip Why per-mode env flag
+:::tip{title="Why per-mode env flag"}
 The recursive SSR sub-build is gated by `PYREON_ZERO_SSR_INNER_BUILD` (distinct from SSG's `PYREON_ZERO_SSG_INNER_BUILD`). The inner build loads the SAME plugin chain as the outer build, so without a gate the outer plugin's `closeBundle` would re-trigger inside the inner build → infinite loop. Per-mode flag namespaces eliminate the cross-mode flag-leak failure class structurally.
 :::
 
@@ -235,7 +235,7 @@ export default function NotFound() {
 }
 ```
 
-::: info Framework auto-injects noindex
+:::info{title="Framework auto-injects noindex"}
 The framework injects `<meta name="robots" content="noindex, nofollow">` into every emitted 404 HTML — runtime AND build-time. The `<Meta>` component's default of `'index, follow'` is correct for regular pages but wrong on a 404. User override always wins: if your `_404.tsx` emits `<Meta robots="...">`, the framework preserves it. See [SSG → 404 handling](/docs/ssg#_404-tsx-convention) for the host-routing requirement.
 :::
 
@@ -298,7 +298,7 @@ The configured adapter's `build({ kind: 'ssr', serverEntry, clientOutDir, outDir
 | `netlify`    | `netlify/functions/server.mjs` + `netlify.toml`     | `netlify deploy`                       |
 | `static`     | **Errors** if mode is `ssr` or `isr`                | Use `ssg` mode for static deploys      |
 
-::: warning Adapter throws are NOT rethrown
+:::warning{title="Adapter throws are NOT rethrown"}
 If the adapter's `build()` throws, the framework logs the error but the SSR bundle remains on disk at `dist/server/entry-server.js`. This is intentional — a buggy adapter can't hide a successful SSR build from CI. You can still hand-deploy the bundle via `node dist/server/entry-server.js` even if `vercel deploy` would fail.
 :::
 
@@ -404,6 +404,6 @@ When you outgrow the per-request render cost but the content can tolerate brief 
 | `redirect()` from `next/navigation`  | `redirect(url, status?)` from `LoaderContext`           |
 | `notFound()` from `next/navigation`  | `notFound()` from `LoaderContext`                       |
 
-::: tip Single render pipeline
+:::tip{title="Single render pipeline"}
 Pyreon uses ONE rendering pipeline across all four modes. The same `loader` works in SSR, ISR, SSG (run at build), and SPA (run client-side via the dehydrated cache). No `getServerSideProps` vs `getStaticProps` split, no App Router vs Pages Router split. Per-route `renderMode` is the only opt-in.
 :::

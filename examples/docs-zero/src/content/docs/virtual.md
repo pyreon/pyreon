@@ -16,7 +16,7 @@ Both hooks return reactive signals that update automatically when the user scrol
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/virtual

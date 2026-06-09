@@ -9,7 +9,7 @@ description: JSX reactive transform that wraps dynamic expressions in reactive g
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/compiler

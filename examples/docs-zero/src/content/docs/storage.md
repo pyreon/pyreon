@@ -9,7 +9,7 @@ Reactive signal-backed persistence across all client-side storage backends. Ever
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/storage

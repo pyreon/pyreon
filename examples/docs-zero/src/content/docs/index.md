@@ -132,7 +132,7 @@ Specialized packages for rich application features.
 
 Install the core packages:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin

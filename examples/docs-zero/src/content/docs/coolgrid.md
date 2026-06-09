@@ -9,7 +9,7 @@ description: Responsive 12-column grid system with Container, Row, and Col compo
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/coolgrid

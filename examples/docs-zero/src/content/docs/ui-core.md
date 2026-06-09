@@ -9,7 +9,7 @@ description: Core initialization, CSS engine connector, and shared utilities for
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/ui-core

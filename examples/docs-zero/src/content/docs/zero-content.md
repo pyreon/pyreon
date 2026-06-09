@@ -141,7 +141,7 @@ pnpm add @pyreon/zero
 
 The active tab is a signal; SSR ships tab 0 visible; client-side hydration enables tab switching with **zero per-mount cost** (tabs are CSS class swaps via `data-active`, not VNode reconciliation).
 
-::: warning Mistakes to avoid
+:::warning{title="Mistakes to avoid"}
 - Omitting `[label]` on a child fence — silently dropped from the group
 - Using `:::code-group` for unrelated languages — it's for the same task in different syntaxes
 :::
@@ -290,7 +290,7 @@ export default function CounterButton(props: { shared?: Signal<number> }) {
 - The example component MUST accept `{ shared?: Signal<T> }` and fall back to a local signal when undefined (lets the same component work with or without sharing)
 - Powered by `getOrCreateSharedSignal(key, initial)` exported from `@pyreon/zero-content`; usable directly for any cross-component shared state without a context
 
-::: tip Why `<Example>` over `<Playground>`?
+:::tip{title="Why `<Example>` over `<Playground>`?"}
 Real `.tsx` files mean real type-checking, real refactor support, real lint. The bug class behind [PR #1434](https://github.com/pyreon/pyreon/pull/1434) — `'\n'` double-unescape through iframe `srcdoc` interpolation throwing `SyntaxError` — becomes structurally impossible. JS escape rules apply once at module evaluation; you write `'\n'` and it's a newline.
 :::
 

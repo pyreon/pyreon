@@ -9,7 +9,7 @@ description: Reactive flow diagrams for Pyreon — signal-native nodes, edges, p
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/flow

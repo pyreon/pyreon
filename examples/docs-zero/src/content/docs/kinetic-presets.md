@@ -9,7 +9,7 @@ description: Library of 90+ ready-made CSS transition presets and factories for 
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/kinetic-presets

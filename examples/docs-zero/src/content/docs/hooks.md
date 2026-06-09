@@ -9,7 +9,7 @@ description: Collection of reactive hooks for DOM interactions, media queries, f
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/hooks

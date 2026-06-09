@@ -9,7 +9,7 @@ description: Signals-based reactive primitives powering Pyreon's fine-grained re
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/reactivity

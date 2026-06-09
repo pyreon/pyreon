@@ -7,13 +7,13 @@ description: Full-stack meta-framework for Pyreon applications.
 
 <PackageBadge name="@pyreon/zero" href="/docs/zero" status="beta" />
 
-::: tip Static Site Generation
+:::tip{title="Static Site Generation"}
 This page is a quick-start + feature overview. SSG has its own dedicated reference with the full `getStaticPaths`, redirects, i18n, ISR, and adapter story — see **[SSG](/docs/ssg)**.
 :::
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/zero
@@ -156,7 +156,7 @@ Routes live in `src/routes/`. The file path maps directly to the URL:
 | `_loading.tsx` | Loading/suspense fallback for the route segment                        |
 | `_404.tsx`     | Not-found page (also `_not-found.tsx`) — drives runtime + SSG 404s      |
 
-::: warning Don't double-mount the layout
+:::warning{title="Don't double-mount the layout"}
 fs-router emits `_layout.tsx` as a **parent route**. Do **not** also pass it via `createApp({ layout })` / `startClient({ layout })` — that mounts the layout twice. `createApp` detects this collision and ignores the explicit `layout` with a dev warning, but the correct shape is to never pass it.
 :::
 
@@ -304,7 +304,7 @@ defineConfig({
 })
 ```
 
-::: warning ISR cache key — two trade-offs
+:::warning{title="ISR cache key — two trade-offs"}
 The default cache key is `url.pathname + url.search` — query strings affect the key, cookies and Authorization headers do NOT. Two adjustments depending on your route:
 
 **Auth-gated content** (loader reads `cookie` / `Authorization`): the default is unsafe — the first user's cached HTML serves every other user. Supply a `cacheKey` that varies on the session identifier:
@@ -713,7 +713,7 @@ import { Image, OptimizedImage } from '@pyreon/zero'
 ;<Image {...hero} alt="Hero" priority />
 ```
 
-::: warning Don't pull just `.src` onto a raw `<img>`
+:::warning{title="Don't pull just `.src` onto a raw `<img>`"}
 `<img src={hero.src} />` discards `width` / `height` / `srcset` / `placeholder` / `formats` — the #1 real-world cause of Cumulative Layout Shift. Render the whole descriptor via `<OptimizedImage source={hero} />` or `<Image {...hero} />`. The opt-in lint rule `pyreon/no-discarded-optimize-fields` (enable via the `best-practices` preset) flags the discard shape automatically in `@pyreon/zero` projects.
 :::
 
@@ -985,7 +985,7 @@ const res = await server.request('/api/posts')
 | `@pyreon/zero/i18n-routing`| `useLocale`, `setLocale`, `buildLocalePath`, `extractLocaleFromPath`                  |
 | `@pyreon/zero/testing`     | Test helpers for middleware + API routes                                             |
 
-::: info
+:::info
 There are no `@pyreon/zero/adapter-*` or `@pyreon/zero/isr` subpaths. Adapters and `createISRHandler` are exported from `@pyreon/zero/server`.
 :::
 

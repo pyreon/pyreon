@@ -9,7 +9,7 @@ description: Multi-dimensional style composition for Pyreon components -- themes
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/rocketstyle
@@ -79,7 +79,7 @@ const Button = rs('button')
 <Button state="ghost" size="md">Cancel</Button>
 ```
 
-::: tip Dimension method names
+:::tip{title="Dimension method names"}
 Pay attention to the **plural** suffix: dimension methods are `.states()`, `.sizes()`, `.variants()` — not `.state()` / `.size()` / `.variant()`. The singular forms (`state`, `size`, `variant`) are the **prop names** the consumer passes (`<Button state="primary">`). The plural forms are the **definition methods** that declare every valid value for that prop.
 
 `.theme(...)` accepts a CALLBACK receiving the theme — it's the styled-callback that returns base CSS, NOT a dimension definition. The base theme is always-applied; dimensions are conditional based on the prop value.

@@ -9,7 +9,7 @@ description: Foundational layout components including Element, Text, List, Overl
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/elements

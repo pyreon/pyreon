@@ -9,7 +9,7 @@ description: CLI tools for Pyreon — doctor and context commands.
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/cli

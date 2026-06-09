@@ -9,7 +9,7 @@ description: Type-safe client-side router with nested routes, navigation guards,
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/router

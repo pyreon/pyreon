@@ -16,7 +16,7 @@ export default {
 }
 ```
 
-::: info
+:::info
 `zeroPlugin()` returns `[mainPlugin, ssgPlugin]` in SSG mode (just `[mainPlugin]` otherwise). `plugins: [pyreon(), zero()]` works unchanged — Vite flattens nested plugin arrays.
 :::
 

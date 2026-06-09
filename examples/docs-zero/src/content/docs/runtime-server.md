@@ -16,7 +16,7 @@ The package provides four exports:
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/runtime-server
@@ -38,7 +38,7 @@ yarn add @pyreon/runtime-server
 
 You will also need `@pyreon/core` for creating VNodes:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/core

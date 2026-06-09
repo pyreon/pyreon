@@ -9,7 +9,7 @@ description: Reactive ECharts bridge with lazy loading, auto-detection, and type
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/charts

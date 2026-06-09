@@ -7,7 +7,7 @@ description: 'Scaffold a multiplatform Pyreon app — one src/App.tsx that runs 
 
 Scaffold a multiplatform Pyreon app — **one `src/App.tsx` source** that runs on **web**, **iOS** (SwiftUI), and **Android** (Jetpack Compose) via PMTC (the Pyreon Multi-Target Compiler).
 
-::: warning Experimental
+:::warning{title="Experimental"}
 The generator and the generated project structure are verified end-to-end (file tree + the shared `App.tsx` compiling through PMTC to both native targets). Device builds (Simulator / Emulator) require the platform toolchains (Xcode / Android SDK) installed locally — gated by the `native-device` CI workflow.
 :::
 

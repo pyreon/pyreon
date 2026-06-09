@@ -9,7 +9,7 @@ description: Responsive design utilities with breakpoints, media queries, unit c
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/unistyle

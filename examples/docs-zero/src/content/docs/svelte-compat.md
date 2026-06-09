@@ -30,7 +30,7 @@ on Pyreon via the shared compat JSX runtime (re-render on store change).
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/svelte-compat

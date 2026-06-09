@@ -9,7 +9,7 @@ description: Signal-based form state management with validation, field arrays, a
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/form

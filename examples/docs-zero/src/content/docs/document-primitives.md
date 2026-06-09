@@ -9,7 +9,7 @@ description: Rocketstyle document components that render in the browser and expo
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/document-primitives

@@ -9,7 +9,7 @@ Signal-driven drag and drop. Wraps [@atlaskit/pragmatic-drag-and-drop](https://a
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/dnd

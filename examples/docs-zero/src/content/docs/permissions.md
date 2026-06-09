@@ -9,7 +9,7 @@ Reactive permissions primitive for Pyreon. A permission is either a boolean or a
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/permissions

@@ -9,7 +9,7 @@ description: Vite integration that applies Pyreon's JSX reactive transform and c
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/vite-plugin
@@ -31,7 +31,7 @@ yarn add @pyreon/vite-plugin
 
 You also need `vite` and `@pyreon/compiler` as dependencies:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install vite @pyreon/compiler

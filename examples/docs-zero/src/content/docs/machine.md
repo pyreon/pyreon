@@ -9,7 +9,7 @@ description: Reactive state machines for Pyreon — constrained signals with typ
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/machine

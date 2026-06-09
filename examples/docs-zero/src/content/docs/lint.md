@@ -9,7 +9,7 @@ description: Pyreon-specific linter — 89 rules for signals, JSX, SSR, performa
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/lint

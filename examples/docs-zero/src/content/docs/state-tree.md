@@ -9,7 +9,7 @@ description: MobX-State-Tree-inspired reactive models with snapshots, patches, a
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/state-tree

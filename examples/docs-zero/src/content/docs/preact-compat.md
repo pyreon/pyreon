@@ -9,7 +9,7 @@ description: Preact-compatible API layer with hooks and signals, running on Pyre
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/preact-compat

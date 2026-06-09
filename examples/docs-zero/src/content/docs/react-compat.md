@@ -9,7 +9,7 @@ description: React-compatible hook API that runs on Pyreon's fine-grained reacti
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/react-compat

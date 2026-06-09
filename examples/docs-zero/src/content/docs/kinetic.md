@@ -9,7 +9,7 @@ description: CSS-transition-based animation components for enter/leave transitio
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/kinetic

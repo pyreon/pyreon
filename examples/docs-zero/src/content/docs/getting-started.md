@@ -7,7 +7,7 @@ description: Install and configure Pyreon in your project.
 
 Install the core packages:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
@@ -69,11 +69,11 @@ function App() {
 mount(<App />, document.getElementById('app')!)
 ```
 
-::: tip Signal writes
+:::tip{title="Signal writes"}
 Write to a signal with `signal.set(value)` or `signal.update(fn)` — calling `count(value)` is a READ that discards the argument (the framework's lint rule flags this). Reading a signal inside JSX (`{count()}`) is reactive thanks to the compiler.
 :::
 
-::: tip Components are functions
+:::tip{title="Components are functions"}
 Pyreon components are plain functions that return JSX — no `defineComponent` wrapper required. The `defineComponent` helper from `@pyreon/core` exists only for cases that need explicit lifecycle hooks attached to the function reference.
 :::
 
@@ -98,7 +98,7 @@ Pyreon components are plain functions that return JSX — no `defineComponent` w
 
 For server-side rendering, install the server runtime:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/runtime-server
@@ -140,7 +140,7 @@ export function render(res: WritableStream) {
 
 ## Adding Routing
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/router
@@ -193,7 +193,7 @@ export default function App() {
 
 If you're coming from React, you can use familiar hooks:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/react-compat

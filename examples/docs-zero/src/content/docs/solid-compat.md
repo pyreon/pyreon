@@ -9,7 +9,7 @@ description: SolidJS-compatible reactive API that runs on Pyreon's reactive engi
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/solid-compat
@@ -1135,7 +1135,7 @@ const host = document.getElementById('overlay-root')!
 </Portal>
 ```
 
-::: tip useShadow / isSVG are fully supported
+:::tip{title="useShadow / isSVG are fully supported"}
 Implemented at the wrapper level — no `@pyreon/core` change needed:
 
 - **`useShadow`** — a `<div>` host is created under `mount`, an open shadow root is attached to it, and children render inside the shadow root (style isolation, matching Solid).

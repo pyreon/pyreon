@@ -9,7 +9,7 @@ description: Shared TypeScript configuration presets for Pyreon applications and
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/typescript
