@@ -70,6 +70,10 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // fixture (passes via swiftc -parse — Swift uses labeled-tuple
     // syntax that doesn't need a synth class). A follow-up PR can
     // extend #1453's pass to cover signal-initial values.
+    // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
+    // t() only). The PyreonI18n class stub in kotlin-stubs.ts
+    // satisfies kotlinc's type resolution.
+    'tier2-i18n.tsx',
   ] as const
 
   for (const fixture of fixtures) {

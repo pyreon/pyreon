@@ -283,6 +283,39 @@ export type DeclIR =
    * now exists, but the auto-loader gap remains intentional.
    */
   | { kind: 'useLoaderData'; name: string; type: TypeIR }
+  /**
+   * Gap 4 PR-3 (2026-06-05 native-readiness audit) — Strategy-B port
+   * for `@pyreon/i18n/core`. `const i18n = createI18n({ locale,
+   * messages, fallbackLocale? })` emits the PyreonI18n container the
+   * runtime ports ship:
+   *   Swift  → @State private var i18n = PyreonI18n(locale: "en",
+   *               messages: ["en": ["hello": "Hi"]],
+   *               fallbackLocale: nil)
+   *   Kotlin → val i18n = remember { PyreonI18n(
+   *               initialLocale = "en",
+   *               messages = mapOf("en" to mapOf("hello" to "Hi")),
+   *               fallbackLocale = null) }
+   *
+   * Method calls flow through unchanged (`i18n.t("key")`); the runtime
+   * container defines `t(_:)` / `t(...)`.
+   *
+   * v1 SCOPE — single-arg `t(key)` only. Interpolation values
+   * (`t('key', { name })`), locale writes (`setLocale` /
+   * `locale.set`), pluralization, namespaces, and async loading are
+   * documented follow-ups — each its own PR.
+   *
+   * `locale` is the literal default locale; `messages` is parsed from
+   * the literal `{ <locale>: { <key>: <value> } }` config (string-
+   * keyed, string-valued, dot-key expansion preserved by the parser);
+   * `fallbackLocale` is optional string literal.
+   */
+  | {
+      kind: 'i18n'
+      name: string
+      locale: string
+      messages: Record<string, Record<string, string>>
+      fallbackLocale?: string
+    }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.

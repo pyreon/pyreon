@@ -640,6 +640,26 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   if (d.kind === 'clipboard') {
     return `@State private var ${swiftIdent(d.name)} = PyreonClipboard()`
   }
+  // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
+  // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
+  // is defined on the runtime container). Read access to `i18n.locale`
+  // is the plain String property.
+  if (d.kind === 'i18n') {
+    const msgEntries = Object.entries(d.messages)
+      .map(([loc, kv]) => {
+        const inner = Object.entries(kv)
+          .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+          .join(', ')
+        return `${JSON.stringify(loc)}: ${inner === '' ? '[:]' : `[${inner}]`}`
+      })
+      .join(', ')
+    const msgLit = msgEntries === '' ? '[:]' : `[${msgEntries}]`
+    const fbArg =
+      d.fallbackLocale !== undefined
+        ? `, fallbackLocale: ${JSON.stringify(d.fallbackLocale)}`
+        : ''
+    return `@State private var ${swiftIdent(d.name)} = PyreonI18n(locale: ${JSON.stringify(d.locale)}, messages: ${msgLit}${fbArg})`
+  }
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
   // (added at the component-emit level via _usesColorScheme). Returns

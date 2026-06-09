@@ -567,6 +567,26 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonClipboard(${id}Ctx, ${id}Scope) }`,
     ].join('\n  ')
   }
+  // Gap 4 PR-3: `const i18n = createI18n({...})` →
+  // `val i18n = remember { PyreonI18n(...) }`. Method `i18n.t("key")`
+  // flows through unchanged (PyreonI18n.t is defined on the runtime
+  // container).
+  if (d.kind === 'i18n') {
+    const entries = Object.entries(d.messages)
+      .map(([loc, kv]) => {
+        const inner = Object.entries(kv)
+          .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+          .join(', ')
+        return `${JSON.stringify(loc)} to ${inner === '' ? 'mapOf()' : `mapOf(${inner})`}`
+      })
+      .join(', ')
+    const msgLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
+    const fbArg =
+      d.fallbackLocale !== undefined
+        ? `, fallbackLocale = ${JSON.stringify(d.fallbackLocale)}`
+        : ''
+    return `val ${kotlinIdent(d.name)} = remember { PyreonI18n(initialLocale = ${JSON.stringify(d.locale)}, messages = ${msgLit}${fbArg}) }`
+  }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
   // Compose's `isSystemInDarkTheme()` is a `@Composable` function

@@ -563,4 +563,22 @@ fun useParams(): Map<String, String> = emptyMap()
 
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null
+
+// PyreonI18n — Gap 4 PR-3 (Strategy-B port for @pyreon/i18n/core, v1).
+// Real impl in @pyreon/native-runtime-kotlin's PyreonI18n.kt.
+class PyreonI18n(
+  initialLocale: String,
+  val messages: Map<String, Map<String, String>>,
+  val fallbackLocale: String? = null,
+) {
+  var locale: String = initialLocale
+    private set
+  fun t(key: String): String {
+    messages[locale]?.get(key)?.let { return it }
+    if (fallbackLocale != null) {
+      messages[fallbackLocale]?.get(key)?.let { return it }
+    }
+    return key
+  }
+}
 `
