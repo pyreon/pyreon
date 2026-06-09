@@ -92,6 +92,10 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // site emit produces valid SwiftUI that compiles through
     // swiftc-parse.
     'lifecycle-suspense.tsx',
+    // Gap 3 PR-3.3: real ErrorBoundary emit. Proves the
+    // PyreonErrorBoundaryWrapper module-scope struct + per-
+    // ErrorBoundary site emit produces valid SwiftUI.
+    'lifecycle-errorboundary.tsx',
   ] as const
 
   for (const fixture of fixtures) {

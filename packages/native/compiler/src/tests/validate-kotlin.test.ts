@@ -91,6 +91,11 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // Suspense site emit produces valid Compose Kotlin that kotlinc
     // accepts (LaunchedEffect + remember/mutableStateOf).
     'lifecycle-suspense.tsx',
+    // Gap 3 PR-3.3: real ErrorBoundary emit. Proves the
+    // PyreonErrorBoundaryWrapper @Composable + per-ErrorBoundary
+    // site emit produces valid Compose Kotlin (remember +
+    // mutableStateOf).
+    'lifecycle-errorboundary.tsx',
   ] as const
 
   for (const fixture of fixtures) {
