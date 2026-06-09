@@ -24,12 +24,17 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
-// `import.meta.dir` is undefined when this module is imported from a
-// vitest test. Fall back to cwd-relative resolution; the `scanFile`
-// export is what tests exercise, so the path constants are unused there.
+// `import.meta.dir` is a Bun extension (not in the stock ImportMeta type)
+// AND is undefined when this module is imported from a vitest test. Cast
+// to access it; the `scanFile` export is what tests exercise, so the
+// path constants are unused there.
+interface BunImportMeta {
+  readonly dir?: string
+}
+const importMetaDir = (import.meta as BunImportMeta).dir
 const REPO_ROOT = path.resolve(
-  typeof import.meta.dir === 'string' ? import.meta.dir : process.cwd(),
-  typeof import.meta.dir === 'string' ? '..' : '.',
+  typeof importMetaDir === 'string' ? importMetaDir : process.cwd(),
+  typeof importMetaDir === 'string' ? '..' : '.',
 )
 const DOCS_DIR = path.join(
   REPO_ROOT,
@@ -77,7 +82,7 @@ export function scanFile(content: string): Array<{ line: number; source: string 
   let inCodeFence = false
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
-    if (/^```/.test(line.trim())) {
+    if (line.trim().startsWith('```')) {
       inCodeFence = !inCodeFence
       continue
     }
