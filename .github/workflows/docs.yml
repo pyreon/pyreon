@@ -1,10 +1,23 @@
-name: Deploy Docs
+name: Deploy Docs (legacy — DISABLED)
 
+# IMPORTANT — this workflow is DISABLED for `push` events.
+#
+# History: it uploaded `docs/.vitepress/dist` as the entire Pages
+# artifact. Side-by-side with `docs-zero-preview.yml` (which uploads
+# a COMBINED artifact: VitePress at `/` + docs-zero at `/preview/`),
+# this workflow's solo deploys would OVERWRITE the preview directory
+# whenever a legacy docs change triggered it without also triggering
+# the preview workflow.
+#
+# Symptom: `pyreon.github.io/pyreon/preview/` returns 404 after any
+# `docs/**`-only merge.
+#
+# Fix: `docs/**` is now in `docs-zero-preview.yml`'s path filter, so
+# every legacy docs change rebuilds the COMBINED site. This workflow
+# is kept as `workflow_dispatch`-only for the very rare case someone
+# needs the legacy-site-only deploy (it's preserved as a recovery
+# tool but won't auto-fire on push).
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
