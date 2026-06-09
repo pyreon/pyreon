@@ -59,6 +59,13 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // lowering produces well-formed Swift.
     'rx-lowering.tsx',
     'rx-full.tsx',
+    // Gap 5 scaffold (2026-06-05 audit): real-app tasks showcase
+    // exercising routing + per-route auth-gate (Gap 2 #1440) +
+    // signal state + canonical primitives across 3 screens. Mirror
+    // of `examples/native-tasks/src/TasksApp.tsx` so the example's
+    // source is locked-in via the same swiftc-parse gate that protects
+    // the canonical primitives.
+    'showcase-tasks.tsx',
   ] as const
 
   for (const fixture of fixtures) {

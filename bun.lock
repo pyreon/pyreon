@@ -655,6 +655,19 @@
         "vite": "^8.0.16",
       },
     },
+    "examples/native-tasks": {
+      "name": "@pyreon/example-native-tasks",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/i18n": "workspace:*",
+        "@pyreon/machine": "workspace:*",
+        "@pyreon/native-cli": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+      },
+    },
     "examples/native-todomvc-android": {
       "name": "@pyreon/example-native-todomvc-android",
       "version": "0.0.0",
@@ -2909,6 +2922,8 @@
     "@pyreon/example-native-router-demo-ios": ["@pyreon/example-native-router-demo-ios@workspace:examples/native-router-demo-ios"],
 
     "@pyreon/example-native-router-demo-web": ["@pyreon/example-native-router-demo-web@workspace:examples/native-router-demo-web"],
+
+    "@pyreon/example-native-tasks": ["@pyreon/example-native-tasks@workspace:examples/native-tasks"],
 
     "@pyreon/example-native-todomvc-android": ["@pyreon/example-native-todomvc-android@workspace:examples/native-todomvc-android"],
 

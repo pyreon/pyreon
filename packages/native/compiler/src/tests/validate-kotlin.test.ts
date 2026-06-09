@@ -58,15 +58,18 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // Compose code.
     'rx-lowering.tsx',
     'rx-full.tsx',
-    // Regression fixture for the Kotlin synthetic-data-class emit fix
-    // (closes Gap 5 scaffold limitation #1 + #3).
+    // Regression fixture for the Kotlin synthetic-data-class emit fix.
     'synth-prop-types.tsx',
-    // Router-hook stub regression: useNavigate / useParams added to
-    // kotlin-stubs.ts. Closes limitation #2 from the Gap 5 tasks-
-    // showcase scaffold (#1449). useLoaderData omitted from the
-    // fixture to keep the cli build-test zero-warning assertion happy
-    // (the Phase B6 informational warning would otherwise fire).
+    // Router-hook stub regression: useNavigate / useParams.
     'router-hooks.tsx',
+    // Gap 5 showcase fixture is OMITTED from this Kotlin loop. The
+    // remaining limitation is signal-initial inline-object arrays
+    // (`const tasks = signal([{id: 1, ...}])`) — the synth-class
+    // fix from #1453 covers PROP types but not in-component signal
+    // initializers. The Swift validation loop DOES include the
+    // fixture (passes via swiftc -parse — Swift uses labeled-tuple
+    // syntax that doesn't need a synth class). A follow-up PR can
+    // extend #1453's pass to cover signal-initial values.
   ] as const
 
   for (const fixture of fixtures) {

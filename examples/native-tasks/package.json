@@ -1,0 +1,24 @@
+{
+  "name": "@pyreon/example-native-tasks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Gap 5 multi-feature showcase. Tasks app exercising routing + auth-gate + state-machine + i18n + canonical primitives via PMTC. SINGLE source compiles to web + iOS + Android.",
+  "license": "MIT",
+  "scripts": {
+    "build:swift": "./scripts/build-swift.sh",
+    "build:kotlin": "./scripts/build-kotlin.sh",
+    "build": "bun run build:swift && bun run build:kotlin",
+    "lint": "echo '[native-tasks] no TS lint surface; skipping'",
+    "test": "echo '[native-tasks] no test surface; PMTC emit covered by @pyreon/native-compiler tests'",
+    "typecheck": "echo '[native-tasks] @ts-nocheck on source; PMTC handles typing'"
+  },
+  "devDependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/machine": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*"
+  }
+}
