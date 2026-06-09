@@ -22,6 +22,7 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodSchemaDefnIR,
 } from './types'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
@@ -47,6 +48,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const models: ModelDefnIR[] = []
   const fieldMetas: FieldMetaDefnIR[] = []
   const features: FeatureDefnIR[] = []
+  const zodSchemas: ZodSchemaDefnIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
@@ -103,6 +105,16 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       features.push(fd)
       continue
     }
+    // Gap 4 follow-up — @pyreon/validation Zod-schema v1.
+    // `const X = zodSchema(z.object({ ... }))` with the simplest
+    // field shapes (`z.string()`, `z.number()`, `z.boolean()`).
+    // Schema chains are accepted at AST level; v1 emits SHAPE
+    // only (no runtime validation methods).
+    const zs = tryZodSchemaDefnFromTopLevel(node, ctx)
+    if (zs) {
+      zodSchemas.push(zs)
+      continue
+    }
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -120,6 +132,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     models,
     fieldMetas,
     features,
+    zodSchemas,
     warnings: ctx.warnings,
   }
 }
@@ -724,6 +737,143 @@ function tryFeatureDefnFromTopLevel(
   }
 
   return { bindingName, featureName, fields }
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 recognizer.
+ * Matches the shape:
+ *
+ *   const userSchema = zodSchema(z.object({
+ *     name: z.string(),
+ *     age: z.number(),
+ *     active: z.boolean(),
+ *   }))
+ *
+ * Walks the call tree manually:
+ *   - top: CallExpression callee Identifier `zodSchema`
+ *   - arg[0]: CallExpression callee MemberExpression `z.object`
+ *   - arg[0].arg[0]: ObjectExpression with z.string()/z.number()/z.boolean() values
+ *
+ * Schema modifier chains (`z.string().min(2).email()`) are unwrapped
+ * at the head of the chain — we look for the BASE z.X() call.
+ *
+ * v1 emits shape only — no runtime validation methods. v2 follow-up
+ * will add `.parse()` + `.safeParse()` runtime + constraint enforcement.
+ */
+function tryZodSchemaDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): ZodSchemaDefnIR | null {
+  let varDecl: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  } else if (node.type === 'VariableDeclaration') {
+    varDecl = node
+  }
+  if (!varDecl) return null
+  const declarators = varDecl.declarations as AnyNode[]
+  if (declarators.length !== 1) return null
+  const declarator = declarators[0]
+  if (!declarator) return null
+  if (declarator.id?.type !== 'Identifier') return null
+  const bindingName = declarator.id.name as string
+
+  const init = declarator.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  if (init.callee?.type !== 'Identifier') return null
+  if ((init.callee.name as string) !== 'zodSchema') return null
+
+  const args = (init.arguments as AnyNode[] | undefined) ?? []
+  const innerCall = args[0]
+  if (!innerCall || innerCall.type !== 'CallExpression') return null
+  // innerCall.callee must be `z.object` MemberExpression.
+  const innerCallee = innerCall.callee as AnyNode | undefined
+  if (innerCallee?.type !== 'MemberExpression') return null
+  if (innerCallee.object?.type !== 'Identifier') return null
+  if ((innerCallee.object.name as string) !== 'z') return null
+  if (innerCallee.property?.type !== 'Identifier') return null
+  if ((innerCallee.property.name as string) !== 'object') return null
+
+  const shapeArg = (innerCall.arguments as AnyNode[] | undefined)?.[0]
+  if (!shapeArg || shapeArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `zodSchema declaration \`${bindingName}\`: z.object() argument must be a literal shape — v1 emit needs the literal { field: z.X() } map. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  // Walk shape's properties; each value should be a z.X() call (possibly chained).
+  const fields: ZodSchemaDefnIR['fields'] = []
+  for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const fieldName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!fieldName) continue
+
+    // Walk the chain to find the BASE z.X() call.
+    // e.g. z.string().min(2).email() → unwrap to z.string()
+    let value = unwrapTypeLayers(prop.value as AnyNode | undefined) as AnyNode | undefined
+    while (value && value.type === 'CallExpression') {
+      const callee = value.callee as AnyNode | undefined
+      // If callee is `<base>.modifier(...)`, recurse into <base>.
+      if (
+        callee?.type === 'MemberExpression' &&
+        callee.object?.type === 'CallExpression'
+      ) {
+        value = callee.object as AnyNode
+        continue
+      }
+      break
+    }
+    // value should now be a CallExpression whose callee is `z.X`.
+    if (!value || value.type !== 'CallExpression') {
+      ctx.warnings.push(
+        `zodSchema declaration \`${bindingName}\`: field \`${fieldName}\` is not a z.X() call — dropping.`,
+      )
+      continue
+    }
+    const baseCallee = value.callee as AnyNode | undefined
+    if (
+      baseCallee?.type !== 'MemberExpression' ||
+      baseCallee.object?.type !== 'Identifier' ||
+      (baseCallee.object.name as string) !== 'z' ||
+      baseCallee.property?.type !== 'Identifier'
+    ) {
+      ctx.warnings.push(
+        `zodSchema declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected z.string/z.number/z.boolean) — dropping.`,
+      )
+      continue
+    }
+    const zMethod = baseCallee.property.name as string
+    if (zMethod === 'string') {
+      fields.push({ name: fieldName, type: 'string' })
+    } else if (zMethod === 'number') {
+      fields.push({ name: fieldName, type: 'number' })
+    } else if (zMethod === 'boolean') {
+      fields.push({ name: fieldName, type: 'boolean' })
+    } else {
+      ctx.warnings.push(
+        `zodSchema declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported z.${zMethod}() — v1 supports z.string / z.number / z.boolean. Dropping field.`,
+      )
+    }
+  }
+
+  if (fields.length === 0) {
+    ctx.warnings.push(
+      `zodSchema declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  return { bindingName, fields }
 }
 
 /** Tiny initial-value type inference for store signals.

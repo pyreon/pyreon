@@ -35,6 +35,7 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodSchemaDefnIR,
 } from './types'
 
 // Mirror of emit-swift.ts's enum-state machinery. See that file's
@@ -151,6 +152,7 @@ export function emitKotlin(
   models: ModelDefnIR[] = [],
   fieldMetas: FieldMetaDefnIR[] = [],
   features: FeatureDefnIR[] = [],
+  zodSchemas: ZodSchemaDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -190,6 +192,8 @@ export function emitKotlin(
   // Gap 4 follow-up — feature v1: emit per-feature schema data class
   // + module-scope object.
   for (const f of features) parts.push(emitKotlinFeature(f))
+  // Gap 4 follow-up — Zod schema data classes.
+  for (const zs of zodSchemas) parts.push(emitKotlinZodSchema(zs))
   // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -331,6 +335,34 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
     `    val initialValues = PyreonFeatureSchema_${f.bindingName}()`,
   )
   lines.push(`}`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Kotlin).
+ * Mirror of emitSwiftZodSchema. Produces a data class + module-scope
+ * const. Apps validate at JSON-decode via kotlinx.serialization; v1
+ * doesn't emit runtime .parse() methods (v2 follow-up).
+ *
+ *   data class PyreonZodSchema_userSchema(
+ *       var name: String = "",
+ *       var age: Int = 0,
+ *       var active: Boolean = false,
+ *   )
+ *   val userSchema = PyreonZodSchema_userSchema()
+ */
+function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
+  const lines: string[] = []
+  lines.push(`data class PyreonZodSchema_${zs.bindingName}(`)
+  for (const f of zs.fields) {
+    const t =
+      f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Boolean'
+    const initial = f.type === 'string' ? '""' : f.type === 'boolean' ? 'false' : '0'
+    lines.push(`    var ${f.name}: ${t} = ${initial},`)
+  }
+  lines.push(`)`)
+  lines.push(``)
+  lines.push(`val ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   return lines.join('\n')
 }
 

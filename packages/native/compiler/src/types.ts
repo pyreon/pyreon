@@ -762,6 +762,23 @@ export interface FeatureDefnIR {
   fields: { name: string; type: 'string' | 'number' | 'boolean' }[]
 }
 
+/**
+ * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1.
+ * Recognizes the simplest `zodSchema(z.object({...}))` pattern and
+ * emits a per-binding struct representing the validated shape.
+ * v1 supports `z.string()` / `z.number()` / `z.boolean()` fields.
+ * Schema-modifier chains (.min(), .max(), .email(), etc.) are
+ * accepted at the AST level but their constraints are NOT
+ * enforced in the emitted struct — v1 is shape only. v2 follow-up
+ * will emit runtime validation methods that honor constraints.
+ */
+export interface ZodSchemaDefnIR {
+  /** Top-level binding name (e.g. `userSchema`). */
+  bindingName: string
+  /** Field shape extracted from `z.object({ ... })`. */
+  fields: { name: string; type: 'string' | 'number' | 'boolean' }[]
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
@@ -792,6 +809,12 @@ export interface ParseResult {
    * schema's initialValues + name.
    */
   features: FeatureDefnIR[]
+  /**
+   * Gap 4 follow-up: @pyreon/validation Zod-schema v1 definitions
+   * from `const X = zodSchema(z.object({...}))`. Each one emits a
+   * per-binding struct + module-scope const.
+   */
+  zodSchemas: ZodSchemaDefnIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }
