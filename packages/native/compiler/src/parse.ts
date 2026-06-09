@@ -466,29 +466,22 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
-  // Native readiness audit (2026-06-05, Gap 4): Tier-2 packages
-  // (`@pyreon/store`, `@pyreon/machine`, `@pyreon/i18n/core`,
-  // `@pyreon/state-tree`, `@pyreon/feature`) have NO PMTC parser
-  // recognition + NO native runtime port today. A user writing
-  // `const useCounter = defineStore("counter", () => …)` gets a
-  // silent-drop on iOS/Android: the binding is created with an
-  // unresolved type, the setup function never runs, downstream uses
-  // (`useCounter().store.X()`) compile to undefined references that
-  // either fail emit or fail in swiftc/kotlinc. Same bug class as
-  // useLoaderData pre-Phase-B6 (#1235) and the walled lifecycle
-  // tags pre-#1441. Warn at the call site naming the offending
-  // helper so authors aren't surprised AND have a clear path to
-  // the Layer 4 escape hatch.
-  //
-  // Strategy-B Tier-2 callees (need runtime port to lift the
-  // silent-drop): defineStore, createMachine, createI18n,
-  // createModel (state-tree), defineFeature.
+  // Gap 4 PR-3 (2026-06-05 audit) — Strategy-B port for
+  // `@pyreon/i18n/core`. `const i18n = createI18n({ locale, messages,
+  // fallbackLocale? })` becomes a PyreonI18n reactive container; the
+  // runtime port defines `t(key)`. Runs BEFORE the Tier-2 silent-drop
+  // diagnostic block so `createI18n` is recognized as a real port.
+  const i18nDecl = tryDeclFromCreateI18n(node, ctx)
+  if (i18nDecl) return i18nDecl
+
+  // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
+  // the remaining 4 callees. `createI18n` was REMOVED from the list
+  // because it now has a full port via tryDeclFromCreateI18n above.
   if (init?.type === 'CallExpression') {
     const calleeName = init.callee?.name as string | undefined
     const tier2StrategyB: Record<string, string> = {
       defineStore: '@pyreon/store',
       createMachine: '@pyreon/machine',
-      createI18n: '@pyreon/i18n/core',
       createModel: '@pyreon/state-tree',
       defineFeature: '@pyreon/feature',
     }
@@ -506,9 +499,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           `or keep this code in a \`<Web>\`-only branch. Tracked in audit Gap 4; see ` +
           `docs/docs/multiplatform-libraries.md → "Tier 2 — pure-logic packages."`,
       )
-      // Falls through; no DeclIR emitted. Downstream emit treats the
-      // binding as unresolved (consistent with the silent-drop shape
-      // pre-fix), but now with a visible warning.
       return null
     }
   }
@@ -929,6 +919,121 @@ function tryRxNamespaceLowering(
  * the string-literal entries; a missing / non-array / non-literal argument
  * yields an empty array so the caller never bails.
  */
+/**
+ * Gap 4 PR-3 — `createI18n({ locale, messages, fallbackLocale? })` from
+ * `@pyreon/i18n/core` → DeclIR.i18n.
+ *
+ * Extracts the literal `locale` string + the literal `messages` map
+ * (locale → key → value) + optional `fallbackLocale`. Non-literal
+ * configs warn and fall through to silent-drop.
+ *
+ * v1 SCOPE: string keys, string values. Async loaders, nested message
+ * objects beyond one-level (e.g. `{ user: { greeting: '...' } }`),
+ * pluralization suffixes, interpolation, namespaces are deferred.
+ * Top-level dot-keys ARE preserved verbatim so a `{ 'section.title':
+ * 'Report' }` shape works for the lookup-by-flat-key v1 contract.
+ */
+function tryDeclFromCreateI18n(
+  node: AnyNode,
+  ctx: ParseCtx,
+): DeclIR | null {
+  const init = node.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  const calleeName = init.callee?.name as string | undefined
+  if (calleeName !== 'createI18n') return null
+  if (node.id?.type !== 'Identifier') return null
+  const name = node.id.name as string
+
+  const args = (init.arguments as AnyNode[] | undefined) ?? []
+  const configArg = args[0]
+  if (!configArg || configArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `createI18n declaration \`${name}\`: config argument is not an object literal — emit needs the literal { locale, messages, fallbackLocale? } shape. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  let locale: string | undefined
+  let fallbackLocale: string | undefined
+  let messagesNode: AnyNode | undefined
+  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!keyName) continue
+    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    if (keyName === 'locale') {
+      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
+        locale = valueNode.value
+      }
+    } else if (keyName === 'fallbackLocale') {
+      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
+        fallbackLocale = valueNode.value
+      }
+    } else if (keyName === 'messages') {
+      messagesNode = valueNode
+    }
+  }
+
+  if (!locale) {
+    ctx.warnings.push(
+      `createI18n declaration \`${name}\`: \`locale\` field is missing or not a string literal — required to seed PyreonI18n. Falling back to silent-drop.`,
+    )
+    return null
+  }
+  if (!messagesNode || messagesNode.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `createI18n declaration \`${name}\`: \`messages\` field is missing or not an object literal — required to bake the translation table. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  // Parse `messages: { en: { hello: 'Hi' } }` into the nested record.
+  const messages: Record<string, Record<string, string>> = {}
+  for (const localeProp of (messagesNode.properties as AnyNode[] | undefined) ?? []) {
+    if (localeProp?.type !== 'Property' && localeProp?.type !== 'ObjectProperty') continue
+    const locKeyNode = localeProp.key as AnyNode | undefined
+    const locName =
+      locKeyNode?.type === 'Identifier'
+        ? (locKeyNode.name as string)
+        : locKeyNode?.type === 'Literal'
+          ? String(locKeyNode.value)
+          : undefined
+    if (!locName) continue
+    const dict = unwrapTypeLayers(localeProp.value as AnyNode | undefined)
+    messages[locName] = {}
+    if (dict?.type !== 'ObjectExpression') continue
+    for (const entry of (dict.properties as AnyNode[] | undefined) ?? []) {
+      if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
+      const eKey = entry.key as AnyNode | undefined
+      const k =
+        eKey?.type === 'Identifier'
+          ? (eKey.name as string)
+          : eKey?.type === 'Literal'
+            ? String(eKey.value)
+            : undefined
+      const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
+      if (k && eVal?.type === 'Literal' && typeof eVal.value === 'string') {
+        messages[locName]![k] = eVal.value
+      }
+      // Nested objects + interpolation tokens are v1-out-of-scope —
+      // silently dropped at the per-key level (the IR still has the
+      // locale entry).
+    }
+  }
+
+  const result: DeclIR = { kind: 'i18n', name, locale, messages }
+  if (fallbackLocale !== undefined) {
+    return { ...result, fallbackLocale }
+  }
+  return result
+}
+
 function tryExtractStringArray(arg: AnyNode | undefined): string[] {
   if (!arg || arg.type !== 'ArrayExpression') return []
   const out: string[] = []
@@ -1794,3 +1899,4 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   }
   return null
 }
+

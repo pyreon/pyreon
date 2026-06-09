@@ -66,6 +66,9 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // source is locked-in via the same swiftc-parse gate that protects
     // the canonical primitives.
     'showcase-tasks.tsx',
+    // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
+    // t() only). Emits @State PyreonI18n with literal locale + messages.
+    'tier2-i18n.tsx',
   ] as const
 
   for (const fixture of fixtures) {
