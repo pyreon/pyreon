@@ -34,6 +34,7 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
@@ -309,6 +310,149 @@ function kotlinFieldInitial(t: ZodFieldType): string {
   return 'emptyList()'
 }
 
+/**
+ * Gap 4 v2.1 + v3 — emit Kotlin constraint-check guards for a scalar
+ * value. Used at three call sites: required scalar field, optional
+ * scalar field (with nullable-receiver `?.` syntax), and array-element
+ * loop body (with `ruleSuffix: " (element)"` for clearer messages).
+ */
+function emitKotlinScalarConstraints(
+  lines: string[],
+  targetName: string,
+  t: ZodFieldType,
+  constraints: ZodFieldConstraints | undefined,
+  fieldName: string,
+  indent: number,
+  nullableTarget: boolean,
+  ruleSuffix = '',
+): void {
+  if (!constraints) return
+  const isString = t === 'string'
+  const isNumber = t === 'number'
+  if (!isString && !isNumber) return
+  const ind = ' '.repeat(indent)
+  const c = constraints
+  // Nullable-receiver guards: `${target}?.length` returns Int? so we
+  // compare with `??`-aware logic. For optional fields, "null target"
+  // means "field absent" → constraint doesn't fire.
+  const dot = nullableTarget ? '?.' : '.'
+  const lenAccess = `${targetName}${dot}length`
+  if (isString) {
+    if (c.min !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${lenAccess}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${lenAccess} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
+        )
+      }
+    }
+    if (c.max !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${lenAccess}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${lenAccess} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
+        )
+      }
+    }
+    if (c.email) {
+      const guard = nullableTarget ? `${targetName} != null && ` : ''
+      lines.push(
+        `${ind}if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "email${ruleSuffix}")`,
+      )
+    }
+    if (c.url) {
+      const guard = nullableTarget ? `if (${targetName} != null) ` : ''
+      lines.push(
+        `${ind}${guard}try { java.net.URI(${targetName}${nullableTarget ? '!!' : ''}) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "url${ruleSuffix}") }`,
+      )
+    }
+    if (c.uuid) {
+      const guard = nullableTarget ? `if (${targetName} != null) ` : ''
+      lines.push(
+        `${ind}${guard}try { java.util.UUID.fromString(${targetName}${nullableTarget ? '!!' : ''}) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "uuid${ruleSuffix}") }`,
+      )
+    }
+  } else if (isNumber) {
+    if (c.min !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${targetName}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min ${c.min}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${targetName} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min ${c.min}${ruleSuffix}")`,
+        )
+      }
+    }
+    if (c.max !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${targetName}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max ${c.max}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${targetName} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max ${c.max}${ruleSuffix}")`,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Gap 4 v3 — emit a `for (elem in <field>Val) { ... }` loop applying
+ * the array's `elementConstraints` to each element. For nullable
+ * (optional) arrays, wrap in a null guard. No-op for scalars.
+ */
+function emitKotlinArrayElementConstraints(
+  lines: string[],
+  targetName: string,
+  t: ZodFieldType,
+  fieldName: string,
+  indent: number,
+  nullableTarget: boolean,
+): void {
+  if (typeof t === 'string') return
+  if (!t.elementConstraints) return
+  if (Object.keys(t.elementConstraints).length === 0) return
+  const ind = ' '.repeat(indent)
+  const elementVar = `${fieldName}Element`
+  if (nullableTarget) {
+    lines.push(`${ind}if (${targetName} != null) {`)
+    lines.push(`${ind}    for (${elementVar} in ${targetName}) {`)
+    emitKotlinScalarConstraints(
+      lines,
+      elementVar,
+      t.element,
+      t.elementConstraints,
+      fieldName,
+      indent + 8,
+      /* nullableTarget */ false,
+      ' (element)',
+    )
+    lines.push(`${ind}    }`)
+    lines.push(`${ind}}`)
+  } else {
+    lines.push(`${ind}for (${elementVar} in ${targetName}) {`)
+    emitKotlinScalarConstraints(
+      lines,
+      elementVar,
+      t.element,
+      t.elementConstraints,
+      fieldName,
+      indent + 4,
+      /* nullableTarget */ false,
+      ' (element)',
+    )
+    lines.push(`${ind}}`)
+  }
+}
+
 function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
   const lines: string[] = []
   lines.push(`data class PyreonZodSchema_${zs.bindingName}(`)
@@ -337,6 +481,27 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       lines.push(
         `            val ${f.name}Val: ${t}? = if (input.containsKey(${JSON.stringify(f.name)})) (input[${JSON.stringify(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)}) else null`,
       )
+      // Gap 4 v3 — constraints on optional fields apply ONLY when present;
+      // the null branch above leaves the field null untouched.
+      emitKotlinScalarConstraints(
+        lines,
+        `${f.name}Val`,
+        f.type,
+        f.constraints,
+        f.name,
+        12,
+        /* nullableTarget */ true,
+      )
+      // Gap 4 v3 — element constraints for optional arrays apply per-element
+      // when the array is present.
+      emitKotlinArrayElementConstraints(
+        lines,
+        `${f.name}Val`,
+        f.type,
+        f.name,
+        12,
+        /* nullableTarget */ true,
+      )
       continue
     }
     lines.push(
@@ -345,48 +510,25 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     lines.push(
       `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)})`,
     )
-    // Gap 4 v2.1 — enforce constraints.
-    if (f.constraints && (f.type === 'string' || f.type === 'number')) {
-      const c = f.constraints
-      if (f.type === 'string') {
-        if (c.min !== undefined) {
-          lines.push(
-            `            if (${f.name}Val.length < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "min length ${c.min}")`,
-          )
-        }
-        if (c.max !== undefined) {
-          lines.push(
-            `            if (${f.name}Val.length > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "max length ${c.max}")`,
-          )
-        }
-        if (c.email) {
-          lines.push(
-            `            if (!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${f.name}Val)) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "email")`,
-          )
-        }
-        if (c.url) {
-          lines.push(
-            `            try { java.net.URI(${f.name}Val) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "url") }`,
-          )
-        }
-        if (c.uuid) {
-          lines.push(
-            `            try { java.util.UUID.fromString(${f.name}Val) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "uuid") }`,
-          )
-        }
-      } else if (f.type === 'number') {
-        if (c.min !== undefined) {
-          lines.push(
-            `            if (${f.name}Val < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "min ${c.min}")`,
-          )
-        }
-        if (c.max !== undefined) {
-          lines.push(
-            `            if (${f.name}Val > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "max ${c.max}")`,
-          )
-        }
-      }
-    }
+    // Gap 4 v2.1 — scalar constraints.
+    emitKotlinScalarConstraints(
+      lines,
+      `${f.name}Val`,
+      f.type,
+      f.constraints,
+      f.name,
+      12,
+      /* nullableTarget */ false,
+    )
+    // Gap 4 v3 — per-element constraints for required array fields.
+    emitKotlinArrayElementConstraints(
+      lines,
+      `${f.name}Val`,
+      f.type,
+      f.name,
+      12,
+      /* nullableTarget */ false,
+    )
   }
   const ctorArgs = zs.fields.map((f) => `${f.name} = ${f.name}Val`).join(', ')
   lines.push(
