@@ -60,7 +60,12 @@ export function connectViaWebSocket(
   url: string,
   options: WebSocketTransportOptions = {},
 ): WebSocketTransport {
-  const resolved = options.WebSocketImpl ?? (globalThis as { WebSocket?: WebSocketCtor }).WebSocket
+  // Resolve the WebSocket constructor: an explicit impl, else the global one
+  // (browsers / Node 22+ / Bun / Deno). The `typeof` guard keeps this SSR-safe
+  // — the function is import-safe under Node/SSR and only touches `WebSocket`
+  // when actually called, and only where the global exists.
+  const resolved =
+    options.WebSocketImpl ?? (typeof WebSocket !== 'undefined' ? WebSocket : undefined)
   if (!resolved) {
     throw new Error(
       '[Pyreon] connectViaWebSocket: no WebSocket implementation found. Pass `WebSocketImpl` (e.g. the `ws` package) on a runtime without a global WebSocket.',
