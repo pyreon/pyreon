@@ -4,7 +4,7 @@ Local-first, CRDT-backed sync for signals — **a synced signal is just a signal
 
 When a collaborative or offline change arrives, a fine-grained signal framework can do `apply op → one signal.set → one surgical DOM update`. That is the whole bet of this package: bind a signal to a CRDT entry through `wrapSignal`, and the rest of Pyreon (compiled templates, effects, `<For>`) treats it like any other signal — no special render path, no diff.
 
-> **Status (read this).** This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests and no-engine usage. **Not yet**: real engine adapters (raw Yjs / a turnkey platform), IndexedDB persistence, a WebSocket transport, and a relay server. See the [roadmap](#roadmap). v1 binds **scalar** map fields; collections (lists, collaborative text) are a later phase.
+> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once a real engine adapter + transport land. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests and no-engine usage. **Not yet**: real engine adapters (raw Yjs / a turnkey platform), IndexedDB persistence, a WebSocket transport, and a relay server. See the [roadmap](#roadmap). v1 binds **scalar** map fields; collections (lists, collaborative text) are a later phase.
 
 ## Install
 

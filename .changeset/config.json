@@ -76,8 +76,7 @@
       "@pyreon/svelte-compat",
       "@pyreon/primitives",
       "@pyreon/create-multiplatform",
-      "@pyreon/sized-map",
-      "@pyreon/sync"
+      "@pyreon/sized-map"
     ]
   ],
   "linked": [],

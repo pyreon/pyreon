@@ -1,6 +1,7 @@
 {
   "name": "@pyreon/sync",
   "version": "0.31.0",
+  "private": true,
   "description": "Local-first CRDT-backed sync for signals — a synced signal is just a signal, so remote ops drive surgical fine-grained updates",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/sync#readme",
@@ -42,12 +43,8 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
-    "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.5.0",
     "bun-types": "^1.3.14"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

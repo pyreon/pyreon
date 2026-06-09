@@ -1556,44 +1556,6 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 >
 > **JSX generics**: Pyreon JSX components cannot be parameterised at the call site (`<Flow<MyData> />` is not valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass their `FlowInstance<MyData>` without casting.
 
-## @pyreon/sync — Sync
-
-A reactive bridge that binds a Pyreon signal to a CRDT document, so collaborative / offline data flows through the same fine-grained signal graph as everything else: a remote change becomes one `signal.set`, which patches exactly one DOM region — no re-render, no diff. The bridge is engine-neutral (written against a small `CrdtAdapter` seam) and engine-independent at its core; the in-memory `FakeCrdtAdapter` ships today for tests and no-engine usage. Real engine adapters (raw Yjs, a turnkey platform), IndexedDB persistence, a WebSocket transport, and a relay server are phased follow-ups. v1 binds scalar map fields; collections (lists / collaborative text) are a later phase.
-
-```typescript
-import { syncedSignal, syncedStore, FakeCrdtAdapter, connectFakeDocs } from '@pyreon/sync'
-
-// A single synced field, backed by a CRDT map entry. It IS a signal:
-const doc = new FakeCrdtAdapter().createDoc()
-const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
-// In a template:  <h1>{() => title()}</h1>  — surgical update on any peer's edit
-title.set('Roadmap')   // writes the CRDT; the map observer drives the one DOM update
-title()                // 'Roadmap'
-title.dispose()        // detach the observer (or rely on onCleanup in a scope)
-
-// A flat store of synced fields over one map:
-const store = syncedStore({ title: 'Untitled', done: false }, { doc })
-store.title.set('Ship it')
-store.done()           // false
-store.dispose()
-
-// Two peers, in memory (the transport stand-in for tests):
-const a = new FakeCrdtAdapter().createDoc()
-const b = new FakeCrdtAdapter().createDoc()
-const link = connectFakeDocs(a, b)
-const ta = syncedSignal({ doc: a, key: 'title', initial: '' })
-const tb = syncedSignal({ doc: b, key: 'title', initial: '' })
-ta.set('hello')        // relays to b under REMOTE origin — no echo back to a
-tb()                   // 'hello'
-link.disconnect()
-```
-
-> **Scalar-only (v1)**: A synced field holds one whole value. The echo no-op and "one op → one update" hold for scalars (string / number / boolean). Objects and arrays compare by reference, so a whole-value replace re-fires per change — granular collections (lists, collaborative text) are a later phase.
->
-> **Loop prevention lives in the transport**: The bridge observer applies every change to the base signal regardless of origin (Object.is dedupes the local echo). The NETWORK loop is prevented by the transport never re-broadcasting a REMOTE-origin update — never by gating the observer on origin.
->
-> **Phase status**: Today: the engine-independent bridge (syncedSignal / syncedStore) + the in-memory FakeCrdtAdapter. Coming: real engine adapters (raw Yjs / a turnkey platform), IndexedDB persistence, a WebSocket transport, and a relay server — see the package README roadmap.
-
 ## @pyreon/storage — Reactive Storage
 
 Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.
