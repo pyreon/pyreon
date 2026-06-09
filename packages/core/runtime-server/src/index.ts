@@ -238,6 +238,25 @@ export function renderToStream(
           _streamCtxAls
             .run(ctx, async () => {
               await streamNode(root, enqueue)
+              // Flush styler CSS rules collected during shell render.
+              // The handler's shell `<head>` was pushed BEFORE the
+              // appStream started, so any per-render styles cannot land
+              // there — emit a `<style>` tag inline at the top of the
+              // app body so shell content is correctly styled before
+              // any Suspense boundary resolves. Per-boundary flushes
+              // (see `streamSuspenseBoundary`) cover styles collected
+              // during async boundary resolution. No-op when styler
+              // isn't loaded.
+              const stylerFlush = (
+                globalThis as { __PYREON_STYLER_FLUSH__?: () => string }
+              ).__PYREON_STYLER_FLUSH__
+              if (stylerFlush) {
+                const newRules = stylerFlush()
+                if (newRules) {
+                  const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
+                  enqueue(`<style data-pyreon-stream="shell">${safeCss}</style>`)
+                }
+              }
               // Drain all pending Suspense resolutions (may spawn nested
               // ones). Each batch is RACED against the abort signal so a
               // mid-flight Suspense child doesn't keep us blocked after
@@ -542,6 +561,24 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
         // Escape </template> in buffered content to prevent early close + XSS
         const content = buf.join('').replace(/<\/template/gi, '<\\/template')
+
+        // Flush any styler CSS rules collected while resolving this
+        // boundary's subtree — emit a `<style>` tag BEFORE the
+        // `<template>` so its rules are applied to the page before
+        // `__NS` swaps the resolved content in. Eliminates FOUC on
+        // streaming SSR where the final consolidated `<style>` tag
+        // would otherwise arrive after the boundary's HTML. No-op when
+        // styler isn't loaded (e.g. apps that use vanilla CSS).
+        const stylerFlush = (globalThis as { __PYREON_STYLER_FLUSH__?: () => string })
+          .__PYREON_STYLER_FLUSH__
+        if (stylerFlush) {
+          const newRules = stylerFlush()
+          if (newRules) {
+            const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
+            mainEnqueue(`<style data-pyreon-stream="${id}">${safeCss}</style>`)
+          }
+        }
+
         mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
         mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
       } catch (err) {

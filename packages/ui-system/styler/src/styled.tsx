@@ -137,15 +137,15 @@ const createStyledComponent = (
     // also implies no children were passed — `rawProps.children` would be
     // `undefined` and the `Array.isArray ? : ?? : []` chain produces `[]`.
     //
-    // **Cache lifetime**: this VNode references `staticClassName`, which is
-    // the className the sheet just inserted. If `sheet.clearAll()` runs
-    // (HMR / dev reload), the className becomes stale BUT the outer
-    // `staticComponentCache` (and `_hot*` caches) ALSO survive that path —
-    // so consumers continue to receive the stale className regardless. The
-    // companion fix to wire `onSheetClear` and reset both caches is tracked
-    // separately. This optimization is correct under the existing cache
-    // lifetime contract; the HMR-staleness issue is broader than the VNode
-    // cache.
+    // **Cache lifetime**: this VNode references `staticClassName`, which
+    // is the className the sheet just inserted. The `onSheetClear`
+    // subscriber wired at module top (see ~line 80) drops the outer
+    // `staticComponentCache` + `_hotCache` on `sheet.clearAll()` (HMR /
+    // dev reload). That forces a fresh `createStyledComponent` call on
+    // the next mount, which produces a fresh `cachedEmptyVNode` with
+    // the new (sheet-inserted) className. Cache lifetime is correctly
+    // tied to the sheet's lifetime — no separate VNode-cache
+    // invalidation needed.
     const cachedEmptyVNode = h(tag as string, staticClassName ? { class: staticClassName } : {})
 
     const StaticStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
