@@ -138,6 +138,16 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'sync-yjs-demo',
+    script: 'test:e2e:sync-yjs-demo',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/fundamentals/sync/',
+      'examples/sync-yjs-demo/',
+      'e2e/sync-yjs-demo',
+    ],
+  },
+  {
     name: 'zero-islands',
     script: 'test:e2e:zero-islands',
     triggers: [

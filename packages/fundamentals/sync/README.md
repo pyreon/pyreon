@@ -80,11 +80,21 @@ tb() // 'hello' — same bridge, real CRDT underneath
 
 Because it is a real CRDT, `connectYDocs` also converges **offline** edits on
 reconnect (it exchanges state vectors first) — two docs that diverged while
-disconnected merge with no lost op. `createYjsDoc().yDoc` exposes the underlying
-`Y.Doc` so a WebSocket transport / `y-indexeddb` persistence can be wired (later
-phases). Note CRDTs guarantee *convergence*, not *intent*: a scalar
-last-writer-wins still picks one value when two peers edit the same field
-concurrently — both peers agree, but the loser's value is dropped.
+disconnected merge with no lost op.
+
+For same-origin **tabs / windows**, `connectViaBroadcastChannel(doc, room)` syncs
+over `BroadcastChannel` (zero network, the canonical local-first multi-tab
+transport) with a minimal state-vector handshake so a late-joining tab converges,
+not just live edits. The `examples/sync-yjs-demo` app + its real-Chromium
+two-tab e2e (`e2e/sync-yjs-demo.spec.ts`) prove the headline end-to-end: an edit
+in one tab patches exactly the bound text node in the other (compiled
+`_bindText`), no re-render.
+
+`createYjsDoc().yDoc` exposes the underlying `Y.Doc` so a WebSocket transport /
+`y-indexeddb` persistence can be wired (later phases). Note CRDTs guarantee
+*convergence*, not *intent*: a scalar last-writer-wins still picks one value when
+two peers edit the same field concurrently — both peers agree, but the loser's
+value is dropped.
 
 ## How the loop works (and why it can't echo)
 

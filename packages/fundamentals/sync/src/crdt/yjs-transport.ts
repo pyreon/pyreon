@@ -53,3 +53,64 @@ export function connectYDocs(
     },
   }
 }
+
+// Cross-tab / cross-context wire messages. Uint8Array payloads are
+// structured-clonable, so they survive BroadcastChannel.postMessage as-is.
+type BcMessage =
+  | { kind: 'sv'; sv: Uint8Array } // state vector — "send me what I'm missing"
+  | { kind: 'update'; update: Uint8Array } // a diff or a live update
+
+/**
+ * Sync a {@link YjsCrdtDoc} across same-origin browsing contexts (tabs / windows)
+ * via `BroadcastChannel` — zero network, the canonical local-first multi-tab
+ * transport. Browser-only (constructs `BroadcastChannel` lazily, so importing
+ * this module under Node/SSR is safe; only calling it touches the global).
+ *
+ * Implements the minimal y-protocols sync handshake so a LATE-joining tab
+ * converges, not just live edits:
+ * - on connect, broadcast our state vector (`sv`) — peers reply with the diff we lack;
+ * - on receiving an `sv`, reply with `encodeStateAsUpdate(doc, theirSv)` (exactly what they're missing);
+ * - on receiving an `update`, `applyUpdate(..., REMOTE)` so it is NOT echoed back;
+ * - on a local (non-REMOTE) update, broadcast it.
+ *
+ * Same echo rule as {@link connectYDocs} — a received (`REMOTE`-origin) update is
+ * never re-broadcast, so there is no cross-tab loop.
+ */
+export function connectViaBroadcastChannel(
+  doc: YjsCrdtDoc,
+  channelName: string,
+): { disconnect: () => void } {
+  const bc = new BroadcastChannel(channelName)
+  let connected = true
+
+  const onUpdate = (update: Uint8Array, origin: unknown) => {
+    if (!connected || origin === REMOTE_ORIGIN) return
+    bc.postMessage({ kind: 'update', update } satisfies BcMessage)
+  }
+  doc.yDoc.on('update', onUpdate)
+
+  bc.onmessage = (event: MessageEvent<BcMessage>) => {
+    if (!connected) return
+    const msg = event.data
+    if (msg.kind === 'sv') {
+      // Send the peer exactly the updates their state vector is missing.
+      bc.postMessage({
+        kind: 'update',
+        update: Y.encodeStateAsUpdate(doc.yDoc, msg.sv),
+      } satisfies BcMessage)
+    } else {
+      Y.applyUpdate(doc.yDoc, msg.update, REMOTE_ORIGIN)
+    }
+  }
+
+  // Announce ourselves: ask existing peers for whatever we're missing.
+  bc.postMessage({ kind: 'sv', sv: Y.encodeStateVector(doc.yDoc) } satisfies BcMessage)
+
+  return {
+    disconnect() {
+      connected = false
+      doc.yDoc.off('update', onUpdate)
+      bc.close()
+    },
+  }
+}

@@ -7,4 +7,4 @@ export {
   YjsCrdtDoc,
   yjsAdapter,
 } from './crdt/yjs-adapter'
-export { connectYDocs } from './crdt/yjs-transport'
+export { connectViaBroadcastChannel, connectYDocs } from './crdt/yjs-transport'
