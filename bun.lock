@@ -620,6 +620,13 @@
         "@pyreon/native-cli": "workspace:*",
       },
     },
+    "examples/native-router-demo-android": {
+      "name": "@pyreon/example-native-router-demo-android",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
+      },
+    },
     "examples/native-router-demo-ios": {
       "name": "@pyreon/example-native-router-demo-ios",
       "version": "0.0.0",
@@ -2896,6 +2903,8 @@
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
 
     "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
+
+    "@pyreon/example-native-router-demo-android": ["@pyreon/example-native-router-demo-android@workspace:examples/native-router-demo-android"],
 
     "@pyreon/example-native-router-demo-ios": ["@pyreon/example-native-router-demo-ios@workspace:examples/native-router-demo-ios"],
 
