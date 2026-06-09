@@ -89,6 +89,18 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       zodSchemas.push(zs)
       continue
     }
+    // Gap 4 follow-up — @pyreon/validation Valibot v1.
+    const vs = tryValibotSchemaDefnFromTopLevel(node, ctx)
+    if (vs) {
+      zodSchemas.push(vs) // shared IR (single struct shape)
+      continue
+    }
+    // Gap 4 follow-up — @pyreon/validation ArkType v1.
+    const as = tryArktypeSchemaDefnFromTopLevel(node, ctx)
+    if (as) {
+      zodSchemas.push(as)
+      continue
+    }
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -517,6 +529,62 @@ function tryZodSchemaDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
 ): ZodSchemaDefnIR | null {
+  return tryNamespacedSchemaDefnFromTopLevel(
+    node,
+    ctx,
+    'zodSchema',
+    'z',
+    'zod',
+  )
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validation` Valibot-schema v1 recognizer.
+ * Same parser shape as Zod (`v.object({ field: v.X() })`) with the
+ * `v` prefix instead. Matches:
+ *
+ *   const userSchema = valibotSchema(
+ *     v.object({ name: v.string(), age: v.number() }),
+ *     safeParse,
+ *   )
+ *
+ * The 2nd `safeParse` arg is discarded — it's the runtime parse fn
+ * used by the duck-typed Standard Schema wrapper, irrelevant on
+ * native. v1 emits SHAPE only.
+ */
+function tryValibotSchemaDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): ZodSchemaDefnIR | null {
+  return tryNamespacedSchemaDefnFromTopLevel(
+    node,
+    ctx,
+    'valibotSchema',
+    'v',
+    'valibot',
+  )
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validation` ArkType-schema v1 recognizer.
+ * ArkType uses STRING-VALUED type names instead of call-expression
+ * field types (very different from Zod/Valibot):
+ *
+ *   const userSchema = arktypeSchema(type({
+ *     name: 'string',
+ *     age: 'number',
+ *     active: 'boolean',
+ *   }))
+ *
+ * Walks:
+ *   - top: CallExpression callee Identifier `arktypeSchema`
+ *   - arg[0]: CallExpression callee Identifier `type`
+ *   - arg[0].arg[0]: ObjectExpression with string-literal values
+ */
+function tryArktypeSchemaDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): ZodSchemaDefnIR | null {
   let varDecl: AnyNode | null = null
   if (
     node.type === 'ExportNamedDeclaration' &&
@@ -537,28 +605,119 @@ function tryZodSchemaDefnFromTopLevel(
   const init = declarator.init as AnyNode | undefined
   if (init?.type !== 'CallExpression') return null
   if (init.callee?.type !== 'Identifier') return null
-  if ((init.callee.name as string) !== 'zodSchema') return null
+  if ((init.callee.name as string) !== 'arktypeSchema') return null
 
   const args = (init.arguments as AnyNode[] | undefined) ?? []
   const innerCall = args[0]
   if (!innerCall || innerCall.type !== 'CallExpression') return null
-  // innerCall.callee must be `z.object` MemberExpression.
+  const innerCallee = innerCall.callee as AnyNode | undefined
+  if (innerCallee?.type !== 'Identifier') return null
+  if ((innerCallee.name as string) !== 'type') return null
+
+  const shapeArg = (innerCall.arguments as AnyNode[] | undefined)?.[0]
+  if (!shapeArg || shapeArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `arktypeSchema declaration \`${bindingName}\`: type() argument must be a literal shape. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  const fields: ZodSchemaDefnIR['fields'] = []
+  for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const fieldName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!fieldName) continue
+    const value = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    if (value?.type !== 'Literal' || typeof value.value !== 'string') {
+      ctx.warnings.push(
+        `arktypeSchema declaration \`${bindingName}\`: field \`${fieldName}\` is not a string-literal type — v1 supports 'string' | 'number' | 'boolean' literals. Dropping.`,
+      )
+      continue
+    }
+    const t = value.value
+    if (t === 'string') {
+      fields.push({ name: fieldName, type: 'string' })
+    } else if (t === 'number') {
+      fields.push({ name: fieldName, type: 'number' })
+    } else if (t === 'boolean') {
+      fields.push({ name: fieldName, type: 'boolean' })
+    } else {
+      ctx.warnings.push(
+        `arktypeSchema declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported type '${t}' — v1 supports 'string' | 'number' | 'boolean'. Dropping.`,
+      )
+    }
+  }
+
+  if (fields.length === 0) {
+    ctx.warnings.push(
+      `arktypeSchema declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  return { bindingName, fields }
+}
+
+/**
+ * Shared parser body for Zod + Valibot recognition (the two
+ * libraries use isomorphic `<prefix>.object({ field: <prefix>.X() })`
+ * call shapes). ArkType's string-valued shape needs its own parser.
+ */
+function tryNamespacedSchemaDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+  schemaFn: string,
+  prefix: string,
+  libraryDisplay: string,
+): ZodSchemaDefnIR | null {
+  let varDecl: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  } else if (node.type === 'VariableDeclaration') {
+    varDecl = node
+  }
+  if (!varDecl) return null
+  const declarators = varDecl.declarations as AnyNode[]
+  if (declarators.length !== 1) return null
+  const declarator = declarators[0]
+  if (!declarator) return null
+  if (declarator.id?.type !== 'Identifier') return null
+  const bindingName = declarator.id.name as string
+
+  const init = declarator.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  if (init.callee?.type !== 'Identifier') return null
+  if ((init.callee.name as string) !== schemaFn) return null
+
+  const args = (init.arguments as AnyNode[] | undefined) ?? []
+  const innerCall = args[0]
+  if (!innerCall || innerCall.type !== 'CallExpression') return null
+  // innerCall.callee must be `<prefix>.object` MemberExpression.
   const innerCallee = innerCall.callee as AnyNode | undefined
   if (innerCallee?.type !== 'MemberExpression') return null
   if (innerCallee.object?.type !== 'Identifier') return null
-  if ((innerCallee.object.name as string) !== 'z') return null
+  if ((innerCallee.object.name as string) !== prefix) return null
   if (innerCallee.property?.type !== 'Identifier') return null
   if ((innerCallee.property.name as string) !== 'object') return null
 
   const shapeArg = (innerCall.arguments as AnyNode[] | undefined)?.[0]
   if (!shapeArg || shapeArg.type !== 'ObjectExpression') {
     ctx.warnings.push(
-      `zodSchema declaration \`${bindingName}\`: z.object() argument must be a literal shape — v1 emit needs the literal { field: z.X() } map. Falling back to silent-drop.`,
+      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.object() argument must be a literal shape — v1 emit needs the literal { field: ${prefix}.X() } map. Falling back to silent-drop.`,
     )
     return null
   }
 
-  // Walk shape's properties; each value should be a z.X() call (possibly chained).
+  // Walk shape's properties; each value should be a <prefix>.X() call (possibly chained).
   const fields: ZodSchemaDefnIR['fields'] = []
   for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -571,7 +730,7 @@ function tryZodSchemaDefnFromTopLevel(
           : undefined
     if (!fieldName) continue
 
-    // Walk the chain to find the BASE z.X() call.
+    // Walk the chain to find the BASE <prefix>.X() call.
     // e.g. z.string().min(2).email() → unwrap to z.string()
     let value = unwrapTypeLayers(prop.value as AnyNode | undefined) as AnyNode | undefined
     while (value && value.type === 'CallExpression') {
@@ -586,10 +745,10 @@ function tryZodSchemaDefnFromTopLevel(
       }
       break
     }
-    // value should now be a CallExpression whose callee is `z.X`.
+    // value should now be a CallExpression whose callee is `<prefix>.X`.
     if (!value || value.type !== 'CallExpression') {
       ctx.warnings.push(
-        `zodSchema declaration \`${bindingName}\`: field \`${fieldName}\` is not a z.X() call — dropping.`,
+        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is not a ${prefix}.X() call — dropping.`,
       )
       continue
     }
@@ -597,31 +756,32 @@ function tryZodSchemaDefnFromTopLevel(
     if (
       baseCallee?.type !== 'MemberExpression' ||
       baseCallee.object?.type !== 'Identifier' ||
-      (baseCallee.object.name as string) !== 'z' ||
+      (baseCallee.object.name as string) !== prefix ||
       baseCallee.property?.type !== 'Identifier'
     ) {
       ctx.warnings.push(
-        `zodSchema declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected z.string/z.number/z.boolean) — dropping.`,
+        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected ${prefix}.string/${prefix}.number/${prefix}.boolean) — dropping.`,
       )
       continue
     }
-    const zMethod = baseCallee.property.name as string
-    if (zMethod === 'string') {
+    const method = baseCallee.property.name as string
+    if (method === 'string') {
       fields.push({ name: fieldName, type: 'string' })
-    } else if (zMethod === 'number') {
+    } else if (method === 'number') {
       fields.push({ name: fieldName, type: 'number' })
-    } else if (zMethod === 'boolean') {
+    } else if (method === 'boolean') {
       fields.push({ name: fieldName, type: 'boolean' })
     } else {
       ctx.warnings.push(
-        `zodSchema declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported z.${zMethod}() — v1 supports z.string / z.number / z.boolean. Dropping field.`,
+        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — v1 supports ${prefix}.string / ${prefix}.number / ${prefix}.boolean. Dropping field.`,
       )
     }
+    void libraryDisplay
   }
 
   if (fields.length === 0) {
     ctx.warnings.push(
-      `zodSchema declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
+      `${schemaFn} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
     )
     return null
   }
