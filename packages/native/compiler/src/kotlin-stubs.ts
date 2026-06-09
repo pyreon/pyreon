@@ -599,4 +599,9 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
 // kotlin's PyreonStore.kt. Empty by design — purely a documentation
 // + future-polymorphic-helper anchor.
 interface PyreonStore
+
+// PyreonModelProtocol — Gap 4 state-tree v2 marker interface for
+// emitted per-model singleton classes. Real impl in @pyreon/native-
+// runtime-kotlin's PyreonModel.kt. Empty by design.
+interface PyreonModelProtocol
 `

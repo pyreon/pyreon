@@ -82,6 +82,10 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // `object PyreonStore_X : PyreonStore` singleton + the
     // use-site chain rewriting emit valid Compose Kotlin.
     'tier2-store.tsx',
+    // Gap 4 state-tree v2 emit: @pyreon/state-tree port. Proves the
+    // `object PyreonModel_X : PyreonModelProtocol` singleton + the
+    // use-site rewriting emit valid Compose Kotlin.
+    'tier2-state-tree.tsx',
   ] as const
 
   for (const fixture of fixtures) {
