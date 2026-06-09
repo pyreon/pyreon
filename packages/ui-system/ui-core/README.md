@@ -180,7 +180,7 @@ import type {
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/ui-core](https://docs.pyreon.dev/docs/ui-core) (or `docs/docs/ui-core.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/ui-core](https://docs.pyreon.dev/docs/ui-core) (or `docs/src/content/docs/ui-core.md` in this repo).
 
 ## License
 

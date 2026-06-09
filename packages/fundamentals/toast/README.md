@@ -137,7 +137,7 @@ afterEach(_reset)
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/toast](https://docs.pyreon.dev/docs/toast) (or `docs/docs/toast.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/toast](https://docs.pyreon.dev/docs/toast) (or `docs/src/content/docs/toast.md` in this repo).
 
 ## License
 

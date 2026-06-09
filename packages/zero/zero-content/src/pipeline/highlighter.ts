@@ -17,7 +17,7 @@ import { createHighlighter, type Highlighter } from 'shiki'
 /**
  * Themes accepted by Shiki — either a string name (one of the bundled
  * themes shipped with Shiki) or a `ThemeRegistrationAny` object for
- * fully-custom themes. The pyreon docs site (docs-zero) uses the
+ * fully-custom themes. The pyreon docs site (the docs site) uses the
  * latter to register its own brand-matched theme alongside the bundled
  * github-light / github-dark options.
  *
@@ -69,7 +69,7 @@ let _cacheKey: string | null = null
  * Stable, order-independent key for `HighlighterOptions`. We do NOT
  * use `JSON.stringify(opts)` directly because the theme value can be
  * a non-trivially-stringifiable `ThemeRegistrationRaw` object (the
- * brand themes in `examples/docs-zero/src/styles/pyreon-syntax.ts`)
+ * brand themes in `docs/src/styles/pyreon-syntax.ts`)
  * carrying nested `settings` arrays whose stringification is large
  * but stable. We DO stringify it — the only risk is throw on a cycle,
  * which Shiki theme shapes don't have — but we sort keys first so

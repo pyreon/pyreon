@@ -57,7 +57,7 @@ Three canonical reactive shapes auto-promote to effect-free runtime calls (~5 �
 
 ¹ `sel` must be declared as `const sel = createSelector(...)` at module scope; key and branches must be non-reactive. ² Method must be in the pure-primitive safelist (Number / String / Boolean prototype: `toFixed`, `toUpperCase`, `slice`, `padStart`, etc. — 28 methods); args must be non-reactive.
 
-Conservative bail catalog — uncertain shapes fall back to `_bind(...)` unchanged. See [docs/docs/compiler.md](../../../docs/docs/compiler.md) for the full detection logic.
+Conservative bail catalog — uncertain shapes fall back to `_bind(...)` unchanged. See [docs/src/content/docs/compiler.md](../../../docs/src/content/docs/compiler.md) for the full detection logic.
 
 ## Reactive transform — Quick start
 
@@ -188,7 +188,7 @@ A `detectLibc()` step distinguishes glibc vs musl on Linux at load time.
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/compiler](https://docs.pyreon.dev/docs/compiler) (or `docs/docs/compiler.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/compiler](https://docs.pyreon.dev/docs/compiler) (or `docs/src/content/docs/compiler.md` in this repo).
 
 ## License
 

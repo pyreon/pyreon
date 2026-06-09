@@ -36,7 +36,7 @@ describe('isFirstPartySourceFile — EXCLUDED', () => {
     // not under packages/
     'examples/ssr-showcase/src/main.tsx',
     'e2e/router.spec.ts',
-    'docs/docs/index.md.ts',
+    'docs/src/content/docs/index.md.ts',
     'scripts/verify-modes.ts',
     'tests/browser/router.spec.ts',
     'vitest.shared.ts',

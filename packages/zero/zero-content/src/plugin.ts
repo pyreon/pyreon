@@ -98,7 +98,7 @@ export interface ContentPluginOptions {
    * had no way to discover that content past the first ~1500 chars
    * never appeared in search results.
    *
-   * Defaults remain 1500 to keep the docs-zero shipped index size
+   * Defaults remain 1500 to keep the docs shipped index size
    * within the existing 300 KB warn threshold. Set higher for blog
    * collections that lean on full-text recall; set to `Infinity` to
    * disable truncation entirely (the chunkWarn / chunkError bounds
@@ -1077,7 +1077,7 @@ export {}
           // Thread Vite's resolved `base` into the index builder so
           // catalog URLs emitted into `dist/search-index.json` are
           // prefixed correctly under subpath deploys (e.g.
-          // `/pyreon/preview/search-index-docs.json`). Without this
+          // `/pyreon/search-index-docs.json`). Without this
           // the runtime's `fetch('/search-index-docs.json')` escapes
           // the subpath and 404s on GitHub Pages preview deploys.
           base: resolvedConfig.base,

@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Iteratively run `tsc --noEmit` on docs-zero, parse each TS error,
+ * Iteratively run `tsc --noEmit` on the docs site, parse each TS error,
  * apply the canonical fix, repeat until no errors remain.
  *
  * Designed for the migrated `<Playground>`-to-`<Example>` examples
- * under `examples/docs-zero/src/examples/**`. The original code was
+ * under `docs/src/examples/**`. The original code was
  * untyped JS; this fills in the minimum annotations that satisfy TS
  * strict mode without changing observable behavior.
  *
@@ -25,7 +25,7 @@ import { spawnSync } from 'node:child_process'
 const REPO_ROOT = path.resolve(import.meta.dir, '..')
 const EXAMPLES_GLOB_DIR = path.join(
   REPO_ROOT,
-  'examples/docs-zero/src/examples',
+  'docs/src/examples',
 )
 
 interface TsError {
@@ -38,7 +38,7 @@ interface TsError {
 
 function parseTsc(stdout: string): TsError[] {
   const errors: TsError[] = []
-  // Format: `@pyreon/docs-zero typecheck: <path>(<line>,<col>): error TS<code>: <msg>`
+  // Format: `@pyreon/docs typecheck: <path>(<line>,<col>): error TS<code>: <msg>`
   const re =
     /typecheck:\s+(.*?)\((\d+),(\d+)\): error (TS\d+): (.*)/g
   let m
@@ -57,7 +57,7 @@ function parseTsc(stdout: string): TsError[] {
 function runTypecheck(): TsError[] {
   const r = spawnSync(
     'bun',
-    ['run', '--filter=@pyreon/docs-zero', 'typecheck'],
+    ['run', '--filter=@pyreon/docs', 'typecheck'],
     { cwd: REPO_ROOT, encoding: 'utf8' },
   )
   const out = (r.stdout || '') + (r.stderr || '')
@@ -70,12 +70,12 @@ function runTypecheck(): TsError[] {
  * regex stays local to one line.
  */
 async function applyFix(err: TsError): Promise<boolean> {
-  // tsc emits paths relative to the package that ran typecheck (docs-zero).
-  // Resolve relative paths from `examples/docs-zero/` so the file open works.
+  // tsc emits paths relative to the package that ran typecheck (/docs).
+  // Resolve relative paths from `docs/` so the file open works.
   const abs = path.isAbsolute(err.file)
     ? err.file
     : err.file.startsWith('src/')
-      ? path.join(REPO_ROOT, 'examples/docs-zero', err.file)
+      ? path.join(REPO_ROOT, 'docs', err.file)
       : path.join(REPO_ROOT, err.file)
   let src: string
   try {

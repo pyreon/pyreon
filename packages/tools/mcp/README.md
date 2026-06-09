@@ -163,7 +163,7 @@ The package is primarily a binary (`pyreon-mcp`); the main entry exports no runt
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/mcp](https://docs.pyreon.dev/docs/mcp) (or `docs/docs/mcp.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/mcp](https://docs.pyreon.dev/docs/mcp) (or `docs/src/content/docs/mcp.md` in this repo).
 
 ## License
 

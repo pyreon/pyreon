@@ -173,7 +173,7 @@ Each request gets its own instance — no cross-request leakage. Same pattern fo
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/permissions](https://docs.pyreon.dev/docs/permissions) (or `docs/docs/permissions.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/permissions](https://docs.pyreon.dev/docs/permissions) (or `docs/src/content/docs/permissions.md` in this repo).
 
 ## License
 

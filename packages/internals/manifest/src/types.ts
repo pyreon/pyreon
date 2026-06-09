@@ -32,7 +32,7 @@ export type ApiKind = 'function' | 'hook' | 'component' | 'type' | 'class' | 'co
  * Shape of a single public API entry (function, hook, component, type,
  * class, or constant). One entry per exported symbol. Drives generated
  * signatures in `llms-full.txt`, the MCP `api-reference.generated.ts`,
- * and per-package VitePress pages.
+ * and per-package docs pages (`docs/src/content/docs/<pkg>.md`).
  *
  * ## Overload handling
  * A TypeScript function with multiple overload signatures gets ONE
@@ -86,7 +86,7 @@ export interface ApiEntry {
    * that ships, authors verify by hand.
    *
    * INVARIANT (convention, not enforced): 5-15 lines. Longer examples
-   * belong in the package's VitePress guide, not the manifest.
+   * belong in the package's docs guide, not the manifest.
    */
   example: string
   /**
@@ -174,7 +174,7 @@ export interface PackageManifest {
   tagline: string
   /**
    * Longer paragraph — 2-5 sentences. Appears in the `llms-full.txt`
-   * per-package section header and the VitePress docs page lede.
+   * per-package section header and the docs page lede.
    */
   description: string
   /**

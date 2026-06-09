@@ -240,7 +240,7 @@ async function buildMd(id: string, src: string): Promise<BuiltMd> {
 }
 
 function deriveSlug(absPath: string): string {
-  // Find `/content/` or `/docs/docs/` and slug from there
+  // Find `/content/` or `/docs/src/content/docs/` and slug from there
   const m = absPath.match(/[\\/](?:content|docs)[\\/](.+?)\.md$/)
   if (m) return m[1]!.replace(/\\/g, '/').replace(/\/index$/, '/')
   return absPath.split(/[\\/]/).pop()!.replace(/\.md$/, '')

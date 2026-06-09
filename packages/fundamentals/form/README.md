@@ -249,7 +249,7 @@ import { formRegistry } from '@pyreon/form/devtools'
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/form](https://docs.pyreon.dev/docs/form) (or `docs/docs/form.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/form](https://docs.pyreon.dev/docs/form) (or `docs/src/content/docs/form.md` in this repo).
 
 ## License
 

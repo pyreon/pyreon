@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Migrate `<Playground>` to `<Example>` across all docs-zero markdown pages.
+ * Migrate `<Playground>` to `<Example>` across all docs markdown pages.
  *
  * For each `<Playground title="..." height={N} code={\`...\`} />` block found:
  *   1. Slugify the title → `signal-read-write-react`
  *   2. Extract `code={\`...\`}` content (template literal body)
  *   3. Write a Pyreon component file at
- *      `examples/docs-zero/src/examples/<topic>/<slug>.tsx` (topic = source
+ *      `docs/src/examples/<topic>/<slug>.tsx` (topic = source
  *      markdown filename stem)
  *   4. Replace the original markup with `<Example file="./examples/<topic>/<slug>" title="..." />`
  *
@@ -23,11 +23,11 @@ import path from 'node:path'
 const REPO_ROOT = path.resolve(import.meta.dir, '..')
 const DOCS_DIR = path.join(
   REPO_ROOT,
-  'examples/docs-zero/src/content/docs',
+  'docs/src/content/docs',
 )
 const EXAMPLES_DIR = path.join(
   REPO_ROOT,
-  'examples/docs-zero/src/examples',
+  'docs/src/examples',
 )
 
 function slugify(s: string): string {

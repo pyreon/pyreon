@@ -278,7 +278,7 @@ For a 150-component page with 8 dimensions each: ~1,350 Set allocations, ~300 ar
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/rocketstyle](https://docs.pyreon.dev/docs/rocketstyle) (or `docs/docs/rocketstyle.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/rocketstyle](https://docs.pyreon.dev/docs/rocketstyle) (or `docs/src/content/docs/rocketstyle.md` in this repo).
 
 ## License
 

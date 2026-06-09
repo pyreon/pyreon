@@ -167,7 +167,7 @@ Every reactive overload accepts any `ReadableSignal<T[]>` — not just Pyreon `S
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/rx](https://docs.pyreon.dev/docs/rx) (or `docs/docs/rx.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/rx](https://docs.pyreon.dev/docs/rx) (or `docs/src/content/docs/rx.md` in this repo).
 
 ## License
 

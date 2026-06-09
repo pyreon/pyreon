@@ -1,23 +1,33 @@
-name: Deploy Docs (legacy — DISABLED)
+name: Deploy Docs
 
-# IMPORTANT — this workflow is DISABLED for `push` events.
+# Builds the Pyreon-native docs site (`docs/`) and deploys to GitHub
+# Pages. Replaces the legacy VitePress workflow + the side-by-side
+# `docs-zero-preview.yml` (both removed in the cutover).
 #
-# History: it uploaded `docs/.vitepress/dist` as the entire Pages
-# artifact. Side-by-side with `docs-zero-preview.yml` (which uploads
-# a COMBINED artifact: VitePress at `/` + docs-zero at `/preview/`),
-# this workflow's solo deploys would OVERWRITE the preview directory
-# whenever a legacy docs change triggered it without also triggering
-# the preview workflow.
-#
-# Symptom: `pyreon.github.io/pyreon/preview/` returns 404 after any
-# `docs/**`-only merge.
-#
-# Fix: `docs/**` is now in `docs-zero-preview.yml`'s path filter, so
-# every legacy docs change rebuilds the COMBINED site. This workflow
-# is kept as `workflow_dispatch`-only for the very rare case someone
-# needs the legacy-site-only deploy (it's preserved as a recovery
-# tool but won't auto-fire on push).
+# Production URL: https://pyreon.github.io/pyreon/
+# Built via `vite build --base=/pyreon/` — `@pyreon/zero`'s
+# `argvHasBaseFlag` carve-out honors the CLI flag (PR #1395).
+
 on:
+  push:
+    branches: [main]
+    paths:
+      # Any change to the docs source itself
+      - 'docs/**'
+      # Framework packages the docs build transitively depends on —
+      # a fix in any of these can change what ships on the docs site,
+      # so any of them retriggers a deploy.
+      - 'packages/zero/zero/**'
+      - 'packages/zero/zero-content/**'
+      - 'packages/tools/vite-plugin/**'
+      - 'packages/core/router/**'
+      - 'packages/core/runtime-dom/**'
+      - 'packages/core/runtime-server/**'
+      - 'packages/core/reactivity/**'
+      - 'packages/core/core/**'
+      - 'packages/core/compiler/**'
+      - 'packages/core/head/**'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 concurrency:
@@ -33,19 +43,34 @@ jobs:
   build:
     name: Build Docs
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Need the full history so `git log -1 --format=%aI <file>` in
+          # the last-updated plugin returns the real timestamp instead
+          # of the shallow-clone-only commit.
+          fetch-depth: 0
+
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
-      - run: cd docs && bun install --frozen-lockfile
-      - name: Build static site
-        run: cd docs && bun run build
+
+      - name: Install workspace deps
+        run: bun install --frozen-lockfile
+
+      - name: Build docs
+        # `--base=/pyreon/` is the production GitHub Pages base path.
+        # `@pyreon/zero`'s `argvHasBaseFlag` honors this CLI flag
+        # (same pattern the dev `--port` flag uses).
+        run: |
+          cd docs
+          bunx vite build --base=/pyreon/
+
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: docs/.vitepress/dist
+          path: docs/dist
 
   deploy:
     name: Deploy

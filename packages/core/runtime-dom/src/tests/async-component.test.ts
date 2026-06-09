@@ -5,7 +5,7 @@
  * fed straight into `mountChild`, crashing with `Cannot read properties of undefined
  * (reading 'ref')` because Promises have no `.props`. SSR awaited the Promise (per the
  * documented contract); the client never did. This was the root cause of the deployed
- * `examples/docs-zero` preview crash on every doc route — they all delegated to an async
+ * `docs` preview crash on every doc route — they all delegated to an async
  * `<DocBody slug={slug} />`.
  *
  * The fix: when `mountComponent` sees a Promise output, insert a placeholder comment,

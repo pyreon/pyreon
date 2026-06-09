@@ -2603,7 +2603,7 @@ function escapeKotlinInterp(s: string): string {
  * Lower a `kind: 'rx-call'` ExprIR to Kotlin. Dispatches on `method` to
  * produce idiomatic Kotlin code on `List<T>`. Mirrors emitSwiftRxCall
  * in shape; the per-method lowerings are documented in
- * docs/docs/multiplatform-libraries.md (Strategy A table).
+ * docs/src/content/docs/multiplatform-libraries.md (Strategy A table).
  *
  * Predicate / mapper / reducer args are inlined as Kotlin lambdas
  * (`{ t -> body }`); count args inline as Kotlin Int literals.

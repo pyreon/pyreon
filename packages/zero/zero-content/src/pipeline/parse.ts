@@ -250,12 +250,13 @@ export async function compileMarkdown(
     const processor = getProcessor(mdxEnabled)
     // VitePress / Starlight / Docusaurus directive syntax tolerates
     // `::: name` (one or more spaces between the fence and the
-    // directive name); remark-directive only accepts `:::name`. Most
-    // existing Pyreon docs were authored in the VitePress form, so
-    // normalize before parsing — strip the space(s) so remark sees
-    // the canonical form and the callout / codegroup / details
-    // plugins can fire. Without this, `::: code-group` rendered as
-    // literal paragraph text in every page that used it.
+    // directive name); remark-directive only accepts `:::name`.
+    // Pyreon docs authored before the cutover used the space-form,
+    // and downstream consumers may still author in it. We normalize
+    // before parsing — strip the space(s) so remark sees the canonical
+    // form and the callout / codegroup / details plugins can fire.
+    // Without this, `::: code-group` rendered as literal paragraph
+    // text in every page that used it.
     //
     // The regex is anchored at line start (`m` flag), allows leading
     // whitespace, requires `:::` followed by at least one space and

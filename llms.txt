@@ -393,7 +393,7 @@ const auth: RouteMiddleware = async (ctx) => { ctx.data.user = await getUser(ctx
 
 ## Documentation
 
-Full docs at `docs/` (VitePress site, 52 pages): `cd docs && bun run dev`
+Full docs at `docs/` (Pyreon-native site, 95 pages): `cd docs && bun run dev`
 
 ## AI Tools
 

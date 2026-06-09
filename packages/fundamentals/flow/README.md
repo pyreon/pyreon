@@ -179,7 +179,7 @@ Position.Left // 'left'
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/flow](https://docs.pyreon.dev/docs/flow) (or `docs/docs/flow.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/flow](https://docs.pyreon.dev/docs/flow) (or `docs/src/content/docs/flow.md` in this repo).
 
 ## License
 

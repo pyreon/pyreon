@@ -142,7 +142,7 @@ Pass `value` and `defaultValue` as functions — a plain value loses controlled/
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/hooks](https://docs.pyreon.dev/docs/hooks) (or `docs/docs/hooks.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/hooks](https://docs.pyreon.dev/docs/hooks) (or `docs/src/content/docs/hooks.md` in this repo).
 
 ## License
 

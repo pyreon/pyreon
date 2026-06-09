@@ -209,7 +209,7 @@ describe('runDocClaimsGate', () => {
       }\n3 doc pages covering all packages\n`,
     )
 
-    // docs/docs/index.md carries one
+    // docs/src/content/docs/index.md carries one
     fs.mkdirSync(path.join(tmp, 'docs', 'docs'), { recursive: true })
     fs.writeFileSync(
       path.join(tmp, 'docs', 'docs', 'index.md'),
@@ -408,7 +408,7 @@ describe('runDocClaimsGate', () => {
 
   it('skips the gate when no claim files exist (non-Pyreon project)', async () => {
     // A downstream consumer app has none of the Pyreon-monorepo claim
-    // sites (CLAUDE.md, hooks README, docs/docs/index.md, …). The gate
+    // sites (CLAUDE.md, hooks README, docs/src/content/docs/index.md, …). The gate
     // recognises this and returns skipped:true rather than flooding
     // findings with spurious file-missing errors for paths that don't
     // apply to the user's project.

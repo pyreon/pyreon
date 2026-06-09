@@ -1,6 +1,6 @@
 # cpa-pw-blog — canonical SSG reference
 
-A minimal blog built with [`@pyreon/zero`](https://github.com/pyreon/pyreon/tree/main/packages/zero) in `mode: 'ssg'`. The canonical reference example for static site generation — every SSG feature this app exercises is documented in [`docs/docs/ssg.md`](../../docs/docs/ssg.md).
+A minimal blog built with [`@pyreon/zero`](https://github.com/pyreon/pyreon/tree/main/packages/zero) in `mode: 'ssg'`. The canonical reference example for static site generation — every SSG feature this app exercises is documented in [`docs/src/content/docs/ssg.md`](../../docs/src/content/docs/ssg.md).
 
 ## What it shows
 
@@ -53,7 +53,7 @@ Drop `dist/` on any static host. Recommended:
 - **GitHub Pages** — auto-serves `404.html` (no per-directory 404 support)
 - **Vercel** (static) — auto-detects everything; set `VERCEL_REVALIDATE_TOKEN` in project env to enable build-time ISR
 
-See [`docs/docs/ssg.md`](../../docs/docs/ssg.md) for the full per-platform deploy reference + nginx / Caddy / S3+CloudFront snippets.
+See [`docs/src/content/docs/ssg.md`](../../docs/src/content/docs/ssg.md) for the full per-platform deploy reference + nginx / Caddy / S3+CloudFront snippets.
 
 ## Files
 

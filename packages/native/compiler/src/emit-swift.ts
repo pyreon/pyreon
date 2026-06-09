@@ -2992,7 +2992,7 @@ function escapeSwiftInterp(s: string): string {
  * Lower a `kind: 'rx-call'` ExprIR to Swift. Dispatches on `method` to
  * produce idiomatic Swift code on `Array<T>`. Mirrors emitKotlinRxCall
  * in shape; the per-method lowerings are documented in
- * docs/docs/multiplatform-libraries.md (Strategy A table).
+ * docs/src/content/docs/multiplatform-libraries.md (Strategy A table).
  *
  * Predicate / mapper / reducer args are inlined as Swift closures
  * (`{ t in body }`); count args inline as Swift Int literals.

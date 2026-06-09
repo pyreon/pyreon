@@ -167,8 +167,8 @@ describe('zero vite-plugin config', () => {
   // Same precedence model as port: CLI > user vite.config > zero({base}) > '/'.
   // Pre-fix, the plugin unconditionally returned `base: config.base`, which
   // empirically beat the CLI `--base=/X/` flag in Vite's merge — every
-  // asset on a subpath deploy 404'd. Surfaced by docs-zero's preview
-  // deploy at /pyreon/preview/ shipping a white screen.
+  // asset on a subpath deploy 404'd. Surfaced by the docs site preview
+  // deploy at /pyreon/ shipping a white screen.
   describe('base defaults', () => {
     afterEach(() => {
       process.argv = ['/usr/bin/bun', 'vite']

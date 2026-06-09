@@ -186,7 +186,7 @@ Plus `Signal` (type).
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/store](https://docs.pyreon.dev/docs/store) (or `docs/docs/store.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/store](https://docs.pyreon.dev/docs/store) (or `docs/src/content/docs/store.md` in this repo).
 
 ## License
 

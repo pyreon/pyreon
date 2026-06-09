@@ -856,7 +856,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           `uses of \`${bindingName}\` emit as unresolved references and may fail swiftc/kotlinc validation. ` +
           `Use a per-target adapter (Layer 4: <NativeIOS> / <NativeAndroid>) to provide the same surface natively, ` +
           `or keep this code in a \`<Web>\`-only branch. Tracked in audit Gap 4; see ` +
-          `docs/docs/multiplatform-libraries.md → "Tier 2 — pure-logic packages."`,
+          `docs/src/content/docs/multiplatform-libraries.md → "Tier 2 — pure-logic packages."`,
       )
       return null
     }
@@ -866,7 +866,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // there's no diagnostic. The runtime `setLoaderData()` infrastructure
   // ships on PyreonRouter (Swift + Kotlin), but the loader auto-emit
   // that would WIRE a component-level `useLoaderData<T>()` call to it
-  // is deferred — see docs/docs/multiplatform.md "Loader auto-emit is
+  // is deferred — see docs/src/content/docs/multiplatform.md "Loader auto-emit is
   // intentionally deferred, not forgotten." A developer writing the
   // call gets a silent-drop: data signal is never populated, component
   // renders with undefined, no compile error, no runtime error. Warn
@@ -906,7 +906,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
       if (isIdentifier) {
         ctx.warnings.push(
-          `useLoaderData<T>() declared (${bindingDesc}) — PMTC ships READ-ONLY emit (Phase B6): the binding reads PyreonRouter.loaderData[currentPath] cast to T. Auto-loader emit (firing a route's \`loader\` on navigation) is future work — populate loaderData via the runtime container's \`setLoaderData(path, value)\` method from your native host code today. Reference: docs/docs/multiplatform.md → "Loader auto-emit is intentionally deferred, not forgotten."`,
+          `useLoaderData<T>() declared (${bindingDesc}) — PMTC ships READ-ONLY emit (Phase B6): the binding reads PyreonRouter.loaderData[currentPath] cast to T. Auto-loader emit (firing a route's \`loader\` on navigation) is future work — populate loaderData via the runtime container's \`setLoaderData(path, value)\` method from your native host code today. Reference: docs/src/content/docs/multiplatform.md → "Loader auto-emit is intentionally deferred, not forgotten."`,
         )
         // Phase B6 IR — capture name + type generic. The emit reads
         // PyreonRouter.loaderData[currentPath] cast to T at the
@@ -980,7 +980,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // computed-emit pipeline handles everything once the IR is built.
   //
   // Per-target compileability of the resulting emit is locked by the
-  // hand-crafted proof in `docs/docs/multiplatform-libraries.md`
+  // hand-crafted proof in `docs/src/content/docs/multiplatform-libraries.md`
   // ("Compileability proof" — `swiftc -parse` + `kotlinc` both exit 0).
   const rxLowered = tryRxNamespaceLowering(name, init, ctx)
   if (rxLowered !== null) return rxLowered
@@ -1165,7 +1165,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * the original pre-RX-1 behaviour).
  *
  * v1 covers the full Strategy-A surface from the spec in
- * docs/docs/multiplatform-libraries.md — collection ops that lower to
+ * docs/src/content/docs/multiplatform-libraries.md — collection ops that lower to
  * native primitives on both Swift `[T]` and Kotlin `List<T>` without
  * a runtime port. The deferred set (`pipe` / `debounce` / `throttle`
  * / `combine` / `zip` / `merge` / `scan` / `distinct` / `search`)
@@ -1247,7 +1247,7 @@ function tryRxNamespaceLowering(
   }
   if (!RX_V1_METHODS.has(methodName)) {
     ctx.warnings.push(
-      `Declaration ${name}: rx.${methodName} is not yet lowered to native (v1 covers ${[...RX_V1_METHODS].join(' / ')}; remaining methods need Strategy B runtime ports — see docs/docs/multiplatform-libraries.md).`,
+      `Declaration ${name}: rx.${methodName} is not yet lowered to native (v1 covers ${[...RX_V1_METHODS].join(' / ')}; remaining methods need Strategy B runtime ports — see docs/src/content/docs/multiplatform-libraries.md).`,
     )
     return null
   }

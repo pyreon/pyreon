@@ -267,7 +267,7 @@ const url2 = buildPath('/blog/:rest*', { rest: 'a/b' }) // '/blog/a/b' — catch
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/router](https://docs.pyreon.dev/docs/router) (or `docs/docs/router.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/router](https://docs.pyreon.dev/docs/router) (or `docs/src/content/docs/router.md` in this repo).
 
 ## License
 

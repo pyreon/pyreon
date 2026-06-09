@@ -617,8 +617,8 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				// fixed for `--port` via argvHasPortFlag). Symptom: `vite
 				// build --base=/sub/` emitted `<script src="/assets/…">`
 				// instead of `/sub/assets/…`, so every asset 404'd on a
-				// subpath deploy. Discovered when docs-zero's preview
-				// deploy at /pyreon/preview/ shipped a white screen.
+				// subpath deploy. Discovered when the docs site preview
+				// deploy at /pyreon/ shipped a white screen.
 				//
 				// `__ZERO_BASE__` define ALWAYS reflects config.base here
 				// because that's what `startClient` / `createApp` read for

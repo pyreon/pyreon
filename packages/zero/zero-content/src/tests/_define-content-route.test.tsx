@@ -1,7 +1,7 @@
 /**
  * PR-A audit H1 — `defineContentRoute` helper regression specs.
  *
- * The function collapses the docs-zero Suspense + async-body
+ * The function collapses the docs site Suspense + async-body
  * boilerplate into one call. Locked here so a refactor can't
  * silently change the contract.
  */

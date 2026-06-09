@@ -259,7 +259,7 @@ const Card = styled('div')`
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/styler](https://docs.pyreon.dev/docs/styler) (or `docs/docs/styler.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/styler](https://docs.pyreon.dev/docs/styler) (or `docs/src/content/docs/styler.md` in this repo).
 
 ## License
 

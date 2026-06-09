@@ -11,7 +11,7 @@ Tightly coupled to `@pyreon/zero` — that integration IS the value:
 
 ## Status
 
-**v0 — Pre-publish.** The package is currently `private: true` in this monorepo, so a `bun add @pyreon/zero-content` from outside the workspace doesn't resolve yet. Use as a `workspace:*` dep inside the Pyreon repo (see `examples/docs-zero`) or watch this readme for the un-private flip.
+**v0 — Pre-publish.** The package is currently `private: true` in this monorepo, so a `bun add @pyreon/zero-content` from outside the workspace doesn't resolve yet. Use as a `workspace:*` dep inside the Pyreon repo (see `docs`) or watch this readme for the un-private flip.
 
 ## Install
 

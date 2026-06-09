@@ -126,7 +126,7 @@ export default { plugins: [pyreon({ compat: 'preact' })] }
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/preact-compat](https://docs.pyreon.dev/docs/preact-compat) (or `docs/docs/preact-compat.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/preact-compat](https://docs.pyreon.dev/docs/preact-compat) (or `docs/src/content/docs/preact-compat.md` in this repo).
 
 ## License
 

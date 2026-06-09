@@ -866,7 +866,7 @@ server.tool(
   //
   // Reads from this package's own manifest at runtime — single source of truth.
   // Reuses the same data that drives api-reference.ts + llms-full.txt + the
-  // generated docs/docs/mcp.md sections. Adding a new tool to manifest.ts
+  // generated docs/src/content/docs/mcp.md sections. Adding a new tool to manifest.ts
   // automatically surfaces it here on next call; no second wiring step.
   // ═══════════════════════════════════════════════════════════════════════════════
 

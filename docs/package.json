@@ -1,34 +1,32 @@
 {
   "name": "@pyreon/docs",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
-  "description": "Documentation for Pyreon — a signal-based UI framework",
-  "license": "CC-BY-3.0",
-  "author": "Vit Bokisch <vit@bokisch.cz>",
+  "description": "Pyreon's documentation site, built with @pyreon/zero + @pyreon/zero-content. Dogfoods the framework end-to-end.",
   "type": "module",
   "scripts": {
-    "dev": "vitepress dev",
-    "build": "vitepress build",
-    "preview": "vitepress preview",
-    "lint": "oxlint .",
-    "lint:fix": "oxlint --fix .",
-    "format": "oxfmt --write .",
-    "check": "bun run lint && bun run build",
-    "typecheck": "echo VitePress - no typecheck",
-    "test": "echo VitePress - no tests"
-  },
-  "devDependencies": {
-    "vitepress": "^1.6.4",
-    "vue": "^3.5.35"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
   },
   "dependencies": {
-    "@codemirror/autocomplete": "^6.20.3",
-    "@codemirror/commands": "^6.10.3",
-    "@codemirror/lang-javascript": "^6.2.5",
-    "@codemirror/language": "^6.12.3",
-    "@codemirror/state": "^6.6.0",
-    "@codemirror/theme-one-dark": "^6.1.3",
-    "@codemirror/view": "^6.43.0",
-    "codemirror": "^6.0.2"
+    "@pyreon/core": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/server": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@pyreon/zero": "workspace:*",
+    "@pyreon/zero-content": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/typescript": "workspace:*",
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
   }
 }
