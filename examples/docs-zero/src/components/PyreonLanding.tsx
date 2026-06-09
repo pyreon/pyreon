@@ -45,11 +45,99 @@ const MECHANISM = [
   },
 ]
 
-const COMPAT = [
-  { lib: 'React 18+', lines: ['// useState → signal', 'const [c, setC] = useState(0)', 'useEffect(fn, [c])'] },
-  { lib: 'Preact 10', lines: ['// mirrors @preact/signals', 'const c = signal(0)', 'effect(() => log(c.value))'] },
-  { lib: 'Vue 3.4', lines: ['// composition · ref/computed', 'const c = ref(0)', 'const d = computed(() => c.value*2)'] },
-  { lib: 'SolidJS 1.9', lines: ['// createSignal / createEffect', 'const [c, setC] = createSignal(0)', 'createEffect(() => log(c()))'] },
+// Each token is `[text, class]`. Classes map to `--syn-*` CSS vars
+// (defined in `tokens.css`): `cm` comment, `kw` keyword, `fn` function,
+// `var` variable/identifier, `num` number, `str` string, `fg` punctuation.
+// Letter-only classnames are short enough to write inline without a
+// helper. The full syntax-token surface (7 colors) is the same set
+// Shiki paints in our `.md`-page code blocks — landing parity.
+type Tok = readonly [string, 'cm' | 'kw' | 'fn' | 'var' | 'num' | 'str' | 'fg']
+const COMPAT: ReadonlyArray<{ lib: string; lines: ReadonlyArray<ReadonlyArray<Tok>> }> = [
+  {
+    lib: 'React 18+',
+    lines: [
+      [['// useState → signal', 'cm']],
+      [
+        ['const ', 'kw'],
+        ['[c, setC]', 'var'],
+        [' = ', 'fg'],
+        ['useState', 'fn'],
+        ['(', 'fg'],
+        ['0', 'num'],
+        [')', 'fg'],
+      ],
+      [
+        ['useEffect', 'fn'],
+        ['(fn, [c])', 'fg'],
+      ],
+    ],
+  },
+  {
+    lib: 'Preact 10',
+    lines: [
+      [['// mirrors @preact/signals', 'cm']],
+      [
+        ['const ', 'kw'],
+        ['c', 'var'],
+        [' = ', 'fg'],
+        ['signal', 'fn'],
+        ['(', 'fg'],
+        ['0', 'num'],
+        [')', 'fg'],
+      ],
+      [
+        ['effect', 'fn'],
+        ['(() => ', 'fg'],
+        ['log', 'fn'],
+        ['(c.value))', 'fg'],
+      ],
+    ],
+  },
+  {
+    lib: 'Vue 3.4',
+    lines: [
+      [['// composition · ref/computed', 'cm']],
+      [
+        ['const ', 'kw'],
+        ['c', 'var'],
+        [' = ', 'fg'],
+        ['ref', 'fn'],
+        ['(', 'fg'],
+        ['0', 'num'],
+        [')', 'fg'],
+      ],
+      [
+        ['const ', 'kw'],
+        ['d', 'var'],
+        [' = ', 'fg'],
+        ['computed', 'fn'],
+        ['(() => c.value*', 'fg'],
+        ['2', 'num'],
+        [')', 'fg'],
+      ],
+    ],
+  },
+  {
+    lib: 'SolidJS 1.9',
+    lines: [
+      [['// createSignal / createEffect', 'cm']],
+      [
+        ['const ', 'kw'],
+        ['[c, setC]', 'var'],
+        [' = ', 'fg'],
+        ['createSignal', 'fn'],
+        ['(', 'fg'],
+        ['0', 'num'],
+        [')', 'fg'],
+      ],
+      [
+        ['createEffect', 'fn'],
+        ['(() => ', 'fg'],
+        ['log', 'fn'],
+        ['(c()))', 'fg'],
+      ],
+    ],
+  },
 ]
 
 const RENDER_MODES = [
@@ -290,12 +378,12 @@ export function PyreonLanding() {
                 <span class="px-mono-label">↻ → signals</span>
               </div>
               <pre class="px-code">
-                {col.lines.map((l) => (
+                {col.lines.map((line, i) => (
                   <>
-                    <span class={l.startsWith('//') ? 'c-cm' : 'c-fg'}>
-                      {l}
-                    </span>
-                    {'\n'}
+                    {line.map(([text, cls]) => (
+                      <span class={`c-${cls}`}>{text}</span>
+                    ))}
+                    {i < col.lines.length - 1 ? '\n' : ''}
                   </>
                 ))}
               </pre>
