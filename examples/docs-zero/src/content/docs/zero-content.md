@@ -229,7 +229,7 @@ import { Foo } from './local-component'
 
 Resolution order, most-specific first: per-`.md` import → collection-level `components:` config → top-level `components:` config → `src/mdx/` convention scan → built-ins.
 
-## Inline live examples — `<Example>` { #example }
+## Inline live examples — `<Example>`
 
 The Pyreon-native replacement for iframe-sandboxed `<Playground>`. Loads a real `.tsx` file inline (NOT iframe) — no escape passes, no srcdoc string-blob, no SyntaxError when a string contains a backslash. **Two `<Example>` calls with the same `share` key receive the SAME signal instance** via a module-level registry, so a click in one example reactively updates the rendered output of another mounted example on the same page.
 
