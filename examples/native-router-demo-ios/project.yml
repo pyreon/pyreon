@@ -93,6 +93,48 @@ targets:
         Release:
           SWIFT_OPTIMIZATION_LEVEL: -O
 
+  # Gap 7 part (a) — XCUITest launch + multi-route navigation smoke.
+  # Asserts the app boots on the iOS Simulator, home-page renders,
+  # navigates to about-page, navigates back, and the dynamic
+  # `:id` segment populates useParams() correctly.
+  # See `iosUITests/PyreonRouterDemoUITests.swift`. Mirror of the
+  # TodoMVC + counter UITest target wiring.
+  PyreonRouterDemoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: iosUITests
+        type: group
+
+    dependencies:
+      - target: PyreonRouterDemo
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonRouterDemoUITests
+        TEST_TARGET_NAME: PyreonRouterDemo
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: '5.0'
+
+# Explicit scheme so `xcodebuild -scheme PyreonRouterDemo test`
+# reliably picks up the UITest target. Same shape as TodoMVC/counter.
+schemes:
+  PyreonRouterDemo:
+    build:
+      targets:
+        PyreonRouterDemo: all
+        PyreonRouterDemoUITests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - PyreonRouterDemoUITests
+    run:
+      config: Debug
+
 # Local SPM package reference — the @pyreon/native-router-swift
 # package lives in the monorepo at packages/native/router-swift.
 # xcodegen resolves the relative path to an SPM dependency.
