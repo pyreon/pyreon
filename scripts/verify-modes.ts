@@ -992,6 +992,51 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // native-tasks-web — Gap 5 PR-5.3 verify-modes wire-up for the
+  // Tasks showcase (canonical TasksApp.tsx from native-tasks/, hosted
+  // on web via @pyreon/primitives web runtime). Sibling of native-
+  // todomvc-web + native-router-demo-web; this cell proves the SAME
+  // canonical-vocab + signal-state + router source that emits to iOS
+  // (#1457) + Android (#1458) ALSO builds and bundles on web.
+  //
+  // Bisect-verifiable: break the TasksApp source path in the entry
+  // (`../../native-tasks/src/TasksApp`) OR remove a primitive's web
+  // impl AND the build fails OR the bundled JS loses the testids /
+  // user-visible strings the smoke asserts.
+  {
+    example: 'native-tasks-web',
+    mode: 'spa',
+    useExampleConfig: true,
+    smoke: (dist) => {
+      const indexPath = join(dist, 'index.html')
+      assertFileContains(indexPath, 'id="app"')
+      const assetsDir = join(dist, 'assets')
+      const jsFiles = readdirSync(assetsDir).filter((f) => f.endsWith('.js'))
+      const bundles = jsFiles.map((f) => readFileSync(join(assetsDir, f), 'utf8'))
+      const allBundled = bundles.join('\n')
+      // testid baked into TasksApp.tsx auth-gate login route
+      if (!allBundled.includes('login-page')) {
+        throw new Error(
+          `[native-tasks-web × spa] expected bundle to contain testid "login-page" — got ${jsFiles.length} js file(s) totaling ${allBundled.length} chars`,
+        )
+      }
+      // testid baked into post-auth tasks list route — proves multi-
+      // route source bundled all routes, not just the entry one
+      if (!allBundled.includes('tasks-page')) {
+        throw new Error(
+          `[native-tasks-web × spa] expected bundle to contain testid "tasks-page" — got ${jsFiles.length} js file(s)`,
+        )
+      }
+      // user-facing placeholder string from new-task Field — proves
+      // JSX text + primitive prop forwarding survives the bundle
+      if (!allBundled.includes('What needs doing')) {
+        throw new Error(
+          `[native-tasks-web × spa] expected bundle to contain new-task placeholder "What needs doing" — got ${jsFiles.length} js file(s)`,
+        )
+      }
+    },
+  },
+
   // playground — minimal three-route Pyreon shell. Smallest viable
   // app exercising the routing + layout chain.
   {
