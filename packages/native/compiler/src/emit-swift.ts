@@ -39,6 +39,7 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodSchemaDefnIR,
 } from './types'
 
 // String-literal-union enums recognised by the parser. Built at the
@@ -226,6 +227,7 @@ export function emitSwift(
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
   fieldMetas: FieldMetaDefnIR[] = [],
+  zodSchemas: ZodSchemaDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -254,6 +256,8 @@ export function emitSwift(
   for (const m of models) parts.push(emitSwiftModel(m))
   // Gap 4 follow-up — withField metadata structs.
   for (const fm of fieldMetas) parts.push(emitSwiftFieldMeta(fm))
+  // Gap 4 follow-up — Zod schema structs.
+  for (const zs of zodSchemas) parts.push(emitSwiftZodSchema(zs))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -362,6 +366,33 @@ function emitSwiftFieldMeta(fm: FieldMetaDefnIR): string {
   lines.push(`}`)
   lines.push(``)
   lines.push(`let ${fm.bindingName} = PyreonFieldMeta_${fm.bindingName}()`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Swift).
+ * Produces a Codable struct + module-scope const. Apps validate at
+ * JSON-decode time via Codable; v1 doesn't yet emit runtime .parse()
+ * methods (v2 follow-up).
+ *
+ *   struct PyreonZodSchema_userSchema: Codable {
+ *       var name: String = ""
+ *       var age: Int = 0
+ *       var active: Bool = false
+ *   }
+ *   let userSchema = PyreonZodSchema_userSchema()
+ */
+function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
+  const lines: string[] = []
+  lines.push(`struct PyreonZodSchema_${zs.bindingName}: Codable {`)
+  for (const f of zs.fields) {
+    const t = f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Bool'
+    const initial = f.type === 'string' ? '""' : f.type === 'boolean' ? 'false' : '0'
+    lines.push(`    var ${f.name}: ${t} = ${initial}`)
+  }
+  lines.push(`}`)
+  lines.push(``)
+  lines.push(`let ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   return lines.join('\n')
 }
 
