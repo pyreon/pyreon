@@ -1,0 +1,191 @@
+import type { IncomingMessage, Server as HttpServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { type RawData, type WebSocket as WsSocket, WebSocketServer } from 'ws'
+import * as Y from 'yjs'
+import {
+  MSG_STATE_VECTOR,
+  MSG_UPDATE,
+  decodeSyncMessage,
+  encodeSyncMessage,
+} from './crdt/ws-protocol'
+
+// `@pyreon/sync/server` — a Node/Bun WebSocket relay for the Yjs sync protocol.
+// Server-only (imports `ws` + `node:http`); kept at this subpath so it never
+// enters a client bundle.
+
+/** Context passed to the {@link SyncServerOptions.authorize} hook. */
+export interface AuthorizeContext {
+  /** Room id parsed from the URL path (e.g. `wss://host/my-room` → `my-room`). */
+  room: string
+  /** The `token` query-string param, or `null`. (Browser WebSockets can't set headers.) */
+  token: string | null
+  /** The raw HTTP upgrade request — read cookies / headers here if you prefer. */
+  req: IncomingMessage
+}
+
+export interface SyncServerOptions {
+  /**
+   * Port to listen on. Use `0` for an OS-assigned port (handy in tests).
+   * Ignored when {@link SyncServerOptions.server} is given (the relay then
+   * shares that server's port).
+   */
+  port?: number
+  /** Host/interface to bind. Default: `ws`'s default (all interfaces). */
+  host?: string
+  /**
+   * Attach the relay to an EXISTING Node `http.Server` (upgrade handling)
+   * instead of opening its own port. Use this to share a port with an HTTP app
+   * — e.g. mount the relay on a framework's Node/Bun server, or front it with a
+   * plain-HTTP health endpoint. The caller owns `server.listen()`; the relay
+   * only adds WebSocket upgrade handling. Mutually exclusive with `port`.
+   */
+  server?: HttpServer
+  /**
+   * Per-connection authorization — the per-room/per-doc access gate. Return
+   * `false` (or throw) to REJECT the connection: the socket is closed with code
+   * 4401 before any document data is sent or received. Receives the room + token
+   * parsed from the URL. **Default: allow every connection** — suitable only for
+   * local/dev; a real deployment MUST supply this.
+   */
+  authorize?: (ctx: AuthorizeContext) => boolean | Promise<boolean>
+}
+
+export interface SyncServer {
+  /** The actual listening port (resolved even when `port: 0` was requested). */
+  readonly port: number
+  /** Number of rooms currently holding ≥1 client. */
+  readonly rooms: number
+  /** Close all connections and stop the server. */
+  close(): Promise<void>
+}
+
+interface Room {
+  doc: Y.Doc
+  clients: Set<WsSocket>
+}
+
+/** Normalize a `ws` RawData frame (Buffer | ArrayBuffer | Buffer[]) to a Uint8Array — synchronous so message order is preserved. */
+function rawToBytes(data: RawData): Uint8Array {
+  if (data instanceof Uint8Array) return data // Buffer is a Uint8Array
+  if (Array.isArray(data)) return Buffer.concat(data)
+  return new Uint8Array(data as ArrayBuffer)
+}
+
+/**
+ * Start a relay that brokers Yjs sync between clients sharing a room. Clients
+ * connect with {@link connectViaWebSocket} pointing at `ws(s)://host/<room>?token=…`.
+ * The relay keeps one authoritative `Y.Doc` per room so a late-joiner catches up,
+ * applies each inbound update to it, and broadcasts updates to the room's OTHER
+ * clients. Rooms are GC'd when their last client leaves — the relay is ephemeral
+ * (no persistence); clients keep their own copy (e.g. `persistViaIndexedDB`), so
+ * a reconnecting client re-syncs from whichever peer still holds the room.
+ */
+export function createSyncServer(options: SyncServerOptions): Promise<SyncServer> {
+  const rooms = new Map<string, Room>()
+  const getRoom = (name: string): Room => {
+    let r = rooms.get(name)
+    if (!r) {
+      r = { doc: new Y.Doc(), clients: new Set() }
+      rooms.set(name, r)
+    }
+    return r
+  }
+
+  const wss = options.server
+    ? new WebSocketServer({ server: options.server })
+    : new WebSocketServer(
+        options.host
+          ? { port: options.port ?? 0, host: options.host }
+          : { port: options.port ?? 0 },
+      )
+
+  wss.on('connection', (socket: WsSocket, req: IncomingMessage) => {
+    void (async () => {
+      const url = new URL(req.url ?? '/', 'http://localhost')
+      const room = url.pathname.replace(/^\/+/, '') || 'default'
+      const token = url.searchParams.get('token')
+
+      if (options.authorize) {
+        let ok = false
+        try {
+          ok = await options.authorize({ room, token, req })
+        } catch {
+          ok = false
+        }
+        if (!ok) {
+          socket.close(4401, 'unauthorized')
+          return
+        }
+      }
+
+      const r = getRoom(room)
+      r.clients.add(socket)
+
+      // Kick off the SYMMETRIC sync handshake (the standard y-protocols shape):
+      // send the room's state vector so the client replies with exactly the ops
+      // the room is MISSING. This direction is load-bearing — without it the room
+      // never receives a client's foundational ops (e.g. a `set` made while the
+      // socket was still CONNECTING, before any update could be sent), so a later
+      // incremental update from that client has a missing causal dependency on a
+      // peer and Yjs holds it PENDING forever (it never applies). The client is
+      // already symmetric: on `open` it sends ITS state vector (→ we reply with
+      // the diff below), and it replies to this one with its missing-for-room ops.
+      socket.send(encodeSyncMessage(MSG_STATE_VECTOR, Y.encodeStateVector(r.doc)))
+
+      socket.on('message', (data: RawData) => {
+        const { type, payload } = decodeSyncMessage(rawToBytes(data))
+        if (type === MSG_STATE_VECTOR) {
+          // Reply with exactly what this client is missing.
+          socket.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(r.doc, payload)))
+          return
+        }
+        // Apply to the authoritative room doc + fan out to the OTHER clients.
+        Y.applyUpdate(r.doc, payload)
+        const frame = encodeSyncMessage(MSG_UPDATE, payload)
+        for (const c of r.clients) {
+          if (c !== socket && c.readyState === 1 /* OPEN */) c.send(frame)
+        }
+      })
+
+      socket.on('close', () => {
+        r.clients.delete(socket)
+        if (r.clients.size === 0) rooms.delete(room)
+      })
+    })()
+  })
+
+  const attached = options.server
+  const makeHandle = (): SyncServer => ({
+    get port() {
+      // Own-port mode: the WebSocketServer's bound address. Attached mode: read
+      // the host http server's address (it owns `listen`, so this resolves once
+      // the caller has listened; may be 0 before then).
+      const addr = (attached ?? wss).address()
+      return typeof addr === 'object' && addr !== null
+        ? (addr as AddressInfo).port
+        : (options.port ?? 0)
+    },
+    get rooms() {
+      return rooms.size
+    },
+    // Stop handling upgrades + drop clients. In attached mode the caller owns
+    // the http server, so we never close it — only the WebSocket layer.
+    close: () =>
+      new Promise<void>((res) => {
+        for (const r of rooms.values()) for (const c of r.clients) c.close()
+        wss.close(() => res())
+      }),
+  })
+
+  // Attached mode: the host http server owns `listen`, so the WebSocketServer
+  // never emits its own `listening` — resolve as soon as upgrade handling is
+  // wired (synchronously here).
+  if (attached) return Promise.resolve(makeHandle())
+
+  return new Promise<SyncServer>((resolve, reject) => {
+    wss.once('error', reject)
+    wss.once('listening', () => {
+      resolve(makeHandle())
+    })
+  })
+}

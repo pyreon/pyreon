@@ -8,6 +8,11 @@ export {
   yjsAdapter,
 } from './crdt/yjs-adapter'
 export { connectViaBroadcastChannel, connectYDocs } from './crdt/yjs-transport'
+export {
+  type WebSocketTransport,
+  type WebSocketTransportOptions,
+  connectViaWebSocket,
+} from './crdt/yjs-ws-transport'
 export { type YjsPersistence, persistViaIndexedDB } from './crdt/yjs-persistence'
 export { type SyncedText, syncedText } from './crdt/yjs-text'
 export { type SyncedList, syncedList } from './crdt/yjs-list'
