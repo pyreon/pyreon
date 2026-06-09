@@ -1,27 +1,28 @@
-// Tier-2 verification — @pyreon/machine emit is structurally broken.
+// Tier-2 verification — @pyreon/machine still emits structurally
+// broken code BUT now emits a diagnostic warning naming the
+// silent-drop (Gap 4 first PR — "honest gate" before the full
+// Strategy-B runtime port lands).
 //
 // machine's API: `const m = createMachine({...})` returns a constrained
 // signal-like value with `.send(event)` and `.matches(state)` methods.
 //
-// PMTC behaviour: the `createMachine(...)` declaration is SILENTLY
-// DROPPED (same shape as the rx bug from PR #1317), but the call sites
-// `m.send(...)` and `m.matches(...)` are PRESERVED. This yields emit
-// that references an undefined `m`:
+// PMTC behaviour (post-Gap-4-PR-1):
+//   - The `createMachine(...)` declaration is recognized at the
+//     parser layer and emits a CLEAR WARNING naming the binding +
+//     package + Layer-4 workaround.
+//   - The actual binding is STILL silently dropped (no DeclIR yet —
+//     full Strategy-B runtime port is multi-PR follow-up); the
+//     downstream `.send(...)` / `.matches(...)` references still
+//     reference undefined `m` in emitted code.
+//   - swiftc/kotlinc still rejects the emit (the platform-compile
+//     layer surfaces the breakage), but the PMTC transform now
+//     ALSO surfaces it, so authors aren't blindsided.
 //
-//   Swift: private func start() { m.send("FETCH") }  // m: nowhere
-//   Kotlin: fun start() = m.send("FETCH")            // m: nowhere
+// When the full Strategy-B port for @pyreon/machine lands, this test
+// flips again: the warning goes away, the emit becomes correct, and
+// machine moves from Tier 2 → Tier 1.
 //
-// This is a HARD swiftc/kotlinc compile error — different from rx's
-// silent-drop. The bug is loud at the platform-compile layer, silent
-// at the PMTC-transform layer (no warning surfaces).
-//
-// Audit consequence: machine moves Tier 2 → Tier 3 alongside rx.
-// Fix paths (same as rx):
-//   1. Teach PMTC's parser the `createMachine` shape — emit the binding
-//      as Swift `@State private var m: PyreonMachine = ...` / Kotlin
-//      `var m by remember { mutableStateOf(...) }` and lower .send/.matches
-//      to native equivalents.
-//   2. Per-target Swift / Kotlin machine runtime ports.
+// Reference: docs/docs/multiplatform-libraries.md → "Tier 2"
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -55,13 +56,22 @@ describe('Tier-2 audit — @pyreon/machine structurally-broken emit (known bug)'
     expect(result.code).toContain('m.matches("loading")')
   })
 
-  it('the transform does NOT emit any warning about the dropped binding (the bug)', () => {
+  it('the transform NOW emits a diagnostic warning naming the silent-drop (Gap 4 first PR)', () => {
     const src = readFileSync(FIXTURE, 'utf8')
     const swift = transform(src, { target: 'swift' })
     const kotlin = transform(src, { target: 'kotlin' })
     const machineWarnings = (warnings: string[]) =>
-      warnings.filter((w) => /createMachine|@pyreon\/machine|unknown.*call/i.test(w))
-    expect(machineWarnings(swift.warnings ?? [])).toEqual([])
-    expect(machineWarnings(kotlin.warnings ?? [])).toEqual([])
+      warnings.filter((w) => /createMachine|@pyreon\/machine/i.test(w))
+    // Both targets surface the warning naming binding + package +
+    // Layer-4 workaround pointer. Same shape as Gap-3's lifecycle
+    // walled-tag warnings (#1441).
+    const swiftMachine = machineWarnings(swift.warnings ?? [])
+    const kotlinMachine = machineWarnings(kotlin.warnings ?? [])
+    expect(swiftMachine.length).toBe(1)
+    expect(kotlinMachine.length).toBe(1)
+    expect(swiftMachine[0]!).toContain('@pyreon/machine')
+    expect(swiftMachine[0]!).toContain('Layer 4')
+    expect(swiftMachine[0]!).toContain('NativeIOS')
+    expect(kotlinMachine[0]!).toContain('NativeAndroid')
   })
 })
