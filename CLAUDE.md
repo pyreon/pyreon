@@ -1083,13 +1083,29 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-VitePress documentation site at `docs/` — part of the monorepo workspace. 93 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
+VitePress documentation site at `docs/` — the **legacy site, being replaced** by `examples/docs-zero/` (Pyreon-native, powered by `@pyreon/zero-content`). 93 doc pages covering all packages. The legacy site embeds an iframe-sandboxed `<Playground>` component for live code. The new docs site (`examples/docs-zero/`) ships the **`<Example>` primitive** — real `.tsx` files mounted inline with optional cross-mount signal-bridging via `share="key"`. **30 doc pages migrated from `<Playground>` → `<Example>`** in PR #1448; the iframe shape is deprecated.
 
 ```bash
-cd docs && bun run dev       # local dev server
-cd docs && bun run build     # production build
-cd docs && bun run preview   # preview production build
+cd docs && bun run dev       # legacy VitePress site
+cd docs && bun run build
+cd docs && bun run preview
+
+bun run --filter=@pyreon/docs-zero dev    # new Pyreon-native docs site
+bun run --filter=@pyreon/docs-zero build
 ```
+
+### Authoring docs in `examples/docs-zero/`
+
+The new site uses `@pyreon/zero-content`'s markdown pipeline. Authoring contracts:
+
+- **Live examples** — `<Example file="./examples/<topic>/<slug>" />` in any `.md`. The component file lives at `examples/docs-zero/src/examples/<topic>/<slug>.tsx` and is a real default-exported Pyreon component. Two `<Example>` calls with the same `share="key"` receive the SAME `Signal<unknown>` via `getOrCreateSharedSignal` — proving cross-mount reactivity no MDX-flavor framework can replicate
+- **Code blocks** — every fence is highlighted by Shiki at build time using BOTH light + dark themes inlined into ONE `<span>` tree. Page's `data-theme` swap flips the visible variant via CSS — zero JS cost. Meta string drives wrapping: `filename=`, `showLineNumbers`, `highlight=` (1-indexed line numbers)
+- **Code groups** — `:::code-group` with each child fence carrying `[label]` after the language. Active tab is a signal; SSR ships tab 0 visible; client-side hydration enables tab switching with **zero per-mount cost** (tabs are CSS class swaps via `data-active`, not VNode reconciliation)
+- **Callouts** — `:::tip` / `:::warning` / `:::note` / `:::danger` / `:::info` container directives → `<Callout type="…">`. Levenshtein "did you mean…?" suggestion for unknown names + unclosed-fence heuristic warning
+- **`registerExamples(import.meta.glob('./examples/⁎⁎/⁎.tsx'))`** must be called from `entry-client.ts` (compile-time-resolved relative to where it's called). Side-effect import + glob in the consumer's source tree
+- **`<Example>` rendering contract**: example components MUST accept `{ shared?: Signal<T> }` as the prop shape and fall back to a local signal when undefined. This lets the same component work with or without sharing
+- **Migration tooling**: `scripts/migrate-playground-to-example.ts` + `scripts/batch-fix-example-types.ts` automated the 36-instance migration. Reusable for future docs ports
+- **`@pyreon/zero-content/README.md`** covers every plugin behavior + diagnostic; `examples/docs-zero/src/content/docs/zero-content.md` is the user-facing reference. Single source of truth for `Example` API lives in `@pyreon/zero-content` `manifest.ts:api[]` and MCP `get_api('@pyreon/zero-content/Example')`
 
 - VitePress v1, Vue 3 components for custom UI
 - Deployed via GitHub Pages
