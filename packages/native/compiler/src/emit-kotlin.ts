@@ -181,7 +181,10 @@ export function emitKotlin(
   for (const m of models) parts.push(emitKotlinModel(m))
   // Gap 4 follow-up — withField metadata data classes.
   for (const fm of fieldMetas) parts.push(emitKotlinFieldMeta(fm))
-  // Gap 4 follow-up — Zod schema data classes.
+  // Gap 4 follow-up — Zod / Valibot / ArkType schema data classes.
+  // Emit the shared PyreonSchemaError sealed class once if any
+  // schemas are present.
+  if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
   for (const zs of zodSchemas) parts.push(emitKotlinZodSchema(zs))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
@@ -298,11 +301,56 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     const initial = f.type === 'string' ? '""' : f.type === 'boolean' ? 'false' : '0'
     lines.push(`    var ${f.name}: ${t} = ${initial},`)
   }
-  lines.push(`)`)
+  lines.push(`) {`)
+  // Gap 4 v2 — runtime parse() / safeParse() companion methods.
+  lines.push(`    companion object {`)
+  lines.push(
+    `        @Throws(PyreonSchemaError::class)`,
+  )
+  lines.push(
+    `        fun parse(input: Map<String, Any?>): PyreonZodSchema_${zs.bindingName} {`,
+  )
+  for (const f of zs.fields) {
+    const t =
+      f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Boolean'
+    lines.push(
+      `            val ${f.name}Val = (input[${JSON.stringify(f.name)}] as? ${t})`,
+    )
+    lines.push(
+      `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)})`,
+    )
+  }
+  const ctorArgs = zs.fields.map((f) => `${f.name} = ${f.name}Val`).join(', ')
+  lines.push(
+    `            return PyreonZodSchema_${zs.bindingName}(${ctorArgs})`,
+  )
+  lines.push(`        }`)
+  lines.push(``)
+  lines.push(
+    `        fun safeParse(input: Map<String, Any?>): Result<PyreonZodSchema_${zs.bindingName}> {`,
+  )
+  lines.push(`            return try {`)
+  lines.push(`                Result.success(parse(input))`)
+  lines.push(`            } catch (e: PyreonSchemaError) {`)
+  lines.push(`                Result.failure(e)`)
+  lines.push(`            }`)
+  lines.push(`        }`)
+  lines.push(`    }`)
+  lines.push(`}`)
   lines.push(``)
   lines.push(`val ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   return lines.join('\n')
 }
+
+/**
+ * Gap 4 v2 — emitted once at module scope when any schema is
+ * present. Single sealed exception hierarchy shared across all
+ * schemas in a file.
+ */
+const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
+    data class MissingOrWrongType(val field: String, val expected: String) :
+        PyreonSchemaError("Field '\$field' missing or wrong type (expected \$expected)")
+}`
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {

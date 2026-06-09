@@ -256,7 +256,10 @@ export function emitSwift(
   for (const m of models) parts.push(emitSwiftModel(m))
   // Gap 4 follow-up — withField metadata structs.
   for (const fm of fieldMetas) parts.push(emitSwiftFieldMeta(fm))
-  // Gap 4 follow-up — Zod schema structs.
+  // Gap 4 follow-up — Zod / Valibot / ArkType schema structs.
+  // Emit the shared PyreonSchemaError enum BEFORE the schemas if
+  // any are present (the per-schema .parse() / .safeParse() refer to it).
+  if (zodSchemas.length > 0) parts.push(SWIFT_SCHEMA_ERROR)
   for (const zs of zodSchemas) parts.push(emitSwiftZodSchema(zs))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
@@ -390,11 +393,47 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
     const initial = f.type === 'string' ? '""' : f.type === 'boolean' ? 'false' : '0'
     lines.push(`    var ${f.name}: ${t} = ${initial}`)
   }
+  lines.push(``)
+  // Gap 4 v2 — runtime .parse() / .safeParse() methods. Take a
+  // `[String: Any]` (decoded JSON map), type-check each field,
+  // return the validated struct or throw PyreonSchemaError.
+  lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
+  lines.push(`        var result = Self()`)
+  for (const f of zs.fields) {
+    const t = f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Bool'
+    lines.push(
+      `        guard let ${f.name}Val = input[${JSON.stringify(f.name)}] as? ${t} else {`,
+    )
+    lines.push(
+      `            throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(f.name)}, expected: ${JSON.stringify(t)})`,
+    )
+    lines.push(`        }`)
+    lines.push(`        result.${f.name} = ${f.name}Val`)
+  }
+  lines.push(`        return result`)
+  lines.push(`    }`)
+  lines.push(``)
+  lines.push(
+    `    static func safeParse(_ input: [String: Any]) -> Result<Self, PyreonSchemaError> {`,
+  )
+  lines.push(`        do { return .success(try parse(input)) }`)
+  lines.push(`        catch let e as PyreonSchemaError { return .failure(e) }`)
+  lines.push(`        catch { return .failure(.unknown) }`)
+  lines.push(`    }`)
   lines.push(`}`)
   lines.push(``)
   lines.push(`let ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   return lines.join('\n')
 }
+
+/**
+ * Gap 4 v2 — emitted once at module scope when any schema is
+ * present. Single error enum shared across all schemas in a file.
+ */
+const SWIFT_SCHEMA_ERROR = `enum PyreonSchemaError: Error {
+    case missingOrWrongType(field: String, expected: String)
+    case unknown
+}`
 
 /**
  * Emit a Swift `enum X: String { case a, b, c }`. The `: String` raw-
