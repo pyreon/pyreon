@@ -1,0 +1,16 @@
+{
+  "name": "@pyreon/example-native-tasks-android",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Tasks showcase Android host (Gradle + Jetpack Compose). Compiles the SAME TasksApp.tsx source from native-tasks/ via PMTC. Closes Gap 5 (Android host shell for the tasks showcase).",
+  "license": "MIT",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "lint": "echo '[native-tasks-android] no TS lint surface; skipping'",
+    "test": "echo '[native-tasks-android] no test surface; PMTC emit covered by @pyreon/native-compiler tests'",
+    "typecheck": "echo '[native-tasks-android] no TS typecheck surface'"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*"
+  }
+}
