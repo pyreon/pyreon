@@ -1,13 +1,26 @@
 import { mount } from '@pyreon/runtime-dom'
 import { syncedSignal } from '@pyreon/sync'
-import { connectViaBroadcastChannel, createYjsDoc } from '@pyreon/sync/yjs'
+import {
+  connectViaBroadcastChannel,
+  createYjsDoc,
+  persistViaIndexedDB,
+} from '@pyreon/sync/yjs'
 
-// One Yjs doc per tab, synced across same-origin tabs via BroadcastChannel —
-// zero network, fully local-first. Open this page in two tabs and edits in one
-// appear in the other.
+// One Yjs doc per tab. It is:
+//   - PERSISTED to IndexedDB (edits survive a reload / work offline), and
+//   - SYNCED across same-origin tabs via BroadcastChannel (zero network).
+// Open this page in two tabs and edits in one appear in the other; reload and
+// the last edit is still there.
+const ROOM = 'pyreon-sync-yjs-demo'
 const doc = createYjsDoc()
-connectViaBroadcastChannel(doc, 'pyreon-sync-yjs-demo')
+const persist = persistViaIndexedDB(doc, ROOM)
 
+// Load any persisted state BEFORE seeding, so create-if-missing adopts the
+// persisted value instead of racing a fresh 'untitled' seed against the async
+// IndexedDB load.
+await persist.whenSynced
+
+connectViaBroadcastChannel(doc, ROOM)
 const title = syncedSignal({ doc, key: 'title', initial: 'untitled' })
 
 const App = () => (

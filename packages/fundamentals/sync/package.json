@@ -47,6 +47,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "dependencies": {
+    "y-indexeddb": "^9.0.12",
     "yjs": "^13.6.31"
   },
   "devDependencies": {
