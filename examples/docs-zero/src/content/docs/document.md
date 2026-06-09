@@ -9,7 +9,7 @@ description: Universal document rendering for Pyreon — one template, 14 output
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/document

@@ -140,7 +140,7 @@ export const StaticBadge = island(() => import('./components/StaticBadge'), {
 })
 ```
 
-::: warning
+:::warning
 A `hydrate: 'never'` island MUST NOT appear in the client `hydrateIslands({ ... })` registry. Registering pulls the component module into the client bundle graph, defeating the zero-JS goal. The `pyreon doctor --check-islands` audit catches this — finding code: `never-with-registry-entry`. Auto-registry (see below) omits never-strategy islands automatically.
 :::
 

@@ -11,7 +11,7 @@ Unified CLI for `@pyreon/zero`. Wraps Vite with framework-aware defaults: the de
 
 ## Install
 
-::: code-group
+:::code-group
 
 ```bash [bun]
 bun add -D @pyreon/zero-cli

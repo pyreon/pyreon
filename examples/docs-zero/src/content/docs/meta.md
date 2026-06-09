@@ -9,7 +9,7 @@ description: Barrel package re-exporting the full Pyreon fundamentals ecosystem 
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/meta

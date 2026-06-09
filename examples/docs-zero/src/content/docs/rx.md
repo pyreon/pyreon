@@ -11,7 +11,7 @@ Not a lodash replacement — a signal operator library. Use `es-toolkit` for pla
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/rx

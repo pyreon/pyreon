@@ -11,7 +11,7 @@ All adapters normalize library-specific validation errors into a common `Validat
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/validation
@@ -33,7 +33,7 @@ yarn add @pyreon/validation
 
 You also need at least one schema library installed:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install zod
@@ -53,7 +53,7 @@ yarn add zod
 
 :::
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install valibot
@@ -73,7 +73,7 @@ yarn add valibot
 
 :::
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install arktype
@@ -95,7 +95,7 @@ yarn add arktype
 
 And `@pyreon/form` for integration:
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/form

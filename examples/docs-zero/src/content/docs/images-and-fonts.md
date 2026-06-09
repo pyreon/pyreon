@@ -63,7 +63,7 @@ hero == '/img/hero-a1b2.webp'        // (with valueOf)
 
 The descriptor is `Object.freeze`d — accidental mutation throws `TypeError`. The `toString` chain is non-enumerable, so `JSON.stringify(descriptor)` produces clean JSON.
 
-::: warning Object-spread is the one trap
+:::warning{title="Object-spread is the one trap"}
 `<img {...descriptor}>` loses the `toString` (defineProperty's non-enumerable descriptor doesn't carry through spread). Use `.src` explicitly when spreading:
 
 ```tsx

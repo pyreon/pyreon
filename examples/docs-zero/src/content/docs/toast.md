@@ -9,7 +9,7 @@ Signal-driven toast notifications. Imperative API that works anywhere — no pro
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/toast

@@ -9,7 +9,7 @@ description: Component model, VNode types, JSX runtime, lifecycle hooks, and bui
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/core
@@ -775,7 +775,7 @@ function ThemedContent() {
 </ThemeProvider>
 ```
 
-::: info
+:::info
 `provide()` must be called during component setup (synchronously inside a component function). For SSR or test contexts outside component lifecycle, use the lower-level `pushContext`/`popContext` APIs.
 :::
 
@@ -1156,7 +1156,7 @@ function TodoList() {
 }
 ```
 
-::: tip `by`, not `key`
+:::tip{title="`by`, not `key`"}
 Pyreon's `<For>` uses **`by`** (not `key`) — JSX reserves `key` as a special VNode reconciliation prop, so the framework can't read it as a list-keying argument. The `pyreon/for-missing-by` lint rule catches `<For>` without a `by` prop.
 :::
 

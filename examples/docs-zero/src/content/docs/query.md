@@ -9,7 +9,7 @@ description: Reactive data fetching powered by TanStack Query with fine-grained 
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/query

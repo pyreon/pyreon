@@ -9,7 +9,7 @@ description: Vue 3 Composition API that runs on Pyreon's fine-grained reactive e
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/vue-compat

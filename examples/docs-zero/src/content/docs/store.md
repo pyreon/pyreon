@@ -9,7 +9,7 @@ description: Global state management built on Pyreon's reactivity signals.
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/store

@@ -9,7 +9,7 @@ description: Model Context Protocol server that gives AI coding assistants deep 
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/mcp

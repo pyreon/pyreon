@@ -9,7 +9,7 @@ description: Chainable component factory for composing default props, styles, an
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/attrs

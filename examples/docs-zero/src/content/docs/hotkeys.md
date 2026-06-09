@@ -9,7 +9,7 @@ Keyboard shortcut management with automatic lifecycle cleanup, scope-based activ
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/hotkeys

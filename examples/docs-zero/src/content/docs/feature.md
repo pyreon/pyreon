@@ -9,7 +9,7 @@ description: Schema-driven CRUD primitives with auto-generated hooks for lists, 
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/feature

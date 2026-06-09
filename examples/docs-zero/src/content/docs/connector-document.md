@@ -9,7 +9,7 @@ description: Bridge between Pyreon UI system styled components and @pyreon/docum
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/connector-document

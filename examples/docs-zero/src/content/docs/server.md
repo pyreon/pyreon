@@ -22,7 +22,7 @@ The package has two entry points:
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/server

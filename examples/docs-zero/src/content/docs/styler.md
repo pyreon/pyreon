@@ -19,7 +19,7 @@ For older browser targets (legacy corporate IT, embedded WebViews, older mobile)
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/styler
@@ -736,7 +736,7 @@ function ThemedCard(props) {
 }
 ```
 
-::: tip `useTheme()` vs `useThemeAccessor()`
+:::tip{title="`useTheme()` vs `useThemeAccessor()`"}
 `ThemeContext` is a **reactive** context — whole-theme swaps (e.g. a runtime light/dark toggle that replaces the entire theme object) propagate to every `styled()` component automatically.
 
 - **`useTheme()`** returns a `Theme` snapshot at call time. Use it for static reads in component-setup code (signal-init values, default props from theme tokens). This is the common case.

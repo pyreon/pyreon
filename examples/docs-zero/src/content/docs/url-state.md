@@ -9,7 +9,7 @@ Reactive signals synced to URL search parameters. Read `?page=2` into a signal, 
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/url-state

@@ -7,7 +7,7 @@ description: 'Canonical multi-platform UI primitives — semantic vocabulary tha
 
 Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). Same `.tsx` source, three idiomatic outputs.
 
-::: warning Phase A — experimental
+:::warning{title="Phase A — experimental"}
 6 of 16 planned primitives ship with real web implementations today; the remaining 10 have type definitions but no runtime yet. See the [multiplatform overview](/docs/multiplatform) for the full PMTC roadmap.
 :::
 

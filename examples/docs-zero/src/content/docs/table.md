@@ -9,7 +9,7 @@ description: Reactive TanStack Table adapter with fine-grained signal integratio
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/table

@@ -9,7 +9,7 @@ description: Surgical signal-to-DOM renderer with no virtual DOM diffing, hydrat
 
 ## Installation
 
-::: code-group
+:::code-group
 
 ```bash [npm]
 npm install @pyreon/runtime-dom
