@@ -13,7 +13,7 @@
 //   defineStore     → @pyreon/store
 //   createMachine   → @pyreon/machine
 //   createI18n      → @pyreon/i18n/core
-//   createModel     → @pyreon/state-tree
+//   model           → @pyreon/state-tree
 //   defineFeature   → @pyreon/feature
 //
 // Bisect-verify (per .claude/rules/testing.md):
@@ -48,13 +48,17 @@ const TIER2_CASES = [
   // createI18n post-port" spec in tier2-i18n-emit.test.ts is the
   // regression lock.
   {
-    callee: 'createModel',
+    // FIXED (Gap 4 state-tree foundation PR): the actual `@pyreon/
+    // state-tree` export is `model`, not `createModel`. Earlier
+    // diagnostic infrastructure shipped with the wrong name, so the
+    // silent-drop never fired against real user code. Renamed in
+    // parse.ts's tier2StrategyB map.
+    callee: 'model',
     pkg: '@pyreon/state-tree',
-    snippet: `const Counter = createModel({
+    snippet: `const counter = model({
   state: { count: 0 },
-  actions: { inc: (self) => { self.count++ } },
-})`,
-    bindingName: 'Counter',
+}).create()`,
+    bindingName: 'counter',
   },
   {
     callee: 'defineFeature',
@@ -117,7 +121,7 @@ describe('Tier-2 Strategy-B silent-drop warnings', () => {
         w.startsWith('defineStore()') ||
         w.startsWith('createMachine()') ||
         w.startsWith('createI18n()') ||
-        w.startsWith('createModel()') ||
+        w.startsWith('model()') ||
         w.startsWith('defineFeature()'),
     )
     expect(tier2Warnings.length).toBe(0)

@@ -695,7 +695,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const calleeName = init.callee?.name as string | undefined
     const tier2StrategyB: Record<string, string> = {
       defineStore: '@pyreon/store',
-      createModel: '@pyreon/state-tree',
+      // `@pyreon/state-tree`'s public export is `model`, not
+      // `createModel`. Earlier audit doc + diagnostic used the wrong
+      // name → silent-drop never fired against real user code. Fixed
+      // in Gap 4 follow-up (state-tree foundation PR).
+      model: '@pyreon/state-tree',
       defineFeature: '@pyreon/feature',
     }
     if (calleeName && calleeName in tier2StrategyB) {
