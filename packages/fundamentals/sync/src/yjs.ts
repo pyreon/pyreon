@@ -8,3 +8,4 @@ export {
   yjsAdapter,
 } from './crdt/yjs-adapter'
 export { connectViaBroadcastChannel, connectYDocs } from './crdt/yjs-transport'
+export { type YjsPersistence, persistViaIndexedDB } from './crdt/yjs-persistence'

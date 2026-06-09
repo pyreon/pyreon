@@ -84,3 +84,23 @@ test.describe('sync (Yjs) — two-tab BroadcastChannel sync', () => {
     await b.close()
   })
 })
+
+test.describe('sync (Yjs) — IndexedDB persistence', () => {
+  test('an edit survives a page reload (offline-durable)', async ({ page }) => {
+    // Fresh context per test → fresh IndexedDB, so the initial state is clean.
+    await page.goto('/')
+    await expect(page.getByTestId('title')).toHaveText('untitled')
+
+    await page.getByTestId('set-a').click()
+    await expect(page.getByTestId('title')).toHaveText('from-tab-A')
+
+    // Let y-indexeddb flush the update to IndexedDB before reloading.
+    await page.waitForTimeout(500)
+    await page.reload()
+
+    // After reload the doc loads its persisted state from IndexedDB (the app
+    // awaits `whenSynced` before seeding), so the edit is still there — not the
+    // 'untitled' default.
+    await expect(page.getByTestId('title')).toHaveText('from-tab-A')
+  })
+})

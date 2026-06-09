@@ -4,7 +4,7 @@ Local-first, CRDT-backed sync for signals — **a synced signal is just a signal
 
 When a collaborative or offline change arrives, a fine-grained signal framework can do `apply op → one signal.set → one surgical DOM update`. That is the whole bet of this package: bind a signal to a CRDT entry through `wrapSignal`, and the rest of Pyreon (compiled templates, effects, `<For>`) treats it like any other signal — no special render path, no diff.
 
-> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry). **Not yet**: a turnkey-platform adapter, IndexedDB persistence, a cross-tab / cross-device WebSocket transport, and a relay server. See the [roadmap](#roadmap). v1 binds **scalar** map fields; collections (lists, collaborative text) are a later phase.
+> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`) and **same-origin cross-tab sync** (`connectViaBroadcastChannel`). **Not yet**: a turnkey-platform adapter, a cross-device WebSocket transport + relay server, and collaborative collections. See the [roadmap](#roadmap). v1 binds **scalar** map fields; collections (lists, collaborative text) are a later phase.
 
 ## Install
 
@@ -90,11 +90,22 @@ two-tab e2e (`e2e/sync-yjs-demo.spec.ts`) prove the headline end-to-end: an edit
 in one tab patches exactly the bound text node in the other (compiled
 `_bindText`), no re-render.
 
-`createYjsDoc().yDoc` exposes the underlying `Y.Doc` so a WebSocket transport /
-`y-indexeddb` persistence can be wired (later phases). Note CRDTs guarantee
-*convergence*, not *intent*: a scalar last-writer-wins still picks one value when
-two peers edit the same field concurrently — both peers agree, but the loser's
-value is dropped.
+For **offline durability**, `persistViaIndexedDB(doc, dbName)` persists the doc
+to IndexedDB (via `y-indexeddb`) so edits survive a reload and the app works
+offline. Await its `whenSynced` BEFORE creating `syncedSignal`s so create-if-missing
+adopts the persisted value rather than racing a fresh seed against the async load:
+
+```ts
+const doc = createYjsDoc()
+const persist = persistViaIndexedDB(doc, 'my-app-doc')
+await persist.whenSynced
+const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
+```
+
+`createYjsDoc().yDoc` exposes the underlying `Y.Doc` so a WebSocket transport can
+be wired (later phase). Note CRDTs guarantee *convergence*, not *intent*: a scalar
+last-writer-wins still picks one value when two peers edit the same field
+concurrently — both peers agree, but the loser's value is dropped.
 
 ## How the loop works (and why it can't echo)
 
@@ -141,8 +152,9 @@ this client bridge.
 | Bridge | `syncedSignal` / `syncedStore` + `CrdtAdapter` seam + in-memory adapter | ✅ shipped |
 | Yjs engine adapter | raw `Y.Doc` behind the seam (`@pyreon/sync/yjs`) + in-memory peer link | ✅ shipped |
 | Turnkey engine adapter | a managed platform (e.g. Jazz) behind the same seam, for the raw-vs-turnkey decision | planned |
-| Persistence | IndexedDB (offline survives reload) | planned |
-| Transport | cross-tab / cross-device WebSocket channel (live peer sync) | planned |
+| Persistence | IndexedDB offline durability (`persistViaIndexedDB`, via y-indexeddb) | ✅ shipped |
+| Cross-tab transport | same-origin `BroadcastChannel` sync (`connectViaBroadcastChannel`) | ✅ shipped |
+| Cross-device transport | WebSocket channel + relay server (live remote peer sync) | planned |
 | Relay | standalone server + a `@pyreon/zero` adapter extension, with per-room/per-doc authz | planned |
 | Collections | `Y.Array` lists + `Y.Text` collaborative editing | planned |
 
