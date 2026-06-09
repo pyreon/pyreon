@@ -174,6 +174,8 @@ export function emitKotlin(
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
   // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
   _needsKotlinSuspenseWrapper = false
+  // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
+  _needsKotlinErrorBoundaryWrapper = false
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
@@ -186,13 +188,13 @@ export function emitKotlin(
   // Gap 4 follow-up — feature v1: emit per-feature schema data class
   // + module-scope object.
   for (const f of features) parts.push(emitKotlinFeature(f))
-  // Emit components — populates _needsKotlinSuspenseWrapper if any
-  // <Suspense> element is encountered along the way.
+  // Emit components — populates _needsKotlin{Suspense,ErrorBoundary}Wrapper
+  // if any <Suspense> / <ErrorBoundary> element is encountered.
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitKotlinComponent(c))
-  // Gap 3 PR-3.2 — if any Suspense site emitted, prepend the
-  // module-scope PyreonSuspenseWrapper composable.
+  // Gap 3 PR-3.2/3.3 — prepend wrapper composables if needed.
   if (_needsKotlinSuspenseWrapper) parts.push(KOTLIN_SUSPENSE_WRAPPER)
+  if (_needsKotlinErrorBoundaryWrapper) parts.push(KOTLIN_ERROR_BOUNDARY_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -201,6 +203,7 @@ export function emitKotlin(
   _storeHooksKotlin = new Map()
   _modelInstancesKotlin = new Map()
   _needsKotlinSuspenseWrapper = false
+  _needsKotlinErrorBoundaryWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -1355,12 +1358,15 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // that swiftc/kotlinc reject as unresolved. Graceful emit: a Box {}
   // wrapping the children + a leading comment surfacing the limitation.
   // Gap 3 PR-3.2 — real Suspense emit (mount-time splash semantic).
-  // Mirror of emit-swift.ts:emitSwiftSuspense. ErrorBoundary +
-  // KeepAlive remain walled (separate PRs).
+  // Gap 3 PR-3.3 — real ErrorBoundary emit (structural fallback).
+  // Mirrors emit-swift.ts dispatcher. KeepAlive remains walled.
   if (tag === 'Suspense') {
     return emitKotlinSuspense(e, indent)
   }
-  if (tag === 'ErrorBoundary' || tag === 'KeepAlive') {
+  if (tag === 'ErrorBoundary') {
+    return emitKotlinErrorBoundary(e, indent)
+  }
+  if (tag === 'KeepAlive') {
     return emitKotlinWalledTagAsChildren(e, indent, tag)
   }
   if (tag === 'Text') return emitKotlinText(e, indent)
@@ -1688,6 +1694,48 @@ function emitKotlinSuspense(
 }
 
 /**
+ * Gap 3 PR-3.3 — real `<ErrorBoundary fallback={X}>` emit on Compose.
+ * Mirror of emitSwiftErrorBoundary. Produces a Composable call to
+ * PyreonErrorBoundaryWrapper; the helper composable is emitted once
+ * at module scope.
+ */
+function emitKotlinErrorBoundary(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const fallbackAttr = e.attrs.find(
+    (a) => a.kind === 'attr' && a.name === 'fallback',
+  ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+  if (!fallbackAttr) {
+    return emitKotlinWalledTagAsChildren(e, indent, 'ErrorBoundary')
+  }
+  const fallbackExpr = fallbackAttr.value
+  if (fallbackExpr.kind !== 'jsx-element') {
+    _emitWarnings.push(
+      '<ErrorBoundary fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
+    )
+    return emitKotlinWalledTagAsChildren(e, indent, 'ErrorBoundary')
+  }
+  _needsKotlinErrorBoundaryWrapper = true
+  const inner = ' '.repeat(indent + 2)
+  const p = ' '.repeat(indent)
+  const childrenBody = e.children
+    .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
+    .join('\n')
+  const fallbackBody =
+    inner +
+    '  ' +
+    emitKotlinChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  return (
+    `PyreonErrorBoundaryWrapper(content = {\n` +
+    `${childrenBody}\n` +
+    `${p}}, fallback = {\n` +
+    `${fallbackBody}\n` +
+    `${p}})`
+  )
+}
+
+/**
  * Compose Suspense wrapper composable — emitted once at module scope
  * when any Suspense site is encountered. Shows the fallback on first
  * composition, flips to content via LaunchedEffect on mount.
@@ -1702,7 +1750,22 @@ private fun PyreonSuspenseWrapper(
     if (isLoading) fallback() else content()
 }`
 
+/**
+ * Compose ErrorBoundary wrapper composable — emitted once at module
+ * scope when any ErrorBoundary site is encountered. Default semantic:
+ * children render. v2 follow-up will plug in runtime auto-catch hook.
+ */
+const KOTLIN_ERROR_BOUNDARY_WRAPPER = `@Composable
+private fun PyreonErrorBoundaryWrapper(
+    content: @Composable () -> Unit,
+    fallback: @Composable () -> Unit,
+) {
+    var hasError by remember { mutableStateOf(false) }
+    if (hasError) fallback() else content()
+}`
+
 let _needsKotlinSuspenseWrapper = false
+let _needsKotlinErrorBoundaryWrapper = false
 
 function emitKotlinWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
