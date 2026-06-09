@@ -4,6 +4,7 @@ import {
   connectViaBroadcastChannel,
   createYjsDoc,
   persistViaIndexedDB,
+  syncedText,
 } from '@pyreon/sync/yjs'
 
 // One Yjs doc per tab. It is:
@@ -21,7 +22,12 @@ const persist = persistViaIndexedDB(doc, ROOM)
 await persist.whenSynced
 
 connectViaBroadcastChannel(doc, ROOM)
+
+// A scalar field (last-writer-wins) ...
 const title = syncedSignal({ doc, key: 'title', initial: 'untitled' })
+// ... and a COLLABORATIVE text field (character-level CRDT merge — concurrent
+// edits from both tabs are both kept, no lost characters).
+const body = syncedText(doc, 'body')
 
 const App = () => (
   <main>
@@ -38,6 +44,19 @@ const App = () => (
     </button>
     <button data-testid="set-b" onClick={() => title.set('from-tab-B')}>
       Set from B
+    </button>
+
+    {/* Collaborative text — concurrent edits MERGE (no lost characters). */}
+    <textarea
+      data-testid="body"
+      value={() => body()}
+      onInput={(e) => body.set((e.currentTarget as HTMLTextAreaElement).value)}
+    />
+    <button data-testid="ins-a" onClick={() => body.insert(0, 'AAA')}>
+      Insert AAA at start
+    </button>
+    <button data-testid="ins-b" onClick={() => body.insert(0, 'BBB')}>
+      Insert BBB at start
     </button>
   </main>
 )

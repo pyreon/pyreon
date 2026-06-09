@@ -9,3 +9,4 @@ export {
 } from './crdt/yjs-adapter'
 export { connectViaBroadcastChannel, connectYDocs } from './crdt/yjs-transport'
 export { type YjsPersistence, persistViaIndexedDB } from './crdt/yjs-persistence'
+export { type SyncedText, syncedText } from './crdt/yjs-text'
