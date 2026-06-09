@@ -54,7 +54,14 @@ describe('@pyreon/native-cli build', () => {
       target: 'swift',
     })
     expect(result.filesCompiled).toBeGreaterThanOrEqual(7)
-    expect(result.warnings).toEqual([])
+    // tier2-*.tsx fixtures are regression locks for the Tier-2 Strategy-B
+    // silent-drop diagnostics (Gap 4 PR-1 / PR-2 / PR-3 / PR-4) — they
+    // deliberately emit warnings. Filter them out before asserting the
+    // remaining fixtures emit nothing.
+    const nonTier2Warnings = result.warnings.filter(
+      (w) => !w.file.includes('/tier2-'),
+    )
+    expect(nonTier2Warnings).toEqual([])
 
     // Every output exists + has the .swift extension + carries the
     // source-map directive.
@@ -73,7 +80,14 @@ describe('@pyreon/native-cli build', () => {
       target: 'kotlin',
     })
     expect(result.filesCompiled).toBeGreaterThanOrEqual(7)
-    expect(result.warnings).toEqual([])
+    // tier2-*.tsx fixtures are regression locks for the Tier-2 Strategy-B
+    // silent-drop diagnostics (Gap 4 PR-1 / PR-2 / PR-3 / PR-4) — they
+    // deliberately emit warnings. Filter them out before asserting the
+    // remaining fixtures emit nothing.
+    const nonTier2Warnings = result.warnings.filter(
+      (w) => !w.file.includes('/tier2-'),
+    )
+    expect(nonTier2Warnings).toEqual([])
 
     for (const output of result.outputs) {
       expect(output.output.endsWith('.kt')).toBe(true)
