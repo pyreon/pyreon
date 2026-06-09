@@ -4,7 +4,7 @@ Local-first, CRDT-backed sync for signals — **a synced signal is just a signal
 
 When a collaborative or offline change arrives, a fine-grained signal framework can do `apply op → one signal.set → one surgical DOM update`. That is the whole bet of this package: bind a signal to a CRDT entry through `wrapSignal`, and the rest of Pyreon (compiled templates, effects, `<For>`) treats it like any other signal — no special render path, no diff.
 
-> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`) and **same-origin cross-tab sync** (`connectViaBroadcastChannel`). **Not yet**: a turnkey-platform adapter, a cross-device WebSocket transport + relay server, and collaborative collections. See the [roadmap](#roadmap). v1 binds **scalar** map fields; collections (lists, collaborative text) are a later phase.
+> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`), **same-origin cross-tab sync** (`connectViaBroadcastChannel`), and **collaborative text** (`syncedText`, Y.Text character-merge). **Not yet**: a turnkey-platform adapter, a cross-device WebSocket transport + relay server, and `Y.Array` list collections. See the [roadmap](#roadmap). v1 binds **scalar** map fields + collaborative text; list collections are a later phase.
 
 ## Install
 
@@ -107,6 +107,29 @@ be wired (later phase). Note CRDTs guarantee *convergence*, not *intent*: a scal
 last-writer-wins still picks one value when two peers edit the same field
 concurrently — both peers agree, but the loser's value is dropped.
 
+### Collaborative text — `syncedText`
+
+For a string that two people edit at once, `syncedText(doc, key)` binds a
+`Signal<string>` to a Yjs `Y.Text` — a **character-level CRDT**. Unlike a scalar
+`syncedSignal` (last-writer-wins, which drops the loser's value), concurrent
+edits to different regions are **both kept**, with no lost characters:
+
+```ts
+import { createYjsDoc, syncedText } from '@pyreon/sync/yjs'
+
+const body = syncedText(doc, 'body')
+body.insert(0, 'Hello ')      // positional ops Y.Text merges faithfully
+body.delete(0, 6)
+body.set(textareaEl.value)    // or a whole-text replace (minimal prefix/suffix diff)
+// <textarea value={() => body()} onInput={e => body.set(e.currentTarget.value)} />
+```
+
+Two tabs typing concurrently converge to a string containing **both** their
+edits (proven by the `examples/sync-yjs-demo` textarea + its real-Chromium
+two-tab e2e). It is engine-specific (lives in `@pyreon/sync/yjs`) — collaborative
+text is inherently coupled to the CRDT's text type, so it is not behind the
+engine-neutral seam. `Y.Array`-backed list collections are a later phase.
+
 ## How the loop works (and why it can't echo)
 
 A synced signal has a **single source of truth for updates**:
@@ -156,7 +179,8 @@ this client bridge.
 | Cross-tab transport | same-origin `BroadcastChannel` sync (`connectViaBroadcastChannel`) | ✅ shipped |
 | Cross-device transport | WebSocket channel + relay server (live remote peer sync) | planned |
 | Relay | standalone server + a `@pyreon/zero` adapter extension, with per-room/per-doc authz | planned |
-| Collections | `Y.Array` lists + `Y.Text` collaborative editing | planned |
+| Collaborative text | `Y.Text` via `syncedText` (character-level merge) | ✅ shipped |
+| List collections | `Y.Array`-backed lists | planned |
 
 ## Honest limits
 

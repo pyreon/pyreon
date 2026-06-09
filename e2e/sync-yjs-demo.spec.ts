@@ -104,3 +104,43 @@ test.describe('sync (Yjs) — IndexedDB persistence', () => {
     await expect(page.getByTestId('title')).toHaveText('from-tab-A')
   })
 })
+
+test.describe('sync (Yjs) — collaborative text (Y.Text)', () => {
+  test('concurrent inserts from two tabs MERGE with no lost characters', async ({
+    context,
+  }) => {
+    const a = await context.newPage()
+    const b = await context.newPage()
+    await a.goto('/')
+    await b.goto('/')
+
+    await a.getByTestId('ins-a').click() // A inserts 'AAA'
+    await expect(b.getByTestId('body')).toHaveValue('AAA') // B receives it
+    await b.getByTestId('ins-b').click() // B inserts 'BBB' (its text is now 'AAA')
+
+    // Both tabs converge AND both inserts survive — no character dropped
+    // (contrast the scalar `title`, where two writes resolve by last-writer-wins).
+    await expect(a.getByTestId('body')).toHaveValue(/AAA/)
+    await expect(a.getByTestId('body')).toHaveValue(/BBB/)
+    const av = await a.getByTestId('body').inputValue()
+    const bv = await b.getByTestId('body').inputValue()
+    expect(av).toBe(bv)
+    expect(av.length).toBe(6)
+
+    await a.close()
+    await b.close()
+  })
+
+  test('typing in one tab streams into the other', async ({ context }) => {
+    const a = await context.newPage()
+    const b = await context.newPage()
+    await a.goto('/')
+    await b.goto('/')
+
+    await a.getByTestId('body').fill('hello from A')
+    await expect(b.getByTestId('body')).toHaveValue('hello from A')
+
+    await a.close()
+    await b.close()
+  })
+})
