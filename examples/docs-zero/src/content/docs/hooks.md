@@ -70,29 +70,7 @@ setTrue()
 value() // true
 ```
 
-<Playground title="useToggle — disclosure pattern" height={200} code={`// useToggle in the playground is just a boolean signal — the real
-// @pyreon/hooks version returns { value, toggle, on, off, set }
-// with reset-on-mount semantics. The shape is identical.
-const isOpen = signal(false)
-const toggle = () => isOpen.update(v => !v)
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('button', {
-    onClick: toggle,
-    'aria-expanded': () => isOpen() ? 'true' : 'false',
-  }, () => isOpen() ? '▼ Hide details' : '▶ Show details'),
-  h('div', {
-    class: 'card',
-    style: { display: () => isOpen() ? 'block' : 'none' },
-  },
-    h('div', null, 'Once expanded, this panel survives across toggles.'),
-    h('div', { class: 'muted', style: { marginTop: '6px' } },
-      'Only \`display\` patches in place; the DOM tree is preserved.',
-    ),
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/hooks/usetoggle-disclosure-pattern" title="useToggle — disclosure pattern" />
 
 ### Disclosure Pattern
 

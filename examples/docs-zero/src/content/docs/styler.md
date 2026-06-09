@@ -58,17 +58,7 @@ const Button = styled('button')`
 <Button primary={true}>Click me</Button>
 ```
 
-<Playground title="Dynamic Styling" height={80} code={`const color = signal('#0d6efd')
-const size = signal(16)
-
-const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', { style: () => ({ color: color(), fontSize: size() + 'px', fontWeight: 'bold', marginBottom: '8px' }) }, 'Styled Text'),
-  h('input', { type: 'color', value: color, onInput: (e) => color.set(e.target.value) }),
-  h('input', { type: 'range', min: '12', max: '36', value: size, onInput: (e) => size.set(Number(e.target.value)), style: { marginLeft: '8px' } }),
-  h('span', { style: { marginLeft: '8px', fontSize: '12px' } }, () => size() + 'px'),
-)
-mount(ui, app)`} />
+<Example file="./examples/styler/dynamic-styling" title="Dynamic Styling" />
 
 ## `css` Tagged Template
 

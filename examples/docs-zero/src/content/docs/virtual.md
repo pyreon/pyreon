@@ -40,29 +40,7 @@ TanStack Virtual core is included as a dependency -- core utilities and types ar
 
 ---
 
-<Playground title="Virtual Scrolling (10,000 rows)" height={200} code={`const items = Array.from({ length: 10000 }, (_, i) => 'Item ' + (i + 1))
-const scrollTop = signal(0)
-const containerH = 200
-const rowH = 28
-
-const app = document.getElementById('app')
-const startIdx = computed(() => Math.floor(scrollTop() / rowH))
-const endIdx = computed(() => Math.min(startIdx() + Math.ceil(containerH / rowH) + 1, items.length))
-const offsetY = computed(() => startIdx() * rowH)
-
-const ui = h('div', {
-  style: { height: containerH + 'px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px' },
-  onScroll: (e) => scrollTop.set(e.target.scrollTop),
-},
-  h('div', { style: { height: (items.length * rowH) + 'px', position: 'relative' } },
-    h('div', { style: () => ({ position: 'absolute', top: offsetY() + 'px', width: '100%' }) },
-      () => items.slice(startIdx(), endIdx()).map((item, i) =>
-        h('div', { style: { height: rowH + 'px', padding: '4px 8px', borderBottom: '1px solid #f0f0f0' } }, item)
-      )
-    )
-  )
-)
-mount(ui, app)`} />
+<Example file="./examples/virtual/virtual-scrolling-10-000-rows" title="Virtual Scrolling (10,000 rows)" />
 
 ## Element-Based Virtualization
 

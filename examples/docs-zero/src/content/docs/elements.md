@@ -43,24 +43,7 @@ The package exports five components, each solving a specific layout concern:
 
 All components are plain functions -- they accept a props object and return `VNodeChild`. They work with Pyreon's `h()` function and can be composed together to build complex UIs.
 
-<Playground title="Three-slot layout — [before] [content] [after]" height={200} code={`// Element renders a flex row with three slots: leading icon, growing
-// label, trailing badge. The slots auto-size: leading/trailing get
-// \`flex-shrink: 0\`, the label gets \`flex: 1\` so it wraps gracefully.
-const count = signal(3)
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('button', {
-    onClick: () => count.update(n => n + 1),
-    style: { display: 'inline-flex', alignItems: 'center', gap: '10px', minWidth: '180px' },
-  },
-    h('span', { style: { flexShrink: 0 } }, '📬'),
-    h('span', { style: { flex: 1, textAlign: 'left' } }, 'Messages'),
-    h('span', { class: 'badge', style: { flexShrink: 0 } }, () => count()),
-  ),
-  h('div', { class: 'muted' }, 'Click the button — only the badge re-renders.'),
-)
-mount(ui, app)`} />
+<Example file="./examples/elements/three-slot-layout-before-content-after" title="Three-slot layout — [before] [content] [after]" />
 
 ---
 

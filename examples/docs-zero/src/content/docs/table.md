@@ -31,35 +31,7 @@ yarn add @pyreon/table
 
 TanStack Table core is included as a dependency -- all exports from `@tanstack/table-core` are re-exported for convenience.
 
-<Playground title="Sortable Table" height={180} code={`const data = signal([
-  { name: 'Alice', age: 30, role: 'Engineer' },
-  { name: 'Bob', age: 25, role: 'Designer' },
-  { name: 'Charlie', age: 35, role: 'Manager' },
-  { name: 'Diana', age: 28, role: 'Engineer' },
-])
-const sortKey = signal('name')
-const sortDir = signal(1)
-
-const sorted = computed(() =>
-  [...data()].sort((a, b) => {
-    const va = a[sortKey()], vb = b[sortKey()]
-    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir()
-  })
-)
-
-const header = (key, label) => h('th', {
-  onClick: () => { if (sortKey() === key) sortDir.update(d => d * -1); else { sortKey.set(key); sortDir.set(1) } },
-  style: { cursor: 'pointer', padding: '6px 12px', textAlign: 'left', borderBottom: '2px solid #ddd' },
-}, () => label + (sortKey() === key ? (sortDir() === 1 ? ' ▲' : ' ▼') : ''))
-
-const app = document.getElementById('app')
-const ui = h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' } },
-  h('thead', {}, h('tr', {}, header('name', 'Name'), header('age', 'Age'), header('role', 'Role'))),
-  h('tbody', {}, () => sorted().map(r =>
-    h('tr', {}, ...[r.name, r.age, r.role].map(v => h('td', { style: { padding: '6px 12px', borderBottom: '1px solid #eee' } }, String(v))))
-  )),
-)
-mount(ui, app)`} />
+<Example file="./examples/table/sortable-table" title="Sortable Table" />
 
 ## Basic Usage
 

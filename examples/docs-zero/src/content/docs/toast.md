@@ -46,28 +46,7 @@ function App() {
 }
 ```
 
-<Playground title="Toast Notifications" height={100} code={`const toasts = signal([])
-let id = 0
-
-const addToast = (type, msg) => {
-  const toast = { id: ++id, type, msg }
-  toasts.update(t => [...t, toast])
-  setTimeout(() => toasts.update(t => t.filter(x => x.id !== toast.id)), 2000)
-}
-
-const app = document.getElementById('app')
-const colors = { success: '#198754', error: '#dc3545', info: '#0d6efd' }
-const ui = h('div', {},
-  h('div', { style: { display: 'flex', gap: '8px' } },
-    h('button', { onClick: () => addToast('success', 'Saved!') }, 'Success'),
-    h('button', { onClick: () => addToast('error', 'Failed!') }, 'Error'),
-    h('button', { onClick: () => addToast('info', 'FYI') }, 'Info'),
-  ),
-  h('div', { style: { marginTop: '12px' } }, () =>
-    toasts().map(t => h('div', { style: { padding: '6px 12px', marginBottom: '4px', borderRadius: '4px', color: '#fff', background: colors[t.type] } }, t.msg))
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/toast/toast-notifications" title="Toast Notifications" />
 
 ## Imperative API — `toast()`
 

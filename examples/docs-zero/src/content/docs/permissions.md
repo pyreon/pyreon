@@ -49,36 +49,7 @@ can('posts.update', myPost) // evaluates predicate
 can('users.manage') // false
 ```
 
-<Playground title="Permissions — reactive can()" height={240} code={`// The real createPermissions() returns a callable can(key) with
-// wildcard, all(), any(), and context-passing on top of this shape.
-const permissions = signal({ read: true, write: false, admin: false })
-const can = (key) => permissions()[key] === true
-const toggle = (key) => permissions.update(p => ({ ...p, [key]: !p[key] }))
-
-const Row = (key) =>
-  h('div', { class: 'row', style: { justifyContent: 'space-between' } },
-    h('span', null, key),
-    h('span', { class: 'badge', style: { background: () => can(key) ? null : 'transparent', color: () => can(key) ? null : 'var(--muted)' } },
-      () => can(key) ? '✓ granted' : '✕ denied',
-    ),
-  )
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'card', style: { gap: '8px', display: 'flex', flexDirection: 'column' } },
-    Row('read'),
-    Row('write'),
-    Row('admin'),
-  ),
-  h('div', { class: 'row' },
-    h('button', { onClick: () => toggle('write') }, 'toggle write'),
-    h('button', { onClick: () => toggle('admin') }, 'toggle admin'),
-  ),
-  h('div', { class: 'muted' }, () => 'effective: ' + Object.entries(permissions())
-    .filter(([, v]) => v).map(([k]) => k).join(', ') || 'none',
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/permissions/permissions-reactive-can" title="Permissions — reactive can()" />
 
 ## Core Concepts
 

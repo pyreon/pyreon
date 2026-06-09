@@ -59,48 +59,7 @@ const form = useForm({
 
 `useForm` must be called inside a Pyreon component (it uses `onUnmount` for debounce timer cleanup).
 
-<Playground title="Field validation — error gating on blur" height={240} code={`// The real @pyreon/form supplies useForm() + field-level state.
-// Distilled here to signals: value, touched, derived error.
-const email = signal('')
-const touched = signal(false)
-const submitted = signal('')
-
-const error = computed(() => {
-  const v = email().trim()
-  if (!v) return 'Email is required.'
-  if (!v.includes('@')) return 'Email must contain an @.'
-  return ''
-})
-const showError = computed(() => touched() && error())
-
-const submit = (e) => {
-  e?.preventDefault?.()
-  touched.set(true)
-  if (error()) return
-  submitted.set('✔ Submitted: ' + email())
-}
-
-const app = document.getElementById('app')
-const ui = h('form', { onSubmit: submit, class: 'col' },
-  h('div', { class: 'row' },
-    h('input', {
-      type: 'email',
-      placeholder: 'you@example.com',
-      style: { flex: 1, minWidth: '0' },
-      onInput: (e) => email.set(e.target.value),
-      onBlur: () => touched.set(true),
-    }),
-    h('button', { type: 'submit' }, 'Submit'),
-  ),
-  h('div', {
-    class: 'muted',
-    style: { color: () => showError() ? '#FF1F8C' : null, minHeight: '18px' },
-  }, () => showError() || ' '),
-  h('div', { class: 'badge', style: { display: () => submitted() ? 'inline-flex' : 'none' } },
-    () => submitted(),
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/form/field-validation-error-gating-on-blur" title="Field validation — error gating on blur" />
 
 ### The Accessor Type
 
@@ -608,43 +567,7 @@ const form = useForm({
 // Errors only appear after form.handleSubmit()
 ```
 
-<Playground title="Disabled & read-only fields" height={240} code={`const name = signal('Alice')
-const role = signal('Designer')
-const disabled = signal(false)
-const readOnly = signal(false)
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'row' },
-    h('label', { class: 'row', style: { gap: '6px' } },
-      h('input', { type: 'checkbox', onChange: () => disabled.update(v => !v) }),
-      h('span', null, 'disabled'),
-    ),
-    h('label', { class: 'row', style: { gap: '6px' } },
-      h('input', { type: 'checkbox', onChange: () => readOnly.update(v => !v) }),
-      h('span', null, 'readOnly'),
-    ),
-  ),
-  h('div', { class: 'col', style: { gap: '6px' } },
-    h('input', {
-      value: () => name(),
-      onInput: (e) => name.set(e.target.value),
-      disabled: () => disabled() ? '' : null,
-      readonly: () => readOnly() ? '' : null,
-    }),
-    h('input', {
-      value: () => role(),
-      onInput: (e) => role.set(e.target.value),
-      disabled: () => disabled() ? '' : null,
-      readonly: () => readOnly() ? '' : null,
-    }),
-  ),
-  h('div', { class: 'card' },
-    h('span', { class: 'muted' }, 'snapshot: '),
-    h('strong', null, () => name() + ' · ' + role()),
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/form/disabled-read-only-fields" title="Disabled & read-only fields" />
 
 ## Form-Level State
 

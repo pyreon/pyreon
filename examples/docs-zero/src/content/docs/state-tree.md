@@ -53,48 +53,7 @@ counter.doubled() // 12
 getSnapshot(counter) // { count: 6 }
 ```
 
-<Playground title="State tree — history & undo" height={280} code={`// State Tree gives you snapshots + patches over a structured model.
-// Distilled here: every write pushes the new state onto history;
-// undo simply walks back through the stack. The real model() adds
-// nested models, views, actions, and middleware.
-const value = signal(0)
-const history = signal([0])
-const cursor = signal(0) // index into history
-
-const apply = (next) => {
-  // Drop any redo branch when a new write comes in.
-  history.update(h => [...h.slice(0, cursor() + 1), next])
-  cursor.update(c => c + 1)
-  value.set(next)
-}
-const undo = () => {
-  if (cursor() === 0) return
-  cursor.update(c => c - 1)
-  value.set(history()[cursor()])
-}
-const redo = () => {
-  if (cursor() >= history().length - 1) return
-  cursor.update(c => c + 1)
-  value.set(history()[cursor()])
-}
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'card', style: { textAlign: 'center', fontSize: '32px', fontWeight: '700' } },
-    () => value(),
-  ),
-  h('div', { class: 'row' },
-    h('button', { onClick: () => apply(value() + 1) }, '＋1'),
-    h('button', { onClick: () => apply(value() - 1) }, '−1'),
-    h('button', { onClick: () => apply(0) }, 'set 0'),
-    h('button', { onClick: undo, disabled: () => cursor() === 0 ? '' : null }, '↶ undo'),
-    h('button', { onClick: redo, disabled: () => cursor() >= history().length - 1 ? '' : null }, '↷ redo'),
-  ),
-  h('div', { class: 'muted' }, () =>
-    'history: [' + history().map((v, i) => i === cursor() ? '⟨' + v + '⟩' : v).join(' · ') + ']',
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/state-tree/state-tree-history-undo" title="State tree — history & undo" />
 
 ## Defining a Model
 

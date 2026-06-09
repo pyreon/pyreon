@@ -51,58 +51,7 @@ import { Container, Row, Col } from '@pyreon/coolgrid'
 
 This creates a three-column layout that stacks to two columns at medium screens and one column on mobile.
 
-<Playground title="12-column responsive grid" height={300} code={`// Coolgrid distilled: a Row is a flex container of children whose
-// widths are expressed as a 0–12 share of the row. The real
-// Container / Row / Col add responsive breakpoints (xs/sm/md/lg/xl),
-// gutters, and offset support — same underlying model.
-const cols = signal([4, 4, 4])
-
-const presets = {
-  thirds:   [4, 4, 4],
-  halves:   [6, 6],
-  sidebar:  [3, 9],
-  header:   [12],
-  quarters: [3, 3, 3, 3],
-  asymmetric: [2, 7, 3],
-}
-
-const total = computed(() => cols().reduce((a, b) => a + b, 0))
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'row' },
-    h('span', { class: 'muted' }, 'preset:'),
-    ...Object.keys(presets).map((name) =>
-      h('button', {
-        onClick: () => cols.set(presets[name]),
-        style: {
-          fontWeight: () => JSON.stringify(cols()) === JSON.stringify(presets[name]) ? '700' : '400',
-          background: () => JSON.stringify(cols()) === JSON.stringify(presets[name]) ? 'var(--accent)' : null,
-          color: () => JSON.stringify(cols()) === JSON.stringify(presets[name]) ? 'var(--bg)' : null,
-        },
-      }, name),
-    ),
-  ),
-  h('div', {
-    style: { display: 'flex', gap: '8px', padding: '8px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' },
-  }, () =>
-    cols().map((span) =>
-      h('div', {
-        style: {
-          flex: span,
-          padding: '20px 8px',
-          background: 'var(--accent)',
-          color: 'var(--bg)',
-          borderRadius: '6px',
-          textAlign: 'center',
-          fontWeight: '600',
-        },
-      }, span + ' / 12'),
-    ),
-  ),
-  h('div', { class: 'muted' }, () => 'sum: ' + total() + ' / 12'),
-)
-mount(ui, app)`} />
+<Example file="./examples/coolgrid/12-column-responsive-grid" title="12-column responsive grid" />
 
 ---
 
