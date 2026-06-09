@@ -1,33 +1,45 @@
+import { For } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { syncedSignal } from '@pyreon/sync'
 import {
   connectViaBroadcastChannel,
+  connectViaWebSocket,
   createYjsDoc,
   persistViaIndexedDB,
+  syncedList,
   syncedText,
 } from '@pyreon/sync/yjs'
 
-// One Yjs doc per tab. It is:
-//   - PERSISTED to IndexedDB (edits survive a reload / work offline), and
-//   - SYNCED across same-origin tabs via BroadcastChannel (zero network).
-// Open this page in two tabs and edits in one appear in the other; reload and
-// the last edit is still there.
+// One Yjs doc per tab. Two transport modes:
+//   - DEFAULT (same-origin): PERSISTED to IndexedDB (edits survive reload / work
+//     offline) + SYNCED across same-origin tabs via BroadcastChannel (zero
+//     network). Open in two tabs — edits cross; reload — the last edit survives.
+//   - `?ws=<relay-url>`: CROSS-DEVICE sync over a WebSocket relay ONLY (no
+//     BroadcastChannel, no persistence). Two SEPARATE browser contexts can't
+//     share a BroadcastChannel, so convergence there proves the relay path.
 const ROOM = 'pyreon-sync-yjs-demo'
 const doc = createYjsDoc()
-const persist = persistViaIndexedDB(doc, ROOM)
 
-// Load any persisted state BEFORE seeding, so create-if-missing adopts the
-// persisted value instead of racing a fresh 'untitled' seed against the async
-// IndexedDB load.
-await persist.whenSynced
-
-connectViaBroadcastChannel(doc, ROOM)
+const wsUrl = new URLSearchParams(location.search).get('ws')
+if (wsUrl) {
+  connectViaWebSocket(doc, wsUrl)
+} else {
+  const persist = persistViaIndexedDB(doc, ROOM)
+  // Load any persisted state BEFORE seeding, so create-if-missing adopts the
+  // persisted value instead of racing a fresh 'untitled' seed against the async
+  // IndexedDB load.
+  await persist.whenSynced
+  connectViaBroadcastChannel(doc, ROOM)
+}
 
 // A scalar field (last-writer-wins) ...
 const title = syncedSignal({ doc, key: 'title', initial: 'untitled' })
 // ... and a COLLABORATIVE text field (character-level CRDT merge — concurrent
 // edits from both tabs are both kept, no lost characters).
 const body = syncedText(doc, 'body')
+// ... and a COLLABORATIVE list (positional CRDT merge — concurrent adds from
+// both tabs are both kept, no lost items).
+const items = syncedList<string>(doc, 'items')
 
 const App = () => (
   <main>
@@ -57,6 +69,19 @@ const App = () => (
     </button>
     <button data-testid="ins-b" onClick={() => body.insert(0, 'BBB')}>
       Insert BBB at start
+    </button>
+
+    {/* Collaborative list — concurrent adds MERGE (no lost items). */}
+    <ul data-testid="items">
+      <For each={() => items()} by={(it) => it}>
+        {(it) => <li class="item">{it}</li>}
+      </For>
+    </ul>
+    <button data-testid="add-a" onClick={() => items.push('item-A')}>
+      Add item-A
+    </button>
+    <button data-testid="add-b" onClick={() => items.push('item-B')}>
+      Add item-B
     </button>
   </main>
 )

@@ -144,3 +144,26 @@ test.describe('sync (Yjs) — collaborative text (Y.Text)', () => {
     await b.close()
   })
 })
+
+test.describe('sync (Yjs) — collaborative list (Y.Array)', () => {
+  test('concurrent adds from two tabs MERGE with no lost items', async ({ context }) => {
+    const a = await context.newPage()
+    const b = await context.newPage()
+    await a.goto('/')
+    await b.goto('/')
+
+    await a.getByTestId('add-a').click() // A pushes 'item-A'
+    await expect(b.getByTestId('items').getByText('item-A')).toBeVisible() // B receives it
+    await b.getByTestId('add-b').click() // B pushes 'item-B'
+
+    // Both tabs converge AND both items survive — no item dropped.
+    for (const p of [a, b]) {
+      await expect(p.getByTestId('items').getByText('item-A')).toBeVisible()
+      await expect(p.getByTestId('items').getByText('item-B')).toBeVisible()
+      await expect(p.getByTestId('items').locator('li.item')).toHaveCount(2)
+    }
+
+    await a.close()
+    await b.close()
+  })
+})

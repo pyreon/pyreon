@@ -148,6 +148,16 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'sync-ws-relay',
+    script: 'test:e2e:sync-ws-relay',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/fundamentals/sync/',
+      'examples/sync-yjs-demo/',
+      'e2e/sync-ws-relay',
+    ],
+  },
+  {
     name: 'zero-islands',
     script: 'test:e2e:zero-islands',
     triggers: [

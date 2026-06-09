@@ -4,7 +4,7 @@ Local-first, CRDT-backed sync for signals — **a synced signal is just a signal
 
 When a collaborative or offline change arrives, a fine-grained signal framework can do `apply op → one signal.set → one surgical DOM update`. That is the whole bet of this package: bind a signal to a CRDT entry through `wrapSignal`, and the rest of Pyreon (compiled templates, effects, `<For>`) treats it like any other signal — no special render path, no diff.
 
-> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`), **same-origin cross-tab sync** (`connectViaBroadcastChannel`), and **collaborative text** (`syncedText`, Y.Text character-merge). **Not yet**: a turnkey-platform adapter, a cross-device WebSocket transport + relay server, and `Y.Array` list collections. See the [roadmap](#roadmap). v1 binds **scalar** map fields + collaborative text; list collections are a later phase.
+> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`), **same-origin cross-tab sync** (`connectViaBroadcastChannel`), **collaborative text + lists** (`syncedText` / `syncedList` — Y.Text character-merge + Y.Array positional merge), and **cross-device sync** — a **WebSocket transport** (`connectViaWebSocket`) + a **relay server with per-room/per-doc authz** (`createSyncServer`, server-only at `@pyreon/sync/server`). **Not yet**: a turnkey-platform adapter, and a `@pyreon/zero` adapter extension to mount the relay on its Node/Bun server. See the [roadmap](#roadmap). v1 binds **scalar** map fields + collaborative text + lists.
 
 ## Install
 
@@ -102,10 +102,11 @@ await persist.whenSynced
 const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
 ```
 
-`createYjsDoc().yDoc` exposes the underlying `Y.Doc` so a WebSocket transport can
-be wired (later phase). Note CRDTs guarantee *convergence*, not *intent*: a scalar
-last-writer-wins still picks one value when two peers edit the same field
-concurrently — both peers agree, but the loser's value is dropped.
+`createYjsDoc().yDoc` exposes the underlying `Y.Doc` so the WebSocket transport
+([below](#cross-device-sync--websocket-transport--relay-pyreonsyncserver)) and
+persistence layers can wire its update stream. Note CRDTs guarantee *convergence*,
+not *intent*: a scalar last-writer-wins still picks one value when two peers edit
+the same field concurrently — both peers agree, but the loser's value is dropped.
 
 ### Collaborative text — `syncedText`
 
@@ -128,7 +129,64 @@ Two tabs typing concurrently converge to a string containing **both** their
 edits (proven by the `examples/sync-yjs-demo` textarea + its real-Chromium
 two-tab e2e). It is engine-specific (lives in `@pyreon/sync/yjs`) — collaborative
 text is inherently coupled to the CRDT's text type, so it is not behind the
-engine-neutral seam. `Y.Array`-backed list collections are a later phase.
+engine-neutral seam.
+
+For **collaborative lists**, `syncedList(doc, key)` binds a `Signal<T[]>` to a
+`Y.Array` — the same positional-merge story: concurrent `push` / `insert` /
+`delete` from two peers are all kept, no item dropped. Render it with a keyed
+`<For each={() => list()} by={…}>` so a remote change reconciles O(changed). Also
+engine-specific (in `@pyreon/sync/yjs`).
+
+## Cross-device sync — WebSocket transport + relay (`@pyreon/sync/server`)
+
+`connectViaBroadcastChannel` only bridges same-origin tabs. For real
+cross-device sync, point a doc at a relay over WebSocket:
+
+```ts
+// client (browser / Node 22+ / Bun / Deno — uses the global WebSocket)
+import { connectViaWebSocket, createYjsDoc } from '@pyreon/sync/yjs'
+
+const doc = createYjsDoc()
+// token goes in the query string — browser WebSockets can't set headers.
+connectViaWebSocket(doc, 'wss://sync.example.com/my-room?token=abc')
+// reconnects with exponential backoff by default; a 4401 (authz) close is terminal.
+```
+
+```ts
+// relay (Node / Bun — server-only subpath, never enters a client bundle)
+import { createSyncServer } from '@pyreon/sync/server'
+
+const relay = await createSyncServer({
+  port: 8787,
+  // The per-room/per-doc access gate — REQUIRED for any real deployment.
+  // Reject → the socket is closed (code 4401) before any doc data flows.
+  authorize: async ({ room, token, req }) => isMember(room, token),
+})
+```
+
+One authoritative `Y.Doc` per room: a late-joiner catches up via the
+state-vector handshake, each inbound update is applied + fanned out to the
+room's other clients, and a room is GC'd when its last client leaves (the relay
+is ephemeral — clients keep their own copy via `persistViaIndexedDB`).
+
+To **share a port** with an existing HTTP app (or front the relay with a health
+endpoint), attach it to a Node `http.Server` instead of opening its own port —
+the caller owns `listen`, the relay only adds upgrade handling:
+
+```ts
+import { createServer } from 'node:http'
+const http = createServer((_req, res) => res.end('ok'))
+await createSyncServer({ server: http }) // shares http's port
+http.listen(8787)
+```
+
+The wire protocol is the standard minimal y-protocols sync (state vector →
+diff, then live updates), and the same single echo rule as every transport: a
+`REMOTE`-origin update is never re-broadcast, so there is no loop. Proven by the
+`@pyreon/sync` node integration suite (two clients converge over a real relay,
+authz reject/allow, late-join, shared-server mode) **and** a real-Chromium e2e
+where two **isolated browser contexts** — no shared BroadcastChannel, no shared
+storage — converge purely via the relay.
 
 ## How the loop works (and why it can't echo)
 
@@ -177,10 +235,11 @@ this client bridge.
 | Turnkey engine adapter | a managed platform (e.g. Jazz) behind the same seam, for the raw-vs-turnkey decision | planned |
 | Persistence | IndexedDB offline durability (`persistViaIndexedDB`, via y-indexeddb) | ✅ shipped |
 | Cross-tab transport | same-origin `BroadcastChannel` sync (`connectViaBroadcastChannel`) | ✅ shipped |
-| Cross-device transport | WebSocket channel + relay server (live remote peer sync) | planned |
-| Relay | standalone server + a `@pyreon/zero` adapter extension, with per-room/per-doc authz | planned |
+| Cross-device transport | WebSocket channel (`connectViaWebSocket`, auto-reconnect) | ✅ shipped |
+| Relay | standalone server (`createSyncServer`) with per-room/per-doc authz + attach-to-existing-http-server | ✅ shipped |
 | Collaborative text | `Y.Text` via `syncedText` (character-level merge) | ✅ shipped |
-| List collections | `Y.Array`-backed lists | planned |
+| List collections | `Y.Array` via `syncedList` (positional merge) | ✅ shipped |
+| Relay on `@pyreon/zero` | mount `createSyncServer({ server })` on zero's Node/Bun adapter | planned |
 
 ## Honest limits
 
