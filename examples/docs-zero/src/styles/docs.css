@@ -2385,10 +2385,13 @@ html { scroll-behavior: smooth; }
 .pyreon-sidebar__link:hover { color: var(--text); }
 .pyreon-sidebar__link--active {
   /* Defensive: reset any earlier `background` so the ember-bar (the
-     `::before` tick below) reads as the only active-state cue. */
+     `::before` tick below) reads as the only active-state cue.
+     Active is communicated by COLOR (ember) + the ember tick. Font
+     weight stays at the base value to avoid a visible "bolding
+     flash" on click — VitePress / Docs.rs / every major docs site
+     keeps weight constant across the inactive ↔ active flip. */
   background: transparent;
   color: var(--ember-core);
-  font-weight: 600;
 }
 .pyreon-sidebar__link--active::before {
   content: '';
