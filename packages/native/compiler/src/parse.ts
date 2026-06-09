@@ -21,6 +21,7 @@ import type {
   StructIR,
   TypeIR,
   ZodFieldConstraints,
+  ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
 
@@ -666,6 +667,77 @@ function tryArktypeSchemaDefnFromTopLevel(
 }
 
 /**
+ * Gap 4 v3 — walk a `z.X()...modifier()...modifier()` chain and return
+ * the base method name plus accumulated constraints. Used both for
+ * top-level field types AND for the inner element of `z.array(...)`.
+ * Returns null when the expression doesn't have the `<prefix>.X()`
+ * shape after the chain unwinds. Does NOT recognize `.optional()` /
+ * `.nullable()` — those are handled at the field level only (an
+ * `optional` array element isn't part of the v3 contract).
+ */
+function extractTypeAndConstraints(
+  expr: AnyNode,
+  prefix: string,
+): { method: string; constraints: ZodFieldConstraints } | null {
+  const constraints: ZodFieldConstraints = {}
+  let cursor: AnyNode | undefined = expr
+  while (cursor && cursor.type === 'CallExpression') {
+    const callee = cursor.callee as AnyNode | undefined
+    if (
+      callee?.type === 'MemberExpression' &&
+      callee.object?.type === 'CallExpression' &&
+      callee.property?.type === 'Identifier'
+    ) {
+      const modName = callee.property.name as string
+      const modArgs = (cursor.arguments as AnyNode[] | undefined) ?? []
+      const firstArg = modArgs[0]
+      if (modName === 'min') {
+        if (
+          firstArg &&
+          firstArg.type === 'Literal' &&
+          typeof firstArg.value === 'number'
+        ) {
+          constraints.min = firstArg.value
+        }
+      } else if (modName === 'max') {
+        if (
+          firstArg &&
+          firstArg.type === 'Literal' &&
+          typeof firstArg.value === 'number'
+        ) {
+          constraints.max = firstArg.value
+        }
+      } else if (modName === 'email') {
+        constraints.email = true
+      } else if (modName === 'url') {
+        constraints.url = true
+      } else if (modName === 'uuid') {
+        constraints.uuid = true
+      }
+      // `.optional()` / `.nullable()` are deliberately NOT recognized
+      // here — they apply at the field level, not to inner elements.
+      cursor = callee.object as AnyNode
+      continue
+    }
+    break
+  }
+  if (!cursor || cursor.type !== 'CallExpression') return null
+  const baseCallee = cursor.callee as AnyNode | undefined
+  if (
+    baseCallee?.type !== 'MemberExpression' ||
+    baseCallee.object?.type !== 'Identifier' ||
+    (baseCallee.object.name as string) !== prefix ||
+    baseCallee.property?.type !== 'Identifier'
+  ) {
+    return null
+  }
+  return {
+    method: baseCallee.property.name as string,
+    constraints,
+  }
+}
+
+/**
  * Shared parser body for Zod + Valibot recognition (the two
  * libraries use isomorphic `<prefix>.object({ field: <prefix>.X() })`
  * call shapes). ArkType's string-valued shape needs its own parser.
@@ -821,21 +893,18 @@ function tryNamespacedSchemaDefnFromTopLevel(
     } else if (method === 'array') {
       // Gap 4 v2.2 — `z.array(z.string())` etc. The inner element
       // must itself be a recognizable z.X() call.
+      // Gap 4 v3 — also walk the inner element's modifier chain so
+      // `z.array(z.string().min(2).max(50))` carries the per-element
+      // constraints into the IR.
       const innerArg = (value.arguments as AnyNode[] | undefined)?.[0]
+      const inner = innerArg
+        ? extractTypeAndConstraints(innerArg as AnyNode, prefix)
+        : null
       let innerType: 'string' | 'number' | 'boolean' | undefined
-      if (innerArg && innerArg.type === 'CallExpression') {
-        const arrayElementCallee = innerArg.callee as AnyNode | undefined
-        if (
-          arrayElementCallee?.type === 'MemberExpression' &&
-          arrayElementCallee.object?.type === 'Identifier' &&
-          (arrayElementCallee.object.name as string) === prefix &&
-          arrayElementCallee.property?.type === 'Identifier'
-        ) {
-          const innerMethod = arrayElementCallee.property.name as string
-          if (innerMethod === 'string') innerType = 'string'
-          else if (innerMethod === 'number') innerType = 'number'
-          else if (innerMethod === 'boolean') innerType = 'boolean'
-        }
+      if (inner) {
+        if (inner.method === 'string') innerType = 'string'
+        else if (inner.method === 'number') innerType = 'number'
+        else if (inner.method === 'boolean') innerType = 'boolean'
       }
       if (!innerType) {
         ctx.warnings.push(
@@ -843,9 +912,16 @@ function tryNamespacedSchemaDefnFromTopLevel(
         )
         continue
       }
+      const arrayType: Extract<ZodFieldType, { kind: 'array' }> = {
+        kind: 'array',
+        element: innerType,
+      }
+      if (inner && Object.keys(inner.constraints).length > 0) {
+        arrayType.elementConstraints = inner.constraints
+      }
       const entry: ZodSchemaDefnIR['fields'][number] = {
         name: fieldName,
-        type: { kind: 'array', element: innerType },
+        type: arrayType,
       }
       if (optional) entry.optional = true
       fields.push(entry)
