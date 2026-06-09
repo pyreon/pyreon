@@ -755,15 +755,34 @@ export interface ZodFieldConstraints {
   uuid?: boolean
 }
 
+/**
+ * Gap 4 v2.2 — compound field type extension.
+ * 'array' marks a list-of-primitive field (z.array(z.string()) etc.);
+ * the `element` carries the inner primitive type. v2.2 ships
+ * arrays-of-primitives only; nested arrays + arrays of objects are
+ * deferred.
+ */
+export type ZodFieldType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | { kind: 'array'; element: 'string' | 'number' | 'boolean' }
+
 export interface ZodSchemaDefnIR {
   /** Top-level binding name (e.g. `userSchema`). */
   bindingName: string
   /** Field shape extracted from `z.object({ ... })`. */
   fields: {
     name: string
-    type: 'string' | 'number' | 'boolean'
+    type: ZodFieldType
     /** Gap 4 v2.1 — constraints extracted from the modifier chain. */
     constraints?: ZodFieldConstraints
+    /**
+     * Gap 4 v2.2 — `.optional()` or `.nullable()` modifier present.
+     * Emitted as `T?` in both Swift and Kotlin; parse() returns nil
+     * (not throw) when the field is missing.
+     */
+    optional?: boolean
   }[]
 }
 
