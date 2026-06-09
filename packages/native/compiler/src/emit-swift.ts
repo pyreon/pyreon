@@ -180,12 +180,39 @@ function collectLayoutComponentNames(components: ComponentIR[]): Set<string> {
   return names
 }
 
+/**
+ * Emit-time warnings. Populated by walled-tag emit (Suspense /
+ * ErrorBoundary / KeepAlive) when a feature-bearing prop (e.g.
+ * `fallback`) is silently dropped on this target. Module-level to
+ * avoid threading a warnings parameter through every emit function;
+ * reset + returned by `emitSwift()`.
+ *
+ * Phase 3 of the 2026-06-05 native-readiness gap-fix: stop the silent
+ * drop. The walled emit STILL renders children (the existing behaviour
+ * — apps' inner content always shows), but a user-visible diagnostic
+ * surfaces the dropped feature so silent divergence from web becomes
+ * loud at compile time.
+ */
+let _emitWarnings: string[] = []
+
+/** Test/debug-only helper to read accumulated warnings without
+ *  going through the full emit pipeline. Returns a copy. */
+export function _peekSwiftEmitWarnings(): string[] {
+  return [..._emitWarnings]
+}
+
+/** Internal: called by walled-tag emit to record a silent-drop. */
+export function _pushSwiftEmitWarning(msg: string): void {
+  _emitWarnings.push(msg)
+}
+
 export function emitSwift(
   components: ComponentIR[],
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
-): string {
+): { code: string; warnings: string[] } {
+  _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map for object-expression detection.
   // Sorted-field-name string `'done,id,text'` → struct name `'Todo'`.
@@ -209,7 +236,9 @@ export function emitSwift(
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
-  return parts.join('\n\n')
+  const warnings = [..._emitWarnings]
+  _emitWarnings = []
+  return { code: parts.join('\n\n'), warnings }
 }
 
 /**
@@ -1562,6 +1591,38 @@ function emitSwiftWalledTagAsChildren(
       : tag === 'ErrorBoundary'
         ? 'no render-time try/catch on SwiftUI'
         : 'no native state-cache across unmount on SwiftUI'
+  // Phase 3 native-readiness gap fix (2026-06-05): surface dropped
+  // feature-bearing props as user-visible warnings. The walled emit
+  // STILL renders children — apps' inner content always shows — but
+  // the dropped fallback / error-handler / cache contract is now LOUD
+  // at compile time instead of silent. Same pattern #1235 used for
+  // useLoaderData.
+  //
+  // Feature-bearing prop catalog per walled tag (web-source shape):
+  //   <Suspense fallback={X}>      — fallback is the dropped feature
+  //   <ErrorBoundary fallback={X}> — same
+  //   <KeepAlive when={X}>         — when toggles cache, dropped
+  // The check is for ANY attr presence — boolean / accessor / literal
+  // all qualify because all communicate user intent that the dropped
+  // emit can't honor.
+  const droppableProps =
+    tag === 'Suspense' || tag === 'ErrorBoundary' ? ['fallback'] : ['when', 'include', 'exclude']
+  const droppedAttrs = e.attrs
+    .filter((a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr')
+    .map((a) => a.name)
+    .filter((name) => droppableProps.includes(name))
+  if (droppedAttrs.length > 0) {
+    _emitWarnings.push(
+      `<${tag}> on Swift target: dropped prop(s) [${droppedAttrs.join(', ')}] — ` +
+        `${limitation}; children render but ${
+          tag === 'Suspense'
+            ? 'fallback never shows during async loads'
+            : tag === 'ErrorBoundary'
+              ? 'fallback never shows on render errors'
+              : 'cache behaviour is inert (children re-create on every mount)'
+        }. Use a per-target adapter (Layer 4: <NativeIOS>) for full semantic parity.`,
+    )
+  }
   return (
     `// [Pyreon] <${tag}> unsupported on iOS — rendering children only (${limitation}); fallback / cache behaviour inert.\n` +
     `${p}Group {\n${body}\n${p}}`
