@@ -450,7 +450,59 @@ function emitKotlinArrayElementConstraints(
   }
 }
 
+/**
+ * Gap 4 v3.3 — emit a discriminated union as a Kotlin sealed class
+ * with one data-class variant per case. Each variant wraps its aux
+ * data class.
+ */
+function emitKotlinDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
+  const d = zs.discriminator!
+  const typeName = `PyreonZodSchema_${zs.bindingName}`
+  const lines: string[] = []
+  lines.push(`sealed class ${typeName} {`)
+  for (const v of d.variants) {
+    lines.push(
+      `    data class ${v.caseName}(val variant: PyreonZodSchema_${v.schemaName}) : ${typeName}()`,
+    )
+  }
+  lines.push(`    companion object {`)
+  lines.push(`        @Throws(PyreonSchemaError::class)`)
+  lines.push(`        fun parse(input: Map<String, Any?>): ${typeName} {`)
+  lines.push(
+    `            val discr = (input[${JSON.stringify(d.field)}] as? String)`,
+  )
+  lines.push(
+    `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(d.field)}, "String")`,
+  )
+  lines.push(`            return when (discr) {`)
+  for (const v of d.variants) {
+    lines.push(
+      `                ${JSON.stringify(v.literal)} -> ${v.caseName}(PyreonZodSchema_${v.schemaName}.parse(input))`,
+    )
+  }
+  lines.push(
+    `                else -> throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(d.field)}, "unknown discriminator value")`,
+  )
+  lines.push(`            }`)
+  lines.push(`        }`)
+  lines.push(``)
+  lines.push(
+    `        fun safeParse(input: Map<String, Any?>): Result<${typeName}> {`,
+  )
+  lines.push(`            return try {`)
+  lines.push(`                Result.success(parse(input))`)
+  lines.push(`            } catch (e: PyreonSchemaError) {`)
+  lines.push(`                Result.failure(e)`)
+  lines.push(`            }`)
+  lines.push(`        }`)
+  lines.push(`    }`)
+  lines.push(`}`)
+  return lines.join('\n') + '\n'
+}
+
 function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
+  // Gap 4 v3.3 — discriminated union: sealed-class shape.
+  if (zs.discriminator) return emitKotlinDiscriminatedUnion(zs)
   const lines: string[] = []
   lines.push(`data class PyreonZodSchema_${zs.bindingName}(`)
   for (const f of zs.fields) {

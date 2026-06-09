@@ -813,6 +813,151 @@ function tryParseInnerObjectElement(
 }
 
 /**
+ * Gap 4 v3.3 — parse `z.discriminatedUnion('field', [z.object(...), ...])`.
+ *
+ * Each variant must be a `z.object()` containing a field with name
+ * matching the discriminator and value `z.literal('xxx')`. Variants
+ * are synthesized as aux schemas; the parent schema carries a
+ * `discriminator` field listing them with their literal values + the
+ * synthesized case names.
+ */
+function parseDiscriminatedUnion(
+  innerCall: AnyNode,
+  bindingName: string,
+  ctx: ParseCtx,
+  prefix: string,
+  schemaFn: string,
+): ZodSchemaDefnIR | null {
+  const callArgs = (innerCall.arguments as AnyNode[] | undefined) ?? []
+  // First arg = discriminator field name (string literal).
+  const discrArg = callArgs[0]
+  if (
+    !discrArg ||
+    discrArg.type !== 'Literal' ||
+    typeof discrArg.value !== 'string'
+  ) {
+    ctx.warnings.push(
+      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
+    )
+    return null
+  }
+  const discrField = discrArg.value
+  // Second arg = array of z.object() variants.
+  const variantsArg = callArgs[1]
+  if (
+    !variantsArg ||
+    variantsArg.type !== 'ArrayExpression'
+  ) {
+    ctx.warnings.push(
+      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
+    )
+    return null
+  }
+  const variantNodes = (variantsArg.elements as AnyNode[] | undefined) ?? []
+  if (variantNodes.length === 0) {
+    ctx.warnings.push(
+      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
+    )
+    return null
+  }
+  const auxSchemas: ZodSchemaDefnIR[] = []
+  const variants: NonNullable<ZodSchemaDefnIR['discriminator']>['variants'] = []
+  for (let i = 0; i < variantNodes.length; i++) {
+    const variantNode = variantNodes[i]!
+    if (variantNode.type !== 'CallExpression') {
+      ctx.warnings.push(
+        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
+      )
+      return null
+    }
+    // Detect the literal value of the discriminator field BEFORE
+    // synthesizing the aux schema — we need this for `case`-mapping.
+    const literal = extractDiscriminatorLiteral(variantNode, discrField, prefix)
+    if (literal === null) {
+      ctx.warnings.push(
+        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
+      )
+      return null
+    }
+    const caseName = capitalizeFirst(literal.replace(/[^a-zA-Z0-9_]/g, '_'))
+    const variantSchemaName = `${bindingName}_${caseName}`
+    const variantSchema = parseNestedObjectShape(
+      variantNode,
+      variantSchemaName,
+      ctx,
+      prefix,
+      schemaFn,
+    )
+    if (!variantSchema) {
+      ctx.warnings.push(
+        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
+      )
+      return null
+    }
+    auxSchemas.push(variantSchema)
+    variants.push({ literal, schemaName: variantSchemaName, caseName })
+  }
+  const result: ZodSchemaDefnIR = {
+    bindingName,
+    fields: [],
+    discriminator: { field: discrField, variants },
+  }
+  if (auxSchemas.length > 0) result.auxSchemas = auxSchemas
+  return result
+}
+
+/**
+ * Gap 4 v3.3 — locate the discriminator field inside a variant's
+ * `z.object({...})` shape and return its `z.literal()` value as a
+ * string. Returns null when the field is missing OR its value isn't
+ * a `<prefix>.literal('xxx')` call.
+ */
+function extractDiscriminatorLiteral(
+  objectCallNode: AnyNode,
+  discrField: string,
+  prefix: string,
+): string | null {
+  if (objectCallNode.type !== 'CallExpression') return null
+  const callee = objectCallNode.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression') return null
+  if (callee.object?.type !== 'Identifier') return null
+  if ((callee.object.name as string) !== prefix) return null
+  if (callee.property?.type !== 'Identifier') return null
+  if ((callee.property.name as string) !== 'object') return null
+  const shapeArg = (objectCallNode.arguments as AnyNode[] | undefined)?.[0]
+  if (!shapeArg || shapeArg.type !== 'ObjectExpression') return null
+  for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const fieldName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (fieldName !== discrField) continue
+    const value = prop.value as AnyNode | undefined
+    if (value?.type !== 'CallExpression') return null
+    const valCallee = value.callee as AnyNode | undefined
+    if (valCallee?.type !== 'MemberExpression') return null
+    if (valCallee.object?.type !== 'Identifier') return null
+    if ((valCallee.object.name as string) !== prefix) return null
+    if (valCallee.property?.type !== 'Identifier') return null
+    if ((valCallee.property.name as string) !== 'literal') return null
+    const litArg = (value.arguments as AnyNode[] | undefined)?.[0]
+    if (
+      !litArg ||
+      litArg.type !== 'Literal' ||
+      typeof litArg.value !== 'string'
+    ) {
+      return null
+    }
+    return litArg.value
+  }
+  return null
+}
+
+/**
  * Shared parser body for Zod + Valibot recognition (the two
  * libraries use isomorphic `<prefix>.object({ field: <prefix>.X() })`
  * call shapes). ArkType's string-valued shape needs its own parser.
@@ -855,7 +1000,18 @@ function tryNamespacedSchemaDefnFromTopLevel(
   if (innerCallee.object?.type !== 'Identifier') return null
   if ((innerCallee.object.name as string) !== prefix) return null
   if (innerCallee.property?.type !== 'Identifier') return null
-  if ((innerCallee.property.name as string) !== 'object') return null
+  const innerCallMethod = innerCallee.property.name as string
+  // Gap 4 v3.3 — discriminated union shape.
+  if (innerCallMethod === 'discriminatedUnion') {
+    return parseDiscriminatedUnion(
+      innerCall,
+      bindingName,
+      ctx,
+      prefix,
+      schemaFn,
+    )
+  }
+  if (innerCallMethod !== 'object') return null
 
   const shapeArg = (innerCall.arguments as AnyNode[] | undefined)?.[0]
   if (!shapeArg || shapeArg.type !== 'ObjectExpression') {
@@ -969,6 +1125,25 @@ function tryNamespacedSchemaDefnFromTopLevel(
       fields.push(entry)
     } else if (method === 'boolean') {
       const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'boolean' }
+      if (optional) entry.optional = true
+      fields.push(entry)
+    } else if (method === 'literal') {
+      // Gap 4 v3.3 — `z.literal('xxx')` used inside discriminated-union
+      // variants as the discriminator field. Inferred type from the
+      // literal's runtime type (string / number / boolean). The literal
+      // value is enforced at the union-level switch (per-variant
+      // parse() just type-checks the field, not the value).
+      const litArg = (value.arguments as AnyNode[] | undefined)?.[0]
+      let litType: ZodFieldType = 'string'
+      if (litArg && litArg.type === 'Literal') {
+        const v = litArg.value
+        if (typeof v === 'number') litType = 'number'
+        else if (typeof v === 'boolean') litType = 'boolean'
+      }
+      const entry: ZodSchemaDefnIR['fields'][number] = {
+        name: fieldName,
+        type: litType,
+      }
       if (optional) entry.optional = true
       fields.push(entry)
     } else if (method === 'object') {
