@@ -357,8 +357,15 @@ function renderStringLiteral(s: string): string {
   if (!hasNewline && !hasBackslash && !s.includes("'")) {
     return `'${s}'`
   }
-  // Template literal — escape backticks and `${`.
+  // Template literal — escape backslashes FIRST, then backticks + `${`.
+  // Backslash-first order matters: a value containing `\` followed by `` ` ``
+  // (e.g. the markdown-fenced code-group example `\`\`\`bash`) would
+  // otherwise render as `\\` + raw backtick = (escaped backslash)(literal
+  // backtick) → the literal backtick closes the template prematurely and
+  // breaks `api-reference.ts` parse. See CLAUDE.md "Documentation Mistakes"
+  // for the recurring failure mode this fix closes.
   let body = s
+  if (hasBackslash) body = body.replace(/\\/g, '\\\\')
   if (hasBacktick) body = body.replace(/`/g, '\\`')
   if (hasDollarBrace) body = body.replace(/\$\{/g, '\\${')
   return `\`${body}\``

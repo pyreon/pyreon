@@ -85,6 +85,66 @@ const docs = await getCollection('docs')
 //    ^? Array<{ slug: string; data: { title: string; description: string }; render: () => Promise<ComponentFn> }>
 ```
 
+## Inline live examples — `<Example>`
+
+Replace iframe-sandboxed `<Playground code={`…`} />` with real `.tsx` files that mount inline (no iframe). Two `<Example>` calls with the same `share` key receive the SAME signal instance, so a click in one example reactively updates the rendered output of another mounted example on the same page — a docs DX no MDX-flavored framework can replicate.
+
+```ts
+// entry-client.ts — one-time consumer-side registration
+import { registerExamples, startClient } from '@pyreon/zero/client'
+import { registerExamples as registerContentExamples } from '@pyreon/zero-content'
+import { routes } from 'virtual:zero/routes'
+
+registerContentExamples(
+  import.meta.glob('./examples/**/*.tsx') as Record<
+    string,
+    () => Promise<unknown>
+  >,
+)
+
+startClient({ routes })
+```
+
+```tsx
+// src/examples/counter-button.tsx — real Pyreon component
+import { signal, type Signal } from '@pyreon/reactivity'
+
+export default function CounterButton(props: { shared?: Signal<number> }) {
+  const count = props.shared ?? signal(0)
+  return (
+    <button onClick={() => count.update((n) => n + 1)}>
+      bump (now {() => count()})
+    </button>
+  )
+}
+```
+
+```md
+<!-- In any .md / .mdx page -->
+
+<Example file="./examples/counter-button" share="cnt" />
+<Example file="./examples/counter-readout" share="cnt" />
+```
+
+Real-file authoring (real type-checking, real refactor support, real lint) closes the foot-gun shape behind PR #1434 — strings like `'\n'` got double-unescaped through iframe `srcdoc` interpolation and threw `SyntaxError`. With `<Example>`, JS escape rules apply once at module evaluation; you write `'\n'` and it's a newline.
+
+**Cross-Example signal sharing** (`share="key"`):
+
+- First `<Example share="key">` to mount registers a `Signal<unknown>` with `shareInitial ?? 0`
+- Subsequent `<Example share="key">` calls receive the SAME signal as `props.shared`
+- The example component MUST accept `{ shared?: Signal<T> }` and fall back to a local signal when undefined (lets the same component work with or without sharing)
+- Powered by `getOrCreateSharedSignal` from `@pyreon/zero-content`; use it directly for any cross-component shared state without a context
+
+**Props**:
+
+| Prop           | Type                 | Default            | Description                                                                                                    |
+| -------------- | -------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `file`         | `string`             | —                  | Path key into the registered glob. Extension optional (`.tsx`/`.ts`/`.jsx`/`.js` tried in order).               |
+| `share`        | `string` (optional)  | none               | Shared-signal registry key. Two `<Example>` calls with the same `share` get the same signal.                   |
+| `shareInitial` | `unknown` (optional) | `0`                | Initial value for a NEW shared signal. Ignored on subsequent registrations of the same key.                    |
+| `class`        | `string` (optional)  | `'pyreon-example'` | className on the outer wrapper.                                                                                |
+| `title`        | `string` (optional)  | none               | Optional title shown above the rendered example.                                                               |
+
 ## Conventions
 
 Every path/filename the plugin treats specially, in one place. **`<root>`** is the Vite root.
