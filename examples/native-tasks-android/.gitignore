@@ -1,0 +1,7 @@
+.gradle/
+build/
+.idea/
+local.properties
+.cxx/
+app/src/main/kotlin/com/pyreon/generated/
+node_modules/
