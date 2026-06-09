@@ -125,3 +125,43 @@ targets:
           SWIFT_OPTIMIZATION_LEVEL: -Onone
         Release:
           SWIFT_OPTIMIZATION_LEVEL: -O
+
+  # Gap 7 part (a) — XCUITest launch-and-render + signal-write smoke.
+  # Asserts the app boots on the iOS Simulator, displays "Count: 0"
+  # initially, and updates to "Count: 1" after tapping Increment.
+  # Mirror of TodoMVC's UITest target wiring.
+  PyreonCounterUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: iosUITests
+        type: group
+
+    dependencies:
+      - target: PyreonCounter
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonCounterUITests
+        TEST_TARGET_NAME: PyreonCounter
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: '5.0'
+
+# Explicit scheme so `xcodebuild -scheme PyreonCounter test` reliably
+# picks up the UITest target. Same shape as TodoMVC.
+schemes:
+  PyreonCounter:
+    build:
+      targets:
+        PyreonCounter: all
+        PyreonCounterUITests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - PyreonCounterUITests
+    run:
+      config: Debug

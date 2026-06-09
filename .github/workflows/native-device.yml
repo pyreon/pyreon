@@ -135,6 +135,42 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      # ── Gap 7 part (a) — XCUITest coverage beyond TodoMVC ──
+      # The audit (2026-06-05 native-readiness) explicitly calls out
+      # "native-router-demo-ios + native-counter-ios have no test
+      # coverage." These steps close that — same xcodegen + xcodebuild
+      # test pattern as the TodoMVC steps above. The Simulator stays
+      # booted across the 3 example apps so device boot-time cost is
+      # paid ONCE (~30s); only the per-app install + test cost adds up.
+
+      - name: Emit + xcodegen + UITest — native-counter-ios
+        working-directory: examples/native-counter-ios
+        run: |
+          set -o pipefail
+          bash scripts/build.sh
+          xcodegen generate
+          xcodebuild test \
+            -project PyreonCounter.xcodeproj \
+            -scheme PyreonCounter \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Emit + xcodegen + UITest — native-router-demo-ios
+        working-directory: examples/native-router-demo-ios
+        run: |
+          set -o pipefail
+          bash scripts/build.sh
+          xcodegen generate
+          xcodebuild test \
+            -project PyreonRouterDemo.xcodeproj \
+            -scheme PyreonRouterDemo \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
   android-build:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'native-device')
     name: Android — gradlew assembleDebug
