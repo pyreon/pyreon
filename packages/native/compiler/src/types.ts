@@ -720,6 +720,24 @@ export interface ModelDefnIR {
   fields: { name: string; type: 'string' | 'number' | 'boolean'; initial: string | number | boolean }[]
 }
 
+/**
+ * Gap 4 follow-up — @pyreon/validate `withField(schema, meta)` v1.
+ * PMTC discards the schema arg (it's a Zod/Valibot/ArkType runtime
+ * object that doesn't translate) and emits a metadata struct holding
+ * the literal `meta` fields. Downstream native code can reference
+ * `emailField.label`, `emailField.placeholder`, etc. — useful for
+ * form labels / UI hints even without runtime schema validation.
+ *
+ * v1 scope: literal meta object with string fields. Validator runtime
+ * (parseReactive, formatErrors, getMeta, watchValid) is NOT ported.
+ */
+export interface FieldMetaDefnIR {
+  /** Top-level binding name (e.g. `emailField`). */
+  bindingName: string
+  /** Literal meta fields (string values only in v1). */
+  meta: { name: string; value: string }[]
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
@@ -737,6 +755,12 @@ export interface ParseResult {
    * the consuming component body.
    */
   models: ModelDefnIR[]
+  /**
+   * Gap 4 follow-up: @pyreon/validate withField metadata structs.
+   * Each one emits a per-binding metadata struct at module scope
+   * holding the literal meta fields.
+   */
+  fieldMetas: FieldMetaDefnIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

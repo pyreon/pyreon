@@ -12,6 +12,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  FieldMetaDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   ParseResult,
@@ -43,6 +44,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const moduleDecls: ModuleDeclIR[] = []
   const stores: StoreDefnIR[] = []
   const models: ModelDefnIR[] = []
+  const fieldMetas: FieldMetaDefnIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
@@ -77,6 +79,16 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       models.push(md)
       continue
     }
+    // Gap 4 follow-up — @pyreon/validate withField metadata.
+    // `const X = withField(schema, { label, hint, ... })` extracted
+    // as FieldMetaDefnIR. PMTC discards the schema arg (Zod runtime
+    // doesn't translate) and emits a metadata struct holding the
+    // literal meta. Downstream code can reference X.label etc.
+    const fmd = tryFieldMetaDefnFromTopLevel(node, ctx)
+    if (fmd) {
+      fieldMetas.push(fmd)
+      continue
+    }
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -85,7 +97,16 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     if (mds) moduleDecls.push(...mds)
   }
 
-  return { components, enums, structs, moduleDecls, stores, models, warnings: ctx.warnings }
+  return {
+    components,
+    enums,
+    structs,
+    moduleDecls,
+    stores,
+    models,
+    fieldMetas,
+    warnings: ctx.warnings,
+  }
 }
 
 /**
@@ -469,6 +490,93 @@ function tryModelDefnFromTopLevel(
   }
 
   return { instanceName, modelId: instanceName, fields }
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validate` `withField(schema, meta)`
+ * recognizer. PMTC discards the schema argument (Zod / Valibot /
+ * ArkType runtime objects don't translate) and emits a per-binding
+ * metadata struct holding the literal `meta` fields. Downstream
+ * native code references `emailField.label`, `emailField.placeholder`
+ * directly via the emitted struct.
+ *
+ * Shape (v1):
+ *   const emailField = withField(emailSchema, {
+ *     label: 'Email',
+ *     placeholder: 'name@example.com',
+ *     hint: 'We never share',
+ *   })
+ *
+ * Deferred:
+ *   - Zod/Valibot/ArkType schema introspection (Strategy-A)
+ *   - parseReactive / formatErrors / watchValid / getMeta runtime
+ *   - Non-string meta values (booleans, i18n key objects)
+ */
+function tryFieldMetaDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): FieldMetaDefnIR | null {
+  let varDecl: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  } else if (node.type === 'VariableDeclaration') {
+    varDecl = node
+  }
+  if (!varDecl) return null
+  const declarators = varDecl.declarations as AnyNode[]
+  if (declarators.length !== 1) return null
+  const declarator = declarators[0]
+  if (!declarator) return null
+  if (declarator.id?.type !== 'Identifier') return null
+  const bindingName = declarator.id.name as string
+
+  const init = declarator.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  if (init.callee?.type !== 'Identifier') return null
+  if ((init.callee.name as string) !== 'withField') return null
+
+  const args = (init.arguments as AnyNode[] | undefined) ?? []
+  // withField(schema, meta) — second argument is the literal meta.
+  const metaArg = args[1]
+  if (!metaArg || metaArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `withField declaration \`${bindingName}\`: second argument must be a literal meta object — v1 emit needs the literal shape. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  const meta: FieldMetaDefnIR['meta'] = []
+  for (const prop of (metaArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!keyName) continue
+    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
+      meta.push({ name: keyName, value: valueNode.value })
+    } else {
+      // Non-string meta values silently dropped in v1 (the audit's
+      // Strategy-A complexity is per-validator schema introspection,
+      // not the meta map; richer meta types are a follow-up).
+    }
+  }
+
+  if (meta.length === 0) {
+    ctx.warnings.push(
+      `withField declaration \`${bindingName}\`: no recognized meta fields (only string-valued literals supported in v1). Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  return { bindingName, meta }
 }
 
 /** Tiny initial-value type inference for store signals.

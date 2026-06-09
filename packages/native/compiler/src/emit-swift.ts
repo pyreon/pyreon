@@ -32,6 +32,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  FieldMetaDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
@@ -224,6 +225,7 @@ export function emitSwift(
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
+  fieldMetas: FieldMetaDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -250,6 +252,8 @@ export function emitSwift(
   // Gap 4 v2 follow-up: emit per-model singleton class BEFORE components
   // so `<instance>.<field>` use sites resolve to PyreonModel_<id>.shared.
   for (const m of models) parts.push(emitSwiftModel(m))
+  // Gap 4 follow-up — withField metadata structs.
+  for (const fm of fieldMetas) parts.push(emitSwiftFieldMeta(fm))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -334,6 +338,30 @@ function emitSwiftModel(m: ModelDefnIR): string {
   }
   lines.push(`    private init() {}`)
   lines.push(`}`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validate` withField metadata emit
+ * (Swift). PMTC discards the schema argument and emits a per-binding
+ * struct holding the literal `meta` fields. Downstream native code
+ * uses `emailField.label` etc. directly via the emitted struct.
+ *
+ *   struct PyreonFieldMeta_emailField {
+ *       let label: String = "Email"
+ *       let placeholder: String = "name@example.com"
+ *   }
+ *   let emailField = PyreonFieldMeta_emailField()
+ */
+function emitSwiftFieldMeta(fm: FieldMetaDefnIR): string {
+  const lines: string[] = []
+  lines.push(`struct PyreonFieldMeta_${fm.bindingName} {`)
+  for (const m of fm.meta) {
+    lines.push(`    let ${m.name}: String = ${JSON.stringify(m.value)}`)
+  }
+  lines.push(`}`)
+  lines.push(``)
+  lines.push(`let ${fm.bindingName} = PyreonFieldMeta_${fm.bindingName}()`)
   return lines.join('\n')
 }
 

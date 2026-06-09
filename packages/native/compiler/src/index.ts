@@ -21,6 +21,7 @@ export function transform(source: string, options: EmitOptions): TransformResult
           parsed.moduleDecls,
           parsed.stores,
           parsed.models,
+          parsed.fieldMetas,
         )
       : emitKotlin(
           parsed.components,
@@ -29,6 +30,7 @@ export function transform(source: string, options: EmitOptions): TransformResult
           parsed.moduleDecls,
           parsed.stores,
           parsed.models,
+          parsed.fieldMetas,
         )
   // Phase 3 native-readiness gap fix (2026-06-05): emit-time warnings
   // (walled-tag silent-drop diagnostics, etc.) merge with parse-time
