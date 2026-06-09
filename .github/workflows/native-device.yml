@@ -275,3 +275,33 @@ jobs:
           script: |
             cd examples/native-todomvc-android
             gradle connectedCheck --no-daemon --stacktrace
+
+      # ── Gap 5 Android Espresso parity beyond TodoMVC ──
+      # Adds the Counter Android example to the Espresso CI gate.
+      # Same shape as native-todomvc-android above — Emit Kotlin →
+      # assembleDebug → connectedCheck.
+
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-counter-android
+        working-directory: examples/native-counter-android
+        run: bash scripts/build.sh
+
+      - name: Build debug APK — native-counter-android
+        working-directory: examples/native-counter-android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Run Espresso test on Android Emulator — native-counter-android
+        # SHA-pinned same as the TodoMVC step above so supply-chain
+        # hardening is consistent. Fresh emulator boot per step
+        # (reactivecircus/android-emulator-runner re-boots when invoked
+        # multiple times in the same job) — acceptable cost on the
+        # label-gated advisory path.
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            cd examples/native-counter-android
+            gradle connectedCheck --no-daemon --stacktrace

@@ -1,0 +1,16 @@
+{
+  "name": "@pyreon/example-native-counter-android",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Counter sample for Android / Jetpack Compose. Compiles the SAME Counter.tsx source as native-counter-ios into Kotlin/Compose. Closes Gap 5 (Android Espresso parity beyond TodoMVC).",
+  "license": "MIT",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "lint": "echo '[native-counter-android] no TS lint surface; skipping'",
+    "test": "echo '[native-counter-android] no test surface; PMTC emit covered by @pyreon/native-compiler tests'",
+    "typecheck": "echo '[native-counter-android] no TS typecheck surface'"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*"
+  }
+}

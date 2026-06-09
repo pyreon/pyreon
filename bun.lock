@@ -613,6 +613,13 @@
         "vite": "^8.0.16",
       },
     },
+    "examples/native-counter-android": {
+      "name": "@pyreon/example-native-counter-android",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
+      },
+    },
     "examples/native-counter-ios": {
       "name": "@pyreon/example-native-counter-ios",
       "version": "0.0.0",
@@ -2931,6 +2938,8 @@
     "@pyreon/elements": ["@pyreon/elements@workspace:packages/ui-system/elements"],
 
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
+
+    "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
 
     "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
 
