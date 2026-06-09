@@ -507,7 +507,67 @@ function emitSwiftArrayElementConstraints(
   lines.push(`${ind}}`)
 }
 
+/**
+ * Gap 4 v3.3 — emit a discriminated union as a Swift enum with
+ * associated values. Each variant case wraps its aux struct.
+ */
+function emitSwiftDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
+  const d = zs.discriminator!
+  const lines: string[] = []
+  const typeName = `PyreonZodSchema_${zs.bindingName}`
+  lines.push(`enum ${typeName} {`)
+  for (const v of d.variants) {
+    lines.push(`    case ${camelCase(v.caseName)}(PyreonZodSchema_${v.schemaName})`)
+  }
+  lines.push(``)
+  lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
+  lines.push(
+    `        guard let discr = input[${JSON.stringify(d.field)}] as? String else {`,
+  )
+  lines.push(
+    `            throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(d.field)}, expected: "String")`,
+  )
+  lines.push(`        }`)
+  lines.push(`        switch discr {`)
+  for (const v of d.variants) {
+    lines.push(`        case ${JSON.stringify(v.literal)}:`)
+    lines.push(
+      `            return .${camelCase(v.caseName)}(try PyreonZodSchema_${v.schemaName}.parse(input))`,
+    )
+  }
+  lines.push(`        default:`)
+  lines.push(
+    `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(d.field)}, rule: "unknown discriminator value")`,
+  )
+  lines.push(`        }`)
+  lines.push(`    }`)
+  lines.push(``)
+  lines.push(
+    `    static func safeParse(_ input: [String: Any]) -> Result<Self, PyreonSchemaError> {`,
+  )
+  lines.push(`        do { return .success(try parse(input)) }`)
+  lines.push(`        catch let e as PyreonSchemaError { return .failure(e) }`)
+  lines.push(`        catch { return .failure(.missingOrWrongType(field: "?", expected: "?")) }`)
+  lines.push(`    }`)
+  lines.push(`}`)
+  return lines.join('\n') + '\n'
+}
+
+/**
+ * Gap 4 v3.3 — lowercase the first character of an identifier.
+ * Used to convert PascalCased variant caseName ("Cat") to a Swift
+ * enum case ("cat").
+ */
+function camelCase(s: string): string {
+  if (s.length === 0) return s
+  return s[0]!.toLowerCase() + s.slice(1)
+}
+
 function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
+  // Gap 4 v3.3 — discriminated union: emit as a Swift enum with
+  // associated values. Each variant case wraps the variant's struct
+  // and parse() routes via a switch on the discriminator value.
+  if (zs.discriminator) return emitSwiftDiscriminatedUnion(zs)
   const lines: string[] = []
   lines.push(`struct PyreonZodSchema_${zs.bindingName}: Codable {`)
   for (const f of zs.fields) {
