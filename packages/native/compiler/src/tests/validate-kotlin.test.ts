@@ -58,15 +58,16 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // Compose code.
     'rx-lowering.tsx',
     'rx-full.tsx',
-    // Regression fixture for the Kotlin synthetic-data-class emit fix
-    // (closes Gap 5 scaffold limitation #1 + #3).
+    // Regression fixture for the Kotlin synthetic-data-class emit fix.
     'synth-prop-types.tsx',
-    // Router-hook stub regression: useNavigate / useParams added to
-    // kotlin-stubs.ts. Closes limitation #2 from the Gap 5 tasks-
-    // showcase scaffold (#1449). useLoaderData omitted from the
-    // fixture to keep the cli build-test zero-warning assertion happy
-    // (the Phase B6 informational warning would otherwise fire).
+    // Router-hook stub regression: useNavigate / useParams.
     'router-hooks.tsx',
+    // Gap 5 showcase: all 3 originally-documented Kotlin limitations
+    // are now closed on main (#1453 = synth-class emit, #1451 = router-
+    // hook stubs, #1453 again indirectly = tasks.length extension via
+    // synth-class resolving T). The showcase fixture compiles cleanly
+    // through validate-kotlin.
+    'showcase-tasks.tsx',
   ] as const
 
   for (const fixture of fixtures) {
