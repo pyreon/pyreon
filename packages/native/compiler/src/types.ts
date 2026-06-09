@@ -673,6 +673,34 @@ export interface ModuleDeclIR {
   initial: ExprIR
 }
 
+/**
+ * Gap 4 Strategy-B port v1 — `defineStore("id", () => { ... return {...} })`
+ * from `@pyreon/store`. Captured as a top-level singleton class
+ * emitted at file scope (sibling of enums / structs).
+ *
+ * v1 scope: setup body contains ONLY `const X = signal(...)` decls;
+ * returned object is a shorthand-keys-only literal naming local
+ * signals. The PMTC parser walks the setup body, extracts the signal
+ * fields, and emits a per-store class with @Observable properties
+ * (Swift) / `var by mutableStateOf` (Kotlin) and a static `shared`
+ * accessor. Use sites `<hookName>().store.<field>` are parsed as a
+ * chain pattern and rewritten to `PyreonStore_<id>.shared.<field>`
+ * in emit.
+ *
+ * Multi-step member-access chain rewriting at the parser level
+ * (`tryDeclFromCallExpression` looking for `<id>().store.<X>` shape)
+ * is the structural infrastructure this port adds — once present,
+ * createModel + defineFeature composites build on it.
+ */
+export interface StoreDefnIR {
+  /** Top-level binding name (e.g. `useCounter`). */
+  hookName: string
+  /** Store id from `defineStore("X", ...)`. Used to derive emitted class name. */
+  storeId: string
+  /** Signal fields extracted from the setup body. */
+  fields: { name: string; type: TypeIR; initial: ExprIR }[]
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
@@ -681,6 +709,8 @@ export interface ParseResult {
   structs: StructIR[]
   /** Module-level mutable / immutable bindings emitted at file scope. */
   moduleDecls: ModuleDeclIR[]
+  /** Gap 4 v1: top-level defineStore declarations. */
+  stores: StoreDefnIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

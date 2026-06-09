@@ -34,6 +34,7 @@ import type {
   ExprIR,
   ModuleDeclIR,
   StatementIR,
+  StoreDefnIR,
   StructIR,
   TypeIR,
 } from './types'
@@ -220,34 +221,70 @@ export function emitSwift(
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
+  stores: StoreDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
-  // Build the struct-fields key map for object-expression detection.
-  // Sorted-field-name string `'done,id,text'` → struct name `'Todo'`.
-  // First-seen struct wins on field-set collision (rare in practice).
   _structFieldsToName = new Map()
   for (const s of structs) {
     const key = s.fields.map((f) => f.name).sort().join(',')
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
   }
-  // Build the user-component name set so emitSwiftGeneric can include
-  // event handlers as constructor args for user-defined components.
   _componentNames = new Set(components.map((c) => c.name))
-  // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNames(components)
+  // Gap 4 v1: track store-hook names → store id so the use-site chain
+  // rewriter (`<hook>().store.<X>`) can map to the right singleton class.
+  _storeHooks = new Map(stores.map((s) => [s.hookName, s.storeId]))
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
+  // Gap 4 v1: emit per-store @Observable singleton class BEFORE
+  // components so call sites can reference the type.
+  for (const s of stores) parts.push(emitSwiftStore(s))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
+  _storeHooks = new Map()
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
+}
+
+/** Map of useStoreName → storeId (e.g. `useCounter` → `"counter"`). */
+let _storeHooks: Map<string, string> = new Map()
+
+/**
+ * Emit a per-store @Observable singleton class:
+ *
+ *   @available(iOS 17.0, macOS 14.0, *)
+ *   @Observable
+ *   final class PyreonStore_counter: PyreonStoreProtocol {
+ *       static let shared = PyreonStore_counter()
+ *       var count: Int = 0
+ *       private init() {}
+ *   }
+ *
+ * The PMTC consumer accesses fields via `PyreonStore_counter.shared.count`
+ * (rewritten from `useCounter().store.count`). The PyreonStoreProtocol
+ * marker comes from PyreonStore.swift.
+ */
+function emitSwiftStore(s: StoreDefnIR): string {
+  const lines: string[] = []
+  lines.push(`@available(iOS 17.0, macOS 14.0, *)`)
+  lines.push(`@Observable`)
+  lines.push(`final class PyreonStore_${s.storeId}: PyreonStoreProtocol {`)
+  lines.push(`    static let shared = PyreonStore_${s.storeId}()`)
+  for (const f of s.fields) {
+    const t = swiftType(f.type)
+    const init = emitSwiftExpr(f.initial, 4)
+    lines.push(`    var ${f.name}: ${t} = ${init}`)
+  }
+  lines.push(`    private init() {}`)
+  lines.push(`}`)
+  return lines.join('\n')
 }
 
 /**
@@ -956,6 +993,41 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return swiftIdent(e.name)
     case 'call': {
+      // Gap 4 v1: signal-style read on a store field — drop the parens.
+      // Shape: call(member(<field>, member(store, call(<hook>, []))), [])
+      // Detect this BEFORE the .set rewrite below (which would
+      // misinterpret `useFoo().store.X.set(v)` as a member.set call).
+      if (
+        e.args.length === 0 &&
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.property === 'store' &&
+        e.callee.object.object.kind === 'call' &&
+        e.callee.object.object.callee.kind === 'identifier' &&
+        e.callee.object.object.args.length === 0 &&
+        _storeHooks.has(e.callee.object.object.callee.name)
+      ) {
+        const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
+        return `PyreonStore_${storeId}.shared.${swiftIdent(e.callee.property)}`
+      }
+      // Gap 4 v1: write to a store field — `useFoo().store.X.set(v)`
+      // rewrites to `PyreonStore_foo.shared.X = v` (Swift @Observable
+      // properties are vars).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'set' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.object.kind === 'member' &&
+        e.callee.object.object.property === 'store' &&
+        e.callee.object.object.object.kind === 'call' &&
+        e.callee.object.object.object.callee.kind === 'identifier' &&
+        _storeHooks.has(e.callee.object.object.object.callee.name)
+      ) {
+        const storeId = _storeHooks.get(e.callee.object.object.object.callee.name)!
+        const field = swiftIdent(e.callee.object.property)
+        const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
+        return `PyreonStore_${storeId}.shared.${field} = ${value}`
+      }
       // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
         const target = emitSwiftExpr(e.callee.object, indent)
@@ -1063,6 +1135,28 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `${callee}(${args})`
     }
     case 'member': {
+      // Gap 4 v1: rewrite the store-hook chain `<useFoo>().store.X`
+      // → `PyreonStore_foo.shared.X`.
+      //
+      // The chain parses bottom-up as:
+      //   member(.X, member(.store, call(identifier(useFoo), [])))
+      //
+      // Recognise the immediately-inner `.store` + call shape and
+      // hop two levels in one rewrite. This is the multi-step member-
+      // access chain rewriting infrastructure the audit identified as
+      // the missing PMTC primitive — once present, the same shape
+      // extends to createModel + defineFeature.
+      if (
+        e.object.kind === 'member' &&
+        e.object.property === 'store' &&
+        e.object.object.kind === 'call' &&
+        e.object.object.callee.kind === 'identifier' &&
+        e.object.object.args.length === 0 &&
+        _storeHooks.has(e.object.object.callee.name)
+      ) {
+        const storeId = _storeHooks.get(e.object.object.callee.name)!
+        return `PyreonStore_${storeId}.shared.${swiftIdent(e.property)}`
+      }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct struct properties in
       // Swift (`let title: String`), so the user-source-level

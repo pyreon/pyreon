@@ -16,6 +16,7 @@ import type {
   ParseResult,
   RouteIR,
   StatementIR,
+  StoreDefnIR,
   StructIR,
   TypeIR,
 } from './types'
@@ -39,6 +40,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const enums: EnumIR[] = []
   const structs: StructIR[] = []
   const moduleDecls: ModuleDeclIR[] = []
+  const stores: StoreDefnIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
@@ -50,6 +52,20 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     // tryEnumFromTypeAlias above) OR a non-object alias (`type Foo = string`).
     const st = tryStructFromTypeAlias(node, ctx)
     if (st) structs.push(st)
+    // Gap 4 Strategy-B v1: `const useFoo = defineStore("foo", () => ...)`
+    // detected at top-level scope and extracted as a StoreDefnIR.
+    // The setup body's signal decls become fields on the emitted
+    // singleton class. Tracked separately from moduleDecls because
+    // the emit shape (class declaration at file scope, vs `var`/`let`
+    // binding) is different.
+    const sd = tryStoreDefnFromTopLevel(node, ctx)
+    if (sd) {
+      stores.push(sd)
+      // Don't fall through to tryModuleDeclsFromTopLevel — the
+      // defineStore call would otherwise also be parsed as a bare
+      // module-level binding with an unresolved initializer.
+      continue
+    }
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -58,7 +74,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     if (mds) moduleDecls.push(...mds)
   }
 
-  return { components, enums, structs, moduleDecls, warnings: ctx.warnings }
+  return { components, enums, structs, moduleDecls, stores, warnings: ctx.warnings }
 }
 
 /**
@@ -140,6 +156,191 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
  *   - non-string union members (`type Mixed = 1 | 'a'`)
  *   - generic type-parameter aliases (`type Box<T> = ...`)
  */
+/**
+ * Gap 4 Strategy-B v1 — detect `const useFoo = defineStore("foo", () => { ... })`
+ * at top-level scope and extract a StoreDefnIR.
+ *
+ * Bounded scope:
+ *   - Setup body: ONLY `const X = signal(...)` declarations
+ *   - Returned object: ONLY shorthand keys naming local signals
+ *
+ * Any other shape (computed in body, function in body, expression
+ * keys in return, non-object return) falls through to null — the
+ * top-level binding is then parsed as a regular moduleDecl (which
+ * will currently emit a warning since the defineStore call isn't
+ * recognized as a regular signal/etc; the silent-drop diagnostic
+ * from #1444 covers that).
+ */
+function tryStoreDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): StoreDefnIR | null {
+  // Walk through ExportNamedDeclaration to the VariableDeclaration.
+  let varDecl: AnyNode | null = null
+  if (node.type === 'VariableDeclaration') {
+    varDecl = node
+  } else if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  }
+  if (!varDecl) return null
+
+  // Expect a single `const X = ...` declarator.
+  if (varDecl.kind !== 'const') return null
+  const decls = (varDecl.declarations as AnyNode[]) ?? []
+  if (decls.length !== 1) return null
+  const decl = decls[0]
+  if (!decl) return null
+  if (decl.id?.type !== 'Identifier') return null
+  const hookName = decl.id.name as string
+
+  // Init must be a CallExpression to the bare identifier `defineStore`.
+  const init = decl.init
+  if (init?.type !== 'CallExpression') return null
+  if (init.callee?.type !== 'Identifier') return null
+  if ((init.callee.name as string) !== 'defineStore') return null
+
+  // Arg 1: string literal id.
+  const args = (init.arguments as AnyNode[]) ?? []
+  if (args.length < 2) return null
+  const idArg = args[0]
+  if (
+    idArg?.type !== 'Literal' ||
+    typeof idArg.value !== 'string'
+  ) {
+    ctx.warnings.push(
+      `defineStore declaration \`${hookName}\`: first argument must be a string literal id. Falling back to silent-drop.`,
+    )
+    return null
+  }
+  const storeId = idArg.value
+
+  // Arg 2: arrow function with a block body returning an object literal.
+  const setup = args[1]
+  if (
+    setup?.type !== 'ArrowFunctionExpression' &&
+    setup?.type !== 'FunctionExpression'
+  ) {
+    ctx.warnings.push(
+      `defineStore \`${hookName}\`: setup argument must be a function expression. Falling back to silent-drop.`,
+    )
+    return null
+  }
+  const body = setup.body as AnyNode
+  // Two shapes: BlockStatement with return, or expression body (`() => ({...})`)
+  let returnObj: AnyNode | undefined
+  const signalDecls: { name: string; type: TypeIR; initial: ExprIR }[] = []
+
+  if (body?.type === 'BlockStatement') {
+    const stmts = (body.body as AnyNode[]) ?? []
+    let returnFound = false
+    for (const stmt of stmts) {
+      if (stmt.type === 'VariableDeclaration' && stmt.kind === 'const') {
+        // Extract `const X = signal(...)` decls.
+        for (const d of (stmt.declarations as AnyNode[]) ?? []) {
+          if (d.id?.type !== 'Identifier') continue
+          const name = d.id.name as string
+          const sigCall = d.init
+          if (sigCall?.type !== 'CallExpression') continue
+          if ((sigCall.callee?.name as string | undefined) !== 'signal') continue
+          // Pull the initial value + type generic if present.
+          const sigArgs = (sigCall.arguments as AnyNode[]) ?? []
+          const initialNode = sigArgs[0]
+          const initial: ExprIR = initialNode
+            ? parseExpr(initialNode, ctx)
+            : { kind: 'literal', value: 0 }
+          // Infer type from generic OR initial value. `parseGenericTypeArg`
+          // returns `{kind:'unknown'}` (not undefined) when no generic is
+          // present, so we check for the unknown sentinel + fall back.
+          const generic = parseGenericTypeArg(sigCall, ctx)
+          const inferredType: TypeIR =
+            generic.kind === 'unknown' ? inferTypeFromInitial(initial) : generic
+          signalDecls.push({ name, type: inferredType, initial })
+        }
+      } else if (stmt.type === 'ReturnStatement') {
+        returnObj = stmt.argument as AnyNode | undefined
+        returnFound = true
+        break
+      } else {
+        // Unsupported statement in setup body — bail with warning.
+        ctx.warnings.push(
+          `defineStore \`${hookName}\`: v1 supports ONLY \`const X = signal(...)\` decls in the setup body; saw \`${stmt.type}\`. Falling back to silent-drop.`,
+        )
+        return null
+      }
+    }
+    if (!returnFound || !returnObj) {
+      ctx.warnings.push(
+        `defineStore \`${hookName}\`: setup function must return an object literal of signals.`,
+      )
+      return null
+    }
+  } else if (body?.type === 'ObjectExpression') {
+    // Arrow body shape: `() => ({ ... })` — no signal decls possible
+    // (no statements); only object literal whose values are inline
+    // signal calls. Out of v1 scope — declare via the block-body form.
+    ctx.warnings.push(
+      `defineStore \`${hookName}\`: v1 requires the block-body form \`() => { const x = signal(...); return { x } }\`, not the expression-body form. Falling back to silent-drop.`,
+    )
+    return null
+  } else {
+    return null
+  }
+
+  // Unwrap optional parentheses on the return object.
+  let unwrapped = returnObj
+  while (unwrapped?.type === 'ParenthesizedExpression') {
+    unwrapped = unwrapped.expression as AnyNode
+  }
+  if (unwrapped?.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `defineStore \`${hookName}\`: setup must return an object literal.`,
+    )
+    return null
+  }
+
+  // Validate the returned keys all match declared signal names.
+  // Shorthand-only: `return { count, name }` — same identifier on both sides.
+  const declaredNames = new Set(signalDecls.map((s) => s.name))
+  const returnedNames: string[] = []
+  for (const prop of (unwrapped.properties as AnyNode[]) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    if (prop.shorthand !== true) {
+      ctx.warnings.push(
+        `defineStore \`${hookName}\`: v1 supports ONLY shorthand keys in the returned object (\`return { x, y }\`, not \`return { x: x }\`).`,
+      )
+      return null
+    }
+    if (prop.key?.type !== 'Identifier') continue
+    const k = prop.key.name as string
+    if (!declaredNames.has(k)) {
+      ctx.warnings.push(
+        `defineStore \`${hookName}\`: returned key \`${k}\` doesn't match any local signal decl.`,
+      )
+      return null
+    }
+    returnedNames.push(k)
+  }
+  // Only keep fields that are EXPORTED in the return object.
+  const exportedFields = signalDecls.filter((s) => returnedNames.includes(s.name))
+
+  return { hookName, storeId, fields: exportedFields }
+}
+
+/** Tiny initial-value type inference for store signals.
+ *  Matches the inference contract `tryDeclFromVarDeclarator` uses
+ *  for component-scope signals. */
+function inferTypeFromInitial(initial: ExprIR): TypeIR {
+  if (initial.kind === 'literal') {
+    if (typeof initial.value === 'number') return { kind: 'number' }
+    if (typeof initial.value === 'string') return { kind: 'string' }
+    if (typeof initial.value === 'boolean') return { kind: 'boolean' }
+  }
+  return { kind: 'unknown' }
+}
+
 function tryEnumFromTypeAlias(node: AnyNode, ctx: ParseCtx): EnumIR | null {
   // Walk through `ExportNamedDeclaration` to the type alias.
   let alias: AnyNode | null = null
