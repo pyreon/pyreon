@@ -77,6 +77,11 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // resolved at compile time in real apps; -parse skips symbol
     // resolution so the fixture passes regardless).
     'tier2-machine.tsx',
+    // Gap 4 PR-4: @pyreon/store Strategy-B port v1. Proves the
+    // top-level @Observable singleton class + use-site chain
+    // rewriting (`useFoo().store.X` → `PyreonStore_foo.shared.X`)
+    // emits as valid Swift.
+    'tier2-store.tsx',
   ] as const
 
   for (const fixture of fixtures) {

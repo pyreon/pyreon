@@ -29,6 +29,7 @@ import type {
   ExprIR,
   ModuleDeclIR,
   StatementIR,
+  StoreDefnIR,
   StructIR,
   TypeIR,
 } from './types'
@@ -143,6 +144,7 @@ export function emitKotlin(
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
+  stores: StoreDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -169,17 +171,48 @@ export function emitKotlin(
   if (components.length > 0 || structs.length > 0) {
     parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Int get() = size')
   }
+  // Gap 4 v1: store-hook → store id map for use-site chain rewriting.
+  _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
+  // Gap 4 v1: emit per-store singleton class.
+  for (const s of stores) parts.push(emitKotlinStore(s))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
+  _storeHooksKotlin = new Map()
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
+}
+
+/** Map of useStoreName → storeId for Kotlin emit chain rewriting. */
+let _storeHooksKotlin: Map<string, string> = new Map()
+
+/**
+ * Emit a per-store Kotlin object singleton:
+ *
+ *   object PyreonStore_counter : PyreonStore {
+ *       var count by mutableStateOf(0)
+ *   }
+ *
+ * Kotlin `object` declarations ARE singletons by construction —
+ * cleaner than Swift's `static let shared = ...` pattern.
+ * The PMTC consumer accesses fields via `PyreonStore_counter.count`
+ * (rewritten from `useCounter().store.count`).
+ */
+function emitKotlinStore(s: StoreDefnIR): string {
+  const lines: string[] = []
+  lines.push(`object PyreonStore_${s.storeId} : PyreonStore {`)
+  for (const f of s.fields) {
+    const init = emitKotlinExpr(f.initial, 4)
+    lines.push(`    var ${f.name} by mutableStateOf(${init})`)
+  }
+  lines.push(`}`)
+  return lines.join('\n')
 }
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
@@ -882,6 +915,39 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return kotlinIdent(e.name)
     case 'call': {
+      // Gap 4 v1: signal-style read on a store field — drop the parens.
+      // Same chain-shape as Swift: call(member(<field>, member(store,
+      // call(<hook>, []))), []).
+      if (
+        e.args.length === 0 &&
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.property === 'store' &&
+        e.callee.object.object.kind === 'call' &&
+        e.callee.object.object.callee.kind === 'identifier' &&
+        e.callee.object.object.args.length === 0 &&
+        _storeHooksKotlin.has(e.callee.object.object.callee.name)
+      ) {
+        const storeId = _storeHooksKotlin.get(e.callee.object.object.callee.name)!
+        return `PyreonStore_${storeId}.${kotlinIdent(e.callee.property)}`
+      }
+      // Gap 4 v1: write to a store field — `useFoo().store.X.set(v)`
+      // → `PyreonStore_foo.X = v` (Compose `by mutableStateOf` var).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'set' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.object.kind === 'member' &&
+        e.callee.object.object.property === 'store' &&
+        e.callee.object.object.object.kind === 'call' &&
+        e.callee.object.object.object.callee.kind === 'identifier' &&
+        _storeHooksKotlin.has(e.callee.object.object.object.callee.name)
+      ) {
+        const storeId = _storeHooksKotlin.get(e.callee.object.object.object.callee.name)!
+        const field = kotlinIdent(e.callee.object.property)
+        const value = e.args[0] ? emitKotlinExpr(e.args[0], indent) : '0'
+        return `PyreonStore_${storeId}.${field} = ${value}`
+      }
       // `signal.set(x)` → `signal = x` (Kotlin's `by mutableStateOf` is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
         const target = emitKotlinExpr(e.callee.object, indent)
@@ -960,6 +1026,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${callee}(${args})`
     }
     case 'member': {
+      // Gap 4 v1: rewrite `<useFoo>().store.X` → `PyreonStore_foo.X`.
+      // Same chain-shape recognition as emit-swift's; Kotlin's `object`
+      // declaration is the singleton (no `.shared` accessor needed).
+      if (
+        e.object.kind === 'member' &&
+        e.object.property === 'store' &&
+        e.object.object.kind === 'call' &&
+        e.object.object.callee.kind === 'identifier' &&
+        e.object.object.args.length === 0 &&
+        _storeHooksKotlin.has(e.object.object.callee.name)
+      ) {
+        const storeId = _storeHooksKotlin.get(e.object.object.callee.name)!
+        return `PyreonStore_${storeId}.${kotlinIdent(e.property)}`
+      }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct function parameters
       // in the Composable signature, so the user-source `props.title`

@@ -78,6 +78,10 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // remember PyreonMachine + intact method calls; the PyreonMachine
     // class stub in kotlin-stubs.ts satisfies kotlinc's type resolution.
     'tier2-machine.tsx',
+    // Gap 4 PR-4: @pyreon/store Strategy-B port v1. Proves the
+    // `object PyreonStore_X : PyreonStore` singleton + the
+    // use-site chain rewriting emit valid Compose Kotlin.
+    'tier2-store.tsx',
   ] as const
 
   for (const fixture of fixtures) {

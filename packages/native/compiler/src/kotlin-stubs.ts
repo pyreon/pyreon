@@ -593,4 +593,10 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
   fun nextEvents(): List<String> = transitions[state]?.keys?.toList() ?: emptyList()
   operator fun invoke(): String = state
 }
+
+// PyreonStore — Gap 4 Strategy-B v1 marker interface for emitted
+// per-store singleton classes. Real impl in @pyreon/native-runtime-
+// kotlin's PyreonStore.kt. Empty by design — purely a documentation
+// + future-polymorphic-helper anchor.
+interface PyreonStore
 `
