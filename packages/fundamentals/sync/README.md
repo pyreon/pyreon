@@ -4,7 +4,7 @@ Local-first, CRDT-backed sync for signals — **a synced signal is just a signal
 
 When a collaborative or offline change arrives, a fine-grained signal framework can do `apply op → one signal.set → one surgical DOM update`. That is the whole bet of this package: bind a signal to a CRDT entry through `wrapSignal`, and the rest of Pyreon (compiled templates, effects, `<For>`) treats it like any other signal — no special render path, no diff.
 
-> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`), **same-origin cross-tab sync** (`connectViaBroadcastChannel`), and **collaborative text** (`syncedText`, Y.Text character-merge). **Not yet**: a turnkey-platform adapter, a cross-device WebSocket transport + relay server, and `Y.Array` list collections. See the [roadmap](#roadmap). v1 binds **scalar** map fields + collaborative text; list collections are a later phase.
+> **Status (read this).** **Private / unpublished for now** — `@pyreon/sync` is not on npm yet; it goes public once the engine + transport story is finished and tested. This package ships in increments. **Today**: the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`), **same-origin cross-tab sync** (`connectViaBroadcastChannel`), and **collaborative text + lists** (`syncedText` / `syncedList` — Y.Text character-merge + Y.Array positional merge). **Not yet**: a turnkey-platform adapter, and a cross-device WebSocket transport + relay server. See the [roadmap](#roadmap). v1 binds **scalar** map fields + collaborative text + lists; cross-device sync is the remaining phase.
 
 ## Install
 
@@ -128,7 +128,13 @@ Two tabs typing concurrently converge to a string containing **both** their
 edits (proven by the `examples/sync-yjs-demo` textarea + its real-Chromium
 two-tab e2e). It is engine-specific (lives in `@pyreon/sync/yjs`) — collaborative
 text is inherently coupled to the CRDT's text type, so it is not behind the
-engine-neutral seam. `Y.Array`-backed list collections are a later phase.
+engine-neutral seam.
+
+For **collaborative lists**, `syncedList(doc, key)` binds a `Signal<T[]>` to a
+`Y.Array` — the same positional-merge story: concurrent `push` / `insert` /
+`delete` from two peers are all kept, no item dropped. Render it with a keyed
+`<For each={() => list()} by={…}>` so a remote change reconciles O(changed). Also
+engine-specific (in `@pyreon/sync/yjs`).
 
 ## How the loop works (and why it can't echo)
 
@@ -180,7 +186,7 @@ this client bridge.
 | Cross-device transport | WebSocket channel + relay server (live remote peer sync) | planned |
 | Relay | standalone server + a `@pyreon/zero` adapter extension, with per-room/per-doc authz | planned |
 | Collaborative text | `Y.Text` via `syncedText` (character-level merge) | ✅ shipped |
-| List collections | `Y.Array`-backed lists | planned |
+| List collections | `Y.Array` via `syncedList` (positional merge) | ✅ shipped |
 
 ## Honest limits
 

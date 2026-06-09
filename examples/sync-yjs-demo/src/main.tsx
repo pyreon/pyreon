@@ -1,9 +1,11 @@
+import { For } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { syncedSignal } from '@pyreon/sync'
 import {
   connectViaBroadcastChannel,
   createYjsDoc,
   persistViaIndexedDB,
+  syncedList,
   syncedText,
 } from '@pyreon/sync/yjs'
 
@@ -28,6 +30,9 @@ const title = syncedSignal({ doc, key: 'title', initial: 'untitled' })
 // ... and a COLLABORATIVE text field (character-level CRDT merge — concurrent
 // edits from both tabs are both kept, no lost characters).
 const body = syncedText(doc, 'body')
+// ... and a COLLABORATIVE list (positional CRDT merge — concurrent adds from
+// both tabs are both kept, no lost items).
+const items = syncedList<string>(doc, 'items')
 
 const App = () => (
   <main>
@@ -57,6 +62,19 @@ const App = () => (
     </button>
     <button data-testid="ins-b" onClick={() => body.insert(0, 'BBB')}>
       Insert BBB at start
+    </button>
+
+    {/* Collaborative list — concurrent adds MERGE (no lost items). */}
+    <ul data-testid="items">
+      <For each={() => items()} by={(it) => it}>
+        {(it) => <li class="item">{it}</li>}
+      </For>
+    </ul>
+    <button data-testid="add-a" onClick={() => items.push('item-A')}>
+      Add item-A
+    </button>
+    <button data-testid="add-b" onClick={() => items.push('item-B')}>
+      Add item-B
     </button>
   </main>
 )
