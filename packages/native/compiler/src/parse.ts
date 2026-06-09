@@ -1899,3 +1899,4 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   }
   return null
 }
+
