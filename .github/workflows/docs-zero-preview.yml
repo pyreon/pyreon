@@ -40,6 +40,13 @@ on:
     # push to main is a deploy candidate). Until then, this list keeps
     # the side-by-side preview honest against framework regressions.
     paths:
+      # Legacy VitePress site. Without this, a `docs/**` change would
+      # only trigger `docs.yml` (legacy-only deploy) which uploads ONLY
+      # `docs/.vitepress/dist` — wiping out the `/preview/` subdirectory
+      # this workflow packs into the combined artifact. Including the
+      # path here means any docs change rebuilds the FULL combined site
+      # and preserves the preview.
+      - 'docs/**'
       - 'examples/docs-zero/**'
       - 'packages/zero/zero/**'
       - 'packages/zero/zero-content/**'
