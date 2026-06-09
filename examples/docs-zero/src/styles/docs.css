@@ -3185,3 +3185,41 @@ html { scroll-behavior: smooth; }
   background: var(--bg);
   white-space: pre-wrap;
 }
+
+/* ─── View Transitions API — hold persistent chrome stable ──────────────
+ *
+ * Pyreon's router calls `document.startViewTransition()` on every route
+ * change. By default, that cross-fades the WHOLE page snapshot — header
+ * + sidebar + article all fade together. The sidebar fading on every
+ * `/docs/X → /docs/Y` nav looks weird because the sidebar IS the nav
+ * itself: it never actually changes.
+ *
+ * The fix: give the persistent chrome (header, sidebar) their own
+ * view-transition-names so they are treated as INDEPENDENT elements
+ * across transitions. The browser then knows "this element exists in
+ * BOTH the old and new snapshot — don't animate it, just hold it
+ * stable". Only the article body (the `<main>`) cross-fades.
+ *
+ * `view-transition-name` requires a UNIQUE value per element (or
+ * `none` to opt out). Naming them descriptively makes the DevTools
+ * Animations panel readable.
+ */
+.docs-header { view-transition-name: docs-header; }
+.docs-aside { view-transition-name: docs-aside; }
+
+/* Even with view-transition-names assigned, the browser still adds a
+ * `cross-fade` animation on them by default. Override to NONE so the
+ * chrome holds rock-stable while only the article-body subtree
+ * actually transitions. */
+::view-transition-old(docs-header),
+::view-transition-new(docs-header),
+::view-transition-old(docs-aside),
+::view-transition-new(docs-aside) {
+  animation: none;
+}
+
+/* The article body keeps the default cross-fade — that's the part
+ * that genuinely changes between pages and reads as a polished
+ * page-change cue. Define an explicit name so the rule is matchable
+ * if a future PR wants to swap the timing function or duration. */
+.docs-main { view-transition-name: docs-main; }
