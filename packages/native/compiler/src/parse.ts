@@ -474,14 +474,26 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const i18nDecl = tryDeclFromCreateI18n(node, ctx)
   if (i18nDecl) return i18nDecl
 
+  // Gap 4 PR-2 (2026-06-05 audit) — full Strategy-B port for
+  // `@pyreon/machine`. `const m = createMachine({ initial, states })`
+  // becomes a PyreonMachine reactive container; method calls
+  // (`.send`/`.matches`/`.can`/`.nextEvents`) flow through unchanged
+  // because the runtime port defines them. `m()` read-current-state
+  // also works unchanged via Swift `callAsFunction()` / Kotlin
+  // `operator fun invoke()`. Runs BEFORE the Tier-2 silent-drop
+  // diagnostic block so `createMachine` is recognized as a real port
+  // (no warning fires).
+  const machineDecl = tryDeclFromCreateMachine(node, ctx)
+  if (machineDecl) return machineDecl
+
   // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
-  // the remaining 4 callees. `createI18n` was REMOVED from the list
-  // because it now has a full port via tryDeclFromCreateI18n above.
+  // the remaining 3 callees. `createI18n` and `createMachine` were
+  // REMOVED from the list because they now have full ports via
+  // tryDeclFromCreateI18n / tryDeclFromCreateMachine above.
   if (init?.type === 'CallExpression') {
     const calleeName = init.callee?.name as string | undefined
     const tier2StrategyB: Record<string, string> = {
       defineStore: '@pyreon/store',
-      createMachine: '@pyreon/machine',
       createModel: '@pyreon/state-tree',
       defineFeature: '@pyreon/feature',
     }
@@ -911,6 +923,135 @@ function tryRxNamespaceLowering(
     args: restArgs,
   }
   return { kind: 'computed', name, expr: rxCallExpr }
+}
+
+/**
+ * Gap 4 PR-2 (2026-06-05 native-readiness audit) — `createMachine({
+ * initial, states })` from `@pyreon/machine` → DeclIR.machine.
+ *
+ * Extracts the literal `initial` string + the literal `states` map
+ * (state name → event map → next state name). Non-literal configs
+ * fall through to null so the parent falls through to the Tier-2
+ * silent-drop diagnostic (binding emits unresolved with a warning).
+ *
+ * The `as const` on `initial: 'idle' as const` is unwrapped via the
+ * shared `unwrapTypeLayers` helper.
+ *
+ * Method calls on the binding (`m.send(...)` / `m.matches(...)` /
+ * `m.can(...)` / `m.nextEvents()`) flow through emit as-is — the
+ * PyreonMachine runtime container defines them. `m()` also works as
+ * a current-state read via Swift `callAsFunction()` / Kotlin
+ * `operator fun invoke()` — no compiler-side member-access rewriting
+ * needed.
+ */
+function tryDeclFromCreateMachine(
+  node: AnyNode,
+  ctx: ParseCtx,
+): DeclIR | null {
+  const init = node.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  const calleeName = init.callee?.name as string | undefined
+  if (calleeName !== 'createMachine') return null
+  if (node.id?.type !== 'Identifier') return null
+  const name = node.id.name as string
+
+  const args = (init.arguments as AnyNode[] | undefined) ?? []
+  const configArg = args[0]
+  if (!configArg || configArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `createMachine declaration \`${name}\`: config argument is not an object literal — emit needs the literal { initial, states } shape to bake the transition table. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  // Walk the config object: pick out `initial: 'X'` and `states: { ... }`.
+  let initial: string | undefined
+  let statesNode: AnyNode | undefined
+  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!keyName) continue
+    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    if (keyName === 'initial') {
+      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
+        initial = valueNode.value
+      }
+    } else if (keyName === 'states') {
+      statesNode = valueNode
+    }
+  }
+
+  if (!initial) {
+    ctx.warnings.push(
+      `createMachine declaration \`${name}\`: \`initial\` field is missing or not a string literal — required to seed PyreonMachine. Falling back to silent-drop.`,
+    )
+    return null
+  }
+  if (!statesNode || statesNode.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `createMachine declaration \`${name}\`: \`states\` field is missing or not an object literal — required to bake the transition table. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  // Parse the states map: { stateName: { on: { EVENT: nextState } }, ... }
+  // Empty state objects (`done: {}`) are kept as states with no transitions —
+  // they're valid terminal states.
+  const transitions: Record<string, Record<string, string>> = {}
+  for (const stateProp of (statesNode.properties as AnyNode[] | undefined) ?? []) {
+    if (stateProp?.type !== 'Property' && stateProp?.type !== 'ObjectProperty') continue
+    const stateKeyNode = stateProp.key as AnyNode | undefined
+    const stateName =
+      stateKeyNode?.type === 'Identifier'
+        ? (stateKeyNode.name as string)
+        : stateKeyNode?.type === 'Literal'
+          ? String(stateKeyNode.value)
+          : undefined
+    if (!stateName) continue
+    const stateConfig = unwrapTypeLayers(stateProp.value as AnyNode | undefined)
+    transitions[stateName] = {}
+    if (stateConfig?.type !== 'ObjectExpression') continue
+    // Find `on: { EVENT: nextState }`
+    for (const innerProp of (stateConfig.properties as AnyNode[] | undefined) ?? []) {
+      if (innerProp?.type !== 'Property' && innerProp?.type !== 'ObjectProperty') continue
+      const innerKeyNode = innerProp.key as AnyNode | undefined
+      const innerKey =
+        innerKeyNode?.type === 'Identifier'
+          ? (innerKeyNode.name as string)
+          : innerKeyNode?.type === 'Literal'
+            ? String(innerKeyNode.value)
+            : undefined
+      if (innerKey !== 'on') continue
+      const eventsMap = unwrapTypeLayers(innerProp.value as AnyNode | undefined)
+      if (eventsMap?.type !== 'ObjectExpression') continue
+      for (const eventProp of (eventsMap.properties as AnyNode[] | undefined) ?? []) {
+        if (eventProp?.type !== 'Property' && eventProp?.type !== 'ObjectProperty') continue
+        const evKeyNode = eventProp.key as AnyNode | undefined
+        const eventName =
+          evKeyNode?.type === 'Identifier'
+            ? (evKeyNode.name as string)
+            : evKeyNode?.type === 'Literal'
+              ? String(evKeyNode.value)
+              : undefined
+        const evVal = unwrapTypeLayers(eventProp.value as AnyNode | undefined)
+        if (
+          eventName &&
+          evVal?.type === 'Literal' &&
+          typeof evVal.value === 'string'
+        ) {
+          transitions[stateName]![eventName] = evVal.value
+        }
+      }
+    }
+  }
+
+  return { kind: 'machine', name, initial, transitions }
 }
 
 /**

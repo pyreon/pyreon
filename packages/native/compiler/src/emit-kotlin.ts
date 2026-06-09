@@ -75,6 +75,15 @@ let _netStatusNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
 /**
+ * Per-component: every machine decl name (DeclIR.machine — Gap 4
+ * PR-2). PyreonMachine has `operator fun invoke()` so `m()` reads
+ * current state. Without this set, the call-emit drops parens for
+ * unknown zero-arg identifiers (same code path as signal reads),
+ * which would emit `m` (a PyreonMachine reference) instead of `m()`
+ * (the current state String).
+ */
+let _machineNames: Set<string> = new Set()
+/**
  * C5.3: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitKotlinComponent` from the
  * `kind: 'router'` decls that carry routes. `emitKotlinRouterProvider`
@@ -258,6 +267,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
+  _machineNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
@@ -276,6 +286,10 @@ function emitKotlinComponent(c: ComponentIR): string {
     // properties read without parens — same disambiguation as Swift.
     if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
     if (d.kind === 'function') _functionNames.add(d.name)
+    // Gap 4 PR-2: PyreonMachine. Keep `m` OUT of _signalNames (so
+    // `m()` keeps parens for `operator fun invoke()`) AND OUT of
+    // _functionNames (it's a property, not a free fn).
+    if (d.kind === 'machine') _machineNames.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
     // `_signalNames` so JSX `<RouterProvider router={router}>` emits
@@ -372,6 +386,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
+  _machineNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
@@ -586,6 +601,28 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         ? `, fallbackLocale = ${JSON.stringify(d.fallbackLocale)}`
         : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonI18n(initialLocale = ${JSON.stringify(d.locale)}, messages = ${msgLit}${fbArg}) }`
+  }
+  // Gap 4 PR-2: `const m = createMachine({ initial, states })` →
+  // `val m = remember { PyreonMachine(initial = "idle",
+  // transitions = mapOf("idle" to mapOf("FETCH" to "loading"), ...)) }`.
+  // Method calls flow through unchanged (`m.send("X")`, `m.matches("Y")`,
+  // `m.can("Z")`, `m.nextEvents()`); `m()` works via Kotlin
+  // `operator fun invoke()`. Empty transitions map → `mapOf()`.
+  if (d.kind === 'machine') {
+    const entries = Object.entries(d.transitions)
+      .map(([state, events]) => {
+        const ev = Object.entries(events)
+          .map(
+            ([event, next]) =>
+              `${JSON.stringify(event)} to ${JSON.stringify(next)}`,
+          )
+          .join(', ')
+        const inner = ev === '' ? 'mapOf()' : `mapOf(${ev})`
+        return `${JSON.stringify(state)} to ${inner}`
+      })
+      .join(', ')
+    const transLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonMachine(initial = ${JSON.stringify(d.initial)}, transitions = ${transLit}) }`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
@@ -873,6 +910,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // delegated `var by` shape.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
+          return `${kotlinIdent(e.callee.name)}()`
+        }
+        // Gap 4 PR-2: PyreonMachine — `m()` invokes
+        // `operator fun invoke()` to read the current state.
+        if (_machineNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}()`
         }
         return kotlinIdent(e.callee.name)
