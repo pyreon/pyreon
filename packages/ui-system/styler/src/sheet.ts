@@ -42,6 +42,13 @@ export class StyleSheet {
   private domRules = new Map<string, CSSRule[]>()
   private sheet: CSSStyleSheet | null = null
   private ssrBuffer: string[] = []
+  // Watermark for streaming SSR — index into `ssrBuffer` of the first
+  // rule NOT yet flushed by `flushSSRPending()`. Lets the streaming
+  // pipeline emit `<style>` tags inline next to each Suspense boundary
+  // that resolves, so boundary content arrives at the browser with its
+  // styles already present (instead of FOUCing until the final
+  // consolidated `<style>` flushes at end-of-stream).
+  private ssrFlushedIdx = 0
   private isSSR: boolean
   private maxCacheSize: number
   private layer: string | undefined
@@ -538,6 +545,59 @@ export class StyleSheet {
    */
   resetSSRBuffer(): void {
     this.ssrBuffer = []
+    this.ssrFlushedIdx = 0
+  }
+
+  /**
+   * Streaming SSR — return CSS rules added to the buffer since the last
+   * `flushSSRPending()` call, joined as a raw CSS body (no `<style>`
+   * wrapper). Advances an internal watermark so subsequent calls return
+   * only newer rules. Returns `''` when no new rules.
+   *
+   * Used by `@pyreon/runtime-server`'s streaming pipeline to emit
+   * `<style data-pyreon-stream>` tags inline next to each Suspense
+   * boundary's resolved HTML — so boundary content arrives at the
+   * browser with its styles already present, instead of FOUCing until
+   * the final consolidated `<style>` flushes at end-of-stream.
+   *
+   * Discovery contract: runtime-server reads this via
+   * `globalThis.__PYREON_STYLER_FLUSH__` (set by sheet.ts on module
+   * load when running under SSR). This avoids a hard
+   * `runtime-server → styler` dependency — the streamer is no-op when
+   * no styler is loaded. Mirrors the `__pyreon_count__` perf-counter
+   * pattern.
+   *
+   * Idempotent on the watermark: `flushSSRPending()` immediately after
+   * another `flushSSRPending()` returns `''` regardless of any prior
+   * `getStyleTag()` / `reset()` calls. The watermark resets to 0 when
+   * the buffer is reset (via `reset()` / `resetSSRBuffer()` /
+   * `clearAll()` — request boundaries).
+   *
+   * NOT meant to be used WITH `getStyleTag()` on the same render —
+   * `getStyleTag()` returns ALL buffered rules (SSG / non-streaming
+   * SSR). Streaming SSR drives the buffer entirely through
+   * `flushSSRPending()`.
+   */
+  flushSSRPending(): string {
+    if (this.ssrBuffer.length === this.ssrFlushedIdx) return ''
+    // Emit `@layer` ordering declaration on the FIRST flush of a stream
+    // — only when there are layered rules to order. Once emitted, never
+    // re-emitted (idempotent — second declaration would be redundant).
+    const isFirstFlush = this.ssrFlushedIdx === 0
+    let prefix = ''
+    if (isFirstFlush) {
+      const hasLayered = this.ssrBuffer
+        .slice(this.ssrFlushedIdx)
+        .some((r) => r.startsWith('@layer '))
+      prefix = hasLayered
+        ? '@layer elements, rocketstyle;'
+        : this.layer
+          ? `@layer ${this.layer};`
+          : ''
+    }
+    const slice = this.ssrBuffer.slice(this.ssrFlushedIdx).join('')
+    this.ssrFlushedIdx = this.ssrBuffer.length
+    return prefix + slice
   }
 
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
@@ -559,6 +619,7 @@ export class StyleSheet {
   /** Reset SSR buffer and cache (call between server requests). */
   reset(): void {
     this.ssrBuffer = []
+    this.ssrFlushedIdx = 0
     this.cache.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
@@ -591,6 +652,7 @@ export class StyleSheet {
     this.domRules.clear()
     clearNormCache()
     this.ssrBuffer = []
+    this.ssrFlushedIdx = 0
     if (this.sheet) {
       while (this.sheet.cssRules.length > 0) {
         this.sheet.deleteRule(0)
@@ -667,4 +729,23 @@ const fireSheetClearSubscribers = (): void => {
 export const onSheetClear = (callback: () => void): (() => void) => {
   _sheetClearSubscribers.add(callback)
   return () => _sheetClearSubscribers.delete(callback)
+}
+
+// ─── Streaming SSR hook ───────────────────────────────────────────────────
+//
+// On SSR module init, register a global flush callback so
+// `@pyreon/runtime-server`'s streaming pipeline can emit collected CSS
+// rules inline alongside each Suspense boundary's HTML — without a hard
+// `runtime-server → styler` dependency.
+//
+// Same pattern as the `__pyreon_count__` perf-counter sink and the SSG
+// plugin's `getStyleTag` lookup: the consumer reads the global and
+// no-ops if styler isn't loaded.
+//
+// Client-side: `IS_SERVER === false` → registration skipped. The hook
+// is server-only.
+if (typeof document === 'undefined') {
+  ;(
+    globalThis as { __PYREON_STYLER_FLUSH__?: () => string }
+  ).__PYREON_STYLER_FLUSH__ = () => sheet.flushSSRPending()
 }
