@@ -539,4 +539,28 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   // content with a no-op navigate.
   content { }
 }
+
+// useNavigate / useParams / useLoaderData — router hooks that PMTC
+// emits when source code uses \`const navigate = useNavigate()\` /
+// \`const params = useParams()\` / \`const data = useLoaderData<T>()\`.
+//
+// Real impls live in @pyreon/native-router-kotlin/Hooks.kt — they
+// read LocalPyreonRouter.current (the CompositionLocal) and surface
+// the active router's push/params/loaderData. For typecheck-only
+// purposes the stubs return defensive defaults (matching the real
+// impls' missing-provider fallback shape).
+//
+// Closes limitation #2 from the Gap 5 tasks-showcase scaffold:
+// kotlinc previously rejected the showcase's \`useNavigate()\` call
+// with \`unresolved reference\`. With these stubs, any PMTC-emitted
+// source using router hooks typecheck-validates without requiring
+// the full PyreonRouter Compose dep.
+@Composable
+fun useNavigate(): (String) -> Unit = { _ -> }
+
+@Composable
+fun useParams(): Map<String, String> = emptyMap()
+
+@Composable
+inline fun <reified T : Any> useLoaderData(): T? = null
 `
