@@ -28,6 +28,11 @@
       "bun": "./src/yjs.ts",
       "import": "./lib/yjs.js",
       "types": "./lib/types/yjs.d.ts"
+    },
+    "./server": {
+      "bun": "./src/server.ts",
+      "import": "./lib/server.js",
+      "types": "./lib/types/server.d.ts"
     }
   },
   "files": [
@@ -47,6 +52,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "dependencies": {
+    "ws": "^8.20.0",
     "y-indexeddb": "^9.0.12",
     "yjs": "^13.6.31"
   },
@@ -55,6 +61,7 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
+    "@types/ws": "^8.18.1",
     "@vitus-labs/tools-lint": "^2.5.0",
     "bun-types": "^1.3.14"
   }
