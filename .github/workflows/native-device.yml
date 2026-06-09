@@ -171,6 +171,25 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      # Tasks showcase — Gap 5 PR-5.3(b) closure. Runs the
+      # PyreonTasksUITests.swift suite (auth-gate + navigation +
+      # logout flow) against the prerendered canonical TasksApp.tsx
+      # source. Closes the audit's "no device CI for tasks" gap on
+      # the iOS side.
+      - name: Emit + xcodegen + UITest — native-tasks-ios
+        working-directory: examples/native-tasks-ios
+        run: |
+          set -o pipefail
+          bash scripts/build.sh
+          xcodegen generate
+          xcodebuild test \
+            -project PyreonTasks.xcodeproj \
+            -scheme PyreonTasks \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
   android-build:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'native-device')
     name: Android — gradlew assembleDebug
@@ -304,4 +323,54 @@ jobs:
           disable-animations: true
           script: |
             cd examples/native-counter-android
+            gradle connectedCheck --no-daemon --stacktrace
+
+      # Router demo — wires the existing #1455 example into device CI.
+      # Was previously not in the device matrix; closes the audit's
+      # Phase C "router-demo-android no test coverage" gap.
+
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-router-demo-android
+        working-directory: examples/native-router-demo-android
+        run: bash scripts/build.sh
+
+      - name: Build debug APK — native-router-demo-android
+        working-directory: examples/native-router-demo-android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Run Espresso test on Android Emulator — native-router-demo-android
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            cd examples/native-router-demo-android
+            gradle connectedCheck --no-daemon --stacktrace
+
+      # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
+      # Runs TasksAppInstrumentedTest.kt (auth-gate + navigation +
+      # logout flow via Compose UI test) against the prerendered
+      # canonical TasksApp.tsx source. Closes the audit's "no
+      # device CI for tasks" gap on Android.
+
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-tasks-android
+        working-directory: examples/native-tasks-android
+        run: bash scripts/build.sh
+
+      - name: Build debug APK — native-tasks-android
+        working-directory: examples/native-tasks-android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Run Espresso test on Android Emulator — native-tasks-android
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            cd examples/native-tasks-android
             gradle connectedCheck --no-daemon --stacktrace
