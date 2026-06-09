@@ -65,6 +65,15 @@ public final class PyreonPermissions {
     /// True when at least one `key` is granted.
     public func any(_ keys: String...) -> Bool { keys.contains { can($0) } }
 
+    /// `callAsFunction(_:)` enables the same callable shape the web
+    /// `@pyreon/permissions` API uses: `can("posts.edit")` instead of
+    /// `can.can("posts.edit")`. Mirror of the PyreonMachine `m()`
+    /// read-current-state pattern. Closes Gap 4's "partial A —
+    /// `.can(...)` lowering needs work" item by making the web's
+    /// idiomatic callable shape work unchanged on SwiftUI without
+    /// any compiler-side rewriting.
+    public func callAsFunction(_ key: String) -> Bool { can(key) }
+
     /// Replace the entire granted set.
     public func set(_ keys: Set<String>) { granted = keys }
 

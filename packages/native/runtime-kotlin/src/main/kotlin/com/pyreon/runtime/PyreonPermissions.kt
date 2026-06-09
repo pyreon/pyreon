@@ -54,6 +54,16 @@ public class PyreonPermissions(granted: Set<String> = emptySet()) {
     /** True when at least one of [keys] is granted. */
     public fun any(vararg keys: String): Boolean = keys.any { can(it) }
 
+    /**
+     * Operator overload enabling the callable shape the web
+     * `@pyreon/permissions` API uses: `can("posts.edit")` instead of
+     * `can.can("posts.edit")`. Mirror of the PyreonMachine `m()`
+     * pattern. Closes Gap 4's "partial A — `.can(...)` lowering needs
+     * work" item by making the web's idiomatic callable shape work
+     * unchanged on Compose without any compiler-side rewriting.
+     */
+    public operator fun invoke(key: String): Boolean = can(key)
+
     /** Replace the entire granted set. */
     public fun set(keys: Set<String>) {
         granted.value = keys
