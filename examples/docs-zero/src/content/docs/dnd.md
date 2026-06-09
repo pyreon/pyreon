@@ -33,51 +33,7 @@ Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`
 
 `@atlaskit/pragmatic-drag-and-drop` is bundled — no separate install needed.
 
-<Playground title="Drag-to-reorder — useSortable distilled" height={280} code={`// useSortable() wraps this same pattern with pointer-events,
-// keyboard accessibility, and pragmatic-drag-and-drop's smoother
-// motion. Here we use the raw HTML5 dnd API for clarity.
-const items = signal(['🍎 Apple', '🍌 Banana', '🍒 Cherry', '📅 Date'])
-const dragIndex = signal(-1)
-const hoverIndex = signal(-1)
-
-const move = (from, to) => {
-  if (from === to || from < 0) return
-  const arr = [...items()]
-  const [m] = arr.splice(from, 1)
-  arr.splice(to, 0, m)
-  items.set(arr)
-}
-
-const Row = (item, i) =>
-  h('div', {
-    draggable: 'true',
-    onDragStart: () => dragIndex.set(i),
-    onDragEnter: () => hoverIndex.set(i),
-    onDragOver: (e) => e.preventDefault(),
-    onDragEnd: () => { dragIndex.set(-1); hoverIndex.set(-1) },
-    onDrop: (e) => { e.preventDefault(); move(dragIndex(), i); dragIndex.set(-1); hoverIndex.set(-1) },
-    class: 'card',
-    style: {
-      cursor: 'grab',
-      userSelect: 'none',
-      opacity: () => dragIndex() === i ? 0.4 : 1,
-      borderColor: () => hoverIndex() === i && dragIndex() !== i ? 'var(--accent)' : null,
-      transition: 'opacity 120ms, border-color 120ms',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-    },
-  },
-    h('span', { class: 'muted' }, '☰'),
-    h('span', { style: { flex: 1 } }, item),
-  )
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'muted' }, 'drag the rows to reorder them'),
-  h('div', { class: 'col', style: { gap: '6px' } }, () => items().map(Row)),
-)
-mount(ui, app)`} />
+<Example file="./examples/dnd/drag-to-reorder-usesortable-distilled" title="Drag-to-reorder — useSortable distilled" />
 
 ## Quick Start
 

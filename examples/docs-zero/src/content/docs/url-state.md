@@ -46,19 +46,7 @@ page.reset() // back to default (1)
 page.remove() // removes ?page entirely
 ```
 
-<Playground title="URL-synced State" height={80} code={`const page = signal(1)
-const sort = signal('name')
-
-const app = document.getElementById('app')
-const ui = h('div', {},
-  h('div', {}, () => 'Page: ' + page() + ' | Sort: ' + sort()),
-  h('div', { style: { marginTop: '8px', display: 'flex', gap: '8px' } },
-    h('button', { onClick: () => page.update(p => p + 1) }, 'Next Page'),
-    h('button', { onClick: () => page.set(1) }, 'Reset'),
-    h('button', { onClick: () => sort.set(sort() === 'name' ? 'date' : 'name') }, () => 'Sort: ' + sort()),
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/url-state/url-synced-state" title="URL-synced State" />
 
 ## Single Parameter
 

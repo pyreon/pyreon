@@ -49,42 +49,7 @@ machine.send('FETCH')
 machine() // 'loading'
 ```
 
-<Playground title="State machine — only valid transitions fire" height={240} code={`// A state machine is a signal + a transition table. Invalid events
-// for the current state are no-ops — impossible states stay
-// structurally impossible.
-const state = signal('idle')
-const transitions = {
-  idle:    { FETCH: 'loading' },
-  loading: { SUCCESS: 'done', ERROR: 'error' },
-  done:    { RESET: 'idle' },
-  error:   { RETRY: 'loading', RESET: 'idle' },
-}
-const send = (event) => {
-  const next = transitions[state()]?.[event]
-  if (next) state.set(next)
-}
-const allowed = computed(() => Object.keys(transitions[state()] || {}))
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'card', style: { textAlign: 'center' } },
-    h('div', { class: 'muted' }, 'current state'),
-    h('div', { style: { fontSize: '22px', fontWeight: '700', marginTop: '4px' } },
-      h('span', { class: 'badge' }, () => state()),
-    ),
-  ),
-  h('div', { class: 'row' }, () =>
-    ['FETCH', 'SUCCESS', 'ERROR', 'RETRY', 'RESET'].map((ev) =>
-      h('button', {
-        onClick: () => send(ev),
-        disabled: () => allowed().includes(ev) ? null : '',
-        style: { opacity: () => allowed().includes(ev) ? 1 : 0.4 },
-      }, ev),
-    ),
-  ),
-  h('div', { class: 'muted' }, () => 'allowed: ' + allowed().join(', ')),
-)
-mount(ui, app)`} />
+<Example file="./examples/machine/state-machine-only-valid-transitions-fire" title="State machine — only valid transitions fire" />
 
 ## Why State Machines?
 

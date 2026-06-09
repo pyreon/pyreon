@@ -49,44 +49,7 @@ const top10 = rx.take(sorted, 10)
 // top10() re-derives automatically when users changes
 ```
 
-<Playground title="rx — composable reactive pipeline" height={260} code={`// Each step (filter, sortBy) is wrapped in computed() so the chain
-// re-derives ONLY when its input signal changes. The real @pyreon/rx
-// supplies these as one-liners via filter() / sortBy() / pipe().
-const items = signal([
-  { name: 'Banana', price: 2 },
-  { name: 'Apple', price: 1 },
-  { name: 'Cherry', price: 3 },
-  { name: 'Date', price: 1 },
-])
-const maxPrice = signal(2)
-
-const cheap = computed(() => items().filter(i => maxPrice() >= i.price))
-const sorted = computed(() => [...cheap()].sort((a, b) => a.name.localeCompare(b.name)))
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'row' },
-    h('span', { class: 'muted' }, 'max price:'),
-    h('input', {
-      type: 'range', min: '1', max: '3', step: '1', value: () => maxPrice(),
-      onInput: (e) => maxPrice.set(Number(e.target.value)),
-    }),
-    h('span', { class: 'badge' }, () => '$' + maxPrice()),
-  ),
-  h('div', { class: 'card' },
-    h('div', { class: 'muted', style: { marginBottom: '6px' } }, 'sorted result'),
-    h('div', null, () =>
-      sorted().length === 0
-        ? '∅ no matches'
-        : sorted().map(i => i.name + ' ($' + i.price + ')').join(' · '),
-    ),
-  ),
-  h('div', { class: 'row' },
-    h('button', { onClick: () => items.update(p => [...p, { name: 'Elderberry', price: 1 }]) }, '＋ Elderberry'),
-    h('button', { onClick: () => items.update(p => p.slice(0, -1)) }, 'Remove last'),
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/rx/rx-composable-reactive-pipeline" title="rx — composable reactive pipeline" />
 
 ## Signal Overloading
 
@@ -180,41 +143,7 @@ Transform values of an object/record:
 const counts = rx.mapValues(grouped, arr => arr.length)
 ```
 
-<Playground title="rx — aggregation (sum / avg / max)" height={240} code={`// rx.sum() / rx.average() / rx.max() are shipped as one-liners
-// over a signal of an array. The implementation underneath is
-// essentially what's spelled out here.
-const scores = signal([85, 92, 78, 95, 88, 72, 90])
-
-const total = computed(() => scores().reduce((a, b) => a + b, 0))
-const avg = computed(() => total() / Math.max(1, scores().length))
-const best = computed(() => Math.max(...scores(), 0))
-const worst = computed(() => Math.min(...scores(), 100))
-
-const stat = (label, value) =>
-  h('div', { class: 'card', style: { textAlign: 'center', minWidth: '80px' } },
-    h('div', { class: 'muted', style: { fontSize: '11px' } }, label),
-    h('div', { style: { fontSize: '20px', fontWeight: '700' } }, value),
-  )
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('div', { class: 'row' },
-    stat('total', () => total()),
-    stat('avg',   () => avg().toFixed(1)),
-    stat('best',  () => best()),
-    stat('worst', () => worst()),
-  ),
-  h('div', { class: 'muted' }, () =>
-    scores().length + ' score(s): ' + scores().join(' · '),
-  ),
-  h('div', { class: 'row' },
-    h('button', {
-      onClick: () => scores.update(s => [...s, Math.floor(Math.random() * 30) + 70]),
-    }, '＋ random score'),
-    h('button', { onClick: () => scores.set([]) }, 'clear'),
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/rx/rx-aggregation-sum-avg-max" title="rx — aggregation (sum / avg / max)" />
 
 ## Aggregation
 

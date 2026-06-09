@@ -114,6 +114,7 @@ export const SIDEBAR: SidebarGroup[] = [
     collapsed: false,
     items: [
       { text: 'Zero', slug: 'zero' },
+      { text: 'Zero Content (markdown)', slug: 'zero-content' },
       { text: 'Zero CLI', slug: 'zero-cli' },
       { text: 'SSR & ISR', slug: 'ssr' },
       { text: 'SSG', slug: 'ssg' },

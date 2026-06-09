@@ -59,45 +59,7 @@ function App() {
 mount(<App />, document.getElementById('app')!)
 ```
 
-<Playground title="Router — signal-backed path matching" height={260} code={`// At its core a router is just a signal-typed path + a match table.
-// The real createRouter() adds history sync, lazy components, guards,
-// loaders, prefetching, and View Transitions on top of this shape.
-const route = signal('/')
-const routes = [
-  { path: '/',        label: 'Home',    render: () => 'Welcome 👋'                },
-  { path: '/about',   label: 'About',   render: () => 'A tiny signal-based router.' },
-  { path: '/contact', label: 'Contact', render: () => 'hello@pyreon.dev'           },
-]
-
-const current = computed(() =>
-  routes.find(r => r.path === route()) ||
-  { render: () => '404 — not found' }
-)
-
-const navItem = (r) =>
-  h('a', {
-    href: '#' + r.path,
-    onClick: (e) => { e.preventDefault(); route.set(r.path) },
-    'aria-current': () => route() === r.path ? 'page' : null,
-    style: {
-      padding: '4px 10px',
-      borderRadius: '6px',
-      textDecoration: 'none',
-      color: () => route() === r.path ? 'var(--accent)' : 'inherit',
-      fontWeight: () => route() === r.path ? '600' : '400',
-      background: () => route() === r.path ? 'var(--surface)' : 'transparent',
-    },
-  }, r.label)
-
-const app = document.getElementById('app')
-const ui = h('div', { class: 'col' },
-  h('nav', { class: 'row' }, ...routes.map(navItem)),
-  h('div', { class: 'card' },
-    h('div', { class: 'muted' }, () => route()),
-    h('div', { style: { marginTop: '6px', fontSize: '16px' } }, () => current().render()),
-  ),
-)
-mount(ui, app)`} />
+<Example file="./examples/router/router-signal-backed-path-matching" title="Router — signal-backed path matching" />
 
 ## createRouter
 
