@@ -32,6 +32,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  FeatureDefnIR,
   FieldMetaDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
@@ -226,6 +227,7 @@ export function emitSwift(
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
   fieldMetas: FieldMetaDefnIR[] = [],
+  features: FeatureDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -254,6 +256,9 @@ export function emitSwift(
   for (const m of models) parts.push(emitSwiftModel(m))
   // Gap 4 follow-up — withField metadata structs.
   for (const fm of fieldMetas) parts.push(emitSwiftFieldMeta(fm))
+  // Gap 4 follow-up — feature v1: emit per-feature schema struct +
+  // module-scope const exposing initialValues + name.
+  for (const f of features) parts.push(emitSwiftFeature(f))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -362,6 +367,44 @@ function emitSwiftFieldMeta(fm: FieldMetaDefnIR): string {
   lines.push(`}`)
   lines.push(``)
   lines.push(`let ${fm.bindingName} = PyreonFieldMeta_${fm.bindingName}()`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up — feature v1 emit. Produces a Codable struct
+ * representing the schema shape PLUS a module-scope enum holding
+ * the `name` + `initialValues` accessors. Downstream code can
+ * reference `PyreonFeatureSchema_<binding>` as the data type and
+ * `<binding>.initialValues` for default state.
+ *
+ *   struct PyreonFeatureSchema_Todo: Codable {
+ *       var id: String = ""
+ *       var title: String = ""
+ *       var done: Bool = false
+ *   }
+ *
+ *   enum PyreonFeature_Todo {
+ *       static let name = "todo"
+ *       static let initialValues = PyreonFeatureSchema_Todo()
+ *   }
+ */
+function emitSwiftFeature(f: FeatureDefnIR): string {
+  const lines: string[] = []
+  lines.push(`struct PyreonFeatureSchema_${f.bindingName}: Codable {`)
+  for (const field of f.fields) {
+    const t =
+      field.type === 'string' ? 'String' : field.type === 'number' ? 'Int' : 'Bool'
+    const initial = field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
+    lines.push(`    var ${field.name}: ${t} = ${initial}`)
+  }
+  lines.push(`}`)
+  lines.push(``)
+  lines.push(`enum PyreonFeature_${f.bindingName} {`)
+  lines.push(`    static let name = ${JSON.stringify(f.featureName)}`)
+  lines.push(
+    `    static let initialValues = PyreonFeatureSchema_${f.bindingName}()`,
+  )
+  lines.push(`}`)
   return lines.join('\n')
 }
 

@@ -12,6 +12,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  FeatureDefnIR,
   FieldMetaDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
@@ -45,6 +46,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const stores: StoreDefnIR[] = []
   const models: ModelDefnIR[] = []
   const fieldMetas: FieldMetaDefnIR[] = []
+  const features: FeatureDefnIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
@@ -89,6 +91,18 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       fieldMetas.push(fmd)
       continue
     }
+    // Gap 4 follow-up — @pyreon/feature. `const Todo =
+    // defineFeature({ name, schema: { ... literal ... } })`
+    // extracted as FeatureDefnIR. Emits a per-feature schema
+    // struct/data-class + a module-scope const holding initialValues
+    // + name. Component-body uses of `Todo.useList()` etc. still hit
+    // the tier2 silent-drop diagnostic (the CRUD runtime is not
+    // ported in v1).
+    const fd = tryFeatureDefnFromTopLevel(node, ctx)
+    if (fd) {
+      features.push(fd)
+      continue
+    }
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -105,6 +119,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     stores,
     models,
     fieldMetas,
+    features,
     warnings: ctx.warnings,
   }
 }
@@ -577,6 +592,138 @@ function tryFieldMetaDefnFromTopLevel(
   }
 
   return { bindingName, meta }
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/feature` `defineFeature({ name, schema })`
+ * top-level recognizer. v1 supports the LITERAL schema shape
+ * `schema: { id: 'string', title: 'string', done: 'boolean' }` and
+ * emits a per-feature schema struct + a module-scope const exposing
+ * `name` + `initialValues`. Zod / Valibot / ArkType runtime schemas
+ * bail and fall through to the tier2 silent-drop diagnostic.
+ *
+ * Shape (v1):
+ *   const Todo = defineFeature({
+ *     name: 'todo',
+ *     schema: { id: 'string', title: 'string', done: 'boolean' },
+ *   })
+ *
+ * Deferred (each its own PR):
+ *   - Zod / Valibot / ArkType schema introspection (Strategy-A)
+ *   - CRUD runtime: useList / useById / useCreate / useUpdate / etc.
+ *   - Network-fetcher integration
+ *   - Validators / form integration
+ */
+function tryFeatureDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): FeatureDefnIR | null {
+  let varDecl: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  } else if (node.type === 'VariableDeclaration') {
+    varDecl = node
+  }
+  if (!varDecl) return null
+  const declarators = varDecl.declarations as AnyNode[]
+  if (declarators.length !== 1) return null
+  const declarator = declarators[0]
+  if (!declarator) return null
+  if (declarator.id?.type !== 'Identifier') return null
+  const bindingName = declarator.id.name as string
+
+  const init = declarator.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  if (init.callee?.type !== 'Identifier') return null
+  if ((init.callee.name as string) !== 'defineFeature') return null
+
+  const args = (init.arguments as AnyNode[] | undefined) ?? []
+  const configArg = args[0]
+  if (!configArg || configArg.type !== 'ObjectExpression') {
+    return null // tier2 silent-drop will catch the bad-shape case
+  }
+
+  // Pull `name: '...'` and `schema: { ... literal ... }` from the config.
+  let featureName: string | undefined
+  let schemaNode: AnyNode | undefined
+  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (!keyName) continue
+    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    if (keyName === 'name') {
+      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
+        featureName = valueNode.value
+      }
+    } else if (keyName === 'schema') {
+      schemaNode = valueNode
+    }
+    // `api`, `fetcher`, `initialValues`, `validate` keys are deliberately
+    // dropped — runtime CRUD is not ported in v1.
+  }
+
+  if (!featureName) {
+    ctx.warnings.push(
+      `defineFeature declaration \`${bindingName}\`: \`name\` field is missing or not a string literal — v1 emit requires the literal shape. Falling back to tier2 silent-drop.`,
+    )
+    return null
+  }
+  if (!schemaNode || schemaNode.type !== 'ObjectExpression') {
+    // Non-literal schema (Zod, Valibot, ArkType, etc.) — bail to
+    // silent-drop. v2 follow-up will introspect those validator
+    // schemas via Strategy-A per-validator lowering.
+    ctx.warnings.push(
+      `defineFeature declaration \`${bindingName}\`: \`schema\` is not a literal object — v1 emit only supports the literal field-type map shape (\`{ id: 'string', ... }\`). Zod / Valibot / ArkType schemas fall through to tier2 silent-drop.`,
+    )
+    return null
+  }
+
+  // Parse the literal `schema: { id: 'string', title: 'string', ... }`
+  const fields: FeatureDefnIR['fields'] = []
+  for (const entry of (schemaNode.properties as AnyNode[] | undefined) ?? []) {
+    if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
+    const eKey = entry.key as AnyNode | undefined
+    const fieldName =
+      eKey?.type === 'Identifier'
+        ? (eKey.name as string)
+        : eKey?.type === 'Literal'
+          ? String(eKey.value)
+          : undefined
+    if (!fieldName) continue
+    const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
+    if (eVal?.type !== 'Literal' || typeof eVal.value !== 'string') {
+      ctx.warnings.push(
+        `defineFeature declaration \`${bindingName}\`: schema field \`${fieldName}\` is not a type-name string literal — v1 supports 'string' | 'number' | 'boolean' field types. Dropping field.`,
+      )
+      continue
+    }
+    const typeName = eVal.value
+    if (typeName === 'string' || typeName === 'number' || typeName === 'boolean') {
+      fields.push({ name: fieldName, type: typeName })
+    } else {
+      ctx.warnings.push(
+        `defineFeature declaration \`${bindingName}\`: schema field \`${fieldName}\` has unsupported type '${typeName}' — v1 supports 'string' | 'number' | 'boolean'. Dropping field.`,
+      )
+    }
+  }
+
+  if (fields.length === 0) {
+    ctx.warnings.push(
+      `defineFeature declaration \`${bindingName}\`: no recognized schema fields. Falling back to tier2 silent-drop.`,
+    )
+    return null
+  }
+
+  return { bindingName, featureName, fields }
 }
 
 /** Tiny initial-value type inference for store signals.

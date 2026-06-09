@@ -738,6 +738,30 @@ export interface FieldMetaDefnIR {
   meta: { name: string; value: string }[]
 }
 
+/**
+ * Gap 4 follow-up — @pyreon/feature schema-driven CRUD config.
+ * `const Todo = defineFeature({ name: 'todo', schema: { ... } })`
+ * with literal field-type map emits a per-feature schema struct +
+ * a module-scope const exposing `name` + `initialValues`. The CRUD
+ * runtime methods (`useList`, `useById`, etc.) are NOT ported —
+ * tier2 silent-drop diagnostic still fires for component-body uses
+ * pointing users to the Layer-4 workaround. Schema struct + name
+ * + initialValues are the v1 deliverable: gives downstream code
+ * something REAL to reference for forms / data shapes.
+ *
+ * v1 scope: literal schema shape `{ field: "string" | "number" |
+ * "boolean" }`. Zod / Valibot / ArkType schemas fall through to
+ * the existing tier2 silent-drop diagnostic.
+ */
+export interface FeatureDefnIR {
+  /** Top-level binding name (e.g. `Todo`). */
+  bindingName: string
+  /** Feature name from `defineFeature({ name: 'X', ... })`. */
+  featureName: string
+  /** Schema fields parsed from the literal `schema: { ... }` map. */
+  fields: { name: string; type: 'string' | 'number' | 'boolean' }[]
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
@@ -761,6 +785,13 @@ export interface ParseResult {
    * holding the literal meta fields.
    */
   fieldMetas: FieldMetaDefnIR[]
+  /**
+   * Gap 4 follow-up: @pyreon/feature definitions from
+   * `const X = defineFeature({ name, schema })`. Each one emits a
+   * per-feature schema struct + module-scope const exposing the
+   * schema's initialValues + name.
+   */
+  features: FeatureDefnIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

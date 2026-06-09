@@ -27,6 +27,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  FeatureDefnIR,
   FieldMetaDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
@@ -149,6 +150,7 @@ export function emitKotlin(
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
   fieldMetas: FieldMetaDefnIR[] = [],
+  features: FeatureDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -179,6 +181,9 @@ export function emitKotlin(
   for (const m of models) parts.push(emitKotlinModel(m))
   // Gap 4 follow-up — withField metadata data classes.
   for (const fm of fieldMetas) parts.push(emitKotlinFieldMeta(fm))
+  // Gap 4 follow-up — feature v1: emit per-feature schema data class
+  // + module-scope object.
+  for (const f of features) parts.push(emitKotlinFeature(f))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -269,6 +274,46 @@ function emitKotlinFieldMeta(fm: FieldMetaDefnIR): string {
   lines.push(`)`)
   lines.push(``)
   lines.push(`val ${fm.bindingName} = PyreonFieldMeta_${fm.bindingName}()`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up — feature v1 emit (Kotlin). Mirror of
+ * emitSwiftFeature. Produces:
+ *
+ *   data class PyreonFeatureSchema_Todo(
+ *       var id: String = "",
+ *       var title: String = "",
+ *       var done: Boolean = false,
+ *   )
+ *
+ *   object PyreonFeature_Todo {
+ *       const val name = "todo"
+ *       val initialValues = PyreonFeatureSchema_Todo()
+ *   }
+ */
+function emitKotlinFeature(f: FeatureDefnIR): string {
+  const lines: string[] = []
+  lines.push(`data class PyreonFeatureSchema_${f.bindingName}(`)
+  for (const field of f.fields) {
+    const t =
+      field.type === 'string'
+        ? 'String'
+        : field.type === 'number'
+          ? 'Int'
+          : 'Boolean'
+    const initial =
+      field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
+    lines.push(`    var ${field.name}: ${t} = ${initial},`)
+  }
+  lines.push(`)`)
+  lines.push(``)
+  lines.push(`object PyreonFeature_${f.bindingName} {`)
+  lines.push(`    const val name = ${JSON.stringify(f.featureName)}`)
+  lines.push(
+    `    val initialValues = PyreonFeatureSchema_${f.bindingName}()`,
+  )
+  lines.push(`}`)
   return lines.join('\n')
 }
 
