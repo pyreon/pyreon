@@ -466,6 +466,52 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
+  // Native readiness audit (2026-06-05, Gap 4): Tier-2 packages
+  // (`@pyreon/store`, `@pyreon/machine`, `@pyreon/i18n/core`,
+  // `@pyreon/state-tree`, `@pyreon/feature`) have NO PMTC parser
+  // recognition + NO native runtime port today. A user writing
+  // `const useCounter = defineStore("counter", () => …)` gets a
+  // silent-drop on iOS/Android: the binding is created with an
+  // unresolved type, the setup function never runs, downstream uses
+  // (`useCounter().store.X()`) compile to undefined references that
+  // either fail emit or fail in swiftc/kotlinc. Same bug class as
+  // useLoaderData pre-Phase-B6 (#1235) and the walled lifecycle
+  // tags pre-#1441. Warn at the call site naming the offending
+  // helper so authors aren't surprised AND have a clear path to
+  // the Layer 4 escape hatch.
+  //
+  // Strategy-B Tier-2 callees (need runtime port to lift the
+  // silent-drop): defineStore, createMachine, createI18n,
+  // createModel (state-tree), defineFeature.
+  if (init?.type === 'CallExpression') {
+    const calleeName = init.callee?.name as string | undefined
+    const tier2StrategyB: Record<string, string> = {
+      defineStore: '@pyreon/store',
+      createMachine: '@pyreon/machine',
+      createI18n: '@pyreon/i18n/core',
+      createModel: '@pyreon/state-tree',
+      defineFeature: '@pyreon/feature',
+    }
+    if (calleeName && calleeName in tier2StrategyB) {
+      const pkg = tier2StrategyB[calleeName]
+      const bindingName =
+        node.id?.type === 'Identifier'
+          ? (node.id.name as string)
+          : '(destructured)'
+      ctx.warnings.push(
+        `${calleeName}() declared (${pkg}, binding: \`${bindingName}\`) — Tier-2 package on native: parser ` +
+          `recognition + runtime port not yet shipped. Setup function will not run on iOS/Android; downstream ` +
+          `uses of \`${bindingName}\` emit as unresolved references and may fail swiftc/kotlinc validation. ` +
+          `Use a per-target adapter (Layer 4: <NativeIOS> / <NativeAndroid>) to provide the same surface natively, ` +
+          `or keep this code in a \`<Web>\`-only branch. Tracked in audit Gap 4; see ` +
+          `docs/docs/multiplatform-libraries.md → "Tier 2 — pure-logic packages."`,
+      )
+      // Falls through; no DeclIR emitted. Downstream emit treats the
+      // binding as unresolved (consistent with the silent-drop shape
+      // pre-fix), but now with a visible warning.
+      return null
+    }
+  }
   // Native readiness audit (2026-06, CRIT-4): `const data = useLoaderData<T>()`
   // is currently DROPPED on both targets — PMTC has no emit branch, AND
   // there's no diagnostic. The runtime `setLoaderData()` infrastructure
