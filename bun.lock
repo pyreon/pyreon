@@ -675,6 +675,13 @@
         "@pyreon/router": "workspace:*",
       },
     },
+    "examples/native-tasks-ios": {
+      "name": "@pyreon/example-native-tasks-ios",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
+      },
+    },
     "examples/native-tasks-web": {
       "name": "@pyreon/example-native-tasks-web",
       "version": "0.0.0",
@@ -2950,6 +2957,8 @@
     "@pyreon/example-native-router-demo-web": ["@pyreon/example-native-router-demo-web@workspace:examples/native-router-demo-web"],
 
     "@pyreon/example-native-tasks": ["@pyreon/example-native-tasks@workspace:examples/native-tasks"],
+
+    "@pyreon/example-native-tasks-ios": ["@pyreon/example-native-tasks-ios@workspace:examples/native-tasks-ios"],
 
     "@pyreon/example-native-tasks-web": ["@pyreon/example-native-tasks-web@workspace:examples/native-tasks-web"],
 
