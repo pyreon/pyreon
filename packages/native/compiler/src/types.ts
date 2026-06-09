@@ -758,15 +758,22 @@ export interface ZodFieldConstraints {
 /**
  * Gap 4 v2.2 — compound field type extension.
  * 'array' marks a list-of-primitive field (z.array(z.string()) etc.);
- * the `element` carries the inner primitive type. v2.2 ships
- * arrays-of-primitives only; nested arrays + arrays of objects are
- * deferred.
+ * the `element` carries the inner primitive type.
+ *
+ * Gap 4 v3 — `elementConstraints` carries constraints applied to the
+ * INNER element call (`z.array(z.string().min(2))`). v3 ships
+ * arrays-of-primitives + per-element constraints; nested arrays and
+ * arrays of objects remain deferred.
  */
 export type ZodFieldType =
   | 'string'
   | 'number'
   | 'boolean'
-  | { kind: 'array'; element: 'string' | 'number' | 'boolean' }
+  | {
+      kind: 'array'
+      element: 'string' | 'number' | 'boolean'
+      elementConstraints?: ZodFieldConstraints
+    }
 
 export interface ZodSchemaDefnIR {
   /** Top-level binding name (e.g. `userSchema`). */
