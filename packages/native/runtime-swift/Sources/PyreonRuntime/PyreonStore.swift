@@ -47,3 +47,4 @@ import Observation
 /// have a hook.
 @available(iOS 17.0, macOS 14.0, *)
 public protocol PyreonStoreProtocol: AnyObject {}
+
