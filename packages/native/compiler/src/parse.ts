@@ -738,6 +738,81 @@ function extractTypeAndConstraints(
 }
 
 /**
+ * Gap 4 v3.2 — capitalize the first character of an identifier.
+ * Used to synthesize aux schema names: `userSchema` + `address` →
+ * `userSchema_Address`.
+ */
+function capitalizeFirst(s: string): string {
+  if (s.length === 0) return s
+  return s[0]!.toUpperCase() + s.slice(1)
+}
+
+/**
+ * Gap 4 v3.2 — parse a `z.object({ ... })` CallExpression node into
+ * a `ZodSchemaDefnIR` with the supplied `name` as `bindingName`. Used
+ * for nested object fields. Returns null when the shape isn't a
+ * literal `z.object({...})`.
+ *
+ * Implementation reuses `tryNamespacedSchemaDefnFromTopLevel`'s body
+ * by synthesizing a wrapper VariableDeclaration that holds the
+ * `<schemaFn>(z.object(...))` shape so we don't fork the walker.
+ */
+function parseNestedObjectShape(
+  objectCallNode: AnyNode,
+  name: string,
+  ctx: ParseCtx,
+  prefix: string,
+  schemaFn: string,
+): ZodSchemaDefnIR | null {
+  // objectCallNode is `z.object({...})`. Wrap it as `<schemaFn>(z.object({...}))`
+  // so the existing walker can extract fields + auxSchemas.
+  const wrapped: AnyNode = {
+    type: 'VariableDeclaration',
+    declarations: [
+      {
+        type: 'VariableDeclarator',
+        id: { type: 'Identifier', name },
+        init: {
+          type: 'CallExpression',
+          callee: { type: 'Identifier', name: schemaFn },
+          arguments: [objectCallNode],
+        },
+      },
+    ],
+  }
+  return tryNamespacedSchemaDefnFromTopLevel(
+    wrapped,
+    ctx,
+    schemaFn,
+    prefix,
+    /* libraryDisplay (unused here) */ schemaFn,
+  )
+}
+
+/**
+ * Gap 4 v3.2 — recognize `z.object({...})` as an array element. If
+ * yes, synthesize the aux schema. Returns null when the inner is NOT
+ * a `z.object` CallExpression (the caller falls back to the primitive
+ * element path).
+ */
+function tryParseInnerObjectElement(
+  innerArg: AnyNode,
+  name: string,
+  ctx: ParseCtx,
+  prefix: string,
+  schemaFn: string,
+): ZodSchemaDefnIR | null {
+  if (innerArg.type !== 'CallExpression') return null
+  const callee = innerArg.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression') return null
+  if (callee.object?.type !== 'Identifier') return null
+  if ((callee.object.name as string) !== prefix) return null
+  if (callee.property?.type !== 'Identifier') return null
+  if ((callee.property.name as string) !== 'object') return null
+  return parseNestedObjectShape(innerArg, name, ctx, prefix, schemaFn)
+}
+
+/**
  * Shared parser body for Zod + Valibot recognition (the two
  * libraries use isomorphic `<prefix>.object({ field: <prefix>.X() })`
  * call shapes). ArkType's string-valued shape needs its own parser.
@@ -789,6 +864,12 @@ function tryNamespacedSchemaDefnFromTopLevel(
     )
     return null
   }
+
+  // Gap 4 v3.2 — auxiliary schemas synthesized while walking this
+  // shape (one per nested z.object). Each carries its OWN fields +
+  // its OWN auxSchemas (recursive). The emitter will emit them all
+  // ahead of the main schema.
+  const auxSchemas: ZodSchemaDefnIR[] = []
 
   // Walk shape's properties; each value should be a <prefix>.X() call (possibly chained).
   const fields: ZodSchemaDefnIR['fields'] = []
@@ -890,15 +971,69 @@ function tryNamespacedSchemaDefnFromTopLevel(
       const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'boolean' }
       if (optional) entry.optional = true
       fields.push(entry)
+    } else if (method === 'object') {
+      // Gap 4 v3.2 — nested object field. Synthesize an auxiliary
+      // schema named `<binding>_<field>` and reference it from the
+      // field's type. The aux schema is added to `auxSchemas` so the
+      // emitter renders it as its own struct/data class.
+      const nested = parseNestedObjectShape(
+        value,
+        `${bindingName}_${capitalizeFirst(fieldName)}`,
+        ctx,
+        prefix,
+        schemaFn,
+      )
+      if (!nested) {
+        ctx.warnings.push(
+          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
+        )
+        continue
+      }
+      auxSchemas.push(nested)
+      const entry: ZodSchemaDefnIR['fields'][number] = {
+        name: fieldName,
+        type: { kind: 'object', schemaName: nested.bindingName },
+      }
+      if (optional) entry.optional = true
+      fields.push(entry)
     } else if (method === 'array') {
-      // Gap 4 v2.2 — `z.array(z.string())` etc. The inner element
-      // must itself be a recognizable z.X() call.
-      // Gap 4 v3 — also walk the inner element's modifier chain so
-      // `z.array(z.string().min(2).max(50))` carries the per-element
-      // constraints into the IR.
-      const innerArg = (value.arguments as AnyNode[] | undefined)?.[0]
+      // Gap 4 v2.2 — `z.array(z.string())` etc.
+      // Gap 4 v3 — element modifier chain for per-element constraints.
+      // Gap 4 v3.2 — `z.array(z.object({...}))` synthesizes a nested
+      // schema for the element type.
+      const innerArg = (value.arguments as AnyNode[] | undefined)?.[0] as
+        | AnyNode
+        | undefined
+      // First check: is the inner element itself a z.object literal?
+      const innerObjectSchema = innerArg
+        ? tryParseInnerObjectElement(
+            innerArg,
+            `${bindingName}_${capitalizeFirst(fieldName)}_Item`,
+            ctx,
+            prefix,
+            schemaFn,
+          )
+        : null
+      if (innerObjectSchema) {
+        auxSchemas.push(innerObjectSchema)
+        const arrayType: Extract<ZodFieldType, { kind: 'array' }> = {
+          kind: 'array',
+          element: {
+            kind: 'object',
+            schemaName: innerObjectSchema.bindingName,
+          },
+        }
+        const entry: ZodSchemaDefnIR['fields'][number] = {
+          name: fieldName,
+          type: arrayType,
+        }
+        if (optional) entry.optional = true
+        fields.push(entry)
+        continue
+      }
+      // Otherwise: primitive element (with possible per-element constraints)
       const inner = innerArg
-        ? extractTypeAndConstraints(innerArg as AnyNode, prefix)
+        ? extractTypeAndConstraints(innerArg, prefix)
         : null
       let innerType: 'string' | 'number' | 'boolean' | undefined
       if (inner) {
@@ -908,7 +1043,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       if (!innerType) {
         ctx.warnings.push(
-          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is z.array() with an unsupported inner type — v2.2 supports z.array(z.string/z.number/z.boolean). Dropping field.`,
+          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is z.array() with an unsupported inner type — supported: z.array(z.string/z.number/z.boolean) and z.array(z.object(...)). Dropping field.`,
         )
         continue
       }
@@ -927,7 +1062,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       fields.push(entry)
     } else {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — v2 supports ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array. Dropping field.`,
+        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
       )
     }
     void libraryDisplay
@@ -940,7 +1075,9 @@ function tryNamespacedSchemaDefnFromTopLevel(
     return null
   }
 
-  return { bindingName, fields }
+  const result: ZodSchemaDefnIR = { bindingName, fields }
+  if (auxSchemas.length > 0) result.auxSchemas = auxSchemas
+  return result
 }
 
 /** Tiny initial-value type inference for store signals.
