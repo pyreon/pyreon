@@ -135,10 +135,20 @@ jobs:
         # so this single `xcodebuild test` invocation builds + installs
         # the app, boots the Simulator, and runs the UITest bundle in
         # one shot.
+        #
+        # `-retry-tests-on-failure -test-iterations 3` (here + the 3
+        # sibling steps): XCUITest's harness attach is load-flaky on CI
+        # simulators — "Failed to get background assertion ... Timed
+        # out while acquiring background assertion" killed a run whose
+        # SAME suite passed locally and whose prior steps passed on the
+        # same sim. Xcode's native per-test retry self-heals the attach
+        # flake; a real product failure still fails all 3 iterations.
         working-directory: examples/native-todomvc-ios
         run: |
           set -o pipefail
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonTodoMVC.xcodeproj \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
@@ -161,6 +171,8 @@ jobs:
           bash scripts/build.sh
           xcodegen generate
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonCounter.xcodeproj \
             -scheme PyreonCounter \
             -sdk iphonesimulator \
@@ -175,6 +187,8 @@ jobs:
           bash scripts/build.sh
           xcodegen generate
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonRouterDemo.xcodeproj \
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
@@ -194,6 +208,8 @@ jobs:
           bash scripts/build.sh
           xcodegen generate
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonTasks.xcodeproj \
             -scheme PyreonTasks \
             -sdk iphonesimulator \
