@@ -598,7 +598,45 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
 // ─── Core renderer ───────────────────────────────────────────────────────────
 
-async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string> {
+// ─── Maybe-sync string renderer ──────────────────────────────────────────────
+//
+// Every function in the string-render family returns `string | Promise<string>`
+// instead of always-`Promise<string>`. Fully-synchronous subtrees (the
+// overwhelming majority — async components are rare) concatenate plain
+// strings with ZERO promise hops; only a genuine `async function Component()`
+// promotes its own subtree to a Promise, and `.then` continuations resume the
+// sequential child walk from the suspension point (order preserved — earlier
+// siblings' context-stack effects happen-before later siblings, exactly as
+// the awaited version behaved; AsyncLocalStorage propagates through `.then`).
+//
+// Why: the previous shape `async renderNode` + `html += await renderNode(child)`
+// paid promise machinery at EVERY node. Measured on the links-100 SSR scenario
+// (≈500-node tree): ~100µs/render of which ~90µs was promise overhead — the
+// actual HTML work is ~10µs. The maybe-sync rewrite removes the hops for sync
+// trees while keeping async-component + Suspense semantics byte-identical.
+
+type MaybeAsync = string | Promise<string>
+
+/**
+ * Sequentially render `children[start..]` onto `acc`. Synchronous children
+ * append in the loop; the first async child returns a Promise whose `.then`
+ * resumes the walk at the next index — strict left-to-right order.
+ */
+function renderChildList(children: readonly VNodeChild[], start: number, acc: string): MaybeAsync {
+  for (let i = start; i < children.length; i++) {
+    const r = renderNode(children[i] as VNodeChild)
+    if (typeof r === 'string') {
+      acc += r
+    } else {
+      const next = i + 1
+      const soFar = acc
+      return r.then((s) => renderChildList(children, next, soFar + s))
+    }
+  }
+  return acc
+}
+
+function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
   // Reactive accessor — call it synchronously (snapshot)
   if (typeof node === 'function') {
     return renderNode((node as () => VNodeChild)())
@@ -610,33 +648,24 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
   if (typeof node === 'number' || typeof node === 'boolean') return String(node)
 
   if (Array.isArray(node)) {
-    let html = ''
-    for (const child of node) html += await renderNode(child)
-    return html
+    return renderChildList(node, 0, '')
   }
 
   const vnode = node as VNode
 
   if (vnode.type === Fragment) {
-    return renderChildren(vnode.children)
+    return renderChildList(vnode.children, 0, '')
   }
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children, by } = vnode.props as unknown as ForProps<unknown>
-    let forHtml = '<!--pyreon-for-->'
     // Defensive: `each` is normally `_rp(() => arr)` (a function).
     // `makeReactiveProps` in `mergeChildrenIntoProps` invokes `_rp` getters
     // when the For COMPONENT runs, which flips `props.each` to the resolved
     // array on the re-emitted ForSymbol vnode. Accept both forms.
     const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
-    for (const item of items) {
-      const key = by(item)
-      if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
-      forHtml += `<!--k:${safeKeyForMarker(key)}-->`
-      forHtml += await renderNode(children(item) as VNodeChild)
-    }
-    forHtml += '<!--/pyreon-for-->'
-    return forHtml
+    const arr = Array.isArray(items) ? (items as unknown[]) : [...items]
+    return renderForItems(arr, by, children, 0, '<!--pyreon-for-->')
   }
 
   if (typeof vnode.type === 'function') {
@@ -646,13 +675,32 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
   return renderElement(vnode)
 }
 
-async function renderChildren(children: VNodeChild[]): Promise<string> {
-  let html = ''
-  for (const child of children) html += await renderNode(child)
-  return html
+/** Sequential keyed-item walk for `<For>` — same continuation shape as renderChildList. */
+function renderForItems(
+  items: readonly unknown[],
+  by: (item: unknown) => unknown,
+  children: (item: unknown) => unknown,
+  start: number,
+  acc: string,
+): MaybeAsync {
+  for (let i = start; i < items.length; i++) {
+    const item = items[i]
+    const key = by(item)
+    if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
+    acc += `<!--k:${safeKeyForMarker(key)}-->`
+    const r = renderNode(children(item) as VNodeChild)
+    if (typeof r === 'string') {
+      acc += r
+    } else {
+      const next = i + 1
+      const soFar = acc
+      return r.then((s) => renderForItems(items, by, children, next, soFar + s))
+    }
+  }
+  return `${acc}<!--/pyreon-for-->`
 }
 
-async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<string> {
+function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
   // Snapshot the context stack length BEFORE the component renders. After
   // children render, trim back to this length — that pops every frame the
@@ -681,21 +729,55 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
   // subtree begins/ends — events, lifecycle hooks, and signal subscriptions
   // would never wire up on the server-rendered nodes. (Mirrors the
   // `streamComponentNode` marker emit on the streaming path.)
-  let html: string
-  try {
-    if (output instanceof Promise) {
-      const resolved = await output
-      const inner = resolved === null ? '' : await renderNode(resolved)
-      html = `<!--$pas-->${inner}<!--$pae-->`
-    } else if (output === null) {
-      html = ''
-    } else {
-      html = await renderNode(output)
-    }
-  } finally {
-    trimContextStack(stackLenBefore)
+  //
+  // Maybe-sync: the dominant sync-component path trims the context stack
+  // synchronously and returns a plain string; promise paths trim in BOTH
+  // settle branches (the `finally` equivalent — the trim must run after the
+  // subtree completes, never before, so providers stay visible to children).
+  if (output instanceof Promise) {
+    return output.then(
+      (resolved) => {
+        const inner = resolved === null ? '' : renderNode(resolved)
+        if (typeof inner === 'string') {
+          trimContextStack(stackLenBefore)
+          return `<!--$pas-->${inner}<!--$pae-->`
+        }
+        return inner.then(
+          (s) => {
+            trimContextStack(stackLenBefore)
+            return `<!--$pas-->${s}<!--$pae-->`
+          },
+          (err: unknown) => {
+            trimContextStack(stackLenBefore)
+            throw err
+          },
+        )
+      },
+      (err: unknown) => {
+        trimContextStack(stackLenBefore)
+        throw err
+      },
+    )
   }
-  return html
+  if (output === null) {
+    trimContextStack(stackLenBefore)
+    return ''
+  }
+  const r = renderNode(output)
+  if (typeof r === 'string') {
+    trimContextStack(stackLenBefore)
+    return r
+  }
+  return r.then(
+    (s) => {
+      trimContextStack(stackLenBefore)
+      return s
+    },
+    (err: unknown) => {
+      trimContextStack(stackLenBefore)
+      throw err
+    },
+  )
 }
 
 /**
@@ -719,7 +801,7 @@ function trimContextStack(targetLen: number): void {
   }
 }
 
-async function renderElement(vnode: VNode): Promise<string> {
+function renderElement(vnode: VNode): MaybeAsync {
   const tag = vnode.type as string
   warnIfUnsafeTag(tag)
   let html = `<${tag}`
@@ -758,9 +840,12 @@ async function renderElement(vnode: VNode): Promise<string> {
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
     html += String(plainInnerHtml)
   } else {
-    for (const child of vnode.children) {
-      html += await renderNode(child)
+    const inner = renderChildList(vnode.children, 0, '')
+    if (typeof inner !== 'string') {
+      const open = html
+      return inner.then((s) => `${open}${s}</${tag}>`)
     }
+    html += inner
   }
 
   html += `</${tag}>`
