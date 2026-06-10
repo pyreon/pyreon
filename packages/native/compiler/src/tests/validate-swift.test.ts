@@ -59,12 +59,17 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // lowering produces well-formed Swift.
     'rx-lowering.tsx',
     'rx-full.tsx',
-    // Gap 5 scaffold (2026-06-05 audit): real-app tasks showcase
-    // exercising routing + per-route auth-gate (Gap 2 #1440) +
-    // signal state + canonical primitives across 3 screens. Mirror
-    // of `examples/native-tasks/src/TasksApp.tsx` so the example's
-    // source is locked-in via the same swiftc-parse gate that protects
-    // the canonical primitives.
+    // Gap 5 showcase (REWRITTEN to the proven Tier-1 subset — see the
+    // fixture header): multi-screen routing + TYPED route params
+    // (`/tasks/:id` → synthesized `TaskDetailPageParam` struct +
+    // dispatcher construction from matchPath's dict) + declared-struct
+    // signal seeds + .set() list mutation + Text-wrapped value-
+    // expression children. Mirror of
+    // `examples/native-tasks/src/TasksApp.tsx` so the example's source
+    // is locked-in via the same swiftc-parse gate that protects the
+    // canonical primitives. NOTE: swiftc -parse alone did NOT catch the
+    // old scaffold's typecheck-level breakage — the device-CI
+    // xcodebuild gate is the real-runtime safety net.
     'showcase-tasks.tsx',
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). Emits @State PyreonI18n with literal locale + messages.

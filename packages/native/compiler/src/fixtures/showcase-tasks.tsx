@@ -3,53 +3,50 @@
 //
 // PMTC Tasks Showcase — SINGLE source for web, iOS, Android.
 //
-// Gap 5 scaffold (2026-06-05 native-readiness audit). The audit calls
-// for a real-app showcase exercising MULTIPLE Tier-1 features end-to-
-// end, beyond the sample-code scope of native-counter / native-router-
-// demo / native-todomvc.
+// Gap 5 scaffold, REWRITTEN to the PROVEN Tier-1 subset (2026-06-10).
+// The original scaffold over-reached the current vocabulary: it passed
+// required props (task list, callbacks) to bare route components —
+// route components receive no props from the dispatcher on ANY target
+// (on web, RouterView mounts them prop-less too, so `props.tasks.length`
+// crashed there as well). The emitted Swift/Kotlin used `.update()`,
+// indexed `tasks()[i]`, and tuple literals — none in the supported
+// surface — so neither native target compiled. This rewrite keeps every
+// feature that IS proven end-to-end and drops what structurally needs
+// the @pyreon/store port.
 //
-// ## What this exercises (currently-merged Tier-1 features)
+// ## What this exercises (proven Tier-1 features)
 //
-// - **Routing with auth-gate** — `createRouter` with per-route
-//   `beforeEnter: () => isAuthed() || '/login'`. Gap 2 runtime field
-//   landed in #1440 (merged); web router gates and the native
-//   runtimes gate identically.
-// - **Multi-screen navigation** — 3 routes (login / list / new),
+// - **Multi-screen routing** — 3 routes (home / tasks / task detail),
 //   `useNavigate()` between them.
+// - **Typed route params** — `/tasks/:id` + `props: { params: { id:
+//   string } }`. PMTC synthesizes `TaskDetailPageParam` (Swift struct /
+//   Kotlin data class) and the dispatcher constructs it from the
+//   matched path segments — the typed-params arc this showcase gates
+//   at real-device scope.
 // - **Canonical primitive vocabulary** — `<Stack>` / `<Inline>` /
-//   `<Field>` / `<Button>` / `<Text>` / `<For>` / `<Show>` resolve
-//   per-target via PMTC's `canonical-primitives.ts`.
-// - **Signal + computed** — `signal()` / `computed()` for component-
-//   local reactive state (TodoMVC-shape: each component has its own
-//   signals, no module-level state).
+//   `<Field>` / `<Button>` / `<Text>` / `<For>`.
+// - **Signal + computed + list mutation** — `signal<Task[]>` seeded
+//   with literals (struct-constructor emit), `.set()` with spread-
+//   append and map-toggle (the TodoMVC-proven shapes), `computed`
+//   remaining-count.
 //
-// ## What's NOT in this scaffold (explicit deferrals per audit Gap 4)
+// ## What's NOT here (explicit deferrals)
 //
-// - **`@pyreon/machine`** — would model app-lifecycle (idle / loading /
-//   loaded / error). Port landed in #1445 (open PR); rebase this
-//   scaffold onto post-#1445 main to add.
-// - **`@pyreon/i18n/core`** — would replace hardcoded strings with
-//   `i18n.t('key')` lookups. Port landed in #1447 (open PR, v1 scope).
-// - **`@pyreon/store`** — would unify cross-screen state (auth +
-//   tasks) behind a singleton. Port queued (Gap 4 PR-4 next). Today
-//   THIS scaffold passes auth state via the `requireAuth` closure
-//   capture inside the App component, and tasks state is per-screen
-//   (NOT shared). The "shared task list across login / create
-//   screens" is the canonical defineStore use case.
-// - **Real auth backend** — `login()` flips a local signal, no fetch.
-//   Replace with `useFetch('/auth/login', { method: 'POST' })` (Tier-1).
-// - **Real task backend** — `tasks` is a per-screen literal seed.
-//   `useFetch('/api/tasks')` (Tier-1) for real data.
-// - **Form validation** — deferred per Gap 4 validation-port queue.
-// - **iOS XcodeGen host + Android Gradle host + web Vite host** —
-//   deferred. The source compiles via PMTC to Swift + Kotlin TODAY
-//   (proven by `scripts/build-{swift,kotlin}.sh`). Real device hosts
-//   follow the template at `native-router-demo-ios/project.yml` +
-//   `native-todomvc-android/build.gradle.kts`.
+// - **Auth-gate + cross-screen task state** — both need ONE shared
+//   reactive container reachable from multiple route components.
+//   That's the canonical `defineStore` use case (Gap 4 store port).
+//   `useStorage` can't substitute: Android's `rememberPyreonStorage`
+//   is per-composable (`remember(key)`) — a write in one screen does
+//   not recompose another, so an auth flag through storage would work
+//   on iOS (`@AppStorage` observes UserDefaults) but silently break on
+//   Android. Re-add the login flow when the store port lands.
+// - **Real task backend** — `useFetch('/api/tasks')` (Tier-1) for
+//   real data; the seed here is a literal.
+// - **Form validation** — deferred per the Gap 4 validation-port queue.
 
-import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Field, Button, Text } from '@pyreon/primitives'
+import { signal, computed } from '@pyreon/reactivity'
 import { For } from '@pyreon/core'
+import { Stack, Inline, Field, Button, Text } from '@pyreon/primitives'
 import {
   createRouter,
   useNavigate,
@@ -57,170 +54,114 @@ import {
   RouterView,
 } from '@pyreon/router'
 
+type Task = { id: number; title: string; done: boolean }
+
+// Module-scope monotonic id — same shape as TodoMVC's `nextId`.
+let nextTaskId = 3
+
 // ── Screens ──
 
-function LoginPage(props: { onLoggedIn: () => void }) {
+function HomePage() {
   const navigate = useNavigate()
-  const username = signal('')
-
-  const handleLogin = () => {
-    if (username().length === 0) return
-    props.onLoggedIn()
-    navigate('/tasks')
-  }
-
   return (
-    <Stack gap={3} padding={4} data-testid="login-page">
-      <Text>Sign In</Text>
-      <Text>Any value works — this is a demo.</Text>
-      <Field
-        value={username}
-        onChangeText={(v) => username.set(v)}
-        placeholder="Username"
-        data-testid="login-username"
-      />
-      <Button onPress={handleLogin} data-testid="login-submit">
-        Continue
+    <Stack gap={3} padding={4} data-testid="home-page">
+      <Text>Pyreon Tasks</Text>
+      <Text>One .tsx source — web, SwiftUI, and Compose.</Text>
+      <Button onPress={() => navigate('/tasks')} data-testid="home-open-tasks">
+        Open tasks
       </Button>
     </Stack>
   )
 }
 
-function TasksListPage(props: {
-  tasks: { id: number; title: string; done: boolean }[]
-  onToggle: (id: number) => void
-  onLogout: () => void
-}) {
+function TasksPage() {
   const navigate = useNavigate()
+  const tasks = signal<Task[]>([
+    { id: 1, title: 'Ship the typed-params arc', done: false },
+    { id: 2, title: 'Keep the device gate green', done: false },
+  ])
+  const draft = signal<string>('')
+
+  const remaining = computed(() => tasks().filter((t) => !t.done).length)
+
+  const addTask = () => {
+    const title = draft().trim()
+    if (title.length === 0) return
+    tasks.set([...tasks(), { id: nextTaskId++, title, done: false }])
+    draft.set('')
+  }
+
+  const toggle = (id: number) => {
+    tasks.set(tasks().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
+  }
 
   return (
     <Stack gap={3} padding={4} data-testid="tasks-page">
       <Inline gap={2}>
         <Text>My Tasks</Text>
-        <Text>Total: {props.tasks.length}</Text>
+        <Text>{remaining} open</Text>
       </Inline>
-      <For each={props.tasks} by={(t) => t.id}>
-        {(task) => (
+      <For each={tasks} by={(t) => t.id}>
+        {(t) => (
           <Inline gap={2}>
-            <Button onPress={() => props.onToggle(task.id)}>
-              {task.done ? 'done' : 'todo'}
+            <Button onPress={() => toggle(t.id)}>
+              {t.done ? 'done' : 'todo'}
             </Button>
-            <Text>{task.title}</Text>
+            <Text>{t.title}</Text>
           </Inline>
         )}
       </For>
-      <Inline gap={2}>
-        <Button
-          onPress={() => navigate('/tasks/new')}
-          data-testid="tasks-new"
-        >
-          New Task
-        </Button>
-        <Button
-          onPress={() => props.onLogout()}
-          data-testid="tasks-logout"
-        >
-          Logout
-        </Button>
-      </Inline>
-    </Stack>
-  )
-}
-
-function NewTaskPage(props: {
-  onCreate: (title: string) => void
-}) {
-  const navigate = useNavigate()
-  const title = signal('')
-
-  const save = () => {
-    const t = title().trim()
-    if (t.length === 0) return
-    props.onCreate(t)
-    navigate('/tasks')
-  }
-
-  return (
-    <Stack gap={3} padding={4} data-testid="new-task-page">
-      <Text>New Task</Text>
       <Field
-        value={title}
-        onChangeText={(v) => title.set(v)}
+        value={draft}
+        onChangeText={(v) => draft.set(v)}
+        onSubmit={addTask}
         placeholder="What needs doing?"
         data-testid="new-task-title"
       />
       <Inline gap={2}>
-        <Button onPress={save} data-testid="new-task-save">
-          Save
+        <Button onPress={addTask} data-testid="new-task-add">
+          Add
         </Button>
         <Button
-          onPress={() => navigate('/tasks')}
-          data-testid="new-task-cancel"
+          onPress={() => navigate('/tasks/1')}
+          data-testid="tasks-open-first"
         >
-          Cancel
+          Open task 1
+        </Button>
+        <Button onPress={() => navigate('/')} data-testid="tasks-home">
+          Home
         </Button>
       </Inline>
     </Stack>
   )
 }
 
-// ── App root — owns shared state via component-local signals ──
+function TaskDetailPage(props: { params: { id: string } }) {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={3} padding={4} data-testid="task-detail-page">
+      <Text>Task Detail</Text>
+      <Text>Viewing task {props.params.id}</Text>
+      <Button onPress={() => navigate('/tasks')} data-testid="detail-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
+// ── App root ──
 
 export function TasksApp() {
-  // Auth + tasks state held HERE so beforeEnter's `requireAuth`
-  // closure captures them. The web router gates and the native
-  // runtimes gate identically post Gap 2 #1440.
-  //
-  // When @pyreon/store's PMTC port lands (Gap 4 PR-4), this state
-  // moves to a singleton: `defineStore("app", () => ({ isAuthed:
-  // signal(false), tasks: signal([...]) }))`. The closure-capture
-  // approach is the v1 workaround.
-  const isAuthed = signal(false)
-  const tasks = signal([
-    { id: 1, title: 'Ship Gap 4 store port', done: false },
-    { id: 2, title: 'Ship Gap 5 device-CI gate', done: false },
-  ])
-
-  const requireAuth = () => (isAuthed() ? true : '/login')
-
-  const handleToggle = (id: number) => {
-    tasks.update((list) =>
-      list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-    )
-  }
-
-  const handleCreate = (title: string) => {
-    const nextId =
-      tasks().length === 0
-        ? 1
-        : tasks()[tasks().length - 1].id + 1
-    tasks.update((list) => [...list, { id: nextId, title, done: false }])
-  }
-
+  // `mode: 'history'` is web-only; PMTC reads only `routes` and the
+  // native navigation stacks ignore it (same note as router-demo).
   const router = createRouter({
     mode: 'history',
     routes: [
-      { path: '/', component: LoginPage },
-      { path: '/login', component: LoginPage },
-      {
-        path: '/tasks',
-        component: TasksListPage,
-        beforeEnter: requireAuth,
-      },
-      {
-        path: '/tasks/new',
-        component: NewTaskPage,
-        beforeEnter: requireAuth,
-      },
+      { path: '/', component: HomePage },
+      { path: '/tasks', component: TasksPage },
+      { path: '/tasks/:id', component: TaskDetailPage },
     ],
   })
-
-  // Suppress unused-locals: the screens use props but those wire
-  // here via the router record's `component` (PMTC doesn't yet
-  // surface this in its static analyzer).
-  void handleToggle
-  void handleCreate
-  void isAuthed
 
   return (
     <RouterProvider router={router}>
