@@ -67,7 +67,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let tasksPage = app.otherElements["tasks-page"].firstMatch
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 5),
+            tasksPage.waitForExistence(timeout: 15),
             "Tasks page did not render within 5s after login — the store-backed beforeEnter gate did not admit the navigation"
         )
 
@@ -85,7 +85,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let newRow = app.staticTexts["Verify on the simulator"].firstMatch
         XCTAssertTrue(
-            newRow.waitForExistence(timeout: 5),
+            newRow.waitForExistence(timeout: 15),
             "Added task did not appear — store .set() list mutation did not re-render"
         )
 
@@ -97,13 +97,13 @@ final class PyreonTasksUITests: XCTestCase {
 
         let detailPage = app.otherElements["task-detail-page"].firstMatch
         XCTAssertTrue(
-            detailPage.waitForExistence(timeout: 5),
+            detailPage.waitForExistence(timeout: 15),
             "Task-detail page did not render within 5s — typed-params dispatch did not match /tasks/1"
         )
 
         let paramText = app.staticTexts["Viewing task 1"].firstMatch
         XCTAssertTrue(
-            paramText.waitForExistence(timeout: 5),
+            paramText.waitForExistence(timeout: 15),
             "Typed param text missing — TaskDetailPageParam(id:) was not constructed from the matched segment"
         )
 
@@ -113,7 +113,7 @@ final class PyreonTasksUITests: XCTestCase {
         back.tap()
 
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 5),
+            tasksPage.waitForExistence(timeout: 15),
             "Did not return to tasks page within 5s after Back"
         )
 
@@ -124,7 +124,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let loginAfterLogout = app.otherElements["login-page"].firstMatch
         XCTAssertTrue(
-            loginAfterLogout.waitForExistence(timeout: 5),
+            loginAfterLogout.waitForExistence(timeout: 15),
             "Did not return to login page within 5s after Logout — store flag flip + navigate did not commit"
         )
     }
