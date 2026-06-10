@@ -730,11 +730,41 @@ export interface ModelDefnIR {
  * enforced in the emitted struct — v1 is shape only. v2 follow-up
  * will emit runtime validation methods that honor constraints.
  */
+/**
+ * Gap 4 v2.1 — constraint enforcement for emitted schemas.
+ * Extracted from Zod modifier chains: `.min(N)`, `.max(N)`,
+ * `.email()`, `.url()`, `.uuid()`. Each constraint becomes a
+ * runtime check inside the generated `parse()` method.
+ *
+ * For string fields:
+ *   - min: minimum length
+ *   - max: maximum length
+ *   - email: rough RFC-5322 email regex check
+ *   - url: rough URL regex check
+ *   - uuid: UUID-format check
+ *
+ * For number fields:
+ *   - min: numeric minimum (inclusive)
+ *   - max: numeric maximum (inclusive)
+ */
+export interface ZodFieldConstraints {
+  min?: number
+  max?: number
+  email?: boolean
+  url?: boolean
+  uuid?: boolean
+}
+
 export interface ZodSchemaDefnIR {
   /** Top-level binding name (e.g. `userSchema`). */
   bindingName: string
   /** Field shape extracted from `z.object({ ... })`. */
-  fields: { name: string; type: 'string' | 'number' | 'boolean' }[]
+  fields: {
+    name: string
+    type: 'string' | 'number' | 'boolean'
+    /** Gap 4 v2.1 — constraints extracted from the modifier chain. */
+    constraints?: ZodFieldConstraints
+  }[]
 }
 
 export interface ParseResult {

@@ -380,6 +380,72 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
       `            throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(f.name)}, expected: ${JSON.stringify(t)})`,
     )
     lines.push(`        }`)
+    // Gap 4 v2.1 — enforce constraints from the modifier chain.
+    if (f.constraints && (f.type === 'string' || f.type === 'number')) {
+      const c = f.constraints
+      if (f.type === 'string') {
+        if (c.min !== undefined) {
+          lines.push(
+            `        if ${f.name}Val.count < ${c.min} {`,
+          )
+          lines.push(
+            `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(f.name)}, rule: "min length ${c.min}")`,
+          )
+          lines.push(`        }`)
+        }
+        if (c.max !== undefined) {
+          lines.push(
+            `        if ${f.name}Val.count > ${c.max} {`,
+          )
+          lines.push(
+            `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(f.name)}, rule: "max length ${c.max}")`,
+          )
+          lines.push(`        }`)
+        }
+        if (c.email) {
+          lines.push(
+            `        if ${f.name}Val.range(of: #"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$"#, options: [.regularExpression, .caseInsensitive]) == nil {`,
+          )
+          lines.push(
+            `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(f.name)}, rule: "email")`,
+          )
+          lines.push(`        }`)
+        }
+        if (c.url) {
+          lines.push(
+            `        if URL(string: ${f.name}Val) == nil {`,
+          )
+          lines.push(
+            `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(f.name)}, rule: "url")`,
+          )
+          lines.push(`        }`)
+        }
+        if (c.uuid) {
+          lines.push(
+            `        if UUID(uuidString: ${f.name}Val) == nil {`,
+          )
+          lines.push(
+            `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(f.name)}, rule: "uuid")`,
+          )
+          lines.push(`        }`)
+        }
+      } else if (f.type === 'number') {
+        if (c.min !== undefined) {
+          lines.push(`        if ${f.name}Val < ${c.min} {`)
+          lines.push(
+            `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(f.name)}, rule: "min ${c.min}")`,
+          )
+          lines.push(`        }`)
+        }
+        if (c.max !== undefined) {
+          lines.push(`        if ${f.name}Val > ${c.max} {`)
+          lines.push(
+            `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(f.name)}, rule: "max ${c.max}")`,
+          )
+          lines.push(`        }`)
+        }
+      }
+    }
     lines.push(`        result.${f.name} = ${f.name}Val`)
   }
   lines.push(`        return result`)
@@ -404,6 +470,7 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
  */
 const SWIFT_SCHEMA_ERROR = `enum PyreonSchemaError: Error {
     case missingOrWrongType(field: String, expected: String)
+    case constraintViolation(field: String, rule: String)
     case unknown
 }`
 

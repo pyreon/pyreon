@@ -292,6 +292,48 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     lines.push(
       `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)})`,
     )
+    // Gap 4 v2.1 — enforce constraints.
+    if (f.constraints && (f.type === 'string' || f.type === 'number')) {
+      const c = f.constraints
+      if (f.type === 'string') {
+        if (c.min !== undefined) {
+          lines.push(
+            `            if (${f.name}Val.length < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "min length ${c.min}")`,
+          )
+        }
+        if (c.max !== undefined) {
+          lines.push(
+            `            if (${f.name}Val.length > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "max length ${c.max}")`,
+          )
+        }
+        if (c.email) {
+          lines.push(
+            `            if (!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${f.name}Val)) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "email")`,
+          )
+        }
+        if (c.url) {
+          lines.push(
+            `            try { java.net.URI(${f.name}Val) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "url") }`,
+          )
+        }
+        if (c.uuid) {
+          lines.push(
+            `            try { java.util.UUID.fromString(${f.name}Val) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "uuid") }`,
+          )
+        }
+      } else if (f.type === 'number') {
+        if (c.min !== undefined) {
+          lines.push(
+            `            if (${f.name}Val < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "min ${c.min}")`,
+          )
+        }
+        if (c.max !== undefined) {
+          lines.push(
+            `            if (${f.name}Val > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(f.name)}, "max ${c.max}")`,
+          )
+        }
+      }
+    }
   }
   const ctorArgs = zs.fields.map((f) => `${f.name} = ${f.name}Val`).join(', ')
   lines.push(
@@ -323,6 +365,8 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
 const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
     data class MissingOrWrongType(val field: String, val expected: String) :
         PyreonSchemaError("Field '\$field' missing or wrong type (expected \$expected)")
+    data class ConstraintViolation(val field: String, val rule: String) :
+        PyreonSchemaError("Field '\$field' violated constraint '\$rule'")
 }`
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
