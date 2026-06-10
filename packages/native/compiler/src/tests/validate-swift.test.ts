@@ -96,6 +96,11 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // PyreonErrorBoundaryWrapper module-scope struct + per-
     // ErrorBoundary site emit produces valid SwiftUI.
     'lifecycle-errorboundary.tsx',
+    // Gap 3 PR-3.4: real KeepAlive emit (visibility-preservation).
+    // Proves the PyreonKeepAliveWrapper struct + per-KeepAlive site
+    // emit produces valid SwiftUI (opacity + allowsHitTesting +
+    // @State hasShown).
+    'lifecycle-keepalive.tsx',
   ] as const
 
   for (const fixture of fixtures) {
