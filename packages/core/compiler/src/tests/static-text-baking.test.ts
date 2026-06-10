@@ -62,3 +62,53 @@ describe('static-text baking — genuinely-reactive / unprovable children DO bin
     })
   }
 })
+
+// ── <For>/render-callback item params are NOT reactive props ────────────────
+//
+// `<For each={rows}>{(row) => <td>{String(row.id)}</td>}</For>` — `row` is a
+// runtime ITEM the framework passes per row, NOT reactive component props.
+// A bare property read (`row.id`) can never be reactive in Pyreon (reactivity
+// is via signal CALLS, `row.label()`), so it must be baked static (one
+// `textContent =`), NOT wrapped in a per-row `_bind()` renderEffect.
+//
+// Regression for the misclassification where the render-callback's first
+// param was registered as component props (because the callback returns JSX),
+// making every `row.id` look reactive → a wasted renderEffect + disposer per
+// row (1000-10000 of them in a real list; retained until unmount).
+//
+// Self-discriminating: the STATIC half asserts the bare-property read bakes;
+// the REACTIVE half asserts a signal-valued item property (`row.label()`)
+// STILL binds. Reverting the `maybeRegisterComponentProps` JSX-child-callback
+// skip fails the STATIC half (`row.id` re-acquires a `_bind`); a real
+// component (first param IS props) must keep its reactive binding.
+describe('<For> render-callback item params: bare property reads bake static', () => {
+  test('bakes bare item-property read (no _bind)', () => {
+    const out = t(
+      `export const C=()=> <table><tbody><For each={rows} by={(r)=>r.id}>{(row)=> <tr><td>{String(row.id)}</td></tr>}</For></tbody></table>`,
+    )
+    expect(out).toContain('_tpl(')
+    expect(out).toContain('textContent = String(row.id)')
+    expect(/_bind\(\(\) => \{[^}]*String\(row\.id\)/.test(out)).toBe(false)
+  })
+
+  test('signal-valued item property STILL binds (discriminator)', () => {
+    const out = t(
+      `export const C=()=> <table><tbody><For each={rows} by={(r)=>r.id}>{(row)=> <tr><td>{() => row.label()}</td></tr>}</For></tbody></table>`,
+    )
+    expect(out).toContain('_bindText(row.label')
+  })
+
+  test('mixed row: id static, label reactive, both in one row', () => {
+    const out = t(
+      `export const C=()=> <For each={rows} by={(r)=>r.id}>{(row)=> <tr><td>{String(row.id)}</td><td>{() => row.label()}</td></tr>}</For>`,
+    )
+    expect(out).toContain('textContent = String(row.id)')
+    expect(out).toContain('_bindText(row.label')
+  })
+
+  test('real component (first param IS props) keeps reactive binding', () => {
+    // A genuine component — `props.id` must STAY reactive (not a For callback).
+    const out = t(`export const Row=(props:any)=> <tr><td>{String(props.id)}</td></tr>`)
+    expect(hasBind(out)).toBe(true)
+  })
+})

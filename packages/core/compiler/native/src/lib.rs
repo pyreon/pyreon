@@ -349,6 +349,18 @@ struct Ctx<'a> {
     /// reference (`packages/core/compiler/src/tests/component-child-no-wrap.test.ts`).
     parent_is_component_jsx_element: bool,
 
+    /// Whether the expression currently being walked is the DIRECT child
+    /// render-callback of a JSX element (`<For>{(row) => …}</For>`,
+    /// `<Index>`, `<Show>`, `<Switch>`). Set by `handle_jsx_expression_child`
+    /// only when the child expression is directly an arrow/function, and
+    /// consumed+cleared by that arrow's `walk_expression` branch so the
+    /// callback's parameter is NOT registered as reactive component props.
+    /// Mirrors the JS backend's `maybeRegisterComponentProps` skip for
+    /// `parent === JSXExpressionContainer && grandparent === JSXElement`.
+    /// Attribute-value arrows (`component={(p) => …}`) take a different path
+    /// and are NOT affected — they can be real inline components.
+    in_jsx_child_callback: bool,
+
     /// Signal variables: `const x = signal(...)` or `const x = computed(...)`
     signal_vars: FxHashSet<String>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
@@ -407,6 +419,7 @@ impl<'a> Ctx<'a> {
             callback_depth: 0,
             parent_is_jsx: false,
             parent_is_component_jsx_element: false,
+            in_jsx_child_callback: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
             selector_vars: FxHashSet::default(),
@@ -2763,7 +2776,15 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             ctx.parent_is_jsx = old;
         }
         Expression::ArrowFunctionExpression(arrow) => {
-            maybe_register_component_props_arrow(arrow, ctx);
+            // Consume the JSX-child-callback flag: a `<For>{(row) => …}</For>`
+            // render callback's parameter is a runtime item, NOT reactive
+            // props. Clear immediately so nested arrows inside the body still
+            // register their own props.
+            let is_jsx_child_cb = ctx.in_jsx_child_callback;
+            ctx.in_jsx_child_callback = false;
+            if !is_jsx_child_cb {
+                maybe_register_component_props_arrow(arrow, ctx);
+            }
             let old = ctx.parent_is_jsx;
             ctx.parent_is_jsx = false;
             // Track signal name shadowing for scope awareness
@@ -2777,6 +2798,10 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             ctx.parent_is_jsx = old;
         }
         Expression::FunctionExpression(func) => {
+            // Don't let a function-expression render-callback's flag leak into
+            // nested arrows in its body (this branch doesn't register props
+            // itself, so just clear).
+            ctx.in_jsx_child_callback = false;
             let old = ctx.parent_is_jsx;
             ctx.parent_is_jsx = false;
             let shadows = if !ctx.signal_vars.is_empty() {
@@ -3210,10 +3235,20 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
     }
 
     // Otherwise just recurse — but reset parent_is_jsx since we're already
-    // inside a JSX expression container `{...}`
+    // inside a JSX expression container `{...}`.
     let old = ctx.parent_is_jsx;
     ctx.parent_is_jsx = false;
+    // Flag a DIRECT arrow/function child as a render callback so its first
+    // parameter is not registered as reactive component props — see the
+    // `in_jsx_child_callback` field doc.
+    let is_render_cb = matches!(
+        expr,
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+    );
+    let old_cb = ctx.in_jsx_child_callback;
+    ctx.in_jsx_child_callback = is_render_cb;
     walk_expression(expr, ctx);
+    ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
 }
 
