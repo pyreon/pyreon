@@ -79,6 +79,7 @@ export function connectViaWebSocket(
   let closed = false
   let connected = false
   let attempt = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   const onUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === REMOTE_ORIGIN) return
@@ -91,7 +92,11 @@ export function connectViaWebSocket(
   const scheduleReconnect = () => {
     attempt++
     const delay = Math.min(maxBackoff, 100 * 2 ** attempt)
-    setTimeout(() => {
+    // Track the timer so `disconnect()` can cancel a pending reconnect — without
+    // this the closure (and the doc reference it captures) is pinned for up to
+    // `maxBackoff` ms after disconnect (a leak; Class I — orphaned setTimeout).
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
       if (!closed) open()
     }, delay)
   }
@@ -109,11 +114,24 @@ export function connectViaWebSocket(
     ws.onmessage = (event: MessageEvent) => {
       void toBytes(event.data).then((bytes) => {
         if (closed || bytes.length === 0) return
-        const { type, payload } = decodeSyncMessage(bytes)
-        if (type === MSG_STATE_VECTOR) {
-          ws?.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(doc.yDoc, payload)))
-        } else {
-          Y.applyUpdate(doc.yDoc, payload, REMOTE_ORIGIN)
+        // Defensive: a buggy / hostile relay can send a garbage frame, and Yjs
+        // THROWS on a malformed update / state vector (even an empty one). Without
+        // this guard the throw escapes the `.then` as an UNHANDLED rejection
+        // (which can hard-crash a Node host). Drop the bad frame instead.
+        try {
+          const { type, payload } = decodeSyncMessage(bytes)
+          if (type === MSG_STATE_VECTOR) {
+            ws?.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(doc.yDoc, payload)))
+          } else {
+            Y.applyUpdate(doc.yDoc, payload, REMOTE_ORIGIN)
+          }
+        } catch (err) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn(
+              '[Pyreon] connectViaWebSocket: dropped a malformed frame from the relay:',
+              err,
+            )
+          }
         }
       })
     }
@@ -137,6 +155,10 @@ export function connectViaWebSocket(
     },
     disconnect() {
       closed = true
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
       doc.yDoc.off('update', onUpdate)
       ws?.close()
       ws = null
