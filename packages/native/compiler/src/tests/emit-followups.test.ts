@@ -162,3 +162,74 @@ describe('i18n two-arg t() — dict/map argument lowering', () => {
     expect(out).not.toContain('translator.t("x", ["a": 1])')
   })
 })
+
+describe('device-found fixes — testid queryability + Button testid', () => {
+  // These three came from the FIRST locally-green UITest iteration:
+  // the apps built, launched, and rendered, but the smokes failed on
+  // element queryability — the class of bug only a real XCUITest run
+  // can surface.
+
+  it('Swift: container testid gains .accessibilityElement(children: .contain)', () => {
+    const out = transform(
+      `
+      import { Stack, Text } from '@pyreon/primitives'
+      export function App() {
+        return <Stack data-testid="todo-app"><Text>hi</Text></Stack>
+      }
+      `,
+      { target: 'swift' },
+    ).code
+    // SwiftUI flattens plain layout containers out of the accessibility
+    // tree — an identifier on a bare VStack is INVISIBLE to XCUITest
+    // (app.otherElements["todo-app"] timed out against a perfectly
+    // rendering app). `.contain` keeps children individually queryable.
+    expect(out).toContain(
+      '.accessibilityElement(children: .contain).accessibilityIdentifier("todo-app")',
+    )
+  })
+
+  it('Swift: leaf testid does NOT gain the container semantic', () => {
+    const out = transform(
+      `
+      import { Stack, Button } from '@pyreon/primitives'
+      export function App() {
+        return <Stack><Button onPress={() => {}} data-testid="go">Go</Button></Stack>
+      }
+      `,
+      { target: 'swift' },
+    ).code
+    // A Button IS an accessibility element — adding a container
+    // semantic to it would break its tap targeting.
+    expect(out).toContain('.accessibilityIdentifier("go")')
+    expect(out).not.toContain('.accessibilityElement(children: .contain).accessibilityIdentifier("go")')
+  })
+
+  it('Swift: Button carries its data-testid (was silently dropped)', () => {
+    const out = transform(
+      `
+      import { Stack, Button } from '@pyreon/primitives'
+      export function App() {
+        return <Stack><Button onPress={() => {}} data-testid="login-submit">Continue</Button></Stack>
+      }
+      `,
+      { target: 'swift' },
+    ).code
+    // Pre-fix: label-based queries (app.buttons["Continue"]) worked,
+    // identifier-based (app.buttons["login-submit"]) timed out.
+    expect(out).toContain('Button("Continue") {')
+    expect(out).toContain('.accessibilityIdentifier("login-submit")')
+  })
+
+  it('Kotlin: Button carries its data-testid via modifier = Modifier.testTag', () => {
+    const out = transform(
+      `
+      import { Stack, Button } from '@pyreon/primitives'
+      export function App() {
+        return <Stack><Button onPress={() => {}} data-testid="login-submit">Continue</Button></Stack>
+      }
+      `,
+      { target: 'kotlin' },
+    ).code
+    expect(out).toContain('modifier = Modifier.testTag("login-submit")')
+  })
+})

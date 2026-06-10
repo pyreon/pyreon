@@ -2282,6 +2282,14 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
       .join('\n')
     result = `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }
+  // Layout modifiers INCLUDING `data-testid` → .accessibilityIdentifier.
+  // Pre-fix, Button was the one interactive primitive that dropped the
+  // testid entirely — `app.buttons["login-submit"]` timed out at device
+  // scope while label-based queries (`app.buttons["Continue"]`) worked,
+  // which is why router-demo's label-querying smoke passed and the
+  // tasks identifier-querying smoke failed.
+  const layoutModifiers = emitSwiftLayoutModifiers(e)
+  result = layoutModifiers ? `${result}${layoutModifiers}` : result
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
 }
 
@@ -2824,6 +2832,25 @@ function readStaticAttr(
 }
 
 /**
+ * Tags that emit a plain SwiftUI layout CONTAINER (VStack / HStack /
+ * ZStack / ScrollView). Used by the `data-testid` emit: containers
+ * need `.accessibilityElement(children: .contain)` for their
+ * identifier to be XCUITest-queryable. Canonical vocabulary + the
+ * legacy SwiftUI-flavored tags (still accepted per the additive
+ * migration contract).
+ */
+const SWIFT_CONTAINER_TAGS = new Set([
+  'Stack',
+  'Inline',
+  'Layer',
+  'Scroll',
+  'VStack',
+  'HStack',
+  'ZStack',
+  'ScrollView',
+])
+
+/**
  * Build the SwiftUI modifier-chain tail for the canonical layout-prop
  * subset. Returns a string that begins with `.` (modifier-call) and is
  * appended after the View constructor.
@@ -2862,8 +2889,26 @@ function emitSwiftLayoutModifiers(
   // so the same string the web e2e selects on (`getByTestId`) is also
   // reachable to XCUITest. Other `data-*` attrs are silently dropped
   // (consistent with HTML where they're untyped author data).
+  //
+  // CONTAINER views additionally need `.accessibilityElement(children:
+  // .contain)` BEFORE the identifier: SwiftUI flattens plain layout
+  // containers (VStack/HStack/ZStack/ScrollView) out of the
+  // accessibility tree, so an identifier on a bare VStack is INVISIBLE
+  // to XCUITest — `app.otherElements["todo-app"]` times out even
+  // though the app renders perfectly. This was the first real-device
+  // finding past app LAUNCH: every UITest's root-view assertion failed
+  // against a fully-working app. `.contain` (NOT `.combine`) keeps the
+  // children individually queryable — the smokes also select child
+  // buttons/fields by their own testids. Leaf views (Button/Text/
+  // Field) are accessibility elements already; adding a container
+  // semantic to them would BREAK their tap targeting, hence the
+  // tag-gated emit. Compose is unaffected (`Modifier.testTag` adds
+  // its own semantics node on any composable).
   const testid = readStaticAttr(e, 'data-testid')
   if (typeof testid === 'string') {
+    if (SWIFT_CONTAINER_TAGS.has(e.tag)) {
+      parts.push('.accessibilityElement(children: .contain)')
+    }
     parts.push(`.accessibilityIdentifier(${JSON.stringify(testid)})`)
   }
   return parts.join('')

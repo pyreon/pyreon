@@ -2007,7 +2007,17 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // shape is the `enabled = <bool>` constructor argument (inverse of
   // `disabled`, defaulting to true).
   const enabledArg = kotlinEnabledArg(e)
-  const buttonArgs = enabledArg ? `onClick = ${action}, ${enabledArg}` : `onClick = ${action}`
+  // Layout modifier chain INCLUDING `data-testid` → Modifier.testTag.
+  // Mirror of the Swift Button fix — Button was the one interactive
+  // primitive that dropped the testid (onNodeWithTag("login-submit")
+  // found nothing while the Field's tag worked).
+  const modifier = emitKotlinLayoutModifier(e)
+  const args = [
+    `onClick = ${action}`,
+    ...(enabledArg ? [enabledArg] : []),
+    ...(modifier ? [`modifier = ${modifier}`] : []),
+  ]
+  const buttonArgs = args.join(', ')
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
     return `Button(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`

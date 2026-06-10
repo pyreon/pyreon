@@ -106,7 +106,12 @@ fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null) {}
 
 @Composable
-fun Button(onClick: () -> Unit, content: @Composable () -> Unit) {
+fun Button(
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  enabled: Boolean = true,
+  content: @Composable () -> Unit,
+) {
   content()
 }
 
