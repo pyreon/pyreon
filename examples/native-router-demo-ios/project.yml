@@ -56,6 +56,7 @@ targets:
     # SPM package reference — same shape native-todomvc-ios uses for
     # its runtime deps.
     dependencies:
+      - package: PyreonRuntime
       - package: PyreonRouter
 
     info:
@@ -139,5 +140,7 @@ schemes:
 # package lives in the monorepo at packages/native/router-swift.
 # xcodegen resolves the relative path to an SPM dependency.
 packages:
+  PyreonRuntime:
+    path: ../../packages/native/runtime-swift
   PyreonRouter:
     path: ../../packages/native/router-swift

@@ -324,6 +324,19 @@ map: a computed `private var id: String { useParams(router:)["id"] ?? "" }`
 on SwiftUI (computed, not stored — it reads `@Environment`), `val id =
 useParams()["id"] ?: ""` on Compose.
 
+**Typed `params` prop** — a route component may instead declare
+`props: { params: { id: string } }` (the web router's prop-injection
+shape). PMTC synthesizes a named type per component — `UserPage` →
+`struct UserPageParam: Codable` (SwiftUI) / `data class UserPageParam`
+(Compose) — and the dispatcher **constructs** it from the matched path
+segments: `UserPage(params: UserPageParam(id: params["id"] ?? ""))` /
+`UserPage(params = UserPageParam(id = params["id"] ?: ""))`. `number` /
+`boolean` fields coerce from the string segments with safe defaults
+(`Int(...) ?? 0`, `== "true"`). If the params shape structurally matches
+a struct you declared yourself (`type RouteParams = { id: string }`),
+your name is reused instead of synthesizing. Components without a
+`params` prop are dispatched with no arguments.
+
 **Loader data** — `PyreonRouter` exposes a `loaderData` store +
 `useLoaderData<T>()`; a route's loaded data is keyed by path and read
 back, typed, by the current route. The runtime contract is landed; see the
@@ -376,9 +389,11 @@ runtime addition is ~30 LOC per target; no compiler changes.
 
 > Status: path matching, redirects, wildcard 404, **per-route guards**,
 > **nested routes**, **`useParams` destructuring**, the **loader-data
-> runtime**, **global `beforeEach` / `afterEach` guards** (#1108), and
-> the **`router.redirect()` throw-pattern** (#1109) are all **landed**.
-> Loader auto-emit and typed `useParams<T>` are planned.
+> runtime**, **global `beforeEach` / `afterEach` guards** (#1108), the
+> **`router.redirect()` throw-pattern** (#1109), and the **typed
+> `params` prop** (synthesized per-component struct/data class +
+> dispatcher construction from the matched segments) are all **landed**.
+> Loader auto-emit and a typed `useParams<T>()` hook generic are planned.
 
 ## Native data & services
 

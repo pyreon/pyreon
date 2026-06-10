@@ -41,6 +41,7 @@
       "@pyreon/state-tree",
       "@pyreon/storage",
       "@pyreon/store",
+      "@pyreon/sync",
       "@pyreon/table",
       "@pyreon/toast",
       "@pyreon/url-state",

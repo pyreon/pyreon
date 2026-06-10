@@ -25,6 +25,36 @@ import {
 } from '../reactive-devtools'
 import { signal } from '../signal'
 
+/**
+ * Wait until `path`'s mtime has been QUIET (unchanged) for `quietMs`, then
+ * return it. The post-`dispose()` contract is "at most ONE in-flight async
+ * write may still land; nothing can be scheduled after" — so a demonstrated
+ * quiet window proves the straggler has settled and the returned mtime is a
+ * safe frozen baseline. Replaces fixed-sleep drains, which raced the
+ * straggler under parallel-load CI twice with two different buffer sizes
+ * (the deadline-vs-starved-loop shape; see the ws-relay tick-counted
+ * waitFor precedent). Unbounded by design — vitest's testTimeout is the
+ * backstop, and under load the loop simply takes longer instead of failing.
+ */
+async function settleMtime(
+  fs: typeof import('node:fs/promises'),
+  path: string,
+  quietMs: number,
+): Promise<number> {
+  let last = (await fs.stat(path)).mtimeMs
+  let quietSince = Date.now()
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 25))
+    const cur = (await fs.stat(path)).mtimeMs
+    if (cur !== last) {
+      last = cur
+      quietSince = Date.now()
+    } else if (Date.now() - quietSince >= quietMs) {
+      return cur
+    }
+  }
+}
+
 let TMP_DIR: string
 
 beforeAll(() => {
@@ -192,18 +222,17 @@ describe('startLpihPolling', () => {
     // open) — the bisect test is "test runs at all without timing out",
     // which is the load-bearing behavior.
     dispose()
-    // After dispose, an in-flight async write may still be completing.
-    // Wait long enough for that to settle BEFORE the stat1 baseline,
-    // otherwise stat1 captures a stale mtime and stat2 sees the late
-    // write, racing the assertion. Slower CI runners trip this without
-    // the buffer.
+    // After dispose, ONE in-flight async write may still be completing
+    // (the timer is cleared, so nothing further can be scheduled). A fixed
+    // sleep before the baseline raced that write under parallel-load CI —
+    // twice, with two different buffer sizes. Instead, wait until the
+    // file's mtime has been demonstrably QUIET, then assert it stays
+    // frozen: once the (at most one) straggler lands, no writer exists.
     const fs = await import('node:fs/promises')
-    await new Promise((r) => setTimeout(r, 100))
-    const stat1 = await fs.stat(path)
-    // Verify no NEW writes happen post-dispose + post-flush.
-    await new Promise((r) => setTimeout(r, 200))
+    const baseline = await settleMtime(fs, path, 300)
+    await new Promise((r) => setTimeout(r, 150))
     const stat2 = await fs.stat(path)
-    expect(stat2.mtimeMs).toBe(stat1.mtimeMs)
+    expect(stat2.mtimeMs).toBe(baseline)
   })
 
   it('writes repeatedly + disposer stops it', async () => {
@@ -221,20 +250,17 @@ describe('startLpihPolling', () => {
     dispose()
     const fs = await import('node:fs/promises')
 
-    // Drain any in-flight write: a setInterval callback already
-    // scheduled at the moment we called dispose() will STILL run (it
-    // was queued on the event loop before clearInterval). So we wait
-    // long enough for one residual write to land, then snapshot, then
-    // wait again and verify no FURTHER writes — the polling really
-    // stopped. Pre-fix the test asserted `mtime unchanged at +200ms`
-    // which flaked under parallel-load CI when the in-flight write
-    // landed past the 200ms window (observed: 94ms post-dispose drift
-    // on a busy runner).
-    await new Promise((r) => setTimeout(r, 100))
-    const before = await fs.stat(path)
+    // Drain any in-flight write via the quiet-window settle (see
+    // `settleMtime`): a callback already queued at dispose() time still
+    // runs, and fixed-sleep drains raced it under parallel-load CI twice
+    // (94ms observed drift the first time; past a 100ms buffer the
+    // second). Once mtime has been quiet for a full window, the at-most-
+    // one straggler has landed and the timer is cleared — nothing can
+    // write again.
+    const before = await settleMtime(fs, path, 300)
     await new Promise((r) => setTimeout(r, 250)) // > 4 poll cycles
     const after = await fs.stat(path)
-    expect(after.mtimeMs).toBe(before.mtimeMs) // mtime stable across 250ms
+    expect(after.mtimeMs).toBe(before) // mtime frozen post-settle
     void s
   })
 })

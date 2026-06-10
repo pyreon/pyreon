@@ -168,6 +168,40 @@ export function emitKotlin(
   _componentNames = new Set(components.map((c) => c.name))
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
+  // Pre-pass: register each component's `params` prop shape so router
+  // dispatchers (which emit in a DIFFERENT component) can construct the
+  // typed data class from matchPath's Map<String, String>. Mirror of
+  // emit-swift's `_componentParamsInfo`. The name MUST match what the
+  // component's own prop emit synthesizes via kotlinType →
+  // synthesizeDataClassName — both are pure functions of the same
+  // inputs, so they agree by construction.
+  _componentParamsInfoKotlin = new Map()
+  for (const c of components) {
+    const paramsProp = c.props.find((p) => p.name === 'params')
+    if (paramsProp === undefined) continue
+    if (paramsProp.type.kind === 'object') {
+      const fields = paramsProp.type.fields
+      // Conservative: route params are flat strings — a nested
+      // object/array field can't be constructed from the dict. Fall
+      // back to the raw-dict emit (kotlinc names the mismatch).
+      const constructible = fields.every(
+        (f) =>
+          f.type.kind === 'string' ||
+          f.type.kind === 'number' ||
+          f.type.kind === 'boolean',
+      )
+      if (!constructible) {
+        _componentParamsInfoKotlin.set(c.name, 'opaque')
+        continue
+      }
+      _componentParamsInfoKotlin.set(c.name, {
+        typeName: synthesizeDataClassName(c.name, 'params'),
+        fields,
+      })
+    } else {
+      _componentParamsInfoKotlin.set(c.name, 'opaque')
+    }
+  }
   const parts: string[] = []
   if (components.length > 0 || structs.length > 0) {
     parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Int get() = size')
@@ -217,6 +251,7 @@ export function emitKotlin(
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
+  _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
   _modelInstancesKotlin = new Map()
@@ -227,6 +262,16 @@ export function emitKotlin(
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
 }
+
+/**
+ * Per-emit-run: component name → typed-`params`-prop info for router
+ * dispatcher construction. See the pre-pass in `emitKotlin` + the
+ * mirror declaration in emit-swift.ts for the full contract.
+ */
+let _componentParamsInfoKotlin: Map<
+  string,
+  { typeName: string; fields: { name: string; type: TypeIR }[] } | 'opaque'
+> = new Map()
 
 /** Map of useStoreName → storeId for Kotlin emit chain rewriting. */
 let _storeHooksKotlin: Map<string, string> = new Map()
@@ -3095,13 +3140,21 @@ function emitKotlinRouteDispatch(
       // re-call inside the body to capture params (the matchPath helper
       // is pure + cheap; double-call is fine. Alternative: `also` block
       // pattern would be DRYer but kotlinc-stub-incompatible.)
+      //
+      // When the target component declares a typed `params` prop, the
+      // synthesized data class is constructed from the dict — a raw-Map
+      // pass where `UserPageParam` is expected is a kotlinc type error
+      // (the bug that kept native-router-demo-android red).
+      const inv = kotlinRouteParamsInvocation(target.component, indent + 4)
       lines.push(
         `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> {`,
       )
-      lines.push(
-        `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) ?: emptyMap()`,
-      )
-      lines.push(`${innerPad}  ${guardWrap(route, `${componentExpr}(params = params)`)}`)
+      if (inv.usesParams) {
+        lines.push(
+          `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) ?: emptyMap()`,
+        )
+      }
+      lines.push(`${innerPad}  ${guardWrap(route, inv.call)}`)
       lines.push(`${innerPad}}`)
     } else {
       // Literal route — direct == comparison.
@@ -3120,6 +3173,44 @@ function emitKotlinRouteDispatch(
   lines.push(`${innerPad}else -> ${fallback}`)
   lines.push(`${pad}}`)
   return lines.join('\n')
+}
+
+/**
+ * Per-field coercion from matchPath's `Map<String, String>` to the
+ * component's typed `params` field. Mirror of emit-swift's
+ * `swiftParamFieldExpr` — route params are path segments (strings on
+ * the wire); number/boolean fields coerce with safe defaults.
+ */
+function kotlinParamFieldExpr(f: { name: string; type: TypeIR }): string {
+  const read = `params[${JSON.stringify(f.name)}] ?: ""`
+  if (f.type.kind === 'number') return `(${read}).toIntOrNull() ?: 0`
+  if (f.type.kind === 'boolean') return `(${read}) == "true"`
+  return read
+}
+
+/**
+ * Build the invocation for a param-bearing route's target component.
+ * Mirror of emit-swift's `swiftRouteParamsInvocation` — see its doc
+ * comment for the three shapes.
+ */
+function kotlinRouteParamsInvocation(
+  component: ExprIR,
+  indent: number,
+): { call: string; usesParams: boolean } {
+  const expr = emitKotlinExpr(component, indent)
+  if (component.kind === 'identifier') {
+    const info = _componentParamsInfoKotlin.get(component.name)
+    if (info === undefined && _componentNames.has(component.name)) {
+      return { call: `${expr}()`, usesParams: false }
+    }
+    if (info !== undefined && info !== 'opaque') {
+      const args = info.fields
+        .map((f) => `${kotlinIdent(f.name)} = ${kotlinParamFieldExpr(f)}`)
+        .join(', ')
+      return { call: `${expr}(params = ${info.typeName}(${args}))`, usesParams: true }
+    }
+  }
+  return { call: `${expr}(params = params)`, usesParams: true }
 }
 
 /**
@@ -3176,16 +3267,22 @@ function emitKotlinNestedRouteDispatch(
     const isLeafLayout =
       entry.component.kind === 'identifier' && _layoutComponentNames.has(entry.component.name)
     if (entry.isPattern) {
-      const leafCall = isLeafLayout
-        ? emitKotlinLayoutAwareInvocation(entry.component, indent + 4)
-        : `${emitKotlinExpr(entry.component, indent + 4)}(params = params)`
+      // Same typed-`params` construction contract as the flat dispatch.
+      const inv = isLeafLayout
+        ? {
+            call: emitKotlinLayoutAwareInvocation(entry.component, indent + 4),
+            usesParams: false,
+          }
+        : kotlinRouteParamsInvocation(entry.component, indent + 4)
       lines.push(
         `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) != null -> {`,
       )
-      lines.push(
-        `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) ?: emptyMap()`,
-      )
-      lines.push(`${innerPad}  ${guardWrap(entry.guard, wrap(entry.layoutChain, leafCall))}`)
+      if (inv.usesParams) {
+        lines.push(
+          `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) ?: emptyMap()`,
+        )
+      }
+      lines.push(`${innerPad}  ${guardWrap(entry.guard, wrap(entry.layoutChain, inv.call))}`)
       lines.push(`${innerPad}}`)
     } else {
       const render = wrap(
@@ -3264,8 +3361,28 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   return `${tag} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * Mirror of emit-swift's `swiftExprProducesView` — see its doc comment.
+ * On Kotlin the unwrapped bug is WORSE than Swift's type error: a bare
+ * String expression statement in a Composable lambda COMPILES and
+ * silently renders nothing.
+ */
+function kotlinExprProducesView(e: ExprIR): boolean {
+  if (e.kind === 'jsx-element') return true
+  if (e.kind === 'ternary') {
+    return kotlinExprProducesView(e.then) || kotlinExprProducesView(e.otherwise)
+  }
+  if (e.kind === 'logical') return kotlinExprProducesView(e.right)
+  return false
+}
+
 function emitKotlinChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(text = ${JSON.stringify(c.value)})`
+  if (!kotlinExprProducesView(c.expr)) {
+    // Value expression child of a container — wrap in Text string-
+    // interpolation, the same shape `<Text>{expr}</Text>` emits.
+    return `Text(text = "\${${emitKotlinExpr(c.expr, indent)}}")`
+  }
   return emitKotlinExpr(c.expr, indent)
 }
 

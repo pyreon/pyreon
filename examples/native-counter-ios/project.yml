@@ -29,6 +29,14 @@ options:
   deploymentTarget:
     iOS: '17.0'
 
+# Local SPM package references — the PMTC emit header unconditionally
+# imports `PyreonRuntime` and `PyreonRouter` (native-device wiring fix).
+packages:
+  PyreonRuntime:
+    path: ../../packages/native/runtime-swift
+  PyreonRouter:
+    path: ../../packages/native/router-swift
+
 # Pre-build script — runs the Pyreon compile loop BEFORE Swift
 # compilation. Without this, you'd have to remember to run
 # `./scripts/build.sh` manually before every Xcode build. The script
@@ -69,6 +77,11 @@ targets:
         # build (it's gitignored). xcodegen tolerates the missing dir;
         # the preBuildScript creates it.
         optional: true
+
+    # Link the local SPM packages the generated Swift imports.
+    dependencies:
+      - package: PyreonRuntime
+      - package: PyreonRouter
 
     # Info.plist — xcodegen regenerates this from the properties below.
     # Listing all properties EXPLICITLY rather than letting xcodegen merge

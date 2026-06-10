@@ -575,6 +575,39 @@ fun useParams(): Map<String, String> = emptyMap()
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null
 
+// PyreonRouter + RouterProvider — the router INSTANCE surface PMTC
+// emits when source code uses \`createRouter({ routes })\` +
+// \`<RouterProvider router={router}>\`:
+//
+//   val router = remember { PyreonRouter() }
+//   RouterProvider(router) { ...when-dispatch on router.currentPath... }
+//
+// Real impls live in @pyreon/native-router-kotlin (PyreonRouter.kt +
+// RouterProvider.kt) — the stub mirrors the exact members the emit
+// touches: \`currentPath\` (read by the when-dispatch),
+// \`companion.matchPath\` (param-bearing branches; returns
+// Map<String, String>? so the dispatcher's \`?: emptyMap()\` + typed-
+// param construction typecheck), and the (router, content) Composable
+// provider shape. Added when the REWRITTEN showcase-tasks fixture
+// joined this loop — the prior coverage (router-hooks.tsx) only
+// exercised the HOOK surface, so the instance-level symbols were
+// never stubbed.
+class PyreonRouter {
+  var currentPath: String = "/"
+  fun push(path: String) { currentPath = path }
+  companion object {
+    fun matchPath(path: String, pattern: String): Map<String, String>? {
+      if (path == pattern) return emptyMap()
+      return null
+    }
+  }
+}
+
+@Composable
+fun RouterProvider(router: PyreonRouter, content: @Composable () -> Unit) {
+  content()
+}
+
 // PyreonI18n — Gap 4 PR-3 (Strategy-B port for @pyreon/i18n/core, v1).
 // Real impl in @pyreon/native-runtime-kotlin's PyreonI18n.kt.
 class PyreonI18n(

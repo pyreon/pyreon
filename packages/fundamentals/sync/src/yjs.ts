@@ -16,3 +16,10 @@ export {
 export { type YjsPersistence, persistViaIndexedDB } from './crdt/yjs-persistence'
 export { type SyncedText, syncedText } from './crdt/yjs-text'
 export { type SyncedList, syncedList } from './crdt/yjs-list'
+export {
+  type PeerState,
+  type SyncedAwareness,
+  getDocAwareness,
+  peekDocAwareness,
+  syncedAwareness,
+} from './crdt/yjs-awareness'

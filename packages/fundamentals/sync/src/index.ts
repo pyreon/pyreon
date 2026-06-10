@@ -11,10 +11,11 @@ export type { CrdtAdapter, CrdtDoc, CrdtMap, CrdtOrigin } from './crdt/types'
 export { LOCAL_ORIGIN, REMOTE_ORIGIN } from './crdt/types'
 
 // ─── In-memory adapter (tests / no-engine usage) ────────────────────────────
-// The only adapter that ships today. Real engine adapters (raw Yjs, a turnkey
-// platform) + persistence + transport + relay land in follow-up PRs — see the
-// README phase roadmap. This in-memory adapter is also how consumers unit-test
-// their own synced stores without standing up an engine.
+// The dependency-free adapter for unit-testing synced stores without standing
+// up a real engine. The production engine — raw Yjs + IndexedDB persistence +
+// cross-tab/WebSocket transport + collaborative text/lists — lives behind the
+// `@pyreon/sync/yjs` subpath (keeping `yjs` out of this core entry); the relay
+// server is at `@pyreon/sync/server`. See the README phase roadmap.
 export {
   connectFakeDocs,
   FakeCrdtAdapter,

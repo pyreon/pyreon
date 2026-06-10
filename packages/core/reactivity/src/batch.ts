@@ -72,90 +72,125 @@ export function batch(fn: () => void): void {
       // by flushing subscribers enqueue into the same queues (dedup against
       // already-queued entries) instead of firing inline.
       batchDepth = 1
-      try {
-        // Outer loop: alternate between tier-1 (recomputes) and tier-2
-        // (effects) until both queues are empty. An effect can write a
-        // signal whose subscribers include lazy `computed.recompute`s — those
-        // get enqueued into pendingRecomputes mid-effect, and we need to
-        // drain them BEFORE the next effect pass so downstream effects see
-        // the propagated dirty flag. MAX_PASSES caps the OUTER loop —
-        // counts effect-tier passes only since recomputes converge by
-        // `equals` short-circuit and don't infinite-loop in practice.
-        let effectPass = 0
-        while (pendingRecomputes.size > 0 || pendingEffects.size > 0) {
-          // Tier 1: drain all recomputes via cascading iteration. Set
-          // semantics visit entries added during iteration; Set.add
-          // idempotency dedupes diamond cascades. Recomputes converge by
-          // `equals` short-circuit (computedWithEquals returns early when
-          // value is unchanged) and computedLazy's `if (dirty) return`
-          // guard prevents re-fire.
-          for (const r of pendingRecomputes) r()
-          pendingRecomputes.clear()
+      drainQueuesLocked()
+    }
+  }
+}
 
-          // Tier 2: drain ONE pass of effects in multi-pass mode. Within-
-          // pass dedup preserved by Set.add idempotency on entries not yet
-          // visited this pass. Cross-pass re-fire enabled by routing
-          // already-visited entries to `_nextEffectPass` (handled in
-          // `enqueuePendingNotification`). After the pass, loop back to
-          // tier 1 to drain any recomputes the effects enqueued.
-          if (pendingEffects.size > 0) {
-            if (++effectPass > MAX_PASSES) {
-              if (process.env.NODE_ENV !== 'production') {
-                // Surface labels of dropped effects when available — helps
-                // identify the offending effect in a real app. Falls back to
-                // bare count for anonymous effects.
-                const droppedCount = pendingEffects.size
-                const labels: string[] = []
-                for (const notify of pendingEffects) {
-                  const label = (notify as { _label?: string })._label
-                  if (label) labels.push(label)
-                  if (labels.length >= 5) break
-                }
-                const labelHint = labels.length
-                  ? ` Sample labels: ${labels.join(', ')}${droppedCount > labels.length ? `, …${droppedCount - labels.length} more` : ''}.`
-                  : ''
-                // oxlint-disable-next-line no-console
-                console.warn(
-                  '[pyreon] batch effect flush exceeded MAX_PASSES (32) — possible infinite re-enqueue loop. ' +
-                    `${droppedCount} pending effects dropped.${labelHint} ` +
-                    'Common cause: an effect that writes to a signal it also reads, without a guard. ' +
-                    'See packages/core/reactivity/src/batch.ts for the multi-pass flush contract.',
-                )
-              }
-              // Drop the queue so subsequent batches start clean — without
-              // this, the next batch would re-encounter the offending effect
-              // immediately on its first pass and trip MAX_PASSES instantly,
-              // making the original error harder to diagnose.
-              pendingEffects.clear()
-              _nextEffectPass.clear()
-              break
-            }
-            _visitedThisPass = new Set<() => void>()
+/**
+ * Open an inline batch window WITHOUT the per-call closure `batch(fn)` costs.
+ * The caller delivers its own notifications directly (signal.set's unbatched
+ * single-write fast path), then MUST call {@link closeInlineBatch} in a
+ * `finally`. Cascade writes emitted by the directly-invoked subscriber see
+ * `isBatching() === true` and enqueue into the shared queues, which
+ * `closeInlineBatch` drains with the exact same two-tier machinery as
+ * `batch()` — semantics (tier ordering, diamond dedup, multi-pass re-fire,
+ * MAX_PASSES) are identical by construction because the drain is the SAME
+ * function.
+ *
+ * @internal Used only by `@pyreon/reactivity`'s signal write path.
+ */
+export function openInlineBatch(): void {
+  batchDepth++
+}
+
+/** @internal Pair of {@link openInlineBatch}. Drains cascades, resets depth. */
+export function closeInlineBatch(): void {
+  batchDepth--
+  if (batchDepth === 0 && (pendingRecomputes.size > 0 || pendingEffects.size > 0)) {
+    batchDepth = 1
+    drainQueuesLocked()
+  }
+}
+
+/**
+ * Drain both queues to empty. Caller must hold `batchDepth = 1` (so cascade
+ * notifications enqueue instead of dispatching inline); this function resets
+ * `batchDepth` to 0 in its `finally` regardless of outcome.
+ */
+function drainQueuesLocked(): void {
+  try {
+    // Outer loop: alternate between tier-1 (recomputes) and tier-2
+    // (effects) until both queues are empty. An effect can write a
+    // signal whose subscribers include lazy `computed.recompute`s — those
+    // get enqueued into pendingRecomputes mid-effect, and we need to
+    // drain them BEFORE the next effect pass so downstream effects see
+    // the propagated dirty flag. MAX_PASSES caps the OUTER loop —
+    // counts effect-tier passes only since recomputes converge by
+    // `equals` short-circuit and don't infinite-loop in practice.
+    let effectPass = 0
+    while (pendingRecomputes.size > 0 || pendingEffects.size > 0) {
+      // Tier 1: drain all recomputes via cascading iteration. Set
+      // semantics visit entries added during iteration; Set.add
+      // idempotency dedupes diamond cascades. Recomputes converge by
+      // `equals` short-circuit (computedWithEquals returns early when
+      // value is unchanged) and computedLazy's `if (dirty) return`
+      // guard prevents re-fire.
+      for (const r of pendingRecomputes) r()
+      pendingRecomputes.clear()
+
+      // Tier 2: drain ONE pass of effects in multi-pass mode. Within-
+      // pass dedup preserved by Set.add idempotency on entries not yet
+      // visited this pass. Cross-pass re-fire enabled by routing
+      // already-visited entries to `_nextEffectPass` (handled in
+      // `enqueuePendingNotification`). After the pass, loop back to
+      // tier 1 to drain any recomputes the effects enqueued.
+      if (pendingEffects.size > 0) {
+        if (++effectPass > MAX_PASSES) {
+          if (process.env.NODE_ENV !== 'production') {
+            // Surface labels of dropped effects when available — helps
+            // identify the offending effect in a real app. Falls back to
+            // bare count for anonymous effects.
+            const droppedCount = pendingEffects.size
+            const labels: string[] = []
             for (const notify of pendingEffects) {
-              _visitedThisPass.add(notify)
-              notify()
+              const label = (notify as { _label?: string })._label
+              if (label) labels.push(label)
+              if (labels.length >= 5) break
             }
-            // Promote next-pass entries to pending for the next iteration.
-            pendingEffects.clear()
-            for (const next of _nextEffectPass) pendingEffects.add(next)
-            _nextEffectPass.clear()
+            const labelHint = labels.length
+              ? ` Sample labels: ${labels.join(', ')}${droppedCount > labels.length ? `, …${droppedCount - labels.length} more` : ''}.`
+              : ''
+            // oxlint-disable-next-line no-console
+            console.warn(
+              '[pyreon] batch effect flush exceeded MAX_PASSES (32) — possible infinite re-enqueue loop. ' +
+                `${droppedCount} pending effects dropped.${labelHint} ` +
+                'Common cause: an effect that writes to a signal it also reads, without a guard. ' +
+                'See packages/core/reactivity/src/batch.ts for the multi-pass flush contract.',
+            )
           }
+          // Drop the queue so subsequent batches start clean — without
+          // this, the next batch would re-encounter the offending effect
+          // immediately on its first pass and trip MAX_PASSES instantly,
+          // making the original error harder to diagnose.
+          pendingEffects.clear()
+          _nextEffectPass.clear()
+          break
         }
-      } finally {
-        // Clear ALWAYS — even if a notify threw mid-iteration. Without
-        // this, the unflushed remainder leaks into the next batch and
-        // refires. Effects wrap their callbacks in try/catch internally
-        // so this is rarely reachable in practice, but raw signal
-        // subscribers (signal.subscribe) and lower-level consumers can
-        // throw straight through, and a future refactor that swallows
-        // less aggressively would silently regress without this guard.
-        pendingRecomputes.clear()
+        _visitedThisPass = new Set<() => void>()
+        for (const notify of pendingEffects) {
+          _visitedThisPass.add(notify)
+          notify()
+        }
+        // Promote next-pass entries to pending for the next iteration.
         pendingEffects.clear()
+        for (const next of _nextEffectPass) pendingEffects.add(next)
         _nextEffectPass.clear()
-        _visitedThisPass = null
-        batchDepth = 0
       }
     }
+  } finally {
+    // Clear ALWAYS — even if a notify threw mid-iteration. Without
+    // this, the unflushed remainder leaks into the next batch and
+    // refires. Effects wrap their callbacks in try/catch internally
+    // so this is rarely reachable in practice, but raw signal
+    // subscribers (signal.subscribe) and lower-level consumers can
+    // throw straight through, and a future refactor that swallows
+    // less aggressively would silently regress without this guard.
+    pendingRecomputes.clear()
+    pendingEffects.clear()
+    _nextEffectPass.clear()
+    _visitedThisPass = null
+    batchDepth = 0
   }
 }
 

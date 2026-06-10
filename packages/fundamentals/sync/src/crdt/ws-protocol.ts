@@ -7,6 +7,13 @@
 export const MSG_STATE_VECTOR = 0
 /** "Here is an update (a diff, or a live edit)." */
 export const MSG_UPDATE = 1
+/**
+ * "Here is an awareness update (ephemeral presence — who's here + their cursor)."
+ * A SEPARATE channel from doc updates: the relay BROADCASTS these (it never
+ * applies them to the room doc), and they are never persisted. Payload is a
+ * `y-protocols/awareness` `encodeAwarenessUpdate(...)`.
+ */
+export const MSG_AWARENESS = 2
 
 /**
  * Frame a sync message: `[type, ...payload]`. Returns a fresh `ArrayBuffer`-backed

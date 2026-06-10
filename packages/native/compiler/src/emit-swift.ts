@@ -87,6 +87,26 @@ let _componentNames: Set<string> = new Set()
  * we keep the first-seen struct (alphabetical via Map insertion).
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/**
+ * Per-emit-run: component name → typed-`params`-prop info for router
+ * dispatcher construction. Populated by a PRE-PASS in `emitSwift` (the
+ * dispatcher may emit before/after the target component's own emit, so
+ * the registry can't live on a per-component ctx). Mirrors emit-kotlin's
+ * `synthesizedDataClasses` design.
+ *
+ *   - `{ typeName, fields }` — `params` prop is an anonymous object type
+ *     (or matches a declared struct); the dispatcher constructs the typed
+ *     value from `matchPath`'s `[String: String]` dict.
+ *   - `'opaque'` — `params` prop declared with a non-object type; the
+ *     dispatcher passes the raw dict (legacy emit).
+ *   - absent — component has NO `params` prop; the dispatcher calls the
+ *     component with no `params:` argument (passing one would be a
+ *     compile error on both targets).
+ */
+let _componentParamsInfo: Map<
+  string,
+  { typeName: string; fields: { name: string; type: TypeIR }[] } | 'opaque'
+> = new Map()
 /** Per-component: signal/computed name → enum-type-name when typed as one. */
 let _signalEnumTypes: Map<string, string> = new Map()
 /** Set when emitting a signal initial value that's an enum-typed signal. */
@@ -242,6 +262,38 @@ export function emitSwift(
   }
   _componentNames = new Set(components.map((c) => c.name))
   _layoutComponentNames = collectLayoutComponentNames(components)
+  // Pre-pass: register each component's `params` prop shape so router
+  // dispatchers (which may emit in a DIFFERENT component) can construct
+  // the typed value from matchPath's [String: String] dict. Runs after
+  // _structFieldsToName so a declared-struct structural match resolves
+  // to the same name the prop-type emit will use.
+  _componentParamsInfo = new Map()
+  for (const c of components) {
+    const paramsProp = c.props.find((p) => p.name === 'params')
+    if (paramsProp === undefined) continue
+    if (paramsProp.type.kind === 'object') {
+      const fields = paramsProp.type.fields
+      // Conservative: route params are flat strings — a nested
+      // object/array field can't be constructed from the dict. Fall
+      // back to the raw-dict emit (swiftc names the mismatch).
+      const constructible = fields.every(
+        (f) =>
+          f.type.kind === 'string' ||
+          f.type.kind === 'number' ||
+          f.type.kind === 'boolean',
+      )
+      if (!constructible) {
+        _componentParamsInfo.set(c.name, 'opaque')
+        continue
+      }
+      const key = fields.map((f) => f.name).sort().join(',')
+      const typeName =
+        _structFieldsToName.get(key) ?? synthesizeSwiftTypeName(c.name, 'params')
+      _componentParamsInfo.set(c.name, { typeName, fields })
+    } else {
+      _componentParamsInfo.set(c.name, 'opaque')
+    }
+  }
   // Gap 4 v1: track store-hook names → store id so the use-site chain
   // rewriter (`<hook>().store.<X>`) can map to the right singleton class.
   _storeHooks = new Map(stores.map((s) => [s.hookName, s.storeId]))
@@ -292,6 +344,7 @@ export function emitSwift(
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
+  _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
   _modelInstances = new Map()
@@ -976,17 +1029,30 @@ function emitSwiftComponent(c: ComponentIR): string {
   // as a generic struct with a `@ViewBuilder content` slot; its internal
   // `<RouterView />` becomes `content()` so the matched child fills it.
   const isLayout = _layoutComponentNames.has(c.name)
+  // Props become `let X: T` stored properties on the SwiftUI View struct.
+  // SwiftUI canonical pattern — parent code constructs `Card(title: ...)`,
+  // props are immutable per instance.
+  //
+  // Anonymous object types in props synthesize named structs (mirrors
+  // emit-kotlin's data-class synthesis). The prop lines are computed
+  // BEFORE the struct header is pushed so the synthesized struct
+  // declarations land ahead of the component struct in the output —
+  // Swift doesn't require that ordering at file scope, but it keeps the
+  // file readable and byte-mirrors the Kotlin emit's layout.
+  const synth: SwiftSynthCtx = { componentName: c.name, structs: [] }
+  const propLines = c.props.map(
+    (p) => `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`,
+  )
+  for (const s of synth.structs) {
+    lines.push(emitSwiftStruct(s))
+    lines.push('')
+  }
   if (isLayout) {
     lines.push(`struct ${swiftIdent(c.name)}<Content: View>: View {`)
   } else {
     lines.push(`struct ${swiftIdent(c.name)}: View {`)
   }
-  // Props become `let X: T` stored properties on the SwiftUI View struct.
-  // SwiftUI canonical pattern — parent code constructs `Card(title: ...)`,
-  // props are immutable per instance.
-  for (const p of c.props) {
-    lines.push(`  let ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
-  }
+  lines.push(...propLines)
   if (isLayout) {
     lines.push(`  @ViewBuilder var content: () -> Content`)
   }
@@ -1426,7 +1492,34 @@ function isAppStorageNativeType(t: TypeIR): boolean {
   }
 }
 
-export function swiftType(t: TypeIR): string {
+/**
+ * Synthesis context for anonymous-object prop types — mirrors
+ * emit-kotlin's `KotlinCtx.synthesizedDataClasses`. When `swiftType`
+ * hits an `object` TypeIR with a ctx present, it registers a named
+ * struct (emitted before the component) instead of degrading to a
+ * tuple. Tuples were the original placeholder and are BROKEN for the
+ * real shapes: a single-field labeled tuple `(id: String)` is a Swift
+ * PARSE error, and key paths (`ForEach(items, id: \.id)`) cannot
+ * reference tuple elements at all.
+ */
+interface SwiftSynthCtx {
+  componentName: string
+  structs: StructIR[]
+}
+
+/**
+ * `UserPage` + `params` → `UserPageParam`; `TasksListPage` + `tasks` →
+ * `TasksListPageTask`. EXACT mirror of emit-kotlin's
+ * `synthesizeDataClassName` so the two targets agree on names —
+ * cross-target symmetry is load-bearing for docs + tests.
+ */
+function synthesizeSwiftTypeName(componentName: string, declName?: string): string {
+  if (!declName) return `${componentName}Data`
+  const stripped = declName.endsWith('s') ? declName.slice(0, -1) : declName
+  return componentName + stripped.charAt(0).toUpperCase() + stripped.slice(1)
+}
+
+export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): string {
   switch (t.kind) {
     case 'number':
       return 'Int'
@@ -1435,10 +1528,29 @@ export function swiftType(t: TypeIR): string {
     case 'boolean':
       return 'Bool'
     case 'array':
-      return `[${swiftType(t.element)}]`
+      return `[${swiftType(t.element, synth, declName)}]`
     case 'object': {
-      // Anonymous structs aren't expressible inline in Swift; emit a
-      // tuple-ish placeholder. Real impl emits a named struct + uses it.
+      // Structural match against a DECLARED struct first (same lookup
+      // the object-literal expression emit uses) so a prop typed
+      // `{ id: number; text: string; done: boolean }` resolves to the
+      // user's own `Todo` struct when one exists — prop type and
+      // literal construction then agree on one nominal type.
+      const key = t.fields.map((f) => f.name).sort().join(',')
+      const declared = _structFieldsToName.get(key)
+      if (declared !== undefined) return declared
+      if (synth !== undefined) {
+        const name = synthesizeSwiftTypeName(synth.componentName, declName)
+        if (!synth.structs.some((s) => s.name === name)) {
+          synth.structs.push({ name, fields: t.fields })
+        }
+        return name
+      }
+      // No synthesis context (legacy positions). A single-field labeled
+      // tuple is ILLEGAL Swift ("cannot create a single-element tuple
+      // with an element label") — degrade to the bare field type so the
+      // emit at least parses; member access on it won't typecheck, which
+      // swiftc reports at the use site.
+      if (t.fields.length === 1) return swiftType(t.fields[0]!.type)
       const fields = t.fields.map((f) => `${f.name}: ${swiftType(f.type)}`).join(', ')
       return `(${fields})`
     }
@@ -1456,14 +1568,18 @@ export function swiftType(t: TypeIR): string {
       // `Foo` → `Foo`; `Array<T>` → `[T]`; `Promise<T>` → emit a
       // sentinel that compiles in Swift (the actual async lowering
       // happens in PR 5e). Other typeRefs pass through verbatim.
-      if (t.name === 'Array' && t.args.length === 1) return `[${swiftType(t.args[0]!)}]`
+      if (t.name === 'Array' && t.args.length === 1) {
+        return `[${swiftType(t.args[0]!, synth, declName)}]`
+      }
       if (t.name === 'Promise' && t.args.length === 1) {
         // Promise<T> → Task<T, Error> on Swift. For Phase 0 we emit
         // `Task<T, Error>` and document the limitation; PR 5e refines.
-        return `Task<${swiftType(t.args[0]!)}, Error>`
+        return `Task<${swiftType(t.args[0]!, synth, declName)}, Error>`
       }
       if (t.args.length === 0) return t.name
-      return `${t.name}<${t.args.map(swiftType).join(', ')}>`
+      // Explicit lambda — point-free `.map(swiftType)` would pass the
+      // array index into the `synth` parameter slot.
+      return `${t.name}<${t.args.map((a) => swiftType(a, synth, declName)).join(', ')}>`
     }
     case 'function': {
       // Swift function types: `(P1, P2) -> R`. Parameter NAMES from
@@ -3369,6 +3485,51 @@ function pickHomeRoute(
 }
 
 /**
+ * Per-field coercion from matchPath's `[String: String]` dict to the
+ * component's typed `params` field. Route params are path segments —
+ * always strings on the wire; number/boolean fields coerce with safe
+ * defaults (a malformed segment renders the zero value rather than
+ * crashing the dispatch).
+ */
+function swiftParamFieldExpr(f: { name: string; type: TypeIR }): string {
+  const read = `params[${JSON.stringify(f.name)}] ?? ""`
+  if (f.type.kind === 'number') return `Int(${read}) ?? 0`
+  if (f.type.kind === 'boolean') return `(${read}) == "true"`
+  return read
+}
+
+/**
+ * Build the invocation for a param-bearing route's target component.
+ * Three shapes, driven by the `_componentParamsInfo` pre-pass:
+ *
+ *   - typed `params` prop → construct the synthesized struct from the
+ *     matched dict: `UserPage(params: UserPageParam(id: params["id"] ?? ""))`
+ *   - NO `params` prop (component visible in-file) → `UserPage()` and
+ *     `usesParams: false` so the branch skips the dict binding
+ *   - opaque `params` type / component not visible (non-identifier
+ *     expression) → legacy raw-dict pass `UserPage(params: params)`
+ */
+function swiftRouteParamsInvocation(
+  component: ExprIR,
+  indent: number,
+): { call: string; usesParams: boolean } {
+  const expr = emitSwiftExpr(component, indent)
+  if (component.kind === 'identifier') {
+    const info = _componentParamsInfo.get(component.name)
+    if (info === undefined && _componentNames.has(component.name)) {
+      return { call: `${expr}()`, usesParams: false }
+    }
+    if (info !== undefined && info !== 'opaque') {
+      const args = info.fields
+        .map((f) => `${swiftIdent(f.name)}: ${swiftParamFieldExpr(f)}`)
+        .join(', ')
+      return { call: `${expr}(params: ${info.typeName}(${args}))`, usesParams: true }
+    }
+  }
+  return { call: `${expr}(params: params)`, usesParams: true }
+}
+
+/**
  * C5.2 — emit a `.navigationDestination(for: String.self) { path in ... }`
  * modifier body for the given routes. Literal paths produce direct
  * comparisons; pattern paths (`:id`) route through `PyreonRouter.matchPath`.
@@ -3439,13 +3600,28 @@ function emitSwiftNavigationDestination(
     const isPattern = route.path.includes(':')
     if (isPattern) {
       // Param-bearing route — runtime matchPath helper returns the
-      // params dict OR nil. The component receives `params: [String: String]`.
+      // params dict OR nil. When the target component declares a typed
+      // `params` prop (`props: { params: { id: string } }`), construct
+      // the synthesized struct from the dict; a raw-dict pass would be
+      // a type mismatch (and the old tuple type didn't even parse).
       const keyword = firstBranch ? 'if' : 'else if'
-      branches.push(
-        `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) {`,
-        ...wrapGuard(route, `${componentExpr}(params: params)`),
-        `${pad}}`,
-      )
+      const inv = swiftRouteParamsInvocation(target.component, indent + 2)
+      if (inv.usesParams) {
+        branches.push(
+          `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) {`,
+          ...wrapGuard(route, inv.call),
+          `${pad}}`,
+        )
+      } else {
+        // Component has no `params` prop — don't bind the dict (an
+        // unused `params` is a swiftc warning the validate gate treats
+        // as noise; `!= nil` keeps the branch warning-free).
+        branches.push(
+          `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) != nil {`,
+          ...wrapGuard(route, inv.call),
+          `${pad}}`,
+        )
+      }
     } else {
       // Literal route — direct path comparison.
       const keyword = firstBranch ? 'if' : 'else if'
@@ -3540,14 +3716,22 @@ function emitSwiftNestedNavigationDestination(
     const isLeafLayout =
       entry.component.kind === 'identifier' && _layoutComponentNames.has(entry.component.name)
     if (entry.isPattern) {
-      // A param-bearing leaf passes the matched params; a param-bearing layout
+      // A param-bearing leaf passes the matched params (typed-struct
+      // construction when the component declares a typed `params` prop —
+      // same contract as the flat dispatch); a param-bearing layout
       // index (rare; flatten bails nested params) falls back to an empty slot.
-      const leafCall = isLeafLayout
-        ? emitSwiftLayoutAwareInvocation(entry.component, indent + 2)
-        : `${emitSwiftExpr(entry.component, indent + 2)}(params: params)`
-      const render = wrap(entry.layoutChain, leafCall)
+      const inv = isLeafLayout
+        ? {
+            call: emitSwiftLayoutAwareInvocation(entry.component, indent + 2),
+            usesParams: false,
+          }
+        : swiftRouteParamsInvocation(entry.component, indent + 2)
+      const render = wrap(entry.layoutChain, inv.call)
+      const condition = inv.usesParams
+        ? `${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(entry.path)}) {`
+        : `${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(entry.path)}) != nil {`
       branches.push(
-        `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(entry.path)}) {`,
+        `${pad}${condition}`,
         ...wrapGuardLines(entry.guard, render, denyFallback, indent),
         `${pad}}`,
       )
@@ -3683,8 +3867,32 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   return `${tag} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * Does this expression produce a VIEW (vs a plain value)? Drives the
+ * Text-wrap decision in `emitSwiftChild`: a bare value expression
+ * inside a ViewBuilder is a swiftc type error ("String does not
+ * conform to View"), and the Kotlin mirror is WORSE — a bare String
+ * expression statement in a Composable lambda compiles and silently
+ * renders nothing. Ternary / logical recurse so `{cond ? <A/> : <B/>}`
+ * and `{cond && <X/>}` keep their raw view emit.
+ */
+function swiftExprProducesView(e: ExprIR): boolean {
+  if (e.kind === 'jsx-element') return true
+  if (e.kind === 'ternary') {
+    return swiftExprProducesView(e.then) || swiftExprProducesView(e.otherwise)
+  }
+  if (e.kind === 'logical') return swiftExprProducesView(e.right)
+  return false
+}
+
 function emitSwiftChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(${JSON.stringify(c.value)})`
+  if (!swiftExprProducesView(c.expr)) {
+    // Value expression child of a container (`<Button>{t.done ? 'done'
+    // : 'todo'}</Button>`, `<Stack>{count}</Stack>`) — wrap in Text
+    // string-interpolation, the same shape `<Text>{expr}</Text>` emits.
+    return `Text("\\(${emitSwiftExpr(c.expr, indent)})")`
+  }
   return emitSwiftExpr(c.expr, indent)
 }
 

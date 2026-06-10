@@ -1,5 +1,11 @@
 import * as Y from 'yjs'
+import {
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+  removeAwarenessStates,
+} from 'y-protocols/awareness'
 import { REMOTE_ORIGIN } from './types'
+import { peekDocAwareness } from './yjs-awareness'
 import type { YjsCrdtDoc } from './yjs-adapter'
 
 /**
@@ -56,6 +62,14 @@ export function connectYDocs(a: YjsCrdtDoc, b: YjsCrdtDoc): { disconnect: () => 
 type BcMessage =
   | { kind: 'sv'; sv: Uint8Array } // state vector — "send me what I'm missing"
   | { kind: 'update'; update: Uint8Array } // a diff or a live update
+  | { kind: 'awareness'; update: Uint8Array } // ephemeral presence (who's here + cursor)
+
+/** The `{ added, updated, removed }` clientId lists a y-protocols awareness event carries. */
+interface AwarenessChange {
+  added: number[]
+  updated: number[]
+  removed: number[]
+}
 
 /**
  * Sync a {@link YjsCrdtDoc} across same-origin browsing contexts (tabs / windows)
@@ -86,6 +100,20 @@ export function connectViaBroadcastChannel(
   }
   doc.yDoc.on('update', onUpdate)
 
+  // Awareness (ephemeral presence) across tabs — same channel, separate message
+  // kind. Wired ONLY when the app opted in (peek, don't create). Reuse the SHARED
+  // REMOTE_ORIGIN tag so a received awareness is applied but NOT re-broadcast by
+  // this OR a sibling WS transport on the same doc (the cross-transport loop guard).
+  const aw = peekDocAwareness(doc)
+  const onAwarenessUpdate =
+    aw &&
+    (({ added, updated, removed }: AwarenessChange, origin: unknown) => {
+      if (!connected || origin === REMOTE_ORIGIN) return
+      const changed = [...added, ...updated, ...removed]
+      bc.postMessage({ kind: 'awareness', update: encodeAwarenessUpdate(aw, changed) } satisfies BcMessage)
+    })
+  if (aw && onAwarenessUpdate) aw.on('update', onAwarenessUpdate)
+
   bc.onmessage = (event: MessageEvent<BcMessage>) => {
     if (!connected) return
     const msg = event.data
@@ -99,6 +127,18 @@ export function connectViaBroadcastChannel(
           kind: 'update',
           update: Y.encodeStateAsUpdate(doc.yDoc, msg.sv),
         } satisfies BcMessage)
+        // An `sv` is also "a tab just (re)joined" — reply with our presence so it
+        // learns us. BroadcastChannel delivers only to CURRENT subscribers, so a
+        // joiner misses our one-shot connect announce; this `sv`-triggered reply
+        // is the cross-tab analog of the relay's join-state-on-connect.
+        if (aw) {
+          bc.postMessage({
+            kind: 'awareness',
+            update: encodeAwarenessUpdate(aw, [aw.clientID]),
+          } satisfies BcMessage)
+        }
+      } else if (msg.kind === 'awareness') {
+        if (aw) applyAwarenessUpdate(aw, msg.update, REMOTE_ORIGIN)
       } else {
         Y.applyUpdate(doc.yDoc, msg.update, REMOTE_ORIGIN)
       }
@@ -109,11 +149,28 @@ export function connectViaBroadcastChannel(
     }
   }
 
-  // Announce ourselves: ask existing peers for whatever we're missing.
+  // Announce ourselves: ask existing peers for whatever we're missing, and (if
+  // presence is in use) publish our local awareness so other tabs see us.
   bc.postMessage({ kind: 'sv', sv: Y.encodeStateVector(doc.yDoc) } satisfies BcMessage)
+  if (aw) {
+    bc.postMessage({
+      kind: 'awareness',
+      update: encodeAwarenessUpdate(aw, [aw.clientID]),
+    } satisfies BcMessage)
+  }
 
   return {
     disconnect() {
+      if (aw && onAwarenessUpdate) {
+        // Announce departure WHILE still connected (the listener posts the
+        // removal — there is no relay here, so this IS the cleanup), then detach.
+        try {
+          removeAwarenessStates(aw, [aw.clientID], 'local')
+        } catch {
+          // awareness already destroyed (primitive disposed first)
+        }
+        aw.off('update', onAwarenessUpdate)
+      }
       connected = false
       doc.yDoc.off('update', onUpdate)
       bc.close()

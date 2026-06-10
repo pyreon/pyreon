@@ -2034,11 +2034,24 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
   const calleeName = init.callee?.name as string | undefined
   if (calleeName === 'signal') {
-    const type = parseGenericTypeArg(init, ctx)
+    const generic = parseGenericTypeArg(init, ctx)
     const initialArg = init.arguments?.[0]
     const initial: ExprIR = initialArg
       ? parseExpr(initialArg, ctx)
       : { kind: 'literal', value: 0 }
+    // Un-annotated `signal('')` / `signal(0)` / `signal(false)` infers
+    // its type from the initial literal — same contract the store-setup
+    // path applies (and what inferTypeFromInitial's own docstring
+    // already claimed). Without this, an un-annotated signal emitted
+    // `@State private var x: Any = ""` on Swift — `Any` breaks every
+    // use site ($x bindings, .count, arithmetic). Kotlin was immune
+    // only because `mutableStateOf("")` lets kotlinc infer.
+    //
+    // Inference fires ONLY when no generic is written at all — an
+    // explicit `signal<any>(x)` keeps `unknown` (the user opted out of
+    // typing; the type-mapper contract for TSAnyKeyword stays intact).
+    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    const type = hasGeneric ? generic : inferTypeFromInitial(initial)
     return { kind: 'signal', name, type, initial }
   }
   // G5 — `useStorage<T>('key', default)` from `@pyreon/storage` is a
@@ -2072,7 +2085,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const initial: ExprIR = initialArg
       ? parseExpr(initialArg, ctx)
       : { kind: 'literal', value: 0 }
-    return { kind: 'signal', name, type, initial, storageKey }
+    // Same initial-literal inference as plain `signal()` (no-generic
+    // form only) — @AppStorage needs a concrete native type, so `Any`
+    // is even worse here.
+    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    const inferredType = hasGeneric ? type : inferTypeFromInitial(initial)
+    return { kind: 'signal', name, type: inferredType, initial, storageKey }
   }
   if (calleeName === 'computed') {
     const arg = init.arguments?.[0]

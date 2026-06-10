@@ -5489,4 +5489,208 @@ console.log(a()) // 5`,
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.`,
   },
   // <gen-docs:api-reference:end @pyreon/zero-content>
+  // <gen-docs:api-reference:start @pyreon/sync>
+
+  'sync/syncedSignal': {
+    signature: '<T>(options: SyncedSignalOptions<T>) => SyncedSignal<T>',
+    example: `const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+// <h1>{() => title()}</h1>  — patches in place when any peer edits the title
+title()              // "Untitled"  (reactive read)
+title.set("Roadmap") // writes the CRDT; the observer drives the DOM update
+title.dispose()      // detach observer (auto on onCleanup inside a scope)`,
+    notes: `Bind a Signal<T> to a single scalar entry in a CRDT map. The return value is a NORMAL signal (via wrapSignal — reads / \`_v\` / \`.direct\` all delegate), so the compiler's \`_bindText\`/\`_bindDirect\` fast paths and every effect treat it like any signal: a remote op becomes one \`base.set\` → one fine-grained DOM update. The update loop has a single writer — \`.set(v)\` writes ONLY the CRDT; the map observer is the one path that writes the base signal (for local AND remote commits); the local echo is an \`Object.is\` no-op. See also: syncedStore, syncedText, syncedList.`,
+    mistakes: `- Calling \`title(newValue)\` to write — that reads and ignores the arg like any signal. Use \`title.set(newValue)\`
+- Expecting \`initial\` to win when the key already exists — it is create-if-missing only; a persisted / peer value is authoritative and \`initial\` is ignored (the local-first convention)
+- Storing an object/array and expecting per-field surgical updates — v1 is scalar (string/number/boolean); whole-value replace works but re-fires per replace. Use \`syncedText\`/\`syncedList\` for collaborative collections
+- Forgetting \`.dispose()\` for a module-scope synced signal that outlives any reactive scope (inside a scope it auto-disposes via onCleanup)`,
+  },
+
+  'sync/syncedStore': {
+    signature: '<T extends Record<string, unknown>>(initial: T, options: SyncedStoreOptions) => SyncedStore<T>',
+    example: `const store = syncedStore({ title: "Untitled", done: false }, { doc })
+store.title()            // "Untitled"
+store.title.set("Ship")  // one CRDT write → one DOM update
+store.done.set(true)
+store.dispose()          // tear down all fields (or rely on onCleanup in-scope)`,
+    notes: `Build a flat store of synced fields from a plain initial object — the ergonomic layer over syncedSignal. Each field becomes its own SyncedSignal over one shared map, so \`store.title()\` reads reactively and \`store.title.set(v)\` writes through the CRDT. A single-key change still produces exactly one base-signal write: every field's observer runs, but only the field whose key changed calls \`base.set\` (the rest early-return on a cheap \`Set.has\`). See also: syncedSignal.`,
+    mistakes: `- Adding a key at runtime — the store's fields are fixed from the \`initial\` object's keys at construction; reshape by creating a new store
+- Sharing one map across two unrelated stores — \`{ map }\` names the map; one map = one store, or fields collide
+- Reading \`store\` as a plain object snapshot — each field is a SyncedSignal; call it (\`store.title()\`) to read reactively`,
+  },
+
+  'sync/SyncedSignal': {
+    signature: 'interface SyncedSignal<T> extends Signal<T> { dispose(): void }',
+    example: 'const s: SyncedSignal<number> = syncedSignal({ doc, key: "n", initial: 0 })',
+    notes: 'A Signal<T> bound to a CRDT entry. Identical to a normal Signal for reads/writes/tracking, plus `dispose()` to detach the CRDT observer (idempotent; auto-called via onCleanup when created inside a reactive scope). See also: syncedSignal.',
+  },
+
+  'sync/SyncedStore': {
+    signature: 'type SyncedStore<T> = { readonly [K in keyof T]: SyncedSignal<T[K]> } & { dispose(): void }',
+    example: 'const store: SyncedStore<{ title: string }> = syncedStore({ title: "x" }, { doc })',
+    notes: `A mapped type — each key of the initial object becomes a SyncedSignal of that field's type, plus a store-level \`dispose()\` that tears down every field's observer. See also: syncedStore.`,
+  },
+
+  'sync/CrdtAdapter': {
+    signature: 'interface CrdtAdapter { createDoc(): CrdtDoc }  // + CrdtDoc.getMap → CrdtMap, CrdtMap.observe/transact',
+    example: `function bindTitle(adapter: CrdtAdapter) {
+  const doc = adapter.createDoc()
+  return syncedSignal({ doc, key: "title", initial: "Untitled" })
+}`,
+    notes: 'The engine-neutral seam. `CrdtAdapter` / `CrdtDoc` / `CrdtMap` abstract the CLIENT reactive bridge so syncedSignal/syncedStore never import a concrete engine. The bridge depends ONLY on this seam (+ @pyreon/reactivity); the Yjs implementation lives behind `@pyreon/sync/yjs`. Note: the seam ports the bridge, NOT the wire format — persistence/transport/relay are Yjs-coupled, so swapping engines re-platforms the infrastructure, not the bridge. See also: FakeCrdtAdapter, createYjsDoc.',
+  },
+
+  'sync/LOCAL_ORIGIN': {
+    signature: 'const LOCAL_ORIGIN: unique symbol',
+    example: 'doc.getMap("m").transact(() => map.set("k", v), LOCAL_ORIGIN)',
+    notes: 'Transaction-origin tag for a LOCAL write (a `.set` originating on this client). The bridge tags its CRDT writes with this; transports use the origin to prevent the NETWORK loop — they re-broadcast LOCAL-origin updates but NEVER a REMOTE-origin one. The bridge observer itself applies every change regardless of origin (the local echo is an Object.is no-op). See also: REMOTE_ORIGIN.',
+  },
+
+  'sync/REMOTE_ORIGIN': {
+    signature: 'const REMOTE_ORIGIN: unique symbol',
+    example: 'doc.yDoc.transact(() => Y.applyUpdate(doc.yDoc, bytes), REMOTE_ORIGIN)',
+    notes: 'Transaction-origin tag for a REMOTE-applied update (received from a peer/relay). Transports apply inbound updates with this origin so they are NOT echoed back, which is what prevents the network loop. Gating the bridge OBSERVER on origin would be a bug — it must apply remote changes to drive the local UI; the loop guard belongs in the transport. See also: LOCAL_ORIGIN.',
+  },
+
+  'sync/FakeCrdtAdapter': {
+    signature: 'class FakeCrdtAdapter implements CrdtAdapter { createDoc(): FakeCrdtDoc }',
+    example: `const a = new FakeCrdtAdapter().createDoc()
+const b = new FakeCrdtAdapter().createDoc()
+connectFakeDocs(a, b)
+const sa = syncedSignal({ doc: a, key: "k", initial: 0 })
+const sb = syncedSignal({ doc: b, key: "k", initial: 0 })
+sa.set(5) // sb() becomes 5`,
+    notes: `An in-memory, dependency-free CrdtAdapter for unit-testing synced stores without standing up a real engine. Pair docs with \`connectFakeDocs(a, b)\` to simulate two peers in-process. It does NOT do state-vector reconciliation, so it can't model offline-reconnect convergence — use the Yjs adapter (\`createYjsDoc\` + a transport) for that. See also: connectFakeDocs, createYjsDoc.`,
+    mistakes: `- Using the fake adapter to test offline-reconnect convergence — it has no state-vector merge; use the Yjs adapter for that scenario
+- Shipping the fake adapter to production — it is a test double with no persistence or real conflict resolution`,
+  },
+
+  'sync/connectFakeDocs': {
+    signature: '(a: FakeCrdtDoc, b: FakeCrdtDoc) => { disconnect(): void }',
+    example: `const link = connectFakeDocs(a, b)
+link.disconnect() // simulate offline`,
+    notes: 'Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. Returns a `disconnect()` to simulate going offline. See also: FakeCrdtAdapter.',
+  },
+
+  'sync/createYjsDoc': {
+    signature: '(yDoc?: Y.Doc) => YjsCrdtDoc',
+    example: `import { createYjsDoc, connectViaWebSocket } from "@pyreon/sync/yjs"
+const doc = createYjsDoc()
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")`,
+    notes: 'Create a CrdtDoc backed by a real Yjs Y.Doc (or wrap an existing one). Exported from `@pyreon/sync/yjs` — importing it pulls in `yjs`, which is why it is NOT on the core entry. `.yDoc` exposes the underlying Y.Doc for the transports / persistence helpers. See also: persistViaIndexedDB, connectViaWebSocket, syncedText.',
+  },
+
+  'sync/syncedText': {
+    signature: '(doc: YjsCrdtDoc, key: string) => SyncedText',
+    example: `const body = syncedText(doc, "body")
+// <textarea value={() => body()} onInput={e => body.set(e.currentTarget.value)} />
+body.insert(0, "Hello ")  // positional — merges with a concurrent peer edit
+body.delete(0, 6)`,
+    notes: `Bind a Signal<string> to a Yjs Y.Text — a COLLABORATIVE string with character-level CRDT merge. Unlike syncedSignal (scalar last-writer-wins, which drops the loser's value), two peers editing different regions BOTH keep their edits. Use \`.insert(i, s)\` / \`.delete(i, n)\` (positional ops Y.Text merges faithfully) for true concurrent editing; \`.set(full)\` applies a minimal prefix/suffix diff (one replace) — handy for a controlled \`<textarea>\` but not a positional merge. Engine-specific (in \`@pyreon/sync/yjs\`, not behind the seam — collab text is coupled to the CRDT's text type). See also: syncedList, syncedSignal.`,
+    mistakes: `- Using \`syncedSignal\` for a collaboratively-edited string — scalar LWW drops one peer's edit; use \`syncedText\` so both are kept
+- Relying on \`.set(fullText)\` for concurrent multi-region editing — it is a single prefix/suffix-diff replace, not a positional merge; use \`.insert\`/\`.delete\` where concurrency matters`,
+  },
+
+  'sync/syncedList': {
+    signature: '<T>(doc: YjsCrdtDoc, key: string) => SyncedList<T>',
+    example: `const items = syncedList<string>(doc, "todos")
+items.push("buy milk", "walk dog")  // merges with a concurrent peer push
+items.insert(0, ["first"])
+items.delete(1, 1)
+// <For each={() => items()} by={(t) => t}>{(t) => <li>{t}</li>}</For>`,
+    notes: 'Bind a Signal<T[]> to a Yjs Y.Array — a COLLABORATIVE list with positional CRDT merge. Concurrent `push`/`insert` from two peers are BOTH kept (no item dropped). Render with a keyed `<For each={() => list()} by={…}>` so a remote change reconciles O(changed). `.push` / `.insert(i, items)` / `.delete(i, count?)` are positional; `.set(next)` does a coarse whole-list replace. Engine-specific (in `@pyreon/sync/yjs`). See also: syncedText.',
+    mistakes: `- Calling \`.set(newArray)\` for concurrent edits — whole-list replace resolves by that coarse op, not a positional merge; use \`.push\`/\`.insert\`/\`.delete\`
+- Rendering with \`.map()\` instead of a keyed \`<For>\` — you lose the O(changed) reconcile a remote list change should give`,
+  },
+
+  'sync/syncedAwareness': {
+    signature: '<T extends Record<string, unknown>>(doc: YjsCrdtDoc, initial?: T) => SyncedAwareness<T>',
+    example: `import { createYjsDoc, syncedAwareness, connectViaWebSocket } from "@pyreon/sync/yjs"
+const doc = createYjsDoc()
+const presence = syncedAwareness<{ name: string; cursor?: { x: number; y: number } }>(
+  doc, { name: "Vít" },
+)
+connectViaWebSocket(doc, "wss://sync.example.com/room?token=abc")
+// live cursors: window.addEventListener("mousemove", e =>
+//   presence.setLocalField("cursor", { x: e.clientX, y: e.clientY }))
+// <For each={() => presence.others()} by={p => p.clientId}>
+//   {p => <Cursor color={p.state.color} at={p.state.cursor} />}</For>`,
+    notes: `Reactive EPHEMERAL presence — who's online + their live cursor — over the Yjs awareness protocol, a SEPARATE channel from the document CRDT (awareness is never merged into the doc and never persisted). Returns read signals (\`local\` / \`others\` / \`states\`) that recompute when any peer joins, leaves, or moves, plus \`setLocal\` / \`setLocalField\` to publish your own presence. Wired automatically to whatever transports are (or later get) connected to the doc — they share the doc's single Awareness. The relay is awareness-stateful, so a new client sees existing peers INSTANTLY and a crashed peer is purged on disconnect. Create it BEFORE connecting a transport (the transport peeks for the doc's awareness at connect time). See also: SyncedAwareness, PeerState, connectViaWebSocket, createSyncServer.`,
+    mistakes: `- Putting durable data in awareness — it is EPHEMERAL and never persisted; a peer state vanishes on disconnect. Use syncedSignal/syncedStore/syncedText for data that must survive
+- Creating it AFTER connecting a transport — the transport peeks for the doc awareness at connect, so presence created later is not wired. Create syncedAwareness BEFORE connectViaWebSocket / connectViaBroadcastChannel
+- Reading \`others()\` / \`local()\` outside a reactive scope and expecting it to update — they are signals; read them inside JSX / an effect / a computed so the UI tracks presence changes
+- Treating cursor coordinates as exact across clients — they are raw viewport points with no scroll / window-size normalization (good enough for v1; map to content coordinates if you need pixel parity)
+- Disposing the awareness primitive BEFORE the transports — dispose the transports first so the departure announce still has a live wire (the relay socket-close purge is the real guarantee, so order only affects latency)`,
+  },
+
+  'sync/SyncedAwareness': {
+    signature: 'interface SyncedAwareness<T> { setLocal(s: T): void; setLocalField<K extends keyof T>(k: K, v: T[K]): void; local: Signal<T | null>; others: Signal<PeerState<T>[]>; states: Signal<PeerState<T>[]>; awareness: Awareness; dispose(): void }',
+    example: `const p: SyncedAwareness<{ name: string }> = syncedAwareness(doc, { name: "Vít" })
+p.others()  // PeerState<{ name: string }>[] — other people here`,
+    notes: 'The reactive presence handle from syncedAwareness. `others` is every peer EXCEPT you (the avatars / cursors to render); `states` includes you; `local` is your own published state. `setLocal` / `setLocalField` publish; `awareness` is the raw y-protocols escape hatch; `dispose()` detaches the observer, announces departure, and destroys the awareness (idempotent; auto-called via onCleanup in a reactive scope). See also: syncedAwareness, PeerState.',
+  },
+
+  'sync/PeerState': {
+    signature: 'interface PeerState<T> { clientId: number; state: T; isLocal: boolean }',
+    example: `<For each={() => presence.others()} by={p => p.clientId}>
+  {p => <Avatar name={p.state.name} />}
+</For>`,
+    notes: `One peer's presence entry: its awareness \`clientId\` (use it as the \`<For>\` key), its published \`state\`, and \`isLocal\` (whether it is you). \`others()\` returns only \`isLocal: false\` entries; \`states()\` returns all. See also: syncedAwareness, SyncedAwareness.`,
+  },
+
+  'sync/connectViaBroadcastChannel': {
+    signature: '(doc: YjsCrdtDoc, channelName: string) => { disconnect(): void }',
+    example: `const doc = createYjsDoc()
+const link = connectViaBroadcastChannel(doc, "my-doc-room")
+// edit in tab A → the same <h1> patches in place in tab B
+link.disconnect()`,
+    notes: 'Same-origin CROSS-TAB sync over BroadcastChannel — edits in one tab appear in another tab of the same origin, no server. Includes a minimal state-vector handshake so a late-opening tab catches up. Follows the universal echo rule: a REMOTE-origin update is never re-broadcast, so there is no loop. See also: connectViaWebSocket, persistViaIndexedDB.',
+    mistakes: '- Expecting cross-DEVICE sync — BroadcastChannel is same-origin/same-browser only; use connectViaWebSocket + a relay for cross-device',
+  },
+
+  'sync/connectViaWebSocket': {
+    signature: '(doc: YjsCrdtDoc, url: string, options?: WebSocketTransportOptions) => WebSocketTransport',
+    example: `import { connectViaWebSocket, createYjsDoc } from "@pyreon/sync/yjs"
+const doc = createYjsDoc()
+const t = connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc", {
+  onConnect: () => console.log("synced"),
+})
+t.disconnect() // close + stop reconnecting`,
+    notes: `Sync a YjsCrdtDoc to a relay over WebSocket — the CROSS-DEVICE transport. Sends our state vector on open (relay replies with the diff), then live updates; a REMOTE-origin update is never re-sent (no loop). Reconnects with exponential backoff by default. Uses the global WebSocket (browsers / Node 22+ / Bun / Deno); pass \`WebSocketImpl\` on older Node. Auth: put a token in the \`url\` query string — browser WebSockets can't set headers — which the relay's \`authorize\` hook reads. See also: createSyncServer, connectViaBroadcastChannel.`,
+    mistakes: `- Trying to set an Authorization header — browser WebSockets can't; pass the token in the URL query string and read it in the relay's \`authorize\`
+- Using it on old Node without a global WebSocket and not passing \`WebSocketImpl\` — it throws; pass the \`ws\` package's WebSocket
+- Treating a 4401 close as retryable — that is the relay's authz rejection and is terminal; reconnect won't help`,
+  },
+
+  'sync/persistViaIndexedDB': {
+    signature: '(doc: YjsCrdtDoc, dbName: string) => YjsPersistence',
+    example: `const doc = createYjsDoc()
+const persist = persistViaIndexedDB(doc, "my-app-doc")
+await persist.whenSynced  // load persisted state FIRST
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })`,
+    notes: 'Persist a YjsCrdtDoc to IndexedDB so edits survive a reload and the app works offline (thin wrapper over y-indexeddb). Browser-only — it opens the IndexedDB connection eagerly. AWAIT `.whenSynced` BEFORE creating syncedSignals so create-if-missing adopts the persisted value instead of racing the async load against a fresh seed. See also: createYjsDoc, syncedSignal.',
+    mistakes: `- Creating syncedSignals before awaiting \`.whenSynced\` — the fresh seed can race the async load and clobber the persisted value
+- Calling it under Node/SSR — it constructs an IndexedDB connection eagerly; importing is safe, calling is browser-only`,
+  },
+
+  'sync/createSyncServer': {
+    signature: '(options: SyncServerOptions) => Promise<SyncServer>',
+    example: `import { createSyncServer } from "@pyreon/sync/server"
+const relay = await createSyncServer({
+  port: 1234,
+  authorize: ({ room, token }) => token === secretFor(room), // REQUIRED in prod
+})
+// later: await relay.close()`,
+    notes: `Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (\`@pyreon/sync/server\` — imports \`ws\` + \`node:http\`, never enters a client bundle). The \`authorize(ctx)\` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass \`server\` to attach to an existing http.Server instead of opening a port. See also: connectViaWebSocket, AuthorizeContext.`,
+    mistakes: `- Deploying without an \`authorize\` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write
+- Importing \`@pyreon/sync/server\` into client code — it pulls \`ws\` + \`node:http\`; it is the server-only subpath by design
+- Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store`,
+  },
+
+  'sync/AuthorizeContext': {
+    signature: 'interface AuthorizeContext { room: string; token: string | null; req: IncomingMessage }',
+    example: 'authorize: ({ room, token, req }) => verify(room, token)',
+    notes: `Context passed to the relay's \`authorize\` hook: the \`room\` parsed from the URL path, the \`token\` query-string param (browser WebSockets can't set headers, so auth rides the query string), and the raw HTTP upgrade \`req\` (read cookies / headers here if you prefer). See also: createSyncServer.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/sync>
 }

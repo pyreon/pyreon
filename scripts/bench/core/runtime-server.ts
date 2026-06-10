@@ -8,6 +8,15 @@
  *   - links-100:          100 RouterLinks to stress link rendering
  *   - layouts-26-params:  26 nested layouts with params
  *
+ * FIDELITY CONTRACT (fixed 2026-06): the ROUTES ARRAY is built ONCE per
+ * scenario (module-level in real apps — zero's `virtual:zero/routes`),
+ * while the router + vnode tree are created fresh PER RENDER (the real
+ * per-request SSR shape). The previous loop rebuilt the routes array per
+ * iteration, which defeated the router's WeakMap-cached route index and
+ * timed a full route-table recompile (~0.5µs/route) on every render —
+ * links-100 read 149µs/render of which ~96% was cold compile, not SSR.
+ * Real handlers hit the warm index; the honest links-100 number is ~4µs.
+ *
  * Usage: bun scripts/bench/core/runtime-server.ts
  */
 
@@ -30,63 +39,72 @@ function Text(text: string): ComponentFn {
 
 // ─── Scenario 1: Empty ──────────────────────────────────────────────────────
 
-function buildEmpty(): { app: VNode; label: string } {
-  const EmptyPage: ComponentFn = () => h('div', null, 'hello')
-  const routes: RouteRecord[] = [{ path: '/', component: EmptyPage }]
-  const router = createRouter({ routes, mode: 'history', url: '/' })
+const _emptyRoutes: RouteRecord[] = [
+  { path: '/', component: () => h('div', null, 'hello') },
+]
+function buildEmpty(): { makeApp: () => VNode; label: string } {
   return {
     label: 'empty',
-    app: h(RouterProvider, { router }, h(RouterView, null)),
+    makeApp: () => {
+      const router = createRouter({ routes: _emptyRoutes, mode: 'history', url: '/' })
+      return h(RouterProvider, { router }, h(RouterView, null))
+    },
   }
 }
 
 // ─── Scenario 2: Simple (5 routes, 5 links) ─────────────────────────────────
 
-function buildSimple(): { app: VNode; label: string } {
-  const routes: RouteRecord[] = [
-    { path: '/', component: Text('Home') },
-    { path: '/about', component: Text('About') },
-    { path: '/pricing', component: Text('Pricing') },
-    { path: '/blog', component: Text('Blog') },
-    { path: '/contact', component: Text('Contact') },
-  ]
-  const paths = routes.map((r) => r.path)
+const _simpleRoutes: RouteRecord[] = [
+  { path: '/', component: Text('Home') },
+  { path: '/about', component: Text('About') },
+  { path: '/pricing', component: Text('Pricing') },
+  { path: '/blog', component: Text('Blog') },
+  { path: '/contact', component: Text('Contact') },
+]
+function buildSimple(): { makeApp: () => VNode; label: string } {
+  const paths = _simpleRoutes.map((r) => r.path)
   const Nav: ComponentFn = () => h('nav', null, ...paths.map((p) => h(RouterLink, { to: p }, p)))
   const Layout: ComponentFn = (props) => h('div', null, h(Nav, null), props.children as VNode)
-
-  const router = createRouter({ routes, mode: 'history', url: '/' })
   return {
     label: 'simple (5 routes)',
-    app: h(RouterProvider, { router }, h(Layout, null, h(RouterView, null))),
+    makeApp: () => {
+      const router = createRouter({ routes: _simpleRoutes, mode: 'history', url: '/' })
+      return h(RouterProvider, { router }, h(Layout, null, h(RouterView, null)))
+    },
   }
 }
 
 // ─── Scenario 3: Links-100 ──────────────────────────────────────────────────
 
-function buildLinks100(): { app: VNode; label: string } {
+const _links100Routes: RouteRecord[] = (() => {
   const routes: RouteRecord[] = []
-  const links: VNode[] = []
   for (let i = 0; i < 100; i++) {
-    const path = `/page/${i}`
-    routes.push({ path, component: Text(`Page ${i}`) })
-    links.push(h(RouterLink, { to: path }, `Page ${i}`))
+    routes.push({ path: `/page/${i}`, component: Text(`Page ${i}`) })
   }
-  // Catch-all
-  routes.push({ path: '(.*)', component: Text('404') })
-
-  const Nav: ComponentFn = () => h('nav', null, ...links)
-  const Layout: ComponentFn = (props) => h('div', null, h(Nav, null), props.children as VNode)
-
-  const router = createRouter({ routes, mode: 'history', url: '/page/0' })
+  routes.push({ path: '(.*)', component: Text('404') }) // Catch-all
+  return routes
+})()
+function buildLinks100(): { makeApp: () => VNode; label: string } {
   return {
     label: 'links-100',
-    app: h(RouterProvider, { router }, h(Layout, null, h(RouterView, null))),
+    makeApp: () => {
+      // Vnodes (incl. the 100 RouterLinks) are created fresh per render —
+      // JSX runs per request in real apps. Only the routes table is shared.
+      const links: VNode[] = []
+      for (let i = 0; i < 100; i++) {
+        links.push(h(RouterLink, { to: `/page/${i}` }, `Page ${i}`))
+      }
+      const Nav: ComponentFn = () => h('nav', null, ...links)
+      const Layout: ComponentFn = (props) => h('div', null, h(Nav, null), props.children as VNode)
+      const router = createRouter({ routes: _links100Routes, mode: 'history', url: '/page/0' })
+      return h(RouterProvider, { router }, h(Layout, null, h(RouterView, null)))
+    },
   }
 }
 
 // ─── Scenario 4: Layouts-26 with params ─────────────────────────────────────
 
-function buildLayouts26(): { app: VNode; label: string } {
+function buildLayouts26(): { makeApp: () => VNode; label: string } {
   // Build 26 levels of nested layouts, each with a :param
   const Leaf: ComponentFn = () => h('div', { className: 'leaf' }, 'Leaf content')
 
@@ -124,10 +142,12 @@ function buildLayouts26(): { app: VNode; label: string } {
   segments.push('leaf')
   const url = `/${segments.join('/')}`
 
-  const router = createRouter({ routes, mode: 'history', url })
   return {
     label: 'layouts-26-params',
-    app: h(RouterProvider, { router }, h(RouterView, null)),
+    makeApp: () => {
+      const router = createRouter({ routes, mode: 'history', url })
+      return h(RouterProvider, { router }, h(RouterView, null))
+    },
   }
 }
 
@@ -142,13 +162,16 @@ interface BenchResult {
 
 async function benchSSR(
   label: string,
-  buildApp: () => { app: VNode; label: string },
+  buildApp: () => { makeApp: () => VNode; label: string },
   durationMs = 3000,
 ): Promise<BenchResult> {
+  // Scenario setup ONCE (routes table = module-level in real apps);
+  // `makeApp` runs per render: fresh router + fresh vnode tree — the
+  // real per-request SSR shape (see fidelity contract in the header).
+  const { makeApp } = buildApp()
   // Warmup — 50 renders
   for (let i = 0; i < 50; i++) {
-    const { app } = buildApp()
-    await renderToString(app)
+    await renderToString(makeApp())
   }
 
   // Timed
@@ -157,8 +180,7 @@ async function benchSSR(
   const start = performance.now()
   const end = start + durationMs
   while (performance.now() < end) {
-    const { app } = buildApp()
-    const html = await renderToString(app)
+    const html = await renderToString(makeApp())
     totalBytes += html.length
     ops++
   }

@@ -5,6 +5,7 @@
 plugins {
     id("com.android.application")
     kotlin("android")
+    kotlin("plugin.serialization")
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
 }
 
@@ -42,6 +43,7 @@ android {
     sourceSets {
         getByName("main") {
             kotlin {
+                srcDir("../../../packages/native/runtime-kotlin/src/main/kotlin")
                 srcDir("../../../packages/native/router-kotlin/src/main/kotlin")
             }
         }
@@ -54,6 +56,13 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.runtime:runtime-saveable")
+    // Deps required by the runtime-kotlin srcDir sources + M2 material
+    // for the emit header's `import androidx.compose.material.*`.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.compose.material:material")
 
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

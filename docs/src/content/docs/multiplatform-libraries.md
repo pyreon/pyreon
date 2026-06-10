@@ -33,6 +33,12 @@ The source you write is identical across targets. PMTC compiles it; native runti
 | `@pyreon/primitives` | 15 canonical UI primitives — `<Stack>`, `<Inline>`, `<Text>`, `<Button>`, `<Field>`, `<Toggle>`, etc. | Web DOM + PMTC → SwiftUI / Compose |
 | `@pyreon/router` | `createRouter`, `useNavigate`, `useParams`, `useLoaderData` (read), `<RouterProvider>`, `<RouterView>`, `<Link>` | `@pyreon/native-router-{swift,kotlin}` |
 | `@pyreon/storage` | `useStorage`, `useSessionStorage`, `useCookie`, `useIndexedDB` (subset) | `@PyreonAppStorage` (Swift) + `rememberPyreonStorage` (Kotlin) |
+| `@pyreon/store` | `defineStore(id, setup)` with signal fields; cross-screen reads / `.set()` writes; store-read route guards | `@Observable` singleton class (Swift) + `mutableStateOf`-backed `object` (Kotlin); validated in both compiler loops |
+| `@pyreon/machine` | `createMachine` + `m.send()` / `m.matches()` / `m.can()` | `PyreonMachine` Swift + Kotlin |
+| `@pyreon/state-tree` | `model({...})` singleton instances + field reads/writes | `PyreonModel_<id>` singletons, Swift + Kotlin |
+| `@pyreon/i18n/core` | `createI18n` + single-arg `t('key')` (v1 — interpolation/plurals pending) | `PyreonI18n` Swift + Kotlin |
+
+> One `useStorage` caveat: Android's `rememberPyreonStorage` is per-composable (`remember(key)`) — a write in one screen does NOT recompose another screen reading the same key, while iOS's `@AppStorage` does observe cross-component. For cross-screen reactive state use `@pyreon/store` (that's its job); treat `useStorage` as per-screen persistence until the Android backend gains observation.
 
 **Real-world proof**: `examples/native-todomvc-{web,ios,android}` shares ONE `App.tsx` source across all 3 targets. The shared source uses `signal`, `useStorage`, `<Stack>`, `<Inline>`, `<Field>`, `<Toggle>`, `<Button>`, `<For>`, `<Show>` — and renders idiomatically on every target.
 
@@ -59,13 +65,13 @@ Both patterns trace to **one root cause**: PMTC's recognition list in [`parse.ts
 | Package | Pattern | Verification PR | Strategy (see spec below) |
 |---|---|---|---|
 | `@pyreon/rx` | A — silent-drop | [#1317](https://github.com/pyreon/pyreon/pull/1317) | Per-method lowering to native collection ops |
-| `@pyreon/machine` | B — structurally-broken | [#1319](https://github.com/pyreon/pyreon/pull/1319) | Runtime port (`PyreonMachine`) + binding recognition |
-| `@pyreon/store` | B (expected) | — | Runtime port + binding recognition (same shape as machine) |
-| `@pyreon/state-tree` | B (expected) | — | Same shape as store |
+| `@pyreon/machine` | ✅ SHIPPED — promoted to Tier 1 | [#1319](https://github.com/pyreon/pyreon/pull/1319) (bug) → port + emit landed; `tier2-machine.tsx` in both validate loops | — |
+| `@pyreon/store` | ✅ SHIPPED — promoted to Tier 1 | Port + emit landed; `tier2-store.tsx` in both validate loops; the store-backed tasks showcase proves cross-screen state + store-read guards at device scope | — |
+| `@pyreon/state-tree` | ✅ SHIPPED — promoted to Tier 1 | Port + emit landed; `tier2-state-tree.tsx` in both validate loops | — |
 | `@pyreon/permissions` | partially A | — | `usePermissions` already recognised; `.can(...)` calls need lowering |
 | `@pyreon/validation` | A (expected) | — | Per-validator lowering (Zod/Valibot/ArkType each different) |
 | `@pyreon/validate` | A (expected) | — | Same as validation |
-| `@pyreon/i18n/core` | B (expected) | — | Runtime port + `t(...)` call lowering |
+| `@pyreon/i18n/core` | ✅ SHIPPED v1 — promoted to Tier 1 | Port + emit landed (single-arg `t()`); `tier2-i18n.tsx` in both validate loops. Interpolation + plurals are the open follow-up | — |
 | `@pyreon/feature` | composite | — | Blocked on every dependency below |
 
 **Not "unverified" any more — verified-as-broken until the spec below lands.**
@@ -203,10 +209,10 @@ Both succeed. The proposed emit shapes are **compilable native code today**; the
 | Step | Scope | Lands |
 |---|---|---|
 | **1.** Strategy-A unblock (`rx`) — ✅ **FULL surface shipped** ([#1326](https://github.com/pyreon/pyreon/pull/1326) + RX-2 PR) | `parse.ts` recognises `rx.METHOD` MemberExpression callees; per-target dispatch in `emit-swift.ts` + `emit-kotlin.ts`. v1 covers 21 methods: `filter` / `map` / `reverse` / `count` / `sum` / `min` / `max` / `first` / `last` / `take` / `skip` / `takeWhile` / `dropWhile` / `find` / `some` / `every` / `unique` / `compact` / `flatten` / `reduce` / `average`. | Strategy-A surface of `@pyreon/rx` promoted to Tier 1 (21 methods). Remaining: methods needing tuple/dict emit (partition / groupBy / keyBy / uniqBy / mapValues / sortBy-with-string-key / chunk / sample) — per-method follow-ups; Strategy-B methods (pipe / debounce / throttle / combine / zip / merge / scan / distinct / search) — separate workstream needing runtime ports. |
-| **2.** Strategy-B unblock #1 (`machine`) | `PyreonMachine` runtime ports (Swift + Kotlin) + `parse.ts` `createMachine` recognition + new `DeclIR.machine` kind | Promotes `machine` to Tier 1; ~1-week PR |
-| **3.** Strategy-B unblock #2 (`store`) | Same shape as machine — `PyreonStore` runtime ports + `defineStore` recognition | Promotes `store` to Tier 1; ~1-week PR |
-| **4.** Strategy-B unblock #3 (`i18n/core`) | `PyreonI18n` runtime ports + `createI18n` recognition; `t(...)` call lowering | Promotes `i18n/core` to Tier 1; ~1-week PR |
-| **5.** Composite (`feature` / `state-tree`) | Builds on steps 2-3 | Promotes `feature` / `state-tree` to Tier 1; ~1-week PR |
+| **2.** Strategy-B unblock #1 (`machine`) — ✅ **shipped** | `PyreonMachine` runtime ports (Swift + Kotlin) + `createMachine` recognition + `DeclIR.machine` | `machine` promoted to Tier 1 (both validate loops) |
+| **3.** Strategy-B unblock #2 (`store`) — ✅ **shipped** | `PyreonStore` runtime ports + `defineStore` recognition + use-site chain rewriting (`useX().store.F` → singleton member); cross-screen composition (store-read guards + mutations from any screen) proven by the store-backed tasks showcase | `store` promoted to Tier 1 (both validate loops + device-scope showcase) |
+| **4.** Strategy-B unblock #3 (`i18n/core`) — ✅ **shipped v1** | `PyreonI18n` runtime ports + `createI18n` recognition; single-arg `t(...)` lowering. Interpolation + plurals open | `i18n/core` promoted to Tier 1 (v1 scope) |
+| **5.** Composite (`feature` / `state-tree`) — 🟡 **state-tree shipped**; feature v1 emit landed ([#1483](https://github.com/pyreon/pyreon/pull/1483) — schema struct + module-scope const), full composite pending | Builds on steps 2-3 | `state-tree` promoted to Tier 1; `feature` partial |
 | **6.** Strategy-A residuals (`validation` / `validate`) | Per-validator lowering (Zod-only as proof; Valibot/ArkType as follow-ups) | Promotes a subset; multi-week |
 
 Total ~4-6 weeks of focused PMTC work to bring all 10 Tier-2 packages into Tier 1. Tracks alongside Tier-3 work (`@pyreon/query`-native, `@pyreon/form` native, etc.); the two streams don't conflict.

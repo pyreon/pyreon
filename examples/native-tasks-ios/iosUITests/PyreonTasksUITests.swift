@@ -1,18 +1,25 @@
-// PyreonTasksUITests — launch + auth-gate + navigation smoke for the
-// iOS tasks showcase. Mirror of:
+// PyreonTasksUITests — launch + auth-gate + store mutation +
+// typed-params smoke for the iOS tasks showcase. Mirror of:
 //   - native-router-demo-ios's PyreonRouterDemoUITests (#1452)
-//   - native-tasks-android's planned RouterDemoInstrumentedTest
+//   - native-tasks-android's TasksAppInstrumentedTest
 //
-// Proves the Gap 2 (#1440) per-route `beforeEnter` auth-gate end-to-
-// end on iOS at real-Simulator scope:
+// Proves at real-Simulator scope, against the STORE-BACKED TasksApp
+// source (Gap 4 closure — see the header of
+// `../native-tasks/src/TasksApp.tsx`):
 //
-//   - App launches → login page renders (catch-all root → /login redirect)
-//   - Typing username + tapping Continue logs in + navigates to /tasks
-//   - /tasks renders the task list (auth-gated; would have blocked without login)
-//   - Tapping "New Task" navigates to /tasks/new
-//   - Tapping "Logout" navigates back to /login (auth state cleared)
+//   - App launches → login page renders
+//   - Typing a username + Continue flips the store's auth flag and
+//     navigates to /tasks — the per-route `beforeEnter` guard reads
+//     the SAME `@Observable` store singleton and lets the route render
+//   - Typing a title + Add appends to the STORE's task list (cross-
+//     screen state, not component-local) and the keyed list re-renders
+//   - "Open task 1" navigates to /tasks/:id — typed-params route: the
+//     dispatcher constructs `TaskDetailPageParam(id:)` from the
+//     matched segment (also auth-gated)
+//   - "Back to tasks" returns, "Logout" flips the flag back and lands
+//     on /login — the gate re-engages
 //
-// data-testid attrs on every interactive element in the SHARED
+// data-testid attrs on interactive elements in the SHARED
 // `../native-tasks/src/TasksApp.tsx` source compile to
 // `.accessibilityIdentifier()` markers on the SwiftUI views; XCUITest
 // queries via app.otherElements / .buttons / .textFields with the same
@@ -20,7 +27,7 @@
 //
 // Status: advisory CI gate. Runs on the `native-device`-labelled PR
 // path + nightly schedule. Promote to required once green across
-// multiple consecutive nightly runs (Gap 7's 2-week-streak prerequisite).
+// multiple consecutive nightly runs (Gap 7's streak prerequisite).
 
 import XCTest
 
@@ -30,10 +37,6 @@ final class PyreonTasksUITests: XCTestCase {
     }
 
     func test_appLaunchesOnLoginPage() throws {
-        // Catch-all `/` route maps to LoginPage. The beforeEnter
-        // auth-gate on /tasks redirects unauthenticated users back
-        // to /login on direct deep-link; the initial route catches
-        // / before any auth signal flip.
         let app = XCUIApplication()
         app.launch()
 
@@ -44,15 +47,12 @@ final class PyreonTasksUITests: XCTestCase {
         )
     }
 
-    func test_authGateLoginAndNavigateThroughScreens() throws {
-        // End-to-end auth flow:
-        //   login-page → type username → Continue → tasks-page →
-        //   New Task → new-task-page → Cancel → tasks-page →
-        //   Logout → login-page
+    func test_authGateStoreMutationAndTypedParamsDetail() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Phase 1: login.
+        // Phase 1: login — flips the store's auth flag, the beforeEnter
+        // guard on /tasks reads it and admits the navigation.
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(
             username.waitForExistence(timeout: 30),
@@ -61,47 +61,71 @@ final class PyreonTasksUITests: XCTestCase {
         username.tap()
         username.typeText("alice")
 
-        let submit = app.buttons["login-submit"]
+        let submit = app.buttons["login-submit"].firstMatch
         XCTAssertTrue(submit.exists, "Continue button missing")
         submit.tap()
 
-        // Phase 2: assert task-list rendered (auth-gate passed).
         let tasksPage = app.otherElements["tasks-page"].firstMatch
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 5),
-            "Tasks page did not render within 5s after login — beforeEnter auth-gate did not commit navigation"
+            "Tasks page did not render within 5s after login — the store-backed beforeEnter gate did not admit the navigation"
         )
 
-        // Phase 3: navigate to new-task page.
-        let newTask = app.buttons["tasks-new"]
-        XCTAssertTrue(newTask.exists, "New Task button missing on tasks page")
-        newTask.tap()
+        // Phase 2: add a task — proves the STORE list mutation
+        // (.set spread-append on the @Observable singleton) re-renders
+        // the keyed list.
+        let titleField = app.textFields["new-task-title"].firstMatch
+        XCTAssertTrue(titleField.exists, "New-task field missing on tasks page")
+        titleField.tap()
+        titleField.typeText("Verify on the simulator")
 
-        let newTaskPage = app.otherElements["new-task-page"].firstMatch
+        let add = app.buttons["new-task-add"].firstMatch
+        XCTAssertTrue(add.exists, "Add button missing on tasks page")
+        add.tap()
+
+        let newRow = app.staticTexts["Verify on the simulator"].firstMatch
         XCTAssertTrue(
-            newTaskPage.waitForExistence(timeout: 5),
-            "New-task page did not render within 5s after tapping New Task"
+            newRow.waitForExistence(timeout: 5),
+            "Added task did not appear — store .set() list mutation did not re-render"
         )
 
-        // Phase 4: cancel back to tasks.
-        let cancel = app.buttons["new-task-cancel"]
-        XCTAssertTrue(cancel.exists, "Cancel button missing on new-task page")
-        cancel.tap()
+        // Phase 3: typed-params route — /tasks/1 constructs
+        // TaskDetailPageParam(id: "1") in the dispatcher (auth-gated).
+        let openFirst = app.buttons["tasks-open-first"].firstMatch
+        XCTAssertTrue(openFirst.exists, "Open-task-1 button missing on tasks page")
+        openFirst.tap()
+
+        let detailPage = app.otherElements["task-detail-page"].firstMatch
+        XCTAssertTrue(
+            detailPage.waitForExistence(timeout: 5),
+            "Task-detail page did not render within 5s — typed-params dispatch did not match /tasks/1"
+        )
+
+        let paramText = app.staticTexts["Viewing task 1"].firstMatch
+        XCTAssertTrue(
+            paramText.waitForExistence(timeout: 5),
+            "Typed param text missing — TaskDetailPageParam(id:) was not constructed from the matched segment"
+        )
+
+        // Phase 4: back to the list.
+        let back = app.buttons["detail-back"].firstMatch
+        XCTAssertTrue(back.exists, "Back button missing on detail page")
+        back.tap()
 
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 5),
-            "Did not return to tasks page within 5s after Cancel"
+            "Did not return to tasks page within 5s after Back"
         )
 
-        // Phase 5: logout → auth-gate re-engages, return to login.
-        let logout = app.buttons["tasks-logout"]
+        // Phase 5: logout — flips the store flag back; lands on /login.
+        let logout = app.buttons["tasks-logout"].firstMatch
         XCTAssertTrue(logout.exists, "Logout button missing on tasks page")
         logout.tap()
 
         let loginAfterLogout = app.otherElements["login-page"].firstMatch
         XCTAssertTrue(
             loginAfterLogout.waitForExistence(timeout: 5),
-            "Did not return to login page within 5s after Logout — auth signal flip + navigate did not commit"
+            "Did not return to login page within 5s after Logout — store flag flip + navigate did not commit"
         )
     }
 }

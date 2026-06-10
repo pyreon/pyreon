@@ -105,25 +105,36 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Resolve a concrete Simulator device
+        # `xcodebuild test` needs a CONCRETE device (the build step's
+        # `generic/platform=iOS Simulator` cannot run tests). Hardcoding
+        # a model name ROTS with every macos-* runner-image update — the
+        # previously-pinned `iPhone 15` vanished from the macos-15 Xcode
+        # images and every UITest step died with "Unable to find a
+        # device matching the provided destination specifier" (exit 70).
+        # Resolve the first AVAILABLE iPhone at runtime instead — robust
+        # across image updates by construction.
+        run: |
+          SIM_NAME=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | xargs)
+          if [ -z "$SIM_NAME" ]; then
+            echo "::error::No available iPhone simulator on this runner image:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Resolved simulator: $SIM_NAME"
+          echo "PYREON_SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
+
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
         # The Phase-2.2 deliverable from the plan: BOOT the Simulator,
         # install the app, run an XCUITest that asserts the root view
         # (accessibilityIdentifier=todo-app, emitted from the canonical
         # `data-testid` in src/TodoApp.tsx) renders.
         #
-        # Unlike the BUILD step's `generic/...` destination, `test`
-        # needs a CONCRETE Simulator device to run on. iPhone 15 is a
-        # default device on macos-15 runners (iOS 17+ runtime preinstalled
-        # per GH Actions runner-images docs). If the device name changes
-        # in a future macos-* runner image, swap the `name=iPhone 15`
-        # below for whatever `xcrun simctl list devices available` shows.
-        #
         # The PyreonTodoMVC scheme (defined explicitly in project.yml)
         # wires the PyreonTodoMVCUITests target into the `test` action,
         # so this single `xcodebuild test` invocation builds + installs
         # the app, boots the Simulator, and runs the UITest bundle in
-        # one shot. The xcpretty pipe is optional but keeps the log
-        # readable — falls back to raw xcodebuild output if not present.
+        # one shot.
         working-directory: examples/native-todomvc-ios
         run: |
           set -o pipefail
@@ -131,7 +142,7 @@ jobs:
             -project PyreonTodoMVC.xcodeproj \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
@@ -153,7 +164,7 @@ jobs:
             -project PyreonCounter.xcodeproj \
             -scheme PyreonCounter \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
@@ -167,7 +178,7 @@ jobs:
             -project PyreonRouterDemo.xcodeproj \
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
@@ -186,7 +197,7 @@ jobs:
             -project PyreonTasks.xcodeproj \
             -scheme PyreonTasks \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
@@ -350,10 +361,13 @@ jobs:
             gradle connectedCheck --no-daemon --stacktrace
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
-      # Runs TasksAppInstrumentedTest.kt (auth-gate + navigation +
-      # logout flow via Compose UI test) against the prerendered
-      # canonical TasksApp.tsx source. Closes the audit's "no
-      # device CI for tasks" gap on Android.
+      # Runs TasksAppInstrumentedTest.kt (login → store-gated tasks →
+      # add-task → typed-params detail → logout via Compose UI test)
+      # against the prerendered canonical TasksApp.tsx source. Closes the audit's
+      # "no device CI for tasks" gap on Android. The showcase is
+      # STORE-BACKED (Gap 4): the auth-gate + cross-screen task list
+      # live in one defineStore singleton, so the test exercises the
+      # store-read guard + store mutation + typed-params detail.
 
       - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-tasks-android
         working-directory: examples/native-tasks-android
@@ -374,3 +388,91 @@ jobs:
           script: |
             cd examples/native-tasks-android
             gradle connectedCheck --no-daemon --stacktrace
+
+  # ── Nightly-failure visibility (sticky issue) ──
+  #
+  # The device gate is ADVISORY (not in branch protection) and its
+  # nightly schedule has no human watching the Actions tab — the gate
+  # was red for 13 consecutive nights (2026-05-29 → 2026-06-10) before
+  # anyone noticed, because nothing surfaced the failures anywhere a
+  # maintainer looks. This job closes that visibility hole: a FAILED
+  # scheduled run creates (or comments on) ONE sticky issue titled
+  # below; a SUCCESSFUL scheduled run closes it. Label-gated PR runs
+  # are excluded — their failures are visible on the PR itself, and an
+  # author iterating on red device CI shouldn't spam the issue.
+  #
+  # Sticky-issue pattern (find-by-title + comment-in-place) mirrors
+  # perf.yml / leak-sweep.yml's sticky PR comments; `always()` (not
+  # bare `failure()`) is required so the job ALSO runs on success to
+  # auto-close the issue.
+  notify-nightly:
+    name: Nightly status → sticky issue
+    if: always() && github.event_name == 'schedule'
+    needs: [ios-build, android-build]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create / update / close the sticky failure issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const title = '[native-device] Nightly device build is RED'
+            const failed =
+              '${{ needs.ios-build.result }}' === 'failure' ||
+              '${{ needs.android-build.result }}' === 'failure'
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            })
+            const sticky = issues.find((i) => i.title === title)
+            if (failed) {
+              const line = [
+                `Nightly run failed: ${runUrl}`,
+                `- iOS (xcodebuild + XCUITest): **${{ needs.ios-build.result }}**`,
+                `- Android (gradle + Compose test): **${{ needs.android-build.result }}**`,
+              ].join('\n')
+              if (sticky) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: sticky.number,
+                  body: line,
+                })
+              } else {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body: [
+                    'The nightly native-device build (real xcodebuild iOS Simulator +',
+                    'real gradle Android Emulator against the PMTC-emitted examples)',
+                    'is failing. This issue is managed by the workflow: it gets one',
+                    'comment per failed nightly and AUTO-CLOSES on the next green run.',
+                    '',
+                    'Streak gate: `bun scripts/check-native-device-streak.ts` needs 14',
+                    'consecutive green nightlies before native-device can be promoted',
+                    'to a required check — every red night resets that clock.',
+                    '',
+                    line,
+                  ].join('\n'),
+                })
+              }
+            } else if (sticky) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                body: `Nightly run is green again: ${runUrl} — auto-closing.`,
+              })
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                state: 'closed',
+              })
+            }
