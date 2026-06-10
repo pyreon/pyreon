@@ -80,6 +80,13 @@ export { island } from './island'
 // Middleware
 export type { Middleware, MiddlewareContext } from './middleware'
 export { useRequestLocals } from './middleware'
+// Shared string-mode page renderer (handler + zero SSG + zero dev SSR)
+export type {
+  RenderablePageRouter,
+  RenderPageOptions,
+  RenderPageResult,
+} from './render-page'
+export { renderPage } from './render-page'
 export type { PrerenderOptions, PrerenderResult } from './ssg'
 // SSG
 export { prerender } from './ssg'

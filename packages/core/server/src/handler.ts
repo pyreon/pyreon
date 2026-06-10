@@ -26,7 +26,6 @@
 
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { renderWithHead } from '@pyreon/head/ssr'
 import {
   createRouter,
   getRedirectInfo,
@@ -35,6 +34,7 @@ import {
   serializeLoaderData,
 } from '@pyreon/router'
 import { renderToStream, runWithRequestContext } from '@pyreon/runtime-server'
+import { renderPage } from './render-page'
 import {
   buildClientEntryTag,
   buildScriptsFast,
@@ -178,30 +178,21 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     // ── Per-request router ────────────────────────────────────────────────────
     const router = createRouter({ routes, mode: 'history', url: path })
 
-    return runWithRequestContext(async () => {
-      try {
-        // Bridge middleware locals → Pyreon context system so components
-        // can access per-request data (CSP nonce, auth user, etc.)
-        provideRequestLocals(ctx.locals)
+    if (mode === 'stream') {
+      // Streaming keeps its own pipeline — renderToStream's shell flush +
+      // per-boundary emission is structurally different from the string
+      // renderer that `renderPage` centralizes. Preload + redirect handling
+      // here mirror renderPage's semantics.
+      return runWithRequestContext(async () => {
+        try {
+          provideRequestLocals(ctx.locals)
+          // Resolve lazy COMPONENTS into the cache AND run loaders before the
+          // render (see renderPage's docstring for the empty-page failure mode
+          // `prefetchLoaderData` alone caused). Forward the request so loaders
+          // can read cookies and `throw redirect()` BEFORE the layout renders.
+          await router.preload(path, req)
 
-        // Resolve the matched route's lazy COMPONENTS into the cache AND run
-        // its loaders before the synchronous render. `router.preload` does
-        // BOTH (same path the SSG build uses); plain `prefetchLoaderData`
-        // would run loaders only, leaving lazy page components unresolved —
-        // the synchronous `renderToString` then hits `RouterView`'s empty lazy
-        // fallback and ships the layout wrapping a BLANK page (status 200,
-        // template shell). zero's fs-router emits every route as `lazy()`, so
-        // that shipped empty SSR/ISR pages while SSG (which already used
-        // `preload`) rendered correctly. Forward the request so loaders can
-        // read cookies / auth headers and `throw redirect()` BEFORE the layout
-        // renders — the thrown redirect propagates here and is converted to a
-        // 302/307 in the catch below.
-        await router.preload(path, req)
-
-        // Build the VNode tree
-        const app = h(RouterProvider, { router }, h(App, null))
-
-        if (mode === 'stream') {
+          const app = h(RouterProvider, { router }, h(App, null))
           // Pass through `req.signal` so an upstream abort (client disconnect,
           // request timeout, parent AbortController) propagates into the
           // streaming render: pending Suspense boundaries are cancelled and
@@ -210,10 +201,6 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // end-to-end (renderToStream gained `{ signal }` in #745).
           // PR-S6: read `isNotFound` synchronously here (before streaming
           // starts) so the stream response carries the right HTTP status.
-          // The flag is set by router.resolve in the per-request createRouter
-          // above, so it's authoritative by this point — pre-PR-S6 streaming
-          // always emitted status 200, defeating the L5 router-driven 404
-          // path for streaming consumers.
           const streamResolved = router.currentRoute() as { isNotFound?: boolean }
           const streamStatus = streamResolved?.isNotFound === true ? 404 : 200
           return renderStreamResponse(
@@ -227,58 +214,79 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             streamStatus,
             method === 'HEAD',
           )
-        }
-
-        // ── String mode (default) ─────────────────────────────────────────────
-        const { html: appHtml, head } = await renderWithHead(app)
-
-        // Collect CSS-in-JS styles if a collector was provided.
-        // The consumer passes collectStyles (e.g. sheet.getStyleTag from @pyreon/styler)
-        // to inject scoped CSS into <head> and prevent FOUC in SSG pages.
-        const styleTag = collectStyles ? collectStyles() : ''
-
-        const loaderData = serializeLoaderData(router as never)
-        const scripts = buildScriptsFast(clientEntryTag, loaderData)
-        const headWithStyles = styleTag ? `${styleTag}\n${head}` : head
-        const fullHtml = processCompiledTemplate(compiled, { head: headWithStyles, app: appHtml, scripts })
-
-        // M1.2 — Status 404 when the matched chain resolved via the
-        // `notFoundComponent` fallback (PR L5). The router's
-        // `resolveRoute` sets `isNotFound: true` when no leaf matched
-        // and a parent layout's `notFoundComponent` was used as a
-        // synthetic leaf. Reading the flag after render lets the
-        // handler emit a real HTTP 404 while still serving the
-        // chrome-wrapped 404 HTML.
-        const resolved = router.currentRoute() as { isNotFound?: boolean }
-        const status = resolved?.isNotFound === true ? 404 : 200
-        // PR-S6: HEAD requests must return the same headers + status
-        // as the corresponding GET but with NO body. The renderer ran
-        // (loaders fire, head/scripts compute, status decided) and the
-        // body is stripped here. Matches the standard HTTP semantic.
-        if (method === 'HEAD') {
-          return new Response(null, { status, headers: ctx.headers })
-        }
-        return new Response(fullHtml, { status, headers: ctx.headers })
-      } catch (err) {
-        // `redirect()` thrown from a loader — convert to a real HTTP redirect
-        // before the SSR error path runs. Done inside the runWithRequestContext
-        // try so per-request locals (CSP nonce, auth state) flush correctly.
-        const info = getRedirectInfo(err)
-        if (info) {
-          return new Response(null, {
-            status: info.status,
-            headers: { Location: info.url },
+        } catch (err) {
+          const info = getRedirectInfo(err)
+          if (info) {
+            return new Response(null, {
+              status: info.status,
+              headers: { Location: info.url },
+            })
+          }
+          if (__DEV__) {
+            console.error('[Pyreon Server] SSR render failed:', err)
+          }
+          return new Response('Internal Server Error', {
+            status: 500,
+            headers: { 'Content-Type': 'text/plain' },
           })
         }
-        if (__DEV__) {
-          console.error('[Pyreon Server] SSR render failed:', err)
-        }
-        return new Response('Internal Server Error', {
-          status: 500,
+      })
+    }
+
+    // ── String mode (default) — the shared renderPage pipeline ──────────────
+    // preload → redirect catch → render → styler collect → loader script →
+    // status all live in `renderPage` (render-page.ts), shared byte-for-byte
+    // with zero's SSG prerender entry and dev SSR middleware. This handler
+    // only composes the parts into its pre-compiled template.
+    try {
+      const result = await renderPage(App, router as never, path, {
+        request: req,
+        ...(collectStyles ? { collectStyles } : {}),
+        locals: ctx.locals,
+      })
+
+      if (result.kind === 'redirect') {
+        return new Response(null, {
+          status: result.status,
+          headers: { Location: result.to },
+        })
+      }
+      // `bailOnUnmatched` not set → 'unmatched' is unreachable; the type
+      // narrows through the explicit check for safety.
+      if (result.kind === 'unmatched') {
+        return new Response('Not Found', {
+          status: 404,
           headers: { 'Content-Type': 'text/plain' },
         })
       }
-    })
+
+      // Compose: loaderScript + client entry tag joined exactly as
+      // `buildScriptsFast` did (byte-identical output for both branches).
+      const scripts = result.loaderScript
+        ? `${result.loaderScript}\n  ${clientEntryTag}`
+        : clientEntryTag
+      const fullHtml = processCompiledTemplate(compiled, {
+        head: result.head,
+        app: result.appHtml,
+        scripts,
+      })
+
+      // PR-S6: HEAD requests must return the same headers + status as the
+      // corresponding GET but with NO body. The renderer ran (loaders fire,
+      // head/scripts compute, status decided); the body is stripped here.
+      if (method === 'HEAD') {
+        return new Response(null, { status: result.status, headers: ctx.headers })
+      }
+      return new Response(fullHtml, { status: result.status, headers: ctx.headers })
+    } catch (err) {
+      if (__DEV__) {
+        console.error('[Pyreon Server] SSR render failed:', err)
+      }
+      return new Response('Internal Server Error', {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
   }
 }
 

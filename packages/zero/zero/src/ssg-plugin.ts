@@ -113,9 +113,12 @@ const renderSsgEntrySource = (locales: readonly string[] = []): string => {
   const i18nLocalesLiteral = JSON.stringify(locales)
   return `
 import { routes } from "virtual:zero/routes"
+// h / renderWithHead / runWithRequestContext serve ONLY the legacy
+// standalone-404 fallback below (router-less, pre-L5 tree shapes).
+// Every routed render goes through the shared renderPage pipeline.
 import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
-import { getRedirectInfo, RouterProvider, serializeLoaderData, stringifyLoaderData } from "@pyreon/router"
+import { renderPage } from "@pyreon/server"
 import { runWithRequestContext } from "@pyreon/runtime-server"
 import { createApp } from "@pyreon/zero/server"
 
@@ -161,74 +164,34 @@ export default async function renderPath(path, options) {
     ...(__ssgBase ? { base: __ssgBase } : {}),
   })
 
-  // PR B — redirect handling. \`router.preload\` runs every loader in the
-  // matched chain and surfaces \`redirect()\` throws as the rejection
-  // reason. We catch BEFORE the render: rendering past a redirect would
-  // produce HTML for the wrong page AND leak the auth-gated layout
-  // structure for unauthenticated users. The runtime SSR handler
-  // (createHandler in @pyreon/server) already does this same catch and
-  // returns a 302/307 Location response; SSG mirrors that — return
-  // \`{ kind: 'redirect', from, to, status }\` instead of HTML, and the
-  // outer plugin emits a redirect manifest entry instead of an
-  // \`index.html\`. Any non-redirect error rethrows and lands in the
-  // existing \`errors[]\` collection.
+  // Phase 1 (render-pipeline unification): the per-page sequence — preload →
+  // redirect catch → render → styler collect → loader script → status →
+  // routeModules — is the SHARED \`renderPage\` from @pyreon/server, the same
+  // function the production runtime handler and zero's dev SSR middleware
+  // run. This entry only supplies the app/router (createApp, with the PR E
+  // base) and the styler collector, then maps the result for the outer
+  // plugin. Pre-unification this body was a hand-copied variant that
+  // DRIFTED from the handler (styler tag, noindex, serializer — see
+  // render-page.ts's docstring for the receipts).
   //
-  // PR C — \`isNotFound\` skips parent-layout loaders during the 404 build.
-  // Layout loaders that hit auth resources (cookies, session tokens,
-  // private APIs) shouldn't fire when generating a static 404 page —
-  // the build has no real request context. Lazy components still
-  // resolve so the synthetic chain renders cleanly; only the
-  // \`r.loader()\` invocations are skipped. \`__renderNotFound\` below
-  // forwards \`{ isNotFound: true }\` for this path.
-  try {
-    await router.preload(path, undefined, {
-      skipLoaders: options?.isNotFound === true,
-    })
-  } catch (err) {
-    const info = getRedirectInfo(err)
-    if (info) {
-      return { kind: "redirect", from: path, to: info.url, status: info.status }
-    }
-    throw err
-  }
-
-  return runWithRequestContext(async () => {
-    // PR-S1: App is router-AGNOSTIC; supply the per-request RouterProvider
-    // at this call site (mirrors production createHandler + dev renderSsr).
-    // See app.ts:createApp comment for the full rationale.
-    const app = h(RouterProvider, { router }, h(App, null))
-    const { html: appHtml, head } = await renderWithHead(app)
-
-    // Inject styler's <style data-pyreon-styler="..."> tag into the head
-    // BEFORE @pyreon/head's tags so the CSS cascade orders correctly with
-    // any meta/link tags the user added. Empty buffer emits a benign
-    // empty <style></style> — detected via the literal closing pair to
-    // avoid polluting the head when no styler is in use.
-    const styleTag = __pyreonGetStylerTag()
-    const isEmpty = !styleTag || styleTag.indexOf("></style>") !== -1
-    const finalHead = isEmpty ? head : styleTag + "\\n" + head
-
-    const loaderData = serializeLoaderData(router)
-    const hasData = loaderData && Object.keys(loaderData).length > 0
-    // M2.2 — safe serializer drops function/symbol values, throws a clear
-    // Pyreon-prefixed error on circular refs, escapes </script> uniformly.
-    const loaderScript = hasData
-      ? \`<script>window.__PYREON_LOADER_DATA__=\${stringifyLoaderData(loaderData)}</script>\`
-      : ""
-
-    // Per-route modulepreload (SSG): expose the matched chain's source module
-    // paths. \`_hmrId\` (the route file each \`lazy(() => import(...))\` points at)
-    // lives on the lazy COMPONENT wrapper — \`record.component._hmrId\` — not the
-    // record (the record keeps the lazy wrapper; the resolved fn goes to a
-    // separate cache). The outer plugin maps these to the client manifest's
-    // chunk graph and injects <link rel=modulepreload> for the STATIC closure
-    // only. Non-lazy records (synthetic 404 leaf, eager components) have none.
-    const routeModules = router
-      .currentRoute()
-      .matched.map((r) => r.component && r.component._hmrId)
-      .filter((id) => typeof id === "string")
-    return { kind: "html", appHtml, head: finalHead, loaderScript, routeModules }
+  // PR C semantics preserved: \`isNotFound\` → \`skipLoaders\` so parent-layout
+  // loaders that touch auth resources don't fire during the static 404
+  // build. PR B semantics preserved: a loader-thrown \`redirect()\` comes
+  // back as \`{ kind: 'redirect' }\` for the redirect manifest.
+  const result = await renderPage(App, router, path, {
+    skipLoaders: options?.isNotFound === true,
+    collectStyles: __pyreonGetStylerTag,
   })
+  if (result.kind === "redirect") {
+    return { kind: "redirect", from: path, to: result.to, status: result.status }
+  }
+  return {
+    kind: "html",
+    appHtml: result.appHtml,
+    head: result.head,
+    loaderScript: result.loaderScript,
+    routeModules: result.routeModules,
+  }
 }
 
 // ─── getStaticPaths enumeration (PR A) ──────────────────────────────────────

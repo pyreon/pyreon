@@ -85,6 +85,29 @@ export default createHandler({
       seeAlso: ['prerender', 'island', 'useRequestLocals'],
     },
     {
+      name: 'renderPage',
+      kind: 'function',
+      signature:
+        'renderPage(App: ComponentFn, router: RenderablePageRouter, path: string, options?: RenderPageOptions): Promise<RenderPageResult>',
+      summary:
+        'The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router\'s `notFoundComponent` chain). Shared by `createHandler`, zero\'s SSG prerender entry, and zero\'s dev SSR middleware so per-page concerns can never drift between them again. Returns discriminated parts (`kind: "html" | "redirect" | "unmatched"`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT `path` — `preload` warms caches but does not navigate.',
+      example: `import { renderPage } from "@pyreon/server"
+
+const result = await renderPage(App, router, "/posts/42", {
+  request: req,                  // loaders read cookies; redirect() works
+  collectStyles: () => sheet.getStyleTag(),
+})
+if (result.kind === "redirect") return Response.redirect(result.to, result.status)
+if (result.kind === "html") compose(template, result)`,
+      mistakes: [
+        'Creating the router at a DIFFERENT url than `path` — `preload` does not navigate; the render shows the router\'s creation url, not `path`',
+        'Expecting `kind: "unmatched"` without setting `bailOnUnmatched: true` — by default an empty match renders through (the notFoundComponent chain is the framework\'s 404 story)',
+        'Wrapping the call in your own `runWithRequestContext` AND providing locals separately — pass `locals` in options; renderPage opens the request context itself',
+        'Composing `loaderScript` into the template twice (it is already a complete `<script>` tag, not bare JSON)',
+      ],
+      seeAlso: ['createHandler', 'useRequestLocals'],
+    },
+    {
       name: 'island',
       kind: 'function',
       signature:
