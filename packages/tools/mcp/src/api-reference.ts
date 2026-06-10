@@ -2474,6 +2474,20 @@ effect(() => fetchResults(debouncedSearch()))`,
     mistakes: '- Reading the debounced signal immediately after setting the source — it still holds the OLD value during the debounce window; effects downstream of the debounced signal are correct, but imperative reads in the same tick are stale',
   },
 
+  'hooks/useFetch': {
+    signature: '<T>(url: string) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }',
+    example: `type Quote = { id: number; text: string }
+const quotes = useFetch<Quote[]>('/api/quotes.json')
+<Show when={quotes.isPending}><Text>Loading…</Text></Show>
+<For each={() => quotes.data() ?? []} by={(q) => q.id}>{(q) => <Text>{q.text}</Text>}</For>`,
+    notes: 'Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compiles to native `PyreonFetch<T>` containers on iOS (URLSession `.task {}`) and Android (`LaunchedEffect` + kotlinx-serialization) via PMTC, while this runs on web. Fires once at component setup (client only — SSR renders the not-yet-loaded state); each `refetch()` aborts the previous in-flight request so a slow stale response can never clobber a fresh one; unmount aborts too. Deliberately thinner than `@pyreon/query`: no cache, no dedup, no retries. See also: useOnline.',
+    mistakes: `- Reading \`quotes.data\` without calling it in non-JSX code — the fields are Signals; \`quotes.data()\` reads the value. In JSX child position the bare signal works (accessor children render reactively)
+- Expecting data during SSR — the fetch only runs client-side; server HTML renders the \`undefined\`-data state and the request fires after hydration
+- Using a reactive/computed URL — v1 takes a plain string captured once (PMTC requires a string literal for native emit anyway); call \`refetch()\` for manual re-runs, or use \`@pyreon/query\` for signal-driven keys
+- Reaching for useFetch when you need caching, request dedup, retries, or mutations — that is \`@pyreon/query\` (TanStack) territory; useFetch is the thin multiplatform primitive
+- Forgetting the non-2xx contract — HTTP errors land in \`error()\` as \`[Pyreon] useFetch <url>: HTTP <status>\`, they do NOT throw`,
+  },
+
   'hooks/useClipboard': {
     signature: '(timeoutMs?: number) => { copy: (text: string) => Promise<void>; copied: Signal<boolean> }',
     example: `const { copy, copied } = useClipboard()

@@ -243,7 +243,7 @@ Bun-run cross-library micro-benchmarks, separate from the browser DOM suite abov
 | `@pyreon/feature`     | Schema-driven CRUD primitives — auto-generated queries, forms, tables, stores                                                                        |
 | `@pyreon/charts`      | Reactive ECharts bridge with lazy loading, auto-detection, typed options                                                                             |
 | `@pyreon/storage`     | Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB                                                                      |
-| `@pyreon/hooks`       | 34 signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
+| `@pyreon/hooks`       | 35 signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
 | `@pyreon/hotkeys`     | Keyboard shortcut management — scope-aware, modifier keys, conflict detection                                                                        |
 | `@pyreon/permissions` | Reactive permissions — RBAC, ABAC, feature flags, subscription tiers                                                                                 |
 | `@pyreon/machine`     | Reactive state machines — constrained signals with type-safe transitions                                                                             |
@@ -621,12 +621,13 @@ Local-first / collaborative sync built on reactivity — a synced value IS a `Si
 
 ### @pyreon/hooks
 
-- 34 signal-based hooks across 6 categories. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: returns `Signal<T>` / `Computed<T>` / accessor objects, never plain values
+- 35 signal-based hooks across 7 categories. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: returns `Signal<T>` / `Computed<T>` / accessor objects, never plain values
 - **State**: `useToggle`, `usePrevious`, `useLatest`, `useControllableState`
 - **DOM**: `useEventListener`, `useClickOutside`, `useFocus`, `useHover`, `useFocusTrap`, `useElementSize`, `useWindowResize`, `useScrollLock`, `useIntersection`, `useInfiniteScroll`
 - **Responsive**: `useBreakpoint` (theme-driven), `useMediaQuery` (raw escape hatch), `useColorScheme`, `useReducedMotion`, `useThemeValue`, `useSpacing`, `useRootSize`
 - **Timing**: `useDebouncedValue`, `useDebouncedCallback`, `useThrottledCallback`, `useInterval`, `useTimeout`, `useTimeAgo`
 - **Interaction**: `useClipboard` (auto-resets `copied` after 2s), `useDialog` (native `<dialog>`), `useKeyboard`, `useOnline`
+- **Data**: `useFetch` — thin reactive JSON fetch (`{ data, error, isPending, refetch }`); the web half of the multiplatform `useFetch` contract (PMTC compiles the same call to native `PyreonFetch` containers)
 - **Composition**: `useMergedRef`, `useUpdateEffect` (skips first run), `useIsomorphicLayoutEffect` (layout effect on client, no-op on SSR)
 - **`useControllableState({ value, defaultValue, onChange })`** is the canonical controlled/uncontrolled pattern — every `@pyreon/ui-primitives` component uses it. Pass `value` and `defaultValue` as FUNCTIONS so signal reads track reactively. Reimplementing the `isControlled + signal + getter` shape by hand was the #1 anti-pattern across primitives before the helper landed
 - **Never reach for `addEventListener` / `removeEventListener` directly in primitives** — use `useEventListener`. Same for observers (`useIntersection` / `useElementSize`) and timers (`useInterval` / `useTimeout`). The cleanup is the hook's job
@@ -1734,7 +1735,7 @@ Adding a new published package: declare `sideEffects` (`false` for pure librarie
 
 ## Check Doc Claims — numeric drift gate
 
-`scripts/check-doc-claims.ts` asserts every numeric claim in human-written docs matches the underlying source of truth. The gate catches the recurring drift mode where a count is hand-quoted in 3-5 places ("34 signal-based hooks…") and only one gets bumped when the code changes — the audit caught the hooks README claiming 16 vs actual 34, drift that lasted long enough to ship to users.
+`scripts/check-doc-claims.ts` asserts every numeric claim in human-written docs matches the underlying source of truth. The gate catches the recurring drift mode where a count is hand-quoted in 3-5 places ("35 signal-based hooks…") and only one gets bumped when the code changes — the audit caught the hooks README claiming 16 vs actual 34, drift that lasted long enough to ship to users.
 
 The pure gate logic lives in `@pyreon/cli` at `packages/tools/cli/src/doctor/gates/doc-claims.ts` (so `pyreon doctor` runs it too); `scripts/check-doc-claims.ts` is a thin CLI wrapper. Add claim entries to the gate's `checks[]` array, not the script.
 
