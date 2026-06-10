@@ -9,6 +9,7 @@
 plugins {
     id("com.android.application")
     kotlin("android")
+    kotlin("plugin.serialization")
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
 }
 
@@ -39,6 +40,19 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // Compile the @pyreon/native runtime + router Kotlin sources into
+    // the app module — the PMTC emit header unconditionally imports
+    // `com.pyreon.runtime.*` and `com.pyreon.router.*` (see
+    // native-device wiring fix). Same shape as native-todomvc-android.
+    sourceSets {
+        getByName("main") {
+            kotlin {
+                srcDir("../../../packages/native/runtime-kotlin/src/main/kotlin")
+                srcDir("../../../packages/native/router-kotlin/src/main/kotlin")
+            }
+        }
+    }
 }
 
 dependencies {
@@ -48,8 +62,15 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
-    // No runtime-saveable (Counter has no persisted state)
-    // No kotlinx-serialization (no @Serializable types)
+    implementation("androidx.compose.runtime:runtime-saveable")
+    // Deps required by the runtime-kotlin srcDir sources (PyreonStorage
+    // uses kotlinx.serialization; PyreonPermissions uses ContextCompat;
+    // PyreonFetch/NetworkStatus use coroutines) + M2 material for the
+    // emit header's `import androidx.compose.material.*`.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.compose.material:material")
 
     // Instrumented-test deps. Same shape as native-todomvc-android.
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

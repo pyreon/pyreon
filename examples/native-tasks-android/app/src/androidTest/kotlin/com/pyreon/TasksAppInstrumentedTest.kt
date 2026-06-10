@@ -1,22 +1,29 @@
-// TasksAppInstrumentedTest — launch + auth-gate + navigation smoke
-// for the Android tasks showcase. Mirror of:
-//   - iOS:     `native-tasks-ios/iosUITests/PyreonTasksUITests.swift` (#1457)
+// TasksAppInstrumentedTest — launch + auth-gate + store mutation +
+// typed-params smoke for the Android tasks showcase. Mirror of:
+//   - iOS:     `native-tasks-ios/iosUITests/PyreonTasksUITests.swift`
 //   - Counter: `native-counter-android/.../CounterInstrumentedTest.kt` (#1454)
 //   - Router:  `native-router-demo-android/.../RouterDemoInstrumentedTest.kt` (#1455)
 //
-// Proves the Gap 2 (#1440) per-route `beforeEnter` auth-gate end-to-
-// end on Android at real-Emulator scope:
+// Proves at real-Emulator scope, against the STORE-BACKED TasksApp
+// source (Gap 4 closure — see the header of
+// `../native-tasks/src/TasksApp.tsx`):
 //
-//   - App launches → login page renders (catch-all root → /login)
-//   - Typing username + tapping Continue logs in + navigates to /tasks
-//   - /tasks renders the task list (auth-gated; would have blocked)
-//   - Tapping "New Task" navigates to /tasks/new
-//   - Tapping Cancel returns to /tasks
-//   - Tapping "Logout" navigates back to /login (auth state cleared)
+//   - App launches → login page renders
+//   - Typing a username + Continue flips the store's auth flag and
+//     navigates to /tasks — the per-route `beforeEnter` guard reads
+//     the SAME `mutableStateOf`-backed store object and admits the route
+//   - Typing a title + Add appends to the STORE's task list (cross-
+//     screen state — the exact thing `rememberPyreonStorage` could NOT
+//     provide, being per-composable) and the keyed list re-renders
+//   - "Open task 1" navigates to /tasks/:id — typed-params route:
+//     the dispatcher constructs `TaskDetailPageParam(id = ...)` from
+//     the matched segment (also auth-gated)
+//   - "Back to tasks" returns, "Logout" flips the flag back and lands
+//     on /login — the gate re-engages
 //
 // data-testid attrs in the SHARED `../native-tasks/src/TasksApp.tsx`
-// (from #1449) compile to `Modifier.testTag(...)` on the Compose
-// node; this test queries via `onNodeWithTag(...)`.
+// compile to `Modifier.testTag(...)` on the Compose node; this test
+// queries via `onNodeWithTag(...)`.
 //
 // Status: advisory CI gate. Runs on the `native-device`-labelled PR
 // path + nightly schedule via the Android Emulator runner action.
@@ -26,6 +33,7 @@ package com.pyreon
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -46,8 +54,9 @@ class TasksAppInstrumentedTest {
     }
 
     @Test
-    fun authGateLoginAndNavigateThroughScreens() {
-        // Phase 1: type username + submit
+    fun authGateStoreMutationAndTypedParamsDetail() {
+        // Phase 1: login — flips the store's auth flag; the beforeEnter
+        // guard on /tasks reads it and admits the navigation.
         composeRule
             .onNodeWithTag("login-username")
             .performTextInput("alice")
@@ -56,30 +65,49 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("login-submit")
             .performClick()
 
-        // Phase 2: assert tasks page rendered (auth-gate passed)
         composeRule
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
-        // Phase 3: navigate to new-task page
+        // Phase 2: add a task — proves the STORE list mutation
+        // (.set spread-append on the mutableStateOf-backed object)
+        // re-renders the keyed list.
         composeRule
-            .onNodeWithTag("tasks-new")
+            .onNodeWithTag("new-task-title")
+            .performTextInput("Verify on the emulator")
+
+        composeRule
+            .onNodeWithTag("new-task-add")
             .performClick()
 
         composeRule
-            .onNodeWithTag("new-task-page")
+            .onNodeWithText("Verify on the emulator")
             .assertIsDisplayed()
 
-        // Phase 4: cancel back to tasks
+        // Phase 3: typed-params route — /tasks/1 constructs
+        // TaskDetailPageParam(id = "1") in the dispatcher (auth-gated).
         composeRule
-            .onNodeWithTag("new-task-cancel")
+            .onNodeWithTag("tasks-open-first")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("task-detail-page")
+            .assertIsDisplayed()
+
+        composeRule
+            .onNodeWithText("Viewing task 1")
+            .assertIsDisplayed()
+
+        // Phase 4: back to the list.
+        composeRule
+            .onNodeWithTag("detail-back")
             .performClick()
 
         composeRule
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
-        // Phase 5: logout → auth re-engages, return to login
+        // Phase 5: logout — flips the store flag back; lands on /login.
         composeRule
             .onNodeWithTag("tasks-logout")
             .performClick()

@@ -62,14 +62,17 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     'synth-prop-types.tsx',
     // Router-hook stub regression: useNavigate / useParams.
     'router-hooks.tsx',
-    // Gap 5 showcase fixture is OMITTED from this Kotlin loop. The
-    // remaining limitation is signal-initial inline-object arrays
-    // (`const tasks = signal([{id: 1, ...}])`) — the synth-class
-    // fix from #1453 covers PROP types but not in-component signal
-    // initializers. The Swift validation loop DOES include the
-    // fixture (passes via swiftc -parse — Swift uses labeled-tuple
-    // syntax that doesn't need a synth class). A follow-up PR can
-    // extend #1453's pass to cover signal-initial values.
+    // Gap 5 showcase (STORE-BACKED — see the fixture header). In BOTH
+    // validate loops: a cross-screen defineStore (auth flag + Task[]
+    // list — `object PyreonStore_app` with mutableStateOf fields), the
+    // store-read beforeEnter guard in the dispatcher, typed route
+    // params (`/tasks/:id` + synthesized TaskDetailPageParam +
+    // dispatcher construction), .set() spread-append / map-toggle
+    // through the store, and Text-wrapped value-expression children.
+    // The ORIGINAL scaffold was Swift-loop-only because its emit
+    // didn't compile under kotlinc (tuple literals, `.update()`,
+    // prop-less dispatch of prop-requiring components).
+    'showcase-tasks.tsx',
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). The PyreonI18n class stub in kotlin-stubs.ts
     // satisfies kotlinc's type resolution.
