@@ -327,9 +327,40 @@ A one-time dev-mode warning fires at handler init when no `cacheKey` is configur
 
 Build-time ISR (per-route `export const revalidate` + adapter-driven rebuild-on-stale) is a **separate** mechanism documented in [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate).
 
-### Per-route override
+### Per-route render modes (hybrid rendering)
 
-Any route file can override the global mode with `export const renderMode = 'ssg'` (etc.).
+`mode` is the **default** for routes that don't declare their own. Any route file (or layout — declarations cascade to descendants) can override it:
+
+```ts
+// src/routes/about.tsx — prerendered at build inside an SSR app
+export const renderMode = 'ssg'
+
+// src/routes/dashboard.tsx — opt OUT of SSR: the server responds with the
+// CSR shell, the client mounts fresh and runs loaders on the cold-start path
+export const renderMode = 'spa'
+
+// src/routes/pricing.tsx — per-route stale-while-revalidate caching
+export const renderMode = 'isr'
+
+// src/routes/blog/_layout.tsx — cascades 'ssg' to every /blog/** route
+// that doesn't declare its own renderMode
+export const renderMode = 'ssg'
+```
+
+Resolution is leaf-first along the matched chain: a page's own declaration beats its layout's, and a layout's beats the app default. One implementation (`resolveRenderModeForPath`) drives **both** the build and the runtime, so they can never disagree.
+
+**What each declaration does inside a server app (`mode: 'ssr' | 'isr'`):**
+
+| renderMode | Build | Runtime |
+| --- | --- | --- |
+| `'ssg'` | Prerendered to `dist/<path>/index.html` (loaders run at build; `getStaticPaths` expands dynamic routes) + listed in `_pyreon-ssg-paths.json` | Served **static-first** by the emitted node/bun servers and excluded from the Cloudflare worker via `_routes.json`; a missing file falls back to SSR — never a 404 |
+| `'spa'` | Nothing emitted | The server responds with the CSR shell (built template, placeholders blanked, GET-only); the client mounts + runs loaders |
+| `'isr'` | — | Routed through the shared SWR cache handler (`config.isr`, default `revalidate: 60`) |
+| `'ssr'` | — | Under an `'isr'` app mode this is the per-route **cache bypass** |
+
+**Inside a static app (`mode: 'ssg'`):** `'spa'` routes emit the CSR shell instead of prerendered HTML; declaring `'ssr'` or `'isr'` is a **build error** (a static deploy has no server — the error names each offending route and the fix). Vercel/Netlify serve prerendered files static-first by platform convention; for subpath (`base`) deploys on Cloudflare the `_routes.json` excludes are root-relative — verify them when combining `base` with hybrid.
+
+When no route declares a divergent mode, the pipeline is byte-identical to the app-level mode — existing apps are unaffected.
 
 ## Components
 

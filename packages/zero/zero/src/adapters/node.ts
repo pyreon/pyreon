@@ -57,6 +57,19 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const handler = (await import("./server/entry-server.js")).default
 const clientDir = join(__dirname, "client")
 
+// Phase 2 — hybrid static-first. Routes declaring \`renderMode = 'ssg'\` are
+// prerendered at build time and listed in \`_pyreon-ssg-paths.json\` (the
+// prerendered-paths manifest the SSG pass writes). Serving those straight
+// from disk skips the SSR render entirely; a path missing from the manifest
+// (or whose file vanished) falls through to SSR — graceful, never a 404.
+// Loaded ONCE at boot (the set is immutable for a deploy).
+let prerenderedPaths = new Set()
+try {
+  const manifestRaw = await readFile(join(__dirname, "_pyreon-ssg-paths.json"), "utf-8")
+  const parsed = JSON.parse(manifestRaw)
+  if (parsed && Array.isArray(parsed.paths)) prerenderedPaths = new Set(parsed.paths)
+} catch {}
+
 const MIME_TYPES = {
   ".html": "text/html",
   ".js": "application/javascript",
@@ -82,6 +95,25 @@ const server = createServer(async (req, res) => {
   // serves the template shell — a harmless non-canonical edge the client
   // still hydrates.)
   if (req.method === "GET") {
+    // Hybrid static-first: prerendered route → serve its index.html.
+    if (prerenderedPaths.has(url.pathname)) {
+      try {
+        const pagePath = url.pathname === "/"
+          ? join(clientDir, "index.html")
+          : join(clientDir, url.pathname, "index.html")
+        const { resolve } = await import("node:path")
+        if (resolve(pagePath).startsWith(resolve(clientDir))) {
+          const html = await readFile(pagePath)
+          res.writeHead(200, {
+            "content-type": "text/html",
+            "cache-control": "public, max-age=0, must-revalidate",
+          })
+          res.end(html)
+          return
+        }
+      } catch {}
+      // File missing → fall through to SSR below.
+    }
     const ext = extname(url.pathname)
     if (ext) {
       try {

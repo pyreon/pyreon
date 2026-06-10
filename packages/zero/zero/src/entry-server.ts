@@ -9,6 +9,7 @@ import type { ApiRouteEntry } from "./api-routes";
 import { createApiMiddleware } from "./api-routes";
 import { createApp } from "./app";
 import { createISRHandler } from "./isr";
+import { collectRouteModes, resolveRenderModeForPath } from "./route-modes";
 import { render404Page } from "./not-found";
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 
@@ -267,7 +268,13 @@ export function createServer(options: CreateServerOptions) {
 	// silently, with `config.isr` ignored and no signal pointing at the
 	// cause (Pattern D from the audit). The wireRenderMode helper makes
 	// the dispatch explicit + drift-tested.
-	const handler = wireRenderMode(config.mode ?? "ssr", baseHandler, config);
+	const handler = wirePerRouteModes(
+		config.mode ?? "ssr",
+		baseHandler,
+		config,
+		options.routes,
+		resolvedTemplate,
+	);
 
 	// M1.2 — Runtime SSR 404 routes through the router (PR L5).
 	// When a URL doesn't match any leaf, @pyreon/router's resolveRoute
@@ -335,6 +342,69 @@ type RequestHandler = (req: Request) => Promise<Response>;
  *
  * @internal exported for entry-server.test.ts drift gate
  */
+/**
+ * Phase 2 — per-route render-mode dispatch. When any route DECLARES a
+ * `renderMode` diverging from the app default, requests dispatch per
+ * matched route:
+ *
+ *   - `'spa'`  → the CSR shell (built template, placeholders blanked) with
+ *                no server render — the opt-this-route-out-of-SSR hatch.
+ *                Falls back to SSR when no built template is available
+ *                (custom template/clientEntry setups, dev).
+ *   - `'isr'`  → the shared SWR cache handler (created lazily once).
+ *   - `'ssr'`  → the base handler directly — under an `'isr'` APP mode this
+ *                is the per-route cache BYPASS.
+ *   - `'ssg'`  → base handler too: prerendered files are served upstream by
+ *                the static layer (emitted node/bun servers + CDN adapters);
+ *                reaching the handler means the file is missing — SSR is the
+ *                graceful fallback, never a 404.
+ *
+ * When NO route declares a divergent mode, returns the plain app-level
+ * `wireRenderMode` handler — the zero-change path for every existing app.
+ * Resolution shares `resolveRenderModeForPath` with the build (leaf-first,
+ * layout cascade, app default) so build and runtime can never disagree.
+ */
+export function wirePerRouteModes(
+	appMode: RenderMode,
+	baseHandler: RequestHandler,
+	config: ZeroConfig,
+	routes: RouteRecord[],
+	builtTemplate: string | undefined,
+): RequestHandler {
+	const entries = collectRouteModes(routes, appMode);
+	const divergent = entries.some((e) => e.declared && e.mode !== appMode);
+	if (!divergent) return wireRenderMode(appMode, baseHandler, config);
+
+	const needsIsr =
+		appMode === "isr" || entries.some((e) => e.declared && e.mode === "isr");
+	const isrHandler = needsIsr
+		? createISRHandler(baseHandler, config.isr ?? { revalidate: 60 })
+		: null;
+
+	// CSR shell for 'spa' routes: the built template with the injection
+	// placeholders blanked. `startClient` sees no SSR content and takes the
+	// mount + run-loaders cold-start path (the documented SPA contract).
+	const spaShell = builtTemplate
+		? builtTemplate
+				.replace("<!--pyreon-head-->", "")
+				.replace("<!--pyreon-app-->", "")
+				.replace("<!--pyreon-scripts-->", "")
+		: undefined;
+
+	return async (req: Request) => {
+		const url = new URL(req.url);
+		const mode = resolveRenderModeForPath(routes, url.pathname, appMode);
+		if (mode === "spa" && spaShell !== undefined && req.method === "GET") {
+			return new Response(spaShell, {
+				status: 200,
+				headers: { "Content-Type": "text/html; charset=utf-8" },
+			});
+		}
+		if (mode === "isr" && isrHandler) return isrHandler(req);
+		return baseHandler(req);
+	};
+}
+
 export function wireRenderMode(
 	mode: RenderMode,
 	baseHandler: RequestHandler,

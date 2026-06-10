@@ -31,6 +31,7 @@ import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
 import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
+import { assertModesSupported } from './route-modes'
 import {
   _peekMkdirCacheSize,
   _registerSsgEntryRenderer,
@@ -109,8 +110,12 @@ const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 // has to compare paths against the known locale list. Wrapping the
 // source template in a function lets the outer plugin pass
 // `config.i18n?.locales ?? []` per build.
-const renderSsgEntrySource = (locales: readonly string[] = []): string => {
+const renderSsgEntrySource = (
+  locales: readonly string[] = [],
+  appMode: string = 'ssg',
+): string => {
   const i18nLocalesLiteral = JSON.stringify(locales)
+  const appModeLiteral = JSON.stringify(appMode)
   return `
 import { routes } from "virtual:zero/routes"
 // h / renderWithHead / runWithRequestContext serve ONLY the legacy
@@ -120,7 +125,18 @@ import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
 import { renderPage } from "@pyreon/server"
 import { runWithRequestContext } from "@pyreon/runtime-server"
-import { createApp } from "@pyreon/zero/server"
+import { collectRouteModes, createApp, resolveRenderModeForPath } from "@pyreon/zero/server"
+
+// Phase 2 — route-level render modes. The plugin filters/validates the
+// resolved path list through THESE exports so build-time mode decisions
+// use the SAME resolution (route-record meta.renderMode, leaf-first with
+// layout cascade, app-mode default) as the runtime dispatch in
+// entry-server.ts — one implementation, no drift.
+const __appMode = ${appModeLiteral}
+export const __routeModeEntries = collectRouteModes(routes, __appMode)
+export function __resolveRenderMode(path) {
+  return resolveRenderModeForPath(routes, path, __appMode)
+}
 
 // Lazy-imported styler integration. Projects that don't depend on
 // @pyreon/styler skip this entirely (the import fails silently, the
@@ -502,6 +518,30 @@ async function resolvePaths(
 // `./ssr-build-shared` (see top-level imports). See that module's JSDoc
 // for the atomic-rename / per-build-cache contract — both shared across
 // the SSG + SSR/ISR plugins so the cleanup recipe can never diverge.
+
+/**
+ * Phase 2 — cheap hybrid pre-check. Scans the route files' detected exports
+ * for any DECLARED `renderMode` of 'ssg' or 'spa' (page or layout — layout
+ * declarations cascade). Costs one source scan; the AUTHORITATIVE per-path
+ * decision is still the SSG entry's `__resolveRenderMode` (record-tree
+ * resolution) — this only decides whether the hybrid prerender pass is
+ * worth its SSR sub-build at all.
+ */
+async function anyRouteDeclaresStaticMode(
+  routesDir: string,
+  mode: ZeroConfig['mode'],
+): Promise<boolean> {
+  if (!existsSync(routesDir)) return false
+  try {
+    const files = await scanRouteFilesWithExports(routesDir, mode)
+    return files.some((f) => {
+      const lit = f.exports?.renderModeLiteral
+      return typeof lit === 'string' && /['"](ssg|spa)['"]/.test(lit)
+    })
+  } catch {
+    return false
+  }
+}
 
 /**
  * Build the per-locale breakdown summary string for the closeBundle log.
@@ -982,8 +1022,28 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
     },
 
     async closeBundle() {
-      if (config.mode !== 'ssg') return
       if (isInnerBuild) return
+      // Phase 2 — ALSO no-op inside the ssrPlugin's inner server build (its
+      // reconstructed plugin chain includes this plugin again; the hybrid
+      // pass must only run on the OUTER client build).
+      if (process.env.PYREON_ZERO_SSR_INNER_BUILD === '1') return
+      // Phase 2 — route-level render modes. The plugin runs in TWO shapes:
+      //   - app mode 'ssg': the full SSG pass (existing behavior), now with
+      //     per-route validation ('ssr'/'isr' routes are a build error in a
+      //     static deploy) and 'spa'-declared routes emitting the CSR shell
+      //     instead of prerendered HTML.
+      //   - app mode 'ssr'/'isr' (HYBRID): prerender ONLY the routes that
+      //     declare renderMode 'ssg' (leaf-first, layout cascade — resolved
+      //     by the SSG entry's __resolveRenderMode so build + runtime share
+      //     ONE implementation). Skips the 404/adapter steps the ssrPlugin
+      //     already owns. Pays the SSR sub-build only when the cheap file
+      //     scan finds a declared static mode.
+      const appMode = config.mode ?? 'ssr'
+      const hybrid = appMode === 'ssr' || appMode === 'isr'
+      if (appMode !== 'ssg' && !hybrid) return
+      if (hybrid && !(await anyRouteDeclaresStaticMode(join(root, 'src', 'routes'), config.mode))) {
+        return
+      }
 
       // Per-build mkdir dedup — `dist/` may have been wiped between builds
       // (vite build --watch + manual clean, CI pipelines, etc.), so cache
@@ -1026,7 +1086,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // per-locale 404 walker can detect which RouteRecord serves which
       // locale at module-eval time inside the SSR sub-build.
       const i18nLocales = config.i18n?.locales ?? []
-      await materializeEntry(entryPath, renderSsgEntrySource(i18nLocales))
+      await materializeEntry(entryPath, renderSsgEntrySource(i18nLocales, config.mode ?? 'ssg'))
 
       // Inner SSR sub-build via the shared helper. Owns the env-flag
       // set/clear recipe — see `ssr-build-shared.ts:buildSsrBundle`.
@@ -1115,6 +1175,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         __renderNotFound?: (
           locale?: string | null,
         ) => Promise<{ appHtml: string; head: string; loaderScript: string } | null>
+        // Phase 2 — route-level render modes. Both resolved from the REAL
+        // route-record tree inside the entry (meta.renderMode, leaf-first
+        // with layout cascade, app-mode default) so the build's decisions
+        // can never drift from the runtime dispatch. `?` keeps forward
+        // compat with entries built before Phase 2.
+        __resolveRenderMode?: (path: string) => 'ssr' | 'ssg' | 'spa' | 'isr'
+        __routeModeEntries?: import('./route-modes').RouteModeEntry[]
       }
       const handlerMod = (await withSilent(
         () => import(/* @vite-ignore */ pathToFileURL(handlerPath).href),
@@ -1182,6 +1249,33 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // and silently overwrites; restoring → throws with the formatted
       // error listing every duplicate URL.
       assertNoPathCollisions(paths)
+
+      // Phase 2 — per-route mode partition, via the ENTRY's resolver (the
+      // same record-tree resolution the runtime dispatch uses).
+      const resolveMode = handlerMod.__resolveRenderMode
+      let renderablePaths = paths
+      let spaShellPaths: string[] = []
+      if (appMode === 'ssg') {
+        // 'ssr'/'isr' routes in a static deploy are unimplementable —
+        // fail the build LOUDLY (assertModesSupported names each route +
+        // the fix) instead of shipping 404s the user finds in production.
+        if (handlerMod.__routeModeEntries) {
+          assertModesSupported(handlerMod.__routeModeEntries, 'ssg')
+        }
+        if (resolveMode) {
+          spaShellPaths = paths.filter((p) => resolveMode(p) === 'spa')
+          const spaSet = new Set(spaShellPaths)
+          renderablePaths = paths.filter((p) => !spaSet.has(p))
+        }
+      } else if (resolveMode) {
+        // HYBRID: only 'ssg'-declared routes prerender; everything else is
+        // the server's job at request time.
+        renderablePaths = paths.filter((p) => resolveMode(p) === 'ssg')
+        if (renderablePaths.length === 0) {
+          await rm(ssrOutDir, { recursive: true, force: true })
+          return
+        }
+      }
 
       let pages = 0
       // PR B — collect redirects from loader-throws so the post-render
@@ -1338,13 +1432,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const concurrency = Math.max(1, config.ssg?.concurrency ?? 4)
       let completed = 0
 
-      await runWithConcurrency(paths, concurrency, renderOne, async (p) => {
+      await runWithConcurrency(renderablePaths, concurrency, renderOne, async (p) => {
         completed++
         if (config.ssg?.onProgress) {
           try {
             await config.ssg.onProgress({
               completed,
-              total: paths.length,
+              total: renderablePaths.length,
               currentPath: p,
               elapsed: Date.now() - start,
             })
@@ -1353,6 +1447,34 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
         }
       })
+
+      // Phase 2 — 'spa'-declared routes in a static deploy get the CSR
+      // SHELL: the built template with the injection placeholders blanked.
+      // The client boots via the template's hashed entry, `startClient`
+      // sees no SSR content → takes the mount + run-loaders cold-start
+      // path (the documented SPA contract). Shell paths count as written
+      // pages (they're real URLs — sitemap + the prerendered-paths
+      // manifest should include them so static hosts serve them directly).
+      for (const p of spaShellPaths) {
+        try {
+          const shellHtml = injectIntoTemplate(template, {
+            appHtml: '',
+            head: '',
+            loaderScript: '',
+          })
+          const filePath = resolveOutputPath(distDir, p)
+          if (!isInsideDist(distDir, filePath)) {
+            errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
+            continue
+          }
+          await mkdirOnce(dirname(filePath))
+          await writeFileAtomic(filePath, shellHtml)
+          pages++
+          writtenPaths.push(p)
+        } catch (error) {
+          errors.push({ path: p, error })
+        }
+      }
 
       // Clean up the Vite build manifest — it's an internal artifact this
       // plugin enabled (via `config()`) only to drive per-route modulepreload;
@@ -1484,7 +1606,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // silently when no `_404.tsx` exists anywhere — the Map is empty
       // and the loop body never runs.
       let emitted404Count = 0
-      if (config.ssg?.emit404 !== false && handlerMod.__renderNotFound) {
+      // Phase 2 — hybrid builds skip 404 emission: the SERVER owns 404s at
+      // request time (router-driven notFoundComponent chain, HTTP 404).
+      if (appMode === 'ssg' && config.ssg?.emit404 !== false && handlerMod.__renderNotFound) {
         // Back-compat: old SSG entries (pre-PR-K) expose only the singular
         // `__notFoundComponent`; new entries expose the Map. Build a synthetic
         // single-entry iterator from the singular when the Map isn't there

@@ -49,6 +49,19 @@ import { normalize } from "node:path"
 const handler = (await import("./server/entry-server.js")).default
 const clientDir = new URL("./client/", import.meta.url).pathname
 
+// Phase 2 — hybrid static-first. Prerendered \`renderMode = 'ssg'\` routes are
+// listed in \`_pyreon-ssg-paths.json\`; serve their index.html straight from
+// disk. Missing manifest/file → fall through to SSR (graceful). Loaded once
+// at boot (immutable per deploy).
+let prerenderedPaths = new Set()
+try {
+  const manifestFile = Bun.file(new URL("./_pyreon-ssg-paths.json", import.meta.url).pathname)
+  if (await manifestFile.exists()) {
+    const parsed = await manifestFile.json()
+    if (parsed && Array.isArray(parsed.paths)) prerenderedPaths = new Set(parsed.paths)
+  }
+} catch {}
+
 Bun.serve({
   port: ${port},
   async fetch(req) {
@@ -83,6 +96,23 @@ Bun.serve({
       // for "/" shipping the unfilled <!--pyreon-app--> shell; a missing file
       // also falls through. (Explicit "/index.html" serves the template shell,
       // a harmless non-canonical edge the client hydrates.)
+      // Hybrid static-first: prerendered route → serve its index.html.
+      if (prerenderedPaths.has(decoded)) {
+        const pagePath = normalize(
+          clientDir + (decoded === "/" ? "index.html" : decoded + "/index.html"),
+        )
+        if (pagePath.startsWith(clientDir)) {
+          const page = Bun.file(pagePath)
+          if (await page.exists()) {
+            return new Response(page, {
+              headers: {
+                "content-type": "text/html",
+                "cache-control": "public, max-age=0, must-revalidate",
+              },
+            })
+          }
+        }
+      }
       if (decoded !== "/") {
         // Prepend clientDir then normalize. If the normalized result
         // no longer starts with clientDir, a \`..\` segment escaped —
