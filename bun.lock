@@ -649,6 +649,7 @@
       "version": "0.0.0",
       "devDependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
         "@pyreon/i18n": "workspace:*",
         "@pyreon/machine": "workspace:*",
         "@pyreon/native-cli": "workspace:*",
@@ -677,6 +678,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
         "@pyreon/primitives": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
