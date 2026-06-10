@@ -34,6 +34,7 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
 
@@ -292,14 +293,33 @@ function emitKotlinFieldMeta(fm: FieldMetaDefnIR): string {
  *   )
  *   val userSchema = PyreonZodSchema_userSchema()
  */
+function kotlinFieldType(t: ZodFieldType): string {
+  if (typeof t === 'string') {
+    return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Boolean'
+  }
+  const elem =
+    t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Boolean'
+  return `List<${elem}>`
+}
+
+function kotlinFieldInitial(t: ZodFieldType): string {
+  if (typeof t === 'string') {
+    return t === 'string' ? '""' : t === 'boolean' ? 'false' : '0'
+  }
+  return 'emptyList()'
+}
+
 function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
   const lines: string[] = []
   lines.push(`data class PyreonZodSchema_${zs.bindingName}(`)
   for (const f of zs.fields) {
-    const t =
-      f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Boolean'
-    const initial = f.type === 'string' ? '""' : f.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${f.name}: ${t} = ${initial},`)
+    const t = kotlinFieldType(f.type)
+    if (f.optional) {
+      lines.push(`    var ${f.name}: ${t}? = null,`)
+    } else {
+      const initial = kotlinFieldInitial(f.type)
+      lines.push(`    var ${f.name}: ${t} = ${initial},`)
+    }
   }
   lines.push(`) {`)
   // Gap 4 v2 — runtime parse() / safeParse() companion methods.
@@ -311,8 +331,14 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     `        fun parse(input: Map<String, Any?>): PyreonZodSchema_${zs.bindingName} {`,
   )
   for (const f of zs.fields) {
-    const t =
-      f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Boolean'
+    const t = kotlinFieldType(f.type)
+    if (f.optional) {
+      // Optional field: missing → null, present-but-wrong-type → throw
+      lines.push(
+        `            val ${f.name}Val: ${t}? = if (input.containsKey(${JSON.stringify(f.name)})) (input[${JSON.stringify(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)}) else null`,
+      )
+      continue
+    }
     lines.push(
       `            val ${f.name}Val = (input[${JSON.stringify(f.name)}] as? ${t})`,
     )
@@ -391,9 +417,9 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
  */
 const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
     data class MissingOrWrongType(val field: String, val expected: String) :
-        PyreonSchemaError("Field '\$field' missing or wrong type (expected \$expected)")
+        PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
     data class ConstraintViolation(val field: String, val rule: String) :
-        PyreonSchemaError("Field '\$field' violated constraint '\$rule'")
+        PyreonSchemaError("Field '$field' violated constraint '$rule'")
 }`
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */

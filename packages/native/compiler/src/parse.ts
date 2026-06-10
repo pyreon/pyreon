@@ -833,9 +833,9 @@ function tryNamespacedSchemaDefnFromTopLevel(
 
     // Walk the chain twice: once to find the BASE <prefix>.X() call,
     // and once (top-down) to collect constraint modifiers.
-    // e.g. z.string().min(2).email() → base = z.string(),
-    //                                    constraints = { min: 2, email: true }
+    // v2.2 — also collect `.optional()` / `.nullable()` flags.
     const constraints: ZodFieldConstraints = {}
+    let optional = false
     let value = unwrapTypeLayers(prop.value as AnyNode | undefined) as AnyNode | undefined
     // First pass — collect modifiers from outermost call inward.
     let cursor: AnyNode | undefined = value
@@ -847,8 +847,8 @@ function tryNamespacedSchemaDefnFromTopLevel(
         callee.property?.type === 'Identifier'
       ) {
         const modName = callee.property.name as string
-        const args = (cursor.arguments as AnyNode[] | undefined) ?? []
-        const firstArg = args[0]
+        const modArgs = (cursor.arguments as AnyNode[] | undefined) ?? []
+        const firstArg = modArgs[0]
         if (modName === 'min') {
           if (
             firstArg &&
@@ -871,9 +871,12 @@ function tryNamespacedSchemaDefnFromTopLevel(
           constraints.url = true
         } else if (modName === 'uuid') {
           constraints.uuid = true
+        } else if (modName === 'optional' || modName === 'nullable') {
+          // Gap 4 v2.2 — `.optional()` / `.nullable()` mark the field
+          // nullable on native. parse() returns nil instead of throwing
+          // when missing.
+          optional = true
         }
-        // length / int / positive / negative / etc. are silently skipped
-        // in v2.1 — extend the if-chain to capture more constraints.
         cursor = callee.object as AnyNode
         continue
       }
@@ -902,22 +905,53 @@ function tryNamespacedSchemaDefnFromTopLevel(
     const method = baseCallee.property.name as string
     const hasConstraints = Object.keys(constraints).length > 0
     if (method === 'string') {
-      fields.push(
-        hasConstraints
-          ? { name: fieldName, type: 'string', constraints }
-          : { name: fieldName, type: 'string' },
-      )
+      const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'string' }
+      if (hasConstraints) entry.constraints = constraints
+      if (optional) entry.optional = true
+      fields.push(entry)
     } else if (method === 'number') {
-      fields.push(
-        hasConstraints
-          ? { name: fieldName, type: 'number', constraints }
-          : { name: fieldName, type: 'number' },
-      )
+      const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'number' }
+      if (hasConstraints) entry.constraints = constraints
+      if (optional) entry.optional = true
+      fields.push(entry)
     } else if (method === 'boolean') {
-      fields.push({ name: fieldName, type: 'boolean' })
+      const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'boolean' }
+      if (optional) entry.optional = true
+      fields.push(entry)
+    } else if (method === 'array') {
+      // Gap 4 v2.2 — `z.array(z.string())` etc. The inner element
+      // must itself be a recognizable z.X() call.
+      const innerArg = (value.arguments as AnyNode[] | undefined)?.[0]
+      let innerType: 'string' | 'number' | 'boolean' | undefined
+      if (innerArg && innerArg.type === 'CallExpression') {
+        const arrayElementCallee = innerArg.callee as AnyNode | undefined
+        if (
+          arrayElementCallee?.type === 'MemberExpression' &&
+          arrayElementCallee.object?.type === 'Identifier' &&
+          (arrayElementCallee.object.name as string) === prefix &&
+          arrayElementCallee.property?.type === 'Identifier'
+        ) {
+          const innerMethod = arrayElementCallee.property.name as string
+          if (innerMethod === 'string') innerType = 'string'
+          else if (innerMethod === 'number') innerType = 'number'
+          else if (innerMethod === 'boolean') innerType = 'boolean'
+        }
+      }
+      if (!innerType) {
+        ctx.warnings.push(
+          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is z.array() with an unsupported inner type — v2.2 supports z.array(z.string/z.number/z.boolean). Dropping field.`,
+        )
+        continue
+      }
+      const entry: ZodSchemaDefnIR['fields'][number] = {
+        name: fieldName,
+        type: { kind: 'array', element: innerType },
+      }
+      if (optional) entry.optional = true
+      fields.push(entry)
     } else {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — v1 supports ${prefix}.string / ${prefix}.number / ${prefix}.boolean. Dropping field.`,
+        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — v2 supports ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array. Dropping field.`,
       )
     }
     void libraryDisplay

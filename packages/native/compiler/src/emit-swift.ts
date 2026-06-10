@@ -39,6 +39,7 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
 
@@ -385,13 +386,33 @@ function emitSwiftFieldMeta(fm: FieldMetaDefnIR): string {
  *   }
  *   let userSchema = PyreonZodSchema_userSchema()
  */
+function swiftFieldType(t: ZodFieldType): string {
+  if (typeof t === 'string') {
+    return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Bool'
+  }
+  // v2.2 array
+  const elem = t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Bool'
+  return `[${elem}]`
+}
+
+function swiftFieldInitial(t: ZodFieldType): string {
+  if (typeof t === 'string') {
+    return t === 'string' ? '""' : t === 'boolean' ? 'false' : '0'
+  }
+  return '[]'
+}
+
 function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   const lines: string[] = []
   lines.push(`struct PyreonZodSchema_${zs.bindingName}: Codable {`)
   for (const f of zs.fields) {
-    const t = f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Bool'
-    const initial = f.type === 'string' ? '""' : f.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${f.name}: ${t} = ${initial}`)
+    const t = swiftFieldType(f.type)
+    if (f.optional) {
+      lines.push(`    var ${f.name}: ${t}? = nil`)
+    } else {
+      const initial = swiftFieldInitial(f.type)
+      lines.push(`    var ${f.name}: ${t} = ${initial}`)
+    }
   }
   lines.push(``)
   // Gap 4 v2 — runtime .parse() / .safeParse() methods. Take a
@@ -400,7 +421,19 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
   lines.push(`        var result = Self()`)
   for (const f of zs.fields) {
-    const t = f.type === 'string' ? 'String' : f.type === 'number' ? 'Int' : 'Bool'
+    const t = swiftFieldType(f.type)
+    if (f.optional) {
+      // Optional field — missing → leave nil, present-but-wrong-type → throw
+      lines.push(`        if let raw = input[${JSON.stringify(f.name)}] {`)
+      lines.push(`            guard let ${f.name}Val = raw as? ${t} else {`)
+      lines.push(
+        `                throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(f.name)}, expected: ${JSON.stringify(t)})`,
+      )
+      lines.push(`            }`)
+      lines.push(`            result.${f.name} = ${f.name}Val`)
+      lines.push(`        }`)
+      continue
+    }
     lines.push(
       `        guard let ${f.name}Val = input[${JSON.stringify(f.name)}] as? ${t} else {`,
     )
