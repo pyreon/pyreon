@@ -1,0 +1,5 @@
+[
+  { "id": 1, "text": "Make it work, make it right, make it fast.", "author": "Kent Beck" },
+  { "id": 2, "text": "Simplicity is prerequisite for reliability.", "author": "Edsger Dijkstra" },
+  { "id": 3, "text": "Programs must be written for people to read.", "author": "Harold Abelson" }
+]

@@ -138,7 +138,39 @@ final class PyreonTasksUITests: XCTestCase {
             "Did not return to tasks page within 5s after Back"
         )
 
-        // Phase 5: logout — flips the store flag back; lands on /login.
+        // Phase 5: networked fetch (the fetch-arc device proof) — the
+        // quotes screen runs useFetch<Quote[]> through the emitted
+        // URLSession `.task {}` harness against the CI fixture server
+        // (http://127.0.0.1:8787 — the Simulator shares the host
+        // loopback; ATS allows it via NSAllowsLocalNetworking). The
+        // decoded rows asserted BY CONTENT (a fixture quote's text), so
+        // a 200-with-wrong-body can't pass.
+        let quotesNav = app.buttons["tasks-quotes"].firstMatch
+        XCTAssertTrue(quotesNav.exists, "Quotes button missing on tasks page")
+        quotesNav.tap()
+
+        let quotesPage = app.otherElements["quotes-page"].firstMatch
+        XCTAssertTrue(
+            quotesPage.waitForExistence(timeout: 15),
+            "Quotes page did not render — /quotes route dispatch failed"
+        )
+
+        let firstQuote = app.staticTexts["Make it work, make it right, make it fast."].firstMatch
+        XCTAssertTrue(
+            firstQuote.waitForExistence(timeout: 20),
+            "Fetched quote text did not render — the URLSession harness did not resolve data from the fixture server (is the CI file server on 8787 up?)"
+        )
+
+        let quotesBack = app.buttons["quotes-back"].firstMatch
+        XCTAssertTrue(quotesBack.exists, "Back button missing on quotes page")
+        quotesBack.tap()
+
+        XCTAssertTrue(
+            tasksPage.waitForExistence(timeout: 15),
+            "Did not return to tasks page after quotes Back"
+        )
+
+        // Phase 6: logout — flips the store flag back; lands on /login.
         let logout = app.buttons["tasks-logout"].firstMatch
         XCTAssertTrue(logout.exists, "Logout button missing on tasks page")
         logout.tap()

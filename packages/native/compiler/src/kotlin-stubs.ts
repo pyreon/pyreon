@@ -103,7 +103,7 @@ fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 // the bare Text(text = "...") call sites (from Text emit) valid.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null) {}
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, modifier: Modifier = Modifier) {}
 
 @Composable
 fun Button(
@@ -579,6 +579,28 @@ fun useParams(): Map<String, String> = emptyMap()
 
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null
+
+// PyreonFetch — mirror of @pyreon/native-runtime-kotlin's PyreonFetch.kt
+// (Phase 4.1 state container). Added with the quotes fixture — before
+// it, NO useFetch shape was kotlinc-validated (the Swift loop is
+// -parse-only, so it never resolves references; kotlinc fully
+// typechecks and is the one that catches missing runtime surface).
+class PyreonFetch<T> {
+  val data: MutableState<T?> = mutableStateOf(null)
+  val error: MutableState<Throwable?> = mutableStateOf(null)
+  val isPending: MutableState<Boolean> = mutableStateOf(false)
+  fun begin() {}
+  fun resolve(value: T) {}
+  fun reject(e: Throwable) {}
+  fun refetch() {}
+}
+
+// kotlinx.coroutines surface the emitted fetch harness drives —
+// withContext(Dispatchers.IO) { ... } around the blocking URL read.
+object Dispatchers {
+  val IO: Any = Any()
+}
+suspend fun <T> withContext(context: Any, block: () -> T): T = block()
 
 // PyreonForm — mirror of @pyreon/native-runtime-kotlin's PyreonForm.kt
 // v2 surface (form-binding arc): MutableState maps + validators +

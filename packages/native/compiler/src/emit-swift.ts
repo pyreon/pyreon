@@ -2455,10 +2455,14 @@ function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
   return body.right
 }
 
-function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  // `<Text>Hello</Text>` → `Text("Hello")`
-  // `<Text>{count}</Text>` → `Text("\(count)")`
-  // mixed text + expr is built as an interpolated Swift string.
+/**
+ * The bare `Text(...)` construction WITHOUT layout modifiers — shared
+ * by `emitSwiftText` (which appends them) and `emitSwiftHeading`
+ * (which appends font/bold/color BEFORE its own modifier pass; calling
+ * the modifier-appending variant from Heading would double-emit the
+ * accessibility identifier).
+ */
+function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   if (e.children.length === 0) return 'Text("")'
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
     return `Text(${JSON.stringify(e.children[0]!.value)})`
@@ -2469,6 +2473,20 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     else parts.push(`\\(${emitSwiftExpr(c.expr, indent)})`)
   }
   return `Text("${parts.join('')}")`
+}
+
+function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // `<Text>Hello</Text>` → `Text("Hello")`
+  // `<Text>{count}</Text>` → `Text("\(count)")`
+  // mixed text + expr is built as an interpolated Swift string.
+  //
+  // Layout modifiers INCLUDING `data-testid` → .accessibilityIdentifier
+  // thread on every shape — their absence on Text was the same
+  // device-found bug class as Button (#1506) and Field (a43599f01):
+  // `app.staticTexts["login-error"]` invisible to XCUITest while
+  // label-based queries worked, so the iOS smoke (label-querying)
+  // passed and only the tag-querying Android smoke caught it.
+  return `${emitSwiftTextCore(e, indent)}${emitSwiftLayoutModifiers(e)}`
 }
 
 function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -3282,7 +3300,7 @@ function emitSwiftHeading(
 ): string {
   const levelRaw = readStaticAttr(e, 'level')
   const level = (typeof levelRaw === 'number' ? levelRaw : 1) as 1 | 2 | 3 | 4 | 5 | 6
-  let result = `${emitSwiftText(e, indent)}.font(${HEADING_FONT[level] ?? '.largeTitle'}).bold()`
+  let result = `${emitSwiftTextCore(e, indent)}.font(${HEADING_FONT[level] ?? '.largeTitle'}).bold()`
   const color = readStaticAttr(e, 'color')
   if (typeof color === 'string') {
     result += `.foregroundColor(${resolveColor(color, 'swift')})`

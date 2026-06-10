@@ -2177,16 +2177,24 @@ function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
 }
 
 function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  if (e.children.length === 0) return `Text(text = "")`
+  // Thread the layout modifier so `data-testid` reaches the node as
+  // Modifier.testTag — its absence on Text was the device-found bug
+  // behind the tasks Espresso failure (the error-path assert queried
+  // onNodeWithTag("login-error") and the tag was silently dropped;
+  // iOS passed because the Swift Text emit carries the identifier).
+  // Same fix shape as Field (a43599f01).
+  const mod = emitKotlinLayoutModifier(e)
+  const modArg = mod === '' ? '' : `, modifier = ${mod}`
+  if (e.children.length === 0) return `Text(text = ""${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
     if (c.kind === 'text') parts.push(escapeKotlinInterp(c.value))
     else parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
   }
-  return `Text(text = "${parts.join('')}")`
+  return `Text(text = "${parts.join('')}"${modArg})`
 }
 
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -2812,6 +2820,9 @@ function emitKotlinHeading(
   ]
   const color = readStaticAttrKotlin(e, 'color')
   if (typeof color === 'string') args.push(`color = ${resolveColor(color, 'kotlin')}`)
+  // Same data-testid threading as Text (device-found bug class).
+  const mod = emitKotlinLayoutModifier(e)
+  if (mod !== '') args.push(`modifier = ${mod}`)
   return `Text(${args.join(', ')})`
 }
 

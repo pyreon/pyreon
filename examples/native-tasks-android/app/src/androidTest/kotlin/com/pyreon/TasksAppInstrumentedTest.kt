@@ -33,6 +33,7 @@ package com.pyreon
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -128,7 +129,39 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
-        // Phase 5: logout — flips the store flag back; lands on /login.
+        // Phase 5: networked fetch (the fetch-arc device proof) — the
+        // quotes screen runs useFetch<Quote[]> through the emitted
+        // LaunchedEffect + kotlinx-serialization harness against the
+        // CI fixture server (http://127.0.0.1:8787, reverse-forwarded
+        // into the emulator via `adb reverse`; cleartext allowed for
+        // loopback only by the network security config). Asserted BY
+        // CONTENT so a 200-with-wrong-body can't pass. waitUntil
+        // because the request crosses a real network hop — Compose's
+        // idle-sync does NOT cover URLSession-style background work.
+        composeRule
+            .onNodeWithTag("tasks-quotes")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("quotes-page")
+            .assertIsDisplayed()
+
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule
+                .onAllNodesWithText("Make it work, make it right, make it fast.")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+
+        composeRule
+            .onNodeWithTag("quotes-back")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("tasks-page")
+            .assertIsDisplayed()
+
+        // Phase 6: logout — flips the store flag back; lands on /login.
         composeRule
             .onNodeWithTag("tasks-logout")
             .performClick()

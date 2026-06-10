@@ -219,6 +219,18 @@ jobs:
       # logout flow) against the prerendered canonical TasksApp.tsx
       # source. Closes the audit's "no device CI for tasks" gap on
       # the iOS side.
+      # fetch-arc device proof: the quotes screen fetches
+      # http://127.0.0.1:8787/quotes.json. The Simulator shares the
+      # host loopback, so a plain host file server is reachable
+      # in-app. Started ONCE, before the tasks UITest; the trailing
+      # `&` + disown keeps it alive across steps within this job.
+      - name: Start quotes fixture server (port 8787)
+        run: |
+          python3 -m http.server 8787 --directory examples/native-tasks/fixtures &
+          disown
+          sleep 1
+          curl -fsS http://127.0.0.1:8787/quotes.json > /dev/null
+
       - name: Emit + xcodegen + UITest — native-tasks-ios
         working-directory: examples/native-tasks-ios
         run: |
@@ -452,7 +464,32 @@ jobs:
           # run that ever REACHED this step (the build steps before
           # it use step-level working-directory and were fine).
           working-directory: examples/native-tasks-android
-          script: gradle connectedCheck --no-daemon --stacktrace
+          # fetch-arc device proof: serve the quotes fixture on the
+          # HOST, then `adb reverse` forwards the EMULATOR's
+          # 127.0.0.1:8787 to the host server — the same loopback URL
+          # the iOS Simulator (and web dev) reads works unchanged
+          # inside the emulator. Each script LINE runs from
+          # working-directory; the server line backgrounds with `&`.
+          # The cleartext exception for loopback lives in the app's
+          # network_security_config.xml.
+          script: |
+            python3 -m http.server 8787 --directory ../native-tasks/fixtures &
+            adb reverse tcp:8787 tcp:8787
+            gradle connectedCheck --no-daemon --stacktrace
+
+      # The connected-test HTML/XML reports are the ONLY place the
+      # failing assertion's line number lives — the gradle console log
+      # truncates the stack at the assertIsDisplayed frame. Their
+      # absence made the round-3 tasks failure (the Text testTag drop)
+      # needlessly hard to diagnose; upload them whenever Espresso ran.
+      - name: Upload connected-test reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-connected-reports
+          path: examples/native-*-android/app/build/reports/androidTests/
+          retention-days: 14
+          if-no-files-found: ignore
 
   # ── Nightly-failure visibility (sticky issue) ──
   #
