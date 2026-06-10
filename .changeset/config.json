@@ -105,6 +105,7 @@
     "@pyreon/example-perf-dashboard",
     "@pyreon/experiments",
     "@pyreon/islands-showcase",
-    "@pyreon/example-sync-yjs"
+    "@pyreon/example-sync-yjs",
+    "@pyreon/example-collab-board"
   ]
 }
