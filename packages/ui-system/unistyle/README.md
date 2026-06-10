@@ -124,6 +124,34 @@ stripUnit(24)               // 24
 values([null, 16, 24], 16)  // '1rem' (picks first non-null and converts)
 ```
 
+## CSS variables from a theme — `themeToCssVars`
+
+Autogenerate CSS custom properties from a plain theme JSON. Returns the same-shape tree with every eligible leaf replaced by a `var(--px-…)` reference string, plus a ready-to-inject `:root` block and a `varName → value` registry for consumers that can't evaluate `var()` (document export, devtools).
+
+```ts
+import { themeToCssVars } from '@pyreon/unistyle'
+
+const theme = { rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } }
+const { vars, css, registry } = themeToCssVars(theme)
+
+vars.spacing.small                  // 'var(--px-spacing-small)'
+css                                 // ':root {\n  --px-spacing-small: 0.5rem;\n  --px-ratio-medium: 1.5;\n}'
+registry.get('--px-spacing-small')  // '0.5rem'
+
+// Proportional sizing is native CSS — no extra machinery:
+const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})`
+```
+
+Key behaviors:
+
+- **Units are baked at emission** using the same `value()` conversion the pipeline applies at render time — `spacing.small: 8` emits `--px-spacing-small: 0.5rem`, so themes stay authored in pixels and nothing downstream ever converts a var.
+- **Conventional length keys convert by default** (`spacing`, `fontSize`, `headingSize`, `elementSize`, `borderRadius` → rem; `borderWidth` → px). Everything else emits verbatim, so unitless scales (`lineHeight`, `fontWeight`, `zIndex`, custom `ratio` keys) stay valid as `calc()` multipliers. Opt custom scales into conversion via `units: { myScale: 'rem' }`.
+- **`breakpoints` / `rootSize` / `__PYREON__` are excluded** — `@media` queries can't read `var()`; JS consumes them at render time. Arrays, functions, booleans, `null`/`undefined`, empty strings, and non-finite numbers also stay raw.
+- **Var leaves flow through the whole pipeline untouched** — `value()`, `values()`, the edge/border-radius shorthands, `styles()`, and `makeItResponsive` all pass `var(`/`calc(` strings through verbatim (a tested contract, not an accident).
+- **Pure + cached** — no injection happens; pass `css` to your style sink. Results are WeakMap-cached by theme identity, so repeated calls return the same object.
+
+Gotchas: don't do JS arithmetic on a var leaf (`vars.spacing.small * 2` is `NaN` — use native `calc()`); don't use a var leaf for `backgroundImage` (CSS forbids `var()` inside `url(…)`); name collisions after kebab-case normalization (`xSmall` vs `x-small`) throw loudly.
+
 ## Alignment helpers
 
 ```ts

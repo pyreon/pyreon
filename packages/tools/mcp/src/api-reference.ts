@@ -3697,6 +3697,30 @@ value('50%')      // → { value: 50, unit: '%' }
 value('garbage', 0) // → { value: 0, unit: 'px' }`,
     notes: 'Parse and validate a single property value into a `UnitValue` shape (`{ value, unit }`). Accepts numbers (treated as pixels), strings with units (`"16px"`, `"1rem"`, `"50%"`), or objects already in `UnitValue` form. Optional `fallback` is returned when the input is invalid. The companion `values()` does the same over an array. See also: stripUnit, values.',
   },
+
+  'unistyle/themeToCssVars': {
+    signature: 'themeToCssVars(theme: object, options?: { prefix?: string; exclude?: readonly string[]; units?: Record<string, CssVarsUnitPolicy>; rootSize?: number }): { vars, css, registry }',
+    example: `import { themeToCssVars } from '@pyreon/unistyle'
+
+const theme = { rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } }
+const { vars, css, registry } = themeToCssVars(theme)
+
+vars.spacing.small               // 'var(--px-spacing-small)'
+css                              // ':root {\\n  --px-spacing-small: 0.5rem;\\n  --px-ratio-medium: 1.5;\\n}'
+registry.get('--px-spacing-small') // '0.5rem'
+
+// proportional sizing is native CSS — no extra machinery:
+const width = \`calc(\${vars.spacing.small} * \${vars.ratio.medium})\`
+// custom scales opt into conversion per top-level key:
+themeToCssVars(theme, { units: { mySizes: 'rem' } })`,
+    notes: 'Autogenerate CSS custom properties from a plain theme JSON. Returns `vars` (same-shape tree with every eligible leaf replaced by a `var(--px-…)` reference string — plain strings, so they flow through the entire unistyle value pipeline untouched), `css` (a ready-to-inject `:root { … }` block), and `registry` (`varName → emitted value` for consumers that cannot evaluate `var()`, e.g. document export). Units are baked at EMISSION using the same `value()` conversion the pipeline applies today: `spacing.small: 8` emits `--px-spacing-small: 0.5rem`, so themes stay authored in pixels. Conventional length keys (`spacing`/`fontSize`/`headingSize`/`elementSize`/`borderRadius` → rem, `borderWidth` → px) convert by default; everything else emits verbatim so unitless scales (`lineHeight`, `ratio`, `zIndex`) keep working in `calc()` multiplication. Pure + WeakMap-cached per theme identity — repeated calls return the SAME result object. See also: enrichTheme, value.',
+    mistakes: `- Doing JS arithmetic on a var leaf (\`vars.spacing.small * 2\` → NaN) — compose with native CSS calc instead: \`\` \`calc(\${vars.spacing.small} * 2)\` \`\`
+- Expecting \`breakpoints\` / \`rootSize\` to be tokenized — they are excluded by design (\`@media\` queries cannot read \`var()\`); JS consumes them at build/render time
+- Using a var leaf for \`backgroundImage\` — CSS forbids \`var()\` inside \`url(…)\`; keep image URLs as raw values
+- Forgetting to inject \`css\` — the function is pure; nothing lands on the page until the \`:root\` block reaches a style sink (\`<style>\` tag, \`sheet.injectRules\`, \`createGlobalStyle\`)
+- Re-creating the theme object per render — results are WeakMap-cached by theme IDENTITY; a fresh object every call re-walks the tree and defeats downstream identity-keyed caches
+- Assuming a custom top-level key converts to rem — only the conventional length keys convert by default; declare \`units: { myScale: "rem" }\` for custom scales`,
+  },
   // <gen-docs:api-reference:end @pyreon/unistyle>
 
   // ═══════════════════════════════════════════════════════════════════════════

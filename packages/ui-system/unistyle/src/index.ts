@@ -1,5 +1,13 @@
 import type { TProvider } from './context'
 import Provider, { context } from './context'
+import type {
+  CssVarsTheme,
+  CssVarsUnit,
+  CssVarsUnitPolicy,
+  ThemeToCssVarsOptions,
+  ThemeToCssVarsResult,
+} from './cssVariables'
+import { CSS_VARS_DEFAULT_EXCLUDE, themeToCssVars } from './cssVariables'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
 import type {
@@ -50,6 +58,9 @@ export type {
   BrowserColors,
   Color,
   CreateMediaQueries,
+  CssVarsTheme,
+  CssVarsUnit,
+  CssVarsUnitPolicy,
   Defaults,
   ExtendCss,
   ITheme,
@@ -62,6 +73,8 @@ export type {
   StripUnit,
   Styles,
   StylesTheme,
+  ThemeToCssVarsOptions,
+  ThemeToCssVarsResult,
   TProvider,
   TransformTheme,
   UnitValue,
@@ -77,6 +90,7 @@ export {
   breakpoints,
   context,
   createMediaQueries,
+  CSS_VARS_DEFAULT_EXCLUDE,
   enrichTheme,
   extendCss,
   makeItResponsive,
@@ -85,6 +99,7 @@ export {
   sortBreakpoints,
   stripUnit,
   styles,
+  themeToCssVars,
   transformTheme,
   value,
   values,

@@ -2394,6 +2394,12 @@ const padding2 = makeItResponsive({
 // 4. alignContent maps shorthand to flex CSS
 const flexCss = alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
 // → 'justify-content: center; align-items: flex-start;'
+
+// 5. Autogenerate CSS custom properties from a theme JSON (units baked at emission)
+import { themeToCssVars } from '@pyreon/unistyle'
+const { vars, css } = themeToCssVars({ rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } })
+vars.spacing.small // 'var(--px-spacing-small)'  (emitted as 0.5rem in the :root block)
+const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportional sizing, native CSS
 ```
 
 > **Single source for responsive semantics**: Every visual package (`elements`, `rocketstyle`, `coolgrid`, `kinetic`) reads breakpoints / spacing / unit conventions from this package. Override defaults via `enrichTheme()` once at the app root rather than per-component.

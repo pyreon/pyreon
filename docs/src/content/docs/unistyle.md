@@ -756,6 +756,58 @@ resolveBoxStyles({ padding: 16, paddingX: 32, paddingLeft: 0 })
 // { paddingLeft: '0', paddingRight: '32px', paddingTop: '16px', paddingBottom: '16px' }
 ```
 
+## CSS Variables from a Theme
+
+`themeToCssVars()` autogenerates CSS custom properties from a plain theme JSON. Every eligible leaf is replaced by a `var(--px-…)` reference string; you get a ready-to-inject `:root` block and a `varName → value` registry for consumers that can't evaluate `var()` (document export, devtools).
+
+```ts
+import { themeToCssVars } from '@pyreon/unistyle'
+
+const theme = { rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } }
+const { vars, css, registry } = themeToCssVars(theme)
+
+vars.spacing.small // 'var(--px-spacing-small)'
+css
+// :root {
+//   --px-spacing-small: 0.5rem;
+//   --px-ratio-medium: 1.5;
+// }
+registry.get('--px-spacing-small') // '0.5rem'
+```
+
+### Units are baked at emission
+
+The same px→rem conversion the pipeline applies at render time runs once at emission, driven by `rootSize` — so themes stay authored in pixels and nothing downstream ever converts a var. Conventional length keys convert by default (`spacing`, `fontSize`, `headingSize`, `elementSize`, `borderRadius` → rem; `borderWidth` → px); everything else emits verbatim so unitless scales (`lineHeight`, `fontWeight`, `zIndex`, custom ratio keys) remain valid as `calc()` multipliers.
+
+```ts
+// custom scales opt into conversion per top-level key
+themeToCssVars(theme, { units: { mySizes: 'rem' } })
+
+// custom prefix
+themeToCssVars(theme, { prefix: 'app' }) // var(--app-spacing-small)
+```
+
+### Proportional sizing with calc()
+
+Because var leaves are plain strings, composing them is native CSS — no helper functions required:
+
+```ts
+const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})`
+// 'calc(var(--px-spacing-small) * var(--px-ratio-medium))'
+```
+
+### What is not tokenized
+
+- `breakpoints` and `rootSize` — `@media` queries cannot read `var()`; JS consumes them at render time (override the exclusion list via `exclude`).
+- Arrays, functions, booleans, `null`/`undefined`, empty strings, non-finite numbers — kept raw.
+- Values destined for `backgroundImage` — CSS forbids `var()` inside `url(…)`.
+
+### Pass-through contract
+
+`var(` / `calc(` strings flow through the entire unistyle pipeline untouched — `value()`, `values()`, the edge and border-radius shorthands, `styles()`, and `makeItResponsive` all pass them through verbatim. This is a tested contract, which is what makes CSS-variable themes work in every package built on unistyle (`elements`, `rocketstyle`, `coolgrid`, `kinetic`).
+
+The function is pure (returns `css` text, performs no injection) and WeakMap-cached by theme identity — repeated calls with the same theme object return the same result object. Name collisions after kebab-case normalization (`xSmall` vs `x-small` both produce `--px-…-x-small`) throw with a `[Pyreon]` error naming both paths.
+
 ## Custom Breakpoint Configuration
 
 ### Defining Custom Breakpoints
