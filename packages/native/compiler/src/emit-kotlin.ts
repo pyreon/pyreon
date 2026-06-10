@@ -27,6 +27,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  FieldMetaDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
@@ -147,6 +148,7 @@ export function emitKotlin(
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
+  fieldMetas: FieldMetaDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -175,6 +177,8 @@ export function emitKotlin(
   for (const s of stores) parts.push(emitKotlinStore(s))
   // Gap 4 v2 follow-up: emit per-model singleton object.
   for (const m of models) parts.push(emitKotlinModel(m))
+  // Gap 4 follow-up — withField metadata data classes.
+  for (const fm of fieldMetas) parts.push(emitKotlinFieldMeta(fm))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -242,6 +246,29 @@ function emitKotlinModel(m: ModelDefnIR): string {
     lines.push(`    var ${f.name} by mutableStateOf(${initial})`)
   }
   lines.push(`}`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 follow-up — `@pyreon/validate` withField metadata emit
+ * (Kotlin). Mirror of emitSwiftFieldMeta. Discards the schema
+ * argument; emits a per-binding data class + module-scope const.
+ *
+ *   data class PyreonFieldMeta_emailField(
+ *       val label: String = "Email",
+ *       val placeholder: String = "name@example.com",
+ *   )
+ *   val emailField = PyreonFieldMeta_emailField()
+ */
+function emitKotlinFieldMeta(fm: FieldMetaDefnIR): string {
+  const lines: string[] = []
+  lines.push(`data class PyreonFieldMeta_${fm.bindingName}(`)
+  for (const m of fm.meta) {
+    lines.push(`    val ${m.name}: String = ${JSON.stringify(m.value)},`)
+  }
+  lines.push(`)`)
+  lines.push(``)
+  lines.push(`val ${fm.bindingName} = PyreonFieldMeta_${fm.bindingName}()`)
   return lines.join('\n')
 }
 
