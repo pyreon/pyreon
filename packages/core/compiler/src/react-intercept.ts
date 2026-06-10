@@ -1118,6 +1118,21 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Phase 4 (server islands) surfaced this runtime-dom bug class: data-*/
+    // aria-* props on CUSTOM ELEMENTS landed as JS properties, so
+    // getAttribute/dataset/CSS attribute selectors silently read null while
+    // SSR HTML carried real attributes.
+    pattern: /getAttribute\(['"](data-|aria-)[\w-]+['"]\).*(null|undefined)|dataset\.\w+.*undefined.*(custom|hyphen|web component)/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/runtime-dom` versions before the data-/aria- carve-out, `data-*`/`aria-*` props on CUSTOM ELEMENTS (hyphenated tags) were set as JS PROPERTIES via the pre-upgrade branch — `getAttribute("data-x")`, `el.dataset`, and CSS attribute selectors all read null on client-mounted elements even though SSR HTML carried real attributes.',
+      fix: 'Upgrade `@pyreon/runtime-dom` to the release where data-*/aria-* always go through setAttribute (React/Vue/Solid behavior). If you cannot upgrade, read the value as a property (`(el as any)["data-x"]`) on client-mounted custom elements — and remove that workaround after upgrading.',
+      fixCode: `// after the upgrade this just works on custom elements:
+<my-widget data-state={state()} aria-label="Cart" />
+// el.getAttribute("data-state") / el.dataset.state both resolve`,
+    }),
+  },
+  {
     // Phase 1 render-pipeline unification — the shipped-broken
     // `useRequestLocals` (renderToString/renderToStream opened a FRESH ALS
     // context stack, discarding request-level provide() frames). Users on
