@@ -852,10 +852,15 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // store creation in the common case.
     if (_plugins.length > 0) {
       for (const plugin of _plugins) {
-        // O(stores × plugins). Likely target for further optimization —
-        // the plugin chain runs uncached on every fresh store creation.
-        // Big number under storePluginScale-1000 means caching the
-        // plugin-init result per store-id is worth investigating.
+        // O(stores × plugins) is INHERENT, not an optimization target:
+        // plugins are side-effecting per-instance initializers (they
+        // attach behavior to THIS api object), so each fresh store must
+        // run each plugin — there is no semantics-preserving cache. The
+        // earlier "cache the plugin-init result per store-id" note was
+        // measured + rejected (2026-06): a noop plugin costs ~0.2µs here
+        // and the loop already skips entirely for the zero-plugin common
+        // case. storePluginScale-1000's pluginRun ∝ stores×plugins is the
+        // CORRECT signature for this contract.
         if (__DEV__) _countSink.__pyreon_count__?.('store.pluginRun')
         try {
           plugin(api as StoreApi<Record<string, unknown>>)
