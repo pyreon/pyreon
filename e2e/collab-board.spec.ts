@@ -136,13 +136,21 @@ test.describe('collab-board — relay sync', () => {
     await expect(a.getByTestId('card-panel')).toBeVisible()
     await expect(b.getByTestId('card-panel')).toBeVisible()
 
-    // Type in A's CodeMirror notes → B's editor reflects it (Y.Text merge).
+    // Type in A's CodeMirror notes → B's editor reflects it (Y.Text merge). Use
+    // the editor LOCATOR's `pressSequentially` (which focuses the contenteditable
+    // itself, then types) rather than a bare `.click()` + `page.keyboard.type`:
+    // in headless Linux the keystrokes can miss focus while the panel settles, so
+    // A's edit never lands and there is nothing to sync (the empty-on-all-retries
+    // CI failure this replaces).
     const aEditor = a.getByTestId('card-notes').locator('.cm-content')
-    await aEditor.click()
-    await a.keyboard.type('shipping monday')
-    await expect(b.getByTestId('card-notes').locator('.cm-content')).toContainText(
-      'shipping monday',
-    )
+    const bEditor = b.getByTestId('card-notes').locator('.cm-content')
+    await expect(aEditor).toBeVisible()
+    await aEditor.pressSequentially('shipping monday')
+    // The local edit must land FIRST — this isolates "did the typing register"
+    // from "did it sync", and acts as a natural wait before the relay round-trip.
+    await expect(aEditor).toContainText('shipping monday')
+    // Then it propagates over the relay to B (generous budget for CI sync latency).
+    await expect(bEditor).toContainText('shipping monday', { timeout: 15000 })
 
     expect(errors, errors.join('\n')).toEqual([])
     await a.context().close()
