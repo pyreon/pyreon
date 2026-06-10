@@ -34,11 +34,19 @@ export function CardPanel(props: { board: BoardDoc; cardId: string; onClose: () 
     serialize: (text: string) => text,
     parse: (text) => text,
   })
-  // DEV-only debug hook: expose the active card's notes signal so the e2e can
-  // read the CRDT value on each peer (diagnosing a notes-sync flake). Stripped
-  // from production builds.
+  // DEV-only test hook: expose the active card's notes signal (CRDT reader) +
+  // the editor instance, so the e2e can drive the editor programmatically and
+  // assert the CRDT value on each peer. Stripped from production builds.
+  // (Simulated OS keystrokes don't reliably reach a cold-mounted CodeMirror's
+  // doc state on a fresh CI runner — the editor's `insert()` dispatches a real
+  // CM transaction, which always fires the updateListener → syncedText write.)
   if (import.meta.env.DEV && typeof window !== 'undefined') {
-    ;(window as unknown as { __cardNotes?: () => string }).__cardNotes = () => notes()
+    const w = window as unknown as {
+      __cardNotes?: () => string
+      __cardEditor?: { insert: (text: string) => void }
+    }
+    w.__cardNotes = () => notes()
+    w.__cardEditor = editor
   }
   onUnmount(() => {
     binding.dispose()

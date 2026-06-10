@@ -130,45 +130,42 @@ test.describe('collab-board — relay sync', () => {
     await a.getByTestId('add-todo').click()
     await expect(b.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
 
-    // A opens the card and types collaborative notes. `pressSequentially` on the
-    // editor LOCATOR focuses the contenteditable itself before typing (a bare
-    // `.click()` + `page.keyboard.type` can miss focus in headless Linux while the
-    // panel settles — the original empty-on-all-retries CI failure).
+    // A opens the card and edits its collaborative notes. We drive the edit
+    // through the editor's `insert()` (a real CodeMirror transaction via the
+    // dev-only `__cardEditor` hook) rather than simulated OS keystrokes: a
+    // diagnostic CI run proved `pressSequentially` renders into the
+    // contenteditable DOM but does NOT reach a cold-mounted CodeMirror's doc
+    // state on a fresh CI runner — so `notes` (the syncedText CRDT) stayed empty
+    // and nothing synced. `insert()` dispatches a CM transaction, which always
+    // fires the updateListener → `notes.set`, exercising the real
+    // editor↔syncedText binding deterministically.
     await a.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(a.getByTestId('card-panel')).toBeVisible()
-    const aEditor = a.getByTestId('card-notes').locator('.cm-content')
-    await expect(aEditor).toBeVisible()
-    await aEditor.pressSequentially('shipping monday')
-    // The edit must land in A's editor (→ syncedText → the CRDT) FIRST — this
-    // isolates "did the typing register" from "did it sync".
-    await expect(aEditor).toContainText('shipping monday')
-
-    // [DIAG] Did A's edit reach A's CRDT (not just CodeMirror's DOM)?
-    const aNotes = await a.evaluate(
-      () => (window as unknown as { __cardNotes?: () => string }).__cardNotes?.() ?? '<no-hook>',
+    await expect(a.getByTestId('card-notes').locator('.cm-content')).toBeVisible()
+    await a.evaluate(() =>
+      (
+        window as unknown as { __cardEditor?: { insert: (t: string) => void } }
+      ).__cardEditor?.insert('shipping monday'),
     )
-    console.log('[DIAG] A notes CRDT after typing =', JSON.stringify(aNotes))
+    // Assert A's edit actually reached the CRDT (not just CodeMirror's DOM — that
+    // was the original false-positive). This is the real "the edit landed" check.
+    await expect
+      .poll(
+        () =>
+          a.evaluate(
+            () => (window as unknown as { __cardNotes?: () => string }).__cardNotes?.() ?? '',
+          ),
+        { timeout: 10_000 },
+      )
+      .toContain('shipping monday')
 
     // B opens the SAME card AFTER A's note is in the shared doc, so B's CodeMirror
     // is created from the already-synced `syncedText` value (baked into the initial
     // EditorState) — proving collaborative notes WITHOUT depending on a live signal
-    // dispatch landing while B's lazy markdown grammar is still cold-mounting (the
-    // CI-only race a both-open-then-type flow is fragile to). Generous budget for
-    // the cold first-mount of the CodeMirror grammar chunk on a fresh CI runner.
+    // dispatch landing while B's lazy markdown grammar is still cold-mounting.
+    // Generous budget for the cold first-mount of the grammar chunk on a fresh runner.
     await b.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(b.getByTestId('card-panel')).toBeVisible()
-
-    // [DIAG] poll B's CRDT value + editor DOM to pinpoint where the break is.
-    for (let i = 0; i < 12; i++) {
-      const bNotes = await b.evaluate(
-        () => (window as unknown as { __cardNotes?: () => string }).__cardNotes?.() ?? '<no-hook>',
-      )
-      const bDom = await b.getByTestId('card-notes').locator('.cm-content').textContent()
-      console.log(`[DIAG] t=${i}s B notes CRDT=${JSON.stringify(bNotes)} editorDOM=${JSON.stringify(bDom)}`)
-      if (typeof bNotes === 'string' && bNotes.includes('shipping')) break
-      await b.waitForTimeout(1000)
-    }
-
     await expect(b.getByTestId('card-notes').locator('.cm-content')).toContainText(
       'shipping monday',
       { timeout: 15000 },
