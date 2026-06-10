@@ -111,4 +111,26 @@ describe('syncedList — one op → exactly one signal write (perf-counter / mea
     expect(writes).toBe(1) // exactly one base.set drives the (one) keyed-For reconcile
     expect(l()).toEqual(['remote'])
   })
+
+  it('.set replaces the whole list — both clear-then-insert branches', () => {
+    const l = syncedList<string>(createYjsDoc(), 'items')
+    // From empty → insert (yarr.length === 0, so the clear branch is skipped).
+    l.set(['a', 'b'])
+    expect(l()).toEqual(['a', 'b'])
+    // From non-empty → clear THEN insert (both branches).
+    l.set(['c'])
+    expect(l()).toEqual(['c'])
+    // To empty → clear, no insert (the next.length === 0 branch).
+    l.set([])
+    expect(l()).toEqual([])
+  })
+
+  it('.dispose is idempotent (second call is a no-op)', () => {
+    const doc = createYjsDoc()
+    const l = syncedList<string>(doc, 'items')
+    l.dispose()
+    l.dispose() // second call hits the `disposed` early-return
+    doc.yDoc.getArray('items').push(['after']) // mutate after dispose
+    expect(l()).toEqual([]) // observer detached — signal frozen at last value
+  })
 })

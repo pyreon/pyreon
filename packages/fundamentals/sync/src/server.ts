@@ -71,6 +71,23 @@ function rawToBytes(data: RawData): Uint8Array {
   return new Uint8Array(data as ArrayBuffer)
 }
 
+const IS_DEV = process.env.NODE_ENV !== 'production'
+
+/**
+ * Send a frame only on an OPEN socket, swallowing the rare race where the socket
+ * transitions to CLOSING between the readyState check and the send (e.g. a client
+ * disconnects DURING async `authorize`, before the post-auth handshake send). A
+ * relay must never throw on a peer that vanished.
+ */
+function safeSend(socket: WsSocket, frame: Uint8Array): void {
+  if (socket.readyState !== 1 /* OPEN */) return
+  try {
+    socket.send(frame)
+  } catch {
+    // Socket raced from OPEN → CLOSING between the check and the send — ignore.
+  }
+}
+
 /**
  * Start a relay that brokers Yjs sync between clients sharing a room. Clients
  * connect with {@link connectViaWebSocket} pointing at `ws(s)://host/<room>?token=…`.
@@ -130,20 +147,51 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
       // peer and Yjs holds it PENDING forever (it never applies). The client is
       // already symmetric: on `open` it sends ITS state vector (→ we reply with
       // the diff below), and it replies to this one with its missing-for-room ops.
-      socket.send(encodeSyncMessage(MSG_STATE_VECTOR, Y.encodeStateVector(r.doc)))
+      safeSend(socket, encodeSyncMessage(MSG_STATE_VECTOR, Y.encodeStateVector(r.doc)))
 
       socket.on('message', (data: RawData) => {
-        const { type, payload } = decodeSyncMessage(rawToBytes(data))
+        // Decode + apply defensively: a buggy or hostile client can send a
+        // garbage frame, and Yjs THROWS on a malformed update / state vector
+        // (even an empty one). An uncaught throw here propagates out of the `ws`
+        // message listener and crashes the whole relay — a one-frame DoS. Drop
+        // the bad frame instead, keeping every other client's room alive.
+        let type: number
+        let payload: Uint8Array
+        try {
+          ;({ type, payload } = decodeSyncMessage(rawToBytes(data)))
+        } catch {
+          return // unframable bytes
+        }
+
         if (type === MSG_STATE_VECTOR) {
           // Reply with exactly what this client is missing.
-          socket.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(r.doc, payload)))
+          try {
+            safeSend(socket, encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(r.doc, payload)))
+          } catch (err) {
+            if (IS_DEV) {
+              console.warn(
+                '[Pyreon] sync relay: dropped a malformed state vector from a client:',
+                err,
+              )
+            }
+          }
           return
         }
-        // Apply to the authoritative room doc + fan out to the OTHER clients.
-        Y.applyUpdate(r.doc, payload)
+
+        // Apply to the authoritative room doc. Only fan out to the OTHER clients
+        // if it actually applied — never propagate a frame that threw, or we'd
+        // crash every peer in turn.
+        try {
+          Y.applyUpdate(r.doc, payload)
+        } catch (err) {
+          if (IS_DEV) {
+            console.warn('[Pyreon] sync relay: dropped a malformed update from a client:', err)
+          }
+          return
+        }
         const frame = encodeSyncMessage(MSG_UPDATE, payload)
         for (const c of r.clients) {
-          if (c !== socket && c.readyState === 1 /* OPEN */) c.send(frame)
+          if (c !== socket) safeSend(c, frame)
         }
       })
 

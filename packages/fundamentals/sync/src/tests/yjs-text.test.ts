@@ -80,4 +80,24 @@ describe('syncedText — collaborative Y.Text', () => {
     doc.yDoc.getText('body').insert(0, 'z') // direct mutate after dispose
     expect(t()).toBe('') // observer gone — signal stays at its last value
   })
+
+  it('.set to the same value is a no-op (no transaction)', () => {
+    const doc = createYjsDoc()
+    const t = syncedText(doc, 'body')
+    t.set('hello')
+    let txns = 0
+    doc.yDoc.on('afterTransaction', () => txns++)
+    t.set('hello') // identical → early-return, no Y.Text mutation
+    expect(txns).toBe(0)
+    expect(t()).toBe('hello')
+  })
+
+  it('.dispose is idempotent (second call is a no-op)', () => {
+    const doc = createYjsDoc()
+    const t = syncedText(doc, 'body')
+    t.dispose()
+    t.dispose() // second call hits the `disposed` early-return
+    doc.yDoc.getText('body').insert(0, 'z')
+    expect(t()).toBe('')
+  })
 })

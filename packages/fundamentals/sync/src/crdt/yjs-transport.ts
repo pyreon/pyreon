@@ -20,10 +20,7 @@ import type { YjsCrdtDoc } from './yjs-adapter'
  * `disconnect()` detaches the live relay (the offline case); state already
  * exchanged stays. A later reconnect re-runs the initial merge.
  */
-export function connectYDocs(
-  a: YjsCrdtDoc,
-  b: YjsCrdtDoc,
-): { disconnect: () => void } {
+export function connectYDocs(a: YjsCrdtDoc, b: YjsCrdtDoc): { disconnect: () => void } {
   let connected = true
 
   // Snapshot both states BEFORE applying either, then cross-apply — converges
@@ -92,14 +89,23 @@ export function connectViaBroadcastChannel(
   bc.onmessage = (event: MessageEvent<BcMessage>) => {
     if (!connected) return
     const msg = event.data
-    if (msg.kind === 'sv') {
-      // Send the peer exactly the updates their state vector is missing.
-      bc.postMessage({
-        kind: 'update',
-        update: Y.encodeStateAsUpdate(doc.yDoc, msg.sv),
-      } satisfies BcMessage)
-    } else {
-      Y.applyUpdate(doc.yDoc, msg.update, REMOTE_ORIGIN)
+    // Defensive: a version-mismatched / buggy tab could post a malformed
+    // payload, and Yjs THROWS on a bad update / state vector. Drop it rather
+    // than leak the throw out of the event handler.
+    try {
+      if (msg.kind === 'sv') {
+        // Send the peer exactly the updates their state vector is missing.
+        bc.postMessage({
+          kind: 'update',
+          update: Y.encodeStateAsUpdate(doc.yDoc, msg.sv),
+        } satisfies BcMessage)
+      } else {
+        Y.applyUpdate(doc.yDoc, msg.update, REMOTE_ORIGIN)
+      }
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[Pyreon] connectViaBroadcastChannel: dropped a malformed message:', err)
+      }
     }
   }
 
