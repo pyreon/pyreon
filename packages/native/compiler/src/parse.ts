@@ -951,6 +951,22 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       // in Gap 4 follow-up (state-tree foundation PR).
       model: '@pyreon/state-tree',
       defineFeature: '@pyreon/feature',
+      // Gap 4 follow-up — surface @pyreon/validate + @pyreon/validation
+      // calls as Tier-2 silent-drop so authors aren't blindsided when
+      // their validator-laden code reaches native targets. Both
+      // packages are Strategy-A (per-validator lowering) and need
+      // multi-PR work per the audit; the diagnostic at least makes
+      // the limitation loud at compile time.
+      //
+      // @pyreon/validate (Pyreon DX overlay on Standard Schema):
+      withField: '@pyreon/validate',
+      // @pyreon/validation (per-validator adapter helpers):
+      zodSchema: '@pyreon/validation',
+      zodField: '@pyreon/validation',
+      valibotSchema: '@pyreon/validation',
+      valibotField: '@pyreon/validation',
+      arktypeSchema: '@pyreon/validation',
+      arktypeField: '@pyreon/validation',
     }
     if (calleeName && calleeName in tier2StrategyB) {
       const pkg = tier2StrategyB[calleeName]

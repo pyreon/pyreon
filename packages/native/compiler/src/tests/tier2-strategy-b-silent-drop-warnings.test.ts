@@ -15,6 +15,10 @@
 //   createI18n      → @pyreon/i18n/core
 //   model (.create()-chain shape) → @pyreon/state-tree
 //   defineFeature   → @pyreon/feature
+//   withField       → @pyreon/validate    (Gap 4 Strategy-A follow-up)
+//   zodSchema /     → @pyreon/validation  (Gap 4 Strategy-A follow-up)
+//   valibotSchema /
+//   arktypeSchema
 //
 // Bisect-verify (per .claude/rules/testing.md):
 //   1. Disable the new `tier2StrategyB` block in parse.ts
@@ -64,6 +68,34 @@ const TIER2_CASES = [
   schema: { id: "string", title: "string" },
 })`,
     bindingName: 'TodoFeature',
+  },
+  // Gap 4 follow-up — Strategy-A packages (per-validator lowering).
+  // Silent-drop diagnostics for @pyreon/validate + @pyreon/validation
+  // so authors are not blindsided when their validator-laden code
+  // reaches native targets.
+  {
+    callee: 'withField',
+    pkg: '@pyreon/validate',
+    snippet: `const emailField = withField(schema, { label: "Email" })`,
+    bindingName: 'emailField',
+  },
+  {
+    callee: 'zodSchema',
+    pkg: '@pyreon/validation',
+    snippet: `const adapter = zodSchema(z.object({ id: z.string() }))`,
+    bindingName: 'adapter',
+  },
+  {
+    callee: 'valibotSchema',
+    pkg: '@pyreon/validation',
+    snippet: `const adapter = valibotSchema(schema, safeParse)`,
+    bindingName: 'adapter',
+  },
+  {
+    callee: 'arktypeSchema',
+    pkg: '@pyreon/validation',
+    snippet: `const adapter = arktypeSchema(arkType)`,
+    bindingName: 'adapter',
   },
 ] as const
 
