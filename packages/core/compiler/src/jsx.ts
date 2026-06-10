@@ -1766,6 +1766,20 @@ export function transformJSX_JS(
       // Skip callback functions (arguments to calls like .map, .filter)
       if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node))
         return
+      // Skip JSX-child render callbacks (`<For>{(row) => <tr>…}</For>`,
+      // `<Show>{() => …}</Show>`, `<Index>`, `<Switch>`). The parameter is a
+      // runtime ITEM the framework passes in — NOT reactive component props.
+      // Registering it as props makes bare property reads (`row.id`) look
+      // reactive, so `{String(row.id)}` gets a wasteful per-row `_bind()`
+      // renderEffect instead of a static `textContent` assignment. Signal
+      // reads (`row.label()`, `() => row.x`) stay reactive via their own
+      // paths. Attribute-value render functions (`component={(p) => …}`) are
+      // NOT skipped — those can be real inline components receiving props.
+      if (parent && parent.type === 'JSXExpressionContainer') {
+        const grandparent = findParent(parent)
+        if (grandparent && (grandparent.type === 'JSXElement' || grandparent.type === 'JSXFragment'))
+          return
+      }
       const firstParam = node.params[0]
       if (firstParam?.type === 'Identifier') {
         let hasJSX = false
