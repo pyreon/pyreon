@@ -172,6 +172,8 @@ export function emitKotlin(
   _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
+  _needsKotlinSuspenseWrapper = false
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
@@ -184,13 +186,21 @@ export function emitKotlin(
   // Gap 4 follow-up — feature v1: emit per-feature schema data class
   // + module-scope object.
   for (const f of features) parts.push(emitKotlinFeature(f))
-  for (const c of components) parts.push(emitKotlinComponent(c))
+  // Emit components — populates _needsKotlinSuspenseWrapper if any
+  // <Suspense> element is encountered along the way.
+  const componentParts: string[] = []
+  for (const c of components) componentParts.push(emitKotlinComponent(c))
+  // Gap 3 PR-3.2 — if any Suspense site emitted, prepend the
+  // module-scope PyreonSuspenseWrapper composable.
+  if (_needsKotlinSuspenseWrapper) parts.push(KOTLIN_SUSPENSE_WRAPPER)
+  for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
   _modelInstancesKotlin = new Map()
+  _needsKotlinSuspenseWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -1344,7 +1354,13 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // either; previously these emitted FAKE composables (`Suspense(…) {}`)
   // that swiftc/kotlinc reject as unresolved. Graceful emit: a Box {}
   // wrapping the children + a leading comment surfacing the limitation.
-  if (tag === 'Suspense' || tag === 'ErrorBoundary' || tag === 'KeepAlive') {
+  // Gap 3 PR-3.2 — real Suspense emit (mount-time splash semantic).
+  // Mirror of emit-swift.ts:emitSwiftSuspense. ErrorBoundary +
+  // KeepAlive remain walled (separate PRs).
+  if (tag === 'Suspense') {
+    return emitKotlinSuspense(e, indent)
+  }
+  if (tag === 'ErrorBoundary' || tag === 'KeepAlive') {
     return emitKotlinWalledTagAsChildren(e, indent, tag)
   }
   if (tag === 'Text') return emitKotlinText(e, indent)
@@ -1628,6 +1644,66 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  * content; fallback/cache behaviour is inert until a runtime-model
  * design lands.
  */
+/**
+ * Gap 3 PR-3.2 — real `<Suspense fallback={X}>` emit for Compose
+ * (mount-time splash semantic). Mirror of emitSwiftSuspense.
+ * Produces a `PyreonSuspenseWrapper` Composable call; the helper
+ * definition is emitted once at module scope when any Suspense
+ * site fires (gated on `_needsKotlinSuspenseWrapper`).
+ */
+function emitKotlinSuspense(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const fallbackAttr = e.attrs.find(
+    (a) => a.kind === 'attr' && a.name === 'fallback',
+  ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+  if (!fallbackAttr) {
+    return emitKotlinWalledTagAsChildren(e, indent, 'Suspense')
+  }
+  const fallbackExpr = fallbackAttr.value
+  if (fallbackExpr.kind !== 'jsx-element') {
+    _emitWarnings.push(
+      '<Suspense fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
+    )
+    return emitKotlinWalledTagAsChildren(e, indent, 'Suspense')
+  }
+  _needsKotlinSuspenseWrapper = true
+  const inner = ' '.repeat(indent + 2)
+  const p = ' '.repeat(indent)
+  const childrenBody = e.children
+    .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
+    .join('\n')
+  const fallbackBody =
+    inner +
+    '  ' +
+    emitKotlinChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  return (
+    `PyreonSuspenseWrapper(content = {\n` +
+    `${childrenBody}\n` +
+    `${p}}, fallback = {\n` +
+    `${fallbackBody}\n` +
+    `${p}})`
+  )
+}
+
+/**
+ * Compose Suspense wrapper composable — emitted once at module scope
+ * when any Suspense site is encountered. Shows the fallback on first
+ * composition, flips to content via LaunchedEffect on mount.
+ */
+const KOTLIN_SUSPENSE_WRAPPER = `@Composable
+private fun PyreonSuspenseWrapper(
+    content: @Composable () -> Unit,
+    fallback: @Composable () -> Unit,
+) {
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) { isLoading = false }
+    if (isLoading) fallback() else content()
+}`
+
+let _needsKotlinSuspenseWrapper = false
+
 function emitKotlinWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

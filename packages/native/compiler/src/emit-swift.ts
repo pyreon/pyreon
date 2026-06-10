@@ -244,6 +244,8 @@ export function emitSwift(
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
+  // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
+  _needsSwiftSuspenseWrapper = false
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -259,13 +261,22 @@ export function emitSwift(
   // Gap 4 follow-up — feature v1: emit per-feature schema struct +
   // module-scope const exposing initialValues + name.
   for (const f of features) parts.push(emitSwiftFeature(f))
-  for (const c of components) parts.push(emitSwiftComponent(c))
+  // Emit components — populates _needsSwiftSuspenseWrapper if any
+  // <Suspense> element is encountered along the way.
+  const componentParts: string[] = []
+  for (const c of components) componentParts.push(emitSwiftComponent(c))
+  // Gap 3 PR-3.2 — if any Suspense site emitted, prepend the
+  // module-scope PyreonSuspenseWrapper helper struct (single
+  // definition serves all sites).
+  if (_needsSwiftSuspenseWrapper) parts.push(SWIFT_SUSPENSE_WRAPPER)
+  for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
   _modelInstances = new Map()
+  _needsSwiftSuspenseWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -1494,7 +1505,20 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // comment surfacing the limitation at code-read time. The
   // fallback / cache behaviour is inert until a runtime-model design
   // lands (tracked in the multiplatform plan as Phase 5 frontier).
-  if (tag === 'Suspense' || tag === 'ErrorBoundary' || tag === 'KeepAlive') {
+  // Gap 3 PR-3.2 — real Suspense emit (mount-time splash semantic).
+  // SwiftUI has no async-render-suspend mechanism, so v1 ports the
+  // semantic that's actually expressible: fallback shows on first
+  // mount, content shows once the .task callback flips state. This
+  // is the standard "splash screen on startup" pattern + matches the
+  // audit-documented v1 contract.
+  //
+  // ErrorBoundary + KeepAlive remain walled (no faithful semantic
+  // available on SwiftUI yet — separate PRs); the silent-drop
+  // diagnostic for their dropped `fallback` / `when` props stays.
+  if (tag === 'Suspense') {
+    return emitSwiftSuspense(e, indent)
+  }
+  if (tag === 'ErrorBoundary' || tag === 'KeepAlive') {
     return emitSwiftWalledTagAsChildren(e, indent, tag)
   }
   if (tag === 'Text') return emitSwiftText(e, indent)
@@ -1870,6 +1894,95 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
  * happy path renders the inner content; the fallback / cache behaviour
  * is inert until a runtime-model design lands.
  */
+/**
+ * Gap 3 PR-3.2 — real `<Suspense fallback={X}>` emit (mount-time
+ * splash semantic). Produces a `PyreonSuspenseWrapper` call that
+ * shows the `fallback` ViewBuilder until `.task` completes, then
+ * swaps in the children. The wrapper definition is emitted ONCE at
+ * module scope (via `_needsSuspenseWrapper` flag) so per-Suspense
+ * sites stay light.
+ *
+ *   <Suspense fallback={<Spinner/>}>
+ *     <Content/>
+ *   </Suspense>
+ *
+ * emits as
+ *
+ *   PyreonSuspenseWrapper(content: {
+ *     Content()
+ *   }, fallback: {
+ *     Spinner()
+ *   })
+ *
+ * Bail to walled emit + warning if no fallback prop is present
+ * (the contract is "fallback OR no point" — a Suspense with no
+ * fallback is just a Group wrapper).
+ */
+function emitSwiftSuspense(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const fallbackAttr = e.attrs.find(
+    (a) => a.kind === 'attr' && a.name === 'fallback',
+  ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+  if (!fallbackAttr) {
+    // No fallback → fall back to walled emit (children-only render).
+    return emitSwiftWalledTagAsChildren(e, indent, 'Suspense')
+  }
+  const fallbackExpr = fallbackAttr.value
+  if (fallbackExpr.kind !== 'jsx-element') {
+    // Non-JSX fallback (signal accessor, computed value) — v1 deferred.
+    _emitWarnings.push(
+      '<Suspense fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
+    )
+    return emitSwiftWalledTagAsChildren(e, indent, 'Suspense')
+  }
+  _needsSwiftSuspenseWrapper = true
+  const inner = ' '.repeat(indent + 2)
+  const p = ' '.repeat(indent)
+  const childrenBody = e.children
+    .map((c) => inner + '  ' + emitSwiftChild(c, indent + 4))
+    .join('\n')
+  const fallbackBody =
+    inner +
+    '  ' +
+    emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  return (
+    `PyreonSuspenseWrapper(content: {\n` +
+    `${childrenBody}\n` +
+    `${p}}, fallback: {\n` +
+    `${fallbackBody}\n` +
+    `${p}})`
+  )
+}
+
+/**
+ * Helper struct emitted once at module scope when any Suspense site
+ * is encountered (gated on `_needsSwiftSuspenseWrapper`). Owns the
+ * `@State` loading flag + `.task` lifecycle so per-Suspense call
+ * sites stay light.
+ */
+const SWIFT_SUSPENSE_WRAPPER = `@available(iOS 17.0, macOS 14.0, *)
+private struct PyreonSuspenseWrapper<Content: View, Fallback: View>: View {
+    let content: () -> Content
+    let fallback: () -> Fallback
+    @State private var isLoading = true
+    var body: some View {
+        ZStack {
+            if isLoading {
+                fallback()
+            } else {
+                content()
+            }
+        }
+        .task {
+            isLoading = false
+        }
+    }
+}`
+
+let _needsSwiftSuspenseWrapper = false
+
 function emitSwiftWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

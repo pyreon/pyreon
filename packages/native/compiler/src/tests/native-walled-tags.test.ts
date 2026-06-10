@@ -23,9 +23,12 @@
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 
-const TAGS = ['Suspense', 'ErrorBoundary', 'KeepAlive'] as const
+// PR-3.2 — Suspense has real emit (PyreonSuspenseWrapper), so it's no
+// longer in the walled-tag list. Only ErrorBoundary + KeepAlive remain
+// walled here.
+const TAGS = ['ErrorBoundary', 'KeepAlive'] as const
 
-describe('Phase 5 — walled-tag graceful emit (Suspense / ErrorBoundary / KeepAlive)', () => {
+describe('Phase 5 — walled-tag graceful emit (ErrorBoundary / KeepAlive)', () => {
   for (const tag of TAGS) {
     it(`Swift: <${tag}> emits Group { children } + a [Pyreon] limitation comment, NO fake identifier`, () => {
       const out = transform(
@@ -55,9 +58,13 @@ describe('Phase 5 — walled-tag graceful emit (Suspense / ErrorBoundary / KeepA
     })
   }
 
-  it('Swift: fallback prop is silently dropped (intentional — fallback path inert)', () => {
+  // PR-3.2: Suspense has real emit now — fallback IS rendered. The
+  // following two specs covered Suspense + ErrorBoundary's old walled
+  // fallback-drop behaviour. ErrorBoundary still drops its fallback;
+  // assert it via ErrorBoundary alone.
+  it('Swift: ErrorBoundary fallback prop is silently dropped (intentional — fallback path inert)', () => {
     const out = transform(
-      `export function App() { return <Suspense fallback={<Text>FALLBACK_MARKER</Text>}><Text>ok</Text></Suspense> }`,
+      `export function App() { return <ErrorBoundary fallback={<Text>FALLBACK_MARKER</Text>}><Text>ok</Text></ErrorBoundary> }`,
       { target: 'swift' },
     ).code
     // The fallback is acknowledged as inert; its content should NOT
@@ -67,7 +74,7 @@ describe('Phase 5 — walled-tag graceful emit (Suspense / ErrorBoundary / KeepA
     expect(out).toContain('Text("ok")')
   })
 
-  it('Kotlin: fallback prop is silently dropped (intentional — fallback path inert)', () => {
+  it('Kotlin: ErrorBoundary fallback prop is silently dropped (intentional — fallback path inert)', () => {
     const out = transform(
       `export function App() { return <ErrorBoundary fallback={<Text>FALLBACK_MARKER</Text>}><Text>ok</Text></ErrorBoundary> }`,
       { target: 'kotlin' },
