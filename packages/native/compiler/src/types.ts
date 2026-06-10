@@ -787,9 +787,26 @@ export type ZodFieldType =
   | 'string'
   | 'number'
   | 'boolean'
+  /**
+   * Gap 4 v3.2 — nested object reference. `schemaName` points at a
+   * sibling `ZodSchemaDefnIR` (typically synthesized + listed in the
+   * parent's `auxSchemas`). Emitters render as `<schemaName>` (struct
+   * or data class name) and route parse() through the named schema's
+   * own `parse()` method.
+   */
+  | { kind: 'object'; schemaName: string }
   | {
       kind: 'array'
-      element: 'string' | 'number' | 'boolean'
+      /**
+       * Element type. v2.2 shipped primitives only; v3.2 adds nested
+       * object elements via `{ kind: 'object', schemaName }`.
+       */
+      element:
+        | 'string'
+        | 'number'
+        | 'boolean'
+        | { kind: 'object'; schemaName: string }
+      /** v3 — applies to PRIMITIVE element types only. */
       elementConstraints?: ZodFieldConstraints
     }
 
@@ -809,6 +826,40 @@ export interface ZodSchemaDefnIR {
      */
     optional?: boolean
   }[]
+  /**
+   * Gap 4 v3.2 — auxiliary schemas synthesized while parsing this
+   * one. A `z.object({ address: z.object({...}) })` produces an
+   * auxiliary `<binding>_address` schema; a `z.array(z.object({...}))`
+   * produces a `<binding>_<field>_Item`. The top-level schema's
+   * emitter must emit each aux schema as a sibling struct/data-class
+   * BEFORE the main schema (Swift compiles top-down; Kotlin uses
+   * forward references either way, but ordering improves readability).
+   */
+  auxSchemas?: ZodSchemaDefnIR[]
+  /**
+   * Gap 4 v3.3 — discriminated union shape. Set when the source is
+   * `z.discriminatedUnion('<field>', [z.object({...}), ...])`. When
+   * set, `fields` is empty — the emitter renders the schema as a
+   * Swift enum / Kotlin sealed class with each variant as an
+   * associated-value case. Each variant references an aux schema in
+   * `auxSchemas` (one per variant).
+   */
+  discriminator?: {
+    /** Discriminator field name (e.g. `'type'`). */
+    field: string
+    /** One entry per variant. */
+    variants: {
+      /** Literal value the variant matches (e.g. `'cat'`). */
+      literal: string
+      /** Aux schema name (the variant's struct/data class). */
+      schemaName: string
+      /**
+       * Variant tag (PascalCased literal). Used as the enum case /
+       * sealed-class subclass name (e.g. `Cat`, `Dog`).
+       */
+      caseName: string
+    }[]
+  }
 }
 
 export interface ParseResult {

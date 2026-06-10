@@ -262,7 +262,13 @@ export function emitSwift(
   // Emit the shared PyreonSchemaError enum BEFORE the schemas if
   // any are present (the per-schema .parse() / .safeParse() refer to it).
   if (zodSchemas.length > 0) parts.push(SWIFT_SCHEMA_ERROR)
-  for (const zs of zodSchemas) parts.push(emitSwiftZodSchema(zs))
+  // Gap 4 v3.2 — recursively emit auxSchemas BEFORE their parent
+  // schema so Swift can resolve type references top-down.
+  const emitSchemaTree = (zs: ZodSchemaDefnIR): void => {
+    for (const aux of zs.auxSchemas ?? []) emitSchemaTree(aux)
+    parts.push(emitSwiftZodSchema(zs))
+  }
+  for (const zs of zodSchemas) emitSchemaTree(zs)
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -391,14 +397,27 @@ function swiftFieldType(t: ZodFieldType): string {
   if (typeof t === 'string') {
     return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Bool'
   }
-  // v2.2 array
-  const elem = t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Bool'
+  if (t.kind === 'object') {
+    // Gap 4 v3.2 — nested object reference. Emit the synthesized struct name.
+    return `PyreonZodSchema_${t.schemaName}`
+  }
+  // v2.2 array — element may now be a nested object (v3.2).
+  let elem: string
+  if (typeof t.element === 'string') {
+    elem = t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Bool'
+  } else {
+    elem = `PyreonZodSchema_${t.element.schemaName}`
+  }
   return `[${elem}]`
 }
 
 function swiftFieldInitial(t: ZodFieldType): string {
   if (typeof t === 'string') {
     return t === 'string' ? '""' : t === 'boolean' ? 'false' : '0'
+  }
+  if (t.kind === 'object') {
+    // Initialize nested object with its own default constructor
+    return `PyreonZodSchema_${t.schemaName}()`
   }
   return '[]'
 }
@@ -495,6 +514,10 @@ function emitSwiftArrayElementConstraints(
   indent: number,
 ): void {
   if (typeof t === 'string') return
+  if (t.kind !== 'array') return
+  // v3.2 — object-element arrays don't have primitive elementConstraints;
+  // their per-element validation flows through the nested schema's parse().
+  if (typeof t.element !== 'string') return
   if (!t.elementConstraints) return
   if (Object.keys(t.elementConstraints).length === 0) return
   const ind = ' '.repeat(indent)
@@ -512,7 +535,67 @@ function emitSwiftArrayElementConstraints(
   lines.push(`${ind}}`)
 }
 
+/**
+ * Gap 4 v3.3 — emit a discriminated union as a Swift enum with
+ * associated values. Each variant case wraps its aux struct.
+ */
+function emitSwiftDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
+  const d = zs.discriminator!
+  const lines: string[] = []
+  const typeName = `PyreonZodSchema_${zs.bindingName}`
+  lines.push(`enum ${typeName} {`)
+  for (const v of d.variants) {
+    lines.push(`    case ${camelCase(v.caseName)}(PyreonZodSchema_${v.schemaName})`)
+  }
+  lines.push(``)
+  lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
+  lines.push(
+    `        guard let discr = input[${JSON.stringify(d.field)}] as? String else {`,
+  )
+  lines.push(
+    `            throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(d.field)}, expected: "String")`,
+  )
+  lines.push(`        }`)
+  lines.push(`        switch discr {`)
+  for (const v of d.variants) {
+    lines.push(`        case ${JSON.stringify(v.literal)}:`)
+    lines.push(
+      `            return .${camelCase(v.caseName)}(try PyreonZodSchema_${v.schemaName}.parse(input))`,
+    )
+  }
+  lines.push(`        default:`)
+  lines.push(
+    `            throw PyreonSchemaError.constraintViolation(field: ${JSON.stringify(d.field)}, rule: "unknown discriminator value")`,
+  )
+  lines.push(`        }`)
+  lines.push(`    }`)
+  lines.push(``)
+  lines.push(
+    `    static func safeParse(_ input: [String: Any]) -> Result<Self, PyreonSchemaError> {`,
+  )
+  lines.push(`        do { return .success(try parse(input)) }`)
+  lines.push(`        catch let e as PyreonSchemaError { return .failure(e) }`)
+  lines.push(`        catch { return .failure(.missingOrWrongType(field: "?", expected: "?")) }`)
+  lines.push(`    }`)
+  lines.push(`}`)
+  return lines.join('\n') + '\n'
+}
+
+/**
+ * Gap 4 v3.3 — lowercase the first character of an identifier.
+ * Used to convert PascalCased variant caseName ("Cat") to a Swift
+ * enum case ("cat").
+ */
+function camelCase(s: string): string {
+  if (s.length === 0) return s
+  return s[0]!.toLowerCase() + s.slice(1)
+}
+
 function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
+  // Gap 4 v3.3 — discriminated union: emit as a Swift enum with
+  // associated values. Each variant case wraps the variant's struct
+  // and parse() routes via a switch on the discriminator value.
+  if (zs.discriminator) return emitSwiftDiscriminatedUnion(zs)
   const lines: string[] = []
   lines.push(`struct PyreonZodSchema_${zs.bindingName}: Codable {`)
   for (const f of zs.fields) {
@@ -532,6 +615,73 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   lines.push(`        var result = Self()`)
   for (const f of zs.fields) {
     const t = swiftFieldType(f.type)
+    // Gap 4 v3.2 — nested object field: route via the nested schema's
+    // own parse() method.
+    if (typeof f.type !== 'string' && f.type.kind === 'object') {
+      const nestedType = `PyreonZodSchema_${f.type.schemaName}`
+      if (f.optional) {
+        lines.push(`        if let raw = input[${JSON.stringify(f.name)}] {`)
+        lines.push(
+          `            guard let ${f.name}Raw = raw as? [String: Any] else {`,
+        )
+        lines.push(
+          `                throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(f.name)}, expected: ${JSON.stringify(nestedType)})`,
+        )
+        lines.push(`            }`)
+        lines.push(
+          `            result.${f.name} = try ${nestedType}.parse(${f.name}Raw)`,
+        )
+        lines.push(`        }`)
+      } else {
+        lines.push(
+          `        guard let ${f.name}Raw = input[${JSON.stringify(f.name)}] as? [String: Any] else {`,
+        )
+        lines.push(
+          `            throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(f.name)}, expected: ${JSON.stringify(nestedType)})`,
+        )
+        lines.push(`        }`)
+        lines.push(
+          `        result.${f.name} = try ${nestedType}.parse(${f.name}Raw)`,
+        )
+      }
+      continue
+    }
+    // Gap 4 v3.2 — array of objects field: route via per-element parse().
+    if (
+      typeof f.type !== 'string' &&
+      f.type.kind === 'array' &&
+      typeof f.type.element !== 'string' &&
+      f.type.element.kind === 'object'
+    ) {
+      const nestedType = `PyreonZodSchema_${f.type.element.schemaName}`
+      const arrayType = `[${nestedType}]`
+      if (f.optional) {
+        lines.push(`        if let raw = input[${JSON.stringify(f.name)}] {`)
+        lines.push(
+          `            guard let ${f.name}Raw = raw as? [[String: Any]] else {`,
+        )
+        lines.push(
+          `                throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(f.name)}, expected: ${JSON.stringify(arrayType)})`,
+        )
+        lines.push(`            }`)
+        lines.push(
+          `            result.${f.name} = try ${f.name}Raw.map { try ${nestedType}.parse($0) }`,
+        )
+        lines.push(`        }`)
+      } else {
+        lines.push(
+          `        guard let ${f.name}Raw = input[${JSON.stringify(f.name)}] as? [[String: Any]] else {`,
+        )
+        lines.push(
+          `            throw PyreonSchemaError.missingOrWrongType(field: ${JSON.stringify(f.name)}, expected: ${JSON.stringify(arrayType)})`,
+        )
+        lines.push(`        }`)
+        lines.push(
+          `        result.${f.name} = try ${f.name}Raw.map { try ${nestedType}.parse($0) }`,
+        )
+      }
+      continue
+    }
     if (f.optional) {
       // Optional field — missing → leave nil, present-but-wrong-type → throw
       lines.push(`        if let raw = input[${JSON.stringify(f.name)}] {`)
