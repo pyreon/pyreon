@@ -162,6 +162,23 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
   )
 
   await bench(
+    'remove row',
+    suite,
+    async () => {
+      // Targeted removal — drop the single row at index 500; keyed <For>
+      // reconciliation unmounts just that row, no full rebuild.
+      const current = rows()
+      rows.set([...current.slice(0, 500), ...current.slice(501)])
+    },
+    {
+      // restore a full 1,000-row table (untimed) so each timed run removes
+      // a row from EXACTLY 1,000 rows, not a shrinking list
+      reset: () => rows.set(mkRows(1_000)),
+      verify: expectRows(999),
+    },
+  )
+
+  await bench(
     'clear rows',
     suite,
     async () => {
@@ -185,6 +202,25 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
       rows.set(mkRows(10_000))
     },
     { verify: expectRows(10_000) },
+  )
+
+  // Capture the 10,000-row baseline left by the create-10k bench so each
+  // append run starts from EXACTLY 10,000 rows.
+  const base10k = rows()
+  await bench(
+    'append 1,000 to 10,000 rows',
+    suite,
+    async () => {
+      // Idiomatic append — spread-concat into a new array; keyed <For>
+      // reconciliation mounts only the 1,000 new rows, no rebuild.
+      rows.set([...rows(), ...mkRows(1_000)])
+    },
+    {
+      // restore the 10,000-row baseline (untimed) so each timed run appends
+      // to the SAME starting size, not a growing list
+      reset: () => rows.set(base10k),
+      verify: expectRows(11_000),
+    },
   )
 
   rows.set([])

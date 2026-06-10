@@ -128,6 +128,28 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   )
 
   await bench(
+    'remove row',
+    suite,
+    async () => {
+      // Targeted removal — splice the reactive array in place (Vue's
+      // idiomatic single-row removal; keyed render patches one <tr>).
+      // The instrumented splice forwards to the raw target array, so
+      // `currentRows` stays in sync without reassignment.
+      rows.value.splice(500, 1)
+      await nextTick()
+    },
+    {
+      // restore a full 1,000-row table (untimed) so each timed run removes
+      // from the same 1,000-row shape, not a shrinking list
+      reset: async () => {
+        rows.value = currentRows = buildRows(1_000)
+        await nextTick()
+      },
+      verify: expectRows(999),
+    },
+  )
+
+  await bench(
     'clear rows',
     suite,
     async () => {
@@ -156,6 +178,28 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
       await nextTick()
     },
     { verify: expectRows(10_000) },
+  )
+
+  await bench(
+    'append 1,000 to 10,000 rows',
+    suite,
+    async () => {
+      // Idiomatic append — push the new rows into the reactive array;
+      // keyed render appends 1,000 <tr> without touching the existing
+      // 10,000. The instrumented push forwards to the raw target array,
+      // so `currentRows` stays in sync without reassignment.
+      rows.value.push(...buildRows(1_000))
+      await nextTick()
+    },
+    {
+      // restore the table to exactly 10,000 rows (untimed) so each timed
+      // run appends to the same 10,000-row shape
+      reset: async () => {
+        rows.value = currentRows = buildRows(10_000)
+        await nextTick()
+      },
+      verify: expectRows(11_000),
+    },
   )
 
   rows.value = []

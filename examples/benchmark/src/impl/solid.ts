@@ -165,6 +165,26 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   )
 
   await bench(
+    'remove row',
+    suite,
+    async () => {
+      // Targeted removal — clone + splice, same setter pattern as swap rows.
+      // Solid's keyed <For> unmounts only the removed row's DOM node.
+      const updated = [...rows()]
+      updated.splice(500, 1)
+      setRows(updated)
+    },
+    {
+      // restore a full 1,000-row table (untimed) so each timed run removes
+      // from the same 1,000-row state
+      reset: () => {
+        setRows(mkRows(1_000))
+      },
+      verify: expectRows(999),
+    },
+  )
+
+  await bench(
     'clear rows',
     suite,
     async () => {
@@ -190,6 +210,24 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
       setRows(mkRows(10_000))
     },
     { verify: expectRows(10_000) },
+  )
+
+  await bench(
+    'append 1,000 to 10,000 rows',
+    suite,
+    async () => {
+      // Idiomatic append — spread-concat the existing rows with 1,000 new
+      // ones; Solid's keyed <For> mounts only the appended rows.
+      setRows([...rows(), ...mkRows(1_000)])
+    },
+    {
+      // trim back to exactly 10,000 rows (untimed) so each timed run appends
+      // to the same 10,000-row state
+      reset: () => {
+        setRows(rows().slice(0, 10_000))
+      },
+      verify: expectRows(11_000),
+    },
   )
 
   setRows([])

@@ -157,6 +157,26 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
   )
 
   await bench(
+    'remove row',
+    suite,
+    async () => {
+      const updated = [...currentRows]
+      updated.splice(500, 1)
+      currentRows = updated
+      await setRows(currentRows)
+    },
+    {
+      // restore a full 1,000-row table (untimed) so each timed run removes
+      // a row from a complete list, not an already-shrunk one
+      reset: async () => {
+        currentRows = buildRows(1_000)
+        await setRows(currentRows)
+      },
+      verify: expectRows(999),
+    },
+  )
+
+  await bench(
     'clear rows',
     suite,
     async () => {
@@ -184,6 +204,24 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
       await setRows(currentRows)
     },
     { verify: expectRows(10_000) },
+  )
+
+  await bench(
+    'append 1,000 to 10,000 rows',
+    suite,
+    async () => {
+      currentRows = [...currentRows, ...buildRows(1_000)]
+      await setRows(currentRows)
+    },
+    {
+      // trim back to exactly 10,000 rows (untimed) so each timed run
+      // appends to the same 10k baseline, not a growing list
+      reset: async () => {
+        currentRows = currentRows.slice(0, 10_000)
+        await setRows(currentRows)
+      },
+      verify: expectRows(11_000),
+    },
   )
 
   await setRows([])

@@ -127,6 +127,22 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
   )
 
   await bench(
+    'remove row',
+    suite,
+    async () => {
+      const current = [...rows()]
+      current.splice(500, 1)
+      rows.set(current)
+    },
+    {
+      // restore a fresh 1,000-row table (untimed) so each timed run
+      // removes one row from a FULL list
+      reset: () => rows.set(mkRows(1_000)),
+      verify: expectRows(999),
+    },
+  )
+
+  await bench(
     'clear rows',
     suite,
     async () => {
@@ -150,6 +166,23 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
       rows.set(mkRows(10_000))
     },
     { verify: expectRows(10_000) },
+  )
+
+  await bench(
+    'append 1,000 to 10,000 rows',
+    suite,
+    async () => {
+      rows.set([...rows(), ...mkRows(1_000)])
+    },
+    {
+      // trim back to exactly 10,000 rows (untimed) so each timed run
+      // appends to the SAME 10,000-row base
+      reset: () => {
+        const current = rows()
+        if (current.length > 10_000) rows.set(current.slice(0, 10_000))
+      },
+      verify: expectRows(11_000),
+    },
   )
 
   rows.set([])
