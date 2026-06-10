@@ -350,12 +350,13 @@ jobs:
             gradle connectedCheck --no-daemon --stacktrace
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
-      # Runs TasksAppInstrumentedTest.kt (home → tasks → add-task →
-      # typed-params detail navigation via Compose UI test) against the
-      # prerendered canonical TasksApp.tsx source. Closes the audit's
-      # "no device CI for tasks" gap on Android. (The earlier auth-gate
-      # flow moved out when the showcase was rewritten to the proven
-      # Tier-1 subset — cross-screen auth state needs the store port.)
+      # Runs TasksAppInstrumentedTest.kt (login → store-gated tasks →
+      # add-task → typed-params detail → logout via Compose UI test)
+      # against the prerendered canonical TasksApp.tsx source. Closes the audit's
+      # "no device CI for tasks" gap on Android. The showcase is
+      # STORE-BACKED (Gap 4): the auth-gate + cross-screen task list
+      # live in one defineStore singleton, so the test exercises the
+      # store-read guard + store mutation + typed-params detail.
 
       - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-tasks-android
         working-directory: examples/native-tasks-android

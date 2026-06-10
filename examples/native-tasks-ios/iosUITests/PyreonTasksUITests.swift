@@ -1,21 +1,23 @@
-// PyreonTasksUITests — launch + navigation + typed-params smoke for
-// the iOS tasks showcase. Mirror of:
+// PyreonTasksUITests — launch + auth-gate + store mutation +
+// typed-params smoke for the iOS tasks showcase. Mirror of:
 //   - native-router-demo-ios's PyreonRouterDemoUITests (#1452)
 //   - native-tasks-android's TasksAppInstrumentedTest
 //
-// Proves at real-Simulator scope, against the REWRITTEN TasksApp
-// source (the original scaffold over-reached the Tier-1 vocabulary —
-// see the header of `../native-tasks/src/TasksApp.tsx`):
+// Proves at real-Simulator scope, against the STORE-BACKED TasksApp
+// source (Gap 4 closure — see the header of
+// `../native-tasks/src/TasksApp.tsx`):
 //
-//   - App launches → home page renders
-//   - "Open tasks" navigates to /tasks (list with 2 seeded tasks)
-//   - Typing a title + tapping Add appends a third task (signal-driven
-//     list mutation re-renders the SwiftUI tree)
-//   - "Open task 1" navigates to /tasks/:id — the TYPED-PARAMS route:
-//     the dispatcher constructs `TaskDetailPageParam(id: ...)` from the
-//     matched path segment (the typed-params compiler arc, gated here
-//     at device level)
-//   - "Back to tasks" returns to /tasks
+//   - App launches → login page renders
+//   - Typing a username + Continue flips the store's auth flag and
+//     navigates to /tasks — the per-route `beforeEnter` guard reads
+//     the SAME `@Observable` store singleton and lets the route render
+//   - Typing a title + Add appends to the STORE's task list (cross-
+//     screen state, not component-local) and the keyed list re-renders
+//   - "Open task 1" navigates to /tasks/:id — typed-params route: the
+//     dispatcher constructs `TaskDetailPageParam(id:)` from the
+//     matched segment (also auth-gated)
+//   - "Back to tasks" returns, "Logout" flips the flag back and lands
+//     on /login — the gate re-engages
 //
 // data-testid attrs on interactive elements in the SHARED
 // `../native-tasks/src/TasksApp.tsx` source compile to
@@ -34,37 +36,44 @@ final class PyreonTasksUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func test_appLaunchesOnHomePage() throws {
+    func test_appLaunchesOnLoginPage() throws {
         let app = XCUIApplication()
         app.launch()
 
-        let homePage = app.otherElements["home-page"].firstMatch
+        let loginPage = app.otherElements["login-page"].firstMatch
         XCTAssertTrue(
-            homePage.waitForExistence(timeout: 30),
-            "Home page did not render within 30s"
+            loginPage.waitForExistence(timeout: 30),
+            "Login page did not render within 30s"
         )
     }
 
-    func test_navigateAddTaskAndOpenTypedParamsDetail() throws {
+    func test_authGateStoreMutationAndTypedParamsDetail() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Phase 1: home → tasks.
-        let openTasks = app.buttons["home-open-tasks"].firstMatch
+        // Phase 1: login — flips the store's auth flag, the beforeEnter
+        // guard on /tasks reads it and admits the navigation.
+        let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(
-            openTasks.waitForExistence(timeout: 30),
-            "Open-tasks button missing on home page"
+            username.waitForExistence(timeout: 30),
+            "Username field missing on login page"
         )
-        openTasks.tap()
+        username.tap()
+        username.typeText("alice")
+
+        let submit = app.buttons["login-submit"].firstMatch
+        XCTAssertTrue(submit.exists, "Continue button missing")
+        submit.tap()
 
         let tasksPage = app.otherElements["tasks-page"].firstMatch
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 5),
-            "Tasks page did not render within 5s after Open tasks"
+            "Tasks page did not render within 5s after login — the store-backed beforeEnter gate did not admit the navigation"
         )
 
-        // Phase 2: add a task — proves signal-driven list mutation
-        // (.set spread-append) re-renders the keyed list.
+        // Phase 2: add a task — proves the STORE list mutation
+        // (.set spread-append on the @Observable singleton) re-renders
+        // the keyed list.
         let titleField = app.textFields["new-task-title"].firstMatch
         XCTAssertTrue(titleField.exists, "New-task field missing on tasks page")
         titleField.tap()
@@ -77,11 +86,11 @@ final class PyreonTasksUITests: XCTestCase {
         let newRow = app.staticTexts["Verify on the simulator"].firstMatch
         XCTAssertTrue(
             newRow.waitForExistence(timeout: 5),
-            "Added task did not appear in the list within 5s — .set() list mutation did not re-render"
+            "Added task did not appear — store .set() list mutation did not re-render"
         )
 
         // Phase 3: typed-params route — /tasks/1 constructs
-        // TaskDetailPageParam(id: "1") in the dispatcher.
+        // TaskDetailPageParam(id: "1") in the dispatcher (auth-gated).
         let openFirst = app.buttons["tasks-open-first"].firstMatch
         XCTAssertTrue(openFirst.exists, "Open-task-1 button missing on tasks page")
         openFirst.tap()
@@ -106,6 +115,17 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(
             tasksPage.waitForExistence(timeout: 5),
             "Did not return to tasks page within 5s after Back"
+        )
+
+        // Phase 5: logout — flips the store flag back; lands on /login.
+        let logout = app.buttons["tasks-logout"].firstMatch
+        XCTAssertTrue(logout.exists, "Logout button missing on tasks page")
+        logout.tap()
+
+        let loginAfterLogout = app.otherElements["login-page"].firstMatch
+        XCTAssertTrue(
+            loginAfterLogout.waitForExistence(timeout: 5),
+            "Did not return to login page within 5s after Logout — store flag flip + navigate did not commit"
         )
     }
 }
