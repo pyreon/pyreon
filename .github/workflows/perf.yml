@@ -45,7 +45,15 @@ permissions:
 jobs:
   perf:
     # Only run on perf-labelled PRs — skip by default.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    # Event-precise opt-in: `labeled` fires for EVERY label addition, so
+    # pre-fix, adding any unrelated label (skip-changeset, …) to a PR
+    # already carrying `perf` re-ran this whole suite. Only the
+    # `perf` label itself, or a code push to an already-labelled
+    # PR, runs it now.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'perf') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'perf'))
     name: Record ${{ matrix.app }}/${{ matrix.journey }}
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -9,21 +9,36 @@ name: Native Compiler Validation
 #      typically lacks one or both toolchains) wouldn't catch
 #
 # Trigger model:
-#   - `pull_request` runs on EVERY PR (no path filter). Native readiness
-#     audit (2026-06, CRIT-1) found that path-filtering to `packages/native/**`
-#     left a coverage hole: a change in `packages/core/compiler/` cascading
-#     through PMTC silently merged with zero native gating. The gate is
-#     cheap-enough (~5-10 min typical) to run universally; pure docs-only
-#     PRs can be opted out via the existing labels if cost becomes a real
-#     issue.
+#   - `pull_request` SPAWNS on every PR but a cheap `decide` job (~10s,
+#     GitHub files API — no clone) gates the expensive validate job on
+#     the EXACT dependency surface of the native validate suite:
+#     `packages/native/**`, `examples/native-*/**` (the K-FINAL +
+#     showcase loops read those sources directly), `bun.lock` (pins
+#     oxc-parser — the native compiler's ONLY runtime dep),
+#     `.bun-version`, and this workflow. A skipped-via-`if` job reports
+#     success to branch protection, so the REQUIRED check stays
+#     deadlock-free (the trigger-level `paths:` filter would instead
+#     leave non-matching PRs stuck on an "expected" check forever).
+#
+#     History: an earlier audit note (2026-06, CRIT-1) claimed
+#     path-filtering left a hole because "packages/core/compiler/
+#     cascades through PMTC" — that premise doesn't survive the
+#     dependency graph: `@pyreon/native-compiler` imports ONLY
+#     `oxc-parser` (verified: zero `@pyreon/*` runtime imports in its
+#     src). The decide filter above IS the cascade surface; a
+#     core-compiler change cannot alter the native emit. Before that
+#     note, EVERY PR — docs-only included — paid the Swift+Kotlin
+#     toolchain install + full fixture compile (~10-25 min ubuntu).
 #   - `workflow_dispatch` — manual run, useful for re-validating
-#     a specific commit without a fresh PR.
+#     a specific commit without a fresh PR. Always runs (decide
+#     short-circuits to true for non-PR events).
 #   - `schedule` — nightly drift check against main. Catches a fixture
 #     that started failing because a fresh swift / kotlinc release
-#     changed parser strictness.
+#     changed parser strictness. Always runs.
 #
-# Advisory-only for now. Promote to a required check once the matrix
-# proves stable (~3 successful nightly runs).
+# REQUIRED check in branch protection ("Validate emitted Swift +
+# Kotlin") — which is exactly why the gating lives in a decide JOB,
+# not a trigger-level paths filter.
 
 on:
   pull_request:
@@ -51,8 +66,39 @@ env:
   KOTLIN_VERSION: '2.0.21'
 
 jobs:
+  decide:
+    name: Decide (native paths touched?)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - name: Check changed paths against the native dependency surface
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "non-PR event — always validate"
+            exit 0
+          fi
+          files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename')
+          if echo "$files" | grep -qE '^(packages/native/|examples/native-)'              || echo "$files" | grep -qxE 'bun\.lock|\.bun-version|\.github/workflows/native-validate\.yml'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "native surface touched — validating"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "no native-surface change — validate job skips (reports success to branch protection)"
+          fi
+
   validate:
     name: Validate emitted Swift + Kotlin
+    needs: decide
+    if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
