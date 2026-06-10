@@ -2175,6 +2175,49 @@ html { scroll-behavior: smooth; }
     padding: 0 20px;
   }
 }
+
+/* On docs pages — the shell has a 280px sidebar column. The header
+   should align with the docs-shell grid so the brand sits ABOVE the
+   sidebar column (left-aligned over the menu items) instead of
+   floating at the centered 1240px container's edge. The selector
+   uses :has(.docs-aside) so only docs pages (where the sidebar is
+   rendered) get the column-aligned header; the landing keeps its
+   centered-container layout. */
+.docs-shell:has(.docs-aside) .docs-header__inner {
+  max-width: none;
+  padding: 0;
+  grid-template-columns: 280px 1fr auto;
+}
+.docs-shell:has(.docs-aside) .docs-header__inner > .docs-brand {
+  /* Brand zone left-padding matches `.docs-aside`'s `padding-left:
+     1.25rem`, so the logo aligns vertically with the sidebar's nav
+     items below it. */
+  padding-left: 1.25rem;
+}
+.docs-shell:has(.docs-aside) .docs-header__inner > .docs-header__controls {
+  padding-right: 1.25rem;
+}
+@media (max-width: 920px) {
+  /* Mobile: sidebar becomes a drawer (off-canvas), so the docs-shell
+     grid collapses to 1-column. The header reverts to the standard
+     centered-container layout — no sidebar column to align with. */
+  .docs-shell:has(.docs-aside) .docs-header__inner {
+    max-width: 1240px;
+    padding: 0 40px;
+    grid-template-columns: auto 1fr auto;
+  }
+  .docs-shell:has(.docs-aside) .docs-header__inner > .docs-brand,
+  .docs-shell:has(.docs-aside) .docs-header__inner > .docs-header__controls {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+@media (max-width: 560px) {
+  .docs-shell:has(.docs-aside) .docs-header__inner {
+    padding: 0 20px;
+  }
+}
+
 .docs-brand {
   display: inline-flex;
   align-items: center;
