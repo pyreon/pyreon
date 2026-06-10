@@ -105,25 +105,36 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Resolve a concrete Simulator device
+        # `xcodebuild test` needs a CONCRETE device (the build step's
+        # `generic/platform=iOS Simulator` cannot run tests). Hardcoding
+        # a model name ROTS with every macos-* runner-image update — the
+        # previously-pinned `iPhone 15` vanished from the macos-15 Xcode
+        # images and every UITest step died with "Unable to find a
+        # device matching the provided destination specifier" (exit 70).
+        # Resolve the first AVAILABLE iPhone at runtime instead — robust
+        # across image updates by construction.
+        run: |
+          SIM_NAME=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | xargs)
+          if [ -z "$SIM_NAME" ]; then
+            echo "::error::No available iPhone simulator on this runner image:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Resolved simulator: $SIM_NAME"
+          echo "PYREON_SIM_NAME=$SIM_NAME" >> "$GITHUB_ENV"
+
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
         # The Phase-2.2 deliverable from the plan: BOOT the Simulator,
         # install the app, run an XCUITest that asserts the root view
         # (accessibilityIdentifier=todo-app, emitted from the canonical
         # `data-testid` in src/TodoApp.tsx) renders.
         #
-        # Unlike the BUILD step's `generic/...` destination, `test`
-        # needs a CONCRETE Simulator device to run on. iPhone 15 is a
-        # default device on macos-15 runners (iOS 17+ runtime preinstalled
-        # per GH Actions runner-images docs). If the device name changes
-        # in a future macos-* runner image, swap the `name=iPhone 15`
-        # below for whatever `xcrun simctl list devices available` shows.
-        #
         # The PyreonTodoMVC scheme (defined explicitly in project.yml)
         # wires the PyreonTodoMVCUITests target into the `test` action,
         # so this single `xcodebuild test` invocation builds + installs
         # the app, boots the Simulator, and runs the UITest bundle in
-        # one shot. The xcpretty pipe is optional but keeps the log
-        # readable — falls back to raw xcodebuild output if not present.
+        # one shot.
         working-directory: examples/native-todomvc-ios
         run: |
           set -o pipefail
@@ -131,7 +142,7 @@ jobs:
             -project PyreonTodoMVC.xcodeproj \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
@@ -153,7 +164,7 @@ jobs:
             -project PyreonCounter.xcodeproj \
             -scheme PyreonCounter \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
@@ -167,7 +178,7 @@ jobs:
             -project PyreonRouterDemo.xcodeproj \
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
@@ -186,7 +197,7 @@ jobs:
             -project PyreonTasks.xcodeproj \
             -scheme PyreonTasks \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 

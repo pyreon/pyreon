@@ -140,12 +140,20 @@ inline fun <reified T> serializer(): KSerializer<T> {
   } as KSerializer<T>
 }
 
+// Mirrors the REAL kotlinx-serialization JVM signature:
+//   public fun serializer(type: java.lang.reflect.Type): KSerializer<Any>
+// — NON-generic. The previous stub declared a generic
+// \`fun <T> serializer(cls: Class<*>): KSerializer<T>\` that does not
+// exist upstream, so \`serializer<Any>(x)\` verified green here while
+// real kotlinc (device CI's gradle compile of the example apps)
+// rejected it with "none of the following candidates is applicable".
+// Stub-vs-real signature drift — keep this byte-aligned with the
+// upstream declaration.
 @Suppress("UNUSED_PARAMETER")
-fun <T> serializer(cls: Class<*>): KSerializer<T> {
-  @Suppress("UNCHECKED_CAST")
-  return object : KSerializer<T>() {
+fun serializer(type: java.lang.reflect.Type): KSerializer<Any> {
+  return object : KSerializer<Any>() {
     override val descriptor: Any = "stub-runtime"
-  } as KSerializer<T>
+  }
 }
 `
 

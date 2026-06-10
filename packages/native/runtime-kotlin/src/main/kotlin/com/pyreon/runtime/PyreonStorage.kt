@@ -248,8 +248,16 @@ internal class PyreonStorageState<T>(
             // don't have a reified type at this site; do the encode
             // inline via the delegate's runtime type.
             try {
+                // Top-level `serializer(java.lang.reflect.Type)` — NO
+                // explicit type argument: the Type-taking overload is
+                // non-generic, so `serializer<Any>(...)` resolves to
+                // NOTHING (the generic form takes zero args) and kotlinc
+                // fails with "none of the following candidates is
+                // applicable". The package's own stub-based verify missed
+                // this — only the example apps' real gradle compile
+                // (device CI) surfaced it.
                 @Suppress("UNCHECKED_CAST")
-                val ser = serializer<Any>(newValue!!::class.java) as KSerializer<T>
+                val ser = serializer(newValue!!::class.java) as KSerializer<T>
                 val encoded = Json.encodeToString(ser, newValue)
                 PyreonStorageRegistry.backend.write(key, encoded)
             } catch (_: Throwable) {
