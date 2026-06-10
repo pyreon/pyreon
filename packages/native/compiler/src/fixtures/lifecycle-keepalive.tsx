@@ -15,9 +15,8 @@
 import { signal } from '@pyreon/reactivity'
 import { Stack, Text, KeepAlive } from '@pyreon/primitives'
 
-const isActive = signal(true)
-
 export function KeepAliveShowcase() {
+  const isActive = signal(true)
   return (
     <KeepAlive when={isActive()}>
       <Stack>
