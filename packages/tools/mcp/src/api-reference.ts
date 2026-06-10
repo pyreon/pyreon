@@ -35,6 +35,26 @@ count.peek()         // 6 (does NOT subscribe)`,
 - \`.peek()\` inside \`effect()\` / \`computed()\` — bypasses tracking, creates stale reads. Only use \`.peek()\` for loop-prevention guards`,
   },
 
+  'reactivity/isServer': {
+    signature: 'const isServer: boolean',
+    example: `import { isServer } from '@pyreon/reactivity'
+if (isServer) return // bail on the server
+window.addEventListener('resize', onResize)`,
+    notes: `Canonical runtime environment flag — \`true\` when there is no DOM (\`typeof document === 'undefined'\`), i.e. during SSR / in a Node or edge worker. \`typeof document\` is the reliable "is there a DOM" discriminator; it is more correct than \`typeof window\`, which misreports Deno and polyfilled-Node setups. A plain constant evaluated once at module load — correct in every runtime with zero bundler configuration. Use it for small environment guards (module-level singletons, lazy globals, render output that differs server vs client). \`isClient\` is its inverse. See also: isClient.`,
+    mistakes: `- Rolling your own \`const isBrowser = typeof window !== 'undefined'\` instead — \`typeof window\` misreports Deno / polyfilled Node; import \`isServer\` / \`isClient\`
+- Reaching for \`isClient\` to gate DOM access inside a component — prefer \`onMount\` / \`effect\`, which never run during SSR
+- Putting heavy server-only code behind \`isServer\` in a client-imported module — it still ships to the client bundle; use a \`/server\` subpath export instead`,
+  },
+
+  'reactivity/isClient': {
+    signature: 'const isClient: boolean',
+    example: `import { isClient } from '@pyreon/reactivity'
+const initial = isClient ? navigator.onLine : true`,
+    notes: `Inverse of \`isServer\` — \`true\` on a browser main thread where a DOM is available (\`typeof document !== 'undefined'\`). A plain constant evaluated once at module load. Use it for small environment guards; for DOM access inside a component prefer \`onMount\` / \`effect\` (which never run during SSR). See also: isServer.`,
+    mistakes: `- Rolling your own \`const isBrowser = typeof window !== 'undefined'\` instead — import \`isClient\`
+- Using \`isClient\` to defer DOM work that belongs in \`onMount\` / \`effect\``,
+  },
+
   'reactivity/computed': {
     signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
     example: `const count = signal(0)
@@ -3530,7 +3550,6 @@ audit_islands({ json: true })
   },
   // <gen-docs:api-reference:end @pyreon/mcp>
 
-
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/ui-core
   // ═══════════════════════════════════════════════════════════════════════════
@@ -3679,7 +3698,6 @@ value('garbage', 0) // → { value: 0, unit: 'px' }`,
     notes: 'Parse and validate a single property value into a `UnitValue` shape (`{ value, unit }`). Accepts numbers (treated as pixels), strings with units (`"16px"`, `"1rem"`, `"50%"`), or objects already in `UnitValue` form. Optional `fallback` is returned when the input is invalid. The companion `values()` does the same over an array. See also: stripUnit, values.',
   },
   // <gen-docs:api-reference:end @pyreon/unistyle>
-
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/styler
@@ -3888,7 +3906,6 @@ isDynamic("12px")          // false → static, cached`,
   },
   // <gen-docs:api-reference:end @pyreon/styler>
 
-
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/elements
   // ═══════════════════════════════════════════════════════════════════════════
@@ -4001,7 +4018,6 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
     notes: 'Re-exported from `@pyreon/unistyle` for convenience (responsive/breakpoint context). Most apps mount the unified `<PyreonUI>` from `@pyreon/ui-core` instead, which wires this internally — reach for the bare `Provider` only outside the `ui-core` provider tree. See also: Element.',
   },
   // <gen-docs:api-reference:end @pyreon/elements>
-
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storybook

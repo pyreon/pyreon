@@ -7,13 +7,11 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { nativeCompat, onMount, Portal, splitProps } from '@pyreon/core'
+import { isClient, nativeCompat, onMount, Portal, splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { Content, PyreonComponent } from '../types'
 import useOverlay, { type UseOverlayProps } from './useOverlay'
-
-const IS_BROWSER = typeof window !== 'undefined'
 
 type Align = 'bottom' | 'top' | 'left' | 'right'
 type AlignX = 'left' | 'center' | 'right'
@@ -105,7 +103,7 @@ const Component: PyreonComponent<Props> = (props) => {
       })}
 
       {() =>
-        IS_BROWSER && active() ? (
+        isClient && active() ? (
           <Portal target={own.DOMLocation ?? document.body}>
             <Provider {...ctx}>
               {render(own.children, {

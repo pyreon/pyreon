@@ -1036,6 +1036,67 @@ describe('SSR rules', () => {
     expect(diags.length).toBe(0)
   })
 
+  // Canonical @pyreon/reactivity env flags (`isClient`/`isServer`) recognised as
+  // SSR guards — but ONLY when imported from @pyreon/reactivity or @pyreon/core.
+  it('pyreon/no-window-in-ssr: clean — `if (isClient)` positive guard (imported)', () => {
+    const source = `import { isClient } from '@pyreon/reactivity'
+function f() { if (isClient) window.addEventListener('resize', () => {}) }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-window-in-ssr: clean — `if (!isClient) return` early-return guard', () => {
+    const source = `import { isClient } from '@pyreon/reactivity'
+function f() { if (!isClient) return null; return window.location.href }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-window-in-ssr: clean — `isClient && …` short-circuit guard', () => {
+    const source = `import { isClient } from '@pyreon/reactivity'
+const r = isClient ? window.location.search : ''`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-window-in-ssr: clean — `if (isServer) return` negative-flag bail', () => {
+    const source = `import { isServer } from '@pyreon/reactivity'
+function f() { if (isServer) return; return window.location.href }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-window-in-ssr: clean — `if (!isServer)` browser-safe body', () => {
+    const source = `import { isServer } from '@pyreon/reactivity'
+function f() { if (!isServer) { window.scrollTo(0, 0) } }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-window-in-ssr: clean — renamed import `isServer as srv` still guards', () => {
+    const source = `import { isServer as srv } from '@pyreon/core'
+function f() { if (srv) return; return window.location.href }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-window-in-ssr: STILL flags `isClient` from a non-Pyreon source', () => {
+    // Recognition requires the flag be imported from @pyreon/reactivity or
+    // @pyreon/core — a same-named import from another module is NOT trusted.
+    const source = `import { isClient } from './my-utils'
+function f() { if (isClient) window.scrollTo(0, 0) }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('pyreon/no-window-in-ssr: STILL flags a same-named local const (not imported)', () => {
+    // A LOCAL `const isClient = …` (no @pyreon import) is not a recognised guard.
+    const source = `const isClient = getEnv()
+function f() { if (isClient) window.scrollTo(0, 0) }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('pyreon/no-window-in-ssr: exempt via configured exemptPaths', () => {
     const source = `const w = window.innerWidth; document.createElement('div')`
     const cfg = configWithExemptPaths('pyreon/no-window-in-ssr', [

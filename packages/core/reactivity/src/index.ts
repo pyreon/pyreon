@@ -14,6 +14,7 @@ export { Cell, cell } from './cell'
 export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { defineCrossModuleState } from './cross-module-state'
+export { isClient, isServer } from './environment'
 export {
   _resetSentinel,
   registerSingleton,

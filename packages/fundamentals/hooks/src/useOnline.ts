@@ -1,4 +1,4 @@
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, onCleanup, signal } from '@pyreon/reactivity'
 
 /**
  * Reactive online/offline status.
@@ -13,10 +13,9 @@ import { onCleanup, signal } from '@pyreon/reactivity'
  * ```
  */
 export function useOnline(): () => boolean {
-  const isBrowser = typeof window !== 'undefined'
-  const online = signal(isBrowser ? navigator.onLine : true)
+  const online = signal(isClient ? navigator.onLine : true)
 
-  if (isBrowser) {
+  if (isClient) {
     const setOnline = () => online.set(true)
     const setOffline = () => online.set(false)
     window.addEventListener('online', setOnline)

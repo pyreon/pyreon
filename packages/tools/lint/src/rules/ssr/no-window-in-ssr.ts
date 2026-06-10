@@ -46,6 +46,20 @@ export const noWindowInSsr: Rule = {
     // the same as `if (typeof window !== 'undefined')` — the universal
     // browser-detection idiom. Set captured at module scope; lookups by name.
     const typeofBoundConsts = new Set<string>()
+    // The canonical env flags Pyreon ships from `@pyreon/reactivity` /
+    // `@pyreon/core`: `isClient` / `isBrowser` are POSITIVE (`typeof document
+    // !== 'undefined'`, true on a browser main thread); `isServer` / `isSSR`
+    // are NEGATIVE (true on the server). Populated ONLY when actually IMPORTED
+    // from one of those packages (see the ImportDeclaration handler) — NOT for
+    // an arbitrary local `const isBrowser = true`, which must still be flagged.
+    // An imported positive flag joins `typeofBoundConsts` (so `if (isClient)` /
+    // `if (!isClient) return` / `isClient && …` are guards); an imported
+    // negative flag joins `negativeGuardConsts` (inverted polarity: `if
+    // (isServer) return` bails, `if (!isServer) { … }` is the browser-safe body).
+    const negativeGuardConsts = new Set<string>()
+    const POSITIVE_ENV_FLAGS = new Set(['isClient', 'isBrowser'])
+    const NEGATIVE_ENV_FLAGS = new Set(['isServer', 'isSSR'])
+    const ENV_FLAG_SOURCES = new Set(['@pyreon/reactivity', '@pyreon/core'])
 
     // Member-captured typeof bindings — `this.isSSR = typeof document ===
     // 'undefined'` / `obj.ready = typeof window !== 'undefined'` / class
@@ -214,6 +228,15 @@ export const noWindowInSsr: Rule = {
       if (testIsMemberTypeofGuard(test)) return true
       // `if (isBrowser)` — bound from a typeof, body is browser-safe.
       if (test.type === 'Identifier' && typeofBoundConsts.has(test.name)) return true
+      // `if (!isServer) { … }` — imported negative env flag negated, so the
+      // body is the browser-safe branch.
+      if (
+        test.type === 'UnaryExpression' &&
+        test.operator === '!' &&
+        test.argument?.type === 'Identifier' &&
+        negativeGuardConsts.has(test.argument.name)
+      )
+        return true
       // `if (isBrowser())` — function whose body returns a typeof check.
       if (
         test.type === 'CallExpression' &&
@@ -291,6 +314,9 @@ export const noWindowInSsr: Rule = {
         typeofBoundConsts.has(test.argument.name)
       )
         return true
+      // `if (isServer) return` — imported negative env flag (true on the
+      // server), so this bare-identifier test IS the SSR early-return bail.
+      if (test.type === 'Identifier' && negativeGuardConsts.has(test.name)) return true
       // Member-captured typeof early-return forms:
       //   `if (this.isSSR) return`        (isSSR = typeof X === 'undefined')
       //   `if (!this.isReady) return`     (isReady = typeof X !== 'undefined')
@@ -578,6 +604,25 @@ export const noWindowInSsr: Rule = {
         // `{ document: 1 }` — `document` is a key, not a global ref.
         if (!node.computed && node.key?.type === 'Identifier') {
           skipPropertyNodes.add(node.key)
+        }
+      },
+      ImportDeclaration(node: any) {
+        // Recognise Pyreon's canonical env flags as SSR guards — but ONLY when
+        // imported from `@pyreon/reactivity` / `@pyreon/core` (the packages that
+        // ship them). A local `const isBrowser = true` must still be flagged, so
+        // name-alone is deliberately NOT enough. The LOCAL alias is recorded so
+        // `import { isServer as srv }` keeps working. ImportDeclaration carries
+        // both `source.value` and `specifiers`, so no parent-traversal is needed
+        // (oxc passes no parent to child visitors).
+        if (typeof node.source?.value !== 'string' || !ENV_FLAG_SOURCES.has(node.source.value)) {
+          return
+        }
+        for (const spec of node.specifiers ?? []) {
+          if (spec.type !== 'ImportSpecifier' || spec.imported?.type !== 'Identifier') continue
+          const local = spec.local?.name
+          if (typeof local !== 'string') continue
+          if (POSITIVE_ENV_FLAGS.has(spec.imported.name)) typeofBoundConsts.add(local)
+          else if (NEGATIVE_ENV_FLAGS.has(spec.imported.name)) negativeGuardConsts.add(local)
         }
       },
       ImportSpecifier(node: any) {

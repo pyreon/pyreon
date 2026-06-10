@@ -86,6 +86,36 @@ count.peek()         // 6 (does NOT subscribe)`,
       seeAlso: ['computed', 'effect', 'batch'],
     },
     {
+      name: 'isServer',
+      kind: 'constant',
+      signature: 'const isServer: boolean',
+      summary:
+        'Canonical runtime environment flag — `true` when there is no DOM (`typeof document === \'undefined\'`), i.e. during SSR / in a Node or edge worker. `typeof document` is the reliable "is there a DOM" discriminator; it is more correct than `typeof window`, which misreports Deno and polyfilled-Node setups. A plain constant evaluated once at module load — correct in every runtime with zero bundler configuration. Use it for small environment guards (module-level singletons, lazy globals, render output that differs server vs client). `isClient` is its inverse.',
+      example: `import { isServer } from '@pyreon/reactivity'
+if (isServer) return // bail on the server
+window.addEventListener('resize', onResize)`,
+      mistakes: [
+        'Rolling your own `const isBrowser = typeof window !== \'undefined\'` instead — `typeof window` misreports Deno / polyfilled Node; import `isServer` / `isClient`',
+        'Reaching for `isClient` to gate DOM access inside a component — prefer `onMount` / `effect`, which never run during SSR',
+        'Putting heavy server-only code behind `isServer` in a client-imported module — it still ships to the client bundle; use a `/server` subpath export instead',
+      ],
+      seeAlso: ['isClient'],
+    },
+    {
+      name: 'isClient',
+      kind: 'constant',
+      signature: 'const isClient: boolean',
+      summary:
+        'Inverse of `isServer` — `true` on a browser main thread where a DOM is available (`typeof document !== \'undefined\'`). A plain constant evaluated once at module load. Use it for small environment guards; for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).',
+      example: `import { isClient } from '@pyreon/reactivity'
+const initial = isClient ? navigator.onLine : true`,
+      mistakes: [
+        'Rolling your own `const isBrowser = typeof window !== \'undefined\'` instead — import `isClient`',
+        'Using `isClient` to defer DOM work that belongs in `onMount` / `effect`',
+      ],
+      seeAlso: ['isServer'],
+    },
+    {
       name: 'computed',
       kind: 'function',
       signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
