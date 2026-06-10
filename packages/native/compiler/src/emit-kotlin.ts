@@ -176,6 +176,8 @@ export function emitKotlin(
   _needsKotlinSuspenseWrapper = false
   // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
   _needsKotlinErrorBoundaryWrapper = false
+  // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag.
+  _needsKotlinKeepAliveWrapper = false
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
@@ -188,13 +190,14 @@ export function emitKotlin(
   // Gap 4 follow-up — feature v1: emit per-feature schema data class
   // + module-scope object.
   for (const f of features) parts.push(emitKotlinFeature(f))
-  // Emit components — populates _needsKotlin{Suspense,ErrorBoundary}Wrapper
-  // if any <Suspense> / <ErrorBoundary> element is encountered.
+  // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
+  // if any of those elements is encountered.
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitKotlinComponent(c))
-  // Gap 3 PR-3.2/3.3 — prepend wrapper composables if needed.
+  // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper composables if needed.
   if (_needsKotlinSuspenseWrapper) parts.push(KOTLIN_SUSPENSE_WRAPPER)
   if (_needsKotlinErrorBoundaryWrapper) parts.push(KOTLIN_ERROR_BOUNDARY_WRAPPER)
+  if (_needsKotlinKeepAliveWrapper) parts.push(KOTLIN_KEEP_ALIVE_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -204,6 +207,7 @@ export function emitKotlin(
   _modelInstancesKotlin = new Map()
   _needsKotlinSuspenseWrapper = false
   _needsKotlinErrorBoundaryWrapper = false
+  _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -1359,7 +1363,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // wrapping the children + a leading comment surfacing the limitation.
   // Gap 3 PR-3.2 — real Suspense emit (mount-time splash semantic).
   // Gap 3 PR-3.3 — real ErrorBoundary emit (structural fallback).
-  // Mirrors emit-swift.ts dispatcher. KeepAlive remains walled.
+  // Gap 3 PR-3.4 — real KeepAlive emit (visibility-preservation).
   if (tag === 'Suspense') {
     return emitKotlinSuspense(e, indent)
   }
@@ -1367,7 +1371,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     return emitKotlinErrorBoundary(e, indent)
   }
   if (tag === 'KeepAlive') {
-    return emitKotlinWalledTagAsChildren(e, indent, tag)
+    return emitKotlinKeepAlive(e, indent)
   }
   if (tag === 'Text') return emitKotlinText(e, indent)
   if (tag === 'Button') return emitKotlinButton(e, indent)
@@ -1736,6 +1740,36 @@ function emitKotlinErrorBoundary(
 }
 
 /**
+ * Gap 3 PR-3.4 — real `<KeepAlive when={X}>` emit on Compose.
+ * Mirror of emitSwiftKeepAlive. Children stay composed across
+ * `when` toggles; hidden via alpha modifier when off so child
+ * state (remember / mutableStateOf) survives intact.
+ */
+function emitKotlinKeepAlive(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const whenAttr = e.attrs.find(
+    (a) => a.kind === 'attr' && a.name === 'when',
+  ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+  if (!whenAttr) {
+    return emitKotlinWalledTagAsChildren(e, indent, 'KeepAlive')
+  }
+  _needsKotlinKeepAliveWrapper = true
+  const whenExpr = emitKotlinSignalRead(whenAttr.value)
+  const inner = ' '.repeat(indent + 2)
+  const p = ' '.repeat(indent)
+  const childrenBody = e.children
+    .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
+    .join('\n')
+  return (
+    `PyreonKeepAliveWrapper(when_ = ${whenExpr}) {\n` +
+    `${childrenBody}\n` +
+    `${p}}`
+  )
+}
+
+/**
  * Compose Suspense wrapper composable — emitted once at module scope
  * when any Suspense site is encountered. Shows the fallback on first
  * composition, flips to content via LaunchedEffect on mount.
@@ -1764,8 +1798,29 @@ private fun PyreonErrorBoundaryWrapper(
     if (hasError) fallback() else content()
 }`
 
+/**
+ * Compose KeepAlive wrapper composable — emitted once at module
+ * scope when any KeepAlive site is encountered. Once shown, the
+ * children stay composed across `when_` toggles (alpha-hidden when
+ * off so state survives).
+ */
+const KOTLIN_KEEP_ALIVE_WRAPPER = `@Composable
+private fun PyreonKeepAliveWrapper(
+    when_: Boolean,
+    content: @Composable () -> Unit,
+) {
+    var hasShown by remember { mutableStateOf(false) }
+    LaunchedEffect(when_) { if (when_) hasShown = true }
+    if (when_ || hasShown) {
+        Box(modifier = Modifier.alpha(if (when_) 1f else 0f)) {
+            content()
+        }
+    }
+}`
+
 let _needsKotlinSuspenseWrapper = false
 let _needsKotlinErrorBoundaryWrapper = false
+let _needsKotlinKeepAliveWrapper = false
 
 function emitKotlinWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,

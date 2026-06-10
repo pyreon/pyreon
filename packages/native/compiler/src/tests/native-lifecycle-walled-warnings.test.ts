@@ -38,52 +38,18 @@ describe('Phase 3 — walled lifecycle tags surface silent-drop diagnostics', ()
   // The `<ErrorBoundary>` (no fallback) shape is unchanged — never
   // warned.
 
-  describe('<KeepAlive when={...}>', () => {
-    const SRC = `export function App() {
-      return <KeepAlive when={shouldCache}><Text>Cached</Text></KeepAlive>
-    }`
-
-    it('Swift: warns when `when` prop is present', () => {
-      const result = transform(SRC, { target: 'swift' })
-      const w = result.warnings.find((w) => w.includes('<KeepAlive>'))
-      expect(w).toBeDefined()
-      expect(w!).toContain('when')
-      expect(w!).toContain('no native state-cache across unmount on SwiftUI')
-      expect(w!).toContain('cache behaviour is inert')
-    })
-
-    it('Kotlin: warns when `when` prop is present', () => {
-      const result = transform(SRC, { target: 'kotlin' })
-      const w = result.warnings.find((w) => w.includes('<KeepAlive>'))
-      expect(w).toBeDefined()
-      expect(w!).toContain('when')
-      expect(w!).toContain('no native state-cache across unmount on Compose')
-    })
-
-    it('does NOT warn when `when` is absent (baseline)', () => {
-      const src = `export function App() {
-        return <KeepAlive><Text>Cached</Text></KeepAlive>
-      }`
-      const swift = transform(src, { target: 'swift' })
-      expect(swift.warnings.some((w) => w.includes('<KeepAlive>'))).toBe(false)
-    })
-  })
-
-  describe('warning surfaces dropped prop list', () => {
-    it('Swift: lists ALL dropped props when multiple present', () => {
-      // KeepAlive accepts include/exclude alongside `when` (multi-prop
-      // shape proves the diagnostic enumerates rather than picking one).
-      const src = `export function App() {
-        return <KeepAlive when={x} include={["A"]} exclude={["B"]}><Text>x</Text></KeepAlive>
-      }`
-      const result = transform(src, { target: 'swift' })
-      const w = result.warnings.find((w) => w.includes('<KeepAlive>'))
-      expect(w).toBeDefined()
-      expect(w!).toContain('when')
-      expect(w!).toContain('include')
-      expect(w!).toContain('exclude')
-    })
-  })
+  // PR-3.4 — <KeepAlive when={...}> no longer surfaces a silent-drop
+  // warning: real KeepAlive emit (PyreonKeepAliveWrapper on Swift +
+  // Kotlin) replaces the walled path. See `lifecycle-keepalive.test.ts`
+  // for the new structural contract. The `<KeepAlive>` (no when) shape
+  // is unchanged — never warned.
+  //
+  // The "warning surfaces dropped prop list" describe block (which used
+  // KeepAlive's multi-prop shape — `when`/`include`/`exclude` — as the
+  // example) is dropped with it. Suspense + ErrorBoundary expose only
+  // `fallback`, so the multi-prop enumeration is no longer exercisable
+  // from the walled set. Reintroduce the test if a new multi-prop
+  // walled tag lands.
 
   describe('non-walled tags (control case — no warning)', () => {
     it('plain <Stack><Text/></Stack> emits zero walled-tag warnings', () => {
@@ -101,28 +67,10 @@ describe('Phase 3 — walled lifecycle tags surface silent-drop diagnostics', ()
     })
   })
 
-  describe('warning is identical-shape across both targets', () => {
-    // Lock the structural contract: every walled-tag warning carries
-    // the tag + dropped prop list + target name + per-target limitation
-    // + Layer-4 workaround pointer. Tests both targets see the same
-    // information shape (different target-specific wording).
-    // PR-3.2 (main) + PR-3.3 (this PR): Suspense + ErrorBoundary have
-    // real emit. KeepAlive is the only remaining walled tag.
-    const SRC = `export function App() {
-      return <KeepAlive when={shouldCache}><Text>x</Text></KeepAlive>
-    }`
-
-    it('both targets carry tag name, dropped prop, target name, and Layer-4 pointer', () => {
-      for (const target of ['swift', 'kotlin'] as const) {
-        const result = transform(SRC, { target })
-        const w = result.warnings.find((w) => w.includes('<KeepAlive>'))
-        expect(w, `${target} should warn`).toBeDefined()
-        expect(w!).toContain('<KeepAlive>')
-        expect(w!).toContain('when')
-        expect(w!).toContain(target === 'swift' ? 'Swift' : 'Kotlin')
-        expect(w!).toContain('Layer 4')
-        expect(w!).toContain(target === 'swift' ? '<NativeIOS>' : '<NativeAndroid>')
-      }
-    })
-  })
+  // PR-3.2 (main) + PR-3.3 (main) + PR-3.4 (this PR) — Suspense +
+  // ErrorBoundary + KeepAlive all have real emit. The "warning
+  // identical-shape across both targets" structural contract no
+  // longer has a walled lifecycle tag to exercise. The non-walled-
+  // tag control case above is still load-bearing. Reintroduce the
+  // shape-lock test when a new walled lifecycle tag lands.
 })

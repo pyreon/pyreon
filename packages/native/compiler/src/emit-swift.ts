@@ -248,6 +248,8 @@ export function emitSwift(
   _needsSwiftSuspenseWrapper = false
   // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
   _needsSwiftErrorBoundaryWrapper = false
+  // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
+  _needsSwiftKeepAliveWrapper = false
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -263,14 +265,14 @@ export function emitSwift(
   // Gap 4 follow-up — feature v1: emit per-feature schema struct +
   // module-scope const exposing initialValues + name.
   for (const f of features) parts.push(emitSwiftFeature(f))
-  // Emit components — populates _needsSwift{Suspense,ErrorBoundary}Wrapper
-  // if any <Suspense> / <ErrorBoundary> element is encountered.
+  // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
+  // if any of those elements is encountered.
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitSwiftComponent(c))
-  // Gap 3 PR-3.2/3.3 — if any wrapper-bearing site emitted, prepend the
-  // module-scope helper struct (single definition serves all sites).
+  // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
   if (_needsSwiftSuspenseWrapper) parts.push(SWIFT_SUSPENSE_WRAPPER)
   if (_needsSwiftErrorBoundaryWrapper) parts.push(SWIFT_ERROR_BOUNDARY_WRAPPER)
+  if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -280,6 +282,7 @@ export function emitSwift(
   _modelInstances = new Map()
   _needsSwiftSuspenseWrapper = false
   _needsSwiftErrorBoundaryWrapper = false
+  _needsSwiftKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -1510,15 +1513,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // lands (tracked in the multiplatform plan as Phase 5 frontier).
   // Gap 3 PR-3.2 — real Suspense emit (mount-time splash semantic).
   // Gap 3 PR-3.3 — real ErrorBoundary emit (structural fallback).
-  // SwiftUI has no async-render-suspend OR try/catch around View
-  // construction; v1 ports the semantics that ARE expressible:
-  //   Suspense: fallback shows on first mount, content shows once
-  //     the .task callback flips state — "splash screen on startup".
-  //   ErrorBoundary: children render by default; a Layer-4 NativeIOS
-  //     escape hatch (or future runtime hook) can flip the wrapper's
-  //     `hasError` state to swap to fallback.
-  //
-  // KeepAlive remains walled (separate PR-3.4 follow-up).
+  // Gap 3 PR-3.4 — real KeepAlive emit (visibility-preservation).
   if (tag === 'Suspense') {
     return emitSwiftSuspense(e, indent)
   }
@@ -1526,7 +1521,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     return emitSwiftErrorBoundary(e, indent)
   }
   if (tag === 'KeepAlive') {
-    return emitSwiftWalledTagAsChildren(e, indent, tag)
+    return emitSwiftKeepAlive(e, indent)
   }
   if (tag === 'Text') return emitSwiftText(e, indent)
   if (tag === 'Button') return emitSwiftButton(e, indent)
@@ -2025,6 +2020,52 @@ function emitSwiftErrorBoundary(
 }
 
 /**
+ * Gap 3 PR-3.4 — real `<KeepAlive when={X}>` emit (visibility-
+ * preservation semantic). SwiftUI's `if cond { child }` would unmount
+ * the child when `cond` flips false — losing all child state. v1
+ * emits a wrapper that keeps the children mounted across `when`
+ * toggles, hidden via opacity + hit-testing disabled when off. The
+ * children's `@State` / `@StateObject` survive intact across toggles
+ * — the closest faithful translation of the web KeepAlive contract.
+ *
+ *   <KeepAlive when={isActive}>
+ *     <ExpensiveChild/>
+ *   </KeepAlive>
+ *
+ * emits as
+ *
+ *   PyreonKeepAliveWrapper(when_: isActive) {
+ *     ExpensiveChild()
+ *   }
+ *
+ * Falls back to walled emit when no `when` prop (the no-flag shape
+ * means "always show" — equivalent to inlining the children).
+ */
+function emitSwiftKeepAlive(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const whenAttr = e.attrs.find(
+    (a) => a.kind === 'attr' && a.name === 'when',
+  ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+  if (!whenAttr) {
+    return emitSwiftWalledTagAsChildren(e, indent, 'KeepAlive')
+  }
+  _needsSwiftKeepAliveWrapper = true
+  const whenExpr = emitSwiftSignalRead(whenAttr.value)
+  const inner = ' '.repeat(indent + 2)
+  const p = ' '.repeat(indent)
+  const childrenBody = e.children
+    .map((c) => inner + '  ' + emitSwiftChild(c, indent + 4))
+    .join('\n')
+  return (
+    `PyreonKeepAliveWrapper(when_: ${whenExpr}) {\n` +
+    `${childrenBody}\n` +
+    `${p}}`
+  )
+}
+
+/**
  * Helper struct emitted once at module scope when any Suspense site
  * is encountered (gated on `_needsSwiftSuspenseWrapper`). Owns the
  * `@State` loading flag + `.task` lifecycle so per-Suspense call
@@ -2069,8 +2110,37 @@ private struct PyreonErrorBoundaryWrapper<Content: View, Fallback: View>: View {
     }
 }`
 
+/**
+ * Helper struct emitted once at module scope when any KeepAlive
+ * site is encountered. Once the children have been shown once,
+ * they stay in the View tree across `when_` toggles — hidden via
+ * opacity + hit-testing disabled when off. Children's @State
+ * survives intact.
+ */
+const SWIFT_KEEP_ALIVE_WRAPPER = `@available(iOS 17.0, macOS 14.0, *)
+private struct PyreonKeepAliveWrapper<Content: View>: View {
+    let when_: Bool
+    let content: () -> Content
+    @State private var hasShown = false
+    init(when_: Bool, @ViewBuilder content: @escaping () -> Content) {
+        self.when_ = when_
+        self.content = content
+    }
+    var body: some View {
+        Group {
+            if when_ || hasShown {
+                content()
+                    .opacity(when_ ? 1 : 0)
+                    .allowsHitTesting(when_)
+                    .onAppear { hasShown = true }
+            }
+        }
+    }
+}`
+
 let _needsSwiftSuspenseWrapper = false
 let _needsSwiftErrorBoundaryWrapper = false
+let _needsSwiftKeepAliveWrapper = false
 
 function emitSwiftWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
