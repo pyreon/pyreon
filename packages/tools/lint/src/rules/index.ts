@@ -97,6 +97,7 @@ import { revalidateNotPureLiteral } from './ssg/revalidate-not-pure-literal'
 import { noMismatchRisk } from './ssr/no-mismatch-risk'
 // SSR
 import { noWindowInSsr } from './ssr/no-window-in-ssr'
+import { preferIsServer } from './ssr/prefer-isserver'
 import { preferRequestContext } from './ssr/prefer-request-context'
 import { noDuplicateStoreId } from './store/no-duplicate-store-id'
 import { noMutateStoreState } from './store/no-mutate-store-state'
@@ -150,10 +151,11 @@ export const allRules: Rule[] = [
   noHeavyImportOnlyInHandler,
   preferShowOverDisplay,
   promiseRaceNeedsCleartimeout,
-  // SSR (3)
+  // SSR (4)
   noWindowInSsr,
   noMismatchRisk,
   preferRequestContext,
+  preferIsServer,
   // Architecture (8)
   noCircularImport,
   noDeepImport,
