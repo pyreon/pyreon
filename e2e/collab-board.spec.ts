@@ -131,21 +131,24 @@ test.describe('collab-board — relay sync', () => {
     await expect(b.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
 
     // A opens the card and edits its collaborative notes. We drive the edit
-    // through the editor's `insert()` (a real CodeMirror transaction via the
-    // dev-only `__cardEditor` hook) rather than simulated OS keystrokes: a
-    // diagnostic CI run proved `pressSequentially` renders into the
-    // contenteditable DOM but does NOT reach a cold-mounted CodeMirror's doc
-    // state on a fresh CI runner — so `notes` (the syncedText CRDT) stayed empty
-    // and nothing synced. `insert()` dispatches a CM transaction, which always
-    // fires the updateListener → `notes.set`, exercising the real
-    // editor↔syncedText binding deterministically.
+    // through the editor's `value` signal (`editor.value.set`, the documented
+    // public controlled-binding API, via the dev-only `__cardEditor` hook) rather
+    // than simulated OS keystrokes. A diagnostic CI run proved keystrokes render
+    // into the contenteditable DOM but do NOT reach a cold-mounted CodeMirror's
+    // doc state on a fresh CI runner (the editor view isn't created until the lazy
+    // markdown grammar resolves — `editor.insert` even no-ops while the view is
+    // null), so `notes` (the syncedText CRDT) stayed empty and nothing synced.
+    // `value.set` feeds the editor↔syncedText binding effect directly — no view
+    // dependency — so it deterministically writes the CRDT and syncs. The
+    // keystroke-level CodeMirror input path is @pyreon/code's own concern (covered
+    // by its browser tests), not what this sync showcase gates on.
     await a.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(a.getByTestId('card-panel')).toBeVisible()
     await expect(a.getByTestId('card-notes').locator('.cm-content')).toBeVisible()
     await a.evaluate(() =>
-      (
-        window as unknown as { __cardEditor?: { insert: (t: string) => void } }
-      ).__cardEditor?.insert('shipping monday'),
+      (window as unknown as { __cardEditor?: { value: { set: (t: string) => void } } }).__cardEditor?.value.set(
+        'shipping monday',
+      ),
     )
     // Assert A's edit actually reached the CRDT (not just CodeMirror's DOM — that
     // was the original false-positive). This is the real "the edit landed" check.
@@ -173,6 +176,45 @@ test.describe('collab-board — relay sync', () => {
 
     expect(errors, errors.join('\n')).toEqual([])
     await a.context().close()
+    await b.context().close()
+  })
+
+  test('presence avatars + live cursors sync over awareness', async ({ browser }) => {
+    const room = `e2e-${crypto.randomUUID()}`
+    const errors: string[] = []
+    const a = await openClient(browser, boardUrl(room), errors)
+    const b = await openClient(browser, boardUrl(room), errors)
+
+    // Each client publishes its presence (name + color) on mount via
+    // `syncedAwareness` → over the relay → each sees TWO avatars (self + peer).
+    await expect(a.getByTestId('presence').locator('.avatar')).toHaveCount(2)
+    await expect(b.getByTestId('presence').locator('.avatar')).toHaveCount(2)
+
+    // A moves its mouse → its cursor is published into awareness → B renders it.
+    // Dispatch the mousemove directly (Playwright's mouse.move doesn't reliably
+    // reach a `window` listener in headless — same reason the dnd specs dispatch
+    // real events). B sees only A's cursor (`others()` excludes self).
+    const move = (x: number, y: number) => (p: typeof a) =>
+      p.evaluate(
+        ([cx, cy]) =>
+          window.dispatchEvent(new MouseEvent('mousemove', { clientX: cx, clientY: cy, bubbles: true })),
+        [x, y],
+      )
+    await move(320, 240)(a)
+    await expect(b.getByTestId('remote-cursor')).toHaveCount(1)
+    await expect(a.getByTestId('remote-cursor')).toHaveCount(0)
+
+    // Moving again patches the SAME cursor in place — still exactly one.
+    await move(120, 360)(a)
+    await expect(b.getByTestId('remote-cursor')).toHaveCount(1)
+
+    // A leaves → the relay purges its presence → B drops back to one avatar and
+    // A's cursor disappears (ephemeral — no ghost, no last-seen filtering).
+    await a.context().close()
+    await expect(b.getByTestId('presence').locator('.avatar')).toHaveCount(1)
+    await expect(b.getByTestId('remote-cursor')).toHaveCount(0)
+
+    expect(errors, errors.join('\n')).toEqual([])
     await b.context().close()
   })
 

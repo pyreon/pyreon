@@ -34,7 +34,9 @@ windows**.
   **drag** to reorder / move across columns (or the accessible **→** button).
 - **Collaborative notes** per card — a CodeMirror editor (`@pyreon/code`) whose
   buffer is a CRDT (`syncedText`): two people edit with character-level merge.
-- **Presence** — live "who's here" avatars (synced heartbeat).
+- **Presence + live cursors** — real Yjs **awareness** (`syncedAwareness`): "who's
+  here" avatars + live collaborator cursors. Ephemeral — a peer that disconnects
+  is removed instantly (no heartbeat, no ghost entries).
 - **A virtualized backlog** — seed 1,000 synced cards; only the visible rows
   mount (`@pyreon/virtual`) — fine-grained sync *at scale*.
 - **Create boards** — a validated form (`@pyreon/form` + `@pyreon/validation`/Zod)
@@ -48,7 +50,7 @@ everything else owns its own job. That separation is the lesson:
 
 | Package | Owns | Where |
 | --- | --- | --- |
-| **`@pyreon/sync`** | the live data — title (`syncedStore`), each column + the backlog (`syncedList`, positional merge), card notes (`syncedText`, char merge), presence (`syncedList`) | `src/sync/board-doc.ts` |
+| **`@pyreon/sync`** | the live data — title (`syncedStore`), each column + the backlog (`syncedList`, positional merge), card notes (`syncedText`, char merge), presence + cursors (`syncedAwareness`, ephemeral) | `src/sync/board-doc.ts` |
 | **`@pyreon/sync/yjs`** | engine + transports + persistence (`createYjsDoc`, `connectViaWebSocket`, `connectViaBroadcastChannel`, `persistViaIndexedDB`) | `src/sync/board-doc.ts` |
 | **`@pyreon/sync/server`** | the relay (`createSyncServer` + an `authorize` gate) | `relay.ts` |
 | **`@pyreon/code`** | the collaborative card-notes editor — `createEditor` + `bindEditorToSignal(syncedText)` | `src/components/CardPanel.tsx` |
@@ -60,7 +62,7 @@ everything else owns its own job. That separation is the lesson:
 | **`@pyreon/permissions`** | the viewer/editor **UI** gate (the relay `authorize` is the real one) | `src/state/permissions.ts` |
 | **`@pyreon/storage`** | **per-device** state — theme, your display name + color (NOT synced) | `src/state/identity.ts` |
 | **`@pyreon/toast`** | connection-status notifications | `src/app.tsx`, `src/routes/board.tsx` |
-| **`@pyreon/hooks`** | `useColorScheme` (default theme), `useInterval` (presence heartbeat) | `src/state/identity.ts`, `src/components/PresenceBar.tsx` |
+| **`@pyreon/hooks`** | `useColorScheme` (default theme), `useEventListener` + `useThrottledCallback` (publish the live cursor on mousemove) | `src/state/identity.ts`, `src/components/Cursors.tsx` |
 
 ### The two flagship integrations
 
@@ -83,10 +85,9 @@ the same data — query for the envelope, sync for the live contents.
 
 ## Honest limits
 
-- **Presence is modeled as synced state** (a heartbeat list filtered on
-  last-seen), not Yjs's ephemeral awareness protocol — because the relay brokers
-  doc updates, not awareness. A crashed client fades out via the filter. A
-  production app uses awareness (+ cursors).
+- **Cursor positions are raw viewport points** — no scroll / window-size
+  normalization, so cursors approximate across differently-sized windows. Fine
+  for the demo; a production app maps to content coordinates for pixel parity.
 - **Viewer/editor is a UI gate**, not security — the relay's `authorize` hook is
   the real enforcement (kept permissive here for a zero-setup local demo).
 - **CRDTs prevent lost *updates*, not semantic conflicts** — concurrent title
@@ -98,9 +99,11 @@ the same data — query for the envelope, sync for the live contents.
 
 ## Tests
 
-`e2e/collab-board.spec.ts` (real Chromium, `bun run test:e2e:collab-board`) — 5
+`e2e/collab-board.spec.ts` (real Chromium, `bun run test:e2e:collab-board`) — 6
 specs: cross-context **add / title / move** sync; **drag-reorder** syncs the new
 order (the marquee `useSortable` → `syncedList` path); **collaborative notes**
-(type in one client's CodeMirror, the other's reflects it); **offline
-persistence** (a card survives reload via IndexedDB); **viewer mode** disables
-editing. Two isolated browser contexts converge through the relay.
+(an edit in one client's CodeMirror appears in the other's); **presence avatars +
+live cursors** (`syncedAwareness` — a peer's cursor renders on the other client,
+and disappears when it disconnects); **offline persistence** (a card survives
+reload via IndexedDB); **viewer mode** disables editing. Two isolated browser
+contexts converge through the relay.
