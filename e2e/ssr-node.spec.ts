@@ -127,6 +127,40 @@ test.describe('SSR node deploy artifact', () => {
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
 
+  // ─── Phase 4 — server islands (cacheable page, per-request holes) ──────────
+
+  test('server island: the PAGE carries only the marker; fragments render PER REQUEST', async ({
+    page,
+  }) => {
+    // 1. Raw page response: the marker (with fallback) is present, the
+    //    island's CONTENT is not — that's what keeps the page cacheable.
+    const raw = await (await page.request.get('/server-island-demo')).text()
+    expect(raw).toContain('<pyreon-server-island')
+    expect(raw).toContain('data-name="ServerStamp"')
+    expect(raw).toContain('server-stamp-fallback')
+    expect(raw).not.toContain('data-testid="server-stamp"')
+
+    // 2. The fragment endpoint renders per request: two fetches → two
+    //    DIFFERENT stamps (the inverse of hybrid-static's static-first
+    //    proof, where two fetches must be IDENTICAL).
+    const propsQ = `?props=${encodeURIComponent(JSON.stringify({ label: 'now' }))}`
+    const f1 = await (await page.request.get(`/_pyreon/fragment/ServerStamp${propsQ}`)).text()
+    await new Promise((r) => setTimeout(r, 5))
+    const f2 = await (await page.request.get(`/_pyreon/fragment/ServerStamp${propsQ}`)).text()
+    expect(f1).toContain('now:')
+    expect(f2).toContain('now:')
+    expect(f1).not.toBe(f2)
+
+    // 3. Unknown island names 404 (the endpoint allowlist).
+    const nope = await page.request.get('/_pyreon/fragment/NotRegistered')
+    expect(nope.status()).toBe(404)
+
+    // 4. In the browser, the client activation swaps the fragment in.
+    await page.goto('/server-island-demo')
+    await expect(page.getByTestId('server-stamp')).toBeVisible()
+    await expect(page.getByTestId('server-stamp')).toContainText('now:')
+  })
+
   test('hydrates + client-side navigation works (assets load + run)', async ({ page }) => {
     const errors: string[] = []
     page.on('console', (m) => {

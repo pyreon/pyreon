@@ -23,7 +23,11 @@ import { island } from '../island'
  * assert the branch renders the marker + runs `onMount` without throwing.
  */
 function prop(el: Element | null, key: string): unknown {
-  return (el as unknown as Record<string, unknown> | null)?.[key]
+  // `data-*` on custom elements are real ATTRIBUTES (matching SSR output,
+  // attribute selectors, and `dataset`) since the props.ts data-/aria-
+  // carve-out — pre-fix they landed as JS PROPERTIES on hyphenated tags
+  // and this helper read them that way, codifying the bug.
+  return el?.getAttribute(key) ?? undefined
 }
 
 describe("island() — client self-hydration branch", () => {

@@ -63,6 +63,10 @@ export { buildMetaTags, Meta } from "./meta";
 // Hydration is automatic via the plugin + `startClient` (see `./client`).
 export type { IslandMeta, IslandOptions } from "@pyreon/server/client";
 export { island } from "@pyreon/server/client";
+// Phase 4 — server islands: CDN-cacheable pages with per-request
+// server-rendered holes. Client-safe (marker component + activation);
+// the fragment endpoint auto-mounts in createServer.
+export { activateServerIslands, serverIsland } from "@pyreon/server/client";
 
 // ─── Theme (browser-safe) ───────────────────────────────────────────────────
 
