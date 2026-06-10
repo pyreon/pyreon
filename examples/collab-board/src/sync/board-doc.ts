@@ -34,9 +34,34 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   done: 'Done',
 }
 
+export const CARD_LABELS = ['none', 'red', 'green', 'blue', 'purple', 'orange'] as const
+export type CardLabel = (typeof CARD_LABELS)[number]
+
 export interface Card {
   id: string
   title: string
+  label: CardLabel
+}
+
+export interface CardLocation {
+  colId: ColumnId
+  index: number
+  card: Card
+}
+
+/**
+ * A presence entry — one per active client. Modeled AS synced data (a
+ * `syncedList`) rather than via Yjs's awareness protocol, because the relay
+ * brokers doc updates, not awareness. Trade-off: entries persist in the CRDT
+ * (a crashed client lingers) — the UI filters on `at` (last-seen) to show only
+ * recent ones, and each client removes its own entry on unmount. A production
+ * app would use the ephemeral awareness protocol instead.
+ */
+export interface PresenceEntry {
+  clientId: string
+  name: string
+  color: string
+  at: number
 }
 
 /**
@@ -51,11 +76,22 @@ export type ConnectionState = 'local' | 'connecting' | 'online' | 'offline'
 export interface BoardDoc {
   readonly roomId: string
   readonly columns: Record<ColumnId, SyncedList<Card>>
+  /** Active collaborators (synced; filter on `at` for "recently seen"). */
+  readonly presence: SyncedList<PresenceEntry>
+  /** A large synced list (the backlog) — rendered virtualized to show
+   *  fine-grained sync at scale. */
+  readonly backlog: SyncedList<Card>
   /** The board title — reactive read; valid once `ready()` is true. */
   title(): string
   setTitle(value: string): void
-  /** Create a collaborative description editor for a card. Caller disposes it. */
-  openDescription(cardId: string): SyncedText
+  /** Create a collaborative notes editor for a card. Caller disposes it. */
+  openNotes(cardId: string): SyncedText
+  /** Find a card across all columns (reactive — reads the synced lists). */
+  findCard(cardId: string): CardLocation | null
+  /** Patch a card's scalar fields (title / label) in place. */
+  updateCard(cardId: string, patch: Partial<Omit<Card, 'id'>>): void
+  /** Remove a card from whatever column holds it. */
+  deleteCard(cardId: string): void
   readonly connection: Signal<ConnectionState>
   /** Flips true once persisted IndexedDB state has loaded (see below). */
   readonly ready: Signal<boolean>
@@ -82,6 +118,8 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
     doing: syncedList<Card>(doc, 'col:doing'),
     done: syncedList<Card>(doc, 'col:done'),
   }
+  const presence = syncedList<PresenceEntry>(doc, 'presence')
+  const backlog = syncedList<Card>(doc, 'backlog')
 
   // The title DOES seed an initial value, so it must wait for persisted state
   // to load first — otherwise the create-if-missing seed could race the async
@@ -105,12 +143,36 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
 
   let disposed = false
 
+  function findCard(cardId: string): CardLocation | null {
+    for (const colId of COLUMN_IDS) {
+      const arr = columns[colId]()
+      const index = arr.findIndex((c) => c.id === cardId)
+      if (index >= 0) return { colId, index, card: arr[index]! }
+    }
+    return null
+  }
+
   return {
     roomId,
     columns,
+    presence,
+    backlog,
     title: () => titleStore?.title() ?? '',
     setTitle: (value) => titleStore?.title.set(value),
-    openDescription: (cardId) => syncedText(doc, `desc:${cardId}`),
+    openNotes: (cardId) => syncedText(doc, `notes:${cardId}`),
+    findCard,
+    // Title/label are scalar fields on the list item → patch = replace the item
+    // (a coarse whole-list `.set`, fine for low-frequency edits like rename).
+    updateCard(cardId, patch) {
+      const found = findCard(cardId)
+      if (!found) return
+      const list = columns[found.colId]
+      list.set(list().map((c) => (c.id === cardId ? { ...c, ...patch } : c)))
+    },
+    deleteCard(cardId) {
+      const found = findCard(cardId)
+      if (found) columns[found.colId].delete(found.index, 1)
+    },
     connection,
     ready,
     dispose() {
@@ -119,6 +181,8 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
       ws?.disconnect()
       bc.disconnect()
       for (const col of Object.values(columns)) col.dispose()
+      presence.dispose()
+      backlog.dispose()
       titleStore?.dispose()
       void persist.destroy()
     },

@@ -45,7 +45,7 @@ export function Column(props: ColumnProps) {
   })
 
   function addCard(): void {
-    cards.push({ id: newCardId(), title: `Card ${cards().length + 1}` })
+    cards.push({ id: newCardId(), title: `Card ${cards().length + 1}`, label: 'none' })
   }
 
   return (
@@ -63,6 +63,7 @@ export function Column(props: ColumnProps) {
                 sortable.overId() === card.id ? (sortable.overEdge() ?? '') : ''
               }
             >
+              <span class="card-label" data-label={card.label} />
               <span class="card-title" onClick={() => props.onOpen(card.id)}>
                 {card.title}
               </span>

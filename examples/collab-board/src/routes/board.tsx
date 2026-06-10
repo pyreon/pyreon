@@ -2,6 +2,7 @@ import { onUnmount } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { useRoute } from '@pyreon/router'
 import { toast } from '@pyreon/toast'
+import { Backlog } from '../components/Backlog'
 import { CardPanel } from '../components/CardPanel'
 import { Column } from '../components/Column'
 import { Toolbar } from '../components/Toolbar'
@@ -98,6 +99,7 @@ export function BoardRoute() {
             />
           ))}
         </div>
+        <Backlog board={b} />
         {/* Accessor child (not <Show>) so opening a DIFFERENT card re-emits a
             fresh CardPanel — which disposes the previous card's Y.Text and opens
             the new one. */}

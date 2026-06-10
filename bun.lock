@@ -191,8 +191,10 @@
       "name": "@pyreon/example-collab-board",
       "version": "0.0.0",
       "dependencies": {
+        "@pyreon/code": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/dnd": "workspace:*",
+        "@pyreon/form": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/permissions": "workspace:*",
         "@pyreon/query": "workspace:*",
@@ -202,6 +204,9 @@
         "@pyreon/storage": "workspace:*",
         "@pyreon/sync": "workspace:*",
         "@pyreon/toast": "workspace:*",
+        "@pyreon/validation": "workspace:*",
+        "@pyreon/virtual": "workspace:*",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/vite-plugin": "workspace:*",

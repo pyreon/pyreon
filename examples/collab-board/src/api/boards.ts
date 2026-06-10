@@ -17,5 +17,22 @@ const BOARDS: BoardSummary[] = [
 
 export async function fetchBoards(): Promise<BoardSummary[]> {
   await new Promise((resolve) => setTimeout(resolve, 150)) // simulate latency
-  return BOARDS
+  return [...BOARDS]
+}
+
+/** "Create" a board (mock persist). Driven by a @pyreon/query mutation that then
+ *  invalidates the `['boards']` query so the list refetches. */
+export async function createBoard(input: { name: string }): Promise<BoardSummary> {
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  const base =
+    input.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'board'
+  let id = base
+  let n = 2
+  while (BOARDS.some((b) => b.id === id)) id = `${base}-${n++}`
+  const board: BoardSummary = { id, title: input.name }
+  BOARDS.push(board)
+  return board
 }

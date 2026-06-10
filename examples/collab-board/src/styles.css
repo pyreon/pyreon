@@ -112,6 +112,25 @@ a {
   width: 12ch;
 }
 
+.presence {
+  display: inline-flex;
+  align-items: center;
+}
+
+.presence .avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border: 2px solid var(--surface);
+  margin-left: -6px;
+}
+
 .conn {
   display: inline-flex;
   align-items: center;
@@ -255,6 +274,28 @@ a {
   padding: 0 16px;
 }
 
+.create-form {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+
+.create-form input {
+  flex: 1;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.error {
+  color: var(--off);
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
 .board-list ul {
   list-style: none;
   padding: 0;
@@ -284,6 +325,60 @@ a {
   z-index: 10;
 }
 
+.card-label {
+  width: 28px;
+  height: 8px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.card-label[data-label='none'] {
+  display: none;
+}
+
+[data-label='red'] {
+  background: #c9372c;
+}
+[data-label='green'] {
+  background: #1f845a;
+}
+[data-label='blue'] {
+  background: #0c66e4;
+}
+[data-label='purple'] {
+  background: #5e4db2;
+}
+[data-label='orange'] {
+  background: #b35900;
+}
+
+.label-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.label-swatch[data-label='none'] {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.label-swatch[data-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.notes-editor {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  min-height: 180px;
+}
+
 .panel textarea {
   flex: 1;
   resize: none;
@@ -302,4 +397,41 @@ a {
   padding: 48px;
   text-align: center;
   color: var(--muted);
+}
+
+.backlog {
+  margin: 0 16px 24px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.backlog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 6px 10px;
+}
+
+.backlog-head strong {
+  text-transform: uppercase;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.backlog-scroll {
+  height: 240px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.backlog-row {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
 }

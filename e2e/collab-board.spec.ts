@@ -1,14 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { type Browser, expect, type Page, test } from '@playwright/test'
 
-// Real-Chromium proof that the collab-board example's @pyreon/sync layer
-// converges two ISOLATED clients (separate browser contexts — no shared origin,
-// no shared storage/BroadcastChannel) through the WebSocket relay. We drive the
-// mutations via BUTTONS (add / move / title), not simulated drag: the assertion
-// here is about the SYNC path (and the positional cross-column ops drag also
-// uses), which stays deterministic. Drag mechanics themselves are covered by
-// app-showcase's dnd gate; useSortable's SETUP against a synced list is
-// exercised here implicitly (a setup throw would stop the board from rendering,
-// failing the first assertion).
+// Real-Chromium gate for the collab-board showcase. Two ISOLATED browser
+// contexts (no shared origin/storage/BroadcastChannel) converge only through
+// the WebSocket relay. We drive list mutations via buttons (deterministic), and
+// reorder via a dispatched HTML5-drag sequence (the marquee interaction).
 
 const RELAY = 'ws://127.0.0.1:5190'
 
@@ -18,30 +13,68 @@ function boardUrl(room: string): string {
   return `/?ws=${encodeURIComponent(`${RELAY}/${room}`)}#/board/${room}`
 }
 
-test.describe('collab-board — two clients converge over the relay', () => {
+// Vite's dev server re-optimizes deps on first load and returns a transient
+// `504 (Outdated Optimize Dep)` for in-flight requests, then auto-retries — a
+// dev-server artifact, not an app error.
+const isViteNoise = (t: string): boolean => /Outdated Optimize Dep|ERR_ABORTED|\b504\b/.test(t)
+
+async function openClient(browser: Browser, url: string, errors: string[]): Promise<Page> {
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !isViteNoise(m.text())) errors.push(m.text())
+  })
+  page.on('pageerror', (e) => errors.push(String(e)))
+  await page.goto(url)
+  await expect(page.getByTestId('board-title')).toBeVisible() // past the ready gate
+  return page
+}
+
+function colTitles(page: Page, col: string): Promise<string[]> {
+  return page.getByTestId(`col-${col}`).locator('.card-title').allTextContents()
+}
+
+// Dispatch the HTML5 drag sequence to move the first card of a column below the
+// last (pragmatic-drag-and-drop needs real DragEvent/DataTransfer, which
+// Playwright's mouse can't synthesize). Mirrors app-showcase's dnd gate.
+async function dragFirstToLast(page: Page, col: string): Promise<void> {
+  await page.evaluate((colId) => {
+    const list = document.querySelector(`[data-testid="col-${colId}"]`) as HTMLElement | null
+    if (!list) return
+    const items = list.querySelectorAll<HTMLElement>('li')
+    const first = items[0]
+    const last = items[items.length - 1]
+    if (!first || !last || first === last) return
+    const dt = new DataTransfer()
+    const fire = (target: Element, type: string, y?: number) => {
+      const r = (target as HTMLElement).getBoundingClientRect()
+      target.dispatchEvent(
+        new DragEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: dt,
+          clientX: r.left + r.width / 2,
+          clientY: y ?? r.top + r.height / 2,
+        }),
+      )
+    }
+    const rl = last.getBoundingClientRect()
+    fire(first, 'dragstart')
+    fire(last, 'dragenter', rl.bottom - 4)
+    fire(last, 'dragover', rl.bottom - 4)
+    fire(list, 'drop')
+    fire(first, 'dragend')
+  }, col)
+}
+
+test.describe('collab-board — relay sync', () => {
   test('add card, edit title, and move card in A appear in B', async ({ browser }) => {
     const room = `e2e-${crypto.randomUUID()}`
-    const ctxA = await browser.newContext()
-    const ctxB = await browser.newContext()
-    const a = await ctxA.newPage()
-    const b = await ctxB.newPage()
-
     const errors: string[] = []
-    for (const p of [a, b]) {
-      p.on('console', (m) => {
-        if (m.type() === 'error') errors.push(m.text())
-      })
-      p.on('pageerror', (e) => errors.push(String(e)))
-    }
+    const a = await openClient(browser, boardUrl(room), errors)
+    const b = await openClient(browser, boardUrl(room), errors)
 
-    await a.goto(boardUrl(room))
-    await b.goto(boardUrl(room))
-
-    // Both load past the async (whenSynced) ready gate.
-    await expect(a.getByTestId('board-title')).toBeVisible()
-    await expect(b.getByTestId('board-title')).toBeVisible()
-
-    // (1) Add a card in A's "To Do" → it appears in B's "To Do" (syncedList).
+    // (1) Add a card in A's "To Do" → appears in B (syncedList).
     await a.getByTestId('add-todo').click()
     await expect(a.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
     await expect(b.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
@@ -50,14 +83,105 @@ test.describe('collab-board — two clients converge over the relay', () => {
     await a.getByTestId('board-title').fill('Launch plan')
     await expect(b.getByTestId('board-title')).toHaveValue('Launch plan')
 
-    // (3) Move the card to the next column in A → B sees it in "Doing" and gone
-    //     from "To Do" (cross-column POSITIONAL ops: delete source + push dest).
+    // (3) Move the card to the next column in A → B sees it in "Doing"
+    //     (cross-column POSITIONAL ops: delete source + push dest).
     await a.getByTestId('col-todo').locator('.card-move').first().click()
     await expect(b.getByTestId('col-doing').getByText('Card 1')).toBeVisible()
     await expect(b.getByTestId('col-todo').getByText('Card 1')).toHaveCount(0)
 
-    await ctxA.close()
-    await ctxB.close()
     expect(errors, errors.join('\n')).toEqual([])
+    await a.context().close()
+    await b.context().close()
+  })
+
+  test('drag-reorder in A syncs the new order to B (useSortable → syncedList)', async ({
+    browser,
+  }) => {
+    const room = `e2e-${crypto.randomUUID()}`
+    const errors: string[] = []
+    const a = await openClient(browser, boardUrl(room), errors)
+    const b = await openClient(browser, boardUrl(room), errors)
+
+    for (let i = 0; i < 3; i++) await a.getByTestId('add-todo').click()
+    await expect(b.getByTestId('col-todo').locator('.card').or(b.getByTestId('col-todo').locator('li'))).toHaveCount(3)
+    expect(await colTitles(a, 'todo')).toEqual(['Card 1', 'Card 2', 'Card 3'])
+
+    await dragFirstToLast(a, 'todo')
+
+    // The drag fires useSortable.onReorder → cards.set(next) → relay → B.
+    await expect
+      .poll(() => colTitles(a, 'todo'))
+      .not.toEqual(['Card 1', 'Card 2', 'Card 3'])
+    await expect.poll(() => colTitles(b, 'todo')).toEqual(await colTitles(a, 'todo'))
+
+    expect(errors, errors.join('\n')).toEqual([])
+    await a.context().close()
+    await b.context().close()
+  })
+
+  test('collaborative notes (@pyreon/code + syncedText): A types, B sees it', async ({
+    browser,
+  }) => {
+    const room = `e2e-${crypto.randomUUID()}`
+    const errors: string[] = []
+    const a = await openClient(browser, boardUrl(room), errors)
+    const b = await openClient(browser, boardUrl(room), errors)
+
+    await a.getByTestId('add-todo').click()
+    await expect(b.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
+
+    // Open the SAME card in both clients.
+    await a.getByTestId('col-todo').locator('.card-title').first().click()
+    await b.getByTestId('col-todo').locator('.card-title').first().click()
+    await expect(a.getByTestId('card-panel')).toBeVisible()
+    await expect(b.getByTestId('card-panel')).toBeVisible()
+
+    // Type in A's CodeMirror notes → B's editor reflects it (Y.Text merge).
+    const aEditor = a.getByTestId('card-notes').locator('.cm-content')
+    await aEditor.click()
+    await a.keyboard.type('shipping monday')
+    await expect(b.getByTestId('card-notes').locator('.cm-content')).toContainText(
+      'shipping monday',
+    )
+
+    expect(errors, errors.join('\n')).toEqual([])
+    await a.context().close()
+    await b.context().close()
+  })
+
+  test('offline persistence: a card survives a reload (IndexedDB, no relay)', async ({
+    browser,
+  }) => {
+    const errors: string[] = []
+    // No `?ws=` → local board (BroadcastChannel + IndexedDB), so this isolates
+    // persistence (not relay re-sync).
+    const room = `persist-${crypto.randomUUID()}`
+    const a = await openClient(browser, `#/board/${room}`, errors)
+
+    await a.getByTestId('add-todo').click()
+    await expect(a.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
+
+    // y-indexeddb writes asynchronously — give the persist a moment to flush
+    // before the reload, otherwise we'd reload a doc that hasn't been written.
+    await a.waitForTimeout(1000)
+    await a.reload()
+    await expect(a.getByTestId('board-title')).toBeVisible()
+    await expect(a.getByTestId('col-todo').getByText('Card 1')).toBeVisible() // from IndexedDB
+
+    expect(errors, errors.join('\n')).toEqual([])
+    await a.context().close()
+  })
+
+  test('viewer mode disables editing (permissions UI gate)', async ({ browser }) => {
+    const errors: string[] = []
+    const a = await openClient(browser, `#/board/viewer-${crypto.randomUUID()}`, errors)
+
+    await expect(a.getByTestId('add-todo')).toBeEnabled()
+    await a.getByTestId('role-toggle').click() // Editing → Viewing
+    await expect(a.getByTestId('role-toggle')).toHaveText('Viewing')
+    await expect(a.getByTestId('add-todo')).toBeDisabled()
+
+    expect(errors, errors.join('\n')).toEqual([])
+    await a.context().close()
   })
 })

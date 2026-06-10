@@ -1,6 +1,7 @@
 import { displayName, theme, toggleTheme } from '../state/identity'
 import { canEdit, setRole } from '../state/permissions'
 import type { BoardDoc, ConnectionState } from '../sync/board-doc'
+import { PresenceBar } from './PresenceBar'
 
 const CONN_LABEL: Record<ConnectionState, string> = {
   local: 'Local only',
@@ -23,6 +24,8 @@ export function Toolbar(props: { board: BoardDoc }) {
         data-testid="board-title"
       />
       <span class="spacer" />
+      {/* Live collaborators (@pyreon/sync presence list + heartbeat). */}
+      <PresenceBar board={board} />
       {/* Device-local identity (@pyreon/storage) — per-device, not synced. */}
       <input
         class="name-input"
