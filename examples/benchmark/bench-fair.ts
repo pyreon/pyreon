@@ -41,11 +41,15 @@
  *      3 forced GCs then `performance.memory.usedJSHeapSize` (precise
  *      values via `--enable-precise-memory-info`) — reported per
  *      framework as "retained JS heap after suite".
- *  10. **Rankings objectivity**: the "Slowdown vs best framework"
- *      table and the CI95-overlap verdict exclude the raw `Pyreon`
- *      h() entry — only `Pyreon (compiled)` (what users ship)
- *      competes. The raw entry stays in the medians + vs-Vanilla
- *      tables as informational.
+ *  10. **One Pyreon entry, no manufactured tiers**: the single
+ *      `Pyreon` entry is the IDIOMATIC JSX impl (`pyreon.tsx`) — what
+ *      users actually write and what the compiler emits. A hand-tuned
+ *      low-level `_tpl()` impl was measured side-by-side and came out
+ *      statistically identical (equal-or-slower than idiomatic JSX,
+ *      since the compiler already lowers JSX to the same `_tpl()`
+ *      cloneNode output), so it was removed rather than shown as a
+ *      fictional faster "compiled" tier. `Pyreon` competes in every
+ *      ranking on equal footing with the other frameworks.
  *
  * vs `bench-cli.ts` (happy-dom + Bun) — that runner is fundamentally
  * unfair because:
@@ -83,7 +87,6 @@ const ALL_FRAMEWORKS = [
   'SolidJS',
   'Svelte 5',
   'Pyreon',
-  'Pyreon (compiled)',
 ] as const
 
 interface BenchResult {
@@ -250,25 +253,40 @@ function recomputeStats(name: string, pooledSamples: number[], warmupUsedMax: nu
  */
 function aggregateRepeated(runs: SuiteResult[][]): SuiteResult[] {
   if (runs.length === 0) return []
-  const first = runs[0]
-  if (!first || first.length === 0) return []
-  // For each framework × test, pool samples across runs.
-  return first.map((suite, suiteIdx) => ({
-    framework: suite.framework,
-    results: suite.results.map((result, testIdx) => {
-      // Collect samples + max warmupUsed across all runs for this (framework, test)
-      const pooled: number[] = []
-      let warmupMax = 0
-      for (const run of runs) {
-        const r = run[suiteIdx]?.results[testIdx]
-        if (r?.samples) {
-          for (const s of r.samples) pooled.push(s)
-          if (r.warmupUsed > warmupMax) warmupMax = r.warmupUsed
-        }
+  // Key by framework NAME (not positional index) so the per-pass
+  // execution order can be RESHUFFLED — pooling stays correct even when
+  // framework `i` ran in a different slot each pass. Use the first pass
+  // each framework appears in as the canonical (test-order) template.
+  const byName = new Map<string, SuiteResult[]>()
+  const order: string[] = []
+  for (const run of runs) {
+    for (const suite of run) {
+      if (!byName.has(suite.framework)) {
+        byName.set(suite.framework, [])
+        order.push(suite.framework)
       }
-      return recomputeStats(result.name, pooled, warmupMax)
-    }),
-  }))
+      byName.get(suite.framework)!.push(suite)
+    }
+  }
+  return order.map((framework) => {
+    const suites = byName.get(framework)!
+    const template = suites[0]!
+    return {
+      framework,
+      results: template.results.map((result, testIdx) => {
+        const pooled: number[] = []
+        let warmupMax = 0
+        for (const suite of suites) {
+          const r = suite.results[testIdx]
+          if (r?.samples) {
+            for (const s of r.samples) pooled.push(s)
+            if (r.warmupUsed > warmupMax) warmupMax = r.warmupUsed
+          }
+        }
+        return recomputeStats(result.name, pooled, warmupMax)
+      }),
+    }
+  })
 }
 
 interface FrameworkRun {
@@ -401,21 +419,28 @@ async function main(): Promise<void> {
     )
   }
 
-  // Randomize the EXECUTION order once per process run (the same
-  // shuffled order is reused across --repeat passes so the per-index
-  // aggregation in `aggregateRepeated` stays aligned). Output tables
-  // are pinned to the canonical order below.
-  const executionOrder = shuffled(args.frameworks)
-  console.log(`[bench-fair] run order: ${executionOrder.join(', ')}`)
-
-  // Retained heap per framework — one sample per repeat pass.
+  // Randomize the EXECUTION order INDEPENDENTLY each --repeat pass. A
+  // single fixed order leaves every framework pinned to the same slot
+  // every pass, so position-dependent confounds (CPU thermal drift across
+  // a sweep, JIT warm-up state inherited from the prior framework's page)
+  // bias the SAME framework the SAME way every pass — pooling never
+  // averages it out. Reshuffling per pass turns slot into noise that the
+  // sample pool cancels. `aggregateRepeated` keys by framework NAME, so
+  // varying order across passes is safe.
   const heapByFramework = new Map<string, Array<number | null>>()
 
   // Per-repeat data: each entry is one full SuiteResult[] (one full sweep).
   // Final reported numbers are the AGGREGATE — sample-pooled across all repeats.
   const allRuns: SuiteResult[][] = []
   for (let r = 0; r < args.repeat; r++) {
-    if (args.repeat > 1) console.log(`[bench-fair] === repeat pass ${r + 1}/${args.repeat} ===`)
+    const executionOrder = shuffled(args.frameworks)
+    if (args.repeat > 1) {
+      console.log(
+        `[bench-fair] === repeat pass ${r + 1}/${args.repeat} (order: ${executionOrder.join(', ')}) ===`,
+      )
+    } else {
+      console.log(`[bench-fair] run order: ${executionOrder.join(', ')}`)
+    }
     const suites: SuiteResult[] = []
     for (const framework of executionOrder) {
       console.log(`[bench-fair]   ▸ ${framework}`)
@@ -529,11 +554,9 @@ function printMarkdownTable(suites: SuiteResult[]): void {
   console.log()
   console.log('Slowdown vs best framework (excl. Vanilla)')
   const fwOnly = suites.filter((s) => s.framework !== 'Vanilla JS')
-  // Rankings use only what users actually ship: the raw `Pyreon` h()
-  // entry is excluded from BOTH the leader pool and the columns — only
-  // `Pyreon (compiled)` competes here. The raw entry remains in the
-  // medians table and the vs-Vanilla table as informational.
-  const ranked = fwOnly.filter((s) => s.framework !== 'Pyreon')
+  // `Pyreon` (idiomatic JSX — what users ship) competes on equal footing;
+  // there is no separate raw/compiled split to exclude anymore.
+  const ranked = fwOnly
   const FCOL = 16
   console.log(`${' '.repeat(28)}${ranked.map((s) => pad(s.framework, FCOL)).join('')}`)
   console.log('─'.repeat(28 + ranked.length * FCOL))
@@ -547,9 +570,6 @@ function printMarkdownTable(suites: SuiteResult[]): void {
     )
     console.log(`${t.padEnd(28)}${cells.join('')}`)
   }
-  console.log(
-    'Pyreon (raw h()) shown in medians as informational; rankings use Pyreon (compiled) only.',
-  )
 
   // Slowdown vs Vanilla baseline — the framework's real overhead vs
   // direct DOM manipulation. Only printed when Vanilla is in the
@@ -599,12 +619,9 @@ function printMarkdownTable(suites: SuiteResult[]): void {
   console.log()
   console.log('Statistically-honest verdict per test (CI95-overlap = tied within noise)')
   console.log('─'.repeat(120))
-  // Same rankings-objectivity rule as the slowdown table: the raw
-  // `Pyreon` h() entry doesn't compete for the verdict — only
-  // `Pyreon (compiled)` (what users ship) is in the leader pool.
-  const fwOnlyForVerdict = suites.filter(
-    (s) => s.framework !== 'Vanilla JS' && s.framework !== 'Pyreon',
-  )
+  // `Pyreon` (idiomatic JSX) competes for the verdict like every other
+  // framework — only the no-framework Vanilla baseline is held out.
+  const fwOnlyForVerdict = suites.filter((s) => s.framework !== 'Vanilla JS')
   for (const t of tests) {
     type Row = { framework: string; median: number; ci95: [number, number] }
     const rows: Row[] = fwOnlyForVerdict

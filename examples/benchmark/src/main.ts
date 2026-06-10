@@ -1,6 +1,5 @@
 import { runPreact } from './impl/preact'
 import { runPyreon } from './impl/pyreon'
-import { runPyreonTpl } from './impl/pyreon-tpl'
 import { runReact } from './impl/react'
 import { runSolid } from './impl/solid'
 import { runSvelte } from './impl/svelte'
@@ -118,6 +117,14 @@ function removeContainer(el: HTMLElement) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+// `Pyreon` is the IDIOMATIC JSX impl (`pyreon.tsx`) — exactly what users
+// write and what the Pyreon compiler emits. There is intentionally ONE
+// Pyreon entry: the compiler already lowers idiomatic JSX to the same
+// `_tpl()` cloneNode + fine-grained-binding output a hand-written low-level
+// `_tpl()` impl would produce, so a separate "compiled" tier is fictional.
+// (A hand-tuned `_tpl` impl was measured side-by-side and came out
+// statistically identical — equal-or-slower than the idiomatic JSX — so it
+// was dropped to avoid manufacturing a false two-tier story.)
 const ALL_FRAMEWORKS = [
   { name: 'Vanilla JS', run: runVanilla },
   { name: 'Preact', run: runPreact },
@@ -126,7 +133,6 @@ const ALL_FRAMEWORKS = [
   { name: 'SolidJS', run: runSolid },
   { name: 'Svelte 5', run: runSvelte },
   { name: 'Pyreon', run: runPyreon },
-  { name: 'Pyreon (compiled)', run: runPyreonTpl },
 ] as const
 
 async function runSelected(frameworks: typeof ALL_FRAMEWORKS | { name: string; run: typeof ALL_FRAMEWORKS[number]['run'] }[]): Promise<BenchSuite[]> {
@@ -185,7 +191,7 @@ runBtn.addEventListener('click', () => {
 //                       zero cross-suite memory pressure / heap bias.
 //                       This is what `bench-fair.ts` uses now.
 //
-//   ?auto=1             Run all 8 frameworks in this page (legacy
+//   ?auto=1             Run all 7 frameworks in this page (legacy
 //                       in-page flow). Retained for the button UI
 //                       and for backwards compatibility — but the
 //                       fair-bench runner has switched to
