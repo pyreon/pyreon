@@ -102,6 +102,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Virtual', slug: 'virtual' },
       { text: 'Machine', slug: 'machine' },
       { text: 'Storage', slug: 'storage' },
+      { text: 'Sync (local-first / CRDT)', slug: 'sync' },
       { text: 'Permissions', slug: 'permissions' },
       { text: 'Hotkeys', slug: 'hotkeys' },
       { text: 'Toast', slug: 'toast' },

@@ -254,6 +254,7 @@ Bun-run cross-library micro-benchmarks, separate from the browser DOM suite abov
 | `@pyreon/toast`       | Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y                                                     |
 | `@pyreon/url-state`   | URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe                                                            |
 | `@pyreon/dnd`         | Signal-driven drag and drop — wraps `@atlaskit/pragmatic-drag-and-drop` (useDraggable, useDroppable, useSortable, useFileDrop)                       |
+| `@pyreon/sync`        | Local-first CRDT-backed sync — a synced signal IS a signal (remote op → one fine-grained DOM update). Engine-neutral seam + Yjs engine (`/yjs`), IndexedDB persistence, cross-tab + WebSocket transport, collaborative text/lists, relay server with authz (`/server`) |
 
 ### Zero (Full-Stack Meta-Framework)
 
@@ -542,6 +543,19 @@ Pyreon's validator + DX layer on [Standard Schema](https://standardschema.dev). 
 - Schema mode: `useUrlState({ page: 1, sort: "name" })` — multiple params from a single call
 - Auto type coercion (numbers, booleans, arrays), uses `replaceState` (no history spam)
 - Configurable debounce for high-frequency updates, SSR-safe (reads from request URL on server)
+
+### @pyreon/sync
+
+Local-first / collaborative sync built on reactivity — a synced value IS a `Signal` (via `wrapSignal`), so a remote op becomes one `signal.set` → one fine-grained DOM update, never a re-render. Three entry points: `@pyreon/sync` (core bridge, universal, depends only on `@pyreon/reactivity`), `@pyreon/sync/yjs` (real Yjs engine — keeps `yjs` out of the core entry), `@pyreon/sync/server` (Node/Bun relay — imports `ws` + `node:http`, never enters a client bundle).
+
+- `syncedSignal({ doc, key, initial })` — bind a `Signal<T>` to a scalar CRDT map entry. **Create-if-missing**: `initial` is written only if the key is absent (a persisted/peer value is authoritative). v1 scope is scalars (string/number/boolean).
+- `syncedStore(initial, { doc })` — a flat store of synced fields over one map; `store.field()` reads, `store.field.set(v)` writes. A single-key change writes exactly one base signal (others early-return on `Set.has`).
+- **The update loop (single source of truth, load-bearing):** `.set(v)` writes ONLY the CRDT; the map `observe` is the ONE writer of the base signal and fires for BOTH local and remote commits; the local echo is an `Object.is` no-op. **The network loop is prevented in the TRANSPORT** (it re-broadcasts `LOCAL_ORIGIN` updates and applies inbound ones as `REMOTE_ORIGIN`, never re-broadcasting a remote update) — NEVER by gating the observer on origin (that would drop the local UI update). `LOCAL_ORIGIN` / `REMOTE_ORIGIN` are `unique symbol` exports.
+- **Engine seam:** `CrdtAdapter` / `CrdtDoc` / `CrdtMap` (engine-neutral) keep `syncedSignal`/`syncedStore` engine-free; `FakeCrdtAdapter` + `connectFakeDocs(a, b)` are the in-memory test double (no state-vector merge — can't model offline-reconnect; use the Yjs adapter for that). The seam ports the client bridge, NOT the wire format — persistence/transport/relay are Yjs-coupled.
+- **`@pyreon/sync/yjs`:** `createYjsDoc(yDoc?)` (`.yDoc` exposes the Y.Doc); `syncedText(doc, key)` (`Y.Text` character-merge — `.insert`/`.delete` positional, `.set` is a prefix/suffix diff; concurrent edits keep BOTH, unlike scalar LWW); `syncedList(doc, key)` (`Y.Array` positional merge — render with keyed `<For>`); `persistViaIndexedDB(doc, dbName)` (browser-only, `await .whenSynced` BEFORE seeding); `connectViaBroadcastChannel(doc, name)` (same-origin cross-tab); `connectViaWebSocket(doc, url, opts?)` (cross-device, auto-reconnect, uses global `WebSocket` / `WebSocketImpl`, token in URL query — browser WS can't set headers, 4401 close = authz reject, terminal).
+- **`@pyreon/sync/server`:** `createSyncServer({ port?, server?, authorize? })` — one authoritative `Y.Doc` per room, broadcasts to other clients, GC's empty rooms (ephemeral — no persistence). The `authorize({ room, token, req })` hook is the per-room/per-doc gate (return false/throw → close 4401 before any data). **Default allows everything (dev only) — production MUST supply it.** Pass `server` to attach to an existing `http.Server`.
+- **Honest limits:** CRDTs prevent lost UPDATES, not semantic conflicts (scalar LWW drops the loser; text/list keep both ops but may interleave nonsensically — never market "never lose data"); a synced app ships ~60KB+ gz (`yjs`+`y-indexeddb`+WS client); authz is table-stakes; native/PMTC sync out of near-term scope (seam keeps the Loro-via-FFI door open).
+- Manifest-driven docs: `packages/fundamentals/sync/src/manifest.ts` feeds `llms.txt` / `llms-full.txt` / MCP `api-reference`. Full reference: `docs/src/content/docs/sync.md`.
 
 ### @pyreon/lint
 
@@ -1113,7 +1127,7 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-Pyreon-native documentation site at `docs/` (package `@pyreon/docs`) — powered by `@pyreon/zero` + `@pyreon/zero-content`. 95 doc pages covering all packages. **Dogfoods the framework end-to-end** — the docs site itself runs on Pyreon's signal-based reactivity, fs-router, SSG, and content pipeline. Ships the **`<Example>` primitive** — real `.tsx` files mounted inline with optional cross-mount signal-bridging via `share="key"` — proving cross-mount reactivity no MDX-flavor framework can replicate.
+Pyreon-native documentation site at `docs/` (package `@pyreon/docs`) — powered by `@pyreon/zero` + `@pyreon/zero-content`. 96 doc pages covering all packages. **Dogfoods the framework end-to-end** — the docs site itself runs on Pyreon's signal-based reactivity, fs-router, SSG, and content pipeline. Ships the **`<Example>` primitive** — real `.tsx` files mounted inline with optional cross-mount signal-bridging via `share="key"` — proving cross-mount reactivity no MDX-flavor framework can replicate.
 
 Replaces the legacy VitePress site that previously lived here. The migration from `<Playground>` → `<Example>` landed in PR #1448 across 30 pages; the production cutover (delete VitePress, move docs-zero into `docs/`) is this commit.
 
@@ -1146,10 +1160,10 @@ The new site uses `@pyreon/zero-content`'s markdown pipeline. Authoring contract
 
 ## Monorepo Structure
 
-56 published packages across 5 categories under `packages/`, plus 7 private support packages:
+57 published packages across 5 categories under `packages/`, plus 7 private support packages:
 
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
-- `packages/fundamentals/` — 22 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state, dnd
+- `packages/fundamentals/` — 23 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state, dnd, sync
 - `packages/tools/` — 11 published packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat, svelte-compat; + `devtools` (private, not published — Chrome DevTools extension)
 - `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 - `packages/zero/` — 4 packages: zero, zero-cli, create-zero, meta

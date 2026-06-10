@@ -2000,6 +2000,99 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 >
 > **Tree-shaking**: The `rx` namespace object is a `const` — bundlers can tree-shake unused properties. For maximum control, import individual functions: `import { filter, map } from "@pyreon/rx"`.
 
+## @pyreon/sync — Local-First Sync
+
+A local-first / collaborative sync layer for Pyreon. A synced value is a normal `Signal` (built via `wrapSignal`), so a remote change becomes one `signal.set` → one surgical fine-grained DOM update — never a VDOM re-render + diff. The engine-neutral `CrdtAdapter` seam keeps the reactive bridge engine-free; the real engine (raw Yjs) lives behind `@pyreon/sync/yjs` so importing the core never pulls in `yjs`. Covers offline persistence (IndexedDB), same-origin cross-tab + cross-device WebSocket transport, collaborative text + lists, and a Node/Bun relay with per-room/per-doc authz at `@pyreon/sync/server`. v1 syncs scalar map fields + collaborative `Y.Text` / `Y.Array`.
+
+```typescript
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+// <h1>{() => title()}</h1>  — patches in place when any peer edits the title
+title()              // "Untitled"  (reactive read)
+title.set("Roadmap") // writes the CRDT; the observer drives the DOM update
+title.dispose()      // detach observer (auto on onCleanup inside a scope)
+
+const store = syncedStore({ title: "Untitled", done: false }, { doc })
+store.title()            // "Untitled"
+store.title.set("Ship")  // one CRDT write → one DOM update
+store.done.set(true)
+store.dispose()          // tear down all fields (or rely on onCleanup in-scope)
+
+const s: SyncedSignal<number> = syncedSignal({ doc, key: "n", initial: 0 })
+
+const store: SyncedStore<{ title: string }> = syncedStore({ title: "x" }, { doc })
+
+function bindTitle(adapter: CrdtAdapter) {
+  const doc = adapter.createDoc()
+  return syncedSignal({ doc, key: "title", initial: "Untitled" })
+}
+
+doc.getMap("m").transact(() => map.set("k", v), LOCAL_ORIGIN)
+
+doc.yDoc.transact(() => Y.applyUpdate(doc.yDoc, bytes), REMOTE_ORIGIN)
+
+const a = new FakeCrdtAdapter().createDoc()
+const b = new FakeCrdtAdapter().createDoc()
+connectFakeDocs(a, b)
+const sa = syncedSignal({ doc: a, key: "k", initial: 0 })
+const sb = syncedSignal({ doc: b, key: "k", initial: 0 })
+sa.set(5) // sb() becomes 5
+
+const link = connectFakeDocs(a, b)
+link.disconnect() // simulate offline
+
+import { createYjsDoc, connectViaWebSocket } from "@pyreon/sync/yjs"
+const doc = createYjsDoc()
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")
+
+const body = syncedText(doc, "body")
+// <textarea value={() => body()} onInput={e => body.set(e.currentTarget.value)} />
+body.insert(0, "Hello ")  // positional — merges with a concurrent peer edit
+body.delete(0, 6)
+
+const items = syncedList<string>(doc, "todos")
+items.push("buy milk", "walk dog")  // merges with a concurrent peer push
+items.insert(0, ["first"])
+items.delete(1, 1)
+// <For each={() => items()} by={(t) => t}>{(t) => <li>{t}</li>}</For>
+
+const doc = createYjsDoc()
+const link = connectViaBroadcastChannel(doc, "my-doc-room")
+// edit in tab A → the same <h1> patches in place in tab B
+link.disconnect()
+
+import { connectViaWebSocket, createYjsDoc } from "@pyreon/sync/yjs"
+const doc = createYjsDoc()
+const t = connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc", {
+  onConnect: () => console.log("synced"),
+})
+t.disconnect() // close + stop reconnecting
+
+const doc = createYjsDoc()
+const persist = persistViaIndexedDB(doc, "my-app-doc")
+await persist.whenSynced  // load persisted state FIRST
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+
+import { createSyncServer } from "@pyreon/sync/server"
+const relay = await createSyncServer({
+  port: 1234,
+  authorize: ({ room, token }) => token === secretFor(room), // REQUIRED in prod
+})
+// later: await relay.close()
+
+authorize: ({ room, token, req }) => verify(room, token)
+```
+
+> **Subpath layout**: `@pyreon/sync` (core bridge — engine-free, universal), `@pyreon/sync/yjs` (real Yjs engine + transports + persistence + collaborative text/lists — pulls in `yjs`), `@pyreon/sync/server` (Node/Bun relay — pulls in `ws` + `node:http`, never import into client code).
+>
+> **CRDTs prevent lost UPDATES, not semantic conflicts**: Never market this as 'never lose data'. Scalar `syncedSignal` is last-writer-wins — the loser's value is silently dropped. `syncedText`/`syncedList` keep both peers' ops but the merged result may be semantically nonsensical (interleaved sentences). Real apps still need conflict UX (presence, indicators, optional locking).
+>
+> **Bundle weight**: A synced app ships `yjs` (~40KB min+gz) + `y-indexeddb` + the WebSocket client on TOP of the core runtime — realistically ~60KB+ gz. It is off the core hot path (opt-in `/yjs` import) and justified by the capability, but a synced Pyreon app is NOT a 'smaller than Solid' app.
+>
+> **Authorization is table-stakes**: The relay's `authorize` default ALLOWS everything (dev only). Production MUST gate reads + writes per room/doc. Whole-doc CRDTs make partial (per-field) access genuinely hard — use per-doc rooms or permission-scoped sub-docs.
+>
+> **Native / PMTC sync is out of near-term scope**: The `CrdtAdapter` seam keeps a future Loro-via-FFI native engine door open, but compiler WS-emit + a native WS runtime + a CRDT-via-FFI engine are not in scope yet.
+
 ## @pyreon/toast — Toast Notifications
 
 Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your app — no provider or context needed. Preset variants (`toast.success`, `toast.error`, etc.), a `toast.promise()` helper for async operations, and `toast.update()` for loading-to-success patterns. Render `<Toaster />` once at the app root — it uses Portal, CSS transitions, auto-dismiss, and pause-on-hover. Accessible with `role="alert"` and `aria-live="polite"` on toast elements.
