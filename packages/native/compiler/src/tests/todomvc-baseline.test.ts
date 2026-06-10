@@ -121,7 +121,7 @@ describe('TodoMVC compile baseline', () => {
                 Button("Clear completed") { clearCompleted() }
               }
             }
-          }.accessibilityIdentifier("todo-app")
+          }.accessibilityElement(children: .contain).accessibilityIdentifier("todo-app")
         }
       }
 

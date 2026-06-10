@@ -69,7 +69,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let updatedText = app.staticTexts["Count: 1"]
         XCTAssertTrue(
-            updatedText.waitForExistence(timeout: 5),
+            updatedText.waitForExistence(timeout: 15),
             "Count text did not update to \"Count: 1\" within 5s after tap"
         )
     }

@@ -63,9 +63,21 @@ public struct RouterProvider<Content: View>: View {
         // NavigationStack(path:) binds the router's path stack directly.
         // SwiftUI handles back-swipe gestures, animation, and stack-state
         // preservation automatically — Pyreon doesn't reimplement any of it.
+        //
+        // The environment is applied to the NavigationStack ITSELF — not
+        // to `content()`. Pushed `navigationDestination` views are
+        // presented by the stack's own hosting context, NOT as children
+        // of the root content, so an environment set on `content()`
+        // never reaches them: `@Environment(\.pyreonRouter)` read nil
+        // inside every pushed view and `useNavigate` silently no-op'd
+        // (`router?.push` on nil). Symptom at device scope: the FIRST
+        // navigation (from the root view) works, every navigation FROM
+        // a pushed view does nothing — caught by the router-demo
+        // round-trip UITest the moment the launch-and-render gate
+        // started passing.
         NavigationStack(path: $router.path) {
             content()
-                .environment(\.pyreonRouter, router)
         }
+        .environment(\.pyreonRouter, router)
     }
 }

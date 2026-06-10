@@ -59,6 +59,12 @@ public final class PyreonPermissions {
     /// Inverse of `can`.
     public func cannot(_ key: String) -> Bool { !can(key) }
 
+    /// Web-API-parity inverse — `@pyreon/permissions` exposes
+    /// `can.not("posts.delete")`, so the SAME source must compile
+    /// against this port unchanged. `not` is a legal Swift member
+    /// name; `cannot` stays as the Swift-flavored alias.
+    public func not(_ key: String) -> Bool { !can(key) }
+
     /// True when every `key` is granted.
     public func all(_ keys: String...) -> Bool { keys.allSatisfy { can($0) } }
 

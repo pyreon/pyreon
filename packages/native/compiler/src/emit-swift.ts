@@ -15,6 +15,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { substituteIdentifier } from './expr-utils'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -128,6 +129,9 @@ let _signalNames: Set<string> = new Set()
  * (parens dropped) and from function `addTodo()` (parens preserved).
  */
 let _machineNames: Set<string> = new Set()
+/** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
+ *  object-literal values arg to a dictionary at this call shape. */
+let _i18nNames: Set<string> = new Set()
 /**
  * Per-component: every function decl name in scope (DeclIR.function —
  * Parser-A). Disambiguates `addTodo()` (function call — keeps parens)
@@ -297,6 +301,8 @@ export function emitSwift(
   // Gap 4 v1: track store-hook names → store id so the use-site chain
   // rewriter (`<hook>().store.<X>`) can map to the right singleton class.
   _storeHooks = new Map(stores.map((s) => [s.hookName, s.storeId]))
+  // Full store defs for per-component inference (field types).
+  _storeDefs = stores
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
@@ -347,6 +353,7 @@ export function emitSwift(
   _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
+  _storeDefs = []
   _modelInstances = new Map()
   _needsSwiftSuspenseWrapper = false
   _needsSwiftErrorBoundaryWrapper = false
@@ -358,6 +365,8 @@ export function emitSwift(
 
 /** Map of useStoreName → storeId (e.g. `useCounter` → `"counter"`). */
 let _storeHooks: Map<string, string> = new Map()
+/** Full store definitions — feeds per-component inference ctx (field types). */
+let _storeDefs: StoreDefnIR[] = []
 
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
 let _modelInstances: Map<string, string> = new Map()
@@ -940,7 +949,10 @@ function emitSwiftModuleDecl(md: ModuleDeclIR): string {
 let _activePropsParamName: string | undefined
 
 function emitSwiftComponent(c: ComponentIR): string {
-  const inferCtx = buildInferenceCtx(c.decls)
+  // Store field types thread into the inference ctx so computeds over
+  // store reads (`useApp().store.tasks().filter(...).length`) infer a
+  // concrete return type instead of degrading to Any.
+  const inferCtx = buildInferenceCtx(c.decls, _storeDefs)
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites later in the body.
@@ -955,6 +967,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).
   _machineNames = new Set()
+  _i18nNames = new Set()
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -987,6 +1000,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Keep machine names OUT of _signalNames (parens preserved) and
     // OUT of _functionNames (it's a property, not a free function).
     if (d.kind === 'machine') _machineNames.add(d.name)
+    if (d.kind === 'i18n') _i18nNames.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -1634,6 +1648,28 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return swiftIdent(e.name)
     case 'call': {
+      // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
+      // object-literal VALUES argument lowers to a Swift dictionary
+      // (the runtime's `t(_:_:[String: CustomStringConvertible])`
+      // overload). The general object-literal emit produces a struct
+      // construction / labeled tuple — wrong in this call position (a
+      // single-field labeled tuple is a Swift PARSE error).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 't' &&
+        e.callee.object.kind === 'identifier' &&
+        _i18nNames.has(e.callee.object.name) &&
+        e.args.length === 2 &&
+        e.args[1]!.kind === 'object' &&
+        (e.args[1]! as Extract<ExprIR, { kind: 'object' }>).spreads === undefined
+      ) {
+        const keyArg = emitSwiftExpr(e.args[0]!, indent)
+        const obj = e.args[1]! as Extract<ExprIR, { kind: 'object' }>
+        const entries = obj.fields
+          .map((f) => `${JSON.stringify(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
+          .join(', ')
+        return `${swiftIdent(e.callee.object.name)}.t(${keyArg}, [${entries}])`
+      }
       // Gap 4 v1: signal-style read on a store field — drop the parens.
       // Shape: call(member(<field>, member(store, call(<hook>, []))), [])
       // Detect this BEFORE the .set rewrite below (which would
@@ -1668,6 +1704,53 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const field = swiftIdent(e.callee.object.property)
         const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
         return `PyreonStore_${storeId}.shared.${field} = ${value}`
+      }
+      // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
+      // `x = EXPR[list := <read of x>]` by IR-level param substitution,
+      // producing the SAME idiomatic emit the hand-written
+      // `.set(x().map(...))` form produces. Covers local signals AND
+      // store fields (`useApp().store.tasks.update(fn)` — the
+      // substituted READ re-enters the store-chain rewrite; the LHS
+      // uses the singleton form explicitly, since a bare member chain
+      // would emit the un-rewritten `useApp().store.tasks`).
+      // Conservative bails (non-arrow callback, parameterless arrow,
+      // shadowed param) emit a warning + keep the raw `.update(` emit
+      // so swiftc names the site loudly.
+      if (e.callee.kind === 'member' && e.callee.property === 'update' && e.args.length === 1) {
+        const target = e.callee.object
+        let storeLhs: string | undefined
+        let isUpdateTarget = target.kind === 'identifier' && _signalNames.has(target.name)
+        if (
+          !isUpdateTarget &&
+          target.kind === 'member' &&
+          target.object.kind === 'member' &&
+          target.object.property === 'store' &&
+          target.object.object.kind === 'call' &&
+          target.object.object.callee.kind === 'identifier' &&
+          _storeHooks.has(target.object.object.callee.name)
+        ) {
+          isUpdateTarget = true
+          const storeId = _storeHooks.get(target.object.object.callee.name)!
+          storeLhs = `PyreonStore_${storeId}.shared.${swiftIdent(target.property)}`
+        }
+        if (isUpdateTarget) {
+          const fn = e.args[0]!
+          if (fn.kind === 'arrow' && fn.params.length === 1) {
+            // The current-value read: for a local signal the bare name;
+            // for a store field, the zero-arg read-call IR whose emit
+            // re-enters the store-chain rewrite above.
+            const read: ExprIR =
+              storeLhs === undefined ? target : { kind: 'call', callee: target, args: [] }
+            const substituted = substituteIdentifier(fn.body, fn.params[0]!, read)
+            if (substituted !== null) {
+              const lhs = storeLhs ?? emitSwiftExpr(target, indent)
+              return `${lhs} = ${emitSwiftExpr(substituted, indent)}`
+            }
+          }
+          _emitWarnings.push(
+            '`.update(fn)` lowering supports a single-param expression-body arrow whose param is not shadowed by a nested arrow — this call keeps the raw `.update(` emit (a swiftc error at the site). Use `.set(read().…)` or rename the colliding inner param.',
+          )
+        }
       }
       // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
@@ -1774,6 +1857,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const callee = emitSwiftExpr(e.callee, indent)
       const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
       return `${callee}(${args})`
+    }
+    case 'index': {
+      // `xs[i]` — Swift arrays share the subscript syntax verbatim.
+      return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
     }
     case 'member': {
       // Gap 4 v1: rewrite the store-hook chain `<useFoo>().store.X`
@@ -2247,6 +2334,14 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
       .join('\n')
     result = `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }
+  // Layout modifiers INCLUDING `data-testid` → .accessibilityIdentifier.
+  // Pre-fix, Button was the one interactive primitive that dropped the
+  // testid entirely — `app.buttons["login-submit"]` timed out at device
+  // scope while label-based queries (`app.buttons["Continue"]`) worked,
+  // which is why router-demo's label-querying smoke passed and the
+  // tasks identifier-querying smoke failed.
+  const layoutModifiers = emitSwiftLayoutModifiers(e)
+  result = layoutModifiers ? `${result}${layoutModifiers}` : result
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
 }
 
@@ -2276,7 +2371,7 @@ function swiftDisabledModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   // Signal-bound / expression form → emit the expression, wrap in
   // `.disabled(...)`. `emitSwiftSignalRead` handles signal-name
   // membership + plain-identifier vs `.value`-rewrite distinction.
-  return `.disabled(${emitSwiftSignalRead(attr.value)})`
+  return `.disabled(${emitSwiftSignalRead(unwrapAccessorArrow(attr.value))})`
 }
 
 function emitSwiftAction(handler: ExprIR, indent: number): string {
@@ -2369,7 +2464,7 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const when = e.attrs.find((a) => a.kind === 'attr' && a.name === 'when') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
-  const cond = when ? emitSwiftSignalRead(when.value) : 'true'
+  const cond = when ? emitSwiftSignalRead(unwrapAccessorArrow(when.value)) : 'true'
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `if ${cond} {\n${body}\n${' '.repeat(indent)}}`
@@ -2555,7 +2650,7 @@ function emitSwiftKeepAlive(
     return emitSwiftWalledTagAsChildren(e, indent, 'KeepAlive')
   }
   _needsSwiftKeepAliveWrapper = true
-  const whenExpr = emitSwiftSignalRead(whenAttr.value)
+  const whenExpr = emitSwiftSignalRead(unwrapAccessorArrow(whenAttr.value))
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const childrenBody = e.children
@@ -2701,7 +2796,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
-  const cond = show ? emitSwiftSignalRead(show.value) : 'true'
+  const cond = show ? emitSwiftSignalRead(unwrapAccessorArrow(show.value)) : 'true'
   const inner = ' '.repeat(indent + 6)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
   const p = ' '.repeat(indent)
@@ -2789,6 +2884,25 @@ function readStaticAttr(
 }
 
 /**
+ * Tags that emit a plain SwiftUI layout CONTAINER (VStack / HStack /
+ * ZStack / ScrollView). Used by the `data-testid` emit: containers
+ * need `.accessibilityElement(children: .contain)` for their
+ * identifier to be XCUITest-queryable. Canonical vocabulary + the
+ * legacy SwiftUI-flavored tags (still accepted per the additive
+ * migration contract).
+ */
+const SWIFT_CONTAINER_TAGS = new Set([
+  'Stack',
+  'Inline',
+  'Layer',
+  'Scroll',
+  'VStack',
+  'HStack',
+  'ZStack',
+  'ScrollView',
+])
+
+/**
  * Build the SwiftUI modifier-chain tail for the canonical layout-prop
  * subset. Returns a string that begins with `.` (modifier-call) and is
  * appended after the View constructor.
@@ -2827,8 +2941,26 @@ function emitSwiftLayoutModifiers(
   // so the same string the web e2e selects on (`getByTestId`) is also
   // reachable to XCUITest. Other `data-*` attrs are silently dropped
   // (consistent with HTML where they're untyped author data).
+  //
+  // CONTAINER views additionally need `.accessibilityElement(children:
+  // .contain)` BEFORE the identifier: SwiftUI flattens plain layout
+  // containers (VStack/HStack/ZStack/ScrollView) out of the
+  // accessibility tree, so an identifier on a bare VStack is INVISIBLE
+  // to XCUITest — `app.otherElements["todo-app"]` times out even
+  // though the app renders perfectly. This was the first real-device
+  // finding past app LAUNCH: every UITest's root-view assertion failed
+  // against a fully-working app. `.contain` (NOT `.combine`) keeps the
+  // children individually queryable — the smokes also select child
+  // buttons/fields by their own testids. Leaf views (Button/Text/
+  // Field) are accessibility elements already; adding a container
+  // semantic to them would BREAK their tap targeting, hence the
+  // tag-gated emit. Compose is unaffected (`Modifier.testTag` adds
+  // its own semantics node on any composable).
   const testid = readStaticAttr(e, 'data-testid')
   if (typeof testid === 'string') {
+    if (SWIFT_CONTAINER_TAGS.has(e.tag)) {
+      parts.push('.accessibilityElement(children: .contain)')
+    }
     parts.push(`.accessibilityIdentifier(${JSON.stringify(testid)})`)
   }
   return parts.join('')
@@ -3127,7 +3259,7 @@ function emitSwiftModal(
   if (!onClose) {
     return emitSwiftGeneric(e, indent)
   }
-  const openExpr = emitSwiftExpr(openAttr.value, indent)
+  const openExpr = emitSwiftExpr(unwrapAccessorArrow(openAttr.value), indent)
   const closeClosure = emitSwiftAction(onClose.handler, indent + 4)
   const closeBody = closeClosure.replace(/^\{\s*/, '').replace(/\s*\}$/, '')
   const inner = ' '.repeat(indent + 4)
@@ -3897,6 +4029,20 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
 }
 
 // Helpers --------------------------------------------------------------------
+
+/**
+ * `when={() => cond()}` — the canonical web reactive form passes an
+ * ACCESSOR arrow. Native targets re-evaluate the surrounding body on
+ * state change (SwiftUI body recompute / Compose recomposition), so a
+ * CONDITION position takes the arrow's BODY — a bare closure in `if`
+ * position is a swiftc type error ("'() -> Bool' is not convertible to
+ * 'Bool'") and a kotlinc "lambda is not Boolean". Zero-param arrows
+ * only — a parameterized arrow is not an accessor. Mirror in
+ * emit-kotlin.ts.
+ */
+function unwrapAccessorArrow(e: ExprIR): ExprIR {
+  return e.kind === 'arrow' && e.params.length === 0 ? e.body : e
+}
 
 /** Read a value that may be a bare signal reference or an arbitrary expr. */
 function emitSwiftSignalRead(e: ExprIR): string {

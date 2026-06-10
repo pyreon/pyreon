@@ -77,6 +77,10 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // t() only). The PyreonI18n class stub in kotlin-stubs.ts
     // satisfies kotlinc's type resolution.
     'tier2-i18n.tsx',
+    // @pyreon/permissions — callable can() + web-parity can.not() +
+    // variadic all/any + the Show-accessor-arrow condition unwrap.
+    // First fixture to validate ANY usePermissions emit shape.
+    'tier2-permissions.tsx',
     // Gap 4 PR-2: @pyreon/machine Strategy-B port. Emits val +
     // remember PyreonMachine + intact method calls; the PyreonMachine
     // class stub in kotlin-stubs.ts satisfies kotlinc's type resolution.

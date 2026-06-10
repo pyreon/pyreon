@@ -18,7 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
-import type { DeclIR, ExprIR, StatementIR, TypeIR } from './types'
+import type { DeclIR, ExprIR, StatementIR, StoreDefnIR, TypeIR } from './types'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -32,10 +32,34 @@ export interface InferenceCtx {
    * where `let xs = todos()` was set above the return).
    */
   locals: Map<string, TypeIR>
+  /**
+   * Store hook name → field name → declared field type. Lets the
+   * store-read chain `useApp().store.tasks()` infer the field's type
+   * the same way a local `tasks()` signal read does — without this, a
+   * computed over store state degraded to `Any`
+   * (`private var remaining: Any { PyreonStore_app.shared.tasks
+   * .filter({...}).count }`), which compiles for interpolation-only
+   * consumers but breaks the moment the value feeds arithmetic or a
+   * typed position.
+   */
+  stores: Map<string, Map<string, TypeIR>>
 }
 
-export function buildInferenceCtx(decls: DeclIR[]): InferenceCtx {
-  const ctx: InferenceCtx = { signals: new Map(), computeds: new Map(), locals: new Map() }
+export function buildInferenceCtx(
+  decls: DeclIR[],
+  storeDefs: StoreDefnIR[] = [],
+): InferenceCtx {
+  const ctx: InferenceCtx = {
+    signals: new Map(),
+    computeds: new Map(),
+    locals: new Map(),
+    stores: new Map(
+      storeDefs.map((s) => [
+        s.hookName,
+        new Map(s.fields.map((f) => [f.name, f.type])),
+      ]),
+    ),
+  }
   // Pass 1: collect signals. Their types come from `signal<T>(...)`
   // generics, which `parse.ts` already extracted.
   for (const d of decls) {
@@ -109,6 +133,34 @@ function findFirstReturnExpr(
   return undefined
 }
 
+/**
+ * Match the store-read chain shape `useX().store.FIELD()` (zero args at
+ * both call sites) against the ctx's store registry. Returns the
+ * field's declared type, or undefined when the expression isn't a
+ * store read / the hook or field is unknown.
+ */
+function resolveStoreReadType(
+  expr: Extract<ExprIR, { kind: 'call' }>,
+  ctx: InferenceCtx,
+): TypeIR | undefined {
+  if (expr.args.length !== 0) return undefined
+  const fieldMember = expr.callee
+  if (fieldMember.kind !== 'member') return undefined
+  const storeMember = fieldMember.object
+  if (storeMember.kind !== 'member' || storeMember.property !== 'store') {
+    return undefined
+  }
+  const hookCall = storeMember.object
+  if (
+    hookCall.kind !== 'call' ||
+    hookCall.args.length !== 0 ||
+    hookCall.callee.kind !== 'identifier'
+  ) {
+    return undefined
+  }
+  return ctx.stores.get(hookCall.callee.name)?.get(fieldMember.property)
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
@@ -141,6 +193,12 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const cmp = ctx.computeds.get(expr.callee.name)
         if (cmp) return cmp
       }
+      // Store-read chain: `useApp().store.tasks()` — zero-arg call on a
+      // field of `.store` on a zero-arg store-hook call. Resolves to
+      // the store field's declared type so method chains over store
+      // state (`.filter(...).length`) infer like local signal reads.
+      const storeRead = resolveStoreReadType(expr, ctx)
+      if (storeRead !== undefined) return storeRead
       // Phase 2 follow-up — method calls on known-typed objects. Lets
       // computed-property return types flow through common TS method
       // chains like `arr.filter(...).length` (→ number) and
@@ -196,6 +254,12 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           }
         }
       }
+      return { kind: 'unknown' }
+    }
+    case 'index': {
+      // `xs[i]` on an array-typed object → the element type.
+      const idxObj = inferType(expr.object, ctx)
+      if (idxObj.kind === 'array') return idxObj.element
       return { kind: 'unknown' }
     }
     case 'member': {

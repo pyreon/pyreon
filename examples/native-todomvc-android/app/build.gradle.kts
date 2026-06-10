@@ -104,6 +104,12 @@ dependencies {
     // runtime error on test launch.
     // `androidx.test.ext:junit` provides the AndroidJUnit4 runner
     // class referenced by `testInstrumentationRunner` above.
+    // The BOM pins versions PER CONFIGURATION — the implementation-
+    // scoped platform() above does NOT reach androidTest's classpath,
+    // so without this line ui-test-junit4 resolves VERSIONLESS
+    // ("Could not find androidx.compose.ui:ui-test-junit4:" — the
+    // first device-CI run to reach dependency resolution caught it).
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

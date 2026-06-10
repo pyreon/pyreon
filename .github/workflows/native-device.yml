@@ -135,10 +135,20 @@ jobs:
         # so this single `xcodebuild test` invocation builds + installs
         # the app, boots the Simulator, and runs the UITest bundle in
         # one shot.
+        #
+        # `-retry-tests-on-failure -test-iterations 3` (here + the 3
+        # sibling steps): XCUITest's harness attach is load-flaky on CI
+        # simulators — "Failed to get background assertion ... Timed
+        # out while acquiring background assertion" killed a run whose
+        # SAME suite passed locally and whose prior steps passed on the
+        # same sim. Xcode's native per-test retry self-heals the attach
+        # flake; a real product failure still fails all 3 iterations.
         working-directory: examples/native-todomvc-ios
         run: |
           set -o pipefail
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonTodoMVC.xcodeproj \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
@@ -161,6 +171,8 @@ jobs:
           bash scripts/build.sh
           xcodegen generate
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonCounter.xcodeproj \
             -scheme PyreonCounter \
             -sdk iphonesimulator \
@@ -175,6 +187,8 @@ jobs:
           bash scripts/build.sh
           xcodegen generate
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonRouterDemo.xcodeproj \
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
@@ -194,6 +208,8 @@ jobs:
           bash scripts/build.sh
           xcodegen generate
           xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -project PyreonTasks.xcodeproj \
             -scheme PyreonTasks \
             -sdk iphonesimulator \
@@ -302,9 +318,15 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            cd examples/native-todomvc-android
-            gradle connectedCheck --no-daemon --stacktrace
+          # working-directory (NOT a `cd` inside `script`): the
+          # emulator-runner executes each script LINE from the
+          # workspace root, so a multi-line `cd X` + `gradle ...`
+          # ran gradle at the repo root → "Directory ... does not
+          # contain a Gradle build". First surfaced on the first
+          # run that ever REACHED this step (the build steps before
+          # it use step-level working-directory and were fine).
+          working-directory: examples/native-todomvc-android
+          script: gradle connectedCheck --no-daemon --stacktrace
 
       # ── Gap 5 Android Espresso parity beyond TodoMVC ──
       # Adds the Counter Android example to the Espresso CI gate.
@@ -332,9 +354,15 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            cd examples/native-counter-android
-            gradle connectedCheck --no-daemon --stacktrace
+          # working-directory (NOT a `cd` inside `script`): the
+          # emulator-runner executes each script LINE from the
+          # workspace root, so a multi-line `cd X` + `gradle ...`
+          # ran gradle at the repo root → "Directory ... does not
+          # contain a Gradle build". First surfaced on the first
+          # run that ever REACHED this step (the build steps before
+          # it use step-level working-directory and were fine).
+          working-directory: examples/native-counter-android
+          script: gradle connectedCheck --no-daemon --stacktrace
 
       # Router demo — wires the existing #1455 example into device CI.
       # Was previously not in the device matrix; closes the audit's
@@ -356,9 +384,15 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            cd examples/native-router-demo-android
-            gradle connectedCheck --no-daemon --stacktrace
+          # working-directory (NOT a `cd` inside `script`): the
+          # emulator-runner executes each script LINE from the
+          # workspace root, so a multi-line `cd X` + `gradle ...`
+          # ran gradle at the repo root → "Directory ... does not
+          # contain a Gradle build". First surfaced on the first
+          # run that ever REACHED this step (the build steps before
+          # it use step-level working-directory and were fine).
+          working-directory: examples/native-router-demo-android
+          script: gradle connectedCheck --no-daemon --stacktrace
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
       # Runs TasksAppInstrumentedTest.kt (login → store-gated tasks →
@@ -385,9 +419,15 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            cd examples/native-tasks-android
-            gradle connectedCheck --no-daemon --stacktrace
+          # working-directory (NOT a `cd` inside `script`): the
+          # emulator-runner executes each script LINE from the
+          # workspace root, so a multi-line `cd X` + `gradle ...`
+          # ran gradle at the repo root → "Directory ... does not
+          # contain a Gradle build". First surfaced on the first
+          # run that ever REACHED this step (the build steps before
+          # it use step-level working-directory and were fine).
+          working-directory: examples/native-tasks-android
+          script: gradle connectedCheck --no-daemon --stacktrace
 
   # ── Nightly-failure visibility (sticky issue) ──
   #

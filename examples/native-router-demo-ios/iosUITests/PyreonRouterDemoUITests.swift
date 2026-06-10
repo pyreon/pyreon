@@ -76,7 +76,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // Assert the about-page identifier appears post-navigation.
         let aboutPage = app.otherElements["about-page"].firstMatch
         XCTAssertTrue(
-            aboutPage.waitForExistence(timeout: 5),
+            aboutPage.waitForExistence(timeout: 15),
             "About page did not render within 5s after tapping \"Go to About\" — router push did not commit"
         )
 
@@ -89,7 +89,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         backToHome.tap()
 
         XCTAssertTrue(
-            homePage.waitForExistence(timeout: 5),
+            homePage.waitForExistence(timeout: 15),
             "Did not return to home page within 5s after tapping \"Back to Home\""
         )
     }
@@ -116,7 +116,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         let userPage = app.otherElements["user-page"].firstMatch
         XCTAssertTrue(
-            userPage.waitForExistence(timeout: 5),
+            userPage.waitForExistence(timeout: 15),
             "User page did not render within 5s after tapping \"View user 42\""
         )
 

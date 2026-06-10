@@ -37,4 +37,36 @@ class PyreonI18n(
         }
         return key
     }
+
+    /**
+     * Two-arg `t(key, values)` — interpolation + plurals, mirroring the
+     * web `@pyreon/i18n/core` contract (and the Swift port's overload):
+     *
+     *  - `{{name}}` placeholders replace with `values["name"]`
+     *    (stringified — String + Int both flow).
+     *  - When `values["count"]` is present, the plural-suffixed key is
+     *    tried FIRST: `key_one` when count == 1, else `key_other`,
+     *    falling back to the bare key. v1 ships the one/other pair
+     *    (en-style cardinal rules); full Intl.PluralRules category
+     *    parity (few/many/zero) is a documented follow-up.
+     *
+     * PMTC emits `t('items', { count: n() })` as
+     * `t("items", mapOf("count" to n))` — the object-literal argument
+     * lowers to a map at this call shape.
+     */
+    fun t(key: String, values: Map<String, Any?>): String {
+        var resolvedKey = key
+        val count = values["count"]?.toString()?.toIntOrNull()
+        if (count != null) {
+            val suffixed = if (count == 1) "${key}_one" else "${key}_other"
+            val exists = messages[_locale.value]?.containsKey(suffixed) == true ||
+                (fallbackLocale != null && messages[fallbackLocale]?.containsKey(suffixed) == true)
+            if (exists) resolvedKey = suffixed
+        }
+        var out = t(resolvedKey)
+        for ((name, value) in values) {
+            out = out.replace("{{${name}}}", value?.toString() ?: "")
+        }
+        return out
+    }
 }
