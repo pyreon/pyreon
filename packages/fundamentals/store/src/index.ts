@@ -58,7 +58,6 @@ import { batch, registerSingleton, signal as createSignal, type Signal } from '@
 // aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
-const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 // Globalthis sink (no @pyreon/perf-harness import) so this file stays
@@ -597,7 +596,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
 
     // Mount-N-stores baseline. Fires only on cache miss (cache hit short-circuits above)
     // so the counter measures FRESH store creations, not registry lookups.
-    if (__DEV__) _countSink.__pyreon_count__?.('store.defineStore')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.defineStore')
 
     const raw = setup()
 
@@ -650,7 +649,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
         // Fan-out per signal-write × subscriber. High count under stress
         // means user code is over-subscribing — collapse with `selector`
         // pattern or move state into a dedicated store.
-        if (__DEV__) _countSink.__pyreon_count__?.('store.subscribeNotify')
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
         cb(mutation, state)
       }
     }
@@ -681,7 +680,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
         // Per wrapped-action invocation. Pair with `store.actionListenerNotify`
         // for the listener fan-out ratio. Fires on BOTH fast path and slow
         // path so the action-count denominator stays correct.
-        if (__DEV__) _countSink.__pyreon_count__?.('store.actionCall')
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.actionCall')
 
         // Fast path: no listeners attached → skip ActionContext allocation
         // and the after/onError callback arrays entirely. Exceptions
@@ -705,7 +704,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
           // Fires BEFORE the action body runs. Ratio = listener count.
           // Diverging from `actionCall` ratio across runs = listeners
           // attaching/detaching (likely a leak).
-          if (__DEV__) _countSink.__pyreon_count__?.('store.actionListenerNotify')
+          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.actionListenerNotify')
           listener(context)
         }
 
@@ -777,7 +776,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
                 // Per-key write inside batched patch. Tracks batch-size
                 // distribution; correlate with `reactivity.signalWrite`
                 // — the two should match 1:1 on the object-form path.
-                if (__DEV__) _countSink.__pyreon_count__?.('store.patchKey')
+                if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
                 ;(raw[key] as SignalLike).set(value)
               }
             }
@@ -799,7 +798,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
             // path emits ONCE per patch (not per key) thanks to the
             // batched flush, so this should equal the patch call count
             // multiplied by subscriber count.
-            if (__DEV__) _countSink.__pyreon_count__?.('store.subscribeNotify')
+            if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
             cb(mutation, state)
           }
         }
@@ -852,15 +851,20 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // store creation in the common case.
     if (_plugins.length > 0) {
       for (const plugin of _plugins) {
-        // O(stores × plugins). Likely target for further optimization —
-        // the plugin chain runs uncached on every fresh store creation.
-        // Big number under storePluginScale-1000 means caching the
-        // plugin-init result per store-id is worth investigating.
-        if (__DEV__) _countSink.__pyreon_count__?.('store.pluginRun')
+        // O(stores × plugins) is INHERENT, not an optimization target:
+        // plugins are side-effecting per-instance initializers (they
+        // attach behavior to THIS api object), so each fresh store must
+        // run each plugin — there is no semantics-preserving cache. The
+        // earlier "cache the plugin-init result per store-id" note was
+        // measured + rejected (2026-06): a noop plugin costs ~0.2µs here
+        // and the loop already skips entirely for the zero-plugin common
+        // case. storePluginScale-1000's pluginRun ∝ stores×plugins is the
+        // CORRECT signature for this contract.
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.pluginRun')
         try {
           plugin(api as StoreApi<Record<string, unknown>>)
         } catch (err) {
-          if (__DEV__) {
+          if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console
             console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
           }
