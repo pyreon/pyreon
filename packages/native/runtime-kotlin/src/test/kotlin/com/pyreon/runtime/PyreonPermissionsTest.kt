@@ -19,6 +19,14 @@ fun testPermsWildcard() {
     check(!p.can("postsX")) { "wildcard is segment-prefix, not substring" }
 }
 
+fun testPermsNotParity() {
+    // Web-API parity: source code calls `can.not("k")` — the runtime
+    // must carry `not` alongside the Kotlin-flavored `cannot`.
+    val p = PyreonPermissions(setOf("posts.edit"))
+    check(p.not("posts.delete")) { "not inverts an ungranted key" }
+    check(!p.not("posts.edit")) { "not is false for a granted key" }
+}
+
 fun testPermsAllAny() {
     val p = PyreonPermissions(setOf("a", "b"))
     check(p.all("a", "b")) { "all granted" }
@@ -40,6 +48,7 @@ fun testPermsMutation() {
 
 fun main() {
     testPermsExactMatch()
+    testPermsNotParity()
     testPermsWildcard()
     testPermsAllAny()
     testPermsMutation()

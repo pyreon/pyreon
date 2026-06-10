@@ -90,6 +90,10 @@ let _functionNames: Set<string> = new Set()
  * (the current state String).
  */
 let _machineNames: Set<string> = new Set()
+/** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
+ *  object-literal values arg to a map at this call shape. Mirror of
+ *  emit-swift's `_i18nNames`. */
+let _i18nNamesKotlin: Set<string> = new Set()
 /**
  * C5.3: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitKotlinComponent` from the
@@ -890,6 +894,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _machineNames = new Set()
+  _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
@@ -912,6 +917,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     // `m()` keeps parens for `operator fun invoke()`) AND OUT of
     // _functionNames (it's a property, not a free fn).
     if (d.kind === 'machine') _machineNames.add(d.name)
+    if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
     // `_signalNames` so JSX `<RouterProvider router={router}>` emits
@@ -1009,6 +1015,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _machineNames = new Set()
+  _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
@@ -1504,6 +1511,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return kotlinIdent(e.name)
     case 'call': {
+      // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
+      // object-literal VALUES argument lowers to a Kotlin map (the
+      // runtime's `t(key, values: Map<String, Any?>)` overload). The
+      // general object-literal emit produces a data-class construction
+      // / `(field = value)` pseudo-tuple — wrong in this call position.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 't' &&
+        e.callee.object.kind === 'identifier' &&
+        _i18nNamesKotlin.has(e.callee.object.name) &&
+        e.args.length === 2 &&
+        e.args[1]!.kind === 'object' &&
+        (e.args[1]! as Extract<ExprIR, { kind: 'object' }>).spreads === undefined
+      ) {
+        const keyArg = emitKotlinExpr(e.args[0]!, indent)
+        const obj = e.args[1]! as Extract<ExprIR, { kind: 'object' }>
+        const entries = obj.fields
+          .map((f) => `${JSON.stringify(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
+          .join(', ')
+        return `${kotlinIdent(e.callee.object.name)}.t(${keyArg}, mapOf(${entries}))`
+      }
       // Gap 4 v1: signal-style read on a store field — drop the parens.
       // Same chain-shape as Swift: call(member(<field>, member(store,
       // call(<hook>, []))), []).
@@ -2016,7 +2044,7 @@ function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   // Signal-bound / expression — negate to convert Pyreon's `disabled`
   // semantic to Compose's `enabled`. `emitKotlinSignalRead` handles
   // signal-name membership + plain-identifier emit.
-  return `enabled = !${emitKotlinSignalRead(attr.value)}`
+  return `enabled = !${emitKotlinSignalRead(unwrapAccessorArrow(attr.value))}`
 }
 
 function emitKotlinAction(handler: ExprIR, indent: number): string {
@@ -2098,7 +2126,7 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const when = e.attrs.find((a) => a.kind === 'attr' && a.name === 'when') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
-  const cond = when ? emitKotlinSignalRead(when.value) : 'true'
+  const cond = when ? emitKotlinSignalRead(unwrapAccessorArrow(when.value)) : 'true'
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `if (${cond}) {\n${body}\n${' '.repeat(indent)}}`
@@ -2226,7 +2254,7 @@ function emitKotlinKeepAlive(
     return emitKotlinWalledTagAsChildren(e, indent, 'KeepAlive')
   }
   _needsKotlinKeepAliveWrapper = true
-  const whenExpr = emitKotlinSignalRead(whenAttr.value)
+  const whenExpr = emitKotlinSignalRead(unwrapAccessorArrow(whenAttr.value))
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const childrenBody = e.children
@@ -2337,7 +2365,7 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
-  const cond = show ? emitKotlinSignalRead(show.value) : 'true'
+  const cond = show ? emitKotlinSignalRead(unwrapAccessorArrow(show.value)) : 'true'
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
@@ -2748,7 +2776,7 @@ function emitKotlinModal(
   if (!openAttr) {
     return emitKotlinGeneric(e, indent)
   }
-  const cond = emitKotlinSignalRead(openAttr.value)
+  const cond = emitKotlinSignalRead(unwrapAccessorArrow(openAttr.value))
   const onClose = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'close',
@@ -3384,6 +3412,15 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
     return `Text(text = "\${${emitKotlinExpr(c.expr, indent)}}")`
   }
   return emitKotlinExpr(c.expr, indent)
+}
+
+/**
+ * Mirror of emit-swift's `unwrapAccessorArrow` — see its doc comment.
+ * A zero-param arrow in a CONDITION position is the web accessor form;
+ * the native condition takes its body.
+ */
+function unwrapAccessorArrow(e: ExprIR): ExprIR {
+  return e.kind === 'arrow' && e.params.length === 0 ? e.body : e
 }
 
 function emitKotlinSignalRead(e: ExprIR): string {

@@ -437,6 +437,14 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertFalse(perms.can("postsX")) // segment-prefix, not substring
     }
 
+    /// `not` is the web-API-parity inverse (`can.not("k")` in source).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPermissionsNotParity() throws {
+        let perms = PyreonPermissions(["posts.edit"])
+        XCTAssertTrue(perms.not("posts.delete"))
+        XCTAssertFalse(perms.not("posts.edit"))
+    }
+
     /// `all` requires every key; `any` requires at least one.
     @available(iOS 17.0, macOS 14.0, *)
     func testPyreonPermissionsAllAny() throws {
@@ -754,6 +762,44 @@ final class PyreonRuntimeTests: XCTestCase {
         }
         XCTAssertTrue(true, "deinit completed without crash")
     }
+    // MARK: - PyreonI18n (createI18n + t())
+
+    /// Single-arg t(): active-locale lookup, fallback chain, key-verbatim miss.
+    func testPyreonI18nLookup() throws {
+        let i18n = PyreonI18n(
+            locale: "de",
+            messages: ["en": ["hello": "Hello!"], "de": [:]],
+            fallbackLocale: "en"
+        )
+        XCTAssertEqual(i18n.t("hello"), "Hello!")  // via fallback
+        XCTAssertEqual(i18n.t("missing"), "missing")
+    }
+
+    /// Two-arg t(): `{{name}}` interpolation with String + Int values.
+    func testPyreonI18nInterpolation() throws {
+        let i18n = PyreonI18n(
+            locale: "en",
+            messages: ["en": ["greet": "Hello {{name}}, you have {{n}}!"]]
+        )
+        XCTAssertEqual(i18n.t("greet", ["name": "Ada", "n": 3]), "Hello Ada, you have 3!")
+    }
+
+    /// Plurals: `count == 1` → `_one`, else `_other`; bare key when no
+    /// suffixed entries exist.
+    func testPyreonI18nPlurals() throws {
+        let i18n = PyreonI18n(
+            locale: "en",
+            messages: ["en": [
+                "items_one": "{{count}} item",
+                "items_other": "{{count}} items",
+                "plain": "no plural {{count}}",
+            ]]
+        )
+        XCTAssertEqual(i18n.t("items", ["count": 1]), "1 item")
+        XCTAssertEqual(i18n.t("items", ["count": 2]), "2 items")
+        XCTAssertEqual(i18n.t("items", ["count": 0]), "0 items")
+        XCTAssertEqual(i18n.t("plain", ["count": 5]), "no plural 5")
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
@@ -766,4 +812,5 @@ final class PyreonRuntimeTests: XCTestCase {
 /// single-threaded so atomicity is not a concern.
 final class ObservationFlag: @unchecked Sendable {
     var fired: Bool = false
+
 }

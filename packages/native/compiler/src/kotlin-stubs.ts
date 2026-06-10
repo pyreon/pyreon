@@ -624,6 +624,17 @@ class PyreonI18n(
     }
     return key
   }
+  // Two-arg overload — interpolation + one/other plurals. Mirrors the
+  // REAL runtime-kotlin signature t(key, values: Map<String, Any?>)
+  // (see PyreonI18n.kt) so the emitted dict-arg call shape
+  // i18n.t("items", mapOf("count" to n)) typechecks here.
+  fun t(key: String, values: Map<String, Any?>): String {
+    var out = t(key)
+    for ((name, value) in values) {
+      out = out.replace("{{" + name + "}}", value?.toString() ?: "")
+    }
+    return out
+  }
 }
 
 // PyreonMachine — Gap 4 PR-2 (Strategy-B port for @pyreon/machine).
@@ -636,6 +647,25 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
   fun can(event: String): Boolean = transitions[state]?.containsKey(event) == true
   fun nextEvents(): List<String> = transitions[state]?.keys?.toList() ?: emptyList()
   operator fun invoke(): String = state
+}
+
+// PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
+// PyreonPermissions.kt surface the emit touches: callable shape
+// (operator invoke), not / cannot / all / any. Added with the
+// permissions contract fixture — before it, NO usePermissions shape
+// was kotlinc-validated at all.
+class PyreonPermissions(initial: Set<String>) {
+  var granted: Set<String> = initial
+    private set
+  fun can(key: String): Boolean {
+    if (granted.contains(key)) return true
+    return granted.any { it.endsWith(".*") && key.startsWith(it.dropLast(1)) }
+  }
+  fun cannot(key: String): Boolean = !can(key)
+  fun not(key: String): Boolean = !can(key)
+  fun all(vararg keys: String): Boolean = keys.all { can(it) }
+  fun any(vararg keys: String): Boolean = keys.any { can(it) }
+  operator fun invoke(key: String): Boolean = can(key)
 }
 
 // PyreonStore — Gap 4 Strategy-B v1 marker interface for emitted

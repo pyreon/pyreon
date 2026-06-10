@@ -48,6 +48,15 @@ public class PyreonPermissions(granted: Set<String> = emptySet()) {
     /** Inverse of [can]. */
     public fun cannot(key: String): Boolean = !can(key)
 
+    /**
+     * Web-API-parity inverse — `@pyreon/permissions` exposes
+     * `can.not("posts.delete")`, so the SAME source must compile
+     * against this port unchanged. A NON-operator member named `not`
+     * is legal Kotlin (the unary `operator fun not()` has a different
+     * signature); `cannot` stays as the Kotlin-flavored alias.
+     */
+    public fun not(key: String): Boolean = !can(key)
+
     /** True when every [keys] is granted. */
     public fun all(vararg keys: String): Boolean = keys.all { can(it) }
 

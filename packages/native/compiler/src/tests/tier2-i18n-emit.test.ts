@@ -29,11 +29,11 @@ describe('Tier-2 — @pyreon/i18n/core Strategy-B emit (Gap 4 PR-3, v1)', () => 
     const result = transform(src, { target: 'swift' })
     expect(result.code).toContain('@State private var i18n = PyreonI18n(')
     expect(result.code).toContain('locale: "en"')
-    // Per-locale dictionaries baked from the literal config.
-    expect(result.code).toContain('"en": ["hello": "Hello!", "farewell": "Goodbye"]')
-    expect(result.code).toContain(
-      '"de": ["hello": "Hallo!", "farewell": "Auf Wiedersehen"]',
-    )
+    // Per-locale dictionaries baked from the literal config (the
+    // fixture grew interpolation + plural keys in the v2 extension —
+    // assert the load-bearing prefix of each locale dictionary).
+    expect(result.code).toContain('"en": ["hello": "Hello!", "farewell": "Goodbye"')
+    expect(result.code).toContain('"de": ["hello": "Hallo!", "farewell": "Auf Wiedersehen"')
     expect(result.code).toContain('fallbackLocale: "en"')
     // Method calls flow through unchanged.
     expect(result.code).toContain('i18n.t("hello")')
@@ -45,12 +45,8 @@ describe('Tier-2 — @pyreon/i18n/core Strategy-B emit (Gap 4 PR-3, v1)', () => 
     const result = transform(src, { target: 'kotlin' })
     expect(result.code).toContain('val i18n = remember { PyreonI18n(')
     expect(result.code).toContain('initialLocale = "en"')
-    expect(result.code).toContain(
-      '"en" to mapOf("hello" to "Hello!", "farewell" to "Goodbye")',
-    )
-    expect(result.code).toContain(
-      '"de" to mapOf("hello" to "Hallo!", "farewell" to "Auf Wiedersehen")',
-    )
+    expect(result.code).toContain('"en" to mapOf("hello" to "Hello!", "farewell" to "Goodbye"')
+    expect(result.code).toContain('"de" to mapOf("hello" to "Hallo!", "farewell" to "Auf Wiedersehen"')
     expect(result.code).toContain('fallbackLocale = "en"')
     expect(result.code).toContain('i18n.t("hello")')
     expect(result.code).toContain('i18n.t("farewell")')

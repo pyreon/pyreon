@@ -75,6 +75,10 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). Emits @State PyreonI18n with literal locale + messages.
     'tier2-i18n.tsx',
+    // @pyreon/permissions — callable can() + web-parity can.not() +
+    // variadic all/any + the Show-accessor-arrow condition unwrap.
+    // First fixture to validate ANY usePermissions emit shape.
+    'tier2-permissions.tsx',
     // Gap 4 PR-2: @pyreon/machine Strategy-B port. Pre-port, this
     // fixture was deliberately NOT in the loop because emit was
     // structurally broken (referenced undefined `m`). Post-port it
