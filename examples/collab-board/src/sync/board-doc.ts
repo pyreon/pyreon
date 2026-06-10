@@ -111,6 +111,14 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
   const doc = createYjsDoc()
   const persist = persistViaIndexedDB(doc, `collab-board:${roomId}`)
 
+  // DEV-only diag: read a card's notes STRAIGHT off the Y.Text (bypassing the
+  // syncedText facade + its observer) — splits "CRDT never written" from
+  // "observer detached" in the CI-only notes-sync break. Stripped from prod.
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    ;(window as unknown as { __rawNotes?: (id: string) => string }).__rawNotes = (cardId) =>
+      doc.yDoc.getText(`notes:${cardId}`).toString()
+  }
+
   // Columns seed nothing → safe to create before `whenSynced`; the list
   // observer populates them when IndexedDB (or a peer) loads.
   const columns: Record<ColumnId, SyncedList<Card>> = {

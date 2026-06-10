@@ -148,13 +148,29 @@ test.describe('collab-board — relay sync', () => {
       ).__cardEditor?.insert('shipping monday'),
     )
     // Assert A's edit actually reached the CRDT (not just CodeMirror's DOM — that
-    // was the original false-positive). This is the real "the edit landed" check.
+    // was the original false-positive). This is the real "the edit landed" check,
+    // and every poll dumps the FULL chain so a CI failure names the broken link.
+    // [DIAG] Per-poll chain dump: cmDoc (CM truth) | viewNull | editorValue
+    // (signal truth) | probeRuns (effects-alive canary — frozen at 1 = the
+    // component scope was disposed while the DOM stayed) | mounts (CardPanel
+    // setup count — >1 = remount/double-mount split the hooks) | notesSignal
+    // (facade/base) | rawYText (Y.Text read bypassing the facade observer).
+    const readDiag = (p: Page) =>
+      p.evaluate(() => {
+        const w = window as unknown as {
+          __cardDiag?: () => { cardId: string; notesSignal: string } & Record<string, unknown>
+          __rawNotes?: (id: string) => string
+        }
+        const d = w.__cardDiag?.()
+        return { ...d, rawYText: d ? (w.__rawNotes?.(d.cardId) ?? '<no-raw>') : '<no-diag>' }
+      })
     await expect
       .poll(
-        () =>
-          a.evaluate(
-            () => (window as unknown as { __cardNotes?: () => string }).__cardNotes?.() ?? '',
-          ),
+        async () => {
+          const d = await readDiag(a)
+          console.log('[DIAG] A:', JSON.stringify(d))
+          return typeof d.notesSignal === 'string' ? d.notesSignal : ''
+        },
         { timeout: 10_000 },
       )
       .toContain('shipping monday')
@@ -166,6 +182,15 @@ test.describe('collab-board — relay sync', () => {
     // Generous budget for the cold first-mount of the grammar chunk on a fresh runner.
     await b.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(b.getByTestId('card-panel')).toBeVisible()
+
+    // [DIAG] poll B's full chain to pinpoint where the break is.
+    for (let i = 0; i < 12; i++) {
+      const bDiag = await readDiag(b)
+      console.log(`[DIAG] t=${i}s B:`, JSON.stringify(bDiag))
+      if (typeof bDiag.rawYText === 'string' && bDiag.rawYText.includes('shipping')) break
+      await b.waitForTimeout(1000)
+    }
+
     await expect(b.getByTestId('card-notes').locator('.cm-content')).toContainText(
       'shipping monday',
       { timeout: 15000 },
