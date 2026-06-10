@@ -86,6 +86,11 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // `object PyreonModel_X : PyreonModelProtocol` singleton + the
     // use-site rewriting emit valid Compose Kotlin.
     'tier2-state-tree.tsx',
+    // Gap 3 PR-3.2: real Suspense emit (mount-time splash). Proves
+    // the PyreonSuspenseWrapper module-scope @Composable + per-
+    // Suspense site emit produces valid Compose Kotlin that kotlinc
+    // accepts (LaunchedEffect + remember/mutableStateOf).
+    'lifecycle-suspense.tsx',
   ] as const
 
   for (const fixture of fixtures) {
