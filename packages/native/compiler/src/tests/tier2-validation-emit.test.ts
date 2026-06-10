@@ -57,23 +57,26 @@ export const userSchema = zodSchema(z.object({
   })
 
   it('Unsupported z.method() fields are dropped with warning', () => {
+    // v2.2: z.array(z.X()) is now SUPPORTED for primitive element types
+    // (string/number/boolean) — see tier2-schema-arrays-optional.test.ts.
+    // z.record() and other compound shapes remain unsupported and dropped
+    // with a warning, asserted here.
     const src = `
 import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
 
 export const userSchema = zodSchema(z.object({
   name: z.string(),
-  tags: z.array(z.string()),
   meta: z.record(z.string()),
 }))
 `
     const r = transform(src, { target: 'swift' })
     expect(r.code).toContain('var name: String = ""')
-    // Unsupported z.array() / z.record() are dropped.
-    expect(r.code).not.toContain('var tags')
     expect(r.code).not.toContain('var meta')
-    const arrayW = r.warnings.find((w) => w.includes('tags') && w.includes('z.array'))
-    expect(arrayW).toBeDefined()
+    const recordW = r.warnings.find(
+      (w) => w.includes('meta') && w.includes('z.record'),
+    )
+    expect(recordW).toBeDefined()
   })
 
   it('Non-z.object() arg falls back to silent-drop', () => {

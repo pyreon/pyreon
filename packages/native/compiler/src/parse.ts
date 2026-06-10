@@ -22,6 +22,8 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodFieldConstraints,
+  ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
 
@@ -912,6 +914,297 @@ function tryArktypeSchemaDefnFromTopLevel(
 }
 
 /**
+ * Gap 4 v3 — walk a `z.X()...modifier()...modifier()` chain and return
+ * the base method name plus accumulated constraints. Used both for
+ * top-level field types AND for the inner element of `z.array(...)`.
+ * Returns null when the expression doesn't have the `<prefix>.X()`
+ * shape after the chain unwinds. Does NOT recognize `.optional()` /
+ * `.nullable()` — those are handled at the field level only (an
+ * `optional` array element isn't part of the v3 contract).
+ */
+function extractTypeAndConstraints(
+  expr: AnyNode,
+  prefix: string,
+): { method: string; constraints: ZodFieldConstraints } | null {
+  const constraints: ZodFieldConstraints = {}
+  let cursor: AnyNode | undefined = expr
+  while (cursor && cursor.type === 'CallExpression') {
+    const callee = cursor.callee as AnyNode | undefined
+    if (
+      callee?.type === 'MemberExpression' &&
+      callee.object?.type === 'CallExpression' &&
+      callee.property?.type === 'Identifier'
+    ) {
+      const modName = callee.property.name as string
+      const modArgs = (cursor.arguments as AnyNode[] | undefined) ?? []
+      const firstArg = modArgs[0]
+      if (modName === 'min') {
+        if (
+          firstArg &&
+          firstArg.type === 'Literal' &&
+          typeof firstArg.value === 'number'
+        ) {
+          constraints.min = firstArg.value
+        }
+      } else if (modName === 'max') {
+        if (
+          firstArg &&
+          firstArg.type === 'Literal' &&
+          typeof firstArg.value === 'number'
+        ) {
+          constraints.max = firstArg.value
+        }
+      } else if (modName === 'email') {
+        constraints.email = true
+      } else if (modName === 'url') {
+        constraints.url = true
+      } else if (modName === 'uuid') {
+        constraints.uuid = true
+      }
+      // `.optional()` / `.nullable()` are deliberately NOT recognized
+      // here — they apply at the field level, not to inner elements.
+      cursor = callee.object as AnyNode
+      continue
+    }
+    break
+  }
+  if (!cursor || cursor.type !== 'CallExpression') return null
+  const baseCallee = cursor.callee as AnyNode | undefined
+  if (
+    baseCallee?.type !== 'MemberExpression' ||
+    baseCallee.object?.type !== 'Identifier' ||
+    (baseCallee.object.name as string) !== prefix ||
+    baseCallee.property?.type !== 'Identifier'
+  ) {
+    return null
+  }
+  return {
+    method: baseCallee.property.name as string,
+    constraints,
+  }
+}
+
+/**
+ * Gap 4 v3.2 — capitalize the first character of an identifier.
+ * Used to synthesize aux schema names: `userSchema` + `address` →
+ * `userSchema_Address`.
+ */
+function capitalizeFirst(s: string): string {
+  if (s.length === 0) return s
+  return s[0]!.toUpperCase() + s.slice(1)
+}
+
+/**
+ * Gap 4 v3.2 — parse a `z.object({ ... })` CallExpression node into
+ * a `ZodSchemaDefnIR` with the supplied `name` as `bindingName`. Used
+ * for nested object fields. Returns null when the shape isn't a
+ * literal `z.object({...})`.
+ *
+ * Implementation reuses `tryNamespacedSchemaDefnFromTopLevel`'s body
+ * by synthesizing a wrapper VariableDeclaration that holds the
+ * `<schemaFn>(z.object(...))` shape so we don't fork the walker.
+ */
+function parseNestedObjectShape(
+  objectCallNode: AnyNode,
+  name: string,
+  ctx: ParseCtx,
+  prefix: string,
+  schemaFn: string,
+): ZodSchemaDefnIR | null {
+  // objectCallNode is `z.object({...})`. Wrap it as `<schemaFn>(z.object({...}))`
+  // so the existing walker can extract fields + auxSchemas.
+  const wrapped: AnyNode = {
+    type: 'VariableDeclaration',
+    declarations: [
+      {
+        type: 'VariableDeclarator',
+        id: { type: 'Identifier', name },
+        init: {
+          type: 'CallExpression',
+          callee: { type: 'Identifier', name: schemaFn },
+          arguments: [objectCallNode],
+        },
+      },
+    ],
+  }
+  return tryNamespacedSchemaDefnFromTopLevel(
+    wrapped,
+    ctx,
+    schemaFn,
+    prefix,
+    /* libraryDisplay (unused here) */ schemaFn,
+  )
+}
+
+/**
+ * Gap 4 v3.2 — recognize `z.object({...})` as an array element. If
+ * yes, synthesize the aux schema. Returns null when the inner is NOT
+ * a `z.object` CallExpression (the caller falls back to the primitive
+ * element path).
+ */
+function tryParseInnerObjectElement(
+  innerArg: AnyNode,
+  name: string,
+  ctx: ParseCtx,
+  prefix: string,
+  schemaFn: string,
+): ZodSchemaDefnIR | null {
+  if (innerArg.type !== 'CallExpression') return null
+  const callee = innerArg.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression') return null
+  if (callee.object?.type !== 'Identifier') return null
+  if ((callee.object.name as string) !== prefix) return null
+  if (callee.property?.type !== 'Identifier') return null
+  if ((callee.property.name as string) !== 'object') return null
+  return parseNestedObjectShape(innerArg, name, ctx, prefix, schemaFn)
+}
+
+/**
+ * Gap 4 v3.3 — parse `z.discriminatedUnion('field', [z.object(...), ...])`.
+ *
+ * Each variant must be a `z.object()` containing a field with name
+ * matching the discriminator and value `z.literal('xxx')`. Variants
+ * are synthesized as aux schemas; the parent schema carries a
+ * `discriminator` field listing them with their literal values + the
+ * synthesized case names.
+ */
+function parseDiscriminatedUnion(
+  innerCall: AnyNode,
+  bindingName: string,
+  ctx: ParseCtx,
+  prefix: string,
+  schemaFn: string,
+): ZodSchemaDefnIR | null {
+  const callArgs = (innerCall.arguments as AnyNode[] | undefined) ?? []
+  // First arg = discriminator field name (string literal).
+  const discrArg = callArgs[0]
+  if (
+    !discrArg ||
+    discrArg.type !== 'Literal' ||
+    typeof discrArg.value !== 'string'
+  ) {
+    ctx.warnings.push(
+      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
+    )
+    return null
+  }
+  const discrField = discrArg.value
+  // Second arg = array of z.object() variants.
+  const variantsArg = callArgs[1]
+  if (
+    !variantsArg ||
+    variantsArg.type !== 'ArrayExpression'
+  ) {
+    ctx.warnings.push(
+      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
+    )
+    return null
+  }
+  const variantNodes = (variantsArg.elements as AnyNode[] | undefined) ?? []
+  if (variantNodes.length === 0) {
+    ctx.warnings.push(
+      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
+    )
+    return null
+  }
+  const auxSchemas: ZodSchemaDefnIR[] = []
+  const variants: NonNullable<ZodSchemaDefnIR['discriminator']>['variants'] = []
+  for (let i = 0; i < variantNodes.length; i++) {
+    const variantNode = variantNodes[i]!
+    if (variantNode.type !== 'CallExpression') {
+      ctx.warnings.push(
+        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
+      )
+      return null
+    }
+    // Detect the literal value of the discriminator field BEFORE
+    // synthesizing the aux schema — we need this for `case`-mapping.
+    const literal = extractDiscriminatorLiteral(variantNode, discrField, prefix)
+    if (literal === null) {
+      ctx.warnings.push(
+        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
+      )
+      return null
+    }
+    const caseName = capitalizeFirst(literal.replace(/[^a-zA-Z0-9_]/g, '_'))
+    const variantSchemaName = `${bindingName}_${caseName}`
+    const variantSchema = parseNestedObjectShape(
+      variantNode,
+      variantSchemaName,
+      ctx,
+      prefix,
+      schemaFn,
+    )
+    if (!variantSchema) {
+      ctx.warnings.push(
+        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
+      )
+      return null
+    }
+    auxSchemas.push(variantSchema)
+    variants.push({ literal, schemaName: variantSchemaName, caseName })
+  }
+  const result: ZodSchemaDefnIR = {
+    bindingName,
+    fields: [],
+    discriminator: { field: discrField, variants },
+  }
+  if (auxSchemas.length > 0) result.auxSchemas = auxSchemas
+  return result
+}
+
+/**
+ * Gap 4 v3.3 — locate the discriminator field inside a variant's
+ * `z.object({...})` shape and return its `z.literal()` value as a
+ * string. Returns null when the field is missing OR its value isn't
+ * a `<prefix>.literal('xxx')` call.
+ */
+function extractDiscriminatorLiteral(
+  objectCallNode: AnyNode,
+  discrField: string,
+  prefix: string,
+): string | null {
+  if (objectCallNode.type !== 'CallExpression') return null
+  const callee = objectCallNode.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression') return null
+  if (callee.object?.type !== 'Identifier') return null
+  if ((callee.object.name as string) !== prefix) return null
+  if (callee.property?.type !== 'Identifier') return null
+  if ((callee.property.name as string) !== 'object') return null
+  const shapeArg = (objectCallNode.arguments as AnyNode[] | undefined)?.[0]
+  if (!shapeArg || shapeArg.type !== 'ObjectExpression') return null
+  for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const fieldName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (fieldName !== discrField) continue
+    const value = prop.value as AnyNode | undefined
+    if (value?.type !== 'CallExpression') return null
+    const valCallee = value.callee as AnyNode | undefined
+    if (valCallee?.type !== 'MemberExpression') return null
+    if (valCallee.object?.type !== 'Identifier') return null
+    if ((valCallee.object.name as string) !== prefix) return null
+    if (valCallee.property?.type !== 'Identifier') return null
+    if ((valCallee.property.name as string) !== 'literal') return null
+    const litArg = (value.arguments as AnyNode[] | undefined)?.[0]
+    if (
+      !litArg ||
+      litArg.type !== 'Literal' ||
+      typeof litArg.value !== 'string'
+    ) {
+      return null
+    }
+    return litArg.value
+  }
+  return null
+}
+
+/**
  * Shared parser body for Zod + Valibot recognition (the two
  * libraries use isomorphic `<prefix>.object({ field: <prefix>.X() })`
  * call shapes). ArkType's string-valued shape needs its own parser.
@@ -954,7 +1247,18 @@ function tryNamespacedSchemaDefnFromTopLevel(
   if (innerCallee.object?.type !== 'Identifier') return null
   if ((innerCallee.object.name as string) !== prefix) return null
   if (innerCallee.property?.type !== 'Identifier') return null
-  if ((innerCallee.property.name as string) !== 'object') return null
+  const innerCallMethod = innerCallee.property.name as string
+  // Gap 4 v3.3 — discriminated union shape.
+  if (innerCallMethod === 'discriminatedUnion') {
+    return parseDiscriminatedUnion(
+      innerCall,
+      bindingName,
+      ctx,
+      prefix,
+      schemaFn,
+    )
+  }
+  if (innerCallMethod !== 'object') return null
 
   const shapeArg = (innerCall.arguments as AnyNode[] | undefined)?.[0]
   if (!shapeArg || shapeArg.type !== 'ObjectExpression') {
@@ -963,6 +1267,12 @@ function tryNamespacedSchemaDefnFromTopLevel(
     )
     return null
   }
+
+  // Gap 4 v3.2 — auxiliary schemas synthesized while walking this
+  // shape (one per nested z.object). Each carries its OWN fields +
+  // its OWN auxSchemas (recursive). The emitter will emit them all
+  // ahead of the main schema.
+  const auxSchemas: ZodSchemaDefnIR[] = []
 
   // Walk shape's properties; each value should be a <prefix>.X() call (possibly chained).
   const fields: ZodSchemaDefnIR['fields'] = []
@@ -977,21 +1287,58 @@ function tryNamespacedSchemaDefnFromTopLevel(
           : undefined
     if (!fieldName) continue
 
-    // Walk the chain to find the BASE <prefix>.X() call.
-    // e.g. z.string().min(2).email() → unwrap to z.string()
+    // Walk the chain twice: once to find the BASE <prefix>.X() call,
+    // and once (top-down) to collect constraint modifiers.
+    // v2.2 — also collect `.optional()` / `.nullable()` flags.
+    const constraints: ZodFieldConstraints = {}
+    let optional = false
     let value = unwrapTypeLayers(prop.value as AnyNode | undefined) as AnyNode | undefined
-    while (value && value.type === 'CallExpression') {
-      const callee = value.callee as AnyNode | undefined
-      // If callee is `<base>.modifier(...)`, recurse into <base>.
+    // First pass — collect modifiers from outermost call inward.
+    let cursor: AnyNode | undefined = value
+    while (cursor && cursor.type === 'CallExpression') {
+      const callee = cursor.callee as AnyNode | undefined
       if (
         callee?.type === 'MemberExpression' &&
-        callee.object?.type === 'CallExpression'
+        callee.object?.type === 'CallExpression' &&
+        callee.property?.type === 'Identifier'
       ) {
-        value = callee.object as AnyNode
+        const modName = callee.property.name as string
+        const modArgs = (cursor.arguments as AnyNode[] | undefined) ?? []
+        const firstArg = modArgs[0]
+        if (modName === 'min') {
+          if (
+            firstArg &&
+            firstArg.type === 'Literal' &&
+            typeof firstArg.value === 'number'
+          ) {
+            constraints.min = firstArg.value
+          }
+        } else if (modName === 'max') {
+          if (
+            firstArg &&
+            firstArg.type === 'Literal' &&
+            typeof firstArg.value === 'number'
+          ) {
+            constraints.max = firstArg.value
+          }
+        } else if (modName === 'email') {
+          constraints.email = true
+        } else if (modName === 'url') {
+          constraints.url = true
+        } else if (modName === 'uuid') {
+          constraints.uuid = true
+        } else if (modName === 'optional' || modName === 'nullable') {
+          // Gap 4 v2.2 — `.optional()` / `.nullable()` mark the field
+          // nullable on native. parse() returns nil instead of throwing
+          // when missing.
+          optional = true
+        }
+        cursor = callee.object as AnyNode
         continue
       }
       break
     }
+    value = cursor
     // value should now be a CallExpression whose callee is `<prefix>.X`.
     if (!value || value.type !== 'CallExpression') {
       ctx.warnings.push(
@@ -1012,15 +1359,132 @@ function tryNamespacedSchemaDefnFromTopLevel(
       continue
     }
     const method = baseCallee.property.name as string
+    const hasConstraints = Object.keys(constraints).length > 0
     if (method === 'string') {
-      fields.push({ name: fieldName, type: 'string' })
+      const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'string' }
+      if (hasConstraints) entry.constraints = constraints
+      if (optional) entry.optional = true
+      fields.push(entry)
     } else if (method === 'number') {
-      fields.push({ name: fieldName, type: 'number' })
+      const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'number' }
+      if (hasConstraints) entry.constraints = constraints
+      if (optional) entry.optional = true
+      fields.push(entry)
     } else if (method === 'boolean') {
-      fields.push({ name: fieldName, type: 'boolean' })
+      const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'boolean' }
+      if (optional) entry.optional = true
+      fields.push(entry)
+    } else if (method === 'literal') {
+      // Gap 4 v3.3 — `z.literal('xxx')` used inside discriminated-union
+      // variants as the discriminator field. Inferred type from the
+      // literal's runtime type (string / number / boolean). The literal
+      // value is enforced at the union-level switch (per-variant
+      // parse() just type-checks the field, not the value).
+      const litArg = (value.arguments as AnyNode[] | undefined)?.[0]
+      let litType: ZodFieldType = 'string'
+      if (litArg && litArg.type === 'Literal') {
+        const v = litArg.value
+        if (typeof v === 'number') litType = 'number'
+        else if (typeof v === 'boolean') litType = 'boolean'
+      }
+      const entry: ZodSchemaDefnIR['fields'][number] = {
+        name: fieldName,
+        type: litType,
+      }
+      if (optional) entry.optional = true
+      fields.push(entry)
+    } else if (method === 'object') {
+      // Gap 4 v3.2 — nested object field. Synthesize an auxiliary
+      // schema named `<binding>_<field>` and reference it from the
+      // field's type. The aux schema is added to `auxSchemas` so the
+      // emitter renders it as its own struct/data class.
+      const nested = parseNestedObjectShape(
+        value,
+        `${bindingName}_${capitalizeFirst(fieldName)}`,
+        ctx,
+        prefix,
+        schemaFn,
+      )
+      if (!nested) {
+        ctx.warnings.push(
+          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
+        )
+        continue
+      }
+      auxSchemas.push(nested)
+      const entry: ZodSchemaDefnIR['fields'][number] = {
+        name: fieldName,
+        type: { kind: 'object', schemaName: nested.bindingName },
+      }
+      if (optional) entry.optional = true
+      fields.push(entry)
+    } else if (method === 'array') {
+      // Gap 4 v2.2 — `z.array(z.string())` etc.
+      // Gap 4 v3 — element modifier chain for per-element constraints.
+      // Gap 4 v3.2 — `z.array(z.object({...}))` synthesizes a nested
+      // schema for the element type.
+      const innerArg = (value.arguments as AnyNode[] | undefined)?.[0] as
+        | AnyNode
+        | undefined
+      // First check: is the inner element itself a z.object literal?
+      const innerObjectSchema = innerArg
+        ? tryParseInnerObjectElement(
+            innerArg,
+            `${bindingName}_${capitalizeFirst(fieldName)}_Item`,
+            ctx,
+            prefix,
+            schemaFn,
+          )
+        : null
+      if (innerObjectSchema) {
+        auxSchemas.push(innerObjectSchema)
+        const arrayType: Extract<ZodFieldType, { kind: 'array' }> = {
+          kind: 'array',
+          element: {
+            kind: 'object',
+            schemaName: innerObjectSchema.bindingName,
+          },
+        }
+        const entry: ZodSchemaDefnIR['fields'][number] = {
+          name: fieldName,
+          type: arrayType,
+        }
+        if (optional) entry.optional = true
+        fields.push(entry)
+        continue
+      }
+      // Otherwise: primitive element (with possible per-element constraints)
+      const inner = innerArg
+        ? extractTypeAndConstraints(innerArg, prefix)
+        : null
+      let innerType: 'string' | 'number' | 'boolean' | undefined
+      if (inner) {
+        if (inner.method === 'string') innerType = 'string'
+        else if (inner.method === 'number') innerType = 'number'
+        else if (inner.method === 'boolean') innerType = 'boolean'
+      }
+      if (!innerType) {
+        ctx.warnings.push(
+          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is z.array() with an unsupported inner type — supported: z.array(z.string/z.number/z.boolean) and z.array(z.object(...)). Dropping field.`,
+        )
+        continue
+      }
+      const arrayType: Extract<ZodFieldType, { kind: 'array' }> = {
+        kind: 'array',
+        element: innerType,
+      }
+      if (inner && Object.keys(inner.constraints).length > 0) {
+        arrayType.elementConstraints = inner.constraints
+      }
+      const entry: ZodSchemaDefnIR['fields'][number] = {
+        name: fieldName,
+        type: arrayType,
+      }
+      if (optional) entry.optional = true
+      fields.push(entry)
     } else {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — v1 supports ${prefix}.string / ${prefix}.number / ${prefix}.boolean. Dropping field.`,
+        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
       )
     }
     void libraryDisplay
@@ -1033,7 +1497,9 @@ function tryNamespacedSchemaDefnFromTopLevel(
     return null
   }
 
-  return { bindingName, fields }
+  const result: ZodSchemaDefnIR = { bindingName, fields }
+  if (auxSchemas.length > 0) result.auxSchemas = auxSchemas
+  return result
 }
 
 /** Tiny initial-value type inference for store signals.
