@@ -63,6 +63,16 @@ export interface ISRStore<E = ISRCacheEntry> {
    * `createMemoryStore` implements it.
    */
   clear?(): Promise<void> | void
+  /**
+   * Phase 6 — tag-based invalidation. `setTags` records the tags an entry
+   * was cached under; `keysByTag` returns every cached key carrying a tag
+   * (consumed by `ISRHandler.revalidateTag`). Optional — stores without
+   * them make `revalidateTag` throw a clear error naming the missing
+   * methods. Both shipped stores (`createMemoryStore`, `createFsStore`)
+   * implement them.
+   */
+  setTags?(key: string, tags: readonly string[]): Promise<void> | void
+  keysByTag?(tag: string): Promise<string[]> | string[]
 }
 
 /**
@@ -87,6 +97,10 @@ export function createMemoryStore<E = ISRCacheEntry>(opts: {
     maxEntries: opts.maxEntries ?? 1000,
     lru: true,
   })
+  // Phase 6 — tag index for revalidateTag. tag → Set<key>. Pruned lazily:
+  // keysByTag drops keys that no longer exist (evicted/deleted), so the
+  // index can't outgrow tags-actually-used × live-keys for long.
+  const tagIndex = new Map<string, Set<string>>()
   return {
     get(key) {
       return cache.get(key)
@@ -99,6 +113,123 @@ export function createMemoryStore<E = ISRCacheEntry>(opts: {
     },
     clear() {
       cache.clear()
+      tagIndex.clear()
+    },
+    setTags(key, tags) {
+      for (const tag of tags) {
+        let keys = tagIndex.get(tag)
+        if (!keys) {
+          keys = new Set()
+          tagIndex.set(tag, keys)
+        }
+        keys.add(key)
+      }
+    },
+    keysByTag(tag) {
+      const keys = tagIndex.get(tag)
+      if (!keys) return []
+      const live: string[] = []
+      for (const key of keys) {
+        if (cache.get(key) !== undefined) live.push(key)
+        else keys.delete(key) // lazy prune of evicted entries
+      }
+      if (keys.size === 0) tagIndex.delete(tag)
+      return live
+    },
+  }
+}
+
+/**
+ * Phase 6 — filesystem-backed ISR store for self-hosted node/bun deploys.
+ * The memory default means every server restart = cold cache = a
+ * thundering herd on the origin; a content-dir store survives restarts.
+ *
+ * Layout: one JSON file per key under `dir` (key → fs-safe encoded
+ * filename) + a `_tags.json` sidecar for the tag index (best-effort,
+ * rewritten on change). Reads/writes are per-request-rare (cache misses
+ * + invalidations), so simple atomic-ish file IO is the right tradeoff —
+ * NOT a database. Errors degrade to cache-miss behavior, never a throw
+ * on the request path.
+ *
+ * Multi-INSTANCE deploys still want a shared external store (Redis/KV) —
+ * fs is per-box.
+ */
+export function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E> {
+  // Lazy node imports keep the module client-bundle-safe (the isr module
+  // is server-only in practice, but mirrors the adapters' lazy pattern).
+  const fsp = () => import('node:fs/promises')
+  const keyFile = (key: string) =>
+    `${dir}/${encodeURIComponent(key).replace(/\*/g, '%2A')}.json`
+  const tagsFile = `${dir}/_tags.json`
+  let tagsLoaded: Promise<Map<string, string[]>> | null = null
+  const loadTags = (): Promise<Map<string, string[]>> =>
+    (tagsLoaded ??= (async () => {
+      try {
+        const { readFile } = await fsp()
+        const raw = JSON.parse(await readFile(tagsFile, 'utf-8')) as Record<string, string[]>
+        return new Map(Object.entries(raw))
+      } catch {
+        return new Map()
+      }
+    })())
+  const persistTags = async (tags: Map<string, string[]>): Promise<void> => {
+    try {
+      const { writeFile, mkdir } = await fsp()
+      await mkdir(dir, { recursive: true })
+      await writeFile(tagsFile, JSON.stringify(Object.fromEntries(tags)), 'utf-8')
+    } catch {
+      // Best-effort — a failed tag persist degrades revalidateTag after a
+      // restart, never caching itself.
+    }
+  }
+  return {
+    async get(key) {
+      try {
+        const { readFile } = await fsp()
+        return JSON.parse(await readFile(keyFile(key), 'utf-8')) as E
+      } catch {
+        return undefined
+      }
+    },
+    async set(key, entry) {
+      try {
+        const { writeFile, mkdir } = await fsp()
+        await mkdir(dir, { recursive: true })
+        await writeFile(keyFile(key), JSON.stringify(entry), 'utf-8')
+      } catch {
+        // Failed write = the entry just isn't cached — miss next time.
+      }
+    },
+    async delete(key) {
+      try {
+        const { rm } = await fsp()
+        await rm(keyFile(key), { force: true })
+      } catch {
+        /* already gone */
+      }
+    },
+    async clear() {
+      try {
+        const { rm, mkdir } = await fsp()
+        await rm(dir, { recursive: true, force: true })
+        await mkdir(dir, { recursive: true })
+        tagsLoaded = null
+      } catch {
+        /* best-effort */
+      }
+    },
+    async setTags(key, tags) {
+      const index = await loadTags()
+      for (const tag of tags) {
+        const keys = index.get(tag) ?? []
+        if (!keys.includes(key)) keys.push(key)
+        index.set(tag, keys)
+      }
+      await persistTags(index)
+    },
+    async keysByTag(tag) {
+      const index = await loadTags()
+      return index.get(tag) ?? []
     },
   }
 }
@@ -164,6 +295,15 @@ export interface ISRHandler {
    * so the caller knows their store implementation can't honor the call.
    */
   revalidateAll(): Promise<void>
+  /**
+   * Phase 6 — drop every cached entry carrying `tag` (recorded via
+   * `config.tagsForRequest` at cache-set time). The webhook-ergonomic
+   * unit: "the posts collection changed" → `revalidateTag('posts')`
+   * drops every page that rendered posts, without enumerating paths.
+   * Returns the number of entries dropped. Throws a clear error when the
+   * configured store doesn't implement `keysByTag`/`setTags`.
+   */
+  revalidateTag(tag: string): Promise<{ dropped: number }>
 }
 
 export function createISRHandler(
@@ -320,6 +460,26 @@ export function createISRHandler(
     )
   }
 
+  /**
+   * Phase 6 — record the entry's tags at cache-set time (both the miss
+   * path and background revalidations). A throwing user callback is
+   * swallowed with a dev warning — tagging must never take down caching.
+   */
+  async function recordTags(key: string, request: Request): Promise<void> {
+    if (!config.tagsForRequest || !store.setTags) return
+    try {
+      const tags = await config.tagsForRequest(request)
+      if (Array.isArray(tags) && tags.length > 0) {
+        await store.setTags(key, tags)
+      }
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.warn('[Pyreon] isr.tagsForRequest threw — entry cached untagged:', err)
+      }
+    }
+  }
+
   async function revalidate(url: URL, originalReq: Request) {
     // Re-derive key from the ORIGINAL request so cookies / headers /
     // query that varied the cache entry are preserved across revalidation.
@@ -415,6 +575,7 @@ export function createISRHandler(
           headers[k] = v
         })
         await store.set(key, { html, headers, timestamp: Date.now() })
+        await recordTags(key, originalReq)
       }
     } catch {
       // Revalidation failed / timed out — stale cache entry remains valid
@@ -505,6 +666,7 @@ export function createISRHandler(
     }
 
     await store.set(key, { html, headers, timestamp: Date.now() })
+    await recordTags(key, req)
 
     return new Response(html, {
       status: 200,
@@ -521,6 +683,21 @@ export function createISRHandler(
   // `.revalidateNow(key)` and `.revalidateAll()` for webhook-driven
   // cache busting.
   const isrHandler = fetch as ISRHandler
+
+  isrHandler.revalidateTag = async (tag: string) => {
+    if (!store.keysByTag || !store.setTags) {
+      throw new Error(
+        '[Pyreon] revalidateTag requires a store with setTags/keysByTag — the shipped createMemoryStore and createFsStore implement them; your custom store does not.',
+      )
+    }
+    const keys = await store.keysByTag(tag)
+    let dropped = 0
+    for (const key of keys) {
+      const result = await isrHandler.revalidateNow(key)
+      if (result.dropped) dropped++
+    }
+    return { dropped }
+  }
 
   isrHandler.revalidateNow = async (key: string) => {
     // PR-S5: bump the epoch BEFORE touching the store so any

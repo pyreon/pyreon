@@ -394,6 +394,50 @@ Contracts worth knowing:
 - Pages without a full Pyreon mount (static-islands apps) call `activateServerIslands()` from `@pyreon/server/client` once after load.
 - Composing a client `island()` INSIDE a server island is not supported in v1.
 
+### Delivery polish (SSG toggles)
+
+Four opt-in `ssg` options, each verified on real builds:
+
+```ts
+zero({
+  mode: 'ssg',
+  ssg: {
+    speculationRules: 'prefetch', // or 'prerender' — Chrome Speculation Rules; near-instant MPA navs
+    viewTransitions: true,        // cross-document View Transitions (@view-transition CSS, zero JS)
+    cssMode: 'asset',             // styler CSS as ONE hashed shared file instead of inlined per page
+    earlyHints: true,             // per-path Link: modulepreload entries in _headers → HTTP 103 on CF/Netlify
+  },
+})
+```
+
+- `speculationRules` injects a document-rules block (`href_matches: "/*"`, moderate eagerness) into every prerendered page; unsupported browsers ignore it.
+- `viewTransitions` opts prerendered pages into cross-document View Transitions — MPA navigations animate with zero JS in supporting browsers.
+- `cssMode: 'asset'` extracts the styler's per-page inline `<style>` (identical across pages by construction) into one content-hashed `assets/pyreon-ssg.<hash>.css` that every page links — pages share the browser-cached file instead of re-downloading the full sheet inside each HTML. No-op for projects without `@pyreon/styler`.
+- `earlyHints` appends per-path `Link: <chunk>; rel=modulepreload` entries to `_headers` (existing user `_headers` content is preserved); Cloudflare Pages and Netlify turn those into HTTP 103 Early Hints.
+
+### ISR: tag-based invalidation + filesystem store
+
+```ts
+import { createFsStore } from '@pyreon/zero/server'
+
+zero({
+  mode: 'isr',
+  isr: {
+    revalidate: 60,
+    store: createFsStore('./.isr-cache'),       // survives restarts (single-box node/bun)
+    tagsForRequest: (req) => {
+      const p = new URL(req.url).pathname
+      return p.startsWith('/posts/') ? ['posts', `post:${p.split('/')[2]}`] : []
+    },
+  },
+})
+
+// webhook handler:
+await isrHandler.revalidateTag('posts') // drops every page that rendered posts
+```
+
+`tagsForRequest` records tags at cache-set time; `revalidateTag(tag)` drops every entry carrying the tag — the webhook-ergonomic unit (no path enumeration). Both shipped stores (`createMemoryStore`, `createFsStore`) implement the tag index; custom stores add `setTags`/`keysByTag`. `createFsStore(dir)` persists entries (and the tag index) as JSON files so a restart doesn't cold-start the cache — multi-instance deploys still want a shared external store (Redis/KV).
+
 ## Server Loaders
 
 Route loaders are **isomorphic** by default — they run on the server during SSR and **in the browser** on client-side navigations, so they can't touch a database, a secret, or a server-only SDK. A **server loader** can: put it in a `.server.ts` sibling next to the route file.
