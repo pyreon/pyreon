@@ -20,15 +20,24 @@ import { syncedSignal } from '../synced-signal'
 // type for the transport's `WebSocketImpl` option and for the raw garbage senders.
 const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 
-// Generous default — these are real loopback WebSocket round-trips, and the
-// `Coverage (Full)` CI job runs under v8 instrumentation (slower) on top of
-// parallel-load contention. Well under the 20s vitest testTimeout.
+// TICK-COUNTED deadline, deliberately NOT wall-clock. CI runs this file under
+// parallel-load contention (+ v8 instrumentation in `Coverage (Full)`), and the
+// observed flake shape was a ~30s event-loop starvation window: the loopback
+// round-trip completes fine, but a `Date.now()`-based deadline burns its budget
+// while the loop gets no CPU — the first spec failed 3/3 retries inside one
+// window while its sibling's retry passed in 243ms right after (runs
+// 27292708996 / 27272xxx on PRs #1498/#1505/#1509). Counting SCHEDULED ticks
+// (each ≈10ms of timer time) makes the deadline self-extend under starvation —
+// ticks don't run when the loop is starved — while behaving identically to the
+// old wall-clock deadline on a healthy machine. vitest's own per-test timeout
+// stays the hard wall-clock backstop.
 const waitFor = (cond: () => boolean, timeoutMs = 8000): Promise<void> =>
   new Promise((resolve, reject) => {
-    const start = Date.now()
+    const maxTicks = Math.ceil(timeoutMs / 10)
+    let ticks = 0
     const tick = () => {
       if (cond()) resolve()
-      else if (Date.now() - start > timeoutMs) reject(new Error('waitFor: timed out'))
+      else if (++ticks > maxTicks) reject(new Error('waitFor: timed out'))
       else setTimeout(tick, 10)
     }
     tick()
@@ -63,7 +72,9 @@ describe('WebSocket relay — cross-device sync', () => {
     sa.set('hello over WS') // a writes after both are connected — propagates to b
     await waitFor(() => sb() === 'hello over WS')
     expect(sb()).toBe('hello over WS')
-  })
+    // 30s wall-clock budget: two sequential tick-counted waits need wall-clock
+    // headroom when CI starves the loop (the evidenced flake on this exact spec).
+  }, 30_000)
 
   it('REJECTS an unauthorized connection (authorize → false)', async () => {
     server = await createSyncServer({ port: 0, authorize: ({ token }) => token === 'secret' })
@@ -201,7 +212,9 @@ describe('WebSocket relay — cross-device sync', () => {
     sa.set('over shared server')
     await waitFor(() => sb() === 'over shared server')
     expect(sb()).toBe('over shared server')
-  })
+    // Same 30s wall-clock budget as the first spec — this one flaked (retry ×1,
+    // then passed in 243ms) inside the same CI starvation window.
+  }, 30_000)
 
   it('RECONNECTS with backoff after the relay drops, then comes back', async () => {
     // Fixed http server so the relay can be torn down + brought back on the SAME
