@@ -8,7 +8,26 @@
  *   - solid-js             — Solid's fine-grained reactivity
  *
  * Usage: bun scripts/bench/core/reactivity.ts
+ *
+ * OBJECTIVITY CONTRACT (two past bugs this header guards against):
+ *
+ * 1. `NODE_ENV=production` is forced below BEFORE any framework runs.
+ *    Pyreon's dev mode keeps the reactive-devtools registry always-on
+ *    (per-primitive `new Error()` capture + fire recording) — benching
+ *    dev mode measured the instrumentation, not the framework (signal
+ *    create+read+write read 1.4M ops/s in dev vs ~22M in production).
+ *
+ * 2. Solid is imported from its BROWSER build (`solid-js/dist/solid.js`).
+ *    Under Bun/Node module resolution the bare `solid-js` specifier
+ *    resolves through the `node` condition to `dist/server.js` — the SSR
+ *    build where signals/memos/effects are INERT stubs. Every "Solid"
+ *    number measured against the server build is a no-op loop (~42ns for
+ *    100 updates — physically impossible for real reactive work).
  */
+
+// Must run before any framework module evaluates its dev gates — ESM
+// executes imports in order, so this side-effect import goes FIRST.
+process.env.NODE_ENV = 'production'
 
 import {
   batch as preactBatch,
@@ -16,13 +35,17 @@ import {
   effect as preactEffect,
   signal as preactSignal,
 } from '@preact/signals-core'
+// @ts-expect-error — deliberate deep import of Solid's BROWSER production
+// build; the bare 'solid-js' specifier resolves to the inert SSR build
+// under the node condition (see objectivity contract above). No types are
+// shipped at the dist path.
 import {
   batch as solidBatch,
   createEffect as solidEffect,
   createMemo as solidMemo,
   createRoot as solidRoot,
   createSignal as solidSignal,
-} from 'solid-js'
+} from 'solid-js/dist/solid.js'
 import {
   batch as pyreonBatch,
   computed as pyreonComputed,
@@ -197,20 +220,30 @@ function benchEffect() {
     dispose()
     void sink
   }
-  solidRoot((dispose) => {
-    const [s, setS] = solidSignal(0)
+  // Solid defers a createEffect's FIRST run until the owning root's body
+  // completes — benching INSIDE the root callback times 100 writes that
+  // notify a not-yet-subscribed effect (a no-op loop). Create inside the
+  // root, bench AFTER it returns, dispose at the end.
+  {
     let sink = 0
-    solidEffect(() => {
-      sink = s()
+    let setS!: (v: number) => void
+    let disposeRoot!: () => void
+    solidRoot((dispose) => {
+      const [s, set] = solidSignal(0)
+      setS = set
+      disposeRoot = dispose
+      solidEffect(() => {
+        sink = s()
+      })
     })
     results.push(
       bench('Solid effect propagation', () => {
         for (let i = 0; i < 100; i++) setS(i)
       }),
     )
-    dispose()
+    disposeRoot()
     void sink
-  })
+  }
 
   return results
 }
@@ -255,11 +288,17 @@ function benchBatch() {
     dispose()
     void sink
   }
-  solidRoot((dispose) => {
-    const signals = Array.from({ length: 50 }, (_, i) => solidSignal(i))
+  // Same deferred-first-run trap as effect propagation — bench outside the root.
+  {
     let sink = 0
-    solidEffect(() => {
-      sink = signals.reduce((sum, [get]) => sum + get(), 0)
+    let signals!: ReturnType<typeof solidSignal<number>>[]
+    let disposeRoot!: () => void
+    solidRoot((dispose) => {
+      signals = Array.from({ length: 50 }, (_, i) => solidSignal(i))
+      disposeRoot = dispose
+      solidEffect(() => {
+        sink = signals.reduce((sum, [get]) => sum + get(), 0)
+      })
     })
     results.push(
       bench('Solid batch 50 signals', () => {
@@ -268,9 +307,9 @@ function benchBatch() {
         })
       }),
     )
-    dispose()
+    disposeRoot()
     void sink
-  })
+  }
 
   return results
 }
@@ -404,22 +443,30 @@ function benchWide() {
     for (const d of disposers) d()
     void sink
   }
-  solidRoot((dispose) => {
-    const [s, setS] = solidSignal(0)
+  // Same deferred-first-run trap — create the 100 effects inside the root,
+  // bench after it returns so they are actually subscribed.
+  {
     let sink = 0
-    for (let i = 0; i < WIDTH; i++) {
-      solidEffect(() => {
-        sink += s()
-      })
-    }
+    let setS!: (fn: (v: number) => number) => void
+    let disposeRoot!: () => void
+    solidRoot((dispose) => {
+      const [s, set] = solidSignal(0)
+      setS = set
+      disposeRoot = dispose
+      for (let i = 0; i < WIDTH; i++) {
+        solidEffect(() => {
+          sink += s()
+        })
+      }
+    })
     results.push(
       bench(`Solid 1→${WIDTH} effects`, () => {
         setS((v) => v + 1)
       }),
     )
-    dispose()
+    disposeRoot()
     void sink
-  })
+  }
 
   return results
 }
