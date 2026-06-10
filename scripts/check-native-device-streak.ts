@@ -28,7 +28,7 @@
 //   1 → streak < threshold (keep observing)
 //   2 → invocation error / GitHub API unreachable
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 export interface WorkflowRun {
   id: number
@@ -61,11 +61,35 @@ function parseArgs(argv: string[]): {
 }
 
 function fetchRuns(branch: string): WorkflowRun[] {
+  // Validate branch against the GitHub-allowed ref-name charset so
+  // any future shell-bound consumer of `branch` (or `gh`'s own arg
+  // parser) sees only safe input. CodeQL: "indirect uncontrolled
+  // command line" — fixed by execFileSync + this allowlist guard.
+  if (!/^[\w./-]+$/.test(branch)) {
+    throw new Error(`Invalid branch name: ${branch}`)
+  }
+  // execFileSync avoids the shell — `gh` receives each --field as
+  // its own argv entry, so `branch` can never be interpreted as a
+  // shell metacharacter even if the allowlist above were bypassed.
   // `gh api` walks pagination via `--paginate`; cap to recent
   // pages so a long-lived repo doesn't pull thousands of runs.
-  const cmd = `gh api -X GET /repos/pyreon/pyreon/actions/workflows/native-device.yml/runs --field per_page=100 --field branch=${branch} --jq '.workflow_runs'`
   try {
-    const out = execSync(cmd, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+    const out = execFileSync(
+      'gh',
+      [
+        'api',
+        '-X',
+        'GET',
+        '/repos/pyreon/pyreon/actions/workflows/native-device.yml/runs',
+        '--field',
+        'per_page=100',
+        '--field',
+        `branch=${branch}`,
+        '--jq',
+        '.workflow_runs',
+      ],
+      { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
+    )
     return JSON.parse(out) as WorkflowRun[]
   } catch (e) {
     throw new Error(`gh api fetch failed: ${(e as Error).message}`)
