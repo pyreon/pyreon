@@ -681,7 +681,18 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	// the chain entirely for clarity — one less closeBundle to call.
 	const plugins: Plugin[] = [mainPlugin];
 	if (config.mode === "ssg") plugins.push(ssgPlugin(userConfig));
-	if (config.mode === "ssr" || config.mode === "isr") plugins.push(ssrPlugin(userConfig));
+	if (config.mode === "ssr" || config.mode === "isr") {
+		// Phase 2 — hybrid rendering: the SSG plugin ALSO joins server-mode
+		// builds to prerender routes that declare `renderMode = 'ssg'`. Its
+		// closeBundle is a cheap no-op when no route declares a static mode
+		// (one file scan, no SSR sub-build). ORDER MATTERS: ssgPlugin runs
+		// BEFORE ssrPlugin so prerendered `dist/<path>/index.html` files
+		// exist when the ssrPlugin's adapter staging copies the client dir —
+		// after staging they'd miss the `dist/client/` copy the emitted
+		// node/bun server and CDN adapters serve static-first from.
+		plugins.push(ssgPlugin(userConfig));
+		plugins.push(ssrPlugin(userConfig));
+	}
 
 	// W20 — auto-wire imagePlugin and fontPlugin so `<Image>` / `<Font>` work
 	// out of the box. Each is opt-out via `image: false` / `font: false`.
@@ -870,8 +881,9 @@ async function handle404(
 	// `next(err)` if renderSsr rejects in a way we can't recover from.
 	try {
 		const result = await renderSsr(server, root, originalUrl, pathname);
-		// A redirect on the 404 path is nonsensical — treat anything that
-		// isn't rendered HTML as "fall through to the bare page".
+		// A loader-thrown redirect on the 404 path is nonsensical (skipLoaders
+		// isn't set here, but the not-found probe rarely has loaders) — treat
+		// anything that isn't rendered HTML as "fall through to the bare page".
 		if (result !== null && result.kind === "html") {
 			res.statusCode = result.status;
 			res.setHeader("Content-Type", "text/html; charset=utf-8");

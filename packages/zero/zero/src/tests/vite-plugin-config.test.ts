@@ -304,9 +304,14 @@ describe('zero vite-plugin config', () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin({ mode: 'ssr', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(2)
+      // Phase 2 — hybrid rendering: ssgPlugin ALSO joins server-mode builds
+      // to prerender renderMode='ssg' routes. ORDER IS LOAD-BEARING: ssg
+      // runs before ssr so prerendered files exist when adapter staging
+      // copies the client dir.
+      expect(plugins).toHaveLength(3)
       expect(plugins[0].name).toBe('pyreon-zero')
-      expect(plugins[1].name).toBe('pyreon-zero-ssr')
+      expect(plugins[1].name).toBe('pyreon-zero-ssg')
+      expect(plugins[2].name).toBe('pyreon-zero-ssr')
     })
 
     it('mode: "isr" returns main plugin AND ssr plugin (same plugin handles both)', async () => {
@@ -316,9 +321,10 @@ describe('zero vite-plugin config', () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin({ mode: 'isr', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(2)
+      expect(plugins).toHaveLength(3)
       expect(plugins[0].name).toBe('pyreon-zero')
-      expect(plugins[1].name).toBe('pyreon-zero-ssr')
+      expect(plugins[1].name).toBe('pyreon-zero-ssg')
+      expect(plugins[2].name).toBe('pyreon-zero-ssr')
     })
 
     it('default mode (no config) is "ssr" → returns main plugin AND ssr plugin', async () => {
@@ -327,9 +333,10 @@ describe('zero vite-plugin config', () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin({ image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(2)
+      expect(plugins).toHaveLength(3)
       expect(plugins[0].name).toBe('pyreon-zero')
-      expect(plugins[1].name).toBe('pyreon-zero-ssr')
+      expect(plugins[1].name).toBe('pyreon-zero-ssg')
+      expect(plugins[2].name).toBe('pyreon-zero-ssr')
     })
   })
 })

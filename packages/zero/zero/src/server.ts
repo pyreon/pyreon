@@ -35,6 +35,12 @@ export {
 
 // ─── ISR ────────────────────────────────────────────────────────────────────
 
+export type { RouteModeEntry } from "./route-modes";
+export {
+	assertModesSupported,
+	collectRouteModes,
+	resolveRenderModeForPath,
+} from "./route-modes";
 export type { ISRCacheEntry, ISRStore } from "./isr";
 export { createISRHandler, createMemoryStore } from "./isr";
 

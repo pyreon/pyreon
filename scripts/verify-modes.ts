@@ -124,6 +124,13 @@ function assertFileExists(path: string): void {
   if (!existsSync(path)) throw new Error(`expected file: ${path}`)
 }
 
+/** Inverse gate — the file must NOT exist (e.g. a 'spa' route must not be prerendered). */
+function assertFileAbsent(path: string): void {
+  if (existsSync(path)) {
+    throw new Error(`expected file ABSENT: ${path}`)
+  }
+}
+
 function assertFileContains(path: string, needle: string): void {
   assertFileExists(path)
   const content = readFileSync(path, 'utf-8')
@@ -668,6 +675,26 @@ const MATRIX: Cell[] = [
       // spec fails; remove this copyFile in ssr-plugin.ts → this assert fails.
       assertFileExists(join(dist, 'server', 'template.html'))
       assertFileContains(join(dist, 'server', 'template.html'), '/assets/')
+
+      // Phase 2 — HYBRID rendering inside an SSR app. ssr-showcase ships two
+      // probe routes: hybrid-static.ts (renderMode 'ssg') and hybrid-spa.ts
+      // (renderMode 'spa').
+      //   - The 'ssg' route is PRERENDERED at build (with its build-time
+      //     loader stamp baked in) AND staged into client/ so the emitted
+      //     node server can serve it static-first.
+      //   - The prerendered-paths manifest is the static-first contract the
+      //     emitted servers + CDN adapters read.
+      //   - The 'spa' route must NOT be prerendered (the server responds
+      //     with the CSR shell at request time).
+      //   - NO dist/404.html in hybrid (the SERVER owns 404s — only full
+      //     `mode: 'ssg'` builds emit the static 404 file).
+      // Bisect: revert the ssgPlugin inclusion for ssr mode in
+      // vite-plugin.ts → hybrid-static/index.html is never produced → fails.
+      assertFileContains(join(dist, 'hybrid-static', 'index.html'), 'hybrid-static-stamp')
+      assertFileContains(join(dist, 'client', 'hybrid-static', 'index.html'), 'hybrid-static-stamp')
+      assertFileContains(join(dist, '_pyreon-ssg-paths.json'), '/hybrid-static')
+      assertFileAbsent(join(dist, 'hybrid-spa', 'index.html'))
+      assertFileAbsent(join(dist, '404.html'))
     },
   },
   {

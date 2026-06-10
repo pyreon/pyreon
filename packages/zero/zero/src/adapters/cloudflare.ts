@@ -83,7 +83,7 @@ export function cloudflareAdapter(): Adapter {
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, mkdir } = await import('node:fs/promises')
+      const { writeFile, mkdir, readFile } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const outDir = options.outDir
@@ -107,7 +107,6 @@ export function cloudflareAdapter(): Adapter {
       // handler; `readBuiltTemplate()` reads that global first (see
       // `entry-server.ts`). Empty/missing template → empty global → the
       // server falls back exactly as before (SSG-only builds, etc.).
-      const { readFile } = await import('node:fs/promises')
       const builtTemplate = await readFile(
         join(outDir, '_server', 'template.html'),
         'utf-8',
@@ -150,7 +149,30 @@ export default {
 
       await writeFile(join(outDir, '_worker.js'), workerEntry)
 
-      // Cloudflare Pages config — _routes.json for routing
+      // Cloudflare Pages config — _routes.json for routing.
+      //
+      // Phase 2 — hybrid static-first: routes prerendered by the SSG pass
+      // (renderMode 'ssg' declarations; listed in `_pyreon-ssg-paths.json`,
+      // which the ssgPlugin's closeBundle writes BEFORE this adapter runs)
+      // are EXCLUDED from the worker so Pages' static layer serves their
+      // `<path>/index.html` directly — no function invocation, no SSR.
+      // Missing/malformed manifest → no excludes (every path hits the
+      // worker, which still renders correctly — graceful).
+      const prerenderedExcludes: string[] = []
+      try {
+        const manifestRaw = await readFile(
+          join(options.outDir, '_pyreon-ssg-paths.json'),
+          'utf-8',
+        )
+        const parsed = JSON.parse(manifestRaw) as { paths?: unknown }
+        if (Array.isArray(parsed.paths)) {
+          for (const p of parsed.paths) {
+            if (typeof p === 'string' && p.startsWith('/')) prerenderedExcludes.push(p)
+          }
+        }
+      } catch {
+        // No hybrid prerender pass ran — nothing to exclude.
+      }
       const routesConfig = {
         version: 1,
         include: ['/*'],
@@ -160,6 +182,7 @@ export default {
           '/site.webmanifest',
           '/robots.txt',
           '/sitemap.xml',
+          ...prerenderedExcludes,
         ],
       }
 

@@ -83,6 +83,50 @@ test.describe('SSR node deploy artifact', () => {
     expect(asset.headers()['content-type']).toContain('javascript')
   })
 
+  // ─── Phase 2 — hybrid rendering (per-route renderMode in an SSR app) ───────
+
+  test("hybrid 'ssg' route is served STATIC-FIRST — identical build-time stamp across requests", async ({
+    page,
+  }) => {
+    // hybrid-static.ts declares `renderMode = 'ssg'` and its loader bakes a
+    // timestamp AT RENDER TIME. Static-first proof: two requests return the
+    // SAME stamp (rendered once, at build). An SSR render would produce a
+    // fresh stamp per request — so this assertion is the load-bearing
+    // discriminator, not just a 200 check.
+    const first = await (await page.request.get('/hybrid-static')).text()
+    const second = await (await page.request.get('/hybrid-static')).text()
+    const stampOf = (html: string) =>
+      html.match(/data-testid="hybrid-static-stamp">(\d+)</)?.[1]
+    const a = stampOf(first)
+    const b = stampOf(second)
+    expect(a, 'expected the build-time stamp in the response').toBeTruthy()
+    expect(a).toBe(b)
+  })
+
+  test("hybrid 'spa' route returns the CSR SHELL raw — and mounts client-side", async ({
+    page,
+  }) => {
+    // hybrid-spa.ts declares `renderMode = 'spa'` — the opt-out-of-SSR hatch.
+    // RAW response: no server-rendered page markup, no unfilled placeholders.
+    const raw = await (await page.request.get('/hybrid-spa')).text()
+    expect(raw).not.toContain('hybrid-spa-page')
+    expect(raw).not.toContain('<!--pyreon-app-->')
+    // The shell still carries the hashed client entry — that's what mounts.
+    expect(raw).toMatch(/\/assets\/[\w.-]+\.js/)
+
+    // Browser: the client takes the SPA cold-start path (mount + loaders)
+    // and the page becomes interactive.
+    const errors: string[] = []
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text())
+    })
+    await page.goto('/hybrid-spa')
+    await expect(page.getByTestId('hybrid-spa-page')).toBeVisible()
+    await page.getByTestId('hybrid-spa-inc').click()
+    await expect(page.getByTestId('hybrid-spa-count')).toHaveText('1')
+    expect(errors, errors.join('\n')).toHaveLength(0)
+  })
+
   test('hydrates + client-side navigation works (assets load + run)', async ({ page }) => {
     const errors: string[] = []
     page.on('console', (m) => {
