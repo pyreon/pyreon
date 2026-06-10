@@ -762,6 +762,130 @@ export interface FeatureDefnIR {
   fields: { name: string; type: 'string' | 'number' | 'boolean' }[]
 }
 
+/**
+ * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1.
+ * Recognizes the simplest `zodSchema(z.object({...}))` pattern and
+ * emits a per-binding struct representing the validated shape.
+ * v1 supports `z.string()` / `z.number()` / `z.boolean()` fields.
+ * Schema-modifier chains (.min(), .max(), .email(), etc.) are
+ * accepted at the AST level but their constraints are NOT
+ * enforced in the emitted struct — v1 is shape only. v2 follow-up
+ * will emit runtime validation methods that honor constraints.
+ */
+/**
+ * Gap 4 v2.1 — constraint enforcement for emitted schemas.
+ * Extracted from Zod modifier chains: `.min(N)`, `.max(N)`,
+ * `.email()`, `.url()`, `.uuid()`. Each constraint becomes a
+ * runtime check inside the generated `parse()` method.
+ *
+ * For string fields:
+ *   - min: minimum length
+ *   - max: maximum length
+ *   - email: rough RFC-5322 email regex check
+ *   - url: rough URL regex check
+ *   - uuid: UUID-format check
+ *
+ * For number fields:
+ *   - min: numeric minimum (inclusive)
+ *   - max: numeric maximum (inclusive)
+ */
+export interface ZodFieldConstraints {
+  min?: number
+  max?: number
+  email?: boolean
+  url?: boolean
+  uuid?: boolean
+}
+
+/**
+ * Gap 4 v2.2 — compound field type extension.
+ * 'array' marks a list-of-primitive field (z.array(z.string()) etc.);
+ * the `element` carries the inner primitive type.
+ *
+ * Gap 4 v3 — `elementConstraints` carries constraints applied to the
+ * INNER element call (`z.array(z.string().min(2))`). v3 ships
+ * arrays-of-primitives + per-element constraints; nested arrays and
+ * arrays of objects remain deferred.
+ */
+export type ZodFieldType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  /**
+   * Gap 4 v3.2 — nested object reference. `schemaName` points at a
+   * sibling `ZodSchemaDefnIR` (typically synthesized + listed in the
+   * parent's `auxSchemas`). Emitters render as `<schemaName>` (struct
+   * or data class name) and route parse() through the named schema's
+   * own `parse()` method.
+   */
+  | { kind: 'object'; schemaName: string }
+  | {
+      kind: 'array'
+      /**
+       * Element type. v2.2 shipped primitives only; v3.2 adds nested
+       * object elements via `{ kind: 'object', schemaName }`.
+       */
+      element:
+        | 'string'
+        | 'number'
+        | 'boolean'
+        | { kind: 'object'; schemaName: string }
+      /** v3 — applies to PRIMITIVE element types only. */
+      elementConstraints?: ZodFieldConstraints
+    }
+
+export interface ZodSchemaDefnIR {
+  /** Top-level binding name (e.g. `userSchema`). */
+  bindingName: string
+  /** Field shape extracted from `z.object({ ... })`. */
+  fields: {
+    name: string
+    type: ZodFieldType
+    /** Gap 4 v2.1 — constraints extracted from the modifier chain. */
+    constraints?: ZodFieldConstraints
+    /**
+     * Gap 4 v2.2 — `.optional()` or `.nullable()` modifier present.
+     * Emitted as `T?` in both Swift and Kotlin; parse() returns nil
+     * (not throw) when the field is missing.
+     */
+    optional?: boolean
+  }[]
+  /**
+   * Gap 4 v3.2 — auxiliary schemas synthesized while parsing this
+   * one. A `z.object({ address: z.object({...}) })` produces an
+   * auxiliary `<binding>_address` schema; a `z.array(z.object({...}))`
+   * produces a `<binding>_<field>_Item`. The top-level schema's
+   * emitter must emit each aux schema as a sibling struct/data-class
+   * BEFORE the main schema (Swift compiles top-down; Kotlin uses
+   * forward references either way, but ordering improves readability).
+   */
+  auxSchemas?: ZodSchemaDefnIR[]
+  /**
+   * Gap 4 v3.3 — discriminated union shape. Set when the source is
+   * `z.discriminatedUnion('<field>', [z.object({...}), ...])`. When
+   * set, `fields` is empty — the emitter renders the schema as a
+   * Swift enum / Kotlin sealed class with each variant as an
+   * associated-value case. Each variant references an aux schema in
+   * `auxSchemas` (one per variant).
+   */
+  discriminator?: {
+    /** Discriminator field name (e.g. `'type'`). */
+    field: string
+    /** One entry per variant. */
+    variants: {
+      /** Literal value the variant matches (e.g. `'cat'`). */
+      literal: string
+      /** Aux schema name (the variant's struct/data class). */
+      schemaName: string
+      /**
+       * Variant tag (PascalCased literal). Used as the enum case /
+       * sealed-class subclass name (e.g. `Cat`, `Dog`).
+       */
+      caseName: string
+    }[]
+  }
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
@@ -792,6 +916,12 @@ export interface ParseResult {
    * schema's initialValues + name.
    */
   features: FeatureDefnIR[]
+  /**
+   * Gap 4 follow-up: @pyreon/validation Zod-schema v1 definitions
+   * from `const X = zodSchema(z.object({...}))`. Each one emits a
+   * per-binding struct + module-scope const.
+   */
+  zodSchemas: ZodSchemaDefnIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

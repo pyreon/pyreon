@@ -35,6 +35,9 @@ import type {
   StoreDefnIR,
   StructIR,
   TypeIR,
+  ZodFieldConstraints,
+  ZodFieldType,
+  ZodSchemaDefnIR,
 } from './types'
 
 // Mirror of emit-swift.ts's enum-state machinery. See that file's
@@ -151,6 +154,7 @@ export function emitKotlin(
   models: ModelDefnIR[] = [],
   fieldMetas: FieldMetaDefnIR[] = [],
   features: FeatureDefnIR[] = [],
+  zodSchemas: ZodSchemaDefnIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -190,6 +194,17 @@ export function emitKotlin(
   // Gap 4 follow-up — feature v1: emit per-feature schema data class
   // + module-scope object.
   for (const f of features) parts.push(emitKotlinFeature(f))
+  // Gap 4 follow-up — Zod / Valibot / ArkType schema data classes.
+  // Emit the shared PyreonSchemaError sealed class once if any
+  // schemas are present.
+  if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
+  // Gap 4 v3.2 — emit auxSchemas BEFORE their parent schema so the
+  // type-reference order is consistent top-down.
+  const emitKotlinSchemaTree = (zs: ZodSchemaDefnIR): void => {
+    for (const aux of zs.auxSchemas ?? []) emitKotlinSchemaTree(aux)
+    parts.push(emitKotlinZodSchema(zs))
+  }
+  for (const zs of zodSchemas) emitKotlinSchemaTree(zs)
   // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -333,6 +348,416 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
   lines.push(`}`)
   return lines.join('\n')
 }
+
+/**
+ * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Kotlin).
+ * Mirror of emitSwiftZodSchema. Produces a data class + module-scope
+ * const. Apps validate at JSON-decode via kotlinx.serialization; v1
+ * doesn't emit runtime .parse() methods (v2 follow-up).
+ *
+ *   data class PyreonZodSchema_userSchema(
+ *       var name: String = "",
+ *       var age: Int = 0,
+ *       var active: Boolean = false,
+ *   )
+ *   val userSchema = PyreonZodSchema_userSchema()
+ */
+function kotlinFieldType(t: ZodFieldType): string {
+  if (typeof t === 'string') {
+    return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Boolean'
+  }
+  if (t.kind === 'object') {
+    // Gap 4 v3.2 — nested object reference. Emit the synthesized data class name.
+    return `PyreonZodSchema_${t.schemaName}`
+  }
+  // v2.2 array — element may now be a nested object (v3.2).
+  let elem: string
+  if (typeof t.element === 'string') {
+    elem =
+      t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Boolean'
+  } else {
+    elem = `PyreonZodSchema_${t.element.schemaName}`
+  }
+  return `List<${elem}>`
+}
+
+function kotlinFieldInitial(t: ZodFieldType): string {
+  if (typeof t === 'string') {
+    return t === 'string' ? '""' : t === 'boolean' ? 'false' : '0'
+  }
+  if (t.kind === 'object') {
+    // Initialize nested object with its own default constructor
+    return `PyreonZodSchema_${t.schemaName}()`
+  }
+  return 'emptyList()'
+}
+
+/**
+ * Gap 4 v2.1 + v3 — emit Kotlin constraint-check guards for a scalar
+ * value. Used at three call sites: required scalar field, optional
+ * scalar field (with nullable-receiver `?.` syntax), and array-element
+ * loop body (with `ruleSuffix: " (element)"` for clearer messages).
+ */
+function emitKotlinScalarConstraints(
+  lines: string[],
+  targetName: string,
+  t: ZodFieldType,
+  constraints: ZodFieldConstraints | undefined,
+  fieldName: string,
+  indent: number,
+  nullableTarget: boolean,
+  ruleSuffix = '',
+): void {
+  if (!constraints) return
+  const isString = t === 'string'
+  const isNumber = t === 'number'
+  if (!isString && !isNumber) return
+  const ind = ' '.repeat(indent)
+  const c = constraints
+  // Nullable-receiver guards: `${target}?.length` returns Int? so we
+  // compare with `??`-aware logic. For optional fields, "null target"
+  // means "field absent" → constraint doesn't fire.
+  const dot = nullableTarget ? '?.' : '.'
+  const lenAccess = `${targetName}${dot}length`
+  if (isString) {
+    if (c.min !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${lenAccess}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${lenAccess} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
+        )
+      }
+    }
+    if (c.max !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${lenAccess}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${lenAccess} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
+        )
+      }
+    }
+    if (c.email) {
+      const guard = nullableTarget ? `${targetName} != null && ` : ''
+      lines.push(
+        `${ind}if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "email${ruleSuffix}")`,
+      )
+    }
+    if (c.url) {
+      const guard = nullableTarget ? `if (${targetName} != null) ` : ''
+      lines.push(
+        `${ind}${guard}try { java.net.URI(${targetName}${nullableTarget ? '!!' : ''}) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "url${ruleSuffix}") }`,
+      )
+    }
+    if (c.uuid) {
+      const guard = nullableTarget ? `if (${targetName} != null) ` : ''
+      lines.push(
+        `${ind}${guard}try { java.util.UUID.fromString(${targetName}${nullableTarget ? '!!' : ''}) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "uuid${ruleSuffix}") }`,
+      )
+    }
+  } else if (isNumber) {
+    if (c.min !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${targetName}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min ${c.min}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${targetName} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min ${c.min}${ruleSuffix}")`,
+        )
+      }
+    }
+    if (c.max !== undefined) {
+      if (nullableTarget) {
+        lines.push(
+          `${ind}if (${targetName} != null && ${targetName}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max ${c.max}${ruleSuffix}")`,
+        )
+      } else {
+        lines.push(
+          `${ind}if (${targetName} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max ${c.max}${ruleSuffix}")`,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Gap 4 v3 — emit a `for (elem in <field>Val) { ... }` loop applying
+ * the array's `elementConstraints` to each element. For nullable
+ * (optional) arrays, wrap in a null guard. No-op for scalars.
+ */
+function emitKotlinArrayElementConstraints(
+  lines: string[],
+  targetName: string,
+  t: ZodFieldType,
+  fieldName: string,
+  indent: number,
+  nullableTarget: boolean,
+): void {
+  if (typeof t === 'string') return
+  if (t.kind !== 'array') return
+  // v3.2 — object-element arrays don't have primitive elementConstraints;
+  // their per-element validation flows through the nested schema's parse().
+  if (typeof t.element !== 'string') return
+  if (!t.elementConstraints) return
+  if (Object.keys(t.elementConstraints).length === 0) return
+  const ind = ' '.repeat(indent)
+  const elementVar = `${fieldName}Element`
+  if (nullableTarget) {
+    lines.push(`${ind}if (${targetName} != null) {`)
+    lines.push(`${ind}    for (${elementVar} in ${targetName}) {`)
+    emitKotlinScalarConstraints(
+      lines,
+      elementVar,
+      t.element,
+      t.elementConstraints,
+      fieldName,
+      indent + 8,
+      /* nullableTarget */ false,
+      ' (element)',
+    )
+    lines.push(`${ind}    }`)
+    lines.push(`${ind}}`)
+  } else {
+    lines.push(`${ind}for (${elementVar} in ${targetName}) {`)
+    emitKotlinScalarConstraints(
+      lines,
+      elementVar,
+      t.element,
+      t.elementConstraints,
+      fieldName,
+      indent + 4,
+      /* nullableTarget */ false,
+      ' (element)',
+    )
+    lines.push(`${ind}}`)
+  }
+}
+
+/**
+ * Gap 4 v3.3 — emit a discriminated union as a Kotlin sealed class
+ * with one data-class variant per case. Each variant wraps its aux
+ * data class.
+ */
+function emitKotlinDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
+  const d = zs.discriminator!
+  const typeName = `PyreonZodSchema_${zs.bindingName}`
+  const lines: string[] = []
+  lines.push(`sealed class ${typeName} {`)
+  for (const v of d.variants) {
+    lines.push(
+      `    data class ${v.caseName}(val variant: PyreonZodSchema_${v.schemaName}) : ${typeName}()`,
+    )
+  }
+  lines.push(`    companion object {`)
+  lines.push(`        @Throws(PyreonSchemaError::class)`)
+  lines.push(`        fun parse(input: Map<String, Any?>): ${typeName} {`)
+  lines.push(
+    `            val discr = (input[${JSON.stringify(d.field)}] as? String)`,
+  )
+  lines.push(
+    `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(d.field)}, "String")`,
+  )
+  lines.push(`            return when (discr) {`)
+  for (const v of d.variants) {
+    lines.push(
+      `                ${JSON.stringify(v.literal)} -> ${v.caseName}(PyreonZodSchema_${v.schemaName}.parse(input))`,
+    )
+  }
+  lines.push(
+    `                else -> throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(d.field)}, "unknown discriminator value")`,
+  )
+  lines.push(`            }`)
+  lines.push(`        }`)
+  lines.push(``)
+  lines.push(
+    `        fun safeParse(input: Map<String, Any?>): Result<${typeName}> {`,
+  )
+  lines.push(`            return try {`)
+  lines.push(`                Result.success(parse(input))`)
+  lines.push(`            } catch (e: PyreonSchemaError) {`)
+  lines.push(`                Result.failure(e)`)
+  lines.push(`            }`)
+  lines.push(`        }`)
+  lines.push(`    }`)
+  lines.push(`}`)
+  return lines.join('\n') + '\n'
+}
+
+function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
+  // Gap 4 v3.3 — discriminated union: sealed-class shape.
+  if (zs.discriminator) return emitKotlinDiscriminatedUnion(zs)
+  const lines: string[] = []
+  lines.push(`data class PyreonZodSchema_${zs.bindingName}(`)
+  for (const f of zs.fields) {
+    const t = kotlinFieldType(f.type)
+    if (f.optional) {
+      lines.push(`    var ${f.name}: ${t}? = null,`)
+    } else {
+      const initial = kotlinFieldInitial(f.type)
+      lines.push(`    var ${f.name}: ${t} = ${initial},`)
+    }
+  }
+  lines.push(`) {`)
+  // Gap 4 v2 — runtime parse() / safeParse() companion methods.
+  lines.push(`    companion object {`)
+  lines.push(
+    `        @Throws(PyreonSchemaError::class)`,
+  )
+  lines.push(
+    `        fun parse(input: Map<String, Any?>): PyreonZodSchema_${zs.bindingName} {`,
+  )
+  for (const f of zs.fields) {
+    const t = kotlinFieldType(f.type)
+    // Gap 4 v3.2 — nested object field: route via the nested schema's
+    // own parse() method.
+    if (typeof f.type !== 'string' && f.type.kind === 'object') {
+      const nestedType = `PyreonZodSchema_${f.type.schemaName}`
+      if (f.optional) {
+        lines.push(
+          `            val ${f.name}Val: ${nestedType}? = if (input.containsKey(${JSON.stringify(f.name)})) {`,
+        )
+        lines.push(
+          `                val raw = (input[${JSON.stringify(f.name)}] as? Map<String, Any?>) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(nestedType)})`,
+        )
+        lines.push(`                ${nestedType}.parse(raw)`)
+        lines.push(`            } else null`)
+      } else {
+        lines.push(
+          `            val ${f.name}Raw = (input[${JSON.stringify(f.name)}] as? Map<String, Any?>)`,
+        )
+        lines.push(
+          `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(nestedType)})`,
+        )
+        lines.push(
+          `            val ${f.name}Val = ${nestedType}.parse(${f.name}Raw)`,
+        )
+      }
+      continue
+    }
+    // Gap 4 v3.2 — array of objects field: route via per-element parse().
+    if (
+      typeof f.type !== 'string' &&
+      f.type.kind === 'array' &&
+      typeof f.type.element !== 'string' &&
+      f.type.element.kind === 'object'
+    ) {
+      const nestedType = `PyreonZodSchema_${f.type.element.schemaName}`
+      const arrayType = `List<${nestedType}>`
+      if (f.optional) {
+        lines.push(
+          `            val ${f.name}Val: ${arrayType}? = if (input.containsKey(${JSON.stringify(f.name)})) {`,
+        )
+        lines.push(
+          `                val raw = (input[${JSON.stringify(f.name)}] as? List<Map<String, Any?>>) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(arrayType)})`,
+        )
+        lines.push(`                raw.map { ${nestedType}.parse(it) }`)
+        lines.push(`            } else null`)
+      } else {
+        lines.push(
+          `            val ${f.name}Raw = (input[${JSON.stringify(f.name)}] as? List<Map<String, Any?>>)`,
+        )
+        lines.push(
+          `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(arrayType)})`,
+        )
+        lines.push(
+          `            val ${f.name}Val = ${f.name}Raw.map { ${nestedType}.parse(it) }`,
+        )
+      }
+      continue
+    }
+    if (f.optional) {
+      // Optional field: missing → null, present-but-wrong-type → throw
+      lines.push(
+        `            val ${f.name}Val: ${t}? = if (input.containsKey(${JSON.stringify(f.name)})) (input[${JSON.stringify(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)}) else null`,
+      )
+      // Gap 4 v3 — constraints on optional fields apply ONLY when present;
+      // the null branch above leaves the field null untouched.
+      emitKotlinScalarConstraints(
+        lines,
+        `${f.name}Val`,
+        f.type,
+        f.constraints,
+        f.name,
+        12,
+        /* nullableTarget */ true,
+      )
+      // Gap 4 v3 — element constraints for optional arrays apply per-element
+      // when the array is present.
+      emitKotlinArrayElementConstraints(
+        lines,
+        `${f.name}Val`,
+        f.type,
+        f.name,
+        12,
+        /* nullableTarget */ true,
+      )
+      continue
+    }
+    lines.push(
+      `            val ${f.name}Val = (input[${JSON.stringify(f.name)}] as? ${t})`,
+    )
+    lines.push(
+      `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)})`,
+    )
+    // Gap 4 v2.1 — scalar constraints.
+    emitKotlinScalarConstraints(
+      lines,
+      `${f.name}Val`,
+      f.type,
+      f.constraints,
+      f.name,
+      12,
+      /* nullableTarget */ false,
+    )
+    // Gap 4 v3 — per-element constraints for required array fields.
+    emitKotlinArrayElementConstraints(
+      lines,
+      `${f.name}Val`,
+      f.type,
+      f.name,
+      12,
+      /* nullableTarget */ false,
+    )
+  }
+  const ctorArgs = zs.fields.map((f) => `${f.name} = ${f.name}Val`).join(', ')
+  lines.push(
+    `            return PyreonZodSchema_${zs.bindingName}(${ctorArgs})`,
+  )
+  lines.push(`        }`)
+  lines.push(``)
+  lines.push(
+    `        fun safeParse(input: Map<String, Any?>): Result<PyreonZodSchema_${zs.bindingName}> {`,
+  )
+  lines.push(`            return try {`)
+  lines.push(`                Result.success(parse(input))`)
+  lines.push(`            } catch (e: PyreonSchemaError) {`)
+  lines.push(`                Result.failure(e)`)
+  lines.push(`            }`)
+  lines.push(`        }`)
+  lines.push(`    }`)
+  lines.push(`}`)
+  lines.push(``)
+  lines.push(`val ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
+  return lines.join('\n')
+}
+
+/**
+ * Gap 4 v2 — emitted once at module scope when any schema is
+ * present. Single sealed exception hierarchy shared across all
+ * schemas in a file.
+ */
+const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
+    data class MissingOrWrongType(val field: String, val expected: String) :
+        PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
+    data class ConstraintViolation(val field: String, val rule: String) :
+        PyreonSchemaError("Field '$field' violated constraint '$rule'")
+}`
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
