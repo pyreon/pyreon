@@ -31,35 +31,12 @@ describe('Phase 3 — walled lifecycle tags surface silent-drop diagnostics', ()
   // for the new structural contract. The `<Suspense>` (no fallback)
   // shape is unchanged — never warned.
 
-  describe('<ErrorBoundary fallback={...}>', () => {
-    const SRC = `export function App() {
-      return <ErrorBoundary fallback={<Text>Error!</Text>}><Text>Safe</Text></ErrorBoundary>
-    }`
-
-    it('Swift: warns when fallback prop is present', () => {
-      const result = transform(SRC, { target: 'swift' })
-      const w = result.warnings.find((w) => w.includes('<ErrorBoundary>'))
-      expect(w).toBeDefined()
-      expect(w!).toContain('fallback')
-      expect(w!).toContain('no render-time try/catch on SwiftUI')
-    })
-
-    it('Kotlin: warns when fallback prop is present', () => {
-      const result = transform(SRC, { target: 'kotlin' })
-      const w = result.warnings.find((w) => w.includes('<ErrorBoundary>'))
-      expect(w).toBeDefined()
-      expect(w!).toContain('fallback')
-      expect(w!).toContain('no render-time try/catch on Compose')
-    })
-
-    it('does NOT warn when fallback prop is absent (baseline)', () => {
-      const src = `export function App() {
-        return <ErrorBoundary><Text>Safe</Text></ErrorBoundary>
-      }`
-      const swift = transform(src, { target: 'swift' })
-      expect(swift.warnings.some((w) => w.includes('<ErrorBoundary>'))).toBe(false)
-    })
-  })
+  // PR-3.3 — <ErrorBoundary fallback={...}> no longer surfaces a
+  // silent-drop warning: real ErrorBoundary emit (PyreonErrorBoundaryWrapper
+  // on Swift + Kotlin) replaces the walled path. See
+  // `lifecycle-errorboundary.test.ts` for the new structural contract.
+  // The `<ErrorBoundary>` (no fallback) shape is unchanged — never
+  // warned.
 
   describe('<KeepAlive when={...}>', () => {
     const SRC = `export function App() {
@@ -129,19 +106,19 @@ describe('Phase 3 — walled lifecycle tags surface silent-drop diagnostics', ()
     // the tag + dropped prop list + target name + per-target limitation
     // + Layer-4 workaround pointer. Tests both targets see the same
     // information shape (different target-specific wording).
-    // PR-3.2: uses <ErrorBoundary> (still walled). Suspense has real
-    // emit since PR-3.2 so it no longer surfaces this diagnostic.
+    // PR-3.2 (main) + PR-3.3 (this PR): Suspense + ErrorBoundary have
+    // real emit. KeepAlive is the only remaining walled tag.
     const SRC = `export function App() {
-      return <ErrorBoundary fallback={<Text>E</Text>}><Text>x</Text></ErrorBoundary>
+      return <KeepAlive when={shouldCache}><Text>x</Text></KeepAlive>
     }`
 
     it('both targets carry tag name, dropped prop, target name, and Layer-4 pointer', () => {
       for (const target of ['swift', 'kotlin'] as const) {
         const result = transform(SRC, { target })
-        const w = result.warnings.find((w) => w.includes('<ErrorBoundary>'))
+        const w = result.warnings.find((w) => w.includes('<KeepAlive>'))
         expect(w, `${target} should warn`).toBeDefined()
-        expect(w!).toContain('<ErrorBoundary>')
-        expect(w!).toContain('fallback')
+        expect(w!).toContain('<KeepAlive>')
+        expect(w!).toContain('when')
         expect(w!).toContain(target === 'swift' ? 'Swift' : 'Kotlin')
         expect(w!).toContain('Layer 4')
         expect(w!).toContain(target === 'swift' ? '<NativeIOS>' : '<NativeAndroid>')

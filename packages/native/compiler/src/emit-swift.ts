@@ -246,6 +246,8 @@ export function emitSwift(
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
   // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
   _needsSwiftSuspenseWrapper = false
+  // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
+  _needsSwiftErrorBoundaryWrapper = false
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -261,14 +263,14 @@ export function emitSwift(
   // Gap 4 follow-up — feature v1: emit per-feature schema struct +
   // module-scope const exposing initialValues + name.
   for (const f of features) parts.push(emitSwiftFeature(f))
-  // Emit components — populates _needsSwiftSuspenseWrapper if any
-  // <Suspense> element is encountered along the way.
+  // Emit components — populates _needsSwift{Suspense,ErrorBoundary}Wrapper
+  // if any <Suspense> / <ErrorBoundary> element is encountered.
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitSwiftComponent(c))
-  // Gap 3 PR-3.2 — if any Suspense site emitted, prepend the
-  // module-scope PyreonSuspenseWrapper helper struct (single
-  // definition serves all sites).
+  // Gap 3 PR-3.2/3.3 — if any wrapper-bearing site emitted, prepend the
+  // module-scope helper struct (single definition serves all sites).
   if (_needsSwiftSuspenseWrapper) parts.push(SWIFT_SUSPENSE_WRAPPER)
+  if (_needsSwiftErrorBoundaryWrapper) parts.push(SWIFT_ERROR_BOUNDARY_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -277,6 +279,7 @@ export function emitSwift(
   _storeHooks = new Map()
   _modelInstances = new Map()
   _needsSwiftSuspenseWrapper = false
+  _needsSwiftErrorBoundaryWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -1506,19 +1509,23 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // fallback / cache behaviour is inert until a runtime-model design
   // lands (tracked in the multiplatform plan as Phase 5 frontier).
   // Gap 3 PR-3.2 — real Suspense emit (mount-time splash semantic).
-  // SwiftUI has no async-render-suspend mechanism, so v1 ports the
-  // semantic that's actually expressible: fallback shows on first
-  // mount, content shows once the .task callback flips state. This
-  // is the standard "splash screen on startup" pattern + matches the
-  // audit-documented v1 contract.
+  // Gap 3 PR-3.3 — real ErrorBoundary emit (structural fallback).
+  // SwiftUI has no async-render-suspend OR try/catch around View
+  // construction; v1 ports the semantics that ARE expressible:
+  //   Suspense: fallback shows on first mount, content shows once
+  //     the .task callback flips state — "splash screen on startup".
+  //   ErrorBoundary: children render by default; a Layer-4 NativeIOS
+  //     escape hatch (or future runtime hook) can flip the wrapper's
+  //     `hasError` state to swap to fallback.
   //
-  // ErrorBoundary + KeepAlive remain walled (no faithful semantic
-  // available on SwiftUI yet — separate PRs); the silent-drop
-  // diagnostic for their dropped `fallback` / `when` props stays.
+  // KeepAlive remains walled (separate PR-3.4 follow-up).
   if (tag === 'Suspense') {
     return emitSwiftSuspense(e, indent)
   }
-  if (tag === 'ErrorBoundary' || tag === 'KeepAlive') {
+  if (tag === 'ErrorBoundary') {
+    return emitSwiftErrorBoundary(e, indent)
+  }
+  if (tag === 'KeepAlive') {
     return emitSwiftWalledTagAsChildren(e, indent, tag)
   }
   if (tag === 'Text') return emitSwiftText(e, indent)
@@ -1957,6 +1964,67 @@ function emitSwiftSuspense(
 }
 
 /**
+ * Gap 3 PR-3.3 — real `<ErrorBoundary fallback={X}>` emit (structural
+ * boundary primitive). SwiftUI has no try/catch around View body
+ * construction, so v1 ships the boundary infrastructure: children
+ * render by default; the wrapper holds `@State hasError` that can be
+ * flipped to swap to fallback.
+ *
+ *   <ErrorBoundary fallback={<ErrorView/>}>
+ *     <RiskyContent/>
+ *   </ErrorBoundary>
+ *
+ * emits as
+ *
+ *   PyreonErrorBoundaryWrapper(content: { RiskyContent() },
+ *                              fallback: { ErrorView() })
+ *
+ * The fallback path EXISTS in compiled code — Layer-4 NativeIOS
+ * escape hatches OR future runtime hooks can connect to it via
+ * ${'@'}Environment values. This is honestly less than the web's
+ * auto-catch semantic (which native can't deliver), but provides
+ * the structural primitive apps can extend.
+ *
+ * Bails to walled emit + warning when no `fallback` prop is present
+ * (a no-fallback ErrorBoundary is just a Group wrapper).
+ */
+function emitSwiftErrorBoundary(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const fallbackAttr = e.attrs.find(
+    (a) => a.kind === 'attr' && a.name === 'fallback',
+  ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+  if (!fallbackAttr) {
+    return emitSwiftWalledTagAsChildren(e, indent, 'ErrorBoundary')
+  }
+  const fallbackExpr = fallbackAttr.value
+  if (fallbackExpr.kind !== 'jsx-element') {
+    _emitWarnings.push(
+      '<ErrorBoundary fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
+    )
+    return emitSwiftWalledTagAsChildren(e, indent, 'ErrorBoundary')
+  }
+  _needsSwiftErrorBoundaryWrapper = true
+  const inner = ' '.repeat(indent + 2)
+  const p = ' '.repeat(indent)
+  const childrenBody = e.children
+    .map((c) => inner + '  ' + emitSwiftChild(c, indent + 4))
+    .join('\n')
+  const fallbackBody =
+    inner +
+    '  ' +
+    emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  return (
+    `PyreonErrorBoundaryWrapper(content: {\n` +
+    `${childrenBody}\n` +
+    `${p}}, fallback: {\n` +
+    `${fallbackBody}\n` +
+    `${p}})`
+  )
+}
+
+/**
  * Helper struct emitted once at module scope when any Suspense site
  * is encountered (gated on `_needsSwiftSuspenseWrapper`). Owns the
  * `@State` loading flag + `.task` lifecycle so per-Suspense call
@@ -1981,7 +2049,28 @@ private struct PyreonSuspenseWrapper<Content: View, Fallback: View>: View {
     }
 }`
 
+/**
+ * Helper struct emitted once at module scope when any ErrorBoundary
+ * site is encountered. Owns the `@State hasError` boundary state.
+ * Default semantic: children render. v2 follow-up will plug in a
+ * runtime hook for auto-catch (likely via ${'@'}Environment value).
+ */
+const SWIFT_ERROR_BOUNDARY_WRAPPER = `@available(iOS 17.0, macOS 14.0, *)
+private struct PyreonErrorBoundaryWrapper<Content: View, Fallback: View>: View {
+    let content: () -> Content
+    let fallback: () -> Fallback
+    @State private var hasError = false
+    var body: some View {
+        if hasError {
+            fallback()
+        } else {
+            content()
+        }
+    }
+}`
+
 let _needsSwiftSuspenseWrapper = false
+let _needsSwiftErrorBoundaryWrapper = false
 
 function emitSwiftWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
