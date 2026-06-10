@@ -158,6 +158,17 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'collab-board',
+    script: 'test:e2e:collab-board',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/fundamentals/sync/',
+      'packages/fundamentals/dnd/',
+      'examples/collab-board/',
+      'e2e/collab-board',
+    ],
+  },
+  {
     name: 'zero-islands',
     script: 'test:e2e:zero-islands',
     triggers: [

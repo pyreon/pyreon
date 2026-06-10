@@ -44,6 +44,7 @@
     "test:e2e:islands": "bunx playwright test --config=e2e-configs/islands-showcase.config.ts",
     "test:e2e:sync-yjs-demo": "bunx playwright test --config=e2e-configs/sync-yjs-demo.config.ts",
     "test:e2e:sync-ws-relay": "bunx playwright test --config=e2e-configs/sync-ws-relay.config.ts",
+    "test:e2e:collab-board": "bunx playwright test --config=e2e-configs/collab-board.config.ts",
     "test:e2e:docs": "bunx playwright test --config=e2e-configs/docs.config.ts",
     "test:e2e:ssr-node": "bunx playwright test --config=e2e-configs/ssr-node.config.ts",
     "test:e2e:isr-node": "bunx playwright test --config=e2e-configs/isr-node.config.ts",

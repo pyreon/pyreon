@@ -187,6 +187,29 @@
         "vite": "^8.0.16",
       },
     },
+    "examples/collab-board": {
+      "name": "@pyreon/example-collab-board",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/dnd": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/permissions": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/storage": "workspace:*",
+        "@pyreon/sync": "workspace:*",
+        "@pyreon/toast": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.3.14",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.16",
+      },
+    },
     "examples/cpa-pw-app": {
       "name": "cpa-pw-app",
       "version": "0.0.17",
@@ -2910,6 +2933,8 @@
     "@pyreon/elements": ["@pyreon/elements@workspace:packages/ui-system/elements"],
 
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
+
+    "@pyreon/example-collab-board": ["@pyreon/example-collab-board@workspace:examples/collab-board"],
 
     "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
 
