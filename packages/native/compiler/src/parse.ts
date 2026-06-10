@@ -3034,6 +3034,12 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
     }
     case 'MemberExpression': {
       const object = parseExpr(node.object, ctx)
+      // Computed access (`xs[i]`) — the property is an EXPRESSION, not
+      // a name. Pre-PR-D this fell through to the member case with
+      // `property: undefined` → emitted `xs.undefined`.
+      if (node.computed === true) {
+        return { kind: 'index', object, index: parseExpr(node.property, ctx) }
+      }
       const property = node.property?.name as string
       return { kind: 'member', object, property }
     }

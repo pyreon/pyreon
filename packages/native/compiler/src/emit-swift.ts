@@ -15,6 +15,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { substituteIdentifier } from './expr-utils'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -1704,6 +1705,53 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
         return `PyreonStore_${storeId}.shared.${field} = ${value}`
       }
+      // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
+      // `x = EXPR[list := <read of x>]` by IR-level param substitution,
+      // producing the SAME idiomatic emit the hand-written
+      // `.set(x().map(...))` form produces. Covers local signals AND
+      // store fields (`useApp().store.tasks.update(fn)` — the
+      // substituted READ re-enters the store-chain rewrite; the LHS
+      // uses the singleton form explicitly, since a bare member chain
+      // would emit the un-rewritten `useApp().store.tasks`).
+      // Conservative bails (non-arrow callback, parameterless arrow,
+      // shadowed param) emit a warning + keep the raw `.update(` emit
+      // so swiftc names the site loudly.
+      if (e.callee.kind === 'member' && e.callee.property === 'update' && e.args.length === 1) {
+        const target = e.callee.object
+        let storeLhs: string | undefined
+        let isUpdateTarget = target.kind === 'identifier' && _signalNames.has(target.name)
+        if (
+          !isUpdateTarget &&
+          target.kind === 'member' &&
+          target.object.kind === 'member' &&
+          target.object.property === 'store' &&
+          target.object.object.kind === 'call' &&
+          target.object.object.callee.kind === 'identifier' &&
+          _storeHooks.has(target.object.object.callee.name)
+        ) {
+          isUpdateTarget = true
+          const storeId = _storeHooks.get(target.object.object.callee.name)!
+          storeLhs = `PyreonStore_${storeId}.shared.${swiftIdent(target.property)}`
+        }
+        if (isUpdateTarget) {
+          const fn = e.args[0]!
+          if (fn.kind === 'arrow' && fn.params.length === 1) {
+            // The current-value read: for a local signal the bare name;
+            // for a store field, the zero-arg read-call IR whose emit
+            // re-enters the store-chain rewrite above.
+            const read: ExprIR =
+              storeLhs === undefined ? target : { kind: 'call', callee: target, args: [] }
+            const substituted = substituteIdentifier(fn.body, fn.params[0]!, read)
+            if (substituted !== null) {
+              const lhs = storeLhs ?? emitSwiftExpr(target, indent)
+              return `${lhs} = ${emitSwiftExpr(substituted, indent)}`
+            }
+          }
+          _emitWarnings.push(
+            '`.update(fn)` lowering supports a single-param expression-body arrow whose param is not shadowed by a nested arrow — this call keeps the raw `.update(` emit (a swiftc error at the site). Use `.set(read().…)` or rename the colliding inner param.',
+          )
+        }
+      }
       // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
         const target = emitSwiftExpr(e.callee.object, indent)
@@ -1809,6 +1857,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const callee = emitSwiftExpr(e.callee, indent)
       const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
       return `${callee}(${args})`
+    }
+    case 'index': {
+      // `xs[i]` — Swift arrays share the subscript syntax verbatim.
+      return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
     }
     case 'member': {
       // Gap 4 v1: rewrite the store-hook chain `<useFoo>().store.X`

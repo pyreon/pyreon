@@ -483,6 +483,15 @@ export type ExprIR =
   | { kind: 'identifier'; name: string }
   | { kind: 'call'; callee: ExprIR; args: ExprIR[] }
   | { kind: 'member'; object: ExprIR; property: string }
+  /**
+   * Computed member access — `xs[i]`, `tasks[tasks.length - 1]`.
+   * Swift arrays and Kotlin lists share the `xs[i]` subscript syntax,
+   * so the emit is verbatim per target. Pre-PR-D, `computed: true`
+   * MemberExpressions fell into the `member` case with
+   * `property: undefined` — the emit produced `tasks.undefined`
+   * (the broken shape the original tasks scaffold shipped).
+   */
+  | { kind: 'index'; object: ExprIR; index: ExprIR }
   | { kind: 'binary'; op: '+' | '-' | '*' | '/' | '%'; left: ExprIR; right: ExprIR }
   /**
    * Comparison + equality operators emit as-is on both Swift and Kotlin
