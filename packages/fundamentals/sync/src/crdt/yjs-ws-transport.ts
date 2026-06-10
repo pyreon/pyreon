@@ -1,13 +1,27 @@
 import * as Y from 'yjs'
+import {
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+  removeAwarenessStates,
+} from 'y-protocols/awareness'
 import { REMOTE_ORIGIN } from './types'
+import { peekDocAwareness } from './yjs-awareness'
 import type { YjsCrdtDoc } from './yjs-adapter'
 import {
+  MSG_AWARENESS,
   MSG_STATE_VECTOR,
   MSG_UPDATE,
   decodeSyncMessage,
   encodeSyncMessage,
   toBytes,
 } from './ws-protocol'
+
+/** The `{ added, updated, removed }` clientId lists a y-protocols awareness event carries. */
+interface AwarenessChange {
+  added: number[]
+  updated: number[]
+  removed: number[]
+}
 
 type WebSocketCtor = new (url: string) => WebSocket
 
@@ -89,6 +103,24 @@ export function connectViaWebSocket(
   }
   doc.yDoc.on('update', onUpdate)
 
+  // Awareness (ephemeral presence) rides the SAME socket on a separate message
+  // type. Wired ONLY when the app opted in by creating a `syncedAwareness` for
+  // this doc (peek, don't create — doc-only apps pay nothing). Reuse the SHARED
+  // REMOTE_ORIGIN doc-update tag so a received awareness is applied but NOT
+  // re-sent by this OR a sibling transport — the cross-transport (WS↔Broadcast
+  // Channel) loop guard.
+  const aw = peekDocAwareness(doc)
+  const onAwarenessUpdate =
+    aw &&
+    (({ added, updated, removed }: AwarenessChange, origin: unknown) => {
+      if (origin === REMOTE_ORIGIN) return
+      if (ws && ws.readyState === 1) {
+        const changed = [...added, ...updated, ...removed]
+        ws.send(encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(aw, changed)))
+      }
+    })
+  if (aw && onAwarenessUpdate) aw.on('update', onAwarenessUpdate)
+
   const scheduleReconnect = () => {
     attempt++
     const delay = Math.min(maxBackoff, 100 * 2 ** attempt)
@@ -109,6 +141,9 @@ export function connectViaWebSocket(
       attempt = 0
       connected = true
       ws?.send(encodeSyncMessage(MSG_STATE_VECTOR, Y.encodeStateVector(doc.yDoc)))
+      // Publish our full local presence so the relay + peers learn us — also
+      // re-runs on every reconnect, re-establishing presence after a drop.
+      if (aw) ws?.send(encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(aw, [aw.clientID])))
       options.onConnect?.()
     }
     ws.onmessage = (event: MessageEvent) => {
@@ -122,6 +157,9 @@ export function connectViaWebSocket(
           const { type, payload } = decodeSyncMessage(bytes)
           if (type === MSG_STATE_VECTOR) {
             ws?.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(doc.yDoc, payload)))
+          } else if (type === MSG_AWARENESS) {
+            // Apply under REMOTE_ORIGIN so our send-listener doesn't echo it back.
+            if (aw) applyAwarenessUpdate(aw, payload, REMOTE_ORIGIN)
           } else {
             Y.applyUpdate(doc.yDoc, payload, REMOTE_ORIGIN)
           }
@@ -160,6 +198,18 @@ export function connectViaWebSocket(
         reconnectTimer = null
       }
       doc.yDoc.off('update', onUpdate)
+      if (aw && onAwarenessUpdate) {
+        // Announce our departure WHILE the socket is still open (the listener
+        // is still attached, so the removal broadcasts), THEN detach. The
+        // relay's socket-close cleanup is the real guarantee — this is the fast
+        // path (and the only path on a relay-less direct link).
+        try {
+          removeAwarenessStates(aw, [aw.clientID], 'local')
+        } catch {
+          // awareness already destroyed (primitive disposed first) — nothing to announce
+        }
+        aw.off('update', onAwarenessUpdate)
+      }
       ws?.close()
       ws = null
     },

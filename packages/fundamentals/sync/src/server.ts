@@ -1,13 +1,27 @@
 import type { IncomingMessage, Server as HttpServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { type RawData, type WebSocket as WsSocket, WebSocketServer } from 'ws'
+import {
+  Awareness,
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+  removeAwarenessStates,
+} from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import {
+  MSG_AWARENESS,
   MSG_STATE_VECTOR,
   MSG_UPDATE,
   decodeSyncMessage,
   encodeSyncMessage,
 } from './crdt/ws-protocol'
+
+/** The `{ added, updated, removed }` clientId lists a y-protocols awareness event carries. */
+interface AwarenessChange {
+  added: number[]
+  updated: number[]
+  removed: number[]
+}
 
 // `@pyreon/sync/server` — a Node/Bun WebSocket relay for the Yjs sync protocol.
 // Server-only (imports `ws` + `node:http`); kept at this subpath so it never
@@ -62,6 +76,13 @@ export interface SyncServer {
 interface Room {
   doc: Y.Doc
   clients: Set<WsSocket>
+  // Ephemeral presence for the room (who's here + cursors). The relay tracks it
+  // so a NEW client sees existing peers INSTANTLY (a stateless relay can't — no
+  // one to pull from). NEVER persisted; a peer's state is purged on disconnect.
+  awareness: Awareness
+  // Which awareness clientIds each socket has announced — so a socket's states
+  // can be removed when it disconnects (mirrors y-websocket's server).
+  socketClients: Map<WsSocket, Set<number>>
 }
 
 /** Normalize a `ws` RawData frame (Buffer | ArrayBuffer | Buffer[]) to a Uint8Array — synchronous so message order is preserved. */
@@ -102,8 +123,33 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
   const getRoom = (name: string): Room => {
     let r = rooms.get(name)
     if (!r) {
-      r = { doc: new Y.Doc(), clients: new Set() }
-      rooms.set(name, r)
+      const doc = new Y.Doc()
+      const room: Room = {
+        doc,
+        clients: new Set(),
+        awareness: new Awareness(doc),
+        socketClients: new Map(),
+      }
+      // The SINGLE place awareness is broadcast — covers both relayed client
+      // updates AND `removeAwarenessStates` removals on disconnect. Record which
+      // socket owns which clientIds (for disconnect purge), then fan the encoded
+      // change out to every client EXCEPT the origin socket (a relayed update;
+      // it already has it) — or to ALL when origin is the 'disconnect' string.
+      room.awareness.on('update', ({ added, updated, removed }: AwarenessChange, origin: unknown) => {
+        const changed = [...added, ...updated, ...removed]
+        if (changed.length === 0) return
+        const owned = origin ? room.socketClients.get(origin as WsSocket) : undefined
+        if (owned) {
+          for (const id of added) owned.add(id)
+          for (const id of updated) owned.add(id)
+        }
+        const frame = encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(room.awareness, changed))
+        for (const c of room.clients) {
+          if (c !== origin) safeSend(c, frame)
+        }
+      })
+      rooms.set(name, room)
+      r = room
     }
     return r
   }
@@ -137,6 +183,7 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
 
       const r = getRoom(room)
       r.clients.add(socket)
+      r.socketClients.set(socket, new Set())
 
       // Kick off the SYMMETRIC sync handshake (the standard y-protocols shape):
       // send the room's state vector so the client replies with exactly the ops
@@ -148,6 +195,20 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
       // already symmetric: on `open` it sends ITS state vector (→ we reply with
       // the diff below), and it replies to this one with its missing-for-room ops.
       safeSend(socket, encodeSyncMessage(MSG_STATE_VECTOR, Y.encodeStateVector(r.doc)))
+
+      // Send the room's CURRENT awareness so the joiner sees existing peers
+      // INSTANTLY. Exclude the relay's OWN clientId (a fresh Awareness carries an
+      // empty `{}` entry for its local client) — or the joiner would render a
+      // phantom presence for the relay itself.
+      const presentClients = [...r.awareness.getStates().keys()].filter(
+        (id) => id !== r.awareness.clientID,
+      )
+      if (presentClients.length > 0) {
+        safeSend(
+          socket,
+          encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(r.awareness, presentClients)),
+        )
+      }
 
       socket.on('message', (data: RawData) => {
         // Decode + apply defensively: a buggy or hostile client can send a
@@ -178,6 +239,21 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
           return
         }
 
+        if (type === MSG_AWARENESS) {
+          // Ephemeral presence — NEVER applied to the room doc (not persisted).
+          // Apply to the room's Awareness (origin = this socket); its `update`
+          // handler records ownership + broadcasts to the OTHER clients. Drop a
+          // malformed frame rather than crash the relay (same DoS guard as docs).
+          try {
+            applyAwarenessUpdate(r.awareness, payload, socket)
+          } catch (err) {
+            if (IS_DEV) {
+              console.warn('[Pyreon] sync relay: dropped a malformed awareness frame:', err)
+            }
+          }
+          return
+        }
+
         // Apply to the authoritative room doc. Only fan out to the OTHER clients
         // if it actually applied — never propagate a frame that threw, or we'd
         // crash every peer in turn.
@@ -197,7 +273,24 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
 
       socket.on('close', () => {
         r.clients.delete(socket)
-        if (r.clients.size === 0) rooms.delete(room)
+        // Purge this socket's awareness states + broadcast the removal to the
+        // remaining clients (the `update` handler fans the removal out). This is
+        // the GUARANTEE that a vanished client's cursor/avatar disappears even on
+        // an unclean disconnect (crash / network drop) where the client couldn't
+        // announce its own departure.
+        const owned = r.socketClients.get(socket)
+        if (owned && owned.size > 0) {
+          try {
+            removeAwarenessStates(r.awareness, [...owned], 'disconnect')
+          } catch {
+            // awareness teardown raced room GC — nothing to remove
+          }
+        }
+        r.socketClients.delete(socket)
+        if (r.clients.size === 0) {
+          r.awareness.destroy()
+          rooms.delete(room)
+        }
       })
     })()
   })

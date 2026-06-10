@@ -205,6 +205,40 @@ Render it with a **keyed `<For>`** so a remote change reconciles `O(changed)`, n
 </For>
 ```
 
+### Presence & live cursors — syncedAwareness
+
+`syncedAwareness` gives you **ephemeral presence** — who's online and their live cursor — over the Yjs _awareness_ protocol. This is a **separate channel** from the document: awareness is **never merged into the doc and never persisted**, and a peer's state is purged the moment it disconnects. It's the right tool for "3 people here" avatars and live collaborator cursors; it is the **wrong** tool for anything durable (use `syncedSignal` / `syncedStore` / `syncedText` for that).
+
+```tsx
+import { createYjsDoc, syncedAwareness, connectViaWebSocket } from '@pyreon/sync/yjs'
+
+const doc = createYjsDoc()
+// Create presence BEFORE connecting — the transport wires the doc's awareness at connect time.
+const presence = syncedAwareness<{ name: string; color: string; cursor?: { x: number; y: number } }>(
+  doc,
+  { name: 'Vít', color: '#e8590c' },
+)
+connectViaWebSocket(doc, 'wss://sync.example.com/room?token=abc')
+
+// Publish a live cursor (throttle the high-frequency write):
+window.addEventListener('mousemove', (e) =>
+  presence.setLocalField('cursor', { x: e.clientX, y: e.clientY }),
+)
+
+// Render everyone ELSE's cursors + avatars (`others` excludes you):
+<For each={() => presence.others()} by={(p) => p.clientId}>
+  {(p) => <Cursor color={p.state.color} name={p.state.name} at={p.state.cursor} />}
+</For>
+```
+
+- `presence.others()` — every **other** peer (the avatars / cursors to render). `presence.states()` includes you; `presence.local()` is your own published state.
+- `setLocal(state)` replaces your whole presence; `setLocalField(key, value)` patches one field (ideal for a throttled cursor).
+- The **relay is awareness-stateful**: a client that joins sees existing peers **instantly** (the relay replays the room's presence on connect), and a client that **crashes** is purged on socket close — so no ghost cursor lingers.
+
+:::warning
+Awareness is **ephemeral** — don't store durable data in it. And create `syncedAwareness` **before** connecting a transport; presence created afterwards isn't wired (the transport peeks for the doc's awareness at connect). Cursor coordinates are raw viewport points (no scroll / window-size normalization) — fine for v1; map to content coordinates if you need pixel parity across differently-sized windows.
+:::
+
 ## Offline persistence — IndexedDB
 
 `persistViaIndexedDB` makes edits survive a reload and lets the app work offline (a thin wrapper over `y-indexeddb`). It is **browser-only** — it opens the IndexedDB connection eagerly.
@@ -411,6 +445,7 @@ Sync is a powerful capability, but be precise about what it does and doesn't gua
 | `createYjsDoc(yDoc?)` | function | A `CrdtDoc` backed by a real Yjs `Y.Doc`. |
 | `syncedText(doc, key)` | function | Collaborative string (`Y.Text`, character merge). |
 | `syncedList(doc, key)` | function | Collaborative list (`Y.Array`, positional merge). |
+| `syncedAwareness(doc, initial?)` | function | Ephemeral presence + live cursors (never persisted). |
 | `persistViaIndexedDB(doc, dbName)` | function | Offline durability (browser-only). |
 | `connectViaBroadcastChannel(doc, name)` | function | Same-origin cross-tab transport. |
 | `connectViaWebSocket(doc, url, options?)` | function | Cross-device transport (auto-reconnect). |
