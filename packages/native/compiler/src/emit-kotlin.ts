@@ -11,6 +11,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { substituteIdentifier } from './expr-utils'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import {
   type FlatRouteEntry,
@@ -1308,6 +1309,22 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
  *     single-expression body form; idiomatic Kotlin)
  *   - Multi-statement → full block with explicit returns
  */
+/**
+ * Does this emitted-expression string denote a Kotlin ASSIGNMENT
+ * (`target = value`) rather than a value expression? Drives the
+ * expression-body vs block-body decision in `emitKotlinFunction` —
+ * Kotlin assignments are statements, so `fun f() = x = v` is a syntax
+ * error. String-level check on the lowered output (the assignment
+ * lowerings — signal/store `.set` and `.update` — all produce
+ * `<ident-chain> = …` with a single space-equals-space at the top
+ * level); an `==`/`!=`/`<=`/`>=` comparison never matches because of
+ * the surrounding-space requirement plus the leading ident-chain
+ * anchor.
+ */
+function kotlinExprIsAssignment(emitted: string): boolean {
+  return /^[A-Za-z_][\w.()]*\s=\s/.test(emitted)
+}
+
 function emitKotlinFunction(
   d: Extract<DeclIR, { kind: 'function' }>,
   ctx: KotlinCtx,
@@ -1324,6 +1341,16 @@ function emitKotlinFunction(
     d.body[0]!.expr !== undefined
   ) {
     const concise = emitKotlinExpr((d.body[0]! as { expr: ExprIR }).expr, 0)
+    // An expression that LOWERS to an assignment (`.set` / `.update` on
+    // a signal or store field → `x = v`) cannot use the
+    // expression-body form — Kotlin assignments are statements, so
+    // `fun reset() = count = 0` is a syntax error. Pre-existing gap
+    // exposed the moment a fixture used an expression-body arrow for a
+    // mutation (`const reset = () => count.set(0)`); all earlier
+    // fixtures used block bodies. Block form is always-correct here.
+    if (kotlinExprIsAssignment(concise)) {
+      return `fun ${kotlinIdent(d.name)}(${params})${retType} {\n    ${concise}\n  }`
+    }
     return `fun ${kotlinIdent(d.name)}(${params})${retType} = ${concise}`
   }
   const bodyLines = d.body
@@ -1565,6 +1592,41 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const value = e.args[0] ? emitKotlinExpr(e.args[0], indent) : '0'
         return `PyreonStore_${storeId}.${field} = ${value}`
       }
+      // `.update(fn)` lowering — mirror of emit-swift's (see its doc
+      // comment): IR-level param substitution into an assignment.
+      if (e.callee.kind === 'member' && e.callee.property === 'update' && e.args.length === 1) {
+        const target = e.callee.object
+        let storeLhs: string | undefined
+        let isUpdateTarget = target.kind === 'identifier' && _signalNames.has(target.name)
+        if (
+          !isUpdateTarget &&
+          target.kind === 'member' &&
+          target.object.kind === 'member' &&
+          target.object.property === 'store' &&
+          target.object.object.kind === 'call' &&
+          target.object.object.callee.kind === 'identifier' &&
+          _storeHooksKotlin.has(target.object.object.callee.name)
+        ) {
+          isUpdateTarget = true
+          const storeId = _storeHooksKotlin.get(target.object.object.callee.name)!
+          storeLhs = `PyreonStore_${storeId}.${kotlinIdent(target.property)}`
+        }
+        if (isUpdateTarget) {
+          const fn = e.args[0]!
+          if (fn.kind === 'arrow' && fn.params.length === 1) {
+            const read: ExprIR =
+              storeLhs === undefined ? target : { kind: 'call', callee: target, args: [] }
+            const substituted = substituteIdentifier(fn.body, fn.params[0]!, read)
+            if (substituted !== null) {
+              const lhs = storeLhs ?? emitKotlinExpr(target, indent)
+              return `${lhs} = ${emitKotlinExpr(substituted, indent)}`
+            }
+          }
+          _emitWarnings.push(
+            '`.update(fn)` lowering supports a single-param expression-body arrow whose param is not shadowed by a nested arrow — this call keeps the raw `.update(` emit (a kotlinc error at the site). Use `.set(read().…)` or rename the colliding inner param.',
+          )
+        }
+      }
       // `signal.set(x)` → `signal = x` (Kotlin's `by mutableStateOf` is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
         const target = emitKotlinExpr(e.callee.object, indent)
@@ -1641,6 +1703,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const callee = emitKotlinExpr(e.callee, indent)
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
       return `${callee}(${args})`
+    }
+    case 'index': {
+      // `xs[i]` — Kotlin lists share the subscript syntax verbatim.
+      return `${emitKotlinExpr(e.object, indent)}[${emitKotlinExpr(e.index, indent)}]`
     }
     case 'member': {
       // Gap 4 v1: rewrite `<useFoo>().store.X` → `PyreonStore_foo.X`.

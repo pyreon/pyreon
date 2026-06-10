@@ -256,6 +256,12 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       }
       return { kind: 'unknown' }
     }
+    case 'index': {
+      // `xs[i]` on an array-typed object → the element type.
+      const idxObj = inferType(expr.object, ctx)
+      if (idxObj.kind === 'array') return idxObj.element
+      return { kind: 'unknown' }
+    }
     case 'member': {
       // `item.label` on an object-typed signal returns the field's
       // declared type. Used when an object signal is destructured in
