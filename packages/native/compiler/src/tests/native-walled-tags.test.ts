@@ -23,44 +23,15 @@
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 
-// PR-3.2 (main) + PR-3.3 (this PR) — Suspense + ErrorBoundary have real
-// emit (PyreonSuspenseWrapper + PyreonErrorBoundaryWrapper), so neither
-// is in the walled-tag list. Only KeepAlive remains walled.
-const TAGS = ['KeepAlive'] as const
+// PR-3.2 (main) + PR-3.3 (main) + PR-3.4 (this PR) — Suspense +
+// ErrorBoundary + KeepAlive ALL have real emit now
+// (PyreonSuspenseWrapper / PyreonErrorBoundaryWrapper /
+// PyreonKeepAliveWrapper). No walled lifecycle tags remain. The test
+// file is preserved as a documentation marker; reintroduce the loop
+// when a NEW walled tag lands.
 
-describe('Phase 5 — walled-tag graceful emit (KeepAlive)', () => {
-  for (const tag of TAGS) {
-    it(`Swift: <${tag}> emits Group { children } + a [Pyreon] limitation comment, NO fake identifier`, () => {
-      const out = transform(
-        `export function App() { return <${tag} fallback={<Text>fb</Text>}><Text>inner</Text></${tag}> }`,
-        { target: 'swift' },
-      ).code
-      // The limitation surfaces at code-read time.
-      expect(out).toContain(`// [Pyreon] <${tag}> unsupported on iOS`)
-      // Neutral container + the child renders.
-      expect(out).toContain('Group {')
-      expect(out).toContain('Text("inner")')
-      // NO fake-identifier emit (the bug shape we're closing).
-      expect(out).not.toMatch(new RegExp(`\\b${tag}\\(`))
-      expect(out).not.toMatch(new RegExp(`\\b${tag}\\s*\\{`))
-    })
-
-    it(`Kotlin: <${tag}> emits Box { children } + a [Pyreon] limitation comment, NO fake identifier`, () => {
-      const out = transform(
-        `export function App() { return <${tag} fallback={<Text>fb</Text>}><Text>inner</Text></${tag}> }`,
-        { target: 'kotlin' },
-      ).code
-      expect(out).toContain(`// [Pyreon] <${tag}> unsupported on Android`)
-      expect(out).toContain('Box {')
-      expect(out).toContain('Text(text = "inner")')
-      expect(out).not.toMatch(new RegExp(`\\b${tag}\\(`))
-      expect(out).not.toMatch(new RegExp(`\\b${tag}\\s*\\{`))
-    })
-  }
-
-  // PR-3.2 (main) + PR-3.3 (this PR): Suspense + ErrorBoundary now have
-  // real emit; their fallback IS rendered. KeepAlive remains walled but
-  // uses `when` (not `fallback`) — drop the standalone fallback-drop
-  // specs; the walled-tag children-only assertion above already covers
-  // KeepAlive's child-emit shape.
+describe('Phase 5 — walled-tag graceful emit (none remain)', () => {
+  it('placeholder — Phase 5 walled-tag set is empty', () => {
+    expect(true).toBe(true)
+  })
 })
