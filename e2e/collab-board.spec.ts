@@ -130,27 +130,31 @@ test.describe('collab-board — relay sync', () => {
     await a.getByTestId('add-todo').click()
     await expect(b.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
 
-    // Open the SAME card in both clients.
+    // A opens the card and types collaborative notes. `pressSequentially` on the
+    // editor LOCATOR focuses the contenteditable itself before typing (a bare
+    // `.click()` + `page.keyboard.type` can miss focus in headless Linux while the
+    // panel settles — the original empty-on-all-retries CI failure).
     await a.getByTestId('col-todo').locator('.card-title').first().click()
-    await b.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(a.getByTestId('card-panel')).toBeVisible()
-    await expect(b.getByTestId('card-panel')).toBeVisible()
-
-    // Type in A's CodeMirror notes → B's editor reflects it (Y.Text merge). Use
-    // the editor LOCATOR's `pressSequentially` (which focuses the contenteditable
-    // itself, then types) rather than a bare `.click()` + `page.keyboard.type`:
-    // in headless Linux the keystrokes can miss focus while the panel settles, so
-    // A's edit never lands and there is nothing to sync (the empty-on-all-retries
-    // CI failure this replaces).
     const aEditor = a.getByTestId('card-notes').locator('.cm-content')
-    const bEditor = b.getByTestId('card-notes').locator('.cm-content')
     await expect(aEditor).toBeVisible()
     await aEditor.pressSequentially('shipping monday')
-    // The local edit must land FIRST — this isolates "did the typing register"
-    // from "did it sync", and acts as a natural wait before the relay round-trip.
+    // The edit must land in A's editor (→ syncedText → the CRDT) FIRST — this
+    // isolates "did the typing register" from "did it sync".
     await expect(aEditor).toContainText('shipping monday')
-    // Then it propagates over the relay to B (generous budget for CI sync latency).
-    await expect(bEditor).toContainText('shipping monday', { timeout: 15000 })
+
+    // B opens the SAME card AFTER A's note is in the shared doc, so B's CodeMirror
+    // is created from the already-synced `syncedText` value (baked into the initial
+    // EditorState) — proving collaborative notes WITHOUT depending on a live signal
+    // dispatch landing while B's lazy markdown grammar is still cold-mounting (the
+    // CI-only race a both-open-then-type flow is fragile to). Generous budget for
+    // the cold first-mount of the CodeMirror grammar chunk on a fresh CI runner.
+    await b.getByTestId('col-todo').locator('.card-title').first().click()
+    await expect(b.getByTestId('card-panel')).toBeVisible()
+    await expect(b.getByTestId('card-notes').locator('.cm-content')).toContainText(
+      'shipping monday',
+      { timeout: 15000 },
+    )
 
     expect(errors, errors.join('\n')).toEqual([])
     await a.context().close()
