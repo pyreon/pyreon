@@ -142,6 +142,26 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
   )
 
   await bench(
+    'remove row',
+    suite,
+    async () => {
+      const tr = trElements[500] as HTMLElement
+      tr.remove()
+      rows.splice(500, 1)
+      trElements.splice(500, 1)
+      labelTds.splice(500, 1)
+    },
+    {
+      // restore a full 1,000-row table (untimed) so each timed run removes
+      // the row at index 500 from an identical 1,000-row list
+      reset: () => {
+        renderAll(buildRows(1_000))
+      },
+      verify: expectRows(999),
+    },
+  )
+
+  await bench(
     'clear rows',
     suite,
     async () => {
@@ -168,6 +188,42 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
       renderAll(buildRows(10_000))
     },
     { verify: expectRows(10_000) },
+  )
+
+  await bench(
+    'append 1,000 to 10,000 rows',
+    suite,
+    async () => {
+      if (!tbody) return
+      const appended = buildRows(1_000)
+      for (let i = 0; i < appended.length; i++) {
+        const row = appended[i] as Row
+        const tr = document.createElement('tr')
+        const td1 = document.createElement('td')
+        const td2 = document.createElement('td')
+        td1.textContent = String(row.id)
+        td2.textContent = row.label
+        tr.appendChild(td1)
+        tr.appendChild(td2)
+        tbody.appendChild(tr)
+        rows.push(row)
+        trElements.push(tr)
+        labelTds.push(td2)
+      }
+    },
+    {
+      // trim back to exactly 10,000 rows (untimed) so each timed run
+      // appends to the same 10,000-row table, not an ever-growing one
+      reset: () => {
+        while (rows.length > 10_000) {
+          rows.pop()
+          labelTds.pop()
+          const tr = trElements.pop()
+          if (tr) tr.remove()
+        }
+      },
+      verify: expectRows(11_000),
+    },
   )
 
   // Cleanup

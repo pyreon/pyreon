@@ -30,6 +30,26 @@
  *   7. Optional CPU throttling via CDP (`--throttle 4` for 4×
  *      slowdown — mimics mid-tier devices). Off by default; the
  *      uncongested numbers are the reference.
+ *   8. **Randomized execution order**: the framework EXECUTION order
+ *      is Fisher-Yates-shuffled once per process run (printed as
+ *      `[bench-fair] run order: …`) so position-dependent bias —
+ *      thermal ramp-up, OS file-cache warmth, preview-server warmth —
+ *      can't systematically favor any framework. Output tables keep
+ *      the canonical fixed column order regardless of execution order.
+ *   9. **Retained-heap metric**: after each framework's suite
+ *      completes (DOM already cleaned by the suite's own teardown),
+ *      3 forced GCs then `performance.memory.usedJSHeapSize` (precise
+ *      values via `--enable-precise-memory-info`) — reported per
+ *      framework as "retained JS heap after suite".
+ *  10. **One Pyreon entry, no manufactured tiers**: the single
+ *      `Pyreon` entry is the IDIOMATIC JSX impl (`pyreon.tsx`) — what
+ *      users actually write and what the compiler emits. A hand-tuned
+ *      low-level `_tpl()` impl was measured side-by-side and came out
+ *      statistically identical (equal-or-slower than idiomatic JSX,
+ *      since the compiler already lowers JSX to the same `_tpl()`
+ *      cloneNode output), so it was removed rather than shown as a
+ *      fictional faster "compiled" tier. `Pyreon` competes in every
+ *      ranking on equal footing with the other frameworks.
  *
  * vs `bench-cli.ts` (happy-dom + Bun) — that runner is fundamentally
  * unfair because:
@@ -51,6 +71,7 @@
  */
 import { execSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import * as os from 'node:os'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
@@ -66,7 +87,6 @@ const ALL_FRAMEWORKS = [
   'SolidJS',
   'Svelte 5',
   'Pyreon',
-  'Pyreon (compiled)',
 ] as const
 
 interface BenchResult {
@@ -137,6 +157,45 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 /**
+ * Fisher-Yates shuffle — randomizes the framework EXECUTION order once
+ * per process run so position-dependent bias (CPU thermal ramp, OS
+ * file-cache warmth, preview-server warmth) can't systematically favor
+ * frameworks that happen to run early or late. `Math.random()` is fine
+ * here: this is Node orchestration code, not browser-measured code, so
+ * nondeterminism doesn't touch the timed regions. The OUTPUT tables are
+ * pinned to the canonical `ALL_FRAMEWORKS` order via
+ * `canonicalizeSuites` regardless of execution order.
+ */
+function shuffled<T>(input: readonly T[]): T[] {
+  const out = [...input]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const a = out[i]
+    const b = out[j]
+    if (a === undefined || b === undefined) continue
+    out[i] = b
+    out[j] = a
+  }
+  return out
+}
+
+/**
+ * Pin suite order to the canonical `ALL_FRAMEWORKS` column order.
+ * Execution order is randomized per process run (see `shuffled`), but
+ * every output surface (markdown tables, JSON dump, baseline diff)
+ * must stay in the fixed canonical order so reports are diffable
+ * run-to-run. Unknown framework names (future additions) sort last,
+ * stably.
+ */
+function canonicalizeSuites(suites: SuiteResult[]): SuiteResult[] {
+  const canonicalIndex = (framework: string): number => {
+    const i = (ALL_FRAMEWORKS as readonly string[]).indexOf(framework)
+    return i === -1 ? ALL_FRAMEWORKS.length : i
+  }
+  return [...suites].sort((a, b) => canonicalIndex(a.framework) - canonicalIndex(b.framework))
+}
+
+/**
  * Re-compute median + p90 + CI95 + CV from a pooled samples array.
  * Used by `--repeat N` to aggregate 20×N samples into a single result
  * with tighter CI95 than any individual run.
@@ -194,25 +253,52 @@ function recomputeStats(name: string, pooledSamples: number[], warmupUsedMax: nu
  */
 function aggregateRepeated(runs: SuiteResult[][]): SuiteResult[] {
   if (runs.length === 0) return []
-  const first = runs[0]
-  if (!first || first.length === 0) return []
-  // For each framework × test, pool samples across runs.
-  return first.map((suite, suiteIdx) => ({
-    framework: suite.framework,
-    results: suite.results.map((result, testIdx) => {
-      // Collect samples + max warmupUsed across all runs for this (framework, test)
-      const pooled: number[] = []
-      let warmupMax = 0
-      for (const run of runs) {
-        const r = run[suiteIdx]?.results[testIdx]
-        if (r?.samples) {
-          for (const s of r.samples) pooled.push(s)
-          if (r.warmupUsed > warmupMax) warmupMax = r.warmupUsed
-        }
+  // Key by framework NAME (not positional index) so the per-pass
+  // execution order can be RESHUFFLED — pooling stays correct even when
+  // framework `i` ran in a different slot each pass. Use the first pass
+  // each framework appears in as the canonical (test-order) template.
+  const byName = new Map<string, SuiteResult[]>()
+  const order: string[] = []
+  for (const run of runs) {
+    for (const suite of run) {
+      if (!byName.has(suite.framework)) {
+        byName.set(suite.framework, [])
+        order.push(suite.framework)
       }
-      return recomputeStats(result.name, pooled, warmupMax)
-    }),
-  }))
+      byName.get(suite.framework)!.push(suite)
+    }
+  }
+  return order.map((framework) => {
+    const suites = byName.get(framework)!
+    const template = suites[0]!
+    return {
+      framework,
+      results: template.results.map((result, testIdx) => {
+        const pooled: number[] = []
+        let warmupMax = 0
+        for (const suite of suites) {
+          const r = suite.results[testIdx]
+          if (r?.samples) {
+            for (const s of r.samples) pooled.push(s)
+            if (r.warmupUsed > warmupMax) warmupMax = r.warmupUsed
+          }
+        }
+        return recomputeStats(result.name, pooled, warmupMax)
+      }),
+    }
+  })
+}
+
+interface FrameworkRun {
+  suite: SuiteResult
+  /**
+   * `performance.memory.usedJSHeapSize` read AFTER the suite completed
+   * and its own teardown cleaned the benchmark DOM, post 3 forced GCs.
+   * `null` when Chromium doesn't expose the counter. This captures the
+   * framework runtime + any retention after full suite cleanup — it is
+   * NOT the krausest "memory after create-1k rows" metric.
+   */
+  retainedHeapBytes: number | null
 }
 
 async function runOneFramework(
@@ -220,7 +306,7 @@ async function runOneFramework(
   baseUrl: string,
   throttleRate: number | undefined,
   browser: Awaited<ReturnType<typeof chromium.launch>>,
-): Promise<SuiteResult | null> {
+): Promise<FrameworkRun | null> {
   const ctx = await browser.newContext()
   const page: Page = await ctx.newPage()
 
@@ -258,7 +344,26 @@ async function runOneFramework(
       console.error(`[bench-fair] ${framework}: expected 1 suite, got ${suites.length}`)
       return null
     }
-    return suites[0] ?? null
+    const suite = suites[0]
+    if (!suite) return null
+
+    // Retained-heap metric: the suite already cleaned its DOM (its own
+    // teardown ran before `status` flipped to "Done ✓"). Force GC 3×
+    // via the SAME `globalThis.gc` mechanism `runner.ts` uses (exposed
+    // by --js-flags=--expose-gc), then read Chromium's heap counter —
+    // precise (non-bucketed) thanks to --enable-precise-memory-info.
+    const retainedHeapBytes = await page.evaluate(() => {
+      const gc = (globalThis as { gc?: () => void }).gc
+      if (gc) {
+        gc()
+        gc()
+        gc()
+      }
+      const perf = performance as Performance & { memory?: { usedJSHeapSize?: number } }
+      return perf.memory?.usedJSHeapSize ?? null
+    })
+
+    return { suite, retainedHeapBytes }
   } finally {
     await ctx.close()
   }
@@ -291,11 +396,15 @@ async function main(): Promise<void> {
   // `--expose-gc` lets `runner.ts` call `globalThis.gc()` between
   // iterations to neutralise GC variance. The optional chain in
   // `forceGc()` short-circuits if the flag isn't honoured.
+  // `--enable-precise-memory-info` makes `performance.memory`'s
+  // `usedJSHeapSize` precise (Chromium buckets/quantizes it otherwise)
+  // for the retained-heap metric.
   console.log('[bench-fair] launching Chromium with --expose-gc…')
   const browser = await chromium.launch({
     headless: true,
-    args: ['--js-flags=--expose-gc'],
+    args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
   })
+  const chromiumVersion = browser.version()
 
   const baseUrl = `http://localhost:${PORT}`
   if (args.throttle && args.throttle > 1) {
@@ -310,16 +419,38 @@ async function main(): Promise<void> {
     )
   }
 
+  // Randomize the EXECUTION order INDEPENDENTLY each --repeat pass. A
+  // single fixed order leaves every framework pinned to the same slot
+  // every pass, so position-dependent confounds (CPU thermal drift across
+  // a sweep, JIT warm-up state inherited from the prior framework's page)
+  // bias the SAME framework the SAME way every pass — pooling never
+  // averages it out. Reshuffling per pass turns slot into noise that the
+  // sample pool cancels. `aggregateRepeated` keys by framework NAME, so
+  // varying order across passes is safe.
+  const heapByFramework = new Map<string, Array<number | null>>()
+
   // Per-repeat data: each entry is one full SuiteResult[] (one full sweep).
   // Final reported numbers are the AGGREGATE — sample-pooled across all repeats.
   const allRuns: SuiteResult[][] = []
   for (let r = 0; r < args.repeat; r++) {
-    if (args.repeat > 1) console.log(`[bench-fair] === repeat pass ${r + 1}/${args.repeat} ===`)
+    const executionOrder = shuffled(args.frameworks)
+    if (args.repeat > 1) {
+      console.log(
+        `[bench-fair] === repeat pass ${r + 1}/${args.repeat} (order: ${executionOrder.join(', ')}) ===`,
+      )
+    } else {
+      console.log(`[bench-fair] run order: ${executionOrder.join(', ')}`)
+    }
     const suites: SuiteResult[] = []
-    for (const framework of args.frameworks) {
+    for (const framework of executionOrder) {
       console.log(`[bench-fair]   ▸ ${framework}`)
-      const suite = await runOneFramework(framework, baseUrl, args.throttle, browser)
-      if (suite) suites.push(suite)
+      const run = await runOneFramework(framework, baseUrl, args.throttle, browser)
+      if (run) {
+        suites.push(run.suite)
+        const heaps = heapByFramework.get(framework) ?? []
+        heaps.push(run.retainedHeapBytes)
+        heapByFramework.set(framework, heaps)
+      }
     }
     if (suites.length === 0) {
       console.error(
@@ -337,10 +468,16 @@ async function main(): Promise<void> {
 
   // Single pass → use the run directly (preserves exact stats from `runner.ts`).
   // Multiple passes → pool samples + recompute stats over the bigger sample set.
-  const suites: SuiteResult[] =
+  const pooled: SuiteResult[] =
     args.repeat === 1 && allRuns[0] ? allRuns[0] : aggregateRepeated(allRuns)
 
+  // Execution order was randomized — pin every output surface (tables,
+  // JSON dump, baseline diff columns) to the canonical column order.
+  const suites = canonicalizeSuites(pooled)
+
+  printMachineStamp(chromiumVersion)
   printMarkdownTable(suites)
+  printRetainedHeapTable(suites, heapByFramework)
 
   // Optional JSON dump for diff / archival.
   if (args.jsonOut) {
@@ -417,11 +554,14 @@ function printMarkdownTable(suites: SuiteResult[]): void {
   console.log()
   console.log('Slowdown vs best framework (excl. Vanilla)')
   const fwOnly = suites.filter((s) => s.framework !== 'Vanilla JS')
+  // `Pyreon` (idiomatic JSX — what users ship) competes on equal footing;
+  // there is no separate raw/compiled split to exclude anymore.
+  const ranked = fwOnly
   const FCOL = 16
-  console.log(`${' '.repeat(28)}${fwOnly.map((s) => pad(s.framework, FCOL)).join('')}`)
-  console.log('─'.repeat(28 + fwOnly.length * FCOL))
+  console.log(`${' '.repeat(28)}${ranked.map((s) => pad(s.framework, FCOL)).join('')}`)
+  console.log('─'.repeat(28 + ranked.length * FCOL))
   for (const t of tests) {
-    const medians = fwOnly.map(
+    const medians = ranked.map(
       (s) => s.results.find((x) => x.name === t)?.median ?? Number.POSITIVE_INFINITY,
     )
     const best = Math.min(...medians)
@@ -479,6 +619,8 @@ function printMarkdownTable(suites: SuiteResult[]): void {
   console.log()
   console.log('Statistically-honest verdict per test (CI95-overlap = tied within noise)')
   console.log('─'.repeat(120))
+  // `Pyreon` (idiomatic JSX) competes for the verdict like every other
+  // framework — only the no-framework Vanilla baseline is held out.
   const fwOnlyForVerdict = suites.filter((s) => s.framework !== 'Vanilla JS')
   for (const t of tests) {
     type Row = { framework: string; median: number; ci95: [number, number] }
@@ -510,6 +652,56 @@ function printMarkdownTable(suites: SuiteResult[]): void {
     }
     const marker = tied.length === 1 ? '🥇 outright' : `🤝 tied (n=${tied.length})`
     console.log(`  ${t.padEnd(28)} ${marker} ${tied.join(' = ')} — leader ${fmtMs(leader.median)}`)
+  }
+}
+
+/**
+ * Machine stamp — wall-clock numbers are machine-dependent, so every
+ * report carries the hardware + browser identity it was produced on.
+ */
+function printMachineStamp(chromiumVersion: string): void {
+  const cpus = os.cpus()
+  const cpuModel = cpus[0]?.model ?? 'unknown'
+  const ramGb = (os.totalmem() / 1024 ** 3).toFixed(1)
+  console.log()
+  console.log('Machine')
+  console.log('─'.repeat(60))
+  console.log(`  CPU:      ${cpuModel} (${cpus.length} logical cores)`)
+  console.log(`  RAM:      ${ramGb} GB`)
+  console.log(`  OS:       ${os.platform()} ${os.release()}`)
+  console.log(`  Chromium: ${chromiumVersion}`)
+}
+
+/** Median of a non-empty array; null for an empty one. */
+function medianOf(values: number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[Math.floor((sorted.length - 1) * 0.5)] ?? null
+}
+
+/**
+ * Retained-heap table — one value per framework. With `--repeat N`
+ * each framework has N post-suite samples; the median is reported.
+ * `—` when Chromium never exposed `performance.memory` for that
+ * framework's page(s).
+ */
+function printRetainedHeapTable(
+  suites: SuiteResult[],
+  heapByFramework: Map<string, Array<number | null>>,
+): void {
+  console.log()
+  console.log('Retained JS heap after suite (post-GC, MB)')
+  console.log(
+    '(framework runtime + any retention after full suite cleanup — not the krausest after-create metric)',
+  )
+  console.log('─'.repeat(60))
+  for (const s of suites) {
+    const samples = (heapByFramework.get(s.framework) ?? []).filter(
+      (v): v is number => v !== null,
+    )
+    const m = medianOf(samples)
+    const cell = m === null ? '—' : (m / (1024 * 1024)).toFixed(2)
+    console.log(`${s.framework.padEnd(28)}${pad(cell, 10)}`)
   }
 }
 
