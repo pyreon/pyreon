@@ -16,10 +16,9 @@
  *      content adjacency.
  *   4. Sync trees resolve without any async component markers.
  */
-import { createContext, h, provide, useContext } from '@pyreon/core'
+import { createContext, For, h, provide, useContext } from '@pyreon/core'
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
-import { For } from '@pyreon/core'
 import { renderToString } from '../index'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
