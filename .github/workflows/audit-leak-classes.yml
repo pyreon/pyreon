@@ -36,7 +36,15 @@ permissions:
 jobs:
   audit:
     # Only run on leak-audit-labelled PRs — skip by default.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'leak-audit')
+    # Event-precise opt-in: `labeled` fires for EVERY label addition, so
+    # pre-fix, adding any unrelated label (skip-changeset, …) to a PR
+    # already carrying `leak-audit` re-ran this whole suite. Only the
+    # `leak-audit` label itself, or a code push to an already-labelled
+    # PR, runs it now.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'leak-audit') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'leak-audit'))
     name: Run audit-leak-classes
     runs-on: ubuntu-latest
     timeout-minutes: 10

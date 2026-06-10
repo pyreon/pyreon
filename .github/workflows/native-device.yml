@@ -37,6 +37,18 @@ on:
   workflow_dispatch:
   pull_request:
     types: [labeled, synchronize]
+    # Path-scope the PR trigger: the device gate compiles + boots the
+    # NATIVE pipeline only — a docs/web/tooling change on a labelled PR
+    # can't affect it, yet pre-filter every push to such a PR re-ran
+    # the full macOS Simulator + Android Emulator matrix (~40 min, 10×
+    # billing on the macOS half). The gate is ADVISORY (not in branch
+    # protection), so a trigger-level filter is deadlock-safe.
+    # schedule / workflow_dispatch are unaffected (nightly drift check
+    # stays unconditional).
+    paths:
+      - 'packages/native/**'
+      - 'examples/native-*/**'
+      - '.github/workflows/native-device.yml'
   schedule:
     # 47 past 05 UTC — offset from native-validate.yml's 05:23 so the two
     # native workflows don't queue against each other.
@@ -54,8 +66,14 @@ concurrency:
 
 jobs:
   ios-build:
-    # Opt-in gate: skip on every PR that isn't explicitly labelled.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'native-device')
+    # Opt-in gate, event-precise: the `labeled` event fires for EVERY
+    # label addition — pre-fix, adding `skip-changeset` to a labelled
+    # native PR re-ran the whole device matrix. Only the native-device
+    # label itself (or a code push to an already-labelled PR) runs it.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'native-device'))
     name: iOS — xcodebuild (Simulator SDK)
     runs-on: macos-15
     timeout-minutes: 40
@@ -218,7 +236,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
   android-build:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'native-device')
+    # Opt-in gate, event-precise: the `labeled` event fires for EVERY
+    # label addition — pre-fix, adding `skip-changeset` to a labelled
+    # native PR re-ran the whole device matrix. Only the native-device
+    # label itself (or a code push to an already-labelled PR) runs it.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'native-device'))
     name: Android — gradlew assembleDebug
     runs-on: ubuntu-latest
     timeout-minutes: 40
