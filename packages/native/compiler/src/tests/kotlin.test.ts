@@ -97,6 +97,7 @@ describe('Pyreon → Kotlin emit', () => {
       "// Pyreon TS-compat extensions
       private val <T> List<T>.length: Int get() = size
 
+      @Serializable
       data class TodoListItem(val id: Int, val label: String)
 
       @Composable

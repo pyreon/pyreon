@@ -3199,11 +3199,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
     }
     case 'LogicalExpression': {
-      // Parser-C: `a && b`, `a || b`. Short-circuit semantics map
-      // identically on Swift and Kotlin. `??` (nullish coalescing) is
-      // also a LogicalExpression in oxc — defer; it needs target-
-      // specific Optional handling.
-      const knownLogical: ('&&' | '||')[] = ['&&', '||']
+      // Parser-C: `a && b`, `a || b`, `a ?? b`. Short-circuit semantics
+      // map identically on Swift and Kotlin for && / ||; `??` (nullish
+      // coalescing, also a LogicalExpression in oxc) maps to Swift's
+      // own `??` and Kotlin's Elvis `?:` at emit time.
+      const knownLogical: ('&&' | '||' | '??')[] = ['&&', '||', '??']
       const op = node.operator as string
       if (!(knownLogical as readonly string[]).includes(op)) {
         ctx.warnings.push(`Unsupported logical operator: ${op}.`)
@@ -3211,7 +3211,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
       return {
         kind: 'logical',
-        op: op as '&&' | '||',
+        op: op as '&&' | '||' | '??',
         left: parseExpr(node.left, ctx),
         right: parseExpr(node.right, ctx),
       }

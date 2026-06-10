@@ -133,6 +133,13 @@ let _machineNames: Set<string> = new Set()
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
 let _formNamesSwift: Set<string> = new Set()
+/**
+ * Fetch-arc: every `useFetch` decl name in scope. A zero-arg CALL on a
+ * fetch FIELD (`quotes.data()` — the web signal-read shape) rewrites to
+ * a plain property read (`quotes.data`); `refetch()` keeps its parens
+ * (real method).
+ */
+let _fetchNamesSwift: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a dictionary at this call shape. */
 let _i18nNames: Set<string> = new Set()
@@ -1021,6 +1028,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _machineNames = new Set()
   _i18nNames = new Set()
   _formNamesSwift = new Set()
+  _fetchNamesSwift = new Set()
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -1055,6 +1063,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
+    if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -1749,6 +1758,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         return `print(${e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')})`
       }
+      // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
+      // `quotes.isPending()` (the web signal-read shape) → plain
+      // @Observable property read. `refetch` is excluded (real method,
+      // parens preserved by the generic call emit below).
+      if (
+        e.args.length === 0 &&
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _fetchNamesSwift.has(e.callee.object.name) &&
+        (e.callee.property === 'data' ||
+          e.callee.property === 'isPending' ||
+          e.callee.property === 'error')
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
       // Store METHOD call — `useX().store.M(args…)` rewrites to
       // `PyreonStore_id.shared.M(args…)`. Must run BEFORE the zero-arg
       // read rewrite below: a zero-arg method call (`clear()`) would
@@ -2094,7 +2118,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `${e.op}${emitSwiftExpr(e.argument, indent)}`
     case 'logical':
       // Parser-C: short-circuit logical. Swift `&&` / `||` semantics
-      // match JS for the value types Pyreon signals carry.
+      // match JS for the value types Pyreon signals carry. `??` is
+      // Swift's own nil-coalescing — parenthesized because its
+      // precedence is LOWER than JS's (a bare `x ?? y > 0` parses as
+      // `x ?? (y > 0)` in Swift).
+      if (e.op === '??') {
+        return `(${emitSwiftExpr(e.left, indent)} ?? ${emitSwiftExpr(e.right, indent)})`
+      }
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
     case 'ternary':
       // Swift ternary syntax is identical to JS.

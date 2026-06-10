@@ -1072,7 +1072,14 @@ function emitKotlinDataClass(synth: {
   fields: { name: string; type: TypeIR }[]
 }): string {
   const params = synth.fields.map((f) => `val ${f.name}: ${kotlinType(f.type)}`).join(', ')
-  return `data class ${synth.name}(${params})`
+  // `@Serializable` for consistency with emitKotlinStruct (named `type X
+  // = {...}` structs always carry it). Without it, a synthesized class
+  // reachable from a fetch decode (`useFetch<{ name: string }[]>(url)`
+  // → `Json.decodeFromString<List<AppData>>`) compiles against the
+  // kotlinc validate stubs but FAILS a real Compose build ("Serializer
+  // for class 'AppData' not found" — the serialization plugin only
+  // generates serializers for annotated classes).
+  return `@Serializable\ndata class ${synth.name}(${params})`
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
@@ -1612,6 +1619,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `println(${e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')})`
       }
+      // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
+      // `quotes.isPending()` (the web signal-read shape) → MutableState
+      // `.value` read. `refetch` is excluded (real method, parens
+      // preserved by the generic call emit below).
+      if (
+        e.args.length === 0 &&
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _fetchNames.has(e.callee.object.name) &&
+        (e.callee.property === 'data' ||
+          e.callee.property === 'isPending' ||
+          e.callee.property === 'error')
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${e.callee.property}.value`
+      }
       // Store METHOD call — `useX().store.M(args…)` →
       // `PyreonStore_id.M(args…)`. Mirror of emit-swift's rewrite;
       // must precede the zero-arg READ rewrite (a zero-arg method call
@@ -1929,7 +1951,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${e.op}${emitKotlinExpr(e.argument, indent)}`
     case 'logical':
       // Parser-C: short-circuit logical. Kotlin `&&` / `||` semantics
-      // match JS.
+      // match JS. `??` lowers to the Elvis operator — parenthesized
+      // because Elvis binds LOOSER than comparisons (`a ?: b > 0`
+      // parses as `a ?: (b > 0)`).
+      if (e.op === '??') {
+        return `(${emitKotlinExpr(e.left, indent)} ?: ${emitKotlinExpr(e.right, indent)})`
+      }
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'ternary':
       // Kotlin doesn't have a ternary operator; the idiomatic form is

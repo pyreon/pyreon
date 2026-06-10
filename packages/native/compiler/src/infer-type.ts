@@ -33,6 +33,14 @@ export interface InferenceCtx {
    */
   locals: Map<string, TypeIR>
   /**
+   * Fetch decl name → decoded result type T (from `useFetch<T>(url)`).
+   * `x.data` / `x.data()` infer T; `x.isPending` infers boolean —
+   * without this, a computed over fetch state (`computed(() =>
+   * quotes.data() ?? [])`) degraded to `Any` / unknown and the Swift
+   * ForEach over it failed to typecheck.
+   */
+  fetches: Map<string, TypeIR>
+  /**
    * Store hook name → field name → declared field type. Lets the
    * store-read chain `useApp().store.tasks()` infer the field's type
    * the same way a local `tasks()` signal read does — without this, a
@@ -53,6 +61,9 @@ export function buildInferenceCtx(
     signals: new Map(),
     computeds: new Map(),
     locals: new Map(),
+    fetches: new Map(
+      decls.flatMap((d) => (d.kind === 'fetch' ? [[d.name, d.type] as const] : [])),
+    ),
     stores: new Map(
       storeDefs.map((s) => {
         const perHook = new Map(s.fields.map((f) => [f.name, f.type]))
@@ -64,6 +75,7 @@ export function buildInferenceCtx(
             signals: new Map(s.fields.map((f) => [f.name, f.type])),
             computeds: new Map(),
             locals: new Map(),
+            fetches: new Map(),
             stores: new Map(),
           }
           for (const c of s.computeds) {
@@ -209,6 +221,17 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const cmp = ctx.computeds.get(expr.callee.name)
         if (cmp) return cmp
       }
+      // Fetch-field read: `quotes.data()` (CALL form — web reads the
+      // signal). data → T; isPending → boolean; error → unknown.
+      if (
+        expr.args.length === 0 &&
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        ctx.fetches.has(expr.callee.object.name)
+      ) {
+        if (expr.callee.property === 'data') return ctx.fetches.get(expr.callee.object.name)!
+        if (expr.callee.property === 'isPending') return { kind: 'boolean' }
+      }
       // Store-read chain: `useApp().store.tasks()` — zero-arg call on a
       // field of `.store` on a zero-arg store-hook call. Resolves to
       // the store field's declared type so method chains over store
@@ -279,6 +302,12 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'member': {
+      // Fetch-field read, property form (`quotes.data` — the native
+      // shape). Mirrors the call-form branch above.
+      if (expr.object.kind === 'identifier' && ctx.fetches.has(expr.object.name)) {
+        if (expr.property === 'data') return ctx.fetches.get(expr.object.name)!
+        if (expr.property === 'isPending') return { kind: 'boolean' }
+      }
       // `item.label` on an object-typed signal returns the field's
       // declared type. Used when an object signal is destructured in
       // a computed body (`item.price * item.qty` etc.).
@@ -314,9 +343,16 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return inferType(expr.inner, ctx)
     case 'comparison':
     case 'logical':
-      // Both `===` / `!==` / `<` / `>` and `&&` / `||` produce boolean.
+      // `===` / `!==` / `<` / `>` and `&&` / `||` produce boolean.
       // Pyreon source uses these in if-conditions + filter predicates;
       // returning `boolean` here lets downstream inference flow.
+      // `??` is the exception: `a ?? b` produces the (unwrapped)
+      // operand type — try the left side first, fall back to the
+      // right (the fallback expression is usually the more literal,
+      // e.g. `quotes.data ?? []`).
+      if (expr.kind === 'logical' && expr.op === '??') {
+        return inferType(expr.left, ctx) ?? inferType(expr.right, ctx)
+      }
       return { kind: 'boolean' }
     case 'unary':
       // `!x` → boolean; `-x` / `+x` → number.
