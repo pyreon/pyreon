@@ -350,10 +350,12 @@ jobs:
             gradle connectedCheck --no-daemon --stacktrace
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
-      # Runs TasksAppInstrumentedTest.kt (auth-gate + navigation +
-      # logout flow via Compose UI test) against the prerendered
-      # canonical TasksApp.tsx source. Closes the audit's "no
-      # device CI for tasks" gap on Android.
+      # Runs TasksAppInstrumentedTest.kt (home → tasks → add-task →
+      # typed-params detail navigation via Compose UI test) against the
+      # prerendered canonical TasksApp.tsx source. Closes the audit's
+      # "no device CI for tasks" gap on Android. (The earlier auth-gate
+      # flow moved out when the showcase was rewritten to the proven
+      # Tier-1 subset — cross-screen auth state needs the store port.)
 
       - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-tasks-android
         working-directory: examples/native-tasks-android
@@ -374,3 +376,91 @@ jobs:
           script: |
             cd examples/native-tasks-android
             gradle connectedCheck --no-daemon --stacktrace
+
+  # ── Nightly-failure visibility (sticky issue) ──
+  #
+  # The device gate is ADVISORY (not in branch protection) and its
+  # nightly schedule has no human watching the Actions tab — the gate
+  # was red for 13 consecutive nights (2026-05-29 → 2026-06-10) before
+  # anyone noticed, because nothing surfaced the failures anywhere a
+  # maintainer looks. This job closes that visibility hole: a FAILED
+  # scheduled run creates (or comments on) ONE sticky issue titled
+  # below; a SUCCESSFUL scheduled run closes it. Label-gated PR runs
+  # are excluded — their failures are visible on the PR itself, and an
+  # author iterating on red device CI shouldn't spam the issue.
+  #
+  # Sticky-issue pattern (find-by-title + comment-in-place) mirrors
+  # perf.yml / leak-sweep.yml's sticky PR comments; `always()` (not
+  # bare `failure()`) is required so the job ALSO runs on success to
+  # auto-close the issue.
+  notify-nightly:
+    name: Nightly status → sticky issue
+    if: always() && github.event_name == 'schedule'
+    needs: [ios-build, android-build]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create / update / close the sticky failure issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const title = '[native-device] Nightly device build is RED'
+            const failed =
+              '${{ needs.ios-build.result }}' === 'failure' ||
+              '${{ needs.android-build.result }}' === 'failure'
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            })
+            const sticky = issues.find((i) => i.title === title)
+            if (failed) {
+              const line = [
+                `Nightly run failed: ${runUrl}`,
+                `- iOS (xcodebuild + XCUITest): **${{ needs.ios-build.result }}**`,
+                `- Android (gradle + Compose test): **${{ needs.android-build.result }}**`,
+              ].join('\n')
+              if (sticky) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: sticky.number,
+                  body: line,
+                })
+              } else {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body: [
+                    'The nightly native-device build (real xcodebuild iOS Simulator +',
+                    'real gradle Android Emulator against the PMTC-emitted examples)',
+                    'is failing. This issue is managed by the workflow: it gets one',
+                    'comment per failed nightly and AUTO-CLOSES on the next green run.',
+                    '',
+                    'Streak gate: `bun scripts/check-native-device-streak.ts` needs 14',
+                    'consecutive green nightlies before native-device can be promoted',
+                    'to a required check — every red night resets that clock.',
+                    '',
+                    line,
+                  ].join('\n'),
+                })
+              }
+            } else if (sticky) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                body: `Nightly run is green again: ${runUrl} — auto-closing.`,
+              })
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                state: 'closed',
+              })
+            }
