@@ -82,6 +82,11 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // rewriting (`useFoo().store.X` → `PyreonStore_foo.shared.X`)
     // emits as valid Swift.
     'tier2-store.tsx',
+    // Gap 4 state-tree v2 emit: @pyreon/state-tree port. Proves the
+    // top-level @Observable singleton class + use-site chain
+    // rewriting (`counter.field` → `PyreonModel_counter.shared.field`)
+    // emits as valid Swift.
+    'tier2-state-tree.tsx',
   ] as const
 
   for (const fixture of fixtures) {
