@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 89 rules for signals, JSX, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage).
+description: Pyreon-specific linter — 90 rules for signals, JSX, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage).
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level. Powered by `oxc-parser` for fast ESTree/TS-ESTree parsing.
@@ -47,7 +47,7 @@ pyreon-lint --watch src/
 # JSON output for tooling integration
 pyreon-lint --format json
 
-# List all 89 rules
+# List all 90 rules
 pyreon-lint --list
 
 # Override a specific rule
@@ -263,13 +263,14 @@ Every opt-in rule's message is prescriptive (states the fix) so an AI assistant 
 | `pyreon/no-eager-import`                | info     | Static import of heavy packages — use `lazy()`                         |
 | `pyreon/prefer-show-over-display`       | info     | Conditional `display` style — use `<Show>`                             |
 
-### SSR (3)
+### SSR (4)
 
 | Rule                            | Severity | Description                                                 |
 | ------------------------------- | -------- | ----------------------------------------------------------- |
 | `pyreon/no-window-in-ssr`       | error    | Browser globals outside `onMount`/typeof guard              |
 | `pyreon/no-mismatch-risk`       | warn     | `Date.now()`/`Math.random()` in render — hydration mismatch |
 | `pyreon/prefer-request-context` | warn     | Module-level state in SSR handlers                          |
+| `pyreon/prefer-isserver`        | warn     | Prefer `isServer`/`isClient` from `@pyreon/reactivity` over hand-rolled `typeof window`/`typeof document` (dep-gated) |
 
 ### Architecture (7)
 
