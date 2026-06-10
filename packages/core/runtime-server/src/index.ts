@@ -121,7 +121,20 @@ function withStoreContext<T>(fn: () => T): T {
 export async function renderToString(root: VNode | null): Promise<string> {
   if (root === null) return ''
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.render')
-  // Each call gets a fresh isolated context stack and (optionally) store registry
+  // Inside an active request context (`runWithRequestContext`), INHERIT it —
+  // request-level `provide()` frames (middleware locals via
+  // `provideRequestLocals`, request-scoped DI) must be visible to the
+  // rendered components. Pre-fix this always opened a FRESH `_contextAls`
+  // run with an empty stack, so the nested ALS scope silently DISCARDED
+  // every request-level provide — `useRequestLocals()` could never resolve
+  // anything but the default inside a rendered component, even though the
+  // handler dutifully called `provideRequestLocals(ctx.locals)` first.
+  // Per-component trims restore the stack to each component's entry length,
+  // so inherited request frames survive the render untouched.
+  //
+  // Bare calls (no surrounding request context) keep the fresh isolated
+  // stack + store registry — unchanged behavior.
+  if (_contextAls.getStore() !== undefined) return renderNode(root)
   return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
 }
 
@@ -195,14 +208,17 @@ export function renderToStream(
   const signal = ac.signal
   if (options.signal) {
     if (options.signal.aborted) ac.abort(options.signal.reason)
-    else options.signal.addEventListener('abort', () => ac.abort(options.signal!.reason), { once: true })
+    else
+      options.signal.addEventListener('abort', () => ac.abort(options.signal!.reason), {
+        once: true,
+      })
   }
   // Resolve the Suspense timeout. Invalid input (≤0, NaN) falls back to
   // 30_000 — same as pre-config behavior. `Infinity` is preserved so the
   // boundary code can detect it and skip the race entirely.
   const userTimeout = options.suspenseTimeoutMs
-  const suspenseTimeoutMs
-    = userTimeout === Infinity
+  const suspenseTimeoutMs =
+    userTimeout === Infinity
       ? Infinity
       : userTimeout !== undefined && Number.isFinite(userTimeout) && userTimeout > 0
         ? userTimeout
@@ -233,66 +249,70 @@ export function renderToStream(
             signal.addEventListener('abort', () => resolve(), { once: true })
           })
 
-      return withStoreContext(() =>
-        _contextAls.run([], () =>
-          _streamCtxAls
-            .run(ctx, async () => {
-              await streamNode(root, enqueue)
-              // Flush styler CSS rules collected during shell render.
-              // The handler's shell `<head>` was pushed BEFORE the
-              // appStream started, so any per-render styles cannot land
-              // there — emit a `<style>` tag inline at the top of the
-              // app body so shell content is correctly styled before
-              // any Suspense boundary resolves. Per-boundary flushes
-              // (see `streamSuspenseBoundary`) cover styles collected
-              // during async boundary resolution. No-op when styler
-              // isn't loaded.
-              const stylerFlush = (
-                globalThis as { __PYREON_STYLER_FLUSH__?: () => string }
-              ).__PYREON_STYLER_FLUSH__
-              if (stylerFlush) {
-                const newRules = stylerFlush()
-                if (newRules) {
-                  const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
-                  enqueue(`<style data-pyreon-stream="shell">${safeCss}</style>`)
-                }
+      // Same request-context inheritance as `renderToString` (see its
+      // docstring): inside `runWithRequestContext`, reuse the active
+      // request stack + store so request-level `provide()` frames
+      // (middleware locals) reach streamed components; bare calls keep
+      // the fresh isolated stack — unchanged behavior.
+      const streamBody = () =>
+        _streamCtxAls
+          .run(ctx, async () => {
+            await streamNode(root, enqueue)
+            // Flush styler CSS rules collected during shell render.
+            // The handler's shell `<head>` was pushed BEFORE the
+            // appStream started, so any per-render styles cannot land
+            // there — emit a `<style>` tag inline at the top of the
+            // app body so shell content is correctly styled before
+            // any Suspense boundary resolves. Per-boundary flushes
+            // (see `streamSuspenseBoundary`) cover styles collected
+            // during async boundary resolution. No-op when styler
+            // isn't loaded.
+            const stylerFlush = (globalThis as { __PYREON_STYLER_FLUSH__?: () => string })
+              .__PYREON_STYLER_FLUSH__
+            if (stylerFlush) {
+              const newRules = stylerFlush()
+              if (newRules) {
+                const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
+                enqueue(`<style data-pyreon-stream="shell">${safeCss}</style>`)
               }
-              // Drain all pending Suspense resolutions (may spawn nested
-              // ones). Each batch is RACED against the abort signal so a
-              // mid-flight Suspense child doesn't keep us blocked after
-              // the consumer hung up. Per-boundary work also checks
-              // `ctx.signal.aborted` to skip its post-resolve enqueue.
-              while (ctx.pending.length > 0) {
-                if (signal.aborted) break
-                const batch = Promise.all(ctx.pending.splice(0))
-                await Promise.race([batch, abortPromise])
-              }
-              // ALWAYS close — gracefully on natural completion AND on
-              // abort. (Pre-fix: `if (!aborted) close()` left the stream
-              // open forever on cancel, hanging the reader.) Wrap in
-              // try/catch because the stream may have already been
-              // closed by `cancel()` upstream.
+            }
+            // Drain all pending Suspense resolutions (may spawn nested
+            // ones). Each batch is RACED against the abort signal so a
+            // mid-flight Suspense child doesn't keep us blocked after
+            // the consumer hung up. Per-boundary work also checks
+            // `ctx.signal.aborted` to skip its post-resolve enqueue.
+            while (ctx.pending.length > 0) {
+              if (signal.aborted) break
+              const batch = Promise.all(ctx.pending.splice(0))
+              await Promise.race([batch, abortPromise])
+            }
+            // ALWAYS close — gracefully on natural completion AND on
+            // abort. (Pre-fix: `if (!aborted) close()` left the stream
+            // open forever on cancel, hanging the reader.) Wrap in
+            // try/catch because the stream may have already been
+            // closed by `cancel()` upstream.
+            try {
+              controller.close()
+            } catch {
+              /* already closed (e.g. cancel raced ahead) */
+            }
+          })
+          .catch((err) => {
+            // Aborts are expected, not errors — close silently to mirror
+            // a normal end-of-stream when the consumer hung up.
+            if (signal.aborted) {
               try {
                 controller.close()
               } catch {
-                /* already closed (e.g. cancel raced ahead) */
+                /* already closed */
               }
-            })
-            .catch((err) => {
-              // Aborts are expected, not errors — close silently to mirror
-              // a normal end-of-stream when the consumer hung up.
-              if (signal.aborted) {
-                try {
-                  controller.close()
-                } catch {
-                  /* already closed */
-                }
-                return
-              }
-              controller.error(err)
-            }),
-        ),
-      )
+              return
+            }
+            controller.error(err)
+          })
+      return _contextAls.getStore() !== undefined
+        ? streamBody()
+        : withStoreContext(() => _contextAls.run([], streamBody))
     },
     cancel(reason) {
       // Consumer (browser fetch reader) closed the stream — propagate to
@@ -352,10 +372,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
   // for the full architectural rationale.
   const stackLenBefore = getContextStackLength()
   try {
-    const { vnode: output } = runWithHooks(
-      vnode.type as ComponentFn,
-      mergeChildrenIntoProps(vnode),
-    )
+    const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
     // Async components: emit sentinel markers around the resolved output so
     // the client hydrate can find the SSR DOM range corresponding to the
     // (still-pending) Promise. Without these, hydrate has no way to know
@@ -407,12 +424,16 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
   // emitted by the compiler for signal-derived prop expressions — are
   // called once at render time (SSR is one-shot; any reactivity happens
   // post-hydration on the client).
-  const dangerous = props.dangerouslySetInnerHTML as { __html: string } | (() => { __html: string }) | undefined
+  const dangerous = props.dangerouslySetInnerHTML as
+    | { __html: string }
+    | (() => { __html: string })
+    | undefined
   const innerHtml = props.innerHTML as string | (() => string) | undefined
   const dangerousHtml =
-    typeof dangerous === 'function' ? (dangerous as () => { __html: string })()?.__html : dangerous?.__html
-  const plainInnerHtml =
-    typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
+    typeof dangerous === 'function'
+      ? (dangerous as () => { __html: string })()?.__html
+      : dangerous?.__html
+  const plainInnerHtml = typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
   if (dangerousHtml) {
     enqueue(dangerousHtml)
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
@@ -536,8 +557,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
                 timeoutId = setTimeout(() => resolve('timeout'), suspenseTimeoutMs)
               }),
             ])
-          }
-          finally {
+          } finally {
             if (timeoutId !== undefined) clearTimeout(timeoutId)
           }
         }
@@ -833,8 +853,7 @@ function renderElement(vnode: VNode): MaybeAsync {
     typeof dangerous === 'function'
       ? (dangerous as () => { __html: string })()?.__html
       : dangerous?.__html
-  const plainInnerHtml =
-    typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
+  const plainInnerHtml = typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
   if (dangerousHtml) {
     html += dangerousHtml
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
@@ -1246,8 +1265,7 @@ function escapeHtml(str: string): string {
  */
 function mergeChildrenIntoProps(vnode: VNode): Record<string, unknown> {
   const raw =
-    vnode.children.length > 0 &&
-    (vnode.props as Record<string, unknown>).children === undefined
+    vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
       ? {
           ...vnode.props,
           children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,

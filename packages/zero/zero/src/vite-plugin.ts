@@ -396,6 +396,16 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
 						(result) => {
 							if (result === null) return next();
+							if (result.kind === "redirect") {
+								// Loader-thrown `redirect()` — real HTTP redirect, same
+								// contract as the production handler (302/307/308 +
+								// Location). renderSsr surfaces it as data now that the
+								// shared renderPage catches the throw internally.
+								res.statusCode = result.status;
+								res.setHeader("Location", result.to);
+								res.end();
+								return;
+							}
 							res.statusCode = result.status;
 							res.setHeader("Content-Type", "text/html; charset=utf-8");
 							res.setHeader("Content-Length", Buffer.byteLength(result.html));
@@ -539,21 +549,39 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			const cwd = viteUserConfig.root ?? process.cwd()
 			const pyreonExclude = scanPyreonPackages(cwd)
 
-			// `@pyreon/runtime-server` is only imported by zero's dev SSR
-			// middleware and the production server entry — apps rarely list it
-			// as a direct dep. Resolve it to the copy nested under zero so
-			// `ssrLoadModule("@pyreon/runtime-server")` works uniformly.
+			// `@pyreon/runtime-server` and `@pyreon/server` are only imported by
+			// zero's dev SSR middleware and the production server entry — apps
+			// rarely list them as direct deps. Resolve each to the copy nested
+			// under zero so `ssrLoadModule("@pyreon/runtime-server")` and
+			// `ssrLoadModule("@pyreon/server")` (the shared `renderPage`
+			// pipeline) work uniformly.
 			const runtimeServerAlias = resolveNestedPackage(
 				cwd,
 				"@pyreon/runtime-server",
 			)
+			const serverPkgAlias = resolveNestedPackage(cwd, "@pyreon/server")
+			// ARRAY form with an EXACT-match RegExp for `@pyreon/server`: a plain
+			// string alias does PREFIX matching (rollup-alias semantics), which
+			// rewrote `@pyreon/server/client` — imported by zero's own client-safe
+			// index — to `<nested-dir>/client`, bypassing the package's exports
+			// map and failing import-analysis with "Does the file exist?" (caught
+			// by the zero-hmr e2e; the main-entry alias must never swallow
+			// subpath imports). `@pyreon/runtime-server` keeps the string form —
+			// it has no subpath consumers and the prefix shape has shipped fine.
+			const pyreonServerAliases = [
+				...(runtimeServerAlias
+					? [{ find: "@pyreon/runtime-server", replacement: runtimeServerAlias }]
+					: []),
+				...(serverPkgAlias
+					? [{ find: /^@pyreon\/server$/, replacement: serverPkgAlias }]
+					: []),
+			]
+			const hasServerAliases = pyreonServerAliases.length > 0
 
 			return {
 				resolve: {
 					conditions: ['bun'],
-					...(runtimeServerAlias
-						? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
-						: {}),
+					...(hasServerAliases ? { alias: pyreonServerAliases } : {}),
 				},
 				// Vite's SSR module graph has its own resolver that defaults to the
 				// "node" condition — which would pick the built `lib/index.js` for
@@ -562,9 +590,7 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				ssr: {
 					resolve: {
 						conditions: ['bun'],
-						...(runtimeServerAlias
-							? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
-							: {}),
+						...(hasServerAliases ? { alias: pyreonServerAliases } : {}),
 					},
 				},
 				optimizeDeps: {
@@ -655,7 +681,18 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	// the chain entirely for clarity — one less closeBundle to call.
 	const plugins: Plugin[] = [mainPlugin];
 	if (config.mode === "ssg") plugins.push(ssgPlugin(userConfig));
-	if (config.mode === "ssr" || config.mode === "isr") plugins.push(ssrPlugin(userConfig));
+	if (config.mode === "ssr" || config.mode === "isr") {
+		// Phase 2 — hybrid rendering: the SSG plugin ALSO joins server-mode
+		// builds to prerender routes that declare `renderMode = 'ssg'`. Its
+		// closeBundle is a cheap no-op when no route declares a static mode
+		// (one file scan, no SSR sub-build). ORDER MATTERS: ssgPlugin runs
+		// BEFORE ssrPlugin so prerendered `dist/<path>/index.html` files
+		// exist when the ssrPlugin's adapter staging copies the client dir —
+		// after staging they'd miss the `dist/client/` copy the emitted
+		// node/bun server and CDN adapters serve static-first from.
+		plugins.push(ssgPlugin(userConfig));
+		plugins.push(ssrPlugin(userConfig));
+	}
 
 	// W20 — auto-wire imagePlugin and fontPlugin so `<Image>` / `<Font>` work
 	// out of the box. Each is opt-out via `image: false` / `font: false`.
@@ -844,7 +881,10 @@ async function handle404(
 	// `next(err)` if renderSsr rejects in a way we can't recover from.
 	try {
 		const result = await renderSsr(server, root, originalUrl, pathname);
-		if (result !== null) {
+		// A loader-thrown redirect on the 404 path is nonsensical (skipLoaders
+		// isn't set here, but the not-found probe rarely has loaders) — treat
+		// anything that isn't rendered HTML as "fall through to the bare page".
+		if (result !== null && result.kind === "html") {
 			res.statusCode = result.status;
 			res.setHeader("Content-Type", "text/html; charset=utf-8");
 			res.setHeader("Content-Length", Buffer.byteLength(result.html));
@@ -886,7 +926,11 @@ async function renderSsr(
 	originalUrl: string,
 	pathname: string,
 	req?: Request,
-): Promise<{ html: string; status: number } | null> {
+): Promise<
+	| { kind: "html"; html: string; status: number }
+	| { kind: "redirect"; to: string; status: number }
+	| null
+> {
 	const routesMod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
 	const routes = routesMod.routes as Array<{
 		path?: string;
@@ -899,116 +943,73 @@ async function renderSsr(
 	if (_indexHtmlCache === null) {
 		_indexHtmlCache = await readFile(join(root, "index.html"), "utf-8");
 	}
-	let template = await server.transformIndexHtml(originalUrl, _indexHtmlCache);
-
-	// Framework modules load through Vite's SSR module graph so user code (which
-	// imports the same packages) shares a single module instance — otherwise two
-	// copies of `@pyreon/router` would hold separate `RouterContext` IDs and
-	// `useContext` in RouterLink would miss the RouterProvider's value.
-	// `@pyreon/runtime-server` isn't a direct dep of most apps, so zero's
-	// `config()` hook registers an alias that points it at the copy under
-	// zero's own `node_modules` — same path → same Vite module → same instance.
-	const [core, _headPkg, headSsr, routerPkg, runtimeServer] = await Promise.all(
-		[
-			ssrLoadModuleQuiet(server, "@pyreon/core") as Promise<
-				typeof import("@pyreon/core")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/head") as Promise<
-				typeof import("@pyreon/head")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/head/ssr") as Promise<
-				typeof import("@pyreon/head/ssr")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/router") as Promise<
-				typeof import("@pyreon/router")
-			>,
-			ssrLoadModuleQuiet(server, "@pyreon/runtime-server") as Promise<
-				typeof import("@pyreon/runtime-server")
-			>,
-		],
+	const template = await server.transformIndexHtml(
+		originalUrl,
+		_indexHtmlCache,
 	);
 
-	// Don't auto-load `_layout.tsx` as the outer Layout. fs-router already
-	// emits it as a parent route in the matched chain — wrapping createApp
-	// with the same layout AGAIN produced a double mount: the App tree was
-	// `<Layout><RouterView/></Layout>` AND the router's first matched
-	// record was the layout, rendering it a second time inside RouterView.
-	// Symptom: duplicate `<nav>`, duplicate `<div id="layout">`,
-	// hydration mismatches, strict-mode locator violations in playwright.
+	// Phase 1 (render-pipeline unification): the per-page render sequence is
+	// the SHARED `renderPage` from @pyreon/server — the same function the
+	// production handler and the SSG prerender entry run. Dev only supplies
+	// the app/router and composes into the Vite-transformed template.
 	//
-	// If a user genuinely needs an outer wrapper that sits ABOVE the
-	// router (e.g. a global provider not tied to any route), they can
-	// still pass it via `startClient({ layout })` — but the file should
-	// NOT live under `src/routes/_layout.{ts,tsx,…}` (which fs-router
-	// always treats as a parent route).
-
-	// Use zero's own `createApp` rather than reassembling the tree by hand —
-	// guarantees server and client agree on every wrapper component (any
-	// future change to the App tree only needs to happen in one place).
-	// Load via `ssrLoadModule` so app.ts shares Vite's SSR module graph with
-	// the user's code: both end up importing the SAME `@pyreon/router` /
-	// `@pyreon/core` / `@pyreon/head` instances, so contexts (RouterContext,
-	// HeadContext, etc.) match between provider and consumer. A direct Node
-	// `import("./app")` would resolve those packages via Node's module graph,
-	// producing duplicate context registries that never connect.
+	// Both `@pyreon/server` and `@pyreon/zero/server` load through Vite's SSR
+	// module graph (`ssrLoadModule`) so the `@pyreon/core` / `@pyreon/router` /
+	// `@pyreon/head` instances renderPage imports are the SAME instances the
+	// user's route components see. A direct Node `import("@pyreon/server")`
+	// would resolve those packages via Node's module graph, producing
+	// duplicate context registries that never connect (the documented
+	// dual-instance hazard — same reason `createApp` loads via ssrLoadModule).
+	//
+	// Don't auto-load `_layout.tsx` as an outer Layout — fs-router already
+	// emits it as a parent route in the matched chain; wrapping again double-
+	// mounts (duplicate <nav>, hydration mismatches; see app.ts:createApp).
+	const serverPkg = (await ssrLoadModuleQuiet(
+		server,
+		"@pyreon/server",
+	)) as unknown as typeof import("@pyreon/server");
 	const appMod = (await ssrLoadModuleQuiet(
 		server,
 		"@pyreon/zero/server",
-	)) as unknown as typeof import("./server")
+	)) as unknown as typeof import("./server");
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
 		routerMode: "history",
 		url: pathname,
-	})
-
-	// `preload` loads lazy route components AND runs loaders for `pathname` so
-	// the synchronous render pass produces final HTML — no loading fallbacks,
-	// no `useLoaderData() === undefined`.
-	//
-	// M1.2 — Unmatched URLs no longer bail to a static 404 page. The router's
-	// `resolveRoute` (PR L5) walks the route tree and, if a parent layout has
-	// `notFoundComponent` AND the URL is under that layout's prefix, builds a
-	// synthetic chain `[...ancestorLayouts, syntheticLeaf]` with
-	// `isNotFound: true`. The render then produces 404 HTML INSIDE the
-	// layout's chrome. If the routes tree has no reachable `notFoundComponent`,
-	// `matched` stays empty — fall through to `handle404` for the static
-	// fallback (preserves backward compat for apps without `_404.tsx`).
-	await routerInst.preload(pathname, req);
-
-	const resolved = routerInst.currentRoute() as
-		| { matched?: unknown[]; isNotFound?: boolean }
-		| undefined;
-	if (!resolved?.matched || resolved.matched.length === 0) {
-		return null;
-	}
-	const status = resolved.isNotFound === true ? 404 : 200;
-
-	return runtimeServer.runWithRequestContext(async () => {
-		// PR-S1: App is router-AGNOSTIC; supply the per-request RouterProvider
-		// at this call site (mirrors production `createHandler`). See
-		// `app.ts:createApp` comment for the full rationale.
-		const app = core.h(
-			routerPkg.RouterProvider as Parameters<typeof core.h>[0],
-			{ router: routerInst },
-			core.h(App as Parameters<typeof core.h>[0], null),
-		);
-
-		const { html: appHtml, head } = await headSsr.renderWithHead(app);
-		const loaderData = routerPkg.serializeLoaderData(
-			routerInst as Parameters<typeof routerPkg.serializeLoaderData>[0],
-		);
-		const hasData = loaderData && Object.keys(loaderData).length > 0;
-		// M2.2 — safe serializer (parity with production handler / SSG entry).
-		const loaderScript = hasData
-			? `<script>window.__PYREON_LOADER_DATA__=${routerPkg.stringifyLoaderData(loaderData)}</script>`
-			: "";
-
-		const html = template
-			.replace("<!--pyreon-head-->", head)
-			.replace("<!--pyreon-app-->", appHtml)
-			.replace("<!--pyreon-scripts-->", loaderScript);
-		return { html, status };
 	});
+
+	// M1.2 — Unmatched URLs no longer bail to a static 404 page here; the
+	// router's `resolveRoute` (PR L5) builds a synthetic `notFoundComponent`
+	// chain with `isNotFound: true` and the render produces 404 HTML inside
+	// the layout chrome. `bailOnUnmatched` covers the remaining case (no
+	// reachable `notFoundComponent` → `matched` stays empty → fall through
+	// to `handle404`'s static fallback).
+	const result = await serverPkg.renderPage(
+		App as Parameters<typeof serverPkg.renderPage>[0],
+		routerInst as Parameters<typeof serverPkg.renderPage>[1],
+		pathname,
+		{
+			...(req ? { request: req } : {}),
+			bailOnUnmatched: true,
+		},
+	);
+
+	if (result.kind === "unmatched") return null;
+	if (result.kind === "redirect") {
+		// Surface the loader-thrown `redirect()` AS DATA — the dev middleware
+		// (the caller) converts it to a real HTTP Location response, exactly
+		// as it did pre-unification when the throw propagated as a rejection.
+		// (The first unification cut returned a meta-refresh page here, which
+		// REGRESSED the redirect-status contract — caught by the cpa e2e's
+		// permanent-redirect spec: 200-with-meta-refresh instead of 308.)
+		return { kind: "redirect", to: result.to, status: result.status };
+	}
+
+	const html = template
+		.replace("<!--pyreon-head-->", result.head)
+		.replace("<!--pyreon-app-->", result.appHtml)
+		.replace("<!--pyreon-scripts-->", result.loaderScript);
+	return { kind: "html", html, status: result.status };
 }
 
 /**

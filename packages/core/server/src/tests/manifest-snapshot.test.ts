@@ -25,6 +25,7 @@ describe('gen-docs — server snapshot', () => {
       'server/hydrateIslandsAuto',
       'server/island',
       'server/prerender',
+      'server/renderPage',
     ])
   })
 })

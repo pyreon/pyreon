@@ -49,7 +49,17 @@ jobs:
           node-version: 24
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        # PYREON_BOOTSTRAP_SKIP=1 — this gate is LIB-FREE: check-doc-examples
+        # synthesizes a tsconfig whose path-aliases point at workspace `src/`
+        # directly, so the postinstall bootstrap (which builds all ~70
+        # packages' lib/, including a potentially COLD Rust cargo build of
+        # the native compiler) is pure waste here. Without the skip, this
+        # standalone workflow (no node_modules/lib cache — the composite's
+        # caches are per-ci.yml-run and invisible across workflows) hung at
+        # this step for 45+ minutes on FOUR separate PRs (#1502, #1514 ×2,
+        # #1517) before timing out. Same lib-free contract as ci.yml's
+        # typecheck/lint jobs.
+        run: PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
 
       - name: Typecheck opted-in doc examples
         run: bun scripts/check-doc-examples.ts

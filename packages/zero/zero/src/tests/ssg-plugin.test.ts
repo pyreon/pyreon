@@ -33,29 +33,40 @@ describe('ssgPlugin', () => {
     })
 
     it('SSR entry source imports zero virtual modules and renders fresh per path', () => {
-      // The materialized entry must:
+      // The materialized entry must (Phase 1 render-pipeline unification):
       // 1. Import the virtual route tree
       // 2. Use `createApp({ url: path })` to get a fresh router PER REQUEST
       //    (NOT createServer, which bakes in a single router that always
       //    points at "/")
-      // 3. Preload loaders for the path
-      // 4. Use renderWithHead to produce HTML
-      // 5. Serialize loader data for hydration
-      // 6. Default-export the renderer
+      // 3. Delegate the per-page sequence (preload → redirect catch →
+      //    render → styler → loader script) to the SHARED `renderPage`
+      //    from @pyreon/server — the same pipeline the production handler
+      //    and dev SSR middleware run. The entry must NOT hand-roll the
+      //    sequence (that was the drift class renderPage closed).
+      // 4. Default-export the renderer
       expect(_internal.renderSsrEntrySource()).toContain('virtual:zero/routes')
       expect(_internal.renderSsrEntrySource()).toContain('@pyreon/zero/server')
       expect(_internal.renderSsrEntrySource()).toContain('createApp')
       expect(_internal.renderSsrEntrySource()).toContain('url: path')
-      // PR C — preload now takes a 3rd `options` arg with `skipLoaders` for
-      // the 404 build path. Existing 2-arg shape is preserved as the prefix
-      // of the call.
-      expect(_internal.renderSsrEntrySource()).toContain('router.preload(path, undefined,')
-      expect(_internal.renderSsrEntrySource()).toContain('renderWithHead')
-      expect(_internal.renderSsrEntrySource()).toContain('serializeLoaderData')
+      expect(_internal.renderSsrEntrySource()).toContain('renderPage')
+      expect(_internal.renderSsrEntrySource()).toContain('"@pyreon/server"')
       expect(_internal.renderSsrEntrySource()).toContain('export default')
       // Must NOT use createServer — that's the bug we fixed (single-router
       // instance baked in at app creation, can't render different paths).
       expect(_internal.renderSsrEntrySource()).not.toContain('createServer')
+      // Must NOT hand-roll the routed render sequence — renderPage owns it.
+      // (The legacy router-less standalone-404 fallback below renderPath is
+      // the ONLY remaining renderWithHead consumer; scope the assertion to
+      // the renderPath function body.)
+      const entry = _internal.renderSsrEntrySource()
+      const renderPathBody = entry.slice(
+        entry.indexOf('export default async function renderPath'),
+        entry.indexOf('// ─── getStaticPaths'),
+      )
+      expect(renderPathBody).toContain('renderPage(App, router, path')
+      expect(renderPathBody).not.toContain('renderWithHead')
+      expect(renderPathBody).not.toContain('runWithRequestContext')
+      expect(renderPathBody).not.toContain('serializeLoaderData')
     })
   })
 
@@ -527,25 +538,16 @@ describe('ssgPlugin', () => {
     // the wrong page AND leaks auth-gated layout structure for
     // unauthenticated users — same reason `@pyreon/server`'s SSR
     // handler short-circuits on redirect-throw.
-    it('imports getRedirectInfo from @pyreon/router', () => {
-      expect(_internal.renderSsrEntrySource()).toContain('getRedirectInfo')
-      expect(_internal.renderSsrEntrySource()).toContain('"@pyreon/router"')
-    })
-
-    it('wraps router.preload in try/catch + extracts redirect info', () => {
-      // The catch block calls getRedirectInfo(err) — non-redirect errors
-      // rethrow into the existing errors[] flow.
-      //
-      // PR C — preload's 3rd `options` arg with `skipLoaders` is forwarded
-      // from `renderPath(path, options)`. The call shape became
-      // `await router.preload(path, undefined, { skipLoaders: ... })`,
-      // still wrapped in the same try/catch.
+    it('delegates redirect catching to renderPage (PR B semantics preserved)', () => {
+      // Pre-unification the entry hand-rolled try/catch + getRedirectInfo
+      // around router.preload. renderPage owns that now — the entry just
+      // forwards skipLoaders (PR C) and maps the result kind. Rendering
+      // past a redirect (wrong-page HTML + auth-layout leak) stays
+      // impossible because renderPage catches BEFORE rendering.
       const src = _internal.renderSsrEntrySource()
-      expect(src).toContain('try {')
-      expect(src).toContain('await router.preload(path, undefined,')
+      expect(src).toContain('renderPage(App, router, path')
       expect(src).toContain('skipLoaders:')
-      expect(src).toContain('getRedirectInfo(err)')
-      expect(src).toContain('throw err')
+      expect(src).not.toContain('getRedirectInfo')
     })
 
     it('returns a redirect descriptor with kind="redirect" + from/to/status', () => {
@@ -554,8 +556,8 @@ describe('ssgPlugin', () => {
       const src = _internal.renderSsrEntrySource()
       expect(src).toContain('kind: "redirect"')
       expect(src).toContain('from: path')
-      expect(src).toContain('to: info.url')
-      expect(src).toContain('status: info.status')
+      expect(src).toContain('to: result.to')
+      expect(src).toContain('status: result.status')
     })
 
     it('marks the success branch with kind="html"', () => {
