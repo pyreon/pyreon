@@ -228,7 +228,7 @@ The main entry (`@pyreon/zero`) re-exports browser-safe pieces only — componen
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/zero](https://docs.pyreon.dev/docs/zero) (or `docs/docs/zero.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/zero](https://docs.pyreon.dev/docs/zero) (or `docs/src/content/docs/zero.md` in this repo).
 
 SSG-specific guide: [docs.pyreon.dev/docs/ssg](https://docs.pyreon.dev/docs/ssg).
 

@@ -2,7 +2,7 @@
 /**
  * check-mcp-docs — assert every MCP tool registered in
  * `packages/tools/mcp/src/manifest.ts` has a `### <name>` section in
- * `docs/docs/mcp.md`.
+ * `docs/src/content/docs/mcp.md`.
  *
  * Closes the silent-drift footgun T2.5.12 was opened to fix: as new
  * MCP tools land, manifest entries drift ahead of the human-written
@@ -25,7 +25,7 @@ import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const MANIFEST_PATH = join(REPO_ROOT, 'packages/tools/mcp/src/manifest.ts')
-const DOCS_PATH = join(REPO_ROOT, 'docs/docs/mcp.md')
+const DOCS_PATH = join(REPO_ROOT, 'docs/src/content/docs/mcp.md')
 
 interface MissingEntry {
   tool: string
@@ -74,7 +74,7 @@ function readManifestTools(): { name: string; signature: string }[] {
 }
 
 /**
- * Scan docs/docs/mcp.md for `### <name>` headers, normalised to lowercase
+ * Scan docs/src/content/docs/mcp.md for `### <name>` headers, normalised to lowercase
  * for case-insensitive comparison. The hash count is matched on `### `
  * (h3) since every existing tool section uses h3.
  */
@@ -125,7 +125,7 @@ function main(): void {
   if (result.ok) {
     console.log(
       `✓ MCP docs gate clean. ${result.toolCount} tool(s) registered, ` +
-        `${result.documented.length} documented in docs/docs/mcp.md.`,
+        `${result.documented.length} documented in docs/src/content/docs/mcp.md.`,
     )
     process.exit(0)
   }
@@ -133,7 +133,7 @@ function main(): void {
   console.error('✗ MCP docs drift detected.')
   console.error('')
   console.error(
-    `  ${result.missing.length} of ${result.toolCount} tool(s) lack a "### <name>" section in docs/docs/mcp.md:`,
+    `  ${result.missing.length} of ${result.toolCount} tool(s) lack a "### <name>" section in docs/src/content/docs/mcp.md:`,
   )
   console.error('')
   for (const entry of result.missing) {
@@ -141,10 +141,10 @@ function main(): void {
   }
   console.error('')
   console.error(
-    '  Add a section to docs/docs/mcp.md following the existing pattern (description + Parameters table + Example call).',
+    '  Add a section to docs/src/content/docs/mcp.md following the existing pattern (description + Parameters table + Example call).',
   )
   console.error(
-    '  See docs/docs/mcp.md "Tools by intent" navigator for the canonical ordering.',
+    '  See docs/src/content/docs/mcp.md "Tools by intent" navigator for the canonical ordering.',
   )
   process.exit(1)
 }

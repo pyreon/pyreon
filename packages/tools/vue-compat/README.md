@@ -106,7 +106,7 @@ Components are plain functions returning JSX that run on Pyreon's reactive engin
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/vue-compat](https://docs.pyreon.dev/docs/vue-compat) (or `docs/docs/vue-compat.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/vue-compat](https://docs.pyreon.dev/docs/vue-compat) (or `docs/src/content/docs/vue-compat.md` in this repo).
 
 ## License
 

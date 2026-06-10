@@ -76,7 +76,7 @@ describe('selectSuites', () => {
       'packages/fundamentals/flow/src/flow.ts',
       'e2e/zero-hmr.spec.ts',
       'README.md',
-      'docs/docs/index.md',
+      'docs/src/content/docs/index.md',
     ]) {
       expect(forcesFullRun(narrow)).toBe(false)
     }
@@ -115,7 +115,7 @@ describe('selectSuites', () => {
 
   it('docs-only change set → no suites', () => {
     expect(
-      selectSuites(['docs/docs/zero.md', 'README.md', 'CLAUDE.md']),
+      selectSuites(['docs/src/content/docs/zero.md', 'README.md', 'CLAUDE.md']),
     ).toEqual([])
   })
 

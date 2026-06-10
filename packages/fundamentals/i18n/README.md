@@ -204,7 +204,7 @@ import { i18nRegistry } from '@pyreon/i18n/devtools'
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/i18n](https://docs.pyreon.dev/docs/i18n) (or `docs/docs/i18n.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/i18n](https://docs.pyreon.dev/docs/i18n) (or `docs/src/content/docs/i18n.md` in this repo).
 
 ## License
 

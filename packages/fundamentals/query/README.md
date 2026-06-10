@@ -248,7 +248,7 @@ Everything from `@tanstack/query-core` is re-exported, so `@pyreon/query` is you
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/query](https://docs.pyreon.dev/docs/query) (or `docs/docs/query.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/query](https://docs.pyreon.dev/docs/query) (or `docs/src/content/docs/query.md` in this repo).
 
 ## License
 

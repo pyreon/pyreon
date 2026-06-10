@@ -41,7 +41,7 @@
 // Phase B ships.
 //
 // Full architectural spec: `.claude/plans/multiplatform-architecture.md`
-// End-user docs: `docs/docs/multiplatform.md`
+// End-user docs: `docs/src/content/docs/multiplatform.md`
 
 // ===== Type exports — all 16 canonical primitives =====
 export type {

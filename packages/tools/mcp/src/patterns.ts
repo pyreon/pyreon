@@ -3,16 +3,16 @@
  *
  * Each pattern answers a "how do I do X the right way" question with a
  * code example and rationale. The content is the body of the
- * corresponding `docs/patterns/<name>.md` file, discovered at runtime
- * by walking up from `process.cwd()` to the nearest repo that contains
- * `docs/patterns/`.
+ * corresponding `docs/src/content/docs/patterns/<name>.md` file,
+ * discovered at runtime by walking up from `process.cwd()` to the
+ * nearest repo that contains a `patterns/` directory.
  *
  * Why a filesystem lookup instead of bundled content: the patterns
- * belong in the VitePress site (they're first-class docs), and having
- * the MCP fetch them live means the AI sees the same text the human
+ * belong in the docs site (they're first-class docs), and having the
+ * MCP fetch them live means the AI sees the same text the human
  * would. Bundling copies would drift.
  *
- * Fallback: if no `docs/patterns/` exists in the walk (e.g. the MCP is
+ * Fallback: if no patterns dir exists in the walk (e.g. the MCP is
  * running in a consumer repo), the tool reports the miss and lists
  * what patterns WOULD be available if running against the Pyreon
  * monorepo. The list itself is seeded from the directory walk, so
@@ -47,11 +47,13 @@ export interface PatternRegistry {
 // Directory walk
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Patterns live at `docs/docs/patterns/` — the VitePress content dir
-// so the same file serves both the MCP tool AND the docs website. We
-// also check the top-level `docs/patterns/` layout for forward
-// compatibility, in case a future migration moves them up.
+// Patterns live at `docs/src/content/docs/patterns/` — the
+// @pyreon/zero-content content dir, so the same file serves both the
+// MCP tool AND the docs website. Legacy locations are kept in the
+// candidate list for backward compat with downstream consumers using
+// older repo layouts.
 const PATTERN_PATH_CANDIDATES: ReadonlyArray<ReadonlyArray<string>> = [
+  ['docs', 'src', 'content', 'docs', 'patterns'],
   ['docs', 'docs', 'patterns'],
   ['docs', 'patterns'],
 ]
@@ -189,8 +191,8 @@ export function loadPatternRegistry(startDir: string = process.cwd()): PatternRe
 export function formatPatternIndex(registry: PatternRegistry): string {
   if (!registry.root || registry.patterns.length === 0) {
     return (
-      'No patterns found. Patterns live at `docs/docs/patterns/<name>.md` ' +
-      '(the VitePress content directory) in the Pyreon monorepo. If you ' +
+      'No patterns found. Patterns live at `docs/src/content/docs/patterns/<name>.md` ' +
+      '(the @pyreon/zero-content directory) in the Pyreon monorepo. If you ' +
       'are running the MCP in a consumer project, patterns are not ' +
       'available locally — run the MCP in the Pyreon repo to browse them.'
     )

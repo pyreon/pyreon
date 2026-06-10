@@ -227,7 +227,7 @@ const RevealSection = kinetic('section')
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/kinetic](https://docs.pyreon.dev/docs/kinetic) (or `docs/docs/kinetic.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/kinetic](https://docs.pyreon.dev/docs/kinetic) (or `docs/src/content/docs/kinetic.md` in this repo).
 
 ## License
 

@@ -82,7 +82,7 @@ Convenience wrapper around `@pyreon/create-zero` — scaffold a new project with
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/cli](https://docs.pyreon.dev/docs/cli) (or `docs/docs/cli.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/cli](https://docs.pyreon.dev/docs/cli) (or `docs/src/content/docs/cli.md` in this repo).
 
 ## License
 

@@ -153,7 +153,7 @@ describe('stripMarkdown', () => {
   it('drops heading LINES entirely (PR-D audit C7 — heading text is already in the `headings` field)', () => {
     // Pre-fix headings were double-indexed: once in the doc's
     // dedicated `headings` field AND again as plain prose in `body`,
-    // shipping ~26 KB of duplicates on docs-zero. Now `stripMarkdown`
+    // shipping ~26 KB of duplicates on the docs site. Now `stripMarkdown`
     // drops the full heading line.
     expect(stripMarkdown('## Heading')).toBe('')
     expect(stripMarkdown('# T\n\nbody\n\n## Sub\n\nmore')).toBe('body more')
@@ -161,7 +161,7 @@ describe('stripMarkdown', () => {
 
   it('drops the leading YAML frontmatter block (PR-D audit C7)', () => {
     // Pre-fix the frontmatter was indexed verbatim (`title:`,
-    // `description:`, etc.) — ~12 KB of noise on docs-zero. Now the
+    // `description:`, etc.) — ~12 KB of noise on the docs site. Now the
     // builder strips the leading `---...\n---` block.
     const md = '---\ntitle: Zero\ndescription: Hello\n---\n\nthe body'
     expect(stripMarkdown(md)).toBe('the body')

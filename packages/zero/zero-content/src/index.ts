@@ -23,7 +23,7 @@ export { COMPONENTS_BRAND } from './types'
 
 // ─── Route helpers — content-collection-shaped routes ─────────────────────
 //
-// `defineContentRoute('docs')` collapses the docs-zero Suspense
+// `defineContentRoute('docs')` collapses the docs Suspense
 // boilerplate into one call. See `route-helpers.tsx` for the full
 // rationale (PR-A audit H1).
 export { defineContentRoute } from './route-helpers'

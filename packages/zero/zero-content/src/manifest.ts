@@ -28,7 +28,7 @@ export default defineManifest({
     'getCollection<K>(name) / getEntry<K, S>(...) / getEntries<K>(...) runtime queries with full type inference',
     'Standard Schema-compatible frontmatter validation — BYO validator (zod, valibot, arktype, typia; all work via duck-typing, no validator runtime in this package)',
     'Three-tier MDX component resolution: built-ins → src/mdx/ convention scan → per-.md imports → escape-hatch defineComponents',
-    'Built-in components: Callout, CodeGroup, CodeBlock (more candidates — Playground, PackageBadge, Tabs — live in `examples/docs-zero/src/mdx/` and are author-side until promoted)',
+    'Built-in components: Callout, CodeGroup, CodeBlock (more candidates — Playground, PackageBadge, Tabs — live in `docs/src/mdx/` and are author-side until promoted)',
     'Shiki syntax highlighting with shared instance + dual light/dark theme baked into one emit (no runtime cost)',
     'Custom markdown blocks: :::tip / :::warning / :::note / :::danger / :::info / :::code-group via remark-directive',
     'Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")',

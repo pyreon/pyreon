@@ -14,7 +14,7 @@
 //   - THIS PR ships the full Strategy-B port + REMOVES createMachine
 //     from the tier2StrategyB diagnostic list (rebase contract).
 //
-// Reference: docs/docs/multiplatform-libraries.md → "Tier 2"
+// Reference: docs/src/content/docs/multiplatform-libraries.md → "Tier 2"
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

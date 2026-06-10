@@ -107,7 +107,7 @@ describe('findOwningPackage', () => {
   })
 
   it('handles the docs workspace', () => {
-    const owner = findOwningPackage('docs/docs/index.md', PACKAGES, REPO)
+    const owner = findOwningPackage('docs/src/content/docs/index.md', PACKAGES, REPO)
     expect(owner?.name).toBe('@pyreon/docs')
   })
 
@@ -199,7 +199,7 @@ describe('isConsumerAffectingFile', () => {
     it('rejects the docs workspace (in ignore list)', () => {
       expect(
         isConsumerAffectingFile(
-          'docs/docs/index.md',
+          'docs/src/content/docs/index.md',
           PACKAGES,
           IGNORED,
           REPO,
@@ -384,7 +384,7 @@ describe('evaluateGate', () => {
       ok({
         files: [
           'examples/playground/src/main.tsx',
-          'docs/docs/index.md',
+          'docs/src/content/docs/index.md',
         ],
       }),
     )

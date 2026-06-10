@@ -443,7 +443,7 @@ why isn't the DOM updating" debugging.
 - A lint rule `pyreon/no-conditional-signal-read-in-accessor` could fire on
   the AST shape `() => cond ? sig() : noSigCall`.
 - Docs: a dedicated "Conditional reactivity" subsection in
-  `docs/docs/reactivity.md` with this exact example.
+  `docs/src/content/docs/reactivity.md` with this exact example.
 
 ---
 

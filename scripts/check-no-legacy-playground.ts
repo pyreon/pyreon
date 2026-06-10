@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Fail-fast guard against `<Playground>` re-appearing in docs-zero
+ * Fail-fast guard against `<Playground>` re-appearing in the Pyreon docs
  * markdown after the PR #1448 migration.
  *
  * The legacy iframe-sandboxed `<Playground code={`…`}>` shape was
@@ -11,7 +11,7 @@
  *   - No template-literal escape-pass hazards (PR #1434 bug class)
  *
  * This script greps every `.md` file under
- * `examples/docs-zero/src/content/docs/` for `<Playground` and reports
+ * `docs/src/content/docs/` for `<Playground` and reports
  * any matches. Exits 1 if any found.
  *
  * Run on every PR via `bun run validate-fast`. Bypass with
@@ -38,7 +38,7 @@ const REPO_ROOT = path.resolve(
 )
 const DOCS_DIR = path.join(
   REPO_ROOT,
-  'examples/docs-zero/src/content/docs',
+  'docs/src/content/docs',
 )
 const ALLOWED_PROSE_FILES = new Set([
   // The new docs page literally documents what `<Playground>` was and
@@ -115,7 +115,7 @@ async function main() {
   }
   if (findings.length === 0) {
     console.log(
-      `[check-no-legacy-playground] OK — 0 \`<Playground>\` usages in ${files.length} docs-zero markdown file(s).`,
+      `[check-no-legacy-playground] OK — 0 \`<Playground>\` usages in ${files.length} docs markdown file(s).`,
     )
     return
   }

@@ -173,7 +173,7 @@ A tree-shake regression test (`src/tests/dev-gate-treeshake.test.ts`) bundles `m
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/runtime-dom](https://docs.pyreon.dev/docs/runtime-dom) (or `docs/docs/runtime-dom.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/runtime-dom](https://docs.pyreon.dev/docs/runtime-dom) (or `docs/src/content/docs/runtime-dom.md` in this repo).
 
 ## License
 

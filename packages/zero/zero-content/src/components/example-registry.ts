@@ -9,7 +9,7 @@
 // Why a registry instead of inline `import.meta.glob` in the Example
 // component? `import.meta.glob` is resolved at COMPILE TIME relative
 // to the file it's called in. The consumer's example files live in
-// the consumer's source tree (e.g. `docs-zero/src/examples/`), not
+// the consumer's source tree (e.g. `docs/src/examples/`), not
 // here in `@pyreon/zero-content`. The consumer therefore MUST own
 // the glob; the registry is the handoff point.
 //

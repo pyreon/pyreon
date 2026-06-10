@@ -26,7 +26,7 @@
 //      received 0"
 //   3. Restore the block; all specs pass
 //
-// Reference: docs/docs/multiplatform-libraries.md → "Tier 2"
+// Reference: docs/src/content/docs/multiplatform-libraries.md → "Tier 2"
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'

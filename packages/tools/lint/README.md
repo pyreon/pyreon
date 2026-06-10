@@ -174,7 +174,7 @@ The text reporter uses brand-mapped 256-color ANSI (matches the CLI spec §6.5 a
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/lint](https://docs.pyreon.dev/docs/lint) (or `docs/docs/lint.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/lint](https://docs.pyreon.dev/docs/lint) (or `docs/src/content/docs/lint.md` in this repo).
 
 ## License
 

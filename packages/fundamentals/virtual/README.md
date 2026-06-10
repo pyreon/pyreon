@@ -165,7 +165,7 @@ const { virtualItems } = useVirtualizer(() => ({
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/virtual](https://docs.pyreon.dev/docs/virtual) (or `docs/docs/virtual.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/virtual](https://docs.pyreon.dev/docs/virtual) (or `docs/src/content/docs/virtual.md` in this repo).
 
 ## License
 

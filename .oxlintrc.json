@@ -142,12 +142,6 @@
       }
     },
     {
-      "files": ["docs/.vitepress/**"],
-      "rules": {
-        "no-useless-escape": "off"
-      }
-    },
-    {
       "files": ["examples/**", "packages/ui/primitives/src/**"],
       "rules": {
         "jsx-a11y/click-events-have-key-events": "off",

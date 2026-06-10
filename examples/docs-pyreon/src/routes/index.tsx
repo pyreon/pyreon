@@ -21,9 +21,10 @@ export default function HomePage() {
             playground on every page runs through the same renderer that ships your app.
           </p>
           <p>
-            The brand tokens, syntax theme, and Playground UX are ported verbatim from the
-            existing VitePress site — the difference is that this one carries no virtual-DOM
-            tax, no scoped Vue runtime, and proves the framework on its own primitives.
+            The brand tokens, syntax theme, and Playground UX are ported from the original
+            VitePress site (now @pyreon/docs) — this prototype proved the foundation with no
+            virtual-DOM tax, no scoped Vue runtime, demonstrating the framework on its own
+            primitives.
           </p>
 
           <h2>What's wired up</h2>

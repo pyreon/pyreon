@@ -17,7 +17,7 @@
 //   3. Unsupported rx methods (`rx.sortBy`, `rx.count`, …) STILL produce
 //      the silent-drop bug — by design; they're explicit follow-ups
 //      tracked in the per-method lowering table in
-//      docs/docs/multiplatform-libraries.md. A bisect-verified warning
+//      docs/src/content/docs/multiplatform-libraries.md. A bisect-verified warning
 //      surfaces so the user knows what to do.
 //
 // Bisect-verified: removing the `tryRxNamespaceLowering(...)` call

@@ -210,7 +210,7 @@ Captures any error thrown in descendants. Pair with `registerErrorHandler` / `re
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/core](https://docs.pyreon.dev/docs/core) (or `docs/docs/core.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/core](https://docs.pyreon.dev/docs/core) (or `docs/src/content/docs/core.md` in this repo).
 
 ## License
 

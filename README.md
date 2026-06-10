@@ -183,7 +183,7 @@ signal.set() -> re-run 1 effect -> update 1 DOM node
 
 ## Documentation
 
-Full documentation at [pyreon.dev](https://pyreon.dev) (VitePress site in `docs/`).
+Full documentation at [pyreon.dev](https://pyreon.dev) (Pyreon-native site in `docs/` — powered by @pyreon/zero + @pyreon/zero-content).
 
 ## Development
 

@@ -90,7 +90,7 @@ describe('isRootFile', () => {
   it.each([
     'packages/core/reactivity/src/signal.ts',
     'examples/playground/src/App.tsx',
-    'docs/docs/zero.md',
+    'docs/src/content/docs/zero.md',
     'README.md',
     'CLAUDE.md',
     'e2e/zero-hmr.spec.ts',

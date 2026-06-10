@@ -52,7 +52,7 @@ export interface BuildIndexArgs {
   chunkWarnBytes?: number
   chunkErrorBytes?: number
   /**
-   * Vite `base` value (e.g. `/pyreon/preview/`). When the site is
+   * Vite `base` value (e.g. `/pyreon/`). When the site is
    * deployed under a subpath, the catalog URLs emitted INTO
    * `search-index.json` must be prefixed with this so the browser's
    * `fetch('/search-index-docs.json')` doesn't escape the subpath
@@ -156,7 +156,7 @@ export async function buildSearchIndex(
 
   // Normalize the configured base into the prefix we'll emit into
   // catalog URLs. `'/' → ''` (no prefix needed for root deploys),
-  // `'/pyreon/preview/' → '/pyreon/preview'` (kept with exactly one
+  // `'/pyreon/' → '/pyreon'` (kept with exactly one
   // leading slash and NO trailing slash so the `/${filename}` join
   // produces a single slash between prefix and filename).
   let basePrefix = ''
@@ -233,7 +233,7 @@ export function humanBytes(n: number): string {
  *
  * Pre-fix (PR-D audit C7) the frontmatter block was indexed as part
  * of the body, leaking `title:` / `description:` / `since:` etc. into
- * search results (~12.3 KB on docs-zero, mostly weighted prose like
+ * search results (~12.3 KB on the docs site, mostly weighted prose like
  * descriptions).
  *
  * @internal exported for testing
@@ -260,7 +260,7 @@ export function stripMarkdown(source: string): string {
   out = out.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
   // Drop heading lines entirely (NOT just the marker) — the heading
   // text is ALREADY stored in the doc's `headings` field, so leaving
-  // it in `body` double-indexes it. Pre-fix (PR-D audit C7) docs-zero
+  // it in `body` double-indexes it. Pre-fix (PR-D audit C7) the docs site
   // shipped ~26 KB of duplicated heading text across its 93 pages.
   out = out.replace(/^#{1,6}\s+.*$/gm, '')
   // Drop emphasis markers.

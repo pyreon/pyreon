@@ -181,7 +181,7 @@ const checks: ClaimCheck[] = [
         pattern: /^- (\d+) signal-based hooks across 6 categories/m,
       },
       {
-        file: 'docs/docs/index.md',
+        file: 'docs/src/content/docs/index.md',
         pattern: /\| (\d+) signal-based hooks for common UI patterns/,
       },
     ],
@@ -219,7 +219,7 @@ const checks: ClaimCheck[] = [
         pattern: /— (\d+) rules across \d+ categories/,
       },
       {
-        file: 'docs/docs/lint.md',
+        file: 'docs/src/content/docs/lint.md',
         pattern: /Pyreon-specific linter — (\d+) rules for signals/,
       },
       {
@@ -284,7 +284,7 @@ export const runDocClaimsGate = async (
   const findings: Finding[] = []
 
   // The claim sites are Pyreon-monorepo-specific paths (hooks README,
-  // CLAUDE.md, docs/docs/index.md, etc.). In a downstream consumer
+  // CLAUDE.md, docs/src/content/docs/index.md, etc.). In a downstream consumer
   // project NONE of them exist — firing the gate would emit a flood of
   // spurious file-missing errors that don't reflect any real problem.
   // Skip when zero claim files are present: signal that the gate

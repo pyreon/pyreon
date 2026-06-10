@@ -187,7 +187,7 @@ Each middleware receives `ctx: MiddlewareContext` (`{ request, path, method, hea
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/server](https://docs.pyreon.dev/docs/server) (or `docs/docs/server.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/server](https://docs.pyreon.dev/docs/server) (or `docs/src/content/docs/server.md` in this repo).
 
 ## License
 

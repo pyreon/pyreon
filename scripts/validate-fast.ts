@@ -13,7 +13,7 @@
  *   - check-release-readiness (publishConfig.access / fixed-group coverage)
  *   - check-manifest-depth  (LOCKED package density regressed)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
- *   - check-mcp-docs        (MCP tool added without docs/docs/mcp.md section)
+ *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *

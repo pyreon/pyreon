@@ -196,7 +196,7 @@ Canvas renders the whole chart as one `<canvas>` element. SVG creates hundreds o
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/charts](https://docs.pyreon.dev/docs/charts) (or `docs/docs/charts.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/charts](https://docs.pyreon.dev/docs/charts) (or `docs/src/content/docs/charts.md` in this repo).
 
 ## License
 

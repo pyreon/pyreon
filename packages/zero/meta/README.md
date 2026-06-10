@@ -115,7 +115,7 @@ Heavy upstream deps stay lazy at the source-package level:
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/meta](https://docs.pyreon.dev/docs/meta) (or `docs/docs/meta.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/meta](https://docs.pyreon.dev/docs/meta) (or `docs/src/content/docs/meta.md` in this repo).
 
 ## License
 

@@ -4,7 +4,7 @@
  * **PR-A audit H1** — the single highest-leverage feature in the
  * audit. Every consumer of `@pyreon/zero-content` was re-inventing
  * the same async-component + Suspense workaround to make a route
- * load a markdown entry by slug (see `examples/docs-zero/src/routes/
+ * load a markdown entry by slug (see `docs/src/routes/
  * docs/[...slug].tsx` for the pre-fix shape — 80 lines of boilerplate
  * including the `import 'virtual:zero-content/collections'` side-
  * effect, the manual `getStaticPaths` enumeration, the `<Suspense>`
@@ -64,8 +64,8 @@ export interface DefineContentRouteOptions {
   wrap?: (entry: CollectionEntry, body: VNodeChild) => VNodeChild
   /**
    * CSS class for the outer article element. Defaults to
-   * `'docs-content vp-doc'` (matching docs-zero / VitePress lineage)
-   * so the existing CSS in this monorepo's docs-zero example carries
+   * `'docs-content vp-doc'` (matching docs / VitePress lineage)
+   * so the existing CSS in this monorepo's docs example carries
    * over without changes. Set to `null` to drop the article wrapper
    * and have `wrap()` handle layout entirely.
    */
@@ -151,7 +151,7 @@ const DefaultFallback = h('article', { class: DEFAULT_ARTICLE_CLASS })
  * entry by its `[...slug]` parameter and renders the resolved
  * markdown body inside a `<Suspense>` boundary.
  *
- * Drop-in replacement for the boilerplate in `examples/docs-zero/src/
+ * Drop-in replacement for the boilerplate in `docs/src/
  * routes/docs/[...slug].tsx`:
  *
  *   export default defineContentRoute('docs')

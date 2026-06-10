@@ -434,9 +434,31 @@ export function injectIntoTemplate(
   if (html.includes('<!--pyreon-app-->')) {
     html = html.replace('<!--pyreon-app-->', result.appHtml)
   } else if (result.appHtml) {
-    const appDivMatch = html.match(/<div\s+id=["']app["']\s*>([\s\S]*?)<\/div>/)
-    if (appDivMatch) {
-      html = html.replace(appDivMatch[0], `<div id="app">${result.appHtml}</div>`)
+    // Find `<div id="app">` (either quote style) with linear indexOf
+    // rather than a regex, to avoid CodeQL polynomial-regex flags AND
+    // any genuine backtracking risk on attacker-controlled templates.
+    // Both `id="app"` and `id='app'` shapes are matched.
+    const findOpenAppDiv = (s: string): number => {
+      const candidates = ['<div id="app">', "<div id='app'>"]
+      let best = -1
+      for (const c of candidates) {
+        const i = s.indexOf(c)
+        if (i !== -1 && (best === -1 || i < best)) best = i
+      }
+      return best
+    }
+    const openIdx = findOpenAppDiv(html)
+    if (openIdx !== -1) {
+      const openLen = '<div id="app">'.length // both quote styles same length
+      const closeIdx = html.indexOf('</div>', openIdx + openLen)
+      if (closeIdx !== -1) {
+        html
+          = html.slice(0, openIdx)
+          + `<div id="app">${result.appHtml}</div>`
+          + html.slice(closeIdx + '</div>'.length)
+      } else {
+        html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
+      }
     } else {
       html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
     }

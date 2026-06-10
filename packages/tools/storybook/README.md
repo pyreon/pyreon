@@ -112,7 +112,7 @@ The renderer Storybook calls to mount a story into its canvas iframe. Used inter
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/storybook](https://docs.pyreon.dev/docs/storybook) (or `docs/docs/storybook.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/storybook](https://docs.pyreon.dev/docs/storybook) (or `docs/src/content/docs/storybook.md` in this repo).
 
 ## License
 

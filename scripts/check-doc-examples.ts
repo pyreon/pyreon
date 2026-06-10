@@ -1,17 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Check VitePress doc code examples against the live API surface.
+ * Check docs code examples against the live API surface.
  *
  * ## Why
  *
  * The manifest-driven docs pipeline (T2.1/T2.5.1) catches API drift in
- * the api-reference + llms-* surfaces. Code examples inside `docs/docs/**`
+ * the api-reference + llms-* surfaces. Code examples inside `docs/src/content/docs/**`
  * markdown bodies aren't on that pipeline — they rot silently when a
  * symbol is renamed, removed, or has its signature changed.
  *
  * ## Opt-in by marker (avoids 1930-block false-positive flood)
  *
- * `docs/docs/**` carries ~1930 `tsx`/`ts` fenced blocks today. Most are
+ * `docs/src/content/docs/**` carries ~1930 `tsx`/`ts` fenced blocks today. Most are
  * illustrative snippets that omit imports, reference undefined helpers,
  * or pick up state from earlier blocks (continuation) — typechecking
  * them all as standalone files would produce noise that drowns out the
@@ -30,7 +30,7 @@
  *
  * ## Mechanics
  *
- * 1. Walk `docs/docs/**` markdown.
+ * 1. Walk `docs/src/content/docs/**` markdown.
  * 2. For each `tsx` / `ts` / `typescript` fence whose first content line
  *    starts with `// @check`, extract the block.
  * 3. Write each block to `.cache/doc-examples/<file>-<idx>.tsx`.
@@ -40,7 +40,7 @@
  *    permissive (`strict: false`, `skipLibCheck: true`) so the gate
  *    flags API/signature drift, not stylistic-strictness mismatches.
  * 5. Parse `tsc` output. Report failures back with the original
- *    `docs/docs/<file>.md` location + block index.
+ *    `docs/src/content/docs/<file>.md` location + block index.
  *
  * Exits 0 on clean, 1 on any check failure.
  */
@@ -50,7 +50,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { join, relative, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
-const DOCS_DIR = join(REPO_ROOT, 'docs', 'docs')
+const DOCS_DIR = join(REPO_ROOT, 'docs', 'src', 'content', 'docs')
 const CACHE_DIR = join(REPO_ROOT, '.cache', 'doc-examples')
 const MARKER = '// @check'
 
@@ -222,7 +222,7 @@ function runTsc(): { ok: boolean; out: string } {
 
 function main(): number {
   if (!existsSync(DOCS_DIR)) {
-    console.log('[check-doc-examples] no docs/docs/ — skipping.')
+    console.log('[check-doc-examples] no docs/src/content/docs/ — skipping.')
     return 0
   }
 

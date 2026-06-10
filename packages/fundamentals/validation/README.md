@@ -189,7 +189,7 @@ Nested paths like `address.city` become dot-separated string keys in the output 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/validation](https://docs.pyreon.dev/docs/validation) (or `docs/docs/validation.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/validation](https://docs.pyreon.dev/docs/validation) (or `docs/src/content/docs/validation.md` in this repo).
 
 ## License
 

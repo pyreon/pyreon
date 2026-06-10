@@ -100,7 +100,7 @@ The local-fast subset of the validation checklist runs automatically on
    - `check-release-readiness` — `publishConfig.access` + fixed-group coverage
    - `check-manifest-depth` — LOCKED package density not regressed
    - `check-client-bundle-node-imports` — no `node:` import in client entry
-   - `check-mcp-docs` — every MCP tool has a `docs/docs/mcp.md` section
+   - `check-mcp-docs` — every MCP tool has a `docs/src/content/docs/mcp.md` section
    - `check-lint-ratchet` — oxlint `warn`-finding counts didn't grow above `lint-baseline.json`
 
    Total runtime: ~2-5s. **If you push without running this and CI fails
@@ -160,7 +160,7 @@ in a clone where someone has them wired up).
 9. If you added/removed a hook in `@pyreon/hooks` or a `.md` file in `docs/`: `bun run check-doc-claims` — asserts the hook count and doc-page count claims in README/manifest/CLAUDE.md/docs index stay in sync with the actual source. Catches the drift where one claim site gets bumped and others don't.
 10. If you edited a package `manifest.ts` `api[]` that is LOCKED in `scripts/check-manifest-depth.ts` (store, rx, query, form): `bun run check-manifest-depth` — ratchet asserting a migrated package's MCP `get_api` density (entry count + entries-with-`mistakes[]`) never erodes below its recorded floor. When migrating a NEW package to density, add it to `LOCKED` with the numbers that PR achieves (counted via `findManifests`, not a grep).
 11. If you changed runtime behavior of signals / mount / router / fs-router: `bun run test:e2e` — exercise primitives in real Chromium (~90s, requires Playwright Chromium via `bunx playwright install chromium`)
-12. If you changed VitePress docs OR a public API surface that docs reference: `bun scripts/check-doc-examples.ts` — typechecks `docs/docs/**/*.md` code blocks marked with `// @check` as the first content line. Opt-in by design (1930+ blocks total; many are illustrative partials); the gate covers what's marked and grows as authors add markers to new authoritative examples.
+12. If you changed docs OR a public API surface that docs reference: `bun scripts/check-doc-examples.ts` — typechecks `docs/src/content/docs/**/*.md` code blocks marked with `// @check` as the first content line. Opt-in by design (1930+ blocks total; many are illustrative partials); the gate covers what's marked and grows as authors add markers to new authoritative examples.
 13. If you changed source code (`.ts` / `.tsx`) under `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` AND the bug fix could surface as a user-visible error: add an entry to `ERROR_PATTERNS` in `packages/core/compiler/src/react-intercept.ts` so `pyreon doctor diagnose` / MCP `diagnose` can teach the fix. CI enforces this via `Diagnose Catalog`; the `skip-diagnose-catalog` label bypasses for genuinely catalog-irrelevant changes (perf-only / type-tightening / internal refactor). The gate's detector matches only real source files — `package.json` / `CHANGELOG.md` / `README.md` / `tsconfig.json` / test files (`*.test.ts(x)`, `*.spec.ts(x)`, files under `src/tests/` or `src/__tests__/`) and Storybook stories never fire the gate. See `scripts/check-diagnose-catalog.ts:isSensitiveSourceFile` for the predicate + `packages/internals/test-utils/src/tests/check-diagnose-catalog.test.ts` for the contract. The release-PR auto-skip (`changeset-release/*` branch prefix) is preserved.
 14. If you changed source files in a PUBLISHED `@pyreon/*` package (i.e. a package whose `package.json` does NOT set `"private": true` AND is NOT in `.changeset/config.json` `ignore`): add a changeset via `bun changeset`. CI enforces this via the `Changeset` gate. The `skip-changeset` label bypasses for the rare case where a published-package source file changed but the change is genuinely catalog-irrelevant (comment-only edit, type-tightening with no runtime impact). The gate's detector intentionally excludes PRIVATE packages (`@pyreon/test-utils`, `@pyreon/manifest`, `@pyreon/perf-harness`, `@pyreon/vitest-config`, `@pyreon/playwright-config`, `@pyreon/devtools`, `@pyreon/ui-*`, every `@pyreon/native-*`) and changeset-`ignore`d workspaces (examples, docs, ai-reference) — those are repo-internal and don't ship to consumers, so they never need a changeset. See `scripts/check-changeset-required.ts:isConsumerAffectingFile` for the predicate + `packages/internals/test-utils/src/tests/check-changeset-required.test.ts` for the contract.
 15. If API surface changed: update CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference (via the manifest, not the generated file)
@@ -189,7 +189,7 @@ Document the bisect result in the PR description: "Bisect-verified: reverted fix
 3. **Every package MUST have** `LICENSE` (MIT) and `README.md` — no exceptions
 4. **All documentation surfaces updated** (every PR, not just API changes):
    - `CLAUDE.md` — project knowledge base
-   - `docs/` — VitePress documentation website
+   - `docs/` — Pyreon-native documentation site (/docs, runs on /zero + /zero-content)
    - Package `README.md` files
    - `llms.txt` / `llms-full.txt` — AI reference files
    - `packages/tools/mcp/src/api-reference.ts` — MCP tool reference

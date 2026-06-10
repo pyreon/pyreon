@@ -139,7 +139,7 @@ Use `ExtractProps<typeof Button>` from `@pyreon/core` to recover the union when 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/attrs](https://docs.pyreon.dev/docs/attrs) (or `docs/docs/attrs.md` in this repo).
+Full docs: [docs.pyreon.dev/docs/attrs](https://docs.pyreon.dev/docs/attrs) (or `docs/src/content/docs/attrs.md` in this repo).
 
 ## License
 
