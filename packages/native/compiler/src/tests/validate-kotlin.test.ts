@@ -12,6 +12,12 @@ import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 import { isKotlincAvailable, validateKotlin } from '../validate'
 
+// kotlinc/swiftc invocations cold-start a JVM / frontend per fixture;
+// under parallel-suite load a single compile can take 20-30s — beyond
+// the repo's 20s default. These are integration gates, not unit tests:
+// give them real headroom (a hang still fails at 90s).
+vi.setConfig({ testTimeout: 90_000 })
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = resolve(HERE, '..', 'fixtures')
 
@@ -81,6 +87,11 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // variadic all/any + the Show-accessor-arrow condition unwrap.
     // First fixture to validate ANY usePermissions emit shape.
     'tier2-permissions.tsx',
+    // @pyreon/form v2 (form-binding arc) — useForm with validators +
+    // onSubmit, runtime Field bindings, per-field dict subscripts,
+    // web-parity submit/setFieldValue. FIRST fixture to validate any
+    // useForm shape.
+    'tier2-form.tsx',
     // Gap 4 PR-2: @pyreon/machine Strategy-B port. Emits val +
     // remember PyreonMachine + intact method calls; the PyreonMachine
     // class stub in kotlin-stubs.ts satisfies kotlinc's type resolution.

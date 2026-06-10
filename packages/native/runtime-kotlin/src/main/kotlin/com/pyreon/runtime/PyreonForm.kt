@@ -28,7 +28,17 @@ import androidx.compose.runtime.mutableStateOf
  * Reactive form-state container — the Compose half of `useForm`.
  * Exposes its fields as Compose `MutableState` (read `.value`).
  */
-public class PyreonForm(initialValues: Map<String, String> = emptyMap()) {
+public class PyreonForm(
+    initialValues: Map<String, String> = emptyMap(),
+    /**
+     * Per-field sync validators — return "" for valid, a message
+     * otherwise. Mirrors `useForm({ validators })` (the v2
+     * form-binding arc; schema validation stays a later arc).
+     */
+    private val validators: Map<String, (String) -> String> = emptyMap(),
+    /** Submit callback — receives the values snapshot when valid. */
+    private val onSubmit: ((Map<String, String>) -> Unit)? = null,
+) {
     private val initial: Map<String, String> = initialValues
 
     /** Per-field current values (string-keyed). */
@@ -43,9 +53,54 @@ public class PyreonForm(initialValues: Map<String, String> = emptyMap()) {
     /** True while a submit is in flight. */
     public val isSubmitting: MutableState<Boolean> = mutableStateOf(false)
 
-    /** Set a field's value. */
+    /**
+     * Set a field's value. Re-validates the field when it already
+     * carries an error (immediate feedback once the user starts
+     * fixing it — the web's validateOn-change-after-error shape).
+     */
     public fun setValue(name: String, value: String) {
         values.value = values.value + (name to value)
+        if (errors.value.containsKey(name)) validateField(name)
+    }
+
+    /** Web-parity alias — `@pyreon/form`'s API name is `setFieldValue`. */
+    public fun setFieldValue(name: String, value: String) {
+        setValue(name, value)
+    }
+
+    /** Run one field's validator (no-op without one). True = valid. */
+    public fun validateField(name: String): Boolean {
+        val v = validators[name] ?: return true
+        val message = v(values.value[name] ?: "")
+        errors.value =
+            if (message.isEmpty()) errors.value - name else errors.value + (name to message)
+        return message.isEmpty()
+    }
+
+    /** Run every registered validator. Returns overall validity. */
+    public fun validateAll(): Boolean {
+        var ok = true
+        for (name in validators.keys) {
+            if (!validateField(name)) ok = false
+            touched.value = touched.value + (name to true)
+        }
+        return ok
+    }
+
+    /**
+     * Validate, then invoke [onSubmit] with the values snapshot when
+     * valid. The submitting flag wraps the callback.
+     */
+    public fun submit() {
+        if (!validateAll()) return
+        beginSubmit()
+        onSubmit?.invoke(values.value)
+        endSubmit()
+    }
+
+    /** Web-parity alias for [submit] (`form.handleSubmit()`). */
+    public fun handleSubmit() {
+        submit()
     }
 
     /** Set (non-null) or clear (null) a field's error message. */

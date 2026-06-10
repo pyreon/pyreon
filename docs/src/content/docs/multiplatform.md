@@ -234,7 +234,7 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 | Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate + iOS XCUITest + Android Compose-instrumented-test landed (opt-in `native-device` label); promote to required once green across nightly runs |
 | Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
 | Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`), **global** `beforeEach`/`afterEach` guards, **throw-redirect** pattern | ✅ guards, nested routes, `useParams` destructure, `loaderData`/`useLoaderData` runtime, **global guards** (#1108), and **`router.redirect()` re-entry-safe throw-pattern** (#1109) all landed; loader **auto-emit** (blocked — see note) is the only remaining router-parity gap |
-| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed end-to-end — `useFetch`, `useForm`, `usePermissions`, `useOnline`, `useClipboard`, plus **`useColorScheme`** (#1103 — no runtime port needed; SwiftUI + Compose ship the primitive directly). `useValidation` planned |
+| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed — **`useForm` v2 is device-proven** (validators + runtime Field bindings + submit gating; the tasks login's error-path smoke); `useFetch` emit complete (device-scope network proof open); `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design. `useValidation` planned |
 | Compiler diagnostics | Surface silent-drop shapes as parser warnings instead of failing-silent at runtime | ✅ Round-1 (#1094 — `Icon`/`Image`/`Link` missing required props) + Round-2 (#1099 — `Press` without `onPress`, `Link prefetch={…}` on native, `Stack/Inline/Layer align="<typo>"`) landed; both routes ship as `result.warnings`, emit shape unchanged |
 | Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the three walled tags emit a **graceful pass-through** (children render inside `Group {…}`/`Box {…}`, fallback/cache behaviour inert, comment surfaces the limitation) — no broken build, but a true Suspense/ErrorBoundary/KeepAlive runtime needs a Pyreon-async-context + view-modifier intercept + state-cache design that's not local emit work |
 | DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline (planned) | 🟡 scaffold landed (`bunx create-multiplatform <name>`); asset/SF-Symbols pipeline planned |
@@ -412,6 +412,23 @@ Kotlin runtime the emitted code drives):
   `@State PyreonForm(initialValues:[...])` (SwiftUI) / `remember {
   PyreonForm(mapOf(...)) }` (Compose); MutableState field reads append
   `.value` on Compose (except the derived `isValid` getter).
+  **v2 (form-binding arc) — device-proven.** `useForm({ initialValues,
+  validators, onSubmit })` lowers fully: per-field validators emit as
+  native closures ('' = valid), `<Field value={form.values.x}>` binds
+  through the runtime (`form.binding("x")` on SwiftUI — a real
+  `Binding<String>` whose setter re-validates after an error; a
+  value/onValueChange pair through `setValue` on Compose), per-field
+  dict access subscripts with typed defaults (`form.errors.x` →
+  `form.errors["x"] ?? ""`), and `submit()` gates on `validateAll`
+  before invoking `onSubmit`. The web-parity names (`setFieldValue`,
+  `handleSubmit`) exist on both runtime ports. SwiftUI nuance handled
+  by the emit: an `onSubmit` capturing instance members (navigate,
+  store writes) attaches via `.onAppear { form.onSubmit = … }` — a
+  @State property initializer runs before `self` exists. The tasks
+  showcase's login is the canonical validated form; its device smokes
+  assert the ERROR path before the happy path. Open: block-body +
+  async validators, schema validation (`@pyreon/validation`
+  reachability), `<Form>`/`<Submit>` wrappers.
 - **`usePermissions`** → a `PyreonPermissions` container (RBAC
   `can`/`cannot`/`all`/`any` with `"x.*"` wildcards). `const can =
   usePermissions([...])` seeds the grant set; reads are method calls (no
@@ -448,11 +465,71 @@ Kotlin runtime the emitted code drives):
   uses — `scheme === 'dark'` works identically across all three targets
   (#1103).
 
-> Status: `useFetch`, `useForm`, `usePermissions`, `useOnline`,
-> `useClipboard`, and `useColorScheme` are all **landed** end-to-end
-> (runtime port + compiler emit — except `useColorScheme`, which is
-> emit-only because the platform primitive is enough). `useValidation`
-> reachability planned.
+> Status: `useForm` (v2 — validated forms, device-proven via the tasks
+> showcase's error-path smoke), `useFetch`, `usePermissions`,
+> `useOnline`, `useClipboard`, and `useColorScheme` are **landed**
+> (runtime port + compiler emit — `useColorScheme` is emit-only
+> because the platform primitive is enough). `useFetch`'s open item is
+> a device-scope NETWORK proof (the UITest gates don't run a backend
+> yet). `useValidation` reachability planned.
+
+### The supported TypeScript surface
+
+PMTC compiles a deliberate SUBSET of TypeScript — the shapes the
+canonical examples exercise, enumerated here so you know where the
+boundary is BEFORE the compiler tells you. Outside the subset, the
+contract is: a **warning naming the construct** + either a conservative
+passthrough (the native compiler then errors loudly at the site) or a
+whole-decl bail — never silent misbehavior. `pyreon-native build` prints
+every warning; treat any warning as "this construct is outside v1."
+
+**Declarations (component body)**
+| Shape | Notes |
+|---|---|
+| `const x = signal(init)` / `signal<T>(init)` | un-annotated literals infer string/number/boolean; enum-typed signals get native enums |
+| `const c = computed(() => expr)` | expression OR block body (block: `let` + `if`/`return`) |
+| `const f = (args) => …` | functions; expression or block body |
+| `useStorage<T>('key', default)` | literal string key required |
+| `createRouter({ routes })` / `useNavigate()` / `useParams()` / `useLoaderData<T>()` | literal route arrays; guards as expression-body arrows |
+| `useFetch<T>(url)` / `usePermissions([...])` / `useOnline()` / `useClipboard()` / `useColorScheme()` | see the services section for per-hook status |
+| `createI18n({...})` / `createMachine({...})` / `defineStore(id, setup)` / `model({...}).create()` | literal configs; store v2 setup bodies take signals + expression-body computeds + arrow methods |
+| `rx.METHOD(source, …)` | 21 collection methods (Strategy-A lowering) |
+
+**Expressions**
+| Shape | Notes |
+|---|---|
+| literals, identifiers, calls, member access | |
+| `xs[i]` index access | arrays/lists; element-typed inference |
+| `+ - * / %`, comparisons, `&& \|\|`, `!`, ternary | `===`/`!==` coalesce to native `==`/`!=` |
+| `x++` / `x--` | value-position degrades to `x + 1` (side effect dropped — warning); statement-position composes via `.update` |
+| `sig.set(v)` / `sig.update(fn)` | lower to native assignment; `.update` needs a single-param expression-body arrow whose param isn't shadowed |
+| object literals | construct declared structs / synthesized types; `{ ...t, field: v }` single-spread becomes Swift IIFE-copy / Kotlin `.copy(...)` |
+| array literals + spreads | `[...xs, item]` → concatenation |
+| zero-param accessor arrows in condition positions | unwrap to their body (`when={() => cond()}`) |
+
+**Types**
+| Shape | Notes |
+|---|---|
+| `string` / `number` / `boolean`, arrays, `T \| null` | number → Int (no float distinction in v1) |
+| `type X = {...}` / interfaces | become Codable structs / @Serializable data classes |
+| string-literal unions | become native enums |
+| anonymous object types in props | synthesize named structs (`UserPage`+`params` → `UserPageParam`); declared structs win on structural match |
+| generics beyond the recognized hooks' `<T>` slots | NOT supported |
+
+**Statements (function/computed bodies)**: `const`/`let`, `return`,
+`if`/`else`. Loops (`for`/`while`) are NOT in v1 — use `<For>` for
+rendering and the collection methods (`map`/`filter`/…) for data.
+
+**JSX**: the 15 canonical primitives, `<For each by>`, `<Show when>`,
+`<Suspense fallback>`, `<ErrorBoundary fallback>`, `<KeepAlive when>`,
+`<Transition show>`, `<Modal open>`, `<RouterProvider>`/`<RouterView>`/
+`<Link>`. `data-testid` flows to `accessibilityIdentifier` / `testTag`
+(containers gain the queryability semantic automatically). Component
+children must be JSX or value expressions (auto-wrapped in `Text`).
+
+**Module scope**: `let`/`const` primitives (non-reactive on native),
+type aliases, the recognized factory calls. Module-scope `signal()` is
+NOT lowered — declare signals inside components or stores.
 
 ### Consuming compiler diagnostics
 

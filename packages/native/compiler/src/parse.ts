@@ -306,21 +306,58 @@ function tryStoreDefnFromTopLevel(
   // Two shapes: BlockStatement with return, or expression body (`() => ({...})`)
   let returnObj: AnyNode | undefined
   const signalDecls: { name: string; type: TypeIR; initial: ExprIR }[] = []
+  const computedDecls: { name: string; expr: ExprIR }[] = []
+  const methodDecls: Extract<DeclIR, { kind: 'function' }>[] = []
 
   if (body?.type === 'BlockStatement') {
     const stmts = (body.body as AnyNode[]) ?? []
     let returnFound = false
     for (const stmt of stmts) {
       if (stmt.type === 'VariableDeclaration' && stmt.kind === 'const') {
-        // Extract `const X = signal(...)` decls.
+        // v2 — setup-body decls: `const X = signal(...)` (state),
+        // `const X = computed(() => expr)` (derived), `const X =
+        // (args) => …` (method). Anything else bails the whole store
+        // loudly (the v1 silent-ish fallback emitted UNCOMPILABLE
+        // passthrough — `private let useApp = defineStore(...)`).
         for (const d of (stmt.declarations as AnyNode[]) ?? []) {
           if (d.id?.type !== 'Identifier') continue
           const name = d.id.name as string
-          const sigCall = d.init
-          if (sigCall?.type !== 'CallExpression') continue
-          if ((sigCall.callee?.name as string | undefined) !== 'signal') continue
+          const declInit = d.init as AnyNode | undefined
+          if (declInit?.type === 'ArrowFunctionExpression') {
+            const fn = tryFunctionDecl(name, declInit, ctx)
+            // Discriminant guard covers the null case too (optional
+            // chain) — CodeQL flags a direct null comparison here as
+            // an inconvertible-types check.
+            if (fn?.kind !== 'function') {
+              ctx.warnings.push(
+                `defineStore \`${hookName}\`: could not parse method \`${name}\`. Falling back to silent-drop.`,
+              )
+              return null
+            }
+            methodDecls.push(fn)
+            continue
+          }
+          if (declInit?.type !== 'CallExpression') continue
+          const calleeName = declInit.callee?.name as string | undefined
+          if (calleeName === 'computed') {
+            const arg = (declInit.arguments as AnyNode[] | undefined)?.[0]
+            if (
+              arg?.type !== 'ArrowFunctionExpression' ||
+              arg.body?.type === 'BlockStatement'
+            ) {
+              // Block-body computeds in stores are a v3 follow-up —
+              // bail LOUDLY (whole-store) rather than drop one decl.
+              ctx.warnings.push(
+                `defineStore \`${hookName}\`: computed \`${name}\` must be an expression-body arrow (\`computed(() => expr)\`) in v2. Falling back to silent-drop.`,
+              )
+              return null
+            }
+            computedDecls.push({ name, expr: parseExpr(arg.body, ctx) })
+            continue
+          }
+          if (calleeName !== 'signal') continue
           // Pull the initial value + type generic if present.
-          const sigArgs = (sigCall.arguments as AnyNode[]) ?? []
+          const sigArgs = (declInit.arguments as AnyNode[]) ?? []
           const initialNode = sigArgs[0]
           const initial: ExprIR = initialNode
             ? parseExpr(initialNode, ctx)
@@ -328,7 +365,7 @@ function tryStoreDefnFromTopLevel(
           // Infer type from generic OR initial value. `parseGenericTypeArg`
           // returns `{kind:'unknown'}` (not undefined) when no generic is
           // present, so we check for the unknown sentinel + fall back.
-          const generic = parseGenericTypeArg(sigCall, ctx)
+          const generic = parseGenericTypeArg(declInit, ctx)
           const inferredType: TypeIR =
             generic.kind === 'unknown' ? inferTypeFromInitial(initial) : generic
           signalDecls.push({ name, type: inferredType, initial })
@@ -340,7 +377,7 @@ function tryStoreDefnFromTopLevel(
       } else {
         // Unsupported statement in setup body — bail with warning.
         ctx.warnings.push(
-          `defineStore \`${hookName}\`: v1 supports ONLY \`const X = signal(...)\` decls in the setup body; saw \`${stmt.type}\`. Falling back to silent-drop.`,
+          `defineStore \`${hookName}\`: v2 supports ONLY \`const X = signal(...)\` / \`const X = computed(() => …)\` / \`const X = (args) => …\` decls in the setup body; saw \`${stmt.type}\`. Falling back to silent-drop.`,
         )
         return null
       }
@@ -375,15 +412,19 @@ function tryStoreDefnFromTopLevel(
     return null
   }
 
-  // Validate the returned keys all match declared signal names.
+  // Validate the returned keys all match declared setup decls
+  // (signals, computeds, or methods).
   // Shorthand-only: `return { count, name }` — same identifier on both sides.
-  const declaredNames = new Set(signalDecls.map((s) => s.name))
-  const returnedNames: string[] = []
+  const declaredNames = new Set([
+    ...signalDecls.map((s) => s.name),
+    ...computedDecls.map((c) => c.name),
+    ...methodDecls.map((m) => m.name),
+  ])
   for (const prop of (unwrapped.properties as AnyNode[]) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
     if (prop.shorthand !== true) {
       ctx.warnings.push(
-        `defineStore \`${hookName}\`: v1 supports ONLY shorthand keys in the returned object (\`return { x, y }\`, not \`return { x: x }\`).`,
+        `defineStore \`${hookName}\`: only shorthand keys are supported in the returned object (\`return { x, y }\`, not \`return { x: x }\`).`,
       )
       return null
     }
@@ -391,16 +432,19 @@ function tryStoreDefnFromTopLevel(
     const k = prop.key.name as string
     if (!declaredNames.has(k)) {
       ctx.warnings.push(
-        `defineStore \`${hookName}\`: returned key \`${k}\` doesn't match any local signal decl.`,
+        `defineStore \`${hookName}\`: returned key \`${k}\` doesn't match any setup-body decl.`,
       )
       return null
     }
-    returnedNames.push(k)
   }
-  // Only keep fields that are EXPORTED in the return object.
-  const exportedFields = signalDecls.filter((s) => returnedNames.includes(s.name))
-
-  return { hookName, storeId, fields: exportedFields }
+  // v2: ALL setup decls land on the singleton (not just returned ones)
+  // — a method may write a non-returned signal, and a computed may read
+  // one; filtering to the exported subset (the v1 behavior) silently
+  // broke those bodies.
+  const result: StoreDefnIR = { hookName, storeId, fields: signalDecls }
+  if (computedDecls.length > 0) result.computeds = computedDecls
+  if (methodDecls.length > 0) result.methods = methodDecls
+  return result
 }
 
 /**
@@ -2187,7 +2231,59 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // (no bail): a bare `useForm()` or an unrecognised config shape yields an
   // empty `initialValues`, and the emit produces a default-constructed form.
   if (calleeName === 'useForm') {
-    return { kind: 'form', name, initialValues: tryExtractFormInitialValues(init.arguments?.[0]) }
+    const cfg = init.arguments?.[0] as AnyNode | undefined
+    const decl: Extract<DeclIR, { kind: 'form' }> = {
+      kind: 'form',
+      name,
+      initialValues: tryExtractFormInitialValues(cfg),
+    }
+    // v2 (form-binding arc) — validators + onSubmit. Conservative:
+    // unparseable members are skipped with a warning (the form still
+    // works; that validator just doesn't run natively).
+    if (cfg?.type === 'ObjectExpression') {
+      for (const prop of (cfg.properties as AnyNode[] | undefined) ?? []) {
+        if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+        const key = (prop.key?.name ?? prop.key?.value) as string | undefined
+        if (key === 'validators' && prop.value?.type === 'ObjectExpression') {
+          const validators: { key: string; param: string; body: ExprIR }[] = []
+          for (const v of (prop.value.properties as AnyNode[] | undefined) ?? []) {
+            if (v?.type !== 'Property' && v?.type !== 'ObjectProperty') continue
+            const fieldName = (v.key?.name ?? v.key?.value) as string | undefined
+            const fn = v.value as AnyNode | undefined
+            if (
+              fieldName === undefined ||
+              fn?.type !== 'ArrowFunctionExpression' ||
+              (fn.params as AnyNode[] | undefined)?.length !== 1 ||
+              fn.body?.type === 'BlockStatement'
+            ) {
+              ctx.warnings.push(
+                `useForm \`${name}\`: validator \`${fieldName ?? '?'}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
+              )
+              continue
+            }
+            const param = ((fn.params as AnyNode[])[0] as AnyNode | undefined)?.name as
+              | string
+              | undefined
+            if (param === undefined) continue
+            validators.push({ key: fieldName, param, body: parseExpr(fn.body, ctx) })
+          }
+          if (validators.length > 0) decl.validators = validators
+        } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
+          const fn = tryFunctionDecl('__onSubmit', prop.value, ctx)
+          // Optional-chain discriminant guard (see the store-walker
+          // mirror above for the CodeQL rationale).
+          if (fn?.kind === 'function') {
+            const param = fn.params[0]?.name ?? 'values'
+            decl.onSubmit = { param, body: fn.body }
+          } else {
+            ctx.warnings.push(
+              `useForm \`${name}\`: could not parse onSubmit — the native submit() will validate but run no callback.`,
+            )
+          }
+        }
+      }
+    }
+    return decl
   }
   // Phase 4 — `useOnline()` from @pyreon/hooks → the PyreonNetworkStatus
   // reactive connectivity container. No arguments.

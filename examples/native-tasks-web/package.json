@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/form": "workspace:*",
     "@pyreon/primitives": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",

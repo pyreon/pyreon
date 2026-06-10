@@ -176,7 +176,19 @@ export type DeclIR =
    * Swift / Compose `MutableState` `.value` reads on Kotlin. `form.isValid`
    * is a derived `Bool` getter — a plain read on both targets (no `.value`).
    */
-  | { kind: 'form'; name: string; initialValues: { key: string; value: string }[] }
+  | {
+      kind: 'form'
+      name: string
+      initialValues: { key: string; value: string }[]
+      /**
+       * v2 (form-binding arc) — per-field sync validators from
+       * `useForm({ validators: { email: (v) => … } })`. Each arrow
+       * emits as a native closure in the PyreonForm init ("" = valid).
+       */
+      validators?: { key: string; param: string; body: ExprIR }[]
+      /** v2 — `onSubmit: (values) => …` callback (expression or block body). */
+      onSubmit?: { param: string; body: StatementIR[] }
+    }
   /**
    * Phase 4 — connectivity flag via `useOnline()` from `@pyreon/hooks` (the
    * native subset). Emits the PyreonNetworkStatus reactive container:
@@ -706,8 +718,29 @@ export interface StoreDefnIR {
   hookName: string
   /** Store id from `defineStore("X", ...)`. Used to derive emitted class name. */
   storeId: string
-  /** Signal fields extracted from the setup body. */
+  /**
+   * Signal fields extracted from the setup body. v2: ALL signal decls
+   * (not just returned ones) — a method may write a non-returned
+   * signal, so every decl must exist on the singleton. Non-returned
+   * fields are reachable through the emitted class but not part of
+   * the documented `.store` surface (a small, deliberate divergence
+   * from the web's closure semantics).
+   */
   fields: { name: string; type: TypeIR; initial: ExprIR }[]
+  /**
+   * v2 — `const X = computed(() => expr)` decls in the setup body.
+   * Swift: computed property on the singleton (`var X: T { expr }`);
+   * Kotlin: `val X get() = expr` (re-evaluates on access; reads of
+   * mutableStateOf fields keep it Compose-reactive).
+   */
+  computeds?: { name: string; expr: ExprIR }[]
+  /**
+   * v2 — `const X = (args) => …` arrow decls in the setup body.
+   * Emitted as methods on the singleton; use-site chain calls
+   * (`useX().store.M(args)`) rewrite to `PyreonStore_id.shared.M(args)`
+   * / `PyreonStore_id.M(args)`.
+   */
+  methods?: Extract<DeclIR, { kind: 'function' }>[]
 }
 
 /**

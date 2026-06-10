@@ -30,9 +30,13 @@
 //   dispatcher from the matched segment.
 // - **Multi-screen routing** — login / tasks / detail via
 //   `useNavigate()`.
+// - **Validated form (useForm)** — the login is a real validated form:
+//   runtime Field binding, per-field validator, error display via
+//   `form.errors.username`, submit gating. The device smokes assert
+//   the error path BEFORE the happy path.
 // - **Canonical primitives + signals** — `<Stack>` / `<Inline>` /
-//   `<Field>` / `<Button>` / `<Text>` / `<For>`; component-local
-//   `signal` for the input drafts; `computed` remaining-count over
+//   `<Field>` / `<Button>` / `<Text>` / `<For>` / `<Show>`; component-
+//   local `signal` for the task draft; `computed` remaining-count over
 //   store state.
 //
 // ## What's NOT here (explicit deferrals)
@@ -44,8 +48,9 @@
 //   signals; derived state lives in component-level `computed` for now.
 
 import { signal, computed } from '@pyreon/reactivity'
+import { useForm } from '@pyreon/form'
 import { defineStore } from '@pyreon/store'
-import { For } from '@pyreon/core'
+import { For, Show } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text } from '@pyreon/primitives'
 import {
   createRouter,
@@ -74,26 +79,39 @@ const useApp = defineStore('app', () => {
 
 function LoginPage() {
   const navigate = useNavigate()
-  const username = signal<string>('')
 
-  const handleLogin = () => {
-    if (username().length === 0) return
-    useApp().store.isAuthed.set(true)
-    navigate('/tasks')
-  }
+  // The validated-form shape (the form-binding arc): the runtime
+  // Field binding routes keystrokes through setValue (re-validating
+  // once a field carries an error), submit() gates on validateAll,
+  // and onSubmit only fires when valid. This screen is the device
+  // proof for useForm — its UITest asserts the ERROR path (short
+  // username → message appears, navigation blocked) before the
+  // happy path.
+  const form = useForm({
+    initialValues: { username: '' },
+    validators: {
+      username: (v) => (v.length < 3 ? 'At least 3 characters' : ''),
+    },
+    onSubmit: (_values) => {
+      useApp().store.isAuthed.set(true)
+      navigate('/tasks')
+    },
+  })
 
   return (
     <Stack gap={3} padding={4} data-testid="login-page">
       <Text>Sign In</Text>
-      <Text>Any value works — this is a demo.</Text>
+      <Text>At least 3 characters — this is a demo.</Text>
       <Field
-        value={username}
-        onChangeText={(v) => username.set(v)}
-        onSubmit={handleLogin}
+        value={form.values.username}
+        onChangeText={(v) => form.setFieldValue('username', v)}
         placeholder="Username"
         data-testid="login-username"
       />
-      <Button onPress={handleLogin} data-testid="login-submit">
+      <Show when={() => form.errors.username !== ''}>
+        <Text data-testid="login-error">{form.errors.username}</Text>
+      </Show>
+      <Button onPress={() => form.submit()} data-testid="login-submit">
         Continue
       </Button>
     </Stack>
