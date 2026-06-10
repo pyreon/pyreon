@@ -192,21 +192,23 @@ describe('resolveRoute — edge cases', () => {
     expect(r.hash).toBe('')
   })
 
-  test('resolves path with query and hash in path portion', () => {
-    // Hash in the path portion (before ?) is extracted from pathAndHash
+  test('a ? inside the fragment belongs to the hash (WHATWG order)', () => {
+    // Everything after '#' is the fragment — a '?' inside it is NOT a
+    // query separator. (The pre-fix parser split '?' first and misread
+    // 'key=val' as query.)
     const r = resolveRoute('/about#section?key=val', routes)
     expect(r.path).toBe('/about')
-    expect(r.hash).toBe('section')
-    expect(r.query).toEqual({ key: 'val' })
+    expect(r.hash).toBe('section?key=val')
+    expect(r.query).toEqual({})
   })
 
-  test('resolves path with query containing hash (hash after query)', () => {
-    // When hash follows query: /about?key=val#section
-    // The # is part of the query value since ? comes first
+  test('standard ?query#hash order splits cleanly', () => {
+    // /about?key=val#section — query between '?' and '#', fragment after
+    // '#'. (Pre-fix the hash leaked into the query value: 'val#section'.)
     const r = resolveRoute('/about?key=val#section', routes)
     expect(r.path).toBe('/about')
-    // The hash ends up in the query value since it's after the ?
-    expect(r.query.key).toContain('val')
+    expect(r.hash).toBe('section')
+    expect(r.query.key).toBe('val')
   })
 
   test('resolves nested route with merged meta', () => {
@@ -236,10 +238,10 @@ describe('resolveRoute — edge cases', () => {
     expect(r.matched).toHaveLength(0)
   })
 
-  test('resolves path with hash before query (edge case)', () => {
-    // hash in the path portion (before ?), query is separate
+  test('root path with ?-bearing fragment keeps it all in the hash', () => {
     const r = resolveRoute('/#anchor?key=val', routes)
-    expect(r.hash).toBe('anchor')
+    expect(r.hash).toBe('anchor?key=val')
+    expect(r.query).toEqual({})
   })
 
   test('resolves deeply nested routes', () => {
