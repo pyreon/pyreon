@@ -1,5 +1,5 @@
 import { createContext, onUnmount, useContext } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, isClient, signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
 import { getRedirectInfo } from './redirect'
@@ -21,10 +21,6 @@ import {
   type RouterOptions,
 } from './types'
 
-// Evaluated once at module load — collapses to `true` in browser / happy-dom,
-// `false` on the server. Using a constant avoids per-call `typeof` branches
-// that are uncoverable in test environments.
-const _isBrowser = typeof window !== 'undefined'
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -196,7 +192,7 @@ const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
 }
 
 function retainBeforeUnload(): void {
-  if (!_isBrowser) return
+  if (!isClient) return
   if (_beforeUnloadRefCount === 0) {
     window.addEventListener('beforeunload', _beforeUnloadHandler)
   }
@@ -204,7 +200,7 @@ function retainBeforeUnload(): void {
 }
 
 function releaseBeforeUnload(): void {
-  if (!_isBrowser) return
+  if (!isClient) return
   _beforeUnloadRefCount--
   if (_beforeUnloadRefCount <= 0) {
     _beforeUnloadRefCount = 0
@@ -515,7 +511,7 @@ export function createRouter<TNames extends string = string>(
   const getInitialLocation = (): string => {
     // SSR: use explicitly provided url (strip base if present)
     if (opts.url) return stripBase(opts.url, base)
-    if (!_isBrowser) return '/'
+    if (!isClient) return '/'
     if (mode === 'history') {
       return stripBase(window.location.pathname, base) + window.location.search
     }
@@ -524,7 +520,7 @@ export function createRouter<TNames extends string = string>(
   }
 
   const getCurrentLocation = (): string => {
-    if (!_isBrowser) return currentPath()
+    if (!isClient) return currentPath()
     if (mode === 'history') {
       return stripBase(window.location.pathname, base) + window.location.search
     }
@@ -538,13 +534,14 @@ export function createRouter<TNames extends string = string>(
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
   // Browser event listeners — stored so destroy() can remove them.
-  // Ternary-bound on `_isBrowser` (a typeof-derived const) so the lint rule
-  // can trace these to an SSR-safe shape without needing `if (_isBrowser &&
-  // handler)` contortions at every use site.
+  // Ternary-bound on `isClient` (the canonical `@pyreon/reactivity` SSR-guard
+  // primitive — a recognized guard name) so the lint rule can trace these to an
+  // SSR-safe shape without needing `if (isClient && handler)` contortions at
+  // every use site.
   const _popstateHandler: (() => void) | null =
-    _isBrowser && mode === 'history' ? () => currentPath.set(getCurrentLocation()) : null
+    isClient && mode === 'history' ? () => currentPath.set(getCurrentLocation()) : null
   const _hashchangeHandler: (() => void) | null =
-    _isBrowser && mode !== 'history' ? () => currentPath.set(getCurrentLocation()) : null
+    isClient && mode !== 'history' ? () => currentPath.set(getCurrentLocation()) : null
 
   if (_popstateHandler) window.addEventListener('popstate', _popstateHandler)
   if (_hashchangeHandler) window.addEventListener('hashchange', _hashchangeHandler)
@@ -647,7 +644,7 @@ export function createRouter<TNames extends string = string>(
   }
 
   function syncBrowserUrl(path: string, replace: boolean): void {
-    if (!_isBrowser) return
+    if (!isClient) return
     const url = mode === 'history' ? `${base}${path}` : `#${path}`
     if (replace) {
       window.history.replaceState(null, '', url)
@@ -868,7 +865,7 @@ export function createRouter<TNames extends string = string>(
       currentPath.set(path)
       syncBrowserUrl(path, replace)
 
-      if (_isBrowser && to.meta.title) {
+      if (isClient && to.meta.title) {
         document.title = to.meta.title
       }
 
@@ -894,7 +891,7 @@ export function createRouter<TNames extends string = string>(
     // Use View Transitions API when available and not explicitly disabled.
     // Route meta can opt out: meta: { viewTransition: false }
     const useVT =
-      _isBrowser &&
+      isClient &&
       to.meta.viewTransition !== false &&
       typeof (document as any).startViewTransition === 'function'
 
@@ -962,7 +959,7 @@ export function createRouter<TNames extends string = string>(
       }
     }
 
-    if (_isBrowser) {
+    if (isClient) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
   }
@@ -1150,15 +1147,15 @@ export function createRouter<TNames extends string = string>(
     },
 
     back() {
-      if (_isBrowser) window.history.back()
+      if (isClient) window.history.back()
     },
 
     forward() {
-      if (_isBrowser) window.history.forward()
+      if (isClient) window.history.forward()
     },
 
     go(delta: number) {
-      if (_isBrowser) window.history.go(delta)
+      if (isClient) window.history.go(delta)
     },
 
     beforeEach(guard: NavigationGuard) {
@@ -1276,7 +1273,7 @@ export function createRouter<TNames extends string = string>(
       router._abortController = null
       // Clear global ref so stale router doesn't survive in SSR or re-creation
       if (_activeRouter === router) _activeRouter = null
-      if (process.env.NODE_ENV !== 'production' && _isBrowser) {
+      if (process.env.NODE_ENV !== 'production' && isClient) {
         const g = globalThis as Record<string, unknown>
         if (g.__pyreon_hmr_swap__ === router._hmrSwap) {
           delete g.__pyreon_hmr_swap__
@@ -1288,7 +1285,7 @@ export function createRouter<TNames extends string = string>(
 
     // Dev-only HMR coordinator — see RouterInstance._hmrSwap JSDoc.
     // Gated to dev+browser so it's tree-shaken from production bundles.
-    ...(process.env.NODE_ENV !== 'production' && _isBrowser
+    ...(process.env.NODE_ENV !== 'production' && isClient
       ? {
           _hmrSwap(id: string, mod: unknown): boolean {
             const m = mod as { default?: ComponentFn } | ComponentFn | null
@@ -1339,7 +1336,7 @@ export function createRouter<TNames extends string = string>(
   // `@pyreon/router` (zero import coupling — same pattern as the perf-harness
   // counter sink). Last router wins; single-router apps (the norm, every
   // `@pyreon/zero` app) are unaffected. Dev+browser only.
-  if (process.env.NODE_ENV !== 'production' && _isBrowser && router._hmrSwap) {
+  if (process.env.NODE_ENV !== 'production' && isClient && router._hmrSwap) {
     // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal`
     // (not `this`), so the raw reference is safe to expose and to compare by
     // identity on `destroy()`.

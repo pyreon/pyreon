@@ -7,63 +7,20 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { useClipboard } from '../useClipboard'
-import { useEventListener } from '../useEventListener'
-import { useOnline } from '../useOnline'
 import { useThemeValue } from '../useThemeValue'
+
+// NOTE: the SSR fallbacks of `useOnline` / `useEventListener` are gated on the
+// module-level `isClient` (from @pyreon/reactivity, evaluated once at import).
+// They CANNOT be exercised by runtime-deleting `window` in happy-dom — the real
+// SSR environment has no DOM at module load. Those cases live in the companion
+// `ssr-branches.node.test.ts` (a true node env, document absent at load). The
+// hooks below still gate per-call on `navigator` / theme context, so they're
+// correctly tested here by runtime global mutation.
 
 describe('useThemeValue — no theme context', () => {
   it('returns undefined when called outside a theme provider', () => {
     const got = useThemeValue('colors.primary.button')
     expect(got).toBeUndefined()
-  })
-})
-
-describe('useOnline — SSR fallback', () => {
-  const originalWindow = globalThis.window
-  const originalNav = globalThis.navigator
-
-  afterEach(() => {
-    Object.defineProperty(globalThis, 'window', {
-      value: originalWindow,
-      configurable: true,
-      writable: true,
-    })
-    Object.defineProperty(globalThis, 'navigator', {
-      value: originalNav,
-      configurable: true,
-      writable: true,
-    })
-  })
-
-  it('returns true unconditionally when window is undefined (SSR)', () => {
-    Object.defineProperty(globalThis, 'window', {
-      value: undefined,
-      configurable: true,
-      writable: true,
-    })
-    const online = useOnline()
-    expect(online()).toBe(true)
-  })
-})
-
-describe('useEventListener — SSR no-op', () => {
-  const originalWindow = globalThis.window
-
-  afterEach(() => {
-    Object.defineProperty(globalThis, 'window', {
-      value: originalWindow,
-      configurable: true,
-      writable: true,
-    })
-  })
-
-  it('returns early without throwing when window is undefined (SSR)', () => {
-    Object.defineProperty(globalThis, 'window', {
-      value: undefined,
-      configurable: true,
-      writable: true,
-    })
-    expect(() => useEventListener('resize', () => {})).not.toThrow()
   })
 })
 

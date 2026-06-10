@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { createReactiveContext, nativeCompat, provide, useContext } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, isClient, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
 import { enrichTheme } from '@pyreon/unistyle'
@@ -53,7 +53,9 @@ export interface PyreonUIProps {
 
 // ─── System mode detection ──────────────────────────────────────────────────
 
-const _isBrowser = typeof window !== 'undefined' && typeof matchMedia === 'function'
+// `isClient` is the canonical DOM-present guard; `matchMedia` is an extra
+// FEATURE check (system color-scheme needs it), kept rather than folded in.
+const _isBrowser = isClient && typeof matchMedia === 'function'
 
 /** Reactive signal tracking the OS dark mode preference. Lazy-initialized on first use. */
 let _systemMode: ReturnType<typeof signal<ThemeMode>> | undefined

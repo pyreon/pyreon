@@ -1,7 +1,7 @@
-import { effect, onCleanup, signal } from '@pyreon/reactivity'
+import { effect, isClient, onCleanup, signal } from '@pyreon/reactivity'
 import { inferSerializer } from './serializers'
 import type { Serializer, UrlStateOptions, UrlStateSignal } from './types'
-import { _isBrowser, getParam, getParamAll, setParamRepeated, setParams } from './url'
+import { getParam, getParamAll, setParamRepeated, setParams } from './url'
 
 // ─── Single-param overload ──────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ function createUrlSignal<T>(
   }
 
   // Listen for popstate (back/forward navigation)
-  if (_isBrowser) {
+  if (isClient) {
     const onPopState = () => {
       let value: T
       if (isRepeat) {

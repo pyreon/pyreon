@@ -14,6 +14,9 @@ export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-mar
 // it directly via @pyreon/reactivity. See `cross-module-state.ts` in
 // @pyreon/reactivity for the full module-duplication rationale.
 export { defineCrossModuleState } from '@pyreon/reactivity'
+// Runtime environment detection (re-exported for discoverability — app code
+// typically imports from @pyreon/core). Defined in @pyreon/reactivity.
+export { isClient, isServer } from '@pyreon/reactivity'
 export { mapCompatDomProps, shallowEqualProps } from './compat-shared'
 export type { Context, ReactiveContext } from './context'
 export {

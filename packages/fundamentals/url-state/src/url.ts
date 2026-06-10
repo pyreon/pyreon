@@ -1,8 +1,8 @@
-const _isBrowser = typeof window !== 'undefined'
+import { isClient } from '@pyreon/reactivity'
 
 /** Read a search param from the current URL. Returns `null` if not present. */
 export function getParam(key: string): string | null {
-  if (!_isBrowser) return null
+  if (!isClient) return null
   return new URLSearchParams(window.location.search).get(key)
 }
 
@@ -11,7 +11,7 @@ export function getParam(key: string): string | null {
  * Returns an empty array if the param is not present.
  */
 export function getParamAll(key: string): string[] {
-  if (!_isBrowser) return []
+  if (!isClient) return []
   return new URLSearchParams(window.location.search).getAll(key)
 }
 
@@ -38,7 +38,7 @@ export function getUrlRouter(): UrlRouter | null {
 
 /** Write one or more search params to the URL without a full navigation. */
 export function setParams(entries: Record<string, string | null>, replace: boolean): void {
-  if (!_isBrowser) return
+  if (!isClient) return
 
   const params = new URLSearchParams(window.location.search)
 
@@ -70,7 +70,7 @@ export function setParams(entries: Record<string, string | null>, replace: boole
  * When `values` is null the param is deleted.
  */
 export function setParamRepeated(key: string, values: string[] | null, replace: boolean): void {
-  if (!_isBrowser) return
+  if (!isClient) return
 
   const params = new URLSearchParams(window.location.search)
   params.delete(key)
@@ -95,5 +95,3 @@ export function setParamRepeated(key: string, values: string[] | null, replace: 
     history.pushState(null, '', url)
   }
 }
-
-export { _isBrowser }

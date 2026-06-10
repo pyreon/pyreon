@@ -17,7 +17,7 @@
  */
 import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { computed, renderEffect, runUntracked } from '@pyreon/reactivity'
+import { computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -52,7 +52,9 @@ const getDisplayName = (tag: Tag): string =>
 // `@pyreon/runtime-server`). On the server every render is a single pass with
 // no client reactivity, so `DynamicStyled` skips the computed subscription +
 // ref closure + renderEffect (all client-only dead weight server-side).
-const IS_SERVER = typeof document === 'undefined'
+// `isServer` (from @pyreon/reactivity) is the same `typeof document` check,
+// now the canonical framework primitive instead of a local copy.
+const IS_SERVER = isServer
 
 // Component cache: same template literal + tag + no options → same component.
 // WeakMap on `strings` (TemplateStringsArray is object-identity per source location).

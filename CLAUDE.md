@@ -79,7 +79,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 | Package                  | Description                                                                                                                                             |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@pyreon/reactivity`     | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack, wrapSignal                                                            |
+| `@pyreon/reactivity`     | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack, wrapSignal, isServer/isClient                                          |
 | `@pyreon/core`           | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId           |
 | `@pyreon/runtime-dom`    | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements                                         |
 | `@pyreon/compiler`       | JSX transform: Rust native (napi-rs, 3.7-8.9x faster) + JS fallback. `shouldWrap`, static hoisting, `_bind`, pure calls, spread templates. Reactivity-Lens sidecar (`analyzeReactivity`) |

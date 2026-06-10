@@ -75,8 +75,11 @@ describe('gen-docs — reactivity snapshot', () => {
     // onSignalUpdate, inspectSignal, why, setErrorHandler) + 3 from M4
     // Vue parity (markRaw, shallowReactive, onScopeDispose) + 1
     // getReactiveTrace (reactive-trace error-report enrichment) + 2
-    // reactive-devtools bridge (activateReactiveDevtools, getReactiveGraph).
-    expect(Object.keys(record).length).toBe(30)
+    // reactive-devtools bridge (activateReactiveDevtools, getReactiveGraph)
+    // + 2 environment flags (isServer, isClient).
+    expect(Object.keys(record).length).toBe(32)
+    expect(Object.keys(record)).toContain('reactivity/isServer')
+    expect(Object.keys(record)).toContain('reactivity/isClient')
     expect(Object.keys(record)).toContain('reactivity/wrapSignal')
     expect(Object.keys(record)).toContain('reactivity/signal')
     expect(Object.keys(record)).toContain('reactivity/createResource')
