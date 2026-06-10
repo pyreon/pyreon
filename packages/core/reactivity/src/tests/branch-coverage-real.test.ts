@@ -964,9 +964,21 @@ describe('lpih — getDefaultLpihCachePath fallback paths', () => {
 
     // Dispose stops the scheduled timer (an in-flight tick may still settle).
     dispose()
-    // Allow any in-flight tick to drain.
-    await new Promise((resolve) => setTimeout(resolve, 80))
-    const sizeBefore = (await fs.stat(cachePath)).mtimeMs
+    // Drain the at-most-one in-flight tick via a QUIET-WINDOW settle rather
+    // than a fixed sleep — the 80ms buffer raced the straggler write under
+    // parallel-load CI (same shape as lpih.test.ts's settleMtime; see its
+    // docstring). Once mtime has been quiet for 300ms with the timer
+    // cleared, nothing can write again.
+    let sizeBefore = (await fs.stat(cachePath)).mtimeMs
+    let quietSince = Date.now()
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      const cur = (await fs.stat(cachePath)).mtimeMs
+      if (cur !== sizeBefore) {
+        sizeBefore = cur
+        quietSince = Date.now()
+      } else if (Date.now() - quietSince >= 300) break
+    }
     await new Promise((resolve) => setTimeout(resolve, 120))
     const sizeAfter = (await fs.stat(cachePath)).mtimeMs
     expect(sizeAfter).toBe(sizeBefore) // No further writes after dispose drained
