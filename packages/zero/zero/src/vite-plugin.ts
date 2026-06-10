@@ -396,6 +396,16 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
 						(result) => {
 							if (result === null) return next();
+							if (result.kind === "redirect") {
+								// Loader-thrown `redirect()` — real HTTP redirect, same
+								// contract as the production handler (302/307/308 +
+								// Location). renderSsr surfaces it as data now that the
+								// shared renderPage catches the throw internally.
+								res.statusCode = result.status;
+								res.setHeader("Location", result.to);
+								res.end();
+								return;
+							}
 							res.statusCode = result.status;
 							res.setHeader("Content-Type", "text/html; charset=utf-8");
 							res.setHeader("Content-Length", Buffer.byteLength(result.html));
@@ -860,7 +870,9 @@ async function handle404(
 	// `next(err)` if renderSsr rejects in a way we can't recover from.
 	try {
 		const result = await renderSsr(server, root, originalUrl, pathname);
-		if (result !== null) {
+		// A redirect on the 404 path is nonsensical — treat anything that
+		// isn't rendered HTML as "fall through to the bare page".
+		if (result !== null && result.kind === "html") {
 			res.statusCode = result.status;
 			res.setHeader("Content-Type", "text/html; charset=utf-8");
 			res.setHeader("Content-Length", Buffer.byteLength(result.html));
@@ -902,7 +914,11 @@ async function renderSsr(
 	originalUrl: string,
 	pathname: string,
 	req?: Request,
-): Promise<{ html: string; status: number } | null> {
+): Promise<
+	| { kind: "html"; html: string; status: number }
+	| { kind: "redirect"; to: string; status: number }
+	| null
+> {
 	const routesMod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
 	const routes = routesMod.routes as Array<{
 		path?: string;
@@ -968,22 +984,20 @@ async function renderSsr(
 
 	if (result.kind === "unmatched") return null;
 	if (result.kind === "redirect") {
-		// Dev parity with the production handler: a loader-thrown `redirect()`
-		// becomes a meta-refresh page (the dev middleware deals in HTML, not
-		// raw Response objects). Pre-unification, dev let the throw escape to
-		// Vite's error overlay — production behavior (302/307) was never
-		// exercisable in dev.
-		return {
-			html: `<!doctype html><html><head><meta http-equiv="refresh" content="0; url=${result.to}"></head><body>Redirecting to <a href="${result.to}">${result.to}</a></body></html>`,
-			status: result.status,
-		};
+		// Surface the loader-thrown `redirect()` AS DATA — the dev middleware
+		// (the caller) converts it to a real HTTP Location response, exactly
+		// as it did pre-unification when the throw propagated as a rejection.
+		// (The first unification cut returned a meta-refresh page here, which
+		// REGRESSED the redirect-status contract — caught by the cpa e2e's
+		// permanent-redirect spec: 200-with-meta-refresh instead of 308.)
+		return { kind: "redirect", to: result.to, status: result.status };
 	}
 
 	const html = template
 		.replace("<!--pyreon-head-->", result.head)
 		.replace("<!--pyreon-app-->", result.appHtml)
 		.replace("<!--pyreon-scripts-->", result.loaderScript);
-	return { html, status: result.status };
+	return { kind: "html", html, status: result.status };
 }
 
 /**

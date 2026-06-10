@@ -1118,6 +1118,25 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Phase 1 render-pipeline unification — the shipped-broken
+    // `useRequestLocals` (renderToString/renderToStream opened a FRESH ALS
+    // context stack, discarding request-level provide() frames). Users on
+    // older runtime-server versions see the locals hook resolving its
+    // default ({}), so reads like `locals.nonce` / `locals.user` are
+    // undefined inside SSR-rendered components even though the handler's
+    // middleware populated ctx.locals.
+    pattern: /useRequestLocals\(\).*(undefined|empty|\{\})|locals.*(nonce|user).*undefined.*(SSR|server)/i,
+    diagnose: () => ({
+      cause:
+        '`useRequestLocals()` resolves its default ({}) inside SSR-rendered components on `@pyreon/runtime-server` versions where `renderToString`/`renderToStream` opened a FRESH request-context stack — the nested ALS scope silently discarded every request-level `provide()`, including the handler\'s `provideRequestLocals(ctx.locals)` bridge.',
+      fix: 'Upgrade `@pyreon/runtime-server` + `@pyreon/server` to the release where the renderers INHERIT an active `runWithRequestContext` scope (the renderPage unification). Middleware locals then reach components with no code change. If you cannot upgrade, pass values through route loaders instead of locals.',
+      fixCode: `// middleware (unchanged):
+middleware: [(ctx) => { ctx.locals.nonce = makeNonce() }]
+// component (works after the upgrade):
+const { nonce } = useRequestLocals()`,
+    }),
+  },
+  {
     pattern: /Cannot read properties of undefined \(reading '(set|update|peek|subscribe)'\)/,
     diagnose: (m) => ({
       cause: `Calling .${m[1]}() on undefined. The signal variable is likely out of scope, misspelled, or not yet initialized.`,
