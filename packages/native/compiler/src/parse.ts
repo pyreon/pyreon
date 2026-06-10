@@ -325,7 +325,10 @@ function tryStoreDefnFromTopLevel(
           const declInit = d.init as AnyNode | undefined
           if (declInit?.type === 'ArrowFunctionExpression') {
             const fn = tryFunctionDecl(name, declInit, ctx)
-            if (fn === null || fn.kind !== 'function') {
+            // Discriminant guard covers the null case too (optional
+            // chain) — CodeQL flags a direct null comparison here as
+            // an inconvertible-types check.
+            if (fn?.kind !== 'function') {
               ctx.warnings.push(
                 `defineStore \`${hookName}\`: could not parse method \`${name}\`. Falling back to silent-drop.`,
               )
@@ -2267,7 +2270,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           if (validators.length > 0) decl.validators = validators
         } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
           const fn = tryFunctionDecl('__onSubmit', prop.value, ctx)
-          if (fn !== null && fn.kind === 'function') {
+          // Optional-chain discriminant guard (see the store-walker
+          // mirror above for the CodeQL rationale).
+          if (fn?.kind === 'function') {
             const param = fn.params[0]?.name ?? 'values'
             decl.onSubmit = { param, body: fn.body }
           } else {
