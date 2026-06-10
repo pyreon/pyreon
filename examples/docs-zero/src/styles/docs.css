@@ -17,6 +17,13 @@ html, body {
   font-size: 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Stabilize subpixel rendering so saturated colors don't read as
+     "bolder" weight. Without this, an active sidebar link transitioning
+     from muted gray to ember orange looks heavier even though
+     font-weight is constant — a subpixel antialiasing artifact most
+     pronounced on small text (13.5px sidebar links). */
+  text-rendering: geometricPrecision;
 }
 
 body { min-height: 100vh; }
@@ -2378,20 +2385,33 @@ html { scroll-behavior: smooth; }
   display: block;
   padding: 0.3rem 0.75rem 0.3rem 0;
   font-size: 13.5px;
+  /* Pin font-weight explicitly so neither the inactive→active flip
+     nor any browser default can shift it. The PERCEIVED bolding on
+     click was an optical illusion from the color change (muted gray
+     → saturated ember) — saturated text at small sizes reads as
+     visually heavier under subpixel antialiasing even with constant
+     weight. The companion `text-rendering: geometricPrecision` +
+     `-moz-osx-font-smoothing: grayscale` on `html` (~line 19)
+     stabilizes the rendering across color states. */
+  font-weight: 400;
   color: var(--text-muted);
   text-decoration: none;
   transition: color 0.18s ease;
 }
 .pyreon-sidebar__link:hover { color: var(--text); }
-.pyreon-sidebar__link--active {
+.pyreon-sidebar__link--active,
+.pyreon-sidebar__link--active:hover {
   /* Defensive: reset any earlier `background` so the ember-bar (the
      `::before` tick below) reads as the only active-state cue.
-     Active is communicated by COLOR (ember) + the ember tick. Font
-     weight stays at the base value to avoid a visible "bolding
-     flash" on click — VitePress / Docs.rs / every major docs site
-     keeps weight constant across the inactive ↔ active flip. */
+     Active is communicated by COLOR (ember) + the ember tick.
+     Font weight is explicitly pinned at 400 to match the inactive
+     state — VitePress / Docs.rs / every major docs site keeps weight
+     constant across the inactive ↔ active flip. The `:hover` variant
+     pins the same values so a hovered active link doesn't fall back
+     to the inactive hover color. */
   background: transparent;
   color: var(--ember-core);
+  font-weight: 400;
 }
 .pyreon-sidebar__link--active::before {
   content: '';
