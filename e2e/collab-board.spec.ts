@@ -131,46 +131,33 @@ test.describe('collab-board — relay sync', () => {
     await expect(b.getByTestId('col-todo').getByText('Card 1')).toBeVisible()
 
     // A opens the card and edits its collaborative notes. We drive the edit
-    // through the editor's `insert()` (a real CodeMirror transaction via the
-    // dev-only `__cardEditor` hook) rather than simulated OS keystrokes: a
-    // diagnostic CI run proved `pressSequentially` renders into the
-    // contenteditable DOM but does NOT reach a cold-mounted CodeMirror's doc
-    // state on a fresh CI runner — so `notes` (the syncedText CRDT) stayed empty
-    // and nothing synced. `insert()` dispatches a CM transaction, which always
-    // fires the updateListener → `notes.set`, exercising the real
-    // editor↔syncedText binding deterministically.
+    // through the editor's `value` signal (`editor.value.set`, the documented
+    // public controlled-binding API, via the dev-only `__cardEditor` hook) rather
+    // than simulated OS keystrokes. A diagnostic CI run proved keystrokes render
+    // into the contenteditable DOM but do NOT reach a cold-mounted CodeMirror's
+    // doc state on a fresh CI runner (the editor view isn't created until the lazy
+    // markdown grammar resolves — `editor.insert` even no-ops while the view is
+    // null), so `notes` (the syncedText CRDT) stayed empty and nothing synced.
+    // `value.set` feeds the editor↔syncedText binding effect directly — no view
+    // dependency — so it deterministically writes the CRDT and syncs. The
+    // keystroke-level CodeMirror input path is @pyreon/code's own concern (covered
+    // by its browser tests), not what this sync showcase gates on.
     await a.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(a.getByTestId('card-panel')).toBeVisible()
     await expect(a.getByTestId('card-notes').locator('.cm-content')).toBeVisible()
     await a.evaluate(() =>
-      (
-        window as unknown as { __cardEditor?: { insert: (t: string) => void } }
-      ).__cardEditor?.insert('shipping monday'),
+      (window as unknown as { __cardEditor?: { value: { set: (t: string) => void } } }).__cardEditor?.value.set(
+        'shipping monday',
+      ),
     )
     // Assert A's edit actually reached the CRDT (not just CodeMirror's DOM — that
-    // was the original false-positive). This is the real "the edit landed" check,
-    // and every poll dumps the FULL chain so a CI failure names the broken link.
-    // [DIAG] Per-poll chain dump: cmDoc (CM truth) | viewNull | editorValue
-    // (signal truth) | probeRuns (effects-alive canary — frozen at 1 = the
-    // component scope was disposed while the DOM stayed) | mounts (CardPanel
-    // setup count — >1 = remount/double-mount split the hooks) | notesSignal
-    // (facade/base) | rawYText (Y.Text read bypassing the facade observer).
-    const readDiag = (p: Page) =>
-      p.evaluate(() => {
-        const w = window as unknown as {
-          __cardDiag?: () => { cardId: string; notesSignal: string } & Record<string, unknown>
-          __rawNotes?: (id: string) => string
-        }
-        const d = w.__cardDiag?.()
-        return { ...d, rawYText: d ? (w.__rawNotes?.(d.cardId) ?? '<no-raw>') : '<no-diag>' }
-      })
+    // was the original false-positive). This is the real "the edit landed" check.
     await expect
       .poll(
-        async () => {
-          const d = await readDiag(a)
-          console.log('[DIAG] A:', JSON.stringify(d))
-          return typeof d.notesSignal === 'string' ? d.notesSignal : ''
-        },
+        () =>
+          a.evaluate(
+            () => (window as unknown as { __cardNotes?: () => string }).__cardNotes?.() ?? '',
+          ),
         { timeout: 10_000 },
       )
       .toContain('shipping monday')
@@ -182,15 +169,6 @@ test.describe('collab-board — relay sync', () => {
     // Generous budget for the cold first-mount of the grammar chunk on a fresh runner.
     await b.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(b.getByTestId('card-panel')).toBeVisible()
-
-    // [DIAG] poll B's full chain to pinpoint where the break is.
-    for (let i = 0; i < 12; i++) {
-      const bDiag = await readDiag(b)
-      console.log(`[DIAG] t=${i}s B:`, JSON.stringify(bDiag))
-      if (typeof bDiag.rawYText === 'string' && bDiag.rawYText.includes('shipping')) break
-      await b.waitForTimeout(1000)
-    }
-
     await expect(b.getByTestId('card-notes').locator('.cm-content')).toContainText(
       'shipping monday',
       { timeout: 15000 },

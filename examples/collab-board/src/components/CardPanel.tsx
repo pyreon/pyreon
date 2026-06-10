@@ -1,6 +1,5 @@
 import { bindEditorToSignal, CodeEditor, createEditor } from '@pyreon/code'
 import { For, onUnmount } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
 import type { SyncedText } from '@pyreon/sync/yjs'
 import { canEdit } from '../state/permissions'
 import { type BoardDoc, CARD_LABELS, type CardLabel } from '../sync/board-doc'
@@ -16,9 +15,6 @@ import { type BoardDoc, CARD_LABELS, type CardLabel } from '../sync/board-doc'
  * disposed on close / card-switch (this component remounts when `cardId`
  * changes, so `onUnmount` tears both down).
  */
-// DEV diag: counts CardPanel setups across the page lifetime (remount detector).
-let _panelMounts = 0
-
 export function CardPanel(props: { board: BoardDoc; cardId: string; onClose: () => void }) {
   const board = props.board
   const cardId = props.cardId
@@ -39,41 +35,12 @@ export function CardPanel(props: { board: BoardDoc; cardId: string; onClose: () 
     parse: (text) => text,
   })
   // DEV-only test hook: expose the active card's notes signal (CRDT reader) +
-  // the editor instance, so the e2e can drive the editor programmatically and
-  // assert the CRDT value on each peer. Stripped from production builds.
-  // (Simulated OS keystrokes don't reliably reach a cold-mounted CodeMirror's
-  // doc state on a fresh CI runner — the editor's `insert()` dispatches a real
-  // CM transaction, which always fires the updateListener → syncedText write.)
+  // the editor instance, so the e2e can drive the editor's `value` signal and
+  // assert the synced CRDT value on each peer. Stripped from production builds.
   if (import.meta.env.DEV && typeof window !== 'undefined') {
-    const w = window as unknown as {
-      __cardNotes?: () => string
-      __cardEditor?: { insert: (text: string) => void }
-      __cardDiag?: () => unknown
-    }
+    const w = window as unknown as { __cardNotes?: () => string; __cardEditor?: typeof editor }
     w.__cardNotes = () => notes()
     w.__cardEditor = editor
-    // Chain-splitting diagnostics for the CI-only notes break. Each field is
-    // one link of: CM doc → editor.value → binding effect → notes signal.
-    // `probeRuns` is an effects-alive canary on the SAME component scope as
-    // the binding — if a parent boundary disposed this scope while leaving
-    // the DOM in place (the dead-effects bug class), it freezes at 1.
-    // `mounts` counts CardPanel setups — >1 means a remount/double-mount
-    // split the window hooks across instances.
-    _panelMounts++
-    let probeRuns = 0
-    effect(() => {
-      editor.value()
-      probeRuns++
-    })
-    w.__cardDiag = () => ({
-      cardId,
-      mounts: _panelMounts,
-      viewNull: editor.view.peek() == null,
-      cmDoc: editor.view.peek()?.state.doc.toString() ?? '<no-view>',
-      editorValue: editor.value.peek(),
-      notesSignal: notes.peek(),
-      probeRuns,
-    })
   }
   onUnmount(() => {
     binding.dispose()
