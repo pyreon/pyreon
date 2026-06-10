@@ -23,12 +23,12 @@
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 
-// PR-3.2 — Suspense has real emit (PyreonSuspenseWrapper), so it's no
-// longer in the walled-tag list. Only ErrorBoundary + KeepAlive remain
-// walled here.
-const TAGS = ['ErrorBoundary', 'KeepAlive'] as const
+// PR-3.2 (main) + PR-3.3 (this PR) — Suspense + ErrorBoundary have real
+// emit (PyreonSuspenseWrapper + PyreonErrorBoundaryWrapper), so neither
+// is in the walled-tag list. Only KeepAlive remains walled.
+const TAGS = ['KeepAlive'] as const
 
-describe('Phase 5 — walled-tag graceful emit (ErrorBoundary / KeepAlive)', () => {
+describe('Phase 5 — walled-tag graceful emit (KeepAlive)', () => {
   for (const tag of TAGS) {
     it(`Swift: <${tag}> emits Group { children } + a [Pyreon] limitation comment, NO fake identifier`, () => {
       const out = transform(
@@ -58,28 +58,9 @@ describe('Phase 5 — walled-tag graceful emit (ErrorBoundary / KeepAlive)', () 
     })
   }
 
-  // PR-3.2: Suspense has real emit now — fallback IS rendered. The
-  // following two specs covered Suspense + ErrorBoundary's old walled
-  // fallback-drop behaviour. ErrorBoundary still drops its fallback;
-  // assert it via ErrorBoundary alone.
-  it('Swift: ErrorBoundary fallback prop is silently dropped (intentional — fallback path inert)', () => {
-    const out = transform(
-      `export function App() { return <ErrorBoundary fallback={<Text>FALLBACK_MARKER</Text>}><Text>ok</Text></ErrorBoundary> }`,
-      { target: 'swift' },
-    ).code
-    // The fallback is acknowledged as inert; its content should NOT
-    // appear in the emitted output (no view ever renders it).
-    expect(out).not.toContain('FALLBACK_MARKER')
-    // Happy-path children still emit.
-    expect(out).toContain('Text("ok")')
-  })
-
-  it('Kotlin: ErrorBoundary fallback prop is silently dropped (intentional — fallback path inert)', () => {
-    const out = transform(
-      `export function App() { return <ErrorBoundary fallback={<Text>FALLBACK_MARKER</Text>}><Text>ok</Text></ErrorBoundary> }`,
-      { target: 'kotlin' },
-    ).code
-    expect(out).not.toContain('FALLBACK_MARKER')
-    expect(out).toContain('Text(text = "ok")')
-  })
+  // PR-3.2 (main) + PR-3.3 (this PR): Suspense + ErrorBoundary now have
+  // real emit; their fallback IS rendered. KeepAlive remains walled but
+  // uses `when` (not `fallback`) — drop the standalone fallback-drop
+  // specs; the walled-tag children-only assertion above already covers
+  // KeepAlive's child-emit shape.
 })
