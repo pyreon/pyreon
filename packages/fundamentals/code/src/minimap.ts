@@ -106,6 +106,7 @@ export function minimapExtension(): Extension {
         canvas: HTMLCanvasElement
         view: EditorView
         animFrame: number | null = null
+        clickHandler: (e: MouseEvent) => void
 
         constructor(view: EditorView) {
           this.view = view
@@ -113,15 +114,21 @@ export function minimapExtension(): Extension {
           view.dom.style.position = 'relative'
           view.dom.appendChild(this.canvas)
 
-          // Click to scroll
-          this.canvas.addEventListener('click', (e) => {
+          // Click to scroll. Stored as an instance field so `destroy()`
+          // can detach it — the canvas element normally dies with the
+          // plugin (element-scoped listeners are GC'd with their
+          // element), but explicit removal keeps the destroy() contract
+          // complete if anything (devtools, a test harness, CodeMirror
+          // internals) retains the canvas past destroy.
+          this.clickHandler = (e: MouseEvent) => {
             const rect = this.canvas.getBoundingClientRect()
             const clickY = e.clientY - rect.top
             const fraction = clickY / rect.height
             const scrollTarget =
               fraction * (view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight)
             view.scrollDOM.scrollTo({ top: scrollTarget, behavior: 'smooth' })
-          })
+          }
+          this.canvas.addEventListener('click', this.clickHandler)
 
           this.render()
         }
@@ -145,6 +152,7 @@ export function minimapExtension(): Extension {
         destroy() {
           const w = this.view.dom.ownerDocument.defaultView
           if (w && this.animFrame) w.cancelAnimationFrame(this.animFrame)
+          this.canvas.removeEventListener('click', this.clickHandler)
           this.canvas.remove()
         }
       },

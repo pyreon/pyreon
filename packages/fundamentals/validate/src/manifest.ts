@@ -72,7 +72,7 @@ const $sameResult = parseReactive(sameSchema, $email)
     'watchValid(schema, signal, callback) — fires on validity transitions, not every error change',
     'formatError / formatErrors / formatErrorsByPath — i18n-key-aware error rendering',
     'Works with any Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+, …)',
-    'Tiny — ~1-2KB gz, no validator runtime ships in Pyreon',
+    'Tree-shakeable — DX helpers alone are ~0.5KB gz (measured); the v1 validator runtime (~3.5KB gz) is pulled in only when `s` / primitives are imported',
   ],
   api: [
     {

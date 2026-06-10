@@ -4,8 +4,9 @@ import { SizedMap } from '@pyreon/sized-map'
 import { mountChild } from './mount'
 import { _bindEvent } from './props'
 
-// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
-// uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
+// Dev-mode gates in this file use the bare bundler-agnostic
+// `process.env.NODE_ENV !== 'production'` form — see the
+// `pyreon/no-process-dev-gate` lint rule for the rationale.
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
