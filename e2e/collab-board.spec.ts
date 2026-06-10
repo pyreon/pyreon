@@ -143,6 +143,12 @@ test.describe('collab-board — relay sync', () => {
     // isolates "did the typing register" from "did it sync".
     await expect(aEditor).toContainText('shipping monday')
 
+    // [DIAG] Did A's edit reach A's CRDT (not just CodeMirror's DOM)?
+    const aNotes = await a.evaluate(
+      () => (window as unknown as { __cardNotes?: () => string }).__cardNotes?.() ?? '<no-hook>',
+    )
+    console.log('[DIAG] A notes CRDT after typing =', JSON.stringify(aNotes))
+
     // B opens the SAME card AFTER A's note is in the shared doc, so B's CodeMirror
     // is created from the already-synced `syncedText` value (baked into the initial
     // EditorState) — proving collaborative notes WITHOUT depending on a live signal
@@ -151,6 +157,18 @@ test.describe('collab-board — relay sync', () => {
     // the cold first-mount of the CodeMirror grammar chunk on a fresh CI runner.
     await b.getByTestId('col-todo').locator('.card-title').first().click()
     await expect(b.getByTestId('card-panel')).toBeVisible()
+
+    // [DIAG] poll B's CRDT value + editor DOM to pinpoint where the break is.
+    for (let i = 0; i < 12; i++) {
+      const bNotes = await b.evaluate(
+        () => (window as unknown as { __cardNotes?: () => string }).__cardNotes?.() ?? '<no-hook>',
+      )
+      const bDom = await b.getByTestId('card-notes').locator('.cm-content').textContent()
+      console.log(`[DIAG] t=${i}s B notes CRDT=${JSON.stringify(bNotes)} editorDOM=${JSON.stringify(bDom)}`)
+      if (typeof bNotes === 'string' && bNotes.includes('shipping')) break
+      await b.waitForTimeout(1000)
+    }
+
     await expect(b.getByTestId('card-notes').locator('.cm-content')).toContainText(
       'shipping monday',
       { timeout: 15000 },

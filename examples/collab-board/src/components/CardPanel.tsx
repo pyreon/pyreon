@@ -34,6 +34,12 @@ export function CardPanel(props: { board: BoardDoc; cardId: string; onClose: () 
     serialize: (text: string) => text,
     parse: (text) => text,
   })
+  // DEV-only debug hook: expose the active card's notes signal so the e2e can
+  // read the CRDT value on each peer (diagnosing a notes-sync flake). Stripped
+  // from production builds.
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    ;(window as unknown as { __cardNotes?: () => string }).__cardNotes = () => notes()
+  }
   onUnmount(() => {
     binding.dispose()
     notes.dispose()
