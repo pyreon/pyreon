@@ -62,14 +62,14 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     'synth-prop-types.tsx',
     // Router-hook stub regression: useNavigate / useParams.
     'router-hooks.tsx',
-    // Gap 5 showcase (REWRITTEN to the proven Tier-1 subset — see the
-    // fixture header). Now in BOTH validate loops: exercises typed
-    // route params (`/tasks/:id` + synthesized TaskDetailPageParam +
-    // dispatcher construction), declared-struct signal seeds
-    // (`signal<Task[]>([{...}])` → `listOf(Task(id = 1, ...))`),
-    // .set() spread-append / map-toggle, and the Text-wrap of value-
-    // expression children (`<Button>{cond ? 'a' : 'b'}</Button>`).
-    // The PREVIOUS scaffold was Swift-loop-only because its emit
+    // Gap 5 showcase (STORE-BACKED — see the fixture header). In BOTH
+    // validate loops: a cross-screen defineStore (auth flag + Task[]
+    // list — `object PyreonStore_app` with mutableStateOf fields), the
+    // store-read beforeEnter guard in the dispatcher, typed route
+    // params (`/tasks/:id` + synthesized TaskDetailPageParam +
+    // dispatcher construction), .set() spread-append / map-toggle
+    // through the store, and Text-wrapped value-expression children.
+    // The ORIGINAL scaffold was Swift-loop-only because its emit
     // didn't compile under kotlinc (tuple literals, `.update()`,
     // prop-less dispatch of prop-requiring components).
     'showcase-tasks.tsx',
