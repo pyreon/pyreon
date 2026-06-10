@@ -51,7 +51,7 @@ const InvertedSection = () => (
       signature:
         "(props: { theme?: Theme; mode?: 'light' | 'dark' | 'system'; inversed?: boolean; children: VNodeChild }) => VNodeChild",
       summary:
-        "Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched `theme` object (merge with defaults via `enrichTheme()`), a `mode` of `'light' | 'dark' | 'system'`, and an optional `inversed` flip. When `mode='system'`, the provider subscribes to `matchMedia('(prefers-color-scheme: dark)')` and re-resolves the mode reactively. Calls `init()` internally so consumers don\\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode.",
+        "Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched `theme` object (merge with defaults via `enrichTheme()`), a `mode` of `'light' | 'dark' | 'system'`, and an optional `inversed` flip. When `mode='system'`, the provider subscribes to `matchMedia('(prefers-color-scheme: dark)')` and re-resolves the mode reactively. Calls `init()` internally so consumers don\\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. Under `init({ cssVariables: true })` the provider additionally autogenerates CSS custom properties from the theme (unistyle\\'s `themeToCssVars`), injects the `:root` block once, provides a var-leaf theme tree, and renders a layout-neutral `display: contents` wrapper carrying the mode attribute — a dark/light flip becomes ONE attribute write (zero re-resolution, zero className churn), nested `inversed` providers scope via the CSS cascade, and SSR ships the right mode server-rendered.",
       example: `import { PyreonUI } from "@pyreon/ui-core"
 import { enrichTheme } from "@pyreon/unistyle"
 
@@ -65,6 +65,8 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 // inversed flips the resolved mode (light↔dark)`,
       mistakes: [
         'Using `ThemeProvider` + `ModeProvider` + `ConfigProvider` separately — `PyreonUI` is the single replacement covering all three',
+        'Flipping `init({ cssVariables })` after the first render — the switch is a boot-time contract; theme-resolution caches across the ui-system assume it does not change mid-session',
+        'Expecting `mode(a, b)` pairs with NUMBER values to unit-convert under `cssVariables` — pairs are emitted verbatim into CSS custom properties; pass unit-complete strings',
         'Forgetting `enrichTheme()` — raw theme objects miss default breakpoints / spacing / unit utilities',
         'Destructuring `props` inside the provider — components run once; destructuring captures values at setup. Read `props.mode` lazily inside reactive scopes',
         'Re-augmenting the `ThemeDefault` / `StylesDefault` interfaces in your app — `@pyreon/ui-theme` already augments them; double-augmentation throws TS2320',

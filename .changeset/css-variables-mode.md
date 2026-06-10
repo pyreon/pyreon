@@ -1,0 +1,6 @@
+---
+'@pyreon/ui-core': minor
+'@pyreon/rocketstyle': minor
+---
+
+Opt-in CSS-variables theming mode: `init({ cssVariables: true })` (options: `{ prefix, attribute }`). When enabled, `PyreonUI` autogenerates custom properties from the theme JSON via unistyle's `themeToCssVars` and injects the `:root` block once (SSR-aware — the block rides `getStyleTag()` / the stream flush); the provided theme tree carries `var(--px-…)` leaves; PyreonUI renders a layout-neutral `display: contents` wrapper carrying the mode attribute (server-rendered, so SSR/SSG ship the right mode — nested `inversed` providers scope via the cascade). rocketstyle's `mode(a, b)` pairs become hashed deduped var pairs (`--px-m-<fnv1a>`) resolved by `[data-theme]` rules, theme resolution turns mode-free (the `_rsMemo` key drops its mode segment and the mode signal is not even read), and a dark/light flip is ONE attribute write — measured in real Chromium: computed styles change with zero className writes, `styler.resolve: 0`, `rocketstyle.getTheme: 0`. Flag off is byte-identical to previous behavior. Note: under the flag, `mode(a, b)` values should be unit-complete strings (numbers warn in dev — units cannot be applied to var pairs emitted verbatim).

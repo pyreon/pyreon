@@ -1,9 +1,10 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createReactiveContext, nativeCompat, provide, useContext } from '@pyreon/core'
+import { createReactiveContext, h, nativeCompat, provide, useContext } from '@pyreon/core'
 import { computed, isClient, signal } from '@pyreon/reactivity'
-import { ThemeContext } from '@pyreon/styler'
+import { sheet, ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
-import { enrichTheme } from '@pyreon/unistyle'
+import { enrichTheme, themeToCssVars } from '@pyreon/unistyle'
+import { resolveCssVariables } from './config'
 import { context as coreContext } from './context'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -195,10 +196,28 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // followed by every styled descendant rendering with an empty theme.
   // That's what made the user's nested `<PyreonUI inversed>` "look like
   // inversed wasn't working" — the whole subtree was broken.
+  // Resolved once at setup — the cssVariables switch is a boot-time contract
+  // (set via init() before the first render); theme-resolution caches across
+  // the ui-system assume it does not flip mid-session.
+  const cssVars = resolveCssVariables()
+
   const enrichedTheme = computed(() => {
     const t = props.theme
     if (t === undefined || t === null) return parentThemeAccessor()
-    return enrichTheme(t)
+    const enriched = enrichTheme(t)
+    if (!cssVars.enabled) return enriched
+    // CSS-variables mode: every eligible theme leaf becomes a 'var(--px-…)'
+    // string and the :root block is injected ONCE per theme identity
+    // (injectRules is idempotent by key and SSR-aware — on the server the
+    // block lands in the ssrBuffer that getStyleTag()/the stream flush emit).
+    // Downstream consumers (styler templates, rocketstyle callbacks, the
+    // unistyle value pipeline) read the var references verbatim, so a mode
+    // flip never re-resolves any of them.
+    const { vars, css: varsCss } = themeToCssVars(enriched, { prefix: cssVars.prefix })
+    if (varsCss) sheet.injectRules([varsCss], varsCss)
+    // Same tree shape; leaves are var() reference strings — every theme
+    // value position accepts strings, so the widened leaf type is safe.
+    return vars as unknown as ReturnType<typeof enrichTheme>
   })
 
   // Provide to all three context layers:
@@ -220,7 +239,22 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // 3. Mode context — getter function for useMode()
   provide(ModeContext, () => modeComputed())
 
-  return props.children ?? null
+  if (!cssVars.enabled) return props.children ?? null
+
+  // CSS-variables mode: render a layout-neutral wrapper carrying the mode
+  // attribute. The cascade does the rest — `[data-theme="dark"]` re-resolves
+  // every mode-pair var for THIS subtree, so dark/light (incl. nested
+  // `inversed` providers) is one attribute write with zero re-resolution and
+  // zero className churn. Server-rendered too, so SSR/SSG ship the right
+  // mode with no client fixup.
+  return h(
+    'div',
+    {
+      style: 'display: contents',
+      [cssVars.attribute]: () => modeComputed(),
+    },
+    props.children ?? null,
+  )
 }
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
