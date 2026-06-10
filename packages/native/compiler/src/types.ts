@@ -176,7 +176,19 @@ export type DeclIR =
    * Swift / Compose `MutableState` `.value` reads on Kotlin. `form.isValid`
    * is a derived `Bool` getter — a plain read on both targets (no `.value`).
    */
-  | { kind: 'form'; name: string; initialValues: { key: string; value: string }[] }
+  | {
+      kind: 'form'
+      name: string
+      initialValues: { key: string; value: string }[]
+      /**
+       * v2 (form-binding arc) — per-field sync validators from
+       * `useForm({ validators: { email: (v) => … } })`. Each arrow
+       * emits as a native closure in the PyreonForm init ("" = valid).
+       */
+      validators?: { key: string; param: string; body: ExprIR }[]
+      /** v2 — `onSubmit: (values) => …` callback (expression or block body). */
+      onSubmit?: { param: string; body: StatementIR[] }
+    }
   /**
    * Phase 4 — connectivity flag via `useOnline()` from `@pyreon/hooks` (the
    * native subset). Emits the PyreonNetworkStatus reactive container:

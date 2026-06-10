@@ -762,6 +762,51 @@ final class PyreonRuntimeTests: XCTestCase {
         }
         XCTAssertTrue(true, "deinit completed without crash")
     }
+    // MARK: - PyreonForm v2 (validators + submit + web-parity API)
+
+    /// A failing validator populates errors; fixing the value through
+    /// setValue re-validates immediately (the after-error feedback shape).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormValidatorFlow() throws {
+        let form = PyreonForm(
+            initialValues: ["username": ""],
+            validators: ["username": { $0.count < 3 ? "too short" : "" }]
+        )
+        XCTAssertFalse(form.validateField("username"))
+        XCTAssertEqual(form.errors["username"], "too short")
+        form.setValue("username", "alice")
+        XCTAssertNil(form.errors["username"])  // re-validated on set
+    }
+
+    /// submit() gates on validateAll: invalid → no callback; valid →
+    /// callback receives the values snapshot.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormSubmitGate() throws {
+        var submitted: [String: String]? = nil
+        let form = PyreonForm(
+            initialValues: ["username": ""],
+            validators: ["username": { $0.isEmpty ? "required" : "" }],
+            onSubmit: { submitted = $0 }
+        )
+        form.submit()
+        XCTAssertNil(submitted, "invalid form must not submit")
+        XCTAssertEqual(form.errors["username"], "required")
+        form.setFieldValue("username", "alice")
+        form.submit()
+        XCTAssertEqual(submitted?["username"], "alice")
+        XCTAssertFalse(form.isSubmitting)
+    }
+
+    /// binding(_:) round-trips through setValue (and re-validation).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormBindingRoundTrip() throws {
+        let form = PyreonForm(initialValues: ["email": "a@b.c"])
+        let binding = form.binding("email")
+        XCTAssertEqual(binding.wrappedValue, "a@b.c")
+        binding.wrappedValue = "x@y.z"
+        XCTAssertEqual(form.values["email"], "x@y.z")
+    }
+
     // MARK: - PyreonI18n (createI18n + t())
 
     /// Single-arg t(): active-locale lookup, fallback chain, key-verbatim miss.

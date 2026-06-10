@@ -59,7 +59,28 @@ class TasksAppInstrumentedTest {
         // guard on /tasks reads it and admits the navigation.
         composeRule
             .onNodeWithTag("login-username")
-            .performTextInput("alice")
+            .performTextInput("ab")
+
+        // Phase 1a: the ERROR path — "ab" fails the min-3 validator:
+        // the error renders, navigation is blocked (device-scope proof
+        // of the form-binding arc).
+        composeRule
+            .onNodeWithTag("login-submit")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("login-error")
+            .assertIsDisplayed()
+
+        composeRule
+            .onNodeWithTag("login-page")
+            .assertIsDisplayed()
+
+        // Phase 1b: more characters fix the field (setValue
+        // re-validates after an error) and submit passes the gate.
+        composeRule
+            .onNodeWithTag("login-username")
+            .performTextInput("cde")
 
         composeRule
             .onNodeWithTag("login-submit")

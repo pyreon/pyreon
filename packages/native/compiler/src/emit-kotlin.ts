@@ -1183,12 +1183,33 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
   // PyreonForm seeded with the literal defaults. No harness (pure state).
   if (d.kind === 'form') {
-    const seed = d.initialValues.length
-      ? `mapOf(${d.initialValues
+    const parts: string[] = []
+    if (d.initialValues.length) {
+      parts.push(
+        `initialValues = mapOf(${d.initialValues
           .map((p) => `${JSON.stringify(p.key)} to ${JSON.stringify(p.value)}`)
-          .join(', ')})`
-      : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${seed}) }`
+          .join(', ')})`,
+      )
+    }
+    // v2 (form-binding arc) — validators as Kotlin lambdas; "" = valid.
+    if (d.validators !== undefined && d.validators.length > 0) {
+      const entries = d.validators
+        .map(
+          (v) =>
+            `${JSON.stringify(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`,
+        )
+        .join(', ')
+      parts.push(`validators = mapOf(${entries})`)
+    }
+    if (d.onSubmit !== undefined) {
+      const bodyLines = d.onSubmit.body
+        .map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`)
+        .join('\n')
+      parts.push(
+        `onSubmit = { ${kotlinIdent(d.onSubmit.param)} ->\n${bodyLines}\n    }`,
+      )
+    }
+    return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${parts.join(', ')}) }`
   }
   // Phase 4: `const net = useOnline()` → a remembered PyreonNetworkStatus.
   if (d.kind === 'network-status') {
@@ -1581,6 +1602,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return kotlinIdent(e.name)
     case 'call': {
+      // `console.log(…)` → `println(…)` — the universal TS debug call
+      // maps to Kotlin's stdlib print (Swift mirror: `print`).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'log' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'console'
+      ) {
+        return `println(${e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')})`
+      }
       // Store METHOD call — `useX().store.M(args…)` →
       // `PyreonStore_id.M(args…)`. Mirror of emit-swift's rewrite;
       // must precede the zero-arg READ rewrite (a zero-arg method call
@@ -1768,6 +1799,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${emitKotlinExpr(e.object, indent)}[${emitKotlinExpr(e.index, indent)}]`
     }
     case 'member': {
+      // v2 (form-binding arc) — per-field dict access on a form
+      // container: `form.values.email` → `form.values.value["email"]
+      // ?: ""` (the MutableState map needs `.value` + the subscript;
+      // `touched` defaults false). Mirror of the Swift rewrite.
+      if (
+        e.object.kind === 'member' &&
+        e.object.object.kind === 'identifier' &&
+        _formNames.has(e.object.object.name) &&
+        (e.object.property === 'values' ||
+          e.object.property === 'errors' ||
+          e.object.property === 'touched')
+      ) {
+        const dflt = e.object.property === 'touched' ? 'false' : '""'
+        return `(${kotlinIdent(e.object.object.name)}.${e.object.property}.value[${JSON.stringify(e.property)}] ?: ${dflt})`
+      }
       // Gap 4 v1: rewrite `<useFoo>().store.X` → `PyreonStore_foo.X`.
       // Same chain-shape recognition as emit-swift's; Kotlin's `object`
       // declaration is the singleton (no `.shared` accessor needed).
@@ -3003,19 +3049,47 @@ function emitKotlinField(
   // making the bare `<Field value={sig}/>` shape fall through to
   // `emitKotlinGeneric` and emit a literal `Field(value = sig)` — no
   // such Compose composable, so the generated code was unbuildable.
+  // v2 (form-binding arc) — `value={form.values.email}` binds through
+  // the container: value reads the map, onValueChange routes through
+  // setValue (→ re-validation). The user's `onChangeText` is SUBSUMED
+  // (mirror of the Swift binding(_:) emit).
+  let formBinding: { value: string; onChange: string } | undefined
   if (
-    !valueAttr ||
-    valueAttr.value.kind !== 'identifier' ||
-    !_signalNames.has(valueAttr.value.name)
+    valueAttr !== undefined &&
+    valueAttr.value.kind === 'member' &&
+    valueAttr.value.object.kind === 'member' &&
+    valueAttr.value.object.property === 'values' &&
+    valueAttr.value.object.object.kind === 'identifier' &&
+    _formNames.has(valueAttr.value.object.object.name)
+  ) {
+    const formName = kotlinIdent(valueAttr.value.object.object.name)
+    const field = JSON.stringify(valueAttr.value.property)
+    formBinding = {
+      value: `${formName}.values.value[${field}] ?: ""`,
+      onChange: `{ ${formName}.setValue(${field}, it) }`,
+    }
+  }
+
+  if (
+    formBinding === undefined &&
+    (!valueAttr ||
+      valueAttr.value.kind !== 'identifier' ||
+      !_signalNames.has(valueAttr.value.name))
   ) {
     return emitKotlinGeneric(e, indent)
   }
-  const sig = kotlinIdent(valueAttr.value.name)
-  const onValueChange = onChangeText
-    ? emitKotlinAction(onChangeText.handler, indent + 2)
-    : `{ ${sig} = it }`
+  const sig =
+    formBinding !== undefined
+      ? ''
+      : kotlinIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)
+  const onValueChange =
+    formBinding?.onChange ??
+    (onChangeText ? emitKotlinAction(onChangeText.handler, indent + 2) : `{ ${sig} = it }`)
 
-  const args: string[] = [`value = ${sig}`, `onValueChange = ${onValueChange}`]
+  const args: string[] = [
+    `value = ${formBinding?.value ?? sig}`,
+    `onValueChange = ${onValueChange}`,
+  ]
 
   const placeholderAttr = readStaticAttrKotlin(e, 'placeholder')
   if (typeof placeholderAttr === 'string') {
@@ -3041,6 +3115,13 @@ function emitKotlinField(
   if (disabled === true) {
     args.push('enabled = false')
   }
+  // Layout modifier chain INCLUDING `data-testid` → Modifier.testTag —
+  // the Field was dropping its tag (latent device failure: the Android
+  // instrumented tests query onNodeWithTag("login-username") but the
+  // emit never carried it; never surfaced because no Android
+  // instrumented run had reached the assertion yet).
+  const fieldModifier = emitKotlinLayoutModifier(e)
+  if (fieldModifier) args.push(`modifier = ${fieldModifier}`)
   return `TextField(${args.join(', ')})`
 }
 

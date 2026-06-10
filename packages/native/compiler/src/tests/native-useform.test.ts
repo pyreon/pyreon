@@ -43,7 +43,7 @@ describe('Phase 4.2 — useForm() native emit', () => {
       `,
       { target: 'kotlin' },
     ).code
-    expect(out).toContain('val form = remember { PyreonForm(mapOf("email" to "a@b.com")) }')
+    expect(out).toContain('val form = remember { PyreonForm(initialValues = mapOf("email" to "a@b.com")) }')
   })
 
   it('Kotlin: MutableState field reads append .value (isSubmitting / values / errors)', () => {

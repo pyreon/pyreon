@@ -56,7 +56,36 @@ fun testFormReset() {
     check(!f.isSubmitting.value) { "submitting cleared on reset" }
 }
 
+fun testFormValidatorFlow() {
+    val form = PyreonForm(
+        initialValues = mapOf("username" to ""),
+        validators = mapOf("username" to { v -> if (v.length < 3) "too short" else "" }),
+    )
+    check(!form.validateField("username")) { "empty username fails the validator" }
+    check(form.errors.value["username"] == "too short") { "error message recorded" }
+    form.setValue("username", "alice")
+    check(form.errors.value["username"] == null) { "setValue re-validates after error" }
+}
+
+fun testFormSubmitGate() {
+    var submitted: Map<String, String>? = null
+    val form = PyreonForm(
+        initialValues = mapOf("username" to ""),
+        validators = mapOf("username" to { v -> if (v.isEmpty()) "required" else "" }),
+        onSubmit = { submitted = it },
+    )
+    form.submit()
+    check(submitted == null) { "invalid form must not submit" }
+    check(form.errors.value["username"] == "required") { "validateAll populated the error" }
+    form.setFieldValue("username", "alice")
+    form.submit()
+    check(submitted?.get("username") == "alice") { "valid submit passes the values snapshot" }
+    check(!form.isSubmitting.value) { "submitting flag resets" }
+}
+
 fun main() {
+    testFormValidatorFlow()
+    testFormSubmitGate()
     testFormInitialValues()
     testFormSetValue()
     testFormSetAndClearError()

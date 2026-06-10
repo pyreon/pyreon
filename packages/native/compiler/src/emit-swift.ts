@@ -129,6 +129,10 @@ let _signalNames: Set<string> = new Set()
  * (parens dropped) and from function `addTodo()` (parens preserved).
  */
 let _machineNames: Set<string> = new Set()
+/** Per-component: form decl names — drives the dict-member subscript
+ *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
+ *  Field binding emit. */
+let _formNamesSwift: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a dictionary at this call shape. */
 let _i18nNames: Set<string> = new Set()
@@ -1016,6 +1020,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // callAsFunction).
   _machineNames = new Set()
   _i18nNames = new Set()
+  _formNamesSwift = new Set()
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -1049,6 +1054,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // OUT of _functionNames (it's a property, not a free function).
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'i18n') _i18nNames.add(d.name)
+    if (d.kind === 'form') _formNamesSwift.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -1152,6 +1158,20 @@ function emitSwiftComponent(c: ComponentIR): string {
   // runs `.task` when the view appears (the natural async-on-mount hook);
   // it drives the PyreonFetch state machine via begin → resolve|reject,
   // awaiting URLSession + decoding into the typed result.
+  // Form-binding arc: attach env/instance-capturing onSubmit callbacks
+  // post-init (see the form-decl emit's comment for why init can't).
+  for (const d of c.decls) {
+    if (d.kind !== 'form' || d.onSubmit === undefined) continue
+    const name = swiftIdent(d.name)
+    const bodyLines = d.onSubmit.body
+      .map((st) => `          ${emitSwiftStatement(st, 10)}`)
+      .join('\n')
+    lines.push(`      .onAppear {`)
+    lines.push(`        ${name}.onSubmit = { ${swiftIdent(d.onSubmit.param)} in`)
+    lines.push(bodyLines)
+    lines.push(`        }`)
+    lines.push(`      }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
     const name = swiftIdent(d.name)
@@ -1286,12 +1306,32 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // its fields (`values`/`errors`/`isSubmitting`/`isValid`) are read as
   // @Observable properties directly.
   if (d.kind === 'form') {
-    const seed = d.initialValues.length
-      ? `initialValues: [${d.initialValues
+    const parts: string[] = []
+    if (d.initialValues.length) {
+      parts.push(
+        `initialValues: [${d.initialValues
           .map((p) => `${JSON.stringify(p.key)}: ${JSON.stringify(p.value)}`)
-          .join(', ')}]`
-      : ''
-    return `@State private var ${swiftIdent(d.name)} = PyreonForm(${seed})`
+          .join(', ')}]`,
+      )
+    }
+    // v2 (form-binding arc) — validators emit as Swift closures in the
+    // init dictionary; "" = valid, anything else is the error message.
+    if (d.validators !== undefined && d.validators.length > 0) {
+      const entries = d.validators
+        .map(
+          (v) =>
+            `${JSON.stringify(v.key)}: { ${swiftIdent(v.param)} in ${emitSwiftExpr(v.body, 0)} }`,
+        )
+        .join(', ')
+      parts.push(`validators: [${entries}]`)
+    }
+    // onSubmit is NOT an init argument on Swift: @State property
+    // initializers run before `self` exists, and the callback's body
+    // almost always captures instance members (`navigate`, store
+    // writes). It attaches via `.onAppear { form.onSubmit = { … } }`
+    // on the component body instead — see the post-body loop in
+    // emitSwiftComponent (mirrors the useFetch `.task` harness).
+    return `@State private var ${swiftIdent(d.name)} = PyreonForm(${parts.join(', ')})`
   }
   // Phase 4: `const net = useOnline()` → an @State PyreonNetworkStatus. The
   // `net.isOnline` read is a plain @Observable property (no rewrite on Swift).
@@ -1699,6 +1739,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return swiftIdent(e.name)
     case 'call': {
+      // `console.log(…)` → `print(…)` — the universal TS debug call
+      // maps to Swift's stdlib print (Kotlin mirror: `println`).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'log' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'console'
+      ) {
+        return `print(${e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')})`
+      }
       // Store METHOD call — `useX().store.M(args…)` rewrites to
       // `PyreonStore_id.shared.M(args…)`. Must run BEFORE the zero-arg
       // read rewrite below: a zero-arg method call (`clear()`) would
@@ -1932,6 +1982,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
     }
     case 'member': {
+      // v2 (form-binding arc) — per-field dict access on a form
+      // container: `form.values.email` is ILLEGAL member access on a
+      // Swift dictionary; rewrite to the subscript with the
+      // type-appropriate default (`values`/`errors` are String dicts,
+      // `touched` is Bool).
+      if (
+        e.object.kind === 'member' &&
+        e.object.object.kind === 'identifier' &&
+        _formNamesSwift.has(e.object.object.name) &&
+        (e.object.property === 'values' ||
+          e.object.property === 'errors' ||
+          e.object.property === 'touched')
+      ) {
+        const dflt = e.object.property === 'touched' ? 'false' : '""'
+        return `(${swiftIdent(e.object.object.name)}.${e.object.property}[${JSON.stringify(e.property)}] ?? ${dflt})`
+      }
       // Gap 4 v1: rewrite the store-hook chain `<useFoo>().store.X`
       // → `PyreonStore_foo.shared.X`.
       //
@@ -3409,19 +3475,41 @@ function emitSwiftField(
   const kind = readStaticAttr(e, 'kind')
   const viewName = kind === 'password' ? 'SecureField' : 'TextField'
 
-  // `value` MUST name a signal in scope (canonical contract). If it
-  // doesn't, we fall through to the generic emit to preserve current
-  // behaviour and avoid silently producing broken Swift.
+  // v2 (form-binding arc) — `value={form.values.email}` binds through
+  // the runtime's `binding(_:)` helper (a SwiftUI Binding<String> whose
+  // setter routes through setValue → re-validation). The user's
+  // `onChangeText` is SUBSUMED by the binding (same as the signal
+  // shape's `$sig` projection below) — the canonical handler is
+  // exactly `(v) => form.setFieldValue('email', v)`.
+  let bindingExpr: string | undefined
   if (
-    !valueAttr ||
-    valueAttr.value.kind !== 'identifier' ||
-    !_signalNames.has(valueAttr.value.name)
+    valueAttr !== undefined &&
+    valueAttr.value.kind === 'member' &&
+    valueAttr.value.object.kind === 'member' &&
+    valueAttr.value.object.property === 'values' &&
+    valueAttr.value.object.object.kind === 'identifier' &&
+    _formNamesSwift.has(valueAttr.value.object.object.name)
+  ) {
+    const formName = swiftIdent(valueAttr.value.object.object.name)
+    bindingExpr = `${formName}.binding(${JSON.stringify(valueAttr.value.property)})`
+  }
+
+  // `value` MUST name a signal in scope (canonical contract) OR a form
+  // dict field (above). Anything else falls through to the generic emit
+  // to preserve current behaviour and avoid silently producing broken
+  // Swift.
+  if (
+    bindingExpr === undefined &&
+    (!valueAttr ||
+      valueAttr.value.kind !== 'identifier' ||
+      !_signalNames.has(valueAttr.value.name))
   ) {
     return emitSwiftGeneric(e, indent)
   }
-  const sig = swiftIdent(valueAttr.value.name)
+  const textArg =
+    bindingExpr ?? `$${swiftIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)}`
 
-  let result = `${viewName}(${JSON.stringify(placeholder)}, text: $${sig})`
+  let result = `${viewName}(${JSON.stringify(placeholder)}, text: ${textArg})`
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(

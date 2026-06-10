@@ -234,7 +234,7 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 | Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate + iOS XCUITest + Android Compose-instrumented-test landed (opt-in `native-device` label); promote to required once green across nightly runs |
 | Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
 | Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`), **global** `beforeEach`/`afterEach` guards, **throw-redirect** pattern | ✅ guards, nested routes, `useParams` destructure, `loaderData`/`useLoaderData` runtime, **global guards** (#1108), and **`router.redirect()` re-entry-safe throw-pattern** (#1109) all landed; loader **auto-emit** (blocked — see note) is the only remaining router-parity gap |
-| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | 🟡 five hooks landed (`useFetch` — emit complete, device-scope network proof open; `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design). **`useForm` is partial** — container + scalar reads only; per-field dict access / Field bindings / validators are the open form-binding arc. `useValidation` planned |
+| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed — **`useForm` v2 is device-proven** (validators + runtime Field bindings + submit gating; the tasks login's error-path smoke); `useFetch` emit complete (device-scope network proof open); `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design. `useValidation` planned |
 | Compiler diagnostics | Surface silent-drop shapes as parser warnings instead of failing-silent at runtime | ✅ Round-1 (#1094 — `Icon`/`Image`/`Link` missing required props) + Round-2 (#1099 — `Press` without `onPress`, `Link prefetch={…}` on native, `Stack/Inline/Layer align="<typo>"`) landed; both routes ship as `result.warnings`, emit shape unchanged |
 | Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the three walled tags emit a **graceful pass-through** (children render inside `Group {…}`/`Box {…}`, fallback/cache behaviour inert, comment surfaces the limitation) — no broken build, but a true Suspense/ErrorBoundary/KeepAlive runtime needs a Pyreon-async-context + view-modifier intercept + state-cache design that's not local emit work |
 | DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline (planned) | 🟡 scaffold landed (`bunx create-multiplatform <name>`); asset/SF-Symbols pipeline planned |
@@ -412,17 +412,23 @@ Kotlin runtime the emitted code drives):
   `@State PyreonForm(initialValues:[...])` (SwiftUI) / `remember {
   PyreonForm(mapOf(...)) }` (Compose); MutableState field reads append
   `.value` on Compose (except the derived `isValid` getter).
-  **⚠ Partial — NOT yet device-ready.** What works: the container decl +
-  scalar reads (`form.isValid`, `form.isSubmitting`). What does NOT yet
-  compile natively: per-field dict access (`form.values.username` emits
-  illegal member access on a dictionary — needs the subscript rewrite),
-  `<Field value={form.values.x}>` two-way bindings (the binding +
-  `onChangeText` handler silently drop), and the web API's
-  `setFieldValue` / `handleSubmit` / validator surface (the runtime
-  ports expose `setValue` / `beginSubmit` / `endSubmit` only — no
-  validator lowering). The form-binding arc is the next data-layer
-  milestone; until it lands, validate + manage per-field state with
-  plain signals (the tasks showcase's login is the canonical shape).
+  **v2 (form-binding arc) — device-proven.** `useForm({ initialValues,
+  validators, onSubmit })` lowers fully: per-field validators emit as
+  native closures ('' = valid), `<Field value={form.values.x}>` binds
+  through the runtime (`form.binding("x")` on SwiftUI — a real
+  `Binding<String>` whose setter re-validates after an error; a
+  value/onValueChange pair through `setValue` on Compose), per-field
+  dict access subscripts with typed defaults (`form.errors.x` →
+  `form.errors["x"] ?? ""`), and `submit()` gates on `validateAll`
+  before invoking `onSubmit`. The web-parity names (`setFieldValue`,
+  `handleSubmit`) exist on both runtime ports. SwiftUI nuance handled
+  by the emit: an `onSubmit` capturing instance members (navigate,
+  store writes) attaches via `.onAppear { form.onSubmit = … }` — a
+  @State property initializer runs before `self` exists. The tasks
+  showcase's login is the canonical validated form; its device smokes
+  assert the ERROR path before the happy path. Open: block-body +
+  async validators, schema validation (`@pyreon/validation`
+  reachability), `<Form>`/`<Submit>` wrappers.
 - **`usePermissions`** → a `PyreonPermissions` container (RBAC
   `can`/`cannot`/`all`/`any` with `"x.*"` wildcards). `const can =
   usePermissions([...])` seeds the grant set; reads are method calls (no
@@ -459,14 +465,13 @@ Kotlin runtime the emitted code drives):
   uses — `scheme === 'dark'` works identically across all three targets
   (#1103).
 
-> Status: `useFetch`, `usePermissions`, `useOnline`, `useClipboard`,
-> and `useColorScheme` are **landed** (runtime port + compiler emit —
-> `useColorScheme` is emit-only because the platform primitive is
-> enough). `useFetch`'s emit is complete (real URLSession/Codable +
-> `.task` lifecycle); its open item is a device-scope NETWORK proof
-> (the UITest gates don't run a backend yet). `useForm` is **partial**
-> — see its bullet above; the per-field binding arc is the open
-> milestone. `useValidation` reachability planned.
+> Status: `useForm` (v2 — validated forms, device-proven via the tasks
+> showcase's error-path smoke), `useFetch`, `usePermissions`,
+> `useOnline`, `useClipboard`, and `useColorScheme` are **landed**
+> (runtime port + compiler emit — `useColorScheme` is emit-only
+> because the platform primitive is enough). `useFetch`'s open item is
+> a device-scope NETWORK proof (the UITest gates don't run a backend
+> yet). `useValidation` reachability planned.
 
 ### The supported TypeScript surface
 

@@ -59,10 +59,31 @@ final class PyreonTasksUITests: XCTestCase {
             "Username field missing on login page"
         )
         username.tap()
-        username.typeText("alice")
+        username.typeText("ab")
 
         let submit = app.buttons["login-submit"].firstMatch
         XCTAssertTrue(submit.exists, "Continue button missing")
+
+        // Phase 1a: the ERROR path — "ab" fails the min-3 validator:
+        // the error text renders, navigation is BLOCKED (form.submit()
+        // gates on validateAll), and we stay on the login page. This is
+        // the device-scope proof of the form-binding arc.
+        submit.tap()
+
+        let validationError = app.staticTexts["At least 3 characters"].firstMatch
+        XCTAssertTrue(
+            validationError.waitForExistence(timeout: 15),
+            "Validator error text did not render — form.submit() did not run the validator"
+        )
+        XCTAssertTrue(
+            app.otherElements["login-page"].firstMatch.exists,
+            "Navigation was not blocked by the failing validator"
+        )
+
+        // Phase 1b: typing more characters fixes the field — setValue
+        // re-validates after an error, so the message clears live.
+        username.tap()
+        username.typeText("cde")
         submit.tap()
 
         let tasksPage = app.otherElements["tasks-page"].firstMatch

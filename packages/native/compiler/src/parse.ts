@@ -2228,7 +2228,57 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // (no bail): a bare `useForm()` or an unrecognised config shape yields an
   // empty `initialValues`, and the emit produces a default-constructed form.
   if (calleeName === 'useForm') {
-    return { kind: 'form', name, initialValues: tryExtractFormInitialValues(init.arguments?.[0]) }
+    const cfg = init.arguments?.[0] as AnyNode | undefined
+    const decl: Extract<DeclIR, { kind: 'form' }> = {
+      kind: 'form',
+      name,
+      initialValues: tryExtractFormInitialValues(cfg),
+    }
+    // v2 (form-binding arc) — validators + onSubmit. Conservative:
+    // unparseable members are skipped with a warning (the form still
+    // works; that validator just doesn't run natively).
+    if (cfg?.type === 'ObjectExpression') {
+      for (const prop of (cfg.properties as AnyNode[] | undefined) ?? []) {
+        if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+        const key = (prop.key?.name ?? prop.key?.value) as string | undefined
+        if (key === 'validators' && prop.value?.type === 'ObjectExpression') {
+          const validators: { key: string; param: string; body: ExprIR }[] = []
+          for (const v of (prop.value.properties as AnyNode[] | undefined) ?? []) {
+            if (v?.type !== 'Property' && v?.type !== 'ObjectProperty') continue
+            const fieldName = (v.key?.name ?? v.key?.value) as string | undefined
+            const fn = v.value as AnyNode | undefined
+            if (
+              fieldName === undefined ||
+              fn?.type !== 'ArrowFunctionExpression' ||
+              (fn.params as AnyNode[] | undefined)?.length !== 1 ||
+              fn.body?.type === 'BlockStatement'
+            ) {
+              ctx.warnings.push(
+                `useForm \`${name}\`: validator \`${fieldName ?? '?'}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
+              )
+              continue
+            }
+            const param = ((fn.params as AnyNode[])[0] as AnyNode | undefined)?.name as
+              | string
+              | undefined
+            if (param === undefined) continue
+            validators.push({ key: fieldName, param, body: parseExpr(fn.body, ctx) })
+          }
+          if (validators.length > 0) decl.validators = validators
+        } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
+          const fn = tryFunctionDecl('__onSubmit', prop.value, ctx)
+          if (fn !== null && fn.kind === 'function') {
+            const param = fn.params[0]?.name ?? 'values'
+            decl.onSubmit = { param, body: fn.body }
+          } else {
+            ctx.warnings.push(
+              `useForm \`${name}\`: could not parse onSubmit — the native submit() will validate but run no callback.`,
+            )
+          }
+        }
+      }
+    }
+    return decl
   }
   // Phase 4 — `useOnline()` from @pyreon/hooks → the PyreonNetworkStatus
   // reactive connectivity container. No arguments.
