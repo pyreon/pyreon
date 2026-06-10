@@ -2056,6 +2056,24 @@ items.insert(0, ["first"])
 items.delete(1, 1)
 // <For each={() => items()} by={(t) => t}>{(t) => <li>{t}</li>}</For>
 
+import { createYjsDoc, syncedAwareness, connectViaWebSocket } from "@pyreon/sync/yjs"
+const doc = createYjsDoc()
+const presence = syncedAwareness<{ name: string; cursor?: { x: number; y: number } }>(
+  doc, { name: "Vít" },
+)
+connectViaWebSocket(doc, "wss://sync.example.com/room?token=abc")
+// live cursors: window.addEventListener("mousemove", e =>
+//   presence.setLocalField("cursor", { x: e.clientX, y: e.clientY }))
+// <For each={() => presence.others()} by={p => p.clientId}>
+//   {p => <Cursor color={p.state.color} at={p.state.cursor} />}</For>
+
+const p: SyncedAwareness<{ name: string }> = syncedAwareness(doc, { name: "Vít" })
+p.others()  // PeerState<{ name: string }>[] — other people here
+
+<For each={() => presence.others()} by={p => p.clientId}>
+  {p => <Avatar name={p.state.name} />}
+</For>
+
 const doc = createYjsDoc()
 const link = connectViaBroadcastChannel(doc, "my-doc-room")
 // edit in tab A → the same <h1> patches in place in tab B
@@ -2088,6 +2106,8 @@ authorize: ({ room, token, req }) => verify(room, token)
 > **CRDTs prevent lost UPDATES, not semantic conflicts**: Never market this as 'never lose data'. Scalar `syncedSignal` is last-writer-wins — the loser's value is silently dropped. `syncedText`/`syncedList` keep both peers' ops but the merged result may be semantically nonsensical (interleaved sentences). Real apps still need conflict UX (presence, indicators, optional locking).
 >
 > **Bundle weight**: A synced app ships `yjs` (~40KB min+gz) + `y-indexeddb` + the WebSocket client on TOP of the core runtime — realistically ~60KB+ gz. It is off the core hot path (opt-in `/yjs` import) and justified by the capability, but a synced Pyreon app is NOT a 'smaller than Solid' app.
+>
+> **Awareness is ephemeral + the relay is stateful for it**: Presence (syncedAwareness — who's here + cursors) rides a SEPARATE channel from doc updates, is NEVER persisted, and is purged the moment a peer disconnects. The relay tracks per-room awareness (a deliberate departure from its otherwise-stateless doc relay) so a new client sees existing peers instantly and a crashed client is cleaned up on socket close. Don't store anything durable in awareness, and create syncedAwareness BEFORE connecting a transport.
 >
 > **Authorization is table-stakes**: The relay's `authorize` default ALLOWS everything (dev only). Production MUST gate reads + writes per room/doc. Whole-doc CRDTs make partial (per-field) access genuinely hard — use per-doc rooms or permission-scoped sub-docs.
 >

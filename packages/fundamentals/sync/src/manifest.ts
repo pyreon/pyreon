@@ -21,8 +21,9 @@ export default defineManifest({
     'Offline persistence via IndexedDB (persistViaIndexedDB)',
     'Same-origin cross-tab sync (connectViaBroadcastChannel) + cross-device WebSocket transport (connectViaWebSocket, auto-reconnect)',
     'Collaborative text (syncedText / Y.Text) + lists (syncedList / Y.Array) with true positional merge — concurrent edits keep BOTH',
+    'Ephemeral presence + live cursors (syncedAwareness) over the Yjs awareness protocol — a separate, never-persisted channel; the relay is awareness-stateful so a new client sees existing peers instantly + a crashed client is purged on disconnect',
     'Node/Bun relay server (createSyncServer) with a per-room/per-doc authorize gate + attach-to-existing-HTTP-server mode',
-    'Loop-free by construction: the observer applies every change; the transport never re-broadcasts a REMOTE-origin update',
+    'Loop-free by construction: the observer applies every change; the transport never re-broadcasts a REMOTE-origin update (the same shared tag guards awareness across BOTH transports)',
   ],
   api: [
     {
@@ -187,6 +188,54 @@ items.delete(1, 1)
       seeAlso: ['syncedText'],
     },
     {
+      name: 'syncedAwareness',
+      kind: 'function',
+      signature:
+        '<T extends Record<string, unknown>>(doc: YjsCrdtDoc, initial?: T) => SyncedAwareness<T>',
+      summary:
+        "Reactive EPHEMERAL presence — who's online + their live cursor — over the Yjs awareness protocol, a SEPARATE channel from the document CRDT (awareness is never merged into the doc and never persisted). Returns read signals (`local` / `others` / `states`) that recompute when any peer joins, leaves, or moves, plus `setLocal` / `setLocalField` to publish your own presence. Wired automatically to whatever transports are (or later get) connected to the doc — they share the doc's single Awareness. The relay is awareness-stateful, so a new client sees existing peers INSTANTLY and a crashed peer is purged on disconnect. Create it BEFORE connecting a transport (the transport peeks for the doc's awareness at connect time).",
+      example: `import { createYjsDoc, syncedAwareness, connectViaWebSocket } from "@pyreon/sync/yjs"
+const doc = createYjsDoc()
+const presence = syncedAwareness<{ name: string; cursor?: { x: number; y: number } }>(
+  doc, { name: "Vít" },
+)
+connectViaWebSocket(doc, "wss://sync.example.com/room?token=abc")
+// live cursors: window.addEventListener("mousemove", e =>
+//   presence.setLocalField("cursor", { x: e.clientX, y: e.clientY }))
+// <For each={() => presence.others()} by={p => p.clientId}>
+//   {p => <Cursor color={p.state.color} at={p.state.cursor} />}</For>`,
+      mistakes: [
+        'Putting durable data in awareness — it is EPHEMERAL and never persisted; a peer state vanishes on disconnect. Use syncedSignal/syncedStore/syncedText for data that must survive',
+        'Creating it AFTER connecting a transport — the transport peeks for the doc awareness at connect, so presence created later is not wired. Create syncedAwareness BEFORE connectViaWebSocket / connectViaBroadcastChannel',
+        'Reading `others()` / `local()` outside a reactive scope and expecting it to update — they are signals; read them inside JSX / an effect / a computed so the UI tracks presence changes',
+        'Treating cursor coordinates as exact across clients — they are raw viewport points with no scroll / window-size normalization (good enough for v1; map to content coordinates if you need pixel parity)',
+        'Disposing the awareness primitive BEFORE the transports — dispose the transports first so the departure announce still has a live wire (the relay socket-close purge is the real guarantee, so order only affects latency)',
+      ],
+      seeAlso: ['SyncedAwareness', 'PeerState', 'connectViaWebSocket', 'createSyncServer'],
+    },
+    {
+      name: 'SyncedAwareness',
+      kind: 'type',
+      signature:
+        'interface SyncedAwareness<T> { setLocal(s: T): void; setLocalField<K extends keyof T>(k: K, v: T[K]): void; local: Signal<T | null>; others: Signal<PeerState<T>[]>; states: Signal<PeerState<T>[]>; awareness: Awareness; dispose(): void }',
+      summary:
+        "The reactive presence handle from syncedAwareness. `others` is every peer EXCEPT you (the avatars / cursors to render); `states` includes you; `local` is your own published state. `setLocal` / `setLocalField` publish; `awareness` is the raw y-protocols escape hatch; `dispose()` detaches the observer, announces departure, and destroys the awareness (idempotent; auto-called via onCleanup in a reactive scope).",
+      example: `const p: SyncedAwareness<{ name: string }> = syncedAwareness(doc, { name: "Vít" })
+p.others()  // PeerState<{ name: string }>[] — other people here`,
+      seeAlso: ['syncedAwareness', 'PeerState'],
+    },
+    {
+      name: 'PeerState',
+      kind: 'type',
+      signature: 'interface PeerState<T> { clientId: number; state: T; isLocal: boolean }',
+      summary:
+        "One peer's presence entry: its awareness `clientId` (use it as the `<For>` key), its published `state`, and `isLocal` (whether it is you). `others()` returns only `isLocal: false` entries; `states()` returns all.",
+      example: `<For each={() => presence.others()} by={p => p.clientId}>
+  {p => <Avatar name={p.state.name} />}
+</For>`,
+      seeAlso: ['syncedAwareness', 'SyncedAwareness'],
+    },
+    {
       name: 'connectViaBroadcastChannel',
       kind: 'function',
       signature: '(doc: YjsCrdtDoc, channelName: string) => { disconnect(): void }',
@@ -279,6 +328,10 @@ const relay = await createSyncServer({
     {
       label: 'Bundle weight',
       note: "A synced app ships `yjs` (~40KB min+gz) + `y-indexeddb` + the WebSocket client on TOP of the core runtime — realistically ~60KB+ gz. It is off the core hot path (opt-in `/yjs` import) and justified by the capability, but a synced Pyreon app is NOT a 'smaller than Solid' app.",
+    },
+    {
+      label: 'Awareness is ephemeral + the relay is stateful for it',
+      note: "Presence (syncedAwareness — who's here + cursors) rides a SEPARATE channel from doc updates, is NEVER persisted, and is purged the moment a peer disconnects. The relay tracks per-room awareness (a deliberate departure from its otherwise-stateless doc relay) so a new client sees existing peers instantly and a crashed client is cleaned up on socket close. Don't store anything durable in awareness, and create syncedAwareness BEFORE connecting a transport.",
     },
     {
       label: 'Authorization is table-stakes',
