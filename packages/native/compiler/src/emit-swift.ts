@@ -303,6 +303,10 @@ export function emitSwift(
   _storeHooks = new Map(stores.map((s) => [s.hookName, s.storeId]))
   // Full store defs for per-component inference (field types).
   _storeDefs = stores
+  // v2 — per-hook method registry for the chain-call rewrite.
+  _storeMethodNames = new Map(
+    stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
+  )
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
@@ -354,6 +358,7 @@ export function emitSwift(
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
   _storeDefs = []
+  _storeMethodNames = new Map()
   _modelInstances = new Map()
   _needsSwiftSuspenseWrapper = false
   _needsSwiftErrorBoundaryWrapper = false
@@ -365,6 +370,8 @@ export function emitSwift(
 
 /** Map of useStoreName → storeId (e.g. `useCounter` → `"counter"`). */
 let _storeHooks: Map<string, string> = new Map()
+/** Per-hook store METHOD names — chain calls keep parens + args. */
+let _storeMethodNames: Map<string, Set<string>> = new Map()
 /** Full store definitions — feeds per-component inference ctx (field types). */
 let _storeDefs: StoreDefnIR[] = []
 
@@ -396,6 +403,47 @@ function emitSwiftStore(s: StoreDefnIR): string {
     const t = swiftType(f.type)
     const init = emitSwiftExpr(f.initial, 4)
     lines.push(`    var ${f.name}: ${t} = ${init}`)
+  }
+  // v2 — computeds + methods live on the singleton. Their bodies read
+  // the store's OWN signals (`tasks()` in source → the `tasks`
+  // property here), so the signal-read / .set machinery must see the
+  // store's decls instead of the surrounding component's: save the
+  // module-state name sets, swap in the store's, restore after.
+  const hasMembers = (s.computeds?.length ?? 0) > 0 || (s.methods?.length ?? 0) > 0
+  if (hasMembers) {
+    const prevSignals = _signalNames
+    const prevFunctions = _functionNames
+    _signalNames = new Set([
+      ...s.fields.map((f) => f.name),
+      ...(s.computeds ?? []).map((c) => c.name),
+    ])
+    _functionNames = new Set((s.methods ?? []).map((m) => m.name))
+    // Computed return types infer from the store's own fields (treated
+    // as signals) — same machinery component computeds use.
+    const storeCtx = buildInferenceCtx(
+      s.fields.map((f) => ({
+        kind: 'signal' as const,
+        name: f.name,
+        type: f.type,
+        initial: f.initial,
+      })),
+    )
+    for (const c of s.computeds ?? []) {
+      const t = inferType(c.expr, storeCtx)
+      const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
+      lines.push(`    var ${swiftIdent(c.name)}: ${anno} { ${emitSwiftExpr(c.expr, 4)} }`)
+      // Later computeds may read earlier ones.
+      storeCtx.computeds.set(c.name, t)
+      _signalNames.add(c.name)
+    }
+    for (const m of s.methods ?? []) {
+      // Internal (not private) — components call these through the
+      // chain rewrite (`useX().store.M(...)` →
+      // `PyreonStore_id.shared.M(...)`).
+      lines.push(`    ${emitSwiftFunction(m, 'internal')}`)
+    }
+    _signalNames = prevSignals
+    _functionNames = prevFunctions
   }
   lines.push(`    private init() {}`)
   lines.push(`}`)
@@ -1399,6 +1447,7 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
  */
 function emitSwiftFunction(
   d: Extract<DeclIR, { kind: 'function' }>,
+  visibility: 'private' | 'internal' = 'private',
 ): string {
   // Use `_` (no external label) so call sites match the JS-style
   // unnamed-arg shape `toggle(t.id)` instead of requiring Swift's
@@ -1419,10 +1468,12 @@ function emitSwiftFunction(
     d.body[0]!.expr !== undefined
   ) {
     const concise = emitSwiftExpr((d.body[0]! as { expr: ExprIR }).expr, 0)
-    return `private func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
+    const vis = visibility === 'private' ? 'private ' : ''
+    return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
   }
   const bodyLines = d.body.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
-  return `private func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
+  const vis2 = visibility === 'private' ? 'private ' : ''
+  return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
 }
 
 function emitSwiftStatement(s: StatementIR, indent: number): string {
@@ -1648,6 +1699,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return swiftIdent(e.name)
     case 'call': {
+      // Store METHOD call — `useX().store.M(args…)` rewrites to
+      // `PyreonStore_id.shared.M(args…)`. Must run BEFORE the zero-arg
+      // read rewrite below: a zero-arg method call (`clear()`) would
+      // otherwise emit as a property read (`.shared.clear` — missing
+      // parens). `_storeMethodNames` is the per-hook method registry
+      // built in the emitSwift pre-pass.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.property === 'store' &&
+        e.callee.object.object.kind === 'call' &&
+        e.callee.object.object.callee.kind === 'identifier' &&
+        _storeMethodNames.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
+      ) {
+        const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
+        const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
+        return `PyreonStore_${storeId}.shared.${swiftIdent(e.callee.property)}(${args})`
+      }
       // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
       // object-literal VALUES argument lowers to a Swift dictionary
       // (the runtime's `t(_:_:[String: CustomStringConvertible])`

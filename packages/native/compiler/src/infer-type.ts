@@ -54,10 +54,26 @@ export function buildInferenceCtx(
     computeds: new Map(),
     locals: new Map(),
     stores: new Map(
-      storeDefs.map((s) => [
-        s.hookName,
-        new Map(s.fields.map((f) => [f.name, f.type])),
-      ]),
+      storeDefs.map((s) => {
+        const perHook = new Map(s.fields.map((f) => [f.name, f.type]))
+        // v2 — store computeds: infer each one's type against the
+        // store's OWN fields so a COMPONENT computed reading
+        // `useApp().store.remaining()` resolves it like a field.
+        if (s.computeds !== undefined && s.computeds.length > 0) {
+          const storeCtx: InferenceCtx = {
+            signals: new Map(s.fields.map((f) => [f.name, f.type])),
+            computeds: new Map(),
+            locals: new Map(),
+            stores: new Map(),
+          }
+          for (const c of s.computeds) {
+            const t = inferType(c.expr, storeCtx)
+            storeCtx.computeds.set(c.name, t)
+            perHook.set(c.name, t)
+          }
+        }
+        return [s.hookName, perHook]
+      }),
     ),
   }
   // Pass 1: collect signals. Their types come from `signal<T>(...)`

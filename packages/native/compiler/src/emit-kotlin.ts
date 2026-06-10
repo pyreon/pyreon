@@ -213,6 +213,10 @@ export function emitKotlin(
   }
   // Gap 4 v1: store-hook → store id map for use-site chain rewriting.
   _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
+  // v2 — per-hook method registry for the chain-call rewrite.
+  _storeMethodNamesKotlin = new Map(
+    stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
+  )
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
   // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
@@ -259,6 +263,7 @@ export function emitKotlin(
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
+  _storeMethodNamesKotlin = new Map()
   _modelInstancesKotlin = new Map()
   _needsKotlinSuspenseWrapper = false
   _needsKotlinErrorBoundaryWrapper = false
@@ -280,6 +285,8 @@ let _componentParamsInfoKotlin: Map<
 
 /** Map of useStoreName → storeId for Kotlin emit chain rewriting. */
 let _storeHooksKotlin: Map<string, string> = new Map()
+/** Per-hook store METHOD names — chain calls keep parens + args. */
+let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
 let _modelInstancesKotlin: Map<string, string> = new Map()
@@ -301,7 +308,43 @@ function emitKotlinStore(s: StoreDefnIR): string {
   lines.push(`object PyreonStore_${s.storeId} : PyreonStore {`)
   for (const f of s.fields) {
     const init = emitKotlinExpr(f.initial, 4)
-    lines.push(`    var ${f.name} by mutableStateOf(${init})`)
+    // Empty-array seeds need the explicit type argument — kotlinc
+    // cannot infer T from `mutableStateOf(listOf())` (same shape the
+    // component signal emit already handles).
+    if (f.type.kind === 'array' && f.initial.kind === 'array' && f.initial.elements.length === 0) {
+      lines.push(`    var ${f.name} by mutableStateOf<${kotlinType(f.type)}>(listOf())`)
+    } else {
+      lines.push(`    var ${f.name} by mutableStateOf(${init})`)
+    }
+  }
+  // v2 — computeds + methods on the object (mirror of emitSwiftStore;
+  // see its doc comment for the module-state swap rationale).
+  // Computeds emit as `val X get() = …` — the getter re-evaluates on
+  // access and its reads of the mutableStateOf-backed vars keep it
+  // Compose-reactive. kotlinc infers the getter's type, so no
+  // annotation is needed.
+  const hasMembers = (s.computeds?.length ?? 0) > 0 || (s.methods?.length ?? 0) > 0
+  if (hasMembers) {
+    const prevSignals = _signalNames
+    const prevFunctions = _functionNames
+    _signalNames = new Set([
+      ...s.fields.map((f) => f.name),
+      ...(s.computeds ?? []).map((c) => c.name),
+    ])
+    _functionNames = new Set((s.methods ?? []).map((m) => m.name))
+    const memberCtx: KotlinCtx = {
+      synthesizedDataClasses: [],
+      componentName: `PyreonStore_${s.storeId}`,
+    }
+    for (const c of s.computeds ?? []) {
+      lines.push(`    val ${kotlinIdent(c.name)} get() = ${emitKotlinExpr(c.expr, 4)}`)
+      _signalNames.add(c.name)
+    }
+    for (const m of s.methods ?? []) {
+      lines.push(`    ${emitKotlinFunction(m, memberCtx)}`)
+    }
+    _signalNames = prevSignals
+    _functionNames = prevFunctions
   }
   lines.push(`}`)
   return lines.join('\n')
@@ -1538,6 +1581,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return kotlinIdent(e.name)
     case 'call': {
+      // Store METHOD call — `useX().store.M(args…)` →
+      // `PyreonStore_id.M(args…)`. Mirror of emit-swift's rewrite;
+      // must precede the zero-arg READ rewrite (a zero-arg method call
+      // would otherwise lose its parens).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.property === 'store' &&
+        e.callee.object.object.kind === 'call' &&
+        e.callee.object.object.callee.kind === 'identifier' &&
+        _storeMethodNamesKotlin.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
+      ) {
+        const storeId = _storeHooksKotlin.get(e.callee.object.object.callee.name)!
+        const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
+        return `PyreonStore_${storeId}.${kotlinIdent(e.callee.property)}(${args})`
+      }
       // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
       // object-literal VALUES argument lowers to a Kotlin map (the
       // runtime's `t(key, values: Map<String, Any?>)` overload). The

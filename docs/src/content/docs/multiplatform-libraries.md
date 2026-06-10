@@ -33,7 +33,7 @@ The source you write is identical across targets. PMTC compiles it; native runti
 | `@pyreon/primitives` | 15 canonical UI primitives — `<Stack>`, `<Inline>`, `<Text>`, `<Button>`, `<Field>`, `<Toggle>`, etc. | Web DOM + PMTC → SwiftUI / Compose |
 | `@pyreon/router` | `createRouter`, `useNavigate`, `useParams`, `useLoaderData` (read), `<RouterProvider>`, `<RouterView>`, `<Link>` | `@pyreon/native-router-{swift,kotlin}` |
 | `@pyreon/storage` | `useStorage`, `useSessionStorage`, `useCookie`, `useIndexedDB` (subset) | `@PyreonAppStorage` (Swift) + `rememberPyreonStorage` (Kotlin) |
-| `@pyreon/store` | `defineStore(id, setup)` with signal fields; cross-screen reads / `.set()` writes; store-read route guards | `@Observable` singleton class (Swift) + `mutableStateOf`-backed `object` (Kotlin); validated in both compiler loops |
+| `@pyreon/store` | `defineStore(id, setup)` v2 — signal fields, **computeds** (`computed(() => …)` → reactive derived members), **methods** (arrow decls → singleton funcs, callable from any screen via `useX().store.M(args)`); cross-screen reads / `.set()`/`.update()` writes; store-read route guards | `@Observable` singleton class (Swift) + `mutableStateOf`-backed `object` (Kotlin); validated in both compiler loops |
 | `@pyreon/machine` | `createMachine` + `m.send()` / `m.matches()` / `m.can()` | `PyreonMachine` Swift + Kotlin |
 | `@pyreon/state-tree` | `model({...})` singleton instances + field reads/writes | `PyreonModel_<id>` singletons, Swift + Kotlin |
 | `@pyreon/i18n/core` | `createI18n` + `t('key')` + `t('key', { name, count })` — `{{name}}` interpolation + one/other plural resolution (full Intl.PluralRules category parity pending) | `PyreonI18n` Swift + Kotlin |
