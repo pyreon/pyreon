@@ -10,6 +10,7 @@ import { createApiMiddleware } from "./api-routes";
 import { createApp } from "./app";
 import { createISRHandler } from "./isr";
 import { collectRouteModes, resolveRenderModeForPath } from "./route-modes";
+import { createServerIslandMiddleware } from "./server-islands-middleware";
 import { render404Page } from "./not-found";
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 
@@ -183,6 +184,14 @@ export function createServer(options: CreateServerOptions) {
 		allMiddleware.push(createApiMiddleware(options.apiRoutes));
 	}
 
+	// Phase 4 — server-island fragment endpoint. Mounted UNCONDITIONALLY
+	// (one path-prefix check per request when unused): the registry fills at
+	// route-module evaluation, which is LAZY in zero — gating the mount on
+	// registry size at createServer time would miss every island declared in
+	// a route file (the registry is empty at boot; the middleware warms it
+	// on first fragment request — see server-islands-middleware.ts).
+	allMiddleware.push(createServerIslandMiddleware(options.routes));
+
 	// PR-S2: Auto-wire server actions when any defineAction() has run.
 	// Sits between API routes and route middleware so action endpoints
 	// short-circuit before the routing layer touches the path. Default
@@ -258,7 +267,15 @@ export function createServer(options: CreateServerOptions) {
 		App,
 		routes: options.routes,
 		middleware: allMiddleware,
-		mode: config.ssr?.mode ?? "string",
+		// Phase 4 — STREAMING is the default for `mode: 'ssr'`: the shell
+		// flushes immediately and Suspense boundaries stream out-of-order
+		// (per-boundary styler flush + node-adapter stream pass-through are
+		// shipped + gated). Opt back into buffered with `ssr: { mode:
+		// 'string' }`. ISR apps stay buffered — the SWR cache stores complete
+		// Response bodies; caching a stream would either drain it (defeating
+		// streaming) or store nothing (defeating caching). PPR-shaped shell
+		// caching is the eventual resolution (analysis doc P1-B).
+		mode: config.ssr?.mode ?? (config.mode === "ssr" ? "stream" : "string"),
 		...(resolvedTemplate ? { template: resolvedTemplate } : {}),
 		...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
 	});
@@ -274,6 +291,21 @@ export function createServer(options: CreateServerOptions) {
 		config,
 		options.routes,
 		resolvedTemplate,
+		// Phase 4 — per-route ISR needs a BUFFERED handler: the SWR cache
+		// stores complete bodies, and `mode: 'ssr'` now defaults to
+		// streaming. Built lazily — only when a route actually declares
+		// 'isr' inside a streaming app.
+		() =>
+			createHandler({
+				App,
+				routes: options.routes,
+				middleware: allMiddleware,
+				mode: "string",
+				...(resolvedTemplate ? { template: resolvedTemplate } : {}),
+				...(resolvedClientEntry !== undefined
+					? { clientEntry: resolvedClientEntry }
+					: {}),
+			}),
 	);
 
 	// M1.2 — Runtime SSR 404 routes through the router (PR L5).
@@ -370,6 +402,7 @@ export function wirePerRouteModes(
 	config: ZeroConfig,
 	routes: RouteRecord[],
 	builtTemplate: string | undefined,
+	makeBufferedHandler?: () => RequestHandler,
 ): RequestHandler {
 	const entries = collectRouteModes(routes, appMode);
 	const divergent = entries.some((e) => e.declared && e.mode !== appMode);
@@ -377,8 +410,15 @@ export function wirePerRouteModes(
 
 	const needsIsr =
 		appMode === "isr" || entries.some((e) => e.declared && e.mode === "isr");
+	// The cached handler must produce BUFFERED responses (the SWR cache
+	// stores complete bodies). Under app mode 'isr' the base handler is
+	// already string-mode; under a streaming 'ssr' app, use the buffered
+	// factory the caller supplies. No factory (tests, custom embeddings) →
+	// fall back to the base handler (correct for string-mode bases).
+	const isrBase =
+		appMode === "isr" ? baseHandler : (makeBufferedHandler?.() ?? baseHandler);
 	const isrHandler = needsIsr
-		? createISRHandler(baseHandler, config.isr ?? { revalidate: 60 })
+		? createISRHandler(isrBase, config.isr ?? { revalidate: 60 })
 		: null;
 
 	// CSR shell for 'spa' routes: the built template with the injection

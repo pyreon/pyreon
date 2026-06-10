@@ -87,6 +87,12 @@ export type {
   RenderPageResult,
 } from './render-page'
 export { renderPage } from './render-page'
+// Server islands (Phase 4) — marker component + client activation are on
+// the client-safe `/client` subentry; the fragment RENDERER is server-only.
+export type { FragmentResult } from './server-island-render'
+export { renderServerIslandFragment } from './server-island-render'
+export type { RegisteredServerIsland, ServerIslandOptions } from './server-island'
+export { getRegisteredServerIslands, serverIsland, _resetServerIslands } from './server-island'
 export type { PrerenderOptions, PrerenderResult } from './ssg'
 // SSG
 export { prerender } from './ssg'

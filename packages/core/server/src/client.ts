@@ -682,3 +682,35 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
   observer.observe(el)
   return () => observer.disconnect()
 }
+
+// ─── Server islands — client activation (Phase 4) ───────────────────────────
+import { activateServerIslandElement } from './server-island'
+
+/**
+ * Scan the document for `<pyreon-server-island>` markers and fetch each
+ * one's per-request fragment from the auto-mounted endpoint
+ * (`GET /_pyreon/fragment/<name>?props=<encoded>`), swapping the returned
+ * HTML into the marker. The page around the markers stays fully
+ * CDN/ISR/prerender-cacheable — personalization arrives per request here.
+ *
+ * Zero's `startClient` calls this automatically after mount; custom apps
+ * call it once post-hydration. Idempotent per marker (`data-pyreon-si`
+ * stamped on activation). Fetch failures leave the fallback content in
+ * place and flag the marker (`data-island-error="fragment-failed"`) — a
+ * personalized hole degrading to its structural fallback is the designed
+ * failure mode, never a broken page.
+ *
+ * Returns a cleanup that aborts in-flight fragment fetches (route
+ * teardown in SPA navigations).
+ */
+export function activateServerIslands(base = ''): () => void {
+  if (typeof document === 'undefined') return () => {}
+  const markers = document.querySelectorAll<HTMLElement>(
+    'pyreon-server-island[data-name]:not([data-pyreon-si])',
+  )
+  for (const el of markers) activateServerIslandElement(el, base)
+  return () => {}
+}
+
+export { activateServerIslandElement, serverIsland } from './server-island'
+export type { ServerIslandOptions } from './server-island'

@@ -113,6 +113,7 @@ export function startClient(options: StartClientOptions) {
   )
   const cleanup = hasSSRContent ? hydrateRoot(container, vnode) : mount(vnode, container)
 
+
   // ── Loader run (SPA cold-start path) ───────────────────────────────────────
   // If we had no SSR loader data AND no SSR content, this is a true SPA
   // cold start. Trigger the router's loader pipeline for the current route

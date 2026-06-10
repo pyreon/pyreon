@@ -362,6 +362,38 @@ Resolution is leaf-first along the matched chain: a page's own declaration beats
 
 When no route declares a divergent mode, the pipeline is byte-identical to the app-level mode — existing apps are unaffected.
 
+### Streaming by default (`mode: 'ssr'`)
+
+`mode: 'ssr'` streams by default: the shell flushes immediately and Suspense boundaries resolve out-of-order (styles flush inline per boundary, so streamed content arrives styled). Opt back into buffered rendering with `ssr: { mode: 'string' }`. ISR apps stay buffered — the SWR cache stores complete bodies; a per-route `renderMode = 'isr'` declaration inside a streaming app automatically uses a buffered render for the cached routes.
+
+## Server Islands
+
+The inverse of client islands: a **cacheable page with per-request server-rendered holes**. `island()` defers client hydration of an interactive component; `serverIsland()` defers SERVER rendering of a fragment whose content depends on the request (session, cookies, A/B bucket, live data) — so the page around it can be prerendered, ISR-cached, or CDN-cached while the hole stays personalized.
+
+```tsx
+import { serverIsland } from '@pyreon/zero'
+
+const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
+  name: 'CartBadge',
+  fallback: <span class="badge">Cart</span>, // shown until the fragment arrives (and for no-JS)
+})
+
+// In any route/layout — the page emits ONLY a marker here:
+<CartBadge label="Cart" />
+```
+
+How it works: every render emits only a `<pyreon-server-island>` marker (name + codec-encoded props — the same lossless codec client islands use). On the client the marker **self-activates on mount** and fetches `GET /_pyreon/fragment/<name>?props=…` — an endpoint `createServer` auto-mounts — then swaps the returned HTML in. The fragment renders per request with full request context (`useRequestLocals()` works inside it, exactly like a page).
+
+Contracts worth knowing:
+
+- **Always deferred** — even on a fully-SSR page the island arrives via the fragment fetch. That's what makes the surrounding page's cacheability unconditional.
+- **Allowlisted endpoint** — only registered island names render; unknown names 404. Hostile `props` return 400, never a 500.
+- **Fragments default to `Cache-Control: no-store`**. The `cache` option sets a custom value for deferred-but-public fragments — never cache a fragment that varies on cookies (the same auth caveat as ISR's `cacheKey`).
+- **Failure degrades to the fallback** — a failed fragment fetch leaves the fallback content in place and flags the marker (`data-island-error="fragment-failed"`); the page never breaks.
+- **Cold starts work**: the endpoint warms lazy route modules once on a registry miss, so a fragment request hitting a freshly-restarted server (pages served from CDN cache) still resolves.
+- Pages without a full Pyreon mount (static-islands apps) call `activateServerIslands()` from `@pyreon/server/client` once after load.
+- Composing a client `island()` INSIDE a server island is not supported in v1.
+
 ## Components
 
 All four components are client-safe and follow the same three-layer extensibility pattern: a **`useX` composable** (full control), a **`createX` HOC** (wrap any component with the behavior), and a **default component**.

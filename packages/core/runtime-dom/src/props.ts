@@ -459,6 +459,21 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
+  // `data-*` / `aria-*` are ATTRIBUTE semantics, always — including on
+  // custom elements. The hyphenated-tag property branch below exists so a
+  // custom element's CONSTRUCTOR picks up rich values set pre-upgrade, but
+  // routing `data-name` through it sets a JS PROPERTY (`el['data-name']`)
+  // that `getAttribute('data-name')` / `dataset` / CSS attribute selectors
+  // / SSR-emitted HTML all disagree with. Real-world hit: the server-island
+  // marker (`<pyreon-server-island data-name=…>`) carried its name in SSR
+  // HTML but lost it on every client mount — the activator read
+  // getAttribute(null) and silently never fetched. Matches React/Vue/Solid:
+  // data-/aria- always go through setAttribute.
+  if (key.startsWith('data-') || key.startsWith('aria-')) {
+    el.setAttribute(key, String(value))
+    return
+  }
+
   if (key in el) {
     ;(el as unknown as Record<string, unknown>)[key] = value
     return
