@@ -25,52 +25,11 @@ import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 
 describe('Phase 3 — walled lifecycle tags surface silent-drop diagnostics', () => {
-  describe('<Suspense fallback={...}>', () => {
-    const SRC = `export function App() {
-      return <Suspense fallback={<Text>Loading...</Text>}><Text>Done</Text></Suspense>
-    }`
-
-    it('Swift: warns when fallback prop is present', () => {
-      const result = transform(SRC, { target: 'swift' })
-      const w = result.warnings.find((w) => w.includes('<Suspense>'))
-      expect(w).toBeDefined()
-      expect(w!).toContain('Swift')
-      expect(w!).toContain('fallback')
-      expect(w!).toContain('no async-render-suspend on SwiftUI')
-      expect(w!).toContain('Layer 4')
-    })
-
-    it('Kotlin: warns when fallback prop is present', () => {
-      const result = transform(SRC, { target: 'kotlin' })
-      const w = result.warnings.find((w) => w.includes('<Suspense>'))
-      expect(w).toBeDefined()
-      expect(w!).toContain('Kotlin')
-      expect(w!).toContain('fallback')
-      expect(w!).toContain('no async-render-suspend on Compose')
-    })
-
-    it('Swift: children STILL render — emit is structurally unchanged', () => {
-      const result = transform(SRC, { target: 'swift' })
-      expect(result.code).toContain('Done')
-      expect(result.code).toContain('Group {')
-    })
-
-    it('Kotlin: children STILL render — emit is structurally unchanged', () => {
-      const result = transform(SRC, { target: 'kotlin' })
-      expect(result.code).toContain('Done')
-      expect(result.code).toContain('Box {')
-    })
-
-    it('does NOT warn when fallback prop is absent (baseline)', () => {
-      const src = `export function App() {
-        return <Suspense><Text>Done</Text></Suspense>
-      }`
-      const swift = transform(src, { target: 'swift' })
-      const kotlin = transform(src, { target: 'kotlin' })
-      expect(swift.warnings.some((w) => w.includes('<Suspense>'))).toBe(false)
-      expect(kotlin.warnings.some((w) => w.includes('<Suspense>'))).toBe(false)
-    })
-  })
+  // PR-3.2 — <Suspense fallback={...}> no longer surfaces a silent-drop
+  // warning here: real Suspense emit (PyreonSuspenseWrapper on Swift +
+  // Kotlin) replaces the walled path. See `lifecycle-suspense.test.ts`
+  // for the new structural contract. The `<Suspense>` (no fallback)
+  // shape is unchanged — never warned.
 
   describe('<ErrorBoundary fallback={...}>', () => {
     const SRC = `export function App() {
@@ -170,16 +129,18 @@ describe('Phase 3 — walled lifecycle tags surface silent-drop diagnostics', ()
     // the tag + dropped prop list + target name + per-target limitation
     // + Layer-4 workaround pointer. Tests both targets see the same
     // information shape (different target-specific wording).
+    // PR-3.2: uses <ErrorBoundary> (still walled). Suspense has real
+    // emit since PR-3.2 so it no longer surfaces this diagnostic.
     const SRC = `export function App() {
-      return <Suspense fallback={<Text>L</Text>}><Text>x</Text></Suspense>
+      return <ErrorBoundary fallback={<Text>E</Text>}><Text>x</Text></ErrorBoundary>
     }`
 
     it('both targets carry tag name, dropped prop, target name, and Layer-4 pointer', () => {
       for (const target of ['swift', 'kotlin'] as const) {
         const result = transform(SRC, { target })
-        const w = result.warnings.find((w) => w.includes('<Suspense>'))
+        const w = result.warnings.find((w) => w.includes('<ErrorBoundary>'))
         expect(w, `${target} should warn`).toBeDefined()
-        expect(w!).toContain('<Suspense>')
+        expect(w!).toContain('<ErrorBoundary>')
         expect(w!).toContain('fallback')
         expect(w!).toContain(target === 'swift' ? 'Swift' : 'Kotlin')
         expect(w!).toContain('Layer 4')
