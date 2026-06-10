@@ -35,16 +35,10 @@ export function CardPanel(props: { board: BoardDoc; cardId: string; onClose: () 
     parse: (text) => text,
   })
   // DEV-only test hook: expose the active card's notes signal (CRDT reader) +
-  // the editor instance, so the e2e can drive the editor programmatically and
-  // assert the CRDT value on each peer. Stripped from production builds.
-  // (Simulated OS keystrokes don't reliably reach a cold-mounted CodeMirror's
-  // doc state on a fresh CI runner — the editor's `insert()` dispatches a real
-  // CM transaction, which always fires the updateListener → syncedText write.)
+  // the editor instance, so the e2e can drive the editor's `value` signal and
+  // assert the synced CRDT value on each peer. Stripped from production builds.
   if (import.meta.env.DEV && typeof window !== 'undefined') {
-    const w = window as unknown as {
-      __cardNotes?: () => string
-      __cardEditor?: { insert: (text: string) => void }
-    }
+    const w = window as unknown as { __cardNotes?: () => string; __cardEditor?: typeof editor }
     w.__cardNotes = () => notes()
     w.__cardEditor = editor
   }
