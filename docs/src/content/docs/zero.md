@@ -394,6 +394,35 @@ Contracts worth knowing:
 - Pages without a full Pyreon mount (static-islands apps) call `activateServerIslands()` from `@pyreon/server/client` once after load.
 - Composing a client `island()` INSIDE a server island is not supported in v1.
 
+## Server Loaders
+
+Route loaders are **isomorphic** by default — they run on the server during SSR and **in the browser** on client-side navigations, so they can't touch a database, a secret, or a server-only SDK. A **server loader** can: put it in a `.server.ts` sibling next to the route file.
+
+```ts
+// src/routes/dashboard.server.ts — NEVER ships to the client
+import { db } from '../lib/db'
+
+export async function serverLoader(ctx: { request?: Request }) {
+  const session = ctx.request?.headers.get('cookie') // cookies flow on SSR AND navigations
+  return db.dashboardFor(session)
+}
+```
+
+```tsx
+// src/routes/dashboard.tsx — reads it like any loader
+const data = useLoaderData<Dashboard>()
+```
+
+How it works:
+
+- **SSR / SSG / fragments**: the serverLoader runs in-process, exactly like a `loader` (full `LoaderContext`, including `request`).
+- **Client navigations**: the router fetches `GET /_pyreon/data?path=<to>` — ONE request for the whole matched chain (single-fetch), auto-mounted by `createServer`. Cookies flow (same-origin). A `redirect()` thrown in a serverLoader comes back as a JSON envelope and becomes a client-side navigation.
+- **Bundle exclusion is structural**: the client routes module never imports `.server.ts` files — the server code can't leak into the client bundle by construction (gated in CI by an artifact-level sentinel scan).
+- A route may have `loader` OR a `.server.ts` sibling, **not both** — the build fails with the fix spelled out (move the public fetching into the serverLoader).
+- `staleWhileRevalidate` does not apply to server-loader records.
+
+Isomorphic `loader` stays the right tool for public-API fetching that benefits from running client-side.
+
 ## Components
 
 All four components are client-safe and follow the same three-layer extensibility pattern: a **`useX` composable** (full control), a **`createX` HOC** (wrap any component with the behavior), and a **default component**.

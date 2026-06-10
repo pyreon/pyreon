@@ -532,6 +532,13 @@ export interface RouteFileExports {
   hasGuard: boolean
   /** Has `export const meta` */
   hasMeta: boolean
+  /**
+   * Phase 5 — relative path of the route's `.server.{ts,js}` sibling
+   * (server-loader module) when one exists. The generator emits
+   * `serverLoader: mod.serverLoader` (SSR build) / `hasServerLoader: true`
+   * (client build) from it.
+   */
+  serverLoaderFile?: string
   /** Has `export const renderMode` */
   hasRenderMode: boolean
   /** Has `export const error` (custom per-route error component) */

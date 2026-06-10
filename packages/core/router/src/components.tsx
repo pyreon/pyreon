@@ -444,17 +444,31 @@ function renderWithLoader(
 ): VNodeChild {
   const routeProps = { params: route.params, query: route.query, meta: route.meta }
 
+  // Phase 5 — server-loader records carry data too (`serverLoader` is the
+  // fn on the server graph; `hasServerLoader` is the client marker). Pre-
+  // fix BOTH gates below checked only `record.loader`, so a server-loader
+  // route rendered WITHOUT the LoaderDataProvider — useLoaderData() read
+  // the context default (undefined) even though preload had populated
+  // router._loaderData and the hydration blob carried the value. ONE
+  // predicate for both branches so they can't drift again (the
+  // errorComponent branch is the one EVERY zero route takes — fs-router
+  // attaches a default errorComponent — and it was missed first).
+  const carriesLoaderData =
+    Boolean(record.loader) || Boolean(record.serverLoader) || record.hasServerLoader === true
+
   // If route has an error component, wrap rendering in error boundary
   if (record.errorComponent) {
     return h(ErrorBoundary, {
       fallback: (error: Error) => h(record.errorComponent!, { ...routeProps, error }),
-      children: record.loader
+      children: carriesLoaderData
         ? renderLoaderContent(router, record, Comp, routeProps)
         : h(Comp, routeProps),
     })
   }
 
-  if (!record.loader) return h(Comp, routeProps)
+  if (!carriesLoaderData) {
+    return h(Comp, routeProps)
+  }
   return renderLoaderContent(router, record, Comp, routeProps)
 }
 

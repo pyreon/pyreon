@@ -161,6 +161,50 @@ test.describe('SSR node deploy artifact', () => {
     await expect(page.getByTestId('server-stamp')).toContainText('now:')
   })
 
+  // ─── Phase 5 — server loaders (.server.ts siblings + single-fetch) ─────────
+
+  test('server loader: SSR runs it in-process (cookies flow); the client bundle excludes it', async ({
+    page,
+  }) => {
+    // SSR render: the .server.ts sibling ran with the real request.
+    const resp = await page.request.get('/secret-data', {
+      headers: { Cookie: 'probe=1' },
+    })
+    const html = await resp.text()
+    expect(html).toContain('SERVER_ONLY_SENTINEL_q7x9')
+    expect(html).toContain('cookie-flag">yes')
+    // The hydration blob carries the data (no client refetch on first load).
+    expect(html).toContain('__PYREON_LOADER_DATA__')
+  })
+
+  test('server loader: client-side navigation single-fetches /_pyreon/data (no reload)', async ({
+    page,
+  }) => {
+    const dataRequests: string[] = []
+    page.on('request', (r) => {
+      if (r.url().includes('/_pyreon/data')) dataRequests.push(r.url())
+    })
+    await page.goto('/')
+    await page.evaluate(() => {
+      ;(window as never as Record<string, unknown>).__nav_sentinel = 'alive'
+    })
+    // Navigate client-side through a REAL RouterLink (the router's own nav
+    // pipeline — guards, loaders, the /_pyreon/data single-fetch).
+    await page.getByTestId('nav-secret').click()
+    await expect(page.getByTestId('secret-value')).toHaveText(
+      'SERVER_ONLY_SENTINEL_q7x9',
+      { timeout: 10_000 },
+    )
+    // Exactly one single-fetch request served the whole chain.
+    expect(dataRequests.length).toBe(1)
+    expect(dataRequests[0]).toContain('path=%2Fsecret-data')
+    // No full reload happened (the window sentinel survived).
+    const sentinel = await page.evaluate(
+      () => (window as never as Record<string, unknown>).__nav_sentinel,
+    )
+    expect(sentinel).toBe('alive')
+  })
+
   test('hydrates + client-side navigation works (assets load + run)', async ({ page }) => {
     const errors: string[] = []
     page.on('console', (m) => {
