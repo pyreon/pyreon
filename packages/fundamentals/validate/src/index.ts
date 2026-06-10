@@ -23,9 +23,12 @@
  *     to `message`, so the helpers work with raw Zod/Valibot/ArkType
  *     output too.
  *
- * Pyreon does NOT ship its own validator runtime. Use whichever
- * StdSchema-compliant library you prefer; `@pyreon/validate` makes it
- * Pyreon-flavoured.
+ * Since v1, the package ALSO ships Pyreon's own validator runtime
+ * (the `s` namespace — chainable + function-comp hybrid, see `./v1`).
+ * Using it is opt-in: the runtime tree-shakes away entirely for
+ * consumers that import only the DX helpers (measured: ~0.5KB gz
+ * DX-only vs ~3.9KB with the runtime), so pairing the helpers with
+ * Zod / Valibot / ArkType stays as light as before.
  *
  * @example
  * ```ts

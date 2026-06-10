@@ -4,17 +4,23 @@ title: 'Validate — Standard Schema DX overlay'
 
 # `@pyreon/validate`
 
-A Pyreon-flavoured DX overlay on top of [Standard Schema](https://standardschema.dev) — the cross-library protocol implemented natively by **Zod 3.24+**, **Valibot 1.0+**, **ArkType 2.0+**, and any future spec-compliant validator.
+Pyreon's validator + DX layer on top of [Standard Schema](https://standardschema.dev) — the cross-library protocol implemented natively by **Zod 3.24+**, **Valibot 1.0+**, **ArkType 2.0+**, and any future spec-compliant validator.
 
-**Pyreon does NOT ship its own validator runtime.** Use whichever Standard Schema-compliant library you prefer; `@pyreon/validate` adds the three things the spec deliberately omits, plus Pyreon-native bridges to signals and i18n.
+**Two ways to use it:**
+
+1. **DX helpers on top of your validator of choice** — `withField`, `parseReactive`, `formatErrors` work on ANY Standard Schema. Pyreon's own validator runtime tree-shakes away entirely when you don't import it (a DX-helpers-only import is ~0.5KB gz, measured).
+2. **Pyreon's own `s` validator** (since v1) — chainable + function-comp hybrid (`s.string().email()` / `pipe(string(), email())`), Standard Schema-native, ~3.5KB gz. No third-party validator needed.
 
 ```bash
 bun add @pyreon/validate
 
-# Plus your validator of choice:
+# Option 1 — pair the DX helpers with a validator of choice:
 bun add zod        # or
 bun add valibot    # or
 bun add arktype
+
+# Option 2 — use Pyreon's own validator (no extra dep):
+#   import { s } from '@pyreon/validate'
 ```
 
 ## Why this exists
