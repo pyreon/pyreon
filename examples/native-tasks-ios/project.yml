@@ -46,6 +46,7 @@ targets:
     # + useNavigate + per-route beforeEnter. Same SPM ref as
     # native-router-demo-ios.
     dependencies:
+      - package: PyreonRuntime
       - package: PyreonRouter
 
     info:
@@ -123,5 +124,7 @@ schemes:
 # Local SPM package reference — @pyreon/native-router-swift lives
 # in the monorepo at packages/native/router-swift.
 packages:
+  PyreonRuntime:
+    path: ../../packages/native/runtime-swift
   PyreonRouter:
     path: ../../packages/native/router-swift

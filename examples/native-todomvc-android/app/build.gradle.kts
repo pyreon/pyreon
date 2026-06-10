@@ -44,6 +44,24 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // Compile the @pyreon/native runtime + router Kotlin sources into
+    // the app module. The PMTC emit imports `com.pyreon.runtime.*`
+    // (useStorage → rememberPyreonStorage, Phase 2.5 #891) and
+    // `com.pyreon.router.*` — without these srcDirs the generated
+    // TodoApp.kt fails compile with `Unresolved reference 'runtime'`,
+    // the failure that kept the native-device nightly red from its
+    // first run (2026-05-29) until this fix. Mirrors the iOS
+    // project.yml's local-SPM `packages:` references and the
+    // native-tasks-android router srcDir shape.
+    sourceSets {
+        getByName("main") {
+            kotlin {
+                srcDir("../../../packages/native/runtime-kotlin/src/main/kotlin")
+                srcDir("../../../packages/native/router-kotlin/src/main/kotlin")
+            }
+        }
+    }
 }
 
 dependencies {
@@ -56,6 +74,19 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.runtime:runtime-saveable")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // Needed by the runtime-kotlin srcDir sources (see sourceSets above):
+    // PyreonPermissions uses androidx.core.content.ContextCompat;
+    // PyreonFetch / PyreonNetworkStatus use kotlinx-coroutines. Compose
+    // brings coroutines-android transitively, but the runtime sources
+    // import kotlinx.coroutines.* directly — pin it explicitly so the
+    // compile classpath doesn't depend on transitive luck.
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // material (M2) — the PMTC emit's Compose dispatcher uses
+    // androidx.compose.material.* widgets (Text/Button/TextField/
+    // Checkbox from `import androidx.compose.material.*` in the
+    // generated header), which material3 does NOT provide.
+    implementation("androidx.compose.material:material")
 
     // Phase-2.2 instrumented-test deps. All three live in the same
     // androidx test family; the Compose BOM above already pins the

@@ -17,12 +17,17 @@
 
 package com.pyreon
 
-import android.app.Activity
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.pyreon.generated.TodoApp
 
-class MainActivity : Activity() {
+// ComponentActivity (NOT android.app.Activity): `setContent {}` from
+// androidx.activity.compose is an extension on ComponentActivity, so a
+// plain-Activity host fails compile with "Unresolved reference. None of
+// the following candidates is applicable because of a receiver type
+// mismatch" — the error that kept the native-device nightly red.
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
