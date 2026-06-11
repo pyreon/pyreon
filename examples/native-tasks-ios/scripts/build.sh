@@ -36,7 +36,8 @@ cd "${REPO_ROOT}"
 bun packages/native/cli/src/cli.ts build \
     --target=ios \
     --source="${SRC_DIR}" \
-    --out="${OUT_DIR}"
+    --out="${OUT_DIR}" \
+    --fonts="${SRC_DIR}/../assets"
 
 # Asset pipeline (asset-pipeline arc): materialize the shared assets/
 # into Assets.xcassets under ios/ (an included XcodeGen group, so the

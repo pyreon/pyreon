@@ -110,7 +110,7 @@ function LoginPage() {
         fit="contain"
         data-testid="brand-logo"
       />
-      <Text>Sign In</Text>
+      <Text font="Brand" data-testid="brand-title">Sign In</Text>
       <Text>At least 3 characters — this is a demo.</Text>
       <Field
         value={form.values.username}

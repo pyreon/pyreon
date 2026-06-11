@@ -12,6 +12,14 @@ export type TargetLanguage = 'swift' | 'kotlin'
 
 export interface EmitOptions {
   target: TargetLanguage
+  /**
+   * Canonical font name → iOS PostScript name, from the shared
+   * `fonts/` dir (read by the CLI's `build` step via `scanFontDir`).
+   * `<Text font="Brand">` emits `.font(.custom("<postscript>", …))` on
+   * iOS — the PostScript name is the only thing `Font.custom` accepts.
+   * Android uses a runtime `res/font` lookup, so it doesn't need this.
+   */
+  fonts?: Record<string, string>
 }
 
 export interface ComponentIR {

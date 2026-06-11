@@ -40,6 +40,8 @@ export interface BuildOptions {
    * apps where the JVM module loader needs FQNs.
    */
   kotlinPackage?: string
+  /** Canonical font name → iOS PostScript name (Swift Font.custom). */
+  fonts?: Record<string, string>
 }
 
 export interface BuildResult {
@@ -212,7 +214,10 @@ export function build(options: BuildOptions): BuildResult {
 
   for (const input of inputs) {
     const code = readFileSync(input, 'utf8')
-    const result = transform(code, { target: options.target })
+    const result = transform(code, {
+      target: options.target,
+      ...(options.fonts ? { fonts: options.fonts } : {}),
+    })
     for (const w of result.warnings) warnings.push({ file: input, warning: w })
 
     const relPath = relative(sourceAbs, input)

@@ -21,6 +21,8 @@ package com.pyreon.runtime
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 
 /**
  * Resolve a bundled drawable's resource id by its canonical asset
@@ -39,6 +41,22 @@ public fun pyreonDrawable(name: String): Int {
             "did the assets build step run, and does assets/$name exist?"
     }
     return id
+}
+
+/**
+ * Resolve a bundled font (res/font/<name>.ttf, materialized by the
+ * assets/fonts step) into a Compose FontFamily by its sanitized name.
+ * `<Text font="Brand">` emits `pyreonFont("brand")`. Throws when the
+ * resource is missing — same loud-failure contract as pyreonDrawable.
+ */
+@Composable
+public fun pyreonFont(name: String): FontFamily {
+    val context = LocalContext.current
+    val id = context.resources.getIdentifier(name, "font", context.packageName)
+    require(id != 0) {
+        "[Pyreon] Bundled font '$name' not found in res/font — did the assets/fonts step run?"
+    }
+    return FontFamily(Font(id))
 }
 
 /**

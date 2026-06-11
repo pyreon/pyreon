@@ -430,6 +430,20 @@ An UNMAPPED name warns at compile time and stays visible: iOS passes
 it through raw (direct SF ids keep working), Android renders the
 `warning` placeholder glyph — never a silent blank.
 
+### Custom fonts
+
+Drop `.ttf`/`.otf` files in the same `assets/` dir; the assets step
+copies them per target (iOS bundle + `UIAppFonts`; Android `res/font`;
+web `public/fonts`). `<Text font="Brand">` / `<Heading font="Brand">`
+renders the bundled family. The load-bearing detail iOS gets wrong by
+default: `Font.custom` needs the font's POSTSCRIPT NAME (its internal
+`name`-table id), NOT the filename — a filename-keyed `Font.custom`
+silently falls back to the system font on-device. The CLI reads the
+PostScript name from the sfnt table (no dependency) and bakes it into
+the emit, so `<Text font="Brand">` → `Font.custom("Trattatello", …)`
+even when the file is `Brand.ttf`. Android resolves `res/font` at
+runtime via `pyreonFont(name)` (a missing font throws loudly).
+
 ## Native data & services
 
 Data hooks compile to native via per-service **runtime ports** behind the

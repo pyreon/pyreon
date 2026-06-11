@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PMTC Tasks Showcase — Web</title>
     <style>
+      /* Custom font from the materialized public/fonts (the assets
+         step copies the shared assets/Brand.ttf here). <Text font="Brand">
+         emits font-family: Brand. */
+      @font-face {
+        font-family: 'Brand';
+        src: url('/fonts/Brand.ttf') format('truetype');
+      }
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         max-width: 640px;
