@@ -73,6 +73,7 @@ runs:
     # directly via `${{ env.X }}` — but the steps inside DO inherit it
     # because each step is shell-evaluated under the workflow's env.
     - name: Restore node_modules
+      id: nm-cache
       if: inputs.restore-node-modules == 'true'
       uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
@@ -82,9 +83,49 @@ runs:
           examples/*/node_modules
           docs/node_modules
         key: ${{ env.NM_KEY }}
+    # CACHE-OUTAGE FALLBACK (2026-06-11 incident): GitHub's Actions cache
+    # service intermittently LOST per-run cache saves/restores — every
+    # downstream job then ran without node_modules and failed with exit
+    # 127 / module-not-found, across whole runs, repeatedly. A run whose
+    # Install succeeded but whose save was eaten is permanently poisoned
+    # for `rerun --failed` (Install won't re-run, the key never exists).
+    # Fallback: when the restore MISSES, do a fresh `bun install` —
+    # slow-but-green instead of guaranteed-red. PYREON_BOOTSTRAP_SKIP=1
+    # matches the Install job's contract (lib/ comes from the bootstrap
+    # cache / fallback below, never from postinstall).
+    # The fallback install needs bun's package-tarball cache or it cold-
+    # fetches every package from the registry (~minutes — blew test cells'
+    # 15-min job timeout during the 2026-06-11 outage). This key is
+    # lockfile-hashed, shared cross-run/cross-PR, and OLD entries restore
+    # fine even while the outage eats fresh run-scoped SAVES.
+    - name: Restore bun download cache (fallback prep)
+      if: inputs.restore-node-modules == 'true' && steps.nm-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-install-cache-${{ runner.os }}-
+    - name: Fallback bun install (cache miss)
+      if: inputs.restore-node-modules == 'true' && steps.nm-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PYREON_BOOTSTRAP_SKIP: '1'
+      run: |
+        echo "::warning::node_modules cache missed (key $NM_KEY) — falling back to bun install. Cache service may be degraded."
+        bun install --frozen-lockfile
     - name: Restore bootstrap (lib/)
+      id: bootstrap-cache
       if: inputs.restore-bootstrap == 'true'
       uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: packages/*/*/lib
         key: ${{ env.BOOTSTRAP_KEY }}
+    # Same fallback for the lib/ cache: rebuild via the bootstrap script
+    # (~45s) instead of letting every lib-needing job fail on missing
+    # build outputs.
+    - name: Fallback bootstrap build (cache miss)
+      if: inputs.restore-bootstrap == 'true' && steps.bootstrap-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "::warning::bootstrap lib/ cache missed (key $BOOTSTRAP_KEY) — rebuilding via scripts/bootstrap.ts. Cache service may be degraded."
+        bun scripts/bootstrap.ts
