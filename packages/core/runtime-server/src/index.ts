@@ -888,13 +888,17 @@ function renderPropSkipped(key: string): boolean {
   // hydration completed.
   if (key === 'key' || key === 'ref') return true
   if (key === 'innerHTML' || key === 'dangerouslySetInnerHTML') return true
-  if (/^on[A-Z]/.test(key)) return true
+  // on[A-Z]* event props — charCode probe (no regex machinery per prop)
+  if (key.length > 2 && key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110) {
+    const c = key.charCodeAt(2)
+    if (c >= 65 && c <= 90) return true
+  }
   return false
 }
 
 function renderPropValue(key: string, value: unknown): string | null {
   if (value === null || value === undefined || value === false) return null
-  if (value === true) return escapeHtml(toAttrName(key))
+  if (value === true) return toAttrName(key) // pre-escaped by the memo
 
   if (key === 'class') {
     const cls = cx(value as ClassValue)
@@ -906,7 +910,7 @@ function renderPropValue(key: string, value: unknown): string | null {
     return style ? `style="${escapeHtml(style)}"` : null
   }
 
-  return `${escapeHtml(toAttrName(key))}="${escapeHtml(String(value))}"`
+  return `${toAttrName(key)}="${escapeHtml(String(value))}"`
 }
 
 function renderProp(tag: string, key: string, value: unknown): string | null {
@@ -947,8 +951,13 @@ const VOID_ELEMENTS = new Set([
   'wbr',
 ])
 
+const UPPERCASE_RE = /[A-Z]/
 function isVoidElement(tag: string): boolean {
-  return VOID_ELEMENTS.has(tag.toLowerCase())
+  // JSX tags are lowercase in practice — the direct Set probe covers them
+  // with ZERO allocation. The previous unconditional `tag.toLowerCase()`
+  // allocated a string per rendered element (measured 4.3% of non-GC SSR
+  // time). Mixed-case tags (h() callers) still resolve via the fallback.
+  return VOID_ELEMENTS.has(tag) || (UPPERCASE_RE.test(tag) && VOID_ELEMENTS.has(tag.toLowerCase()))
 }
 
 /**
@@ -1153,17 +1162,27 @@ const SVG_ATTRIBUTE_MAP: Record<string, string> = {
   glyphOrientationVertical: 'glyph-orientation-vertical',
 }
 
+// Resolved-name memo: prop keys are code-shaped (a real app uses a few
+// dozen distinct keys across millions of renderProp calls), so the map +
+// kebab-regex work is paid once per distinct key per process. The cached
+// value is ALSO pre-escaped (attr names land directly in markup), so
+// callers skip their per-call escapeHtml on the name. Bounded at 1,000
+// entries (leak-class C discipline) — beyond the cap, pathological
+// dynamic-key spreads fall through to the uncached path.
+const _attrNameCache = new Map<string, string>()
 function toAttrName(key: string): string {
-  const html = HTML_ATTRIBUTE_MAP[key]
-  if (html !== undefined) return html
-  const svg = SVG_ATTRIBUTE_MAP[key]
-  if (svg !== undefined) return svg
-  // Fallback: camelCase → kebab-case. Preserves the existing convention
-  // for unknown / user-defined camelCase props (e.g. `dataTestId` →
-  // `data-test-id`). The allow-lists above carve out the HTML- and
-  // SVG-spec attrs that have non-kebab canonical forms; everything else
-  // falls through here. Tests in `ssr.test.ts:650` lock the fallback.
-  return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+  const cached = _attrNameCache.get(key)
+  if (cached !== undefined) return cached
+  const resolved =
+    HTML_ATTRIBUTE_MAP[key] ??
+    SVG_ATTRIBUTE_MAP[key] ??
+    // Fallback: camelCase → kebab-case. Preserves the existing convention
+    // for unknown / user-defined camelCase props (e.g. `dataTestId` →
+    // `data-test-id`). Tests in `ssr.test.ts:650` lock the fallback.
+    key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+  const escaped = escapeHtml(resolved)
+  if (_attrNameCache.size < 1000) _attrNameCache.set(key, escaped)
+  return escaped
 }
 
 function isStyleObject(value: unknown): value is Record<string, unknown> {
@@ -1188,14 +1207,6 @@ function toKebab(str: string): string {
   return str.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 
-const ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-}
-
 /**
  * Encode a For-list key so it's safe to inline inside an HTML comment
  * marker `<!--k:KEY-->`. If a user-supplied key contains `-->` the naive
@@ -1206,8 +1217,18 @@ const ESCAPE_MAP: Record<string, string> = {
  * irreversible encoding works; this one is predictable enough for a
  * future consumer to decode if needed.
  */
+// Keys made only of [\w.:] can never form `--` (no dash at all), so they
+// are comment-safe verbatim — and `%` is excluded, so decodeURIComponent
+// round-trips them unchanged. Number.prototype.toString likewise never
+// emits consecutive dashes ("-5", "1.5e-7"). Both fast paths skip the
+// encodeURIComponent + replace pair, which measured ~7% of non-GC SSR
+// time on list-heavy pages (numeric ids are the dominant <For> key).
+const SIMPLE_KEY_RE = /^[\w.:]+$/
 function safeKeyForMarker(key: unknown): string {
-  return encodeURIComponent(String(key)).replace(/-/g, '%2D')
+  if (typeof key === 'number') return String(key)
+  const s = String(key)
+  if (SIMPLE_KEY_RE.test(s)) return s
+  return encodeURIComponent(s).replace(/-/g, '%2D')
 }
 
 /**
@@ -1247,7 +1268,27 @@ const NEEDS_ESCAPE_RE = /[&<>"']/
 function escapeHtml(str: string): string {
   if (!NEEDS_ESCAPE_RE.test(str)) return str
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.escape')
-  return str.replace(/[&<>"']/g, (c) => ESCAPE_MAP[c] ?? c)
+  // Dirty path: manual charCode scan with lazy slicing. The previous
+  // `.replace(/g, callback)` paid a function call + map lookup PER MATCH —
+  // the scan emits contiguous clean runs via slice and appends the entity
+  // directly (escaping measured ~19% of non-GC SSR time in the CPU
+  // profile; see scripts/bench-ssr.ts).
+  let out = ''
+  let last = 0
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i)
+    let entity: string | null = null
+    if (c === 38) entity = '&amp;'
+    else if (c === 60) entity = '&lt;'
+    else if (c === 62) entity = '&gt;'
+    else if (c === 34) entity = '&quot;'
+    else if (c === 39) entity = '&#39;'
+    if (entity !== null) {
+      out += str.slice(last, i) + entity
+      last = i + 1
+    }
+  }
+  return out + str.slice(last)
 }
 
 /**
