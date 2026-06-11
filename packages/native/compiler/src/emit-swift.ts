@@ -246,6 +246,8 @@ function collectLayoutComponentNames(components: ComponentIR[]): Set<string> {
  * loud at compile time.
  */
 let _emitWarnings: string[] = []
+/** Canonical font name → iOS PostScript name (asset-pipeline arc PR-1.4). */
+let _fontMap: Record<string, string> = {}
 
 /** Test/debug-only helper to read accumulated warnings without
  *  going through the full emit pipeline. Returns a copy. */
@@ -268,8 +270,10 @@ export function emitSwift(
   fieldMetas: FieldMetaDefnIR[] = [],
   features: FeatureDefnIR[] = [],
   zodSchemas: ZodSchemaDefnIR[] = [],
+  fonts: Record<string, string> = {},
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  _fontMap = fonts
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
   for (const s of structs) {
@@ -2491,7 +2495,24 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // `app.staticTexts["login-error"]` invisible to XCUITest while
   // label-based queries worked, so the iOS smoke (label-querying)
   // passed and only the tag-querying Android smoke caught it.
-  return `${emitSwiftTextCore(e, indent)}${emitSwiftLayoutModifiers(e)}`
+  const font = readStaticAttr(e, 'font')
+  let result = emitSwiftTextCore(e, indent)
+  if (typeof font === 'string') {
+    // Custom font → .font(.custom("<PostScriptName>", size: 17)). The
+    // PostScript name (not the canonical/filename) is what Font.custom
+    // registers against — supplied by the CLI from the sfnt name table.
+    // A font not in the map (materialization didn't run) falls back to
+    // the canonical name + a warning, so it's visible, not a silent
+    // system-font swap.
+    const ps = _fontMap[font]
+    if (ps === undefined) {
+      _emitWarnings.push(
+        `<Text font=${JSON.stringify(font)}>: no bundled font by that name — run the assets/fonts step (Font.custom will fall back to the system font on-device).`,
+      )
+    }
+    result += `.font(.custom(${JSON.stringify(ps ?? font)}, size: 17))`
+  }
+  return `${result}${emitSwiftLayoutModifiers(e)}`
 }
 
 function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

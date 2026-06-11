@@ -161,6 +161,9 @@ export function emitKotlin(
   fieldMetas: FieldMetaDefnIR[] = [],
   features: FeatureDefnIR[] = [],
   zodSchemas: ZodSchemaDefnIR[] = [],
+  // fonts: Android resolves at runtime via pyreonFont(res/font), so
+  // the map is accepted for signature symmetry but unused here.
+  _fonts: Record<string, string> = {},
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _enumNames = new Set(enums.map((e) => e.name))
@@ -2190,16 +2193,30 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // Same fix shape as Field (a43599f01).
   const mod = emitKotlinLayoutModifier(e)
   const modArg = mod === '' ? '' : `, modifier = ${mod}`
-  if (e.children.length === 0) return `Text(text = ""${modArg})`
+  // Custom font → fontFamily = pyreonFont("<resource-name>") — a
+  // runtime res/font lookup (PyreonAssets.kt), so no PostScript map is
+  // needed on Android (Compose loads the font file directly).
+  const font = readStaticAttrKotlin(e, 'font')
+  const fontArg =
+    typeof font === 'string'
+      ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
+      : ''
+  if (e.children.length === 0) return `Text(text = ""${fontArg}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${fontArg}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
     if (c.kind === 'text') parts.push(escapeKotlinInterp(c.value))
     else parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
   }
-  return `Text(text = "${parts.join('')}"${modArg})`
+  return `Text(text = "${parts.join('')}"${fontArg}${modArg})`
+}
+
+/** Android resource-name sanitize (mirror of the fonts materializer). */
+function sanitizeKotlinFontName(name: string): string {
+  const cleaned = name.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+  return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned
 }
 
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

@@ -59,7 +59,12 @@ describe('@pyreon/native-cli build', () => {
     // deliberately emit warnings. Filter them out before asserting the
     // remaining fixtures emit nothing.
     const nonTier2Warnings = result.warnings.filter(
-      (w) => !w.file.includes('/tier2-'),
+      // tier2- fixtures deliberately emit silent-drop diagnostics; the
+      // font warning is also by-design — showcase-tasks uses <Text
+      // font="Brand"> and this generic build passes no fonts map, so
+      // the Swift emit warns + falls back to the canonical name (the
+      // real build.sh passes --fonts and gets the PostScript map).
+      (w) => !w.file.includes('/tier2-') && !w.warning.includes('no bundled font'),
     )
     expect(nonTier2Warnings).toEqual([])
 
@@ -85,7 +90,12 @@ describe('@pyreon/native-cli build', () => {
     // deliberately emit warnings. Filter them out before asserting the
     // remaining fixtures emit nothing.
     const nonTier2Warnings = result.warnings.filter(
-      (w) => !w.file.includes('/tier2-'),
+      // tier2- fixtures deliberately emit silent-drop diagnostics; the
+      // font warning is also by-design — showcase-tasks uses <Text
+      // font="Brand"> and this generic build passes no fonts map, so
+      // the Swift emit warns + falls back to the canonical name (the
+      // real build.sh passes --fonts and gets the PostScript map).
+      (w) => !w.file.includes('/tier2-') && !w.warning.includes('no bundled font'),
     )
     expect(nonTier2Warnings).toEqual([])
 

@@ -16,6 +16,12 @@ export interface TextProps extends ChildrenProp, HtmlPassthroughProps {
   /** Semantic typography scale. Maps to per-platform font-size + weight. */
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   weight?: 'regular' | 'medium' | 'bold'
+  /**
+   * Custom font family by its canonical name (the basename of the
+   * bundled `fonts/<name>.ttf`). Materialized + registered by the
+   * `pyreon-native assets` step. Omit for the platform's system font.
+   */
+  font?: string
   /** Single-line / multi-line behavior. Defaults to multi-line. */
   truncate?: boolean
 }
@@ -32,6 +38,9 @@ export interface TextProps extends ChildrenProp, HtmlPassthroughProps {
 export interface HeadingProps extends ChildrenProp, HtmlPassthroughProps {
   level?: 1 | 2 | 3 | 4 | 5 | 6
   color?: ColorToken
+  // NOTE: custom `font` is Text-only in v1 (Heading carries the
+  // typography scale's own font weight/size). Use <Text font="…"> with
+  // a size token for a branded heading until Heading-font lands.
 }
 
 /**

@@ -39,6 +39,9 @@ export const Text = (props: TextProps): VNode => {
     const w = WEIGHT[props.weight]
     if (w !== undefined) style['font-weight'] = w
   }
+  // Custom font family — the materialized @font-face the host CSS
+  // declares (font name === the bundled fonts/<name> basename).
+  if (props.font !== undefined) style['font-family'] = props.font
   if (props.truncate) {
     style.overflow = 'hidden'
     style['text-overflow'] = 'ellipsis'

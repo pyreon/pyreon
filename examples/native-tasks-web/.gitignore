@@ -3,3 +3,4 @@ dist/
 # Asset pipeline output — `bun run assets` rematerializes public/assets
 # from the shared ../native-tasks/assets on every dev/build.
 public/assets/
+public/fonts/

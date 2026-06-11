@@ -103,7 +103,7 @@ fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 // the bare Text(text = "...") call sites (from Text emit) valid.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, modifier: Modifier = Modifier) {}
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontFamily: FontFamily? = null, modifier: Modifier = Modifier) {}
 
 @Composable
 fun Button(
@@ -604,6 +604,13 @@ object ContentScale {
 fun Image(painter: Painter, contentDescription: String, contentScale: ContentScaleStub = ContentScale.Crop, modifier: Modifier = Modifier) {}
 @Composable
 fun pyreonDrawable(name: String): Int = 0
+
+// Font surface (PR-1.4): FontFamily + Font + the pyreonFont runtime
+// helper from PyreonAssets.kt (res/font lookup by name).
+class FontFamily(font: Any? = null)
+class Font(id: Int)
+@Composable
+fun pyreonFont(name: String): FontFamily = FontFamily()
 
 // PyreonFetch — mirror of @pyreon/native-runtime-kotlin's PyreonFetch.kt
 // (Phase 4.1 state container). Added with the quotes fixture — before

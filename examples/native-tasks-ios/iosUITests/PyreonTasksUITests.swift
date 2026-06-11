@@ -56,6 +56,19 @@ final class PyreonTasksUITests: XCTestCase {
             brandLogo.waitForExistence(timeout: 15),
             "Bundled brand logo missing — did scripts/build.sh materialize Assets.xcassets from ../native-tasks/assets?"
         )
+
+        // Font-pipeline arc (PR-1.4): the title uses the bundled Brand
+        // font (Font.custom with the PostScript name from the manifest).
+        // The glyph rendering isn't queryable, but the node's presence
+        // proves the UIAppFonts registration + Font.custom didn't crash
+        // (a bad PostScript name silently falls back; a bad bundle entry
+        // is a launch-time console error, not a crash — so this is a
+        // smoke, paired with the deterministic materializer unit test).
+        let brandTitle = app.staticTexts["brand-title"].firstMatch
+        XCTAssertTrue(
+            brandTitle.waitForExistence(timeout: 15),
+            "Branded title missing — the custom-font Text did not render"
+        )
     }
 
     func test_authGateStoreMutationAndTypedParamsDetail() throws {

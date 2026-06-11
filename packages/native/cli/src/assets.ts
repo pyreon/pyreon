@@ -19,6 +19,12 @@
 
 import { copyFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import {
+  materializeAndroidFonts,
+  materializeIosFonts,
+  materializeWebFonts,
+  scanFontDir,
+} from './fonts'
 
 export interface AssetVariant {
   /** 1 | 2 | 3 — from the @2x/@3x filename suffix (1 when bare). */
@@ -244,7 +250,17 @@ export function materializeAssets(
   outDir: string,
 ): MaterializeResult {
   const groups = scanAssetDir(sourceDir)
-  if (target === 'ios') return materializeIosAssets(groups, outDir)
-  if (target === 'android') return materializeAndroidAssets(groups, outDir)
-  return materializeWebAssets(groups, outDir)
+  if (target === 'ios') {
+    const r = materializeIosAssets(groups, outDir)
+    const f = materializeIosFonts(scanFontDir(sourceDir), outDir)
+    return { assets: r.assets, files: r.files + f.fonts }
+  }
+  if (target === 'android') {
+    const r = materializeAndroidAssets(groups, outDir)
+    const f = materializeAndroidFonts(scanFontDir(sourceDir), outDir)
+    return { assets: r.assets, files: r.files + f.fonts }
+  }
+  const r = materializeWebAssets(groups, outDir)
+  const f = materializeWebFonts(scanFontDir(sourceDir), outDir)
+  return { assets: r.assets, files: r.files + f.fonts }
 }

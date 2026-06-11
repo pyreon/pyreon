@@ -12,6 +12,8 @@
 
 import { build } from './build'
 import { materializeAssets, type AssetTarget } from './assets'
+import { scanFontDir } from './fonts'
+import { existsSync } from 'node:fs'
 import type { TargetLanguage } from '@pyreon/native-compiler'
 
 interface ParsedArgs {
@@ -22,6 +24,8 @@ interface ParsedArgs {
   source?: string
   out?: string
   kotlinPackage?: string
+  /** Dir to scan for bundled fonts (canonical→PostScript map for the Swift emit). */
+  fonts?: string
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -52,6 +56,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (key === 'source') out.source = value
     else if (key === 'out') out.out = value
     else if (key === 'kotlin-package') out.kotlinPackage = value
+    else if (key === 'fonts') out.fonts = value
   }
   return out
 }
@@ -111,11 +116,20 @@ export function main(argv: string[]): number {
   }
 
   try {
+    // Build the canonical→PostScript font map from --fonts (the shared
+    // assets dir). Only iOS uses it (Font.custom needs the PostScript
+    // name); Android resolves res/font at runtime.
+    let fonts: Record<string, string> | undefined
+    if (parsed.fonts && existsSync(parsed.fonts)) {
+      fonts = {}
+      for (const f of scanFontDir(parsed.fonts)) fonts[f.name] = f.postScriptName
+    }
     const result = build({
       target: parsed.target,
       source: parsed.source,
       out: parsed.out,
       ...(parsed.kotlinPackage ? { kotlinPackage: parsed.kotlinPackage } : {}),
+      ...(fonts ? { fonts } : {}),
     })
     console.log(
       `[pyreon-native] compiled ${result.filesCompiled} file(s) → ${parsed.out}`,

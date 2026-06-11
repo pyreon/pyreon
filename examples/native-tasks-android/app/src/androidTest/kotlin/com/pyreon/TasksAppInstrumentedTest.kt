@@ -62,6 +62,14 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("brand-logo")
             .assertIsDisplayed()
+
+        // Font-pipeline arc (PR-1.4): the title uses the bundled Brand
+        // font via pyreonFont("brand") → res/font/brand.ttf. pyreonFont
+        // THROWS when the resource is missing, so a rendered node proves
+        // the font materialized + loaded.
+        composeRule
+            .onNodeWithTag("brand-title")
+            .assertIsDisplayed()
     }
 
     @Test
