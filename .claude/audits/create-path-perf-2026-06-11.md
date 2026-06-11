@@ -66,20 +66,31 @@ Both require dual-backend work (JS `jsx.ts` + Rust `native/src/lib.rs` byte-iden
 output + native-equivalence specs), which is why they're follow-ups, but both are
 QUANTIFIED on the real bench:
 
-1. **Baked text-node placeholder (~0.3ms create-1k gap, ~0.3–0.5ms @10k).** Current
-   emit for a dynamic text child: `<td></td>` template + per-row
-   `document.createTextNode("") + appendChild`. Emit `<td> </td>` (single-space text
-   node survives innerHTML parsing) + `__e.firstChild` instead — `_bindText` writes the
-   initial value synchronously, so the space never renders. Saves 2 DOM calls/row.
-2. **Hoisted bind function (~3.5ms @10k — the BIG one).** Current emit allocates a
-   fresh `bind` closure per row (captures `row`) + a cleanup closure. Hoist the bind
-   body to a module-scope function taking `(root, row)` and have the For-row protocol
-   pass the item as an argument — kills 1–2 closure allocations per row and was worth
-   3.5ms of the 5.7ms remaining gap when hand-emulated. Needs scope analysis (the bind
-   body may only reference the row param + module-scope names; bail to the current
-   emit when it captures other locals).
+1. **Baked text-node placeholder — SHIPPED (compiler PR, both backends).** Emit
+   `<td> </td>` + `__e.firstChild` instead of per-row
+   `document.createTextNode("") + appendChild`. The within-tree paired bench
+   (same tree, ONLY the emit flipped, 60 pooled samples/op, bundle shapes verified
+   in the artifact) measured BETTER than the hand-emulated estimate: the
+   **create-1k gap closes to ZERO** (Pyreon 9.30ms [9.20–9.40] = Vanilla 9.30ms;
+   OFF-state Pyreon [9.80–10.20] — CI-clean), **replace-all gap to zero**
+   (−500µs), append −1.2ms; create-10k inconclusive under thermal noise,
+   trending positive. Lesson recorded: cross-WORKTREE pairing was contaminated
+   (trees differed by merged refactors) — within-tree emit-flip is the honest
+   protocol for compiler changes.
+2. **Hoisted bind function — NULL RESULT, do not re-propose.** The initial
+   hand-emulation suggested ~3.5ms @10k, but the PROPERLY-paired re-quantification
+   (same tree, same session, --repeat 3, on top of the shipped placeholder emit)
+   measured: create-1k gap IDENTICAL (800µs both states), create-10k hoisted WORSE
+   (4.7ms vs 3.3ms gap), replace/append within noise. The original "win" was
+   cross-run machine drift — exactly the contamination the within-tree paired
+   protocol exists to catch. V8 shares bytecode across closure instantiations of
+   the same function literal, so the per-row closure cost the hoist was supposed to
+   kill is already near-free; joining the hybrid-Set+Array null result in the
+   "plausible mechanism, measured dead end" file. The ≥2ms reproduce-gate
+   (set BEFORE building) is what kept this from becoming a wasted dual-backend
+   compiler transform.
 
-## The residual ~2.2ms @10k (after all three)
+## The residual gap (after selector + placeholder)
 
 Remaining allocators: `_tpl`'s NativeItem wrapper + clone (~30%), the For reconciler's
 key Set + cache Map adds (12.5%), per-row `signal(label)` (~152B/row — user data,

@@ -784,12 +784,53 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('_bindText(text,')
   })
 
+  test('sole dynamic text child — BAKED placeholder, no createTextNode (perf emit lock)', () => {
+    // The create-path perf audit's PR-A shape: a sole `{expr}` text child
+    // bakes a single-space text node into the template HTML and binds via
+    // `.firstChild`. Saves createTextNode+appendChild per instantiation —
+    // per ROW under <For>. Lock BOTH halves so a regression to the old
+    // emit fails loudly.
+    const result = t('<td>{() => row.label()}</td>')
+    expect(result).toContain('<td> </td>')
+    expect(result).toContain('.firstChild')
+    expect(result).not.toContain('createTextNode')
+    expect(result).not.toContain('appendChild')
+  })
+
+  test('sole dynamic text child in a TABLE-context element — whitespace survives parsing', () => {
+    // Whitespace-only text is exempt from table foster-parenting, so the
+    // baked placeholder is safe even directly inside tbody.
+    const result = t('<tbody>{() => content()}</tbody>')
+    expect(result).toContain('<tbody> </tbody>')
+    expect(result).toContain('.firstChild')
+  })
+
+  test('mixed content KEEPS the comment+replaceChild shape (adjacent text would merge)', () => {
+    // `<p>foo {x()} bar</p>` — baked spaces would merge with the static
+    // text runs during parsing and break childNodes indexing; the comment
+    // placeholder shape must stay.
+    const result = t('<p>foo {x()} bar</p>')
+    expect(result).toContain('<!>')
+    expect(result).toContain('createTextNode')
+    expect(result).toContain('replaceChild')
+  })
+
+  test('adjacent expressions KEEP comment placeholders (no baked-space merging)', () => {
+    const result = t('<span>{a()}{b()}</span>')
+    expect(result).toContain('<!>')
+    expect(result).toContain('replaceChild')
+    expect(result).not.toContain('<span>  </span>')
+  })
+
   test('benchmark-like row structure', () => {
     const result = t(
       '<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>',
     )
     expect(result).toContain('_tpl(')
-    expect(result).toContain('<td class=\\"id\\"></td><td></td>')
+    // The second td carries the BAKED text placeholder (sole-dynamic-text
+    // fast path): the template ships ' ' and the bind grabs `.firstChild`
+    // instead of createTextNode+appendChild per row.
+    expect(result).toContain('<td class=\\"id\\"></td><td> </td>')
     // className uses _bindDirect (single-signal cls())
     expect(result).toContain('_bindDirect(cls,')
     // String(row.id) — pure coercion call with non-signal arg → static emit

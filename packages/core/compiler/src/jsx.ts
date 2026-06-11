@@ -2745,13 +2745,27 @@ export function transformJSX_JS(
       needsPlaceholder: boolean,
     ): string {
       const tVar = nextTextVar()
-      bindLines.push(`const ${tVar} = document.createTextNode("")`)
+      // Sole-dynamic-text-child fast path: bake a single-space text node
+      // INTO the template HTML and grab it via `.firstChild` — saves a
+      // `document.createTextNode("") + appendChild` pair per template
+      // instantiation (per ROW under <For>; measured in the create-path
+      // perf audit, .claude/audits/create-path-perf-2026-06-11.md).
+      // Correct by construction: (a) a whitespace-only text node survives
+      // innerHTML parsing in EVERY element context — including table
+      // foster-parenting, which exempts whitespace-only runs — so the
+      // space is reliably `firstChild` of the clone; (b) every binding
+      // path below writes the initial value synchronously at bind time
+      // (before the clone is inserted), so the space never renders.
+      // Mixed-content (needsPlaceholder) keeps the comment+replaceChild
+      // shape — adjacent baked text runs would MERGE into one node during
+      // parsing and break childNodes indexing.
       if (needsPlaceholder) {
+        bindLines.push(`const ${tVar} = document.createTextNode("")`)
         bindLines.push(
           `${parentRef}.replaceChild(${tVar}, ${childNodeAccessor(parentRef, childNodeIdx, true)})`,
         )
       } else {
-        bindLines.push(`${varName}.appendChild(${tVar})`)
+        bindLines.push(`const ${tVar} = ${varName}.firstChild`)
       }
       const directRef = tryDirectSignalRef(exprNode)
       if (directRef) {
@@ -2759,7 +2773,7 @@ export function transformJSX_JS(
         const d = nextDisp()
         const callerArg = directRef.isMember ? `, () => ${directRef.ref}()` : ''
         bindLines.push(`const ${d} = _bindText(${directRef.ref}, ${tVar}${callerArg})`)
-        return needsPlaceholder ? '<!>' : ''
+        return needsPlaceholder ? '<!>' : ' '
       }
       // Selector-ternary auto-promotion (companion to the className
       // path). `<td>{() => sel(k) ? 'X' : 'Y'}</td>` becomes
@@ -2772,7 +2786,7 @@ export function transformJSX_JS(
         bindLines.push(
           `const ${d} = ${selTernary.selectorRef}.subscribe(${selTernary.keyExpr}, (m) => { ${tVar}.data = (m ? ${selTernary.consequent} : ${selTernary.alternate}) })`,
         )
-        return needsPlaceholder ? '<!>' : ''
+        return needsPlaceholder ? '<!>' : ' '
       }
       // Signal-method-call auto-promotion: `<span>{count().toFixed(2)}</span>`
       // becomes `_bindDirect(count, (v) => { tVar.data = v.toFixed(2) })`.
@@ -2787,12 +2801,12 @@ export function transformJSX_JS(
         bindLines.push(
           `const ${d} = _bindDirect(${sigMethod.signalRef}, (v) => { ${tVar}.data = v${sigMethod.methodCall} })`,
         )
-        return needsPlaceholder ? '<!>' : ''
+        return needsPlaceholder ? '<!>' : ' '
       }
       needsBindImportGlobal = true
       const d = nextDisp()
       bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
-      return needsPlaceholder ? '<!>' : ''
+      return needsPlaceholder ? '<!>' : ' '
     }
 
     function emitStaticTextChild(

@@ -4168,16 +4168,25 @@ fn emit_reactive_text_child(
     ctx: &mut Ctx,
 ) -> String {
     let t_var = tb.next_text_var();
-    tb.bind_lines
-        .push(format!("const {} = document.createTextNode(\"\")", t_var));
+    // Sole-dynamic-text-child fast path (mirrors jsx.ts byte-for-byte): a
+    // single-space text node is BAKED into the template HTML and grabbed
+    // via `.firstChild` — saves a createTextNode+appendChild pair per
+    // template instantiation (per ROW under <For>). Whitespace-only text
+    // survives innerHTML parsing in every element context (incl. table
+    // foster-parenting, which exempts whitespace), and every binding path
+    // writes the initial value synchronously at bind time, so the space
+    // never renders. Mixed-content keeps comment+replaceChild — adjacent
+    // baked text runs would merge during parsing.
     if needs_placeholder {
+        tb.bind_lines
+            .push(format!("const {} = document.createTextNode(\"\")", t_var));
         tb.bind_lines.push(format!(
             "{}.replaceChild({}, {})",
             parent_ref, t_var, child_node_accessor(parent_ref, child_node_idx, true)
         ));
     } else {
         tb.bind_lines
-            .push(format!("{}.appendChild({})", var_name, t_var));
+            .push(format!("const {} = {}.firstChild", t_var, var_name));
     }
     let direct_ref = try_direct_signal_ref(expr_node, ctx);
     if let Some((signal_name, is_member)) = direct_ref {
@@ -4219,7 +4228,7 @@ fn emit_reactive_text_child(
     if needs_placeholder {
         "<!>".to_string()
     } else {
-        String::new()
+        " ".to_string()
     }
 }
 
