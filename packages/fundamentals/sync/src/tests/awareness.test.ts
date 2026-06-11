@@ -9,7 +9,7 @@ import { WebSocket as WsClient } from 'ws'
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import { createYjsDoc } from '../crdt/yjs-adapter'
-import { getDocAwareness, syncedAwareness } from '../crdt/yjs-awareness'
+import { getDocAwareness, peekDocAwareness, syncedAwareness } from '../crdt/yjs-awareness'
 import { connectViaBroadcastChannel } from '../crdt/yjs-transport'
 import { connectViaWebSocket } from '../crdt/yjs-ws-transport'
 import { REMOTE_ORIGIN } from '../crdt/types'
@@ -235,5 +235,49 @@ describe('awareness — presence + cursors over the relay', () => {
     // learns Ricky from D. Generous window for an (erroneous) relay to occur.
     await new Promise((r) => setTimeout(r, 250))
     expect(pe.others().some((p) => p.state.name === 'RemoteRicky')).toBe(false)
+  })
+
+  it('disposing ONE syncedAwareness view does NOT break a second view or a connected transport', async () => {
+    // Lifecycle contract: the Awareness is doc-scoped (shared by transports +
+    // every view). A view's dispose must detach ONLY its own listener, never
+    // destroy the shared instance.
+    server = await createSyncServer({ port: 0 })
+    const url = `ws://127.0.0.1:${server.port}/aw-multiview`
+    const a = createYjsDoc()
+    const b = createYjsDoc()
+    const pa = syncedAwareness<Presence>(a, { name: 'Alice' })
+    const pa2 = syncedAwareness<Presence>(a) // a SECOND view on the SAME doc
+    const pb = syncedAwareness<Presence>(b, { name: 'Bob' })
+    const ta = connectViaWebSocket(a, url, { reconnect: false, WebSocketImpl: WSImpl })
+    const tb = connectViaWebSocket(b, url, { reconnect: false, WebSocketImpl: WSImpl })
+    disposers.push(
+      () => ta.disconnect(),
+      () => tb.disconnect(),
+      () => pa.dispose(),
+      () => pb.dispose(),
+    )
+    await waitFor(() => pb.others().some((p) => p.state.name === 'Alice'))
+
+    // Dispose the SECOND view. Pre-fix this called `aw.destroy()` on the shared
+    // Awareness → killed the transport's listener + the first view. Post-fix it
+    // only detaches pa2's `change` listener.
+    pa2.dispose()
+
+    // A's first view + the transport are still live: B's cursor update reaches A.
+    pb.setLocalField('cursor', { x: 7, y: 7 })
+    await waitFor(
+      () => pa.others().find((p) => p.state.name === 'Bob')?.state.cursor?.x === 7,
+    )
+    expect(pa.others().find((p) => p.state.name === 'Bob')?.state.cursor).toEqual({ x: 7, y: 7 })
+  }, 30_000)
+
+  it('doc.destroy() tears down the doc-owned awareness', () => {
+    const a = createYjsDoc()
+    const pa = syncedAwareness<Presence>(a, { name: 'Alice' })
+    expect(peekDocAwareness(a)).toBeDefined()
+    pa.dispose() // a view dispose must NOT remove the doc's awareness
+    expect(peekDocAwareness(a)).toBeDefined()
+    a.destroy() // the DOC owns teardown
+    expect(peekDocAwareness(a)).toBeUndefined()
   })
 })

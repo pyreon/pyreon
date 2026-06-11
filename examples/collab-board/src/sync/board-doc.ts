@@ -179,13 +179,17 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
     dispose() {
       if (disposed) return
       disposed = true
+      // Transports first — disconnect announces our departure while the wire is
+      // still live (the relay's socket-close purge is the real ghost guarantee).
       ws?.disconnect()
       bc.disconnect()
       for (const col of Object.values(columns)) col.dispose()
-      presence.dispose()
+      presence.dispose() // detaches this view's observer only (see syncedAwareness)
       backlog.dispose()
       titleStore?.dispose()
       void persist.destroy()
+      // The doc OWNS the shared awareness lifecycle — destroy() tears it down.
+      doc.destroy()
     },
   }
 }

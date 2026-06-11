@@ -5651,14 +5651,15 @@ connectViaWebSocket(doc, "wss://sync.example.com/room?token=abc")
 - Creating it AFTER connecting a transport — the transport peeks for the doc awareness at connect, so presence created later is not wired. Create syncedAwareness BEFORE connectViaWebSocket / connectViaBroadcastChannel
 - Reading \`others()\` / \`local()\` outside a reactive scope and expecting it to update — they are signals; read them inside JSX / an effect / a computed so the UI tracks presence changes
 - Treating cursor coordinates as exact across clients — they are raw viewport points with no scroll / window-size normalization (good enough for v1; map to content coordinates if you need pixel parity)
-- Disposing the awareness primitive BEFORE the transports — dispose the transports first so the departure announce still has a live wire (the relay socket-close purge is the real guarantee, so order only affects latency)`,
+- Expecting \`dispose()\` to announce your departure / tear down the shared awareness — it only detaches THIS view's observer. The TRANSPORT announces departure on disconnect, and the DOC owns teardown (doc.destroy()). So dispose the view freely (a second view + the transports keep working); call doc.destroy() for a full local teardown
+- Assuming presence scales to hundreds of peers cheaply — every awareness change rebuilds the full peers snapshot (O(N) in peer count) and re-runs each \`others()\` consumer; fine for the typical handful-to-dozens of collaborators, but a large cursor swarm will re-render on every mouse move (throttle cursor publishes; this is a v1 limit, not free)`,
   },
 
   'sync/SyncedAwareness': {
     signature: 'interface SyncedAwareness<T> { setLocal(s: T): void; setLocalField<K extends keyof T>(k: K, v: T[K]): void; local: Signal<T | null>; others: Signal<PeerState<T>[]>; states: Signal<PeerState<T>[]>; awareness: Awareness; dispose(): void }',
     example: `const p: SyncedAwareness<{ name: string }> = syncedAwareness(doc, { name: "Vít" })
 p.others()  // PeerState<{ name: string }>[] — other people here`,
-    notes: 'The reactive presence handle from syncedAwareness. `others` is every peer EXCEPT you (the avatars / cursors to render); `states` includes you; `local` is your own published state. `setLocal` / `setLocalField` publish; `awareness` is the raw y-protocols escape hatch; `dispose()` detaches the observer, announces departure, and destroys the awareness (idempotent; auto-called via onCleanup in a reactive scope). See also: syncedAwareness, PeerState.',
+    notes: `The reactive presence handle from syncedAwareness. \`others\` is every peer EXCEPT you (the avatars / cursors to render); \`states\` includes you; \`local\` is your own published state. \`setLocal\` / \`setLocalField\` publish; \`awareness\` is the raw y-protocols escape hatch; \`dispose()\` detaches ONLY this view's observer (idempotent; auto-called via onCleanup in a reactive scope) — it does NOT destroy the doc-shared awareness (the doc owns that via doc.destroy()) and does NOT announce departure (the transport does, on disconnect). See also: syncedAwareness, PeerState.`,
   },
 
   'sync/PeerState': {
