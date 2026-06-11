@@ -263,3 +263,41 @@ export function themeToCssVars<
 
   return result
 }
+
+/**
+ * Resolve `var(--…)` references in a value back to their raw emitted values
+ * using a `themeToCssVars` registry — for consumers that cannot evaluate
+ * CSS custom properties (document export to PDF/DOCX/email, devtools,
+ * non-CSS render targets).
+ *
+ * - Strings have every `var(--name)` / `var(--name, fallback)` occurrence
+ *   substituted from the registry; unknown names fall back to the inline
+ *   fallback when present, else stay verbatim.
+ * - Non-strings pass through untouched.
+ * - `calc(…)` expressions are NOT evaluated — only their var() references
+ *   are inlined (`calc(0.5rem * 1.5)`). Non-CSS targets needing a single
+ *   number must evaluate the calc themselves or avoid calc-composed values.
+ *
+ * @example
+ * const { registry } = themeToCssVars(theme)
+ * resolveCssVarReferences('var(--px-spacing-small)', registry)        // '0.5rem'
+ * resolveCssVarReferences('calc(var(--px-spacing-small) * 2)', registry) // 'calc(0.5rem * 2)'
+ * resolveCssVarReferences('var(--px-missing, 1rem)', registry)        // '1rem'
+ */
+export function resolveCssVarReferences<T>(input: T, registry: ReadonlyMap<string, string>): T {
+  if (typeof input !== 'string') return input
+  const VAR_RE = /var\((--[a-zA-Z0-9-]+)(?:\s*,\s*([^()]*|[^()]*\([^()]*\)[^()]*))?\)/
+  let out = input as string
+  // Registry values are literals (themeToCssVars bakes units at emission),
+  // but inline fallbacks may themselves contain var() — loop until stable,
+  // bounded to defend against pathological self-references.
+  for (let i = 0; i < 10; i++) {
+    const m = VAR_RE.exec(out)
+    if (!m) break
+    const [, name, fallback] = m
+    const resolved = registry.get(name!) ?? (fallback !== undefined ? fallback.trim() : m[0])
+    if (resolved === m[0]) break
+    out = out.slice(0, m.index) + resolved + out.slice(m.index + m[0].length)
+  }
+  return out as T
+}

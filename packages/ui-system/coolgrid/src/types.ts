@@ -52,9 +52,11 @@ export type ComponentProps = ConfigurationProps &
 
 export type StyledTypes = Partial<{
   size: number | undefined
-  padding: number | undefined
-  gap: number | undefined
-  gutter: number | undefined
+  // number in classic mode; a `var(…)`/`calc(…)` reference string under the
+  // cssVariables theming mode (the styled helpers branch on the shape).
+  padding: number | string | undefined
+  gap: number | string | undefined
+  gutter: number | string | undefined
   columns: number | undefined
   extraStyles: Css
   contentAlignX: AlignContentAlignXKeys

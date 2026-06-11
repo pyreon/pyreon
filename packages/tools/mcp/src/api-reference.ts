@@ -3754,6 +3754,19 @@ themeToCssVars(theme, { units: { mySizes: 'rem' } })`,
 - Re-creating the theme object per render — results are WeakMap-cached by theme IDENTITY; a fresh object every call re-walks the tree and defeats downstream identity-keyed caches
 - Assuming a custom top-level key converts to rem — only the conventional length keys convert by default; declare \`units: { myScale: "rem" }\` for custom scales`,
   },
+
+  'unistyle/resolveCssVarReferences': {
+    signature: 'resolveCssVarReferences<T>(input: T, registry: ReadonlyMap<string, string>): T',
+    example: `import { resolveCssVarReferences, themeToCssVars } from '@pyreon/unistyle'
+
+const { registry } = themeToCssVars(theme)
+resolveCssVarReferences('var(--px-spacing-small)', registry)           // '0.5rem'
+resolveCssVarReferences('calc(var(--px-spacing-small) * 2)', registry) // 'calc(0.5rem * 2)'
+resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'`,
+    notes: 'Resolve `var(--…)` references in a string back to their raw emitted values using a `themeToCssVars` registry — for consumers that cannot evaluate CSS custom properties (document export to PDF/DOCX/email, devtools, non-CSS render targets). Inline fallbacks (`var(--x, 1rem)`) apply when the name is unknown; unresolvable references stay verbatim; non-strings pass through untouched. `calc()` expressions are inlined, NOT evaluated. See also: themeToCssVars.',
+    mistakes: `- Expecting calc() to be EVALUATED — only the var() references inside are inlined; a non-CSS target needing one number must evaluate the calc itself or avoid calc-composed values
+- Passing a registry from a DIFFERENT theme identity — registries are per themeToCssVars(theme) result; mixed registries resolve to wrong values`,
+  },
   // <gen-docs:api-reference:end @pyreon/unistyle>
 
   // ═══════════════════════════════════════════════════════════════════════════

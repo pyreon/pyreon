@@ -2,7 +2,7 @@ import { config } from '@pyreon/ui-core'
 import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
 import { extendCss, makeItResponsive, value } from '@pyreon/unistyle'
 import type { CssOutput, StyledTypes } from '../types'
-import { hasValue, isNumber, isVisible } from '../utils'
+import { hasValue, isCssVarValue, isNumber, isVisible } from '../utils'
 
 const { styled, css, component } = config
 
@@ -34,7 +34,13 @@ const widthStyles: WidthStyles = ({ size, columns, gap }, { rootSize }) => {
 
   const hasGap = hasValue(gap)
 
-  const val = hasGap ? `calc(${width}% - ${g}px)` : `${width}%`
+  // CSS-variables mode: the var reference already carries its unit — never
+  // append `px` (that would emit the malformed `var(--x)px`).
+  const val = isCssVarValue(gap)
+    ? `calc(${width}% - ${gap})`
+    : hasGap
+      ? `calc(${width}% - ${g}px)`
+      : `${width}%`
 
   const v = value(val, rootSize)
 
@@ -46,9 +52,21 @@ const widthStyles: WidthStyles = ({ size, columns, gap }, { rootSize }) => {
   `
 }
 
-type SpacingStyles = (type: 'margin' | 'padding', param?: number, rootSize?: number) => CssOutput
+type SpacingStyles = (
+  type: 'margin' | 'padding',
+  param?: number | string,
+  rootSize?: number,
+) => CssOutput
 /** Applies half of the given value as either margin or padding (used for gap and padding distribution). */
 const spacingStyles: SpacingStyles = (type, param, rootSize) => {
+  if (isCssVarValue(param)) {
+    // CSS-variables mode: halve via native calc() — JS division would NaN.
+    // (Multiplication for consistency with Row — see the calc divisor note.)
+    return css`
+      ${`${type}: calc(${param} * 0.5)`};
+    `
+  }
+
   if (!isNumber(param)) {
     return ''
   }

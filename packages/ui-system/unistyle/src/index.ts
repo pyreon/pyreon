@@ -7,7 +7,7 @@ import type {
   ThemeToCssVarsOptions,
   ThemeToCssVarsResult,
 } from './cssVariables'
-import { CSS_VARS_DEFAULT_EXCLUDE, themeToCssVars } from './cssVariables'
+import { CSS_VARS_DEFAULT_EXCLUDE, resolveCssVarReferences, themeToCssVars } from './cssVariables'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
 import type {
@@ -97,6 +97,7 @@ export {
   normalizeTheme,
   Provider,
   sortBreakpoints,
+  resolveCssVarReferences,
   stripUnit,
   styles,
   themeToCssVars,

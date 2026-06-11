@@ -295,9 +295,51 @@ export class StyleSheet {
    *   Used by rocketstyle to ensure wrapper styles override inner component styles
    *   via @layer order (base < rocketstyle) instead of specificity hacks.
    */
+  // Dedup set for the dev-mode resolved-CSS validator — one warning per
+  // unique (finding, snippet) pair, so a hot re-render can't spam the console.
+  private warnedInvalidCss = new Set<string>()
+
+  /**
+   * Dev-only sanity scan over resolved CSS text — the safety net for the
+   * CSS-variables theming mode. Var-leaf theme tokens are plain strings, so
+   * legacy JS arithmetic (`t.spacing.small * 2` → `NaN`) and string concat
+   * (`t.color.x + '99'` → `var(--px-…)99`) produce silently-invalid CSS
+   * that the browser drops. This scan names the offending declaration the
+   * moment it reaches the sheet. Tree-shaken from production (call site is
+   * gated on `process.env.NODE_ENV !== 'production'`).
+   */
+  private validateDevCss(cssText: string): void {
+    if (process.env.NODE_ENV === 'production') return
+    const found: string[] = []
+    if (/[:\s(,]NaN(?:[a-z%]*)?[;\s)}]/.test(`:${cssText};`)) {
+      found.push(
+        "a 'NaN' value — JS arithmetic on a var()/string theme token? Compose with native CSS calc() instead",
+      )
+    }
+    if (/:\s*(?:undefined|null)[;\s}]/.test(`${cssText};`)) {
+      found.push("an 'undefined'/'null' value — a theme token path that does not exist?")
+    }
+    const malformed = /var\(--[a-zA-Z0-9-]+\)[a-zA-Z0-9#%]/.exec(cssText)
+    if (malformed) {
+      found.push(
+        `a malformed var() concatenation ('${malformed[0]}…') — string-concat on a CSS-variable theme token? Use calc() for math or color-mix() for alpha`,
+      )
+    }
+    if (found.length === 0) return
+    const key = `${found.join('|')}::${cssText.slice(0, 120)}`
+    if (this.warnedInvalidCss.has(key)) return
+    this.warnedInvalidCss.add(key)
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] styler: resolved CSS contains ${found.join(' AND ')}.\n  in: ${cssText.slice(0, 200)}`,
+    )
+  }
+
   insert(cssText: string, _unused = false, insertLayer?: string): string {
-    if (process.env.NODE_ENV !== 'production')
+    if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('styler.sheet.insert')
+      this.validateDevCss(cssText)
+    }
     // Fast path: skip hash computation on repeated insertions of same CSS text
     const icKey = insertLayer ? `${cssText}\0L:${insertLayer}` : cssText
     const icHit = this.insertCache.get(icKey)

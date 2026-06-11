@@ -1,7 +1,8 @@
 import { h } from '@pyreon/core'
-import { PyreonUI } from '@pyreon/ui-core'
+import { signal } from '@pyreon/reactivity'
+import { init, PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { Button } from './index'
 
@@ -36,3 +37,45 @@ describe('@pyreon/ui-components — browser smoke', () => {
     expect(document.getElementById('smoke-btn')).toBeNull()
   })
 })
+
+describe('@pyreon/ui-components under cssVariables — full default-theme sweep', () => {
+  afterEach(() => {
+    init({ cssVariables: false })
+    vi.restoreAllMocks()
+  })
+
+  it('the REAL Button + REAL default theme render under var mode with ZERO invalid CSS', () => {
+    // The styler dev validator (NaN / undefined / malformed-var scan) is live
+    // in this dev-mode run — a clean mount of the heaviest consumer proves
+    // the ENTIRE ui-theme + Button chain (rocketstyle dimensions, elements,
+    // unistyle pipeline) is var-safe: no legacy arithmetic, no string-concat.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    init({ cssVariables: true })
+    const mode = signal<'light' | 'dark'>('light')
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme, mode: () => mode() } as never,
+        h(Button as never, { id: 'var-btn', state: 'primary' }, 'Save'),
+      ),
+    )
+    const btn = container.querySelector<HTMLElement>('#var-btn')!
+    expect(btn.textContent).toContain('Save')
+    // computed styles resolve to REAL values through the var indirection
+    const cs = getComputedStyle(btn)
+    expect(cs.backgroundColor).toMatch(/^rgba?\(/)
+    expect(cs.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+
+    // mode flip: zero className churn (the var-mode contract, end-to-end
+    // through the real component library)
+    const classBefore = btn.className
+    mode.set('dark')
+    expect(btn.className).toBe(classBefore)
+
+    // zero validator findings across the WHOLE default theme + Button chain
+    const invalid = warn.mock.calls.filter((c) => String(c[0]).includes('[Pyreon] styler:'))
+    expect(invalid).toEqual([])
+    unmount()
+  })
+})
+

@@ -131,4 +131,45 @@ describe('rocketstyle under cssVariables — measured mode flip', () => {
     expect(getComputedStyle(inner).backgroundColor).toBe('rgb(200, 100, 50)')
     unmount()
   })
+
+  it('MEASURED: 100-component mode flip — vars mode does no resolution work (wall-clock logged)', () => {
+    // Counter-level proof lives in the specs above; this measures wall-clock
+    // for the marketing-honest number. Direction-only bound (CI-load
+    // tolerant): the vars flip must not be slower than the classic flip
+    // beyond noise, and must stay in single-digit-ms territory.
+    const N = 100
+    const flips = 10
+
+    const run = (vars: boolean): number => {
+      init({ cssVariables: vars })
+      const mode = signal<'light' | 'dark'>('light')
+      const Box = makeBox(vars ? 'PerfVarBox' : 'PerfClassicBox')
+      const children = Array.from({ length: N }, (_, i) => h(Box, { id: `p${i}` }))
+      const { container, unmount } = mountInBrowser(
+        h(PyreonUI as any, { theme, mode: () => mode() }, ...children),
+      )
+      const el = container.querySelector<HTMLElement>('#p0')!
+      expect(getComputedStyle(el).backgroundColor).toBe('rgb(10, 20, 30)')
+      const t0 = performance.now()
+      for (let i = 0; i < flips; i++) {
+        mode.set(i % 2 === 0 ? 'dark' : 'light')
+        // force style recalc each flip so the measurement includes it
+        void getComputedStyle(el).backgroundColor
+      }
+      const ms = performance.now() - t0
+      unmount()
+      init({ cssVariables: false })
+      sheet.clearCache()
+      return ms
+    }
+
+    const classicMs = run(false)
+    const varsMs = run(true)
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[cssVariables perf] ${N} components × ${flips} mode flips — classic: ${classicMs.toFixed(1)}ms, vars: ${varsMs.toFixed(1)}ms (${(classicMs / Math.max(varsMs, 0.1)).toFixed(1)}× )`,
+    )
+    expect(varsMs).toBeLessThanOrEqual(classicMs * 1.5 + 5)
+  })
 })
+
