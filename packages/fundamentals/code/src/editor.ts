@@ -386,6 +386,27 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   // ── Actions ──────────────────────────────────────────────────────────
 
+  // `insert` / `replaceSelection` are CURSOR-relative doc mutations: they act on
+  // `view.state.selection`, so they need a live EditorView. The view is created
+  // by `mount()` AFTER an async grammar load, so calling them before mount (or on
+  // a cold-mounting editor whose view isn't ready yet) has no cursor to act on —
+  // the call would be silently DROPPED, losing the text the caller meant to add.
+  // Warn (dev only) and point at the view-independent API (`value.set`). The
+  // production no-op is unchanged: you genuinely cannot insert-at-cursor with no
+  // cursor. (Other view-relative actions — select / undo / fold / diagnostics /
+  // markers — lose no user content when dropped, or store state into a Map/array
+  // that the view picks up on creation, so they stay silent.)
+  function warnNoView(action: string): void {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[Pyreon] editor.${action}() was called before the editor view exists — the call was dropped. ` +
+          `The view is created by mount() (after an async grammar load), so a pre-mount cursor-relative ` +
+          `edit has no cursor to act on. Use editor.value.set(...) to set content independently of the ` +
+          `view, or call ${action}() after mount() resolves.`,
+      )
+    }
+  }
+
   function focus(): void {
     view.peek()?.focus()
   }
@@ -393,7 +414,10 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   function insert(text: string): void {
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
-    if (!v) return
+    if (!v) {
+      warnNoView('insert')
+      return
+    }
     const pos = v.state.selection.main.head
     v.dispatch({ changes: { from: pos, insert: text } })
   }
@@ -401,7 +425,10 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   function replaceSelection(text: string): void {
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
-    if (!v) return
+    if (!v) {
+      warnNoView('replaceSelection')
+      return
+    }
     v.dispatch(v.state.replaceSelection(text))
   }
 

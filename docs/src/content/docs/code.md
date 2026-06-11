@@ -122,6 +122,14 @@ editor.unfoldAll() // unfold all
 editor.scrollTo(position) // scroll to character position
 ```
 
+> **`insert` / `replaceSelection` are cursor-relative — they need a mounted view.**
+> The CodeMirror view is created by `mount()` _after_ an async grammar load, so
+> calling `editor.insert(...)` / `editor.replaceSelection(...)` _before_ the editor
+> has mounted has no cursor to act on — the call is dropped (with a dev-mode
+> warning). To set content independently of the view (before mount, or from a
+> signal/CRDT binding), use `editor.value.set(...)` — it feeds the value signal,
+> which seeds the document whenever the view is created.
+
 ## Diagnostics (Lint Integration)
 
 Push diagnostics from external tools (TypeScript, ESLint, etc.):
