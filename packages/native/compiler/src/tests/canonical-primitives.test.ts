@@ -281,31 +281,35 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
   })
 })
 
-describe('Phase P2.1 — <Icon> emit (SF Symbols)', () => {
-  it('Swift: <Icon name="star" /> → Image(systemName: "star")', () => {
+describe('Phase P2.1 — <Icon> emit (canonical mapping, PR-1.3)', () => {
+  // PR-1.3: canonical names map through ICON_MAP — `star` → SF Symbol
+  // `star.fill` / Material `Icons.Filled.Star`. The dedicated mapping
+  // contract (incl. unmapped warn + placeholder) lives in
+  // icon-mapping.test.ts; these specs lock the size/color modifiers.
+  it('Swift: <Icon name="star" /> → mapped SF Symbol', () => {
     const out = tx(`<Icon name="star" />`, 'swift')
-    expect(out).toContain('Image(systemName: "star")')
+    expect(out).toContain('Image(systemName: "star.fill")')
   })
 
   it('Swift: size maps to .imageScale', () => {
-    expect(tx(`<Icon name="x" size="sm" />`, 'swift')).toContain('.imageScale(.small)')
-    expect(tx(`<Icon name="x" size="lg" />`, 'swift')).toContain('.imageScale(.large)')
+    expect(tx(`<Icon name="star" size="sm" />`, 'swift')).toContain('.imageScale(.small)')
+    expect(tx(`<Icon name="star" size="lg" />`, 'swift')).toContain('.imageScale(.large)')
   })
 
-  it('Swift: <Icon name="x" color="danger" /> → trailing .foregroundColor', () => {
-    const out = tx(`<Icon name="x" color="danger" />`, 'swift')
+  it('Swift: <Icon name="star" color="danger" /> → trailing .foregroundColor', () => {
+    const out = tx(`<Icon name="star" color="danger" />`, 'swift')
     expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
   })
 
-  it('Kotlin: <Icon name="star" /> → Icon(imageVector = pyreonIcon("star"), contentDescription = "star")', () => {
+  it('Kotlin: <Icon name="star" /> → compile-time Icons.Filled.Star', () => {
     const out = tx(`<Icon name="star" />`, 'kotlin')
-    expect(out).toContain('Icon(imageVector = pyreonIcon("star"), contentDescription = "star")')
+    expect(out).toContain('Icon(imageVector = Icons.Filled.Star, contentDescription = "star")')
   })
 
   it('Kotlin: size → Modifier.size; color → tint', () => {
-    expect(tx(`<Icon name="x" size="sm" />`, 'kotlin')).toContain('modifier = Modifier.size(16.dp)')
-    expect(tx(`<Icon name="x" size="lg" />`, 'kotlin')).toContain('modifier = Modifier.size(24.dp)')
-    expect(tx(`<Icon name="x" color="danger" />`, 'kotlin')).toMatch(/tint = Color\(0xFF[0-9A-F]{6}\)/)
+    expect(tx(`<Icon name="star" size="sm" />`, 'kotlin')).toContain('modifier = Modifier.size(16.dp)')
+    expect(tx(`<Icon name="star" size="lg" />`, 'kotlin')).toContain('modifier = Modifier.size(24.dp)')
+    expect(tx(`<Icon name="star" color="danger" />`, 'kotlin')).toMatch(/tint = Color\(0xFF[0-9A-F]{6}\)/)
   })
 })
 

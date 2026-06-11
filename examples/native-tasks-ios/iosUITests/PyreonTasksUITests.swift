@@ -103,6 +103,14 @@ final class PyreonTasksUITests: XCTestCase {
             "Tasks page did not render within 5s after login — the store-backed beforeEnter gate did not admit the navigation"
         )
 
+        // Icon-mapping arc (PR-1.3): the header's canonical
+        // <Icon name="star"> maps to SF Symbol star.fill via ICON_MAP.
+        let headerIcon = app.images["header-icon"].firstMatch
+        XCTAssertTrue(
+            headerIcon.waitForExistence(timeout: 15),
+            "Header icon missing — the canonical icon name did not map to an SF Symbol"
+        )
+
         // Phase 2: add a task — proves the STORE list mutation
         // (.set spread-append on the @Observable singleton) re-renders
         // the keyed list.

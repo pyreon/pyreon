@@ -60,6 +60,9 @@ dependencies {
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // <Icon> emit references Icons.Filled.* at compile time — the small
+    // core set only (never -extended; PR-1.3's curated map is core-only).
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.compose.material:material")

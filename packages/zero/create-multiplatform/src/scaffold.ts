@@ -358,6 +358,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    // <Icon> emit references Icons.Filled.* at compile time (core set).
+    implementation("androidx.compose.material:material-icons-core")
 }
 
 // Re-run the .tsx → .kt compile on every build (mirrors iOS preBuildScript).

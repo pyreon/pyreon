@@ -397,13 +397,21 @@ object MaterialTheme {
   }
 }
 
-// ImageVector + pyreonIcon — <Icon> emit resolves a platform-agnostic
-// name to a Material ImageVector via the @pyreon/native-runtime-kotlin
-// helper (Compose has no string-keyed icon API in core; same precedent
-// as rememberPyreonStorage). Real ImageVector: androidx.compose.ui.graphics.vector.
+// ImageVector + Icons.Filled — the <Icon> emit references material
+// glyphs at COMPILE TIME (Icons.Filled.<Glyph>; PR-1.3 replaced the
+// phantom pyreonIcon runtime lookup that existed only as a stub). The
+// stub object lists the glyphs the FIXTURES use plus the Warning
+// placeholder — extend it when a fixture adopts a new canonical name
+// (kotlinc names the missing val precisely when you forget).
 class ImageVector
-@Suppress("UNUSED_PARAMETER")
-fun pyreonIcon(name: String): ImageVector = ImageVector()
+object Icons {
+  object Filled {
+    val Star: ImageVector = ImageVector()
+    val Warning: ImageVector = ImageVector()
+    val Check: ImageVector = ImageVector()
+    val Add: ImageVector = ImageVector()
+  }
+}
 
 @Composable
 @Suppress("UNUSED_PARAMETER")
