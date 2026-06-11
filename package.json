@@ -77,6 +77,7 @@
     "check-lint-ratchet": "bun scripts/check-lint-ratchet.ts",
     "check-manifest-depth": "bun scripts/check-manifest-depth.ts",
     "check-mcp-docs": "bun scripts/check-mcp-docs.ts",
+    "check-pyreon-lint-ratchet": "bun scripts/check-pyreon-lint-ratchet.ts",
     "check-release-readiness": "bun scripts/check-release-readiness.ts",
     "validate-fast": "bun scripts/validate-fast.ts",
     "changeset": "changeset",

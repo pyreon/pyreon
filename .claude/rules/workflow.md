@@ -68,6 +68,7 @@ not a gate failure.
 | **Check Release Readiness** | New published package missing `publishConfig.access: "public"` or absent from `.changeset/config.json` `fixed[0]` | `bun run check-release-readiness` |
 | **Check Manifest Depth** | LOCKED package (`store`/`rx`/`query`/`form`) manifest density dropped | `bun run check-manifest-depth` |
 | **Lint Ratchet** | A change pushed an oxlint `warn`-rule count above its `lint-baseline.json` count | `bunx oxlint .` to see the new finding → fix it (or scope/suppress with rationale). If you legitimately REDUCED counts, `bun run check-lint-ratchet -- --update` to tighten the baseline. NEVER raise a count to absorb a new finding |
+| **Lint Ratchet** (pyreon-lint half) | A change pushed an `@pyreon/lint` advisory-rule count over framework `src` above its `pyreon-lint-baseline.json` count | `bun run lint:pyreon` to see the new finding → fix it, OR (if the rule doesn't apply to that framework package — e.g. `no-raw-addeventlistener` in `@pyreon/hooks`) scope it off in `.pyreonlintrc.json` with rationale. If you legitimately REDUCED counts, `bun run check-pyreon-lint-ratchet -- --update` to tighten. NEVER raise a count to absorb a new finding |
 | **Diagnose Catalog** | Source change in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` without an `ERROR_PATTERNS` entry | Add entry to `packages/core/compiler/src/react-intercept.ts:ERROR_PATTERNS` OR add `skip-diagnose-catalog` label if genuinely catalog-irrelevant |
 | **Docs Sync (gen-docs)** | Edited a `manifest.ts` without running `bun run gen-docs` to regenerate llms / api-reference | `bun run gen-docs && bun run gen-docs --check` |
 | **Scaffold Smoke (monorepo-vercel)** | Workspace version ahead of npm (release in flight) | Auto-skipped by `shouldSkipIsolatedCell`; if it still fails, the npm-version check failed or your branch is named `changeset-release/*` |
@@ -102,6 +103,7 @@ The local-fast subset of the validation checklist runs automatically on
    - `check-client-bundle-node-imports` — no `node:` import in client entry
    - `check-mcp-docs` — every MCP tool has a `docs/src/content/docs/mcp.md` section
    - `check-lint-ratchet` — oxlint `warn`-finding counts didn't grow above `lint-baseline.json`
+   - `check-pyreon-lint-ratchet` — `@pyreon/lint` advisory-finding counts over framework `src` didn't grow above `pyreon-lint-baseline.json`
 
    Total runtime: ~2-5s. **If you push without running this and CI fails
    on one of these gates, the failure was preventable.**
