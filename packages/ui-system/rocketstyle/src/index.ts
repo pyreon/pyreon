@@ -100,5 +100,6 @@ export function resolveTheme<T = Record<string, unknown>>(
   return typeof value === 'function' ? (value as () => T)() : value
 }
 
+export { resolveModeVar } from './utils/theme'
 export { context, isRocketComponent, Provider, rocketstyle }
 export default rocketstyle

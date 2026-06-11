@@ -1,7 +1,8 @@
 import { h } from '@pyreon/core'
-import { PyreonUI } from '@pyreon/ui-core'
+import { signal } from '@pyreon/reactivity'
+import { init, PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { Button } from './index'
 
@@ -36,3 +37,57 @@ describe('@pyreon/ui-components — browser smoke', () => {
     expect(document.getElementById('smoke-btn')).toBeNull()
   })
 })
+
+describe('@pyreon/ui-components under cssVariables — full default-theme sweep', () => {
+  afterEach(() => {
+    init({ cssVariables: false })
+    vi.restoreAllMocks()
+  })
+
+  it('the REAL Button + REAL default theme render under var mode with ZERO invalid CSS', () => {
+    // The styler dev validator (NaN / undefined / malformed-var scan) is live
+    // in this dev-mode run — a clean mount of the heaviest consumer proves
+    // the ENTIRE ui-theme + Button chain (rocketstyle dimensions, elements,
+    // unistyle pipeline) is var-safe: no legacy arithmetic, no string-concat.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    init({ cssVariables: true })
+    const mode = signal<'light' | 'dark'>('light')
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme, mode: () => mode() } as never,
+        h(Button as never, { id: 'var-btn', state: 'primary' }, 'Save'),
+      ),
+    )
+    const btn = container.querySelector<HTMLElement>('#var-btn')!
+    expect(btn.textContent).toContain('Save')
+
+    // Computed-style resolution through the var indirection needs a real CSS
+    // engine. This file also runs in the node/happy-dom suite (which resolves
+    // neither the cascade nor var()), so probe the capability and only assert
+    // computed color when CSS actually resolves — the real-Chromium path
+    // (test:browser) exercises it fully, and rocketstyle's
+    // css-variables-mode.browser.test.tsx locks the computed-color contract.
+    // happy-dom (the node suite) doesn't apply styler-injected class rules to
+    // computed style, and its getComputedStyle is too inconsistent to probe;
+    // detect it by its control global and skip the computed-color assertion
+    // there. Real Chromium (test:browser) has no `window.happyDOM`.
+    const cssResolves = typeof (window as unknown as { happyDOM?: unknown }).happyDOM === 'undefined'
+    if (cssResolves) {
+      const cs = getComputedStyle(btn)
+      expect(cs.backgroundColor).toMatch(/^rgba?\(/)
+      expect(cs.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+    }
+
+    // mode flip: zero className churn (the var-mode contract) — both environments.
+    const classBefore = btn.className
+    mode.set('dark')
+    expect(btn.className).toBe(classBefore)
+
+    // zero validator findings across the WHOLE default theme + Button chain
+    const invalid = warn.mock.calls.filter((c) => String(c[0]).includes('[Pyreon] styler:'))
+    expect(invalid).toEqual([])
+    unmount()
+  })
+})
+

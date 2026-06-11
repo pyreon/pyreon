@@ -364,3 +364,44 @@ describe('DocDocument reactive metadata (D1 integration)', () => {
     }
   })
 })
+
+describe('extractDocNode — cssVariables var resolution (auto-wired from theme+mode)', () => {
+  const Doc = docComponent('document')
+  const Text = docComponent('text')
+
+  it('resolves theme-leaf var() values via the themeToCssVars registry', () => {
+    // A doc node whose $rocketstyle carries a theme-leaf var reference (what
+    // a doc component referencing t.spacing.small emits under cssVariables).
+    const tree = extractDocNode(
+      () =>
+        node(Doc, {}, [
+          node(Text, { $rocketstyle: { color: '#222', padding: 'var(--px-spacing-small)' } }, [
+            'hi',
+          ]),
+        ]),
+      { theme: { rootSize: 16, spacing: { small: 8 } } },
+    )
+    const text = tree.children[0] as any
+    // var(--px-spacing-small) → emitted 0.5rem → parsed box-model (raw, not a var string)
+    expect(JSON.stringify(text.styles.padding)).not.toContain('var(')
+    expect(text.styles.color).toBe('#222')
+  })
+
+  it('honors an explicit resolveVar (e.g. composing resolveModeVar + resolveCssVarReferences)', () => {
+    // The auto-wiring composes resolveModeVar + resolveCssVarReferences; a
+    // caller can also pass resolveVar directly. Here a stub stands in for a
+    // mode-pair resolver to prove the hook reaches the extracted styles.
+    const tree = extractDocNode(
+      () => node(Doc, {}, [node(Text, { $rocketstyle: { color: 'var(--px-m-abc)' } }, ['x'])]),
+      { resolveVar: (v) => (v === 'var(--px-m-abc)' ? '#abcdef' : v) },
+    )
+    expect((tree.children[0] as any).styles.color).toBe('#abcdef')
+  })
+
+    it('classic path (no theme/mode) leaves values untouched', () => {
+    const tree = extractDocNode(() =>
+      node(Doc, {}, [node(Text, { $rocketstyle: { color: '#333333' } }, ['x'])]),
+    )
+    expect((tree.children[0] as any).styles.color).toBe('#333333')
+  })
+})

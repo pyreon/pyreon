@@ -421,6 +421,27 @@
         "vite": "^8.0.16",
       },
     },
+    "examples/cssvars-bench": {
+      "name": "@pyreon/example-cssvars-bench",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
+        "@pyreon/perf-harness": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+        "@pyreon/ui-components": "workspace:*",
+        "@pyreon/ui-core": "workspace:*",
+        "@pyreon/ui-theme": "workspace:*",
+        "@pyreon/unistyle": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "vite": "^8.0.16",
+      },
+    },
     "examples/docs-pyreon": {
       "name": "@pyreon/docs-pyreon",
       "version": "0.0.2",
@@ -1988,6 +2009,7 @@
         "@pyreon/rocketstyle": "workspace:^",
         "@pyreon/styler": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
@@ -2099,6 +2121,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-rolldown": "^2.5.0",
@@ -2950,6 +2973,8 @@
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
 
     "@pyreon/example-collab-board": ["@pyreon/example-collab-board@workspace:examples/collab-board"],
+
+    "@pyreon/example-cssvars-bench": ["@pyreon/example-cssvars-bench@workspace:examples/cssvars-bench"],
 
     "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
 

@@ -243,6 +243,16 @@ export function _rsCollapse(
   isDark: () => boolean,
   bind?: ((el: HTMLElement) => (() => void) | null) | null,
 ): NativeItem {
+  // Single-class fast path: under the cssVariables theming mode the
+  // resolver's light/dark renders produce IDENTICAL classes (mode lives in
+  // the CSS cascade via custom properties, not in the className). Skip the
+  // mode binding entirely — no subscription, no renderEffect, no disposer.
+  if (lightClass === darkClass) {
+    return _tpl(html, (el) => {
+      el.className = lightClass
+      return bind ? bind(el) : null
+    })
+  }
   return _tpl(html, (el) => {
     // Reactive class: _bindDirect's plain-callable fallback wraps this in
     // a renderEffect, so reading the mode accessor subscribes to the live

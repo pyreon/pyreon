@@ -1,6 +1,6 @@
 import { mergeProps } from '@pyreon/core'
 import { SizedMap } from '@pyreon/sized-map'
-import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
+import { compose, config, hoistNonReactStatics, omit, pick, render, resolveCssVariables } from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
 import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS } from './constants'
 import createLocalProvider from './context/createLocalProvider'
@@ -281,9 +281,19 @@ const rocketComponent: RocketComponent = (options) => {
     // → fresh computation, stored under LRU cap.
     // --------------------------------------------------
     const _resolveRsEntry = (): RsMemoEntry => {
-      // Read reactive inputs (tracks theme + mode signals)
+      // Read reactive inputs (tracks theme + mode signals).
+      //
+      // Under cssVariables, resolution is mode-FREE — themes carry var()
+      // references and the dark/light flip happens in the CSS cascade via
+      // the mode attribute. Don't even READ the mode signal: reading would
+      // subscribe the surrounding computed and re-run every component's
+      // resolver on each flip for nothing. The constant also collapses the
+      // memo key's mode segment, so both modes share one cache entry (and
+      // one identity — letting styler's identity-keyed classCache skip the
+      // resolve pipeline on a flip entirely).
+      const cssVarsOn = resolveCssVariables().enabled
       const theme = themeAttrs.theme
-      const mode = themeAttrs.mode
+      const mode = cssVarsOn ? 'light' : themeAttrs.mode
       const propsRec = props as Record<string, unknown>
 
       // Resolve active dimensions FIRST so the cache key uses the RESOLVED
@@ -374,24 +384,34 @@ const rocketComponent: RocketComponent = (options) => {
       }
       const themes = dimHelper.get(theme)
 
-      // Resolve mode-specific theme
-      const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
-      if (modeBaseHelper.has(baseTheme)) {
-        if (process.env.NODE_ENV !== 'production')
-          _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
+      // Resolve mode-specific theme. Under cssVariables the chains contain
+      // NO branded mode callbacks (the var-pair factory already returned
+      // plain `var()` strings), so the per-mode walk would be a pure deep
+      // copy — skip it and use the resolved themes directly.
+      let currentModeBaseTheme: ReturnType<typeof getThemeByMode>
+      let currentModeThemes: ReturnType<typeof getThemeByMode>
+      if (cssVarsOn) {
+        currentModeBaseTheme = baseTheme
+        currentModeThemes = themes
       } else {
-        modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
-      }
-      const currentModeBaseTheme = modeBaseHelper.get(baseTheme)
+        const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
+        if (modeBaseHelper.has(baseTheme)) {
+          if (process.env.NODE_ENV !== 'production')
+            _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
+        } else {
+          modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
+        }
+        currentModeBaseTheme = modeBaseHelper.get(baseTheme)
 
-      const modeDimHelper = ThemeManager.modeDimensionTheme[mode]
-      if (modeDimHelper.has(themes)) {
-        if (process.env.NODE_ENV !== 'production')
-          _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
-      } else {
-        modeDimHelper.set(themes, getThemeByMode(themes, mode))
+        const modeDimHelper = ThemeManager.modeDimensionTheme[mode]
+        if (modeDimHelper.has(themes)) {
+          if (process.env.NODE_ENV !== 'production')
+            _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
+        } else {
+          modeDimHelper.set(themes, getThemeByMode(themes, mode))
+        }
+        currentModeThemes = modeDimHelper.get(themes)
       }
-      const currentModeThemes = modeDimHelper.get(themes)
 
       const rocketstyle = getTheme({
         rocketstate: rocketstateRaw,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CSS_VARS_DEFAULT_EXCLUDE, themeToCssVars } from '../cssVariables'
+import { CSS_VARS_DEFAULT_EXCLUDE, resolveCssVarReferences, themeToCssVars } from '../cssVariables'
 
 describe('themeToCssVars — generator', () => {
   describe('leaf tokenization', () => {
@@ -211,5 +211,64 @@ describe('themeToCssVars — generator', () => {
       const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})`
       expect(width).toBe('calc(var(--px-spacing-small) * var(--px-ratio-medium))')
     })
+  })
+})
+
+describe('resolveCssVarReferences — non-CSS consumer resolution', () => {
+  const { registry } = themeToCssVars({
+    rootSize: 16,
+    spacing: { small: 8 },
+    ratio: { medium: 1.5 },
+    color: { surface: '#0f172a' },
+  })
+
+  it('resolves a plain var reference to the emitted value', () => {
+    expect(resolveCssVarReferences('var(--px-spacing-small)', registry)).toBe('0.5rem')
+    expect(resolveCssVarReferences('var(--px-color-surface)', registry)).toBe('#0f172a')
+  })
+
+  it('inlines var references inside calc() without evaluating the calc', () => {
+    expect(
+      resolveCssVarReferences('calc(var(--px-spacing-small) * var(--px-ratio-medium))', registry),
+    ).toBe('calc(0.5rem * 1.5)')
+  })
+
+  it('uses the inline fallback for unknown names, keeps verbatim without one', () => {
+    expect(resolveCssVarReferences('var(--px-missing, 1rem)', registry)).toBe('1rem')
+    expect(resolveCssVarReferences('var(--px-missing)', registry)).toBe('var(--px-missing)')
+  })
+
+  it('passes non-strings through untouched', () => {
+    expect(resolveCssVarReferences(8, registry)).toBe(8)
+    expect(resolveCssVarReferences(null, registry)).toBeNull()
+  })
+})
+
+describe('resolveCssVarReferences — ReDoS-safe (linear scan)', () => {
+  const { registry } = themeToCssVars({ spacing: { small: 8 } })
+
+  it('the CodeQL-flagged pathological input resolves in linear time', () => {
+    // `var(---,` + many spaces was the polynomial-ReDoS attack string for the
+    // old alternation regex. The linear scanner must handle it instantly.
+    const evil = 'var(--' + '-'.repeat(0) + ',' + ' '.repeat(100000) + ')'
+    const t0 = performance.now()
+    const out = resolveCssVarReferences(evil, registry)
+    const ms = performance.now() - t0
+    expect(ms).toBeLessThan(50) // linear: trivially fast even at 100k chars
+    // unknown name → falls back to the (whitespace) fallback, trimmed to ''
+    expect(out).toBe('')
+  })
+
+  it('handles a deep nested-paren fallback without backtracking', () => {
+    const out = resolveCssVarReferences('var(--px-missing, calc(calc(1rem) * 2))', registry)
+    expect(out).toBe('calc(calc(1rem) * 2)')
+  })
+
+  it('still resolves a known name even with a calc() fallback present', () => {
+    expect(resolveCssVarReferences('var(--px-spacing-small, calc(1rem))', registry)).toBe('0.5rem')
+  })
+
+  it('emits a malformed var( verbatim and does not hang', () => {
+    expect(resolveCssVarReferences('var(--px-spacing-small', registry)).toBe('var(--px-spacing-small')
   })
 })

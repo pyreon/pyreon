@@ -802,6 +802,19 @@ const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})`
 - Arrays, functions, booleans, `null`/`undefined`, empty strings, non-finite numbers — kept raw.
 - Values destined for `backgroundImage` — CSS forbids `var()` inside `url(…)`.
 
+### Enabling the ui-system mode
+
+`themeToCssVars` is the standalone generator. The ui-system-wide switch lives on the shared config:
+
+```ts
+import { init } from '@pyreon/ui-core'
+
+init({ cssVariables: true })
+// or: init({ cssVariables: { prefix: 'app', attribute: 'data-mode' } })
+```
+
+With the flag on, `PyreonUI` generates + injects the variables automatically, provides the var-leaf theme tree to every consumer, and renders a layout-neutral `display: contents` wrapper carrying the mode attribute — a dark/light flip becomes a single attribute write (no re-resolution, no className changes), and rocketstyle's component-level `mode(a, b)` pairs become hashed var pairs resolved by the cascade. Set the flag at app boot, before the first render. One caveat: under the flag, `mode(a, b)` values should be unit-complete strings (`mode('8px', '12px')`) — pairs are emitted verbatim into CSS, so numeric values warn in dev.
+
 ### Pass-through contract
 
 `var(` / `calc(` strings flow through the entire unistyle pipeline untouched — `value()`, `values()`, the edge and border-radius shorthands, `styles()`, and `makeItResponsive` all pass them through verbatim. This is a tested contract, which is what makes CSS-variable themes work in every package built on unistyle (`elements`, `rocketstyle`, `coolgrid`, `kinetic`).

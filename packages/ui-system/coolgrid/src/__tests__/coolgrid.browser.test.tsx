@@ -2,8 +2,9 @@
 import { h } from '@pyreon/core'
 import { sheet } from '@pyreon/styler'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
-import { PyreonUI } from '@pyreon/ui-core'
+import { init, PyreonUI } from '@pyreon/ui-core'
 import { afterEach, describe, expect, it } from 'vitest'
+import { themeToCssVars } from '@pyreon/unistyle'
 import { Col, Container, Row } from '../index'
 import gridTheme from '../theme'
 
@@ -20,6 +21,7 @@ import gridTheme from '../theme'
 
 describe('@pyreon/coolgrid in real browser', () => {
   afterEach(() => {
+    init({ cssVariables: false })
     sheet.clearCache()
   })
 
@@ -176,6 +178,58 @@ describe('@pyreon/coolgrid in real browser', () => {
     // xs size=12 on 12-column grid → 100% of Row
     expect(ratio).toBeGreaterThan(0.99)
     expect(ratio).toBeLessThan(1.01)
+    unmount()
+  })
+})
+
+describe('@pyreon/coolgrid under cssVariables (var-leaf gap)', () => {
+  afterEach(() => {
+    init({ cssVariables: false })
+    sheet.clearCache()
+  })
+
+  it('a var() gap flows through Row margin + Col padding via native calc()', () => {
+    // Pre-fix, a var-reference gap hit the `isNumber` guards and grid spacing
+    // was SILENTLY SKIPPED (Row margin + Col padding dropped, Col width
+    // emitted the malformed `var(--x)px`). The styled helpers now branch to
+    // native calc() — Chromium resolves the real pixels here.
+    init({ cssVariables: true })
+    const appTheme = { rootSize: 16, breakpoints: { xs: 0 }, spacing: { gap: 16 } }
+    const { vars, css: varsCss } = themeToCssVars(appTheme)
+    const style = document.createElement('style')
+    style.textContent = varsCss
+    document.head.appendChild(style)
+
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme: gridTheme },
+        h(
+          Container,
+          { id: 'vc' },
+          h(
+            Row,
+            { id: 'vrow', gap: vars.spacing.gap as never },
+            h(Col, { id: 'vcol', size: 6, columns: 12, gap: vars.spacing.gap as never }, 'x'),
+          ),
+        ),
+      ),
+    )
+    // TEMP DEBUG
+    const row = container.querySelector<HTMLElement>('#vrow')!
+    const col = container.querySelector<HTMLElement>('#vcol')!
+    const rowCs = getComputedStyle(row)
+    const colCs = getComputedStyle(col)
+    // gap 16 (→ --px-spacing-gap: 1rem = 16px): Row margin = 8px -8px
+    // (calc(var * 0.5) / calc(var * -0.5)), Col margin = 8px (gap-driven),
+    // Col width = calc(50% - var) = rowWidth/2 - 16.
+    expect(rowCs.marginTop).toBe('8px')
+    expect(rowCs.marginLeft).toBe('-8px')
+    expect(colCs.marginLeft).toBe('8px')
+    const rowWidth = row.getBoundingClientRect().width
+    const colWidth = col.getBoundingClientRect().width
+    expect(Math.abs(colWidth - (rowWidth / 2 - 16))).toBeLessThan(1.5)
+    style.remove()
     unmount()
   })
 })

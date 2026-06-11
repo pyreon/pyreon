@@ -12,14 +12,53 @@ const TEXT_DECORATION_VALUES = new Set(['none', 'underline', 'line-through'])
 const BORDER_STYLE_VALUES = new Set(['solid', 'dashed', 'dotted'])
 
 /**
+ * A value resolver — maps a style value to a render-target-evaluable one.
+ * Under the CSS-variables theming mode, `$rocketstyle` values can be
+ * `var(--…)` reference strings PDF/DOCX/email can't evaluate; supply a
+ * resolver (compose `resolveModeVar` from `@pyreon/rocketstyle` with
+ * `resolveCssVarReferences` from `@pyreon/unistyle`) to inline them to raw
+ * values at extraction time. Non-strings / non-var values pass through
+ * unchanged.
+ */
+export type VarResolver = (value: unknown) => unknown
+
+/** Shallow copy with every own STRING value mapped through `resolveVar`. */
+function remapStringValues(
+  source: Record<string, unknown>,
+  resolveVar: VarResolver,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key in source) {
+    const v = source[key]
+    out[key] = typeof v === 'string' ? resolveVar(v) : v
+  }
+  return out
+}
+
+/**
  * Convert a rocketstyle `$rocketstyle` theme object into a `ResolvedStyles`
  * object compatible with `@pyreon/document`.
  *
  * Only extracts properties that `ResolvedStyles` supports — everything else
  * (transitions, cursor, display, etc.) is silently ignored.
+ *
+ * `resolveVar` (optional): when the app runs under `init({ cssVariables: true })`,
+ * `$rocketstyle` values may be `var(--…)` strings; the resolver inlines them
+ * to raw values up front (PDF/DOCX can't evaluate custom properties). Omit it
+ * for the classic path — values are already raw.
  */
-export function resolveStyles(rocketstyle: Record<string, unknown>, rootSize = 16): ResolvedStyles {
+export function resolveStyles(
+  source: Record<string, unknown>,
+  rootSize = 16,
+  resolveVar?: VarResolver,
+): ResolvedStyles {
   const styles: ResolvedStyles = {}
+
+  // Inline any var() references ONCE up front so every downstream read sees a
+  // raw value. Shallow copy — only own string values are remapped.
+  const rocketstyle: Record<string, unknown> = resolveVar
+    ? remapStringValues(source, resolveVar)
+    : source
 
   // Typography
   const fontSize = parseCssDimension(rocketstyle.fontSize as string | number, rootSize)

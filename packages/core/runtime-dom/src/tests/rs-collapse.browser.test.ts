@@ -306,3 +306,59 @@ describe('_rsCollapse (real browser)', () => {
     await flush()
   })
 })
+
+describe('_rsCollapse — single-class fast path (cssVariables mode)', () => {
+  const cleanup: Array<() => void> = []
+  afterEach(() => {
+    for (const u of cleanup.splice(0)) u()
+  })
+
+  function mountInto(node: ReturnType<typeof _rsCollapse>): HTMLElement {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const dispose = mount(() => node as never, root)
+    cleanup.push(() => {
+      dispose()
+      root.remove()
+    })
+    return root
+  }
+
+  it('identical light/dark class skips the mode binding entirely (zero subscription)', async () => {
+    // Under cssVariables the collapse resolver's light/dark renders produce
+    // the SAME class — mode lives in the cascade, not the className. The
+    // fast path must not subscribe to the mode accessor at all.
+    const isDark = signal(false)
+    const root = mountInto(
+      _rsCollapse('<button class="X">Save</button>', 'same-cls', 'same-cls', () => isDark()),
+    )
+    await flush()
+    const btn = query<HTMLButtonElement>(root, 'button')
+    expect(btn.className).toBe('same-cls')
+
+    // ZERO subscribers on the mode signal — the binding was never created.
+    const internals = isDark as unknown as { _d1: unknown; _d: Set<unknown> | null; _s: Set<unknown> | null }
+    expect(internals._d1 ?? null).toBeNull()
+    expect(internals._d?.size ?? 0).toBe(0)
+    expect(internals._s?.size ?? 0).toBe(0)
+
+    // flipping the mode is a no-op for the class (the cascade handles
+    // visuals in var mode) — and crucially throws nothing
+    isDark.set(true)
+    await flush()
+    expect(btn.className).toBe('same-cls')
+  })
+
+  it('distinct classes keep the reactive dual-class binding (control)', async () => {
+    const isDark = signal(false)
+    const root = mountInto(
+      _rsCollapse('<button class="X">Save</button>', 'light-cls', 'dark-cls', () => isDark()),
+    )
+    await flush()
+    const btn = query<HTMLButtonElement>(root, 'button')
+    expect(btn.className).toBe('light-cls')
+    isDark.set(true)
+    await flush()
+    expect(btn.className).toBe('dark-cls')
+  })
+})

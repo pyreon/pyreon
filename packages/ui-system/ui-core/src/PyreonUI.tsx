@@ -1,10 +1,29 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createReactiveContext, nativeCompat, provide, useContext } from '@pyreon/core'
-import { computed, isClient, signal } from '@pyreon/reactivity'
-import { ThemeContext } from '@pyreon/styler'
+import {
+  createContext,
+  createReactiveContext,
+  h,
+  nativeCompat,
+  provide,
+  useContext,
+} from '@pyreon/core'
+import { computed, effect, isClient, signal } from '@pyreon/reactivity'
+import { sheet, ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
-import { enrichTheme } from '@pyreon/unistyle'
+import { enrichTheme, themeToCssVars } from '@pyreon/unistyle'
+import { resolveCssVariables } from './config'
 import { context as coreContext } from './context'
+
+// Structural flag distinguishing the ROOT PyreonUI from a NESTED one (a
+// plain context, not reactive — nesting is fixed at mount). In cssVariables
+// mode the root writes the mode attribute to `document.documentElement`
+// (so it sits at `:root`, where the pre-paint FOUC script also writes and
+// where the var rules cascade from), while nested / `inversed` providers
+// render a `display: contents` wrapper that scopes an override to their
+// subtree. Putting the root on a wrapper instead would let the wrapper —
+// a closer ancestor than `<html>` — defeat a pre-paint script that can
+// only reach `document.documentElement` before the in-body wrapper parses.
+const PyreonUINestedContext = createContext(false)
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -195,10 +214,28 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // followed by every styled descendant rendering with an empty theme.
   // That's what made the user's nested `<PyreonUI inversed>` "look like
   // inversed wasn't working" — the whole subtree was broken.
+  // Resolved once at setup — the cssVariables switch is a boot-time contract
+  // (set via init() before the first render); theme-resolution caches across
+  // the ui-system assume it does not flip mid-session.
+  const cssVars = resolveCssVariables()
+
   const enrichedTheme = computed(() => {
     const t = props.theme
     if (t === undefined || t === null) return parentThemeAccessor()
-    return enrichTheme(t)
+    const enriched = enrichTheme(t)
+    if (!cssVars.enabled) return enriched
+    // CSS-variables mode: every eligible theme leaf becomes a 'var(--px-…)'
+    // string and the :root block is injected ONCE per theme identity
+    // (injectRules is idempotent by key and SSR-aware — on the server the
+    // block lands in the ssrBuffer that getStyleTag()/the stream flush emit).
+    // Downstream consumers (styler templates, rocketstyle callbacks, the
+    // unistyle value pipeline) read the var references verbatim, so a mode
+    // flip never re-resolves any of them.
+    const { vars, css: varsCss } = themeToCssVars(enriched, { prefix: cssVars.prefix })
+    if (varsCss) sheet.injectRules([varsCss], varsCss)
+    // Same tree shape; leaves are var() reference strings — every theme
+    // value position accepts strings, so the widened leaf type is safe.
+    return vars as unknown as ReturnType<typeof enrichTheme>
   })
 
   // Provide to all three context layers:
@@ -210,17 +247,80 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // 2. Core context — provide a reactive getter function.
   //    coreContext is a ReactiveContext, so provide(() => value).
   //    Rocketstyle reads mode/isDark/isLight by calling the getter.
+  //
+  //    LAZY getters (not eager fields) are load-bearing: reading `.theme`
+  //    must NOT transitively subscribe to `modeComputed`. With eager fields
+  //    (`{ theme: enrichedTheme(), mode: modeComputed() }`) the object
+  //    construction reads modeComputed(), so ANY consumer touching `.theme`
+  //    re-runs on every mode flip — even under cssVariables, where component
+  //    resolution is supposed to be mode-free (the flip is an attribute write,
+  //    the cascade does the rest). Getters defer each read: a component that
+  //    reads only `.theme` subscribes only to `enrichedTheme` (stable on flip
+  //    → no re-run); classic-mode resolution that reads `.mode` still
+  //    subscribes to `modeComputed` (re-runs on flip → correct).
   provide(coreContext, () => ({
-    theme: enrichedTheme(),
-    mode: modeComputed(),
-    isDark: modeComputed() === 'dark',
-    isLight: modeComputed() === 'light',
+    get theme() {
+      return enrichedTheme()
+    },
+    get mode() {
+      return modeComputed()
+    },
+    get isDark() {
+      return modeComputed() === 'dark'
+    },
+    get isLight() {
+      return modeComputed() === 'light'
+    },
   }))
 
   // 3. Mode context — getter function for useMode()
   provide(ModeContext, () => modeComputed())
 
-  return props.children ?? null
+  if (!cssVars.enabled) return props.children ?? null
+
+  // Is this the ROOT PyreonUI (no PyreonUI ancestor) or a NESTED one?
+  const isNested = useContext(PyreonUINestedContext)
+  // Descendants are nested under us regardless.
+  provide(PyreonUINestedContext, true)
+
+  if (!isNested) {
+    // ROOT, cssVariables mode: drive the mode attribute on
+    // `document.documentElement` so it lives at `:root` — where the var
+    // rules cascade from AND where a pre-paint FOUC script writes before
+    // first paint. The effect keeps it in sync with reactive mode changes
+    // (toggles, system-pref flips) after hydration; the flip is one
+    // attribute write, zero re-resolution, zero className churn. SSR can't
+    // touch `document` — there, first-paint correctness comes from the
+    // pre-paint script (system/persisted) or an explicit `<html>` stamp;
+    // see `cssVariablesPrePaintScript`. No wrapper at the root: a wrapper
+    // would be a closer ancestor than `<html>` and defeat that script.
+    if (isClient) {
+      // Intentional reactive DOM sync: this MUST re-run whenever modeComputed
+      // changes (toggle / system-pref flip), so onMount (runs once) cannot do
+      // it — same shape as the framework's own renderEffect/_bind DOM writes.
+      // It's a one-line attribute write, not the fetch/timer imperative-work
+      // the rule guards against.
+      // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
+      effect(() => {
+        document.documentElement.setAttribute(cssVars.attribute, modeComputed())
+      })
+    }
+    return props.children ?? null
+  }
+
+  // NESTED / `inversed` cssVariables provider: render a layout-neutral
+  // wrapper carrying the mode attribute. The cascade does the rest —
+  // `[data-theme="dark"]` re-resolves every mode-pair var for THIS subtree
+  // only, so a scoped dark/light section is one attribute write with zero
+  // re-resolution and zero className churn. Server-rendered too.
+  return h(
+    'div',
+    {
+      style: 'display: contents',
+      [cssVars.attribute]: () => modeComputed(),
+    },
+    props.children ?? null,
+  )
 }
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so

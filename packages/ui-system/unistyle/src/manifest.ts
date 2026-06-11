@@ -18,6 +18,7 @@ export default defineManifest({
     'extendCss() — extend a CSS definition with overrides',
     'stripUnit / value / values — unit-utility helpers',
     'themeToCssVars(theme) — autogenerate CSS custom properties from a theme JSON; units baked at emission (px→rem via rootSize)',
+    'resolveCssVarReferences(value, registry) — inline var() references back to raw values for non-CSS consumers (document export, devtools)',
     'Provider / context — React-style provider for the theme (used internally by PyreonUI)',
   ],
   longExample: `import { enrichTheme, makeItResponsive, createMediaQueries, alignContent } from '@pyreon/unistyle'
@@ -217,6 +218,25 @@ themeToCssVars(theme, { units: { mySizes: 'rem' } })`,
         'Assuming a custom top-level key converts to rem — only the conventional length keys convert by default; declare `units: { myScale: "rem" }` for custom scales',
       ],
       seeAlso: ['enrichTheme', 'value'],
+    },
+    {
+      name: 'resolveCssVarReferences',
+      kind: 'function',
+      signature:
+        'resolveCssVarReferences<T>(input: T, registry: ReadonlyMap<string, string>): T',
+      summary:
+        'Resolve `var(--…)` references in a string back to their raw emitted values using a `themeToCssVars` registry — for consumers that cannot evaluate CSS custom properties (document export to PDF/DOCX/email, devtools, non-CSS render targets). Inline fallbacks (`var(--x, 1rem)`) apply when the name is unknown; unresolvable references stay verbatim; non-strings pass through untouched. `calc()` expressions are inlined, NOT evaluated.',
+      example: `import { resolveCssVarReferences, themeToCssVars } from '@pyreon/unistyle'
+
+const { registry } = themeToCssVars(theme)
+resolveCssVarReferences('var(--px-spacing-small)', registry)           // '0.5rem'
+resolveCssVarReferences('calc(var(--px-spacing-small) * 2)', registry) // 'calc(0.5rem * 2)'
+resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'`,
+      mistakes: [
+        'Expecting calc() to be EVALUATED — only the var() references inside are inlined; a non-CSS target needing one number must evaluate the calc itself or avoid calc-composed values',
+        'Passing a registry from a DIFFERENT theme identity — registries are per themeToCssVars(theme) result; mixed registries resolve to wrong values',
+      ],
+      seeAlso: ['themeToCssVars'],
     },
   ],
   gotchas: [

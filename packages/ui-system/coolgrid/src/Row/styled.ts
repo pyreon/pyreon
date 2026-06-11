@@ -2,7 +2,7 @@ import { config } from '@pyreon/ui-core'
 import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
 import { ALIGN_CONTENT_MAP_X, extendCss, makeItResponsive, value } from '@pyreon/unistyle'
 import type { CssOutput, StyledTypes } from '../types'
-import { isNumber } from '../utils'
+import { isCssVarValue, isNumber } from '../utils'
 
 const { styled, css, component } = config
 
@@ -18,6 +18,25 @@ type SpacingStyles = (
 ) => CssOutput
 
 const spacingStyles: SpacingStyles = ({ gap, gutter }, { rootSize }) => {
+  if (isCssVarValue(gap)) {
+    // CSS-variables mode: the gap is a var()/calc() reference — express the
+    // split with native CSS calc() instead of JS arithmetic (which would
+    // produce NaN; pre-fix this path silently SKIPPED all spacing).
+    // NOTE: multiplication, not division — `calc(x / -2)` is invalid CSS
+    // (divisor must be positive in Chromium's parser) and one invalid
+    // component would drop the WHOLE margin shorthand.
+    const spacingX = `calc(${gap} * -0.5)`
+    const spacingY = isCssVarValue(gutter)
+      ? `calc(${gutter} - ${gap} * 0.5)`
+      : isNumber(gutter)
+        ? `calc(${value(gutter, rootSize)} - ${gap} * 0.5)`
+        : `calc(${gap} * 0.5)`
+
+    return css`
+      margin: ${spacingY} ${spacingX};
+    `
+  }
+
   if (!isNumber(gap)) return ''
 
   const g = gap as number
