@@ -1021,6 +1021,13 @@ export interface GenerateRouteModuleOptions {
    * and code splitting provides no benefit at request time.
    */
   staticImports?: boolean
+  /**
+   * Phase 5 — emit `serverLoader: mod.serverLoader` (a real function import
+   * of the `.server.ts` sibling) on records that have one. TRUE for SSR
+   * builds only; client builds get the serializable `hasServerLoader: true`
+   * marker and never import the sibling module.
+   */
+  serverLoaders?: boolean
 }
 
 export function generateRouteModule(
@@ -1070,6 +1077,12 @@ export function generateRouteModuleFromRoutes(
   const imports: string[] = []
   let importCounter = 0
   const useStaticOnly = options?.staticImports ?? false
+  // Phase 5 — server loaders. SSR builds import the `.server.ts` sibling
+  // and put the FUNCTION on the record; client builds emit only the
+  // serializable `hasServerLoader: true` marker, so the sibling module is
+  // structurally unreachable from the client bundle (the exclusion
+  // guarantee is the import graph itself, not a strip transform).
+  const emitServerLoaders = options?.serverLoaders ?? false
 
   // Track whether we need lazy() at all (omitted in static-only mode and
   // when there are no routes that use it).
@@ -1294,6 +1307,15 @@ export function generateRouteModuleFromRoutes(
       props.push(`${indent}  notFoundComponent: ${notFoundName}`)
     }
 
+    // Phase 5 — server loaders (uniform across every emission branch).
+    if (exp.serverLoaderFile) {
+      props.push(`${indent}  hasServerLoader: true`)
+      if (emitServerLoaders) {
+        const sMod = nextModuleImport(exp.serverLoaderFile)
+        props.push(`${indent}  serverLoader: ${sMod}.serverLoader`)
+      }
+    }
+
     return `${indent}{\n${props.join(',\n')}\n${indent}}`
   }
 
@@ -1464,7 +1486,14 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
       const fullPath = join(dir, entry.name)
       if (entry.isDirectory()) {
         await walk(fullPath)
-      } else if (ROUTE_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) {
+      } else if (
+        ROUTE_EXTENSIONS.some((ext) => entry.name.endsWith(ext))
+        // Phase 5 — `.server.{ts,js}` siblings are SERVER-ONLY data modules
+        // (`export async function serverLoader`), never routes. Excluding
+        // them here is what guarantees they can't leak into the client
+        // bundle: the client routes module simply never imports them.
+        && !/\.server\.[jt]s$/.test(entry.name)
+      ) {
         files.push(relative(routesDir, fullPath))
       }
     }
@@ -1501,15 +1530,42 @@ export async function scanRouteFilesWithExports(
   // default exports.
   const files = (await scanRouteFiles(routesDir)).filter((f) => !isApiRoute(f))
   const exportsMap = new Map<string, RouteFileExports>()
+  const { existsSync } = await import('node:fs')
 
   await Promise.all(
     files.map(async (filePath) => {
       try {
         const source = await readFile(join(routesDir, filePath), 'utf-8')
-        exportsMap.set(filePath, detectRouteExports(source))
-      } catch {
-        // File can't be read — generator treats this as no metadata
-        // and emits the optimal lazy() shape.
+        const detected = detectRouteExports(source)
+        // Phase 5 — `.server.ts` sibling = server loader module. Detected
+        // here (the scan already touches the fs) so the generator can emit
+        // the dual shape: `serverLoader: mod.serverLoader` in the SSR
+        // build, `hasServerLoader: true` (a serializable marker) in the
+        // client build. A route may not have BOTH a `loader` export and a
+        // server-loader sibling — one record carries ONE loader value and
+        // silently preferring either would be a trap; fail the build with
+        // the fix spelled out.
+        const sibling = filePath.replace(/\.[jt]sx?$/, '.server.ts')
+        const siblingJs = filePath.replace(/\.[jt]sx?$/, '.server.js')
+        const serverLoaderFile = existsSync(join(routesDir, sibling))
+          ? sibling
+          : existsSync(join(routesDir, siblingJs))
+            ? siblingJs
+            : undefined
+        if (serverLoaderFile && detected.hasLoader) {
+          throw new Error(
+            `[Pyreon] Route "${filePath}" exports a \`loader\` AND has a server-loader sibling ("${serverLoaderFile}"). ` +
+              `A route carries ONE loader value — move the public fetching into the serverLoader (it can do everything a loader can, plus server-only access) and delete the route's \`loader\` export.`,
+          )
+        }
+        exportsMap.set(
+          filePath,
+          serverLoaderFile ? { ...detected, serverLoaderFile } : detected,
+        )
+      } catch (err) {
+        // Distinguish the deliberate both-loaders build error (rethrow —
+        // it names the fix) from unreadable files (treated as no metadata).
+        if (err instanceof Error && err.message.startsWith('[Pyreon]')) throw err
         exportsMap.set(filePath, EMPTY_EXPORTS)
       }
     }),

@@ -273,7 +273,7 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			if (id === VIRTUAL_API_ROUTES_ID) return RESOLVED_VIRTUAL_API_ROUTES_ID;
 		},
 
-		async load(id) {
+		async load(id, loadOptions) {
 			if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
 				try {
 					// Detect each file's optional exports up front so the
@@ -305,6 +305,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 						config.mode === "ssg" && config.ssg?.splitChunks === false;
 					return generateRouteModuleFromRoutes(routes, routesDir, {
 						staticImports: ssgSplitDisabled,
+						// Phase 5 — the SSR module graph gets the real serverLoader
+						// function imports; the client graph gets only the
+						// hasServerLoader marker (the .server.ts sibling is
+						// structurally unreachable from the client bundle).
+						serverLoaders: loadOptions?.ssr === true,
 					});
 				} catch (_err) {
 					return `export const routes = []`;

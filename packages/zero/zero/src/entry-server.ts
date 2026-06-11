@@ -11,6 +11,7 @@ import { createApp } from "./app";
 import { createISRHandler } from "./isr";
 import { collectRouteModes, resolveRenderModeForPath } from "./route-modes";
 import { createServerIslandMiddleware } from "./server-islands-middleware";
+import { createDataEndpointMiddleware } from "./data-endpoint-middleware";
 import { render404Page } from "./not-found";
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 
@@ -191,6 +192,11 @@ export function createServer(options: CreateServerOptions) {
 	// a route file (the registry is empty at boot; the middleware warms it
 	// on first fragment request — see server-islands-middleware.ts).
 	allMiddleware.push(createServerIslandMiddleware(options.routes));
+
+	// Phase 5 — server-loader data endpoint (single-fetch). Mounted
+	// unconditionally (one exact-path check per request when unused) for the
+	// same lazy-registration reason as the fragment endpoint above.
+	allMiddleware.push(createDataEndpointMiddleware(options.routes));
 
 	// PR-S2: Auto-wire server actions when any defineAction() has run.
 	// Sits between API routes and route middleware so action endpoints

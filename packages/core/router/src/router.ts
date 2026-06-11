@@ -494,6 +494,9 @@ export function createRouter<TNames extends string = string>(
 
   // Base path only applies to history mode — hash-based routing already namespaces via #
   const base = mode === 'history' ? normalizeBase(opts.base ?? '') : ''
+  // Phase 5 — server-loader data endpoint (single-fetch). Base-prefixed so
+  // sub-path deploys hit the right origin path.
+  const dataEndpoint = opts.dataEndpoint ?? `${base}/_pyreon/data`
 
   // Pre-built O(1) name → record index. Computed once at startup.
   const nameIndex = buildNameIndex(routes)
@@ -832,8 +835,22 @@ export function createRouter<TNames extends string = string>(
     gen: number,
     ac: AbortController,
   ): Promise<GuardOutcome> {
-    const loadableRecords = to.matched.filter((r) => r.loader)
-    if (loadableRecords.length === 0) return { action: 'continue' }
+    // Phase 5 — server loaders. On the SERVER the function import exists
+    // (`serverLoader` is a fn) and runs like a normal loader. On the
+    // CLIENT only the `hasServerLoader` marker exists — those records'
+    // data comes from the data endpoint in ONE request for the whole
+    // chain (single-fetch). `staleWhileRevalidate` does not apply to
+    // server-loader records (documented).
+    const remote: RouteRecord[] = []
+    const loadableRecords: RouteRecord[] = []
+    for (const r of to.matched) {
+      if (typeof r.serverLoader === 'function') loadableRecords.push(r)
+      else if (r.hasServerLoader) remote.push(r)
+      else if (r.loader) loadableRecords.push(r)
+    }
+    if (loadableRecords.length === 0 && remote.length === 0) {
+      return { action: 'continue' }
+    }
 
     const blocking: RouteRecord[] = []
     const swr: RouteRecord[] = []
@@ -845,12 +862,66 @@ export function createRouter<TNames extends string = string>(
       }
     }
 
+    if (remote.length > 0) {
+      const outcome = await fetchServerLoaderData(remote, to, gen, ac)
+      if (outcome.action !== 'continue') return outcome
+    }
     if (blocking.length > 0) {
       const outcome = await runBlockingLoaders(blocking, to, gen, ac)
       if (outcome.action !== 'continue') return outcome
     }
     if (swr.length > 0) revalidateSwrLoaders(swr, to, ac)
     return { action: 'continue' }
+  }
+
+  /**
+   * Phase 5 — fetch the matched chain's server-loader data in ONE request
+   * (single-fetch semantics). The endpoint runs the chain's serverLoaders
+   * server-side with the real request (cookies flow via same-origin fetch
+   * credentials) and returns `{ data: { [recordPath]: value } }` — or
+   * `{ redirect: { to, status } }` when a server loader threw `redirect()`,
+   * which becomes a client-side navigation here.
+   */
+  async function fetchServerLoaderData(
+    records: RouteRecord[],
+    to: ResolvedRoute,
+    gen: number,
+    ac: AbortController,
+  ): Promise<GuardOutcome> {
+    try {
+      // path + query + hash reassembled — `to.path` is just the pathname.
+      const qs = Object.entries(to.query)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
+      const target = `${to.path}${qs ? `?${qs}` : ''}`
+      const res = await fetch(
+        `${dataEndpoint}?path=${encodeURIComponent(target)}`,
+        { signal: ac.signal, headers: { Accept: 'application/json' } },
+      )
+      if (gen !== _navGen) return { action: 'cancel' }
+      if (!res.ok) {
+        throw new Error(`[Pyreon Router] data endpoint returned HTTP ${res.status}`)
+      }
+      const payload = (await res.json()) as {
+        data?: Record<string, unknown>
+        redirect?: { to: string; status?: number }
+      }
+      if (gen !== _navGen) return { action: 'cancel' }
+      if (payload.redirect) {
+        return { action: 'redirect', target: payload.redirect.to }
+      }
+      const data = payload.data ?? {}
+      for (const r of records) {
+        if (r.path !== undefined && r.path in data) {
+          router._loaderData.set(r, data[r.path])
+        }
+      }
+      return { action: 'continue' }
+    } catch (err) {
+      if (ac.signal.aborted) return { action: 'cancel' }
+      // Surface like a failed loader: the route error boundary path.
+      throw err
+    }
   }
 
   async function commitNavigation(
@@ -1215,7 +1286,10 @@ export function createRouter<TNames extends string = string>(
       const ac = new AbortController()
       await Promise.all(
         resolved.matched
-          .filter((r) => r.loader)
+          // Phase 5 — `serverLoader` runs here exactly like `loader`: this
+          // preload path only executes on the server (SSR handler, SSG
+          // build, the data endpoint), where the function import exists.
+          .filter((r) => r.loader || typeof r.serverLoader === 'function')
           .map(async (r) => {
             // Wrap with `Promise.resolve().then(...)` so a SYNCHRONOUS
             // throw — `redirect('/login')` from a sync loader, `notFound()`,
@@ -1223,8 +1297,9 @@ export function createRouter<TNames extends string = string>(
             // the surrounding Promise.all surfaces. Bare `await r.loader(...)`
             // would let synchronous throws escape past the `await` and
             // surface as an uncaught exception in the Vite dev SSR pipeline.
+            const run = r.serverLoader ?? r.loader
             const data = await Promise.resolve().then(() =>
-              r.loader!({
+              run!({
                 params: resolved.params,
                 query: resolved.query,
                 signal: ac.signal,

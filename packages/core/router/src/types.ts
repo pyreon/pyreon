@@ -256,6 +256,22 @@ export interface RouteRecord<TPath extends string = string> {
    */
   loader?: RouteLoaderFn
   /**
+   * Phase 5 — SERVER loader. Present as a real function ONLY in the
+   * server module graph (zero's fs-router emits the `.server.ts` sibling
+   * import for SSR builds exclusively); the client graph carries just
+   * `hasServerLoader`. On the server it runs exactly like `loader` (full
+   * `LoaderContext`, incl. `request` during SSR). A record must not have
+   * BOTH — zero's scanner fails the build with the fix spelled out.
+   */
+  serverLoader?: RouteLoaderFn
+  /**
+   * Phase 5 — serializable marker that this record has a server loader.
+   * On client-side navigations the router fetches the whole matched
+   * chain's server-loader data in ONE request from the data endpoint
+   * (default `/_pyreon/data`) instead of running anything locally.
+   */
+  hasServerLoader?: boolean
+  /**
    * When true, the router shows cached loader data immediately (stale) and
    * revalidates in the background. The component re-renders once fresh data arrives.
    * Only applies when navigating to a route that already has cached loader data.
@@ -337,6 +353,13 @@ export interface RouterOptions {
   routes: RouteRecord[]
   /** "hash" (default) uses location.hash; "history" uses pushState */
   mode?: 'hash' | 'history'
+  /**
+   * Phase 5 — endpoint the client-side router fetches server-loader data
+   * from on navigations (one request per navigation for the whole matched
+   * chain). Default `"/_pyreon/data"` — zero's `createServer` auto-mounts
+   * it; prefix with your `base` for sub-path deploys.
+   */
+  dataEndpoint?: string
   /**
    * Base path for the application. Used when deploying to a sub-path
    * (e.g. `"/app"` for `https://example.com/app/`).

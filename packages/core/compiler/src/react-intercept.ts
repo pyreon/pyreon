@@ -1118,6 +1118,22 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Phase 5 (server loaders) — useLoaderData() returning undefined for a
+    // route whose data comes from a `.server.ts` serverLoader sibling, on
+    // @pyreon/router versions where the RouterView render gates checked
+    // only `record.loader` before wrapping in LoaderDataProvider.
+    pattern: /useLoaderData\(\).*(undefined|none).*(serverLoader|server loader|\.server\.ts)|serverLoader.*(data|useLoaderData).*(undefined|missing)/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/router` versions before the server-loaders release, BOTH RouterView render-gate branches checked only `record.loader` before wrapping the route in `LoaderDataProvider` — a route whose data comes from a `.server.ts` `serverLoader` sibling rendered WITHOUT the provider, so `useLoaderData()` read the context default (undefined) even though the loader ran and the hydration blob carried the value.',
+      fix: 'Upgrade `@pyreon/router` + `@pyreon/zero` to the server-loaders release (the gates now share one `carriesLoaderData` predicate covering loader / serverLoader / hasServerLoader). No code change needed in your app.',
+      fixCode: `// src/routes/dashboard.server.ts
+export async function serverLoader(ctx) { return db.load(ctx.request) }
+// src/routes/dashboard.tsx — works after the upgrade:
+const data = useLoaderData<Dashboard>()`,
+    }),
+  },
+  {
     // Phase 4 (server islands) surfaced this runtime-dom bug class: data-*/
     // aria-* props on CUSTOM ELEMENTS landed as JS properties, so
     // getAttribute/dataset/CSS attribute selectors silently read null while

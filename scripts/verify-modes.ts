@@ -131,6 +131,19 @@ function assertFileAbsent(path: string): void {
   }
 }
 
+/** Inverse content gate — NO file in `dir` (recursive) may contain `needle`. */
+function assertNoFileInDirContains(dir: string, needle: string): void {
+  if (!existsSync(dir)) return
+  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile()) continue
+    const full = join(entry.parentPath ?? dir, entry.name)
+    const content = readFileSync(full, 'utf-8')
+    if (content.includes(needle)) {
+      throw new Error(`expected NO file under ${dir} to contain "${needle}" — found in ${full}`)
+    }
+  }
+}
+
 function assertFileContains(path: string, needle: string): void {
   assertFileExists(path)
   const content = readFileSync(path, 'utf-8')
@@ -695,6 +708,16 @@ const MATRIX: Cell[] = [
       assertFileContains(join(dist, '_pyreon-ssg-paths.json'), '/hybrid-static')
       assertFileAbsent(join(dist, 'hybrid-spa', 'index.html'))
       assertFileAbsent(join(dist, '404.html'))
+
+      // Phase 5 — server-loader bundle exclusion. The `.server.ts` sibling's
+      // sentinel must be IN the server bundle and in NO client asset — the
+      // exclusion is the import graph itself (the client routes module never
+      // imports the sibling), and this is the artifact-level proof. Bisect:
+      // emit `serverLoader` for the client build too (fs-router
+      // `serverLoaders: true` unconditionally) → the sentinel lands in a
+      // client chunk → this fails.
+      assertFileContains(join(dist, 'server', 'entry-server.js'), 'SERVER_ONLY_SENTINEL_q7x9')
+      assertNoFileInDirContains(join(dist, 'assets'), 'SERVER_ONLY_SENTINEL_q7x9')
     },
   },
   {

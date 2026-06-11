@@ -79,7 +79,7 @@ export { island } from './island'
 
 // Middleware
 export type { Middleware, MiddlewareContext } from './middleware'
-export { useRequestLocals } from './middleware'
+export { provideRequestLocals, useRequestLocals } from './middleware'
 // Shared string-mode page renderer (handler + zero SSG + zero dev SSR)
 export type {
   RenderablePageRouter,
