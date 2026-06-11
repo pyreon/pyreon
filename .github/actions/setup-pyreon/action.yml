@@ -93,6 +93,18 @@ runs:
     # slow-but-green instead of guaranteed-red. PYREON_BOOTSTRAP_SKIP=1
     # matches the Install job's contract (lib/ comes from the bootstrap
     # cache / fallback below, never from postinstall).
+    # The fallback install needs bun's package-tarball cache or it cold-
+    # fetches every package from the registry (~minutes — blew test cells'
+    # 15-min job timeout during the 2026-06-11 outage). This key is
+    # lockfile-hashed, shared cross-run/cross-PR, and OLD entries restore
+    # fine even while the outage eats fresh run-scoped SAVES.
+    - name: Restore bun download cache (fallback prep)
+      if: inputs.restore-node-modules == 'true' && steps.nm-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-install-cache-${{ runner.os }}-
     - name: Fallback bun install (cache miss)
       if: inputs.restore-node-modules == 'true' && steps.nm-cache.outputs.cache-hit != 'true'
       shell: bash
