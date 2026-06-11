@@ -903,6 +903,11 @@ export function createRouter<TNames extends string = string>(
         throw new Error(`[Pyreon Router] data endpoint returned HTTP ${res.status}`)
       }
       const payload = (await res.json()) as {
+        // Phase 5 — data keyed by MATCHED-CHAIN INDEX (not record.path; a
+        // layout + index share a path and path-keying collided — review
+        // finding C). The endpoint resolves the same path -> same chain ->
+        // same indices, so the client maps `data[matchedIndex]` back to its
+        // own matched record at that position.
         data?: Record<string, unknown>
         redirect?: { to: string; status?: number }
       }
@@ -911,9 +916,12 @@ export function createRouter<TNames extends string = string>(
         return { action: 'redirect', target: payload.redirect.to }
       }
       const data = payload.data ?? {}
-      for (const r of records) {
-        if (r.path !== undefined && r.path in data) {
-          router._loaderData.set(r, data[r.path])
+      for (let i = 0; i < to.matched.length; i++) {
+        const r = to.matched[i]
+        // Only the records this navigation flagged as remote (hasServerLoader)
+        // get applied; isomorphic loaders in the chain ran locally.
+        if (r && records.includes(r) && String(i) in data) {
+          router._loaderData.set(r, data[String(i)])
         }
       }
       return { action: 'continue' }
@@ -1309,6 +1317,44 @@ export function createRouter<TNames extends string = string>(
             router._loaderData.set(r, data)
           }),
       )
+    },
+
+    async runServerLoaders(path: string, request?: Request) {
+      // Phase 5 — the single-fetch data endpoint's worker. Runs ONLY the
+      // matched chain's `serverLoader` records (NOT isomorphic `loader`s —
+      // those run client-side, so running them here would DOUBLE-FIRE their
+      // side effects; that was the Phase-5 review finding F). Keys the
+      // result by MATCHED-CHAIN INDEX, not `record.path`: a layout and its
+      // index page share a path, and path-keying silently overwrote the
+      // page's server-loader data with the layout's (review finding C,
+      // reproduced). Index is unique per chain position; the client resolves
+      // the same path -> same chain -> same indices, so it maps back exactly.
+      const resolved = resolveRoute(path, routes)
+      const ac = new AbortController()
+      const loaderCtx = {
+        params: resolved.params,
+        query: resolved.query,
+        signal: ac.signal,
+        ...(request ? { request } : {}),
+      }
+      const data: Record<number, unknown> = {}
+      try {
+        await Promise.all(
+          resolved.matched.map(async (r, i) => {
+            if (typeof r.serverLoader !== 'function') return
+            // Same sync-throw-to-rejection wrap as preload so a synchronous
+            // `redirect()` / `notFound()` is caught, not leaked.
+            data[i] = await Promise.resolve().then(() => r.serverLoader!(loaderCtx))
+          }),
+        )
+      } catch (err) {
+        const info = getRedirectInfo(err)
+        if (info) {
+          return { kind: 'redirect' as const, to: info.url, status: info.status }
+        }
+        throw err
+      }
+      return { kind: 'data' as const, data }
     },
 
     invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)) {

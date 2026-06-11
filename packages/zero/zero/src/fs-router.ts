@@ -1492,7 +1492,12 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
         // (`export async function serverLoader`), never routes. Excluding
         // them here is what guarantees they can't leak into the client
         // bundle: the client routes module simply never imports them.
-        && !/\.server\.[jt]s$/.test(entry.name)
+        // Phase 5 — exclude `.server.{ts,js,tsx,jsx}` siblings (server-loader
+        // data modules) from route scanning. Pre-fix this matched only
+        // `.server.[jt]s$`, so a `.server.tsx`/`.jsx` sibling SHIPPED AS A
+        // CLIENT ROUTE — silently violating the "never reaches the client
+        // bundle" guarantee. All four extensions are now excluded.
+        && !/\.server\.[jt]sx?$/.test(entry.name)
       ) {
         files.push(relative(routesDir, fullPath))
       }
@@ -1545,13 +1550,16 @@ export async function scanRouteFilesWithExports(
         // server-loader sibling — one record carries ONE loader value and
         // silently preferring either would be a trap; fail the build with
         // the fix spelled out.
-        const sibling = filePath.replace(/\.[jt]sx?$/, '.server.ts')
-        const siblingJs = filePath.replace(/\.[jt]sx?$/, '.server.js')
-        const serverLoaderFile = existsSync(join(routesDir, sibling))
-          ? sibling
-          : existsSync(join(routesDir, siblingJs))
-            ? siblingJs
-            : undefined
+        // Probe every server-module extension so a `.server.tsx`/`.jsx`
+        // sibling is picked up too (it's also excluded from routes above).
+        // NOTE: this runs for PAGE routes only — `_layout.server.ts`
+        // siblings are NOT picked up (layouts can't carry server loaders;
+        // put per-request layout data in a page serverLoader or middleware
+        // locals). Documented limitation, not an oversight.
+        const base = filePath.replace(/\.[jt]sx?$/, '')
+        const serverLoaderFile = ['.server.ts', '.server.tsx', '.server.js', '.server.jsx']
+          .map((ext) => `${base}${ext}`)
+          .find((candidate) => existsSync(join(routesDir, candidate)))
         if (serverLoaderFile && detected.hasLoader) {
           throw new Error(
             `[Pyreon] Route "${filePath}" exports a \`loader\` AND has a server-loader sibling ("${serverLoaderFile}"). ` +

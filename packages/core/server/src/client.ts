@@ -693,15 +693,17 @@ import { activateServerIslandElement } from './server-island'
  * HTML into the marker. The page around the markers stays fully
  * CDN/ISR/prerender-cacheable — personalization arrives per request here.
  *
- * Zero's `startClient` calls this automatically after mount; custom apps
- * call it once post-hydration. Idempotent per marker (`data-pyreon-si`
- * stamped on activation). Fetch failures leave the fallback content in
- * place and flag the marker (`data-island-error="fragment-failed"`) — a
- * personalized hole degrading to its structural fallback is the designed
- * failure mode, never a broken page.
- *
- * Returns a cleanup that aborts in-flight fragment fetches (route
- * teardown in SPA navigations).
+ * This is the MANUAL document-scan path for static / no-full-hydrate hosts.
+ * In a zero app you do NOT need it — each marker self-activates via its own
+ * `ref` on mount (see `serverIsland`), which is robust across lazy-route /
+ * SPA-navigation timing that a one-shot scan can't win. Idempotent per
+ * marker (`data-pyreon-si` stamped on activation, by both paths). Fetch
+ * failures leave the fallback content in place and flag the marker
+ * (`data-island-error="fragment-failed"`) — a personalized hole degrading
+ * to its structural fallback is the designed failure mode, never a broken
+ * page. In-flight fetches are not aborted on teardown — a swap to a
+ * detached node is skipped via the `el.isConnected` guard in
+ * `activateServerIslandElement`.
  */
 export function activateServerIslands(base = ''): () => void {
   if (typeof document === 'undefined') return () => {}
@@ -709,6 +711,8 @@ export function activateServerIslands(base = ''): () => void {
     'pyreon-server-island[data-name]:not([data-pyreon-si])',
   )
   for (const el of markers) activateServerIslandElement(el, base)
+  // No teardown needed — activation is one-shot per marker; in-flight
+  // fetches are dropped via the `isConnected` guard, not aborted.
   return () => {}
 }
 
