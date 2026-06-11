@@ -235,6 +235,18 @@ class TasksAppInstrumentedTest {
                 .isNotEmpty()
         }
 
+        // Dismiss the Dialog (it's modal — leaving it open blocks every
+        // tap behind it, incl. the logout below) and return to tasks.
+        composeRule
+            .onNodeWithTag("vocab-close-modal")
+            .performClick()
+        composeRule
+            .onNodeWithTag("vocab-back")
+            .performClick()
+        composeRule
+            .onNodeWithTag("tasks-page")
+            .assertIsDisplayed()
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         composeRule
             .onNodeWithTag("tasks-logout")

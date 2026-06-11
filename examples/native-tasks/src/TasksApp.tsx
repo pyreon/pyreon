@@ -286,7 +286,12 @@ function VocabScreen() {
         onClose={() => showModal.set(false)}
         data-testid="vocab-modal"
       >
-        <Text data-testid="vocab-modal-text">Hello from a Dialog</Text>
+        <Stack gap={2}>
+          <Text data-testid="vocab-modal-text">Hello from a Dialog</Text>
+          <Button onPress={() => showModal.set(false)} data-testid="vocab-close-modal">
+            Close
+          </Button>
+        </Stack>
       </Modal>
     </Stack>
   )
