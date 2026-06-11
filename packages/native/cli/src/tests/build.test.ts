@@ -240,4 +240,29 @@ describe('@pyreon/native-cli build', () => {
       expect(output.code).not.toContain('import kotlinx.serialization.json.Json')
     }
   })
+
+  it('Kotlin conditional imports: Color() / RoundedCornerShape() pull their graphics imports', () => {
+    // Device-found (icon arc): `color=` props emit `Color(0xFF…)` and
+    // `radius` props emit `RoundedCornerShape(…)`, but neither is in a
+    // star-imported package. The kotlinc validate stubs provide both,
+    // so only a REAL Android build surfaced the unresolved reference
+    // (the icons header's color="primary" was the first real-build
+    // Color() in any example). Bisect site: the Color/RoundedCornerShape
+    // branches in conditionalKotlinImports.
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'kotlin',
+      kotlinPackage: 'com.pyreon.generated',
+    })
+    const colorOutputs = result.outputs.filter((o) => o.code.includes('Color('))
+    expect(colorOutputs.length).toBeGreaterThan(0)
+    for (const output of colorOutputs) {
+      expect(output.code).toContain('import androidx.compose.ui.graphics.Color')
+    }
+    // Outputs with no Color() don't carry the import.
+    for (const output of result.outputs.filter((o) => !o.code.includes('Color('))) {
+      expect(output.code).not.toContain('import androidx.compose.ui.graphics.Color')
+    }
+  })
 })

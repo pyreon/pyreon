@@ -120,6 +120,20 @@ function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('ContentScale.')) {
     imports.push('import androidx.compose.ui.layout.ContentScale')
   }
+  // Color / RoundedCornerShape (PR-1.3 device-found): the emit produces
+  // `Color(0xFF…)` (any `color=` prop, e.g. an Icon tint) and
+  // `RoundedCornerShape(…)` (a `radius` prop), but neither lives in a
+  // star-imported package. The kotlinc validate loop MASKED this — its
+  // stubs provide both — so only a REAL Android build surfaced the
+  // unresolved reference (same stub-masked class as the fetch imports +
+  // the phantom pyreonIcon). The icons showcase's `color="primary"`
+  // header was the first real-build Color() in any example.
+  if (emitted.includes('Color(')) {
+    imports.push('import androidx.compose.ui.graphics.Color')
+  }
+  if (emitted.includes('RoundedCornerShape(')) {
+    imports.push('import androidx.compose.foundation.shape.RoundedCornerShape')
+  }
   // Icon emit (PR-1.3): compile-time Icons.Filled references need the
   // Icons object + one import per used glyph (Kotlin star imports are
   // single-package; the filled glyphs each live as a top-level val).
