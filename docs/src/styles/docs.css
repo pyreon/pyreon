@@ -2122,8 +2122,19 @@ html { scroll-behavior: smooth; }
 .docs-shell {
   display: grid;
   grid-template-rows: 56px 1fr;
-  grid-template-columns: 280px minmax(0, 1fr);
+  /* Single column by DEFAULT — the 280px sidebar column exists only when
+     the page actually renders an aside (`:has(.docs-aside)` below, the
+     same discriminator the header rules use). Pre-fix the column was
+     unconditional, so sidebar-less pages (the landing page) had their
+     content pushed 280px right by an EMPTY first column while the
+     full-width header centered its inner container at the viewport —
+     header and hero visibly misaligned. Measured: `.px-landing` left=280
+     vs header-inner left=100 at 1440w; post-fix both at 100. */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
+}
+.docs-shell:has(.docs-aside) {
+  grid-template-columns: 280px minmax(0, 1fr);
 }
 
 /* ── (C) Header (top chrome) — replaces .docs-logo / .docs-nav block ── */
@@ -2361,7 +2372,9 @@ html { scroll-behavior: smooth; }
 }
 .docs-main {
   grid-row: 2;
-  grid-column: 2;
+  /* Last column either way: column 2 next to an aside, column 1 (the only
+     column) on sidebar-less pages — `-1` tracks the shell's column count. */
+  grid-column: -2 / -1;
   min-width: 0;
 }
 .docs-drawer-backdrop { display: none; }
@@ -2580,7 +2593,11 @@ html { scroll-behavior: smooth; }
 
 /* ── (F) Mobile drawer (768px and below) ───────────────────────── */
 @media (max-width: 768px) {
-  .docs-shell {
+  /* `:has(.docs-aside)` variant included so this 1-column collapse
+     OUTRANKS the desktop `.docs-shell:has(.docs-aside)` 2-column rule
+     (specificity 0,2,0) — the sidebar is an off-canvas drawer here. */
+  .docs-shell,
+  .docs-shell:has(.docs-aside) {
     grid-template-columns: minmax(0, 1fr);
   }
   .docs-header__nav { display: none; }
