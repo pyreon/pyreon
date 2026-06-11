@@ -232,10 +232,14 @@ jobs:
       # `&` + disown keeps it alive across steps within this job.
       - name: Start quotes fixture server (port 8787)
         run: |
-          python3 -m http.server 8787 --directory examples/native-tasks/fixtures &
+          # -u + file-redirect: python block-buffers a non-tty pipe
+          # (zero observability) and an orphan holding the step's pipe
+          # can keep the job alive after the work ends — the exact hang
+          # the Android script hit in round 3.
+          python3 -u -m http.server 8787 --directory "$GITHUB_WORKSPACE/examples/native-tasks/fixtures" > /tmp/fixture-server.log 2>&1 &
           disown
           sleep 1
-          curl -fsS http://127.0.0.1:8787/quotes.json > /dev/null
+          curl -fsS http://127.0.0.1:8787/quotes.json > /dev/null && echo "fixture server OK"
 
       - name: Emit + xcodegen + UITest — native-tasks-ios
         working-directory: examples/native-tasks-ios
@@ -480,12 +484,25 @@ jobs:
           # HOST, then `adb reverse` forwards the EMULATOR's
           # 127.0.0.1:8787 to the host server — the same loopback URL
           # the iOS Simulator (and web dev) reads works unchanged
-          # inside the emulator. Each script LINE runs from
-          # working-directory; the server line backgrounds with `&`.
-          # The cleartext exception for loopback lives in the app's
-          # network_security_config.xml.
+          # inside the emulator. The cleartext exception for loopback
+          # lives in the app's network_security_config.xml.
+          #
+          # Round-3 hardening (all three bit at once):
+          #   - ABSOLUTE fixture path: relative paths are ambiguous
+          #     under the action's per-line execution model (the same
+          #     trap class as the working-directory note above).
+          #   - stdout/stderr to a FILE, not the step pipe: python
+          #     block-buffers a non-tty pipe (no banner, no GET lines —
+          #     zero observability) AND the orphan holding the pipe
+          #     kept the step alive 44 minutes after gradle exited
+          #     (the 'timeout inside the last step' was really a hang).
+          #   - curl health-check BEFORE gradle (the iOS job had one;
+          #     this script didn't) — a dead server fails in 1s with a
+          #     named cause instead of a 20s ComposeTimeoutException
+          #     deep inside the Espresso run.
           script: |
-            python3 -m http.server 8787 --directory ../native-tasks/fixtures &
+            python3 -u -m http.server 8787 --directory "$GITHUB_WORKSPACE/examples/native-tasks/fixtures" > /tmp/fixture-server.log 2>&1 &
+            sleep 1 && curl -fsS http://127.0.0.1:8787/quotes.json > /dev/null && echo "fixture server OK"
             adb reverse tcp:8787 tcp:8787
             gradle connectedCheck --no-daemon --stacktrace
 
@@ -501,7 +518,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-connected-reports
-          path: examples/native-*-android/app/build/reports/androidTests/
+          path: |
+            examples/native-*-android/app/build/reports/androidTests/
+            /tmp/fixture-server.log
           retention-days: 14
           if-no-files-found: ignore
 
