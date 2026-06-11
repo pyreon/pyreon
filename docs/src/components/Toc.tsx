@@ -43,26 +43,46 @@ export function Toc(props: TocProps) {
     let cleanupFn: (() => void) | null = null
 
     const setupScrollSpy = (elements: HTMLElement[]) => {
+      // CACHED-TOPS scroll-spy. The naive version read
+      // `getBoundingClientRect()` for EVERY heading on every trigger —
+      // and the triggers storm (IntersectionObserver fires per heading
+      // crossing during initial layout; scroll fires per tick), so page
+      // load paid ~N×N forced-layout reads (measured ~10ms/load on
+      // /docs/reactivity — the single biggest JS item in the CPU
+      // profile, ahead of the framework's whole mount path). Instead:
+      // cache each heading's DOCUMENT-relative top (one batched read
+      // pass), recompute ONLY on real layout changes (ResizeObserver on
+      // the body — Suspense chunks resolving, images loading), and make
+      // pickActive pure arithmetic over the cache + window.scrollY:
+      // ZERO layout reads on scroll / observer triggers.
+      let tops: { id: string; top: number }[] = []
+      const recomputeTops = () => {
+        const scrollY = window.scrollY
+        tops = elements.map((el) => ({
+          id: el.id,
+          top: el.getBoundingClientRect().top + scrollY,
+        }))
+      }
+
       // Find the heading whose top is closest to the active line —
       // anywhere from -∞ up to the line counts as "passed". The one
       // with the LARGEST top (closest to but not past the line) wins.
       // If no heading has scrolled past yet (top of page), fall back
       // to the first heading.
       const pickActive = () => {
-        const activeLine = 80 // header-height offset
+        const activeLine = window.scrollY + 80 // header-height offset
         let best: { id: string; top: number } | null = null
-        for (const el of elements) {
-          const top = el.getBoundingClientRect().top
-          if (top - activeLine < 1) {
-            if (best === null || top > best.top) {
-              best = { id: el.id, top }
+        for (const t of tops) {
+          if (t.top - activeLine < 1) {
+            if (best === null || t.top > best.top) {
+              best = t
             }
           }
         }
         if (best !== null) {
           activeSlug.set(best.id)
-        } else if (elements.length > 0) {
-          activeSlug.set(elements[0]!.id)
+        } else if (tops.length > 0) {
+          activeSlug.set(tops[0]!.id)
         }
       }
 
@@ -73,14 +93,53 @@ export function Toc(props: TocProps) {
       // band AND drives the active pick from each heading's current
       // bbox rather than the intersection list — IntersectionObserver
       // only fires on band crossings, not continuously while scrolling.
-      const observer = new IntersectionObserver(pickActive, {
+      //
+      // rAF-COALESCED: pickActive reads getBoundingClientRect for EVERY
+      // heading, and its raw triggers storm — the observer fires once per
+      // heading crossing during initial layout (~N fires on a long page)
+      // and the scroll listener fires per scroll tick. Uncoalesced that
+      // was N×N forced-layout reads at hydration (measured ~10ms/load on
+      // /docs/reactivity — the single biggest JS item in the page-load
+      // CPU profile, bigger than the framework's whole mount path) plus
+      // per-scroll-event jank. Coalescing to one pickActive per animation
+      // frame keeps ONE batched read pass regardless of trigger volume.
+      let rafId = 0
+      const schedulePick = () => {
+        if (rafId !== 0) return
+        rafId = requestAnimationFrame(() => {
+          rafId = 0
+          pickActive()
+        })
+      }
+      const observer = new IntersectionObserver(schedulePick, {
         rootMargin: '-64px 0px -80% 0px',
         threshold: [0, 1],
       })
       for (const el of elements) observer.observe(el)
-      const onScroll = () => pickActive()
+      const onScroll = () => schedulePick()
       window.addEventListener('scroll', onScroll, { passive: true })
-      // Initial pick — fires the effect below with the right slug.
+      // Content above a heading changing height (Suspense resolve, image
+      // decode, code-block hydration) moves the cached tops. The body
+      // RESIZES REPEATEDLY while a page hydrates (each resolving chunk),
+      // so recompute is SETTLE-DEBOUNCED: one batched read pass ~150ms
+      // after the layout goes quiet, instead of one per resize frame
+      // (which re-created the load-time cost the cache exists to kill —
+      // measured 1729 vs 47 profile samples, recompute-storm vs pick).
+      // Trade-off: the active link can lag a mid-settle layout shift by
+      // ≤150ms — invisible next to the shift itself.
+      let settleTimer: ReturnType<typeof setTimeout> | null = null
+      const resizeObserver = new ResizeObserver(() => {
+        if (settleTimer !== null) clearTimeout(settleTimer)
+        settleTimer = setTimeout(() => {
+          settleTimer = null
+          recomputeTops()
+          schedulePick()
+        }, 150)
+      })
+      resizeObserver.observe(document.body)
+      // Initial pass — synchronous so the first paint carries the right
+      // active link (no one-frame flash of no-highlight).
+      recomputeTops()
       pickActive()
 
       // Direct DOM patch instead of relying on `class={() => ...}` on
@@ -105,7 +164,10 @@ export function Toc(props: TocProps) {
       })
 
       cleanupFn = () => {
+        if (rafId !== 0) cancelAnimationFrame(rafId)
+        if (settleTimer !== null) clearTimeout(settleTimer)
         observer.disconnect()
+        resizeObserver.disconnect()
         window.removeEventListener('scroll', onScroll)
         eff.dispose()
       }
