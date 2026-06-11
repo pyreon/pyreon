@@ -66,11 +66,17 @@ Both require dual-backend work (JS `jsx.ts` + Rust `native/src/lib.rs` byte-iden
 output + native-equivalence specs), which is why they're follow-ups, but both are
 QUANTIFIED on the real bench:
 
-1. **Baked text-node placeholder (~0.3ms create-1k gap, ~0.3–0.5ms @10k).** Current
-   emit for a dynamic text child: `<td></td>` template + per-row
-   `document.createTextNode("") + appendChild`. Emit `<td> </td>` (single-space text
-   node survives innerHTML parsing) + `__e.firstChild` instead — `_bindText` writes the
-   initial value synchronously, so the space never renders. Saves 2 DOM calls/row.
+1. **Baked text-node placeholder — SHIPPED (compiler PR, both backends).** Emit
+   `<td> </td>` + `__e.firstChild` instead of per-row
+   `document.createTextNode("") + appendChild`. The within-tree paired bench
+   (same tree, ONLY the emit flipped, 60 pooled samples/op, bundle shapes verified
+   in the artifact) measured BETTER than the hand-emulated estimate: the
+   **create-1k gap closes to ZERO** (Pyreon 9.30ms [9.20–9.40] = Vanilla 9.30ms;
+   OFF-state Pyreon [9.80–10.20] — CI-clean), **replace-all gap to zero**
+   (−500µs), append −1.2ms; create-10k inconclusive under thermal noise,
+   trending positive. Lesson recorded: cross-WORKTREE pairing was contaminated
+   (trees differed by merged refactors) — within-tree emit-flip is the honest
+   protocol for compiler changes.
 2. **Hoisted bind function (~3.5ms @10k — the BIG one).** Current emit allocates a
    fresh `bind` closure per row (captures `row`) + a cleanup closure. Hoist the bind
    body to a module-scope function taking `(root, row)` and have the For-row protocol
