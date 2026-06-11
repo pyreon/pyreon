@@ -1,0 +1,29 @@
+# Scheduled publish-state verification — companion to the post-publish step
+# in release.yml. Catches the silent-dead-release class even when the
+# release workflow itself crashed before its own verify step (the v0.31.0
+# incident shape: Version PR merged, publish job OOM'd, nothing alerted).
+# Advisory by nature (sentinel npm lookups), but a red run here is a
+# released-but-unpublished state that needs immediate action.
+name: Published State
+
+on:
+  schedule:
+    # Daily at 05:23 UTC — offset from perf.yml (03:17) + leak-sweep (04:11).
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify npm matches released version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: latest
+      - name: Check published state
+        run: bun scripts/check-published-state.ts

@@ -226,6 +226,20 @@ jobs:
             --verify-tag \
             || echo "::warning::Release for ${TAG} already exists — skipping creation."
 
+      # Publish-state verification — the structural fix for the silent-dead-
+      # release class (v0.31.0: the Version PR merged, the publish step died
+      # on a GHA OOM, and npm `latest` silently stayed at 0.30.0 with no
+      # alarm — users missing HIGH-severity fixes for a week). Runs on the
+      # PUBLISH path regardless of step outcomes (`always()` + published
+      # check happens inside via registry comparison): compares sentinel
+      # packages' repo version vs npm dist-tags.latest and FAILS the
+      # workflow loudly if a versioned release never reached npm. The
+      # scheduled companion (`published-state.yml`) catches the class where
+      # this whole workflow crashed before reaching this step.
+      - name: Verify npm received the release
+        if: always() && steps.changesets.outcome == 'success'
+        run: bun scripts/check-published-state.ts
+
   # ── Prerelease snapshot (release/** branches) ────────────────────
   # Pushes to `release/**` branches publish a `next` npm tag — useful for
   # canary testing big changes before they land on main. Each push to the

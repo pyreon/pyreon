@@ -1813,6 +1813,10 @@ Per-platform binary stubs (`@pyreon/compiler-{darwin,linux,win32}-*`) are exempt
 
 **Why it exists:** PR #1153's release cascade made the abstract risk concrete. 3 new packages (`@pyreon/validate`, `@pyreon/primitives`, `@pyreon/create-multiplatform`) needed first-publish bootstrap; the main release workflow couldn't auto-bootstrap them through OIDC (trusted-publisher chicken-and-egg constraint requires a classic-token first publish). The pre-fix `scripts/publish.ts` then exited 1 on the first 404 → blocked the umbrella `v<version>` tag-push step → blocked `release-native.yml` → 7 native compiler binaries stuck on npm at 0.24.2 while source was at 0.26.x. **This gate catches the underlying configuration drift at PR time, before any release attempt.** Closes the bug class that produced the cascade.
 
+## Published-State Verification — silent-dead-release gate
+
+`scripts/check-published-state.ts` compares sentinel packages' repo version (`@pyreon/reactivity` / `core` / `zero`) against npm `dist-tags.latest` and exits 1 when a versioned release never reached npm. Exists because of the v0.31.0 incident: the Version PR merged, the publish job died (GHA OOM, later fixed by #1384's batched build), and npm `latest` silently stayed at 0.30.0 — users missing HIGH-severity fixes with no alarm anywhere. Two wire-ups: the post-publish verify step in `release.yml` (catches in-run failures) and the daily `published-state.yml` schedule (catches the class where the whole workflow crashed before its own verify step). Repo==npm is healthy; pending changesets don't move package.json until versioning, so between-releases states stay green. `scripts/publish.ts` is idempotent (skips already-published versions), so the remediation for a red run is simply re-running the release workflow.
+
 ## First-publish OIDC trusted-publisher procedure
 
 For ANY new publishable `@pyreon/*` package, the very first publish to npm CANNOT go through the workflow's OIDC trusted publishing — the trusted-publisher rule lives on the npm-side package metadata, which doesn't exist until the first publish. One-time manual bootstrap procedure:
