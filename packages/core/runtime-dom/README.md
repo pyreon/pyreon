@@ -104,7 +104,7 @@ These symbols are emitted by `@pyreon/compiler`. Not for hand-written user code,
 |---|---|
 | `_tpl(html)` | Parse + clone an HTML template once per literal |
 | `_bindText(source, textNode)` | Reactive text — reads `source._v` directly on the fast path |
-| `_bindDirect(source, el, key)` | Reactive attribute — fast path for primitive props |
+| `_bindDirect(source, updater, caller?)` | Generic direct-subscribe updater — e.g. `_bindDirect(count, (v) => { t.data = v.toFixed(2) })`; the emitted updater closure does the DOM write |
 | `_mountSlot(...)` | Mount a reactive child slot under a template anchor |
 | `_applyProps(...)` | Spread props on a template element |
 | `_rsCollapse(...)` / `_rsCollapseH(...)` | Rocketstyle compile-time-collapse mount paths |

@@ -125,16 +125,16 @@ export default defineConfig({
 | ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
 | `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode                                        |
 | `vite`       | `Record<string, unknown>`                                                     | `{}`    | Vite config overrides                                        |
-| `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode                                           |
-| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
-| `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey? }`)                         | —       | Runtime ISR config (only used when `mode: "isr"`)            |
+| `ssr.mode`   | `"stream" \| "string"`                                                        | `"stream"` when `mode: "ssr"`, `"string"` otherwise | SSR output mode                |
+| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, modulePreload? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
+| `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey?, store?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
 | `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | `"node"` | Deployment adapter (name or constructed instance)        |
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
 | `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)** |
 | `middleware` | `Middleware[]`                                                                | `[]`    | Global server middleware                                     |
 | `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                      |
 
-`resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`, `ssr.mode: 'string'`).
+`resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). When no `ssr.mode` is set, the server picks the effective default at runtime: `'stream'` for `mode: 'ssr'`, `'string'` for every other mode — pass `ssr: { mode: 'string' }` to opt an SSR app back into buffered rendering.
 
 ## File-System Routing
 
@@ -265,7 +265,7 @@ The default mode. Pages are rendered on the server for every request and hydrate
 ```ts
 defineConfig({
   mode: 'ssr',
-  ssr: { mode: 'stream' }, // "stream" for chunked transfer, "string" for buffered (default)
+  ssr: { mode: 'string' }, // streaming is the default for mode: 'ssr'; 'string' opts back to buffered
 })
 ```
 
@@ -461,8 +461,10 @@ How it works:
 
 - **SSR / SSG / fragments**: the serverLoader runs in-process, exactly like a `loader` (full `LoaderContext`, including `request`).
 - **Client navigations**: the router fetches `GET /_pyreon/data?path=<to>` — ONE request for the whole matched chain (single-fetch), auto-mounted by `createServer`. Cookies flow (same-origin). A `redirect()` thrown in a serverLoader comes back as a JSON envelope and becomes a client-side navigation.
-- **Bundle exclusion is structural**: the client routes module never imports `.server.ts` files — the server code can't leak into the client bundle by construction (gated in CI by an artifact-level sentinel scan).
+- **Every server-module extension is recognized**: `.server.ts`, `.server.tsx`, `.server.js`, and `.server.jsx` siblings are all picked up as server-loader modules AND all excluded from the client bundle.
+- **Bundle exclusion is structural**: the client routes module never imports `.server.*` files — the server code can't leak into the client bundle by construction (gated in CI by an artifact-level sentinel scan).
 - A route may have `loader` OR a `.server.ts` sibling, **not both** — the build fails with the fix spelled out (move the public fetching into the serverLoader).
+- **Layouts can't have server loaders** — `_layout.server.ts` siblings are deliberately not picked up. Put per-request layout data in a page's serverLoader or in middleware locals (`useRequestLocals()`).
 - `staleWhileRevalidate` does not apply to server-loader records.
 
 Isomorphic `loader` stays the right tool for public-API fetching that benefits from running client-side.
@@ -1068,12 +1070,12 @@ function LocaleSwitcher() {
 Bridge middleware locals into the component tree:
 
 ```tsx
-import { useRequestLocals } from '@pyreon/zero/server'
+import { useRequestLocals } from '@pyreon/server'
 
 // middleware: ctx.locals.user = authenticatedUser
 function Dashboard() {
-  const locals = useRequestLocals<{ user: User }>()
-  return <h1>Welcome, {locals.user.name}</h1>
+  const user = useRequestLocals().user as User
+  return <h1>Welcome, {user.name}</h1>
 }
 ```
 
@@ -1094,8 +1096,8 @@ const res = await server.request('/api/posts')
 
 | Import Path                | Exports                                                                              |
 | -------------------------- | ------------------------------------------------------------------------------------ |
-| `@pyreon/zero`             | Client-safe: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme, i18n hooks, types     |
-| `@pyreon/zero/server`      | `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `ogImagePlugin`, `iconsPlugin`, `i18nRouting`, `vercelRevalidateHandler`, fs-router helpers, `createISRHandler`, `validateEnv`, `useNonce`, `useRequestLocals`, default = `zeroPlugin` |
+| `@pyreon/zero`             | Client-safe: `Image`, `Link`, `Script`, `Icon`, `Meta`, `island`, `serverIsland`, `activateServerIslands`, theme, i18n hooks, types |
+| `@pyreon/zero/server`      | `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `ogImagePlugin`, `iconsPlugin`, `i18nRouting`, `vercelRevalidateHandler`, fs-router helpers, `createISRHandler`, `createFsStore`, `createMemoryStore`, default = `zeroPlugin` |
 | `@pyreon/zero/client`      | `startClient`                                                                        |
 | `@pyreon/zero/config`      | `defineConfig`, `resolveConfig`                                                       |
 | `@pyreon/zero/image`       | `Image`, `useImage`, `createImage`                                                   |

@@ -3,7 +3,7 @@ title: Server-Side Rendering & ISR
 description: The complete @pyreon/zero SSR / ISR reference — auto-build pipeline, loaders, streaming, runtime caching, adapter dispatch, and deployment.
 ---
 
-This is the dedicated reference for `@pyreon/zero`'s server-side rendering. For the general Zero overview (routing, components, middleware, theme), see **[Zero](/docs/zero)**. For pre-rendering pages at build time, see **[SSG](/docs/ssg)**.
+This is the dedicated reference for `@pyreon/zero`'s server-side rendering. For the general Zero overview (routing, components, middleware, theme), see **[Zero](/docs/zero)**. For pre-rendering pages at build time, see **[SSG](/docs/ssg)**. Two adjacent server-rendering features are documented on the Zero page: **[Server Islands](/docs/zero#server-islands)** (cacheable pages with per-request server-rendered holes) and **[Server Loaders](/docs/zero#server-loaders)** (`.server.ts` data loaders that never ship to the client).
 
 When `mode: "ssr"` or `mode: "isr"` is set, `vite build` runs the normal client build, then `ssrPlugin`'s `closeBundle` hook spins up a programmatic Vite SSR sub-build of either your `src/entry-server.ts` (if it exists) or a synthetic entry, and writes `dist/server/entry-server.js`. The configured adapter's `build({ kind: 'ssr', … })` is invoked so platform adapters (vercel / cloudflare / netlify) can wrap the bundle into a deployable serverless function.
 
@@ -211,6 +211,25 @@ defineConfig({ mode: 'isr', isr: { revalidate: 60, store } })
 
 The handler `await`s every store call — the in-memory default stays cheap (no Promise allocation per request), while a Redis store hits real network promises naturally. When `store` is set, `maxEntries` is ignored (custom store owns its eviction policy).
 
+### Tag-based invalidation + filesystem store
+
+`isr.tagsForRequest(req) => string[]` records tags on each cache entry at **cache-set** time; `isrHandler.revalidateTag(tag)` then drops every entry carrying the tag — the webhook-ergonomic unit ("a post changed → drop every page that rendered posts") without enumerating concrete paths:
+
+```ts
+defineConfig({
+  mode: 'isr',
+  isr: {
+    revalidate: 60,
+    tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/blog') ? ['posts'] : []),
+  },
+})
+
+// webhook handler:
+await isrHandler.revalidateTag('posts') // → { dropped: n }
+```
+
+`createFsStore(dir)` (from `@pyreon/zero/server`) persists entries AND the tag index to disk, surviving restarts — the right default for single-box node/bun deploys. Multi-instance deploys still want a shared Redis/KV store; custom stores must implement `setTags`/`keysByTag` for `revalidateTag` to work (both shipped stores — `createMemoryStore`, `createFsStore` — do). See [Zero → ISR tag-based invalidation](/docs/zero#isr-tag-based-invalidation-filesystem-store) for the fuller configuration surface.
+
 ### Build-time ISR
 
 Build-time ISR (per-route `export const revalidate = 60` + platform-driven rebuild-on-stale) is a **separate** mechanism documented in [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate). The two can coexist: a `mode: 'isr'` app with per-route `revalidate` exports gets BOTH runtime caching AND deploy-time ISR config.
@@ -253,18 +272,22 @@ export default function BlogIndex() { ... }
 Available values: `'ssr' | 'isr' | 'ssg' | 'spa'`. Common patterns:
 
 - `mode: 'ssr'` globally, `renderMode: 'ssg'` on marketing pages → fast static landing pages
-- `mode: 'ssg'` globally, `renderMode: 'ssr'` on `/dashboard` → mostly-static site with one personalized page
+- `mode: 'ssr'` globally, `renderMode: 'spa'` on a client-heavy editor route → ship the shell, render client-side
+
+The direction matters: a server-mode app (`mode: 'ssr'` / `'isr'`) can opt routes DOWN to `'ssg'`/`'spa'`, but a static app cannot opt routes UP — under `mode: 'ssg'` or `'spa'` a route declaring `renderMode: 'ssr'` or `'isr'` is a hard **build error** (`assertModesSupported` throws: a static deploy has no server to render it). Only `'spa'` (resp. mode-compatible) overrides are valid there. Fix: set the global mode to `'ssr'`/`'isr'` so a server bundle is emitted — per-route `'ssg'`/`'spa'` declarations keep those routes static.
 
 ## Streaming
 
-Set `ssr.mode: 'stream'` to use chunked transfer encoding. The framework sends the HTML shell + `<head>` immediately, then streams Suspense boundaries as their data resolves:
+Streaming is the **default** for `mode: 'ssr'` — chunked transfer encoding sends the HTML shell + `<head>` immediately, then streams Suspense boundaries as their data resolves. Pass `ssr: { mode: 'string' }` to opt back into buffered rendering:
 
 ```ts
 defineConfig({
-  mode: 'ssr',
-  ssr: { mode: 'stream' }, // default is 'string' (buffered)
+  mode: 'ssr', // streams by default
+  ssr: { mode: 'string' }, // opt back into buffered rendering
 })
 ```
+
+ISR stays buffered regardless — the SWR cache stores complete response bodies, so caching a stream would either drain it (defeating streaming) or store nothing (defeating caching). This includes per-route `renderMode: 'isr'` routes inside an otherwise-streaming app.
 
 ```tsx
 import { Suspense } from '@pyreon/core'

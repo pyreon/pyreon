@@ -4,6 +4,15 @@ Zero-config full-stack meta-framework — file-system routing, SSR/SSG/ISR/SPA, 
 
 `@pyreon/zero` wraps `@pyreon/server` + `@pyreon/router` + `@pyreon/head` + `@pyreon/vite-plugin` into a single Vite plugin and a conventions-based project layout: `src/routes/` is the route tree (`[param]`, `[...catchAll]`, `_layout`, `_404`, `_loading`, `_error`, `(groups)`), per-file `export const { loader, meta, middleware, getStaticPaths, revalidate, renderMode }` opts into capabilities, and `mode: 'ssr' | 'ssg' | 'isr' | 'spa'` picks the rendering strategy. Production builds run through one of six deploy adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). The main entry is **client-safe**; server-only APIs live at `@pyreon/zero/server`.
 
+Highlights:
+
+- **Streaming by default** — `mode: 'ssr'` apps stream the shell + Suspense boundaries out of the box; `ssr: { mode: 'string' }` opts back to buffered.
+- **Server islands** — `serverIsland()` puts per-request server-rendered holes inside a cacheable page (fragment endpoint + no-JS fallback + opt-in fragment caching).
+- **Server loaders** — a `.server.{ts,tsx,js,jsx}` sibling next to a route file is a server-only data loader (never ships to the client; single-fetch on client navigations). Layouts can't have them — put per-request layout data in a page serverLoader or middleware locals.
+- **Per-route `renderMode`** — any route opts out of the global mode (`export const renderMode = 'ssg'`).
+- **SSG delivery polish** — `ssg: { speculationRules, viewTransitions, cssMode: 'asset', earlyHints }` tune how prerendered pages ship.
+- **Runtime ISR with tags + persistence** — `isr.tagsForRequest` + `isrHandler.revalidateTag(tag)` for group invalidation; `createFsStore(dir)` persists the cache across restarts.
+
 ## Install
 
 ```bash
@@ -25,7 +34,7 @@ export default defineConfig({
     pyreon({ islands: true }),
     zero({
       mode: 'ssr',             // 'ssr' | 'ssg' | 'isr' | 'spa'
-      ssr: { mode: 'stream' }, // 'string' | 'stream'
+      ssr: { mode: 'stream' }, // 'stream' is the default for mode: 'ssr' (since the server-islands release); 'string' opts back to buffered
       adapter: 'node',         // 'vercel' | 'cloudflare' | 'netlify' | 'node' | 'bun' | 'static'
     }),
   ],
@@ -119,7 +128,9 @@ SSG features (all on by default; opt out via `ssg: { ... }`):
 zero({ mode: 'isr', isr: { revalidate: 60, maxEntries: 1000 } })
 ```
 
-In-memory LRU SSR cache with TTL revalidation. **Default keys cache by `url.pathname` only** — for auth-gated pages, supply `cacheKey: (req) => …` that varies on session cookie / user-id header to avoid serving one user's HTML to another.
+In-memory LRU SSR cache with TTL revalidation. **Default keys cache by `url.pathname + url.search`** — cookies / auth headers are still excluded, so for auth-gated pages supply `cacheKey: (req) => …` that varies on session cookie / user-id header to avoid serving one user's HTML to another.
+
+Tag-based invalidation + persistence: `isr.tagsForRequest(req) => string[]` records tags at cache-set time and `isrHandler.revalidateTag(tag)` drops every entry carrying the tag; `createFsStore(dir)` (from `@pyreon/zero/server`) persists entries + the tag index across restarts on single-box node/bun deploys (multi-instance still wants a Redis/KV `store`).
 
 ## Built-in components
 
@@ -220,7 +231,7 @@ The main entry (`@pyreon/zero`) re-exports browser-safe pieces only — componen
 ## Gotchas
 
 - `@pyreon/zero` ≠ `@pyreon/zero/server` — the main entry is client-safe. Server plugins (`faviconPlugin`, `seoPlugin`, `createServer`) MUST be imported from `/server`. Importing them from the main entry throws at module-load with a pointer to the right path.
-- ISR with auth-gated pages needs `cacheKey: (req) => …` that varies on session — the default keys by `url.pathname` only and will serve one user's HTML to another.
+- ISR with auth-gated pages needs `cacheKey: (req) => …` that varies on session — the default keys by `url.pathname + url.search` (cookies/auth excluded) and will serve one user's HTML to another.
 - `_404.tsx` rendered HTML is emitted by SSG, but **static hosts must be configured to serve it** for unmatched URLs (most managed hosts do this by convention; bare S3 / nginx / Caddy need explicit per-locale `try_files` / `[[redirects]]`).
 - `getStaticPaths` / `revalidate` literal-extraction skips re-exports + non-literal expressions. Inline the value (`export const revalidate = 60`), don't reference a const.
 - `sharp` is optional. Without it, `imagePlugin` falls back to a soft warning in dev and a HARD `vite build` error in prod (never silently ships an image-broken site).

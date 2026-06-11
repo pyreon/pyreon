@@ -9,6 +9,8 @@ Pyreon's island architecture is **partial hydration** — only the components yo
 
 This page covers the full surface: when to reach for islands, the six hydration strategies and how to choose between them, the prefetch hint, the auto-registry that eliminates registry-drift bugs, and the static + runtime gates that catch the foot-guns at build time.
 
+**Client islands vs server islands.** `island()` — this page — defers CLIENT hydration of interactive components inside a server-rendered page. `serverIsland()` (from `@pyreon/zero` or `@pyreon/server`) is the INVERSE: a cacheable page with per-request SERVER-rendered holes. Each hole is fetched from a fragment endpoint (`GET /_pyreon/fragment/<name>`, name-allowlisted against the registered islands), the marker self-activates on the client, fallback content renders for no-JS visitors, and an opt-in `cache` option controls fragment caching. See [Zero → Server Islands](/docs/zero#server-islands).
+
 ## When to use islands (and when not to)
 
 Islands earn their keep on **content-heavy pages with isolated interactive components** — blogs, marketing pages, documentation sites, news. Most of the page is static; a few zones are interactive (a counter, a search bar, a comment thread, a video player).

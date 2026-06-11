@@ -4,6 +4,11 @@ SSR handler + SSG prerenderer + island architecture for Pyreon.
 
 `createHandler({ App, routes, … })` produces a Web-standard `(req: Request) => Promise<Response>` for SSR — the HTML template is precompiled ONCE at handler creation (not per request), and a middleware chain short-circuits on the first returned `Response`. `prerender({ handler, paths, outDir, onPage? })` turns the same handler into a static-site generator. `island(loader, { name, hydrate, prefetch? })` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `media(...)` / `interaction(...)` / `never`) and an optional prefetch hint. Client hydration helpers (`startClient`, `hydrateIslands`, `hydrateIslandsAuto`) live at the tree-shakeable `/client` subpath.
 
+Also exported from this package:
+
+- **`renderPage(App, router, path, options?)`** — the ONE string-mode render pipeline shared by `createHandler`, SSG prerendering, and zero's dev SSR: preload (lazy components + loaders), render, head collection, optional `collectStyles`, loader-data serialization — all inside `runWithRequestContext`. Returns composable parts (`{ kind: 'html', appHtml, head, loaderScript, status }`) or a `{ kind: 'redirect' }` descriptor.
+- **`serverIsland(loader, { name, fallback?, cache? })`** — the inverse of a client island: a cacheable page with per-request SERVER-rendered holes, fetched from the name-allowlisted fragment endpoint (`GET /_pyreon/fragment/<name>`) with no-JS fallback content and opt-in fragment caching. See [Zero → Server Islands](https://docs.pyreon.dev/docs/zero#server-islands).
+
 For most apps, the higher-level `@pyreon/zero` meta-framework wraps this package and adds routing conventions / SSG roadmap / adapters. Reach for `@pyreon/server` directly when you want the building blocks without the meta-framework opinions.
 
 ## Install
@@ -24,8 +29,9 @@ const handler = createHandler({
   App,
   routes,
   clientEntry: '/src/entry-client.ts',
-  mode: 'stream',                   // 'string' (renderToString) or 'stream' (renderToStream, default)
-  collectStyles: true,              // inline @pyreon/styler CSS into <head>
+  mode: 'stream',                   // 'string' (renderToString, default) or 'stream' (renderToStream)
+                                    // — zero defaults its mode:'ssr' apps to 'stream' one layer up
+  collectStyles: () => sheet.getStyleTag(), // inline @pyreon/styler CSS into <head>
   middleware: [
     async (ctx) => { ctx.locals.user = await getUser(ctx.headers.get('cookie')) },
     async (ctx) => {
@@ -43,8 +49,8 @@ Bun.serve({ fetch: handler, port: 3000 })
 // In a component, read middleware-supplied locals:
 import { useRequestLocals } from '@pyreon/server'
 function Layout() {
-  const locals = useRequestLocals<{ user: User }>()
-  return <span>Hi {locals.user.name}</span>
+  const user = useRequestLocals().user as User
+  return <span>Hi {user.name}</span>
 }
 ```
 

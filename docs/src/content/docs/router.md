@@ -89,6 +89,7 @@ interface RouterOptions {
   routes: RouteRecord[]
   mode?: 'hash' | 'history'
   base?: string
+  dataEndpoint?: string
   scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
   trailingSlash?: 'strip' | 'add' | 'ignore'
   url?: string
@@ -102,6 +103,7 @@ interface RouterOptions {
 | `routes`         | `RouteRecord[]`                                    | required  | Route definitions                                                                                                                                  |
 | `mode`           | `"hash" \| "history"`                              | `"hash"`  | URL mode                                                                                                                                           |
 | `base`           | `string`                                           | `""`      | Base path for sub-path deployments (e.g. `"/app"`). Must start with `/`. Only applies in history mode.                                             |
+| `dataEndpoint`   | `string`                                           | `` `${base}/_pyreon/data` `` | URL the client router fetches server-loader data from (one single-fetch request per navigation). Zero's `createServer` auto-mounts it.  |
 | `scrollBehavior` | `ScrollBehaviorFn \| "top" \| "restore" \| "none"` | `"top"`   | Scroll behavior on navigation                                                                                                                      |
 | `trailingSlash`  | `"strip" \| "add" \| "ignore"`                     | `"strip"` | Trailing slash handling: `"strip"` removes trailing slashes before matching, `"add"` ensures paths end with `/`, `"ignore"` does no normalization. |
 | `url`            | `string`                                           | -         | Initial URL for SSR (when `window.location` is unavailable)                                                                                        |
@@ -176,6 +178,8 @@ interface RouteRecord<TPath extends string = string> {
   alias?: string | string[]
   children?: RouteRecord[]
   loader?: RouteLoaderFn
+  serverLoader?: RouteLoaderFn
+  hasServerLoader?: boolean
   staleWhileRevalidate?: boolean
   loaderKey?: (ctx: Pick<LoaderContext, 'params' | 'query'>) => string
   gcTime?: number
@@ -201,6 +205,8 @@ interface RouteRecord<TPath extends string = string> {
 | `alias` | `string \| string[]` | Alternative path(s) that render the same component and share guards, loaders, and metadata |
 | `children` | `RouteRecord[]` | Nested child routes |
 | `loader` | `RouteLoaderFn` | Data loader function |
+| `serverLoader` | `RouteLoaderFn` | Server-only data loader — present as a real function ONLY in the SSR module graph (zero's `.server.ts` sibling convention); never ships to the client. A record must not have both `loader` and `serverLoader` |
+| `hasServerLoader` | `boolean` | Serializable marker on client builds that this record has a server loader — triggers the single-fetch to the data endpoint on client navigations |
 | `staleWhileRevalidate` | `boolean` | When true, show cached loader data immediately and revalidate in the background |
 | `loaderKey` | `(ctx) => string` | Cache-identity function for loader data. Default: `path + JSON.stringify(params)` |
 | `gcTime` | `number` | Time in ms to keep cached loader data before GC. Default `300000` (5 min); `0` disables caching |
@@ -1285,13 +1291,13 @@ interface LoaderContext {
   params: Record<string, string> // Route params
   query: Record<string, string> // Query string params
   signal: AbortSignal // Aborted when a newer navigation starts
-  request?: Request // The incoming HTTP Request — SSR only, undefined on CSR
+  request?: Request // The incoming HTTP Request — server-side runs only, undefined for CSR loaders
 }
 ```
 
 The `signal` is crucial for cancellation: if the user navigates away before the loader finishes, the signal is aborted. Always pass it to `fetch()` and other async operations.
 
-`request` is populated **only when the loader runs during SSR** (via `prefetchLoaderData(router, path, request)`) — it is `undefined` on every client-side navigation. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
+`request` is populated when the loader runs **during SSR** (via `prefetchLoaderData(router, path, request)`) AND for **serverLoaders run by the data endpoint** on client-side navigations — it is `undefined` for an isomorphic `loader` running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
 
 ```ts
 loader: ({ request }) => {
@@ -1445,6 +1451,10 @@ mount(<App />, document.getElementById('app')!)
 
 `serializeLoaderData` uses route path patterns as keys (stable across server and client). `hydrateLoaderData` populates the router's internal `_loaderData` map so the initial render uses server-fetched data without re-running loaders.
 
+### Server loaders + single-fetch
+
+A record can carry a `serverLoader` instead of a `loader` — a data loader that exists as a real function ONLY in the SSR module graph (zero emits it from the `.server.ts` sibling convention; client builds carry just the serializable `hasServerLoader` marker). On a client-side navigation to a chain with `hasServerLoader` records, the router makes **ONE** fetch to the data endpoint (`dataEndpoint`, default `` `${base}/_pyreon/data` ``) for the whole matched chain — single-fetch, no per-record waterfall. The endpoint's worker calls `router.runServerLoaders(path, request)` server-side. A `redirect()` thrown from a server loader comes back as a JSON envelope at HTTP 200, which the client router turns into a navigation. See [Zero → Server Loaders](/docs/zero#server-loaders) for the file convention.
+
 ### redirect() — control-flow from inside a loader
 
 Throw `redirect(url, status?)` inside a route loader to redirect the navigation **before** the layout renders. This is the canonical pattern for SSR-side auth gates and replaces the fragile `onMount + router.push('/login')` workaround under nested-layout dev SSR + hydration (which would briefly render the auth-gated layout before redirecting, leaking authenticated UI structure to anonymous users).
@@ -1484,7 +1494,7 @@ import { isRedirectError, getRedirectInfo } from '@pyreon/router'
 
 `getRedirectInfo(err)` returns `{ url, status }` for further inspection. Most apps don't need to touch these — the framework handles redirects transparently — but they're available for advanced control flow.
 
-**`LoaderContext.request`** is populated only when a loader runs during SSR (via `prefetchLoaderData(router, path, request)`); `undefined` on every CSR navigation. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
+**`LoaderContext.request`** is populated when a loader runs during SSR (via `prefetchLoaderData(router, path, request)`) AND for serverLoaders run by the data endpoint on client navigations; `undefined` for isomorphic loaders running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
 
 ### notFound() — trigger a 404 boundary
 
@@ -1739,6 +1749,21 @@ interface Router {
     request?: Request,
     options?: { skipLoaders?: boolean },
   ): Promise<void>
+
+  /**
+   * Run ONLY the matched chain's serverLoaders for `path`, keyed by
+   * matched-chain index. Returns the index-keyed data, or a redirect
+   * descriptor when a server loader threw redirect(). Server-only —
+   * the `serverLoader` fn exists only in the SSR module graph. This is
+   * what the single-fetch data endpoint's worker calls.
+   */
+  runServerLoaders(
+    path: string,
+    request?: Request,
+  ): Promise<
+    | { kind: 'data'; data: Record<number, unknown> }
+    | { kind: 'redirect'; to: string; status: number }
+  >
 
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next nav.
@@ -2413,7 +2438,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="stringifyQuery" type="function" signature={"stringifyQuery(params: Record<string, string>): string"} description="Convert a query object to a query string with a leading '?'. Returns empty string if the object is empty." />
 
-<APICard name="prefetchLoaderData" type="function" signature={"prefetchLoaderData(router: Router, url: string): Promise<void>"} description="SSR: prefetch all loader data for the matched route at the given URL." />
+<APICard name="prefetchLoaderData" type="function" signature={"prefetchLoaderData(router: Router, url: string, request?: Request): Promise<void>"} description="SSR: prefetch all loader data for the matched route at the given URL. The optional request is forwarded to loaders as LoaderContext.request." />
 
 <APICard name="serializeLoaderData" type="function" signature={"serializeLoaderData(router: Router): Record<string, unknown>"} description="SSR: serialize the router's loader data for embedding in HTML." />
 
@@ -2473,7 +2498,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="Router" type="type" signature="interface Router" description="The router instance interface with push, replace, back, guards, and signals." />
 
-<APICard name="RouterOptions" type="type" signature="interface RouterOptions" description="Options for createRouter: routes, mode, scrollBehavior, and url (SSR)." />
+<APICard name="RouterOptions" type="type" signature="interface RouterOptions" description="Options for createRouter: routes, mode, base, dataEndpoint (single-fetch data endpoint URL, default `${base}/_pyreon/data`), scrollBehavior, and url (SSR)." />
 
 <APICard name="RouteRecord" type="type" signature="interface RouteRecord" description="Route record with path, component, name, meta, guards, loader, children, and redirect." />
 
@@ -2491,7 +2516,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="AfterEachHook" type="type" signature={"type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void"} description="Hook function called after navigation commits. Cannot affect navigation." />
 
-<APICard name="LoaderContext" type="type" signature={"interface LoaderContext { params: Record<string, string>; query: Record<string, string>; signal: AbortSignal; request?: Request }"} description="Context passed to route loader functions. request is populated only during SSR." />
+<APICard name="LoaderContext" type="type" signature={"interface LoaderContext { params: Record<string, string>; query: Record<string, string>; signal: AbortSignal; request?: Request }"} description="Context passed to route loader functions. request is populated during SSR AND for serverLoaders run by the data endpoint on client navigations." />
 
 <APICard name="RouteLoaderFn" type="type" signature={"type RouteLoaderFn = (ctx: LoaderContext) => Promise<unknown>"} description="Async loader function for fetching route data before navigation commits." />
 

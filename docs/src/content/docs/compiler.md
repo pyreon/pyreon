@@ -265,23 +265,19 @@ Hoisting eliminates per-render VNode allocations for static subtrees. In a compo
 
 ### How It Works
 
-JSX element trees with two or more DOM elements (no components, no spread attributes) are compiled to `_tpl()` calls instead of nested `h()` calls. The HTML string is parsed once via `<template>.innerHTML`, then `cloneNode(true)` for each instance:
+JSX element trees made of DOM elements (no components, no spread attributes) — including a single element like `<div>{x()}</div>` — are compiled to `_tpl()` calls instead of nested `h()` calls. The HTML string is parsed once via `<template>.innerHTML`, then `cloneNode(true)` for each instance. For sole-dynamic-text children the template bakes a single space (`<span> </span>`) so the text node already exists in the clone — the bind function grabs it via `firstChild` and subscribes with `_bindText`:
 
 ```tsx
 // Input
-;<span>{text()}</span>
+;<div class="box"><span>{text()}</span></div>
 
 // Output
-import { _tpl } from '@pyreon/runtime-dom'
-import { _bind } from '@pyreon/reactivity'
+import { _tpl, _bindText } from '@pyreon/runtime-dom'
 
-_tpl('<div class="box"><span></span></div>', (__root) => {
-  const __e0 = __root.children[0]
-  const __t1 = document.createTextNode('')
-  __e0.appendChild(__t1)
-  const __d0 = _bind(() => {
-    __t1.data = text()
-  })
+_tpl('<div class="box"><span> </span></div>', (__root) => {
+  const __e0 = __root.firstElementChild
+  const __t1 = __e0.firstChild
+  const __d0 = _bindText(text, __t1)
   return () => {
     __d0()
   }
@@ -294,15 +290,14 @@ A JSX tree is eligible for template emission when:
 
 | Condition                                      | Eligible? | Reason                                         |
 | ---------------------------------------------- | --------- | ---------------------------------------------- |
-| 2+ DOM elements, all lowercase tags            | Yes       | Pure DOM tree                                  |
-| Single element (`<div>text</div>`)             | No        | Not enough elements to benefit                 |
+| 1+ DOM elements, all lowercase tags            | Yes       | Pure DOM tree — single elements (`<div>{x()}</div>`) emit `_tpl()` too |
 | Contains component (`<MyComp />`)              | No        | Components need runtime instantiation          |
-| Has spread attributes (`&#123;...props&#125;`) | No        | Spread requires dynamic prop application       |
+| Has spread attributes (`&#123;...props&#125;`) | No        | Spread requires dynamic prop application — handled by `_tpl()` + `_applyProps()` on root elements, `h()` otherwise |
 | Has `key` prop                                 | No        | Keyed elements need reconciliation metadata    |
 | Contains fragment child (`<>...</>`)           | No        | Fragment breaks DOM structure assumptions      |
-| Mixed element + expression children            | No        | `childNodes` indexing becomes unreliable       |
-| Multiple expression children in same parent    | No        | Only single `textContent` per parent supported |
-| Expression child containing nested JSX         | No        | Too complex for template codegen               |
+| Mixed element + expression children            | Yes       | `<!>` comment placeholder + `replaceChild` keeps positions exact |
+| Multiple expression children in same parent    | Yes       | One `<!>` placeholder + text node per expression |
+| Expression child containing nested JSX         | No        | Too complex for template codegen — falls back to `h()` |
 
 ### What Gets Baked Into HTML
 
@@ -337,7 +332,7 @@ The compiler handles JSX-to-HTML attribute mapping automatically:
 
 Dynamic attributes and text content are handled by the bind function:
 
-**Reactive attributes** use `_bind()` to create a render effect:
+**Reactive attributes** subscribe directly via `_bindDirect()`:
 
 ```tsx
 // Input
@@ -347,15 +342,12 @@ Dynamic attributes and text content are handled by the bind function:
 
 // Output bind function:
 ;(__root) => {
-  const __e0 = __root.children[0]
-  const __d0 = _bind(() => {
-    __root.className = cls()
+  const __d0 = _bindDirect(cls, (v) => {
+    __root.className = v == null ? '' : String(v)
   })
-  const __t1 = document.createTextNode('')
-  __e0.appendChild(__t1)
-  const __d1 = _bind(() => {
-    __t1.data = name()
-  })
+  const __e0 = __root.firstElementChild
+  const __t1 = __e0.firstChild
+  const __d1 = _bindText(name, __t1)
   return () => {
     __d0()
     __d1()
@@ -373,13 +365,13 @@ Dynamic attributes and text content are handled by the bind function:
 
 // Output bind function:
 ;(__root) => {
-  const __e0 = __root.children[0]
+  const __e0 = __root.firstElementChild
   __e0.textContent = label
   return null
 }
 ```
 
-**Event handlers** are converted to `addEventListener` calls:
+**Event handlers** use the runtime's delegation slots for delegated events (click, input, etc.), `addEventListener` otherwise:
 
 ```tsx
 // Input
@@ -389,15 +381,15 @@ Dynamic attributes and text content are handled by the bind function:
 
 // Output bind function:
 ;(__root) => {
-  const __e0 = __root.children[0]
-  __e0.addEventListener('click', handler)
+  const __e0 = __root.firstElementChild
+  __e0.__ev_click = handler
   return null
 }
 ```
 
-The event name is derived by lowering the third character: `onClick` becomes `"click"`, `onMouseEnter` becomes `"mouseEnter"`.
+The event name is the full-lowercased prop name (`onMouseEnter` → `"mouseenter"`), with `onDoubleClick` remapped to `"dblclick"` via `REACT_EVENT_REMAP`.
 
-**Ref props** are converted to direct `.current` assignments:
+**Ref props** support both object refs (`.current` assignment) and callback refs:
 
 ```tsx
 // Input
@@ -407,22 +399,31 @@ The event name is derived by lowering the third character: `onClick` becomes `"c
 
 // Output bind function:
 ;(__root) => {
-  const __e0 = __root.children[0]
-  myRef.current = __e0
+  const __e0 = __root.firstElementChild
+  { const __r = myRef; if (typeof __r === 'function') __r(__e0); else if (__r) __r.current = __e0 }
   return null
 }
 ```
 
 ### Reactive Text Nodes
 
-For dynamic text content, the compiler creates a persistent `TextNode` and updates its `.data` property rather than setting `.textContent` on the parent. This avoids destroying and recreating the text node on every reactive update:
+For dynamic text content, the compiler binds a persistent `TextNode` and updates its `.data` property rather than setting `.textContent` on the parent. This avoids destroying and recreating the text node on every reactive update. Two shapes:
+
+**Sole dynamic text** (`<span>{name()}</span>`) — the template bakes a single space so the text node already exists in the clone; the bind function grabs it via `firstChild`:
 
 ```tsx
+// template HTML: "<span> </span>"
+const __t0 = __e0.firstChild
+const __d0 = _bindText(name, __t0)
+```
+
+**Mixed content** (`<span>Count: {count()}</span>`) — the template bakes a `<!>` comment placeholder at the expression's position; the bind function creates the text node and `replaceChild`s it over the placeholder (never `appendChild` — positions stay exact):
+
+```tsx
+// template HTML: "<span>Count: <!></span>"
 const __t0 = document.createTextNode('')
-__e0.appendChild(__t0)
-const __d0 = _bind(() => {
-  __t0.data = name()
-})
+__e0.replaceChild(__t0, __e0.firstChild.nextSibling)
+const __d0 = _bindText(count, __t0)
 ```
 
 ### Cleanup / Disposal
@@ -450,7 +451,7 @@ _tpl('...', (__root) => {
 
 ### Element Access Paths
 
-The bind function accesses child elements using `children[]` indexing from the root:
+The bind function accesses child elements using `firstElementChild` / `nextElementSibling` chains from the root:
 
 ```tsx
 // Input
@@ -460,9 +461,9 @@ The bind function accesses child elements using `children[]` indexing from the r
 </div>
 
 // Paths:
-// __root              → <div>
-// __root.children[0]  → <span>
-// __root.children[1]  → <em>
+// __root                                        → <div>
+// __root.firstElementChild                      → <span>
+// __root.firstElementChild.nextElementSibling   → <em>
 ```
 
 For deeply nested structures, paths chain through each level:
@@ -477,7 +478,7 @@ For deeply nested structures, paths chain through each level:
   </tbody>
 </table>
 
-// Paths chain: __root.children[0].children[0].children[0] → <td>
+// Paths chain: __root.firstElementChild.firstElementChild.firstElementChild → <td>
 ```
 
 ### Void Elements
@@ -502,11 +503,10 @@ The full list of recognized void elements: `area`, `base`, `br`, `col`, `embed`,
 When template emission is used, the compiler automatically prepends import statements:
 
 ```ts
-import { _tpl } from '@pyreon/runtime-dom'
-import { _bind } from '@pyreon/reactivity'
+import { _tpl, _bindText, _bindDirect } from '@pyreon/runtime-dom'
 ```
 
-These imports are only added when at least one `_tpl()` call is emitted. The `usesTemplates` flag on the transform result indicates whether this happened.
+These imports are only added when at least one `_tpl()` call is emitted (each helper only when used). The `usesTemplates` flag on the transform result indicates whether this happened.
 
 ### Performance Benefits
 
@@ -515,7 +515,7 @@ Template emission provides significant performance improvements:
 - **`cloneNode(true)` is 5-10x faster** than sequential `createElement` + `setAttribute` calls
 - **Zero VNode, props-object, or children-array allocations** per instance
 - **Static attributes are baked into the HTML string** -- no runtime prop application needed
-- **Dynamic attributes and text use `_bind()`** for efficient reactive updates with automatic cleanup
+- **Dynamic text uses `_bindText()` and dynamic attributes `_bindDirect()`** -- direct subscriptions for efficient reactive updates with automatic cleanup
 - **Persistent `TextNode` reuse** avoids destroy/recreate overhead on text updates
 
 ### Real-World Template: Benchmark Row
@@ -530,26 +530,18 @@ Here is a realistic benchmark-style table row showing all template features work
 </tr>
 
 // Output
-_tpl('<tr><td class="id"></td><td></td></tr>', (__root) => {
-  const __e0 = __root.children[0]
-  const __e1 = __root.children[1]
-  const __d0 = _bind(() => {
-    __root.className = cls()
+_tpl('<tr><td class="id"></td><td> </td></tr>', (__root) => {
+  const __d0 = _bindDirect(cls, (v) => {
+    __root.className = v == null ? '' : String(v)
   })
-  const __t2 = document.createTextNode('')
-  __e0.appendChild(__t2)
-  const __d1 = _bind(() => {
-    __t2.data = String(row.id)
-  })
-  const __t3 = document.createTextNode('')
-  __e1.appendChild(__t3)
-  const __d2 = _bind(() => {
-    __t3.data = row.label()
-  })
+  const __e0 = __root.firstElementChild
+  __e0.textContent = String(row.id) // pure call, no signal read — set once
+  const __e1 = __root.firstElementChild.nextElementSibling
+  const __t2 = __e1.firstChild
+  const __d1 = _bindText(row.label, __t2, () => row.label())
   return () => {
     __d0()
     __d1()
-    __d2()
   }
 })
 ```
@@ -764,9 +756,8 @@ function Greeting(props) {
 }
 
 // Compiler output (template mode):
-_tpl('<div></div>', (__root) => {
-  const __t0 = document.createTextNode('')
-  __root.appendChild(__t0)
+_tpl('<div> </div>', (__root) => {
+  const __t0 = __root.firstChild
   const __d0 = _bind(() => { __t0.data = (props.name ?? 'World') })
   return () => { __d0() }
 })
@@ -818,7 +809,7 @@ function MyComponent(props) {
 
 ## Per-Text-Node Independent Bindings
 
-Each reactive text node in a template now gets its own independent `_bind()` call. Previously, multiple text bindings could share a single `_bind()`, meaning a change in one signal would re-evaluate all bindings in the group. Now each text node tracks only its own dependencies:
+Each reactive text node in a template gets its own independent binding. Previously, multiple text bindings could share a single `_bind()`, meaning a change in one signal would re-evaluate all bindings in the group. Now each text node tracks only its own dependencies:
 
 ```tsx
 // Input
@@ -827,16 +818,14 @@ Each reactive text node in a template now gets its own independent `_bind()` cal
   <span>{lastName()}</span>
 </div>
 
-// Output — each text node has its own _bind():
-_tpl('<div><span></span><span></span></div>', (__root) => {
-  const __e0 = __root.children[0]
-  const __e1 = __root.children[1]
-  const __t0 = document.createTextNode('')
-  __e0.appendChild(__t0)
-  const __d0 = _bind(() => { __t0.data = firstName() })
-  const __t1 = document.createTextNode('')
-  __e1.appendChild(__t1)
-  const __d1 = _bind(() => { __t1.data = lastName() })
+// Output — each text node has its own binding:
+_tpl('<div><span> </span><span> </span></div>', (__root) => {
+  const __e0 = __root.firstElementChild
+  const __t1 = __e0.firstChild
+  const __d0 = _bindText(firstName, __t1)
+  const __e2 = __root.firstElementChild.nextElementSibling
+  const __t3 = __e2.firstChild
+  const __d1 = _bindText(lastName, __t3)
   return () => { __d0(); __d1() }
 })
 ```
@@ -951,12 +940,11 @@ When the root element of a template has spread attributes, the compiler now emit
 </div>
 
 // Output — template cloning + _applyProps for spread:
-_tpl('<div><span></span></div>', (__root) => {
+_tpl('<div><span> </span></div>', (__root) => {
   _applyProps(__root, props)
-  const __e0 = __root.children[0]
-  const __t0 = document.createTextNode('')
-  __e0.appendChild(__t0)
-  const __d0 = _bind(() => { __t0.data = text() })
+  const __e0 = __root.firstElementChild
+  const __t1 = __e0.firstChild
+  const __d0 = _bindText(text, __t1)
   return () => { __d0() }
 })
 ```

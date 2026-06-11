@@ -1080,6 +1080,17 @@ console.log(ctx.routes.length, ctx.islands.length)`,
 
   // <gen-docs:api-reference:start @pyreon/router>
 
+  'router/runServerLoaders': {
+    signature: `router.runServerLoaders(path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number }>`,
+    example: `// zero's /_pyreon/data endpoint does exactly this:
+const result = await router.runServerLoaders('/dash', ctx.req)
+if (result.kind === 'redirect') return jsonRedirect(result)
+return json({ data: result.data }) // keyed by matched-chain index`,
+    notes: `The single-fetch data endpoint's worker (server-only — \`serverLoader\` functions exist only in the SSR module graph). Runs ONLY the matched chain's \`serverLoader\` records (NOT isomorphic \`loader\`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a \`path\`, so path-keying collided). A \`redirect()\` thrown by any server loader returns the redirect descriptor instead of data.`,
+    mistakes: `- Calling it client-side — \`serverLoader\` is undefined in the client graph; the client router does the single FETCH instead
+- Expecting isomorphic \`loader\`s to run here — deliberately excluded (double-fire prevention); they run on the client during navigation`,
+  },
+
   'router/createRouter': {
     signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
     example: `const router = createRouter([
@@ -1473,6 +1484,38 @@ const CommandPalette = island(
 - Relying on focus/pointerenter to trigger the SAME action as click for \`"interaction"\` — only clicks are replayed post-hydration. Non-click events trigger hydration but no replay (focus can\\'t be reliably re-dispatched once the user has tabbed past; pointerenter is passive)`,
   },
 
+  'server/serverIsland': {
+    signature: 'serverIsland(loader: () => Promise<{ default: ComponentFn } | ComponentFn>, options: { name: string; fallback?: VNodeChild; cache?: string }): ComponentFn',
+    example: `import { serverIsland } from '@pyreon/zero' // or '@pyreon/server'
+
+const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
+  name: 'CartBadge',
+  fallback: <span class="badge">Cart</span>,
+})
+
+// page stays SSG/ISR/CDN-cacheable; the badge renders per request
+;<CartBadge label="Cart" />`,
+    notes: `The INVERSE of \`island()\`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a \`<pyreon-server-island>\` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches \`GET /_pyreon/fragment/<name>?props=…\` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — \`useRequestLocals()\` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. \`fallback\` is the structural placeholder for no-JS clients and until the fragment arrives. \`cache\` sets the fragment response Cache-Control (default \`no-store\`) — only for fragments that do NOT vary on cookies/auth.`,
+    mistakes: `- Passing children — island props cross the fragment boundary as codec-encoded data; children are dropped (same contract as client islands)
+- Setting \`cache\` on a cookie-varying fragment — the same auth poisoning class as ISR cacheKey; the no-store default exists for a reason
+- Expecting the fragment to hydrate interactivity — fragments are server-rendered HTML; composing a client island() INSIDE a server island is a documented follow-up, not v1
+- Rendering personalized data in the PAGE around the island — the page is the cacheable part; everything request-specific belongs inside the island
+- Two serverIsland() declarations with the same name — the endpoint serves the FIRST registration (dev-mode warns)`,
+  },
+
+  'server/useRequestLocals': {
+    signature: 'useRequestLocals(): Record<string, unknown>',
+    example: `import { useRequestLocals } from '@pyreon/server'
+
+function Header() {
+  const user = useRequestLocals().user as { name: string } | undefined
+  return <span>{user?.name ?? 'Guest'}</span>
+}`,
+    notes: 'Read middleware `ctx.locals` inside components during SSR (and inside server-island fragments / server loaders). Non-generic — cast the fields you read. Returns an empty record outside a request context (client render).',
+    mistakes: `- Importing it from \`@pyreon/zero\` — it lives in \`@pyreon/server\` (zero does not re-export it)
+- Calling it with a type argument \`useRequestLocals<{ user }>()\` — the API is non-generic; cast the read instead`,
+  },
+
   'server/hydrateIslands': {
     signature: 'hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>): () => void',
     example: `import { hydrateIslands } from "@pyreon/server/client"
@@ -1599,19 +1642,25 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
   },
 
   'runtime-dom/_tpl': {
-    signature: '_tpl(html: string): () => DocumentFragment',
-    example: `// Compiler output (not hand-written):
-const _$t0 = _tpl("<div class=\\"container\\"><span></span></div>")`,
-    notes: 'Compiler-internal: create a template factory from an HTML string. First call parses the HTML into a `<template>` element; subsequent calls use `cloneNode(true)` for zero-parse instantiation. Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
+    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined): NativeItem',
+    example: `// Compiler output for <div class="box">{text()}</div>:
+_tpl("<div class=\\"box\\"> </div>", (__root) => {
+  const __t0 = __root.firstChild
+  const __d0 = _bindText(text, __t0)
+  return () => { __d0() }
+})`,
+    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
   },
 
   'runtime-dom/_bindText': {
-    signature: '_bindText(fn: () => string, node: Text): void',
+    signature: '_bindText(source: Signal-like, node: Text, caller?: () => unknown): () => void',
     example: `// Compiler output for <div>{count()}</div>:
-const _$t = _tpl("<div> </div>")
-const _$n = _$t()
-_bindText(() => count(), _$n.firstChild)`,
-    notes: 'Compiler-internal: bind a reactive expression to a text node via `TextNode.data` assignment. Creates a `renderEffect` that re-runs when tracked signals change. Each text node gets its own independent binding for fine-grained reactivity. See also: _tpl, _bindDirect.',
+_tpl("<div> </div>", (__root) => {
+  const __t0 = __root.firstChild
+  const __d0 = _bindText(count, __t0) // the SIGNAL, not a thunk
+  return () => { __d0() }
+})`,
+    notes: `Compiler-internal: bind a SIGNAL (anything carrying \`._v\` + \`.direct\`) to a text node via \`TextNode.data\` assignment, returning a dispose function. The fast path BYPASSES the effect system entirely — it subscribes via the signal's \`.direct()\` single-subscriber slot (no Set, no deps array, no tracking-stack push); \`renderEffect\` is only the fallback for bare callables. Writes the initial value synchronously at bind time (which is why the baked \`" "\` template placeholder never renders). Each text node gets its own independent binding for fine-grained reactivity. See also: _tpl, _bindDirect.`,
   },
 
   'runtime-dom/sanitizeHtml': {
@@ -4685,13 +4734,62 @@ app.post('/api/webhooks/post-updated', async (req) => {
 app.post('/admin/purge', async () => {
   await isr.revalidateAll()
   return new Response('ok')
+})
+
+// Tag-based group invalidation — record tags at cache-set time…
+const tagged = createISRHandler(ssrHandler, {
+  revalidate: 60,
+  tagsForRequest: (req) => {
+    const p = new URL(req.url).pathname
+    return p.startsWith('/posts/') ? ['posts', \`post:\${p.split('/')[2]}\`] : []
+  },
+})
+// …then drop every page that rendered posts, no path enumeration:
+app.post('/api/webhooks/posts-changed', async () => {
+  const { dropped } = await tagged.revalidateTag('posts')
+  return Response.json({ dropped })
 })`,
-    notes: `Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-\`cacheKey\`-derived key), and served stale until expiry while a background revalidate fires. The returned \`ISRHandler\` is still a callable \`(req) => Promise<Response>\` for \`Bun.serve({ fetch: ... })\`, but ALSO exposes imperative invalidation: \`.revalidateNow(key)\` drops one entry (returns \`{ dropped: boolean }\`), \`.revalidateAll()\` drops everything (when the store implements \`clear()\`). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route \`revalidate\` export + \`Adapter.revalidate\`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a \`mode: 'isr'\` app with per-route \`revalidate\` exports gets BOTH. See also: zero, Adapter, ISRStore, createMemoryStore.`,
+    notes: `Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-\`cacheKey\`-derived key), and served stale until expiry while a background revalidate fires. The returned \`ISRHandler\` is still a callable \`(req) => Promise<Response>\` for \`Bun.serve({ fetch: ... })\`, but ALSO exposes imperative invalidation: \`.revalidateNow(key)\` drops one entry (returns \`{ dropped: boolean }\`), \`.revalidateAll()\` drops everything (when the store implements \`clear()\`), and \`.revalidateTag(tag)\` drops every entry recorded under a tag (returns \`{ dropped: number }\`) — pair with \`config.tagsForRequest(req) => string[]\`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. \`config.store\` swaps the backing (\`createMemoryStore\` default; \`createFsStore(dir)\` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route \`revalidate\` export + \`Adapter.revalidate\`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a \`mode: 'isr'\` app with per-route \`revalidate\` exports gets BOTH. See also: zero, Adapter, ISRStore, createMemoryStore.`,
     mistakes: `- Treating the returned handler as a plain function — it ALSO carries \`.revalidateNow(key)\` and \`.revalidateAll()\` methods. Webhook-driven invalidation is the canonical way to bust the cache; waiting for the TTL is the fallback
 - Calling \`.revalidateAll()\` against a store that does not implement \`clear()\` — throws a clear error. External stores (Redis with TTL-only) must opt in by implementing the method
 - Expecting \`revalidateNow(key)\` against a store without \`delete?()\` to physically drop the entry — returns \`{ dropped: false }\` honestly; such stores rely on TTL for eviction
 - Sharing the ISR handler across server instances without external cache — each server's in-memory cache diverges. For multi-instance deploys, swap \`config.store\` to a shared cache layer (Redis / Vercel KV / Cloudflare KV)
-- Setting \`revalidate: 0\` and expecting "never cache" — pass-through is the explicit handler call (no \`createISRHandler\` wrapper). Use \`revalidate: Number.MAX_SAFE_INTEGER\` for "cache forever, invalidate only via \`revalidateNow\`"`,
+- Setting \`revalidate: 0\` and expecting "never cache" — pass-through is the explicit handler call (no \`createISRHandler\` wrapper). Use \`revalidate: Number.MAX_SAFE_INTEGER\` for "cache forever, invalidate only via \`revalidateNow\`"
+- Calling \`.revalidateTag()\` against a custom store without \`setTags\`/\`keysByTag\` — throws a clear error naming the missing methods; both shipped stores implement them
+- A throwing \`tagsForRequest\` never breaks caching — the entry is cached UNTAGGED (dev-mode warns)`,
+  },
+
+  'zero/ISRStore': {
+    signature: 'interface ISRStore<E = ISRCacheEntry> { get(key): E | Promise<E | undefined> | undefined; set(key, entry): void | Promise<void>; delete?(key): void | Promise<void>; clear?(): void | Promise<void>; setTags?(key, tags: readonly string[]): void | Promise<void>; keysByTag?(tag): string[] | Promise<string[]> }',
+    example: `import type { ISRStore } from '@pyreon/zero/server'
+
+const redisStore: ISRStore = {
+  get: (key) => redis.get(key).then((s) => (s ? JSON.parse(s) : undefined)),
+  set: (key, entry) => redis.set(key, JSON.stringify(entry), { EX: 3600 }),
+  delete: (key) => redis.del(key),
+}
+createISRHandler(handler, { revalidate: 60, store: redisStore })`,
+    notes: 'The pluggable ISR cache backing. All methods may return sync OR async — the handler awaits every call (a same-tick microtask for the in-memory default; real network promises for Redis / Vercel KV / Cloudflare KV adapters). `delete`/`clear` are optional (stores without them degrade `revalidateNow`/`revalidateAll` honestly); `setTags`/`keysByTag` are the tag-invalidation surface consumed by `revalidateTag`. When a custom store is supplied, `config.maxEntries` is ignored — the store owns its eviction/TTL policy. See also: createISRHandler, createMemoryStore, createFsStore.',
+  },
+
+  'zero/createMemoryStore': {
+    signature: 'function createMemoryStore<E = ISRCacheEntry>(opts?: { maxEntries?: number }): ISRStore<E>',
+    example: 'createISRHandler(handler, { revalidate: 60, store: createMemoryStore({ maxEntries: 5000 }) })',
+    notes: 'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index prunes evicted keys lazily). Per-process — fine for single-instance deploys; multi-instance wants a shared external store. See also: createISRHandler, ISRStore, createFsStore.',
+  },
+
+  'zero/createFsStore': {
+    signature: 'function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E>',
+    example: `import { createFsStore } from '@pyreon/zero/server'
+
+createISRHandler(handler, {
+  revalidate: 60,
+  store: createFsStore('./.isr-cache'),
+  tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/posts/') ? ['posts'] : []),
+})`,
+    notes: `Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under \`dir\`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). One file per key (fs-safe encoded; over-length keys hash to a fixed name so long query strings can't silently ENAMETOOLONG-drop), \`_tags.json\` sidecar written atomically (tmp+rename). EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV. See also: createISRHandler, ISRStore, createMemoryStore.`,
+    mistakes: `- Using it across multiple instances — each box has its own directory; tag invalidation on one box does not reach the others
+- Pointing \`dir\` at a tmpfs that clears on reboot — defeats the restart-survival purpose`,
   },
 
   'zero/vercelAdapter': {
@@ -4777,7 +4875,7 @@ plugins: [pyreon(), zero({
   },
 
   'zero/useRequestLocals': {
-    signature: 'function useRequestLocals<T = unknown>(): T',
+    signature: 'function useRequestLocals(): Record<string, unknown>',
     example: `// middleware
 async function authMiddleware(ctx, next) {
   ctx.locals.user = await verifyToken(ctx.req.headers.get('authorization'))
@@ -4785,8 +4883,11 @@ async function authMiddleware(ctx, next) {
 }
 
 // component
-const { user } = useRequestLocals<{ user: User | null }>()`,
-    notes: 'Bridge middleware-attached request locals into the component tree. Middleware sets `ctx.locals.user = currentUser`; components call `useRequestLocals()` to read. Reactive context — locale-aware re-reads work inside `effect()` / JSX thunks. See also: cspMiddleware.',
+import { useRequestLocals } from '@pyreon/server'
+const user = useRequestLocals().user as User | null`,
+    notes: 'Bridge middleware-attached request locals into the component tree. Middleware sets `ctx.locals.user = currentUser`; components call `useRequestLocals()` to read during SSR (also works inside server-island fragments and server loaders). IMPORT IT FROM `@pyreon/server` — zero does not re-export it from any entry. Non-generic: cast the fields you read. Returns an empty record outside a request context. See also: cspMiddleware.',
+    mistakes: `- Importing from \`@pyreon/zero\` or \`@pyreon/zero/server\` — the only home is \`@pyreon/server\`
+- Calling with a type argument — the API is non-generic; cast the read instead`,
   },
 
   'zero/Link': {

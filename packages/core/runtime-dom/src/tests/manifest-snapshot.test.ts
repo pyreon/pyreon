@@ -14,7 +14,7 @@ describe('gen-docs — runtime-dom snapshot', () => {
     expect(renderLlmsFullSection(runtimeDomManifest)).toMatchInlineSnapshot(`
       "## @pyreon/runtime-dom — DOM Renderer
 
-      Surgical signal-to-DOM renderer with zero virtual DOM overhead. The compiler emits \`_tpl()\` (cloneNode-based template instantiation) + \`_bind()\` (per-node reactive bindings) calls that mount directly to the DOM without VNode diffing. Reactive text uses \`TextNode.data\` assignment (not \`.textContent\`) for minimal DOM mutation. Supports SVG/MathML namespace auto-detection (67 tags), custom elements (props as properties), CSS transitions via \`<Transition>\` / \`<TransitionGroup>\`, and component caching via \`<KeepAlive>\`. Dev-mode warnings use \`import.meta.env.DEV\` (not \`typeof process\`) so they tree-shake to zero bytes in production Vite builds.
+      Surgical signal-to-DOM renderer with zero virtual DOM overhead. The compiler emits \`_tpl()\` (cloneNode-based template instantiation) + \`_bind()\` (per-node reactive bindings) calls that mount directly to the DOM without VNode diffing. Reactive text uses \`TextNode.data\` assignment (not \`.textContent\`) for minimal DOM mutation. Supports SVG/MathML namespace auto-detection (67 tags), custom elements (props as properties), CSS transitions via \`<Transition>\` / \`<TransitionGroup>\`, and component caching via \`<KeepAlive>\`. Dev-mode warnings use the bundler-agnostic bare \`process.env.NODE_ENV\` production gate (auto-replaced by every modern bundler) so they tree-shake to zero bytes in production Vite builds.
 
       \`\`\`typescript
       import { mount, hydrateRoot, Transition, TransitionGroup, KeepAlive } from "@pyreon/runtime-dom"

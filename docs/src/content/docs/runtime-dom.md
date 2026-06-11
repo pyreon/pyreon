@@ -1451,6 +1451,8 @@ When a DOM element tag contains a hyphen (e.g., `my-component`, `sl-button`), Py
 
 This matches the Web Components convention where custom element properties reflect richer types than string attributes.
 
+One carve-out: `data-*` and `aria-*` props ALWAYS go through `setAttribute` — even on custom elements. They have attribute semantics by definition; routing `data-name` through the property path would set a JS property (`el['data-name']`) that `getAttribute('data-name')` / `dataset` / CSS attribute selectors can't see.
+
 ## Transition Timeout
 
 CSS transitions have a 5-second safety timeout. If `transitionend` or `animationend` events never fire (due to missing CSS, display:none, or other edge cases), the transition completes automatically after 5 seconds. This prevents elements from being stuck in a transitioning state indefinitely.

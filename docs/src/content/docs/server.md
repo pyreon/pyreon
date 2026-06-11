@@ -67,8 +67,14 @@ interface HandlerOptions {
    * Defaults to DEFAULT_TEMPLATE (a minimal HTML5 shell).
    */
   template?: string
-  /** Path to the client entry module (default: "/src/entry-client.ts") */
-  clientEntry?: string
+  /**
+   * Path to the client entry module (default: "/src/entry-client.ts").
+   * Pass `false` to suppress the client-entry <script> injection entirely —
+   * use this when `template` is a BUILT index.html that already carries the
+   * production hashed <script type="module"> tag. Loader-data injection
+   * still happens.
+   */
+  clientEntry?: string | false
   /** Middleware chain — runs before rendering */
   middleware?: Middleware[]
   /**
@@ -77,6 +83,16 @@ interface HandlerOptions {
    *   "stream" — progressive streaming via renderToStream (Suspense out-of-order)
    */
   mode?: 'string' | 'stream'
+  /**
+   * Collect CSS styles after rendering — return a <style> tag string to
+   * inject into <head> (e.g. () => sheet.getStyleTag() from @pyreon/styler).
+   */
+  collectStyles?: () => string
+  /**
+   * Per-boundary Suspense timeout in ms for mode: "stream" (default 30_000).
+   * Ignored in mode: "string".
+   */
+  suspenseTimeoutMs?: number
 }
 ```
 
@@ -259,6 +275,17 @@ const geoMiddleware: Middleware = (ctx) => {
 }
 ```
 
+On the component side, `useRequestLocals()` reads the locals during SSR:
+
+```tsx
+import { useRequestLocals } from '@pyreon/server'
+
+function Footer() {
+  const country = useRequestLocals().country as string
+  return <p>Served to {country}</p>
+}
+```
+
 ### Composing middleware
 
 Middleware runs in array order. The first to return a `Response` wins:
@@ -428,6 +455,41 @@ Pyreon's island architecture (partial hydration) has its own dedicated page cove
 
 The short version: `island(loader, { name, hydrate })` wraps an async component import and returns a `ComponentFn` that renders inside a `<pyreon-island>` custom element with serialized props + the hydration strategy as data attributes. Six strategies (`load` / `idle` / `visible` / `interaction` / `media(...)` / `never`), plus a `prefetch` hint that pre-warms the chunk before deferred-hydration triggers fire. Auto-discovered registry under `@pyreon/vite-plugin` (`hydrateIslandsAuto()`) eliminates the manual sync between `island()` declarations and the client registry. Project-wide audit at `pyreon doctor --check-islands` + MCP `audit_islands` tool catches duplicate names, dead islands, registry drift, nested islands, and never-with-registry foot-guns at build time.
 
+---
+
+## Server Islands — `serverIsland`
+
+The inverse of a client island: a **cacheable page with per-request server-rendered holes**. `serverIsland(loader, { name, fallback?, cache? })` registers the component and renders a `<pyreon-server-island>` marker with the fallback content inline (what no-JS visitors keep). On the client the marker self-activates and fetches its real content from the fragment endpoint — `GET /_pyreon/fragment/<name>?props=…` — which renders ONLY that component server-side per request. Names are allowlisted: the endpoint serves only registered islands. Fragment responses default to `no-store`; the opt-in `cache` option sets a `Cache-Control` value for slow-but-public widgets (never cache a fragment that varies on cookies).
+
+```tsx
+import { serverIsland } from '@pyreon/server' // or '@pyreon/zero' in zero apps
+
+const CartBadge = serverIsland(() => import('./CartBadge'), {
+  name: 'cart-badge',
+  fallback: <span class="badge">Cart</span>,
+})
+// The page around <CartBadge /> stays SSG/ISR/CDN-cacheable; the hole is per-request.
+```
+
+→ See **[Zero → Server Islands](/docs/zero#server-islands)** for the full surface (zero auto-mounts the fragment endpoint and activation).
+
+---
+
+## One render pipeline — `renderPage`
+
+`renderPage(App, router, path, options?)` is the single string-mode render pipeline shared by `createHandler`, SSG prerendering, and zero's dev SSR — preload (lazy components + loaders), render, head collection, optional `collectStyles`, loader-data serialization, all inside `runWithRequestContext`. It returns composable parts instead of a full document, so each caller injects them into its own template:
+
+```ts
+import { renderPage } from '@pyreon/server'
+
+const result = await renderPage(App, router, '/dashboard', { request, locals })
+if (result.kind === 'redirect') return Response.redirect(result.to, result.status)
+if (result.kind === 'html') {
+  // result.appHtml, result.head, result.loaderScript, result.status (200 | 404)
+}
+```
+
+`options` carries `request` (forwarded to loaders), `skipLoaders`, `collectStyles`, `locals` (bridged to `useRequestLocals()`), and `bailOnUnmatched` (returns `{ kind: 'unmatched' }` instead of rendering — used by the dev middleware's static-404 fall-through).
 
 ---
 
@@ -956,7 +1018,13 @@ app.listen(3000)
 | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `createHandler(options)`                       | Create an SSR request handler that returns a Web-standard fetch function              |
 | `prerender(options)`                           | Pre-render routes to static HTML files                                                |
+| `renderPage(App, router, path, options?)`      | The one string-mode render pipeline shared by the handler, SSG, and dev SSR           |
 | `island(loader, options)`                      | Create an island component for partial hydration                                      |
+| `serverIsland(loader, options)`                | Register a per-request server-rendered hole inside a cacheable page                   |
+| `getRegisteredServerIslands()`                 | List the registered server islands (the fragment endpoint's name allowlist)           |
+| `renderServerIslandFragment(name, rawProps, locals?)` | Render one server-island fragment (what `GET /_pyreon/fragment/<name>` calls)  |
+| `useRequestLocals()`                           | Read middleware `ctx.locals` inside components during SSR                             |
+| `provideRequestLocals(locals)`                 | Establish the request-locals context for the current render                           |
 | `processTemplate(template, data)`              | Replace placeholders in an HTML template                                              |
 | `compileTemplate(template)`                    | Pre-split template into parts for fast per-request processing                         |
 | `processCompiledTemplate(compiled, data)`      | Assemble HTML from a pre-compiled template (17x faster on realistic templates)        |
@@ -967,23 +1035,32 @@ app.listen(3000)
 
 ### Client exports (`@pyreon/server/client`)
 
-| Export                     | Description                                                     |
-| -------------------------- | --------------------------------------------------------------- |
-| `startClient(options)`     | Hydrate a full SSR app on the client, returns cleanup function  |
-| `hydrateIslands(registry)` | Hydrate island components on the page, returns cleanup function |
+| Export                            | Description                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| `startClient(options)`            | Hydrate a full SSR app on the client, returns cleanup function                  |
+| `hydrateIslands(registry)`        | Hydrate island components on the page, returns cleanup function                 |
+| `hydrateIslandsAuto(registry)`    | Hydrate islands from the vite-plugin's auto-generated registry                  |
+| `island(loader, options)`         | Client-safe re-export — use this import path in code that ships to the client   |
+| `serverIsland(loader, options)`   | Client-safe re-export of the server-island declaration                          |
+| `activateServerIslands(base?)`    | Scan the DOM for `<pyreon-server-island>` markers and activate them             |
+| `activateServerIslandElement(el, base?)` | Activate a single server-island marker element                           |
 
 ### Type exports
 
-| Type                 | From                    |
-| -------------------- | ----------------------- |
-| `HandlerOptions`     | `@pyreon/server`        |
-| `TemplateData`       | `@pyreon/server`        |
-| `IslandOptions`      | `@pyreon/server`        |
-| `IslandMeta`         | `@pyreon/server`        |
-| `HydrationStrategy`  | `@pyreon/server`        |
-| `PrerenderOptions`   | `@pyreon/server`        |
-| `PrerenderResult`    | `@pyreon/server`        |
-| `Middleware`         | `@pyreon/server`        |
-| `MiddlewareContext`  | `@pyreon/server`        |
-| `CompiledTemplate`   | `@pyreon/server`        |
-| `StartClientOptions` | `@pyreon/server/client` |
+| Type                  | From                    |
+| --------------------- | ----------------------- |
+| `HandlerOptions`      | `@pyreon/server`        |
+| `TemplateData`        | `@pyreon/server`        |
+| `IslandOptions`       | `@pyreon/server`        |
+| `IslandMeta`          | `@pyreon/server`        |
+| `HydrationStrategy`   | `@pyreon/server`        |
+| `PrerenderOptions`    | `@pyreon/server`        |
+| `PrerenderResult`     | `@pyreon/server`        |
+| `Middleware`          | `@pyreon/server`        |
+| `MiddlewareContext`   | `@pyreon/server`        |
+| `CompiledTemplate`    | `@pyreon/server`        |
+| `RenderPageOptions`   | `@pyreon/server`        |
+| `RenderPageResult`    | `@pyreon/server`        |
+| `ServerIslandOptions` | `@pyreon/server`        |
+| `FragmentResult`      | `@pyreon/server`        |
+| `StartClientOptions`  | `@pyreon/server/client` |

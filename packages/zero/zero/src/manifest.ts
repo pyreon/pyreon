@@ -16,7 +16,7 @@ export default defineManifest({
   tagline:
     'Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n',
   description:
-    "Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.",
+    "Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`, `renderMode` (per-route 'ssr' | 'ssg' | 'spa' | 'isr' hybrid rendering), plus `.server.{ts,tsx,js,jsx}` SIBLINGS exporting `serverLoader(ctx)` — server-only data loaders structurally excluded from the client bundle (client navigations fetch the whole chain's data in ONE request from `GET /_pyreon/data`; layouts cannot carry server loaders). `mode: 'ssr'` STREAMS by default (`ssr: { mode: 'string' }` opts back). Re-exports `island` + `serverIsland` (per-request server-rendered holes in cacheable pages). SSG delivery polish: `ssg.speculationRules`, `ssg.viewTransitions`, `ssg.cssMode: 'asset'`, `ssg.earlyHints`. ISR: tag-based invalidation (`isr.tagsForRequest` + `revalidateTag(tag)`) and a restart-surviving `createFsStore(dir)`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.",
   category: 'server',
   longExample: `import { defineConfig } from 'vite'
 import pyreon from '@pyreon/vite-plugin'
@@ -230,7 +230,7 @@ await vercelAdapter().revalidate?.('/posts/123')
       signature:
         'function createISRHandler(handler: (req: Request) => Promise<Response>, config: ISRConfig): ISRHandler',
       summary:
-        "Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-`cacheKey`-derived key), and served stale until expiry while a background revalidate fires. The returned `ISRHandler` is still a callable `(req) => Promise<Response>` for `Bun.serve({ fetch: ... })`, but ALSO exposes imperative invalidation: `.revalidateNow(key)` drops one entry (returns `{ dropped: boolean }`), `.revalidateAll()` drops everything (when the store implements `clear()`). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route `revalidate` export + `Adapter.revalidate`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a `mode: 'isr'` app with per-route `revalidate` exports gets BOTH.",
+        "Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-`cacheKey`-derived key), and served stale until expiry while a background revalidate fires. The returned `ISRHandler` is still a callable `(req) => Promise<Response>` for `Bun.serve({ fetch: ... })`, but ALSO exposes imperative invalidation: `.revalidateNow(key)` drops one entry (returns `{ dropped: boolean }`), `.revalidateAll()` drops everything (when the store implements `clear()`), and `.revalidateTag(tag)` drops every entry recorded under a tag (returns `{ dropped: number }`) — pair with `config.tagsForRequest(req) => string[]`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. `config.store` swaps the backing (`createMemoryStore` default; `createFsStore(dir)` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route `revalidate` export + `Adapter.revalidate`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a `mode: 'isr'` app with per-route `revalidate` exports gets BOTH.",
       example: `import { createISRHandler, createServer } from '@pyreon/zero/server'
 
 const ssrHandler = createServer({ routes })
@@ -250,6 +250,20 @@ app.post('/api/webhooks/post-updated', async (req) => {
 app.post('/admin/purge', async () => {
   await isr.revalidateAll()
   return new Response('ok')
+})
+
+// Tag-based group invalidation — record tags at cache-set time…
+const tagged = createISRHandler(ssrHandler, {
+  revalidate: 60,
+  tagsForRequest: (req) => {
+    const p = new URL(req.url).pathname
+    return p.startsWith('/posts/') ? ['posts', \`post:\${p.split('/')[2]}\`] : []
+  },
+})
+// …then drop every page that rendered posts, no path enumeration:
+app.post('/api/webhooks/posts-changed', async () => {
+  const { dropped } = await tagged.revalidateTag('posts')
+  return Response.json({ dropped })
 })`,
       mistakes: [
         'Treating the returned handler as a plain function — it ALSO carries `.revalidateNow(key)` and `.revalidateAll()` methods. Webhook-driven invalidation is the canonical way to bust the cache; waiting for the TTL is the fallback',
@@ -257,8 +271,55 @@ app.post('/admin/purge', async () => {
         'Expecting `revalidateNow(key)` against a store without `delete?()` to physically drop the entry — returns `{ dropped: false }` honestly; such stores rely on TTL for eviction',
         'Sharing the ISR handler across server instances without external cache — each server\'s in-memory cache diverges. For multi-instance deploys, swap `config.store` to a shared cache layer (Redis / Vercel KV / Cloudflare KV)',
         'Setting `revalidate: 0` and expecting "never cache" — pass-through is the explicit handler call (no `createISRHandler` wrapper). Use `revalidate: Number.MAX_SAFE_INTEGER` for "cache forever, invalidate only via `revalidateNow`"',
+        'Calling `.revalidateTag()` against a custom store without `setTags`/`keysByTag` — throws a clear error naming the missing methods; both shipped stores implement them',
+        'A throwing `tagsForRequest` never breaks caching — the entry is cached UNTAGGED (dev-mode warns)',
       ],
       seeAlso: ['zero', 'Adapter', 'ISRStore', 'createMemoryStore'],
+    },
+    {
+      name: 'ISRStore',
+      kind: 'type',
+      signature:
+        'interface ISRStore<E = ISRCacheEntry> { get(key): E | Promise<E | undefined> | undefined; set(key, entry): void | Promise<void>; delete?(key): void | Promise<void>; clear?(): void | Promise<void>; setTags?(key, tags: readonly string[]): void | Promise<void>; keysByTag?(tag): string[] | Promise<string[]> }',
+      summary:
+        'The pluggable ISR cache backing. All methods may return sync OR async — the handler awaits every call (a same-tick microtask for the in-memory default; real network promises for Redis / Vercel KV / Cloudflare KV adapters). `delete`/`clear` are optional (stores without them degrade `revalidateNow`/`revalidateAll` honestly); `setTags`/`keysByTag` are the tag-invalidation surface consumed by `revalidateTag`. When a custom store is supplied, `config.maxEntries` is ignored — the store owns its eviction/TTL policy.',
+      example: `import type { ISRStore } from '@pyreon/zero/server'
+
+const redisStore: ISRStore = {
+  get: (key) => redis.get(key).then((s) => (s ? JSON.parse(s) : undefined)),
+  set: (key, entry) => redis.set(key, JSON.stringify(entry), { EX: 3600 }),
+  delete: (key) => redis.del(key),
+}
+createISRHandler(handler, { revalidate: 60, store: redisStore })`,
+      seeAlso: ['createISRHandler', 'createMemoryStore', 'createFsStore'],
+    },
+    {
+      name: 'createMemoryStore',
+      kind: 'function',
+      signature: 'function createMemoryStore<E = ISRCacheEntry>(opts?: { maxEntries?: number }): ISRStore<E>',
+      summary:
+        'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index prunes evicted keys lazily). Per-process — fine for single-instance deploys; multi-instance wants a shared external store.',
+      example: `createISRHandler(handler, { revalidate: 60, store: createMemoryStore({ maxEntries: 5000 }) })`,
+      seeAlso: ['createISRHandler', 'ISRStore', 'createFsStore'],
+    },
+    {
+      name: 'createFsStore',
+      kind: 'function',
+      signature: 'function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E>',
+      summary:
+        "Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). One file per key (fs-safe encoded; over-length keys hash to a fixed name so long query strings can't silently ENAMETOOLONG-drop), `_tags.json` sidecar written atomically (tmp+rename). EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV.",
+      mistakes: [
+        'Using it across multiple instances — each box has its own directory; tag invalidation on one box does not reach the others',
+        'Pointing `dir` at a tmpfs that clears on reboot — defeats the restart-survival purpose',
+      ],
+      example: `import { createFsStore } from '@pyreon/zero/server'
+
+createISRHandler(handler, {
+  revalidate: 60,
+  store: createFsStore('./.isr-cache'),
+  tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/posts/') ? ['posts'] : []),
+})`,
+      seeAlso: ['createISRHandler', 'ISRStore', 'createMemoryStore'],
     },
     {
       name: 'vercelAdapter',
@@ -377,9 +438,13 @@ plugins: [pyreon(), zero({
     {
       name: 'useRequestLocals',
       kind: 'hook',
-      signature: 'function useRequestLocals<T = unknown>(): T',
+      signature: 'function useRequestLocals(): Record<string, unknown>',
       summary:
-        'Bridge middleware-attached request locals into the component tree. Middleware sets `ctx.locals.user = currentUser`; components call `useRequestLocals()` to read. Reactive context — locale-aware re-reads work inside `effect()` / JSX thunks.',
+        'Bridge middleware-attached request locals into the component tree. Middleware sets `ctx.locals.user = currentUser`; components call `useRequestLocals()` to read during SSR (also works inside server-island fragments and server loaders). IMPORT IT FROM `@pyreon/server` — zero does not re-export it from any entry. Non-generic: cast the fields you read. Returns an empty record outside a request context.',
+      mistakes: [
+        'Importing from `@pyreon/zero` or `@pyreon/zero/server` — the only home is `@pyreon/server`',
+        'Calling with a type argument — the API is non-generic; cast the read instead',
+      ],
       example: `// middleware
 async function authMiddleware(ctx, next) {
   ctx.locals.user = await verifyToken(ctx.req.headers.get('authorization'))
@@ -387,7 +452,8 @@ async function authMiddleware(ctx, next) {
 }
 
 // component
-const { user } = useRequestLocals<{ user: User | null }>()`,
+import { useRequestLocals } from '@pyreon/server'
+const user = useRequestLocals().user as User | null`,
       seeAlso: ['cspMiddleware'],
     },
 

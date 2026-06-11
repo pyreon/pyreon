@@ -178,7 +178,10 @@ const checks: ClaimCheck[] = [
       },
       {
         file: 'CLAUDE.md',
-        pattern: /^- (\d+) signal-based hooks across 6 categories/m,
+        // The category number is anchor text, not the asserted value —
+        // `\d+` so adding a hook category can't break the COUNT gate
+        // with a confusing pattern-not-found (bit us at 6 → 7).
+        pattern: /^- (\d+) signal-based hooks across \d+ categories/m,
       },
       {
         file: 'docs/src/content/docs/index.md',
