@@ -401,6 +401,16 @@ Data hooks compile to native via per-service **runtime ports** behind the
 shared TS API (the `PyreonStorage` pattern — each service has a Swift +
 Kotlin runtime the emitted code drives):
 
+- **Platform prerequisites for networked apps** (both device-CI
+  findings): Android needs `<uses-permission
+  android:name="android.permission.INTERNET" />` in the manifest —
+  without it socket creation fails with the opaque
+  `SocketException: socket failed: EPERM` — plus a
+  network-security-config exception if the endpoint is plain http
+  (scope it to loopback/dev hosts only). iOS needs an ATS exception
+  for non-HTTPS endpoints (`NSAllowsLocalNetworking` for
+  loopback/dev). The `create-multiplatform` scaffold ships the
+  INTERNET permission by default.
 - **`useFetch<T>('/url')`** → a `PyreonFetch<T>` reactive container
   (`{ data, error, isPending, refetch }`). The compiler emits a mount-time
   `.task { }` (SwiftUI) / `LaunchedEffect` (Compose) that runs the request

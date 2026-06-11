@@ -368,6 +368,11 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
     'android/app/src/main/AndroidManifest.xml',
     `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required the moment the shared source uses useFetch — without
+         it, socket creation fails with the opaque
+         \`SocketException: socket failed: EPERM\` (a real device-CI
+         finding). Harmless for apps that never touch the network. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="${pascal}"
         android:allowBackup="true">
