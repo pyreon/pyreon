@@ -201,4 +201,81 @@ describe('code editor in real browser', () => {
     expect(container.textContent).toContain('changed via api')
     unmount()
   })
+
+  // ── insert/replaceSelection are cursor-relative — they need a live view ──
+  //
+  // The view is created by mount() AFTER an async grammar load, so a
+  // pre-mount insert() has no cursor to act on. It must NOT silently drop
+  // the caller's text — it warns (dev) + no-ops. value.set() is the
+  // view-independent path that lands content regardless of mount timing.
+
+  it('insert() before the view exists WARNS + no-ops (does not silently drop content)', () => {
+    const editor = createEditor({ value: 'start' })
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => {
+      warns.push(String(args[0]))
+    }
+    try {
+      editor.insert(' DROPPED') // no view yet — never mounted
+    } finally {
+      console.warn = orig
+    }
+    expect(editor.value()).toBe('start') // unchanged — the insert was dropped
+    expect(warns.some((w) => w.includes('editor.insert()') && w.includes('value.set'))).toBe(true)
+  })
+
+  it('replaceSelection() before the view exists WARNS + no-ops', () => {
+    const editor = createEditor({ value: 'keep' })
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => {
+      warns.push(String(args[0]))
+    }
+    try {
+      editor.replaceSelection('nope')
+    } finally {
+      console.warn = orig
+    }
+    expect(editor.value()).toBe('keep')
+    expect(warns.some((w) => w.includes('editor.replaceSelection()'))).toBe(true)
+  })
+
+  it('value.set() before mount seeds the editor once mounted (the cold-mount-safe path)', async () => {
+    const editor = createEditor({ value: 'init' })
+    // Set content BEFORE the view exists — value.set feeds the value signal,
+    // which seeds EditorState.create({ doc }) whenever the view is created.
+    editor.value.set('set before mount')
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+    expect(editor.value()).toBe('set before mount')
+    expect(container.textContent).toContain('set before mount')
+    unmount()
+  })
+
+  it('insert() AFTER mount inserts into the doc and does NOT warn', async () => {
+    const editor = createEditor({ value: 'AB' })
+    const { unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => {
+      warns.push(String(args[0]))
+    }
+    try {
+      editor.insert('XYZ')
+    } finally {
+      console.warn = orig
+    }
+    await flush()
+
+    expect(editor.value()).toContain('XYZ') // landed (cursor position not asserted)
+    expect(warns.some((w) => w.includes('editor.insert()'))).toBe(false) // view exists → no warn
+    unmount()
+  })
 })
