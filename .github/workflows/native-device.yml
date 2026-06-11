@@ -76,7 +76,13 @@ jobs:
       (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'native-device'))
     name: iOS — xcodebuild (Simulator SDK)
     runs-on: macos-15
-    timeout-minutes: 40
+    # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
+    # attempt 1 timed out BOTH jobs at ~40:01/40:30; attempt 2's iOS
+    # finished at 38.8 and Android timed out INSIDE the final (tasks)
+    # Espresso step with every prior step green. Advisory, label-gated
+    # jobs end when done — a generous ceiling only prevents the
+    # false-cancel class, it never adds wall-clock to green runs.
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -258,7 +264,13 @@ jobs:
       (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'native-device'))
     name: Android — gradlew assembleDebug
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
+    # attempt 1 timed out BOTH jobs at ~40:01/40:30; attempt 2's iOS
+    # finished at 38.8 and Android timed out INSIDE the final (tasks)
+    # Espresso step with every prior step green. Advisory, label-gated
+    # jobs end when done — a generous ceiling only prevents the
+    # false-cancel class, it never adds wall-clock to green runs.
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -483,7 +495,9 @@ jobs:
       # absence made the round-3 tasks failure (the Text testTag drop)
       # needlessly hard to diagnose; upload them whenever Espresso ran.
       - name: Upload connected-test reports
-        if: failure()
+        # failure OR cancelled: a job-level timeout reports the running
+        # step as cancelled, and that's exactly when the report matters.
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-connected-reports
