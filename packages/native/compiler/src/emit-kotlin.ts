@@ -224,9 +224,7 @@ export function emitKotlin(
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
   // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
-  _needsKotlinSuspenseWrapper = false
   // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
-  _needsKotlinErrorBoundaryWrapper = false
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag.
   _needsKotlinKeepAliveWrapper = false
   for (const e of enums) parts.push(emitKotlinEnum(e))
@@ -257,8 +255,6 @@ export function emitKotlin(
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitKotlinComponent(c))
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper composables if needed.
-  if (_needsKotlinSuspenseWrapper) parts.push(KOTLIN_SUSPENSE_WRAPPER)
-  if (_needsKotlinErrorBoundaryWrapper) parts.push(KOTLIN_ERROR_BOUNDARY_WRAPPER)
   if (_needsKotlinKeepAliveWrapper) parts.push(KOTLIN_KEEP_ALIVE_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
@@ -269,8 +265,6 @@ export function emitKotlin(
   _storeHooksKotlin = new Map()
   _storeMethodNamesKotlin = new Map()
   _modelInstancesKotlin = new Map()
-  _needsKotlinSuspenseWrapper = false
-  _needsKotlinErrorBoundaryWrapper = false
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -2391,11 +2385,14 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  * design lands.
  */
 /**
- * Gap 3 PR-3.2 — real `<Suspense fallback={X}>` emit for Compose
- * (mount-time splash semantic). Mirror of emitSwiftSuspense.
- * Produces a `PyreonSuspenseWrapper` Composable call; the helper
- * definition is emitted once at module scope when any Suspense
- * site fires (gated on `_needsKotlinSuspenseWrapper`).
+ * Phase 2 — real `<Suspense fallback={X}>` emit for Compose
+ * (loading-state semantic). Mirror of emitSwiftSuspense. Emits an
+ * INLINE `if (<pending>) { fallback } else { children }` where
+ * `<pending>` ORs every `useFetch` container's `.isPending.value`.
+ * Reading the MutableState DIRECTLY in this composable's body
+ * subscribes THIS scope, so it recomposes when the fetch settles —
+ * passing the value to a child composable subscribes the wrong scope
+ * (device-found; mirrors the Swift fix). No fetch → `false`.
  */
 function emitKotlinSuspense(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -2414,7 +2411,6 @@ function emitKotlinSuspense(
     )
     return emitKotlinWalledTagAsChildren(e, indent, 'Suspense')
   }
-  _needsKotlinSuspenseWrapper = true
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const childrenBody = e.children
@@ -2424,20 +2420,33 @@ function emitKotlinSuspense(
     inner +
     '  ' +
     emitKotlinChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  // Real semantics (Phase 2), emitted INLINE — NOT via a child
+  // composable. Reading the isPending MutableState DIRECTLY in this
+  // composable's body subscribes THIS scope, so it recomposes when the
+  // fetch settles. Passing the value to a child composable subscribes
+  // the wrong scope (device-found, mirrors the Swift fix). No fetch →
+  // `false`.
+  const fetches = [..._fetchNames]
+  const isLoading =
+    fetches.length > 0
+      ? fetches.map((f) => `${kotlinIdent(f)}.isPending.value`).join(' || ')
+      : 'false'
   return (
-    `PyreonSuspenseWrapper(content = {\n` +
-    `${childrenBody}\n` +
-    `${p}}, fallback = {\n` +
+    `if (${isLoading}) {\n` +
     `${fallbackBody}\n` +
-    `${p}})`
+    `${p}} else {\n` +
+    `${childrenBody}\n` +
+    `${p}}`
   )
 }
 
 /**
- * Gap 3 PR-3.3 — real `<ErrorBoundary fallback={X}>` emit on Compose.
- * Mirror of emitSwiftErrorBoundary. Produces a Composable call to
- * PyreonErrorBoundaryWrapper; the helper composable is emitted once
- * at module scope.
+ * Phase 2 — real `<ErrorBoundary fallback={X}>` emit on Compose.
+ * Mirror of emitSwiftErrorBoundary. Emits an INLINE
+ * `if (<errored>) { fallback } else { children }` where `<errored>`
+ * ORs every `useFetch` container's `.error.value != null`, read
+ * directly in this composable's body so it recomposes when a fetch
+ * fails. No fetch → `false`.
  */
 function emitKotlinErrorBoundary(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -2456,7 +2465,6 @@ function emitKotlinErrorBoundary(
     )
     return emitKotlinWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
-  _needsKotlinErrorBoundaryWrapper = true
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const childrenBody = e.children
@@ -2466,12 +2474,17 @@ function emitKotlinErrorBoundary(
     inner +
     '  ' +
     emitKotlinChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  const fetches = [..._fetchNames]
+  const hasError =
+    fetches.length > 0
+      ? fetches.map((f) => `${kotlinIdent(f)}.error.value != null`).join(' || ')
+      : 'false'
   return (
-    `PyreonErrorBoundaryWrapper(content = {\n` +
-    `${childrenBody}\n` +
-    `${p}}, fallback = {\n` +
+    `if (${hasError}) {\n` +
     `${fallbackBody}\n` +
-    `${p}})`
+    `${p}} else {\n` +
+    `${childrenBody}\n` +
+    `${p}}`
   )
 }
 
@@ -2506,35 +2519,6 @@ function emitKotlinKeepAlive(
 }
 
 /**
- * Compose Suspense wrapper composable — emitted once at module scope
- * when any Suspense site is encountered. Shows the fallback on first
- * composition, flips to content via LaunchedEffect on mount.
- */
-const KOTLIN_SUSPENSE_WRAPPER = `@Composable
-private fun PyreonSuspenseWrapper(
-    content: @Composable () -> Unit,
-    fallback: @Composable () -> Unit,
-) {
-    var isLoading by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) { isLoading = false }
-    if (isLoading) fallback() else content()
-}`
-
-/**
- * Compose ErrorBoundary wrapper composable — emitted once at module
- * scope when any ErrorBoundary site is encountered. Default semantic:
- * children render. v2 follow-up will plug in runtime auto-catch hook.
- */
-const KOTLIN_ERROR_BOUNDARY_WRAPPER = `@Composable
-private fun PyreonErrorBoundaryWrapper(
-    content: @Composable () -> Unit,
-    fallback: @Composable () -> Unit,
-) {
-    var hasError by remember { mutableStateOf(false) }
-    if (hasError) fallback() else content()
-}`
-
-/**
  * Compose KeepAlive wrapper composable — emitted once at module
  * scope when any KeepAlive site is encountered. Once shown, the
  * children stay composed across `when_` toggles (alpha-hidden when
@@ -2554,8 +2538,6 @@ private fun PyreonKeepAliveWrapper(
     }
 }`
 
-let _needsKotlinSuspenseWrapper = false
-let _needsKotlinErrorBoundaryWrapper = false
 let _needsKotlinKeepAliveWrapper = false
 
 function emitKotlinWalledTagAsChildren(
