@@ -1,5 +1,5 @@
 import { onMount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
 
 export type BreakpointMap = Record<string, number>
 
@@ -12,8 +12,8 @@ const defaultBreakpoints: BreakpointMap = {
 }
 
 function getActive(bps: [string, number][]): string {
-  /* v8 ignore next — SSR/typeof window guard; tests always run with happy-dom */
-  if (typeof window === 'undefined') return bps[0]?.[0] ?? ''
+  /* v8 ignore next — SSR/isServer guard; tests always run with happy-dom */
+  if (isServer) return bps[0]?.[0] ?? ''
   const w = window.innerWidth
   /* v8 ignore next — defensive empty-bps fallback; bps is built from a typed BreakpointMap */
   let result = bps[0]?.[0] ?? ''

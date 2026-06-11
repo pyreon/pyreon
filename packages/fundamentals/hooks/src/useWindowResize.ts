@@ -1,5 +1,5 @@
 import { onMount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
 
 export interface WindowSize {
   width: number
@@ -14,9 +14,9 @@ export interface WindowSize {
  */
 export function useWindowResize(debounceMs = 200): () => WindowSize {
   const size = signal<WindowSize>({
-    /* v8 ignore next 2 — SSR/typeof window guards; tests run with happy-dom */
-    width: typeof window !== 'undefined' ? window.innerWidth : 0,
-    height: typeof window !== 'undefined' ? window.innerHeight : 0,
+    /* v8 ignore next 2 — SSR/isClient guards; tests run with happy-dom */
+    width: isClient ? window.innerWidth : 0,
+    height: isClient ? window.innerHeight : 0,
   })
 
   // Define listener inside `onMount` so the `window` reference is
