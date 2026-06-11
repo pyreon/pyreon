@@ -389,6 +389,50 @@ describe('createSelector.bind — effect-free per-key fast path', () => {
     expect(calls2).toEqual([false, true])
   })
 
+  it('inline-slot: disposing the SOLE subscriber drops the key; re-subscribe works', () => {
+    // The inline-first-subscriber storage (signal `_d1` trick): one
+    // subscriber per key is stored as a bare function — dispose must
+    // delete the key (not leave a dangling entry), and a fresh subscribe
+    // after dispose must work.
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const calls: boolean[] = []
+    const d = isSelected.subscribe('k', (m) => calls.push(m))
+    d()
+    selected.set('k') // no subscriber — must not throw, must not call
+    expect(calls).toEqual([false]) // only the initial inline call
+    const calls2: boolean[] = []
+    isSelected.subscribe('k', (m) => calls2.push(m))
+    selected.set(null)
+    selected.set('k')
+    expect(calls2).toEqual([true, false, true])
+  })
+
+  it('promoted bucket: disposing ONE of two subscribers keeps the survivor firing', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const calls1: boolean[] = []
+    const calls2: boolean[] = []
+    const d1 = isSelected.subscribe('k', (m) => calls1.push(m))
+    isSelected.subscribe('k', (m) => calls2.push(m)) // promotes to Set
+    d1()
+    selected.set('k')
+    expect(calls1).toEqual([false]) // disposed before the change
+    expect(calls2).toEqual([false, true]) // survivor still fires
+  })
+
+  it('inline-slot dispose is identity-safe: disposing does not affect a DIFFERENT key', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const callsA: boolean[] = []
+    const callsB: boolean[] = []
+    const dA = isSelected.subscribe('a', (m) => callsA.push(m))
+    isSelected.subscribe('b', (m) => callsB.push(m))
+    dA()
+    selected.set('b')
+    expect(callsB).toEqual([false, true])
+  })
+
   it('interop — .bind subscribers coexist with selector() inside effect', () => {
     const selected = signal<string | null>(null)
     const isSelected = createSelector(selected)
