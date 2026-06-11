@@ -27,7 +27,9 @@
  *   bun scripts/check-pyreon-lint-ratchet.ts --update   # regenerate the baseline (only DOWN)
  */
 import { execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { type LintBaseline, compareToBaseline } from './check-lint-ratchet'
 
 export const BASELINE_PATH = 'pyreon-lint-baseline.json'
@@ -69,19 +71,32 @@ export function buildBaseline(current: Record<string, number>): LintBaseline {
 }
 
 function runPyreonLintJson(): unknown {
-  let out = ''
+  // Redirect the doctor's (~400KB) JSON to a temp FILE rather than capturing
+  // its stdout pipe. The doctor is a Bun process that prints the report and
+  // `process.exit`s — under a captured pipe in CI, Bun can exit before the
+  // stdout buffer fully flushes, truncating the capture ("Unterminated string"
+  // at JSON.parse). A shell `>` file redirect is OS-buffered and flushes
+  // reliably (it's the same method that produces clean output interactively).
+  // The oxlint ratchet doesn't hit this because oxlint is a Rust binary that
+  // flushes stdout deterministically on exit.
+  const dir = mkdtempSync(join(tmpdir(), 'pyreon-lint-ratchet-'))
+  const outFile = join(dir, 'doctor.json')
   try {
-    out = execSync('bun packages/tools/cli/src/index.ts doctor --only lint --json', {
-      encoding: 'utf8',
-      maxBuffer: 256 * 1024 * 1024,
-    })
-  } catch (e) {
-    // The CLI exits non-zero when an ERROR-severity finding exists — stdout still
-    // holds the JSON report, so the ratchet can still read the advisory backlog.
-    out = String((e as { stdout?: string }).stdout ?? '')
+    try {
+      execSync(`bun packages/tools/cli/src/index.ts doctor --only lint --json > ${JSON.stringify(outFile)}`, {
+        stdio: ['ignore', 'ignore', 'inherit'],
+        maxBuffer: 256 * 1024 * 1024,
+      })
+    } catch {
+      // The CLI exits non-zero only when an ERROR-severity finding exists — the
+      // file still holds the full JSON report, so the ratchet reads it anyway.
+    }
+    const out = existsSync(outFile) ? readFileSync(outFile, 'utf8') : ''
+    if (!out.trim()) throw new Error('[pyreon-lint-ratchet] doctor produced no JSON output')
+    return JSON.parse(out)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
-  if (!out.trim()) throw new Error('[pyreon-lint-ratchet] doctor produced no JSON output')
-  return JSON.parse(out)
 }
 
 function main(): void {
