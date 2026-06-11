@@ -106,11 +106,14 @@ export const doctor = async (options: DoctorOptions): Promise<number> => {
     console.log(renderText(report, { cwd: options.cwd }))
   }
 
-  // Exit code: in --ci mode, any NON-ADVISORY error finding fails.
-  // Advisory (`best-practices`) errors are opt-in/opinionated and must
-  // never break CI — they're surfaced for visibility, not enforcement.
-  // Otherwise, only a non-zero is returned when there are findings AT
-  // ALL — so `pyreon doctor && echo green` works as a quick gate.
+  // Exit code: in --ci mode, the count of NON-ADVISORY error findings is
+  // returned (the CLI exits 1 when it's > 0). Advisory (`best-practices`)
+  // errors are opt-in/opinionated and must never break CI — surfaced for
+  // visibility, not enforcement. WITHOUT --ci, doctor is INFORMATIONAL:
+  // the returned total-findings count is for programmatic consumers, but
+  // the CLI does NOT exit non-zero on it (only `--ci` gates — matching the
+  // documented contract). So plain `pyreon doctor` always exits 0; use
+  // `pyreon doctor --ci` as the gate.
   if (options.ci) {
     return report.findings.filter(
       (f) => f.severity === 'error' && !isAdvisoryCategory(f.category),

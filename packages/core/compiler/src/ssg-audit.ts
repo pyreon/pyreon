@@ -39,7 +39,7 @@
  * must be rare. Every finding ships with file path + line/column +
  * actionable fix suggestion.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
 
@@ -260,12 +260,65 @@ function detect404OutsideLayoutDir(
   return findings
 }
 
+const VITE_CONFIG_NAMES = [
+  'vite.config.ts',
+  'vite.config.js',
+  'vite.config.mjs',
+  'vite.config.mts',
+  'vite.config.cjs',
+]
+
+/**
+ * Does the app owning `routeFile` opt into `mode: 'ssg'`? Walks up to the
+ * nearest `vite.config.*` (bounded by `boundary`) and looks for an EXPLICIT
+ * `mode: 'ssg'`. `getStaticPaths` only matters under SSG — SPA / SSR / ISR
+ * apps (and any app that doesn't opt into SSG) never prerender, so flagging
+ * a missing enumerator there is a false positive (e.g. `examples/chat` +
+ * `examples/docs-pyreon` are `mode: 'spa'`). Conservative + matching this
+ * file's "false negatives acceptable, false positives must be rare" stance:
+ * flag ONLY on an explicit `mode: 'ssg'` (SSG is opt-in; a computed/absent
+ * mode is treated as not-SSG).
+ */
+const ssgModeCache = new Map<string, boolean>()
+function appUsesSsgMode(routeFile: string, boundary: string): boolean {
+  const startDir = dirname(routeFile)
+  const cached = ssgModeCache.get(startDir)
+  if (cached !== undefined) return cached
+  const stopAt = resolve(boundary)
+  let dir = startDir
+  let result = false
+  while (true) {
+    let foundConfig = false
+    for (const name of VITE_CONFIG_NAMES) {
+      const cfg = join(dir, name)
+      if (existsSync(cfg)) {
+        foundConfig = true
+        try {
+          result = /\bmode\s*:\s*['"]ssg['"]/.test(readFileSync(cfg, 'utf8'))
+        } catch {
+          /* unreadable → treat as not-SSG */
+        }
+        break
+      }
+    }
+    const parent = dirname(dir)
+    if (foundConfig || resolve(dir) === stopAt || parent === dir) break
+    dir = parent
+  }
+  ssgModeCache.set(startDir, result)
+  return result
+}
+
 /**
  * 2) Dynamic route file missing `getStaticPaths` export.
  *
- * `[id].tsx`, `[...slug].tsx` — under SSG mode without a `getStaticPaths`,
+ * `[id].tsx`, `[...slug].tsx` — under `mode: 'ssg'` without a `getStaticPaths`,
  * the auto-detect step silently skips the route. User expects
  * `dist/posts/1/index.html` but never gets it.
+ *
+ * SCOPED TO SSG APPS: only fires when the owning app's nearest `vite.config.*`
+ * declares `mode: 'ssg'` (see `appUsesSsgMode`) — SPA/SSR/ISR apps never
+ * prerender, so the enumerator is correctly absent there.
  *
  * We syntactically scan for `export const getStaticPaths` or
  * `export function getStaticPaths`. Re-exports / async-function form
@@ -287,6 +340,8 @@ function detectDynamicRouteMissingGetStaticPaths(
     // are everything else. Caught originally in M3.B against cpa-pw-blog's
     // `api/echo/[...path].ts`.
     if (/[/\\]routes[/\\]api[/\\]/.test(file)) continue
+    // Only meaningful under SSG — SPA/SSR/ISR apps never prerender.
+    if (!appUsesSsgMode(file, rootForRel)) continue
     const source = parseSourceFile(file)
     if (!source) continue
     let hasGetStaticPaths = false

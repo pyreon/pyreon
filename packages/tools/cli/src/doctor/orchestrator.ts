@@ -2,13 +2,19 @@
  * Doctor orchestrator — picks the gate list per mode, runs them in
  * parallel where safe, collects results, hands off to the aggregator.
  *
- * **Gate categorization by speed**:
- *   - FAST gates (default): react-patterns, pyreon-patterns, lint,
- *     distribution, doc-claims, islands-audit, ssg-audit, audit-tests.
+ * **Gate categorization by speed** (the authoritative lists are the
+ * `FAST_GATES` / `SLOW_GATES` arrays below — keep this comment in sync):
+ *   - FAST gates (default, 11): react-patterns, pyreon-patterns, lint,
+ *     distribution, doc-claims, islands-audit, ssg-audit, content-audit,
+ *     audit-tests, check-dedup, audit-leak-classes.
  *     Total runtime ~2-5s on the real Pyreon repo.
- *   - SLOW gates (`--full` opt-in): audit-types (TS compiler-API walk
+ *   - SLOW gates (`--full` opt-in, 2): audit-types (TS compiler-API walk
  *     across 6 packages, ~1-30s), bundle-budgets (Bun.build of every
  *     published package, ~15-30s).
+ *
+ * **Gate isolation**: each gate runs inside a try/catch — a gate that
+ * throws is recorded as a single `<gate>/gate-failed` ERROR finding
+ * instead of rejecting `Promise.all` and taking down the whole report.
  *
  * **Why parallel**: the gates are fully independent — no shared
  * state, no file-write contention (only `--fix` writes, and lint /
@@ -55,7 +61,7 @@ export type GateName =
   | 'bundle-budgets'
 
 /** Gates that run by default (fast). */
-const FAST_GATES: GateName[] = [
+export const FAST_GATES: GateName[] = [
   'react-patterns',
   'pyreon-patterns',
   'lint',
@@ -70,7 +76,7 @@ const FAST_GATES: GateName[] = [
 ]
 
 /** Gates that require `--full` to enable. */
-const SLOW_GATES: GateName[] = ['audit-types', 'bundle-budgets']
+export const SLOW_GATES: GateName[] = ['audit-types', 'bundle-budgets']
 
 export interface OrchestratorOptions {
   cwd: string
@@ -108,7 +114,9 @@ const ALL_GATE_CATEGORIES: Record<GateName, GateResult['category']> = {
   'ssg-audit': 'architecture',
   'content-audit': 'architecture',
   'check-dedup': 'architecture',
-  'audit-leak-classes': 'architecture',
+  // Advisory: leak-class heuristics are false-positive-prone (manual triage),
+  // so they're VISIBLE but excluded from the grade + --ci (see the gate's JSDoc).
+  'audit-leak-classes': 'best-practices',
   'audit-types': 'architecture',
   'bundle-budgets': 'performance',
 }
@@ -147,7 +155,30 @@ export const runDoctor = async (
         : 'skipped'
       return skippedGate(gate, ALL_GATE_CATEGORIES[gate], reason)
     }
-    return runGate(gate, opts)
+    try {
+      return await runGate(gate, opts)
+    } catch (err) {
+      // A gate that throws must NOT take down the whole run — `Promise.all`
+      // would reject and we'd lose every other gate's findings + the score.
+      // Isolate it as a single `gate-failed` ERROR finding (the same shape
+      // `bundle-budgets` uses for its own internal catch) so the report
+      // still renders and the failure is surfaced, not swallowed.
+      const category = ALL_GATE_CATEGORIES[gate]
+      return {
+        gate,
+        category,
+        findings: [
+          {
+            category,
+            severity: 'error',
+            code: `${gate}/gate-failed`,
+            gate,
+            message: `${gate} gate threw and was isolated: ${(err as Error)?.message ?? String(err)}`,
+          },
+        ],
+        meta: { elapsedMs: 0 },
+      }
+    }
   })
 
   const gates = await Promise.all(promises)

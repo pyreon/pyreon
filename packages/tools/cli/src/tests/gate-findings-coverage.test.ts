@@ -81,6 +81,13 @@ describe('runContentAuditGate — finding mapping', () => {
 describe('runSsgAuditGate — finding mapping', () => {
   it('maps dynamic-route-missing-get-static-paths through the loop', async () => {
     const cwd = makeTmpDir()
+    // The detector only fires for `mode: 'ssg'` apps (SPA/SSR/ISR never
+    // prerender) — give the app an SSG vite.config so the finding fires.
+    writeFile(
+      cwd,
+      'vite.config.ts',
+      `import { zero } from '@pyreon/zero'\nexport default { plugins: [zero({ mode: 'ssg' })] }\n`,
+    )
     writeFile(
       cwd,
       'src/routes/[id].tsx',

@@ -1590,10 +1590,10 @@ If you raise a threshold by ADDING exclusions, the gate gets weaker for those fi
 
 ## pyreon doctor — unified project health audit
 
-`pyreon doctor` is the single entry point for every gate Pyreon ships. PR 1 (#570) extracted a `Finding[]` / `GateResult` shape from the standalone scripts; PR 2 (#XXX) added the aggregator, 0-100 score formula, and beautiful CLI output. Modeled after [react.doctor](https://www.react.doctor/) — banner + per-category bars + top-N findings.
+`pyreon doctor` is the single entry point for the project-**health** gates Pyreon ships — the scored, finding-producing audits (correctness / architecture / testing / documentation / performance). It is NOT a runner for the CI-*pipeline* gates that don't fit a scored-health snapshot — the lint **ratchets**, `check-changeset-required`, `check-release-readiness`, `gen-docs --check` / `check-mcp-docs` drift, `verify-modes`, `scaffold-smoke` etc. stay as their own CI jobs (they're diff-relative, baseline-relative, generated-artifact-sync, or heavy build integration, not health snapshots of the code). PR 1 (#570) extracted a `Finding[]` / `GateResult` shape from the standalone scripts; PR 2 added the aggregator, 0-100 score formula, and CLI output. Modeled after [react.doctor](https://www.react.doctor/) — banner + per-category bars + top-N findings.
 
 ```bash
-pyreon doctor                # default: 8 fast gates (~2-5s), scored output
+pyreon doctor                # default: 11 fast gates (~2-5s), scored output
 pyreon doctor --full         # adds 2 slow gates: audit-types, bundle-budgets
 pyreon doctor --fix          # auto-fix lint + react-patterns where possible
 pyreon doctor --json         # full DoctorReport for AI agents / dashboards
@@ -1604,20 +1604,25 @@ pyreon doctor --skip pyreon-patterns      # exclude from default set
 pyreon doctor --audit-min-risk high       # tighten test-environment audit
 ```
 
-**Gates (10 total, 8 fast + 2 slow)**:
+**Gates (13 total, 11 fast + 2 slow)** — the authoritative lists are `FAST_GATES` / `SLOW_GATES` in `orchestrator.ts`; the CLI's `VALID_GATES` is DERIVED from them (`[...FAST_GATES, ...SLOW_GATES]`) so `--only`/`--skip` can never reject a gate that actually runs:
 
-| Gate              | Default category | Speed | Coverage                                                    |
-| ----------------- | ---------------- | ----- | ----------------------------------------------------------- |
-| `react-patterns`  | correctness      | fast  | `useState` / `useEffect` / `className` / React imports      |
-| `pyreon-patterns` | correctness      | fast  | 14 Pyreon-specific anti-patterns (signal-write-as-call, …)  |
-| `lint`            | correctness      | fast  | All 67 `@pyreon/lint` rules                                 |
-| `distribution`    | architecture     | fast  | `sideEffects` declared + source maps shipped (not excluded) |
-| `doc-claims`      | documentation    | fast  | Hand-quoted numeric claims in docs match the source         |
-| `audit-tests`     | testing          | fast  | Mock-vnode test patterns (PR #197 bug class)                |
-| `islands-audit`   | architecture     | fast  | Cross-file island foot-guns (5 detector codes)              |
-| `ssg-audit`       | architecture     | fast  | `_404.tsx` placement, `getStaticPaths`, revalidate literals |
-| `audit-types`     | architecture     | slow  | Typed-but-unimplemented public-interface fields             |
-| `bundle-budgets`  | performance      | slow  | Gzipped main-entry size vs locked budget                    |
+| Gate                 | Default category | Speed | Coverage                                                    |
+| -------------------- | ---------------- | ----- | ----------------------------------------------------------- |
+| `react-patterns`     | correctness      | fast  | `useState` / `useEffect` / `className` / React imports      |
+| `pyreon-patterns`    | correctness      | fast  | Pyreon-specific anti-patterns (detectPyreonPatterns codes); **defers to the `lint` gate** for codes a lint rule fully owns (`process-dev-gate`, `raw-add-event-listener`, `query-options-as-function`) so they aren't double-reported at a wrong severity, and honors `.pyreonlintrc.json` exemptPaths for the kept ones |
+| `lint`               | correctness      | fast  | All configured `@pyreon/lint` rules (reads `.pyreonlintrc.json`); opt-in best-practice rules route to the advisory `best-practices` category |
+| `distribution`       | architecture     | fast  | `sideEffects` declared + source maps shipped (not excluded) |
+| `doc-claims`         | documentation    | fast  | Hand-quoted numeric claims in docs match the source         |
+| `islands-audit`      | architecture     | fast  | Cross-file island foot-guns (5 detector codes)              |
+| `ssg-audit`          | architecture     | fast  | `_404.tsx` placement, `getStaticPaths` (**scoped to `mode: 'ssg'` apps** — SPA/SSR/ISR never prerender), revalidate literals |
+| `content-audit`      | architecture     | fast  | `@pyreon/zero-content` broken internal links / missing titles / orphaned `.md` (**per-config** — same-named collections across apps don't cross-contaminate) |
+| `audit-tests`        | testing          | fast  | Mock-vnode test patterns (PR #197 bug class)                |
+| `check-dedup`        | architecture     | fast  | Duplicate dependency versions in the lockfile               |
+| `audit-leak-classes` | **best-practices** (advisory) | fast | The 5 memory-leak classes — **advisory** (info, false-positive-prone): VISIBLE but excluded from the grade + `--ci` |
+| `audit-types`        | architecture     | slow  | Typed-but-unimplemented public-interface fields             |
+| `bundle-budgets`     | performance      | slow  | Gzipped main-entry size vs locked budget                    |
+
+A gate that THROWS is isolated by the orchestrator into a single `<gate>/gate-failed` ERROR finding (it never takes down the whole run).
 
 **Score formula**: per-finding penalty `error=10 / warning=3 / info=1`. Per-category subscore = `max(0, 100 - sum)`. Overall = mean of _included_ category subscores. Letter grades A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F otherwise. Categories with no gate coverage are excluded from the mean (an unmeasured category shouldn't pull the average up).
 

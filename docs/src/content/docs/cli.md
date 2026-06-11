@@ -39,7 +39,7 @@ yarn add @pyreon/cli
 pyreon doctor
 ```
 
-By default it runs the **8 fast gates** (~1-2s wall-clock on a warm cache). The 2 slow gates are opt-in via `--full`.
+By default it runs the **11 fast gates** (~1-2s wall-clock on a warm cache). The 2 slow gates are opt-in via `--full`.
 
 ```text
   pyreon doctor · project health audit
@@ -73,17 +73,20 @@ Each gate emits findings with a `category`, a `severity` (`error` / `warning` / 
 | Gate | Speed | Category | What it checks |
 | --- | --- | --- | --- |
 | `react-patterns` | fast | `correctness` | "Coming from React" mistakes — `useState`, `useEffect`, `className`, `htmlFor`, `onChange` on inputs, `.value` writes, React imports. |
-| `pyreon-patterns` | fast | `correctness` | "Using Pyreon wrong" mistakes — `<For>` missing `by`, destructured props, bundler-coupled dev gates, signal-write-as-call, and 8 more. |
-| `lint` | fast | `correctness` | All `@pyreon/lint` rules across the project. |
+| `pyreon-patterns` | fast | `correctness` | "Using Pyreon wrong" mistakes — `<For>` missing `by`, destructured props, signal-write-as-call, and more. Codes a `@pyreon/lint` rule fully owns (e.g. `process-dev-gate`, raw `addEventListener`) are **deferred to the `lint` gate** (not double-reported); kept codes honor `.pyreonlintrc.json` exemptPaths. |
+| `lint` | fast | `correctness` | All configured `@pyreon/lint` rules across the project (reads your `.pyreonlintrc.json`). |
 | `distribution` | fast | `architecture` | Published-package hygiene — `sideEffects` declared, source maps shipped (not excluded via `!lib/**/*.map`). |
 | `doc-claims` | fast | `documentation` | Numeric claims in human-written docs match the source of truth (hook count, doc-page count). Skipped automatically in non-Pyreon projects. |
-| `audit-tests` | fast | `testing` | The mock-vnode anti-pattern — tests that build `{ type, props, children }` literals instead of going through real `h()`. |
 | `islands-audit` | fast | `architecture` | Cross-file islands detectors — duplicate name, never+registry, registry mismatch, nested island, dead island. |
-| `ssg-audit` | fast | `architecture` | SSG-config consistency checks. |
+| `ssg-audit` | fast | `architecture` | SSG-config consistency — `_404.tsx` placement, missing `getStaticPaths` (**only for `mode: 'ssg'` apps** — SPA/SSR/ISR never prerender), non-literal `revalidate` exports. |
+| `content-audit` | fast | `architecture` | `@pyreon/zero-content` content — broken internal links, missing frontmatter titles, orphaned `.md` files. Validated **per-config** (two apps that both mount `/docs` don't cross-contaminate). |
+| `audit-tests` | fast | `testing` | The mock-vnode anti-pattern — tests that build `{ type, props, children }` literals instead of going through real `h()`. |
+| `check-dedup` | fast | `architecture` | Duplicate dependency versions in the lockfile. |
+| `audit-leak-classes` | fast | `best-practices` (advisory) | The 5 memory-leak classes. **Advisory** — false-positive-prone, so findings are VISIBLE but excluded from the grade + `--ci`. |
 | `audit-types` | slow | `architecture` | Typed-but-unimplemented public fields (zero non-type refs in the owning package). Requires `--full`. |
 | `bundle-budgets` | slow | `performance` | Each published package's gzipped main-entry size stays within its locked budget. Requires `--full`. |
 
-The two slow gates only run with `--full`; otherwise they appear in the report's skipped footer with the reason `enable with --full`.
+The two slow gates only run with `--full`; otherwise they appear in the report's skipped footer with the reason `enable with --full`. A gate that throws is isolated into a single `<gate>/gate-failed` error finding rather than crashing the whole run.
 
 #### Score
 
@@ -121,10 +124,10 @@ Letter grades:
 | `--ci` | Exit non-zero on **error** findings only (warnings/infos don't fail the build). |
 | `--audit-min-risk high\|medium\|low` | Minimum risk floor for the `audit-tests` gate (default: `medium`). |
 
-Valid gate names for `--only` / `--skip`: `react-patterns`, `pyreon-patterns`, `lint`, `distribution`, `doc-claims`, `audit-tests`, `islands-audit`, `ssg-audit`, `audit-types`, `bundle-budgets`.
+Valid gate names for `--only` / `--skip`: `react-patterns`, `pyreon-patterns`, `lint`, `distribution`, `doc-claims`, `islands-audit`, `ssg-audit`, `content-audit`, `audit-tests`, `check-dedup`, `audit-leak-classes`, `audit-types`, `bundle-budgets`.
 
 ```bash
-pyreon doctor                                  # 8 fast gates + score
+pyreon doctor                                  # 11 fast gates + score
 pyreon doctor --full                           # add audit-types + bundle-budgets
 pyreon doctor --only lint,react-patterns       # run a focused subset
 pyreon doctor --skip doc-claims                # everything except doc-claims
@@ -134,7 +137,7 @@ pyreon doctor --json                           # full report for AI agents / das
 pyreon doctor --gha                            # GitHub Actions inline annotations
 ```
 
-Without `--ci`, the exit code is the total count of findings (errors + warnings + infos), so `pyreon doctor && echo green` works as a quick clean-tree check. With `--ci`, only error findings affect the exit code.
+Without `--ci`, `pyreon doctor` is **informational** — it prints the report and always exits 0 (so it never breaks an interactive run). Use `--ci` to gate a build: it exits non-zero only on **error** findings (advisory `best-practices` errors are excluded — opinionated rules never fail CI).
 
 #### Legacy flags
 
@@ -145,6 +148,7 @@ The pre-v2 single-purpose flags still work — they map to `--only <gate>` short
 | `--audit-tests` | `--only audit-tests` |
 | `--check-islands` | `--only islands-audit` |
 | `--check-ssg` | `--only ssg-audit` |
+| `--check-content` | `--only content-audit` |
 
 ```bash
 pyreon doctor --check-islands                          # == --only islands-audit
