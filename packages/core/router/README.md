@@ -124,7 +124,14 @@ Read loader data in the component:
 const data = useLoaderData<{ name: string }>()
 ```
 
-`LoaderContext.request?: Request` is populated only on SSR (via `prefetchLoaderData(router, path, request)`); `undefined` on CSR.
+`LoaderContext.request?: Request` is populated on SSR (via `prefetchLoaderData(router, path, request)`) and for serverLoaders run by the data endpoint; `undefined` for isomorphic loaders running in the browser.
+
+### Server loaders + single-fetch
+
+- **`serverLoader`** on a `RouteRecord` is a server-only data loader — present as a real function ONLY in the SSR module graph (zero's `.server.ts` sibling convention); it never ships to the client. A record must not have both `loader` and `serverLoader`.
+- **`hasServerLoader`** is the serializable marker client builds carry instead — it triggers ONE fetch to the data endpoint for the whole matched chain on client navigations (single-fetch).
+- **`router.runServerLoaders(path, request?)`** runs only the matched chain's serverLoaders, keyed by matched-chain index; returns `{ kind: 'data', data }` or `{ kind: 'redirect', to, status }`. Server-side use — it's what the data endpoint's worker calls.
+- **`dataEndpoint`** (createRouter option, default `` `${base}/_pyreon/data` ``) is the URL the client router fetches server-loader data from; zero's `createServer` auto-mounts it.
 
 ## Guards + middleware
 
@@ -260,7 +267,7 @@ import {
   parseQuery, parseQueryMulti, stringifyQuery,
 } from '@pyreon/router'
 
-const resolved = resolveRoute(routes, '/user/42?tab=settings')
+const resolved = resolveRoute('/user/42?tab=settings', routes)
 const url = buildPath('/user/:id', { id: '42' })       // '/user/42'
 const url2 = buildPath('/blog/:rest*', { rest: 'a/b' }) // '/blog/a/b' — catch-all
 ```

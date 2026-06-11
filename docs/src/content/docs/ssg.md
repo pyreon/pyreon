@@ -402,6 +402,17 @@ Files the SSG plugin may write to `dist/`. All `_`-prefixed files are internal m
 
 Manifest writes (`_redirects*`, `_pyreon-*.json`) are atomic (temp file + `rename`) so an interrupted build never leaves a half-written manifest an adapter or CI might misparse. Per-page HTML writes are intentionally non-atomic (individually-readable, no cross-file invariant, and the rename cost on 10k-path sites would be significant).
 
+## Delivery polish
+
+Four opt-in options tune how the prerendered pages *ship*:
+
+- **`speculationRules: 'prefetch' | 'prerender'`** — emits a `<script type="speculationrules">` document-rules block into every prerendered page (Chrome's Speculation Rules API: near-instant navigations by prefetching — or fully prerendering — likely same-origin links). Progressive enhancement; unsupported browsers ignore the block.
+- **`viewTransitions: true`** — opts prerendered pages into cross-document View Transitions (`@view-transition { navigation: auto }`): MPA navigations between prerendered pages animate with zero JS in supporting browsers.
+- **`cssMode: 'asset'`** — ships the styler's collected CSS as ONE content-hashed shared file (`assets/pyreon-ssg.<hash>.css`) linked from every page, instead of the default `'inline'` per-page `<style>` tag. Pages share the browser-cached file; HTML shrinks by the full sheet per page. No-op without `@pyreon/styler`.
+- **`earlyHints: true`** — writes per-path `Link: <chunk>; rel=modulepreload` entries into `_headers` for each page's route-chunk closure. Cloudflare Pages and Netlify turn `Link` headers into HTTP 103 Early Hints, so the browser starts fetching route chunks before the HTML arrives.
+
+See **[Zero → ZeroConfig Options](/docs/zero#zeroconfig-options)** for the full `ssg` surface.
+
 ## `ssg` config quick reference
 
 | Option            | Type                                                        | Default  | Summary                                                  |
@@ -415,6 +426,11 @@ Manifest writes (`_redirects*`, `_pyreon-*.json`) are atomic (temp file + `renam
 | `concurrency`     | `number`                                                    | `4`      | Parallel render workers                                  |
 | `onProgress`      | `({ completed, total, currentPath, elapsed }) => void \| …`  | —        | Per-path settle callback                                 |
 | `splitChunks`     | `boolean`                                                   | `true`   | Route-level code splitting                               |
+| `modulePreload`   | `boolean`                                                   | `true`   | Per-route `<link rel="modulepreload">` delta (islands-safe) |
+| `speculationRules`| `'prefetch' \| 'prerender' \| false`                         | off      | Speculation Rules block per prerendered page             |
+| `viewTransitions` | `boolean`                                                   | off      | Cross-document View Transitions opt-in                   |
+| `cssMode`         | `'inline' \| 'asset'`                                        | `'inline'` | Styler CSS inlined per page or one shared hashed file  |
+| `earlyHints`      | `boolean`                                                   | off      | Per-path `Link:` modulepreload entries in `_headers` (HTTP 103) |
 
 Top-level `i18n` (`I18nRoutingConfig`) drives per-locale route duplication; per-route `export const revalidate` drives the build-time ISR manifest.
 

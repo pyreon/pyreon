@@ -26,6 +26,8 @@ describe('gen-docs — server snapshot', () => {
       'server/island',
       'server/prerender',
       'server/renderPage',
+      'server/serverIsland',
+      'server/useRequestLocals',
     ])
   })
 })

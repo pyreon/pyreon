@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements',
   description:
-    'Surgical signal-to-DOM renderer with zero virtual DOM overhead. The compiler emits `_tpl()` (cloneNode-based template instantiation) + `_bind()` (per-node reactive bindings) calls that mount directly to the DOM without VNode diffing. Reactive text uses `TextNode.data` assignment (not `.textContent`) for minimal DOM mutation. Supports SVG/MathML namespace auto-detection (67 tags), custom elements (props as properties), CSS transitions via `<Transition>` / `<TransitionGroup>`, and component caching via `<KeepAlive>`. Dev-mode warnings use `import.meta.env.DEV` (not `typeof process`) so they tree-shake to zero bytes in production Vite builds.',
+    'Surgical signal-to-DOM renderer with zero virtual DOM overhead. The compiler emits `_tpl()` (cloneNode-based template instantiation) + `_bind()` (per-node reactive bindings) calls that mount directly to the DOM without VNode diffing. Reactive text uses `TextNode.data` assignment (not `.textContent`) for minimal DOM mutation. Supports SVG/MathML namespace auto-detection (67 tags), custom elements (props as properties), CSS transitions via `<Transition>` / `<TransitionGroup>`, and component caching via `<KeepAlive>`. Dev-mode warnings use the bundler-agnostic bare `process.env.NODE_ENV` production gate (auto-replaced by every modern bundler) so they tree-shake to zero bytes in production Vite builds.',
   category: 'browser',
   longExample: `import { mount, hydrateRoot, Transition, TransitionGroup, KeepAlive } from "@pyreon/runtime-dom"
 import { signal } from "@pyreon/reactivity"
@@ -162,23 +162,29 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
     {
       name: '_tpl',
       kind: 'function',
-      signature: '_tpl(html: string): () => DocumentFragment',
+      signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined): NativeItem',
       summary:
-        'Compiler-internal: create a template factory from an HTML string. First call parses the HTML into a `<template>` element; subsequent calls use `cloneNode(true)` for zero-parse instantiation. Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically.',
-      example: `// Compiler output (not hand-written):
-const _$t0 = _tpl("<div class=\\"container\\"><span></span></div>")`,
+        'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically.',
+      example: `// Compiler output for <div class="box">{text()}</div>:
+_tpl("<div class=\\"box\\"> </div>", (__root) => {
+  const __t0 = __root.firstChild
+  const __d0 = _bindText(text, __t0)
+  return () => { __d0() }
+})`,
       seeAlso: ['_bindText', '_bindDirect'],
     },
     {
       name: '_bindText',
       kind: 'function',
-      signature: '_bindText(fn: () => string, node: Text): void',
+      signature: '_bindText(source: Signal-like, node: Text, caller?: () => unknown): () => void',
       summary:
-        'Compiler-internal: bind a reactive expression to a text node via `TextNode.data` assignment. Creates a `renderEffect` that re-runs when tracked signals change. Each text node gets its own independent binding for fine-grained reactivity.',
+        'Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment, returning a dispose function. The fast path BYPASSES the effect system entirely — it subscribes via the signal\'s `.direct()` single-subscriber slot (no Set, no deps array, no tracking-stack push); `renderEffect` is only the fallback for bare callables. Writes the initial value synchronously at bind time (which is why the baked `" "` template placeholder never renders). Each text node gets its own independent binding for fine-grained reactivity.',
       example: `// Compiler output for <div>{count()}</div>:
-const _$t = _tpl("<div> </div>")
-const _$n = _$t()
-_bindText(() => count(), _$n.firstChild)`,
+_tpl("<div> </div>", (__root) => {
+  const __t0 = __root.firstChild
+  const __d0 = _bindText(count, __t0) // the SIGNAL, not a thunk
+  return () => { __d0() }
+})`,
       seeAlso: ['_tpl', '_bindDirect'],
     },
     {

@@ -34,7 +34,7 @@
 
 - `_tpl()` (cloneNode) + `_bind()` for compiled templates — 0 VNode allocations
 - `TextNode.data` for reactive text (not `.textContent`)
-- Signal subscriptions via `Set<() => void>`, batch uses pointer swap
+- Signal subscriptions: inline single-subscriber slot (`_d1`) promoting to `Set` on the 2nd subscriber; batch uses pointer swap
 - `mountFor` keyed reconciler with LIS algorithm. Three-tier fast path in `computeForLis` (`packages/core/runtime-dom/src/nodes.ts`): (1) **extend** when `v > lastV` — O(1), covers append; (2) **known slot** when `tails[v] === v` — O(1), covers prepend and other piecewise-monotonic shapes; (3) binary search fallback. Only tier 3 emits `runtime.mountFor.lisOps`; a 1k→2k prepend is 0 probes, random shuffles stay at ~O(n log n).
 - `_elementDepth` optimization: nested elements skip DOM removal closures
 - `renderEffect` uses local array for deps (lighter than `effect()`)

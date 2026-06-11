@@ -48,10 +48,14 @@ export interface Selector<T> {
    * with the initial value, then again each time the selector's
    * per-key bucket fires (only when the selection actually crosses this
    * key). The bucket calls the updater with the resolved boolean directly
-   * — no per-row wrapper closure stored in the bucket Set.
+   * — no per-row wrapper closure.
    *
-   * Per-row alloc: 1 `Set.add` + 1 dispose closure (vs `renderEffect`'s
-   * ~5 per call). Measured savings on a 1000-row create-and-mount
+   * Per-row alloc (the dominant one-subscriber-per-key `<For>` shape):
+   * 1 `Map.set` of the BARE updater + 1 dispose closure — NO Set at all;
+   * a Set is allocated only when a SECOND subscriber binds the same key
+   * (the inline-first-subscriber slot, PR #1537 — a 10k-row create
+   * previously allocated 10k single-entry Sets). Measured savings on a
+   * 1000-row create-and-mount
    * benchmark with `<For>` + per-row `isSelected(row.id)` className:
    * **-0.8ms on create-1k, -0.7ms on replace-all, -5ms on create-10k** —
    * promoting Pyreon (compiled) from "tied" to "outright leader" on every
@@ -185,13 +189,13 @@ export function createSelector<T>(source: () => T): Selector<T> {
   // Hooks `updater` DIRECTLY into a per-key bound bucket — the source effect
   // calls it with the resolved boolean (`true` on selection added, `false`
   // on selection removed). No effect machinery, no per-row closure
-  // allocation beyond the dispose. See `Selector.bind` JSDoc for the full
+  // allocation beyond the dispose. See `Selector.subscribe` JSDoc for the full
   // performance rationale + benchmark.
   //
-  // Memory shape per `.bind` call:
-  //   - 1 Set.add (the USER'S updater goes straight in — no wrapper closure)
+  // Memory shape per `.subscribe` call (one-subscriber-per-key shape):
+  //   - 1 Map.set of the BARE updater (no Set — inline-first-subscriber
+  //     slot; a Set is allocated only on the 2nd subscriber for a key)
   //   - 1 closure (dispose)
-  //   - 1 Set alloc (only on first key bind; subsequent rows reuse)
   //   - 0 effect, 0 deps array, 0 tracking-stack push
   //
   // vs `renderEffect(() => updater(selector(key)))`: ~5× fewer allocations,

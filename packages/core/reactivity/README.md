@@ -2,7 +2,7 @@
 
 Standalone fine-grained reactivity primitives — signals, computeds, effects, stores, resources, scopes.
 
-`@pyreon/reactivity` is the foundation layer every other Pyreon package builds on, but it has zero framework dependencies and works on its own in Node, Bun, edge workers, or any JavaScript environment without DOM or JSX. Subscribers are tracked via a `Set<() => void>`; batches use a pointer swap for zero-allocation grouping. Two-tier batch flush (computed recompute → effect run) prevents stale reads in diamond-shaped dependency graphs.
+`@pyreon/reactivity` is the foundation layer every other Pyreon package builds on, but it has zero framework dependencies and works on its own in Node, Bun, edge workers, or any JavaScript environment without DOM or JSX. Subscribers are tracked via an inline `_d1` single-subscriber slot that promotes to a `Set<() => void>` on the second subscriber (the dominant per-`<For>`-row case pays no Set allocation); batches use a pointer swap for zero-allocation grouping. Two-tier batch flush (computed recompute → effect run) prevents stale reads in diamond-shaped dependency graphs.
 
 ## Install
 
@@ -149,7 +149,7 @@ const isSelected = createSelector(() => selected())
 
 `createSelector(source)` returns a function that, when called with a key, only notifies subscribers when the key transitions in or out of the selected state. O(1) instead of N effect runs on selection change.
 
-For the canonical `<For>` + `createSelector` className/text-content shape, `Selector<T>` also exposes a direct `.subscribe(key, updater)` API that skips the full `renderEffect` setup — per-row alloc drops from ~5 to ~2:
+For the canonical `<For>` + `createSelector` className/text-content shape, `Selector<T>` also exposes a direct `.subscribe(key, updater)` API that skips the full `renderEffect` setup — the first-subscriber-per-key path allocates just 1 dispose closure + 1 Map entry (the updater is stored as a bare function, no Set; a Set is only allocated when a 2nd subscriber arrives for the same key):
 
 ```ts
 const dispose = isSelected.subscribe(row.id, (matches) => {

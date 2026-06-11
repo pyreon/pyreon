@@ -4,12 +4,13 @@
  *
  * The single-fetch contract: on a client-side navigation to a route chain
  * containing `hasServerLoader` records, the router makes ONE request here;
- * this endpoint builds a per-request router at the path, runs the chain's
- * serverLoaders (and any isomorphic loaders) SERVER-SIDE with the real
+ * this endpoint builds a per-request router at the path, runs ONLY the
+ * chain's serverLoaders (isomorphic loaders run client-side — running
+ * them here would double-fire their side effects) SERVER-SIDE with the real
  * request (cookies / auth headers flow — `LoaderContext.request` is set),
  * and returns the whole chain's data keyed by record path:
  *
- *   { "data": { "/dash": {...}, "/dash/:id": {...} } }
+ *   { "data": { "0": {...}, "1": {...} } }   // keyed by matched-chain index
  *
  * A server loader throwing `redirect()` returns `{ "redirect": { to,
  * status } }` (HTTP 200 — the CLIENT router performs the navigation;

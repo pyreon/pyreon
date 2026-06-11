@@ -174,10 +174,13 @@ const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 }
  *
  * @example
  * // Compiler output for: <div class="box"><span>{text()}</span></div>
- * _tpl('<div class="box"><span></span></div>', (__root) => {
- *   const __e0 = __root.children[0];
- *   const __d0 = _re(() => { __e0.textContent = text(); });
- *   return () => { __d0(); };
+ * // (sole-dynamic-text child: the template bakes a ' ' placeholder text
+ * //  node — no createTextNode/appendChild per instantiation)
+ * _tpl('<div class="box"><span> </span></div>', (__root) => {
+ *   const __e0 = __root.firstElementChild;
+ *   const __t1 = __e0.firstChild;
+ *   const __d0 = _bindText(text, __t1);
+ *   return () => { __d0() };
  * })
  */
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {

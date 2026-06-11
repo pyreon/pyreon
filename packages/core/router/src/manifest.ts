@@ -62,6 +62,7 @@ const User = () => {
   )
 }`,
   features: [
+    'Server loaders (zero integration): records carry `serverLoader` (SSR module graph only) / `hasServerLoader` (client marker) — client navigations fetch the whole chain via ONE request to the `dataEndpoint` (default `<base>/_pyreon/data`); redirect() from a server loader arrives as a JSON envelope the client turns into a navigation',
     'createRouter() — factory with routes, guards, middleware, loaders, hash/history mode',
     'RouterProvider / RouterView / RouterLink — context-based rendering components',
     'useRouter / useRoute — programmatic navigation and typed route access',
@@ -76,6 +77,22 @@ const User = () => {
     'Navigation guards — per-route and global beforeEnter/afterEach hooks',
   ],
   api: [
+    {
+      name: 'runServerLoaders',
+      kind: 'function',
+      signature:
+        "router.runServerLoaders(path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number }>",
+      summary:
+        "The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). Runs ONLY the matched chain's `serverLoader` records (NOT isomorphic `loader`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a `path`, so path-keying collided). A `redirect()` thrown by any server loader returns the redirect descriptor instead of data.",
+      mistakes: [
+        'Calling it client-side — `serverLoader` is undefined in the client graph; the client router does the single FETCH instead',
+        'Expecting isomorphic `loader`s to run here — deliberately excluded (double-fire prevention); they run on the client during navigation',
+      ],
+      example: `// zero's /_pyreon/data endpoint does exactly this:
+const result = await router.runServerLoaders('/dash', ctx.req)
+if (result.kind === 'redirect') return jsonRedirect(result)
+return json({ data: result.data }) // keyed by matched-chain index`,
+    },
     {
       name: 'createRouter',
       kind: 'function',

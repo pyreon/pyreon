@@ -4,9 +4,9 @@ export default defineManifest({
   name: '@pyreon/server',
   title: 'SSR / SSG / Islands',
   tagline:
-    'SSR + SSG + island architecture — createHandler(), prerender(), island(), middleware chain',
+    'SSR + SSG + island architecture — createHandler(), prerender(), island(), serverIsland(), middleware chain',
   description:
-    '`@pyreon/server` is the production HTTP entry point and SSG generator. `createHandler()` produces a `(req: Request) => Promise<Response>` that handles SSR for every request, with a precompiled template (one parse at handler-creation, not per request) and middleware-chain support that short-circuits on the first `Response`. `prerender()` turns the same handler into a static-site generator. `island()` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `media` / `never`) — the rest of the page stays HTML-only.',
+    '`@pyreon/server` is the production HTTP entry point and SSG generator. `createHandler()` produces a `(req: Request) => Promise<Response>` that handles SSR for every request, with a precompiled template (one parse at handler-creation, not per request) and middleware-chain support that short-circuits on the first `Response`. `prerender()` turns the same handler into a static-site generator. `island()` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `interaction` / `media` / `never`) — the rest of the page stays HTML-only. `serverIsland()` is the INVERSE: a cacheable page with per-request SERVER-rendered holes — the marker self-activates on the client and fetches its fragment from the auto-mounted name-allowlisted endpoint.',
   category: 'server',
   features: [
     'createHandler({ App, routes, template?, clientEntry?, middleware?, mode?, collectStyles? })',
@@ -14,7 +14,9 @@ export default defineManifest({
     'Middleware chain — `(ctx) => Response | void | Promise<…>`, short-circuit on first Response',
     'prerender({ handler, paths, outDir, origin?, onPage? }) — SSG with onPage callback',
     'island(loader, { name, hydrate, prefetch? }) — lazy island with hydration strategy + optional prefetch hint',
-    'Hydration strategies: "load" | "idle" | "visible" | "media(...)" | "never"',
+    'Hydration strategies: "load" | "idle" | "visible" | "interaction" | "media(...)" | "never"',
+    'serverIsland(loader, { name, fallback?, cache? }) — per-request server-rendered holes in cacheable pages (GET /_pyreon/fragment/<name>)',
+    'renderPage(router, options) — the ONE string-mode render pipeline shared by handler + SSG + dev SSR',
     'Prefetch hints: "idle" | "visible" — pre-warm the chunk before the hydration trigger fires',
     'useRequestLocals() bridges middleware `ctx.locals` into the component tree',
     'Loader-data inline-script escaping — `</script>` becomes `<\\/script>`',
@@ -141,6 +143,47 @@ const CommandPalette = island(
         'Relying on focus/pointerenter to trigger the SAME action as click for `"interaction"` — only clicks are replayed post-hydration. Non-click events trigger hydration but no replay (focus can\\\'t be reliably re-dispatched once the user has tabbed past; pointerenter is passive)',
       ],
       seeAlso: ['createHandler', 'hydrateIslands', 'hydrateIslandsAuto'],
+    },
+    {
+      name: 'serverIsland',
+      kind: 'function',
+      signature:
+        "serverIsland(loader: () => Promise<{ default: ComponentFn } | ComponentFn>, options: { name: string; fallback?: VNodeChild; cache?: string }): ComponentFn",
+      summary:
+        "The INVERSE of `island()`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a `<pyreon-server-island>` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches `GET /_pyreon/fragment/<name>?props=…` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — `useRequestLocals()` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. `fallback` is the structural placeholder for no-JS clients and until the fragment arrives. `cache` sets the fragment response Cache-Control (default `no-store`) — only for fragments that do NOT vary on cookies/auth.",
+      mistakes: [
+        'Passing children — island props cross the fragment boundary as codec-encoded data; children are dropped (same contract as client islands)',
+        'Setting `cache` on a cookie-varying fragment — the same auth poisoning class as ISR cacheKey; the no-store default exists for a reason',
+        'Expecting the fragment to hydrate interactivity — fragments are server-rendered HTML; composing a client island() INSIDE a server island is a documented follow-up, not v1',
+        'Rendering personalized data in the PAGE around the island — the page is the cacheable part; everything request-specific belongs inside the island',
+        'Two serverIsland() declarations with the same name — the endpoint serves the FIRST registration (dev-mode warns)',
+      ],
+      example: `import { serverIsland } from '@pyreon/zero' // or '@pyreon/server'
+
+const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
+  name: 'CartBadge',
+  fallback: <span class="badge">Cart</span>,
+})
+
+// page stays SSG/ISR/CDN-cacheable; the badge renders per request
+;<CartBadge label="Cart" />`,
+    },
+    {
+      name: 'useRequestLocals',
+      kind: 'function',
+      signature: 'useRequestLocals(): Record<string, unknown>',
+      summary:
+        'Read middleware `ctx.locals` inside components during SSR (and inside server-island fragments / server loaders). Non-generic — cast the fields you read. Returns an empty record outside a request context (client render).',
+      mistakes: [
+        'Importing it from `@pyreon/zero` — it lives in `@pyreon/server` (zero does not re-export it)',
+        'Calling it with a type argument `useRequestLocals<{ user }>()` — the API is non-generic; cast the read instead',
+      ],
+      example: `import { useRequestLocals } from '@pyreon/server'
+
+function Header() {
+  const user = useRequestLocals().user as { name: string } | undefined
+  return <span>{user?.name ?? 'Guest'}</span>
+}`,
     },
     {
       name: 'hydrateIslands',
