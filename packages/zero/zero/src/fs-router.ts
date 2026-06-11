@@ -1552,6 +1552,10 @@ export async function scanRouteFilesWithExports(
         // the fix spelled out.
         // Probe every server-module extension so a `.server.tsx`/`.jsx`
         // sibling is picked up too (it's also excluded from routes above).
+        // NOTE: this runs for PAGE routes only — `_layout.server.ts`
+        // siblings are NOT picked up (layouts can't carry server loaders;
+        // put per-request layout data in a page serverLoader or middleware
+        // locals). Documented limitation, not an oversight.
         const base = filePath.replace(/\.[jt]sx?$/, '')
         const serverLoaderFile = ['.server.ts', '.server.tsx', '.server.js', '.server.jsx']
           .map((ext) => `${base}${ext}`)

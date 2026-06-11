@@ -89,9 +89,31 @@ export async function prefetchLoaderData(
  *   ...${html}...`
  */
 export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
+  // Collision-aware keying: a layout and its index page SHARE a path, so
+  // plain path-keying silently last-wins-overwrote one record's data with
+  // the other's (the same class as the data endpoint's fixed collision —
+  // here it bit the SSR hydration blob on full page loads). The FIRST
+  // record at a path keeps the bare-path key (back-compat: the blob format
+  // is e2e-asserted and read by older clients); each subsequent record at
+  // the SAME path within the matched chain gets `path#<occurrence>`.
+  // `hydrateLoaderData` counts occurrences while walking the SAME matched
+  // chain in the SAME order, so the suffixes line up deterministically.
   const result: Record<string, unknown> = {}
+  const matched = router.currentRoute().matched
+  const seen = new Map<string, number>()
+  for (const record of matched) {
+    if (!router._loaderData.has(record)) continue
+    const n = seen.get(record.path) ?? 0
+    seen.set(record.path, n + 1)
+    result[n === 0 ? record.path : `${record.path}#${n}`] = router._loaderData.get(record)
+  }
+  // Records carrying data but NOT in the current chain (defensive — SSR
+  // renders exactly one chain, so this is normally empty): keep the legacy
+  // path-keyed emit so nothing is dropped.
   for (const [record, data] of router._loaderData) {
-    result[record.path] = data
+    if (!matched.includes(record) && !(record.path in result)) {
+      result[record.path] = data
+    }
   }
   return result
 }
@@ -199,8 +221,19 @@ export function hydrateLoaderData(
 ): void {
   if (!serialized || typeof serialized !== 'object') return
   const route = router._resolve(router.currentRoute().path)
+  // Mirror serializeLoaderData's collision-aware keys: first record at a
+  // path reads the bare key, subsequent same-path records read
+  // `path#<occurrence>` (falling back to the bare key for blobs written by
+  // older servers — the pre-fix behavior, where collided records shared
+  // one value).
+  const seen = new Map<string, number>()
   for (const record of route.matched) {
-    if (Object.hasOwn(serialized, record.path)) {
+    const n = seen.get(record.path) ?? 0
+    seen.set(record.path, n + 1)
+    const key = n === 0 ? record.path : `${record.path}#${n}`
+    if (Object.hasOwn(serialized, key)) {
+      router._loaderData.set(record, serialized[key])
+    } else if (n > 0 && Object.hasOwn(serialized, record.path)) {
       router._loaderData.set(record, serialized[record.path])
     }
   }
