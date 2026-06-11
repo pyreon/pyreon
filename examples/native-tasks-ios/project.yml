@@ -61,6 +61,13 @@ targets:
         CFBundleShortVersionString: 0.0.1
         CFBundleVersion: '1'
         LSRequiresIPhoneOS: true
+        # Allow plain-HTTP loopback fetches (the lifecycle demo's
+        # useFetch targets the local fixture server on 127.0.0.1). ATS
+        # otherwise blocks cleartext HTTP, making the fetch fail
+        # nondeterministically. NSAllowsLocalNetworking is the
+        # Apple-sanctioned dev exemption for loopback / .local hosts.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UILaunchScreen: {}

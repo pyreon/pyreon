@@ -125,3 +125,66 @@ describe('nullish-expression lowering (round-5, device-found)', () => {
     expect(out).toContain('if quotes.error != nil {')
   })
 })
+
+describe('Swift `.task` stable-host wrap (device-found)', () => {
+  // A fetch-bearing component appends a mount-time `.task { begin →
+  // resolve|reject }`. SwiftUI ties a `.task`'s lifetime to the host
+  // view's IDENTITY: when attached to a transparent `Group { if
+  // isPending … }` (what <Suspense>/<ErrorBoundary> emit), SwiftUI
+  // redistributes the modifier onto the if/else BRANCH, so each
+  // loading/error flip changes the branch identity and CANCELS +
+  // RESTARTS the task → the fetch perpetually thrashes and NEVER
+  // settles. On a real Simulator the boundary rendered NOTHING — not
+  // even its fallback (compile-only `swiftc -typecheck` can't catch a
+  // runtime view-lifecycle bug; only the device gate did).
+  //
+  // Fix: wrap the fetch-component body in a concrete `ZStack` so `.task`
+  // attaches to a STABLE-identity host that fires once on appear; the
+  // inner conditional's flips no longer touch it.
+  //
+  // Bisect: drop the `_hasFetchDecl` ZStack branch in
+  // emit-swift.ts:emitSwiftComponent → these specs fail (no ZStack
+  // wrapper) and the iOS lifecycle UITest regresses to rendering
+  // nothing.
+  const SUSPENSE_FETCH = `
+    type Quote = { id: number; text: string }
+    export function SuspenseDemo() {
+      const ok = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
+      const okList = computed(() => ok.data() ?? [])
+      return (
+        <Suspense fallback={<Text data-testid="lc-loading">Loading…</Text>}>
+          <For each={okList} by={(q) => q.id}>{(q) => <Text>{q.text}</Text>}</For>
+        </Suspense>
+      )
+    }
+  `
+
+  it('Swift: a fetch component wraps its body in a ZStack hosting the .task', () => {
+    const out = transform(SUSPENSE_FETCH, { target: 'swift' }).code
+    // The body opens with ZStack { … } and the .task trails it.
+    expect(out).toContain('var body: some View {\n    ZStack {')
+    // The conditional Group is now INSIDE the ZStack, and the .task
+    // attaches to the ZStack (stable), not the Group.
+    expect(out).toMatch(/ZStack \{[\s\S]*Group \{[\s\S]*if ok\.isPending[\s\S]*\}\s*\}\s*\n\s*\.task \{/)
+  })
+
+  it('Swift: a NON-fetch component keeps the bare body (no spurious ZStack)', () => {
+    const PLAIN = `
+      export function Plain() {
+        return <Stack><Text>plain</Text></Stack>
+      }
+    `
+    const out = transform(PLAIN, { target: 'swift' }).code
+    expect(out).not.toContain('ZStack {')
+    expect(out).not.toContain('.task {')
+  })
+
+  it('Kotlin: the fetch harness is a stable LaunchedEffect(Unit) sibling (no wrap needed)', () => {
+    // Compose `LaunchedEffect(Unit)` is keyed by the stable `Unit`, so it
+    // runs ONCE and is not cancelled when isPending flips (just a
+    // recomposition). No ZStack-equivalent wrap is needed or emitted.
+    const out = transform(SUSPENSE_FETCH, { target: 'kotlin' }).code
+    expect(out).toContain('LaunchedEffect(Unit) {')
+    expect(out).not.toContain('ZStack')
+  })
+})
