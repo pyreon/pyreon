@@ -15,6 +15,7 @@
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
+ *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *
  * Each gate runs ~1-15s, total ~30-60s. The point is: catch ALL the
@@ -48,6 +49,7 @@ interface Gate {
 const GATES: Gate[] = [
   { name: 'lint', cmd: 'bun run lint' },
   { name: 'check-lint-ratchet', cmd: 'bun scripts/check-lint-ratchet.ts' },
+  { name: 'check-pyreon-lint-ratchet', cmd: 'bun scripts/check-pyreon-lint-ratchet.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
   { name: 'check-no-legacy-playground', cmd: 'bun scripts/check-no-legacy-playground.ts' },

@@ -1035,14 +1035,16 @@ jobs:
       - name: Verify doc-claim numbers match source of truth
         run: bun run check-doc-claims
 
-  # ── Lint ratchet ──────────────────────────────────────────────────────
-  # oxlint `error`-severity rules are gated at 0 by the `Lint` job itself.
-  # This gate covers the other half: the `warn` backlog. Per-rule counts in
-  # lint-baseline.json may only DECREASE — a change pushing any rule above
-  # its baseline fails here. Turns the curated config from a snapshot into a
-  # self-sustaining system: new code can't refill the backlog while it's
-  # burned down. Lib-free (just oxlint + a JSON compare). See
-  # scripts/check-lint-ratchet.ts + .claude/rules/code-style.md.
+  # ── Lint ratchets ─────────────────────────────────────────────────────
+  # TWO ratchets, both lib-free. (1) oxlint: `error`-severity rules are gated
+  # at 0 by the `Lint` job; this covers the `warn` backlog (lint-baseline.json).
+  # (2) @pyreon/lint: ERROR findings are gated by the `Pyreon Lint Gate` job;
+  # this covers the advisory (warn + info) findings the framework's own
+  # dogfooding produces over packages/*/src (pyreon-lint-baseline.json). Both:
+  # per-rule counts may only DECREASE — a change pushing any rule above its
+  # baseline fails here. Turns each lint surface from a snapshot into a
+  # self-sustaining system. See scripts/check-{lint,pyreon-lint}-ratchet.ts +
+  # .claude/rules/code-style.md.
   lint-ratchet:
     name: Lint Ratchet
     needs: install
@@ -1055,6 +1057,8 @@ jobs:
           restore-bootstrap: 'false'
       - name: Verify oxlint warn-finding counts have not regressed
         run: bun run check-lint-ratchet
+      - name: Verify @pyreon/lint advisory-finding counts (framework src) have not regressed
+        run: bun run check-pyreon-lint-ratchet
 
   # ── Manifest depth ratchet ────────────────────────────────────────────
   # The root cause behind "get_api returns a signature but no foot-gun
