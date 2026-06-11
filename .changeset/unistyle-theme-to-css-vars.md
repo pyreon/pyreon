@@ -1,5 +1,0 @@
----
-'@pyreon/unistyle': minor
----
-
-Add `themeToCssVars()` — autogenerate CSS custom properties from a plain theme JSON. Returns `{ vars, css, registry }`: a same-shape theme tree whose eligible leaves are `var(--px-…)` reference strings, a ready-to-inject `:root` block, and a `varName → value` registry for consumers that can't evaluate `var()`. Units are baked at emission via the existing `value()` + `rootSize` conversion (`spacing.small: 8` → `--px-spacing-small: 0.5rem`), so themes stay authored in pixels. Conventional length keys convert by default (spacing/fontSize/headingSize/elementSize/borderRadius → rem, borderWidth → px); unitless scales emit verbatim so `calc()` multiplication stays valid. `breakpoints`/`rootSize` are excluded (`@media` can't read `var()`). The `var(`/`calc(` pass-through across the whole unistyle value pipeline (`value`, `values`, edge/border-radius shorthands, `styles()`, `makeItResponsive`) is now a tested contract. Foundation for the opt-in CSS-variables theming mode (rocketstyle/PyreonUI integration lands separately).

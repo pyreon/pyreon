@@ -1,5 +1,13 @@
 # @pyreon/ui-theme
 
+## 0.13.19
+
+### Patch Changes
+
+- Updated dependencies [[`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`c0616ab`](https://github.com/pyreon/pyreon/commit/c0616ab14052e0ac53fe6ca12d1ecaf729e7bc09)]:
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/unistyle@1.0.0
+
 ## 0.13.18
 
 ### Patch Changes

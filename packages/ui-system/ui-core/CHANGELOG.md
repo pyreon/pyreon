@@ -1,5 +1,38 @@
 # @pyreon/ui-core
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1528](https://github.com/pyreon/pyreon/pull/1528) [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Opt-in CSS-variables theming mode: `init({ cssVariables: true })` (options: `{ prefix, attribute }`). When enabled, `PyreonUI` autogenerates custom properties from the theme JSON via unistyle's `themeToCssVars` and injects the `:root` block once (SSR-aware — the block rides `getStyleTag()` / the stream flush); the provided theme tree carries `var(--px-…)` leaves; PyreonUI renders a layout-neutral `display: contents` wrapper carrying the mode attribute (server-rendered, so SSR/SSG ship the right mode — nested `inversed` providers scope via the cascade). rocketstyle's `mode(a, b)` pairs become hashed deduped var pairs (`--px-m-<fnv1a>`) resolved by `[data-theme]` rules, theme resolution turns mode-free (the `_rsMemo` key drops its mode segment and the mode signal is not even read), and a dark/light flip is ONE attribute write — measured in real Chromium: computed styles change with zero className writes, `styler.resolve: 0`, `rocketstyle.getTheme: 0`. Flag off is byte-identical to previous behavior. Note: under the flag, `mode(a, b)` values should be unit-complete strings (numbers warn in dev — units cannot be applied to var pairs emitted verbatim).
+
+- [#1528](https://github.com/pyreon/pyreon/pull/1528) [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094) Thanks [@vitbokisch](https://github.com/vitbokisch)! - CSS-variables mode — FOUC fix (Phase 4b) + document export (Q2):
+
+  - `@pyreon/ui-core`: under `init({ cssVariables: true })` the ROOT `PyreonUI` now writes the mode attribute to `document.documentElement` (at `:root`, where the var rules cascade from and where a pre-paint script writes) and returns children unwrapped; only NESTED / `inversed` providers render the `display:contents` wrapper scoping an override to their subtree. New `cssVariablesPrePaintScript({ attribute?, storageKey?, fallback? })` builds the blocking `<head>` script that sets the attribute from localStorage / `prefers-color-scheme` before first paint — the standard dark-mode FOUC fix. (zero apps can keep using the existing `themeScript` export, which writes the same attribute.)
+  - `@pyreon/rocketstyle`: `resolveModeVar(value, mode)` — resolve a `mode(a, b)` var pair to its raw light/dark value for non-CSS render targets (document export), backed by a registry the var-pair factory populates.
+  - `@pyreon/connector-document`: `resolveStyles` + `extractDocumentTree` gained an optional `resolveVar` hook (+ exported `VarResolver` type) that inlines `var(--…)` style values to raw values during extraction — keeps the bridge dependency-light (only `@pyreon/document`).
+  - `@pyreon/document-primitives`: `extractDocNode({ theme?, mode? })` auto-builds the resolver (composing `resolveModeVar` with unistyle's `resolveCssVarReferences` over a `themeToCssVars(theme)` registry), so PDF/DOCX/email export inlines CSS-variable theme values to raw values. Doc primitives that emit raw literals are unaffected.
+
+  Measured/locked in real Chromium; bisect-verified. Flag off (classic path) is byte-identical.
+
+  Also: `PyreonUI` now provides the core context via lazy getters instead of an eager object, so reading `.theme` no longer transitively subscribes to the mode signal. Under cssVariables this makes a theme toggle do ZERO per-component re-runs (the cascade handles it) — a real-app 300-component toggle measures ~1.9× faster (~2.05× at 600 components, holds under 4× CPU throttle); classic mode (which reads `.mode`) is unchanged. New `examples/cssvars-bench` + `scripts/bench-cssvars.ts` for the measurement.
+
+### Patch Changes
+
+- [#1503](https://github.com/pyreon/pyreon/pull/1503) [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add canonical runtime environment flags `isServer` / `isClient` to `@pyreon/reactivity` (re-exported from `@pyreon/core`).
+
+  `isServer` is `typeof document === 'undefined'` — the most reliable "is there a DOM" discriminator (more correct than `typeof window`, which misreports Deno and polyfilled Node). Plain runtime constants, evaluated once at module load: correct in every runtime with zero bundler configuration. Use them for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for heavy server-only code prefer a `/server` subpath export, and for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).
+
+  Internally, this replaces seven hand-rolled `typeof window` / `typeof document` env consts across `router`, `hooks`, `url-state`, `elements`, `ui-core`, and `styler` with the single primitive — removing the drift (the copies disagreed on `window` vs `document`) and the inconsistency. Behavior is unchanged in browsers and Node; the `window` → `document` switch is a strict improvement for Deno / Web Workers.
+
+  `@pyreon/lint`'s `no-window-in-ssr` rule now recognises an imported `isClient` / `isServer` (or `isBrowser` / `isSSR`) as an SSR guard — but only when imported from `@pyreon/reactivity` or `@pyreon/core`, so `if (isClient) window.x` / `if (isServer) return` / `if (!isClient) return` are clean while a same-named local `const isBrowser = true` or a foreign-source import stays flagged.
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264), [`ae3c3fd`](https://github.com/pyreon/pyreon/commit/ae3c3fd529250e7211657e4283fb5e6c3246bf00), [`c0616ab`](https://github.com/pyreon/pyreon/commit/c0616ab14052e0ac53fe6ca12d1ecaf729e7bc09)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/styler@1.0.0
+  - @pyreon/unistyle@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

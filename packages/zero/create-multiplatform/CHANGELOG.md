@@ -1,5 +1,17 @@
 # @pyreon/create-multiplatform
 
+## 0.32.0
+
+### Patch Changes
+
+- [#1530](https://github.com/pyreon/pyreon/pull/1530) [`6ea99ae`](https://github.com/pyreon/pyreon/commit/6ea99ae5ec9724b457459a180798abb7183b941f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Image asset pipeline (multiplatform production Phase 1): the web `<Image>` primitive now resolves BARE src names (`logo.png` — no scheme, no slash) to `/assets/<name>` so the same shared source that bundles via Assets.xcassets (iOS) / res/drawable density buckets (Android) serves the materialized copy on web. The `create-multiplatform` scaffold's build scripts run the new `pyreon-native assets` step automatically when an `assets/` directory exists.
+
+- [#1526](https://github.com/pyreon/pyreon/pull/1526) [`099f574`](https://github.com/pyreon/pyreon/commit/099f5746a8069326e9dccf5c46c405afa2220e46) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Android scaffold manifest ships `android.permission.INTERNET` by default — without it, the first `useFetch` call fails with the opaque `SocketException: socket failed: EPERM` (a real device-CI finding). Harmless for apps that never touch the network.
+
+- [#1535](https://github.com/pyreon/pyreon/pull/1535) [`bd4526d`](https://github.com/pyreon/pyreon/commit/bd4526d7a8ac6b2474e97af980bb0ee4629396fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Android scaffold ships `material-icons-core` — `<Icon>` now references Material glyphs at compile time (`Icons.Filled.*` via the canonical `ICON_MAP`), replacing a phantom `pyreonIcon` runtime lookup that existed only as a typecheck stub and failed every real Gradle build that used an icon.
+
+- [#1539](https://github.com/pyreon/pyreon/pull/1539) [`543307f`](https://github.com/pyreon/pyreon/commit/543307f22920807a3eeb8cdb3be7ed8e5debde20) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Android scaffold now wires Coil (`io.coil-kt:coil-compose`) and the native CLI emits the conditional imports for `<Scroll>` (`verticalScroll`/`rememberScrollState`), `<Modal>` (`Dialog`), and remote `<Image>` (`AsyncImage`) — these primitives were stub-masked (green in the kotlinc validate loop, red on a real `gradle assembleDebug`). Now the full primitive vocabulary compiles + renders on a real Android build.
+
 ## 0.31.0
 
 ## 0.30.0

@@ -1,5 +1,60 @@
 # @pyreon/cli
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1388](https://github.com/pyreon/pyreon/pull/1388) [`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor --check-content` audit — defensive gate for `@pyreon/zero-content`-shaped apps. Mirrors the existing `--check-islands` / `--check-ssg` audits: project-wide cross-file detectors with file:line:column pointers and actionable fix messages, surfaced through the unified doctor pipeline.
+
+  Three detector codes ship:
+
+  - **`missing-frontmatter-title`** (error) — a `.md` file under a `pages` collection has no `title:` field in its YAML frontmatter. Every documented collection schema requires it for sidebar / SEO / route naming. The content() plugin catches this at build time; the audit catches it at edit time so authors don't ship a silently broken page.
+  - **`broken-internal-link`** (error) — a markdown `[text](/path)` link where `/path` matches a collection's URL pattern but no entry with that slug exists. Users hit 404 at runtime; the audit catches it before commit so the link can be fixed alongside the referenced page's rename / removal.
+  - **`orphaned-md-file`** (warning) — a `.md` file under `src/content/` (or `content/`) that isn't under any declared collection's `path`. The runtime ignores it silently; the user thinks the page is published but the build skips it. Severity is `warning` because it might be intentional WIP.
+
+  Same pure-syntactic style as the existing `island-audit.ts` / `ssg-audit.ts` — TypeScript compiler API for parsing `content.config.{ts,mts,js,mjs}`, naive line-by-line walker for frontmatter + internal-link extraction. No type-check pass, no module resolution. False negatives acceptable; false positives must be rare.
+
+  CLI:
+
+  ```bash
+  pyreon doctor --check-content          # legacy single-purpose flag (equivalent to --only content-audit)
+  pyreon doctor --only content-audit     # canonical
+  pyreon doctor                          # included in the default fast-gate set
+  pyreon doctor --json                   # machine-readable
+  pyreon doctor --gha                    # GitHub Actions annotations
+  ```
+
+  New exports from `@pyreon/compiler`: `auditContent`, `formatContentFindings`, `parseContentConfig`, `findContentConfigs`, `readFrontmatter`, `readTitleFromFrontmatter`, `deriveSlug`, `extractInternalLinks` (+ corresponding types `ContentAuditResult`, `ContentFinding`, `ContentFindingCode`, `ContentLocation`, `CollectionDecl`, `AuditContentOptions`).
+
+  35 per-detector specs in `packages/core/compiler/src/tests/content-audit.test.ts` (bisect-verified: reverting the missing-title condition → 3 specs fail with `expect(codes).toContain('missing-frontmatter-title')`; restored → 35/35 pass).
+
+### Patch Changes
+
+- [#1550](https://github.com/pyreon/pyreon/pull/1550) [`4795d0b`](https://github.com/pyreon/pyreon/commit/4795d0be414b89a0f557641bacaeda9c36a0eb69) Thanks [@vitbokisch](https://github.com/vitbokisch)! - doc-claims gate: the hook-count CLAUDE.md anchor no longer hardcodes the category count (`across 6 categories` → `across \d+ categories`). The category number is anchor text, not the asserted value — bumping hook categories (6 → 7) broke the COUNT gate with a confusing `pattern-not-found` instead of a count mismatch.
+
+- [#1491](https://github.com/pyreon/pyreon/pull/1491) [`25ddda0`](https://github.com/pyreon/pyreon/commit/25ddda0d540199a7177cf0ccd4b0cab78912986a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Path updates in `pyreon doctor`'s doc-claims gate + the MCP `get_pattern` tool: the docs site moved from `docs/docs/<topic>.md` to `docs/src/content/docs/<topic>.md` (legacy VitePress → Pyreon-native cutover). The doc-claims gate now reads from the new location; the MCP `get_pattern` candidate paths list includes the new `docs/src/content/docs/patterns/` location while keeping legacy locations as fallbacks for downstream consumers on older repo layouts.
+
+- [#1549](https://github.com/pyreon/pyreon/pull/1549) [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor` correctness + accuracy fixes (deep audit follow-up).
+
+  **Robustness** — a gate that throws no longer crashes the whole run. The orchestrator isolates each gate in a try/catch and records a `<gate>/gate-failed` ERROR finding instead of rejecting `Promise.all` and losing every other gate's findings + the score.
+
+  **False positives** (the gates flagged correct code):
+
+  - `pyreon-patterns` now **defers to the `lint` gate** for codes a configured lint rule fully owns (`process-dev-gate`, `raw-add-event-listener`, `query-options-as-function`) — eliminating double-reporting at a wrong hardcoded `'warning'` severity AND the FPs on framework code the lint rule exempts. The kept codes (e.g. `raw-remove-event-listener`, which the add-only lint rule can't catch) honor the project's `.pyreonlintrc.json` exemptPaths.
+  - `ssg-audit`'s `dynamic-route-missing-get-static-paths` is now **scoped to `mode: 'ssg'` apps** (resolved from the nearest `vite.config`). SPA/SSR/ISR apps never prerender, so a missing `getStaticPaths` there was a false positive.
+
+  **Scoring** — `audit-leak-classes` findings now route to the advisory `best-practices` category. They were `info` "to keep the grade honest", but `info` still costs 1pt each, so ~45 advisory findings tanked the architecture grade to F. Advisory = VISIBLE but excluded from the grade + `--ci`, which is what the gate's stated intent actually requires.
+
+  **CLI** — `check-dedup` was rejected by `--only`/`--skip` (the CLI's `VALID_GATES` was a hand-kept duplicate that dropped it) even though it runs by default. `VALID_GATES` is now derived from the orchestrator's `[...FAST_GATES, ...SLOW_GATES]`, so it can never drift again; the help text derives its counts the same way.
+
+  **GHA renderer** — annotation property values (`file=`, `title=`) now URL-encode `,` and `:` per the workflow-command spec (a comma in a path previously ended the property early).
+
+  Bisect-verified per fix. Docs (CLAUDE.md, `docs/src/content/docs/cli.md`, orchestrator header) corrected: the gate count (13 total / 11 fast, not 10/8), the 3 gates missing from every table (`content-audit`, `check-dedup`, `audit-leak-classes`), the "single entry point for every gate" overclaim (doctor is the health-gate entry point, not a runner for CI-pipeline gates), `--check-content`, and the stale non-CI-exit claim (`pyreon doctor` is informational and always exits 0; `--ci` gates).
+
+- Updated dependencies [[`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc), [`edaea04`](https://github.com/pyreon/pyreon/commit/edaea04231fc33b585e785bda61e63c14663c045), [`f6f54a2`](https://github.com/pyreon/pyreon/commit/f6f54a254e43f3b36a4c55581381ab582322990e), [`73436e7`](https://github.com/pyreon/pyreon/commit/73436e782319940abde41200299489a809de70d5), [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe), [`b9fbb9c`](https://github.com/pyreon/pyreon/commit/b9fbb9cca02295d7db77ae5525b8f5d188848e35), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59)]:
+  - @pyreon/lint@1.0.0
+  - @pyreon/compiler@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

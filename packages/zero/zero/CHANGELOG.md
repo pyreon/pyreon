@@ -1,5 +1,177 @@
 # @pyreon/zero
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1527](https://github.com/pyreon/pyreon/pull/1527) [`75c39ea`](https://github.com/pyreon/pyreon/commit/75c39eac7cc8f4fc1f99586521c27a50bc9f9fb8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Delivery polish (Phase 6 of the render-modes plan):
+
+  - **`ssg.speculationRules: 'prefetch' | 'prerender'`** — inject a Speculation Rules document-rules block into every prerendered page (near-instant MPA navigations; progressive enhancement).
+  - **`ssg.viewTransitions: true`** — cross-document View Transitions opt-in (`@view-transition { navigation: auto }`) on prerendered pages.
+  - **`ssg.cssMode: 'asset'`** — ship the styler's CSS as ONE content-hashed shared file every page links, instead of inlining the full sheet in each page's HTML.
+  - **`ssg.earlyHints: true`** — per-path `Link: <chunk>; rel=modulepreload` entries in `_headers` (Cloudflare/Netlify emit HTTP 103 Early Hints from them).
+  - **ISR tag-based invalidation** — `isr.tagsForRequest(req)` records tags at cache-set time; `isrHandler.revalidateTag(tag)` drops every entry carrying the tag (CMS-webhook ergonomics, no path enumeration). Both shipped stores implement the tag index.
+  - **`createFsStore(dir)`** — filesystem-backed ISR store for self-hosted node/bun: the cache (and tag index) survives restarts, killing the cold-cache thundering herd. Errors degrade to cache-miss, never a request-path throw.
+
+- [#1517](https://github.com/pyreon/pyreon/pull/1517) [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Per-route render modes (hybrid rendering) — `export const renderMode` is now WIRED, not just typed. Any route file (or layout — cascades to descendants) can override the app-level `mode`, which becomes the default for undeclared routes:
+
+  - **`'ssg'` in a server app**: prerendered at build (loaders + `getStaticPaths` run), served static-first by the emitted node/bun servers via the `_pyreon-ssg-paths.json` manifest, excluded from the Cloudflare worker via `_routes.json`; missing file falls back to SSR.
+  - **`'spa'`**: the opt-out-of-SSR hatch — the server responds with the CSR shell; the client mounts fresh and runs loaders on the cold-start path. In `mode: 'ssg'`, 'spa' routes emit the shell file instead of prerendered HTML.
+  - **`'isr'` in an `'ssr'` app**: per-route stale-while-revalidate caching. **`'ssr'` in an `'isr'` app**: per-route cache bypass.
+  - **`'ssr'`/`'isr'` in a `mode: 'ssg'` app**: a loud build error naming each route + the fix (a static deploy has no server).
+
+  One resolver (`resolveRenderModeForPath` — leaf-first, layout cascade, app default) drives both build and runtime. Apps with no per-route declarations are byte-identical to before.
+
+- [#1523](https://github.com/pyreon/pyreon/pull/1523) [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server islands + streaming by default (Phase 4 of the render-modes plan).
+
+  **`serverIsland(loader, { name, fallback?, cache? })`** — the inverse of client islands: a cacheable page with per-request server-rendered holes. Every render emits only a `<pyreon-server-island>` marker (codec-encoded props); the marker self-activates on mount and fetches `GET /_pyreon/fragment/<name>` — auto-mounted by zero's `createServer` — which renders the registered component per request with full request context (`useRequestLocals()` works inside fragments). Name-allowlisted endpoint, `no-store` by default with an opt-in `cache` option, fallback-degrading failures, and cold-start registry warming for lazy routes. Registry is `globalThis`-keyed so bundle-split module duplication can't split it.
+
+  **`mode: 'ssr'` now streams by default** — shell flushes immediately, Suspense boundaries resolve out-of-order with inline style flushes. Opt out with `ssr: { mode: 'string' }`. ISR stays buffered (the SWR cache stores complete bodies), including per-route `renderMode = 'isr'` declarations inside streaming apps (they get a buffered render automatically).
+
+  **Fixed (`@pyreon/runtime-dom`)**: `data-*`/`aria-*` props on CUSTOM ELEMENTS now land as real attributes instead of JS properties — `getAttribute`/`dataset`/CSS attribute selectors/SSR output all agree again. (This was how the server-island marker lost its `data-name` on client mounts; bisect-locked.)
+
+- [#1524](https://github.com/pyreon/pyreon/pull/1524) [`f21a439`](https://github.com/pyreon/pyreon/commit/f21a439cfefd219b1c13f1b8d99dbfbbe949fd34) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server loaders (Phase 5 of the render-modes plan) — `.server.ts` siblings + single-fetch.
+
+  A route file's `.server.ts` sibling can export `serverLoader(ctx)` — it runs in-process on SSR/SSG (full `LoaderContext` incl. `request`), and on client-side navigations the router fetches the whole matched chain's data in **one** request from the auto-mounted `GET /_pyreon/data` endpoint (cookies flow; `redirect()` becomes a client navigation). The client bundle structurally excludes `.server.ts` modules — the client routes module never imports them (CI-gated by an artifact sentinel scan). A route may have `loader` OR a server-loader sibling, not both (build error names the fix).
+
+  Also fixed: route records whose data came from a server loader rendered WITHOUT the `LoaderDataProvider` (both render-gate branches checked only `record.loader`) — `useLoaderData()` read undefined even though preload had populated the data and the hydration blob carried it.
+
+- [#1416](https://github.com/pyreon/pyreon/pull/1416) [`b90e67c`](https://github.com/pyreon/pyreon/commit/b90e67c296cc39b2438490f4330b836b78395c8d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/zero`: add RSS 2.0 feed support to the SEO surface
+
+  - New `generateRssFeed({ title, origin, items, ... })` builder
+  - New `toRfc822` helper (ISO-8601 → RFC-822 date conversion)
+  - `seoPlugin({ rss: {...} })` auto-emits `dist/rss.xml` at build time
+  - `seoMiddleware` serves `/rss.xml` during dev
+  - Exported from `@pyreon/zero/server`
+
+  This consolidates SEO into one canonical source — RSS now lives alongside
+  sitemap, robots, and JSON-LD generators in `seo.ts`.
+
+  `@pyreon/zero-content`: deprecate duplicated SEO builders
+
+  - `seo/rss.ts` is now a thin backward-compat adapter that delegates to
+    `@pyreon/zero`'s `generateRssFeed`. Preserves the `baseUrl` field
+    name. New code should import from `@pyreon/zero` directly.
+  - `seo/sitemap.ts` and `seo/llms-txt.ts` marked `@deprecated`. Zero's
+    `seoPlugin` (sitemap) and `aiPlugin` (llms.txt) are richer
+    alternatives with i18n, hreflang, manifest-aware route enumeration,
+    and dev-server middleware.
+
+  `@pyreon/vitest-config`: add `@pyreon/zero/server` + `@pyreon/zero/client`
+  subpath aliases so workspace test runs resolve them under the `bun`
+  condition.
+
+### Patch Changes
+
+- [#1538](https://github.com/pyreon/pyreon/pull/1538) [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal refactor: replace hand-rolled `typeof window/document` environment checks with the canonical `isServer` / `isClient` primitives from `@pyreon/reactivity`. Behavior is identical (`isServer`/`isClient` ARE `typeof document {===,!==} 'undefined'`) — the framework now uses its own primitive instead of dogfooding the pattern its own `pyreon/prefer-isserver` rule flags. No public API change.
+
+  Function-body SSR guards whose SSR branch is verified by deleting `document`/`window` at runtime in tests (e.g. `@pyreon/elements` Overlay positioning, `@pyreon/styler`'s sheet, `@pyreon/head`'s `syncDom`) intentionally KEEP the call-time `typeof` check — a module-load-time `isServer` const can't be re-evaluated by that test method, and the call-time form is equally production-correct. Those files are scoped-off from `prefer-isserver` in `.pyreonlintrc.json` with that rationale.
+
+- [#1517](https://github.com/pyreon/pyreon/pull/1517) [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Unified string-mode render pipeline + a shipped `useRequestLocals` fix.
+
+  **New `renderPage()` in `@pyreon/server`** — the one per-page render sequence (preload with `redirect()` catching → render with head collection → CSS-in-JS collect → loader-data script → HTTP status via the `notFoundComponent` chain), now shared by the production handler, zero's SSG prerender entry, and zero's dev SSR middleware. Pre-unification each consumer hand-copied the sequence and the copies drifted (styler tag missing from SSG, dual noindex call sites, serializer divergence). Template composition and streaming stay caller-specific by design.
+
+  **Fixed: request-level `provide()` never reached rendered components.** `renderToString` / `renderToStream` always opened a FRESH ALS context stack, silently discarding every request-level provide — so `provideRequestLocals(ctx.locals)` in the handler never made `useRequestLocals()` resolve anything but the default inside a component, despite the documented contract. Both renderers now INHERIT an active `runWithRequestContext` scope (bare calls keep their fresh isolated stack). Bisect-verified regression specs at both the runtime-server and renderPage layers.
+
+  Dev-SSR behavior change (zero): a loader-thrown `redirect()` in `vite dev` now produces a redirect page (meta-refresh + status) matching production's 302/307 semantics, instead of escaping to the Vite error overlay.
+
+- [#1533](https://github.com/pyreon/pyreon/pull/1533) [`698f514`](https://github.com/pyreon/pyreon/commit/698f514f44160e1955582b4573014bddba45a38e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server-loaders correctness fixes (adversarial review of the Phase 5 release):
+
+  - **`.server.tsx`/`.server.jsx` siblings now excluded from routes.** The exclusion regex matched only `.server.[jt]s`, so a `.server.tsx`/`.jsx` server-loader module silently shipped as a client route — violating the "never reaches the client bundle" guarantee. All four extensions are now excluded, and the sibling-detection probes all four.
+  - **Single-fetch no longer collides layout + page data.** The `/_pyreon/data` endpoint keyed loader data by `record.path`; a layout and its index page share a path, so the page's serverLoader data was silently overwritten by the layout's (timing-dependent, reproduced). The endpoint now runs ONLY serverLoaders (not isomorphic loaders — those run client-side; running them here double-fired their side effects) and keys by matched-chain index via the new `router.runServerLoaders(path, request)`.
+  - **Render gate** — `useLoaderData()` now resolves for server-loader routes (both RouterView render-gate branches already covered by a shared `carriesLoaderData` predicate from the Phase 5 fix; this PR adds the regression locks).
+
+  Also corrects two Phase 4 server-island docstrings that wrongly claimed zero's `startClient` auto-runs `activateServerIslands` (markers self-activate via a `ref`) and that the manual scan's cleanup aborts in-flight fetches (it doesn't — detached swaps are skipped via `isConnected`).
+
+- [#1395](https://github.com/pyreon/pyreon/pull/1395) [`d543f36`](https://github.com/pyreon/pyreon/commit/d543f36150f11fe94b08fabed0887914fa9deb9f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): honor `vite --base=PATH` CLI flag (was silently swallowed)
+
+  The zero Vite plugin's `config()` hook unconditionally returned
+  `base: config.base` (defaulting to `/`), which empirically beat
+  Vite's `--base` CLI flag in the merge order — every asset on a
+  subpath deploy 404'd.
+
+  Same bug class already fixed for `--port` via `argvHasPortFlag`.
+  This adds the `--base` counterpart: `argvHasBaseFlag` plus a
+  carve-out at the base-handling block so the plugin omits its base
+  return when `--base` is on argv AND user didn't explicitly set
+  `zero({ base })`. Also extends `configResolved` to sync
+  `__ZERO_BASE__` to the FINAL resolved base, so client-side router
+  matching picks up CLI overrides too.
+
+  Precedence is now (CLI > user vite.config > zero({base}) > '/'):
+  matches what the rest of the Vite ecosystem expects.
+
+  Discovered when docs-zero's preview deploy at `/pyreon/preview/`
+  shipped a white screen with 404s on every asset.
+
+- [#1400](https://github.com/pyreon/pyreon/pull/1400) [`8a9bc52`](https://github.com/pyreon/pyreon/commit/8a9bc52318841868badf907963bf99d7937ab735) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): forward outer build's resolved base into inner SSR sub-build
+
+  The SSG/SSR inner sub-build didn't inherit the outer build's `base`
+  config. With `vite build --base=/X/`, the outer client build's
+  `__ZERO_BASE__` was correctly `/X/` but the inner build's
+  `__ZERO_BASE__` was `/`. Any user component that constructed asset
+  URLs from `__ZERO_BASE__` (e.g. `<img src={\`${**ZERO_BASE**}brand/
+  logo.svg\`} />`) baked the WRONG prefix into the prerendered SSG
+  HTML — initial page load 404'd until client-side hydration patched
+  the DOM.
+
+  Fix: `BuildSsrBundleOptions.base` field, captured from each plugin's
+  `configResolved` and forwarded into the inner build via BOTH (a) the
+  top-level `build({base})` arg AND (b) a synthesized
+  `zeroPlugin(innerZeroConfig)` instance with the base injected — the
+  plugin's `config()` return BEATS the inline build arg in Vite's
+  merge order (the PR [#1395](https://github.com/pyreon/pyreon/issues/1395) trap), so the synthesized config is the
+  canonical path that wins.
+
+  Discovered when docs-zero's preview deploy at `/pyreon/preview/`
+  shipped brand logos at `/brand/...` (root, 404) instead of
+  `/pyreon/preview/brand/...`.
+
+- [#1397](https://github.com/pyreon/pyreon/pull/1397) [`6cdae79`](https://github.com/pyreon/pyreon/commit/6cdae79903cd00c96410dcc6bad39669d9b8898b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): propagate user plugins into SSR inner build (was hardcoded)
+
+  `buildSsrBundle` previously hardcoded the inner SSR sub-build's plugin
+  chain to `[pyreon(), zeroPlugin()]` only. This meant any non-zero Vite
+  plugin in the outer config — most importantly `@pyreon/zero-content`'s
+  `content()` plugin which transforms `.md` → `.tsx` and serves
+  `virtual:zero-content/*` modules — was NOT available during the SSG
+  path-enumeration + per-page render passes.
+
+  Symptom: a route file that imports from a content collection (or any
+  file type a user plugin handles) crashed the SSG inner build with:
+
+  - `Cannot assign to this expression` on every `.md` file (Rolldown tried
+    to parse markdown as JavaScript because the content plugin wasn't there
+    to transform it)
+  - `Failed to resolve import "virtual:zero-content/collections"` when a
+    route imported the virtual collection registry
+
+  Fix: both `ssgPlugin` and `ssrPlugin` now capture `resolved.plugins`
+  from `configResolved` and forward them to `buildSsrBundle` via a new
+  `userPlugins` field on `BuildSsrBundleOptions`. The helper filters out
+  the precise plugin names the inner build re-adds itself (the main
+  pyreon-zero set + pyreon-vite-plugin) using an explicit allowlist —
+  not a prefix match, which would incorrectly drop `pyreon-zero-content`
+  and similar third-party plugins that share the `pyreon-zero-` prefix.
+
+  Discovered while migrating the legacy VitePress docs to docs-zero —
+  the `getStaticPaths` enumeration in the catch-all docs route needed
+  to read the content collection at build time and failed because the
+  content plugin was absent from the inner build.
+
+- [#1491](https://github.com/pyreon/pyreon/pull/1491) [`25ddda0`](https://github.com/pyreon/pyreon/commit/25ddda0d540199a7177cf0ccd4b0cab78912986a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hardened `injectIntoTemplate`'s `<div id="app">…</div>` matching against the polynomial-regex (ReDoS) attack class. Replaces the `/<div\s+id=["']app["']\s*>([\s\S]*?)<\/div>/` regex fallback with a linear `indexOf`-based scan (both `id="app"` and `id='app'` shapes accepted; behavior byte-identical for well-formed templates). Surfaced by CodeQL `js/polynomial-redos` on the docs-cutover PR; while consumer templates are normally framework-controlled, eliminating the regex closes the class entirely.
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`4529407`](https://github.com/pyreon/pyreon/commit/4529407d69ba0875568b5c78ff14e2850aa2d690), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59), [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd), [`a359e29`](https://github.com/pyreon/pyreon/commit/a359e2917567419655dd31c5d093d0a4479ba021), [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264), [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63), [`698f514`](https://github.com/pyreon/pyreon/commit/698f514f44160e1955582b4573014bddba45a38e), [`f21a439`](https://github.com/pyreon/pyreon/commit/f21a439cfefd219b1c13f1b8d99dbfbbe949fd34), [`d38bed4`](https://github.com/pyreon/pyreon/commit/d38bed4ce425f6fe804e56df84a0e80e6d22a198), [`a72f972`](https://github.com/pyreon/pyreon/commit/a72f972050edceda52888fa93b8c763a2c71b86a), [`ae3c3fd`](https://github.com/pyreon/pyreon/commit/ae3c3fd529250e7211657e4283fb5e6c3246bf00)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/meta@1.0.0
+  - @pyreon/vite-plugin@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.31.0
 
 ### Minor Changes

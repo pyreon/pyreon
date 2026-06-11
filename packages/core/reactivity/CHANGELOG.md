@@ -1,5 +1,41 @@
 # @pyreon/reactivity
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1503](https://github.com/pyreon/pyreon/pull/1503) [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add canonical runtime environment flags `isServer` / `isClient` to `@pyreon/reactivity` (re-exported from `@pyreon/core`).
+
+  `isServer` is `typeof document === 'undefined'` — the most reliable "is there a DOM" discriminator (more correct than `typeof window`, which misreports Deno and polyfilled Node). Plain runtime constants, evaluated once at module load: correct in every runtime with zero bundler configuration. Use them for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for heavy server-only code prefer a `/server` subpath export, and for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).
+
+  Internally, this replaces seven hand-rolled `typeof window` / `typeof document` env consts across `router`, `hooks`, `url-state`, `elements`, `ui-core`, and `styler` with the single primitive — removing the drift (the copies disagreed on `window` vs `document`) and the inconsistency. Behavior is unchanged in browsers and Node; the `window` → `document` switch is a strict improvement for Deno / Web Workers.
+
+  `@pyreon/lint`'s `no-window-in-ssr` rule now recognises an imported `isClient` / `isServer` (or `isBrowser` / `isSSR`) as an SSR guard — but only when imported from `@pyreon/reactivity` or `@pyreon/core`, so `if (isClient) window.x` / `if (isServer) return` / `if (!isClient) return` are clean while a same-named local `const isBrowser = true` or a foreign-source import stays flagged.
+
+### Patch Changes
+
+- [#1381](https://github.com/pyreon/pyreon/pull/1381) [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(computed): ~45% smaller retained heap per computed via a prototype + plain-field shape
+
+  `computed` and `computed(fn, { equals })` now store their state as plain fields
+  on the read function and share `direct` + the `_v` getter via a single
+  `ComputedProto` (mirroring `signal`'s `SignalProto`), instead of per-instance
+  method closures plus three `Object.defineProperty` accessor getters
+  (`_v`/`_d`/`_d1`). The accessor getters forced the function into V8 dictionary
+  (slow-properties) mode; a structurally-faithful A/B (node `--expose-gc`,
+  `NODE_ENV=production`, 100k items) measured the new shape at ~45% less retained
+  heap per computed (lazy 1649→913 B, equals 1712→976 B, signal-inclusive).
+
+  Behavior-identical and API-unchanged: 608 reactivity tests pass plus the
+  runtime-dom / core / router / rx / store consumer suites; recompute and diamond
+  throughput are at parity (within microbenchmark noise). `read` and `recompute`
+  remain per-instance closures (their identity is stored in dependency subscriber
+  Sets). `_d1`/`_d` are now plain data fields rather than accessor getters — code
+  that reads them does so with identical syntax.
+
+- [#1514](https://github.com/pyreon/pyreon/pull/1514) [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62) Thanks [@vitbokisch](https://github.com/vitbokisch)! - 5× faster effect propagation: unbatched signal writes now dispatch their notifications directly through an inline batch window instead of allocating a closure + round-tripping every callback through the pending queues. Single-subscriber notify drops from ~131ns to ~16ns; set→effect rerun from ~162ns to ~46ns. Semantics are unchanged by construction — cascades, diamond dedup, two-tier ordering, and multi-pass re-fire all drain through the same shared flush machinery (locked by 7 new parity specs + the existing property-based batch fuzz).
+
+- [#1537](https://github.com/pyreon/pyreon/pull/1537) [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createSelector` per-key subscriber storage uses an inline-first-subscriber slot (the signal `_d1` trick): the first `selector.subscribe(key, fn)` per key stores the bare function; a `Set` is allocated only when a second subscriber arrives for the same key. The dominant `<For>` + per-row `isSelected.subscribe(row.id, …)` shape has exactly one subscriber per key, so a 10k-row create previously allocated 10k single-entry Sets (measured at 14% of JS allocations in the bench profile). Measured: −1.0ms create-10k, −300µs create-1k (CI-clean) on the fair benchmark. Disposing a sole inline subscriber now deletes the key entry, also fixing unbounded Map growth across create/clear cycles with fresh keys.
+
 ## 0.31.0
 
 ## 0.30.0

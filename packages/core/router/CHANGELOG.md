@@ -1,5 +1,56 @@
 # @pyreon/router
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1524](https://github.com/pyreon/pyreon/pull/1524) [`f21a439`](https://github.com/pyreon/pyreon/commit/f21a439cfefd219b1c13f1b8d99dbfbbe949fd34) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server loaders (Phase 5 of the render-modes plan) — `.server.ts` siblings + single-fetch.
+
+  A route file's `.server.ts` sibling can export `serverLoader(ctx)` — it runs in-process on SSR/SSG (full `LoaderContext` incl. `request`), and on client-side navigations the router fetches the whole matched chain's data in **one** request from the auto-mounted `GET /_pyreon/data` endpoint (cookies flow; `redirect()` becomes a client navigation). The client bundle structurally excludes `.server.ts` modules — the client routes module never imports them (CI-gated by an artifact sentinel scan). A route may have `loader` OR a server-loader sibling, not both (build error names the fix).
+
+  Also fixed: route records whose data came from a server loader rendered WITHOUT the `LoaderDataProvider` (both render-gate branches checked only `record.loader`) — `useLoaderData()` read undefined even though preload had populated the data and the hydration blob carried it.
+
+### Patch Changes
+
+- [#1503](https://github.com/pyreon/pyreon/pull/1503) [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add canonical runtime environment flags `isServer` / `isClient` to `@pyreon/reactivity` (re-exported from `@pyreon/core`).
+
+  `isServer` is `typeof document === 'undefined'` — the most reliable "is there a DOM" discriminator (more correct than `typeof window`, which misreports Deno and polyfilled Node). Plain runtime constants, evaluated once at module load: correct in every runtime with zero bundler configuration. Use them for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for heavy server-only code prefer a `/server` subpath export, and for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).
+
+  Internally, this replaces seven hand-rolled `typeof window` / `typeof document` env consts across `router`, `hooks`, `url-state`, `elements`, `ui-core`, and `styler` with the single primitive — removing the drift (the copies disagreed on `window` vs `document`) and the inconsistency. Behavior is unchanged in browsers and Node; the `window` → `document` switch is a strict improvement for Deno / Web Workers.
+
+  `@pyreon/lint`'s `no-window-in-ssr` rule now recognises an imported `isClient` / `isServer` (or `isBrowser` / `isSSR`) as an SSR guard — but only when imported from `@pyreon/reactivity` or `@pyreon/core`, so `if (isClient) window.x` / `if (isServer) return` / `if (!isClient) return` are clean while a same-named local `const isBrowser = true` or a foreign-source import stays flagged.
+
+- [#1538](https://github.com/pyreon/pyreon/pull/1538) [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal refactor: replace hand-rolled `typeof window/document` environment checks with the canonical `isServer` / `isClient` primitives from `@pyreon/reactivity`. Behavior is identical (`isServer`/`isClient` ARE `typeof document {===,!==} 'undefined'`) — the framework now uses its own primitive instead of dogfooding the pattern its own `pyreon/prefer-isserver` rule flags. No public API change.
+
+  Function-body SSR guards whose SSR branch is verified by deleting `document`/`window` at runtime in tests (e.g. `@pyreon/elements` Overlay positioning, `@pyreon/styler`'s sheet, `@pyreon/head`'s `syncDom`) intentionally KEEP the call-time `typeof` check — a module-load-time `isServer` const can't be re-evaluated by that test method, and the call-time form is equally production-correct. Those files are scoped-off from `prefer-isserver` in `.pyreonlintrc.json` with that rationale.
+
+- [#1502](https://github.com/pyreon/pyreon/pull/1502) [`a359e29`](https://github.com/pyreon/pyreon/commit/a359e2917567419655dd31c5d093d0a4479ba021) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `resolveRoute` hot-path overhaul — Pyreon is now the fastest router at realistic route-table sizes on the cross-framework matching benchmark (`bench:router`, vs find-my-way / Hono / radix3 / react-router / TanStack / vue-router / path-to-regexp): 1.00× (leader) at 50 and 200 routes, ahead of radix3 at every table size; only Hono's mega-regex leads the 10-route toy table (an approach that measures 4.5× SLOWER than Pyreon at 50+ routes). Average throughput improved 13–29% per table size vs the previous implementation.
+
+  What changed (semantics preserved — 599 router specs + zero/server suites pass):
+
+  - **One index probe per resolve.** `buildRouteIndex` self-compiles on miss; a same-`routes`-reference identity memo (the dominant single-router case) replaces even the WeakMap probe.
+  - **`validateSearch` precomputed at flatten time.** Each flattened route stores its chain's effective validator (leaf→root, most-specific wins) — resolves no longer walk the matched chain per navigation.
+  - **Null-prototype dictionary indexes.** `staticMap` / `segmentMap` switched from `Map` to null-proto objects (~3× faster hit path; hostile keys like `__proto__` are plain own properties).
+  - **Offset-walking fast lane.** Plain paths (no `%`, no `//`, no trailing slash — the overwhelmingly common shape) match by walking the URL with offsets: static pattern segments compare in place via `startsWith`, only param values are sliced, no parts array. A single-pass shape scan routes encoded / empty-segment / trailing-slash URLs to the previous split-based matcher, so every edge shape behaves exactly as before by construction.
+  - **Per-bucket segment-count dispatch.** All-fixed-count buckets index candidates by count, structurally eliminating count-mismatch rejects; buckets containing splat/optional candidates keep the ordered flat scan so definition-order priority (first match wins) is preserved — locked by a bisect-verified spec.
+  - **Frozen empty singletons** for no-params / no-query / no-search results (the `meta` freeze precedent): three fewer allocations per navigation; mutation of an EMPTY `params`/`query`/`search` now throws in strict mode instead of silently polluting a shared object. Non-empty values are still fresh per resolve.
+
+  Also fixed along the way: **URL hash/query split order now follows the WHATWG URL spec.** `resolveRoute('/user/42?tab=posts#bio')` previously leaked the fragment into the query (`{ tab: 'posts#bio' }`) because `?` was split before `#`; a `?` inside a fragment was misread as a query separator. The fragment is now everything after `#`, with the query between `?` and `#`.
+
+- [#1533](https://github.com/pyreon/pyreon/pull/1533) [`698f514`](https://github.com/pyreon/pyreon/commit/698f514f44160e1955582b4573014bddba45a38e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server-loaders correctness fixes (adversarial review of the Phase 5 release):
+
+  - **`.server.tsx`/`.server.jsx` siblings now excluded from routes.** The exclusion regex matched only `.server.[jt]s`, so a `.server.tsx`/`.jsx` server-loader module silently shipped as a client route — violating the "never reaches the client bundle" guarantee. All four extensions are now excluded, and the sibling-detection probes all four.
+  - **Single-fetch no longer collides layout + page data.** The `/_pyreon/data` endpoint keyed loader data by `record.path`; a layout and its index page share a path, so the page's serverLoader data was silently overwritten by the layout's (timing-dependent, reproduced). The endpoint now runs ONLY serverLoaders (not isomorphic loaders — those run client-side; running them here double-fired their side effects) and keys by matched-chain index via the new `router.runServerLoaders(path, request)`.
+  - **Render gate** — `useLoaderData()` now resolves for server-loader routes (both RouterView render-gate branches already covered by a shared `carriesLoaderData` predicate from the Phase 5 fix; this PR adds the regression locks).
+
+  Also corrects two Phase 4 server-island docstrings that wrongly claimed zero's `startClient` auto-runs `activateServerIslands` (markers self-activate via a `ref`) and that the manual scan's cleanup aborts in-flight fetches (it doesn't — detached swaps are skipped via `isConnected`).
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`4529407`](https://github.com/pyreon/pyreon/commit/4529407d69ba0875568b5c78ff14e2850aa2d690), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59), [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264), [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

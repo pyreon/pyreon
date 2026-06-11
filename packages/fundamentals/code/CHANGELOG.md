@@ -1,5 +1,22 @@
 # @pyreon/code
 
+## 0.32.0
+
+### Patch Changes
+
+- [#1499](https://github.com/pyreon/pyreon/pull/1499) [`4529407`](https://github.com/pyreon/pyreon/commit/4529407d69ba0875568b5c78ff14e2850aa2d690) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Core + fundamentals deep-audit fixes. `@pyreon/validate`: corrected the outdated "Pyreon does NOT ship its own validator runtime / ~1-2KB gz" claim across the entry docstring, README, manifest, and docs page — since v1 the package ships Pyreon's own `s` validator runtime; the accurate, measured contract is tree-shaking (DX-helpers-only import ≈0.5KB gz; the runtime ≈3.9KB gz pulled in only when `s`/primitives are imported). `@pyreon/code`: minimap's canvas click listener is now stored and explicitly removed in the plugin's `destroy()` — completes the destroy contract (the listener was element-scoped so it normally died with the canvas, but explicit removal protects against any external retention of the canvas). `@pyreon/runtime-dom`: fixed a misleading dev-gate comment in template.ts (claimed `import.meta.env.DEV`; the code correctly uses the bundler-agnostic `process.env.NODE_ENV !== 'production'` gate).
+
+- [#1531](https://github.com/pyreon/pyreon/pull/1531) [`324c1f7`](https://github.com/pyreon/pyreon/commit/324c1f70caa1187b165d4f86e6179a5f68025c91) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `editor.insert(...)` / `editor.replaceSelection(...)` now emit a dev-mode warning instead of silently dropping the call when the editor view doesn't exist yet.
+
+  These are cursor-relative document mutations — they act on `view.state.selection`, so they require a live `EditorView`. The view is created by `mount()` _after_ an async grammar load, so calling them before the editor mounts (or on a cold-mounting editor whose view isn't ready) has no cursor to act on and the call was dropped with no signal — losing the text the caller meant to add.
+
+  The production behavior is unchanged (you genuinely cannot insert-at-cursor with no cursor), but a dev build now warns and points at the view-independent API: `editor.value.set(...)` feeds the value signal, which seeds the document whenever the view is created — the correct way to set content before/regardless of mount timing. Documented the cursor-relative contract in the code editor reference.
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`4529407`](https://github.com/pyreon/pyreon/commit/4529407d69ba0875568b5c78ff14e2850aa2d690), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59), [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264), [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

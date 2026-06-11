@@ -1,5 +1,67 @@
 # @pyreon/compiler
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1388](https://github.com/pyreon/pyreon/pull/1388) [`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor --check-content` audit — defensive gate for `@pyreon/zero-content`-shaped apps. Mirrors the existing `--check-islands` / `--check-ssg` audits: project-wide cross-file detectors with file:line:column pointers and actionable fix messages, surfaced through the unified doctor pipeline.
+
+  Three detector codes ship:
+
+  - **`missing-frontmatter-title`** (error) — a `.md` file under a `pages` collection has no `title:` field in its YAML frontmatter. Every documented collection schema requires it for sidebar / SEO / route naming. The content() plugin catches this at build time; the audit catches it at edit time so authors don't ship a silently broken page.
+  - **`broken-internal-link`** (error) — a markdown `[text](/path)` link where `/path` matches a collection's URL pattern but no entry with that slug exists. Users hit 404 at runtime; the audit catches it before commit so the link can be fixed alongside the referenced page's rename / removal.
+  - **`orphaned-md-file`** (warning) — a `.md` file under `src/content/` (or `content/`) that isn't under any declared collection's `path`. The runtime ignores it silently; the user thinks the page is published but the build skips it. Severity is `warning` because it might be intentional WIP.
+
+  Same pure-syntactic style as the existing `island-audit.ts` / `ssg-audit.ts` — TypeScript compiler API for parsing `content.config.{ts,mts,js,mjs}`, naive line-by-line walker for frontmatter + internal-link extraction. No type-check pass, no module resolution. False negatives acceptable; false positives must be rare.
+
+  CLI:
+
+  ```bash
+  pyreon doctor --check-content          # legacy single-purpose flag (equivalent to --only content-audit)
+  pyreon doctor --only content-audit     # canonical
+  pyreon doctor                          # included in the default fast-gate set
+  pyreon doctor --json                   # machine-readable
+  pyreon doctor --gha                    # GitHub Actions annotations
+  ```
+
+  New exports from `@pyreon/compiler`: `auditContent`, `formatContentFindings`, `parseContentConfig`, `findContentConfigs`, `readFrontmatter`, `readTitleFromFrontmatter`, `deriveSlug`, `extractInternalLinks` (+ corresponding types `ContentAuditResult`, `ContentFinding`, `ContentFindingCode`, `ContentLocation`, `CollectionDecl`, `AuditContentOptions`).
+
+  35 per-detector specs in `packages/core/compiler/src/tests/content-audit.test.ts` (bisect-verified: reverting the missing-title condition → 3 specs fail with `expect(codes).toContain('missing-frontmatter-title')`; restored → 35/35 pass).
+
+### Patch Changes
+
+- [#1540](https://github.com/pyreon/pyreon/pull/1540) [`edaea04`](https://github.com/pyreon/pyreon/commit/edaea04231fc33b585e785bda61e63c14663c045) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Sole-dynamic-text-child templates bake a single-space text node INTO the template HTML and bind via `.firstChild`, instead of `document.createTextNode("") + appendChild` per template instantiation (per ROW under `<For>`). Within-tree paired benchmark (60 pooled samples/op, only the emit flipped): the create-1k gap vs Vanilla closes from +700µs to ZERO (Pyreon 9.30ms [9.20–9.40] = Vanilla 9.30ms), replace-all gap from +500µs to zero, append-1k→10k −1.2ms. Correct by construction: whitespace-only text survives innerHTML parsing in every element context (including table foster-parenting, which exempts whitespace-only runs), and every binding path writes the initial value synchronously at bind time, so the space never renders. Mixed-content keeps the comment+replaceChild shape (adjacent baked text runs would merge during parsing). Implemented byte-identically in both backends (JS + Rust native).
+
+- [#1501](https://github.com/pyreon/pyreon/pull/1501) [`f6f54a2`](https://github.com/pyreon/pyreon/commit/f6f54a254e43f3b36a4c55581381ab582322990e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compiler no longer emits a wasteful per-row `_bind()` renderEffect for static item-property reads inside `<For>`/`<Index>`/render-callback children. A render callback's first parameter (`<For>{(row) => …}</For>`) is a runtime ITEM the framework passes per row, NOT reactive component props — so a bare property read like `{String(row.id)}` is provably static (Pyreon reactivity is via signal CALLS, e.g. `row.label()`) and is now baked as a one-time `textContent =` assignment instead of a `_bind(() => …)` effect.
+
+  Previously `maybeRegisterComponentProps` registered the callback's first param as reactive props (because the callback returns JSX), making every bare item-property read look reactive. For a 1,000–10,000-row list that meant 1,000–10,000 unnecessary `renderEffect` allocations + disposer closures, each retained until the row unmounts — a real per-row CPU + retained-heap cost. Signal-valued item reads (`row.label()`, `() => row.x`) and real components (`function Row(props) { return <td>{props.x}</td> }`) are unaffected and stay reactive.
+
+  Fixed in both the JS and Rust (native) backends — byte-identical output, all cross-backend equivalence tests pass. Attribute-value render functions (`component={(p) => …}`) are NOT affected (they can be real inline components receiving props).
+
+- [#1541](https://github.com/pyreon/pyreon/pull/1541) [`73436e7`](https://github.com/pyreon/pyreon/commit/73436e782319940abde41200299489a809de70d5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix two `pyreon doctor` audit detectors that produced false-positive ERRORS across the monorepo.
+
+  - **`auditContent` (content-audit gate) — per-config link scoping.** When two `content.config.*` files in one repo each declare a collection with the same name (e.g. the main `docs/` site and an `examples/*` mini-app both declaring a `docs` collection at `/docs`), the slug set was keyed globally by collection name, so the second config's (smaller) set OVERWROTE the first's — flagging every valid internal link in the larger app as broken (125 false `broken-internal-link` errors). Each config's pages now validate against ITS OWN collections; a link to another app's prefix is left alone.
+  - **`auditTestEnvironment` (audit-tests gate) — three mock-vnode false positives.** (1) `const vnode = (await Foo()) as T` (a real component's output) was miscounted as a mock-helper factory because the arrow heuristic matched any leading `(`; now it requires the `(…) =>` shape. (2) A `vnode()` mention inside a `//` or `/* */` comment was counted as a mock-helper call; the scanner now masks comments (and template-literal interiors) while preserving regular-string contents so import-path detection is unaffected. (3) `jsx()` / `jsxs()` (the automatic JSX runtime — the same vnode-producing machinery as `h()`) are now counted as real-runtime calls, so a test driving the real `jsx()` runtime is no longer misclassified as mock-only.
+
+  No public API change; the audits simply stop misfiring. Net effect on `pyreon doctor`: 129 → 0 errors monorepo-wide.
+
+- [#1549](https://github.com/pyreon/pyreon/pull/1549) [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor` correctness + accuracy fixes (deep audit follow-up).
+
+  **Robustness** — a gate that throws no longer crashes the whole run. The orchestrator isolates each gate in a try/catch and records a `<gate>/gate-failed` ERROR finding instead of rejecting `Promise.all` and losing every other gate's findings + the score.
+
+  **False positives** (the gates flagged correct code):
+
+  - `pyreon-patterns` now **defers to the `lint` gate** for codes a configured lint rule fully owns (`process-dev-gate`, `raw-add-event-listener`, `query-options-as-function`) — eliminating double-reporting at a wrong hardcoded `'warning'` severity AND the FPs on framework code the lint rule exempts. The kept codes (e.g. `raw-remove-event-listener`, which the add-only lint rule can't catch) honor the project's `.pyreonlintrc.json` exemptPaths.
+  - `ssg-audit`'s `dynamic-route-missing-get-static-paths` is now **scoped to `mode: 'ssg'` apps** (resolved from the nearest `vite.config`). SPA/SSR/ISR apps never prerender, so a missing `getStaticPaths` there was a false positive.
+
+  **Scoring** — `audit-leak-classes` findings now route to the advisory `best-practices` category. They were `info` "to keep the grade honest", but `info` still costs 1pt each, so ~45 advisory findings tanked the architecture grade to F. Advisory = VISIBLE but excluded from the grade + `--ci`, which is what the gate's stated intent actually requires.
+
+  **CLI** — `check-dedup` was rejected by `--only`/`--skip` (the CLI's `VALID_GATES` was a hand-kept duplicate that dropped it) even though it runs by default. `VALID_GATES` is now derived from the orchestrator's `[...FAST_GATES, ...SLOW_GATES]`, so it can never drift again; the help text derives its counts the same way.
+
+  **GHA renderer** — annotation property values (`file=`, `title=`) now URL-encode `,` and `:` per the workflow-command spec (a comma in a path previously ended the property early).
+
+  Bisect-verified per fix. Docs (CLAUDE.md, `docs/src/content/docs/cli.md`, orchestrator header) corrected: the gate count (13 total / 11 fast, not 10/8), the 3 gates missing from every table (`content-audit`, `check-dedup`, `audit-leak-classes`), the "single entry point for every gate" overclaim (doctor is the health-gate entry point, not a runner for CI-pipeline gates), `--check-content`, and the stale non-CI-exit claim (`pyreon doctor` is informational and always exits 0; `--ci` gates).
+
 ## 0.31.0
 
 ## 0.30.0

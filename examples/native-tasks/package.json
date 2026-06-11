@@ -1,8 +1,8 @@
 {
   "name": "@pyreon/example-native-tasks",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL \u2014 Gap 5 multi-feature showcase. Tasks app exercising a cross-screen defineStore (auth flag + task list), store-backed beforeEnter auth-gate, multi-screen routing, typed route params, and canonical primitives via PMTC. SINGLE source compiles to web + iOS + Android.",
+  "description": "PRIVATE / EXPERIMENTAL — Gap 5 multi-feature showcase. Tasks app exercising a cross-screen defineStore (auth flag + task list), store-backed beforeEnter auth-gate, multi-screen routing, typed route params, and canonical primitives via PMTC. SINGLE source compiles to web + iOS + Android.",
   "license": "MIT",
   "scripts": {
     "build:swift": "./scripts/build-swift.sh",
