@@ -1118,6 +1118,25 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Hydration-blob same-path collision (fixed alongside the server-loaders
+    // correctness PR): a layout and its index page SHARE a route path, and
+    // the SSR hydration blob keyed loader data by record.path — so on older
+    // @pyreon/router versions, useLoaderData() in one of the two could read
+    // the OTHER record's data after hydration (last-write-wins, timing-
+    // dependent).
+    pattern: /useLoaderData\(\).*(wrong|layout|other route|collid|overwrit)|loader data.*(layout|page).*(swap|collid|wrong|overwrit)/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/router` versions before the server-loaders correctness release, the SSR hydration blob (`window.__PYREON_LOADER_DATA__`) keyed loader data by `record.path`. A layout and its index page share a path, so when BOTH carry loaders their data collided in the blob (last-write-wins) — post-hydration, `useLoaderData()` in one component read the other record\'s data.',
+      fix: 'Upgrade `@pyreon/router` — the blob now keys the first record at a path bare (back-compat) and subsequent same-path records as `path#<occurrence>`, so layout + page data never collide. No app code change needed.',
+      fixCode: `// routes/dashboard/_layout.tsx — layout loader
+export async function loader() { return { user: await getUser() } }
+// routes/dashboard/index.tsx — page loader (same /dashboard path)
+export async function loader() { return { stats: await getStats() } }
+// After the upgrade each component's useLoaderData() reads ITS OWN data.`,
+    }),
+  },
+  {
     // Phase 5 (server loaders) — useLoaderData() returning undefined for a
     // route whose data comes from a `.server.ts` serverLoader sibling, on
     // @pyreon/router versions where the RouterView render gates checked
