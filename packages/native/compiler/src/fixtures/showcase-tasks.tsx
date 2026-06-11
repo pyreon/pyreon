@@ -51,7 +51,7 @@ import { signal, computed } from '@pyreon/reactivity'
 import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
-import { For, Show } from '@pyreon/core'
+import { For, Show, Suspense, ErrorBoundary } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal } from '@pyreon/primitives'
 import {
   createRouter,
@@ -199,6 +199,9 @@ function TasksPage() {
         <Button onPress={() => navigate('/vocab')} data-testid="tasks-vocab">
           Vocab
         </Button>
+        <Button onPress={() => navigate('/lifecycle')} data-testid="tasks-lifecycle">
+          Lifecycle
+        </Button>
         <Button onPress={logout} data-testid="tasks-logout">
           Logout
         </Button>
@@ -297,6 +300,51 @@ function VocabScreen() {
   )
 }
 
+function LifecycleScreen() {
+  const navigate = useNavigate()
+  // Phase 2 device proof: real lifecycle semantics. Suspense reads the
+  // GOOD fetch's isPending (fallback → content on resolve); the
+  // ErrorBoundary reads the BAD fetch's error (missing path → rejects →
+  // fallback shows). The error path is the DETERMINISTIC discriminator
+  // vs the old inert wrappers, which never showed the fallback. One
+  // fetch per boundary's component keeps the reads precise.
+  return (
+    <Stack gap={4} padding={4} data-testid="lifecycle-page">
+      <SuspenseDemo />
+      <ErrorBoundaryDemo />
+      <Button onPress={() => navigate('/tasks')} data-testid="lifecycle-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
+function SuspenseDemo() {
+  const ok = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
+  // The computed gives kotlinc the List<Quote> type context the inline
+  // `?? []` lacks (listOf() can't infer T) — same shape as QuotesPage.
+  const okList = computed(() => ok.data() ?? [])
+  return (
+    <Suspense fallback={<Text data-testid="lc-loading">Loading…</Text>}>
+      <For each={okList} by={(q) => q.id}>
+        {(q) => <Text data-testid="lc-quote">{q.text}</Text>}
+      </For>
+    </Suspense>
+  )
+}
+
+function ErrorBoundaryDemo() {
+  const bad = useFetch<Quote[]>('http://127.0.0.1:8787/missing-on-purpose.json')
+  const badList = computed(() => bad.data() ?? [])
+  return (
+    <ErrorBoundary fallback={<Text data-testid="lc-error">Something went wrong</Text>}>
+      <For each={badList} by={(q) => q.id}>
+        {(q) => <Text>{q.text}</Text>}
+      </For>
+    </ErrorBoundary>
+  )
+}
+
 function TaskDetailPage(props: { params: { id: string } }) {
   const navigate = useNavigate()
   return (
@@ -344,6 +392,11 @@ export function TasksApp() {
       {
         path: '/vocab',
         component: VocabScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/lifecycle',
+        component: LifecycleScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],

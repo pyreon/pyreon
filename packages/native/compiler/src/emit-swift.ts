@@ -326,10 +326,6 @@ export function emitSwift(
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
-  // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
-  _needsSwiftSuspenseWrapper = false
-  // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
-  _needsSwiftErrorBoundaryWrapper = false
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
   const parts: string[] = []
@@ -363,8 +359,6 @@ export function emitSwift(
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitSwiftComponent(c))
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
-  if (_needsSwiftSuspenseWrapper) parts.push(SWIFT_SUSPENSE_WRAPPER)
-  if (_needsSwiftErrorBoundaryWrapper) parts.push(SWIFT_ERROR_BOUNDARY_WRAPPER)
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
@@ -376,8 +370,6 @@ export function emitSwift(
   _storeDefs = []
   _storeMethodNames = new Map()
   _modelInstances = new Map()
-  _needsSwiftSuspenseWrapper = false
-  _needsSwiftErrorBoundaryWrapper = false
   _needsSwiftKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -1166,7 +1158,25 @@ function emitSwiftComponent(c: ComponentIR): string {
   lines.push(`  var body: some View {`)
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentSwift = isLayout
-  lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
+  // When the component has a useFetch decl, the appended `.task { }` MUST
+  // attach to a STABLE-identity view. A bare `Group { if isPending … }`
+  // (what `<Suspense>` / `<ErrorBoundary>` emit) is transparent —
+  // SwiftUI redistributes `.task` onto the if/else BRANCH, so every time
+  // the loading/error flag flips the branch's identity changes and the
+  // task is cancelled + restarted → the fetch perpetually thrashes and
+  // never settles (device-found: the boundary renders nothing — not even
+  // its fallback). Wrapping the body in a concrete `ZStack` gives `.task`
+  // a stable host that fires ONCE on appear; the inner conditional's
+  // flips no longer touch the ZStack's identity. (Non-fetch components
+  // keep the bare body — no `.task`, no restart hazard.)
+  const _hasFetchDecl = c.decls.some((d) => d.kind === 'fetch')
+  if (_hasFetchDecl) {
+    lines.push(`    ZStack {`)
+    lines.push(`      ${emitSwiftExpr(c.returnExpr, 6)}`)
+    lines.push(`    }`)
+  } else {
+    lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
+  }
   _emittingLayoutComponentSwift = false
   // Phase 4: append a mount-time `.task { }` per useFetch decl. SwiftUI
   // runs `.task` when the view appears (the natural async-on-mount hook);
@@ -2704,12 +2714,15 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
  * is inert until a runtime-model design lands.
  */
 /**
- * Gap 3 PR-3.2 — real `<Suspense fallback={X}>` emit (mount-time
- * splash semantic). Produces a `PyreonSuspenseWrapper` call that
- * shows the `fallback` ViewBuilder until `.task` completes, then
- * swaps in the children. The wrapper definition is emitted ONCE at
- * module scope (via `_needsSuspenseWrapper` flag) so per-Suspense
- * sites stay light.
+ * Phase 2 — real `<Suspense fallback={X}>` emit (loading-state
+ * semantic). Emits an INLINE `Group { if <pending> { fallback } else
+ * { children } }` where `<pending>` ORs every `useFetch` container's
+ * `.isPending` in the component. The condition is read DIRECTLY in the
+ * component body so SwiftUI's Observation tracks the dependency on THIS
+ * view and re-renders when the fetch settles — passing the same value
+ * as an argument to a child wrapper struct does NOT reliably establish
+ * that tracking (a device-found subtlety; the earlier
+ * `PyreonSuspenseWrapper` child-struct approach was abandoned for it).
  *
  *   <Suspense fallback={<Spinner/>}>
  *     <Content/>
@@ -2717,13 +2730,16 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
  *
  * emits as
  *
- *   PyreonSuspenseWrapper(content: {
- *     Content()
- *   }, fallback: {
- *     Spinner()
- *   })
+ *   Group {
+ *     if quotes.isPending {
+ *       Spinner()
+ *     } else {
+ *       Content()
+ *     }
+ *   }
  *
- * Bail to walled emit + warning if no fallback prop is present
+ * No fetch in the component → condition is `false` (content always
+ * shows). Bail to walled emit + warning if no fallback prop is present
  * (the contract is "fallback OR no point" — a Suspense with no
  * fallback is just a Group wrapper).
  */
@@ -2746,22 +2762,36 @@ function emitSwiftSuspense(
     )
     return emitSwiftWalledTagAsChildren(e, indent, 'Suspense')
   }
-  _needsSwiftSuspenseWrapper = true
+  // Real semantics (Phase 2), emitted INLINE — NOT via a child wrapper
+  // struct. The fallback shows while ANY useFetch container in the
+  // component is pending. Critically the `isLoading` condition is read
+  // DIRECTLY in the component's body (`if <fetch>.isPending`), so
+  // SwiftUI's Observation tracks the dependency on THIS view and
+  // re-renders when the fetch settles. Passing the same value as an
+  // argument to a child View does NOT reliably establish that tracking
+  // (the child reads its own stored Bool, not the @Observable) — a
+  // device-found subtlety. No fetch → `false` (content always shows).
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const childrenBody = e.children
-    .map((c) => inner + '  ' + emitSwiftChild(c, indent + 4))
+    .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
     .join('\n')
   const fallbackBody =
-    inner +
-    '  ' +
-    emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+    inner + '    ' + emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 6)
+  const fetches = [..._fetchNamesSwift]
+  const isLoading =
+    fetches.length > 0
+      ? fetches.map((f) => `${swiftIdent(f)}.isPending`).join(' || ')
+      : 'false'
+  // Group wraps the if/else so it's a single View in any context.
   return (
-    `PyreonSuspenseWrapper(content: {\n` +
-    `${childrenBody}\n` +
-    `${p}}, fallback: {\n` +
+    `Group {\n` +
+    `${inner}  if ${isLoading} {\n` +
     `${fallbackBody}\n` +
-    `${p}})`
+    `${inner}  } else {\n` +
+    `${childrenBody}\n` +
+    `${inner}  }\n` +
+    `${p}}`
   )
 }
 
@@ -2778,14 +2808,20 @@ function emitSwiftSuspense(
  *
  * emits as
  *
- *   PyreonErrorBoundaryWrapper(content: { RiskyContent() },
- *                              fallback: { ErrorView() })
+ *   Group {
+ *     if quotes.error != nil {
+ *       ErrorView()
+ *     } else {
+ *       RiskyContent()
+ *     }
+ *   }
  *
- * The fallback path EXISTS in compiled code — Layer-4 NativeIOS
- * escape hatches OR future runtime hooks can connect to it via
- * ${'@'}Environment values. This is honestly less than the web's
- * auto-catch semantic (which native can't deliver), but provides
- * the structural primitive apps can extend.
+ * The `<cond>` ORs every `useFetch` container's `.error != nil` in the
+ * component, read INLINE in the body so SwiftUI Observation tracks it
+ * (same device-found requirement as Suspense). This is honestly less
+ * than the web's auto-catch-thrown-render semantic (which native can't
+ * deliver), but a failed fetch's error DOES drive the fallback. No
+ * fetch → `false` (content always shows).
  *
  * Bails to walled emit + warning when no `fallback` prop is present
  * (a no-fallback ErrorBoundary is just a Group wrapper).
@@ -2807,22 +2843,28 @@ function emitSwiftErrorBoundary(
     )
     return emitSwiftWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
-  _needsSwiftErrorBoundaryWrapper = true
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
+  const fetches = [..._fetchNamesSwift]
+  const hasError =
+    fetches.length > 0
+      ? fetches.map((f) => `${swiftIdent(f)}.error != nil`).join(' || ')
+      : 'false'
+  // Inline (see emitSwiftSuspense) — the @Observable .error read must be
+  // in the component body to be tracked; a child-wrapper arg isn't.
   const childrenBody = e.children
-    .map((c) => inner + '  ' + emitSwiftChild(c, indent + 4))
+    .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
     .join('\n')
   const fallbackBody =
-    inner +
-    '  ' +
-    emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+    inner + '    ' + emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 6)
   return (
-    `PyreonErrorBoundaryWrapper(content: {\n` +
-    `${childrenBody}\n` +
-    `${p}}, fallback: {\n` +
+    `Group {\n` +
+    `${inner}  if ${hasError} {\n` +
     `${fallbackBody}\n` +
-    `${p}})`
+    `${inner}  } else {\n` +
+    `${childrenBody}\n` +
+    `${inner}  }\n` +
+    `${p}}`
   )
 }
 
@@ -2873,51 +2915,6 @@ function emitSwiftKeepAlive(
 }
 
 /**
- * Helper struct emitted once at module scope when any Suspense site
- * is encountered (gated on `_needsSwiftSuspenseWrapper`). Owns the
- * `@State` loading flag + `.task` lifecycle so per-Suspense call
- * sites stay light.
- */
-const SWIFT_SUSPENSE_WRAPPER = `@available(iOS 17.0, macOS 14.0, *)
-private struct PyreonSuspenseWrapper<Content: View, Fallback: View>: View {
-    let content: () -> Content
-    let fallback: () -> Fallback
-    @State private var isLoading = true
-    var body: some View {
-        ZStack {
-            if isLoading {
-                fallback()
-            } else {
-                content()
-            }
-        }
-        .task {
-            isLoading = false
-        }
-    }
-}`
-
-/**
- * Helper struct emitted once at module scope when any ErrorBoundary
- * site is encountered. Owns the `@State hasError` boundary state.
- * Default semantic: children render. v2 follow-up will plug in a
- * runtime hook for auto-catch (likely via ${'@'}Environment value).
- */
-const SWIFT_ERROR_BOUNDARY_WRAPPER = `@available(iOS 17.0, macOS 14.0, *)
-private struct PyreonErrorBoundaryWrapper<Content: View, Fallback: View>: View {
-    let content: () -> Content
-    let fallback: () -> Fallback
-    @State private var hasError = false
-    var body: some View {
-        if hasError {
-            fallback()
-        } else {
-            content()
-        }
-    }
-}`
-
-/**
  * Helper struct emitted once at module scope when any KeepAlive
  * site is encountered. Once the children have been shown once,
  * they stay in the View tree across `when_` toggles — hidden via
@@ -2945,8 +2942,6 @@ private struct PyreonKeepAliveWrapper<Content: View>: View {
     }
 }`
 
-let _needsSwiftSuspenseWrapper = false
-let _needsSwiftErrorBoundaryWrapper = false
 let _needsSwiftKeepAliveWrapper = false
 
 function emitSwiftWalledTagAsChildren(

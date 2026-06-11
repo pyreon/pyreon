@@ -242,6 +242,48 @@ final class PyreonTasksUITests: XCTestCase {
             "Did not return to tasks after vocab Back"
         )
 
+        // Phase 5.5: lifecycle (Phase 2 real-semantics proof). The
+        // ErrorBoundary wraps a fetch to a MISSING path → the container
+        // rejects → hasError true → its fallback renders. That fallback
+        // appearing is the DETERMINISTIC discriminator vs the old inert
+        // wrapper, which never showed a fallback. The Suspense's content
+        // (lc-quote, from the good fetch) also renders after it settles.
+        let lifecycleNav = app.buttons["tasks-lifecycle"].firstMatch
+        XCTAssertTrue(lifecycleNav.exists, "Lifecycle button missing on tasks page")
+        lifecycleNav.tap()
+
+        let lifecyclePage = app.otherElements["lifecycle-page"].firstMatch
+        XCTAssertTrue(
+            lifecyclePage.waitForExistence(timeout: 15),
+            "Lifecycle page did not render"
+        )
+        // DIAGNOSTIC: check the GOOD fetch (Suspense content) first — if it
+        // renders, the fetch+observation pipeline works and the host
+        // fixture server is reachable. Then the error path.
+        let suspenseContent = app.staticTexts["lc-quote"].firstMatch
+        if !suspenseContent.waitForExistence(timeout: 20) {
+            print("DIAG-HIERARCHY:\n\(app.debugDescription)")
+        }
+        XCTAssertTrue(
+            suspenseContent.exists,
+            "Suspense content did not render after the fetch settled"
+        )
+        let errorFallback = app.staticTexts["lc-error"].firstMatch
+        if !errorFallback.waitForExistence(timeout: 20) {
+            print("DIAG-HIERARCHY-ERR:\n\(app.debugDescription)")
+        }
+        XCTAssertTrue(
+            errorFallback.exists,
+            "ErrorBoundary fallback did not show — the boundary did not observe the failed fetch's error (real semantics broken)"
+        )
+        let lifecycleBack = app.buttons["lifecycle-back"].firstMatch
+        XCTAssertTrue(lifecycleBack.exists, "Back button missing on lifecycle page")
+        lifecycleBack.tap()
+        XCTAssertTrue(
+            tasksPage.waitForExistence(timeout: 15),
+            "Did not return to tasks after lifecycle Back"
+        )
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         let logout = app.buttons["tasks-logout"].firstMatch
         XCTAssertTrue(logout.exists, "Logout button missing on tasks page")

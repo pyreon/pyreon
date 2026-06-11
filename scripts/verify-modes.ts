@@ -1084,6 +1084,13 @@ const MATRIX: Cell[] = [
           `[native-tasks-web × spa] expected bundle to contain testid "vocab-page"`,
         )
       }
+      // testid baked into the Phase-2 lifecycle route — proves the
+      // real Suspense/ErrorBoundary screen bundled on web
+      if (!allBundled.includes('lifecycle-page')) {
+        throw new Error(
+          `[native-tasks-web × spa] expected bundle to contain testid "lifecycle-page"`,
+        )
+      }
       // testid baked into the fetch-arc quotes route — proves the
       // networked useFetch screen (web half: @pyreon/hooks) bundled
       if (!allBundled.includes('quotes-page')) {
