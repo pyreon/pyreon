@@ -116,7 +116,17 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
+      # PYREON_BOOTSTRAP_SKIP: the postinstall bootstrap runs the FULL
+      # parallel monorepo build (incl. the Rust native compile) inside
+      # `bun install` — exactly the memory/SIGTERM profile that killed the
+      # v0.31.0 publish (#1384 made the BUILD step memory-bounded but the
+      # install-time bootstrap kept the parallel build) and SIGTERM'd the
+      # 2026-06-11 run. Neither release path needs it: `version-packages`
+      # touches no lib/, and the publish path rebuilds via the
+      # memory-bounded `bun scripts/build-batched.ts` anyway.
       - run: bun install --frozen-lockfile
+        env:
+          PYREON_BOOTSTRAP_SKIP: '1'
 
       # Pyreon's pre-push hook (installed by `scripts/bootstrap.ts` postinstall,
       # configured via `core.hooksPath`) runs lint + affected typecheck + tests
@@ -285,7 +295,17 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
+      # PYREON_BOOTSTRAP_SKIP: the postinstall bootstrap runs the FULL
+      # parallel monorepo build (incl. the Rust native compile) inside
+      # `bun install` — exactly the memory/SIGTERM profile that killed the
+      # v0.31.0 publish (#1384 made the BUILD step memory-bounded but the
+      # install-time bootstrap kept the parallel build) and SIGTERM'd the
+      # 2026-06-11 run. Neither release path needs it: `version-packages`
+      # touches no lib/, and the publish path rebuilds via the
+      # memory-bounded `bun scripts/build-batched.ts` anyway.
       - run: bun install --frozen-lockfile
+        env:
+          PYREON_BOOTSTRAP_SKIP: '1'
 
       # Same reason as the stable job — the local pre-push hook would
       # re-run on every `git push` and could cancel the action mid-publish.
@@ -304,5 +324,8 @@ jobs:
           # `alpha`. The version becomes 0.15.X-alpha-<timestamp> via
           # changeset's snapshot machinery.
           bunx changeset version --snapshot alpha
-          bun run build
+          # Memory-bounded batched build (#1384) — the bare parallel
+          # `bun run build` carries the same OOM/SIGTERM risk that killed
+          # the v0.31.0 stable publish.
+          bun scripts/build-batched.ts
           bun run scripts/publish.ts --tag next
