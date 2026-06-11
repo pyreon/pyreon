@@ -39,6 +39,7 @@
     "measure-memory": "NODE_ENV=production node --expose-gc scripts/measure-memory.mjs",
     "test:e2e": "bunx playwright test --project=playground --project=ssr-showcase --project=fundamentals",
     "test:e2e:ui-regression": "bunx playwright test --config=e2e-configs/ui-regression.config.ts",
+    "test:e2e:cssvars": "bunx playwright test --config=e2e-configs/cssvars.config.ts",
     "test:e2e:compat": "bunx playwright test --config=e2e-configs/compat-layers.config.ts",
     "test:e2e:app-showcase": "bunx playwright test --config=e2e-configs/app-showcase.config.ts",
     "test:e2e:islands": "bunx playwright test --config=e2e-configs/islands-showcase.config.ts",

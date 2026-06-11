@@ -43,6 +43,18 @@ describe('selectSuites', () => {
     expect(selectSuites([])).toEqual([])
   })
 
+  it('a ui-core change selects the cssvars dogfood suite', () => {
+    const names = selectSuites(['packages/ui-system/ui-core/src/config.ts']).map((x) => x.name)
+    expect(names).toContain('cssvars')
+  })
+
+  it('a cssvars-bench / spec change selects the cssvars suite', () => {
+    expect(selectSuites(['examples/cssvars-bench/src/main.tsx']).map((x) => x.name)).toContain(
+      'cssvars',
+    )
+    expect(selectSuites(['e2e/cssvars-showcase.spec.ts']).map((x) => x.name)).toContain('cssvars')
+  })
+
   it('forcesFullRun path → every suite', () => {
     for (const broad of [
       'bun.lock',
