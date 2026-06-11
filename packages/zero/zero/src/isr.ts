@@ -154,12 +154,31 @@ export function createMemoryStore<E = ISRCacheEntry>(opts: {
  * Multi-INSTANCE deploys still want a shared external store (Redis/KV) —
  * fs is per-box.
  */
+/** FNV-1a 8-hex hash for over-length fs keys (see `createFsStore.keyFile`). */
+function fnv1a(s: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i)
+    hash = (hash * 0x01000193) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
+}
+
 export function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E> {
   // Lazy node imports keep the module client-bundle-safe (the isr module
   // is server-only in practice, but mirrors the adapters' lazy pattern).
   const fsp = () => import('node:fs/promises')
-  const keyFile = (key: string) =>
-    `${dir}/${encodeURIComponent(key).replace(/\*/g, '%2A')}.json`
+  // Encode to a flat fs-safe filename. Beyond ~200 bytes the encoded name
+  // would exceed POSIX NAME_MAX (255) — `set` would then silently ENAMETOOLONG
+  // and the entry would never cache (long pagination/filter/utm URLs are
+  // common). Above the threshold we substitute an FNV-1a hash of the key
+  // (collisions are content-addressing-grade unlikely; a collision just
+  // serves a same-URL-shaped entry's cache, harmless).
+  const keyFile = (key: string): string => {
+    const enc = encodeURIComponent(key).replace(/\*/g, '%2A')
+    const safe = enc.length <= 200 ? enc : `h.${fnv1a(key)}`
+    return `${dir}/${safe}.json`
+  }
   const tagsFile = `${dir}/_tags.json`
   let tagsLoaded: Promise<Map<string, string[]>> | null = null
   const loadTags = (): Promise<Map<string, string[]>> =>
@@ -174,9 +193,14 @@ export function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E> {
     })())
   const persistTags = async (tags: Map<string, string[]>): Promise<void> => {
     try {
-      const { writeFile, mkdir } = await fsp()
+      const { writeFile, mkdir, rename } = await fsp()
       await mkdir(dir, { recursive: true })
-      await writeFile(tagsFile, JSON.stringify(Object.fromEntries(tags)), 'utf-8')
+      // Atomic: write a tmp sibling then rename, so a crash mid-write (or a
+      // concurrent reader) never sees a torn `_tags.json`. The pid suffix
+      // keeps multi-process writers from colliding on the tmp path.
+      const tmp = `${tagsFile}.tmp.${process.pid}`
+      await writeFile(tmp, JSON.stringify(Object.fromEntries(tags)), 'utf-8')
+      await rename(tmp, tagsFile)
     } catch {
       // Best-effort — a failed tag persist degrades revalidateTag after a
       // restart, never caching itself.

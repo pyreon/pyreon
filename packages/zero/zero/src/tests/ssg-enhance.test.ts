@@ -161,4 +161,15 @@ describe('createFsStore', () => {
     expect(await store.get('/x')).toBeUndefined()
     expect(await store.keysByTag?.('t')).toEqual([])
   })
+
+  it('caches entries with a VERY long key (>255-byte filename) via hashing — no silent ENAMETOOLONG drop', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'pyreon-isr-fs-'))
+    const store = createFsStore(dir)
+    // 300-char query string — the encoded filename would exceed NAME_MAX and
+    // the pre-fix store silently swallowed the ENAMETOOLONG write.
+    const key = `/search?${'q=react&'.repeat(40)}` // ~320 chars
+    await store.set(key, { html: '<p>long</p>', headers: {}, timestamp: 7 })
+    const back = createFsStore(dir)
+    expect(await back.get(key)).toEqual({ html: '<p>long</p>', headers: {}, timestamp: 7 })
+  })
 })

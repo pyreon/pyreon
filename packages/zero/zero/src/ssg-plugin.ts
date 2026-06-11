@@ -169,6 +169,14 @@ try {
   // No @pyreon/styler in the project — leave the no-op stub in place.
 }
 
+// Phase 6 (cssMode 'asset') — expose the COMPLETE styler tag to the outer
+// plugin. After the render loop the buffer holds every page's rules; the
+// outer plugin calls this to write the one shared CSS asset (the per-page
+// getStyleTag is only a superset-so-far, so the asset must come from here).
+export function __getCompleteStylerTag() {
+  return __pyreonGetStylerTag()
+}
+
 // PR E — \`__ZERO_BASE__\` is the Vite-defined build-time constant
 // carrying the value of \`zero({ base })\`. Read it once at module
 // eval and forward to createRouter via createApp so SSG-rendered
@@ -1188,6 +1196,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // compat with entries built before Phase 2.
         __resolveRenderMode?: (path: string) => 'ssr' | 'ssg' | 'spa' | 'isr'
         __routeModeEntries?: import('./route-modes').RouteModeEntry[]
+        // Phase 6 (cssMode 'asset') — the COMPLETE styler tag after the
+        // render loop (the per-page heads are only superset-so-far).
+        __getCompleteStylerTag?: () => string
       }
       const handlerMod = (await withSilent(
         () => import(/* @vite-ignore */ pathToFileURL(handlerPath).href),
@@ -1316,24 +1327,19 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // (module-eval cache — see the no-reset rationale above), so ONE
       // content-hashed asset serves every page; pages link it instead of
       // inlining the full rule set per page.
-      const cssAsset =
-        config.ssg?.cssMode === 'asset'
-          ? (() => {
-              let written: Promise<string> | null = null
-              return {
-                write: (css: string): Promise<string> =>
-                  (written ??= (async () => {
-                    const name = `pyreon-ssg.${hashCss(css)}.css`
-                    const dir = assetsDir ?? 'assets'
-                    const assetFile = join(distDir, dir, name)
-                    await mkdirOnce(dirname(assetFile))
-                    await writeFileAtomic(assetFile, css)
-                    const baseUrl = (config.base ?? '/').replace(/\/$/, '')
-                    return `${baseUrl}/${dir}/${name}`
-                  })()),
-              }
-            })()
-          : null
+      //
+      // CRITICAL: the styler's ssrBuffer GROWS as pages render — rocketstyle
+      // resolves dimension combos and `sheet.insert`s at RENDER time on a
+      // classCache miss (styled.tsx), NOT at module-eval. So a per-page
+      // `getStyleTag()` is a SUPERSET-so-far, and the FIRST page to write the
+      // asset would capture an INCOMPLETE sheet (later pages' rules absent →
+      // FOUC). We therefore DEFER the asset write to AFTER the render loop
+      // (when the buffer is complete) and inject a PLACEHOLDER href per page,
+      // rewriting each written file once the real content-hashed href exists.
+      const cssAssetMode = config.ssg?.cssMode === 'asset'
+      const CSS_ASSET_PLACEHOLDER = '__PYREON_SSG_CSS_HREF__'
+      // Files that received the placeholder link (to rewrite post-loop).
+      const cssAssetFiles: string[] = []
 
       // Phase 6 — per-path modulepreload hrefs for `Link:` headers
       // (`ssg.earlyHints`). Append-only under the concurrent worker pool
@@ -1405,13 +1411,16 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             }
           }
 
-          // Phase 6 — cssMode 'asset': pull the styler tag out of the head,
-          // write the rule set ONCE as a content-hashed shared file, link it.
-          if (cssAsset) {
+          // Phase 6 — cssMode 'asset': strip the inline styler tag and inject
+          // a PLACEHOLDER link; the real content-hashed href is written +
+          // substituted AFTER the loop (when the styler buffer is complete —
+          // see the CSS_ASSET_PLACEHOLDER rationale above).
+          let pageGotCssPlaceholder = false
+          if (cssAssetMode) {
             const extracted = extractStylerStyleTag(result.head)
             if (extracted) {
-              const href = await cssAsset.write(extracted.css)
-              result.head = `<link rel="stylesheet" href="${href}">\n${extracted.head}`
+              result.head = `<link rel="stylesheet" href="${CSS_ASSET_PLACEHOLDER}">\n${extracted.head}`
+              pageGotCssPlaceholder = true
             }
           }
 
@@ -1436,6 +1445,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 
           await mkdirOnce(dirname(filePath))
           await writeFile(filePath, html, 'utf-8')
+          if (pageGotCssPlaceholder) cssAssetFiles.push(filePath)
           pages++
           writtenPaths.push(p)
           // M2.3 — track successful HTML emits. `ssg.pathRender - ssg.pathWrite
@@ -1504,6 +1514,45 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
         }
       })
+
+      // Phase 6 — cssMode 'asset': NOW the styler buffer is complete (every
+      // page has rendered + pushed its rules). Write the ONE content-hashed
+      // CSS asset from the full sheet and substitute the per-page placeholder
+      // href. If the project uses no styler (empty sheet) the placeholders
+      // are stripped instead, so no page links a dangling stylesheet.
+      if (cssAssetMode && cssAssetFiles.length > 0) {
+        const fullTag = handlerMod.__getCompleteStylerTag
+          ? handlerMod.__getCompleteStylerTag()
+          : ''
+        const extracted = extractStylerStyleTag(fullTag)
+        let replacement = ''
+        if (extracted && extracted.css.length > 0) {
+          const name = `pyreon-ssg.${hashCss(extracted.css)}.css`
+          const dir = assetsDir ?? 'assets'
+          const assetFile = join(distDir, dir, name)
+          await mkdirOnce(dirname(assetFile))
+          await writeFileAtomic(assetFile, extracted.css)
+          const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+          replacement = `<link rel="stylesheet" href="${baseUrl}/${dir}/${name}">`
+        }
+        await Promise.all(
+          cssAssetFiles.map(async (file) => {
+            try {
+              const content = await readFile(file, 'utf-8')
+              await writeFile(
+                file,
+                content.replace(
+                  `<link rel="stylesheet" href="${CSS_ASSET_PLACEHOLDER}">`,
+                  replacement,
+                ),
+                'utf-8',
+              )
+            } catch (err) {
+              errors.push({ path: `${file} (css-asset-rewrite)`, error: err })
+            }
+          }),
+        )
+      }
 
       // Phase 6 — `ssg.earlyHints`: per-path `Link: <chunk>; rel=modulepreload`
       // entries appended to `_headers`. CF Pages / Netlify convert Link
