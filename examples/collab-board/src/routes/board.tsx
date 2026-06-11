@@ -5,6 +5,7 @@ import { toast } from '@pyreon/toast'
 import { Backlog } from '../components/Backlog'
 import { CardPanel } from '../components/CardPanel'
 import { Column } from '../components/Column'
+import { Cursors } from '../components/Cursors'
 import { Toolbar } from '../components/Toolbar'
 import { canEdit } from '../state/permissions'
 import {
@@ -87,6 +88,8 @@ export function BoardRoute() {
     return (
       <div>
         <Toolbar board={b} />
+        {/* Live collaborator cursors (awareness) — a fixed overlay over the board. */}
+        <Cursors board={b} />
         <div class="columns">
           {COLUMN_IDS.map((colId) => (
             <Column

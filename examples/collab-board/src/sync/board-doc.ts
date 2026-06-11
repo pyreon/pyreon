@@ -20,8 +20,10 @@ import {
   connectViaWebSocket,
   createYjsDoc,
   persistViaIndexedDB,
+  type SyncedAwareness,
   type SyncedList,
   type SyncedText,
+  syncedAwareness,
   syncedList,
   syncedText,
 } from '@pyreon/sync/yjs'
@@ -50,18 +52,15 @@ export interface CardLocation {
 }
 
 /**
- * A presence entry — one per active client. Modeled AS synced data (a
- * `syncedList`) rather than via Yjs's awareness protocol, because the relay
- * brokers doc updates, not awareness. Trade-off: entries persist in the CRDT
- * (a crashed client lingers) — the UI filters on `at` (last-seen) to show only
- * recent ones, and each client removes its own entry on unmount. A production
- * app would use the ephemeral awareness protocol instead.
+ * One client's live presence — name + color + an optional live cursor. This is
+ * EPHEMERAL: it rides Yjs's awareness protocol (`syncedAwareness`), is never
+ * persisted, and is purged the instant a client disconnects (no last-seen
+ * filtering, no ghost entries). The cursor updates on every mousemove.
  */
-export interface PresenceEntry {
-  clientId: string
+export interface PresenceState {
   name: string
   color: string
-  at: number
+  cursor?: { x: number; y: number }
 }
 
 /**
@@ -76,8 +75,8 @@ export type ConnectionState = 'local' | 'connecting' | 'online' | 'offline'
 export interface BoardDoc {
   readonly roomId: string
   readonly columns: Record<ColumnId, SyncedList<Card>>
-  /** Active collaborators (synced; filter on `at` for "recently seen"). */
-  readonly presence: SyncedList<PresenceEntry>
+  /** Live collaborators — ephemeral presence + cursors over Yjs awareness. */
+  readonly presence: SyncedAwareness<PresenceState>
   /** A large synced list (the backlog) — rendered virtualized to show
    *  fine-grained sync at scale. */
   readonly backlog: SyncedList<Card>
@@ -118,7 +117,9 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
     doing: syncedList<Card>(doc, 'col:doing'),
     done: syncedList<Card>(doc, 'col:done'),
   }
-  const presence = syncedList<PresenceEntry>(doc, 'presence')
+  // Ephemeral presence — created BEFORE the transports connect so they wire the
+  // doc's awareness at connect time (the `syncedAwareness` ordering contract).
+  const presence = syncedAwareness<PresenceState>(doc)
   const backlog = syncedList<Card>(doc, 'backlog')
 
   // The title DOES seed an initial value, so it must wait for persisted state

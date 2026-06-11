@@ -179,6 +179,45 @@ test.describe('collab-board — relay sync', () => {
     await b.context().close()
   })
 
+  test('presence avatars + live cursors sync over awareness', async ({ browser }) => {
+    const room = `e2e-${crypto.randomUUID()}`
+    const errors: string[] = []
+    const a = await openClient(browser, boardUrl(room), errors)
+    const b = await openClient(browser, boardUrl(room), errors)
+
+    // Each client publishes its presence (name + color) on mount via
+    // `syncedAwareness` → over the relay → each sees TWO avatars (self + peer).
+    await expect(a.getByTestId('presence').locator('.avatar')).toHaveCount(2)
+    await expect(b.getByTestId('presence').locator('.avatar')).toHaveCount(2)
+
+    // A moves its mouse → its cursor is published into awareness → B renders it.
+    // Dispatch the mousemove directly (Playwright's mouse.move doesn't reliably
+    // reach a `window` listener in headless — same reason the dnd specs dispatch
+    // real events). B sees only A's cursor (`others()` excludes self).
+    const move = (x: number, y: number) => (p: typeof a) =>
+      p.evaluate(
+        ([cx, cy]) =>
+          window.dispatchEvent(new MouseEvent('mousemove', { clientX: cx, clientY: cy, bubbles: true })),
+        [x, y],
+      )
+    await move(320, 240)(a)
+    await expect(b.getByTestId('remote-cursor')).toHaveCount(1)
+    await expect(a.getByTestId('remote-cursor')).toHaveCount(0)
+
+    // Moving again patches the SAME cursor in place — still exactly one.
+    await move(120, 360)(a)
+    await expect(b.getByTestId('remote-cursor')).toHaveCount(1)
+
+    // A leaves → the relay purges its presence → B drops back to one avatar and
+    // A's cursor disappears (ephemeral — no ghost, no last-seen filtering).
+    await a.context().close()
+    await expect(b.getByTestId('presence').locator('.avatar')).toHaveCount(1)
+    await expect(b.getByTestId('remote-cursor')).toHaveCount(0)
+
+    expect(errors, errors.join('\n')).toEqual([])
+    await b.context().close()
+  })
+
   test('offline persistence: a card survives a reload (IndexedDB, no relay)', async ({
     browser,
   }) => {
