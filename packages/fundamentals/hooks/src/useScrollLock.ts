@@ -1,4 +1,5 @@
 import { onUnmount } from '@pyreon/core'
+import { isServer } from '@pyreon/reactivity'
 
 let lockCount = 0
 let savedOverflow = ''
@@ -14,8 +15,8 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
     // SSR-safe: scroll locking is meaningless without a document. Guards
     // against accidental call from a non-browser context (e.g. SSR
     // rendering a component that opens a modal in its setup).
-    /* v8 ignore next — SSR/typeof document guard; tests run with happy-dom */
-    if (typeof document === 'undefined') return
+    /* v8 ignore next — SSR/isServer guard; tests run with happy-dom */
+    if (isServer) return
     if (isLocked) return
     isLocked = true
     if (lockCount === 0) {
@@ -26,8 +27,8 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
   }
 
   const unlock = () => {
-    /* v8 ignore next — SSR/typeof document guard; tests run with happy-dom */
-    if (typeof document === 'undefined') return
+    /* v8 ignore next — SSR/isServer guard; tests run with happy-dom */
+    if (isServer) return
     if (!isLocked) return
     isLocked = false
     lockCount--

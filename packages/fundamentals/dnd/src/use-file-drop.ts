@@ -3,7 +3,7 @@ import {
   monitorForExternal,
 } from '@atlaskit/pragmatic-drag-and-drop/external/adapter'
 import { containsFiles, getFiles } from '@atlaskit/pragmatic-drag-and-drop/external/file'
-import { batch, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseFileDropOptions {
   /** Element getter for the drop zone. */
@@ -49,7 +49,7 @@ export interface UseFileDropResult {
  * ```
  */
 export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
-  if (typeof document === 'undefined') return { isOver: () => false, isDraggingFiles: () => false }
+  if (isServer) return { isOver: () => false, isDraggingFiles: () => false }
 
   const isOver = signal(false)
   const isDraggingFiles = signal(false)

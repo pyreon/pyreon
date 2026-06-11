@@ -6,7 +6,7 @@ import {
   type Edge,
   extractClosestEdge,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
-import { batch, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
 import type { DropEdge, UseSortableOptions, UseSortableResult } from './types'
 
 const SORT_KEY = '__pyreon_sortable_key'
@@ -72,7 +72,7 @@ const _sortableRegistry = new Map<
  * ```
  */
 export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResult {
-  if (typeof document === 'undefined') {
+  if (isServer) {
     const noop = (_el: HTMLElement | null) => {}
     return {
       containerRef: noop,

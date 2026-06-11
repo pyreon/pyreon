@@ -1,4 +1,4 @@
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { isServer, onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseInfiniteScrollOptions {
   /** Distance from bottom (px) to trigger load. Default: 100 */
@@ -71,7 +71,7 @@ export function useInfiniteScroll(
     // Defensive: ref callbacks only fire in the browser, but the early
     // return makes the SSR-safety contract explicit (and silences SSR
     // lint rules that can't trace `setup` → `ref` → DOM-mount).
-    if (typeof document === 'undefined' || typeof IntersectionObserver === 'undefined') return
+    if (isServer || typeof IntersectionObserver === 'undefined') return
     cleanup()
     containerEl = el
 

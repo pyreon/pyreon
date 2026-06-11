@@ -1,5 +1,5 @@
 import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { isServer, onCleanup, signal } from '@pyreon/reactivity'
 import type { DragData, UseDraggableOptions, UseDraggableResult } from './types'
 
 /**
@@ -22,7 +22,7 @@ import type { DragData, UseDraggableOptions, UseDraggableResult } from './types'
 export function useDraggable<T extends DragData = DragData>(
   options: UseDraggableOptions<T>,
 ): UseDraggableResult {
-  if (typeof document === 'undefined') return { isDragging: () => false }
+  if (isServer) return { isDragging: () => false }
 
   const isDragging = signal(false)
   let cleanup: (() => void) | undefined
