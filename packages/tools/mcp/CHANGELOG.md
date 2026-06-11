@@ -1,5 +1,36 @@
 # @pyreon/mcp
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1388](https://github.com/pyreon/pyreon/pull/1388) [`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `get_content_collection` + `get_content_entry` MCP tools. Lets AI agents navigate a `@pyreon/zero-content` corpus structurally — enumerate collections, list every entry's slug + title, drill into one entry's frontmatter + heading outline — without scraping `import.meta.glob` patterns or reading raw markdown files one at a time.
+
+  ## get_content_collection
+
+  - No args → lists every declared collection across all `content.config.{ts,mts,js,mjs}` in the project (one bullet each: name, type, entry count, content dir).
+  - With `name` → returns that collection's metadata + every entry's slug + title + path.
+
+  ## get_content_entry
+
+  - `collection: string` + `slug: string` → returns the entry's relative path, frontmatter (parsed key→value), heading outline (level + text, code-fence-aware), and source size in bytes.
+  - Missing-slug case returns nearest-match suggestions filtered against the collection's known slugs.
+
+  ## Implementation
+
+  Pure syntactic walker — reuses `parseContentConfig` + `findContentConfigs` + `deriveSlug` + `readFrontmatter` + `readTitleFromFrontmatter` from `@pyreon/compiler`'s content audit (same module that powers `pyreon doctor --check-content`). No runtime dep on `@pyreon/zero-content`. Works on any project that ships a `content.config.{ts,mts,js,mjs}` declaring `defineCollection({...})` shapes.
+
+  64 unit specs in `content.test.ts` (collection enumeration, entry detail, frontmatter parsing, heading outline + fence-aware extraction, error paths) + 5 server-roundtrip specs in `content-server.test.ts` (empty-project + arg validation). 531/531 MCP specs pass. `tools/list` payload stays under the 1,300 token regression budget.
+
+### Patch Changes
+
+- [#1491](https://github.com/pyreon/pyreon/pull/1491) [`25ddda0`](https://github.com/pyreon/pyreon/commit/25ddda0d540199a7177cf0ccd4b0cab78912986a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Path updates in `pyreon doctor`'s doc-claims gate + the MCP `get_pattern` tool: the docs site moved from `docs/docs/<topic>.md` to `docs/src/content/docs/<topic>.md` (legacy VitePress → Pyreon-native cutover). The doc-claims gate now reads from the new location; the MCP `get_pattern` candidate paths list includes the new `docs/src/content/docs/patterns/` location while keeping legacy locations as fallbacks for downstream consumers on older repo layouts.
+
+- [#1442](https://github.com/pyreon/pyreon/pull/1442) [`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926) Thanks [@vitbokisch](https://github.com/vitbokisch)! - MCP `get_api` now covers `@pyreon/zero-content`'s `<Example>` docs primitive + `registerExamples` + `getOrCreateSharedSignal` helpers. Plus a manifest-renderer fix: literal backslashes in `example` / `mistakes` strings are now escaped during template-literal serialization, so manifest entries containing markdown-fenced code (` ```bash ... ``` `) round-trip without prematurely closing the generated template literal. Affects 9 api-reference regions that previously skipped this escape pass.
+
+- Updated dependencies [[`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc), [`edaea04`](https://github.com/pyreon/pyreon/commit/edaea04231fc33b585e785bda61e63c14663c045), [`f6f54a2`](https://github.com/pyreon/pyreon/commit/f6f54a254e43f3b36a4c55581381ab582322990e), [`73436e7`](https://github.com/pyreon/pyreon/commit/73436e782319940abde41200299489a809de70d5), [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe)]:
+  - @pyreon/compiler@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-router-demo-web",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Web sibling of native-router-demo-ios. Imports RouterApp from the iOS path directly: ONE source, THREE targets. Proves the Pyreon multiplatform routing story end-to-end via real Vite build + Playwright.",
   "license": "MIT",

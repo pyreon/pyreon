@@ -1,5 +1,12 @@
 # @pyreon/native-cli
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`099f574`](https://github.com/pyreon/pyreon/commit/099f5746a8069326e9dccf5c46c405afa2220e46)]:
+  - @pyreon/native-compiler@0.1.0
+
 ## 0.1.0
 
 ### Minor Changes

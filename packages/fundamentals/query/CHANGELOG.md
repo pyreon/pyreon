@@ -1,5 +1,36 @@
 # @pyreon/query
 
+## 0.32.0
+
+### Patch Changes
+
+- [#1437](https://github.com/pyreon/pyreon/pull/1437) [`52bcecd`](https://github.com/pyreon/pyreon/commit/52bcecde43f58a48c3e1d3d0fd0b61d9e1956da9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(query): ~70-75% smaller result objects via a shared getters-only prototype
+
+  `useQuery` / `useMutation` / `useInfiniteQuery` / `useSuspenseQuery` /
+  `useSuspenseInfiniteQuery` each returned an object literal with 8-13 accessor
+  getters PER CALL. That many accessors on a literal forces V8 into dictionary
+  (slow-properties) mode AND allocates a fresh getter closure per field per
+  result. The accessor getters now live on a shared, getters-only prototype (one
+  allocation at module init); each result is a 2-field plain object (`_slots` +
+  `_observer`) + `setPrototypeOf`. A structurally-faithful A/B (node `--expose-gc`,
+  `NODE_ENV=production`, 100k results) measured the literal shape at ~2048 B/result
+  vs ~512 B shipped (useQuery, -75%) / ~640 B (useMutation, -69%).
+
+  The lazy-signal slot-bag is unchanged (getters still do
+  `slots[k] ??= signal(observer.getCurrentResult().k)` — same `Signal` identity +
+  materialize-on-first-access). Methods (`refetch` / `mutate` / `mutateAsync` /
+  `reset` / `fetchNextPage` / `fetchPreviousPage`) stay as per-instance arrow
+  closures, NOT prototype methods, so detaching them (`const r = q.refetch; r()`,
+  `onClick={q.refetch}`) keeps working. The accessor getters are non-enumerable
+  (internals + signals stay out of `Object.keys` / spread).
+
+  Behavior-identical and API-unchanged: 154 query tests + the `@pyreon/feature`
+  consumer suite pass.
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

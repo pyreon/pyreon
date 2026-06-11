@@ -1,5 +1,36 @@
 # @pyreon/styler
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1528](https://github.com/pyreon/pyreon/pull/1528) [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094) Thanks [@vitbokisch](https://github.com/vitbokisch)! - CSS-variables mode — ui-system sweep + safety net + perf fast paths:
+
+  - `@pyreon/styler`: dev-mode resolved-CSS validator in `sheet.insert` — warns (once per finding, `[Pyreon]`-prefixed) on `NaN` values (JS arithmetic on a var token), `undefined`/`null` values, and malformed `var()` concatenation (`var(--x)99` alpha-suffix hacks), naming the offending declaration. Tree-shaken from production.
+  - `@pyreon/coolgrid`: grid math is var-aware — a `var()`/`calc()` gap or gutter now emits native `calc()` spacing (Row margins, Col gap-margin, Col width) instead of silently skipping spacing / emitting the malformed `var(--x)px` (multiplication, not division — `calc(x / -2)` invalidates the whole shorthand).
+  - `@pyreon/unistyle`: `resolveCssVarReferences(value, registry)` — inline `var(--…)` references (incl. fallbacks) back to raw emitted values for consumers that can't evaluate custom properties (document/PDF export, devtools). `calc()` is inlined, not evaluated.
+  - `@pyreon/runtime-dom`: `_rsCollapse` single-class fast path — identical light/dark classes (what the cssVariables collapse produces) skip the mode binding entirely (zero subscription, zero disposer).
+
+  Measured (real Chromium): 100 components × 10 mode flips — classic 5.4ms vs cssVariables 1.7ms (3.2×), with zero `styler.resolve` / `rocketstyle.getTheme` work; the REAL `@pyreon/ui-components` Button + full default theme render var-safe with zero validator findings.
+
+  Security: `resolveCssVarReferences` is implemented as a linear character scan (paren-depth-aware) rather than a regex, eliminating a polynomial-ReDoS surface (CodeQL `js/polynomial-redos`) on the var-fallback parse — input can be library/theme-author-controlled.
+
+- [#1466](https://github.com/pyreon/pyreon/pull/1466) [`ae3c3fd`](https://github.com/pyreon/pyreon/commit/ae3c3fd529250e7211657e4283fb5e6c3246bf00) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Streaming SSR no longer FOUCs Suspense-boundary content. `@pyreon/styler`'s `sheet.flushSSRPending()` (new) returns CSS rules collected since the previous flush + advances a watermark; the SSR-only module init registers it on `globalThis.__PYREON_STYLER_FLUSH__`. `@pyreon/runtime-server`'s `renderToStream` calls the hook (a) once after the synchronous shell render — emitting `<style data-pyreon-stream="shell">…</style>` inline at the top of the app body so shell content is styled before any Suspense resolves; (b) inside every `streamSuspenseBoundary`, BEFORE the `<template>`, so each boundary's resolved HTML arrives with its styles already in the page. No hard `runtime-server → styler` dependency (mirrors the `__pyreon_count__` perf-counter and SSG-plugin lookup pattern); the boundary path is a no-op when styler isn't loaded. Bundle cost: ~239 gz across the two packages (+129 styler, +110 runtime-server) — both within budget. Closes the FOUC observable in `examples/cpa-pw-app-solid` (`mode: 'ssr', ssr: { mode: 'stream' }`). Bisect-verified at both layers: 13 sheet unit specs cover the watermark / `@layer` ordering / reset semantics; 7 runtime-server integration specs cover the shell + per-boundary flush ordering, the `</style` escape, the multi-boundary case, and the no-hook graceful no-op. Companion cleanup: stale HMR-staleness comment in `styler/styled.tsx` was rewritten to reflect that the `onSheetClear` subscriber wired at module top already drops the static-VNode cache on `sheet.clearAll()` (the comment documented a gap that had already been closed).
+
+### Patch Changes
+
+- [#1503](https://github.com/pyreon/pyreon/pull/1503) [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add canonical runtime environment flags `isServer` / `isClient` to `@pyreon/reactivity` (re-exported from `@pyreon/core`).
+
+  `isServer` is `typeof document === 'undefined'` — the most reliable "is there a DOM" discriminator (more correct than `typeof window`, which misreports Deno and polyfilled Node). Plain runtime constants, evaluated once at module load: correct in every runtime with zero bundler configuration. Use them for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for heavy server-only code prefer a `/server` subpath export, and for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).
+
+  Internally, this replaces seven hand-rolled `typeof window` / `typeof document` env consts across `router`, `hooks`, `url-state`, `elements`, `ui-core`, and `styler` with the single primitive — removing the drift (the copies disagreed on `window` vs `document`) and the inconsistency. Behavior is unchanged in browsers and Node; the `window` → `document` switch is a strict improvement for Deno / Web Workers.
+
+  `@pyreon/lint`'s `no-window-in-ssr` rule now recognises an imported `isClient` / `isServer` (or `isBrowser` / `isSSR`) as an SSR guard — but only when imported from `@pyreon/reactivity` or `@pyreon/core`, so `if (isClient) window.x` / `if (isServer) return` / `if (!isClient) return` are clean while a same-named local `const isBrowser = true` or a foreign-source import stays flagged.
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

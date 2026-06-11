@@ -1,5 +1,29 @@
 # @pyreon/lint
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1522](https://github.com/pyreon/pyreon/pull/1522) [`b9fbb9c`](https://github.com/pyreon/pyreon/commit/b9fbb9cca02295d7db77ae5525b8f5d188848e35) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `pyreon/prefer-isserver` (ssr category, recommended-level **warn**) — nudges toward the canonical `isServer` / `isClient` environment primitives from `@pyreon/reactivity` over hand-rolled `typeof window` / `typeof document` checks. The primitives single-source SSR detection and use the reliable `typeof document` discriminator (`typeof window` misreports DOM-less environments).
+
+  Advisory by design (warn never fails the errors-only lint gate) and self-gates on the project depending on `@pyreon/reactivity` / `@pyreon/core`, so it stays silent in non-Pyreon code. Flags the `typeof window/document … 'undefined'` idiom specifically (not `typeof window.foo` feature detection); the module that defines the primitives is exempt. Brings the rule set to 90.
+
+### Patch Changes
+
+- [#1503](https://github.com/pyreon/pyreon/pull/1503) [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add canonical runtime environment flags `isServer` / `isClient` to `@pyreon/reactivity` (re-exported from `@pyreon/core`).
+
+  `isServer` is `typeof document === 'undefined'` — the most reliable "is there a DOM" discriminator (more correct than `typeof window`, which misreports Deno and polyfilled Node). Plain runtime constants, evaluated once at module load: correct in every runtime with zero bundler configuration. Use them for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for heavy server-only code prefer a `/server` subpath export, and for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).
+
+  Internally, this replaces seven hand-rolled `typeof window` / `typeof document` env consts across `router`, `hooks`, `url-state`, `elements`, `ui-core`, and `styler` with the single primitive — removing the drift (the copies disagreed on `window` vs `document`) and the inconsistency. Behavior is unchanged in browsers and Node; the `window` → `document` switch is a strict improvement for Deno / Web Workers.
+
+  `@pyreon/lint`'s `no-window-in-ssr` rule now recognises an imported `isClient` / `isServer` (or `isBrowser` / `isSSR`) as an SSR guard — but only when imported from `@pyreon/reactivity` or `@pyreon/core`, so `if (isClient) window.x` / `if (isServer) return` / `if (!isClient) return` are clean while a same-named local `const isBrowser = true` or a foreign-source import stays flagged.
+
+- [#1538](https://github.com/pyreon/pyreon/pull/1538) [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon/no-dom-in-setup` now recognizes the canonical `@pyreon/reactivity` SSR primitive as a head guard: `if (isServer) return|throw` and `if (!isClient) return|throw` (by name, the same convention `no-window-in-ssr` / `dev-guard-warnings` use). This keeps the rule consistent with `pyreon/prefer-isserver` — that rule pushes `typeof document === 'undefined'` guards TO `isServer`, so without this the two rules contradicted (prefer-isserver said "use isServer", then no-dom-in-setup flagged the now-"unguarded" DOM access in the same function).
+
+- Updated dependencies [[`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc), [`edaea04`](https://github.com/pyreon/pyreon/commit/edaea04231fc33b585e785bda61e63c14663c045), [`f6f54a2`](https://github.com/pyreon/pyreon/commit/f6f54a254e43f3b36a4c55581381ab582322990e), [`73436e7`](https://github.com/pyreon/pyreon/commit/73436e782319940abde41200299489a809de70d5), [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe)]:
+  - @pyreon/compiler@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

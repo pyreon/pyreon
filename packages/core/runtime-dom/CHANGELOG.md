@@ -1,5 +1,64 @@
 # @pyreon/runtime-dom
 
+## 0.32.0
+
+### Patch Changes
+
+- [#1499](https://github.com/pyreon/pyreon/pull/1499) [`4529407`](https://github.com/pyreon/pyreon/commit/4529407d69ba0875568b5c78ff14e2850aa2d690) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Core + fundamentals deep-audit fixes. `@pyreon/validate`: corrected the outdated "Pyreon does NOT ship its own validator runtime / ~1-2KB gz" claim across the entry docstring, README, manifest, and docs page — since v1 the package ships Pyreon's own `s` validator runtime; the accurate, measured contract is tree-shaking (DX-helpers-only import ≈0.5KB gz; the runtime ≈3.9KB gz pulled in only when `s`/primitives are imported). `@pyreon/code`: minimap's canvas click listener is now stored and explicitly removed in the plugin's `destroy()` — completes the destroy contract (the listener was element-scoped so it normally died with the canvas, but explicit removal protects against any external retention of the canvas). `@pyreon/runtime-dom`: fixed a misleading dev-gate comment in template.ts (claimed `import.meta.env.DEV`; the code correctly uses the bundler-agnostic `process.env.NODE_ENV !== 'production'` gate).
+
+- [#1528](https://github.com/pyreon/pyreon/pull/1528) [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094) Thanks [@vitbokisch](https://github.com/vitbokisch)! - CSS-variables mode — ui-system sweep + safety net + perf fast paths:
+
+  - `@pyreon/styler`: dev-mode resolved-CSS validator in `sheet.insert` — warns (once per finding, `[Pyreon]`-prefixed) on `NaN` values (JS arithmetic on a var token), `undefined`/`null` values, and malformed `var()` concatenation (`var(--x)99` alpha-suffix hacks), naming the offending declaration. Tree-shaken from production.
+  - `@pyreon/coolgrid`: grid math is var-aware — a `var()`/`calc()` gap or gutter now emits native `calc()` spacing (Row margins, Col gap-margin, Col width) instead of silently skipping spacing / emitting the malformed `var(--x)px` (multiplication, not division — `calc(x / -2)` invalidates the whole shorthand).
+  - `@pyreon/unistyle`: `resolveCssVarReferences(value, registry)` — inline `var(--…)` references (incl. fallbacks) back to raw emitted values for consumers that can't evaluate custom properties (document/PDF export, devtools). `calc()` is inlined, not evaluated.
+  - `@pyreon/runtime-dom`: `_rsCollapse` single-class fast path — identical light/dark classes (what the cssVariables collapse produces) skip the mode binding entirely (zero subscription, zero disposer).
+
+  Measured (real Chromium): 100 components × 10 mode flips — classic 5.4ms vs cssVariables 1.7ms (3.2×), with zero `styler.resolve` / `rocketstyle.getTheme` work; the REAL `@pyreon/ui-components` Button + full default theme render var-safe with zero validator findings.
+
+  Security: `resolveCssVarReferences` is implemented as a linear character scan (paren-depth-aware) rather than a regex, eliminating a polynomial-ReDoS surface (CodeQL `js/polynomial-redos`) on the var-fallback parse — input can be library/theme-author-controlled.
+
+- [#1538](https://github.com/pyreon/pyreon/pull/1538) [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal refactor: replace hand-rolled `typeof window/document` environment checks with the canonical `isServer` / `isClient` primitives from `@pyreon/reactivity`. Behavior is identical (`isServer`/`isClient` ARE `typeof document {===,!==} 'undefined'`) — the framework now uses its own primitive instead of dogfooding the pattern its own `pyreon/prefer-isserver` rule flags. No public API change.
+
+  Function-body SSR guards whose SSR branch is verified by deleting `document`/`window` at runtime in tests (e.g. `@pyreon/elements` Overlay positioning, `@pyreon/styler`'s sheet, `@pyreon/head`'s `syncDom`) intentionally KEEP the call-time `typeof` check — a module-load-time `isServer` const can't be re-evaluated by that test method, and the call-time form is equally production-correct. Those files are scoped-off from `prefer-isserver` in `.pyreonlintrc.json` with that rationale.
+
+- [#1401](https://github.com/pyreon/pyreon/pull/1401) [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Async function components are now first-class on the client (parity with `renderToString`).
+
+  Before this fix, an `async function Component()` returned a Promise that mount/hydrate fed straight into `mountChild`, crashing with `Cannot read properties of undefined (reading 'ref')` because Promises have no `.props`. SSR awaited the Promise per the documented contract; the client never did. This was the root cause of the deployed `examples/docs-zero` preview crashing on every doc route — they all delegated to an async `<DocBody slug={slug} />`.
+
+  Two coordinated fixes:
+
+  **`@pyreon/runtime-server`**: brackets async-component output with `<!--$pas-->` (start) / `<!--$pae-->` (end) sentinel comments — both in `renderToString` (the SSG path) and `streamComponentNode` (the streaming path). These mark the SSR DOM range corresponding to the resolved Promise so the client knows exactly where the async subtree begins and ends. Markers nest correctly for nested async components.
+
+  **`@pyreon/runtime-dom`**:
+
+  - `mountComponent` — detects `output instanceof Promise`, inserts a placeholder comment, and mounts the resolved subtree at the placeholder once settled. Cleanup cancels pending resolution so unmount-before-resolve is safe.
+  - `hydrateComponent` — locates the SSR `<!--$pas-->`/`<!--$pae-->` markers (depth-tracked for nesting), advances the parent's DOM cursor past the end marker synchronously (so siblings hydrate normally), then awaits the Promise and **hydrates the resolved VNode against the SSR DOM range bounded by the markers**. This wires up events, lifecycle hooks (`onMount`), and signal subscriptions on every node of the async subtree — the part missing from the first cut, which left the SSG content visible but client-dead.
+  - `firstReal` recognises `$pas`/`$pae` (and the existing `k:` For-list markers) as structural — it stops at them instead of skipping like other comments.
+
+  `<Suspense>` still works for `lazy()`-style boundaries; this is the natural async-function counterpart.
+
+  Regression coverage:
+
+  - `packages/core/runtime-dom/src/tests/async-component.test.ts` — 5 mount specs.
+  - `packages/core/runtime-dom/src/tests/async-component-hydrate.test.ts` — 6 hydration specs covering: handlers attach on async subtree, `onMount` fires, signal-driven text patches, siblings hydrate sync, nested async (depth-tracked markers), missing-markers fallback + dev warning.
+
+  Bisect-verified: removing the SSR markers leaves the click-handler unattached and reactivity dead — all 6 hydration specs fail. Removing the mount Promise branch fails the 3 resolution specs with the documented `'ref'` TypeError.
+
+  Real-Chromium sweep: docs-zero's previously-broken `/docs/multiplatform` page now renders 23 KB of content with zero errors, TOC scroll-spy links navigate correctly, URL hashes update — proving full reactivity wired through the hydrated async subtree.
+
+- [#1523](https://github.com/pyreon/pyreon/pull/1523) [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server islands + streaming by default (Phase 4 of the render-modes plan).
+
+  **`serverIsland(loader, { name, fallback?, cache? })`** — the inverse of client islands: a cacheable page with per-request server-rendered holes. Every render emits only a `<pyreon-server-island>` marker (codec-encoded props); the marker self-activates on mount and fetches `GET /_pyreon/fragment/<name>` — auto-mounted by zero's `createServer` — which renders the registered component per request with full request context (`useRequestLocals()` works inside fragments). Name-allowlisted endpoint, `no-store` by default with an opt-in `cache` option, fallback-degrading failures, and cold-start registry warming for lazy routes. Registry is `globalThis`-keyed so bundle-split module duplication can't split it.
+
+  **`mode: 'ssr'` now streams by default** — shell flushes immediately, Suspense boundaries resolve out-of-order with inline style flushes. Opt out with `ssr: { mode: 'string' }`. ISR stays buffered (the SWR cache stores complete bodies), including per-route `renderMode = 'isr'` declarations inside streaming apps (they get a buffered render automatically).
+
+  **Fixed (`@pyreon/runtime-dom`)**: `data-*`/`aria-*` props on CUSTOM ELEMENTS now land as real attributes instead of JS properties — `getAttribute`/`dataset`/CSS attribute selectors/SSR output all agree again. (This was how the server-island marker lost its `data-name` on client mounts; bisect-locked.)
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/sized-map@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # @pyreon/primitives
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1530](https://github.com/pyreon/pyreon/pull/1530) [`6ea99ae`](https://github.com/pyreon/pyreon/commit/6ea99ae5ec9724b457459a180798abb7183b941f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Image asset pipeline (multiplatform production Phase 1): the web `<Image>` primitive now resolves BARE src names (`logo.png` — no scheme, no slash) to `/assets/<name>` so the same shared source that bundles via Assets.xcassets (iOS) / res/drawable density buckets (Android) serves the materialized copy on web. The `create-multiplatform` scaffold's build scripts run the new `pyreon-native assets` step automatically when an `assets/` directory exists.
+
+- [#1536](https://github.com/pyreon/pyreon/pull/1536) [`e9d5128`](https://github.com/pyreon/pyreon/commit/e9d51287ff8beb5951456023a60c50714670d0d7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Custom fonts in the multiplatform asset pipeline: `<Text font="Name">` / `<Heading font="Name">` render a bundled `.ttf`/`.otf` from the shared `assets/` dir. iOS bakes the font's PostScript name (read from the sfnt name table — `Font.custom` rejects the filename and silently falls back otherwise); Android resolves `res/font` at runtime; web sets `font-family`.
+
+### Patch Changes
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes

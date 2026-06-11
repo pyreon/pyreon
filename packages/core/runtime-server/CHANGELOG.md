@@ -1,5 +1,60 @@
 # @pyreon/runtime-server
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1466](https://github.com/pyreon/pyreon/pull/1466) [`ae3c3fd`](https://github.com/pyreon/pyreon/commit/ae3c3fd529250e7211657e4283fb5e6c3246bf00) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Streaming SSR no longer FOUCs Suspense-boundary content. `@pyreon/styler`'s `sheet.flushSSRPending()` (new) returns CSS rules collected since the previous flush + advances a watermark; the SSR-only module init registers it on `globalThis.__PYREON_STYLER_FLUSH__`. `@pyreon/runtime-server`'s `renderToStream` calls the hook (a) once after the synchronous shell render — emitting `<style data-pyreon-stream="shell">…</style>` inline at the top of the app body so shell content is styled before any Suspense resolves; (b) inside every `streamSuspenseBoundary`, BEFORE the `<template>`, so each boundary's resolved HTML arrives with its styles already in the page. No hard `runtime-server → styler` dependency (mirrors the `__pyreon_count__` perf-counter and SSG-plugin lookup pattern); the boundary path is a no-op when styler isn't loaded. Bundle cost: ~239 gz across the two packages (+129 styler, +110 runtime-server) — both within budget. Closes the FOUC observable in `examples/cpa-pw-app-solid` (`mode: 'ssr', ssr: { mode: 'stream' }`). Bisect-verified at both layers: 13 sheet unit specs cover the watermark / `@layer` ordering / reset semantics; 7 runtime-server integration specs cover the shell + per-boundary flush ordering, the `</style` escape, the multi-boundary case, and the no-hook graceful no-op. Companion cleanup: stale HMR-staleness comment in `styler/styled.tsx` was rewritten to reflect that the `onSheetClear` subscriber wired at module top already drops the static-VNode cache on `sheet.clearAll()` (the comment documented a gap that had already been closed).
+
+### Patch Changes
+
+- [#1517](https://github.com/pyreon/pyreon/pull/1517) [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Unified string-mode render pipeline + a shipped `useRequestLocals` fix.
+
+  **New `renderPage()` in `@pyreon/server`** — the one per-page render sequence (preload with `redirect()` catching → render with head collection → CSS-in-JS collect → loader-data script → HTTP status via the `notFoundComponent` chain), now shared by the production handler, zero's SSG prerender entry, and zero's dev SSR middleware. Pre-unification each consumer hand-copied the sequence and the copies drifted (styler tag missing from SSG, dual noindex call sites, serializer divergence). Template composition and streaming stay caller-specific by design.
+
+  **Fixed: request-level `provide()` never reached rendered components.** `renderToString` / `renderToStream` always opened a FRESH ALS context stack, silently discarding every request-level provide — so `provideRequestLocals(ctx.locals)` in the handler never made `useRequestLocals()` resolve anything but the default inside a component, despite the documented contract. Both renderers now INHERIT an active `runWithRequestContext` scope (bare calls keep their fresh isolated stack). Bisect-verified regression specs at both the runtime-server and renderPage layers.
+
+  Dev-SSR behavior change (zero): a loader-thrown `redirect()` in `vite dev` now produces a redirect page (meta-refresh + status) matching production's 302/307 semantics, instead of escaping to the Vite error overlay.
+
+- [#1401](https://github.com/pyreon/pyreon/pull/1401) [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Async function components are now first-class on the client (parity with `renderToString`).
+
+  Before this fix, an `async function Component()` returned a Promise that mount/hydrate fed straight into `mountChild`, crashing with `Cannot read properties of undefined (reading 'ref')` because Promises have no `.props`. SSR awaited the Promise per the documented contract; the client never did. This was the root cause of the deployed `examples/docs-zero` preview crashing on every doc route — they all delegated to an async `<DocBody slug={slug} />`.
+
+  Two coordinated fixes:
+
+  **`@pyreon/runtime-server`**: brackets async-component output with `<!--$pas-->` (start) / `<!--$pae-->` (end) sentinel comments — both in `renderToString` (the SSG path) and `streamComponentNode` (the streaming path). These mark the SSR DOM range corresponding to the resolved Promise so the client knows exactly where the async subtree begins and ends. Markers nest correctly for nested async components.
+
+  **`@pyreon/runtime-dom`**:
+
+  - `mountComponent` — detects `output instanceof Promise`, inserts a placeholder comment, and mounts the resolved subtree at the placeholder once settled. Cleanup cancels pending resolution so unmount-before-resolve is safe.
+  - `hydrateComponent` — locates the SSR `<!--$pas-->`/`<!--$pae-->` markers (depth-tracked for nesting), advances the parent's DOM cursor past the end marker synchronously (so siblings hydrate normally), then awaits the Promise and **hydrates the resolved VNode against the SSR DOM range bounded by the markers**. This wires up events, lifecycle hooks (`onMount`), and signal subscriptions on every node of the async subtree — the part missing from the first cut, which left the SSG content visible but client-dead.
+  - `firstReal` recognises `$pas`/`$pae` (and the existing `k:` For-list markers) as structural — it stops at them instead of skipping like other comments.
+
+  `<Suspense>` still works for `lazy()`-style boundaries; this is the natural async-function counterpart.
+
+  Regression coverage:
+
+  - `packages/core/runtime-dom/src/tests/async-component.test.ts` — 5 mount specs.
+  - `packages/core/runtime-dom/src/tests/async-component-hydrate.test.ts` — 6 hydration specs covering: handlers attach on async subtree, `onMount` fires, signal-driven text patches, siblings hydrate sync, nested async (depth-tracked markers), missing-markers fallback + dev warning.
+
+  Bisect-verified: removing the SSR markers leaves the click-handler unattached and reactivity dead — all 6 hydration specs fail. Removing the mount Promise branch fails the 3 resolution specs with the documented `'ref'` TypeError.
+
+  Real-Chromium sweep: docs-zero's previously-broken `/docs/multiplatform` page now renders 23 KB of content with zero errors, TOC scroll-spy links navigate correctly, URL hashes update — proving full reactivity wired through the hydrated async subtree.
+
+- [#1545](https://github.com/pyreon/pyreon/pull/1545) [`d38bed4`](https://github.com/pyreon/pyreon/commit/d38bed4ce425f6fe804e56df84a0e80e6d22a198) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR hot-path optimizations from a CPU-profiling campaign against real-app-shaped trees (`scripts/bench-ssr.ts`): escapeHtml's dirty path drops the callback-replace for a charCode scan with lazy slicing (escaping measured ~19% of non-GC render time); `safeKeyForMarker` adds fast paths for numeric and `[\w.:]` keys (the dominant `<For>` key shapes — skips encodeURIComponent, ~7% of list-heavy renders) while dash-bearing keys keep the full `%2D` encoding so the `<!--k:KEY-->` comment-safety contract is unchanged (bisect-locked security spec); `isVoidElement` stops allocating a per-element `toLowerCase` string; `toAttrName` memoizes resolved+escaped attribute names; `renderPropSkipped` probes `on[A-Z]` via charCodes instead of a regex. Interleaved A/B/A/B benchmark (output byte-identical): blog-index-shaped pages −10%, 1k-row table −13% per render. 14 new edge-case lock specs.
+
+- [#1508](https://github.com/pyreon/pyreon/pull/1508) [`a72f972`](https://github.com/pyreon/pyreon/commit/a72f972050edceda52888fa93b8c763a2c71b86a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `renderToString` rewritten to a maybe-sync renderer — every function in the string-render family now returns `string | Promise<string>` instead of always-`Promise<string>`. Fully-synchronous subtrees (the overwhelming majority — async components are rare) concatenate plain strings with ZERO promise hops; only a genuine `async function Component()` promotes its own subtree to a Promise, with `.then` continuations resuming the sequential child walk so strict left-to-right sibling order, provider visibility across async boundaries, and the context-stack trim-after-settle semantics are all preserved (locked by the new `maybe-sync-order.test.ts` contract specs).
+
+  Why: the previous `async renderNode` + `html += await renderNode(child)` shape paid promise machinery at every node — on a 500-node SSR page (~100 RouterLinks) that was ~90µs of pure promise overhead per render against ~10µs of actual HTML work.
+
+  Measured (M3 Max, Bun, production, controlled A/B): `renderToString` scenarios — empty +43% (697K renders/s), simple-5-routes +51% (220K/s), links-100 +41% (15.1K/s), layouts-26-params +78% (38.5K/s). Full `@pyreon/server` handler throughput (zero's SSR/ISR request path): simple +24% (206K req/s), medium-10-routes +32% (186K req/s), nested-5-deep +45% (114K req/s). Every zero SSR/ISR request and every SSG page build renders through this path.
+
+  Public API unchanged — `renderToString` still returns `Promise<string>`; only the internal tree walk is promise-free for sync trees. The streaming path (`renderToStream`) is untouched (progressive flushing is inherently async).
+
+- Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.31.0
 
 ### Patch Changes
