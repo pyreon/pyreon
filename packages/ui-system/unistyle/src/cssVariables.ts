@@ -286,18 +286,72 @@ export function themeToCssVars<
  */
 export function resolveCssVarReferences<T>(input: T, registry: ReadonlyMap<string, string>): T {
   if (typeof input !== 'string') return input
-  const VAR_RE = /var\((--[a-zA-Z0-9-]+)(?:\s*,\s*([^()]*|[^()]*\([^()]*\)[^()]*))?\)/
-  let out = input as string
+  if (input.indexOf('var(') === -1) return input
   // Registry values are literals (themeToCssVars bakes units at emission),
-  // but inline fallbacks may themselves contain var() — loop until stable,
+  // but inline fallbacks may themselves contain var() — re-scan until stable,
   // bounded to defend against pathological self-references.
-  for (let i = 0; i < 10; i++) {
-    const m = VAR_RE.exec(out)
-    if (!m) break
-    const [, name, fallback] = m
-    const resolved = registry.get(name!) ?? (fallback !== undefined ? fallback.trim() : m[0])
-    if (resolved === m[0]) break
-    out = out.slice(0, m.index) + resolved + out.slice(m.index + m[0].length)
+  let out = input as string
+  for (let pass = 0; pass < 10; pass++) {
+    const next = resolveVarPass(out, registry)
+    if (next === out) break
+    out = next
   }
   return out as T
+}
+
+const isNameChar = (c: string): boolean =>
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c === '-'
+
+/**
+ * ONE left-to-right resolution pass over `s` — a LINEAR character scan (no
+ * regex on the input, so no polynomial-ReDoS surface; mirrors the `font.ts`
+ * `splitSubsetBlocks` precedent). Finds each `var(name[, fallback])`, reading
+ * the fallback up to its matching close paren with paren-depth tracking
+ * (handles `var(--x, calc(…))`), and replaces it with the registry value,
+ * else the fallback, else leaves it verbatim and advances past it.
+ */
+function resolveVarPass(s: string, registry: ReadonlyMap<string, string>): string {
+  let out = ''
+  let i = 0
+  while (i < s.length) {
+    const idx = s.indexOf('var(', i)
+    if (idx === -1) {
+      out += s.slice(i)
+      break
+    }
+    out += s.slice(i, idx)
+    let j = idx + 4 // past 'var('
+    while (j < s.length && s[j] === ' ') j++
+    const nameStart = j
+    while (j < s.length && isNameChar(s[j]!)) j++
+    const name = s.slice(nameStart, j)
+    while (j < s.length && s[j] === ' ') j++
+    let fallback: string | undefined
+    if (s[j] === ',') {
+      j++
+      let depth = 0
+      const fbStart = j
+      while (j < s.length) {
+        const c = s[j]
+        if (c === '(') depth++
+        else if (c === ')') {
+          if (depth === 0) break
+          depth--
+        }
+        j++
+      }
+      fallback = s.slice(fbStart, j).trim()
+    }
+    if (s[j] !== ')') {
+      // Not a well-formed var() — emit `var(` verbatim and continue scanning
+      // after it (never loops: i strictly advances).
+      out += 'var('
+      i = idx + 4
+      continue
+    }
+    const end = j + 1 // past ')'
+    out += registry.get(name) ?? fallback ?? s.slice(idx, end)
+    i = end
+  }
+  return out
 }
