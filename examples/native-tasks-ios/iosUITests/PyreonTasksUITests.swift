@@ -202,6 +202,39 @@ final class PyreonTasksUITests: XCTestCase {
             "Did not return to tasks page after quotes Back"
         )
 
+        // Vocabulary-completion proof: Scroll (ScrollView) + remote Image
+        // (AsyncImage over the fixture server) + Modal (.sheet/Dialog).
+        let vocabNav = app.buttons["tasks-vocab"].firstMatch
+        XCTAssertTrue(vocabNav.exists, "Vocab button missing on tasks page")
+        vocabNav.tap()
+
+        // Scroll (ScrollView) renders the page; the open-modal button +
+        // remote-image node are in the tree. iOS needs NO import changes
+        // for Scroll/Modal/AsyncImage (all native SwiftUI) — the
+        // androidx-import fix this change carries is Kotlin-only, fully
+        // proven by the Android gradle build + Espresso below. iOS just
+        // confirms the screen renders; async-image DECODE timing and the
+        // .sheet present are render-timing-flaky on the Simulator and
+        // orthogonal to the import fix, so they're asserted on Android
+        // (Compose) where the fix actually lands.
+        let vocabPage = app.otherElements["vocab-page"].firstMatch
+        XCTAssertTrue(
+            vocabPage.waitForExistence(timeout: 15),
+            "Vocab page did not render — /vocab dispatch failed (Scroll wrap broke the screen?)"
+        )
+        let openModal = app.buttons["vocab-open-modal"].firstMatch
+        XCTAssertTrue(
+            openModal.waitForExistence(timeout: 15),
+            "Open-dialog button missing — the Modal/Button subtree did not render inside the Scroll"
+        )
+        let vocabBack = app.buttons["vocab-back"].firstMatch
+        XCTAssertTrue(vocabBack.exists, "Back button missing on vocab page")
+        vocabBack.tap()
+        XCTAssertTrue(
+            tasksPage.waitForExistence(timeout: 15),
+            "Did not return to tasks after vocab Back"
+        )
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         let logout = app.buttons["tasks-logout"].firstMatch
         XCTAssertTrue(logout.exists, "Logout button missing on tasks page")

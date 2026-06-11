@@ -1077,6 +1077,13 @@ const MATRIX: Cell[] = [
           `[native-tasks-web × spa] expected bundle to contain testid "tasks-page" — got ${jsFiles.length} js file(s)`,
         )
       }
+      // testid baked into the vocab-completion route — proves the
+      // Scroll/Modal/remote-Image primitives bundled on web
+      if (!allBundled.includes('vocab-page')) {
+        throw new Error(
+          `[native-tasks-web × spa] expected bundle to contain testid "vocab-page"`,
+        )
+      }
       // testid baked into the fetch-arc quotes route — proves the
       // networked useFetch screen (web half: @pyreon/hooks) bundled
       if (!allBundled.includes('quotes-page')) {

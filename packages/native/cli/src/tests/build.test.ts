@@ -275,4 +275,31 @@ describe('@pyreon/native-cli build', () => {
       expect(output.code).not.toContain('import androidx.compose.ui.graphics.Color')
     }
   })
+
+  it('Kotlin conditional imports: Scroll / Modal / remote-Image pull foundation / ui.window / coil', () => {
+    // Vocabulary-completion (audit-found): <Scroll> emits verticalScroll/
+    // rememberScrollState (root androidx.compose.foundation, NOT the
+    // star-imported .layout/.lazy/.text sub-packages), <Modal> emits
+    // Dialog (androidx.compose.ui.window, NOT star-imported ui.*), and a
+    // remote <Image> emits AsyncImage (Coil). All three were stub-masked
+    // — green in the validate loop, RED on a real gradle build — until
+    // the showcase first used them. Bisect site: the
+    // verticalScroll/Dialog/AsyncImage branches in conditionalKotlinImports.
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'kotlin',
+      kotlinPackage: 'com.pyreon.generated',
+    })
+    for (const output of result.outputs.filter((o) => o.code.includes('verticalScroll('))) {
+      expect(output.code).toContain('import androidx.compose.foundation.verticalScroll')
+      expect(output.code).toContain('import androidx.compose.foundation.rememberScrollState')
+    }
+    for (const output of result.outputs.filter((o) => o.code.includes('Dialog('))) {
+      expect(output.code).toContain('import androidx.compose.ui.window.Dialog')
+    }
+    for (const output of result.outputs.filter((o) => o.code.includes('AsyncImage('))) {
+      expect(output.code).toContain('import coil.compose.AsyncImage')
+    }
+  })
 })

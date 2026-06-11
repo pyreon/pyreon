@@ -136,6 +136,31 @@ function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('RoundedCornerShape(')) {
     imports.push('import androidx.compose.foundation.shape.RoundedCornerShape')
   }
+  // Scroll emit (<Scroll>): verticalScroll/horizontalScroll/
+  // rememberScrollState live in the ROOT androidx.compose.foundation
+  // package — NOT covered by the star-imported foundation.layout/.lazy/
+  // .text sub-packages. Stub-masked like Color; latent until an example
+  // first <Scroll>s on a real Android build.
+  if (emitted.includes('verticalScroll(') || emitted.includes('horizontalScroll(')) {
+    imports.push('import androidx.compose.foundation.rememberScrollState')
+  }
+  if (emitted.includes('verticalScroll(')) {
+    imports.push('import androidx.compose.foundation.verticalScroll')
+  }
+  if (emitted.includes('horizontalScroll(')) {
+    imports.push('import androidx.compose.foundation.horizontalScroll')
+  }
+  // Modal emit (<Modal>): Dialog is androidx.compose.ui.window — not in
+  // the star-imported ui.* (single-package).
+  if (emitted.includes('Dialog(')) {
+    imports.push('import androidx.compose.ui.window.Dialog')
+  }
+  // Remote image (<Image src="http…">): AsyncImage is Coil's
+  // composable — needs the import AND the io.coil-kt:coil-compose dep
+  // (wired into the host + scaffold gradle).
+  if (emitted.includes('AsyncImage(')) {
+    imports.push('import coil.compose.AsyncImage')
+  }
   // Icon emit (PR-1.3): compile-time Icons.Filled references need the
   // Icons object + one import per used glyph (Kotlin star imports are
   // single-package; the filled glyphs each live as a top-level val).

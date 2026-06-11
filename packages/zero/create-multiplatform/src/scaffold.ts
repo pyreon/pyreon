@@ -360,6 +360,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     // <Icon> emit references Icons.Filled.* at compile time (core set).
     implementation("androidx.compose.material:material-icons-core")
+    // Remote <Image src="http…"> → Coil's AsyncImage.
+    implementation("io.coil-kt:coil-compose:2.7.0")
 }
 
 // Re-run the .tsx → .kt compile on every build (mirrors iOS preBuildScript).

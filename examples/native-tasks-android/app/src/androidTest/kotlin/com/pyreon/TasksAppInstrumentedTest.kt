@@ -206,6 +206,35 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
+        // Vocabulary-completion proof: Scroll (verticalScroll) + remote
+        // Image (Coil AsyncImage over the fixture server) + Modal
+        // (Dialog) — the three primitives whose androidx imports were
+        // stub-masked until this screen. A missing import fails the
+        // gradle build (this test can't run); a rendered node proves the
+        // import + render.
+        composeRule
+            .onNodeWithTag("tasks-vocab")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("vocab-page")
+            .assertIsDisplayed()
+
+        composeRule
+            .onNodeWithTag("vocab-remote-img")
+            .assertIsDisplayed()
+
+        composeRule
+            .onNodeWithTag("vocab-open-modal")
+            .performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule
+                .onAllNodesWithTag("vocab-modal-text")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         composeRule
             .onNodeWithTag("tasks-logout")
