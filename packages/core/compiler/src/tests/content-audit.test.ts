@@ -393,6 +393,48 @@ describe('content-audit — broken-internal-link finding', () => {
     // index slug is '' so this should resolve.
     expect(broken).toEqual([])
   })
+
+  it('does NOT cross-contaminate two configs that both declare a `docs` collection (per-config scoping)', async () => {
+    // Two separate zero-content apps in one monorepo (the real `docs/`
+    // + an `examples/*` mini-app) can BOTH declare a `docs` collection
+    // mounting `/docs`. Each app's pages must validate against ITS OWN
+    // collection. Pre-fix the global slug map let the second config's
+    // (smaller) slug set OVERWRITE the first's, flagging every valid
+    // link in the other app as broken.
+    await fs.writeFile(
+      path.join(tmpDir, 'src', 'content', 'docs', 'zero.md'),
+      '---\ntitle: Zero\n---\n\n# z\n',
+    )
+    await fs.writeFile(
+      path.join(tmpDir, 'src', 'content', 'docs', 'index.md'),
+      '---\ntitle: Index\n---\n\nSee [zero](/docs/zero).\n',
+    )
+    // Second app with its OWN `docs` collection (only an `other` page,
+    // which links to itself).
+    const ex = path.join(tmpDir, 'examples', 'mini')
+    await fs.mkdir(path.join(ex, 'src', 'content', 'docs'), { recursive: true })
+    await fs.writeFile(
+      path.join(ex, 'content.config.ts'),
+      `export default defineConfig({
+  collections: {
+    docs: defineCollection({ type: 'pages', path: 'src/content/docs' }),
+  },
+})
+`,
+    )
+    await fs.writeFile(
+      path.join(ex, 'src', 'content', 'docs', 'other.md'),
+      '---\ntitle: Other\n---\n\nSee [other](/docs/other).\n',
+    )
+    const result = auditContent(tmpDir)
+    const broken = result.findings.filter(
+      (f) => f.code === 'broken-internal-link',
+    )
+    // BOTH apps' links resolve against their own collection — order of
+    // config discovery is irrelevant. (Pre-fix, whichever config was
+    // processed LAST overwrote the other's slugs → ≥1 false broken.)
+    expect(broken).toEqual([])
+  })
 })
 
 describe('content-audit — orphaned-md-file finding', () => {

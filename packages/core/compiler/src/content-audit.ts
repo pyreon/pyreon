@@ -496,42 +496,40 @@ export function auditContent(
     } as Record<ContentFindingCode, number>,
   }
 
-  // (collection name → known slug set) for link validation.
-  const allKnownSlugs = new Map<string, Set<string>>()
-  // (URL prefix → collection) for back-references on broken links.
-  const urlPrefixToCollection = new Map<string, CollectionDecl>()
   // Track every .md path we've claimed under a collection so we can
-  // detect orphans.
+  // detect orphans (Pass 3, global across configs).
   const claimedMdPaths = new Set<string>()
-  // (collection name → list of decls that produced it, for `related`
-  // pointer back to the config in broken-link findings).
-  const allCollections: CollectionDecl[] = []
 
-  // Pass 1 — discover every collection + every .md file under each.
+  // Resolve links PER-CONFIG. Two separate zero-content apps in one
+  // monorepo (e.g. the main `docs/` site and an `examples/*` mini-app)
+  // can BOTH declare a `docs` collection mounting `/docs`. Keying slug
+  // sets GLOBALLY by collection name/prefix let the second config
+  // OVERWRITE the first's slug set, so every valid link in the larger
+  // app was flagged broken. Each config's pages validate against ITS
+  // OWN collections; a link to another app's prefix is `no-match`
+  // (left alone — cross-app links can't be resolved here).
   for (const cfg of configs) {
     const decls = parseContentConfig(cfg)
+
+    // Build this config's maps (prefix → collection, name → slug set).
+    const prefixToCollection = new Map<string, CollectionDecl>()
+    const knownSlugs = new Map<string, Set<string>>()
     for (const decl of decls) {
       summary.collectionsScanned++
-      allCollections.push(decl)
       const prefix = (options.urlPrefixFor ?? defaultUrlPrefix)(decl.name)
-      urlPrefixToCollection.set(prefix, decl)
-      const mdFiles = findMarkdownFiles(decl.contentDir)
-      const slugs = new Set<string>()
-      for (const md of mdFiles) {
+      prefixToCollection.set(prefix, decl)
+      const slugs = knownSlugs.get(decl.name) ?? new Set<string>()
+      for (const md of findMarkdownFiles(decl.contentDir)) {
         summary.mdFilesScanned++
         claimedMdPaths.add(md)
         slugs.add(deriveSlug(md, decl.contentDir))
       }
-      allKnownSlugs.set(decl.name, slugs)
+      knownSlugs.set(decl.name, slugs)
     }
-  }
 
-  // Pass 2 — for each .md file, check frontmatter + internal links.
-  for (const cfg of configs) {
-    const decls = parseContentConfig(cfg)
+    // Validate this config's files against this config's maps.
     for (const decl of decls) {
-      const mdFiles = findMarkdownFiles(decl.contentDir)
-      for (const md of mdFiles) {
+      for (const md of findMarkdownFiles(decl.contentDir)) {
         let body: string
         try {
           body = readFileSync(md, 'utf8')
@@ -564,8 +562,8 @@ export function auditContent(
         for (const link of links) {
           const result = resolveInternalLink(
             link.url,
-            urlPrefixToCollection,
-            allKnownSlugs,
+            prefixToCollection,
+            knownSlugs,
           )
           if (result === 'no-match') continue // external / unknown prefix — leave alone
           if (result === 'broken') {
