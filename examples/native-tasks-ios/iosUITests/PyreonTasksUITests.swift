@@ -217,7 +217,14 @@ final class PyreonTasksUITests: XCTestCase {
         // .sheet present are render-timing-flaky on the Simulator and
         // orthogonal to the import fix, so they're asserted on Android
         // (Compose) where the fix actually lands.
-        let vocabPage = app.otherElements["vocab-page"].firstMatch
+        // Type-agnostic query: SwiftUI collapses the page's root VStack into
+        // its dominant child — here the <Scroll>'s `ScrollView` (the
+        // `EmptyView().sheet` Modal sibling is zero-size) — so the
+        // `vocab-page` identifier lands on a ScrollView, NOT an `Other`.
+        // `app.otherElements[…]` (type-specific) never matches it. Query
+        // across all descendant types so the page-container's element TYPE
+        // (Other vs ScrollView, content-dependent) doesn't break the assert.
+        let vocabPage = app.descendants(matching: .any)["vocab-page"].firstMatch
         XCTAssertTrue(
             vocabPage.waitForExistence(timeout: 15),
             "Vocab page did not render — /vocab dispatch failed (Scroll wrap broke the screen?)"
