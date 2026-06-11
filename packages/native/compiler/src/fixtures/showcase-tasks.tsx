@@ -52,7 +52,7 @@ import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { For, Show } from '@pyreon/core'
-import { Stack, Inline, Field, Button, Text, Image, Icon } from '@pyreon/primitives'
+import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal } from '@pyreon/primitives'
 import {
   createRouter,
   useNavigate,
@@ -196,6 +196,9 @@ function TasksPage() {
         <Button onPress={() => navigate('/quotes')} data-testid="tasks-quotes">
           Quotes
         </Button>
+        <Button onPress={() => navigate('/vocab')} data-testid="tasks-vocab">
+          Vocab
+        </Button>
         <Button onPress={logout} data-testid="tasks-logout">
           Logout
         </Button>
@@ -246,6 +249,54 @@ function QuotesPage() {
   )
 }
 
+function VocabScreen() {
+  const navigate = useNavigate()
+  // Vocabulary-completion device proof: <Scroll> (verticalScroll),
+  // <Modal> (Dialog), and a REMOTE <Image> (AsyncImage / Coil) all
+  // emit androidx symbols that aren't in a star-imported package — the
+  // conditional-imports fix makes them compile on a real Android build
+  // (they were stub-masked: green in the kotlinc validate loop, red on
+  // gradle assembleDebug). This screen is the device proof.
+  const showModal = signal<boolean>(false)
+  return (
+    <Stack data-testid="vocab-page">
+      <Scroll direction="vertical" data-testid="vocab-scroll">
+        <Stack gap={3} padding={4}>
+          <Text>Primitive Vocab</Text>
+          <Image
+            src="http://127.0.0.1:8787/remote-badge.png"
+            alt="remote badge"
+            width={48}
+            height={48}
+            data-testid="vocab-remote-img"
+          />
+          <Button onPress={() => showModal.set(true)} data-testid="vocab-open-modal">
+            Open dialog
+          </Button>
+          <Button onPress={() => navigate('/tasks')} data-testid="vocab-back">
+            Back to tasks
+          </Button>
+        </Stack>
+      </Scroll>
+      {/* Modal is a SIBLING of the Scroll (not in scroll content) so the
+          iOS .sheet host isn't a zero-frame view buried in a ScrollView
+          — a SwiftUI presentation quirk. Compose Dialog is unaffected. */}
+      <Modal
+        open={showModal}
+        onClose={() => showModal.set(false)}
+        data-testid="vocab-modal"
+      >
+        <Stack gap={2}>
+          <Text data-testid="vocab-modal-text">Hello from a Dialog</Text>
+          <Button onPress={() => showModal.set(false)} data-testid="vocab-close-modal">
+            Close
+          </Button>
+        </Stack>
+      </Modal>
+    </Stack>
+  )
+}
+
 function TaskDetailPage(props: { params: { id: string } }) {
   const navigate = useNavigate()
   return (
@@ -288,6 +339,11 @@ export function TasksApp() {
       {
         path: '/quotes',
         component: QuotesPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/vocab',
+        component: VocabScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],

@@ -233,3 +233,32 @@ describe('device-found fixes — testid queryability + Button testid', () => {
     expect(out).toContain('modifier = Modifier.testTag("login-submit")')
   })
 })
+
+describe('JSX comment children are skipped (no Unsupported-expression warning)', () => {
+  // `{/* … */}` inline notes in markup parse to a JSXExpressionContainer
+  // whose `.expression` is a JSXEmptyExpression. Pre-fix it fell through
+  // parseExpr's default arm → `Unsupported expression: JSXEmptyExpression`
+  // warning (and the `build compiles all fixtures` zero-warnings gate went
+  // red the moment a fixture carried a comment). The fix skips a
+  // comment-only container in parseJsxChild — idiomatic JSX, zero output.
+  // Bisect: drop the `JSXEmptyExpression` guard in parse.ts:parseJsxChild.
+  const SRC = `
+    import { Stack, Text } from '@pyreon/primitives'
+    export function App() {
+      return (
+        <Stack>
+          {/* a sibling note that must not reach the emitter */}
+          <Text>hi</Text>
+        </Stack>
+      )
+    }
+  `
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`${target}: emits the real children + zero warnings`, () => {
+      const r = transform(SRC, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).not.toContain('JSXEmptyExpression')
+      expect(r.code).toContain('hi')
+    })
+  }
+})

@@ -407,6 +407,14 @@ target:
 | Android | `res/drawable-{mdpi,xhdpi,xxhdpi}` (names sanitized to resource rules) | → `Image(painterResource(pyreonDrawable("logo")))` — a name-keyed runtime lookup, so the generated code never references the host's `R` class |
 | Web | `public/assets/` | the web `<Image>` primitive prefixes bare names with `/assets/` |
 
+All 15 primitives compile + render on a REAL Android build, not just
+the kotlinc-validate subset: the emit's androidx symbols that live
+outside the star-imported packages (`Color`, `RoundedCornerShape`,
+`verticalScroll`/`rememberScrollState` for `<Scroll>`, `Dialog` for
+`<Modal>`, Coil's `AsyncImage` for remote `<Image>`) each get a
+content-keyed conditional import — the kotlinc stubs would otherwise
+MASK a missing import (green validate, red `gradle assembleDebug`).
+
 The `src` dispatch is canonical across targets: `http(s)://…` is
 remote (`AsyncImage`/Coil/`<img>`), a BARE name (`logo.png`) is a
 bundled asset, and a path-style src (`/img/x.png`) is web-only — the

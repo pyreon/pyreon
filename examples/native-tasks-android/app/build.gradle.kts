@@ -63,6 +63,8 @@ dependencies {
     // <Icon> emit references Icons.Filled.* at compile time — the small
     // core set only (never -extended; PR-1.3's curated map is core-only).
     implementation("androidx.compose.material:material-icons-core")
+    // Remote <Image src="http…"> → Coil's AsyncImage.
+    implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.compose.material:material")
