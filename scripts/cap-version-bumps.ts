@@ -115,6 +115,13 @@ function getPreVersion(pkgJsonRelPath: string): string | null {
   }
 }
 
+/** Compare two 0.x.0 versions by minor (positive when a > b). */
+function cmpMinor(a: string, b: string): number {
+  const ma = a.match(/^0\.(\d+)\./)
+  const mb = b.match(/^0\.(\d+)\./)
+  return Number.parseInt(ma?.[1] ?? '0', 10) - Number.parseInt(mb?.[1] ?? '0', 10)
+}
+
 /** Compute the next-minor of a 0.x.y version. */
 function nextMinor(version: string): string | null {
   const m = version.match(/^0\.(\d+)\.(\d+)$/)
@@ -125,6 +132,35 @@ function nextMinor(version: string): string | null {
 
 const pkgJsons = walkPackageJsons(PKGS_ROOT)
 const downgrades: BumpDowngrade[] = []
+
+// ── Fixed-group LOCKSTEP capping ─────────────────────────────────────────
+// The fixed group must release at ONE version. Per-package next-minor
+// capping silently broke that for members whose pre-version lags the
+// group: @pyreon/zero-content (first-publish at 0.1.0) would have been
+// capped to 0.2.0 while the rest of the suite shipped 0.32.0 — defeating
+// the whole point of the fixed group. Two passes: (1) collect every
+// capped candidate + compute the GROUP target = the MAX next-minor among
+// fixed-group members; (2) rewrite — fixed members get the group target,
+// non-group packages (private natives with their own changesets) keep
+// per-package capping.
+const fixedGroup = new Set<string>(
+  (
+    JSON.parse(readFileSync(join(ROOT, '.changeset', 'config.json'), 'utf8')) as {
+      fixed?: string[][]
+    }
+  ).fixed?.[0] ?? [],
+)
+
+interface CapCandidate {
+  pkgPath: string
+  relPath: string
+  content: string
+  name: string
+  oldVersion: string
+  ownTarget: string
+}
+const candidates: CapCandidate[] = []
+let groupTarget: string | null = null
 
 for (const pkgPath of pkgJsons) {
   const content = readFileSync(pkgPath, 'utf8')
@@ -146,14 +182,26 @@ for (const pkgPath of pkgJsons) {
     )
     continue
   }
-  const targetVersion = nextMinor(oldVersion)
-  if (!targetVersion) {
+  const ownTarget = nextMinor(oldVersion)
+  if (!ownTarget) {
     // oxlint-disable-next-line no-console
     console.warn(
       `[cap-version] ${pkg.name}: pre-version "${oldVersion}" is not 0.x.y. Cannot compute next-minor. Skipping.`,
     )
     continue
   }
+  candidates.push({ pkgPath, relPath, content, name: pkg.name, oldVersion, ownTarget })
+  if (fixedGroup.has(pkg.name)) {
+    if (groupTarget === null || cmpMinor(ownTarget, groupTarget) > 0) {
+      groupTarget = ownTarget
+    }
+  }
+}
+
+for (const cand of candidates) {
+  const { pkgPath, content, name } = cand
+  const targetVersion =
+    fixedGroup.has(name) && groupTarget !== null ? groupTarget : cand.ownTarget
 
   // Rewrite package.json version
   const newContent = content.replace(
@@ -176,9 +224,9 @@ for (const pkgPath of pkgJsons) {
   }
 
   downgrades.push({
-    pkgJson: relPath,
-    pkgName: pkg.name,
-    oldVersion,
+    pkgJson: cand.relPath,
+    pkgName: name,
+    oldVersion: cand.oldVersion,
     cascadedTo: '1.0.0',
     rewrittenTo: targetVersion,
   })
