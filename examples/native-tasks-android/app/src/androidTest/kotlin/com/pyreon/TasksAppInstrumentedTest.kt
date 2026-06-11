@@ -33,6 +33,7 @@ package com.pyreon
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -146,11 +147,31 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("quotes-page")
             .assertIsDisplayed()
 
-        composeRule.waitUntil(timeoutMillis = 20_000) {
-            composeRule
-                .onAllNodesWithText("Make it work, make it right, make it fast.")
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) {
+                composeRule
+                    .onAllNodesWithText("Make it work, make it right, make it fast.")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        } catch (t: androidx.compose.ui.test.ComposeTimeoutException) {
+            // Surface the APP-SIDE failure: the quotes screen renders its
+            // fetch error (quotes-error testid), so a reject()-ed request
+            // names its exception in the test failure instead of an
+            // opaque 20s timeout (round-4 lesson: server + adb reverse
+            // were both fine and the failure was invisible from outside).
+            val errNodes = composeRule
+                .onAllNodesWithTag("quotes-error")
                 .fetchSemanticsNodes()
-                .isNotEmpty()
+            val detail = if (errNodes.isEmpty()) {
+                "no quotes-error node — fetch still pending (request never settled)"
+            } else {
+                errNodes[0].config.toString()
+            }
+            throw AssertionError(
+                "Quotes fetch did not render within 20s — app-side state: " + detail,
+                t,
+            )
         }
 
         composeRule

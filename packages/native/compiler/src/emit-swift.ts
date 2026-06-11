@@ -1744,6 +1744,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         return JSON.stringify(e.value)
       }
+      // Nullish literal (JS null, or `undefined` lowered by the
+      // parser) — Swift's nullish value is `nil`; the previous
+      // String(e.value) fallthrough emitted the invalid token `null`.
+      if (e.value === null) return 'nil'
       return String(e.value)
     case 'identifier':
       return swiftIdent(e.name)

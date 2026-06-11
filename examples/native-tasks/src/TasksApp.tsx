@@ -214,6 +214,9 @@ function QuotesPage() {
       <Show when={quotes.isPending}>
         <Text data-testid="quotes-loading">Loading…</Text>
       </Show>
+      <Show when={() => quotes.error() !== undefined}>
+        <Text data-testid="quotes-error">{quotes.error}</Text>
+      </Show>
       <For each={quoteList} by={(q) => q.id}>
         {(q) => (
           <Stack gap={1} data-testid="quote-row">

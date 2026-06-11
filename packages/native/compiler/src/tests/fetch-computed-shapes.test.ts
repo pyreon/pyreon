@@ -82,3 +82,46 @@ describe('computed-over-fetch inference', () => {
     expect(kotlin).toContain('if (quotes.isPending.value) {')
   })
 })
+
+describe('nullish-expression lowering (round-5, device-found)', () => {
+  // `undefined` as a VALUE expression emitted the bare identifier
+  // `undefined` (unresolved reference on BOTH targets), and the JS
+  // `null` literal emitted the token `null` — valid Kotlin, INVALID
+  // Swift (whose nullish value is `nil`). Found building the quotes
+  // screen's error state. Bisect sites: the `undefined` arm in
+  // parse.ts's Identifier case; the `e.value === null` arms in both
+  // literal emits.
+  const ERR_SRC = `
+    type Quote = { id: number; text: string }
+    export function P() {
+      const quotes = useFetch<Quote[]>('http://127.0.0.1:8787/q.json')
+      return (
+        <Stack>
+          <Show when={() => quotes.error() !== undefined}>
+            <Text data-testid="quotes-error">{quotes.error}</Text>
+          </Show>
+        </Stack>
+      )
+    }
+  `
+
+  it('Swift: undefined lowers to nil', () => {
+    const out = transform(ERR_SRC, { target: 'swift' }).code
+    expect(out).toContain('if quotes.error != nil {')
+    expect(out).not.toContain('undefined')
+  })
+
+  it('Kotlin: undefined lowers to null', () => {
+    const out = transform(ERR_SRC, { target: 'kotlin' }).code
+    expect(out).toContain('if (quotes.error.value != null) {')
+    expect(out).not.toContain('undefined')
+  })
+
+  it('Swift: the null literal lowers to nil too', () => {
+    const out = transform(
+      ERR_SRC.replace('!== undefined', '!== null'),
+      { target: 'swift' },
+    ).code
+    expect(out).toContain('if quotes.error != nil {')
+  })
+})

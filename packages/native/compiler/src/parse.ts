@@ -3122,6 +3122,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
     case 'BooleanLiteral':
       return { kind: 'literal', value: node.value }
     case 'Identifier':
+      // `undefined` as a VALUE expression (`x !== undefined`) lowers to
+      // the nullish literal — Swift/Kotlin have one nullish value (nil/
+      // null), and emitting the bare identifier `undefined` is an
+      // unresolved reference on both targets. (The TYPE-level
+      // `undefined` is a separate TypeIR kind, handled in the type
+      // emitters.)
+      if (node.name === 'undefined') return { kind: 'literal', value: null }
       return { kind: 'identifier', name: node.name as string }
     case 'CallExpression': {
       const callee = parseExpr(node.callee, ctx)

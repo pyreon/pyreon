@@ -1605,6 +1605,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         return JSON.stringify(e.value)
       }
       if (typeof e.value === 'boolean') return e.value ? 'true' : 'false'
+      // Nullish literal (JS null, or `undefined` lowered by the
+      // parser) — Kotlin's nullish value IS spelled `null`; explicit
+      // so the Swift-side `nil` divergence is visible here.
+      if (e.value === null) return 'null'
       return String(e.value)
     case 'identifier':
       return kotlinIdent(e.name)

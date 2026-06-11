@@ -491,7 +491,7 @@ export type TypeIR =
   | { kind: 'unknown' }
 
 export type ExprIR =
-  | { kind: 'literal'; value: string | number | boolean }
+  | { kind: 'literal'; value: string | number | boolean | null }
   | { kind: 'identifier'; name: string }
   | { kind: 'call'; callee: ExprIR; args: ExprIR[] }
   | { kind: 'member'; object: ExprIR; property: string }
