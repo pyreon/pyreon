@@ -129,6 +129,69 @@ describe('auditTestEnvironment — synthetic fixtures', () => {
     expect(entry!.importsH).toBe(true)
   })
 
+  // ── False-positive guards (each fixes a real doctor misfire) ──
+
+  it('does NOT count `const vnode = (await Foo()) as T` as a mock-helper def (parenthesized binding, not an arrow)', () => {
+    // `island-client-render.test.tsx` shape: `vnode` holds the REAL
+    // component's output; the `(await …)` RHS starts with `(` but is not
+    // an arrow `(…) =>` factory.
+    f.writeTest(
+      'foo/src/tests/island.test.ts',
+      `
+        import { island } from '@pyreon/server/client'
+        it('renders the marker', async () => {
+          const Island = island(() => Promise.resolve({ default: () => null }), { name: 'X' })
+          const vnode = (await Island({})) as { type: string }
+          expect(vnode.type).toBe('pyreon-island')
+        })
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    const [entry] = r.entries
+    expect(entry!.mockHelperCount).toBe(0)
+  })
+
+  it('does NOT count a `vnode()` mention inside a comment as a mock-helper call', () => {
+    // `cli/gate-adapters.test.ts` shape: a prose comment describing the
+    // fixture ("a vnode() helper") must not register as code.
+    f.writeTest(
+      'foo/src/tests/comment.test.ts',
+      `
+        // Plant a vnode() helper + literal { type, props, children } shape.
+        /* and a block comment: createVNode({ type, props, children }) */
+        import { h } from '@pyreon/core'
+        it('real', () => { expect(h('div')).toBeDefined() })
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    const [entry] = r.entries
+    expect(entry!.mockHelperCallCount).toBe(0)
+    expect(entry!.mockVNodeLiteralCount).toBe(0)
+  })
+
+  it('counts jsx()/jsxs() as real-runtime calls (the automatic JSX runtime, not a mock)', () => {
+    // `jsx-runtime.test.ts` shape: drives the REAL `jsx()` runtime; a
+    // couple of mock-component-return literals must NOT tip it to HIGH.
+    f.writeTest(
+      'foo/src/tests/jsx-runtime.test.ts',
+      `
+        import { jsx, jsxs } from '@pyreon/core/jsx-runtime'
+        it('runs', () => {
+          const a = jsx('li', { children: 'x' })
+          const b = jsxs('ul', { children: [] })
+          const Comp = (p) => ({ type: 'div', props: {}, children: [String(p.children)] })
+          const c = jsx(Comp, { children: 'y' })
+          expect(a).toBeDefined(); expect(b).toBeDefined(); expect(c).toBeDefined()
+        })
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    const [entry] = r.entries
+    expect(entry!.realHCallCount).toBeGreaterThanOrEqual(3)
+    expect(entry!.importsH).toBe(true) // jsx-runtime import recognized
+    expect(entry!.risk).not.toBe('high')
+  })
+
   it('classifies a test with no mocks at all as LOW', () => {
     f.writeTest(
       'foo/src/tests/logic.test.ts',

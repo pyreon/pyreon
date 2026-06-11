@@ -3,12 +3,15 @@
  * enter/leave diff machinery against a manually-driven reactive
  * children accessor.
  */
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import TransitionGroup from '../TransitionGroup'
 
-const keyedChild = (k: string) =>
-  ({ type: 'div', props: { class: k }, children: [], key: k }) as any
+// Real `h()` vnodes (h extracts `key` from props onto vnode.key), not
+// hand-built `{ type, props, children }` literals — so the keyed-diff is
+// exercised against the genuine vnode shape it sees in production.
+const keyedChild = (k: string) => h('div', { class: k, key: k })
 
 describe('TransitionGroup', () => {
   it('returns a reactive accessor that renders the initial keyed children', () => {
@@ -61,7 +64,7 @@ describe('TransitionGroup', () => {
   })
 
   it('skips children without a key', () => {
-    const noKey = { type: 'div', props: {}, children: [] } as any
+    const noKey = h('div', {}) // h() sets vnode.key = null when no key prop
     const accessor = TransitionGroup({
       children: [keyedChild('a'), noKey, keyedChild('b')],
     }) as unknown as () => any

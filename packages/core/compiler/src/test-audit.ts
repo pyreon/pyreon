@@ -137,13 +137,17 @@ const MOCK_VNODE_LITERAL_PATTERN =
  *   const vnode = h('div', null, 'x')        // real h() call
  *
  * Distinguisher: a mock helper definition either
- *   (a) starts an arrow function / function — RHS begins with `(` or the
- *       keyword `function`, OR
- *   (b) is itself an inline object literal — RHS begins with `{`.
- * `const vnode = <anything else>` is a binding, not a definition.
+ *   (a) starts an ARROW function — RHS is `(<params>) =>`, OR
+ *   (b) starts the `function` keyword / `async`, OR
+ *   (c) is itself an inline object literal — RHS begins with `{`.
+ * `const vnode = <anything else>` is a binding, not a definition. The
+ * arrow form requires the `(…) =>` shape (not just a leading `(`), so a
+ * real-VNode binding from a parenthesized call — `const vnode = (await
+ * Island({})) as IslandVNode` (the `island-client-render.test.tsx` false
+ * positive) — is NOT mistaken for a factory definition.
  */
 const MOCK_HELPER_PATTERN =
-  /(?:(?:const|let)\s+(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*=\s*(?:\(|\{|function\b|async\s))|(?:function\s+(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*\()/g
+  /(?:(?:const|let)\s+(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*=\s*(?:\([^)]*\)\s*=>|\{|function\b|async\s))|(?:function\s+(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*\()/g
 
 /**
  * Matches CALLS to a known mock-helper name:
@@ -162,17 +166,22 @@ const MOCK_HELPER_CALL_PATTERN =
   /(?:^|[^a-zA-Z0-9_])(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*\(/g
 
 /**
- * Matches calls to `h(…)` where the first arg is an uppercase
- * identifier (component) or a lowercase string tag — the two real
- * shapes. Avoids matching:
+ * Matches calls to the REAL vnode-producing runtime — `h(…)` (hyperscript)
+ * OR `jsx(…)` / `jsxs(…)` (the automatic JSX runtime; same machinery, just
+ * the entry point the compiler emits) — where the first arg is an uppercase
+ * identifier (component) or a lowercase string tag. A test driving `jsx()`
+ * IS exercising real framework code, exactly like `h()` — counting only `h`
+ * misclassified `jsx-runtime.test.ts` (which drives the real `jsx()`) as a
+ * mock-only HIGH-risk file. Avoids matching:
  *   hasSomething(...)   — h followed by [a-z]
  *   ch()                — single h as substring of another name
  *   hash()              — same
- * The `(?:^|\W)` boundary plus `[A-Z'"\s]` arg requirement handles both.
+ * The `(?:^|\W)` boundary plus `["'A-Z]` arg requirement handles both.
  */
-const REAL_H_CALL_PATTERN = /(?:^|\W)h\s*\(\s*["'A-Z]/g
+const REAL_H_CALL_PATTERN = /(?:^|\W)(?:h|jsx|jsxs)\s*\(\s*["'A-Z]/g
 
-const IMPORT_H_PATTERN = /import\s*(?:type\s*)?\{[^}]*\bh\b[^}]*\}\s*from\s*['"]@pyreon\/core['"]/
+const IMPORT_H_PATTERN =
+  /import\s*(?:type\s*)?\{[^}]*\b(?:h|jsx|jsxs)\b[^}]*\}\s*from\s*['"]@pyreon\/core(?:\/jsx-runtime)?['"]/
 
 /**
  * Predicate: does the `{type, props, children}` literal at this
@@ -210,19 +219,71 @@ function isLiteralInsideTypeGuardCall(source: string, literalStart: number): boo
 }
 
 /**
- * Mask the inside of every backtick-delimited template-literal with
- * spaces. Preserves length so positions/lines/columns stay aligned.
- * Used to keep the literal scanner from counting `{type,props,children}`
- * patterns that live inside test FIXTURE strings (the `cli/doctor.test.ts`
- * case — those are fixtures for the audit tool itself, not actual code).
+ * Blank everything that is NOT executable code — `//` line comments,
+ * `/* … *\/` block comments, and template-literal INTERIORS — with
+ * spaces, preserving length so positions/lines/columns stay aligned.
+ * Used to keep the scanner from counting mock-vnode patterns that live
+ * in FIXTURE strings (the audit tool's own tests write `{type,props,
+ * children}` fixtures via `writeFile(\`…\`)`) OR in PROSE comments (a
+ * comment that literally says "a vnode() helper" must not register as a
+ * mock-helper call — the `cli/gate-adapters.test.ts` false positive).
  *
- * Limitations: doesn't parse `${...}` interpolations precisely. If a
- * fixture contains a balanced `${ ... }` with code we'd want scanned,
- * the surrounding template string still masks it. In practice, mock-
- * vnode literals are never interpolation expressions, so this is fine.
+ * Regular `'…'` / `"…"` strings are SKIPPED (walked over, NOT blanked):
+ * import paths like `'@pyreon/core'` live there and the `importsH`
+ * detector needs them intact, and skipping them also stops a `//`
+ * inside a string (`"http://…"`) from being mistaken for a comment.
+ * A single char-walk handles all four states.
  */
 function maskTemplateStrings(source: string): string {
-  return source.replace(/`(?:\\.|[^`\\])*`/g, (m) => `\`${' '.repeat(m.length - 2)}\``)
+  const out = source.split('')
+  const n = source.length
+  const blank = (from: number, to: number): void => {
+    for (let k = from; k < to && k < n; k++) if (out[k] !== '\n') out[k] = ' '
+  }
+  let i = 0
+  while (i < n) {
+    const c = source[i]
+    const next = source[i + 1]
+    if (c === '/' && next === '/') {
+      let j = i + 2
+      while (j < n && source[j] !== '\n') j++
+      blank(i, j)
+      i = j
+    } else if (c === '/' && next === '*') {
+      let j = i + 2
+      while (j < n && !(source[j] === '*' && source[j + 1] === '/')) j++
+      j = Math.min(n, j + 2)
+      blank(i, j)
+      i = j
+    } else if (c === '`') {
+      let j = i + 1
+      while (j < n) {
+        if (source[j] === '\\') {
+          j += 2
+          continue
+        }
+        if (source[j] === '`') break
+        j++
+      }
+      blank(i + 1, j) // interior only — keep the backticks
+      i = j + 1
+    } else if (c === '"' || c === "'") {
+      // Skip over (preserve) — import paths + URL strings must survive.
+      let j = i + 1
+      while (j < n) {
+        if (source[j] === '\\') {
+          j += 2
+          continue
+        }
+        if (source[j] === c) break
+        j++
+      }
+      i = j + 1
+    } else {
+      i++
+    }
+  }
+  return out.join('')
 }
 
 function countMatches(source: string, pattern: RegExp): number {
