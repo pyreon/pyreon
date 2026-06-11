@@ -3554,6 +3554,12 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
     return { kind: 'text', value: v }
   }
   if (node.type === 'JSXExpressionContainer') {
+    // A comment-only container — `{/* … */}` — has a `JSXEmptyExpression`
+    // inside (no real expression). It's idiomatic JSX (inline notes in
+    // markup) and produces NO output on any target; skip it silently
+    // rather than routing it through parseExpr's default arm, which would
+    // warn "Unsupported expression: JSXEmptyExpression".
+    if (node.expression?.type === 'JSXEmptyExpression') return null
     return { kind: 'expr', expr: parseExpr(node.expression, ctx) }
   }
   if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
