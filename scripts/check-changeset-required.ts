@@ -29,6 +29,13 @@
  * - Files outside `packages/` entirely — `scripts/`, `docs/`, `.github/`,
  *   root config files. The shell version of this gate already filtered
  *   these correctly via `git diff -- 'packages/**'`.
+ * - Test / spec / story files (`*.test.ts(x)`, `*.spec.ts(x)`,
+ *   `*.stories.ts(x)`) and anything under a `tests/` / `__tests__/`
+ *   directory, even inside a published package's `src/` — `publish.ts`
+ *   strips `src/` from the tarball entirely, so test code never reaches
+ *   consumers. Classified by the shared `scripts/test-paths.ts`
+ *   (`isTestPath`), the SAME source of truth the `check-diagnose-catalog`
+ *   gate uses — one definition, no drift.
  *
  * The label-bypass (`skip-changeset`) stays in place for the rare case
  * where a published-package source file changed but the change is
@@ -65,6 +72,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { isTestPath } from './test-paths'
 
 // ─── Pure exports (testable) ────────────────────────────────────────────────
 
@@ -205,6 +213,10 @@ export function findOwningPackage(
  *   gate not applicable).
  * - Workspace must NOT be `"private": true`.
  * - Workspace name must NOT appear in `.changeset/config.json` `ignore`.
+ * - File must NOT be test code (`isTestPath`) — test files never reach
+ *   consumers (`scripts/publish.ts` strips `src/` from the tarball, so
+ *   tests aren't even shipped), parity with the diagnose-catalog gate.
+ *   Both gates share ONE classifier (`scripts/test-paths.ts`).
  */
 export function isConsumerAffectingFile(
   file: string,
@@ -216,6 +228,7 @@ export function isConsumerAffectingFile(
   if (!owner) return false
   if (owner.private) return false
   if (ignoredNames.has(owner.name)) return false
+  if (isTestPath(file)) return false
   return true
 }
 
