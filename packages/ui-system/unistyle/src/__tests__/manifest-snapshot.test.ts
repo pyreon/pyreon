@@ -28,7 +28,17 @@ describe('gen-docs — unistyle snapshot', () => {
       'unistyle/makeItResponsive',
       'unistyle/stripUnit',
       'unistyle/styles',
+      'unistyle/themeToCssVars',
       'unistyle/value',
     ])
+  })
+
+  it('themeToCssVars entry carries the unit-baking contract + foot-gun catalog', () => {
+    const record = renderApiReferenceEntries(manifest)
+    const entry = record['unistyle/themeToCssVars']!
+    expect(entry.signature).toContain('themeToCssVars(theme')
+    expect(entry.notes).toContain('--px-spacing-small: 0.5rem')
+    expect(entry.mistakes).toContain('calc(')
+    expect(entry.mistakes).toContain('breakpoints')
   })
 })
