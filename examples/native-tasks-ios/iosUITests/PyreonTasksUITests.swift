@@ -45,6 +45,17 @@ final class PyreonTasksUITests: XCTestCase {
             loginPage.waitForExistence(timeout: 30),
             "Login page did not render within 30s"
         )
+
+        // Asset-pipeline arc: the branded header is a BUNDLED image —
+        // `Image("pyreon-logo")` from the materialized Assets.xcassets.
+        // A missing catalog (assets step didn't run) renders an empty
+        // image NODE, so assert existence via the accessibility id the
+        // emit threads (the testid contract).
+        let brandLogo = app.images["brand-logo"].firstMatch
+        XCTAssertTrue(
+            brandLogo.waitForExistence(timeout: 15),
+            "Bundled brand logo missing — did scripts/build.sh materialize Assets.xcassets from ../native-tasks/assets?"
+        )
     }
 
     func test_authGateStoreMutationAndTypedParamsDetail() throws {

@@ -580,6 +580,23 @@ fun useParams(): Map<String, String> = emptyMap()
 @Composable
 inline fun <reified T : Any> useLoaderData(): T? = null
 
+// Bundled-image surface (asset-pipeline arc): the Image composable +
+// painterResource + ContentScale from androidx, and pyreonDrawable
+// from @pyreon/native-runtime-kotlin's PyreonAssets.kt (name-keyed
+// drawable lookup — keeps the emit free of host-namespace R refs).
+class Painter
+fun painterResource(id: Int): Painter = Painter()
+class ContentScaleStub
+object ContentScale {
+  val Crop: ContentScaleStub = ContentScaleStub()
+  val Fit: ContentScaleStub = ContentScaleStub()
+  val FillBounds: ContentScaleStub = ContentScaleStub()
+  val None: ContentScaleStub = ContentScaleStub()
+}
+fun Image(painter: Painter, contentDescription: String, contentScale: ContentScaleStub = ContentScale.Crop, modifier: Modifier = Modifier) {}
+@Composable
+fun pyreonDrawable(name: String): Int = 0
+
 // PyreonFetch — mirror of @pyreon/native-runtime-kotlin's PyreonFetch.kt
 // (Phase 4.1 state container). Added with the quotes fixture — before
 // it, NO useFetch shape was kotlinc-validated (the Swift loop is

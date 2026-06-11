@@ -2872,6 +2872,20 @@ function emitKotlinIcon(
  * prop accepted, silent no-op, mirrors Swift). Non-literal `src` →
  * generic fallthrough.
  */
+/** Mirror of emit-swift's imageSrcKind — the canonical src dispatch. */
+function imageSrcKindKotlin(src: string): 'remote' | 'bundled' | 'path' {
+  if (/^https?:\/\//.test(src)) return 'remote'
+  if (src.includes('/')) return 'path'
+  return 'bundled'
+}
+
+const KOTLIN_CONTENT_SCALE: Record<string, string> = {
+  cover: 'ContentScale.Crop',
+  contain: 'ContentScale.Fit',
+  fill: 'ContentScale.FillBounds',
+  none: 'ContentScale.None',
+}
+
 function emitKotlinImage(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -2880,18 +2894,56 @@ function emitKotlinImage(
   if (typeof src !== 'string') {
     return emitKotlinGeneric(e, indent)
   }
+  const kind = imageSrcKindKotlin(src)
+  if (kind === 'path') {
+    _emitWarnings.push(
+      `<Image src=${JSON.stringify(src)}>: path-style src is web-only — use a bare asset name (bundled via the assets pipeline) or a full http(s) URL on native.`,
+    )
+  }
   const alt = readStaticAttrKotlin(e, 'alt')
+  const fit = readStaticAttrKotlin(e, 'fit')
+  const width = readStaticAttrKotlin(e, 'width')
+  const height = readStaticAttrKotlin(e, 'height')
+  // Layout modifier FIRST in the chain so data-testid threads (the
+  // Text/Heading lesson — its absence is device-invisible until a tag
+  // query fails), then explicit sizes.
+  const layoutMod = emitKotlinLayoutModifier(e)
+  const modParts: string[] = []
+  if (typeof width === 'number') modParts.push(`.width(${width}.dp)`)
+  if (typeof height === 'number') modParts.push(`.height(${height}.dp)`)
+  const modifier =
+    layoutMod !== ''
+      ? `${layoutMod}${modParts.join('')}`
+      : modParts.length > 0
+        ? `Modifier${modParts.join('')}`
+        : ''
+  if (kind === 'bundled') {
+    // `pyreonDrawable(name)` (runtime helper) resolves the drawable id
+    // by NAME via the app context — no `R.drawable` reference, so the
+    // emitted file doesn't depend on the host's namespace and the
+    // kotlinc validate stubs stay fixture-agnostic.
+    const args = [
+      `painter = painterResource(pyreonDrawable(${JSON.stringify(bundledAssetNameKotlin(src))}))`,
+      `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
+      `contentScale = ${KOTLIN_CONTENT_SCALE[typeof fit === 'string' ? fit : 'cover'] ?? 'ContentScale.Crop'}`,
+    ]
+    if (modifier !== '') args.push(`modifier = ${modifier}`)
+    return `Image(${args.join(', ')})`
+  }
   const args = [
     `model = ${JSON.stringify(src)}`,
     `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
   ]
-  const width = readStaticAttrKotlin(e, 'width')
-  const height = readStaticAttrKotlin(e, 'height')
-  const modParts: string[] = []
-  if (typeof width === 'number') modParts.push(`.width(${width}.dp)`)
-  if (typeof height === 'number') modParts.push(`.height(${height}.dp)`)
-  if (modParts.length > 0) args.push(`modifier = Modifier${modParts.join('')}`)
+  if (typeof fit === 'string' && KOTLIN_CONTENT_SCALE[fit] !== undefined) {
+    args.push(`contentScale = ${KOTLIN_CONTENT_SCALE[fit]}`)
+  }
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
   return `AsyncImage(${args.join(', ')})`
+}
+
+/** Asset-catalog name: basename sans extension (mirror of emit-swift). */
+function bundledAssetNameKotlin(src: string): string {
+  return src.replace(/\.[A-Za-z0-9]+$/, '')
 }
 
 /**

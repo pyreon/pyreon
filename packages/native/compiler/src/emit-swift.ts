@@ -3365,6 +3365,37 @@ function emitSwiftIcon(
  *
  * `src` must be a string literal; falls through to generic emit otherwise.
  */
+/**
+ * The canonical `src` dispatch (asset-pipeline arc, 2026-06-11) —
+ * shared contract across all three targets:
+ *
+ *   - `http(s)://…`  → REMOTE: `AsyncImage(url:)` / Coil / `<img>`.
+ *   - bare name (`logo.png` — no scheme, no slash) → BUNDLED asset:
+ *     `Image("logo")` (asset-catalog name, extension stripped) /
+ *     `painterResource(pyreonDrawable("logo"))` / `<img src="/assets/logo.png">`.
+ *     The `pyreon-native assets` CLI step materializes the files into
+ *     Assets.xcassets / res/drawable* from the shared `assets/` dir.
+ *   - path-style (`/img/x.png`, `img/x.png`) → web-only; native warns
+ *     and falls through to the remote emit (which will fail visibly,
+ *     not silently).
+ */
+function imageSrcKind(src: string): 'remote' | 'bundled' | 'path' {
+  if (/^https?:\/\//.test(src)) return 'remote'
+  if (src.includes('/')) return 'path'
+  return 'bundled'
+}
+
+/** Asset-catalog name: basename sans extension. */
+function bundledAssetName(src: string): string {
+  return src.replace(/\.[A-Za-z0-9]+$/, '')
+}
+
+const SWIFT_CONTENT_MODE: Record<string, string> = {
+  cover: '.scaledToFill()',
+  contain: '.scaledToFit()',
+  fill: '.scaledToFill()',
+}
+
 function emitSwiftImage(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -3373,16 +3404,34 @@ function emitSwiftImage(
   if (typeof src !== 'string') {
     return emitSwiftGeneric(e, indent)
   }
-  let result = `AsyncImage(url: URL(string: ${JSON.stringify(src)}))`
+  const kind = imageSrcKind(src)
+  if (kind === 'path') {
+    _emitWarnings.push(
+      `<Image src=${JSON.stringify(src)}>: path-style src is web-only — use a bare asset name (bundled via the assets pipeline) or a full http(s) URL on native.`,
+    )
+  }
   const width = readStaticAttr(e, 'width')
   const height = readStaticAttr(e, 'height')
+  const alt = readStaticAttr(e, 'alt')
+  const fit = readStaticAttr(e, 'fit')
+  let result: string
+  if (kind === 'bundled') {
+    // Asset-catalog image. `.resizable()` + the fit mapping make the
+    // web `object-fit` contract hold (web default is cover);
+    // `fit="none"` keeps the intrinsic-size bare Image.
+    result = `Image(${JSON.stringify(bundledAssetName(src))})`
+    if (fit !== 'none') {
+      result += `.resizable()${SWIFT_CONTENT_MODE[typeof fit === 'string' ? fit : 'cover'] ?? '.scaledToFill()'}`
+    }
+  } else {
+    result = `AsyncImage(url: URL(string: ${JSON.stringify(src)}))`
+  }
   const frameArgs: string[] = []
   if (typeof width === 'number') frameArgs.push(`width: ${width}`)
   if (typeof height === 'number') frameArgs.push(`height: ${height}`)
   if (frameArgs.length > 0) {
     result += `.frame(${frameArgs.join(', ')})`
   }
-  const alt = readStaticAttr(e, 'alt')
   if (typeof alt === 'string') {
     result += `.accessibilityLabel(${JSON.stringify(alt)})`
   }

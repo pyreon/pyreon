@@ -10,3 +10,7 @@ generated/
 
 # node_modules
 node_modules/
+
+# Asset pipeline output — `scripts/build.sh` rematerializes the shared
+# assets/ into the catalog on every build.
+ios/Assets.xcassets/

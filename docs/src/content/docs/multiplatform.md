@@ -237,7 +237,7 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 | Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed — **`useForm` v2 is device-proven** (validators + runtime Field bindings + submit gating; the tasks login's error-path smoke); **`useFetch` is device-proven end-to-end** (the tasks Quotes screen fetches + decodes + renders a real HTTP fixture on the CI Simulator/Emulator; web runs the same call through `@pyreon/hooks`); `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design. `useValidation` planned |
 | Compiler diagnostics | Surface silent-drop shapes as parser warnings instead of failing-silent at runtime | ✅ Round-1 (#1094 — `Icon`/`Image`/`Link` missing required props) + Round-2 (#1099 — `Press` without `onPress`, `Link prefetch={…}` on native, `Stack/Inline/Layer align="<typo>"`) landed; both routes ship as `result.warnings`, emit shape unchanged |
 | Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the three walled tags emit a **graceful pass-through** (children render inside `Group {…}`/`Box {…}`, fallback/cache behaviour inert, comment surfaces the limitation) — no broken build, but a true Suspense/ErrorBoundary/KeepAlive runtime needs a Pyreon-async-context + view-modifier intercept + state-cache design that's not local emit work |
-| DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline (planned) | 🟡 scaffold landed (`bunx create-multiplatform <name>`); asset/SF-Symbols pipeline planned |
+| DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline | 🟡 scaffold landed; **image asset pipeline landed** (`pyreon-native assets` — the shared `assets/` dir materializes to `Assets.xcassets` / `res/drawable-*` density buckets / `public/assets`, and `<Image src="name.png">` dispatches bundled-vs-remote per target; device-proven via the tasks branded header); SF-Symbols/Material icon mapping + fonts are the next arc |
 
 > **Loader auto-emit is intentionally deferred, not forgotten.** The
 > `loaderData` / `useLoaderData` *runtime* contract is landed (and
@@ -394,6 +394,29 @@ runtime addition is ~30 LOC per target; no compiler changes.
 > `params` prop** (synthesized per-component struct/data class +
 > dispatcher construction from the matched segments) are all **landed**.
 > Loader auto-emit and a typed `useParams<T>()` hook generic are planned.
+
+## Bundled images — the asset pipeline
+
+One `assets/` directory next to your shared `src/` carries the app's
+images; the `pyreon-native assets` build step materializes it per
+target:
+
+| Target | Output | Mechanism |
+|---|---|---|
+| iOS | `Assets.xcassets/<name>.imageset` (1x/2x/3x from `@2x`/`@3x` suffixes) | `<Image src="logo.png">` → `Image("logo")` |
+| Android | `res/drawable-{mdpi,xhdpi,xxhdpi}` (names sanitized to resource rules) | → `Image(painterResource(pyreonDrawable("logo")))` — a name-keyed runtime lookup, so the generated code never references the host's `R` class |
+| Web | `public/assets/` | the web `<Image>` primitive prefixes bare names with `/assets/` |
+
+The `src` dispatch is canonical across targets: `http(s)://…` is
+remote (`AsyncImage`/Coil/`<img>`), a BARE name (`logo.png`) is a
+bundled asset, and a path-style src (`/img/x.png`) is web-only — the
+compiler warns and native falls through to the remote emit (visible
+failure, never silent). `fit` maps to
+`scaledToFill/scaledToFit` (SwiftUI) and `ContentScale.Crop/Fit/
+FillBounds/None` (Compose); the web default `cover` holds everywhere.
+
+Asset-name collisions after Android sanitization (`my-logo.png` vs
+`my_logo.png` → both `my_logo`) abort the build loudly.
 
 ## Native data & services
 

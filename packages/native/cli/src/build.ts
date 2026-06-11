@@ -110,6 +110,16 @@ function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
   if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
   if (emitted.includes('Json.')) imports.push('import kotlinx.serialization.json.Json')
+  // Bundled-image emit (asset-pipeline arc): the Image composable +
+  // painterResource + ContentScale live outside the unconditional
+  // star-import set (Kotlin star imports are single-package).
+  if (emitted.includes('painterResource(')) {
+    imports.push('import androidx.compose.foundation.Image')
+    imports.push('import androidx.compose.ui.res.painterResource')
+  }
+  if (emitted.includes('ContentScale.')) {
+    imports.push('import androidx.compose.ui.layout.ContentScale')
+  }
   return imports.length === 0 ? '' : imports.join('\n') + '\n'
 }
 

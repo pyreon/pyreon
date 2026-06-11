@@ -37,3 +37,14 @@ bun packages/native/cli/src/cli.ts build \
     --target=ios \
     --source="${SRC_DIR}" \
     --out="${OUT_DIR}"
+
+# Asset pipeline (asset-pipeline arc): materialize the shared assets/
+# into Assets.xcassets under ios/ (an included XcodeGen group, so the
+# catalog lands in the app bundle with zero project.yml changes).
+ASSETS_DIR="${SRC_DIR}/../assets"
+if [[ -d "${ASSETS_DIR}" ]]; then
+    bun packages/native/cli/src/cli.ts assets \
+        --target=ios \
+        --source="${ASSETS_DIR}" \
+        --out="${PROJECT_DIR}/ios"
+fi

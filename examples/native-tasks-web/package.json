@@ -6,11 +6,12 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "bun run assets && vite",
+    "build": "bun run assets && vite build",
     "preview": "vite preview",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "assets": "bun ../../packages/native/cli/src/cli.ts assets --target=web --source=../native-tasks/assets --out=public"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",

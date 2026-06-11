@@ -290,6 +290,10 @@ SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "\${SCRIPT_DIR}/.." && pwd)"
 mkdir -p "\${PROJECT_DIR}/ios/generated"
 npx pyreon-native build --target=ios --source="\${PROJECT_DIR}/src" --out="\${PROJECT_DIR}/ios/generated"
+# Asset pipeline: shared assets/ → Assets.xcassets (skipped when empty).
+if [[ -d "\${PROJECT_DIR}/assets" ]]; then
+  npx pyreon-native assets --target=ios --source="\${PROJECT_DIR}/assets" --out="\${PROJECT_DIR}/ios"
+fi
 `,
   )
 
@@ -419,6 +423,10 @@ PROJECT_DIR="$(cd "\${SCRIPT_DIR}/.." && pwd)"
 OUT="\${PROJECT_DIR}/android/app/src/main/kotlin/${androidPkgPath}/generated"
 mkdir -p "\${OUT}"
 npx pyreon-native build --target=android --source="\${PROJECT_DIR}/src" --out="\${OUT}"
+# Asset pipeline: shared assets/ → res/drawable-* (skipped when empty).
+if [[ -d "\${PROJECT_DIR}/assets" ]]; then
+  npx pyreon-native assets --target=android --source="\${PROJECT_DIR}/assets" --out="\${PROJECT_DIR}/android/app/src/main"
+fi
 `,
   )
 

@@ -11,11 +11,14 @@
 //   2 — build error (compiler threw on a source file)
 
 import { build } from './build'
+import { materializeAssets, type AssetTarget } from './assets'
 import type { TargetLanguage } from '@pyreon/native-compiler'
 
 interface ParsedArgs {
   command: string
   target?: TargetLanguage
+  /** `assets` keeps the raw target token — it ALSO accepts `web`. */
+  rawTarget?: string
   source?: string
   out?: string
   kotlinPackage?: string
@@ -42,6 +45,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue
     }
     if (key === 'target') {
+      out.rawTarget = value
       if (value === 'ios' || value === 'swift') out.target = 'swift'
       else if (value === 'android' || value === 'kotlin') out.target = 'kotlin'
       // Unknown targets are flagged in main() so usage prints once.
@@ -56,7 +60,13 @@ function printUsage(): void {
   console.error(`pyreon-native — PMTC build CLI (PRIVATE / EXPERIMENTAL)
 
 Usage:
-  pyreon-native build --target=<ios|android> --source=<dir> --out=<dir>
+  pyreon-native build  --target=<ios|android>     --source=<dir> --out=<dir>
+  pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
+
+assets materializes a shared assets/ directory of images
+(name.png, name@2x.png, name@3x.png) into the platform's bundled
+format: Assets.xcassets (ios), res/drawable-* density buckets
+(android), or a plain assets/ copy for the web host's public dir.
 
 Targets:
   ios        emit Swift / SwiftUI
@@ -77,6 +87,9 @@ Compiler (PMTC). See packages/native/cli/README.md for status.`)
 
 export function main(argv: string[]): number {
   const parsed = parseArgs(argv)
+  if (parsed.command === 'assets') {
+    return runAssets(parsed)
+  }
   if (parsed.command !== 'build') {
     printUsage()
     return 1
@@ -129,4 +142,33 @@ interface BunImportMeta {
 const meta = import.meta as ImportMeta & BunImportMeta
 if (meta.main === true) {
   process.exit(main(process.argv.slice(2)))
+}
+
+
+function runAssets(parsed: ParsedArgs): number {
+  const target = parsed.rawTarget === 'ios' ? 'ios'
+    : parsed.rawTarget === 'android' ? 'android'
+    : parsed.rawTarget === 'web' ? 'web'
+    : undefined
+  if (!target) {
+    console.error('error: assets --target must be ios | android | web')
+    printUsage()
+    return 1
+  }
+  if (!parsed.source || !parsed.out) {
+    console.error('error: assets requires --source and --out')
+    printUsage()
+    return 1
+  }
+  try {
+    const result = materializeAssets(parsed.source, target as AssetTarget, parsed.out)
+    console.log(
+      `[pyreon-native] materialized ${result.assets} asset(s) (${result.files} file(s)) → ${parsed.out}`,
+    )
+    return 0
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[pyreon-native] assets failed: ${message}`)
+    return 2
+  }
 }
