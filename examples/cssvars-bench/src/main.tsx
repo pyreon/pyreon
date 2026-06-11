@@ -57,10 +57,30 @@ function App() {
   const boxes = Array.from({ length: N }, (_, i) =>
     h(ModeBox, { id: i === 0 ? 'sentinel' : undefined, 'data-i': i }),
   )
+  // A visible, human-openable dark/light toggle — the dogfood: a real app of
+  // real @pyreon/ui-components whose theme flips with one click. Under
+  // `?vars=1` the flip is one documentElement attribute write (no re-render);
+  // under classic it re-resolves every component. The label reads the mode
+  // signal reactively so it tracks the flip.
+  const toolbar = h(
+    'div',
+    { style: 'display:flex; gap:12px; align-items:center; margin-bottom:12px;' },
+    h(
+      'button',
+      {
+        'data-testid': 'mode-toggle',
+        onClick: () => mode.set(mode.peek() === 'light' ? 'dark' : 'light'),
+        style: 'padding:6px 12px; cursor:pointer;',
+      },
+      'Toggle theme',
+    ),
+    h('span', { 'data-testid': 'mode-label' }, () => `mode: ${mode()}`),
+    h('span', { 'data-testid': 'css-mode' }, cssVars ? 'cssVariables' : 'classic'),
+  )
   return h(
     PyreonUI as never,
     { theme, mode: () => mode() },
-    h('div', { class: 'grid' }, ...buttons, ...boxes),
+    h('div', null, toolbar, h('div', { class: 'grid' }, ...buttons, ...boxes)),
   )
 }
 

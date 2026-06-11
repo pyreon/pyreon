@@ -100,6 +100,19 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'cssvars',
+    script: 'test:e2e:cssvars',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/ui-system/ui-core/',
+      'packages/ui-system/rocketstyle/',
+      'packages/ui-system/unistyle/',
+      'packages/ui/',
+      'examples/cssvars-bench/',
+      'e2e/cssvars-showcase.spec.ts',
+    ],
+  },
+  {
     name: 'compat',
     script: 'test:e2e:compat',
     triggers: [

@@ -58,6 +58,7 @@ interface ModeResult {
   ci95: [number, number]
   counts: Record<string, number>
   components: number
+  heapBytes: number
 }
 
 async function runMode(
@@ -93,6 +94,16 @@ async function runMode(
     samples.push(ms)
     lastCounts = counts
   }
+
+  // Retained heap after the suite: settle to a known mode, force GC 3×,
+  // read the precise heap (--enable-precise-memory-info). Same shape as
+  // bench-fair's retained-heap metric — a relative classic-vs-vars signal.
+  const heapBytes = (await page.evaluate(() => {
+    const w = window as unknown as { gc?: () => void; performance: { memory?: { usedJSHeapSize: number } } }
+    for (let i = 0; i < 3; i++) w.gc?.()
+    return w.performance.memory?.usedJSHeapSize ?? 0
+  })) as number
+
   await ctx.close()
 
   samples.sort((a, b) => a - b)
@@ -102,6 +113,7 @@ async function runMode(
     ci95: bootstrapCI95(samples),
     counts: lastCounts,
     components,
+    heapBytes,
   }
 }
 
@@ -144,6 +156,8 @@ async function main(): Promise<void> {
     console.log(`${pad(`wall-clock ms / ${FLIPS} flips`, 28)}${pad(ms(classic), 26)}${pad(ms(vars), 26)}`)
     const ratio = classic.medianMs / Math.max(vars.medianMs, 0.001)
     console.log(`${pad('→ speedup', 28)}${pad('1.00×', 26)}${pad(`${ratio.toFixed(2)}×`, 26)}`)
+    const mb = (b: number): string => `${(b / 1024 / 1024).toFixed(2)} MB`
+    console.log(`${pad('retained heap (post-GC)', 28)}${pad(mb(classic.heapBytes), 26)}${pad(mb(vars.heapBytes), 26)}`)
     const counterKeys = ['styler.resolve', 'rocketstyle.getTheme', 'styler.sheet.insert', 'runtime.mountChild']
     for (const k of counterKeys) {
       console.log(
