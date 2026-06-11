@@ -13,3 +13,5 @@ CSS-variables mode — FOUC fix (Phase 4b) + document export (Q2):
 - `@pyreon/document-primitives`: `extractDocNode({ theme?, mode? })` auto-builds the resolver (composing `resolveModeVar` with unistyle's `resolveCssVarReferences` over a `themeToCssVars(theme)` registry), so PDF/DOCX/email export inlines CSS-variable theme values to raw values. Doc primitives that emit raw literals are unaffected.
 
 Measured/locked in real Chromium; bisect-verified. Flag off (classic path) is byte-identical.
+
+Also: `PyreonUI` now provides the core context via lazy getters instead of an eager object, so reading `.theme` no longer transitively subscribes to the mode signal. Under cssVariables this makes a theme toggle do ZERO per-component re-runs (the cascade handles it) — a real-app 300-component toggle measures ~1.9× faster (~2.05× at 600 components, holds under 4× CPU throttle); classic mode (which reads `.mode`) is unchanged. New `examples/cssvars-bench` + `scripts/bench-cssvars.ts` for the measurement.

@@ -247,11 +247,30 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // 2. Core context — provide a reactive getter function.
   //    coreContext is a ReactiveContext, so provide(() => value).
   //    Rocketstyle reads mode/isDark/isLight by calling the getter.
+  //
+  //    LAZY getters (not eager fields) are load-bearing: reading `.theme`
+  //    must NOT transitively subscribe to `modeComputed`. With eager fields
+  //    (`{ theme: enrichedTheme(), mode: modeComputed() }`) the object
+  //    construction reads modeComputed(), so ANY consumer touching `.theme`
+  //    re-runs on every mode flip — even under cssVariables, where component
+  //    resolution is supposed to be mode-free (the flip is an attribute write,
+  //    the cascade does the rest). Getters defer each read: a component that
+  //    reads only `.theme` subscribes only to `enrichedTheme` (stable on flip
+  //    → no re-run); classic-mode resolution that reads `.mode` still
+  //    subscribes to `modeComputed` (re-runs on flip → correct).
   provide(coreContext, () => ({
-    theme: enrichedTheme(),
-    mode: modeComputed(),
-    isDark: modeComputed() === 'dark',
-    isLight: modeComputed() === 'light',
+    get theme() {
+      return enrichedTheme()
+    },
+    get mode() {
+      return modeComputed()
+    },
+    get isDark() {
+      return modeComputed() === 'dark'
+    },
+    get isLight() {
+      return modeComputed() === 'light'
+    },
   }))
 
   // 3. Mode context — getter function for useMode()
@@ -276,6 +295,12 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
     // see `cssVariablesPrePaintScript`. No wrapper at the root: a wrapper
     // would be a closer ancestor than `<html>` and defeat that script.
     if (isClient) {
+      // Intentional reactive DOM sync: this MUST re-run whenever modeComputed
+      // changes (toggle / system-pref flip), so onMount (runs once) cannot do
+      // it — same shape as the framework's own renderEffect/_bind DOM writes.
+      // It's a one-line attribute write, not the fetch/timer imperative-work
+      // the rule guards against.
+      // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
       effect(() => {
         document.documentElement.setAttribute(cssVars.attribute, modeComputed())
       })
