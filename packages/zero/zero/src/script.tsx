@@ -1,6 +1,6 @@
 import type { Ref, VNodeChild } from '@pyreon/core'
 import { createRef, onMount, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
 import { useIntersectionObserver } from './utils/use-intersection-observer'
 
 // ─── Script optimization component ─────────────────────────────────────────
@@ -102,7 +102,7 @@ export function useScript(props: ScriptProps): UseScriptReturn {
     // Only invoked from `onMount` or strategy triggers — explicit guard
     // documents the SSR-safety contract at the callsite (the rule can't
     // AST-trace the indirect call).
-    if (typeof document === 'undefined') return
+    if (isServer) return
     // Deduplication — short-circuit if a script with the same id exists.
     if (props.id && document.getElementById(props.id)) {
       loaded.set(true)

@@ -27,7 +27,7 @@ import {
   Suspense,
   useContext as pyreonUseContext,
 } from '@pyreon/core'
-import { batch } from '@pyreon/reactivity'
+import { batch, isServer } from '@pyreon/reactivity'
 import type { EffectEntry } from './jsx-runtime'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
@@ -617,7 +617,7 @@ export function useSyncExternalStore<T>(
 
   // SSR path
   /* v8 ignore next 6 — SSR/typeof window guard + getServerSnapshot; tests run with happy-dom */
-  if (typeof window === 'undefined' && getServerSnapshot) {
+  if (isServer && getServerSnapshot) {
     if (ctx.hooks.length <= idx) {
       ctx.hooks.push({ subscribe, unsubscribe: undefined, snapshot: getServerSnapshot() })
     }

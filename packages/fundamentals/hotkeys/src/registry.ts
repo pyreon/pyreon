@@ -1,5 +1,5 @@
 import type { Signal } from '@pyreon/reactivity'
-import { signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
 import { matchesCombo, parseShortcut } from './parse'
 import type { HotkeyEntry, HotkeyOptions } from './types'
 
@@ -69,7 +69,7 @@ function isInputFocused(event: KeyboardEvent): boolean {
 
 function attachListener(): void {
   if (listenerAttached) return
-  if (typeof window === 'undefined') return
+  if (isServer) return
   listenerAttached = true
 
   keydownHandler = (event) => {
@@ -155,7 +155,7 @@ function attachListener(): void {
 }
 
 function detachListener(): void {
-  if (typeof window === 'undefined') return
+  if (isServer) return
   if (!listenerAttached || !keydownHandler) return
   window.removeEventListener('keydown', keydownHandler)
   listenerAttached = false

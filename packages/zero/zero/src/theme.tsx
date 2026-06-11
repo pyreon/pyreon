@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { onMount } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { effect, isClient, isServer, signal } from '@pyreon/reactivity'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
@@ -54,7 +54,7 @@ export function setSSRThemeDefault(value: 'light' | 'dark'): void {
 export function resolvedTheme(): 'light' | 'dark' {
   const t = theme()
   if (t === 'system') {
-    if (typeof window === 'undefined') return _ssrDefault
+    if (isServer) return _ssrDefault
     return _osPrefersDark() ? 'dark' : 'light'
   }
   return t
@@ -69,7 +69,7 @@ export function toggleTheme() {
 /** Set theme explicitly. */
 export function setTheme(t: Theme) {
   theme.set(t)
-  if (typeof document !== 'undefined') {
+  if (isClient) {
     document.documentElement.dataset.theme = resolvedTheme()
     try {
       localStorage.setItem(STORAGE_KEY, t)
@@ -98,7 +98,7 @@ function _setupShared(): () => void {
   // browser-only contract explicit so `localStorage` / `document` /
   // `window.matchMedia` below can never run server-side. Returns a no-op
   // disposer on the server.
-  if (typeof window === 'undefined') return () => {}
+  if (isServer) return () => {}
   // Read persisted preference
   try {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null

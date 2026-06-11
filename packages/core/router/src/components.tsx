@@ -9,7 +9,7 @@ import {
   provide,
   useContext,
 } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, isClient, signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { _setDefaultChromeLayout } from './match'
 import { isLazy, RouterContext, setActiveRouter } from './router'
@@ -417,7 +417,7 @@ function renderLazyRoute(
             tryLoad(attempt + 1),
           )
         }
-        if (typeof window !== 'undefined' && isStaleChunk(err)) {
+        if (isClient && isStaleChunk(err)) {
           window.location.reload()
           return
         }

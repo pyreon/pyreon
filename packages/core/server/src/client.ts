@@ -30,7 +30,7 @@ import { h } from '@pyreon/core'
 import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from '@pyreon/router'
 import { decodeIslandProps } from './island-codec'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
-import { type EffectScope, runWithContextOwner } from '@pyreon/reactivity'
+import { isServer, runWithContextOwner, type EffectScope } from '@pyreon/reactivity'
 import type { HydrationStrategy, PrefetchStrategy } from './island'
 
 // `island()` is client-safe — it only renders the `<pyreon-island>` marker via
@@ -76,7 +76,7 @@ export function startClient(options: StartClientOptions): () => void {
   // SSR-only guard: hard-fails if startClient is called server-side. Cannot be
   // exercised under happy-dom (document is always defined in the test env).
   /* v8 ignore next 3 */
-  if (typeof document === 'undefined') {
+  if (isServer) {
     throw new Error('[Pyreon] startClient() can only be called in the browser.')
   }
   const { App, routes, container = '#app' } = options
@@ -132,7 +132,7 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  */
 export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
   /* v8 ignore next */
-  if (typeof document === 'undefined') return () => {}
+  if (isServer) return () => {}
 
   // Dev-mode footgun guard: calling `hydrateIslands()` twice without
   // invoking the previous call's cleanup function leaks the old
@@ -237,7 +237,7 @@ export function schedulePrefetch(
 ): (() => void) | null {
   if (prefetch === 'none') return null
   /* v8 ignore next */
-  if (typeof window === 'undefined') return null
+  if (isServer) return null
   let cancelled = false
   // Fire and forget — we don't await; the dynamic import warms the module
   // cache and the hydration path will await its OWN loader() call (which
@@ -327,7 +327,7 @@ export interface AutoIslandRegistry {
  */
 export function hydrateIslandsAuto(registry: AutoIslandRegistry): () => void {
   /* v8 ignore next */
-  if (typeof document === 'undefined') return () => {}
+  if (isServer) return () => {}
   if (!registry.__pyreonIslandsEnabled) {
     throw new Error(
       `[Pyreon] hydrateIslandsAuto() requires \`pyreon({ islands: true })\` ` +
@@ -356,7 +356,7 @@ export function scheduleHydration(
   owner?: EffectScope | null,
 ): (() => void) | null {
   /* v8 ignore next */
-  if (typeof window === 'undefined') return null
+  if (isServer) return null
   let cancelled = false
   const hydrate = (): Promise<void> => {
     if (cancelled) return Promise.resolve()
@@ -660,7 +660,7 @@ async function hydrateIsland(
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
   /* v8 ignore next */
-  if (typeof window === 'undefined') return null
+  if (isServer) return null
   if (!('IntersectionObserver' in window)) {
     callback()
     return null
@@ -706,7 +706,7 @@ import { activateServerIslandElement } from './server-island'
  * `activateServerIslandElement`.
  */
 export function activateServerIslands(base = ''): () => void {
-  if (typeof document === 'undefined') return () => {}
+  if (isServer) return () => {}
   const markers = document.querySelectorAll<HTMLElement>(
     'pyreon-server-island[data-name]:not([data-pyreon-si])',
   )

@@ -1,4 +1,4 @@
-import { createRef } from '@pyreon/core'
+import { createRef, isServer } from '@pyreon/core'
 import { useRouter } from '@pyreon/router'
 import { useIntersectionObserver } from './utils/use-intersection-observer'
 
@@ -81,7 +81,7 @@ const prefetched = new Map<string, Element[]>()
 function doPrefetch(href: string) {
   // Prefetch only fires from browser-mounted Link interactions (hover /
   // click intent). Explicit guard documents the SSR-safety contract.
-  if (typeof document === 'undefined') return
+  if (isServer) return
   if (prefetched.has(href)) return
   // Evict oldest entries when cache is full — AND remove their DOM nodes.
   if (prefetched.size >= MAX_PREFETCH_CACHE) {

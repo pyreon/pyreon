@@ -50,9 +50,27 @@ export const noDomInSetup: Rule = {
         return true
       return false
     }
+    // `if (isServer) return|throw` / `if (!isClient) return|throw` — the canonical
+    // `@pyreon/reactivity` SSR primitive (`isServer === typeof document === 'undefined'`).
+    // Recognised by NAME, the same convention `no-window-in-ssr` / `dev-guard-warnings`
+    // use (a lightweight walker can't resolve imports). This keeps the rule consistent
+    // with `pyreon/prefer-isserver`, which pushes these very `typeof` guards TO `isServer`
+    // — without it the two rules contradict (prefer-isserver says "use isServer", then
+    // no-dom-in-setup flags the now-"unguarded" DOM access).
+    function isSsrPrimitiveGuard(test: any): boolean {
+      if (test?.type === 'Identifier' && test.name === 'isServer') return true
+      if (
+        test?.type === 'UnaryExpression' &&
+        test.operator === '!' &&
+        test.argument?.type === 'Identifier' &&
+        test.argument.name === 'isClient'
+      )
+        return true
+      return false
+    }
     function isEarlyReturnDocumentGuard(stmt: any): boolean {
       if (!stmt || stmt.type !== 'IfStatement') return false
-      if (!isNegatedTypeofDocument(stmt.test)) return false
+      if (!isNegatedTypeofDocument(stmt.test) && !isSsrPrimitiveGuard(stmt.test)) return false
       const c = stmt.consequent
       const isTerminator = (s: any): boolean =>
         s?.type === 'ReturnStatement' || s?.type === 'ThrowStatement'

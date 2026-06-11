@@ -1,4 +1,5 @@
 import type { StorageOptions } from './types'
+import { isClient } from '@pyreon/reactivity'
 
 // ─── SSR Detection ───────────────────────────────────────────────────────────
 
@@ -6,7 +7,7 @@ import type { StorageOptions } from './types'
  * Check if we're running in a browser environment.
  */
 export function isBrowser(): boolean {
-  return typeof window !== 'undefined' && typeof document !== 'undefined'
+  return isClient
 }
 
 // ─── Serialization ───────────────────────────────────────────────────────────

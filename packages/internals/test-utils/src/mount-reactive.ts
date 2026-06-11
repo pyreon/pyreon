@@ -13,7 +13,7 @@
  * `environment: 'happy-dom'`. The helpers throw a clear error
  * pointing at the fix if `document` is undefined at call time.
  */
-import { h } from '@pyreon/core'
+import { h, isServer } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 
@@ -204,7 +204,7 @@ export function mountAndExpectOnce(
  */
 function ensureDom(helperName: string): void {
   /* v8 ignore next 3 — SSR / no-DOM environment defensive guard; tests always run with happy-dom */
-  if (typeof document === 'undefined') {
+  if (isServer) {
     throw new Error(buildDomErrorMessage(helperName))
   }
 }

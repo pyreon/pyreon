@@ -104,6 +104,19 @@
           "packages/zero/zero/src/theme.tsx"
         ]
       }
+    ],
+    "pyreon/prefer-isserver": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/core/head/src/dom.ts",
+          "packages/fundamentals/toast/src/toaster.tsx",
+          "packages/fundamentals/virtual/src/use-window-virtualizer.ts",
+          "packages/ui-system/elements/src/Overlay/positioning.ts",
+          "packages/ui-system/elements/src/Portal/component.tsx",
+          "packages/ui-system/styler/src/sheet.ts"
+        ]
+      }
     ]
   }
 }

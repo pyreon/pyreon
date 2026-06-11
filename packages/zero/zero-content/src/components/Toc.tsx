@@ -1,4 +1,4 @@
-import { signal, computed } from '@pyreon/reactivity'
+import { computed, isServer, signal } from '@pyreon/reactivity'
 import { cx, onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { Heading } from '../types'
@@ -65,7 +65,7 @@ export function Toc(props: TocProps): VNodeChild {
   // to the browser default when smoothScroll is off.
   const handleClick = (slug: string) => (e: Event) => {
     if (!smoothScroll) return
-    if (typeof document === 'undefined') return
+    if (isServer) return
     const el = document.getElementById(slug)
     if (el === null) return
     e.preventDefault()
@@ -85,7 +85,7 @@ export function Toc(props: TocProps): VNodeChild {
 
   onMount(() => {
     if (props.activeSlug) return undefined
-    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+    if (isServer || typeof IntersectionObserver === 'undefined') {
       return undefined
     }
     const slugs = filtered().map((h) => h.slug)

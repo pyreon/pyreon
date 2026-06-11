@@ -1,5 +1,6 @@
 import { SizedMap } from '@pyreon/sized-map'
 import type { ResolvedRoute, RouterOptions } from './types'
+import { isServer } from '@pyreon/reactivity'
 
 /**
  * Scroll restoration manager.
@@ -34,7 +35,7 @@ export class ScrollManager {
     // but an explicit early-return documents the SSR-safety contract at the
     // callsite (the `no-window-in-ssr` lint rule can't AST-trace indirect
     // calls from router setup).
-    if (typeof window === 'undefined') return
+    if (isServer) return
     // SizedMap.set handles both the recency bump (delete + re-set on
     // collision) and the cap-enforced eviction internally.
     this._positions.set(fromPath, window.scrollY)
@@ -55,7 +56,7 @@ export class ScrollManager {
   }
 
   private _applyResult(result: 'top' | 'restore' | 'none' | number, toPath: string): void {
-    if (typeof window === 'undefined') return
+    if (isServer) return
     // Hash scrolling: if the path contains #, scroll to the element
     const hashIdx = toPath.indexOf('#')
     if (hashIdx >= 0) {
