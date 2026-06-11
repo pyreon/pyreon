@@ -49,6 +49,19 @@ export interface RouteMeta {
 export type RenderMode = 'ssr' | 'ssg' | 'spa' | 'isr'
 
 export interface ISRConfig {
+  /**
+   * Phase 6 — tags an entry is cached under, evaluated at CACHE-SET time
+   * from the request. Pair with `ISRHandler.revalidateTag(tag)` for
+   * webhook-driven group invalidation ("a post changed → drop every page
+   * that rendered posts") without enumerating concrete paths.
+   *
+   * @example
+   * isr: { revalidate: 60, tagsForRequest: (req) => {
+   *   const p = new URL(req.url).pathname
+   *   return p.startsWith('/posts/') ? ['posts', `post:${p.split('/')[2]}`] : []
+   * } }
+   */
+  tagsForRequest?: (req: Request) => string[] | Promise<string[]>
   /** Revalidation interval in seconds. */
   revalidate: number
   /**
@@ -282,6 +295,41 @@ export interface ZeroConfig {
      * Set `false` to opt out.
      */
     modulePreload?: boolean
+    /**
+     * Phase 6 — emit a `<script type="speculationrules">` block into every
+     * prerendered page (Chrome's Speculation Rules API: near-instant
+     * navigations by prefetching/prerendering same-origin links). Values:
+     * `'prefetch'` (fetch likely next documents), `'prerender'` (fully
+     * prerender them — highest impact, highest resource use). Progressive
+     * enhancement — unsupported browsers ignore the block. Default: off.
+     */
+    speculationRules?: 'prefetch' | 'prerender' | false
+    /**
+     * Phase 6 — opt prerendered pages into CROSS-DOCUMENT View Transitions
+     * (`@view-transition { navigation: auto }`): MPA navigations between
+     * prerendered pages animate with zero JS in supporting browsers.
+     * Default: off.
+     */
+    viewTransitions?: boolean
+    /**
+     * Phase 6 — how the styler's collected CSS ships on prerendered pages.
+     * `'inline'` (default): the full rule set inlined in a `<style>` tag
+     * per page — self-contained pages, but the CSS bytes are re-downloaded
+     * with every page's HTML. `'asset'`: the rule set is written ONCE to a
+     * content-hashed `assets/pyreon-ssg.<hash>.css` and every page links
+     * it — pages share the browser-cached file (HTML shrinks by the full
+     * sheet per page; one extra request on first visit).
+     */
+    cssMode?: 'inline' | 'asset'
+    /**
+     * Phase 6 — emit per-path `Link: <chunk>; rel=modulepreload` entries
+     * into `_headers` for every prerendered page's route-chunk closure
+     * (the same per-route delta the `<link rel=modulepreload>` head tags
+     * carry). Cloudflare Pages and Netlify turn `Link` headers into HTTP
+     * 103 Early Hints — the browser starts fetching route chunks before
+     * the HTML arrives. Default: off.
+     */
+    earlyHints?: boolean
     /**
      * Auto-emit `dist/404.html` from the route tree's `_404.tsx` /
      * `_not-found.tsx` convention. fs-router already wires `_404.tsx` as

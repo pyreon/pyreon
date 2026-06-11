@@ -33,6 +33,12 @@ import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
 import { assertModesSupported } from './route-modes'
 import {
+  extractStylerStyleTag,
+  hashCss,
+  injectSpeculationRules,
+  injectViewTransitions,
+} from './ssg-enhance'
+import {
   _peekMkdirCacheSize,
   _registerSsgEntryRenderer,
   _resetMkdirCache,
@@ -1305,6 +1311,35 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // Returns the path on settle so the worker can fire onProgress with
       // it. Throws are NOT propagated — they're caught here and recorded
       // in `errors[]`, so a single failed path can't take down the worker.
+      // Phase 6 — cssMode 'asset': a once-per-build memoized writer for the
+      // shared styler CSS file. The sheet content is identical across pages
+      // (module-eval cache — see the no-reset rationale above), so ONE
+      // content-hashed asset serves every page; pages link it instead of
+      // inlining the full rule set per page.
+      const cssAsset =
+        config.ssg?.cssMode === 'asset'
+          ? (() => {
+              let written: Promise<string> | null = null
+              return {
+                write: (css: string): Promise<string> =>
+                  (written ??= (async () => {
+                    const name = `pyreon-ssg.${hashCss(css)}.css`
+                    const dir = assetsDir ?? 'assets'
+                    const assetFile = join(distDir, dir, name)
+                    await mkdirOnce(dirname(assetFile))
+                    await writeFileAtomic(assetFile, css)
+                    const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+                    return `${baseUrl}/${dir}/${name}`
+                  })()),
+              }
+            })()
+          : null
+
+      // Phase 6 — per-path modulepreload hrefs for `Link:` headers
+      // (`ssg.earlyHints`). Append-only under the concurrent worker pool
+      // (single-threaded mutations — same safety rationale as errors[]).
+      const earlyHintHrefs = new Map<string, string[]>()
+
       const renderOne = async (p: string): Promise<void> => {
         // M2.3 — emit `ssg.pathRender` per attempted render. Pair with
         // `ssg.pathWrite` / `ssg.pathRedirect` / `ssg.pathError` to see
@@ -1364,10 +1399,32 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             })
             if (hrefs.length > 0) {
               result.head = `${renderModulePreloadLinks(hrefs)}\n${result.head}`
+              // Phase 6 — collect for the per-path `Link:` headers block
+              // (`ssg.earlyHints`) written after the render loop.
+              if (config.ssg?.earlyHints === true) earlyHintHrefs.set(p, hrefs)
             }
           }
 
-          const html = injectIntoTemplate(template, result)
+          // Phase 6 — cssMode 'asset': pull the styler tag out of the head,
+          // write the rule set ONCE as a content-hashed shared file, link it.
+          if (cssAsset) {
+            const extracted = extractStylerStyleTag(result.head)
+            if (extracted) {
+              const href = await cssAsset.write(extracted.css)
+              result.head = `<link rel="stylesheet" href="${href}">\n${extracted.head}`
+            }
+          }
+
+          let html = injectIntoTemplate(template, result)
+          // Phase 6 — opt-in page enhancements (pure injections; see
+          // ssg-enhance.ts).
+          const specMode = config.ssg?.speculationRules
+          if (specMode === 'prefetch' || specMode === 'prerender') {
+            html = injectSpeculationRules(html, specMode)
+          }
+          if (config.ssg?.viewTransitions === true) {
+            html = injectViewTransitions(html)
+          }
 
           const filePath = resolveOutputPath(distDir, p)
 
@@ -1447,6 +1504,29 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
         }
       })
+
+      // Phase 6 — `ssg.earlyHints`: per-path `Link: <chunk>; rel=modulepreload`
+      // entries appended to `_headers`. CF Pages / Netlify convert Link
+      // headers into HTTP 103 Early Hints, so browsers start fetching the
+      // route's chunk closure before the HTML body lands. Respects an
+      // existing user `_headers` (append, never clobber) — same contract
+      // as the adapters' writeAssetCacheHeaders.
+      if (config.ssg?.earlyHints === true && earlyHintHrefs.size > 0) {
+        const blocks: string[] = []
+        for (const [p, hrefs] of earlyHintHrefs) {
+          const lines = hrefs.map((h) => `  Link: <${h}>; rel=modulepreload`)
+          blocks.push(`${p}\n${lines.join('\n')}`)
+        }
+        const headersPath = join(distDir, '_headers')
+        let existing = ''
+        try {
+          existing = await readFile(headersPath, 'utf-8')
+        } catch {
+          // no existing _headers — start fresh
+        }
+        const section = `# pyreon: early hints (modulepreload)\n${blocks.join('\n')}\n`
+        await writeFileAtomic(headersPath, existing ? `${existing}\n${section}` : section)
+      }
 
       // Phase 2 — 'spa'-declared routes in a static deploy get the CSR
       // SHELL: the built template with the injection placeholders blanked.

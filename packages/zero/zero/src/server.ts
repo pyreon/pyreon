@@ -42,7 +42,7 @@ export {
 	resolveRenderModeForPath,
 } from "./route-modes";
 export type { ISRCacheEntry, ISRStore } from "./isr";
-export { createISRHandler, createMemoryStore } from "./isr";
+export { createFsStore, createISRHandler, createMemoryStore } from "./isr";
 
 // ─── Vercel revalidate handler (M3.1) ───────────────────────────────────────
 
