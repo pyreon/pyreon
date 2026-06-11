@@ -1,11 +1,6 @@
 name: Release
 
 on:
-  # Manual dispatch — for re-triggering after workflow-only fixes (the
-  # 2026-06-11 chain: the changeset-paths filter below is correct for
-  # normal operation, but a Release-workflow FIX merged without touching
-  # .changeset/ couldn't re-trigger the run it was fixing).
-  workflow_dispatch:
   push:
     branches:
       - main
