@@ -67,11 +67,22 @@ runs:
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
         node-version: ${{ inputs.node-version }}
-    # NM_KEY env var must be set in the calling workflow (ci.yml does this
-    # at env: scope so every job inherits it; same shape as the pre-P2b
-    # design). Composite actions cannot read calling workflow's env: scope
-    # directly via `${{ env.X }}` — but the steps inside DO inherit it
-    # because each step is shell-evaluated under the workflow's env.
+    # BOOTSTRAP_KEY env var must be set in the calling workflow (ci.yml
+    # does this at env: scope so every job inherits it). The node_modules
+    # key is computed HERE from the lockfile hash — content-keyed, no
+    # same-run propagation dependency (2026-06-11 root-cause fix).
+    # CONTENT-KEYED restore (2026-06-11 root-cause fix). The previous design
+    # restored a per-run key (`node-modules-<run_id>`) that the Install job
+    # saved MINUTES earlier — a hard dependency on same-run cache
+    # propagation, the single most fragile guarantee the cache service
+    # offers. During the 2026-06-11 degradation, freshly-saved entries were
+    # randomly invisible to same-run readers (the entries EXISTED in the
+    # cache inventory; the read path couldn't see them yet) while day-old
+    # content-keyed entries restored reliably ALL DAY. node_modules is
+    # fully determined by the lockfile, so the content key IS the exact
+    # key — the run-id indirection added nothing but the fragility. The
+    # prefix restore-key catches lockfile-changing PRs (nearest entry +
+    # the fallback install below tops it up correctly).
     - name: Restore node_modules
       id: nm-cache
       if: inputs.restore-node-modules == 'true'
@@ -82,7 +93,8 @@ runs:
           packages/*/*/node_modules
           examples/*/node_modules
           docs/node_modules
-        key: ${{ env.NM_KEY }}
+        key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+        restore-keys: node-modules-${{ runner.os }}-bun-
     # CACHE-OUTAGE FALLBACK (2026-06-11 incident): GitHub's Actions cache
     # service intermittently LOST per-run cache saves/restores — every
     # downstream job then ran without node_modules and failed with exit
@@ -111,8 +123,14 @@ runs:
       env:
         PYREON_BOOTSTRAP_SKIP: '1'
       run: |
-        echo "::warning::node_modules cache missed (key $NM_KEY) — falling back to bun install. Cache service may be degraded."
+        echo "::warning::node_modules exact-key miss — running bun install (corrects a stale prefix-match restore or a full miss)."
         bun install --frozen-lockfile
+    # lib/ differs per push (source changes), so the per-run key stays the
+    # PRIMARY (exact-fresh) attempt — but it now degrades through the
+    # source-hashed cross-run key and a bare prefix instead of failing:
+    # a prefix match restores the nearest lib/ and the fallback rebuild
+    # below runs scripts/bootstrap.ts, which mtime-rebuilds whatever is
+    # stale. Worst case = slower job, never a red one.
     - name: Restore bootstrap (lib/)
       id: bootstrap-cache
       if: inputs.restore-bootstrap == 'true'
@@ -120,6 +138,9 @@ runs:
       with:
         path: packages/*/*/lib
         key: ${{ env.BOOTSTRAP_KEY }}
+        restore-keys: |
+          bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          bootstrap-ubuntu-
     # Same fallback for the lib/ cache: rebuild via the bootstrap script
     # (~45s) instead of letting every lib-needing job fail on missing
     # build outputs.
