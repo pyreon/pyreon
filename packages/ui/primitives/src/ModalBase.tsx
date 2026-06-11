@@ -1,6 +1,6 @@
 import { Portal, splitProps, type ComponentFn, type VNodeChild } from '@pyreon/core'
 import { useEventListener, useScrollLock } from '@pyreon/hooks'
-import { effect } from '@pyreon/reactivity'
+import { effect, isServer } from '@pyreon/reactivity'
 
 export interface ModalBaseProps {
   open?: boolean
@@ -30,7 +30,7 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
     'ref',
   ])
 
-  if (typeof document === 'undefined') return null
+  if (isServer) return null
 
   const closeOnEscape = own.closeOnEscape !== false
   const closeOnOverlay = own.closeOnOverlay !== false

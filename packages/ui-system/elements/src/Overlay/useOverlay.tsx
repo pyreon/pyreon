@@ -7,7 +7,7 @@
  * is coordinated through the overlay context.
  */
 
-import { batch, signal } from '@pyreon/reactivity'
+import { batch, isServer, signal } from '@pyreon/reactivity'
 import { throttle } from '@pyreon/ui-core'
 import { value } from '@pyreon/unistyle'
 import { IS_DEVELOPMENT } from '../utils'
@@ -223,7 +223,7 @@ const useOverlay = ({
 
   // Position calculation helpers
   const getAncestorOffset = () => {
-    if (typeof document === 'undefined') return { top: 0, left: 0 }
+    if (isServer) return { top: 0, left: 0 }
     if (position !== 'absolute' || !contentEl) {
       return { top: 0, left: 0 }
     }
@@ -317,7 +317,7 @@ const useOverlay = ({
   // Set up all event listeners on mount, clean up on unmount
   // --------------------------------------------------------------------------
   const setupListeners = () => {
-    if (typeof window === 'undefined') return () => {}
+    if (isServer) return () => {}
     const cleanups: (() => void)[] = []
 
     // Click-based open/close

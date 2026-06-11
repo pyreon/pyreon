@@ -64,7 +64,7 @@
  */
 
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { h, isClient } from '@pyreon/core'
 import { encodeIslandProps } from './island-codec'
 
 export interface ServerIslandOptions {
@@ -175,7 +175,7 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
         // timing race; the component owning its lifecycle always can.
         // Server-side the ref never fires; static no-full-hydrate pages
         // use `activateServerIslands` instead.
-        ...(typeof document !== 'undefined'
+        ...(isClient
           ? {
               ref: (el: HTMLElement | null) => {
                 if (el) activateServerIslandElement(el)

@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
 import { cx, onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
@@ -43,7 +43,7 @@ export function Math(props: MathProps): VNodeChild {
 
   onMount(() => {
     if (source.length === 0) return undefined
-    if (typeof window === 'undefined') return undefined
+    if (isServer) return undefined
     // Dynamic import — KaTeX ships in the user's bundle ONLY when this
     // component mounts on the client. SSR (or no-KaTeX builds)
     // gracefully fall back to a `<code>` element.

@@ -1,5 +1,5 @@
 import type { ComponentFn } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { h, isServer } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
 import { hydrateLoaderData, RouterProvider } from '@pyreon/router'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
@@ -60,7 +60,7 @@ export function startClient(options: StartClientOptions) {
   // `startClient` is the browser entry point — only ever called from a
   // user's `client.ts` mounted in the browser. Explicit guard documents
   // that contract and gives a clearer error than `document is not defined`.
-  if (typeof document === 'undefined') {
+  if (isServer) {
     throw new Error('[Pyreon] startClient() can only be called in the browser.')
   }
   const container = document.getElementById('app')

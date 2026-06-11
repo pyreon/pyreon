@@ -2867,6 +2867,33 @@ describe('early-return guards: throw terminator', () => {
     expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBe(0)
   })
 
+  it('no-dom-in-setup silent under `if (isServer) return` head guard (canonical SSR primitive)', () => {
+    // Consistency with pyreon/prefer-isserver, which pushes the typeof guard above
+    // TO `isServer` — the rule must accept `isServer` as the same head guard or the
+    // two rules contradict.
+    const source = `
+      import { isServer } from '@pyreon/reactivity'
+      function loadScript() {
+        if (isServer) return
+        const x = document.getElementById('app')
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBe(0)
+  })
+
+  it('no-dom-in-setup silent under `if (!isClient) return` head guard', () => {
+    const source = `
+      import { isClient } from '@pyreon/reactivity'
+      function loadScript() {
+        if (!isClient) return
+        const x = document.querySelector('#app')
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBe(0)
+  })
+
   it('no-dom-in-setup still fires without an early-return guard', () => {
     const source = `
       function init() {

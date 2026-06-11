@@ -1,5 +1,5 @@
 import { onMount, onUnmount, useContext } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, isClient } from '@pyreon/reactivity'
 import type { HeadEntry, HeadTag, UseHeadInput } from './context'
 import { HeadContext } from './context'
 import { syncDom } from './dom'
@@ -116,7 +116,7 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
   const id = Symbol()
 
   if (typeof input === 'function') {
-    if (typeof document !== 'undefined') {
+    if (isClient) {
       // CSR: reactive — re-register whenever signals change
       effect(() => {
         ctx.add(id, buildEntry(input()))

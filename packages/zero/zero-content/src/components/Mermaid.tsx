@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
 import { createUniqueId, cx, onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
@@ -40,7 +40,7 @@ export function Mermaid(props: MermaidProps): VNodeChild {
 
   onMount(() => {
     if (source.length === 0) return undefined
-    if (typeof window === 'undefined') return undefined
+    if (isServer) return undefined
     void (async () => {
       try {
         // mermaid is an OPTIONAL peer dep — runtime-constructed

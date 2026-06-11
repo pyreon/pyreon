@@ -1,5 +1,5 @@
 import { createContext } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
 import type { Plugin } from 'vite'
 import type { FileRoute } from './types'
 
@@ -666,12 +666,12 @@ export function setLocale(
   localeSignal.set(locale)
 
   // Persist to cookie
-  if (typeof document !== 'undefined') {
+  if (isClient) {
     document.cookie = `${config.cookieName ?? 'locale'}=${locale}; path=/; max-age=31536000`
   }
 
   // Navigate to localized URL — use pushState to avoid full page reload
-  if (typeof window !== 'undefined') {
+  if (isClient) {
     const strategy = config.strategy ?? 'prefix-except-default'
     const { pathWithoutLocale } = extractLocaleFromPath(
       window.location.pathname,

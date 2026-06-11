@@ -1,5 +1,6 @@
 import { render } from './render'
 import type { DocNode, RenderOptions } from './types'
+import { isServer } from '@pyreon/reactivity'
 
 const FORMAT_MAP: Record<string, string> = {
   html: 'html',
@@ -65,7 +66,7 @@ export async function download(
           type: MIME_TYPES[format] ?? 'application/octet-stream',
         })
 
-  if (typeof document === 'undefined') {
+  if (isServer) {
     throw new Error('[@pyreon/document] download() requires a browser environment.')
   }
 

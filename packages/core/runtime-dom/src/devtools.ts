@@ -21,6 +21,7 @@ import {
   deactivateReactiveDevtools,
   getReactiveFires,
   getReactiveGraph,
+  isClient,
   type ReactiveFire,
   type ReactiveGraph,
 } from '@pyreon/reactivity'
@@ -232,7 +233,7 @@ function disableOverlay(): void {
 
 let _installed = false
 // Resolved once at module load — avoids per-call typeof branch in coverage
-const _hasWindow = typeof window !== 'undefined'
+const _hasWindow = isClient
 
 export function installDevTools(): void {
   if (!_hasWindow || _installed) return

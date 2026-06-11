@@ -77,7 +77,7 @@
 
 import type { ComponentFn, Props, VNode } from '@pyreon/core'
 import { h, onMount } from '@pyreon/core'
-import { getContextOwner } from '@pyreon/reactivity'
+import { getContextOwner, isClient } from '@pyreon/reactivity'
 import { encodeIslandProps } from './island-codec'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ export function island<P extends Props = Props>(
     // Suspense boundary, and (b) races/defeats a one-shot external
     // `hydrateIslandsAuto` scan. Owning hydration here sidesteps both: no inline
     // async render, no dependency on external scan timing.
-    if (typeof document !== 'undefined') {
+    if (isClient) {
       if (hydrate === 'never') return h('pyreon-island', attrs)
       let islandEl: HTMLElement | null = null
       // Capture the context owner NOW, synchronously during this component's
