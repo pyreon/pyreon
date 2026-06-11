@@ -39,3 +39,13 @@ bun packages/native/cli/src/cli.ts build \
     --source="${SRC_DIR}" \
     --out="${OUT_DIR}" \
     --kotlin-package=com.pyreon.generated
+
+# Asset pipeline (asset-pipeline arc): materialize the shared assets/
+# into res/drawable-* density buckets next to the app's main sources.
+ASSETS_DIR="${SRC_DIR}/../assets"
+if [[ -d "${ASSETS_DIR}" ]]; then
+    bun packages/native/cli/src/cli.ts assets \
+        --target=android \
+        --source="${ASSETS_DIR}" \
+        --out="${PROJECT_DIR}/app/src/main"
+fi

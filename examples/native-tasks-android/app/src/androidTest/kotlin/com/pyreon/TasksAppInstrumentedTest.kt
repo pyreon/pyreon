@@ -53,6 +53,15 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("login-page")
             .assertIsDisplayed()
+
+        // Asset-pipeline arc: the branded header resolves through
+        // pyreonDrawable("pyreon-logo") → res/drawable-*/pyreon_logo.png
+        // (materialized by scripts/build.sh). A missing resource throws
+        // inside pyreonDrawable with an actionable message, which fails
+        // this assert via the composition error.
+        composeRule
+            .onNodeWithTag("brand-logo")
+            .assertIsDisplayed()
     }
 
     @Test

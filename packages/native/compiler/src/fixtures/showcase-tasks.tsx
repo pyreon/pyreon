@@ -52,7 +52,7 @@ import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { For, Show } from '@pyreon/core'
-import { Stack, Inline, Field, Button, Text } from '@pyreon/primitives'
+import { Stack, Inline, Field, Button, Text, Image } from '@pyreon/primitives'
 import {
   createRouter,
   useNavigate,
@@ -102,6 +102,14 @@ function LoginPage() {
 
   return (
     <Stack gap={3} padding={4} data-testid="login-page">
+      <Image
+        src="pyreon-logo.png"
+        alt="Pyreon"
+        width={28}
+        height={28}
+        fit="contain"
+        data-testid="brand-logo"
+      />
       <Text>Sign In</Text>
       <Text>At least 3 characters — this is a demo.</Text>
       <Field

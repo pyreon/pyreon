@@ -19,7 +19,8 @@ export function GalleryRow() {
   const pressed = signal<number>(0)
   return (
     <Stack>
-      <Image src="/photo.jpg" alt="A photo" />
+      <Image src="https://example.test/photo.jpg" alt="A photo" />
+      <Image src="brand-mark.png" alt="Brand" width={24} height={24} fit="contain" />
       <Icon name="star" />
       <Press onPress={() => pressed.set(pressed() + 1)}>
         <Text>Press me</Text>
