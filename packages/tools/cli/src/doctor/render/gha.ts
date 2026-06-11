@@ -19,9 +19,17 @@ const GHA_LEVEL: Record<Severity, string> = {
   info: 'notice',
 }
 
+// Message body: GHA requires these chars URL-encoded.
 const escape = (s: string): string =>
-  // GHA annotations require these chars URL-encoded
   s.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')
+
+// Property VALUES (`file=`, `title=`) additionally require `,` and `:`
+// encoded — otherwise a `,` in the value ends the property early
+// (`file=a,b.ts` → file=a + a bogus `b.ts` property). Per the
+// workflow-command spec, only property values need this; the message
+// after `::` uses the lighter `escape` above.
+const escapeProperty = (s: string): string =>
+  escape(s).replace(/,/g, '%2C').replace(/:/g, '%3A')
 
 export const renderGha = (report: DoctorReport): string => {
   const lines: string[] = []
@@ -35,8 +43,8 @@ export const renderGha = (report: DoctorReport): string => {
   for (const f of report.findings) {
     const level = GHA_LEVEL[f.severity]
     const props: string[] = []
-    props.push(`title=${escape(f.code)}`)
-    if (f.location?.relPath) props.push(`file=${escape(f.location.relPath)}`)
+    props.push(`title=${escapeProperty(f.code)}`)
+    if (f.location?.relPath) props.push(`file=${escapeProperty(f.location.relPath)}`)
     if (f.location?.line) props.push(`line=${f.location.line}`)
     if (f.location?.column) props.push(`col=${f.location.column}`)
     const msg = f.fix ? `${f.message} — ${f.fix}` : f.message

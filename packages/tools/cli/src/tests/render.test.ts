@@ -220,6 +220,29 @@ describe('renderGha', () => {
     expect(out).toContain('col=5')
   })
 
+  it('URL-encodes `,` and `:` in property values (file=/title=) per the workflow-command spec', () => {
+    // A `,` in a property value ends the property early — `file=a,b.ts`
+    // parses as file=a + a bogus `b.ts` property. Property values must
+    // encode `,`→%2C and `:`→%3A; the message body (after `::`) does not.
+    const report = buildReport([
+      g('lint', 'correctness', [
+        f('error', 'correctness', 'lint/a,b:c', {
+          location: {
+            path: '/abs/weird,name:1.ts',
+            relPath: 'src/weird,name:1.ts',
+            line: 3,
+            column: 2,
+          },
+        }),
+      ]),
+    ])
+    const out = renderGha(report)
+    expect(out).toContain('file=src/weird%2Cname%3A1.ts')
+    expect(out).toContain('title=lint/a%2Cb%3Ac')
+    // The raw, unencoded value must NOT appear as a property.
+    expect(out).not.toContain('file=src/weird,name:1.ts')
+  })
+
   it('maps severity correctly (error → error, warning → warning, info → notice)', () => {
     const report = buildReport([
       g('lint', 'correctness', [

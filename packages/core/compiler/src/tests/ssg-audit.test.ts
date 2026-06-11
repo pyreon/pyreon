@@ -22,7 +22,7 @@ interface Fixture {
 function makeFixture(): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'pyreon-ssg-audit-fixture-'))
   mkdirSync(join(root, 'packages'), { recursive: true })
-  return {
+  const fixture: Fixture = {
     root,
     write: (relPath, body) => {
       const full = join(root, relPath)
@@ -31,6 +31,15 @@ function makeFixture(): Fixture {
     },
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   }
+  // The dynamic-route detector only fires for apps in `mode: 'ssg'` (SPA/SSR/
+  // ISR never prerender). Every fixture writes routes under `examples/myapp/`,
+  // so give that app a default SSG vite.config — the SPA-skip is covered by a
+  // dedicated test that overwrites this with `mode: 'spa'`.
+  fixture.write(
+    'examples/myapp/vite.config.ts',
+    `import { zero } from '@pyreon/zero'\nexport default { plugins: [zero({ mode: 'ssg' })] }\n`,
+  )
+  return fixture
 }
 
 function findingCodes(result: ReturnType<typeof auditSsg>): SsgFindingCode[] {
@@ -270,6 +279,46 @@ export default function Post() { return null }`,
       )
       const result = auditSsg(fixture.root)
       expect(findingCodes(result)).toContain('dynamic-route-missing-get-static-paths')
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
+  it('does NOT fire for a dynamic route in a `mode: "spa"` app (SPA never prerenders)', () => {
+    // The whole premise — "under mode:'ssg' the route is silently skipped" —
+    // doesn't apply to SPA/SSR/ISR apps, which never prerender. Flagging a
+    // missing getStaticPaths there was a false positive (e.g. examples/chat,
+    // examples/docs-pyreon are both mode:'spa').
+    const fixture = makeFixture()
+    try {
+      // Overwrite the default SSG config with SPA.
+      fixture.write(
+        'examples/myapp/vite.config.ts',
+        `import { zero } from '@pyreon/zero'\nexport default { plugins: [zero({ mode: 'spa' })] }\n`,
+      )
+      fixture.write(
+        'examples/myapp/src/routes/posts/[id].tsx',
+        'export default () => null',
+      )
+      const result = auditSsg(fixture.root)
+      expect(findingCodes(result)).not.toContain('dynamic-route-missing-get-static-paths')
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
+  it('does NOT fire when there is no vite.config / no explicit ssg mode (SSG is opt-in)', () => {
+    const fixture = makeFixture()
+    try {
+      // Remove the default config by pointing at a route with no config above it.
+      fixture.write('standalone/src/routes/posts/[id].tsx', 'export default () => null')
+      const result = auditSsg(fixture.root)
+      const dyn = result.findings.filter(
+        (f) =>
+          f.code === 'dynamic-route-missing-get-static-paths' &&
+          f.location.relPath.includes('standalone/'),
+      )
+      expect(dyn).toEqual([])
     } finally {
       fixture.cleanup()
     }

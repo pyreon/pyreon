@@ -8,13 +8,16 @@
  * advisory project-wide scan. See `.claude/rules/anti-patterns.md` for
  * the full leak-class taxonomy.
  *
- * **Severity mapping**: every audit finding maps to severity `'info'`
- * by design. The audit is advisory — false positives are expected,
- * the report is for manual triage, NOT a CI gate. Mapping to
- * `'warning'` or `'error'` would push the score down for known-bounded
- * patterns (Chrome extension scripts, framework-owned lifecycles,
- * enum-keyed caches) which the audit deliberately flags. Treating
- * them as info keeps the doctor's overall grade honest.
+ * **Severity + category mapping**: every audit finding maps to severity
+ * `'info'` AND the ADVISORY `'best-practices'` category by design. The audit
+ * is advisory — false positives are expected (Chrome extension scripts,
+ * framework-owned lifecycles, enum-keyed caches the audit deliberately
+ * flags), the report is for manual triage, NOT a grade/CI input. `info`
+ * alone is insufficient: `score.ts` penalizes `info` at 1pt each, so ~45
+ * advisory findings still tanked the architecture grade to F — defeating
+ * the stated intent. Routing them to `best-practices` (in `ADVISORY_CATEGORIES`)
+ * keeps them VISIBLE but excluded from the grade mean and from `--ci`'s exit
+ * code — which is what "keeps the grade honest" actually requires.
  *
  * **Implementation note (subprocess adapter).** Mirrors `audit-types.ts`
  * — invokes the standalone `scripts/audit-leak-classes.ts` via
@@ -50,7 +53,8 @@ export const _parseAuditLeakClassesOutput = (
 ): { findings: Finding[]; total: number } => {
   const parsed = JSON.parse(raw) as ScriptOutput
   const findings: Finding[] = parsed.findings.map((f) => ({
-    category: 'architecture' as const,
+    // ADVISORY category — excluded from the grade + --ci. See JSDoc above.
+    category: 'best-practices' as const,
     // ALWAYS info — advisory audit. See JSDoc above for the rationale.
     severity: 'info' as const,
     code: `audit-leak-classes/class-${f.leakClass.toLowerCase()}-${f.detector}`,
@@ -93,7 +97,7 @@ export const runAuditLeakClassesGate = async (
   }
   catch (err) {
     findings.push({
-      category: 'architecture',
+      category: 'best-practices',
       severity: 'error',
       code: 'audit-leak-classes/gate-failed',
       gate: 'audit-leak-classes',
@@ -103,7 +107,7 @@ export const runAuditLeakClassesGate = async (
 
   return {
     gate: 'audit-leak-classes',
-    category: 'architecture',
+    category: 'best-practices',
     findings,
     meta: {
       scanned: total,

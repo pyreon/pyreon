@@ -10,22 +10,13 @@
 
 import { generateContext } from './context'
 import { type DoctorOptions, doctor } from './doctor'
-import type { GateName } from './doctor/orchestrator'
+import { FAST_GATES, type GateName, SLOW_GATES } from './doctor/orchestrator'
 
-const VALID_GATES: GateName[] = [
-  'react-patterns',
-  'pyreon-patterns',
-  'lint',
-  'distribution',
-  'doc-claims',
-  'audit-tests',
-  'islands-audit',
-  'ssg-audit',
-  'content-audit',
-  'audit-leak-classes',
-  'audit-types',
-  'bundle-budgets',
-]
+// Single-sourced from the orchestrator so the CLI's valid-gate set can
+// NEVER drift from the gates that actually run. (Previously a hand-kept
+// duplicate list — it had silently dropped `check-dedup`, so a gate that
+// ran by default was rejected by `--only`/`--skip`.)
+const VALID_GATES: GateName[] = [...FAST_GATES, ...SLOW_GATES]
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -36,7 +27,7 @@ function printUsage(): void {
 
   Commands:
     doctor [options]                 Project-wide health audit with 0-100 score.
-                                     Runs 9 fast gates by default; --full enables 2 slow gates.
+                                     Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
 
   doctor options:
@@ -51,8 +42,8 @@ function printUsage(): void {
     --audit-min-risk high|medium|low Minimum risk for test-env audit (default: medium).
 
   doctor gates:
-    Fast: ${VALID_GATES.slice(0, 10).join(', ')}
-    Slow: ${VALID_GATES.slice(10).join(', ')} (require --full)
+    Fast: ${FAST_GATES.join(', ')}
+    Slow: ${SLOW_GATES.join(', ')} (require --full)
 
   Legacy doctor flags (still work — map to --only shortcuts):
     --audit-tests                    Equivalent to --only audit-tests

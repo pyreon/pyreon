@@ -179,6 +179,73 @@ describe('runPyreonPatternsGate', () => {
     expect(result.findings).toEqual([])
     fs.rmSync(cwd, { recursive: true, force: true })
   })
+
+  // ── overlap with the `lint` gate ──
+  // detectPyreonPatterns overlaps the lint rules. For codes the lint gate
+  // FULLY owns (process-dev-gate, raw-add-event-listener, query-options),
+  // pyreon-patterns DEFERS — skips them entirely — to avoid double-reporting
+  // at a wrong severity + FPing on framework code the lint rule exempts.
+  // raw-REMOVE is kept (the add-only lint rule can't catch it) but honors the
+  // add-rule's framework-layer exemptPaths.
+
+  it('DEFERS process-dev-gate to the lint gate (never double-reported by pyreon-patterns)', async () => {
+    const cwd = makeTmpDir()
+    writeFile(
+      cwd,
+      'packages/core/app/src/x.ts',
+      `if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') console.warn('dev')\n`,
+    )
+    const result = await runPyreonPatternsGate({ cwd })
+    assertShape(result, 'pyreon-patterns')
+    // The `lint` gate owns process-dev-gate (with correct severity + config);
+    // pyreon-patterns must not re-flag it.
+    expect(result.findings.some((f) => f.code === 'pyreon-patterns/process-dev-gate')).toBe(
+      false,
+    )
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('CONTROL: still reports raw-remove-event-listener (lint is ADD-only — sole catcher) when not exempted', async () => {
+    const cwd = makeTmpDir()
+    writeFile(
+      cwd,
+      'packages/core/app/src/x.ts',
+      `export function f(el: any) { el.removeEventListener('click', g) }\n`,
+    )
+    const result = await runPyreonPatternsGate({ cwd })
+    assertShape(result, 'pyreon-patterns')
+    expect(
+      result.findings.some((f) => f.code === 'pyreon-patterns/raw-remove-event-listener'),
+    ).toBe(true)
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('honors the add-rule exemptPaths for the KEPT raw-remove-event-listener code', async () => {
+    const cwd = makeTmpDir()
+    writeFile(
+      cwd,
+      'packages/core/runtime-dom/src/x.ts',
+      `export function f(el: any) { el.removeEventListener('click', g) }\n`,
+    )
+    writeFile(
+      cwd,
+      '.pyreonlintrc.json',
+      JSON.stringify({
+        rules: {
+          'pyreon/no-raw-addeventlistener': [
+            'info',
+            { exemptPaths: ['packages/core/runtime-dom/'] },
+          ],
+        },
+      }),
+    )
+    const result = await runPyreonPatternsGate({ cwd })
+    assertShape(result, 'pyreon-patterns')
+    expect(
+      result.findings.some((f) => f.code === 'pyreon-patterns/raw-remove-event-listener'),
+    ).toBe(false)
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
 })
 
 describe('runIslandsAuditGate', () => {

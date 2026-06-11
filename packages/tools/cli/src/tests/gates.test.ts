@@ -733,10 +733,13 @@ describe('_parseAuditLeakClassesOutput', () => {
     expect(total).toBe(4)
     expect(findings).toHaveLength(4)
     for (const f of findings) {
-      // Every finding is INFO — the audit is advisory by design.
+      // Every finding is INFO + the ADVISORY `best-practices` category —
+      // the audit is advisory by design (info alone still counts 1pt each
+      // in the score, so the category must be advisory to be excluded from
+      // the grade + --ci; see the gate's JSDoc).
       expect(f.severity).toBe('info')
       expect(f.gate).toBe('audit-leak-classes')
-      expect(f.category).toBe('architecture')
+      expect(f.category).toBe('best-practices')
     }
     // Class label baked into the code so downstream renderers can
     // group by class without re-parsing the message.
