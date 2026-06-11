@@ -266,3 +266,60 @@ const ALIGN_KOTLIN_V: Record<string, string> = {
   end: 'Alignment.Bottom',
   stretch: 'Alignment.Top',
 }
+
+/**
+ * Canonical icon names → per-platform glyph identifiers (asset-pipeline
+ * arc PR-1.3). ONE semantic name in shared source; each target renders
+ * its native icon system:
+ *
+ *   - iOS:     SF Symbols (`Image(systemName: <sf>)`)
+ *   - Android: Material Icons CORE set (`Icons.Filled.<material>` —
+ *     compile-time references, so the host needs only the small
+ *     `material-icons-core` artifact, never the huge -extended one)
+ *   - Web:     the canonical name doubles as the app sprite's symbol id
+ *
+ * Curated to the intersection of material-icons-core's Filled set and
+ * everyday UI needs (~36 glyphs: navigation, actions, status). An
+ * UNMAPPED name warns and passes through raw on iOS (SF Symbols are
+ * string-keyed, so direct SF ids keep working) and renders the
+ * `warning` placeholder glyph on Android (visible, never silent).
+ */
+export const ICON_MAP: Record<string, { sf: string; material: string }> = {
+  add: { sf: 'plus', material: 'Add' },
+  'arrow-back': { sf: 'chevron.backward', material: 'ArrowBack' },
+  'arrow-down': { sf: 'chevron.down', material: 'KeyboardArrowDown' },
+  'arrow-forward': { sf: 'chevron.forward', material: 'ArrowForward' },
+  'arrow-up': { sf: 'chevron.up', material: 'KeyboardArrowUp' },
+  account: { sf: 'person.crop.circle', material: 'AccountCircle' },
+  calendar: { sf: 'calendar', material: 'DateRange' },
+  cart: { sf: 'cart.fill', material: 'ShoppingCart' },
+  check: { sf: 'checkmark', material: 'Check' },
+  'check-circle': { sf: 'checkmark.circle.fill', material: 'CheckCircle' },
+  close: { sf: 'xmark', material: 'Close' },
+  delete: { sf: 'trash', material: 'Delete' },
+  edit: { sf: 'pencil', material: 'Edit' },
+  email: { sf: 'envelope.fill', material: 'Email' },
+  exit: { sf: 'rectangle.portrait.and.arrow.right', material: 'ExitToApp' },
+  face: { sf: 'face.smiling', material: 'Face' },
+  favorite: { sf: 'heart.fill', material: 'Favorite' },
+  'favorite-outline': { sf: 'heart', material: 'FavoriteBorder' },
+  home: { sf: 'house.fill', material: 'Home' },
+  info: { sf: 'info.circle.fill', material: 'Info' },
+  list: { sf: 'list.bullet', material: 'List' },
+  location: { sf: 'mappin.circle.fill', material: 'LocationOn' },
+  lock: { sf: 'lock.fill', material: 'Lock' },
+  menu: { sf: 'line.3.horizontal', material: 'Menu' },
+  more: { sf: 'ellipsis', material: 'MoreVert' },
+  notifications: { sf: 'bell.fill', material: 'Notifications' },
+  person: { sf: 'person.fill', material: 'Person' },
+  phone: { sf: 'phone.fill', material: 'Phone' },
+  play: { sf: 'play.fill', material: 'PlayArrow' },
+  refresh: { sf: 'arrow.clockwise', material: 'Refresh' },
+  search: { sf: 'magnifyingglass', material: 'Search' },
+  send: { sf: 'paperplane.fill', material: 'Send' },
+  settings: { sf: 'gearshape.fill', material: 'Settings' },
+  share: { sf: 'square.and.arrow.up', material: 'Share' },
+  star: { sf: 'star.fill', material: 'Star' },
+  'thumb-up': { sf: 'hand.thumbsup.fill', material: 'ThumbUp' },
+  warning: { sf: 'exclamationmark.triangle.fill', material: 'Warning' },
+}

@@ -5,6 +5,7 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import {
+  ICON_MAP,
   isCanonicalPrimitive,
   resolveAlign,
   resolveColor,
@@ -2851,16 +2852,35 @@ function emitKotlinIcon(
   if (typeof name !== 'string') {
     return emitKotlinGeneric(e, indent)
   }
+  // Canonical name → COMPILE-TIME Icons.Filled reference via ICON_MAP.
+  // This replaced the phantom `pyreonIcon(name)` runtime lookup, which
+  // existed ONLY as a kotlinc stub — any real Gradle build with an
+  // <Icon> failed on the unresolved reference (the same stub-masked
+  // class as the fetch arc's missing imports; no example used Icon, so
+  // the device gate never saw it). Compile-time refs also mean the
+  // host needs only the small material-icons-core artifact. Unmapped
+  // names warn and render the `warning` placeholder glyph — visible,
+  // never silent.
+  const mapped = ICON_MAP[name]
+  if (!mapped) {
+    _emitWarnings.push(
+      `<Icon name=${JSON.stringify(name)}>: not in the canonical icon map — rendering the warning placeholder on Android (raw SF id pass-through is iOS-only). See ICON_MAP in canonical-primitives.ts.`,
+    )
+  }
   const args = [
-    `imageVector = pyreonIcon(${JSON.stringify(name)})`,
+    `imageVector = Icons.Filled.${mapped ? mapped.material : 'Warning'}`,
     `contentDescription = ${JSON.stringify(name)}`,
   ]
   const color = readStaticAttrKotlin(e, 'color')
   if (typeof color === 'string') args.push(`tint = ${resolveColor(color, 'kotlin')}`)
+  // Layout modifier FIRST so data-testid threads (the Text/Heading
+  // lesson — the size-only modifier used to drop the tag entirely).
+  const layoutMod = emitKotlinLayoutModifier(e)
   const size = readStaticAttrKotlin(e, 'size')
-  if (typeof size === 'string') {
-    args.push(`modifier = Modifier.size(${ICON_SIZE_DP[size] ?? 20}.dp)`)
-  }
+  const sizeMod = typeof size === 'string' ? `.size(${ICON_SIZE_DP[size] ?? 20}.dp)` : ''
+  const modifier =
+    layoutMod !== '' ? `${layoutMod}${sizeMod}` : sizeMod !== '' ? `Modifier${sizeMod}` : ''
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
   return `Icon(${args.join(', ')})`
 }
 

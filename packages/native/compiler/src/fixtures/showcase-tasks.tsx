@@ -52,7 +52,7 @@ import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { For, Show } from '@pyreon/core'
-import { Stack, Inline, Field, Button, Text, Image } from '@pyreon/primitives'
+import { Stack, Inline, Field, Button, Text, Image, Icon } from '@pyreon/primitives'
 import {
   createRouter,
   useNavigate,
@@ -162,6 +162,7 @@ function TasksPage() {
   return (
     <Stack gap={3} padding={4} data-testid="tasks-page">
       <Inline gap={2}>
+        <Icon name="star" color="primary" size="md" data-testid="header-icon" />
         <Text>My Tasks</Text>
         <Text>{remaining} open</Text>
       </Inline>

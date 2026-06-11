@@ -120,6 +120,16 @@ function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('ContentScale.')) {
     imports.push('import androidx.compose.ui.layout.ContentScale')
   }
+  // Icon emit (PR-1.3): compile-time Icons.Filled references need the
+  // Icons object + one import per used glyph (Kotlin star imports are
+  // single-package; the filled glyphs each live as a top-level val).
+  const glyphs = [...new Set([...emitted.matchAll(/Icons\.Filled\.(\w+)/g)].map((m) => m[1]!))]
+  if (glyphs.length > 0) {
+    imports.push('import androidx.compose.material.icons.Icons')
+    for (const g of glyphs.sort()) {
+      imports.push(`import androidx.compose.material.icons.filled.${g}`)
+    }
+  }
   return imports.length === 0 ? '' : imports.join('\n') + '\n'
 }
 

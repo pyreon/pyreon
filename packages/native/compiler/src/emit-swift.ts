@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import {
+  ICON_MAP,
   isCanonicalPrimitive,
   resolveAlign,
   resolveColor,
@@ -3336,7 +3337,16 @@ function emitSwiftIcon(
   if (typeof name !== 'string') {
     return emitSwiftGeneric(e, indent)
   }
-  let result = `Image(systemName: ${JSON.stringify(name)})`
+  // Canonical name → SF Symbol via ICON_MAP. Unmapped names warn and
+  // pass through raw — SF Symbols are string-keyed, so direct SF ids
+  // (the pre-mapping convention) keep working.
+  const mapped = ICON_MAP[name]
+  if (!mapped) {
+    _emitWarnings.push(
+      `<Icon name=${JSON.stringify(name)}>: not in the canonical icon map — passing through as a raw SF Symbol id on iOS (renders a placeholder on Android). See ICON_MAP in canonical-primitives.ts.`,
+    )
+  }
+  let result = `Image(systemName: ${JSON.stringify(mapped ? mapped.sf : name)})`
   const size = readStaticAttr(e, 'size')
   if (typeof size === 'string') {
     result += `.imageScale(${ICON_SCALE[size] ?? '.medium'})`

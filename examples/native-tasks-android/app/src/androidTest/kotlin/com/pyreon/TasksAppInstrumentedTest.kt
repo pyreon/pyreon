@@ -101,6 +101,13 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
+        // Icon-mapping arc (PR-1.3): the header's canonical
+        // <Icon name="star"> references Icons.Filled.Star at compile
+        // time (material-icons-core).
+        composeRule
+            .onNodeWithTag("header-icon")
+            .assertIsDisplayed()
+
         // Phase 2: add a task — proves the STORE list mutation
         // (.set spread-append on the mutableStateOf-backed object)
         // re-renders the keyed list.

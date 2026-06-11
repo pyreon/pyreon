@@ -418,6 +418,18 @@ FillBounds/None` (Compose); the web default `cover` holds everywhere.
 Asset-name collisions after Android sanitization (`my-logo.png` vs
 `my_logo.png` → both `my_logo`) abort the build loudly.
 
+### Icons — the canonical name map
+
+`<Icon name="star">` uses ONE semantic name everywhere: iOS maps it to
+an SF Symbol (`Image(systemName: "star.fill")`), Android to a
+COMPILE-TIME Material reference (`Icons.Filled.Star` — hosts need only
+the small `material-icons-core` artifact, never `-extended`), and web
+to the app sprite's symbol id. The curated ~37-glyph map lives in
+`canonical-primitives.ts` (`ICON_MAP`: navigation, actions, status).
+An UNMAPPED name warns at compile time and stays visible: iOS passes
+it through raw (direct SF ids keep working), Android renders the
+`warning` placeholder glyph — never a silent blank.
+
 ## Native data & services
 
 Data hooks compile to native via per-service **runtime ports** behind the
