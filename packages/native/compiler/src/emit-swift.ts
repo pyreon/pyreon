@@ -2619,6 +2619,24 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
   return `{ ${emitSwiftExpr(handler, indent)} }`
 }
 
+// Extract the body from an `emitSwiftAction` closure string
+// (`{ body }` -> `body`). Used where the body must be embedded inside
+// another closure — e.g. `Binding(set: { _ in <body> })`.
+//
+// ReDoS-safe by construction. The previous form stripped the braces with
+// an unanchored trailing "zero-or-more-whitespace then brace then end"
+// match, which re-scanned the run of whitespace from every start index —
+// O(n^2) on a string of n trailing spaces with no closing brace
+// (CodeQL js/polynomial-redos). The closure here is library-emitted Swift
+// source derived from the `.tsx` input, so the input string is
+// attacker-influenceable. This form strips the braces with single-char
+// anchored matches (no quantifier) and lets the native, linear `.trim()`
+// handle the surrounding whitespace — behaviourally identical
+// (`emitSwiftAction` always returns a `{ ... }` closure, including `{ }`).
+function stripSwiftClosureBody(closure: string): string {
+  return closure.replace(/^\{/, '').replace(/\}$/, '').trim()
+}
+
 /**
  * Resolve a handler expression to a function-typed identifier name,
  * if it is one. Handles bare identifiers AND props-member accesses
@@ -3528,7 +3546,7 @@ function emitSwiftModal(
   }
   const openExpr = emitSwiftExpr(unwrapAccessorArrow(openAttr.value), indent)
   const closeClosure = emitSwiftAction(onClose.handler, indent + 4)
-  const closeBody = closeClosure.replace(/^\{\s*/, '').replace(/\s*\}$/, '')
+  const closeBody = stripSwiftClosureBody(closeClosure)
   const inner = ' '.repeat(indent + 4)
   const bindPad = ' '.repeat(indent + 2)
   const binding =
@@ -3729,7 +3747,7 @@ function emitSwiftToggle(
   // emitSwiftAction returns a `{ body }` closure — extract the body
   // so we can embed it inside `Binding(set: { _ in body })`.
   const writeClosure = emitSwiftAction(onChange.handler, indent + 4)
-  const writeBody = writeClosure.replace(/^\{\s*/, '').replace(/\s*\}$/, '')
+  const writeBody = stripSwiftClosureBody(writeClosure)
   const pad = ' '.repeat(indent + 2)
   const inner = ' '.repeat(indent + 4)
   let result =
