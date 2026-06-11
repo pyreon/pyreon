@@ -1,5 +1,6 @@
 import { For, onMount, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { RouterLink } from '@pyreon/router'
 import { PyreonHeroMark } from './PyreonHeroMark'
 
 // Verbatim structural port of
@@ -10,12 +11,14 @@ import { PyreonHeroMark } from './PyreonHeroMark'
 // break the CSS bound to those exact names.
 
 // Real measured numbers — CLAUDE.md "Benchmark Results" (Chromium via
-// Playwright). ms, lower = faster. Pyreon ties Solid within noise.
+// Playwright; median of 100 pooled samples, --repeat 5, 2026-06-11 run).
+// ms, lower = faster. Keep in sync with the CLAUDE.md table the footer
+// cites as source.
 const BENCHMARK = [
-  { name: 'Pyreon', c1k: '9', r1k: '10', upd: '5', sel: '5', c10k: '103', hot: true },
-  { name: 'Solid', c1k: '10', r1k: '10', upd: '5', sel: '5', c10k: '104', hot: false },
-  { name: 'Vue 3', c1k: '11', r1k: '11', upd: '7', sel: '5', c10k: '131', hot: false },
-  { name: 'React 19', c1k: '33', r1k: '31', upd: '6', sel: '8', c10k: '540', hot: false },
+  { name: 'Pyreon', c1k: '9.1', r1k: '9.1', upd: '0.8', sel: '0', c10k: '93.9', hot: true },
+  { name: 'Solid', c1k: '9.9', r1k: '10.0', upd: '4.6', sel: '0', c10k: '114.6', hot: false },
+  { name: 'Vue 3', c1k: '10.2', r1k: '10.2', upd: '1.6', sel: '0.7', c10k: '109.3', hot: false },
+  { name: 'React 19', c1k: '11.0', r1k: '11.0', upd: '1.1', sel: '0.3', c10k: '220.1', hot: false },
 ]
 
 const MECHANISM = [
@@ -157,11 +160,50 @@ const ECOSYSTEM = [
   { cat: 'zero', count: 4, items: ['zero', 'zero-cli', 'create-zero', 'meta'] },
 ]
 
-const FOOTER = [
-  { h: 'Docs', items: ['Getting started', 'Reactivity', 'Zero · full-stack', 'AI · MCP + llms.txt'] },
-  { h: 'Packages', items: ['@pyreon/reactivity', '@pyreon/router', '@pyreon/query', 'All 55 packages'] },
-  { h: 'Tools', items: ['pyreon CLI', 'pyreon doctor', 'Devtools', 'Lint'] },
-  { h: 'Project', items: ['GitHub', 'Changelog', 'Benchmarks', 'RFCs'] },
+// Internal items carry `to` (RouterLink — base-aware + SPA nav);
+// external items carry `href` (plain anchor).
+interface FooterItem {
+  label: string
+  to?: string
+  href?: string
+}
+const FOOTER: { h: string; items: FooterItem[] }[] = [
+  {
+    h: 'Docs',
+    items: [
+      { label: 'Getting started', to: '/docs/getting-started' },
+      { label: 'Reactivity', to: '/docs/reactivity' },
+      { label: 'Zero · full-stack', to: '/docs/zero' },
+      { label: 'AI · MCP + llms.txt', to: '/docs/mcp' },
+    ],
+  },
+  {
+    h: 'Packages',
+    items: [
+      { label: '@pyreon/reactivity', to: '/docs/reactivity' },
+      { label: '@pyreon/router', to: '/docs/router' },
+      { label: '@pyreon/query', to: '/docs/query' },
+      { label: 'All 62 packages', to: '/docs/' },
+    ],
+  },
+  {
+    h: 'Tools',
+    items: [
+      { label: 'pyreon CLI', to: '/docs/cli' },
+      { label: 'pyreon doctor', to: '/docs/cli' },
+      { label: 'Devtools', to: '/docs/devtools' },
+      { label: 'Lint', to: '/docs/lint' },
+    ],
+  },
+  {
+    h: 'Project',
+    items: [
+      { label: 'GitHub', href: 'https://github.com/pyreon/pyreon' },
+      { label: 'Changelog', href: 'https://github.com/pyreon/pyreon/releases' },
+      { label: 'Benchmarks', href: 'https://github.com/pyreon/pyreon/tree/main/examples/benchmark' },
+      { label: 'RFCs', href: 'https://github.com/pyreon/pyreon/discussions' },
+    ],
+  },
 ]
 
 export function PyreonLanding() {
@@ -207,13 +249,15 @@ export function PyreonLanding() {
             run again. Measured, not marketed — honest about the trade-offs.
           </p>
           <div class="px-cta">
-            <a class="px-btn-primary" href="/docs/getting-started">
+            {/* RouterLink (not <a href>) so the URLs carry the deploy
+                base (/pyreon/ on GitHub Pages) — bare /docs/… 404s there. */}
+            <RouterLink to="/docs/getting-started" class="px-btn-primary">
               Get started →
-            </a>
+            </RouterLink>
             <code class="px-btn-cmd">$ bunx create-pyreon-app</code>
-            <a class="px-link-inline" href="/docs/">
+            <RouterLink to="/docs/" class="px-link-inline">
               ↗ docs
-            </a>
+            </RouterLink>
           </div>
           <p class="px-honest">
             Synthetic-benchmark parity with Solid. Real-app head-to-head:
@@ -506,7 +550,7 @@ export function PyreonLanding() {
           <span class="px-rule" />
         </div>
         <h2 class="px-h2">
-          55 packages. Routing, forms, data, devtools — already there.
+          62 packages. Routing, forms, data, devtools — already there.
         </h2>
         <p class="px-sub">
           Everything you'd otherwise stitch together yourself. Every
@@ -535,7 +579,7 @@ export function PyreonLanding() {
           ))}
         </div>
         <div class="px-eco-total">
-          total · <strong>55 packages</strong> · 5 categories · all
+          total · <strong>62 packages</strong> · 5 categories · all
           tree-shakeable
         </div>
       </section>
@@ -553,9 +597,17 @@ export function PyreonLanding() {
           {FOOTER.map((c) => (
             <div class="px-footer-col">
               <div class="px-mono-label">{c.h}</div>
-              {c.items.map((it) => (
-                <div class="px-footer-item">{it}</div>
-              ))}
+              {c.items.map((it) =>
+                it.to ? (
+                  <RouterLink to={it.to} class="px-footer-item">
+                    {it.label}
+                  </RouterLink>
+                ) : (
+                  <a class="px-footer-item" href={it.href}>
+                    {it.label}
+                  </a>
+                ),
+              )}
             </div>
           ))}
         </div>

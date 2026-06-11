@@ -123,12 +123,17 @@ export function PyreonHeroMark(props: HeroMarkProps) {
     observer = null
   })
 
+  // noMotion never sets data-state, so without `data-static` the trace
+  // variant's resting CSS (dash-hidden n, opacity-0 wordmark) would hide
+  // everything but the ember disc forever — the footer-logo bug. The
+  // attribute snaps trace to its end-state (see docs.css [data-static]).
   return (
     <div
       ref={setRoot}
       class="px-heromark"
       {...{ 'data-variant': () => variant() }}
       {...{ 'data-state': () => (entering() ? 'entering' : '') }}
+      {...(props.noMotion ? { 'data-static': 'true' } : {})}
       aria-hidden="true"
     >
       {() => {
