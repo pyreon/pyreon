@@ -16,11 +16,10 @@ export function PresenceBar(props: { board: BoardDoc }) {
 
   // Publish + keep our identity fields in sync (reactive — updates when the user
   // renames / recolors). setLocalField patches one field, so it never wipes the
-  // cursor field the Cursors overlay maintains.
-  effect(() => {
-    presence.setLocalField('name', displayName() || 'Anonymous')
-    presence.setLocalField('color', userColor())
-  })
+  // cursor field the Cursors overlay maintains. ONE effect per field so a rename
+  // doesn't also re-broadcast the (unchanged) color, and vice-versa.
+  effect(() => presence.setLocalField('name', displayName() || 'Anonymous'))
+  effect(() => presence.setLocalField('color', userColor()))
 
   return (
     <span class="presence" data-testid="presence">

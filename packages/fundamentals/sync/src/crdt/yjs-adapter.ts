@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { destroyDocAwareness } from './yjs-awareness'
 import {
   type CrdtAdapter,
   type CrdtDoc,
@@ -81,6 +82,9 @@ export class YjsCrdtDoc implements CrdtDoc {
   }
 
   destroy(): void {
+    // The doc OWNS its awareness lifecycle (a `syncedAwareness` view's dispose
+    // only detaches its own listener) — tear it down here before the Y.Doc.
+    destroyDocAwareness(this)
     this.yDoc.destroy()
   }
 }

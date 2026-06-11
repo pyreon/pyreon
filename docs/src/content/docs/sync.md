@@ -234,9 +234,10 @@ window.addEventListener('mousemove', (e) =>
 - `presence.others()` — every **other** peer (the avatars / cursors to render). `presence.states()` includes you; `presence.local()` is your own published state.
 - `setLocal(state)` replaces your whole presence; `setLocalField(key, value)` patches one field (ideal for a throttled cursor).
 - The **relay is awareness-stateful**: a client that joins sees existing peers **instantly** (the relay replays the room's presence on connect), and a client that **crashes** is purged on socket close — so no ghost cursor lingers.
+- **Lifecycle**: the awareness is **owned by the doc**, shared by every transport and every `syncedAwareness` view. `presence.dispose()` only detaches **that view's** observer (so you can safely dispose one view while another keeps tracking) — it does **not** tear down the shared awareness or announce your departure; the **transport** announces departure on disconnect, and `doc.destroy()` performs the full teardown.
 
 :::warning
-Awareness is **ephemeral** — don't store durable data in it. And create `syncedAwareness` **before** connecting a transport; presence created afterwards isn't wired (the transport peeks for the doc's awareness at connect). Cursor coordinates are raw viewport points (no scroll / window-size normalization) — fine for v1; map to content coordinates if you need pixel parity across differently-sized windows.
+Awareness is **ephemeral** — don't store durable data in it. And create `syncedAwareness` **before** connecting a transport; presence created afterwards isn't wired (the transport peeks for the doc's awareness at connect). Cursor coordinates are raw viewport points (no scroll / window-size normalization) — fine for v1; map to content coordinates if you need pixel parity across differently-sized windows. **Scale:** every presence change rebuilds the full peers snapshot (O(N) in peer count) and re-runs each `others()` consumer — fine for the typical handful-to-dozens of collaborators, but throttle cursor publishes (above) so a large swarm doesn't re-render on every mouse move.
 :::
 
 ## Offline persistence — IndexedDB

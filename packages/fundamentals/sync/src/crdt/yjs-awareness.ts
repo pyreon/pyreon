@@ -39,6 +39,24 @@ export function peekDocAwareness(doc: YjsCrdtDoc): Awareness | undefined {
   return docAwareness.get(doc.yDoc)
 }
 
+/**
+ * Tear down the doc's {@link Awareness} (if any) — the DOC owns this lifecycle,
+ * NOT an individual `syncedAwareness` view. Called by `YjsCrdtDoc.destroy()`.
+ * Announces our departure (so a still-attached transport broadcasts the removal),
+ * destroys the awareness, and drops the cache entry. Idempotent.
+ */
+export function destroyDocAwareness(doc: YjsCrdtDoc): void {
+  const aw = docAwareness.get(doc.yDoc)
+  if (!aw) return
+  docAwareness.delete(doc.yDoc)
+  try {
+    removeAwarenessStates(aw, [aw.clientID], 'doc-destroy')
+  } catch {
+    // already torn down — nothing to announce
+  }
+  aw.destroy()
+}
+
 /** One peer's presence: its clientId, its state, and whether it is us. */
 export interface PeerState<T> {
   clientId: number
@@ -64,7 +82,12 @@ export interface SyncedAwareness<T> {
   states: Signal<PeerState<T>[]>
   /** The raw `y-protocols` Awareness — escape hatch for advanced use. */
   awareness: Awareness
-  /** Detach the change observer + announce our departure + destroy the awareness. Idempotent. */
+  /**
+   * Detach THIS view's change observer (stops it tracking). Idempotent. Does NOT
+   * destroy the doc-shared {@link Awareness} — that is owned by the doc
+   * (`YjsCrdtDoc.destroy()`), and departure is announced by the transport on
+   * disconnect. Auto-called on the owning component's unmount via `onCleanup`.
+   */
   dispose(): void
 }
 
@@ -130,18 +153,18 @@ export function syncedAwareness<T extends object>(
     others,
     states,
     awareness: aw,
+    // Dispose THIS reactive view only — detach its `change` listener so it stops
+    // tracking. It must NOT destroy the shared, doc-level Awareness: transports
+    // (peekDocAwareness) and any OTHER syncedAwareness view hold the same
+    // instance, so destroying it here would strand them (and via onCleanup, a
+    // component unmount would silently kill the doc's presence). The Awareness is
+    // owned by the doc — torn down by `YjsCrdtDoc.destroy()` → destroyDocAwareness.
+    // Departure announcements live in the TRANSPORT disconnect + the relay's
+    // socket-close cleanup, not here.
     dispose: () => {
       if (disposed) return
       disposed = true
       aw.off('change', onChange)
-      // Announce our departure (a connected transport broadcasts the removal),
-      // then tear the awareness down. NOTE: dispose any connected transport
-      // FIRST so this removal still has a live wire to ride — but the relay's
-      // socket-close cleanup is the real guarantee, so a wrong order only delays
-      // (never strands) the removal.
-      removeAwarenessStates(aw, [aw.clientID], 'local')
-      aw.destroy()
-      docAwareness.delete(doc.yDoc)
     },
   }
   onCleanup(api.dispose)
