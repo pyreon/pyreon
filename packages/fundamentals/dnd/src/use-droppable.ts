@@ -1,5 +1,5 @@
 import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { isServer, onCleanup, signal } from '@pyreon/reactivity'
 import type { DragData, UseDroppableOptions, UseDroppableResult } from './types'
 
 /**
@@ -23,7 +23,7 @@ import type { DragData, UseDroppableOptions, UseDroppableResult } from './types'
 export function useDroppable<T extends DragData = DragData>(
   options: UseDroppableOptions<T>,
 ): UseDroppableResult {
-  if (typeof document === 'undefined') return { isOver: () => false }
+  if (isServer) return { isOver: () => false }
 
   const isOver = signal(false)
   let cleanup: (() => void) | undefined

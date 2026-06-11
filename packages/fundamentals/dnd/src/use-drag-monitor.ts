@@ -1,5 +1,5 @@
 import { monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { batch, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
 import type { DragData } from './types'
 
 export interface UseDragMonitorOptions {
@@ -38,7 +38,7 @@ export interface UseDragMonitorResult {
  * ```
  */
 export function useDragMonitor(options?: UseDragMonitorOptions): UseDragMonitorResult {
-  if (typeof document === 'undefined') return { isDragging: () => false, dragData: () => null }
+  if (isServer) return { isDragging: () => false, dragData: () => null }
 
   const isDragging = signal(false)
   const dragData = signal<DragData | null>(null)
