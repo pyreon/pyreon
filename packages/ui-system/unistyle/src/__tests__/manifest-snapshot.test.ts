@@ -26,6 +26,7 @@ describe('gen-docs — unistyle snapshot', () => {
       'unistyle/enrichTheme',
       'unistyle/extendCss',
       'unistyle/makeItResponsive',
+      'unistyle/resolveCssVarReferences',
       'unistyle/stripUnit',
       'unistyle/styles',
       'unistyle/themeToCssVars',

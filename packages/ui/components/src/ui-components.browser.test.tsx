@@ -61,13 +61,25 @@ describe('@pyreon/ui-components under cssVariables — full default-theme sweep'
     )
     const btn = container.querySelector<HTMLElement>('#var-btn')!
     expect(btn.textContent).toContain('Save')
-    // computed styles resolve to REAL values through the var indirection
-    const cs = getComputedStyle(btn)
-    expect(cs.backgroundColor).toMatch(/^rgba?\(/)
-    expect(cs.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
 
-    // mode flip: zero className churn (the var-mode contract, end-to-end
-    // through the real component library)
+    // Computed-style resolution through the var indirection needs a real CSS
+    // engine. This file also runs in the node/happy-dom suite (which resolves
+    // neither the cascade nor var()), so probe the capability and only assert
+    // computed color when CSS actually resolves — the real-Chromium path
+    // (test:browser) exercises it fully, and rocketstyle's
+    // css-variables-mode.browser.test.tsx locks the computed-color contract.
+    // happy-dom (the node suite) doesn't apply styler-injected class rules to
+    // computed style, and its getComputedStyle is too inconsistent to probe;
+    // detect it by its control global and skip the computed-color assertion
+    // there. Real Chromium (test:browser) has no `window.happyDOM`.
+    const cssResolves = typeof (window as unknown as { happyDOM?: unknown }).happyDOM === 'undefined'
+    if (cssResolves) {
+      const cs = getComputedStyle(btn)
+      expect(cs.backgroundColor).toMatch(/^rgba?\(/)
+      expect(cs.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+    }
+
+    // mode flip: zero className churn (the var-mode contract) — both environments.
     const classBefore = btn.className
     mode.set('dark')
     expect(btn.className).toBe(classBefore)
