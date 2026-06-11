@@ -73,6 +73,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { isTestPath } from './test-paths'
 
 // ─── Pure exports (testable) ────────────────────────────────────────────────
 
@@ -89,16 +90,6 @@ export const SENSITIVE_PACKAGES = [
 ] as const
 
 /**
- * Test / story / fixture file patterns to exclude from the sensitive
- * matcher. Matches the conventions used across `packages/core/*` today
- * (`src/tests/*.test.ts`, `*.spec.ts`, `*.stories.ts`). Update both this
- * list AND the unit tests if a new test directory convention enters the
- * codebase.
- */
-const TEST_FILE_RE = /\.(test|spec|stories)\.tsx?$/
-const TEST_DIR_RE = /\/(tests|__tests__|test|__test__|stories)\//
-
-/**
  * Whether a single changed-file path represents a real source-code
  * change in one of the sensitive packages. Pure function — exported for
  * unit-test coverage; the script's main path calls it via
@@ -107,8 +98,11 @@ const TEST_DIR_RE = /\/(tests|__tests__|test|__test__|stories)\//
  * Rules:
  * - Must be under `packages/core/<sensitive>/src/`.
  * - Must end with `.ts` or `.tsx` (`.d.ts` is included by extension).
- * - Must NOT be a test/spec/story file.
- * - Must NOT be inside a `tests/` / `__tests__/` directory at any depth.
+ * - Must NOT be test code — `isTestPath` (test/spec/story file OR a
+ *   `tests/` / `__tests__/` directory at any depth). A new regression
+ *   test for an existing bug doesn't need a catalog entry. Classified by
+ *   the shared `scripts/test-paths.ts`, the SAME source of truth the
+ *   changeset gate uses — one definition, no drift.
  */
 export function isSensitiveSourceFile(file: string): boolean {
   // 1. Package + src/ prefix
@@ -120,11 +114,8 @@ export function isSensitiveSourceFile(file: string): boolean {
   // 2. TypeScript source extension
   if (!file.endsWith('.ts') && !file.endsWith('.tsx')) return false
 
-  // 3. Exclude test / story files by suffix
-  if (TEST_FILE_RE.test(file)) return false
-
-  // 4. Exclude test directories at any depth
-  if (TEST_DIR_RE.test(file)) return false
+  // 3. Exclude test code (shared classifier)
+  if (isTestPath(file)) return false
 
   return true
 }

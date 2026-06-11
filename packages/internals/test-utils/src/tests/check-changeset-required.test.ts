@@ -55,6 +55,7 @@ const REPO = '/fake/repo'
 const PACKAGES: PackageInfo[] = [
   { name: '@pyreon/router', dir: `${REPO}/packages/core/router`, private: false },
   { name: '@pyreon/core', dir: `${REPO}/packages/core/core`, private: false },
+  { name: '@pyreon/elements', dir: `${REPO}/packages/ui-system/elements`, private: false },
   { name: '@pyreon/test-utils', dir: `${REPO}/packages/internals/test-utils`, private: true },
   { name: '@pyreon/manifest', dir: `${REPO}/packages/internals/manifest`, private: true },
   { name: '@pyreon/perf-harness', dir: `${REPO}/packages/internals/perf-harness`, private: true },
@@ -267,13 +268,26 @@ describe('isConsumerAffectingFile', () => {
       ).toBe(true)
     })
 
-    it('accepts a test file in a published package — currently consumer-affecting (conservative; trade-off documented in script)', () => {
-      // Trade-off: a test-only change in a published package doesn't
-      // affect end users, but distinguishing test from source reliably
-      // adds complexity AND a file-extension-based test-skip would let
-      // genuine source-impacting changes slip through if they happen to
-      // sit in test-shaped paths. We keep this conservative; users can
-      // apply `skip-changeset` for genuinely test-only PRs.
+    it('accepts a real .ts source file even when it sits beside tests', () => {
+      // A non-test `.ts` under `src/` is consumer-affecting regardless of
+      // proximity to test files — only the test-shaped paths are excluded.
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/src/match.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(true)
+    })
+  })
+
+  describe('Test / spec / story files in a published package — NOT consumer-affecting', () => {
+    // Test code is inert for consumers (not in the runtime `lib/`). Mirrors
+    // the `check-diagnose-catalog` gate's test-file exclusion. Previously
+    // these were conservatively treated as consumer-affecting, forcing a
+    // `skip-changeset` label on every test-only PR in a published package.
+    it('rejects a *.test.ts under src/tests/', () => {
       expect(
         isConsumerAffectingFile(
           'packages/core/router/src/tests/router.test.ts',
@@ -281,7 +295,51 @@ describe('isConsumerAffectingFile', () => {
           IGNORED,
           REPO,
         ),
-      ).toBe(true)
+      ).toBe(false)
+    })
+
+    it('rejects a *.browser.test.tsx under src/__tests__/ (the @pyreon/elements var-mode case)', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/ui-system/elements/src/__tests__/css-variables.browser.test.tsx',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
+    })
+
+    it('rejects a *.spec.ts even outside a tests/ dir (suffix match)', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/src/router.spec.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
+    })
+
+    it('rejects a *.stories.tsx', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/src/RouterLink.stories.tsx',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
+    })
+
+    it('rejects a non-test file that merely lives under a __tests__/ dir', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/src/__tests__/fixtures/sample.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
     })
   })
 })
