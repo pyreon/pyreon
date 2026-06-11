@@ -66,17 +66,20 @@ Both require dual-backend work (JS `jsx.ts` + Rust `native/src/lib.rs` byte-iden
 output + native-equivalence specs), which is why they're follow-ups, but both are
 QUANTIFIED on the real bench:
 
-1. **Baked text-node placeholder — SHIPPED (compiler PR, both backends).** Emit
-   `<td> </td>` + `__e.firstChild` instead of per-row
-   `document.createTextNode("") + appendChild`. The within-tree paired bench
-   (same tree, ONLY the emit flipped, 60 pooled samples/op, bundle shapes verified
-   in the artifact) measured BETTER than the hand-emulated estimate: the
-   **create-1k gap closes to ZERO** (Pyreon 9.30ms [9.20–9.40] = Vanilla 9.30ms;
-   OFF-state Pyreon [9.80–10.20] — CI-clean), **replace-all gap to zero**
-   (−500µs), append −1.2ms; create-10k inconclusive under thermal noise,
-   trending positive. Lesson recorded: cross-WORKTREE pairing was contaminated
-   (trees differed by merged refactors) — within-tree emit-flip is the honest
-   protocol for compiler changes.
+1. **Baked text-node placeholder — SHIPPED (compiler PR, both backends), effect
+   size settled by interleaved A/B/A/B.** Emit `<td> </td>` + `__e.firstChild`
+   instead of per-row `document.createTextNode("") + appendChild`. The DEFINITIVE
+   measurement is the interleaved A/B/A/B replication (both optimizations —
+   selector + placeholder — flipped together, cool machine, Vanilla stable
+   8.1–8.5 across all four runs, bundle shapes verified per state):
+   **create-10k gap 8.5/9.0ms OFF → 5.5/6.5ms ON (−3ms, −31%, replicated across
+   both flips)**; append trending −1ms; **create-1k ≤300µs — below the harness's
+   cross-run resolution** (an earlier hot-machine paired run suggested "gap → 0"
+   at 1k; that overclaimed — thermal amplification). Two protocol lessons
+   recorded: cross-WORKTREE pairing was contaminated (trees differed by merged
+   refactors), and single A/B pairs on a HOT machine amplify effects — the
+   interleaved A/B/A/B with a stable Vanilla reference is the ship-grade
+   instrument.
 2. **Hoisted bind function — NULL RESULT, do not re-propose.** The initial
    hand-emulation suggested ~3.5ms @10k, but the PROPERLY-paired re-quantification
    (same tree, same session, --repeat 3, on top of the shipped placeholder emit)
