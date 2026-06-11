@@ -8,11 +8,12 @@ import { PyreonUI } from '../PyreonUI'
 
 // REAL SSR proof for cssVariables mode (node env — `typeof document` is
 // undefined, so the styler sheet runs its SSR buffer):
-//   1. renderToString emits the mode-attribute wrapper with the RESOLVED
-//      mode, so SSG/SSR HTML ships the right mode with no client fixup.
-//   2. Var-leaf theme values land in the rendered HTML as var() strings.
-//   3. getStyleTag() carries the injected :root block — the same surface
+//   1. Var-leaf theme values land in the rendered HTML as var() strings.
+//   2. getStyleTag() carries the injected :root block — the same surface
 //      SSG prerenders and streaming's first flush read.
+//   3. The ROOT provider emits NO wrapper server-side — its mode rides
+//      `:root` (`<html>` stamp + the pre-paint script), so SSR output is
+//      a clean passthrough. A NESTED provider DOES emit the scoped wrapper.
 
 const theme = { rootSize: 16, breakpoints: { xs: 0 }, spacing: { small: 8 } }
 
@@ -27,23 +28,34 @@ afterEach(() => {
 })
 
 describe('PyreonUI cssVariables — SSR', () => {
-  it('renders the wrapper attribute + var leaves, and getStyleTag carries the :root block', async () => {
+  it('root: var leaves in HTML + :root block in getStyleTag, NO wrapper', async () => {
     init({ cssVariables: true })
-    const html = await renderToString(
-      h(PyreonUI, { theme, mode: 'dark' } as any, h(Probe, null)),
-    )
-    expect(html).toContain('data-theme="dark"')
-    expect(html).toContain('display: contents')
+    const html = await renderToString(h(PyreonUI, { theme, mode: 'dark' } as any, h(Probe, null)))
+    // var-leaf theme values reach the rendered HTML
     expect(html).toContain('var(--px-spacing-small)')
+    // root emits no scoped wrapper — its mode rides :root (html stamp + script)
+    expect(html).not.toContain('display: contents')
 
     const tag = sheet.getStyleTag()
     expect(tag).toContain('--px-spacing-small: 0.5rem')
   })
 
-  it('flag off: no wrapper, literal theme values (control)', async () => {
+  it('nested provider DOES emit the scoped mode wrapper server-side', async () => {
+    init({ cssVariables: true })
     const html = await renderToString(
-      h(PyreonUI, { theme, mode: 'dark' } as any, h(Probe, null)),
+      h(
+        PyreonUI,
+        { theme, mode: 'light' } as any,
+        h(PyreonUI, { inversed: true } as any, h(Probe, null)),
+      ),
     )
+    // the nested provider's wrapper carries the resolved (inverted) mode
+    expect(html).toContain('display: contents')
+    expect(html).toContain('data-theme="dark"')
+  })
+
+  it('flag off: no wrapper, literal theme values (control)', async () => {
+    const html = await renderToString(h(PyreonUI, { theme, mode: 'dark' } as any, h(Probe, null)))
     expect(html).not.toContain('data-theme')
     expect(html).not.toContain('display: contents')
     expect(html).toContain('>8<')

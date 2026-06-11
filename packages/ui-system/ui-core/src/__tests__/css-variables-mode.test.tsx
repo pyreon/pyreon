@@ -1,20 +1,24 @@
 import { h } from '@pyreon/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { init, resolveCssVariables } from '../config'
+import { cssVariablesPrePaintScript } from '../cssVariablesPrePaint'
 import { PyreonUI } from '../PyreonUI'
 
 const provideSpy = vi.spyOn(await import('@pyreon/core'), 'provide')
 
 // Unit contract for PyreonUI under `init({ cssVariables: true })`:
 // the provided theme tree carries var() leaves, the :root block lands in
-// the styler sheet, and the returned tree is wrapped in a layout-neutral
-// `display: contents` carrier for the mode attribute. Flag off must be
+// the styler sheet, the ROOT provider drives the mode attribute on
+// `document.documentElement` (so it sits at `:root` with the pre-paint
+// script), and children pass through with no wrapper. Flag off must be
 // byte-identical to the classic behavior (children passthrough).
 
 const theme = { rootSize: 16, breakpoints: { xs: 0, sm: 576 }, spacing: { small: 8 } }
 
 afterEach(() => {
   init({ cssVariables: false })
+  document.documentElement.removeAttribute('data-theme')
+  document.documentElement.removeAttribute('data-mode')
 })
 
 describe('resolveCssVariables', () => {
@@ -37,23 +41,16 @@ describe('PyreonUI — cssVariables mode', () => {
     expect(result).toBe(child)
   })
 
-  it('renders the display:contents wrapper carrying the mode attribute', () => {
+  it('ROOT provider returns children UNWRAPPED (mode lives on documentElement, no wrapper)', () => {
     init({ cssVariables: true })
     const child = h('div', null, 'hello')
-    const result = PyreonUI({ theme, mode: 'dark', children: child }) as any
-    expect(result).not.toBe(child)
-    expect(result.type).toBe('div')
-    expect(result.props.style).toBe('display: contents')
-    // reactive accessor — resolves to the current mode
-    expect(typeof result.props['data-theme']).toBe('function')
-    expect(result.props['data-theme']()).toBe('dark')
-  })
-
-  it('custom attribute name is honored on the wrapper', () => {
-    init({ cssVariables: { attribute: 'data-mode' } })
-    const result = PyreonUI({ theme, children: h('i', null) }) as any
-    expect(typeof result.props['data-mode']).toBe('function')
-    expect(result.props['data-theme']).toBeUndefined()
+    // No ancestor provider → root path: children pass through with no
+    // `display: contents` wrapper. The mode attribute is driven onto
+    // documentElement by an effect (verified under a real mount lifecycle
+    // in css-variables-mode.browser.test.tsx — the unmounted direct call
+    // here can't deterministically observe effect timing).
+    const result = PyreonUI({ theme, mode: 'dark', children: child })
+    expect(result).toBe(child)
   })
 
   it('provides a var-leaf theme tree and injects the :root block', () => {
@@ -82,5 +79,48 @@ describe('PyreonUI — cssVariables mode', () => {
       })
       .join('\n')
     expect(allRules).toContain('--px-spacing-small: 0.5rem')
+  })
+})
+
+describe('cssVariablesPrePaintScript', () => {
+  afterEach(() => init({ cssVariables: false }))
+
+  it('builds a self-contained blocking script that writes documentElement', () => {
+    const s = cssVariablesPrePaintScript()
+    expect(s).toContain('document.documentElement.setAttribute("data-theme"')
+    expect(s).toContain('localStorage.getItem("zero-theme")')
+    expect(s).toContain('prefers-color-scheme:dark')
+    // try/catch-wrapped — a storage/matchMedia throw must never block paint
+    expect(s).toContain('try{')
+    expect(s).toContain('}catch(e){}')
+  })
+
+  it('honors the resolved cssVariables attribute', () => {
+    init({ cssVariables: { attribute: 'data-mode' } })
+    expect(cssVariablesPrePaintScript()).toContain(
+      'document.documentElement.setAttribute("data-mode"',
+    )
+  })
+
+  it('options override attribute / storageKey / fallback', () => {
+    const s = cssVariablesPrePaintScript({
+      attribute: 'data-x',
+      storageKey: 'my-key',
+      fallback: 'dark',
+    })
+    expect(s).toContain('"data-x"')
+    expect(s).toContain('localStorage.getItem("my-key")')
+    // fallback used when no stored pref AND no dark system match
+    expect(s).toContain(':"dark"')
+  })
+
+  it('the emitted script actually resolves a persisted preference (eval contract)', () => {
+    localStorage.setItem('zero-theme', 'dark')
+    document.documentElement.removeAttribute('data-theme')
+    // eslint-disable-next-line no-eval
+    ;(0, eval)(cssVariablesPrePaintScript())
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    localStorage.removeItem('zero-theme')
+    document.documentElement.removeAttribute('data-theme')
   })
 })

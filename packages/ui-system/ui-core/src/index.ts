@@ -29,6 +29,8 @@ import { get, merge, omit, pick, set, throttle } from './utils'
 
 export type { CSSEngineConnector, CssVariablesConfig, ResolvedCssVariablesConfig } from './config'
 export { resolveCssVariables } from './config'
+export type { CssVariablesPrePaintOptions } from './cssVariablesPrePaint'
+export { cssVariablesPrePaintScript } from './cssVariablesPrePaint'
 
 export type {
   BreakpointKeys,

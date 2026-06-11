@@ -1,11 +1,29 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createReactiveContext, h, nativeCompat, provide, useContext } from '@pyreon/core'
-import { computed, isClient, signal } from '@pyreon/reactivity'
+import {
+  createContext,
+  createReactiveContext,
+  h,
+  nativeCompat,
+  provide,
+  useContext,
+} from '@pyreon/core'
+import { computed, effect, isClient, signal } from '@pyreon/reactivity'
 import { sheet, ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
 import { enrichTheme, themeToCssVars } from '@pyreon/unistyle'
 import { resolveCssVariables } from './config'
 import { context as coreContext } from './context'
+
+// Structural flag distinguishing the ROOT PyreonUI from a NESTED one (a
+// plain context, not reactive — nesting is fixed at mount). In cssVariables
+// mode the root writes the mode attribute to `document.documentElement`
+// (so it sits at `:root`, where the pre-paint FOUC script also writes and
+// where the var rules cascade from), while nested / `inversed` providers
+// render a `display: contents` wrapper that scopes an override to their
+// subtree. Putting the root on a wrapper instead would let the wrapper —
+// a closer ancestor than `<html>` — defeat a pre-paint script that can
+// only reach `document.documentElement` before the in-body wrapper parses.
+const PyreonUINestedContext = createContext(false)
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -241,12 +259,35 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
 
   if (!cssVars.enabled) return props.children ?? null
 
-  // CSS-variables mode: render a layout-neutral wrapper carrying the mode
-  // attribute. The cascade does the rest — `[data-theme="dark"]` re-resolves
-  // every mode-pair var for THIS subtree, so dark/light (incl. nested
-  // `inversed` providers) is one attribute write with zero re-resolution and
-  // zero className churn. Server-rendered too, so SSR/SSG ship the right
-  // mode with no client fixup.
+  // Is this the ROOT PyreonUI (no PyreonUI ancestor) or a NESTED one?
+  const isNested = useContext(PyreonUINestedContext)
+  // Descendants are nested under us regardless.
+  provide(PyreonUINestedContext, true)
+
+  if (!isNested) {
+    // ROOT, cssVariables mode: drive the mode attribute on
+    // `document.documentElement` so it lives at `:root` — where the var
+    // rules cascade from AND where a pre-paint FOUC script writes before
+    // first paint. The effect keeps it in sync with reactive mode changes
+    // (toggles, system-pref flips) after hydration; the flip is one
+    // attribute write, zero re-resolution, zero className churn. SSR can't
+    // touch `document` — there, first-paint correctness comes from the
+    // pre-paint script (system/persisted) or an explicit `<html>` stamp;
+    // see `cssVariablesPrePaintScript`. No wrapper at the root: a wrapper
+    // would be a closer ancestor than `<html>` and defeat that script.
+    if (isClient) {
+      effect(() => {
+        document.documentElement.setAttribute(cssVars.attribute, modeComputed())
+      })
+    }
+    return props.children ?? null
+  }
+
+  // NESTED / `inversed` cssVariables provider: render a layout-neutral
+  // wrapper carrying the mode attribute. The cascade does the rest —
+  // `[data-theme="dark"]` re-resolves every mode-pair var for THIS subtree
+  // only, so a scoped dark/light section is one attribute write with zero
+  // re-resolution and zero className churn. Server-rendered too.
   return h(
     'div',
     {

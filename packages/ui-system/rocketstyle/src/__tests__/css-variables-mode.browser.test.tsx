@@ -39,6 +39,7 @@ const makeBox = (name: string) =>
 afterEach(() => {
   init({ cssVariables: false })
   delete countSink.__pyreon_count__
+  document.documentElement.removeAttribute('data-theme')
   sheet.clearCache()
 })
 
@@ -67,8 +68,10 @@ describe('rocketstyle under cssVariables — measured mode flip', () => {
     expect(counts['styler.resolve'] ?? 0).toBe(0)
     expect(counts['rocketstyle.getTheme'] ?? 0).toBe(0)
 
-    const wrapper = container.querySelector('[data-theme]')!
-    expect(wrapper.getAttribute('data-theme')).toBe('dark')
+    // ROOT provider drives the mode attribute on documentElement (:root) —
+    // one attribute write, no wrapper, the cascade re-resolves the var pair.
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(container.querySelector('[data-theme]')).toBeNull()
     unmount()
   })
 
@@ -127,6 +130,11 @@ describe('rocketstyle under cssVariables — measured mode flip', () => {
     )
     const outer = container.querySelector<HTMLElement>('#outer')!
     const inner = container.querySelector<HTMLElement>('#inner')!
+    // root → documentElement (light), nested inversed → wrapper (dark) scoping
+    // only its subtree. outer resolves from :root (light), inner from the wrapper.
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    const wrapper = container.querySelector('[data-theme="dark"]')
+    expect(wrapper).not.toBeNull()
     expect(getComputedStyle(outer).backgroundColor).toBe('rgb(10, 20, 30)')
     expect(getComputedStyle(inner).backgroundColor).toBe('rgb(200, 100, 50)')
     unmount()

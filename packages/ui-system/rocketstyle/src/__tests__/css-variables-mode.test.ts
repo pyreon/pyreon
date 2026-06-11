@@ -1,6 +1,6 @@
 import { init } from '@pyreon/ui-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getThemeByMode, getThemeFromChain } from '../utils/theme'
+import { getThemeByMode, getThemeFromChain, resolveModeVar } from '../utils/theme'
 
 // Unit contract for the CSS-variables mode(a, b) factory: under
 // `init({ cssVariables: true })`, getThemeFromChain hands `.theme()`
@@ -82,5 +82,22 @@ describe('cssVariables — mode(a, b) var-pair factory', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     chain((_, mode) => ({ padding: mode(8, 12) }))
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unit-complete'))
+  })
+})
+
+describe('resolveModeVar — mode-pair resolution for non-CSS consumers', () => {
+  it('resolves a mode(a,b) var reference to its raw value per mode', () => {
+    init({ cssVariables: true })
+    const out = chain((_, mode) => ({ color: mode('#000000', '#ffffff') }))
+    const ref = out.color as string // 'var(--px-m-…)'
+    expect(resolveModeVar(ref, 'light')).toBe('#000000')
+    expect(resolveModeVar(ref, 'dark')).toBe('#ffffff')
+    expect(resolveModeVar(ref)).toBe('#000000') // defaults to light
+  })
+
+  it('leaves unknown var names + non-strings untouched', () => {
+    expect(resolveModeVar('var(--px-spacing-small)', 'dark')).toBe('var(--px-spacing-small)')
+    expect(resolveModeVar('#abcabc', 'dark')).toBe('#abcabc')
+    expect(resolveModeVar(8, 'dark')).toBe(8)
   })
 })

@@ -1,4 +1,4 @@
-import { resolveStyles } from './resolveStyles'
+import { resolveStyles, type VarResolver } from './resolveStyles'
 import type { DocChild, DocNode, NodeType } from './types'
 
 /** Marker interface: components with _documentType are extractable. */
@@ -11,6 +11,24 @@ export interface ExtractOptions {
   rootSize?: number
   /** Include resolved styles from $rocketstyle. Default: true. */
   includeStyles?: boolean
+  /**
+   * Inline `var(--…)` style values to raw values during extraction — needed
+   * when the app runs under `init({ cssVariables: true })`, since PDF/DOCX/
+   * email render targets can't evaluate CSS custom properties. Compose
+   * `resolveModeVar` (`@pyreon/rocketstyle`, resolves `mode(a,b)` pairs) with
+   * `resolveCssVarReferences` (`@pyreon/unistyle`, resolves theme-leaf vars
+   * via a `themeToCssVars(theme).registry`), e.g.:
+   *
+   * ```ts
+   * const { registry } = themeToCssVars(theme)
+   * extractDocNode(tpl, {
+   *   resolveVar: (v) => resolveCssVarReferences(resolveModeVar(v, mode), registry),
+   * })
+   * ```
+   *
+   * Omit for the classic (non-cssVariables) path — values are already raw.
+   */
+  resolveVar?: VarResolver
 }
 
 type VNodeLike = {
@@ -196,7 +214,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
       (extractedFromCall as { props?: Record<string, unknown> } | null)?.props?.$rocketstyle
     const styles =
       includeStyles && stylesSource
-        ? resolveStyles(stylesSource as Record<string, unknown>, rootSize)
+        ? resolveStyles(stylesSource as Record<string, unknown>, rootSize, options.resolveVar)
         : undefined
 
     // Children: prefer the JSX vnode's children (the user-supplied

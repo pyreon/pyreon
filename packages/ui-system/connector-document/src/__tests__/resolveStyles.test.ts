@@ -122,3 +122,40 @@ describe('resolveStyles', () => {
     expect(result).toEqual({ fontSize: 30 })
   })
 })
+
+describe('resolveStyles — CSS-variables resolveVar hook', () => {
+  // Under init({ cssVariables: true }) a $rocketstyle value can be a var()
+  // reference string PDF/DOCX can't evaluate. The resolveVar hook inlines it
+  // up front, so every downstream parse sees a raw value.
+  const resolveVar = (v: unknown): unknown =>
+    typeof v === 'string'
+      ? v
+          .replace('var(--px-m-abc)', '#0f172a')
+          .replace('var(--px-color-surface)', '#ffffff')
+          .replace('var(--px-spacing-small)', '8px')
+      : v
+
+  it('inlines var() color + backgroundColor before extraction', () => {
+    const result = resolveStyles(
+      { color: 'var(--px-m-abc)', backgroundColor: 'var(--px-color-surface)' },
+      16,
+      resolveVar,
+    )
+    expect(result.color).toBe('#0f172a')
+    expect(result.backgroundColor).toBe('#ffffff')
+  })
+
+  it('inlines a var() dimension so the px parser sees a raw value', () => {
+    const result = resolveStyles({ padding: 'var(--px-spacing-small)' }, 16, resolveVar)
+    // '8px' parses to a box-model 8 (not dropped as an unparseable var string)
+    expect(result.padding).toBeDefined()
+    expect(JSON.stringify(result.padding)).toContain('8')
+  })
+
+  it('omitting resolveVar leaves values as-is (classic path, byte-identical)', () => {
+    const raw = resolveStyles({ color: '#333333' }, 16)
+    const withNoop = resolveStyles({ color: '#333333' }, 16, (v) => v)
+    expect(raw.color).toBe('#333333')
+    expect(withNoop.color).toBe('#333333')
+  })
+})

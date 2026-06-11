@@ -1988,6 +1988,7 @@
         "@pyreon/rocketstyle": "workspace:^",
         "@pyreon/styler": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",

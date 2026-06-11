@@ -21,6 +21,7 @@ describe('gen-docs — ui-core snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).sort()).toEqual([
       'ui-core/PyreonUI',
+      'ui-core/cssVariablesPrePaintScript',
       'ui-core/useMode',
     ])
   })

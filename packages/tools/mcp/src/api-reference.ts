@@ -3620,6 +3620,18 @@ const mode = useMode()
     mistakes: `- Reading \`useMode()\` without calling it — the value is a \`Signal\`; use \`mode()\` to read
 - Using \`useMode()\` outside any \`PyreonUI\` ancestor — falls back to a default but loses the reactive system / inversed handling`,
   },
+
+  'ui-core/cssVariablesPrePaintScript': {
+    signature: 'cssVariablesPrePaintScript(options?: { attribute?: string; storageKey?: string; fallback?: "light" | "dark" }): string',
+    example: `import { cssVariablesPrePaintScript } from '@pyreon/ui-core'
+
+// In your document <head>, before the app bundle:
+// <script>{cssVariablesPrePaintScript()}</script>`,
+    notes: 'Build the blocking pre-paint script that sets the CSS-variables mode attribute on `document.documentElement` BEFORE first paint — the standard dark-mode FOUC fix for `init({ cssVariables: true })`. Inject the returned string as a synchronous `<script>` in `<head>`: it reads a persisted toggle from localStorage (default key `zero-theme`), else the OS `prefers-color-scheme`, else `fallback`, and writes the attribute at `:root` — exactly where the var rules cascade from and where the ROOT `PyreonUI` writes after hydration, so the two agree and there is no flash for `mode="system"` or a persisted toggle. Self-contained + try/catch-wrapped. (zero apps can use the existing `themeScript` export, which writes the same attribute.) See also: PyreonUI.',
+    mistakes: `- Placing it at end-of-body instead of <head> — it must run before first paint; an in-body script can flash on a streamed/large document
+- Using it without the ROOT PyreonUI under cssVariables — the script fixes the PRE-hydration paint; the root provider keeps documentElement in sync AFTER hydration. Both are needed
+- Expecting it to cover a hardcoded \`mode="dark"\` SSR app with no stored preference — the mode lives only in the app JSX; stamp \`<html data-theme="dark">\` server-side for that case`,
+  },
   // <gen-docs:api-reference:end @pyreon/ui-core>
 
   // ═══════════════════════════════════════════════════════════════════════════
