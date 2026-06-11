@@ -1,8 +1,8 @@
 import { defineManifest } from '@pyreon/manifest'
 
 /**
- * Fourth migration to the T2.1 pipeline. @pyreon/hooks ships 34
- * signal-based hooks across six categories — too many to enumerate
+ * Fourth migration to the T2.1 pipeline. @pyreon/hooks ships 35
+ * signal-based hooks across seven categories — too many to enumerate
  * one-by-one in api[]. Strategy: documented categories in `features`
  * + the highest-leverage hooks (those used by other Pyreon packages
  * or that wrap subtle browser-API quirks) as individual api[]
@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '34 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useElementSize/useWindowResize/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useDialog/useKeyboard/useOnline), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '35 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useElementSize/useWindowResize/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useDialog/useKeyboard/useOnline), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 34 reactive primitives covering state, DOM, responsive, timing, interaction, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 35 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   longExample: `import {
   // State
@@ -83,12 +83,13 @@ const merged = useMergedRef(localRef, props.ref)   // forward ref + capture loca
 useUpdateEffect(() => save(value()), [value])      // skips first run (mount-only effect)
 useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client, no-op on SSR`,
   features: [
-    '35 signal-based hooks across 6 categories',
+    '35 signal-based hooks across 7 categories',
     'State: useToggle, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useElementSize, useWindowResize, useScrollLock, useIntersection, useInfiniteScroll',
     'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useReducedMotion, useThemeValue, useSpacing, useRootSize',
     'Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo',
     'Interaction: useClipboard, useDialog, useKeyboard, useOnline',
+    'Data: useFetch — thin reactive JSON fetch ({ data, error, isPending, refetch }); the web half of the multiplatform useFetch contract',
     'Composition: useMergedRef, useUpdateEffect, useIsomorphicLayoutEffect',
     'Every hook is SSR-safe and auto-cleans on unmount',
     'Signal-native return shapes — compose with `effect` / `computed` without re-bridging',
@@ -195,6 +196,25 @@ effect(() => fetchResults(debouncedSearch()))`,
         'Reading the debounced signal immediately after setting the source — it still holds the OLD value during the debounce window; effects downstream of the debounced signal are correct, but imperative reads in the same tick are stale',
       ],
       seeAlso: ['useDebouncedCallback', 'useThrottledCallback'],
+    },
+    {
+      name: 'useFetch',
+      kind: 'hook',
+      signature: '<T>(url: string) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }',
+      summary:
+        'Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compiles to native `PyreonFetch<T>` containers on iOS (URLSession `.task {}`) and Android (`LaunchedEffect` + kotlinx-serialization) via PMTC, while this runs on web. Fires once at component setup (client only — SSR renders the not-yet-loaded state); each `refetch()` aborts the previous in-flight request so a slow stale response can never clobber a fresh one; unmount aborts too. Deliberately thinner than `@pyreon/query`: no cache, no dedup, no retries.',
+      example: `type Quote = { id: number; text: string }
+const quotes = useFetch<Quote[]>('/api/quotes.json')
+<Show when={quotes.isPending}><Text>Loading…</Text></Show>
+<For each={() => quotes.data() ?? []} by={(q) => q.id}>{(q) => <Text>{q.text}</Text>}</For>`,
+      mistakes: [
+        'Reading `quotes.data` without calling it in non-JSX code — the fields are Signals; `quotes.data()` reads the value. In JSX child position the bare signal works (accessor children render reactively)',
+        'Expecting data during SSR — the fetch only runs client-side; server HTML renders the `undefined`-data state and the request fires after hydration',
+        'Using a reactive/computed URL — v1 takes a plain string captured once (PMTC requires a string literal for native emit anyway); call `refetch()` for manual re-runs, or use `@pyreon/query` for signal-driven keys',
+        'Reaching for useFetch when you need caching, request dedup, retries, or mutations — that is `@pyreon/query` (TanStack) territory; useFetch is the thin multiplatform primitive',
+        'Forgetting the non-2xx contract — HTTP errors land in `error()` as `[Pyreon] useFetch <url>: HTTP <status>`, they do NOT throw',
+      ],
+      seeAlso: ['useOnline'],
     },
     {
       name: 'useClipboard',

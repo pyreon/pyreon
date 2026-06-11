@@ -234,7 +234,7 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 | Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate + iOS XCUITest + Android Compose-instrumented-test landed (opt-in `native-device` label); promote to required once green across nightly runs |
 | Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
 | Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`), **global** `beforeEach`/`afterEach` guards, **throw-redirect** pattern | ✅ guards, nested routes, `useParams` destructure, `loaderData`/`useLoaderData` runtime, **global guards** (#1108), and **`router.redirect()` re-entry-safe throw-pattern** (#1109) all landed; loader **auto-emit** (blocked — see note) is the only remaining router-parity gap |
-| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed — **`useForm` v2 is device-proven** (validators + runtime Field bindings + submit gating; the tasks login's error-path smoke); `useFetch` emit complete (device-scope network proof open); `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design. `useValidation` planned |
+| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed — **`useForm` v2 is device-proven** (validators + runtime Field bindings + submit gating; the tasks login's error-path smoke); **`useFetch` is device-proven end-to-end** (the tasks Quotes screen fetches + decodes + renders a real HTTP fixture on the CI Simulator/Emulator; web runs the same call through `@pyreon/hooks`); `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design. `useValidation` planned |
 | Compiler diagnostics | Surface silent-drop shapes as parser warnings instead of failing-silent at runtime | ✅ Round-1 (#1094 — `Icon`/`Image`/`Link` missing required props) + Round-2 (#1099 — `Press` without `onPress`, `Link prefetch={…}` on native, `Stack/Inline/Layer align="<typo>"`) landed; both routes ship as `result.warnings`, emit shape unchanged |
 | Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the three walled tags emit a **graceful pass-through** (children render inside `Group {…}`/`Box {…}`, fallback/cache behaviour inert, comment surfaces the limitation) — no broken build, but a true Suspense/ErrorBoundary/KeepAlive runtime needs a Pyreon-async-context + view-modifier intercept + state-cache design that's not local emit work |
 | DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline (planned) | 🟡 scaffold landed (`bunx create-multiplatform <name>`); asset/SF-Symbols pipeline planned |
@@ -401,6 +401,16 @@ Data hooks compile to native via per-service **runtime ports** behind the
 shared TS API (the `PyreonStorage` pattern — each service has a Swift +
 Kotlin runtime the emitted code drives):
 
+- **Platform prerequisites for networked apps** (both device-CI
+  findings): Android needs `<uses-permission
+  android:name="android.permission.INTERNET" />` in the manifest —
+  without it socket creation fails with the opaque
+  `SocketException: socket failed: EPERM` — plus a
+  network-security-config exception if the endpoint is plain http
+  (scope it to loopback/dev hosts only). iOS needs an ATS exception
+  for non-HTTPS endpoints (`NSAllowsLocalNetworking` for
+  loopback/dev). The `create-multiplatform` scaffold ships the
+  INTERNET permission by default.
 - **`useFetch<T>('/url')`** → a `PyreonFetch<T>` reactive container
   (`{ data, error, isPending, refetch }`). The compiler emits a mount-time
   `.task { }` (SwiftUI) / `LaunchedEffect` (Compose) that runs the request
@@ -466,7 +476,8 @@ Kotlin runtime the emitted code drives):
   (#1103).
 
 > Status: `useForm` (v2 — validated forms, device-proven via the tasks
-> showcase's error-path smoke), `useFetch`, `usePermissions`,
+> showcase's error-path smoke), `useFetch` (device-proven — the
+> networked Quotes screen), `usePermissions`,
 > `useOnline`, `useClipboard`, and `useColorScheme` are **landed**
 > (runtime port + compiler emit — `useColorScheme` is emit-only
 > because the platform primitive is enough). `useFetch`'s open item is

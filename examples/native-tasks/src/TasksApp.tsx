@@ -49,6 +49,7 @@
 
 import { signal, computed } from '@pyreon/reactivity'
 import { useForm } from '@pyreon/form'
+import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { For, Show } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text } from '@pyreon/primitives'
@@ -60,6 +61,7 @@ import {
 } from '@pyreon/router'
 
 type Task = { id: number; title: string; done: boolean }
+type Quote = { id: number; text: string; author: string }
 
 // Module-scope monotonic id — same shape as TodoMVC's `nextId`.
 let nextTaskId = 3
@@ -182,8 +184,53 @@ function TasksPage() {
         >
           Open task 1
         </Button>
+        <Button onPress={() => navigate('/quotes')} data-testid="tasks-quotes">
+          Quotes
+        </Button>
         <Button onPress={logout} data-testid="tasks-logout">
           Logout
+        </Button>
+      </Inline>
+    </Stack>
+  )
+}
+
+function QuotesPage() {
+  const navigate = useNavigate()
+
+  // The networked screen (fetch-arc device proof): useFetch fires the
+  // request at mount on every target — web through @pyreon/hooks'
+  // signal container, iOS through the emitted URLSession `.task {}`,
+  // Android through the `LaunchedEffect` + kotlinx-serialization
+  // harness. 127.0.0.1 reaches the CI fixture server on BOTH device
+  // targets: the iOS Simulator shares the host loopback, and the
+  // Android job `adb reverse`s the port into the emulator.
+  const quotes = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
+  const quoteList = computed(() => quotes.data() ?? [])
+
+  return (
+    <Stack gap={3} padding={4} data-testid="quotes-page">
+      <Text>Quotes</Text>
+      <Show when={quotes.isPending}>
+        <Text data-testid="quotes-loading">Loading…</Text>
+      </Show>
+      <Show when={() => quotes.error() !== undefined}>
+        <Text data-testid="quotes-error">{quotes.error}</Text>
+      </Show>
+      <For each={quoteList} by={(q) => q.id}>
+        {(q) => (
+          <Stack gap={1} data-testid="quote-row">
+            <Text>{q.text}</Text>
+            <Text>{q.author}</Text>
+          </Stack>
+        )}
+      </For>
+      <Inline gap={2}>
+        <Button onPress={() => quotes.refetch()} data-testid="quotes-refetch">
+          Refetch
+        </Button>
+        <Button onPress={() => navigate('/tasks')} data-testid="quotes-back">
+          Back to tasks
         </Button>
       </Inline>
     </Stack>
@@ -227,6 +274,11 @@ export function TasksApp() {
       {
         path: '/tasks/:id',
         component: TaskDetailPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/quotes',
+        component: QuotesPage,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],

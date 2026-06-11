@@ -33,6 +33,8 @@ package com.pyreon
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -128,7 +130,59 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
-        // Phase 5: logout — flips the store flag back; lands on /login.
+        // Phase 5: networked fetch (the fetch-arc device proof) — the
+        // quotes screen runs useFetch<Quote[]> through the emitted
+        // LaunchedEffect + kotlinx-serialization harness against the
+        // CI fixture server (http://127.0.0.1:8787, reverse-forwarded
+        // into the emulator via `adb reverse`; cleartext allowed for
+        // loopback only by the network security config). Asserted BY
+        // CONTENT so a 200-with-wrong-body can't pass. waitUntil
+        // because the request crosses a real network hop — Compose's
+        // idle-sync does NOT cover URLSession-style background work.
+        composeRule
+            .onNodeWithTag("tasks-quotes")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("quotes-page")
+            .assertIsDisplayed()
+
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) {
+                composeRule
+                    .onAllNodesWithText("Make it work, make it right, make it fast.")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        } catch (t: androidx.compose.ui.test.ComposeTimeoutException) {
+            // Surface the APP-SIDE failure: the quotes screen renders its
+            // fetch error (quotes-error testid), so a reject()-ed request
+            // names its exception in the test failure instead of an
+            // opaque 20s timeout (round-4 lesson: server + adb reverse
+            // were both fine and the failure was invisible from outside).
+            val errNodes = composeRule
+                .onAllNodesWithTag("quotes-error")
+                .fetchSemanticsNodes()
+            val detail = if (errNodes.isEmpty()) {
+                "no quotes-error node — fetch still pending (request never settled)"
+            } else {
+                errNodes[0].config.toString()
+            }
+            throw AssertionError(
+                "Quotes fetch did not render within 20s — app-side state: " + detail,
+                t,
+            )
+        }
+
+        composeRule
+            .onNodeWithTag("quotes-back")
+            .performClick()
+
+        composeRule
+            .onNodeWithTag("tasks-page")
+            .assertIsDisplayed()
+
+        // Phase 6: logout — flips the store flag back; lands on /login.
         composeRule
             .onNodeWithTag("tasks-logout")
             .performClick()

@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The quotes screen fetches over the network — without this,
+         socket creation fails with EPERM (the round-5 device finding:
+         no prior example app ever fetched, so no manifest had it). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- fetch-arc device proof: the quotes screen fetches
+         http://127.0.0.1:8787/quotes.json (the CI fixture server,
+         reverse-forwarded into the emulator via `adb reverse`).
+         Android blocks cleartext http by default; the network security
+         config scopes the exception to loopback only — remote http
+         stays blocked. -->
     <application
         android:label="PyreonTasks"
-        android:allowBackup="true">
+        android:allowBackup="true"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name="com.pyreon.MainActivity"
             android:exported="true"

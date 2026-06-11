@@ -491,7 +491,7 @@ export type TypeIR =
   | { kind: 'unknown' }
 
 export type ExprIR =
-  | { kind: 'literal'; value: string | number | boolean }
+  | { kind: 'literal'; value: string | number | boolean | null }
   | { kind: 'identifier'; name: string }
   | { kind: 'call'; callee: ExprIR; args: ExprIR[] }
   | { kind: 'member'; object: ExprIR; property: string }
@@ -531,7 +531,7 @@ export type ExprIR =
    * the same short-circuit semantics. JS's `??` (nullish coalescing) maps
    * differently per target but isn't in the TodoMVC slice — deferred.
    */
-  | { kind: 'logical'; op: '&&' | '||'; left: ExprIR; right: ExprIR }
+  | { kind: 'logical'; op: '&&' | '||' | '??'; left: ExprIR; right: ExprIR }
   /**
    * Ternary conditional (`cond ? a : b`). Both Swift and Kotlin have
    * the ternary form verbatim (Kotlin uses `if (cond) a else b` as the

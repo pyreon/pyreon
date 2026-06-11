@@ -92,6 +92,27 @@ function sourceMapHeader(target: TargetLanguage, originalPath: string): string {
  * (KeyboardOptions, ImeAction, etc.) come from the same package roots
  * already named.
  */
+/**
+ * Imports needed only by SOME emitted shapes, keyed on the emitted
+ * code's content. Kept OUT of the unconditional header because they
+ * pull artifacts not every host declares: `kotlinx.serialization.json`
+ * needs the -json artifact (the unconditional `Serializable` import
+ * only needs -core), and while Compose pulls kotlinx-coroutines
+ * transitively, hosts that never fetch shouldn't carry the imports.
+ *
+ * Device-found (fetch-arc): the kotlinc validate loop concatenates the
+ * STUBS into the same file — no imports needed — so the missing
+ * `withContext` / `Dispatchers` / `Json` imports only surfaced on the
+ * first REAL `gradle assembleDebug` of a useFetch screen.
+ */
+function conditionalKotlinImports(emitted: string): string {
+  const imports: string[] = []
+  if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
+  if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
+  if (emitted.includes('Json.')) imports.push('import kotlinx.serialization.json.Json')
+  return imports.length === 0 ? '' : imports.join('\n') + '\n'
+}
+
 function importHeader(target: TargetLanguage): string {
   if (target === 'swift') {
     return [
@@ -173,6 +194,7 @@ export function build(options: BuildOptions): BuildResult {
       packageHeader +
       sourceMapHeader(options.target, input) +
       importHeader(options.target) +
+      (options.target === 'kotlin' ? conditionalKotlinImports(result.code) : '') +
       result.code
     writeFileSync(outPath, finalCode, 'utf8')
     outputs.push({ source: input, output: outPath, code: finalCode })

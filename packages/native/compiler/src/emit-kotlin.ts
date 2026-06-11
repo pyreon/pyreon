@@ -1072,7 +1072,14 @@ function emitKotlinDataClass(synth: {
   fields: { name: string; type: TypeIR }[]
 }): string {
   const params = synth.fields.map((f) => `val ${f.name}: ${kotlinType(f.type)}`).join(', ')
-  return `data class ${synth.name}(${params})`
+  // `@Serializable` for consistency with emitKotlinStruct (named `type X
+  // = {...}` structs always carry it). Without it, a synthesized class
+  // reachable from a fetch decode (`useFetch<{ name: string }[]>(url)`
+  // → `Json.decodeFromString<List<AppData>>`) compiles against the
+  // kotlinc validate stubs but FAILS a real Compose build ("Serializer
+  // for class 'AppData' not found" — the serialization plugin only
+  // generates serializers for annotated classes).
+  return `@Serializable\ndata class ${synth.name}(${params})`
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
@@ -1598,6 +1605,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         return JSON.stringify(e.value)
       }
       if (typeof e.value === 'boolean') return e.value ? 'true' : 'false'
+      // Nullish literal (JS null, or `undefined` lowered by the
+      // parser) — Kotlin's nullish value IS spelled `null`; explicit
+      // so the Swift-side `nil` divergence is visible here.
+      if (e.value === null) return 'null'
       return String(e.value)
     case 'identifier':
       return kotlinIdent(e.name)
@@ -1611,6 +1622,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.name === 'console'
       ) {
         return `println(${e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')})`
+      }
+      // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
+      // `quotes.isPending()` (the web signal-read shape) → MutableState
+      // `.value` read. `refetch` is excluded (real method, parens
+      // preserved by the generic call emit below).
+      if (
+        e.args.length === 0 &&
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _fetchNames.has(e.callee.object.name) &&
+        (e.callee.property === 'data' ||
+          e.callee.property === 'isPending' ||
+          e.callee.property === 'error')
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${e.callee.property}.value`
       }
       // Store METHOD call — `useX().store.M(args…)` →
       // `PyreonStore_id.M(args…)`. Mirror of emit-swift's rewrite;
@@ -1929,7 +1955,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${e.op}${emitKotlinExpr(e.argument, indent)}`
     case 'logical':
       // Parser-C: short-circuit logical. Kotlin `&&` / `||` semantics
-      // match JS.
+      // match JS. `??` lowers to the Elvis operator — parenthesized
+      // because Elvis binds LOOSER than comparisons (`a ?: b > 0`
+      // parses as `a ?: (b > 0)`).
+      if (e.op === '??') {
+        return `(${emitKotlinExpr(e.left, indent)} ?: ${emitKotlinExpr(e.right, indent)})`
+      }
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'ternary':
       // Kotlin doesn't have a ternary operator; the idiomatic form is
@@ -2150,16 +2181,24 @@ function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
 }
 
 function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  if (e.children.length === 0) return `Text(text = "")`
+  // Thread the layout modifier so `data-testid` reaches the node as
+  // Modifier.testTag — its absence on Text was the device-found bug
+  // behind the tasks Espresso failure (the error-path assert queried
+  // onNodeWithTag("login-error") and the tag was silently dropped;
+  // iOS passed because the Swift Text emit carries the identifier).
+  // Same fix shape as Field (a43599f01).
+  const mod = emitKotlinLayoutModifier(e)
+  const modArg = mod === '' ? '' : `, modifier = ${mod}`
+  if (e.children.length === 0) return `Text(text = ""${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
     if (c.kind === 'text') parts.push(escapeKotlinInterp(c.value))
     else parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
   }
-  return `Text(text = "${parts.join('')}")`
+  return `Text(text = "${parts.join('')}"${modArg})`
 }
 
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -2785,6 +2824,9 @@ function emitKotlinHeading(
   ]
   const color = readStaticAttrKotlin(e, 'color')
   if (typeof color === 'string') args.push(`color = ${resolveColor(color, 'kotlin')}`)
+  // Same data-testid threading as Text (device-found bug class).
+  const mod = emitKotlinLayoutModifier(e)
+  if (mod !== '') args.push(`modifier = ${mod}`)
   return `Text(${args.join(', ')})`
 }
 

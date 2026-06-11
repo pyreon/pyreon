@@ -212,4 +212,32 @@ describe('@pyreon/native-cli build', () => {
       expect(output.code).toMatch(/^package com\.pyreon\.generated\n/)
     }
   })
+
+  it('Kotlin conditional imports: fetch shapes pull coroutines + Json; non-fetch outputs stay clean', () => {
+    // Device-found (fetch-arc): the kotlinc validate loop concatenates
+    // stubs into the same file (no imports needed), so the missing
+    // withContext / Dispatchers / Json imports only surfaced on the
+    // first REAL gradle assembleDebug of a useFetch screen. Bisect
+    // site: the conditionalKotlinImports call in the finalCode
+    // assembly.
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'kotlin',
+      kotlinPackage: 'com.pyreon.generated',
+    })
+    const fetchOutputs = result.outputs.filter((o) => o.code.includes('PyreonFetch<'))
+    expect(fetchOutputs.length).toBeGreaterThan(0)
+    for (const output of fetchOutputs) {
+      expect(output.code).toContain('import kotlinx.coroutines.withContext')
+      expect(output.code).toContain('import kotlinx.coroutines.Dispatchers')
+      expect(output.code).toContain('import kotlinx.serialization.json.Json')
+    }
+    const nonFetch = result.outputs.filter((o) => !o.code.includes('PyreonFetch<'))
+    expect(nonFetch.length).toBeGreaterThan(0)
+    for (const output of nonFetch) {
+      expect(output.code).not.toContain('import kotlinx.coroutines.withContext')
+      expect(output.code).not.toContain('import kotlinx.serialization.json.Json')
+    }
+  })
 })
