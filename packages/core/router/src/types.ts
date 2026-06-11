@@ -469,6 +469,20 @@ export interface Router<TNames extends string = string> {
     options?: { skipLoaders?: boolean },
   ): Promise<void>
   /**
+   * Phase 5 — run ONLY the matched chain's `serverLoader` records for the
+   * single-fetch data endpoint, keyed by matched-chain index. Returns the
+   * index-keyed data, or a redirect descriptor when a server loader threw
+   * `redirect()`. Server-only (the `serverLoader` fn exists only in the SSR
+   * module graph).
+   */
+  runServerLoaders(
+    path: string,
+    request?: Request,
+  ): Promise<
+    | { kind: 'data'; data: Record<number, unknown> }
+    | { kind: 'redirect'; to: string; status: number }
+  >
+  /**
    * Invalidate cached loader data. Forces loaders to re-run on next navigation.
    * - No args: invalidate ALL cached loader data
    * - String: invalidate by cache key (as returned by `loaderKey`)

@@ -29,10 +29,14 @@
  *     marker carrying the island name + codec-encoded props. The page
  *     therefore contains nothing request-specific — it is safe to prerender,
  *     ISR-cache, or CDN-cache.
- *  2. On the client, `activateServerIslands()` (auto-run by zero's
- *     `startClient`) scans the markers and fetches
+ *  2. On the client, EACH marker self-activates on mount (a `ref` calls
+ *     `activateServerIslandElement`) and fetches
  *     `GET /_pyreon/fragment/<name>?props=<encoded>` — a tiny endpoint the
  *     server auto-mounts — then swaps the returned HTML into the marker.
+ *     (Self-activation, not a document scan, is what wins the lazy-route
+ *     timing race in a zero app. `activateServerIslands()` is the MANUAL
+ *     document-scan path for static / no-full-hydrate hosts that aren't a
+ *     zero app — zero's `startClient` does NOT call it.)
  *  3. The fragment renders PER REQUEST on the server with the full request
  *     context (middleware locals, cookies — `renderToString`
  *     inherits the request context since the renderPage unification), so
