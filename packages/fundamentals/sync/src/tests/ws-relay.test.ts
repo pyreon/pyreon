@@ -31,7 +31,12 @@ const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 // ticks don't run when the loop is starved — while behaving identically to the
 // old wall-clock deadline on a healthy machine. vitest's own per-test timeout
 // stays the hard wall-clock backstop.
-const waitFor = (cond: () => boolean, timeoutMs = 8000): Promise<void> =>
+// CI runners under parallel load deliver localhost WS frames LATE while
+// timers stay on time — 8s burned through twice on 2026-06-11 (different
+// specs each time, all 3 vitest retries, blocking the release PR), while
+// the same commit passes locally in <1s. 15s keeps headroom under
+// vitest's 20s per-test timeout.
+const waitFor = (cond: () => boolean, timeoutMs = process.env.CI ? 15_000 : 8000): Promise<void> =>
   new Promise((resolve, reject) => {
     const maxTicks = Math.ceil(timeoutMs / 10)
     let ticks = 0

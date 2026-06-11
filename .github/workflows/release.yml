@@ -247,7 +247,13 @@ jobs:
       # scheduled companion (`published-state.yml`) catches the class where
       # this whole workflow crashed before reaching this step.
       - name: Verify npm received the release
-        if: always() && steps.changesets.outcome == 'success'
+        # PUBLISH path only. On the Version-PR path nothing publishes, so
+        # repo-version > npm-latest is the EXPECTED state whenever a prior
+        # release is pending — the gate would (and did, 2026-06-11) fail
+        # the run for the exact condition the Version PR exists to fix.
+        # The scheduled published-state.yml still covers the
+        # whole-workflow-crashed class daily.
+        if: always() && steps.changesets.outputs.published == 'true'
         run: bun scripts/check-published-state.ts
 
   # ── Prerelease snapshot (release/** branches) ────────────────────
