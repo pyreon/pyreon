@@ -30,7 +30,7 @@
  *     two shared packages.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { adapterFor } from './adapters'
@@ -38,6 +38,7 @@ import { applyAiTools } from './ai-tools'
 import { generatePackageJson } from './generators/package-json'
 import { generateViteConfig } from './generators/vite-config'
 import { applyIntegrations } from './integrations'
+import { OWN_VERSION } from './own-version'
 import { copyOverlay } from './template-engine'
 import { type ProjectConfig, templateDir } from './templates'
 
@@ -45,11 +46,6 @@ const TEMPLATES_ROOT = resolve(import.meta.dirname, '..', 'templates')
 const SHARED_ROOT = resolve(TEMPLATES_ROOT, '_shared')
 const FEATURES_ROOT = resolve(TEMPLATES_ROOT, '_features')
 const MONOREPO_ROOT = resolve(TEMPLATES_ROOT, 'monorepo')
-
-const _ownPkgJson = JSON.parse(
-  readFileSync(resolve(import.meta.dirname, '..', 'package.json'), 'utf-8'),
-) as { version: string }
-const PYREON_VERSION = _ownPkgJson.version
 
 // SSR mode passed to `createServer({ config: { ssr: { mode: '...' } } })`.
 // Note: the user-facing render-mode field has 4 values (`ssr-stream`,
@@ -148,7 +144,7 @@ async function scaffoldMonorepo(config: ProjectConfig): Promise<void> {
   //    packages); `{{pyreonVersion}}` is the runtime monorepo version.
   await copyOverlay(MONOREPO_ROOT, config.targetDir, {
     name: projectName,
-    pyreonVersion: PYREON_VERSION,
+    pyreonVersion: OWN_VERSION,
   })
 
   // 4. Root package.json — workspace declaration + proxy scripts.
