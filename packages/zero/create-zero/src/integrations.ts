@@ -16,6 +16,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { PYREON_DEP_RANGE } from './own-version'
 import { copyOverlay } from './template-engine'
 import type { IntegrationId, ProjectConfig } from './templates'
 
@@ -43,9 +44,13 @@ const META: Record<IntegrationId, IntegrationMeta> = {
     id: 'email',
     deps: () => ({
       resend: '^4.0.0',
-      '@pyreon/document-primitives': 'workspace:^',
-      '@pyreon/document': 'workspace:^',
-      '@pyreon/connector-document': 'workspace:^',
+      // Published packages — must use the npm version range, NOT the
+      // monorepo-internal `workspace:^` protocol, which fails to resolve in
+      // any scaffolded (non-workspace) project. (Was `workspace:^` — broke
+      // `install` for every app that selected the email integration.)
+      '@pyreon/document-primitives': PYREON_DEP_RANGE,
+      '@pyreon/document': PYREON_DEP_RANGE,
+      '@pyreon/connector-document': PYREON_DEP_RANGE,
     }),
     envKeys: () => ['RESEND_API_KEY', 'EMAIL_FROM'],
   },
