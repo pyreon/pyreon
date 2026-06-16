@@ -107,7 +107,7 @@ Components are plain functions returning JSX that run on Pyreon via the shared c
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/svelte-compat](https://docs.pyreon.dev/docs/svelte-compat) (or `docs/src/content/docs/svelte-compat.md` in this repo).
+Full docs: [pyreon.dev/docs/svelte-compat](https://pyreon.dev/docs/svelte-compat) (or `docs/src/content/docs/svelte-compat.md` in this repo).
 
 ## License
 

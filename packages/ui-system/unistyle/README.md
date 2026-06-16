@@ -220,7 +220,7 @@ import type {
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/unistyle](https://docs.pyreon.dev/docs/unistyle) (or `docs/src/content/docs/unistyle.md` in this repo).
+Full docs: [pyreon.dev/docs/unistyle](https://pyreon.dev/docs/unistyle) (or `docs/src/content/docs/unistyle.md` in this repo).
 
 ## License
 

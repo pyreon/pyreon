@@ -176,7 +176,7 @@ The main entry re-exports everything from `/use-head` + `/provider` for ergonomi
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/head](https://docs.pyreon.dev/docs/head) (or `docs/src/content/docs/head.md` in this repo).
+Full docs: [pyreon.dev/docs/head](https://pyreon.dev/docs/head) (or `docs/src/content/docs/head.md` in this repo).
 
 ## License
 

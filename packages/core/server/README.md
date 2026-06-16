@@ -7,7 +7,7 @@ SSR handler + SSG prerenderer + island architecture for Pyreon.
 Also exported from this package:
 
 - **`renderPage(App, router, path, options?)`** — the ONE string-mode render pipeline shared by `createHandler`, SSG prerendering, and zero's dev SSR: preload (lazy components + loaders), render, head collection, optional `collectStyles`, loader-data serialization — all inside `runWithRequestContext`. Returns composable parts (`{ kind: 'html', appHtml, head, loaderScript, status }`) or a `{ kind: 'redirect' }` descriptor.
-- **`serverIsland(loader, { name, fallback?, cache? })`** — the inverse of a client island: a cacheable page with per-request SERVER-rendered holes, fetched from the name-allowlisted fragment endpoint (`GET /_pyreon/fragment/<name>`) with no-JS fallback content and opt-in fragment caching. See [Zero → Server Islands](https://docs.pyreon.dev/docs/zero#server-islands).
+- **`serverIsland(loader, { name, fallback?, cache? })`** — the inverse of a client island: a cacheable page with per-request SERVER-rendered holes, fetched from the name-allowlisted fragment endpoint (`GET /_pyreon/fragment/<name>`) with no-JS fallback content and opt-in fragment caching. See [Zero → Server Islands](https://pyreon.dev/docs/zero#server-islands).
 
 For most apps, the higher-level `@pyreon/zero` meta-framework wraps this package and adds routing conventions / SSG roadmap / adapters. Reach for `@pyreon/server` directly when you want the building blocks without the meta-framework opinions.
 
@@ -193,7 +193,7 @@ Each middleware receives `ctx: MiddlewareContext` (`{ request, path, method, hea
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/server](https://docs.pyreon.dev/docs/server) (or `docs/src/content/docs/server.md` in this repo).
+Full docs: [pyreon.dev/docs/server](https://pyreon.dev/docs/server) (or `docs/src/content/docs/server.md` in this repo).
 
 ## License
 

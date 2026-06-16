@@ -184,7 +184,7 @@ useDraggable({
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/dnd](https://docs.pyreon.dev/docs/dnd) (or `docs/src/content/docs/dnd.md` in this repo).
+Full docs: [pyreon.dev/docs/dnd](https://pyreon.dev/docs/dnd) (or `docs/src/content/docs/dnd.md` in this repo).
 
 ## License
 

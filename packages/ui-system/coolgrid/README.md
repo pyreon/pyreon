@@ -175,7 +175,7 @@ Swap any layer's root element via `component`:
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/coolgrid](https://docs.pyreon.dev/docs/coolgrid) (or `docs/src/content/docs/coolgrid.md` in this repo).
+Full docs: [pyreon.dev/docs/coolgrid](https://pyreon.dev/docs/coolgrid) (or `docs/src/content/docs/coolgrid.md` in this repo).
 
 ## License
 

@@ -219,7 +219,7 @@ Applies to `tag`, `direction`, `alignX`, `alignY`, `gap`, `block`, `equalCols`, 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/elements](https://docs.pyreon.dev/docs/elements) (or `docs/src/content/docs/elements.md` in this repo).
+Full docs: [pyreon.dev/docs/elements](https://pyreon.dev/docs/elements) (or `docs/src/content/docs/elements.md` in this repo).
 
 ## License
 

@@ -188,7 +188,7 @@ A `detectLibc()` step distinguishes glibc vs musl on Linux at load time.
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/compiler](https://docs.pyreon.dev/docs/compiler) (or `docs/src/content/docs/compiler.md` in this repo).
+Full docs: [pyreon.dev/docs/compiler](https://pyreon.dev/docs/compiler) (or `docs/src/content/docs/compiler.md` in this repo).
 
 ## License
 

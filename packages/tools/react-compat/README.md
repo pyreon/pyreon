@@ -135,7 +135,7 @@ If you hit a library that should work but doesn't, file an issue with a minimal 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/react-compat](https://docs.pyreon.dev/docs/react-compat) (or `docs/src/content/docs/react-compat.md` in this repo).
+Full docs: [pyreon.dev/docs/react-compat](https://pyreon.dev/docs/react-compat) (or `docs/src/content/docs/react-compat.md` in this repo).
 
 ## License
 

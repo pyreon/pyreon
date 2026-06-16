@@ -110,7 +110,7 @@ Server packages use `typeof process !== 'undefined' && process.env.NODE_ENV !== 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/runtime-server](https://docs.pyreon.dev/docs/runtime-server) (or `docs/src/content/docs/runtime-server.md` in this repo).
+Full docs: [pyreon.dev/docs/runtime-server](https://pyreon.dev/docs/runtime-server) (or `docs/src/content/docs/runtime-server.md` in this repo).
 
 ## License
 

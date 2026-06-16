@@ -142,7 +142,7 @@ A literal-prop rocketstyle call site (`<Button state="primary" size="medium">Sav
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/vite-plugin](https://docs.pyreon.dev/docs/vite-plugin) (or `docs/src/content/docs/vite-plugin.md` in this repo).
+Full docs: [pyreon.dev/docs/vite-plugin](https://pyreon.dev/docs/vite-plugin) (or `docs/src/content/docs/vite-plugin.md` in this repo).
 
 ## License
 

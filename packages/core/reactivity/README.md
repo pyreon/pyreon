@@ -205,7 +205,7 @@ why(count)           // print dependency graph for this signal
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/reactivity](https://docs.pyreon.dev/docs/reactivity) (or `docs/src/content/docs/reactivity.md` in this repo).
+Full docs: [pyreon.dev/docs/reactivity](https://pyreon.dev/docs/reactivity) (or `docs/src/content/docs/reactivity.md` in this repo).
 
 ## License
 

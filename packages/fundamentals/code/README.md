@@ -184,7 +184,7 @@ createEditor({ theme: customCodeMirrorTheme }) // or pass a raw Extension
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/code](https://docs.pyreon.dev/docs/code) (or `docs/src/content/docs/code.md` in this repo).
+Full docs: [pyreon.dev/docs/code](https://pyreon.dev/docs/code) (or `docs/src/content/docs/code.md` in this repo).
 
 ## License
 

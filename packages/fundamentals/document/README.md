@@ -144,7 +144,7 @@ These load only when their format is invoked. The 14 MB published `lib/` is the 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/document](https://docs.pyreon.dev/docs/document) (or `docs/src/content/docs/document.md` in this repo).
+Full docs: [pyreon.dev/docs/document](https://pyreon.dev/docs/document) (or `docs/src/content/docs/document.md` in this repo).
 
 ## License
 

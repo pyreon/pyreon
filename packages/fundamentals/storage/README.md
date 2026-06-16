@@ -180,7 +180,7 @@ Every storage signal wraps a base `signal()` with a facade that **forwards `_v` 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/storage](https://docs.pyreon.dev/docs/storage) (or `docs/src/content/docs/storage.md` in this repo).
+Full docs: [pyreon.dev/docs/storage](https://pyreon.dev/docs/storage) (or `docs/src/content/docs/storage.md` in this repo).
 
 ## License
 

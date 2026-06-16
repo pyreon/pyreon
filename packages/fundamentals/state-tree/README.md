@@ -260,7 +260,7 @@ WeakRef-based registry of live model instances — tree-shakeable. Used by the P
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/state-tree](https://docs.pyreon.dev/docs/state-tree) (or `docs/src/content/docs/state-tree.md` in this repo).
+Full docs: [pyreon.dev/docs/state-tree](https://pyreon.dev/docs/state-tree) (or `docs/src/content/docs/state-tree.md` in this repo).
 
 ## License
 
