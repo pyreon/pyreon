@@ -2,13 +2,13 @@
 
 Interactive scaffolder for new Pyreon Zero projects.
 
-Ships two bin aliases — `create-pyreon-app` (canonical) and `create-zero` (back-compat) — both invoke the same scaffolder. Walks through template choice, deployment adapter, backend integrations, AI tooling, and compat mode via [@clack/prompts](https://github.com/bombshell-dev/clack), or accepts the full configuration non-interactively via CLI flags. Generates a working `@pyreon/zero` project with `vite.config.ts`, route tree, deploy artefacts, and optional AI rule files.
+Scaffold a new `@pyreon/zero` project. Invoke through the npm/bun create-convention — `npm create @pyreon/zero@latest my-app` or `bun create @pyreon/zero my-app` (both resolve this package). It walks through template choice, deployment adapter, backend integrations, AI tooling, and compat mode via [@clack/prompts](https://github.com/bombshell-dev/clack), or accepts the full configuration non-interactively via CLI flags. Generates a working `@pyreon/zero` project with `vite.config.ts`, route tree, deploy artefacts, and optional AI rule files. (The package exposes `create-pyreon-app` / `create-zero` bins once installed; `bunx create-pyreon-app` does NOT resolve — no package is published under that bare name — so use the create-convention above.)
 
 ## Install
 
 ```bash
 # Canonical
-bunx create-pyreon-app my-app
+npm create @pyreon/zero@latest my-app
 
 # Back-compat (older docs / `bun create` flow)
 bun create @pyreon/zero my-app
@@ -20,13 +20,13 @@ Both invocations are identical — pick whichever you prefer. The `--help` text 
 
 ```bash
 # Interactive — answers every prompt
-bunx create-pyreon-app my-app
+npm create @pyreon/zero@latest my-app
 
 # Non-interactive — accept defaults
-bunx create-pyreon-app my-app --yes
+npm create @pyreon/zero@latest my-app -- --yes
 
 # Fully specified
-bunx create-pyreon-app my-app \
+npm create @pyreon/zero@latest my-app -- \
   --template dashboard \
   --adapter vercel \
   --mode ssr-stream \

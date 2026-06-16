@@ -254,7 +254,7 @@ export function PyreonLanding() {
             <RouterLink to="/docs/getting-started" class="px-btn-primary">
               Get started →
             </RouterLink>
-            <code class="px-btn-cmd">$ bunx create-pyreon-app</code>
+            <code class="px-btn-cmd">$ npm create @pyreon/zero@latest my-app</code>
             <RouterLink to="/docs/" class="px-link-inline">
               ↗ docs
             </RouterLink>
