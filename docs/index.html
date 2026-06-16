@@ -73,10 +73,12 @@
          `/pyreon/docs/X/` (→ tried to load `/docs/favicon.svg`). -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-    <!-- Open Graph + Twitter card. og:image is absolute because social
-         scrapers don't resolve site-relative paths. The OG asset is an
-         SVG (Twitter/Slack prefer raster — a build-time PNG rasterize
-         is a documented follow-up; same gap most static SSG generators have). -->
+    <!-- Open Graph + Twitter card. og:image is absolute (social scrapers
+         don't resolve site-relative paths) AND a raster PNG — Twitter/X,
+         Facebook, LinkedIn, Slack, Discord and iMessage all reject SVG
+         og:images, so an SVG card shows no thumbnail anywhere. og.png is a
+         1200x630 raster of og.svg (brand fonts baked in via headless-Chromium
+         render; see scripts/generate-og.mjs). og.svg is kept as the source. -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://pyreon.dev/" />
     <meta property="og:title" content="Pyreon — the signal-based UI framework" />
@@ -84,11 +86,20 @@
       property="og:description"
       content="Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR."
     />
-    <meta property="og:image" content="https://pyreon.dev/og.svg" />
+    <meta property="og:image" content="https://pyreon.dev/og.png" />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Pyreon — the signal-based UI framework. Signals in. Updates out."
+    />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://pyreon.dev/og.svg" />
+    <meta name="twitter:image" content="https://pyreon.dev/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="Pyreon — the signal-based UI framework. Signals in. Updates out."
+    />
   </head>
   <body>
     <div id="app"><!--pyreon-app--></div>
