@@ -17,15 +17,16 @@
  *   - flat (default) : current behavior — project name + all deps.
  */
 
-import { readFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { basename } from 'node:path'
 import { FEATURES, type FeatureKey, type ProjectConfig } from '../templates'
 import { integrationDeps } from '../integrations'
+// Read the version through the shared top-level module — a subdirectory file
+// like this one CANNOT compute a self-package.json path that's correct in
+// BOTH source-run (src/generators/) and bundled-run (lib/), and getting that
+// wrong shipped the 0.32.0 startup crash. See src/own-version.ts.
+import { PYREON_DEP_RANGE } from '../own-version'
 
-const _ownPkgJson = JSON.parse(
-  readFileSync(resolve(import.meta.dirname, '..', '..', 'package.json'), 'utf-8'),
-) as { version: string }
-const PYREON_VERSION = `^${_ownPkgJson.version}`
+const PYREON_VERSION = PYREON_DEP_RANGE
 
 function pyreonVersion(_pkg: string): string {
   return PYREON_VERSION

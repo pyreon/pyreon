@@ -10,7 +10,7 @@
  * or a feature whose conditional logic changed.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -144,6 +144,22 @@ describe('scaffold — output file-set snapshots', () => {
       expect(files).toContain('src/routes/api/email/welcome.ts')
       // .env.example with both integrations' keys.
       expect(files).toContain('.env.example')
+      // REGRESSION (the email-integration `workspace:^` bug): every
+      // `@pyreon/*` dep in a scaffolded project MUST use a published version
+      // range, NEVER the monorepo-internal `workspace:` protocol — the latter
+      // fails `install` in any non-workspace project. The email integration
+      // once hardcoded `workspace:^` for the document trio, breaking install
+      // for every app (incl. the dashboard template) that selected it. (Only
+      // the user's OWN monorepo packages legitimately use `workspace:`.)
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8')) as {
+        dependencies?: Record<string, string>
+        devDependencies?: Record<string, string>
+      }
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
+      const pyreonWorkspaceDeps = Object.entries(allDeps)
+        .filter(([name, range]) => name.startsWith('@pyreon/') && range.startsWith('workspace:'))
+        .map(([name]) => name)
+      expect(pyreonWorkspaceDeps).toEqual([])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
