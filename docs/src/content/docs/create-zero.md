@@ -7,7 +7,7 @@ description: Interactive scaffolder for Pyreon Zero projects — four templates 
 
 ```bash
 # Canonical (recommended)
-bunx create-pyreon-app my-app
+npm create @pyreon/zero@latest my-app
 
 # Back-compat (older docs)
 bun create @pyreon/zero my-app
@@ -31,8 +31,8 @@ Four curated starting points selected by the `--template` flag (or interactively
 Force a template non-interactively:
 
 ```bash
-bunx create-pyreon-app my-app --template blog
-bunx create-pyreon-app my-mono --template monorepo
+npm create @pyreon/zero@latest my-app -- --template blog
+npm create @pyreon/zero@latest my-mono -- --template monorepo
 ```
 
 ### Monorepo layout
@@ -89,8 +89,8 @@ Four atomic shortcuts via `--preset`:
 | `full` | every feature on (22 total) |
 
 ```bash
-bunx create-pyreon-app my-app --preset standard --yes
-bunx create-pyreon-app my-mono --template monorepo --preset full --yes
+npm create @pyreon/zero@latest my-app -- --preset standard --yes
+npm create @pyreon/zero@latest my-mono -- --template monorepo --preset full --yes
 ```
 
 ### Atomic add / remove
@@ -99,7 +99,7 @@ bunx create-pyreon-app my-mono --template monorepo --preset full --yes
 
 ```bash
 # Standard preset + i18n - forms
-bunx create-pyreon-app my-app --preset standard --with-i18n --no-forms --yes
+npm create @pyreon/zero@latest my-app -- --preset standard --with-i18n --no-forms --yes
 ```
 
 `--no-X` always wins over `--with-X` for the SAME feature (set-subtraction semantics).
@@ -148,23 +148,23 @@ Migrating from another framework? Pick `react` / `vue` / `solid` / `preact` and 
 
 ```bash
 # Standard app, default everything
-bunx create-pyreon-app my-app --yes
+npm create @pyreon/zero@latest my-app -- --yes
 
 # Dashboard + Supabase + Resend, full AI tooling
-bunx create-pyreon-app my-app --template dashboard \
+npm create @pyreon/zero@latest my-app -- --template dashboard \
   --adapter vercel \
   --integrations supabase,email \
   --ai mcp,claude,cursor \
   --yes
 
 # Standard preset + i18n minus forms
-bunx create-pyreon-app my-app --preset standard --with-i18n --no-forms --yes
+npm create @pyreon/zero@latest my-app -- --preset standard --with-i18n --no-forms --yes
 
 # Blog on Cloudflare Pages
-bunx create-pyreon-app my-blog --template blog --adapter cloudflare --yes
+npm create @pyreon/zero@latest my-blog -- --template blog --adapter cloudflare --yes
 
 # Monorepo with the standard preset
-bunx create-pyreon-app my-mono --template monorepo --preset standard --yes
+npm create @pyreon/zero@latest my-mono -- --template monorepo --preset standard --yes
 ```
 
 | Flag | Values |

@@ -27,7 +27,7 @@ pnpm add -D @pyreon/zero-cli
 
 :::
 
-Most apps don't install this directly — `bunx create-pyreon-app my-app` adds it as a dev dep for you.
+Most apps don't install this directly — `npm create @pyreon/zero@latest my-app` adds it as a dev dep for you.
 
 ## Quick start
 
@@ -92,7 +92,7 @@ Generate an AI-readable project-context summary at `.pyreon/context.json`. Used 
 
 ### `zero create <name>`
 
-Convenience wrapper around [`@pyreon/create-zero`](/docs/create-zero) — scaffold a new project without a separate `bunx` step. Equivalent to running `bunx create-pyreon-app <name>` directly.
+Convenience wrapper around [`@pyreon/create-zero`](/docs/create-zero) — scaffold a new project without a separate `npm create` step. Equivalent to running `npm create @pyreon/zero@latest <name>` directly.
 
 ## Gotchas
 
