@@ -3,7 +3,7 @@
 Pyreon's documentation site, built on top of `@pyreon/zero` +
 `@pyreon/zero-content`. **Dogfoods the framework end-to-end** — the
 docs site itself runs on Pyreon's signal-based reactivity, fs-router,
-SSG, and content pipeline. Deployed at https://pyreon.github.io/pyreon/.
+SSG, and content pipeline. Deployed at https://pyreon.dev.
 
 Replaces the legacy VitePress site that previously lived here. The
 cutover (delete VitePress, promote the side-by-side preview to

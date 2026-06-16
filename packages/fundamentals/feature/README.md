@@ -279,7 +279,7 @@ isError() && (
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/feature](https://docs.pyreon.dev/docs/feature) (or `docs/src/content/docs/feature.md` in this repo).
+Full docs: [pyreon.dev/docs/feature](https://pyreon.dev/docs/feature) (or `docs/src/content/docs/feature.md` in this repo).
 
 ## License
 

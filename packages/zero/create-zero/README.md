@@ -127,7 +127,7 @@ Flag values accept both `--flag value` and `--flag=value` forms. Invalid enum va
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/create-zero](https://docs.pyreon.dev/docs/create-zero) (or `docs/src/content/docs/create-zero.md` in this repo).
+Full docs: [pyreon.dev/docs/create-zero](https://pyreon.dev/docs/create-zero) (or `docs/src/content/docs/create-zero.md` in this repo).
 
 ## License
 

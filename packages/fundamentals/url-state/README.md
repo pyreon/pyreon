@@ -145,7 +145,7 @@ Back / forward buttons trigger a `popstate` event; every active `useUrlState` re
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/url-state](https://docs.pyreon.dev/docs/url-state) (or `docs/src/content/docs/url-state.md` in this repo).
+Full docs: [pyreon.dev/docs/url-state](https://pyreon.dev/docs/url-state) (or `docs/src/content/docs/url-state.md` in this repo).
 
 ## License
 

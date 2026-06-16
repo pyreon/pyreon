@@ -18,9 +18,12 @@ import lastUpdated from './vite-plugins/last-updated'
 // fallback. Catch-all route `/docs/[...slug]` is enumerated at
 // build time by its own `getStaticPaths` export.
 //
-// `base` defaults to `/` for local dev; the production GitHub Pages
-// deploy passes `--base=/pyreon/` via CLI (the `argvHasBaseFlag`
-// carve-out in @pyreon/zero honors this — fixed in PR #1395).
+// `base` defaults to `/` — which is the production base now that the
+// site serves at the apex custom domain `pyreon.dev` (GitHub Pages via
+// Cloudflare DNS; custom domain pinned by `docs/public/CNAME`). No
+// `--base` flag is passed in the deploy workflow. (Pre-cutover the
+// GitHub Pages project-pages URL needed `--base=/pyreon/` via the
+// `argvHasBaseFlag` carve-out in @pyreon/zero — PR #1395 — retired now.)
 // Per CLAUDE.md PR E "base single-source-of-truth wiring":
 // `zero({ base })` flows to vite.config.base, __ZERO_BASE__, and
 // the SSG entry's createApp call.

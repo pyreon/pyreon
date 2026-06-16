@@ -154,7 +154,7 @@ import {
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/document-primitives](https://docs.pyreon.dev/docs/document-primitives) (or `docs/src/content/docs/document-primitives.md` in this repo).
+Full docs: [pyreon.dev/docs/document-primitives](https://pyreon.dev/docs/document-primitives) (or `docs/src/content/docs/document-primitives.md` in this repo).
 
 ## License
 

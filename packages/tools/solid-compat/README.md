@@ -91,7 +91,7 @@ export default { plugins: [pyreon({ compat: 'solid' })] }
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/solid-compat](https://docs.pyreon.dev/docs/solid-compat) (or `docs/src/content/docs/solid-compat.md` in this repo).
+Full docs: [pyreon.dev/docs/solid-compat](https://pyreon.dev/docs/solid-compat) (or `docs/src/content/docs/solid-compat.md` in this repo).
 
 ## License
 

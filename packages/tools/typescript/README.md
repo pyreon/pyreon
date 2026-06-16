@@ -93,7 +93,7 @@ All presets configure:
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/typescript](https://docs.pyreon.dev/docs/typescript) (or `docs/src/content/docs/typescript.md` in this repo).
+Full docs: [pyreon.dev/docs/typescript](https://pyreon.dev/docs/typescript) (or `docs/src/content/docs/typescript.md` in this repo).
 
 ## License
 

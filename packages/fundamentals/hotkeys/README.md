@@ -125,7 +125,7 @@ Clears every registered hotkey and active scope. Underscore-prefixed because it'
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/hotkeys](https://docs.pyreon.dev/docs/hotkeys) (or `docs/src/content/docs/hotkeys.md` in this repo).
+Full docs: [pyreon.dev/docs/hotkeys](https://pyreon.dev/docs/hotkeys) (or `docs/src/content/docs/hotkeys.md` in this repo).
 
 ## License
 

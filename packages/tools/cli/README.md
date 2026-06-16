@@ -148,7 +148,7 @@ await generateContext({ cwd: process.cwd(), outPath: '.pyreon/context.json' })
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/cli](https://docs.pyreon.dev/docs/cli) (or `docs/src/content/docs/cli.md` in this repo).
+Full docs: [pyreon.dev/docs/cli](https://pyreon.dev/docs/cli) (or `docs/src/content/docs/cli.md` in this repo).
 
 ## License
 

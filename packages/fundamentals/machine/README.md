@@ -154,7 +154,7 @@ function logState(s: FetcherState) {
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/machine](https://docs.pyreon.dev/docs/machine) (or `docs/src/content/docs/machine.md` in this repo).
+Full docs: [pyreon.dev/docs/machine](https://pyreon.dev/docs/machine) (or `docs/src/content/docs/machine.md` in this repo).
 
 ## License
 

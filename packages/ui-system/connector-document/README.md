@@ -108,7 +108,7 @@ import type { DocNode, DocChild, NodeType, ResolvedStyles } from '@pyreon/connec
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/connector-document](https://docs.pyreon.dev/docs/connector-document) (or `docs/src/content/docs/connector-document.md` in this repo).
+Full docs: [pyreon.dev/docs/connector-document](https://pyreon.dev/docs/connector-document) (or `docs/src/content/docs/connector-document.md` in this repo).
 
 ## License
 

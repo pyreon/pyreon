@@ -198,7 +198,7 @@ Both forms can be passed directly to `kinetic(...).preset(myPreset)`.
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/kinetic-presets](https://docs.pyreon.dev/docs/kinetic-presets) (or `docs/src/content/docs/kinetic-presets.md` in this repo).
+Full docs: [pyreon.dev/docs/kinetic-presets](https://pyreon.dev/docs/kinetic-presets) (or `docs/src/content/docs/kinetic-presets.md` in this repo).
 
 ## License
 

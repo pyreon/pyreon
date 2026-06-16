@@ -150,7 +150,7 @@ A drift snapshot test in `src/tests/public-surface.test.ts` locks the re-export 
 
 ## Documentation
 
-Full docs: [docs.pyreon.dev/docs/table](https://docs.pyreon.dev/docs/table) (or `docs/src/content/docs/table.md` in this repo).
+Full docs: [pyreon.dev/docs/table](https://pyreon.dev/docs/table) (or `docs/src/content/docs/table.md` in this repo).
 
 ## License
 
