@@ -109,6 +109,12 @@ export function parseArgs(argv: readonly string[]): CliArgs {
         out.withFeatures.add(feat)
         continue
       }
+      // `--install` / `--no-install` are accepted no-ops. The scaffolder
+      // never installs (it prints `bun install` in the next-steps), but users
+      // pass these out of habit from create-vite / create-next-app — erroring
+      // on them (as a phantom `install` feature) is hostile. `--no-install`
+      // already describes the actual behavior.
+      if (key === 'install' || key === 'no-install') continue
       if (key.startsWith('no-') && key.length > 3 && key !== 'no-lint') {
         const feat = key.slice(3)
         if (!FEATURE_KEYS.has(feat)) {
