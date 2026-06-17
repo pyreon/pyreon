@@ -406,6 +406,62 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
     })
   })
 
+  // Generalised from the useClipboard-only check after a richer-app
+  // ship-readiness revalidation hit the same cryptic native-build failure
+  // (`Unresolved reference 'isPending'`) for a `useFetch` destructure.
+  describe('hook-result destructure (generalised from useClipboard)', () => {
+    it('useFetch destructure warns with the single-binding fix', () => {
+      const result = transform(
+        `
+        export function App() {
+          const { data, isPending } = useFetch('https://x/q')
+          return <Text>{isPending}</Text>
+        }
+        `,
+        { target: 'kotlin' },
+      )
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.includes('useFetch') &&
+            w.includes('destructure') &&
+            w.includes('single-binding'),
+        ),
+      ).toBe(true)
+    })
+
+    it('useFetch single-binding shape does NOT warn (baseline)', () => {
+      const result = transform(
+        `
+        export function App() {
+          const q = useFetch('https://x/q')
+          return <Text>{q.isPending}</Text>
+        }
+        `,
+        { target: 'kotlin' },
+      )
+      expect(result.warnings.some((w) => w.includes('useFetch'))).toBe(false)
+    })
+
+    it('useParams destructure is EXCLUDED (its destructure form IS supported)', () => {
+      const result = transform(
+        `
+        export function App() {
+          const { id } = useParams()
+          return <Text>{id}</Text>
+        }
+        `,
+        { target: 'kotlin' },
+      )
+      // No "not yet supported" destructure warning for useParams.
+      expect(
+        result.warnings.some(
+          (w) => w.includes('useParams') && w.includes('not yet supported'),
+        ),
+      ).toBe(false)
+    })
+  })
+
   describe('per-route `beforeEnter` with block-body arrow', () => {
     // Routes are extracted from `createRouter({ routes: [...] })`,
     // matching the parser's actual entry point (Phase C5). The JSX

@@ -1866,21 +1866,38 @@ function unwrapTypeLayers(node: AnyNode | undefined): AnyNode | undefined {
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
-  // Round-3 audit fix: `const { copy, copied } = useClipboard()` is the
-  // documented destructure form, but the parser ONLY supports the
-  // single-binding shape today (`const cb = useClipboard()`). Pre-fix
-  // the destructure form silently produced ZERO decl — the rewriter
-  // dropped every `copy` / `copied` reference downstream with no
-  // diagnostic, leaving authors confused about why their clipboard
-  // code was inert. Warn at the destructure site so the path forward
-  // is obvious.
+  // Hook-result destructure diagnostic. The documented native idiom is
+  // the single-binding shape (`const q = useFetch(...); q.data()`); the
+  // destructure form (`const { data, isPending } = useFetch(...)`) is NOT
+  // yet supported — the parser produces ZERO decl and every destructured
+  // local references an undeclared identifier, failing the REAL native
+  // build with a cryptic `Unresolved reference 'isPending'` (Kotlin) /
+  // `cannot find 'isPending' in scope` (Swift) far from the cause. Warn
+  // at the destructure site so the single-binding fix is obvious instead.
+  // `useParams` is DELIBERATELY excluded — its destructure form IS
+  // supported (handled below), so it must fall through to that path.
+  // Generalised from the original useClipboard-only check (round-3 audit)
+  // after a richer-app ship-readiness revalidation hit the same cryptic
+  // failure for `useFetch` destructure.
+  const DESTRUCTURE_UNSUPPORTED_HOOKS = new Set([
+    'useFetch',
+    'useForm',
+    'useClipboard',
+    'useStorage',
+    'usePermissions',
+    'useOnline',
+    'useColorScheme',
+    'useNetworkStatus',
+  ])
   if (
     node.id?.type === 'ObjectPattern' &&
     init?.type === 'CallExpression' &&
-    (init.callee?.name as string | undefined) === 'useClipboard'
+    typeof init.callee?.name === 'string' &&
+    DESTRUCTURE_UNSUPPORTED_HOOKS.has(init.callee.name as string)
   ) {
+    const hook = init.callee.name as string
     ctx.warnings.push(
-      'useClipboard() destructure form (`const { copy, copied } = useClipboard()`) is not yet supported on native — use the single-binding shape `const cb = useClipboard(); cb.copy(...)` / `cb.copied()` instead. The destructure shape silently produces no declaration and downstream references emit unbound. Tracked as a Phase-4 follow-up.',
+      `${hook}() destructure form (\`const { … } = ${hook}(...)\`) is not yet supported on native — use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. The destructure shape silently produces no declaration and downstream references fail the native build unbound. Tracked as a Phase-4 follow-up.`,
     )
     return null
   }
