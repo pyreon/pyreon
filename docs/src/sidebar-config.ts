@@ -28,7 +28,6 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Build an App (Tutorial)', slug: 'build-an-app' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
-      { text: 'Live examples (new DX)', slug: 'example-dx' },
     ],
   },
   {
@@ -127,6 +126,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Create Zero', slug: 'create-zero' },
       { text: 'Zero CLI', slug: 'zero-cli' },
       { text: 'Zero Content (markdown)', slug: 'zero-content' },
+      { text: 'Live Examples (<Example>)', slug: 'live-examples' },
       { text: 'Meta', slug: 'meta' },
       { text: 'Storybook', slug: 'storybook' },
     ],
