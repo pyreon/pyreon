@@ -1189,11 +1189,71 @@ describe('JSX transform — template attribute string expression', () => {
 
 describe('JSX transform — one-time className set in template', () => {
   test('one-time className assignment for non-reactive class expression', () => {
-    // class={someVar} where someVar has no calls — one-time set (line 450)
+    // class={someVar} where someVar has no calls — one-time set (line 450).
+    // The cx-normalizing form mirrors the runtime applyProp path (string
+    // passthrough, array/object → cx) — see attrSetter.
     const result = t('<div class={someVar}><span /></div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('className = someVar')
+    expect(result).toContain(
+      'const _cv = (someVar); __root.className = typeof _cv === "string" ? _cv : _cx(_cv)',
+    )
     expect(result).not.toContain('_bind(')
+  })
+})
+
+describe('JSX transform — class/style binding fidelity', () => {
+  // Bug: the template fast path assigned the raw value to className/cssText,
+  // so `class={[…]}` rendered "a,b", `class={{…}}` rendered "[object Object]",
+  // and `style={() => ({…})}` set cssText to an object → no styles. The setter
+  // now mirrors the runtime applyProp path (cx for class, object-aware style).
+
+  test('reactive class array goes through cx()', () => {
+    const result = t("const t = signal('a'); export const X = () => <div class={[t(), 'x']}>y</div>")
+    expect(result).toContain('typeof _cv === "string" ? _cv : _cx(_cv)')
+    expect(result).toContain('import { cx as _cx } from "@pyreon/core"')
+    expect(result).not.toContain('.className = [') // never assigns a raw array
+  })
+
+  test('reactive class object goes through cx()', () => {
+    const result = t('const a = signal(true); export const X = () => <div class={{ active: a() }}>y</div>')
+    expect(result).toContain('typeof _cv === "string" ? _cv : _cx(_cv)')
+  })
+
+  test('object style literal with a signal is reactive + delegates to _setStyle', () => {
+    const result = t("const t = signal('red'); export const X = () => <div style={{ color: t() }}>y</div>")
+    expect(result).toContain('_bind(') // reactive, not a one-shot apply
+    expect(result).toContain('_setStyle(__root, { color: t() })') // runtime normalizer
+    expect(result).toContain('import { _tpl, _setStyle } from "@pyreon/runtime-dom"')
+  })
+
+  test('object style thunk delegates to _setStyle (not cssText = object)', () => {
+    const result = t("const t = signal('red'); export const X = () => <div style={() => ({ color: t() })}>y</div>")
+    expect(result).toContain('_setStyle(__root, ({ color: t() }))')
+    expect(result).not.toContain('.style.cssText') // never assigns an object to cssText
+  })
+
+  test('static object style applies once via _setStyle (no _bind)', () => {
+    const result = t('export const X = () => <div style={{ color: "red" }}>y</div>')
+    expect(result).toContain('_setStyle(__root, { color: "red" })')
+    expect(result).not.toContain('_bind(')
+  })
+
+  test('string class still passes through (no cx call at runtime)', () => {
+    const result = t("const c = signal(0); export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>")
+    expect(result).toContain("const _cv = (c() > 10 ? 'hot' : 'cold')")
+    expect(result).toContain('typeof _cv === "string" ? _cv : _cx(_cv)')
+  })
+
+  test('injected cx import is aliased (no collision with a user `import { cx }`)', () => {
+    // Regression: a hand-written component that imports `cx` AND uses a
+    // reactive class would get a duplicate `import { cx }` injected →
+    // "Identifier `cx` has already been declared" (broke the docs build).
+    const result = t(
+      "import { cx } from '@pyreon/core'; const t = signal('a'); export const X = () => <div class={[t(), cx('manual')]}>y</div>",
+    )
+    expect(result).toContain('import { cx as _cx } from "@pyreon/core"')
+    // the user's own `cx` import is untouched; no SECOND bare `import { cx }`
+    expect(result.match(/import \{ cx \} from "@pyreon\/core"/g)?.length ?? 0).toBeLessThanOrEqual(1)
   })
 })
 
@@ -1433,10 +1493,10 @@ describe('JSX transform — template emission edge cases', () => {
 // ─── Style attribute handling in templates ───────────────────────────────────
 
 describe('JSX transform — style attribute in templates', () => {
-  test('style object literal uses Object.assign in _bind', () => {
+  test('static style object literal applies once via _setStyle', () => {
     const result = t('<div style={{ overflow: "hidden" }}>text</div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('Object.assign(__root.style,')
+    expect(result).toContain('_setStyle(__root,')
     expect(result).toContain('overflow: "hidden"')
   })
 
@@ -1444,15 +1504,16 @@ describe('JSX transform — style attribute in templates', () => {
     const result = t('<div style="color: red">text</div>')
     expect(result).toContain('_tpl(')
     expect(result).toContain('style=\\"color: red\\"')
-    // Static string should NOT go through _bind
-    expect(result).not.toContain('Object.assign')
+    // Static string should NOT go through _bind / _setStyle
+    expect(result).not.toContain('_setStyle')
     expect(result).not.toContain('cssText')
   })
 
-  test('reactive style uses cssText in _bind', () => {
+  test('reactive style delegates to _setStyle', () => {
     const result = t('<div style={() => getStyle()}>text</div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('style.cssText')
+    // getStyle is a direct ref → _bindDirect with a _setStyle updater
+    expect(result).toContain('_bindDirect(getStyle, (v) => _setStyle(__root, v))')
   })
 })
 
@@ -2460,18 +2521,17 @@ describe('JSX transform — signal auto-call', () => {
 // ─── Additional branch coverage for >= 90% ─────────────────────────────────
 
 describe('JSX transform — template reactive style _bindDirect path', () => {
-  test('reactive style accessor uses _bindDirect with cssText updater', () => {
+  test('reactive style accessor uses _bindDirect delegating to _setStyle', () => {
     const result = t('<div style={getStyle()}><span /></div>')
     expect(result).toContain('_bindDirect(getStyle,')
-    expect(result).toContain('style.cssText')
+    expect(result).toContain('_setStyle(__root, v)')
   })
 
-  test('reactive style accessor with object check in updater', () => {
+  test('reactive style accessor updater delegates string + object handling to _setStyle', () => {
     const result = t('<div style={styleSignal()}><span /></div>')
     expect(result).toContain('_bindDirect(styleSignal,')
-    // The updater should handle both string and object
-    expect(result).toContain('typeof v === "string"')
-    expect(result).toContain('Object.assign')
+    // _setStyle handles both string (cssText) and object (per-property) shapes.
+    expect(result).toContain('(v) => _setStyle(__root, v)')
   })
 })
 
@@ -2692,8 +2752,9 @@ describe('JSX transform — signalVars.size > shadowedSignals.size check', () =>
         return <div>{x}</div>
       }
     `)
-    // Inner's x is NOT auto-called
-    expect(result).toContain('className = x + " extra"')
+    // Inner's x is NOT auto-called (still appears verbatim inside the
+    // cx-normalizing class setter)
+    expect(result).toContain('const _cv = (x + " extra")')
     // App's x IS auto-called
     expect(result).toContain('.data = x()')
   })
@@ -2740,9 +2801,9 @@ describe('JSX transform — referencesPropDerived computed access', () => {
 // ─── Branch coverage: template attrSetter for style (line 940) ──────────────
 
 describe('JSX transform — template style attribute combined _bind', () => {
-  test('complex reactive style uses cssText in combined _bind', () => {
+  test('complex reactive style delegates to _setStyle in combined _bind', () => {
     const result = t('<div style={getStyle() + "extra"}>text</div>')
-    expect(result).toContain('style.cssText')
+    expect(result).toContain('_setStyle(__root, getStyle() + "extra")')
     expect(result).toContain('_bind(() => {')
   })
 })
@@ -3040,8 +3101,8 @@ describe('JSX transform — additional branch coverage paths', () => {
 
   test('ternary in template attribute without signal', () => {
     const result = t('<div class={x ? "a" : "b"}><span /></div>')
-    // No calls — not dynamic
-    expect(result).toContain('className = x ? "a" : "b"')
+    // No calls — not dynamic; still routed through the cx-normalizing setter
+    expect(result).toContain('const _cv = (x ? "a" : "b")')
   })
 
   test('variable declaration kind is let — not tracked for prop-derived', () => {

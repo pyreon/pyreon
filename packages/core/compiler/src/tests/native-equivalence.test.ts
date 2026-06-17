@@ -97,6 +97,21 @@ function compareLens(input: string, filename = 'test.tsx') {
 
 // ─── Cross-backend equivalence ──────────────────────────────────────────────
 
+describeNative('Native vs JS equivalence — class/style binding fidelity', () => {
+  const sig = `import { signal } from '@pyreon/reactivity'\nconst c = signal(0); const a = signal(true); const t = signal('x')\n`
+  // class — cx-normalizing form (array/object → cx, string passthrough)
+  test('class array', () => compare(`${sig}export const X = () => <div class={[t(), 'x']}>y</div>`))
+  test('class object', () => compare(`${sig}export const X = () => <div class={{ active: a() }}>y</div>`))
+  test('class string ternary', () => compare(`${sig}export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>`))
+  test('class non-reactive', () => compare(`export const X = () => <div class={someVar}>y</div>`))
+  test('class direct signal ref', () => compare(`${sig}export const X = () => <div class={t}>y</div>`))
+  // style — object-aware form (object → Object.assign, string → cssText)
+  test('style object literal (reactive)', () => compare(`${sig}export const X = () => <div style={{ color: t() }}>y</div>`))
+  test('style object thunk (reactive)', () => compare(`${sig}export const X = () => <div style={() => ({ color: t() })}>y</div>`))
+  test('style string template', () => compare(`${sig}export const X = () => <div style={\`color: \${t()}\`}>y</div>`))
+  test('style static object (one-shot)', () => compare(`export const X = () => <div style={{ color: 'red' }}>y</div>`))
+})
+
 describeNative('Native vs JS equivalence — basic', () => {
   test('simple signal child', () => compare('<div>{count()}</div>'))
   test('static string child', () => compare('<div>{"static"}</div>'))
