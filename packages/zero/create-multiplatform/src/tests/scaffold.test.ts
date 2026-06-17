@@ -42,7 +42,7 @@ describe('buildScaffold — file tree', () => {
       'src/entry-web.tsx',
       'tsconfig.json',
       'ios/project.yml',
-      'ios/Sources/App.swift',
+      'ios/Sources/Main.swift',
       'ios/Sources/ContentView.swift',
       'ios/Info.plist',
       'scripts/build-ios.sh',
@@ -58,8 +58,9 @@ describe('buildScaffold — file tree', () => {
   })
 
   it('parameterizes the name across targets', () => {
-    // Swift @main struct + iOS project name.
-    expect(get('ios/Sources/App.swift')).toContain('struct MyAppApp: App')
+    // Swift @main struct (in Main.swift, NOT App.swift — that name
+    // collides with the emitted generated/App.swift) + iOS project name.
+    expect(get('ios/Sources/Main.swift')).toContain('struct MyAppApp: SwiftUI.App')
     expect(get('ios/project.yml')).toContain('name: MyApp')
     expect(get('ios/project.yml')).toContain('PRODUCT_BUNDLE_IDENTIFIER: com.example.MyApp')
     // Gradle root project + Android package.
@@ -83,6 +84,94 @@ describe('buildScaffold — file tree', () => {
 
   it('rejects an empty name', () => {
     expect(() => buildScaffold({ name: '   ' })).toThrow()
+  })
+})
+
+// Native runtime delivery wiring — every assertion here corresponds to a
+// real scaffold bug a local end-to-end build (Android emulator + iOS
+// Simulator) surfaced that compile-only validation never caught. Without
+// the wiring, a scaffolded native app cannot build/launch.
+describe('buildScaffold — native runtime delivery wiring (local-proof-found fixes)', () => {
+  const files = buildScaffold({ name: 'my-app' })
+  const get = (p: string) => files.find((f) => f.path === p)?.content ?? ''
+
+  it('package.json depends on the native runtimes + the CLI', () => {
+    const pkg = get('package.json')
+    for (const dep of [
+      '@pyreon/native-cli',
+      '@pyreon/native-runtime-swift',
+      '@pyreon/native-router-swift',
+      '@pyreon/native-runtime-kotlin',
+      '@pyreon/native-router-kotlin',
+    ]) {
+      expect(pkg, `package.json missing devDependency ${dep}`).toContain(`"${dep}"`)
+    }
+  })
+
+  it('iOS project.yml wires the SPM runtimes + paths relative to ios/', () => {
+    const yml = get('ios/project.yml')
+    // SPM package paths: node_modules is at the project ROOT, project.yml
+    // is in ios/, so the path must be ../node_modules (bug #5).
+    expect(yml).toContain('path: ../node_modules/@pyreon/native-runtime-swift')
+    expect(yml).toContain('path: ../node_modules/@pyreon/native-router-swift')
+    // Target depends on both SPM packages.
+    expect(yml).toContain('package: PyreonRuntime')
+    expect(yml).toContain('package: PyreonRouter')
+    // Source + Info paths relative to ios/ — NOT ios/Sources (bug #6).
+    expect(yml).toContain('- path: Sources')
+    expect(yml).toContain('- path: generated')
+    expect(yml).toContain('path: Info.plist')
+    expect(yml).not.toContain('path: ios/Sources')
+    expect(yml).not.toContain('path: node_modules/@pyreon') // un-prefixed = wrong
+    // preBuildScript reaches the root-level scripts/ from SRCROOT (ios/).
+    expect(yml).toContain('bash "${SRCROOT}/../scripts/build-ios.sh"')
+  })
+
+  it('iOS @main lives in Main.swift, qualifies SwiftUI.App (no App.swift collision/shadow)', () => {
+    // bug #7: two files named App.swift in one target is a Swift error.
+    expect(files.map((f) => f.path)).not.toContain('ios/Sources/App.swift')
+    const main = get('ios/Sources/Main.swift')
+    // bug #8: the emitted `struct App: View` shadows the bare App protocol.
+    expect(main).toContain('struct MyAppApp: SwiftUI.App')
+  })
+
+  it('Android root build.gradle.kts declares the serialization plugin version', () => {
+    // bug #3: the app module applies kotlin("plugin.serialization"); its
+    // version must be declared (apply false) at the root.
+    expect(get('android/build.gradle.kts')).toContain(
+      'kotlin("plugin.serialization") version',
+    )
+  })
+
+  it('Android app build.gradle.kts wires the Kotlin runtime srcDirs + deps', () => {
+    const g = get('android/app/build.gradle.kts')
+    expect(g).toContain('kotlin("plugin.serialization")')
+    expect(g).toContain(
+      'srcDir("../../node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin")',
+    )
+    expect(g).toContain(
+      'srcDir("../../node_modules/@pyreon/native-router-kotlin/src/main/kotlin")',
+    )
+    // Runtime-source deps (useFetch/loader @Serializable + coroutines).
+    expect(g).toContain('kotlinx-serialization-json')
+    expect(g).toContain('kotlinx-coroutines-android')
+  })
+
+  it('MainActivity extends ComponentActivity (Compose setContent receiver)', () => {
+    // bug #4: setContent {} is an extension on ComponentActivity, not the
+    // plain android.app.Activity the scaffold previously used.
+    const act = get('android/app/src/main/kotlin/com/example/myapp/MainActivity.kt')
+    expect(act).toContain('import androidx.activity.ComponentActivity')
+    expect(act).toContain('class MainActivity : ComponentActivity()')
+    expect(act).not.toContain('import android.app.Activity')
+  })
+
+  it('build-android.sh stamps the FQN package the MainActivity import needs', () => {
+    // bug #2: without --kotlin-package the emit lands in the anonymous
+    // root package and MainActivity's `import …generated.App` fails.
+    expect(get('scripts/build-android.sh')).toContain(
+      '--kotlin-package=com.example.myapp.generated',
+    )
   })
 })
 

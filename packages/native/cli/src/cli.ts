@@ -134,6 +134,12 @@ export function main(argv: string[]): number {
     console.log(
       `[pyreon-native] compiled ${result.filesCompiled} file(s) → ${parsed.out}`,
     )
+    if (result.skippedWebEntries.length > 0) {
+      console.log(
+        `[pyreon-native] skipped ${result.skippedWebEntries.length} web-only entry file(s) (import @pyreon/runtime-dom|runtime-server):`,
+      )
+      for (const f of result.skippedWebEntries) console.log(`  ${f}`)
+    }
     if (result.warnings.length > 0) {
       console.warn(`[pyreon-native] ${result.warnings.length} warning(s):`)
       for (const w of result.warnings) {

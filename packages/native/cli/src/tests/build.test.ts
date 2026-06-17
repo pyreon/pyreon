@@ -12,13 +12,13 @@
 // don't collide and Math.random isn't anywhere near the path
 // (CodeQL avoidance — secure temp file conventions per #796).
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { transform } from '@pyreon/native-compiler'
-import { build, findTsxFiles } from '../build'
+import { build, findTsxFiles, isWebOnlyEntry } from '../build'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 // Compiler fixtures live in the native-compiler package — reach them via
@@ -301,5 +301,54 @@ describe('@pyreon/native-cli build', () => {
     for (const output of result.outputs.filter((o) => o.code.includes('AsyncImage('))) {
       expect(output.code).toContain('import coil.compose.AsyncImage')
     }
+  })
+
+  // ── Web-entry skip (local-proof-found scaffold bug) ────────────────────────
+  // A `.tsx` importing a web-only runtime (@pyreon/runtime-dom client mount /
+  // @pyreon/runtime-server SSR) is a WEB ENTRY POINT, not a shared component.
+  // Compiling it emits `document.getElementById(...)` into Swift/Kotlin, which
+  // can't compile. The scaffold's `entry-web.tsx` (mount(App, root)) hit this:
+  // a real device build failed until the native build learned to skip it.
+  // Bisect site: the `isWebOnlyEntry(code)` guard in build().
+  describe('web-entry skip', () => {
+    it('isWebOnlyEntry detects @pyreon/runtime-dom / runtime-server imports (not shared components)', () => {
+      expect(isWebOnlyEntry(`import { mount } from '@pyreon/runtime-dom'\nmount(App, root)`)).toBe(true)
+      expect(isWebOnlyEntry(`import { renderToString } from "@pyreon/runtime-server"`)).toBe(true)
+      // Shared component sources — NOT web-only.
+      expect(isWebOnlyEntry(`import { signal } from '@pyreon/reactivity'`)).toBe(false)
+      expect(isWebOnlyEntry(`import { Stack, Text } from '@pyreon/primitives'`)).toBe(false)
+      // A bare mention in a comment must not false-positive (import-anchored).
+      expect(isWebOnlyEntry(`// see @pyreon/runtime-dom for the web mount`)).toBe(false)
+    })
+
+    it('build SKIPS a web entry (no native garbage) but compiles the shared component', () => {
+      const src = mkdtempSync(join(tmpdir(), 'pyreon-native-cli-src-'))
+      mkdirSync(src, { recursive: true })
+      writeFileSync(
+        join(src, 'App.tsx'),
+        `import { signal } from '@pyreon/reactivity'\nimport { Stack, Text } from '@pyreon/primitives'\nexport function App() {\n  const c = signal(0)\n  return <Stack><Text>{c}</Text></Stack>\n}\n`,
+      )
+      writeFileSync(
+        join(src, 'entry-web.tsx'),
+        `import { mount } from '@pyreon/runtime-dom'\nimport { App } from './App'\nconst root = document.getElementById('app')\nif (root) mount(App, root)\n`,
+      )
+      try {
+        for (const target of ['swift', 'kotlin'] as const) {
+          const result = build({ source: src, out: tempOut, target })
+          // entry-web.tsx skipped, App.tsx compiled.
+          expect(result.filesCompiled).toBe(1)
+          expect(result.skippedWebEntries).toHaveLength(1)
+          expect(result.skippedWebEntries[0]).toContain('entry-web.tsx')
+          expect(result.outputs).toHaveLength(1)
+          expect(result.outputs[0]!.source).toContain('App.tsx')
+          // No emitted native file references the DOM (the garbage we skip).
+          for (const o of result.outputs) {
+            expect(o.code).not.toContain('document.getElementById')
+          }
+        }
+      } finally {
+        rmSync(src, { recursive: true, force: true })
+      }
+    })
   })
 })

@@ -4,6 +4,7 @@
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Kotlin runtime implementing @pyreon/router's API surface (RouterProvider / RouterView / PyreonLink / useNavigate / useParams) for Android Compose. Parallel to @pyreon/native-router-swift. Phase C2 of the PMTC multiplatform router story.",
   "license": "MIT",
+  "files": ["src", "README.md", "LICENSE"],
   "scripts": {
     "build": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-router-kotlin] kotlinc not on PATH; skipping build (Android stack required)'; fi",
     "test": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-router-kotlin] kotlinc not on PATH; skipping test (Android stack required)'; fi",

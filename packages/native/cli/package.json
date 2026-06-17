@@ -6,6 +6,7 @@
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
+  "files": ["src", "README.md", "LICENSE"],
   "bin": {
     "pyreon-native": "./src/cli.ts"
   },
