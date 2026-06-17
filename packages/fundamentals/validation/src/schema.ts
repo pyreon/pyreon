@@ -196,6 +196,9 @@ export function extractParseFn<T extends Record<string, unknown>>(
 ): (value: unknown) => SchemaParseResult<T> {
   if (isPyreonAdapter(schema)) {
     const parse = schema.parse
+    // Unreachable: `isPyreonAdapter` already requires `parse` to be a function,
+    // so this guard can never fire — kept as a defensive contract assertion.
+    /* v8 ignore next 4 */
     if (!parse) {
       throw new Error(
         '[Pyreon] schema adapter is missing `parse` method. ' +
