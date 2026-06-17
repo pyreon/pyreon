@@ -17,6 +17,43 @@ pub struct CompilerWarning {
     pub code: String,
 }
 
+/// Resolved emission data for ONE collapsible rocketstyle call site — the
+/// Rust mirror of the JS `collapseRocketstyle.sites` value (jsx.ts). The
+/// Vite plugin's nested-SSR resolver produces these; the compiler looks
+/// them up by the canonical FNV key. napi maps the camelCase JS fields
+/// (`templateHtml` / `lightClass` / `darkClass` / `ruleKey`) onto these
+/// snake_case fields.
+#[napi(object)]
+pub struct CollapseSite {
+    pub template_html: String,
+    pub light_class: String,
+    pub dark_class: String,
+    pub rules: Vec<String>,
+    pub rule_key: String,
+}
+
+/// Live mode-accessor import to thread for the dual-emit (`() => __pyrMode()
+/// === "dark"`). Mirrors `collapseRocketstyle.mode` (`{ name, source }`).
+#[napi(object)]
+pub struct CollapseMode {
+    pub name: String,
+    pub source: String,
+}
+
+/// Rocketstyle-collapse config threaded across the napi boundary — the Rust
+/// mirror of the JS `TransformOptions.collapseRocketstyle`. The JS side's
+/// `candidates: Set` / `sites: Map` are passed as a plain `string[]` /
+/// `Record<string, CollapseSite>` (napi has no Set/Map mapping), which the
+/// caller converts. Absent ⇒ collapse is off (the normal mount is kept).
+#[napi(object)]
+pub struct CollapseConfig {
+    pub candidates: Vec<String>,
+    pub sites: std::collections::HashMap<String, CollapseSite>,
+    pub mode: CollapseMode,
+    pub runtime_dom_source: Option<String>,
+    pub styler_source: Option<String>,
+}
+
 /// Reactivity-lens span — the Rust mirror of `ReactivitySpan` in
 /// `src/jsx.ts`. Each is a faithful RECORD of a codegen decision the
 /// compiler already made (never an approximation). Populated ONLY when
@@ -219,6 +256,51 @@ fn is_valid_entity(e: &str) -> bool {
     b[0].is_ascii_alphabetic() && e.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
+/// Base-36 of a u32 using 0-9a-z (matches JS `(n >>> 0).toString(36)`).
+fn to_base36(mut n: u32) -> String {
+    if n == 0 {
+        return "0".to_string();
+    }
+    const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut buf = Vec::new();
+    while n > 0 {
+        buf.push(DIGITS[(n % 36) as usize]);
+        n /= 36;
+    }
+    buf.reverse();
+    // SAFETY: DIGITS are all ASCII.
+    String::from_utf8(buf).unwrap()
+}
+
+/// Canonical key for a collapsible rocketstyle call site — byte-for-byte
+/// identical to the JS `rocketstyleCollapseKey` (jsx.ts). The Vite plugin
+/// computes this when it resolves a site; both compiler backends recompute
+/// the IDENTICAL key from the JSX node to look the resolution up.
+///
+/// `props` is iterated in SORTED key order (BTreeMap) — matching JS
+/// `Object.keys(props).sort()` for the ASCII prop names rocketstyle uses.
+/// The FNV-1a hash iterates UTF-16 code units (`encode_utf16`) so it matches
+/// JS `charCodeAt` exactly, including for non-BMP input. Delimiters: `\u{0001}`
+/// between `k=v` pairs, `\u{0000}` between component/props/children segments.
+fn rocketstyle_collapse_key(
+    component: &str,
+    props: &std::collections::BTreeMap<String, String>,
+    children_text: &str,
+) -> String {
+    let prop_str = props
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join("\u{0001}");
+    let src = format!("{}\u{0000}{}\u{0000}{}", component, prop_str, children_text);
+    let mut h: u32 = 2166136261;
+    for unit in src.encode_utf16() {
+        h ^= unit as u32;
+        h = h.wrapping_mul(16777619);
+    }
+    to_base36(h)
+}
+
 fn escape_html_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.char_indices().peekable();
@@ -414,13 +496,33 @@ struct Ctx<'a> {
     /// the existing `replacements`/`hoists` pushes — never a second pass.
     collect_lens: bool,
     reactivity_lens: Vec<ReactivitySpan>,
+
+    /// Rocketstyle-collapse config (the napi `collapse` arg). None ⇒ collapse
+    /// off (normal mount kept). Mirrors `options.collapseRocketstyle` in JS.
+    collapse: Option<CollapseConfig>,
+    /// Set once a full-collapse `__rsCollapse(...)` is emitted — gates the
+    /// `_rsCollapse` / `sheet` / mode imports + the injectRules prologue.
+    needs_collapse: bool,
+    /// Distinct collapse rule bundles, injected once each (deduped by ruleKey).
+    collapse_rule_keys: FxHashSet<String>,
+    collapse_rules: Vec<(String, Vec<String>)>,
 }
 
 impl<'a> Ctx<'a> {
-    fn new(source: &'a str, program: &'a Program<'a>, ssr: bool, collect_lens: bool) -> Self {
+    fn new(
+        source: &'a str,
+        program: &'a Program<'a>,
+        ssr: bool,
+        collect_lens: bool,
+        collapse: Option<CollapseConfig>,
+    ) -> Self {
         Ctx {
             source,
             program,
+            collapse,
+            needs_collapse: false,
+            collapse_rule_keys: FxHashSet::default(),
+            collapse_rules: Vec::new(),
             line_index: LineIndex::new(source),
             ssr,
             replacements: Vec::new(),
@@ -586,6 +688,12 @@ impl<'a> Ctx<'a> {
                 core_imports.join(", "),
                 result
             );
+        }
+
+        // Collapse imports + injectRules prologue — prepended LAST so they land
+        // at the very top of the module (matches the JS build_result ordering).
+        if self.needs_collapse {
+            result = self.collapse_preamble() + &result;
         }
 
         TransformResult {
@@ -2545,6 +2653,7 @@ pub fn transform_jsx(
     ssr: bool,
     known_signals: Option<Vec<String>>,
     reactivity_lens: Option<bool>,
+    collapse: Option<CollapseConfig>,
 ) -> TransformResult {
     let source_type = SourceType::from_path(&filename)
         .unwrap_or_default()
@@ -2566,7 +2675,7 @@ pub fn transform_jsx(
     }
 
     let collect_lens = reactivity_lens == Some(true);
-    let mut ctx = Ctx::new(&code, &ret.program, ssr, collect_lens);
+    let mut ctx = Ctx::new(&code, &ret.program, ssr, collect_lens, collapse);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -3041,6 +3150,14 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
 // ─── JSX element handling ────────────────────────────────────────────────────
 
 fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
+    // Rocketstyle-collapse: a candidate component with a resolved site collapses
+    // to a single `__rsCollapse` cloneNode — children are baked into the SSR-
+    // resolved template, so do NOT recurse into the subtree. Mirrors the JS
+    // walk's `if (tryRocketstyleCollapse(node)) return` at the JSXElement head.
+    if try_rocketstyle_collapse(el, ctx) {
+        return;
+    }
+
     // Try template emit (non-self-closing only)
     if !is_self_closing(el) && try_template_emit(el, ctx) {
         return;
@@ -4769,5 +4886,201 @@ fn references_prop_derived(expr: &Expression, prop_derived: &FxHashMap<String, S
             ChainElement::TSNonNullExpression(e) => references_prop_derived(&e.expression, prop_derived),
         },
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod collapse_key_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn m(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    // Oracle values computed from the JS `rocketstyleCollapseKey` (jsx.ts).
+    // Any drift here means the Rust key would miss the resolver's site map.
+    #[test]
+    fn collapse_key_matches_js_oracle() {
+        assert_eq!(rocketstyle_collapse_key("Button", &m(&[("state", "primary")]), "Save"), "r7ykck");
+        assert_eq!(
+            rocketstyle_collapse_key("Button", &m(&[("state", "primary"), ("size", "medium")]), "Save"),
+            "1wvmzhu"
+        );
+        assert_eq!(rocketstyle_collapse_key("Card", &m(&[]), ""), "mzrimv");
+        assert_eq!(
+            rocketstyle_collapse_key("Box", &m(&[("variant", "a"), ("size", "b"), ("state", "c")]), "Hello World"),
+            "1d6hb86"
+        );
+        // Non-ASCII (BMP) children — exercises the UTF-16 code-unit iteration.
+        // "\u{FC}n\u{EF}c\u{F8}d\u{E9}" == "ünïcødé"
+        assert_eq!(
+            rocketstyle_collapse_key("X", &m(&[("data-x", "1")]), "\u{FC}n\u{EF}c\u{F8}d\u{E9}"),
+            "15lz0gt"
+        );
+    }
+}
+
+/// JSON.stringify-equivalent for a string (quotes + escapes control chars the
+/// same way JS does) — so the Rust collapse emit is byte-identical to the JS
+/// `__rsCollapse(${JSON.stringify(...)}, ...)`.
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        let code = c as u32;
+        if c == '"' {
+            out.push('\\');
+            out.push('"');
+        } else if c == '\\' {
+            out.push('\\');
+            out.push('\\');
+        } else if code == 0x08 {
+            out.push_str("\\b");
+        } else if code == 0x09 {
+            out.push_str("\\t");
+        } else if code == 0x0A {
+            out.push_str("\\n");
+        } else if code == 0x0C {
+            out.push_str("\\f");
+        } else if code == 0x0D {
+            out.push_str("\\r");
+        } else if code < 0x20 {
+            out.push_str(&format!("\\u{:04x}", code));
+        } else {
+            out.push(c);
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// FULL-collapse shape detector — byte-for-byte the JS `detectCollapsibleShape`
+/// bail catalogue: every attribute a string-literal (no spread, no `{expr}`, no
+/// boolean attr), children text-only. Returns sorted props + trimmed text, or
+/// None (bail → fallthrough / normal mount).
+fn detect_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(std::collections::BTreeMap<String, String>, String)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None, // namespaced → bail
+                };
+                let v = a.value.as_ref()?; // boolean attr (no value) → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    _ => return None, // {expr} / dynamic → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None, // spread → bail
+        }
+    }
+    let mut children_text = String::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => children_text.push_str(t.value.as_str()),
+            _ => return None, // element / expression child → bail
+        }
+    }
+    Some((props, children_text.trim().to_string()))
+}
+
+/// FULL rocketstyle-collapse — mirror of the JS `tryRocketstyleCollapse`. A
+/// candidate component with an all-string-literal-prop, text-only-child shape
+/// whose resolver key is present emits `__rsCollapse(html, light, dark,
+/// () => __pyrMode() === "dark")` (brace-wrapped when rendered as a JSX child).
+/// PR-1 scope: full collapse only — a non-full shape keeps the normal mount
+/// (the partial / dynamic / element-child fallthrough is a follow-on PR).
+fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
+    if ctx.collapse.is_none() {
+        return false;
+    }
+    let tag = jsx_tag_name(el);
+    if tag.is_empty() || is_lower_case(tag) {
+        return false;
+    }
+    let parent_is_jsx = ctx.parent_is_jsx;
+    let (text, rule_key, rules) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        if !cfg.candidates.iter().any(|c| c.as_str() == tag) {
+            return false;
+        }
+        let (props, children_text) = match detect_collapsible_shape(el) {
+            Some(s) => s,
+            None => return false,
+        };
+        let key = rocketstyle_collapse_key(tag, &props, &children_text);
+        let site = match cfg.sites.get(&key) {
+            Some(s) => s,
+            None => return false, // not resolved → keep normal mount
+        };
+        let call = format!(
+            "__rsCollapse({}, {}, {}, () => __pyrMode() === \"dark\")",
+            json_string(&site.template_html),
+            json_string(&site.light_class),
+            json_string(&site.dark_class),
+        );
+        let text = if parent_is_jsx {
+            format!("{{{}}}", call)
+        } else {
+            call
+        };
+        (text, site.rule_key.clone(), site.rules.clone())
+    };
+    let span = el.span();
+    ctx.replacements.push(Replacement {
+        start: span.start,
+        end: span.end,
+        text,
+    });
+    ctx.needs_collapse = true;
+    if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+        ctx.collapse_rules.push((rule_key, rules));
+    }
+    true
+}
+
+impl<'a> Ctx<'a> {
+    /// Build the collapse preamble (imports + idempotent injectRules) prepended
+    /// when a full `__rsCollapse` was emitted — byte-identical to the JS
+    /// `build_result` collapse block (jsx.ts). One `injectRules(rules, ruleKey)`
+    /// per distinct rule bundle (deduped upstream by ruleKey). The module
+    /// specifiers default to `@pyreon/runtime-dom` / `@pyreon/styler`; the mode
+    /// accessor name is imported unquoted as `__pyrMode`.
+    fn collapse_preamble(&self) -> String {
+        let cfg = self
+            .collapse
+            .as_ref()
+            .expect("collapse_preamble called without a collapse config");
+        let rd = cfg
+            .runtime_dom_source
+            .as_deref()
+            .unwrap_or("@pyreon/runtime-dom");
+        let st = cfg.styler_source.as_deref().unwrap_or("@pyreon/styler");
+        let inj: String = self
+            .collapse_rules
+            .iter()
+            .map(|(rule_key, rules)| {
+                let arr = format!(
+                    "[{}]",
+                    rules
+                        .iter()
+                        .map(|r| json_string(r))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                format!("__rsSheet.injectRules({},{});", arr, json_string(rule_key))
+            })
+            .collect();
+        format!(
+            "import {{ _rsCollapse as __rsCollapse }} from \"{}\";\nimport {{ sheet as __rsSheet }} from \"{}\";\nimport {{ {} as __pyrMode }} from \"{}\";\n{}\n",
+            rd, st, cfg.mode.name, cfg.mode.source, inj
+        )
     }
 }
