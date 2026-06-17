@@ -23,6 +23,7 @@ export const SIDEBAR: SidebarGroup[] = [
     text: 'Getting Started',
     items: [
       { text: 'Overview', slug: '' },
+      { text: 'Why Pyreon', slug: 'why-pyreon' },
       { text: 'Getting Started', slug: 'getting-started' },
       { text: 'Live examples (new DX)', slug: 'example-dx' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
@@ -31,6 +32,13 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'PMTC Library Status & Authoring', slug: 'multiplatform-libraries' },
       { text: 'PMTC Supported TypeScript', slug: 'pmtc-supported-typescript' },
       { text: 'PMTC Per-Target Setup', slug: 'pmtc-per-target-setup' },
+    ],
+  },
+  {
+    text: 'Migrating to Pyreon',
+    items: [
+      { text: 'Coming from React', slug: 'migrating-from-react' },
+      { text: 'Coming from Solid', slug: 'migrating-from-solid' },
     ],
   },
   {
