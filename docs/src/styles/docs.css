@@ -2767,6 +2767,13 @@ a.px-footer-item:hover {
   color: var(--text-muted);
   line-height: 1.4;
 }
+.pyreon-search__empty {
+  display: block;
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
 
 /* ── (H) Doc body typography — port of VitePress .vp-doc rules ──── */
 .docs-content,

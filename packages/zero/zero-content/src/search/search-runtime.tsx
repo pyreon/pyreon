@@ -177,6 +177,19 @@ export async function loadSearchIndex(
  * building a custom search UI; `<Search />` wraps this with default
  * styling + keyboard shortcuts.
  */
+/**
+ * Search lifecycle state, used to drive the empty state without a flicker:
+ * - `idle` — query is empty or below `minQueryLength` (show nothing / a hint)
+ * - `searching` — a query fired and results are being computed (in-flight)
+ * - `ready` — a search COMPLETED for the current query; if `results` is then
+ *   empty, that's a genuine "no matches" (safe to show the empty state)
+ *
+ * The distinction matters: during the debounce + index-load window, results
+ * are momentarily empty for a query that WILL match — gating the empty state
+ * on `ready` (not just `results.length === 0`) prevents a "No results" flash.
+ */
+export type SearchStatus = 'idle' | 'searching' | 'ready'
+
 export interface UseSearchResult {
   /** Open state of the search overlay. */
   open: ReturnType<typeof signal<boolean>>
@@ -184,6 +197,8 @@ export interface UseSearchResult {
   query: ReturnType<typeof signal<string>>
   /** Search results — auto-updates with debounced query. */
   results: ReturnType<typeof computed<SearchResult[]>>
+  /** Lifecycle state — see {@link SearchStatus}. Drives the empty state. */
+  status: ReturnType<typeof signal<SearchStatus>>
   /** Toggle the overlay open/closed. */
   toggle: () => void
   /** Close the overlay. */
@@ -234,6 +249,7 @@ export function useSearch(
   }
 
   const _results = signal<SearchResult[]>([])
+  const status = signal<SearchStatus>('idle')
   let queryRunCount = 0
 
   // PR-D audit C8 — pre-fix `debounced.subscribe(() => ...)` never
@@ -258,13 +274,19 @@ export function useSearch(
       const q = debounced().trim()
       if (q.length < minQueryLength) {
         _results.set([])
+        status.set('idle')
         return
       }
+      status.set('searching')
       const runId = ++queryRunCount
       void ensureIndex().then((ms) => {
         // Discard stale results from earlier slow searches.
         if (runId !== queryRunCount) return
         _results.set(ms.search(q).slice(0, options.maxResults ?? 8))
+        // Mark the search complete LAST — an empty `results` now means a
+        // genuine no-match, so the empty state can show without flickering
+        // during the in-flight window.
+        status.set('ready')
       })
     })
 
@@ -287,7 +309,7 @@ export function useSearch(
   const toggle = () => open.set(!open())
   const close = () => open.set(false)
 
-  return { open, query, results, toggle, close }
+  return { open, query, results, status, toggle, close }
 }
 
 /**
@@ -307,6 +329,12 @@ export interface SearchProps {
   maxResults?: number
   /** Minimum query length before search fires. Default 2. */
   minQueryLength?: number
+  /**
+   * Message shown when a search completes with no matches. Receives the
+   * trimmed query so callers can customise (e.g. for i18n). Default:
+   * `No results for "<query>"`.
+   */
+  noResultsText?: (query: string) => string
 }
 
 export function Search(props: SearchProps): VNodeChild {
@@ -420,6 +448,12 @@ export function Search(props: SearchProps): VNodeChild {
               Close
             </button>
             <ul class="pyreon-search__results">
+              {/* Results list — kept byte-identical to the known-working
+                  concise accessor `{() => results.map(...)}`. An empty array
+                  renders nothing; the empty-state message is the SEPARATE
+                  sibling below (a block-body accessor here, or putting the
+                  message inside the <ul>, broke results rendering in the
+                  production build — a compiler JSX-child quirk). */}
               {() =>
                 state.results().map((r) => (
                   <li class="pyreon-search__result">
@@ -450,6 +484,21 @@ export function Search(props: SearchProps): VNodeChild {
                 ))
               }
             </ul>
+            {/* Empty state — a semantic <output> (implicit role="status", so
+                screen readers announce "no results"). Shown ONLY after a
+                search actually completes (`status === 'ready'`) with no
+                matches, so it never flashes during the debounce / index-load
+                window for a query that WILL match. `idle` (empty / too-short
+                query) and `searching` (in-flight) render nothing. */}
+            {() => {
+              if (state.results().length > 0 || state.status() !== 'ready')
+                return null
+              const q = state.query().trim()
+              const text = props.noResultsText
+                ? props.noResultsText(q)
+                : `No results for "${q}"`
+              return <output class="pyreon-search__empty">{text}</output>
+            }}
           </dialog>
         </div>
       ) : null}

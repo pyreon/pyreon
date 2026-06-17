@@ -118,6 +118,109 @@ describe('<Search> browser — closed state shell', () => {
   })
 })
 
+describe('<Search> browser — empty state', () => {
+  beforeEach(() => {
+    _resetSearchForTesting()
+    vi.stubGlobal('fetch', vi.fn(mockedFetch))
+  })
+
+  afterEach(() => {
+    _resetSearchForTesting()
+    vi.unstubAllGlobals()
+  })
+
+  // Open via the keyboard shortcut + type a query. Both modifiers are set so
+  // the handler fires on both Mac (metaKey) and Linux-CI (ctrlKey) runners.
+  async function openAndType(
+    container: HTMLElement,
+    value: string,
+  ): Promise<void> {
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'k',
+        metaKey: true,
+        ctrlKey: true,
+        bubbles: true,
+      }),
+    )
+    const input = await vi.waitFor(() => {
+      const el = container.querySelector(
+        '.pyreon-search__input',
+      ) as HTMLInputElement | null
+      if (!el) throw new Error('search input not shown')
+      return el
+    })
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  it('shows the empty state (with the query) after a search with no matches', async () => {
+    const { container, unmount } = mountInBrowser(<Search debounceMs={10} />)
+    await openAndType(container, 'zzzznomatchqxy')
+    const empty = await vi.waitFor(
+      () => {
+        const el = container.querySelector('.pyreon-search__empty')
+        if (!el) throw new Error('empty state not shown')
+        return el
+      },
+      { timeout: 3000 },
+    )
+    expect(empty.textContent).toContain('No results for')
+    expect(empty.textContent).toContain('zzzznomatchqxy')
+    expect(container.querySelector('.pyreon-search__result')).toBeNull()
+    unmount()
+  })
+
+  it('shows results — NOT the empty state — for a matching query', async () => {
+    const { container, unmount } = mountInBrowser(<Search debounceMs={10} />)
+    await openAndType(container, 'reactivity')
+    await vi.waitFor(
+      () => {
+        if (!container.querySelector('.pyreon-search__result'))
+          throw new Error('no results yet')
+      },
+      { timeout: 3000 },
+    )
+    expect(container.querySelector('.pyreon-search__empty')).toBeNull()
+    unmount()
+  })
+
+  // The flicker guard + bisect discriminator: a too-short query sets results
+  // to `[]` but status to `idle`, so the empty state MUST NOT show. A naive
+  // `results.length === 0` check (no status gate) would wrongly show
+  // "No results for r" here — this test fails against that regression.
+  it('does NOT show the empty state for a too-short / idle query', async () => {
+    const { container, unmount } = mountInBrowser(
+      <Search debounceMs={10} minQueryLength={2} />,
+    )
+    await openAndType(container, 'r')
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    expect(container.querySelector('.pyreon-search__empty')).toBeNull()
+    expect(container.querySelector('.pyreon-search__result')).toBeNull()
+    unmount()
+  })
+
+  it('uses a custom noResultsText when provided', async () => {
+    const { container, unmount } = mountInBrowser(
+      <Search
+        debounceMs={10}
+        noResultsText={(q) => `Nothing matched ${q}!`}
+      />,
+    )
+    await openAndType(container, 'zzzznomatchqxy')
+    const empty = await vi.waitFor(
+      () => {
+        const el = container.querySelector('.pyreon-search__empty')
+        if (!el) throw new Error('empty state not shown')
+        return el
+      },
+      { timeout: 3000 },
+    )
+    expect(empty.textContent).toBe('Nothing matched zzzznomatchqxy!')
+    unmount()
+  })
+})
+
 describe('<Search> browser — loadSearchIndex (data layer)', () => {
   beforeEach(() => {
     _resetSearchForTesting()
