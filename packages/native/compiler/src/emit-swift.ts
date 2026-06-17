@@ -2338,6 +2338,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'NativeAndroid' || tag === 'Web') {
     return emitSwiftEscapeHatch(e, indent, /*matched*/ false)
   }
+  // <WebView> — native host (WKWebView via PyreonWebView) for embedding
+  // web-only-rich viz (charts / flow / tables) inside a native shell.
+  if (tag === 'WebView') return emitSwiftWebView(e)
   // Phase 5 — walled tags. SwiftUI has no equivalent for these three:
   //   - <Suspense fallback>:   no async-render-suspend mechanism
   //   - <ErrorBoundary fallback>: no render-time try/catch
@@ -3533,6 +3536,24 @@ const SWIFT_CONTENT_MODE: Record<string, string> = {
   cover: '.scaledToFill()',
   contain: '.scaledToFit()',
   fill: '.scaledToFill()',
+}
+
+/**
+ * `<WebView html="…" />` / `<WebView src="…" />` → `PyreonWebView(html:)` /
+ * `PyreonWebView(src:)` (the WKWebView host in @pyreon/native-runtime-swift).
+ * `html` wins if both present. v1 requires a static string; a dynamic value
+ * warns + emits a bare `PyreonWebView()` (renders nothing) rather than an
+ * unbound reference.
+ */
+function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const html = readStaticAttr(e, 'html')
+  if (typeof html === 'string') return `PyreonWebView(html: ${JSON.stringify(html)})`
+  const src = readStaticAttr(e, 'src')
+  if (typeof src === 'string') return `PyreonWebView(src: ${JSON.stringify(src)})`
+  _emitWarnings.push(
+    '<WebView>: needs a static `html` or `src` string on native (v1). Dynamic / signal-driven content is the planned bridge follow-up; emitting an empty PyreonWebView().',
+  )
+  return 'PyreonWebView()'
 }
 
 function emitSwiftImage(

@@ -2116,6 +2116,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'NativeIOS' || tag === 'Web') {
     return emitKotlinEscapeHatch(e, indent, /*matched*/ false)
   }
+  // <WebView> — native host (Android WebView via PyreonWebView) for
+  // embedding web-only-rich viz inside a Compose native shell.
+  if (tag === 'WebView') return emitKotlinWebView(e)
   // Phase 5 — walled tags. Mirror of the Swift dispatcher entry.
   // Compose has no equivalent for Suspense / ErrorBoundary / KeepAlive
   // either; previously these emitted FAKE composables (`Suspense(…) {}`)
@@ -3002,6 +3005,22 @@ const KOTLIN_CONTENT_SCALE: Record<string, string> = {
   contain: 'ContentScale.Fit',
   fill: 'ContentScale.FillBounds',
   none: 'ContentScale.None',
+}
+
+/**
+ * `<WebView html="…" />` / `<WebView src="…" />` → `PyreonWebView(html = …)`
+ * / `PyreonWebView(src = …)` (the Android WebView host in
+ * @pyreon/native-runtime-kotlin). Mirror of `emitSwiftWebView`.
+ */
+function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const html = readStaticAttrKotlin(e, 'html')
+  if (typeof html === 'string') return `PyreonWebView(html = ${JSON.stringify(html)})`
+  const src = readStaticAttrKotlin(e, 'src')
+  if (typeof src === 'string') return `PyreonWebView(src = ${JSON.stringify(src)})`
+  _emitWarnings.push(
+    '<WebView>: needs a static `html` or `src` string on native (v1). Dynamic / signal-driven content is the planned bridge follow-up; emitting an empty PyreonWebView().',
+  )
+  return 'PyreonWebView()'
 }
 
 function emitKotlinImage(

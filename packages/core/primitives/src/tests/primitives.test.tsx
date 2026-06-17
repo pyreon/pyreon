@@ -38,6 +38,7 @@ import {
   Text,
   Toggle,
   Web,
+  WebView,
 } from '../index'
 
 function mountTest(vnode: ReturnType<typeof h>): {
@@ -1351,6 +1352,38 @@ describe('escape-hatch primitives — web runtime', () => {
     expect(container.textContent).toContain('web-branch')
     expect(container.textContent).not.toContain('ios-branch')
     expect(container.textContent).not.toContain('android-branch')
+    unmount()
+  })
+})
+
+describe('<WebView> happy-dom unit (web = iframe host)', () => {
+  it('src → <iframe src=…> filling its container', () => {
+    const { container, unmount } = mountTest(h(WebView, { src: 'https://x/chart.html' }))
+    const frame = container.firstElementChild as HTMLIFrameElement
+    expect(frame.tagName).toBe('IFRAME')
+    expect(frame.getAttribute('src')).toBe('https://x/chart.html')
+    expect(frame.style.width).toBe('100%')
+    expect(frame.style.height).toBe('100%')
+    unmount()
+  })
+
+  it('html → <iframe srcdoc=…>', () => {
+    const { container, unmount } = mountTest(
+      h(WebView, { html: '<p>chart</p>' }),
+    )
+    const frame = container.firstElementChild as HTMLIFrameElement
+    expect(frame.tagName).toBe('IFRAME')
+    expect(frame.getAttribute('srcdoc')).toBe('<p>chart</p>')
+    unmount()
+  })
+
+  it('html wins over src (matches the native emit)', () => {
+    const { container, unmount } = mountTest(
+      h(WebView, { html: '<p>x</p>', src: 'y.html' }),
+    )
+    const frame = container.firstElementChild as HTMLIFrameElement
+    expect(frame.getAttribute('srcdoc')).toBe('<p>x</p>')
+    expect(frame.hasAttribute('src')).toBe(false)
     unmount()
   })
 })
