@@ -509,6 +509,13 @@ struct Ctx<'a> {
     /// Set once an on*-handler partial `__rsCollapseH(...)` is emitted — gates
     /// the `_rsCollapseH as __rsCollapseH` import.
     needs_collapse_h: bool,
+    /// Set once a dynamic-prop `__rsCollapseDyn(...)` (no handlers) is emitted.
+    needs_collapse_dyn: bool,
+    /// Set once a handler-combined dynamic `__rsCollapseDynH(...)` is emitted.
+    /// (Unlike the on*-handler partial path, the dynamic paths do NOT set
+    /// needs_collapse — they import only their own helper, matching JS — so the
+    /// preamble gate is `needs_collapse || needs_collapse_dyn || needs_collapse_dyn_h`.)
+    needs_collapse_dyn_h: bool,
     /// Distinct collapse rule bundles, injected once each (deduped by ruleKey).
     collapse_rule_keys: FxHashSet<String>,
     collapse_rules: Vec<(String, Vec<String>)>,
@@ -528,6 +535,8 @@ impl<'a> Ctx<'a> {
             collapse,
             needs_collapse: false,
             needs_collapse_h: false,
+            needs_collapse_dyn: false,
+            needs_collapse_dyn_h: false,
             collapse_rule_keys: FxHashSet::default(),
             collapse_rules: Vec::new(),
             line_index: LineIndex::new(source),
@@ -699,7 +708,10 @@ impl<'a> Ctx<'a> {
 
         // Collapse imports + injectRules prologue — prepended LAST so they land
         // at the very top of the module (matches the JS build_result ordering).
-        if self.needs_collapse {
+        // Gate mirrors JS: `needsCollapse || needsCollapseDyn || needsCollapseDynH`
+        // (the on*-handler partial path always co-sets needs_collapse, so it
+        // doesn't need its own term; the dynamic paths set only their own flag).
+        if self.needs_collapse || self.needs_collapse_dyn || self.needs_collapse_dyn_h {
             result = self.collapse_preamble() + &result;
         }
 
@@ -5060,7 +5072,12 @@ fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
         }
         return true;
     }
+    // Fall-through chain (mirrors the JS `tryPartialCollapse || tryDynamicCollapse`):
+    // on*-handler partial first, then the dynamic-prop (ternary-of-two-literals)
+    // path. `||` short-circuits so the second &mut ctx borrow only happens when
+    // the first bailed.
     try_partial_collapse(el, tag, parent_is_jsx, ctx)
+        || try_dynamic_collapse(el, tag, parent_is_jsx, ctx)
 }
 
 /// A residual event handler peeled off a partially-collapsible site — mirror of
@@ -5200,6 +5217,219 @@ fn try_partial_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &m
     true
 }
 
+/// A dynamic dimension prop — a ConditionalExpression (ternary) whose both
+/// branches are string literals (`state={cond ? 'a' : 'b'}`). Mirror of the JS
+/// `DynamicCollapsibleProp`: the cond test span is re-emitted into the runtime
+/// dispatcher; the two literal values expand into two resolver lookups.
+struct DynamicCollapsibleProp {
+    name: String,
+    cond_start: u32,
+    cond_end: u32,
+    value_truthy: String,
+    value_falsy: String,
+}
+
+/// Dynamic-prop partial-collapse detector — byte-for-byte mirror of the JS
+/// `detectDynamicCollapsibleShape`. The full bail catalogue with TWO composed
+/// relaxations: an `on[A-Z]…` handler is peeled (like the on*-handler partial),
+/// AND exactly ONE prop whose value is a ternary of two string literals is
+/// captured as a DynamicCollapsibleProp. Multiple ternaries (2^N axis blow-up)
+/// bail; zero ternaries return None so the on*-only + full paths stay
+/// byte-unchanged and no detector double-claims a site.
+fn detect_dynamic_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(
+    std::collections::BTreeMap<String, String>,
+    String,
+    Vec<CollapsibleHandler>,
+    DynamicCollapsibleProp,
+)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut handlers: Vec<CollapsibleHandler> = Vec::new();
+    let mut dynamic_props: Vec<DynamicCollapsibleProp> = Vec::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None, // namespaced → bail
+                };
+                let v = a.value.as_ref()?; // boolean attr (no value) → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    JSXAttributeValue::ExpressionContainer(c) => {
+                        let expr = match jsx_expr_as_expression(&c.expression) {
+                            Some(e) => e,
+                            None => return None, // empty {} → bail
+                        };
+                        let is_handler = name.as_bytes().len() > 2
+                            && name.starts_with("on")
+                            && name.as_bytes()[2].is_ascii_uppercase();
+                        if is_handler {
+                            let sp = expr.span();
+                            handlers.push(CollapsibleHandler {
+                                name,
+                                expr_start: sp.start,
+                                expr_end: sp.end,
+                            });
+                            continue;
+                        }
+                        // A ternary whose BOTH branches are string literals is the
+                        // ONE dynamic relaxation; everything else dynamic bails.
+                        if let Expression::ConditionalExpression(ce) = expr {
+                            if let (
+                                Expression::StringLiteral(cons),
+                                Expression::StringLiteral(alt),
+                            ) = (&ce.consequent, &ce.alternate)
+                            {
+                                let test_sp = ce.test.span();
+                                dynamic_props.push(DynamicCollapsibleProp {
+                                    name,
+                                    cond_start: test_sp.start,
+                                    cond_end: test_sp.end,
+                                    value_truthy: cons.value.to_string(),
+                                    value_falsy: alt.value.to_string(),
+                                });
+                                continue;
+                            }
+                        }
+                        return None; // non-handler non-ternary {expr} → bail
+                    }
+                    _ => return None, // other dynamic value → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None, // spread → bail
+        }
+    }
+    let mut children_text = String::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => children_text.push_str(t.value.as_str()),
+            _ => return None, // element / expression child → bail
+        }
+    }
+    // Exactly ONE dynamic prop is this path's scope (zero → defer to the other
+    // detectors; 2+ → bail, multi-axis combinatorics is a separable scope).
+    if dynamic_props.len() != 1 {
+        return None;
+    }
+    Some((
+        props,
+        children_text.trim().to_string(),
+        handlers,
+        dynamic_props.into_iter().next().unwrap(),
+    ))
+}
+
+/// Dynamic-prop collapse — mirror of the JS `tryDynamicCollapse`. Expands the
+/// single ternary prop into a truthy + falsy site, requires BOTH resolved with
+/// matching templateHtml (one `_tpl` reused across values), builds the stride-2
+/// value-major class array `[v0_light, v0_dark, v1_light, v1_dark]` (v0 = truthy
+/// / cond→0, v1 = falsy / cond→1), and emits `__rsCollapseDyn(html, classes,
+/// () => (cond) ? 0 : 1, () => __pyrMode() === "dark")` — or the handler-combined
+/// `__rsCollapseDynH(…, handlerObj)`. Unions BOTH values' rule bundles (dedup by
+/// ruleKey). Sets ONLY needs_collapse_dyn / needs_collapse_dyn_h (matching JS).
+fn try_dynamic_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &mut Ctx) -> bool {
+    let src = ctx.source; // &'a str is Copy — snapshot to avoid a borrow split.
+    let has_handlers;
+    let (text, rule_bundles) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        let (props, children_text, handlers, dyn_prop) = match detect_dynamic_collapsible_shape(el)
+        {
+            Some(s) => s,
+            None => return false,
+        };
+        has_handlers = !handlers.is_empty();
+        // Expand into truthy + falsy props → keys → sites (BTreeMap re-sorts so
+        // the inserted dynamic key matches the JS `{...props, [name]: v}` order).
+        let mut truthy_props = props.clone();
+        truthy_props.insert(dyn_prop.name.clone(), dyn_prop.value_truthy.clone());
+        let mut falsy_props = props;
+        falsy_props.insert(dyn_prop.name.clone(), dyn_prop.value_falsy.clone());
+        let truthy_key = rocketstyle_collapse_key(tag, &truthy_props, &children_text);
+        let falsy_key = rocketstyle_collapse_key(tag, &falsy_props, &children_text);
+        let truthy = match cfg.sites.get(&truthy_key) {
+            Some(s) => s,
+            None => return false, // half-resolved → keep normal mount
+        };
+        let falsy = match cfg.sites.get(&falsy_key) {
+            Some(s) => s,
+            None => return false,
+        };
+        if truthy.template_html != falsy.template_html {
+            return false; // divergent markup → bail (one _tpl reused for both)
+        }
+        let classes = format!(
+            "[{}]",
+            [
+                json_string(&truthy.light_class),
+                json_string(&truthy.dark_class),
+                json_string(&falsy.light_class),
+                json_string(&falsy.dark_class),
+            ]
+            .join(",")
+        );
+        let cond_src = &src[dyn_prop.cond_start as usize..dyn_prop.cond_end as usize];
+        let call = if has_handlers {
+            let handler_obj = format!(
+                "{{ {} }}",
+                handlers
+                    .iter()
+                    .map(|h| format!(
+                        "{}: ({})",
+                        json_string(&h.name),
+                        &src[h.expr_start as usize..h.expr_end as usize]
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            format!(
+                "__rsCollapseDynH({}, {}, () => ({}) ? 0 : 1, () => __pyrMode() === \"dark\", {})",
+                json_string(&truthy.template_html),
+                classes,
+                cond_src,
+                handler_obj,
+            )
+        } else {
+            format!(
+                "__rsCollapseDyn({}, {}, () => ({}) ? 0 : 1, () => __pyrMode() === \"dark\")",
+                json_string(&truthy.template_html),
+                classes,
+                cond_src,
+            )
+        };
+        let text = if parent_is_jsx {
+            format!("{{{}}}", call)
+        } else {
+            call
+        };
+        let bundles = vec![
+            (truthy.rule_key.clone(), truthy.rules.clone()),
+            (falsy.rule_key.clone(), falsy.rules.clone()),
+        ];
+        (text, bundles)
+    };
+    let span = el.span();
+    ctx.replacements.push(Replacement {
+        start: span.start,
+        end: span.end,
+        text,
+    });
+    if has_handlers {
+        ctx.needs_collapse_dyn_h = true;
+    } else {
+        ctx.needs_collapse_dyn = true;
+    }
+    for (rule_key, rules) in rule_bundles {
+        if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+            ctx.collapse_rules.push((rule_key, rules));
+        }
+    }
+    true
+}
+
 impl<'a> Ctx<'a> {
     /// Build the collapse preamble (imports + idempotent injectRules) prepended
     /// when a full `__rsCollapse` was emitted — byte-identical to the JS
@@ -5241,6 +5471,12 @@ impl<'a> Ctx<'a> {
         }
         if self.needs_collapse_h {
             rd_imports.push("_rsCollapseH as __rsCollapseH");
+        }
+        if self.needs_collapse_dyn {
+            rd_imports.push("_rsCollapseDyn as __rsCollapseDyn");
+        }
+        if self.needs_collapse_dyn_h {
+            rd_imports.push("_rsCollapseDynH as __rsCollapseDynH");
         }
         format!(
             "import {{ {} }} from \"{}\";\nimport {{ sheet as __rsSheet }} from \"{}\";\nimport {{ {} as __pyrMode }} from \"{}\";\n{}\n",

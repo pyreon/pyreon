@@ -1432,3 +1432,134 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (on*-handler p
       ['Button', { state: 'primary' }, 'Save', SITE],
     ]))
 })
+
+describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic variant)', () => {
+  const MODE = { name: 'useMode', source: '@pyreon/zero' }
+  interface Site {
+    templateHtml: string
+    lightClass: string
+    darkClass: string
+    rules: string[]
+    ruleKey: string
+  }
+  // Same harness, exercising the dynamic-prop path: a ternary-of-two-literals
+  // dimension prop expands into TWO resolver lookups (one per literal value),
+  // emitting `__rsCollapseDyn` (no handlers) or `__rsCollapseDynH` (with). Each
+  // fixture supplies both expanded sites. Byte-identical JS↔native.
+  function cmpD(
+    input: string,
+    candidates: string[],
+    entries: Array<[string, Record<string, string>, string, Site]>,
+  ) {
+    const sitesRecord: Record<string, Site> = {}
+    for (const [comp, props, text, site] of entries) {
+      sitesRecord[rocketstyleCollapseKey(comp, props, text)] = site
+    }
+    const jsCfg = {
+      candidates: new Set(candidates),
+      sites: new Map(Object.entries(sitesRecord)),
+      mode: MODE,
+    }
+    const napiCfg = { candidates, sites: sitesRecord, mode: MODE }
+    const js = transformJSX_JS(input, 'test.tsx', {
+      collapseRocketstyle: jsCfg as never,
+    }).code
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+      input,
+      'test.tsx',
+      false,
+      null,
+      false,
+      napiCfg,
+    ).code
+    expect(rs).toBe(js)
+  }
+
+  // Two resolved sites (primary/secondary) with IDENTICAL templateHtml (the
+  // cross-value parity the dispatcher requires) but distinct classes + rules.
+  const PRIMARY: Site = {
+    templateHtml: '<button><span>Save</span></button>',
+    lightClass: 'p-l',
+    darkClass: 'p-d',
+    rules: ['.p-l{color:#000}', '.p-d{color:#fff}'],
+    ruleKey: 'rkP',
+  }
+  const SECONDARY: Site = {
+    templateHtml: '<button><span>Save</span></button>',
+    lightClass: 's-l',
+    darkClass: 's-d',
+    rules: ['.s-l{color:#333}'],
+    ruleKey: 'rkS',
+  }
+  const SECONDARY_DIVERGENT: Site = { ...SECONDARY, templateHtml: '<button class=x><span>Save</span></button>' }
+  const both = (extra: Record<string, string> = {}): Array<[string, Record<string, string>, string, Site]> => [
+    ['Button', { ...extra, state: 'primary' }, 'Save', PRIMARY],
+    ['Button', { ...extra, state: 'secondary' }, 'Save', SECONDARY],
+  ]
+
+  test('no-handler ternary → __rsCollapseDyn (stride-2 classes)', () =>
+    cmpD(`export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`, ['Button'], both()))
+
+  test('ternary + handler → __rsCollapseDynH', () =>
+    cmpD(
+      `export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'} onClick={() => go()}>Save</Button>`,
+      ['Button'],
+      both(),
+    ))
+
+  test('ternary + extra literal prop (sorted key)', () =>
+    cmpD(
+      `export const C = (p) => <Button size="md" state={p.on ? 'primary' : 'secondary'}>Save</Button>`,
+      ['Button'],
+      both({ size: 'md' }),
+    ))
+
+  test('dynamic site as a JSX child is brace-wrapped', () =>
+    cmpD(
+      `export const C = (p) => <div><Button state={p.on ? 'primary' : 'secondary'}>Save</Button></div>`,
+      ['Button'],
+      both(),
+    ))
+
+  test('complex cond expression is re-emitted verbatim', () =>
+    cmpD(
+      `export const C = (p) => <Button state={p.a && p.b > 2 ? 'primary' : 'secondary'}>Save</Button>`,
+      ['Button'],
+      both(),
+    ))
+
+  test('multiple handlers + ternary', () =>
+    cmpD(
+      `export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'} onClick={h1} onFocus={() => h2()}>Save</Button>`,
+      ['Button'],
+      both(),
+    ))
+
+  test('half-resolved (only truthy site) keeps normal mount', () =>
+    cmpD(`export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', PRIMARY],
+    ]))
+
+  test('divergent templateHtml across values bails', () =>
+    cmpD(`export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', PRIMARY],
+      ['Button', { state: 'secondary' }, 'Save', SECONDARY_DIVERGENT],
+    ]))
+
+  test('two ternaries (multi-axis) bail entirely', () =>
+    cmpD(
+      `export const C = (p) => <Button state={p.a ? 'primary' : 'secondary'} size={p.b ? 'md' : 'lg'}>Save</Button>`,
+      ['Button'],
+      both(),
+    ))
+
+  test('non-literal ternary branch bails', () =>
+    cmpD(`export const C = (p) => <Button state={p.on ? p.x : 'secondary'}>Save</Button>`, ['Button'], both()))
+
+  test('two dynamic sites share a value → rules deduped', () =>
+    cmpD(
+      `export const C = (p) => <div><Button state={p.a ? 'primary' : 'secondary'}>Save</Button><Button state={p.b ? 'primary' : 'secondary'}>Save</Button></div>`,
+      ['Button'],
+      both(),
+    ))
+})
