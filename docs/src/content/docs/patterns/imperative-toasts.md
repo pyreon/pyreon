@@ -66,7 +66,7 @@ Mount the `Toaster` ONCE at app root. Multiple `Toaster` instances stack visuall
 // BROKEN — constructing a toast signal and mounting manually
 function BadRoot() {
   const toastMessage = signal('')
-  return <div class="toast">{() => toastMessage()}</div>
+  return <div class="toast">{toastMessage()}</div>
 }
 // This is the whole reason @pyreon/toast exists. Use it instead.
 ```

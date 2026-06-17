@@ -139,7 +139,7 @@ export function App() {
   return (
     <div>
       <h1>Hello Pyreon</h1>
-      <p>{() => `Count: ${count()}`}</p>
+      <p>{`Count: ${count()}`}</p>
       <button onClick={() => count.update((c) => c + 1)}>Increment</button>
     </div>
   )

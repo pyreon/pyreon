@@ -36,7 +36,7 @@ export default function TodoAdd() {
         <input
           class="example-input"
           placeholder="What needs doing?"
-          value={() => draft()}
+          value={draft()}
           onInput={(e) => draft.set(e.currentTarget.value)}
         />
         <button type="submit" class="example-btn">

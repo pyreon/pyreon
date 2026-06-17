@@ -33,7 +33,7 @@ export default defineManifest({
       summary:
         "Bind a Signal<T> to a single scalar entry in a CRDT map. The return value is a NORMAL signal (via wrapSignal — reads / `_v` / `.direct` all delegate), so the compiler's `_bindText`/`_bindDirect` fast paths and every effect treat it like any signal: a remote op becomes one `base.set` → one fine-grained DOM update. The update loop has a single writer — `.set(v)` writes ONLY the CRDT; the map observer is the one path that writes the base signal (for local AND remote commits); the local echo is an `Object.is` no-op.",
       example: `const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
-// <h1>{() => title()}</h1>  — patches in place when any peer edits the title
+// <h1>{title()}</h1>  — patches in place when any peer edits the title
 title()              // "Untitled"  (reactive read)
 title.set("Roadmap") // writes the CRDT; the observer drives the DOM update
 title.dispose()      // detach observer (auto on onCleanup inside a scope)`,
@@ -161,7 +161,7 @@ connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")`,
       summary:
         "Bind a Signal<string> to a Yjs Y.Text — a COLLABORATIVE string with character-level CRDT merge. Unlike syncedSignal (scalar last-writer-wins, which drops the loser's value), two peers editing different regions BOTH keep their edits. Use `.insert(i, s)` / `.delete(i, n)` (positional ops Y.Text merges faithfully) for true concurrent editing; `.set(full)` applies a minimal prefix/suffix diff (one replace) — handy for a controlled `<textarea>` but not a positional merge. Engine-specific (in `@pyreon/sync/yjs`, not behind the seam — collab text is coupled to the CRDT's text type).",
       example: `const body = syncedText(doc, "body")
-// <textarea value={() => body()} onInput={e => body.set(e.currentTarget.value)} />
+// <textarea value={body()} onInput={e => body.set(e.currentTarget.value)} />
 body.insert(0, "Hello ")  // positional — merges with a concurrent peer edit
 body.delete(0, 6)`,
       mistakes: [

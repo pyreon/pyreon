@@ -70,7 +70,7 @@ function add() {
 return (
   <form onSubmit={(e) => { e.preventDefault(); add() }}>
     <input
-      value={() => draft()}
+      value={draft()}
       onInput={(e) => draft.set(e.currentTarget.value)}
     />
     <button type="submit">Add</button>
@@ -103,7 +103,7 @@ const makeTodo = (text: string, done = false): Todo =>
   <li class="example-row example-card">
     <input
       type="checkbox"
-      checked={() => todo.done()}
+      checked={todo.done()}
       onChange={() => todo.done.update((v) => !v)}
     />
     <span style={() => ({
@@ -131,7 +131,7 @@ const remaining = computed(() => todos().filter((t) => !t.done()).length)
 const total = computed(() => todos().length)
 
 // read it like any signal, inside a thunk:
-<div>{() => String(remaining())} of {() => String(total())} remaining</div>
+<div>{String(remaining())} of {() => String(total())} remaining</div>
 ```
 
 <Example file="./examples/tutorial/todo-4-counts" />

@@ -83,7 +83,7 @@ export default function TodoFilter() {
             <li class="example-row example-card">
               <input
                 type="checkbox"
-                checked={() => todo.done()}
+                checked={todo.done()}
                 onChange={() => todo.done.update((v) => !v)}
               />
               <span

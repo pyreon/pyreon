@@ -98,8 +98,8 @@ JSX components are **NOT generic at the call site** (`<Flow<MyData> />` isn't va
 type MyData = { label: string; status: 'pending' | 'done' }
 
 const MyNode: ComponentFn<NodeComponentProps<MyData>> = (props) => (
-  <div class={() => (props.selected() ? 'selected' : '')}>
-    {() => props.data().label}
+  <div class={props.selected() ? 'selected' : ''}>
+    {props.data().label}
     {() => props.dragging() && <span>(dragging)</span>}
   </div>
 )

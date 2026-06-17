@@ -31,8 +31,8 @@ export default function TodoCounts() {
   return (
     <div class="example-col">
       <div class="example-card">
-        <strong>{() => String(remaining())}</strong> of{' '}
-        <strong>{() => String(total())}</strong> remaining
+        <strong>{String(remaining())}</strong> of{' '}
+        <strong>{String(total())}</strong> remaining
       </div>
       <ul class="example-col example-list">
         <For each={todos} by={(t) => t.id}>
@@ -40,7 +40,7 @@ export default function TodoCounts() {
             <li class="example-row example-card">
               <input
                 type="checkbox"
-                checked={() => todo.done()}
+                checked={todo.done()}
                 onChange={() => todo.done.update((v) => !v)}
               />
               <span

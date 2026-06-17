@@ -54,7 +54,7 @@ function DeleteButton(props: { id: string }) {
 
   return (
     <button
-      disabled={() => deleteUser.isPending()}
+      disabled={deleteUser.isPending()}
       onClick={() => deleteUser.mutate(props.id)}
     >
       Delete

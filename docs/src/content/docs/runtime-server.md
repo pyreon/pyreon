@@ -632,7 +632,7 @@ import { signal } from '@pyreon/reactivity'
 
 const count = signal(42)
 
-const html = await renderToString(<span data-count={() => count()} />)
+const html = await renderToString(<span data-count={count()} />)
 // => '<span data-count="42"></span>'
 ```
 
@@ -640,7 +640,7 @@ The same applies to reactive children:
 
 ```tsx
 const name = signal('world')
-const html = await renderToString(<p>{() => name()}</p>)
+const html = await renderToString(<p>{name()}</p>)
 // => '<p>world</p>'
 ```
 

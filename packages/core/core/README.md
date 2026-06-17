@@ -42,7 +42,7 @@ function Timer() {
     const id = setInterval(() => count.update(n => n + 1), 1000)
     return () => clearInterval(id)
   })
-  return <div>{() => count()}</div>
+  return <div>{count()}</div>
 }
 
 function Page(props: { items: { id: number; name: string }[] }) {
@@ -79,7 +79,7 @@ Components run once. What's reactive depends on **where** you read a signal:
 <div>{name()}</div>
 
 // REACTIVE — explicit accessor
-<div>{() => `Hi ${name()}`}</div>
+<div>{`Hi ${name()}`}</div>
 
 // REACTIVE — props read inside a reactive scope
 <Comp title={name()} />
@@ -121,7 +121,7 @@ const theme = useContext(ThemeCtx)  // 'light' | 'dark'
 // Reactive context: useContext returns () => T, call it inside reactive scopes
 const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 const getMode = useContext(ModeCtx)
-return <div>{() => getMode()}</div>
+return <div>{getMode()}</div>
 ```
 
 `provide(ctx, value)` pushes a context frame and auto-cleans up on unmount. `withContext(ctx, value, fn)` is the bounded form for non-component scopes.

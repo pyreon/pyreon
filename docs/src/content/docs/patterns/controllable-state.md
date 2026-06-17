@@ -26,7 +26,7 @@ function Toggle(props: {
 
   return (
     <button onClick={() => setChecked(!checked())}>
-      {() => (checked() ? 'on' : 'off')}
+      {checked() ? 'on' : 'off'}
     </button>
   )
 }

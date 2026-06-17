@@ -81,7 +81,7 @@ const route = useRoute()   // hooks require an active component setup context
 // Correct: call inside a component body
 function UserPage() {
   const route = useRoute()
-  return <div>{() => route().params.id}</div>
+  return <div>{route().params.id}</div>
 }
 ```
 

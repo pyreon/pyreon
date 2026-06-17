@@ -127,7 +127,7 @@ function MyToggle(props: {
     onChange: props.onChange,
   })
   return (
-    <button onClick={() => setChecked(!checked())}>{() => (checked() ? 'on' : 'off')}</button>
+    <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
   )
 }
 ```

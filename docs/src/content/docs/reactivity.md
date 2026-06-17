@@ -993,8 +993,8 @@ function UserProfile() {
         </Match>
         <Match when={() => user.data() !== undefined}>
           <div class="profile">
-            <h2>{() => user.data()!.name}</h2>
-            <p>{() => user.data()!.email}</p>
+            <h2>{user.data()!.name}</h2>
+            <p>{user.data()!.email}</p>
           </div>
         </Match>
       </Switch>
@@ -1069,7 +1069,7 @@ function SelectableList(props: { items: () => Item[] }) {
       <For each={props.items} by={(item) => item.id}>
         {(item) => (
           <li
-            class={() => (isSelected(item.id) ? 'item selected' : 'item')}
+            class={isSelected(item.id) ? 'item selected' : 'item'}
             onClick={() => selectedId.set(item.id)}
           >
             {item.name}
@@ -1128,8 +1128,8 @@ The `@pyreon/compiler` auto-promotes the canonical JSX shapes to `.subscribe` �
 // Author writes the natural shape:
 <For each={rows} by={(r) => r.id}>
   {(row) => (
-    <tr class={() => isSelected(row.id) ? 'selected' : ''}>
-      <td>{() => isSelected(row.id) ? '✓' : ''}</td>
+    <tr class={isSelected(row.id) ? 'selected' : ''}>
+      <td>{isSelected(row.id) ? '✓' : ''}</td>
       ...
     </tr>
   )}

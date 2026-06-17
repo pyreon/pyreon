@@ -39,8 +39,8 @@ function ResumeTemplate(props: { resume: () => Resume }) {
     >
       <DocPage>
         <DocSection>
-          <DocHeading level="h1">{() => props.resume().name}</DocHeading>
-          <DocText>{() => props.resume().headline}</DocText>
+          <DocHeading level="h1">{props.resume().name}</DocHeading>
+          <DocText>{props.resume().headline}</DocText>
         </DocSection>
       </DocPage>
     </DocDocument>
@@ -79,7 +79,7 @@ await download(tree, 'report.docx')`,
       mistakes: [
         'Calling `props.title()` at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: `<DocDocument title={() => get().name}>`',
         "DocRow direction: layout props (direction, gap) go in `.attrs()` not `.theme()`. Element accepts `'inline'` | `'rows'` | `'reverseInline'` | `'reverseRows'` — `'row'` is NOT valid",
-        "For text children reactivity, pass a signal accessor and read inside body: `<DocText>{() => store.field()}</DocText>`",
+        "For text children reactivity, pass a signal accessor and read inside body: `<DocText>{store.field()}</DocText>`",
         "Don't declare runtime-filled fields (`tag`, `_documentProps`) in the rocketstyle `.attrs<P>()` generic — they leak as required JSX props",
         'Using `createDocumentExport(...).getDocNode()` in new code — prefer `extractDocNode(fn)` which is one call instead of two. `createDocumentExport` is kept for backward compat',
       ],
@@ -199,7 +199,7 @@ const tree = helper.getDocNode()`,
       example: `<DocText>Static paragraph content.</DocText>
 
 // Reactive children
-<DocText>{() => \`Hello, \${user().name}\`}</DocText>`,
+<DocText>{\`Hello, \${user().name}\`}</DocText>`,
       seeAlso: ['DocHeading', 'DocLink'],
     },
     {

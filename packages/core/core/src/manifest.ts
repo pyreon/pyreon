@@ -30,7 +30,7 @@ const Timer = () => {
     const id = setInterval(() => count.update(n => n + 1), 1000)
     return () => clearInterval(id)  // cleanup runs on unmount
   })
-  return <div>{() => count()}</div>
+  return <div>{count()}</div>
 }
 
 // Control flow — reactive conditional rendering
@@ -123,7 +123,7 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
     return () => clearInterval(id)  // cleanup on unmount
   })
 
-  return <div>{() => count()}</div>
+  return <div>{count()}</div>
 }`,
       mistakes: [
         'Forgetting cleanup: `onMount(() => { const id = setInterval(...) })` leaks the interval. Return cleanup: `return () => clearInterval(id)`',

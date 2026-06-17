@@ -31,7 +31,7 @@ const AlreadyCalled = () => <div>count = {count()}</div> // already called — c
 For reactive expressions, call the signal explicitly inside the expression:
 
 ```tsx
-const HotCold = () => <div class={() => (count() > 10 ? 'hot' : 'cold')}>{count()}</div>
+const HotCold = () => <div class={count() > 10 ? 'hot' : 'cold'}>{count()}</div>
 ```
 
 ## Why
@@ -67,7 +67,7 @@ const Counter = (props) => {
 
 // FIX — read inside the reactive expression
 const Counter = (props) => {
-  return <div>{() => props.count()}</div>
+  return <div>{props.count()}</div>
 }
 ```
 

@@ -86,7 +86,7 @@ Every primitive is themeable via rocketstyle's `.theme()` and `.attrs()` chain â
 The same accessor pattern works for reactive children â€” pass a thunk inside the JSX slot and the extractor resolves it on each extraction:
 
 ```tsx
-<DocText>{() => store.summary()}</DocText>
+<DocText>{store.summary()}</DocText>
 ```
 
 ## Export helpers

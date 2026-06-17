@@ -39,7 +39,7 @@ const MyChart = () => {
 
   return (
     <div>
-      {() => chart.loading() ? 'Loading chart...' : null}
+      {chart.loading() ? 'Loading chart...' : null}
       <div ref={chart.ref} style="height: 400px" />
       <button onClick={() => chart.resize()}>Resize</button>
     </div>

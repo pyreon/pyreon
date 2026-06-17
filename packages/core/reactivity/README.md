@@ -143,7 +143,7 @@ const selected = signal<string | null>(null)
 const isSelected = createSelector(() => selected())
 
 <For each={items} by={i => i.id}>
-  {(item) => <li class={() => isSelected(item.id) ? 'active' : ''}>{item.name}</li>}
+  {(item) => <li class={isSelected(item.id) ? 'active' : ''}>{item.name}</li>}
 </For>
 ```
 

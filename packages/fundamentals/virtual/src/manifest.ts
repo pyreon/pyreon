@@ -31,7 +31,7 @@ const MyList = () => {
             <div
               style={() => \`position: absolute; top: \${item.start}px; height: \${item.size}px; width: 100%\`}
             >
-              {() => items()[item.index].label}
+              {items()[item.index].label}
             </div>
           )}
         </For>
@@ -52,7 +52,7 @@ const WindowList = () => {
       <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
         {(item) => (
           <div style={() => \`position: absolute; top: \${item.start}px; height: \${item.size}px\`}>
-            {() => items()[item.index].label}
+            {items()[item.index].label}
           </div>
         )}
       </For>

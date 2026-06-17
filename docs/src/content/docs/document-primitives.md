@@ -133,8 +133,8 @@ function ResumeTemplate(props: { resume: () => Resume }) {
     <DocDocument>
       <DocPage>
         {/* Read signal lazily — only this text node patches when name changes */}
-        <DocHeading level="h1">{() => props.resume().name}</DocHeading>
-        <DocText variant="caption">{() => props.resume().headline}</DocText>
+        <DocHeading level="h1">{props.resume().name}</DocHeading>
+        <DocText variant="caption">{props.resume().headline}</DocText>
       </DocPage>
     </DocDocument>
   )

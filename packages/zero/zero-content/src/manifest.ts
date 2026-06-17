@@ -226,7 +226,7 @@ export default function Counter(props: { shared?: Signal<number> }) {
   return (
     <div>
       <button onClick={() => count.update(n => n + 1)}>+</button>
-      <span>{() => count()}</span>
+      <span>{count()}</span>
     </div>
   )
 }

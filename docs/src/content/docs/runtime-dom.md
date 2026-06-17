@@ -528,7 +528,7 @@ function Counter() {
       >
         Increment
       </button>
-      <p>{() => name()}</p>
+      <p>{name()}</p>
     </div>
   )
 }
@@ -568,7 +568,7 @@ Any non-event function prop is treated as reactive. A `renderEffect` re-evaluate
 
 ```tsx
 <div
-  class={() => (isActive() ? 'active' : 'inactive')}
+  class={isActive() ? 'active' : 'inactive'}
   style={() => ({ color: theme() === 'dark' ? 'white' : 'black' })}
   aria-label={() => `Item ${index()}`}
   data-count={() => String(count())}
@@ -587,7 +587,7 @@ The `class` prop accepts strings, arrays, objects, or nested combinations. Under
 <div class="card shadow" />
 
 // Reactive string
-<div class={() => `card ${selected() ? "selected" : ""}`} />
+<div class={`card ${selected() ? "selected" : ""}`} />
 
 // Array of classes (falsy values are filtered out)
 <div class={["card", isActive() && "active", size() && "large"]} />
@@ -646,7 +646,7 @@ Data attributes work like any other attribute:
 ```tsx
 <div
   data-testid="user-card"
-  data-user-id={() => String(userId())}
+  data-user-id={String(userId())}
   data-active={() => String(isActive())}
 />
 ```
@@ -657,7 +657,7 @@ ARIA attributes are set as standard attributes:
 
 ```tsx
 <button
-  aria-label={() => (isOpen() ? 'Close menu' : 'Open menu')}
+  aria-label={isOpen() ? 'Close menu' : 'Open menu'}
   aria-expanded={() => String(isOpen())}
   aria-controls="nav-menu"
   role="button"
@@ -670,7 +670,7 @@ Boolean values toggle attribute presence: `true` adds the attribute (empty strin
 
 ```tsx
 <input
-  disabled={() => isSubmitting()}
+  disabled={isSubmitting()}
   readonly={() => !canEdit()}
   checked={() => isSelected()}
   required
@@ -683,7 +683,7 @@ When a key exists as a property on the element (e.g., `value`, `checked`, `selec
 
 ```tsx
 <input
-  value={() => inputValue()}
+  value={inputValue()}
   type="text"
 />
 
@@ -1224,7 +1224,7 @@ function TabPanel() {
       <div class="tab-bar">
         {['settings', 'profile', 'notifications'].map((tab) => (
           <button
-            class={() => (activeTab() === tab ? 'tab active' : 'tab')}
+            class={activeTab() === tab ? 'tab active' : 'tab'}
             onClick={() => activeTab.set(tab)}
           >
             {tab}
@@ -1265,9 +1265,9 @@ function ExpensiveForm() {
 
   return () => (
     <div class="form-container" onScroll={(e) => scrollPos.set(e.currentTarget.scrollTop)}>
-      <input value={() => name()} onInput={(e) => name.set(e.currentTarget.value)} />
-      <input value={() => email()} onInput={(e) => email.set(e.currentTarget.value)} />
-      <textarea value={() => bio()} onInput={(e) => bio.set(e.currentTarget.value)} />
+      <input value={name()} onInput={(e) => name.set(e.currentTarget.value)} />
+      <input value={email()} onInput={(e) => email.set(e.currentTarget.value)} />
+      <textarea value={bio()} onInput={(e) => bio.set(e.currentTarget.value)} />
     </div>
   )
 }
@@ -1310,7 +1310,7 @@ const userId = signal(1)
       queryKey: ['user', userId(), item.id],   // ← reads userId
       queryFn: () => fetch(`/users/${userId()}`).then(r => r.json()),
     }))
-    return <li>{() => query.data()?.name}</li>
+    return <li>{query.data()?.name}</li>
   }}
 </For>
 ```
