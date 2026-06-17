@@ -46,14 +46,14 @@ substantial native shell — a hybrid that satisfies App Store / Play
 policy (not a thin web wrapper; local-bundled assets). See
 `docs/src/content/docs/multiplatform.md` and the heavy-viz plan.
 
-## Known limitation — fractional numbers (next foundational fix)
+## Numeric types — fractional fields work; one slice remains
 
-PMTC models a single `number` type that emits as `Int` on both targets;
-there is no Double/Float numeric type yet. So this example uses
-**integer** metrics (whole-unit revenue, deal counts, integer growth %).
-Fractional values (12.5 %, currency decimals, true averages) and
-`toFixed` formatting on them need the Double-numeric-type support that is
-the tracked next step. An integer KPI dashboard is a real analytical
-shape; fractional fidelity lifts it from "integer dashboard" to "full
-analytical." (Also tracked: a `computed`'s return type infers as `Any`,
-so the totals are reduced inline rather than via intermediate computeds.)
+`revenue` / `deals` are integers → `Int`; `growth` is a **fractional**
+percent (`12.5`) → the `Metric.growth` struct field refines to `Double`
+from its literal initializer, so `growth.toFixed(1)` formats correctly on
+both targets. The single remaining slice: **reducing** a Double column (a
+true average of `growth`) needs Double-aware reduce-seed typing
+(`reduce(0.0, …)`), so the summary row sums only the Int revenue/deals
+columns. Integer reduce + fractional per-row display is the current
+capability. (Also tracked: a `computed`'s return type infers as `Any`, so
+the totals are reduced inline rather than via intermediate computeds.)

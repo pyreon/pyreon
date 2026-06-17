@@ -180,6 +180,13 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     if (mds) moduleDecls.push(...mds)
   }
 
+  // Double-type follow-up: a `type X = { rate: number }` annotation can't
+  // express whether a field is fractional, so the struct field defaults
+  // to Int. Refine it to Double when a signal/const initializer assigns a
+  // fractional literal to that field — additive (only ever flips
+  // number→float, never the reverse, so integer structs are untouched).
+  refineStructFloatsFromInitializers(structs, components)
+
   return {
     components,
     enums,
@@ -1694,6 +1701,66 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (typeof initial.value === 'boolean') return { kind: 'boolean' }
   }
   return { kind: 'unknown' }
+}
+
+/**
+ * The struct name a value's TYPE refers to: `Metric` (a `typeRef`) or
+ * `Metric[]` (an array of one). Otherwise undefined.
+ */
+function structNameOfType(t: TypeIR): string | undefined {
+  if (t.kind === 'typeRef') return t.name
+  if (t.kind === 'array' && t.element.kind === 'typeRef') return t.element.name
+  return undefined
+}
+
+/** Flatten an initializer ExprIR to its top-level object literals. */
+function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[] {
+  if (e.kind === 'object') return [e]
+  if (e.kind === 'array') return e.elements.flatMap(collectObjectLiterals)
+  return []
+}
+
+/**
+ * Double-type follow-up — refine struct `number` fields to `Double` when
+ * a signal initializer assigns a fractional literal. A `type X = { rate:
+ * number }` annotation can't carry fractional-ness, so the struct field
+ * defaults to Int; the literal initializer (`signal<X[]>([{ rate: 0.5 }])`)
+ * is the only place the fractional-ness is visible.
+ *
+ * Strictly ADDITIVE: only ever flips `{ kind:'number' }` →
+ * `{ kind:'number', float:true }`, and only on a fractional literal, so
+ * integer-valued structs are never touched (zero regression). v1 covers
+ * top-level struct fields assigned from a signal-typed-as-struct (or
+ * struct[]); nested structs are left for a later slice.
+ */
+function refineStructFloatsFromInitializers(
+  structs: StructIR[],
+  components: ComponentIR[],
+): void {
+  if (structs.length === 0) return
+  const byName = new Map(structs.map((s) => [s.name, s]))
+  for (const c of components) {
+    for (const d of c.decls) {
+      if (d.kind !== 'signal') continue
+      const structName = structNameOfType(d.type)
+      if (structName === undefined) continue
+      const struct = byName.get(structName)
+      if (struct === undefined) continue
+      for (const obj of collectObjectLiterals(d.initial)) {
+        for (const f of obj.fields) {
+          const sf = struct.fields.find((x) => x.name === f.name)
+          if (sf === undefined || sf.type.kind !== 'number' || sf.type.float === true) continue
+          if (
+            f.value.kind === 'literal' &&
+            typeof f.value.value === 'number' &&
+            !Number.isInteger(f.value.value)
+          ) {
+            sf.type = { kind: 'number', float: true }
+          }
+        }
+      }
+    }
+  }
 }
 
 function tryEnumFromTypeAlias(node: AnyNode, ctx: ParseCtx): EnumIR | null {
