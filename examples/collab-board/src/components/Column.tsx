@@ -44,6 +44,22 @@ export function Column(props: ColumnProps) {
     onCrossListReceive: (item, insertAt) => cards.insert(insertAt, [item]),
   })
 
+  // DEV-only test hook: drive a deterministic reorder (first card → last) on
+  // this column's syncedList — the SAME `cards.set` path useSortable.onReorder
+  // takes. The e2e uses this instead of a synthetic HTML5 drag because pdnd's
+  // drag gesture is a silent no-op on headless Linux CI even with its listeners
+  // attached (the gesture is @pyreon/dnd's concern, covered by app-showcase-dnd
+  // + dnd's own browser tests); collab-board's point is CRDT SYNC. Stripped from
+  // production builds — mirrors CardPanel's __cardEditor hook.
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const w = window as unknown as { __reorderColumns?: Record<string, () => void> }
+    w.__reorderColumns ??= {}
+    w.__reorderColumns[props.colId] = () => {
+      const arr = cards()
+      if (arr.length > 1) cards.set([...arr.slice(1), arr[0]!])
+    }
+  }
+
   function addCard(): void {
     cards.push({ id: newCardId(), title: `Card ${cards().length + 1}`, label: 'none' })
   }
