@@ -360,13 +360,7 @@ export async function resolveFeatures(
   // Grouped multiselect — features visually grouped by category for
   // discoverability. clack's `groupMultiselect` renders the section
   // headings inline so the user doesn't drown in a 22-option flat list.
-  const grouped: Record<string, Array<{ value: string; label: string }>> = {}
-  for (const cat of Object.values(FEATURE_CATEGORIES)) {
-    grouped[cat.label] = cat.features.map((key) => ({
-      value: key,
-      label: FEATURES[key as keyof typeof FEATURES].label,
-    }))
-  }
+  const grouped = buildGroupedFeatureOptions()
 
   const value = await p.groupMultiselect({
     message: 'Features',
@@ -379,6 +373,35 @@ export async function resolveFeatures(
     process.exit(0)
   }
   return applyWithWithout(value as string[], args)
+}
+
+/**
+ * Build the category-grouped option list for the interactive "Custom" feature
+ * picker. Every key listed in `FEATURE_CATEGORIES` MUST be defined in
+ * `FEATURES` — a drift between the two crashed the picker with a cryptic
+ * `Cannot read properties of undefined (reading 'label')` (the 0.33.0 custom-
+ * features bug: `state-tree` / `coolgrid` were categorised but undefined).
+ * Pure + exported so the integrity test exercises it directly, and a drift now
+ * fails loudly here naming the offending feature instead of deep in clack.
+ */
+export function buildGroupedFeatureOptions(): Record<
+  string,
+  Array<{ value: string; label: string }>
+> {
+  const grouped: Record<string, Array<{ value: string; label: string }>> = {}
+  for (const cat of Object.values(FEATURE_CATEGORIES)) {
+    grouped[cat.label] = cat.features.map((key) => {
+      const def = FEATURES[key as keyof typeof FEATURES]
+      if (!def) {
+        throw new Error(
+          `[create-zero] feature "${key}" is listed in category "${cat.label}" ` +
+            `but missing from FEATURES — fix the drift in templates.ts.`,
+        )
+      }
+      return { value: key, label: def.label }
+    })
+  }
+  return grouped
 }
 
 function applyWithWithout(base: string[], args: CliArgs): string[] {
