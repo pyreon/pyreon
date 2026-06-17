@@ -25,17 +25,15 @@
 // Run it through PMTC with `bun run build` (emits generated/swift +
 // generated/kotlin).
 //
-// ## Known limitation — fractional numbers (the next foundational fix)
+// ## Numeric types — fractional fields work; one slice remains
 //
-// PMTC currently models a single `number` type that emits as `Int` on
-// both targets — there is no Double/Float numeric type yet. So this
-// example deliberately uses INTEGER metrics (whole-unit revenue, deal
-// counts, integer growth %). Fractional values (12.5%, currency
-// decimals, true averages) — and `toFixed` formatting on them — need the
-// Double-numeric-type support that is the tracked next step. An integer
-// KPI dashboard is a real analytical shape; fractional fidelity is the
-// follow-up that lifts this from "integer dashboard" to "full
-// analytical."
+// `revenue`/`deals` are integers → `Int`; `growth` is a FRACTIONAL
+// percent (12.5) → the struct field refines to `Double` from its literal
+// initializer, and `growth.toFixed(1)` formats correctly on both targets.
+// The ONE remaining slice: REDUCING a Double column (a true average of
+// `growth`) needs Double-aware reduce-seed typing (`reduce(0.0, …)`), so
+// the summary row sums only the Int revenue/deals columns. Integer
+// reduce + fractional per-row display is the current capability.
 
 import {
   Stack,
@@ -62,18 +60,20 @@ const CHART_HTML =
 type Metric = { region: string; revenue: number; deals: number; growth: number }
 
 export function AnalyticsApp() {
-  // Integer metrics — revenue (whole $k), deals (count), growth (whole %).
-  // The explicit `Metric` type drives PMTC struct synthesis (Swift
-  // `struct Metric`, Kotlin `data class Metric`). The column totals are
-  // reduced INLINE in the summary row rather than via intermediate
-  // `computed`s — PMTC infers a computed's return type as `Any`, and
-  // `String(Any)` isn't valid on Swift; the inline `reduce` is typed
-  // `Int`, so `String(reduce(...))` lowers cleanly on both targets.
+  // revenue (whole $k) + deals (count) are integers → Int; growth is a
+  // FRACTIONAL percent (12.5) → the struct field refines to Double from
+  // the literal initializer, so `growth.toFixed(1)` formats correctly on
+  // both targets. The column totals are reduced INLINE in the summary row
+  // rather than via intermediate `computed`s — PMTC infers a computed's
+  // return type as `Any`, and `String(Any)` isn't valid on Swift; the
+  // inline `reduce` over the Int revenue/deals lowers cleanly. (Reducing
+  // the Double `growth` would need Double-aware reduce-seed typing — the
+  // tracked next slice — so the summary sticks to the Int columns.)
   const metrics = signal<Metric[]>([
-    { region: 'EMEA', revenue: 1240, deals: 38, growth: 12 },
-    { region: 'APAC', revenue: 980, deals: 27, growth: 8 },
-    { region: 'AMER', revenue: 1530, deals: 51, growth: 15 },
-    { region: 'LATAM', revenue: 610, deals: 19, growth: 9 },
+    { region: 'EMEA', revenue: 1240, deals: 38, growth: 12.5 },
+    { region: 'APAC', revenue: 980, deals: 27, growth: 8.3 },
+    { region: 'AMER', revenue: 1530, deals: 51, growth: 15.1 },
+    { region: 'LATAM', revenue: 610, deals: 19, growth: 9.7 },
   ])
   const filter = signal('')
 
@@ -86,7 +86,7 @@ export function AnalyticsApp() {
         <Text>Region</Text>
         <Text>Revenue</Text>
         <Text>Deals</Text>
-        <Text>Growth</Text>
+        <Text>Growth %</Text>
       </Inline>
 
       <For each={metrics()} by={(m) => m.region}>
@@ -95,7 +95,7 @@ export function AnalyticsApp() {
             <Text>{m.region}</Text>
             <Text>{String(m.revenue)}</Text>
             <Text>{String(m.deals)}</Text>
-            <Text>{String(m.growth)}</Text>
+            <Text>{m.growth.toFixed(1)}</Text>
           </Inline>
         )}
       </For>
