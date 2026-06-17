@@ -96,3 +96,8 @@ export { Modal } from './web/Modal'
 // `<NativeIOS>` branch, Android the `<NativeAndroid>` branch).
 export { Web, NativeIOS, NativeAndroid } from './web/escape-hatch'
 export type { EscapeHatchProps } from './types/escape-hatch'
+// `<WebView>` — native host (WKWebView / Android WebView) for embedding
+// web content; an `<iframe>` on web. The path to using web-only-rich viz
+// (charts / flow / tables) inside a native shell.
+export { WebView } from './web/WebView'
+export type { WebViewProps } from './types/webview'

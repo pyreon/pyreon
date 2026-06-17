@@ -577,6 +577,14 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   content { }
 }
 
+// PyreonWebView — mirror of @pyreon/native-runtime-kotlin's PyreonWebView.kt
+// (the Android WebView host for the <WebView> primitive). Stub so the
+// kotlinc validate gate resolves the \`PyreonWebView(html = …)\` /
+// \`PyreonWebView(src = …)\` the WebView emit produces.
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonWebView(html: String? = null, src: String? = null, modifier: Modifier = Modifier) {}
+
 // useNavigate / useParams / useLoaderData — router hooks that PMTC
 // emits when source code uses \`const navigate = useNavigate()\` /
 // \`const params = useParams()\` / \`const data = useLoaderData<T>()\`.
