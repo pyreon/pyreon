@@ -241,6 +241,14 @@ export const FEATURES = {
     label: 'Reactive Transforms (@pyreon/rx — filter, map, sortBy, groupBy)',
     deps: ['@pyreon/rx'],
   },
+  'state-tree': {
+    label: 'State Tree (@pyreon/state-tree — models, snapshots, patches)',
+    deps: ['@pyreon/state-tree'],
+  },
+  coolgrid: {
+    label: 'Responsive Grid (@pyreon/coolgrid)',
+    deps: ['@pyreon/coolgrid'],
+  },
 } as const
 
 export type FeatureKey = keyof typeof FEATURES
