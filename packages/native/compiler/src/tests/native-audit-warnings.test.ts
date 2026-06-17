@@ -870,4 +870,54 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       expect(result.code).toContain('ProfilePage')
     })
   })
+
+  // Web-only @pyreon/* package imports — charts/flow/code/document/the
+  // styler+UI stack render via the DOM / a browser-only lib and have NO
+  // native emit. PMTC would silently emit an unresolved `<Chart>` call
+  // that fails the native build with a cryptic `Cannot find 'Chart' in
+  // scope`; warn at the import naming the escape-hatch fix instead.
+  describe('web-only @pyreon/* package imports', () => {
+    for (const pkg of ['@pyreon/charts', '@pyreon/flow', '@pyreon/code', '@pyreon/document', '@pyreon/elements', '@pyreon/ui-components']) {
+      it(`warns importing ${pkg} (web-only) into a native file + names the escape hatch`, () => {
+        const result = transform(
+          `import { Thing } from '${pkg}'\nimport { Stack } from '@pyreon/primitives'\nexport function App() { return <Stack><Thing /></Stack> }`,
+          { target: 'swift' },
+        )
+        expect(
+          result.warnings.some(
+            (w) =>
+              w.includes(pkg) &&
+              w.includes('WEB-ONLY') &&
+              (w.includes('<Web>') || w.includes('NativeIOS')),
+          ),
+        ).toBe(true)
+      })
+    }
+
+    it('fires on a sub-path import (`@pyreon/charts/manual`)', () => {
+      const result = transform(
+        `import { x } from '@pyreon/charts/manual'\nexport function App() { return null }`,
+        { target: 'kotlin' },
+      )
+      expect(result.warnings.some((w) => w.includes('@pyreon/charts') && w.includes('WEB-ONLY'))).toBe(true)
+    })
+
+    it('warns ONCE per package even with multiple imports from it', () => {
+      const result = transform(
+        `import { Chart } from '@pyreon/charts'\nimport { useChart } from '@pyreon/charts'\nexport function App() { return null }`,
+        { target: 'swift' },
+      )
+      expect(result.warnings.filter((w) => w.includes('@pyreon/charts') && w.includes('WEB-ONLY'))).toHaveLength(1)
+    })
+
+    for (const pkg of ['@pyreon/primitives', '@pyreon/reactivity', '@pyreon/store', '@pyreon/router', '@pyreon/form', '@pyreon/i18n', '@pyreon/validation']) {
+      it(`does NOT warn for the multi-platform / PMTC-ported package ${pkg} (over-count guard)`, () => {
+        const result = transform(
+          `import { x } from '${pkg}'\nexport function App() { return null }`,
+          { target: 'swift' },
+        )
+        expect(result.warnings.some((w) => w.includes('WEB-ONLY'))).toBe(false)
+      })
+    }
+  })
 })
