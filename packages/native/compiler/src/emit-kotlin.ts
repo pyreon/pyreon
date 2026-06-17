@@ -1639,6 +1639,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `println(${e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')})`
       }
+      // `String(x)` — JS number/value → string coercion. Kotlin has NO
+      // `String(Any)` constructor (only `String(CharArray)`), so the
+      // verbatim emit is invalid. Map to `(x).toString()`. Common in
+      // every numeric table cell (`String(row.revenue)`). Swift's
+      // `String(x)` IS valid, so only the Kotlin backend needs this.
+      if (
+        e.callee.kind === 'identifier' &&
+        e.callee.name === 'String' &&
+        e.args.length === 1
+      ) {
+        return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
+      }
       // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
       // `quotes.isPending()` (the web signal-read shape) → MutableState
       // `.value` read. `refetch` is excluded (real method, parens
