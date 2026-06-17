@@ -4,7 +4,7 @@
  * and asserts identical output. This catches any behavioral divergence
  * between the two backends.
  */
-import { rocketstyleCollapseKey, transformJSX_JS } from '../jsx'
+import { rocketstyleCollapseKey, serializeStaticChildren, transformJSX_JS } from '../jsx'
 import type { ReactivitySpan } from '../jsx'
 
 // Load native if available
@@ -1603,4 +1603,119 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic varia
       ['Button'],
       both(),
     ))
+})
+
+describeNative('Native vs JS equivalence — rocketstyle collapse (element-child variant)', () => {
+  const MODE = { name: 'useMode', source: '@pyreon/zero' }
+  interface Site {
+    templateHtml: string
+    lightClass: string
+    darkClass: string
+    rules: string[]
+    ruleKey: string
+  }
+  type StaticChild = string | { tag: string; props: Record<string, string>; children: StaticChild[] }
+  // Element-child sites key on `serializeStaticChildren(childTree)` as the
+  // childrenText arg. We build the childTree literally + compute the key via the
+  // SAME exported serializer the JS detector uses, so a matching native serialize
+  // produces a matching key (collapse); a divergent serialize → key mismatch →
+  // one backend collapses while the other keeps the mount → the diff fails.
+  function cmpE(
+    input: string,
+    candidates: string[],
+    entries: Array<[string, Record<string, string>, StaticChild[], Site]>,
+  ) {
+    const sitesRecord: Record<string, Site> = {}
+    for (const [comp, props, childTree, site] of entries) {
+      const childrenKey = serializeStaticChildren(childTree as never)
+      sitesRecord[rocketstyleCollapseKey(comp, props, childrenKey)] = site
+    }
+    const jsCfg = {
+      candidates: new Set(candidates),
+      sites: new Map(Object.entries(sitesRecord)),
+      mode: MODE,
+    }
+    const napiCfg = { candidates, sites: sitesRecord, mode: MODE }
+    const js = transformJSX_JS(input, 'test.tsx', {
+      collapseRocketstyle: jsCfg as never,
+    }).code
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+      input,
+      'test.tsx',
+      false,
+      null,
+      false,
+      napiCfg,
+    ).code
+    expect(rs).toBe(js)
+  }
+  const T = (tag: string, props: Record<string, string>, children: StaticChild[]): StaticChild => ({
+    tag,
+    props,
+    children,
+  })
+  const SITE: Site = {
+    templateHtml: '<button class=c><span class=ico>Save</span></button>',
+    lightClass: 'b-l',
+    darkClass: 'b-d',
+    rules: ['.b-l{color:#000}'],
+    ruleKey: 'rkE',
+  }
+
+  test('single element child → baked __rsCollapse', () =>
+    cmpE(`export const C = () => <Button state="primary"><span class="ico">Save</span></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE],
+    ]))
+
+  test('mixed text + element + text (clean_jsx_text + serialize parity)', () =>
+    cmpE(`export const C = () => <Button state="primary">Press <kbd>Enter</kbd> now</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, ['Press ', T('kbd', {}, ['Enter']), ' now'], SITE],
+    ]))
+
+  test('recursive nesting (span > b)', () =>
+    cmpE(`export const C = () => <Button state="primary"><span><b>Hi</b></span></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('span', {}, [T('b', {}, ['Hi'])])], SITE],
+    ]))
+
+  test('element child with multiple props (sorted key)', () =>
+    cmpE(`export const C = () => <Button state="primary"><i data-x="1" class="a">x</i></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('i', { class: 'a', 'data-x': '1' }, ['x'])], SITE],
+    ]))
+
+  test('element-child site as a JSX child is brace-wrapped', () =>
+    cmpE(
+      `export const C = () => <div><Button state="primary"><span class="ico">Save</span></Button></div>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE]],
+    ))
+
+  test('text-only children → FULL path, never element-child', () =>
+    cmpE(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, ['Save'], SITE],
+    ]))
+
+  test('component (uppercase) child bails', () =>
+    cmpE(`export const C = () => <Button state="primary"><Inner/></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('span', {}, [])], SITE],
+    ]))
+
+  test('handler on a child bails (cannot bake a handler)', () =>
+    cmpE(`export const C = () => <Button state="primary"><span onClick={h}>x</span></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('span', {}, ['x'])], SITE],
+    ]))
+
+  test('expression child bails', () =>
+    cmpE(`export const C = (p) => <Button state="primary"><span>{p.x}</span></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('span', {}, [])], SITE],
+    ]))
+
+  test('unresolved key keeps the normal mount', () =>
+    cmpE(`export const C = () => <Button state="secondary"><span class="ico">Save</span></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE],
+    ]))
+
+  test('dynamic root prop + element child bails (root not all-literal)', () =>
+    cmpE(`export const C = (p) => <Button state={p.s}><span class="ico">Save</span></Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE],
+    ]))
 })

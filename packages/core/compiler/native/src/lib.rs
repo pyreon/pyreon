@@ -5102,12 +5102,13 @@ fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
         }
         return true;
     }
-    // Fall-through chain (mirrors the JS `tryPartialCollapse || tryDynamicCollapse`):
-    // on*-handler partial first, then the dynamic-prop (ternary-of-two-literals)
-    // path. `||` short-circuits so the second &mut ctx borrow only happens when
-    // the first bailed.
+    // Fall-through chain (mirrors the JS `tryPartialCollapse || tryDynamicCollapse
+    // || tryElementChildCollapse`): on*-handler partial → dynamic-prop ternary →
+    // recursively-static element children. `||` short-circuits so each later
+    // &mut ctx borrow only happens when the earlier path bailed.
     try_partial_collapse(el, tag, parent_is_jsx, ctx)
         || try_dynamic_collapse(el, tag, parent_is_jsx, ctx)
+        || try_element_child_collapse(el, tag, parent_is_jsx, ctx)
 }
 
 /// A residual event handler peeled off a partially-collapsible site — mirror of
@@ -5456,6 +5457,220 @@ fn try_dynamic_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &m
         if ctx.collapse_rule_keys.insert(rule_key.clone()) {
             ctx.collapse_rules.push((rule_key, rules));
         }
+    }
+    true
+}
+
+/// A recursively-static DOM child element — mirror of the JS `StaticChildNode`.
+/// Props are a BTreeMap so iteration order matches the JS `Object.keys().sort()`
+/// used by `serialize_static_children`.
+struct StaticChildNode {
+    tag: String,
+    props: std::collections::BTreeMap<String, String>,
+    children: Vec<StaticChild>,
+}
+
+/// A static child slot — either normalized text or a nested static element.
+/// Mirror of the JS `StaticChild = string | StaticChildNode`.
+enum StaticChild {
+    Text(String),
+    Element(StaticChildNode),
+}
+
+/// Recursively check a single JSX child element for static-bakeability — mirror
+/// of the JS `detectStaticElementChild`. Accepts iff, recursively: a lowercase
+/// (DOM) tag (NOT a component); every attr a string literal (no spread, boolean,
+/// `{expr}`, or `on*` handler — a baked child can't carry a handler); children
+/// static text OR recursively-static elements.
+fn detect_static_element_child(el: &JSXElement) -> Option<StaticChildNode> {
+    let tag = jsx_tag_name(el);
+    if tag.is_empty() || !is_lower_case(tag) {
+        return None; // component (uppercase) → has its own reactivity → bail
+    }
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None,
+                };
+                // No handlers on a baked child — a static clone can't carry them.
+                if name.as_bytes().len() > 2
+                    && name.starts_with("on")
+                    && name.as_bytes()[2].is_ascii_uppercase()
+                {
+                    return None;
+                }
+                let v = a.value.as_ref()?; // boolean attr → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    _ => return None, // {expr} / dynamic → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None,
+        }
+    }
+    let children = collect_static_children(el)?;
+    Some(StaticChildNode {
+        tag: tag.to_string(),
+        props,
+        children,
+    })
+}
+
+/// Process an element's children into a `StaticChild[]` list, or None if ANY
+/// child is non-static — mirror of the JS `collectStaticChildren`. Text is
+/// normalized via the SAME `clean_jsx_text` the compiler applies to its own JSX
+/// text emit (so a later resolver reconstruction renders byte-identically);
+/// empty/whitespace-only normalized text is dropped. Element children recurse;
+/// expression containers / fragments / spread children bail.
+fn collect_static_children(el: &JSXElement) -> Option<Vec<StaticChild>> {
+    let mut out: Vec<StaticChild> = Vec::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => {
+                let cleaned = clean_jsx_text(t.value.as_str());
+                if !cleaned.is_empty() {
+                    out.push(StaticChild::Text(cleaned));
+                }
+            }
+            JSXChild::Element(e) => {
+                let node = detect_static_element_child(e)?;
+                out.push(StaticChild::Element(node));
+            }
+            _ => return None, // expression container / fragment / spread → bail
+        }
+    }
+    Some(out)
+}
+
+/// Deterministic serialization of a static child list — mirror of the JS
+/// `serializeStaticChildren`. Distinct subtrees MUST produce distinct strings so
+/// element-child collapse keys never collide (and never collide with a text-only
+/// full-collapse key, whose childrenText has no C0 structure markers). The C0
+/// delimiters are built from byte values (`char::from(N)`) so the SOURCE carries
+/// neither a raw control byte (the hygiene gate) nor a `\u` escape (edit tooling
+/// mangles those); the runtime-computed key string carries the real C0 chars.
+fn serialize_static_children(children: &[StaticChild]) -> String {
+    let d_field = char::from(2u8); // U+0002 marker after the t/e tag byte
+    let d_tag = char::from(3u8); // U+0003 after the element tag name
+    let d_kids = char::from(4u8); // U+0004 after the prop string
+    let d_part = char::from(5u8); // U+0005 between sibling parts
+    let d_prop = char::from(1u8); // U+0001 between k=v prop pairs
+    let mut parts: Vec<String> = Vec::new();
+    for c in children {
+        match c {
+            StaticChild::Text(t) => parts.push(format!("t{}{}", d_field, t)),
+            StaticChild::Element(node) => {
+                let prop_str = node
+                    .props
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(&d_prop.to_string());
+                parts.push(format!(
+                    "e{}{}{}{}{}{}",
+                    d_field,
+                    node.tag,
+                    d_tag,
+                    prop_str,
+                    d_kids,
+                    serialize_static_children(&node.children)
+                ));
+            }
+        }
+    }
+    parts.join(&d_part.to_string())
+}
+
+/// Element-child collapse detector — mirror of the JS
+/// `detectElementChildCollapsibleShape`. The full root-prop bail catalogue (every
+/// attr a string literal) with ONE relaxation: element children are allowed WHEN
+/// the whole child list is recursively static. Returns None for the text-only
+/// case (no element child) so the FULL-collapse path stays byte-unchanged. The
+/// `children_key` is `serialize_static_children` fed to the collapse key as the
+/// childrenText arg (distinct subtrees → distinct keys).
+fn detect_element_child_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(std::collections::BTreeMap<String, String>, String)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None,
+                };
+                let v = a.value.as_ref()?; // boolean attr → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    _ => return None, // {expr} / handler / dynamic → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None,
+        }
+    }
+    let child_tree = collect_static_children(el)?;
+    // Must contain ≥1 element child — text-only is the FULL-collapse shape.
+    if !child_tree
+        .iter()
+        .any(|c| matches!(c, StaticChild::Element(_)))
+    {
+        return None;
+    }
+    Some((props, serialize_static_children(&child_tree)))
+}
+
+/// Element-child collapse — mirror of the JS `tryElementChildCollapse`. The
+/// resolver SSR-renders the REAL component WITH its child subtree and bakes the
+/// full output HTML, so the emit is the UNCHANGED `__rsCollapse(...)` (no new
+/// runtime helper — the cloned template already contains the children). The key
+/// uses the serialized child tree so the lookup matches the scan's element-child
+/// entry. An unresolved key keeps the normal mount.
+fn try_element_child_collapse(
+    el: &JSXElement,
+    tag: &str,
+    parent_is_jsx: bool,
+    ctx: &mut Ctx,
+) -> bool {
+    let (text, rule_key, rules) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        let (props, children_key) = match detect_element_child_collapsible_shape(el) {
+            Some(s) => s,
+            None => return false,
+        };
+        let key = rocketstyle_collapse_key(tag, &props, &children_key);
+        let site = match cfg.sites.get(&key) {
+            Some(s) => s,
+            None => return false, // not resolved → keep normal mount
+        };
+        let call = format!(
+            "__rsCollapse({}, {}, {}, () => __pyrMode() === \"dark\")",
+            json_string(&site.template_html),
+            json_string(&site.light_class),
+            json_string(&site.dark_class),
+        );
+        let text = if parent_is_jsx {
+            format!("{{{}}}", call)
+        } else {
+            call
+        };
+        (text, site.rule_key.clone(), site.rules.clone())
+    };
+    let span = el.span();
+    ctx.replacements.push(Replacement {
+        start: span.start,
+        end: span.end,
+        text,
+    });
+    ctx.needs_collapse = true;
+    if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+        ctx.collapse_rules.push((rule_key, rules));
     }
     true
 }
