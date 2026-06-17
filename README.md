@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/pyreon/pyreon/actions/workflows/ci.yml"><img src="https://github.com/pyreon/pyreon/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22D3EE" alt="License: MIT" /></a>
-  <img src="https://img.shields.io/badge/js%20framework%20benchmark-tied%20w%2F%20Solid-F4EFE6?labelColor=0A0A0E" alt="JS Framework Benchmark: tied with Solid" />
+  <img src="https://img.shields.io/badge/row--list%20benchmark-leads%20or%20ties%20Solid%208%2F9-F4EFE6?labelColor=0A0A0E" alt="Row-list benchmark: leads or ties Solid on 8 of 9 ops" />
 </p>
 
 # Pyreon
@@ -18,7 +18,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **No dependency arrays.** Signals track their own subscribers automatically.
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
-- **Top-tier performance.** Create 1,000 rows in 9ms — competitive with Solid (10ms), ahead of Vue (11ms), well ahead of React (33ms). Most JS Framework Benchmark rows are tied with Solid within measurement noise.
+- **Top-tier performance.** Fastest of the frameworks measured on the synthetic row-list benchmark — create 1,000 rows in ~9ms (Vue 10ms, Solid 10.4ms, React 11.6ms), and **2.4–3× faster than React, Svelte and Preact** at 10,000 rows. Leads or ties every op except single-row remove, where Solid edges it. (Real Chromium, published deps; mid-pack on retained memory.)
 - **55+ packages.** Forms, routing, state management, charts, drag & drop, i18n, and more.
 - **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
 

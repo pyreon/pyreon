@@ -30,9 +30,9 @@ with `bun bench`.
 
 | Scenario | Pyreon | React 19 | Pyreon advantage | What it measures |
 | --- | --- | --- | --- | --- |
-| `add-100` | **800µs** (cv 17%) | 8.10ms (cv 5%) | ~10× | 100 rapid-succession appends. Pyreon: 100 incremental keyed-`<For>` inserts. React: 100 `setState`s → render(s) of the growing list. |
-| `toggle-1000` | **400µs** (cv 17%) | 1.80ms (cv 77%) | ~4.5× | mark all 1 000 completed. Pyreon: flips 1 000 per-row `done` signals → 1 000 **in-place** checkbox/class patches, **no list reconciliation**. React: new 1 000-element array → whole-list re-render + VDOM diff. |
-| `clear-1000` | **200µs** (cv 38%) | 1.20ms (cv 16%) | ~6× | clear-completed on a fully-completed 1 000-todo list. Pyreon: re-set the `rows` array (keyed `<For>` removes all). React: filter to `[]` → one render. |
+| `add-100` | **500µs** (cv 13%) | 8.20ms (cv 6%) | ~16× | 100 rapid-succession appends. Pyreon: 100 incremental keyed-`<For>` inserts. React: 100 `setState`s → render(s) of the growing list. |
+| `toggle-1000` | **300µs** (cv 23%) | 1.70ms (cv 6%) | ~5.7× | mark all 1 000 completed. Pyreon: flips 1 000 per-row `done` signals → 1 000 **in-place** checkbox/class patches, **no list reconciliation**. React: new 1 000-element array → whole-list re-render + VDOM diff. |
+| `clear-1000` | **200µs** (cv 47%) | 1.30ms (cv 11%) | ~6.5× | clear-completed on a fully-completed 1 000-todo list. Pyreon: re-set the `rows` array (keyed `<For>` removes all). React: filter to `[]` → one render. |
 
 **Honest reading:** Pyreon's fine-grained signal model is the structural reason
 it wins `toggle`/`clear` decisively — flipping per-row signals patches only the

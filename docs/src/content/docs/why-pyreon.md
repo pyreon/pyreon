@@ -29,16 +29,18 @@ Pyreon is the **fastest framework on the standard synthetic row-list benchmark**
 
 | Operation | **Pyreon** | Solid | Vue 3 | React 19 | Svelte 5 |
 | --- | --- | --- | --- | --- | --- |
-| Create 1,000 rows | **9.0** | 10.3 | 9.8 | 11.2 | 13.2 |
-| Create 10,000 rows | **94.7** | 114.8 | 108.7 | 221.3 | 236.5 |
-| Partial update (every 10th) | **0.8** | 4.9 | 1.6 | 1.1 | 2.2 |
+| Create 1,000 rows | **9.0** | 10.4 | 10.0 | 11.6 | 12.6 |
+| Create 10,000 rows | **95.0** | 115.5 | 110.5 | 226.2 | 237.7 |
+| Partial update (every 10th) | **0.7** | 4.5 | 1.6 | 1.1 | 2.3 |
 | Select row | **0** | 0 | 0.7 | 0.3 | 0.4 |
-| Remove row | **7.1** | 7.3 | 8.2 | 7.4 | 8.7 |
+| Remove row | 7.3 | **7.2** | 8.4 | 7.5 | 8.8 |
+
+(Bold = the leader on that row, lower-is-better. Pyreon leads every op except **remove**, where Solid edges it by 0.1ms.)
 
 The honest read:
 
-- **Pyreon co-leads Solid.** They're the same architecture (compiled fine-grained signals); on most ops they're tied within noise. Pyreon's reproducible edges are bulk-create and partial-update (its `_bindText` direct-subscriber path is ~5× leaner per update than Solid's effect-based `insert`).
-- **The real, robust win is bulk-create at scale** — at 10,000 rows the VDOM frameworks pay a genuine 2.3–3.0× reconciliation cost (React 2.3×, Svelte 2.5×, Preact 3.0× slower than Pyreon).
+- **Pyreon co-leads Solid.** They're the same architecture (compiled fine-grained signals); on the pooled run Pyreon leads or ties Solid on **8 of 9 ops (7 outright)**, and Solid edges it on single-row `remove`. Pyreon's reproducible edges are bulk-create and partial-update (its `_bindText` direct-subscriber path is ~5× leaner per update than Solid's effect-based `insert`).
+- **The real, robust win is bulk-create at scale** — at 10,000 rows the VDOM frameworks pay a genuine 2.4–3.0× reconciliation cost (React 2.4×, Svelte 2.5×, Preact 3.0× slower than Pyreon).
 - **`select`/`partial` favor signal frameworks structurally** — they update O(changed) while a VDOM re-runs render to diff O(total).
 
 ### Where Pyreon does *not* win
