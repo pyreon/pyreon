@@ -5,6 +5,7 @@
 '@pyreon/primitives': patch
 '@pyreon/create-zero': patch
 '@pyreon/core': patch
+'@pyreon/runtime-server': patch
 ---
 
 Internal: remove provably-unreachable defensive branches + harden test coverage
@@ -31,6 +32,14 @@ Added targeted tests for the residual web-primitive branches — plain-value
 (non-signal) `value`/`checked`, the asset-name `src` dispatch, and the defensive
 guard false-paths in Field/Text/Press/WebView. primitives → 100% across all four
 metrics.
+
+`@pyreon/runtime-server` gains SSR edge-case + dev-mode/prod-mode coverage
+(documenting that `__DEV__` is a module-load constant, so both gate sides need
+separate NODE_ENV runs) and three documented `v8 ignore`s for genuinely-
+unreachable defensive arms (the outside-ALS context-stack fallback, the
+For-symbol function-each the For component pre-resolves, the stream context-store
+nullish fallback). statements/functions/lines → 98%+, branches 88.4% → 95.2%
+(a pre-existing RED branch gate, now green). No behavior change.
 
 `@pyreon/create-zero`'s `listFiles` walk uses a plain `else` for the
 non-directory case (a template tree is files-or-dirs only — no symlinks), and
