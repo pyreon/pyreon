@@ -231,6 +231,11 @@ export function withContext<T>(context: Context<T>, value: T, fn: () => void): v
 // replaced the old deduped-stack-snapshot + identity-removal machinery.
 setSnapshotCapture({
   capture: () => getContextOwner(),
+  // `restore` runs only when `capture` returned a non-null owner — i.e. the
+  // effect was created inside a mounted component scope. A bare node-side
+  // effect has no active owner, so this arm is exercised under a renderer
+  // (covered by @pyreon/runtime-dom's context re-run tests).
+  /* v8 ignore next 2 */
   restore: <T>(owner: unknown, fn: () => T): T =>
     runWithContextOwner(owner as EffectScope | null, fn),
 })

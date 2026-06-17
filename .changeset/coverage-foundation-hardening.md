@@ -4,6 +4,7 @@
 '@pyreon/head': patch
 '@pyreon/primitives': patch
 '@pyreon/create-zero': patch
+'@pyreon/core': patch
 ---
 
 Internal: remove provably-unreachable defensive branches + harden test coverage

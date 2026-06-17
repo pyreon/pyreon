@@ -68,6 +68,10 @@ export function _setupVisibleTrigger(
     startLoad()
     return () => {}
   }
+  // The observer path requires a DOM `IntersectionObserver`, absent in
+  // the Node test env — it's exercised by `@pyreon/runtime-dom`'s Defer
+  // mount tests (real browser) where the observer + a live element exist.
+  /* v8 ignore start */
   const obs = new IntersectionObserver(
     (entries) => {
       if (entries.some((e) => e.isIntersecting)) {
@@ -79,6 +83,7 @@ export function _setupVisibleTrigger(
   )
   obs.observe(el)
   return () => obs.disconnect()
+  /* v8 ignore stop */
 }
 
 export type DeferProps<P extends Props> = DeferTrigger & {
@@ -155,6 +160,10 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
   let loadStarted = false
 
   const startLoad = (): void => {
+    // Defensive double-guard: the `when` effect already gates on `!loadStarted`
+    // and the idle/visible triggers fire once, so this early-return is only a
+    // belt-and-suspenders guard against a future trigger calling twice.
+    /* v8 ignore next */
     if (loadStarted) return
     loadStarted = true
     if (!props.chunk) {
@@ -209,6 +218,9 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     // Idle-driven. Delegated to `_setupIdleTrigger` so the browser-API
     // branching is testable as a pure function. Wrapped in onMount so
     // SSR / non-browser environments don't fire the callback at all.
+    // The onMount arrow fires only inside a renderer mount (not a bare
+    // `Defer()` call) — `_setupIdleTrigger` itself is unit-tested directly.
+    /* v8 ignore next */
     onMount(() => _setupIdleTrigger(startLoad))
   }
   // Note: `on === 'visible'` is wired below alongside the wrapper element
@@ -248,7 +260,9 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     // Visible-mode trigger is wired via `_setupVisibleTrigger` so the
     // observer-construction + intersection-detection logic is
     // independently testable. onMount keeps the browser-API access
-    // out of the SSR path.
+    // out of the SSR path. The arrow fires only inside a renderer mount
+    // — `_setupVisibleTrigger` itself is unit-tested directly.
+    /* v8 ignore start */
     onMount(() =>
       _setupVisibleTrigger(
         containerRef.current,
@@ -256,6 +270,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
         props.rootMargin ?? '200px',
       ),
     )
+    /* v8 ignore stop */
     // Cast renderContent to VNodeChildAccessor — its inferred return type
     // is `VNodeChild` (broader than the accessor's `atom | atom[]`) because
     // `props.children` itself may return any VNodeChild. The runtime

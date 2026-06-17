@@ -33,6 +33,8 @@ export function getCurrentHooks(): LifecycleHooks | null {
 function captureCallSite(): string {
   const err = new Error()
   const stack = err.stack
+  // `.stack` is always present in V8/JSC — defensive fallback only.
+  /* v8 ignore next */
   if (!stack) return ''
   const lines = stack.split('\n')
   // Framework paths to skip — conservative, matches the packages that
