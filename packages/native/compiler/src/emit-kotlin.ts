@@ -2054,6 +2054,14 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Show') return emitKotlinShow(e, indent)
   if (tag === 'Transition') return emitKotlinTransition(e, indent)
   if (tag === 'TransitionGroup') return emitKotlinTransitionGroup(e, indent)
+  // Escape-hatch primitives (Layer 4) — mirror of the Swift dispatcher.
+  // On the Kotlin/Compose target only `<NativeAndroid>` renders its
+  // children; `<NativeIOS>` and `<Web>` are other-platform branches →
+  // render nothing (a no-op comment, valid in any Composable context).
+  if (tag === 'NativeAndroid') return emitKotlinEscapeHatch(e, indent, /*matched*/ true)
+  if (tag === 'NativeIOS' || tag === 'Web') {
+    return emitKotlinEscapeHatch(e, indent, /*matched*/ false)
+  }
   // Phase 5 — walled tags. Mirror of the Swift dispatcher entry.
   // Compose has no equivalent for Suspense / ErrorBoundary / KeepAlive
   // either; previously these emitted FAKE composables (`Suspense(…) {}`)
@@ -2539,6 +2547,26 @@ private fun PyreonKeepAliveWrapper(
 }`
 
 let _needsKotlinKeepAliveWrapper = false
+
+/**
+ * Escape-hatch primitive emit (`<NativeAndroid>` / `<NativeIOS>` / `<Web>`).
+ * `matched` = this branch targets Kotlin/Compose (`<NativeAndroid>`): emit
+ * its children. Otherwise it's an other-platform branch → render nothing
+ * (a no-op comment — valid wherever a Composable call is expected, since a
+ * Composable that calls nothing renders nothing). Mirror of
+ * `emitSwiftEscapeHatch`.
+ */
+function emitKotlinEscapeHatch(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+  matched: boolean,
+): string {
+  if (!matched || e.children.length === 0) {
+    return `// escape-hatch: ${e.tag} branch renders nothing on Android`
+  }
+  const inner = ' '.repeat(indent + 2)
+  return e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n').trimStart()
+}
 
 function emitKotlinWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,

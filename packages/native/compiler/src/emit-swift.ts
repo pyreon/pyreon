@@ -2274,6 +2274,17 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Show') return emitSwiftShow(e, indent)
   if (tag === 'Transition') return emitSwiftTransition(e, indent)
   if (tag === 'TransitionGroup') return emitSwiftTransitionGroup(e, indent)
+  // Escape-hatch primitives (Layer 4) — per-platform branch selection.
+  // On the Swift target only `<NativeIOS>` renders its children; `<Web>`
+  // and `<NativeAndroid>` are other-platform branches → render nothing.
+  // Lets one source carry a platform-specific subtree (e.g. a native
+  // chart view inside <NativeIOS>, the @pyreon/charts version inside
+  // <Web>). On web, @pyreon/primitives renders the mirror (<Web> shows
+  // children, <NativeIOS>/<NativeAndroid> render null).
+  if (tag === 'NativeIOS') return emitSwiftEscapeHatch(e, indent, /*matched*/ true)
+  if (tag === 'NativeAndroid' || tag === 'Web') {
+    return emitSwiftEscapeHatch(e, indent, /*matched*/ false)
+  }
   // Phase 5 — walled tags. SwiftUI has no equivalent for these three:
   //   - <Suspense fallback>:   no async-render-suspend mechanism
   //   - <ErrorBoundary fallback>: no render-time try/catch
@@ -2961,6 +2972,25 @@ private struct PyreonKeepAliveWrapper<Content: View>: View {
 }`
 
 let _needsSwiftKeepAliveWrapper = false
+
+/**
+ * Escape-hatch primitive emit (`<NativeIOS>` / `<NativeAndroid>` / `<Web>`).
+ * `matched` = this branch targets the Swift platform (i.e. `<NativeIOS>`):
+ * emit its children as the platform-specific subtree. Otherwise it's an
+ * other-platform branch (`<Web>` / `<NativeAndroid>`) → render nothing
+ * (`EmptyView()`), so the source's web / Android content is dropped from
+ * the iOS build. Children are emitted concatenated (ViewBuilder context),
+ * mirroring the walled-tag helper.
+ */
+function emitSwiftEscapeHatch(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+  matched: boolean,
+): string {
+  if (!matched || e.children.length === 0) return 'EmptyView()'
+  const inner = ' '.repeat(indent + 2)
+  return e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n').trimStart()
+}
 
 function emitSwiftWalledTagAsChildren(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,

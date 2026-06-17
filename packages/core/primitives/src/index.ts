@@ -90,3 +90,9 @@ export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
 export { Modal } from './web/Modal'
+// Escape-hatch primitives (Layer 4) — per-platform branch selection. On
+// web, `<Web>` renders its children and `<NativeIOS>`/`<NativeAndroid>`
+// render nothing; PMTC mirrors this per native target (iOS renders the
+// `<NativeIOS>` branch, Android the `<NativeAndroid>` branch).
+export { Web, NativeIOS, NativeAndroid } from './web/escape-hatch'
+export type { EscapeHatchProps } from './types/escape-hatch'
