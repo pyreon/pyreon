@@ -261,7 +261,9 @@ export async function withSilent<T>(fn: () => Promise<T> | T): Promise<T> {
     return await fn()
   } finally {
     state.silentDepth -= 1
-    if (state.silentDepth < 0) state.silentDepth = 0 // defensive: never go negative
+    // defensive: matched inc/dec in try/finally can't go negative — unreachable.
+    /* v8 ignore next */
+    if (state.silentDepth < 0) state.silentDepth = 0
   }
 }
 
@@ -282,6 +284,8 @@ export function withSilentSync<T>(fn: () => T): T {
     return fn()
   } finally {
     state.silentDepth -= 1
+    // defensive: matched inc/dec in try/finally can't go negative — unreachable.
+    /* v8 ignore next */
     if (state.silentDepth < 0) state.silentDepth = 0
   }
 }

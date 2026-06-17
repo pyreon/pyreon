@@ -55,6 +55,9 @@ export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next:
     name: sig.label,
     prev,
     next,
+    // `.stack` is always a string in V8/JSC; the `?? ''` is a defensive
+    // fallback for the spec-permitted (but unobserved) undefined.
+    /* v8 ignore next */
     stack: new Error().stack ?? '',
     timestamp: performance.now(),
   }

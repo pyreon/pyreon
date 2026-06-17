@@ -372,13 +372,19 @@ export function _bind(fn: () => void): () => void {
 
   // Pre-pick the run body at setup so re-runs do disposed-check + direct
   // dispatch only — no per-fire branch on `snapshot !== null && _snapshotCapture`.
+  // The `if (disposed) return` in each closure is a defensive disposed-mid-
+  // flush guard — dispose normally removes the effect's notify from the
+  // pending queue before its run, so the guard fires only in the narrow
+  // window where a sibling disposes this effect during the same flush.
   const run: () => void =
     snapshot !== null && cap
       ? () => {
+          /* v8 ignore next */
           if (disposed) return
           cap.restore(snapshot, fn)
         }
       : () => {
+          /* v8 ignore next */
           if (disposed) return
           fn()
         }

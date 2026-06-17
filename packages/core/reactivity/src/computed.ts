@@ -307,6 +307,10 @@ function computedWithEquals<T>(
   read._d = null
 
   recompute = () => {
+    // Defensive: `recompute` is the source-subscriber callback, unsubscribed
+    // on dispose, so a disposed computed is never re-driven by a source — this
+    // guard only fires if a recompute is already queued when dispose lands.
+    /* v8 ignore next */
     if (read._disposed) return
     if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('reactivity.computedRecompute')

@@ -59,6 +59,8 @@ export const LPIH_DEFAULT_FILENAME = '.pyreon-lpih.json'
  * startLpihPolling() // writes to that path
  */
 export function getDefaultLpihCachePath(): string | null {
+  // Node-only dev bridge; `process` is always defined where this runs.
+  /* v8 ignore next */
   if (typeof process === 'undefined') return null
   // Pyreon's reactivity package narrows `process` to `{ env: ... }`.
   // Cast through the runtime check so the call site typechecks under

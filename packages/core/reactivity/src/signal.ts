@@ -272,6 +272,11 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
  * are already absent from the set (O(1) delete on disposal).
  */
 function notifyDirect(updaters: Set<() => void>): void {
+  // The `else` (non-batch) arm is structurally unreachable: every write opens
+  // an inline batch window before dispatch (see `openInlineBatch`), so by the
+  // time a multi-subscriber `_d` Set is notified, `isBatching()` is always
+  // true. Kept as a correctness guard for any future direct caller.
+  /* v8 ignore next 3 */
   if (isBatching()) {
     for (const fn of updaters) enqueuePendingNotification(fn)
   } else {
