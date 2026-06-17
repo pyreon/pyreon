@@ -582,6 +582,22 @@ every warning; treat any warning as "this construct is outside v1."
   compiles.) Full hook-result **destructure** lowering — making
   `const { data } = useFetch(...)` work rather than warn — is the
   remaining tracked follow-up.
+- **Static attrs → literal OR module-level `const`.** A native-mapped
+  static attribute (`<Image src=…>`, `<WebView src=… />` / `html=`, font,
+  background, …) accepts an inline string literal OR a **module-level
+  `const` string/number/boolean binding** referenced by name:
+
+  ```tsx
+  const CHART_URL = "https://x.example/c.png"
+  // both emit AsyncImage(url:) / Coil AsyncImage(model=) identically:
+  <Image src="https://x.example/c.png" alt="chart" />
+  <Image src={CHART_URL} alt="chart" />
+  ```
+
+  A `let` (mutable) binding, a non-literal init (`const x = f()`), or a
+  component-scope / unknown identifier is NOT resolved — it falls through
+  to the normal "needs static" emit path. (Component-scope const +
+  transitive `const B = A` resolution are tracked follow-ups.)
 
 **Expressions**
 | Shape | Notes |

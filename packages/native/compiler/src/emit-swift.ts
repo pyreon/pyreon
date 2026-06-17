@@ -248,6 +248,16 @@ function collectLayoutComponentNames(components: ComponentIR[]): Set<string> {
 let _emitWarnings: string[] = []
 /** Canonical font name → iOS PostScript name (asset-pipeline arc PR-1.4). */
 let _fontMap: Record<string, string> = {}
+/**
+ * Module-level `const X = <string|number|boolean literal>` bindings,
+ * name → value. Lets a static-attr reader resolve a const-ref attr
+ * (`<Image src={API_URL}>`, `<WebView src={chartUrl}>`) to its literal
+ * at emit time — so the canonical pattern of naming a URL/constant once
+ * works on native, not just an inline literal. `let` (mutable) bindings
+ * are excluded (could change), as are non-literal inits (`const x = f()`)
+ * — those fall through to the existing "needs static" emit path.
+ */
+let _constStringMap: Map<string, string | number | boolean> = new Map()
 
 /** Test/debug-only helper to read accumulated warnings without
  *  going through the full emit pipeline. Returns a copy. */
@@ -274,6 +284,15 @@ export function emitSwift(
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _fontMap = fonts
+  _constStringMap = new Map()
+  for (const md of moduleDecls) {
+    if (md.mutable) continue // `let` is mutable — unsafe to inline
+    if (md.initial.kind !== 'literal') continue // only direct literals
+    const v = md.initial.value
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      _constStringMap.set(md.name, v)
+    }
+  }
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
   for (const s of structs) {
@@ -3130,6 +3149,15 @@ function readStaticAttr(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+      // Const-ref: `src={API_URL}` where API_URL is a module-level
+      // `const` string/number/boolean binding. Resolve it to its
+      // literal so naming a constant works as well as inlining it.
+      // Unknown / component-scope / non-const identifiers aren't in
+      // the map → return undefined → existing "needs static" path.
+      if (a.value.kind === 'identifier') {
+        const resolved = _constStringMap.get(a.value.name)
+        if (resolved !== undefined) return resolved
+      }
     }
   }
   return undefined
@@ -3437,7 +3465,10 @@ function emitSwiftIcon(
  * arc. The type-level prop is still accepted (silent no-op on Swift),
  * mirroring how `justify` is handled on `<Stack>`.
  *
- * `src` must be a string literal; falls through to generic emit otherwise.
+ * `src` must resolve to a static string — a string literal OR a
+ * module-level `const` string binding (`const LOGO = "logo.png"`),
+ * which `readStaticAttr` resolves to its literal. A non-const /
+ * component-scope / dynamic value falls through to generic emit.
  */
 /**
  * The canonical `src` dispatch (asset-pipeline arc, 2026-06-11) —
