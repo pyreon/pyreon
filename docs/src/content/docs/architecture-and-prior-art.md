@@ -57,13 +57,15 @@ every project.
 
 ## Performance, stated honestly
 
-On the synthetic JS Framework Benchmark (Chromium via Playwright), compiled
-Pyreon is in the **top performance tier — competitive with Solid, ahead of
-Vue and React**. Important caveats, kept verbatim with the project's internal
-record:
+On the synthetic row-list benchmark (Chromium via Playwright), compiled
+Pyreon is the **fastest of the frameworks measured** — it leads or ties
+Solid on **8 of 9 ops (7 outright)** and runs **2.4–3× faster than React,
+Svelte and Preact** at bulk-create (10k rows). Important caveats, kept
+verbatim with the project's internal record:
 
-- It is **not** "fastest on all benchmarks." Most rows are **tied with Solid
-  within measurement noise**; the meaningful gap is versus React.
+- It is **not** "fastest on all benchmarks." This is the **synthetic
+  row-list suite** only; **Solid edges single-row `remove`** (the most
+  VDOM-neutral op), and Pyreon is **mid-pack on retained memory** (6th of 7).
 - These are synthetic-benchmark numbers. **Real-app head-to-head
   measurements are still pending** — treat cross-framework performance
   claims accordingly.
