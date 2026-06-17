@@ -502,7 +502,13 @@ struct Ctx<'a> {
     collapse: Option<CollapseConfig>,
     /// Set once a full-collapse `__rsCollapse(...)` is emitted — gates the
     /// `_rsCollapse` / `sheet` / mode imports + the injectRules prologue.
+    /// (The on*-handler partial path ALSO sets this — matching the JS
+    /// `tryPartialCollapse`, which sets BOTH `needsCollapse` and
+    /// `needsCollapseH` — so a partial-only module imports both helpers.)
     needs_collapse: bool,
+    /// Set once an on*-handler partial `__rsCollapseH(...)` is emitted — gates
+    /// the `_rsCollapseH as __rsCollapseH` import.
+    needs_collapse_h: bool,
     /// Distinct collapse rule bundles, injected once each (deduped by ruleKey).
     collapse_rule_keys: FxHashSet<String>,
     collapse_rules: Vec<(String, Vec<String>)>,
@@ -521,6 +527,7 @@ impl<'a> Ctx<'a> {
             program,
             collapse,
             needs_collapse: false,
+            needs_collapse_h: false,
             collapse_rule_keys: FxHashSet::default(),
             collapse_rules: Vec::new(),
             line_index: LineIndex::new(source),
@@ -5006,25 +5013,171 @@ fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
         return false;
     }
     let parent_is_jsx = ctx.parent_is_jsx;
-    let (text, rule_key, rules) = {
+    // Candidate gate (shared by full + partial), then full-shape detect. A full
+    // shape with an UNRESOLVED key bails outright (a full site has no handlers,
+    // so it can never be a partial site); only an ABSENT full shape falls
+    // through to the on*-handler partial path — mirroring the JS fallthrough
+    // chain `detectCollapsibleShape ? <full> : tryPartialCollapse(...)`.
+    let full = {
         let cfg = ctx.collapse.as_ref().unwrap();
         if !cfg.candidates.iter().any(|c| c.as_str() == tag) {
             return false;
         }
-        let (props, children_text) = match detect_collapsible_shape(el) {
+        match detect_collapsible_shape(el) {
+            Some((props, children_text)) => {
+                let key = rocketstyle_collapse_key(tag, &props, &children_text);
+                match cfg.sites.get(&key) {
+                    Some(site) => {
+                        let call = format!(
+                            "__rsCollapse({}, {}, {}, () => __pyrMode() === \"dark\")",
+                            json_string(&site.template_html),
+                            json_string(&site.light_class),
+                            json_string(&site.dark_class),
+                        );
+                        let text = if parent_is_jsx {
+                            format!("{{{}}}", call)
+                        } else {
+                            call
+                        };
+                        Some((text, site.rule_key.clone(), site.rules.clone()))
+                    }
+                    None => return false, // full shape, unresolved → bail (never partial)
+                }
+            }
+            None => None, // no full shape → try the on*-handler partial path below
+        }
+    };
+    if let Some((text, rule_key, rules)) = full {
+        let span = el.span();
+        ctx.replacements.push(Replacement {
+            start: span.start,
+            end: span.end,
+            text,
+        });
+        ctx.needs_collapse = true;
+        if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+            ctx.collapse_rules.push((rule_key, rules));
+        }
+        return true;
+    }
+    try_partial_collapse(el, tag, parent_is_jsx, ctx)
+}
+
+/// A residual event handler peeled off a partially-collapsible site — mirror of
+/// the JS `CollapsibleHandler`. The expression source span (no braces) is
+/// re-emitted verbatim into the `__rsCollapseH` handler object.
+struct CollapsibleHandler {
+    name: String,
+    expr_start: u32,
+    expr_end: u32,
+}
+
+/// on*-handler partial-collapse detector — byte-for-byte mirror of the JS
+/// `detectPartialCollapsibleShape`. The EXACT full bail catalogue with ONE
+/// relaxation: an `on[A-Z]…` handler in a `{expr}` container is PEELED into
+/// `handlers[]` instead of bailing (an event binding never changes the
+/// SSR-resolved styler class, so the literal-prop subset still feeds the
+/// UNCHANGED key + the resolver's byte-identical template/classes). Every other
+/// non-literal shape still bails. Returns None when there are ZERO handlers, so
+/// the full-collapse path stays byte-unchanged and the two detectors never both
+/// claim the same site (full sites have no handlers; partial sites have ≥1).
+fn detect_partial_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(
+    std::collections::BTreeMap<String, String>,
+    String,
+    Vec<CollapsibleHandler>,
+)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut handlers: Vec<CollapsibleHandler> = Vec::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None, // namespaced → bail
+                };
+                let v = a.value.as_ref()?; // boolean attr (no value) → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    JSXAttributeValue::ExpressionContainer(c) => {
+                        // ONLY an `on[A-Z]…` handler in a `{expr}` container is
+                        // peelable; everything else dynamic is a hard bail.
+                        let is_handler = name.as_bytes().len() > 2
+                            && name.starts_with("on")
+                            && name.as_bytes()[2].is_ascii_uppercase();
+                        match (is_handler, jsx_expr_as_expression(&c.expression)) {
+                            (true, Some(e)) => {
+                                let sp = e.span();
+                                handlers.push(CollapsibleHandler {
+                                    name,
+                                    expr_start: sp.start,
+                                    expr_end: sp.end,
+                                });
+                            }
+                            _ => return None, // non-handler {expr} / empty expr → bail
+                        }
+                    }
+                    _ => return None, // other dynamic value → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None, // spread → bail
+        }
+    }
+    let mut children_text = String::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => children_text.push_str(t.value.as_str()),
+            _ => return None, // element / expression child → bail
+        }
+    }
+    // Zero handlers ⇒ FULL-collapse shape; defer to detect_collapsible_shape.
+    if handlers.is_empty() {
+        return None;
+    }
+    Some((props, children_text.trim().to_string(), handlers))
+}
+
+/// on*-handler partial collapse — mirror of the JS `tryPartialCollapse`. Emits
+/// `__rsCollapseH(html, light, dark, () => __pyrMode() === "dark", { "onClick":
+/// (<sliced expr>), … })`, brace-wrapped when rendered as a JSX child. Each
+/// handler expression is re-emitted verbatim from its source span (paren-wrapped
+/// so an arrow / sequence expr stays a single argument). Sets BOTH
+/// needs_collapse + needs_collapse_h (matching JS — a partial-only module then
+/// imports both helpers; the unused `_rsCollapse` tree-shakes out).
+fn try_partial_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &mut Ctx) -> bool {
+    let src = ctx.source; // &'a str is Copy — snapshot to avoid a borrow split.
+    let (text, rule_key, rules) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        let (props, children_text, handlers) = match detect_partial_collapsible_shape(el) {
             Some(s) => s,
             None => return false,
         };
         let key = rocketstyle_collapse_key(tag, &props, &children_text);
         let site = match cfg.sites.get(&key) {
             Some(s) => s,
-            None => return false, // not resolved → keep normal mount
+            None => return false, // not resolved → keep normal rocketstyle mount
         };
+        let handler_obj = format!(
+            "{{ {} }}",
+            handlers
+                .iter()
+                .map(|h| format!(
+                    "{}: ({})",
+                    json_string(&h.name),
+                    &src[h.expr_start as usize..h.expr_end as usize]
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         let call = format!(
-            "__rsCollapse({}, {}, {}, () => __pyrMode() === \"dark\")",
+            "__rsCollapseH({}, {}, {}, () => __pyrMode() === \"dark\", {})",
             json_string(&site.template_html),
             json_string(&site.light_class),
             json_string(&site.dark_class),
+            handler_obj,
         );
         let text = if parent_is_jsx {
             format!("{{{}}}", call)
@@ -5040,6 +5193,7 @@ fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
         text,
     });
     ctx.needs_collapse = true;
+    ctx.needs_collapse_h = true;
     if ctx.collapse_rule_keys.insert(rule_key.clone()) {
         ctx.collapse_rules.push((rule_key, rules));
     }
@@ -5078,9 +5232,24 @@ impl<'a> Ctx<'a> {
                 format!("__rsSheet.injectRules({},{});", arr, json_string(rule_key))
             })
             .collect();
+        // Only import the helpers actually emitted — keeps bytes per-feature
+        // and tree-shakable. needs_collapse (full) gates `_rsCollapse`;
+        // needs_collapse_h gates `_rsCollapseH`. Matches the JS rdImports list.
+        let mut rd_imports: Vec<&str> = Vec::new();
+        if self.needs_collapse {
+            rd_imports.push("_rsCollapse as __rsCollapse");
+        }
+        if self.needs_collapse_h {
+            rd_imports.push("_rsCollapseH as __rsCollapseH");
+        }
         format!(
-            "import {{ _rsCollapse as __rsCollapse }} from \"{}\";\nimport {{ sheet as __rsSheet }} from \"{}\";\nimport {{ {} as __pyrMode }} from \"{}\";\n{}\n",
-            rd, st, cfg.mode.name, cfg.mode.source, inj
+            "import {{ {} }} from \"{}\";\nimport {{ sheet as __rsSheet }} from \"{}\";\nimport {{ {} as __pyrMode }} from \"{}\";\n{}\n",
+            rd_imports.join(", "),
+            rd,
+            st,
+            cfg.mode.name,
+            cfg.mode.source,
+            inj
         )
     }
 }
