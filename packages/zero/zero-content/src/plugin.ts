@@ -43,6 +43,51 @@ import {
   isStandardSchema,
   validateAgainstSchema,
 } from './schema-validate'
+import type { Heading } from './types'
+
+/**
+ * Build the search entry for one page — the page is the single searchable
+ * unit, with its heading anchors stored alongside it. The runtime
+ * (`search-runtime`) picks the heading whose text best matches the query and
+ * deep-links the result to that `#anchor`, so a hit jumps to the exact
+ * section. This delivers section-precision navigation WITHOUT one document
+ * per section — which ~4×'s the index and hits the 1 MB build-error cliff
+ * around ~130 pages; the anchor selection is a cheap query-time scan instead.
+ *
+ * @internal exported for testing
+ */
+export function buildPageSearchEntry(args: {
+  collectionName: string
+  pageSlug: string
+  title: string
+  description: string | undefined
+  /** Raw markdown source (NOT the compiled JSX). */
+  source: string
+  headings: readonly Heading[]
+  bodyMax: number
+}): CollectionEntryForIndex {
+  const capBody = (s: string, max: number): string => {
+    if (s.length <= max) return s
+    const slice = s.slice(0, max)
+    const lastSpace = slice.lastIndexOf(' ')
+    return lastSpace > max * 0.8 ? slice.slice(0, lastSpace) : slice
+  }
+  const entry: CollectionEntryForIndex = {
+    slug: args.pageSlug,
+    title: args.title,
+    headings: args.headings.map((h) => h.text),
+    body: capBody(stripMarkdown(args.source), args.bodyMax),
+    url: `/${args.collectionName}/${args.pageSlug}`,
+  }
+  // Anchors for query-time deep-linking. Lowercase the heading text so the
+  // runtime can `.includes()` the (already-lowercased) matched query terms.
+  const anchors = args.headings
+    .filter((h) => h.slug.length > 0)
+    .map((h) => ({ t: h.text.toLowerCase(), s: h.slug }))
+  if (anchors.length > 0) entry.anchors = anchors
+  if (args.description !== undefined) entry.description = args.description
+  return entry
+}
 
 // ─── @pyreon/zero-content Vite plugin ──────────────────────────────────────
 //
@@ -835,37 +880,27 @@ export {}
               // file × N hits per build for zero new information.
               const slug = cached.slug
               if (!collMap || !collMap.has(slug)) {
-                const frontmatter = cached.frontmatter
-                const title = String(frontmatter.title ?? slug)
-                const description =
-                  typeof frontmatter.description === 'string'
-                    ? frontmatter.description
-                    : undefined
-                const headings = (cached.headings ?? []).map((h) => h.text)
-                const SEARCH_BODY_MAX = options.searchBodyMax ?? 1500
-                let body = stripMarkdown(cached.source)
-                if (body.length > SEARCH_BODY_MAX) {
-                  const slice = body.slice(0, SEARCH_BODY_MAX)
-                  const lastSpace = slice.lastIndexOf(' ')
-                  body =
-                    lastSpace > SEARCH_BODY_MAX * 0.8
-                      ? slice.slice(0, lastSpace)
-                      : slice
-                }
                 let m = collMap
                 if (!m) {
                   m = new Map<string, CollectionEntryForIndex>()
                   searchEntries.set(collectionName, m)
                 }
-                const entry: CollectionEntryForIndex = {
+                const fm = cached.frontmatter
+                m.set(
                   slug,
-                  title,
-                  headings,
-                  body,
-                  url: `/${collectionName}/${slug}`,
-                }
-                if (description !== undefined) entry.description = description
-                m.set(slug, entry)
+                  buildPageSearchEntry({
+                    collectionName,
+                    pageSlug: slug,
+                    title: String(fm.title ?? slug),
+                    description:
+                      typeof fm.description === 'string'
+                        ? fm.description
+                        : undefined,
+                    source: cached.source,
+                    headings: (cached.headings ?? []) as Heading[],
+                    bodyMax: options.searchBodyMax ?? 1500,
+                  }),
+                )
               }
             }
           }
@@ -951,40 +986,29 @@ export {}
               typeof frontmatter.description === 'string'
                 ? frontmatter.description
                 : undefined
-            const headings = (result.headings ?? []).map((h) => h.text)
-            // Truncate body to first ~1500 chars for the search index.
-            // Reasons: (a) most search hits are in title / headings /
-            // description (which are boosted at query time anyway); (b)
-            // the full body for a 91-page docs site is 700KB+ which
-            // exceeds the plugin's 300KB warn threshold and ships a
-            // noticeable client-side payload on Cmd+K open.
-            //
-            // Cut at the nearest word boundary so MiniSearch's
-            // tokenizer doesn't see a half-truncated token. The const
-            // could move to ContentPluginOptions when a real use case
-            // for tuning per project surfaces; 1500 covers the average
-            // first-section ("the lede") for most technical docs.
-            const SEARCH_BODY_MAX = options.searchBodyMax ?? 1500
-            let body = stripMarkdown(code)
-            if (body.length > SEARCH_BODY_MAX) {
-              const slice = body.slice(0, SEARCH_BODY_MAX)
-              const lastSpace = slice.lastIndexOf(' ')
-              body = lastSpace > SEARCH_BODY_MAX * 0.8 ? slice.slice(0, lastSpace) : slice
-            }
+            // One search document per page, with its heading anchors stored
+            // for query-time deep-linking (the runtime jumps a result to the
+            // heading that best matches the query). The body is truncated to
+            // ~searchBodyMax chars at a word boundary — most hits land in
+            // title / headings / description (boosted at query time), and the
+            // full body for a large docs site would blow the index threshold.
             let collMap = searchEntries.get(collectionName)
             if (!collMap) {
               collMap = new Map<string, CollectionEntryForIndex>()
               searchEntries.set(collectionName, collMap)
             }
-            const entry: CollectionEntryForIndex = {
+            collMap.set(
               slug,
-              title,
-              headings,
-              body,
-              url: `/${collectionName}/${slug}`,
-            }
-            if (description !== undefined) entry.description = description
-            collMap.set(slug, entry)
+              buildPageSearchEntry({
+                collectionName,
+                pageSlug: slug,
+                title,
+                description,
+                source: code,
+                headings: (result.headings ?? []) as Heading[],
+                bodyMax: options.searchBodyMax ?? 1500,
+              }),
+            )
           }
         }
 

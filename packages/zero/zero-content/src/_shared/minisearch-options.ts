@@ -22,7 +22,16 @@
 
 export const MINISEARCH_OPTIONS = {
   fields: ['title', 'description', 'headings', 'body'] as string[],
-  storeFields: ['title', 'description', 'url', 'collection', 'slug'] as string[],
+  // `anchors` is stored (not indexed) — the runtime reads it to deep-link a
+  // result to the heading that best matches the query (see search-runtime).
+  storeFields: [
+    'title',
+    'description',
+    'url',
+    'collection',
+    'slug',
+    'anchors',
+  ] as string[],
   searchOptions: {
     boost: { title: 3, headings: 2, description: 1.5 },
     prefix: true,

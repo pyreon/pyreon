@@ -25,6 +25,39 @@ export interface SearchCatalog {
 // scoring stay consistent. Pre-fix (PR-A audit L12) these existed twice
 // inline; structurally locked here.
 import { MINISEARCH_OPTIONS as MS_OPTIONS } from '../_shared/minisearch-options'
+import type { SearchAnchor } from './index-builder'
+
+/**
+ * Deep-link a result to the heading whose text best matches the query.
+ *
+ * The page is the searchable unit, but each result carries its heading
+ * `anchors` (lowercased text + slug, stored at build time). We pick the
+ * anchor containing the most of the query's MATCHED terms (`result.terms`,
+ * already lowercased + prefix/fuzzy-expanded by MiniSearch) and append its
+ * `#slug` — so a hit jumps to the exact section. When no heading contains a
+ * matched term (e.g. the match was in the body or page title), we fall back
+ * to the page URL (top). Pure + exported for unit testing.
+ *
+ * @internal exported for testing
+ */
+export function resultDeepLink(
+  url: string,
+  anchors: readonly SearchAnchor[] | undefined,
+  matchedTerms: readonly string[],
+): string {
+  if (!anchors || anchors.length === 0 || matchedTerms.length === 0) return url
+  let best: SearchAnchor | undefined
+  let bestScore = 0
+  for (const a of anchors) {
+    let score = 0
+    for (const term of matchedTerms) if (a.t.includes(term)) score++
+    if (score > bestScore) {
+      bestScore = score
+      best = a
+    }
+  }
+  return best ? `${url}#${best.s}` : url
+}
 
 /**
  * Lazy-loaded MiniSearch instance.
@@ -397,7 +430,11 @@ export function Search(props: SearchProps): VNodeChild {
                         so the surrounding `<dialog>` doesn't flicker
                         across the route change. */}
                     <RouterLink
-                      to={String(r.url ?? '#')}
+                      to={resultDeepLink(
+                        String(r.url ?? '#'),
+                        r.anchors as SearchAnchor[] | undefined,
+                        (r.terms ?? []) as string[],
+                      )}
                       onClick={() => state.close()}
                     >
                       <span class="pyreon-search__title">
