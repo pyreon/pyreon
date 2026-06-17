@@ -233,7 +233,7 @@ Resolution order, most-specific first: per-`.md` import → collection-level `co
 
 The Pyreon-native replacement for iframe-sandboxed `<Playground>`. Loads a real `.tsx` file inline (NOT iframe) — no escape passes, no srcdoc string-blob, no SyntaxError when a string contains a backslash. **Two `<Example>` calls with the same `share` key receive the SAME signal instance** via a module-level registry, so a click in one example reactively updates the rendered output of another mounted example on the same page.
 
-A killer DX no MDX-flavor framework can replicate. See [Live examples (new DX)](./example-dx) for the full walkthrough; this section is the spec.
+A DX no MDX-flavor framework can replicate. See [Live Examples](./live-examples) for the full walkthrough; this section is the spec.
 
 ### Quick wiring
 
@@ -341,4 +341,4 @@ Built-in components: `Callout`, `CodeGroup`, `CodeBlock`, `Tabs`, `Details`, `Pa
 
 Runtime: `defineConfig`, `defineCollection`, `defineComponents`, `defineContentRoute`, `getCollection`, `getEntry`, `getEntries`, `registerExamples`, `getOrCreateSharedSignal`, `clearAllSharedSignals`, `Sidebar`, `Toc`, `Search`, `useSearch`.
 
-See also: [Live examples (new DX)](./example-dx) for the full `<Example>` walkthrough.
+See also: [Live Examples](./live-examples) for the full `<Example>` walkthrough.
