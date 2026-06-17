@@ -1838,6 +1838,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             break
         }
       }
+      // `parseInt(s)` / `parseFloat(s)` → Swift `Int(s) ?? 0` /
+      // `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
+      // keeps the result a non-optional Int/Double (NaN has no native
+      // analog). A radix 2nd arg (rare) is ignored.
+      if (
+        e.callee.kind === 'identifier' &&
+        (e.callee.name === 'parseInt' || e.callee.name === 'parseFloat') &&
+        e.args.length >= 1
+      ) {
+        const arg = emitSwiftExpr(e.args[0]!, indent)
+        return e.callee.name === 'parseInt' ? `(Int(${arg}) ?? 0)` : `(Double(${arg}) ?? 0)`
+      }
       // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
       // `quotes.isPending()` (the web signal-read shape) → plain
       // @Observable property read. `refetch` is excluded (real method,
@@ -2074,6 +2086,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (e.args.length === 1) {
               return `${obj}.firstIndex(of: ${argExprs[0]!})`
             }
+            break
+          case 'startsWith':
+            // JS String.startsWith → Swift `hasPrefix` (Kotlin's
+            // startsWith is valid as-is, no mapping there).
+            if (e.args.length === 1) return `${obj}.hasPrefix(${argExprs[0]!})`
+            break
+          case 'endsWith':
+            if (e.args.length === 1) return `${obj}.hasSuffix(${argExprs[0]!})`
             break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Swift `reduce(initial,
