@@ -25,6 +25,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Overview', slug: '' },
       { text: 'Why Pyreon', slug: 'why-pyreon' },
       { text: 'Getting Started', slug: 'getting-started' },
+      { text: 'Build an App (Tutorial)', slug: 'build-an-app' },
       { text: 'Live examples (new DX)', slug: 'example-dx' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
