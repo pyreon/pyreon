@@ -44,14 +44,19 @@ describe('<WebView> primitive emit', () => {
     })
   })
 
-  it('a dynamic (non-static) WebView warns + emits an empty PyreonWebView()', () => {
-    // `src={someVar}` isn't a static string — v1 needs a literal; warn + bail.
+  it('a dynamic (non-static) WebView emits the expression (reactive reload)', () => {
+    // Superseded contract: a dynamic `src={expr}` used to warn + emit an
+    // empty PyreonWebView(); now the expression is emitted so the WebView
+    // reloads reactively when it changes (full coverage in
+    // webview-dynamic.test.ts). Only a WebView with NO html/src still
+    // warns + empties.
     const r = transform(
       `import { WebView } from '@pyreon/primitives'
        export function App() { const u = "x"; return <WebView src={u} /> }`,
       { target: 'swift' },
     )
-    expect(r.code).toContain('PyreonWebView()')
-    expect(r.warnings.some((w) => w.includes('<WebView>') && w.includes('static'))).toBe(true)
+    expect(r.code).toContain('PyreonWebView(src: u)')
+    expect(r.code).not.toContain('PyreonWebView()')
+    expect(r.warnings.length).toBe(0)
   })
 })

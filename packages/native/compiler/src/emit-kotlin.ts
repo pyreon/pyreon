@@ -3065,14 +3065,39 @@ const KOTLIN_CONTENT_SCALE: Record<string, string> = {
  * @pyreon/native-runtime-kotlin). Mirror of `emitSwiftWebView`.
  */
 function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  // Static fast path — a literal or module-const string.
   const html = readStaticAttrKotlin(e, 'html')
   if (typeof html === 'string') return `PyreonWebView(html = ${JSON.stringify(html)})`
   const src = readStaticAttrKotlin(e, 'src')
   if (typeof src === 'string') return `PyreonWebView(src = ${JSON.stringify(src)})`
+  // Dynamic (signal-derived) html/src — emit the EXPRESSION so the
+  // WebView reloads REACTIVELY when the value changes (the Composable
+  // recomposes → AndroidView `update` reloads). Mirror of the Swift
+  // backend; a zero-param accessor arrow unwraps to its body. NOTE
+  // reload-based — the smooth live-data PUSH bridge is the next slice.
+  const dyn = dynamicWebViewAttrKotlin(e, 'html')
+  if (dyn !== undefined) return `PyreonWebView(html = ${emitKotlinExpr(dyn, 0)})`
+  const dynSrc = dynamicWebViewAttrKotlin(e, 'src')
+  if (dynSrc !== undefined) return `PyreonWebView(src = ${emitKotlinExpr(dynSrc, 0)})`
   _emitWarnings.push(
-    '<WebView>: needs a static `html` or `src` string on native (v1). Dynamic / signal-driven content is the planned bridge follow-up; emitting an empty PyreonWebView().',
+    '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
   )
   return 'PyreonWebView()'
+}
+
+/** Mirror of emit-swift's `dynamicWebViewAttr` — see there. */
+function dynamicWebViewAttrKotlin(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+): ExprIR | undefined {
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      const v = a.value
+      if (v.kind === 'arrow' && v.params.length === 0) return v.body
+      return v
+    }
+  }
+  return undefined
 }
 
 function emitKotlinImage(

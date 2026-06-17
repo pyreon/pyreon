@@ -3637,14 +3637,46 @@ const SWIFT_CONTENT_MODE: Record<string, string> = {
  * unbound reference.
  */
 function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  // Static fast path — a literal or module-const string.
   const html = readStaticAttr(e, 'html')
   if (typeof html === 'string') return `PyreonWebView(html: ${JSON.stringify(html)})`
   const src = readStaticAttr(e, 'src')
   if (typeof src === 'string') return `PyreonWebView(src: ${JSON.stringify(src)})`
+  // Dynamic (signal-derived) html/src — emit the EXPRESSION so the
+  // WebView reloads REACTIVELY when the value changes (SwiftUI re-renders
+  // body → updateUIView reloads with the new content). This makes
+  // `<WebView html={() => buildChart(data())}>` a live, data-driven chart
+  // hosted natively. A zero-param accessor arrow is unwrapped to its body
+  // (the reactive-read idiom). NOTE reload-based — the chart rebuilds on
+  // each change; the smooth no-reload live-data PUSH bridge is the next
+  // slice (a `data:` channel via evaluateJavaScript).
+  const dyn = dynamicWebViewAttr(e, 'html')
+  if (dyn !== undefined) return `PyreonWebView(html: ${emitSwiftExpr(dyn, 0)})`
+  const dynSrc = dynamicWebViewAttr(e, 'src')
+  if (dynSrc !== undefined) return `PyreonWebView(src: ${emitSwiftExpr(dynSrc, 0)})`
   _emitWarnings.push(
-    '<WebView>: needs a static `html` or `src` string on native (v1). Dynamic / signal-driven content is the planned bridge follow-up; emitting an empty PyreonWebView().',
+    '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
   )
   return 'PyreonWebView()'
+}
+
+/**
+ * The dynamic value-expr of a `<WebView>` html/src attr, unwrapping a
+ * zero-param accessor arrow (`html={() => …}`) to its body — the reactive
+ * read idiom. Returns undefined when the attr is absent.
+ */
+function dynamicWebViewAttr(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+): ExprIR | undefined {
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      const v = a.value
+      if (v.kind === 'arrow' && v.params.length === 0) return v.body
+      return v
+    }
+  }
+  return undefined
 }
 
 function emitSwiftImage(

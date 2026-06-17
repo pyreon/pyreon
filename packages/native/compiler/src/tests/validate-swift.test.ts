@@ -85,6 +85,9 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // WebView via the escape-hatch primitives with a const-ref'd HTML
     // payload. Locks the example's emit through the same swiftc gate.
     'showcase-analytics.tsx',
+    // Dynamic <WebView html={signal-derived}> — reactive-reload bridge slice;
+    // locks the dynamic-html emit through the toolchain gate.
+    'webview-dynamic.tsx',
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). Emits @State PyreonI18n with literal locale + messages.
     'tier2-i18n.tsx',

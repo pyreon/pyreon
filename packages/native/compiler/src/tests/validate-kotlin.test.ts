@@ -85,6 +85,9 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // + escape-hatch WebView chart (const-ref'd HTML). Locks the
     // example's emit through the kotlinc gate.
     'showcase-analytics.tsx',
+    // Dynamic <WebView html={signal-derived}> — reactive-reload bridge slice;
+    // locks the dynamic-html emit through the toolchain gate.
+    'webview-dynamic.tsx',
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). The PyreonI18n class stub in kotlin-stubs.ts
     // satisfies kotlinc's type resolution.
