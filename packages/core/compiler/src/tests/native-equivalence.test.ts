@@ -4,7 +4,7 @@
  * and asserts identical output. This catches any behavioral divergence
  * between the two backends.
  */
-import { transformJSX_JS } from '../jsx'
+import { rocketstyleCollapseKey, transformJSX_JS } from '../jsx'
 import type { ReactivitySpan } from '../jsx'
 
 // Load native if available
@@ -1270,4 +1270,109 @@ describeNative('Native vs JS equivalence — element-conditional templatization'
     `))
   test('DIRECT static JSX child still hoists (NOT mountSlot)', () =>
     compare(`export const X = () => <div>{<span>Hi</span>}</div>`))
+})
+
+describeNative('Native vs JS equivalence — rocketstyle collapse (full variant)', () => {
+  const MODE = { name: 'useMode', source: '@pyreon/zero' }
+  interface Site {
+    templateHtml: string
+    lightClass: string
+    darkClass: string
+    rules: string[]
+    ruleKey: string
+  }
+  // Compare JS vs native collapse emission. `sites` is keyed by a
+  // [component, props, childrenText] tuple → resolved Site; we compute the
+  // canonical FNV key both backends use so the lookup matches. JS gets a
+  // Set/Map config; native gets the array/Record napi shape — same data.
+  function cmp(
+    input: string,
+    candidates: string[],
+    entries: Array<[string, Record<string, string>, string, Site]>,
+  ) {
+    const sitesRecord: Record<string, Site> = {}
+    for (const [comp, props, text, site] of entries) {
+      sitesRecord[rocketstyleCollapseKey(comp, props, text)] = site
+    }
+    const jsCfg = {
+      candidates: new Set(candidates),
+      sites: new Map(Object.entries(sitesRecord)),
+      mode: MODE,
+    }
+    const napiCfg = { candidates, sites: sitesRecord, mode: MODE }
+    const js = transformJSX_JS(input, 'test.tsx', {
+      collapseRocketstyle: jsCfg as never,
+    }).code
+    // 6th native arg is the collapse config (typed loosely here).
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+      input,
+      'test.tsx',
+      false,
+      null,
+      false,
+      napiCfg,
+    ).code
+    expect(rs).toBe(js)
+  }
+
+  const SITE: Site = {
+    templateHtml: '<button><span>Save</span></button>',
+    lightClass: 'btn-l',
+    darkClass: 'btn-d',
+    rules: ['.btn-l{color:#000}', '.btn-d{color:#fff}'],
+    ruleKey: 'rk1',
+  }
+
+  test('top-level full collapse (no braces)', () =>
+    cmp(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('fragment-child full collapse (brace-wrapped)', () =>
+    cmp(`export const C = () => <><Button state="primary">Save</Button></>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('multi-prop (sorted-key canonical)', () =>
+    cmp(`export const C = () => <Button size="md" state="primary">Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary', size: 'md' }, 'Save', SITE],
+    ]))
+
+  test('unresolved key keeps the normal mount', () =>
+    cmp(`export const C = () => <Button state="secondary">X</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('non-candidate component is not collapsed', () =>
+    cmp(`export const C = () => <Other state="primary">Save</Other>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('dynamic prop ({expr}) bails (full detector)', () =>
+    cmp(`export const C = (p) => <Button state={p.s}>Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('two sites sharing a ruleKey → injectRules deduped once', () =>
+    cmp(
+      `export const C = () => <div><Button state="primary">Save</Button><Button state="primary">Save</Button></div>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
+
+  test('templateHtml/class with quotes + control chars escape like JSON.stringify', () =>
+    cmp(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
+      [
+        'Button',
+        { state: 'primary' },
+        'Save',
+        {
+          templateHtml: '<button title="a&quot;b"><span>S</span></button>',
+          lightClass: 'l "q"',
+          darkClass: 'd\\x',
+          rules: ['.l{content:"\\""}'],
+          ruleKey: 'rk2',
+        },
+      ],
+    ]))
 })
