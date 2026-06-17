@@ -1893,6 +1893,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             }
             break
           }
+          case 'toLocaleString':
+            // No native locale-number-formatting equivalent. Degrade to
+            // `.toString()` (valid, loses grouping) + warn — mirror of
+            // the Swift backend.
+            if (e.args.length === 0) {
+              _emitWarnings.push(
+                '.toLocaleString() has no native locale-formatting equivalent — emitting a plain string conversion (no grouping separators). Format the value explicitly if you need grouping.',
+              )
+              return `(${obj}).toString()`
+            }
+            break
         }
       }
       const callee = emitKotlinExpr(e.callee, indent)
