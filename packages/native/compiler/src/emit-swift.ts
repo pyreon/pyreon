@@ -2033,6 +2033,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               return `${obj}.firstIndex(of: ${argExprs[0]!})`
             }
             break
+          case 'reduce':
+            // JS `arr.reduce(reducer, initial)` → Swift `reduce(initial,
+            // reducer)` — Swift takes the initial value FIRST (the
+            // opposite of JS). Mirrors the rx.reduce flip. Only the
+            // 2-arg (explicit-initial) form maps cleanly — the
+            // no-initial form (`arr.reduce(cb)`) needs a seed-from-first
+            // shape, so it falls through to the generic emit.
+            if (e.args.length === 2) {
+              return `${obj}.reduce(${argExprs[1]!}, ${argExprs[0]!})`
+            }
+            break
         }
       }
       const callee = emitSwiftExpr(e.callee, indent)

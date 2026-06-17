@@ -1808,8 +1808,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       //   X.find(p)     →  X.find(p)     (same name + same lambda contract)
       //   X.trim()      →  X.trim()      (same name + same contract)
       //
-      // `.filter` / `.map` / `.reduce` / `.forEach` already match
-      // semantically and pass through unchanged.
+      // `.filter` / `.map` / `.forEach` already match semantically and
+      // pass through unchanged. `.reduce` does NOT: Kotlin's `reduce`
+      // takes ONLY a combiner (no initial value, reduces to the element
+      // type), so the JS 2-arg `reduce(reducer, initial)` form must
+      // lower to `fold(initial, reducer)` — handled below.
       if (e.callee.kind === 'member') {
         const obj = emitKotlinExpr(e.callee.object, indent)
         const prop = e.callee.property
@@ -1828,6 +1831,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'includes':
             if (e.args.length === 1) {
               return `${obj}.contains(${argExprs[0]!})`
+            }
+            break
+          case 'reduce':
+            // JS `arr.reduce(reducer, initial)` → Kotlin `fold(initial,
+            // reducer)`. Kotlin's `reduce` takes ONLY a combiner (no
+            // initial), so the 2-arg JS form needs `fold`. Mirrors
+            // rx.reduce. The 1-arg form (`arr.reduce(cb)`) IS valid
+            // Kotlin `reduce {}` → falls through to the generic emit.
+            if (e.args.length === 2) {
+              return `${obj}.fold(${argExprs[1]!}, ${argExprs[0]!})`
             }
             break
         }
