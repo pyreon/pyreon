@@ -563,7 +563,7 @@ every warning; treat any warning as "this construct is outside v1."
 | `createI18n({...})` / `createMachine({...})` / `defineStore(id, setup)` / `model({...}).create()` | literal configs; store v2 setup bodies take signals + expression-body computeds + arrow methods |
 | `rx.METHOD(source, …)` | 21 collection methods (Strategy-A lowering) |
 
-**Two binding idioms that v1 requires (both warn clearly when violated, never silently misbehave):**
+**Binding idioms — one requirement, one convenience that now lowers:**
 
 - **Hook results → single-binding, not destructure.** Bind the hook's
   result to one name and read fields off it: `const q = useFetch<T>(url); q.data()` / `q.isPending`. The **destructure** form
@@ -573,13 +573,15 @@ every warning; treat any warning as "this construct is outside v1."
   `usePermissions` / `useOnline` / `useColorScheme` / `useNetworkStatus`).
   **`useParams` is the one exception** — its destructure form
   `const { id } = useParams()` IS supported (see the router section).
-- **Store reads → inline, not aliased.** Read store state inline through
-  the hook: `useApp().store.tasks()`. Aliasing the store hook into a
-  local first — `const app = useApp(); app.store.tasks()` — is NOT yet
-  supported (the local binding isn't lowered, so downstream
-  `app.store.…` references fail the native build unbound). Local-binding
-  alias + full hook-destructure lowering is a tracked follow-up; until it
-  lands, the inline shape is the contract.
+- **Store reads → inline OR aliased (both work).** Read store state
+  inline through the hook (`useApp().store.tasks()`) OR bind the hook to a
+  local first (`const app = useApp(); app.store.tasks()`) — the alias
+  **lowers** to a `useApp()` call at every use site, producing
+  byte-identical native output to the inline form. (Aliasing previously
+  failed the native build with `Unresolved reference 'app'`; it now
+  compiles.) Full hook-result **destructure** lowering — making
+  `const { data } = useFetch(...)` work rather than warn — is the
+  remaining tracked follow-up.
 
 **Expressions**
 | Shape | Notes |
