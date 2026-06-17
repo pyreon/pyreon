@@ -23,10 +23,14 @@
  *
  * - If a package's version jumped from 0.x.y (per git's HEAD~) to
  *   1.0.0 (in the working tree), rewrite to 0.(x+1).0 and amend the
- *   matching "## 1.0.0" heading in CHANGELOG.md to "## 0.(x+1).0".
+ *   CHANGELOG.md (via `capChangelogText`): the "## 1.0.0" heading AND the
+ *   "Updated dependencies" bullets (`- @pyreon/x@1.0.0`), which changeset
+ *   version also writes with the uncapped cascade. Pre-fix only the heading
+ *   + version field were capped, so published changelogs claimed a
+ *   dependency on `@pyreon/x@1.0.0` — a version that never ships (PR #1567).
  * - Internal workspace:* deps resolve at publish time to the actual
- *   workspace version, so they update automatically — nothing to patch
- *   on the dep-range side.
+ *   workspace version, so the dep RANGES in package.json update
+ *   automatically — nothing to patch there.
  *
  * Idempotent: if no `0.x.y → 1.0.0` bumps are present, the script is
  * a no-op and exits 0.
@@ -43,6 +47,7 @@
 import { spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { capChangelogText, capDependencyBullets } from './cap-changelog'
 
 const ROOT = join(import.meta.dirname, '..')
 const PKGS_ROOT = join(ROOT, 'packages')
@@ -210,12 +215,13 @@ for (const cand of candidates) {
   )
   writeFileSync(pkgPath, newContent)
 
-  // Rewrite the matching CHANGELOG.md heading
+  // Rewrite the matching CHANGELOG.md entry: the `## 1.0.0` heading AND the
+  // "Updated dependencies" bullets (`- @pyreon/x@1.0.0`), which changeset
+  // version also wrote with the uncapped cascade. See cap-changelog.ts.
   const changelogPath = join(pkgPath, '..', 'CHANGELOG.md')
   try {
     const cl = readFileSync(changelogPath, 'utf8')
-    // Only the FIRST `## 1.0.0` (the just-added entry from changeset version)
-    const newCl = cl.replace(/^## 1\.0\.0$/m, `## ${targetVersion}`)
+    const newCl = capChangelogText(cl, targetVersion, groupTarget)
     if (newCl !== cl) {
       writeFileSync(changelogPath, newCl)
     }
@@ -244,6 +250,37 @@ if (downgrades.length === 0) {
     // oxlint-disable-next-line no-console
     console.log(
       `  ${d.pkgName.padEnd(40)}  ${d.oldVersion} → 1.0.0 [cascade] → ${d.rewrittenTo} [capped]`,
+    )
+  }
+}
+
+// ── Pass 2: cap "Updated dependencies" bullets in EVERY changelog ─────────
+// A package whose OWN version stayed 0.x (private packages like
+// @pyreon/test-utils / @pyreon/ui-theme, or any non-fixed dependent) is never
+// visited by the version+heading cap above, yet `changeset version` still
+// wrote its dep-bullets pointing at the fixed-group members it depends on at
+// the uncapped 1.0.0. Sweep them all (idempotent on already-capped files;
+// no-op when no fixed member cascaded → groupTarget null).
+if (groupTarget !== null) {
+  let bulletFixed = 0
+  for (const pkgPath of pkgJsons) {
+    const changelogPath = join(pkgPath, '..', 'CHANGELOG.md')
+    let cl: string
+    try {
+      cl = readFileSync(changelogPath, 'utf8')
+    } catch {
+      continue
+    }
+    const newCl = capDependencyBullets(cl, groupTarget)
+    if (newCl !== cl) {
+      writeFileSync(changelogPath, newCl)
+      bulletFixed++
+    }
+  }
+  if (bulletFixed > 0) {
+    // oxlint-disable-next-line no-console
+    console.log(
+      `[cap-version] capped @pyreon/*@1.0.0 dependency bullets in ${bulletFixed} changelog(s) → ${groupTarget}`,
     )
   }
 }
