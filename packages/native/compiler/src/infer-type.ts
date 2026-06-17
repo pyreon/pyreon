@@ -330,13 +330,25 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (expr.op === '+' && (left.kind === 'string' || right.kind === 'string')) {
         return { kind: 'string' }
       }
-      // Numeric arithmetic: both sides numeric ⇒ number.
-      if (left.kind === 'number' && right.kind === 'number') return { kind: 'number' }
+      // Numeric arithmetic: both sides numeric ⇒ number. Float is
+      // contagious — Int + Double is Double on both targets, so if EITHER
+      // side is fractional the result is fractional. (Drives the
+      // reduce-seed refinement: `s + m.growth` over a Double field infers
+      // `{ float: true }` so the seed flips to `0.0`.)
+      if (left.kind === 'number' && right.kind === 'number') {
+        return { kind: 'number', float: left.float === true || right.float === true }
+      }
       // One side unknown but other side concrete numeric/string — fall
       // through to the other side's type (best-effort). Aligned with
-      // TypeScript's behavior for `x + 1` where `x: number`.
-      if (left.kind === 'number') return { kind: 'number' }
-      if (right.kind === 'number') return { kind: 'number' }
+      // TypeScript's behavior for `x + 1` where `x: number`. Preserve the
+      // concrete side's float-ness; omit `float` when not true
+      // (`exactOptionalPropertyTypes` forbids an explicit `undefined`).
+      if (left.kind === 'number') {
+        return left.float === true ? { kind: 'number', float: true } : { kind: 'number' }
+      }
+      if (right.kind === 'number') {
+        return right.float === true ? { kind: 'number', float: true } : { kind: 'number' }
+      }
       return { kind: 'unknown' }
     }
     case 'paren':

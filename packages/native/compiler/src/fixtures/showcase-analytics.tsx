@@ -25,15 +25,17 @@
 // Run it through PMTC with `bun run build` (emits generated/swift +
 // generated/kotlin).
 //
-// ## Numeric types — fractional fields work; one slice remains
+// ## Numeric types — full fractional fidelity
 //
 // `revenue`/`deals` are integers → `Int`; `growth` is a FRACTIONAL
 // percent (12.5) → the struct field refines to `Double` from its literal
 // initializer, and `growth.toFixed(1)` formats correctly on both targets.
-// The ONE remaining slice: REDUCING a Double column (a true average of
-// `growth`) needs Double-aware reduce-seed typing (`reduce(0.0, …)`), so
-// the summary row sums only the Int revenue/deals columns. Integer
-// reduce + fractional per-row display is the current capability.
+// REDUCING the Double column now works too: the summary row's total
+// `growth` reduces with a Double-aware seed (`reduce(0.0, …)` Swift /
+// `fold(0.0, …)` Kotlin) — the seed flips to Double AUTOMATICALLY because
+// the accumulation (`s + m.growth`) infers fractional. Integer columns
+// keep their `Int` seed (`reduce(0, …)`). Full fractional analytical
+// fidelity across the per-row display AND the aggregation.
 
 import {
   Stack,
@@ -66,9 +68,11 @@ export function AnalyticsApp() {
   // both targets. The column totals are reduced INLINE in the summary row
   // rather than via intermediate `computed`s — PMTC infers a computed's
   // return type as `Any`, and `String(Any)` isn't valid on Swift; the
-  // inline `reduce` over the Int revenue/deals lowers cleanly. (Reducing
-  // the Double `growth` would need Double-aware reduce-seed typing — the
-  // tracked next slice — so the summary sticks to the Int columns.)
+  // inline `reduce` lowers cleanly per column. The growth total reduces a
+  // DOUBLE column — its seed flips to `0.0` automatically (the
+  // accumulation `s + m.growth` infers fractional), so
+  // `reduce(0.0, …).toFixed(1)` typechecks; the Int columns keep their
+  // `0` seed.
   const metrics = signal<Metric[]>([
     { region: 'EMEA', revenue: 1240, deals: 38, growth: 12.5 },
     { region: 'APAC', revenue: 980, deals: 27, growth: 8.3 },
@@ -104,6 +108,7 @@ export function AnalyticsApp() {
         <Text>Total</Text>
         <Text>{String(metrics().reduce((s, m) => s + m.revenue, 0))}</Text>
         <Text>{String(metrics().reduce((s, m) => s + m.deals, 0))}</Text>
+        <Text>{metrics().reduce((s, m) => s + m.growth, 0).toFixed(1)}</Text>
       </Inline>
 
       <Web>

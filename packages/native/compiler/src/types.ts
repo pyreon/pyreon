@@ -503,7 +503,12 @@ export type TypeIR =
   | { kind: 'unknown' }
 
 export type ExprIR =
-  | { kind: 'literal'; value: string | number | boolean | null }
+  // `float: true` forces a numeric literal to emit as a Double even when
+  // its value is integer-valued (`0` → `0.0`). Set by the reduce-seed
+  // refinement post-pass when a reduce accumulates a Double column, so
+  // the seed type matches (`reduce(0.0, …)` not `reduce(0, …)`). Additive
+  // — absent/false renders the literal verbatim (the existing behaviour).
+  | { kind: 'literal'; value: string | number | boolean | null; float?: boolean }
   | { kind: 'identifier'; name: string }
   | { kind: 'call'; callee: ExprIR; args: ExprIR[] }
   | { kind: 'member'; object: ExprIR; property: string }
