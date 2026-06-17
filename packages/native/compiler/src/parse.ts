@@ -74,6 +74,13 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // effect-free (no warnings) — full validation stays in
   // tryStoreDefnFromTopLevel during the main pass.
   collectStoreHookNames(ast.program.body as AnyNode[], ctx.storeHookNames)
+  // Pre-pass: warn on imports of WEB-ONLY @pyreon/* packages. These render
+  // via the DOM / a browser-only library (ECharts, CodeMirror, elkjs,
+  // pdfmake, the styler CSS-in-JS stack, …) and have NO native emit — PMTC
+  // would otherwise silently emit an unresolved `<Chart>` / `<Flow>` call
+  // that fails the native build with a cryptic `Cannot find 'Chart' in
+  // scope`, far from the cause. Name the package + the escape-hatch fix.
+  warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
   const components: ComponentIR[] = []
   const enums: EnumIR[] = []
   const structs: StructIR[] = []
@@ -288,6 +295,65 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
  * no warnings — those run in the main pass). Lets the store-aliasing
  * diagnostic resolve hook names independent of declaration order.
  */
+/**
+ * `@pyreon/*` packages that render via the DOM / a browser-only library
+ * and have NO native (Swift/Kotlin) emit — the "web-only-rich" Layer 3b
+ * of the multiplatform model. Importing one into a native-compiled file
+ * is a mistake: PMTC emits an unresolved component/hook reference that
+ * fails the native build cryptically. Conservative + curated (NOT derived
+ * from the `@pyreon/runtime-dom` peer-dep, which over-counts packages like
+ * `@pyreon/form` / `@pyreon/i18n` that DO have native ports). Anything
+ * PMTC recognises — `@pyreon/{primitives,reactivity,core,store,router,
+ * i18n,machine,state-tree,form,validation,validate,query,storage,
+ * permissions,hooks,rx,url-state,hotkeys}` — is deliberately EXCLUDED.
+ */
+const WEB_ONLY_PACKAGES = new Set([
+  '@pyreon/charts',
+  '@pyreon/code',
+  '@pyreon/flow',
+  '@pyreon/document',
+  '@pyreon/document-primitives',
+  '@pyreon/connector-document',
+  '@pyreon/elements',
+  '@pyreon/ui-components',
+  '@pyreon/ui-primitives',
+  '@pyreon/coolgrid',
+  '@pyreon/styler',
+  '@pyreon/rocketstyle',
+  '@pyreon/unistyle',
+  '@pyreon/kinetic',
+  '@pyreon/kinetic-presets',
+  '@pyreon/dnd',
+  '@pyreon/toast',
+  '@pyreon/table',
+  '@pyreon/virtual',
+])
+
+/**
+ * Warn (once per package) on top-level imports of a web-only `@pyreon/*`
+ * package — they have no native emit. Names the escape-hatch fix so the
+ * author isn't left with a cryptic `Cannot find '<Component>' in scope` at
+ * native-build time. Sub-path imports (`@pyreon/charts/manual`) match too.
+ */
+function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
+  const seen = new Set<string>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const src = node.source?.value
+    if (typeof src !== 'string') continue
+    // Match the package root, allowing sub-path imports.
+    const pkg = src.startsWith('@pyreon/')
+      ? `@pyreon/${(src.slice('@pyreon/'.length).split('/')[0] ?? '')}`
+      : src
+    if (WEB_ONLY_PACKAGES.has(pkg) && !seen.has(pkg)) {
+      seen.add(pkg)
+      ctx.warnings.push(
+        `${pkg} is WEB-ONLY — it renders via the DOM / a browser-only library and has NO native (iOS/Android) emit, so PMTC can't compile it. On native, render it behind a \`<Web>\` escape hatch (web target only), or use a platform-native equivalent inside \`<NativeIOS>\` / \`<NativeAndroid>\`. The shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …) — those compile to all three targets.`,
+      )
+    }
+  }
+}
+
 function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
   for (const node of body) {
     const varDecl =
