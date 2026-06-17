@@ -1,5 +1,12 @@
 # @pyreon/core
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes
@@ -17,14 +24,14 @@
 - [#1442](https://github.com/pyreon/pyreon/pull/1442) [`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926) Thanks [@vitbokisch](https://github.com/vitbokisch)! - JSX type: `aria-current` now accepts a function accessor (`() => Booleanish | 'page' | 'step' | …`) for reactive values, matching the shape of `aria-selected` / `aria-disabled` / `aria-hidden`. Previously the type was static-value-only, forcing consumer code to cast with `as never` to use `aria-current={() => activeSlug() === h.slug ? 'location' : undefined}` (the canonical reactive-attr shape across Pyreon components).
 
 - Updated dependencies [[`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264)]:
-  - @pyreon/reactivity@1.0.0
+  - @pyreon/reactivity@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/reactivity@1.0.0
+  - @pyreon/reactivity@0.33.0
 
 ## 0.30.0
 
@@ -126,7 +133,7 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   - lines 96.16% → 97.51%
 
 - Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
-  - @pyreon/reactivity@1.0.0
+  - @pyreon/reactivity@0.33.0
 
 ## 0.29.0
 
@@ -167,7 +174,7 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   locked by a new `@pyreon/zero` integration test.
 
 - Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0)]:
-  - @pyreon/reactivity@1.0.0
+  - @pyreon/reactivity@0.33.0
 
 ## 0.28.1
 
@@ -213,7 +220,7 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/reactivity@1.0.0
+  - @pyreon/reactivity@0.33.0
 
 ## 0.27.1
 
@@ -253,7 +260,7 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/reactivity@1.0.0
+  - @pyreon/reactivity@0.33.0
 
 ## 0.26.3
 
@@ -303,7 +310,7 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   multi-mutation → reload sequence is green in real-Chromium e2e.
 
 - Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
-  - @pyreon/reactivity@1.0.0
+  - @pyreon/reactivity@0.33.0
 
 ## 0.25.1
 

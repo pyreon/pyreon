@@ -1,5 +1,14 @@
 # @pyreon/head
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/runtime-server@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
@@ -9,18 +18,18 @@
   Function-body SSR guards whose SSR branch is verified by deleting `document`/`window` at runtime in tests (e.g. `@pyreon/elements` Overlay positioning, `@pyreon/styler`'s sheet, `@pyreon/head`'s `syncDom`) intentionally KEEP the call-time `typeof` check — a module-load-time `isServer` const can't be re-evaluated by that test method, and the call-time form is equally production-correct. Those files are scoped-off from `prefer-isserver` in `.pyreonlintrc.json` with that rationale.
 
 - Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd), [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264), [`d38bed4`](https://github.com/pyreon/pyreon/commit/d38bed4ce425f6fe804e56df84a0e80e6d22a198), [`a72f972`](https://github.com/pyreon/pyreon/commit/a72f972050edceda52888fa93b8c763a2c71b86a), [`ae3c3fd`](https://github.com/pyreon/pyreon/commit/ae3c3fd529250e7211657e4283fb5e6c3246bf00)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.30.0
 
@@ -80,9 +89,9 @@
 ### Patch Changes
 
 - Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`4c9844d`](https://github.com/pyreon/pyreon/commit/4c9844d4a408549ad48e3d93bbf686ba946032da), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`d040055`](https://github.com/pyreon/pyreon/commit/d040055e793c3b3e68cd58a286327655aee7ab6e), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.29.0
 
@@ -104,9 +113,9 @@
   needed — drift is structurally impossible.
 
 - Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`9a863b7`](https://github.com/pyreon/pyreon/commit/9a863b71e946898ab2a8dac7051cef30adada7b4), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.28.1
 
@@ -155,9 +164,9 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.27.1
 
@@ -171,9 +180,9 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.26.3
 
@@ -201,9 +210,9 @@
 ### Patch Changes
 
 - Updated dependencies [[`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74)]:
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.25.1
 

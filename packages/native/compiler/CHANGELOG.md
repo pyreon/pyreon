@@ -1,5 +1,11 @@
 # @pyreon/native-compiler
 
+## 0.2.0
+
+### Minor Changes
+
+- [#1544](https://github.com/pyreon/pyreon/pull/1544) [`7c47672`](https://github.com/pyreon/pyreon/commit/7c47672dd27274ba39fcca2d8d54740db6376f66) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Real `<Suspense>` and `<ErrorBoundary>` semantics on iOS + Android (was an inert pass-through). Both now compile to an INLINE conditional read in the component body — Swift `Group { if <pending/errored> { fallback } else { children } }`, Kotlin `if (<pending/errored>) { ... } else { ... }` — where the condition ORs every `useFetch` container's `isPending` (Suspense) / `error` (ErrorBoundary) in that component: Suspense holds its fallback until the fetched data settles; ErrorBoundary swaps to its fallback when a container rejects (the realistic native error surface — SwiftUI/Compose have no try/catch around view construction). The inline read is load-bearing — it must live in the component's own `body` so SwiftUI Observation / Compose recomposition tracks it (the earlier child-wrapper-struct approach passed the flag as an arg and didn't track). Device-found: a fetch-bearing component's Swift body is now wrapped in a concrete `ZStack` so the mount-time `.task` attaches to a stable-identity host — on a transparent `Group`, SwiftUI redistributes `.task` onto the if/else branch and cancels+restarts it on every flip, so the fetch never settles. Device-proven via the tasks Lifecycle screen (good-fetch content + failed-fetch fallback both render on a real Simulator).
+
 ## 0.1.0
 
 ### Minor Changes

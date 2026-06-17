@@ -1,5 +1,13 @@
 # @pyreon/connector-document
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes
@@ -18,32 +26,32 @@
 ### Patch Changes
 
 - Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/document@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/document@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
 
 ## 0.30.0
 
 ### Patch Changes
 
 - Updated dependencies [[`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/document@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
 
 ## 0.29.0
 
 ### Patch Changes
 
 - Updated dependencies [[`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/document@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
 
 ## 0.28.1
 
@@ -92,8 +100,8 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/document@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
 
 ## 0.27.1
 
@@ -107,8 +115,8 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/document@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
 
 ## 0.26.3
 
@@ -136,8 +144,8 @@
 ### Patch Changes
 
 - Updated dependencies [[`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/document@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/document@0.33.0
 
 ## 0.25.1
 

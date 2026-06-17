@@ -1,5 +1,17 @@
 # @pyreon/server
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/runtime-server@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes
@@ -41,12 +53,12 @@
   Also fixed: route records whose data came from a server loader rendered WITHOUT the `LoaderDataProvider` (both render-gate branches checked only `record.loader`) — `useLoaderData()` read undefined even though preload had populated the data and the hydration blob carried it.
 
 - Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`4529407`](https://github.com/pyreon/pyreon/commit/4529407d69ba0875568b5c78ff14e2850aa2d690), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59), [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd), [`a359e29`](https://github.com/pyreon/pyreon/commit/a359e2917567419655dd31c5d093d0a4479ba021), [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264), [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63), [`698f514`](https://github.com/pyreon/pyreon/commit/698f514f44160e1955582b4573014bddba45a38e), [`f21a439`](https://github.com/pyreon/pyreon/commit/f21a439cfefd219b1c13f1b8d99dbfbbe949fd34), [`d38bed4`](https://github.com/pyreon/pyreon/commit/d38bed4ce425f6fe804e56df84a0e80e6d22a198), [`a72f972`](https://github.com/pyreon/pyreon/commit/a72f972050edceda52888fa93b8c763a2c71b86a), [`ae3c3fd`](https://github.com/pyreon/pyreon/commit/ae3c3fd529250e7211657e4283fb5e6c3246bf00)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/router@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.31.0
 
@@ -63,24 +75,24 @@
   Both bisect-verified with regression tests at the unit (`server.test.ts` lazy-route handler render, `island-client.test.tsx` themed island), router-contract (`loader.test.ts` `router.preload` resolves components), and e2e layers — the `ssr-node` e2e specs were strengthened to assert each route's OWN page content (not just the layout nav, which rendered even when the page was blank).
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/router@1.0.0
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.30.0
 
 ### Patch Changes
 
 - Updated dependencies [[`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`4c9844d`](https://github.com/pyreon/pyreon/commit/4c9844d4a408549ad48e3d93bbf686ba946032da), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07), [`a158aba`](https://github.com/pyreon/pyreon/commit/a158abac7a04f940a56608425ab63a4c8d72fb35), [`d040055`](https://github.com/pyreon/pyreon/commit/d040055e793c3b3e68cd58a286327655aee7ab6e), [`b720267`](https://github.com/pyreon/pyreon/commit/b720267f0d9fbe260398c56d49834dc1dd2b09fb)]:
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/runtime-server@1.0.0
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/router@1.0.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/runtime-server@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/router@0.33.0
 
 ## 0.29.0
 
@@ -241,12 +253,12 @@
   adapters' spawn-and-curl runtime contract.
 
 - Updated dependencies [[`c54ce0f`](https://github.com/pyreon/pyreon/commit/c54ce0f284dab0335d9b597488ba75c6dea92b43), [`6d3e085`](https://github.com/pyreon/pyreon/commit/6d3e085183ec42883a842967afe22f806f0ea21d), [`6b97bcc`](https://github.com/pyreon/pyreon/commit/6b97bcc78493586d7fb2134c85714a0b990ff1c9), [`d65d779`](https://github.com/pyreon/pyreon/commit/d65d77982284b3ce8ec871fd536069b5cd36f770), [`34872f9`](https://github.com/pyreon/pyreon/commit/34872f9832564fce87e408411d5f416785c6b484), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`9a863b7`](https://github.com/pyreon/pyreon/commit/9a863b71e946898ab2a8dac7051cef30adada7b4), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/router@1.0.0
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.28.1
 
@@ -297,12 +309,12 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/router@1.0.0
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/router@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.27.1
 
@@ -318,12 +330,12 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/router@1.0.0
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.26.3
 
@@ -375,12 +387,12 @@
 ### Patch Changes
 
 - Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`885d6d9`](https://github.com/pyreon/pyreon/commit/885d6d95f02b9dd1b462c1ba1114ecf94350671a), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`ba09525`](https://github.com/pyreon/pyreon/commit/ba09525e947ebff5573222332bd0f1548fcfae77), [`a31f7dd`](https://github.com/pyreon/pyreon/commit/a31f7dd8f8ddba6864c69bbf53117d36ddd477a3), [`71901d4`](https://github.com/pyreon/pyreon/commit/71901d4366e993542a0a8252647b7a4b0e8ec3d2), [`06d66e9`](https://github.com/pyreon/pyreon/commit/06d66e976ad3e5da9777e61eb0f09c70f7b2b871), [`9275a00`](https://github.com/pyreon/pyreon/commit/9275a00f72f071edfeb66584516e093b074b6986), [`434b83f`](https://github.com/pyreon/pyreon/commit/434b83f202060c3a517e67e1ebf4d147369a69c8), [`f54cec8`](https://github.com/pyreon/pyreon/commit/f54cec8f13dffb7fdeceb05021005e342bb856a9), [`f8fbb3b`](https://github.com/pyreon/pyreon/commit/f8fbb3b240fd8aab94900b97e9bab6be3d822b28), [`1921168`](https://github.com/pyreon/pyreon/commit/192116843a0547c777e884f0254ffc51a69bfae1), [`749c2f4`](https://github.com/pyreon/pyreon/commit/749c2f435909740ea43d528ebfc00a2155e64f74), [`b1e3087`](https://github.com/pyreon/pyreon/commit/b1e30879335bbeb29eb8c56520828b841f89db08), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c)]:
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/router@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/runtime-server@1.0.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/runtime-server@0.33.0
 
 ## 0.25.1
 

@@ -1,5 +1,18 @@
 # @pyreon/create-multiplatform
 
+## 0.33.0
+
+### Patch Changes
+
+- [#1570](https://github.com/pyreon/pyreon/pull/1570) [`445a0f1`](https://github.com/pyreon/pyreon/commit/445a0f1d9c7958056d11422b4a12402a425c8d06) Thanks [@vitbokisch](https://github.com/vitbokisch)! - create-multiplatform: scaffolded native apps now build + launch end-to-end. A local proof (Android emulator + iOS Simulator) of a scaffolded app surfaced eight scaffold bugs that compile-only validation never caught — all fixed so a fresh `create-multiplatform` app builds and runs on both targets:
+
+  - The web entry (`entry-web.tsx`, which `mount`s against the DOM) was compiled to native code, emitting `document.getElementById(...)` into Swift/Kotlin (can't compile). The native build now skips any `.tsx` importing a web-only runtime (`@pyreon/runtime-dom` / `@pyreon/runtime-server`).
+  - Android: `build-android.sh` now passes `--kotlin-package` so the emit lands in the FQN `MainActivity` imports; the root Gradle file declares the `kotlin("plugin.serialization")` version; `MainActivity` extends `ComponentActivity` (Compose `setContent` receiver) instead of plain `Activity`.
+  - iOS: `project.yml` SPM-package + source + Info paths are now relative to `ios/` (where the spec lives); the `@main` entry moved to `Main.swift` (the emitted component is `generated/App.swift` — two `App.swift` files collide); the entry conforms to `SwiftUI.App` (the emitted `struct App: View` shadows the bare `App` protocol).
+  - The scaffold now wires the four `@pyreon/native-*` runtime packages as SPM (iOS) / Gradle `srcDir` (Android) dependencies so the emitted `import PyreonRuntime` / `com.pyreon.runtime.*` resolve.
+
+- [#1581](https://github.com/pyreon/pyreon/pull/1581) [`90e70a8`](https://github.com/pyreon/pyreon/commit/90e70a8d7dc4f2706e6446aeb98864a29cebb6c0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - create-multiplatform: the scaffolded Android project now ships a production **release buildType** (R8 minify + shrink, the Play Store path) plus a `proguard-rules.pro` placeholder, instead of a debug-only project. A real `./gradlew assembleRelease` with minify enabled was verified to build clean against the Pyreon Kotlin runtime — its only reflection-sensitive dependency, kotlinx-serialization (useFetch / loader payloads), ships its own R8 keep rules that R8 applies automatically, so the framework needs no manual proguard rules. (iOS already builds under `-configuration Release` whole-module-optimization via the XcodeGen-generated Release config.) So a freshly scaffolded app produces production-optimized builds on both targets out of the box.
+
 ## 0.32.0
 
 ### Patch Changes
