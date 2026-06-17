@@ -2791,17 +2791,26 @@ function emitKotlinStack(
 }
 
 /**
- * Map a canonical `<Heading level>` to a Compose Material3 typography
- * role. Mirrors the web scale (32/24/20/18/16/14px) + the Swift font
- * roles onto Material's headline/title scale.
+ * Map a canonical `<Heading level>` to a Compose **Material 2**
+ * typography role — the emit's whole base is Material 2 (the import
+ * header is `androidx.compose.material.*`; Button / Text / Icon all
+ * resolve from there), so `MaterialTheme.typography` is Material 2's
+ * `Typography` (h1–h6 / subtitle / body / …). The Material 3 names
+ * (`headlineLarge`, …) do NOT exist on it — emitting them compiled in
+ * the kotlinc validate loop (the stub faked them) but failed a real
+ * `gradle assembleDebug` with "Unresolved reference 'headlineLarge'"
+ * (the stub-masked-symbol class; no example used `<Heading>` so the
+ * device gate never caught it). The roles below mirror the web scale
+ * (32/24/20/18/16/14px) onto the closest Material 2 sizes
+ * (h4≈34 / h5≈24 / h6≈20 / subtitle1≈16 / body1≈16 / body2≈14sp).
  */
 const HEADING_TYPOGRAPHY: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
-  1: 'headlineLarge',
-  2: 'headlineMedium',
-  3: 'headlineSmall',
-  4: 'titleLarge',
-  5: 'titleMedium',
-  6: 'titleSmall',
+  1: 'h4',
+  2: 'h5',
+  3: 'h6',
+  4: 'subtitle1',
+  5: 'body1',
+  6: 'body2',
 }
 
 /**
@@ -2827,8 +2836,8 @@ function kotlinTextArg(
 
 /**
  * Emit `<Heading level={N}>text</Heading>` as Compose
- * `Text(text = ..., style = MaterialTheme.typography.headlineLarge|…)`.
- * `level` → Material3 typography role; `color` → `color =` arg.
+ * `Text(text = ..., style = MaterialTheme.typography.h4|…)`.
+ * `level` → Material 2 typography role; `color` → `color =` arg.
  */
 function emitKotlinHeading(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -2838,7 +2847,7 @@ function emitKotlinHeading(
   const level = (typeof levelRaw === 'number' ? levelRaw : 1) as 1 | 2 | 3 | 4 | 5 | 6
   const args = [
     `text = ${kotlinTextArg(e, indent)}`,
-    `style = MaterialTheme.typography.${HEADING_TYPOGRAPHY[level] ?? 'headlineLarge'}`,
+    `style = MaterialTheme.typography.${HEADING_TYPOGRAPHY[level] ?? 'h4'}`,
   ]
   const color = readStaticAttrKotlin(e, 'color')
   if (typeof color === 'string') args.push(`color = ${resolveColor(color, 'kotlin')}`)

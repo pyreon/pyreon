@@ -264,15 +264,18 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
     expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
   })
 
-  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.headlineLarge) (default level 1)', () => {
+  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.h4) (default level 1)', () => {
     const out = tx(`<Heading>Title</Heading>`, 'kotlin')
-    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.headlineLarge)')
+    // Material 2 typography role (the emit base is androidx.compose.material.*,
+    // NOT material3 — Material 3's `headlineLarge` is not a member of M2's
+    // Typography and fails a real `gradle assembleDebug`).
+    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.h4)')
   })
 
-  it('Kotlin: level maps to the Material3 typography role', () => {
-    expect(tx(`<Heading level={2}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.headlineMedium')
-    expect(tx(`<Heading level={3}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.headlineSmall')
-    expect(tx(`<Heading level={6}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.titleSmall')
+  it('Kotlin: level maps to the Material 2 typography role', () => {
+    expect(tx(`<Heading level={2}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.h5')
+    expect(tx(`<Heading level={3}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.h6')
+    expect(tx(`<Heading level={6}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.body2')
   })
 
   it('Kotlin: <Heading color="primary"> → color = arg', () => {
