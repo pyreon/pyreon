@@ -1,44 +1,54 @@
 # zero-cli
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies [[`81a296d`](https://github.com/pyreon/pyreon/commit/81a296de7666f1215e748a055ed1679967fe3251)]:
+  - @pyreon/create-zero@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/cli@0.33.0
+  - @pyreon/zero@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
 
 - Updated dependencies [[`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc), [`75c39ea`](https://github.com/pyreon/pyreon/commit/75c39eac7cc8f4fc1f99586521c27a50bc9f9fb8), [`4795d0b`](https://github.com/pyreon/pyreon/commit/4795d0be414b89a0f557641bacaeda9c36a0eb69), [`25ddda0`](https://github.com/pyreon/pyreon/commit/25ddda0d540199a7177cf0ccd4b0cab78912986a), [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59), [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd), [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd), [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63), [`698f514`](https://github.com/pyreon/pyreon/commit/698f514f44160e1955582b4573014bddba45a38e), [`f21a439`](https://github.com/pyreon/pyreon/commit/f21a439cfefd219b1c13f1b8d99dbfbbe949fd34), [`d543f36`](https://github.com/pyreon/pyreon/commit/d543f36150f11fe94b08fabed0887914fa9deb9f), [`8a9bc52`](https://github.com/pyreon/pyreon/commit/8a9bc52318841868badf907963bf99d7937ab735), [`6cdae79`](https://github.com/pyreon/pyreon/commit/6cdae79903cd00c96410dcc6bad39669d9b8898b), [`b90e67c`](https://github.com/pyreon/pyreon/commit/b90e67c296cc39b2438490f4330b836b78395c8d), [`25ddda0`](https://github.com/pyreon/pyreon/commit/25ddda0d540199a7177cf0ccd4b0cab78912986a)]:
-  - @pyreon/cli@1.0.0
-  - @pyreon/zero@1.0.0
-  - @pyreon/server@1.0.0
-  - @pyreon/create-zero@1.0.0
+  - @pyreon/cli@0.33.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/create-zero@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies [[`7532eae`](https://github.com/pyreon/pyreon/commit/7532eaeff493327bb19f6c2adc94151638d61ceb), [`f56dfab`](https://github.com/pyreon/pyreon/commit/f56dfab160bfebf159c4b2a5a6cb71bc9114840d)]:
-  - @pyreon/zero@1.0.0
-  - @pyreon/server@1.0.0
-  - @pyreon/cli@1.0.0
-  - @pyreon/create-zero@1.0.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/cli@0.33.0
+  - @pyreon/create-zero@0.33.0
 
 ## 0.30.0
 
 ### Patch Changes
 
 - Updated dependencies [[`1cfb381`](https://github.com/pyreon/pyreon/commit/1cfb3811bff4986e23965e1ec60c22ed7c3e369d), [`52c6d2b`](https://github.com/pyreon/pyreon/commit/52c6d2b23e2c886a6156a0bc19ed58598f2672d7), [`18bb9ce`](https://github.com/pyreon/pyreon/commit/18bb9ce8324cd6975fd7ce9e3a8061ea191f1b15), [`6feb9d4`](https://github.com/pyreon/pyreon/commit/6feb9d4bc8cc873191bfe97fac0afb88d5135388), [`c80700f`](https://github.com/pyreon/pyreon/commit/c80700f31834347db9691a74c1abcde3fe73f541), [`3c775b8`](https://github.com/pyreon/pyreon/commit/3c775b8debe114b6623e94c84d9ca5daf5313789), [`4c9844d`](https://github.com/pyreon/pyreon/commit/4c9844d4a408549ad48e3d93bbf686ba946032da), [`7b2eabf`](https://github.com/pyreon/pyreon/commit/7b2eabf34cf849b93f40da8bdf9bc679db0bec7f), [`75af4aa`](https://github.com/pyreon/pyreon/commit/75af4aac41cc60abecfd0a25f9522f4850bf9ece), [`2226a27`](https://github.com/pyreon/pyreon/commit/2226a2729de1fbc793cb5c79c082a743a0d1c5b6), [`1b1f4d3`](https://github.com/pyreon/pyreon/commit/1b1f4d326dc18c84672db82699f592869831bf0f), [`102617b`](https://github.com/pyreon/pyreon/commit/102617b06110394a9c32b7de9cf01da0286489ee), [`0eae5c8`](https://github.com/pyreon/pyreon/commit/0eae5c88fe01fc5129c2bef09135c325d7eb0337), [`960d075`](https://github.com/pyreon/pyreon/commit/960d075e71df0bb1830777157cc0f7dd39a2ba85)]:
-  - @pyreon/zero@1.0.0
-  - @pyreon/server@1.0.0
-  - @pyreon/cli@1.0.0
-  - @pyreon/create-zero@1.0.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/cli@0.33.0
+  - @pyreon/create-zero@0.33.0
 
 ## 0.29.0
 
 ### Patch Changes
 
 - Updated dependencies [[`00a6d70`](https://github.com/pyreon/pyreon/commit/00a6d70fac25baf38c90d582cff3c59110bd9aad), [`64b7feb`](https://github.com/pyreon/pyreon/commit/64b7feb2ea133dd67915d3c3924781cb8fc4a3c3), [`601ad29`](https://github.com/pyreon/pyreon/commit/601ad29f41df0bf96a50136111355b26e8fd6bfe), [`e940031`](https://github.com/pyreon/pyreon/commit/e940031e4d5f754fb47b01187e1a1016b55b965d), [`f5e6ff8`](https://github.com/pyreon/pyreon/commit/f5e6ff8d24cbf1e152717d4b192576200cd3c83d), [`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`78feab2`](https://github.com/pyreon/pyreon/commit/78feab2aaa4d6051a4aa726a7d0f4c2a02cb6cde), [`88a42f7`](https://github.com/pyreon/pyreon/commit/88a42f7620f4c9a4a3df0d6b730294a4f91c94ae), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
-  - @pyreon/cli@1.0.0
-  - @pyreon/zero@1.0.0
-  - @pyreon/server@1.0.0
-  - @pyreon/create-zero@1.0.0
+  - @pyreon/cli@0.33.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/create-zero@0.33.0
 
 ## 0.28.1
 
@@ -55,10 +65,10 @@
 ### Patch Changes
 
 - Updated dependencies [[`582e58a`](https://github.com/pyreon/pyreon/commit/582e58a6b65a73a292b88eb83ec64651bc856810), [`2bb68fb`](https://github.com/pyreon/pyreon/commit/2bb68fb773b86444810e7b865bc46f7da4058441), [`889cf5a`](https://github.com/pyreon/pyreon/commit/889cf5aec04dd41a37dd4d47edcdad358e23f3a2), [`bb6a0e3`](https://github.com/pyreon/pyreon/commit/bb6a0e38ae15a8f195ed6c0b975f63ebec8663cb)]:
-  - @pyreon/zero@1.0.0
-  - @pyreon/cli@1.0.0
-  - @pyreon/server@1.0.0
-  - @pyreon/create-zero@1.0.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/cli@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/create-zero@0.33.0
 
 ## 0.27.1
 
@@ -75,10 +85,10 @@
 ### Patch Changes
 
 - Updated dependencies [[`07233f0`](https://github.com/pyreon/pyreon/commit/07233f0870e3e1f3672bc7d4ca5a1b21c466fa78), [`94d8704`](https://github.com/pyreon/pyreon/commit/94d87048c270699ff8d4fd2946edb56c135c76cf), [`a92b6f6`](https://github.com/pyreon/pyreon/commit/a92b6f64f56760b77f2c254522bfb74e4b2ffb67)]:
-  - @pyreon/zero@1.0.0
-  - @pyreon/server@1.0.0
-  - @pyreon/cli@1.0.0
-  - @pyreon/create-zero@1.0.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/cli@0.33.0
+  - @pyreon/create-zero@0.33.0
 
 ## 0.26.3
 
@@ -127,10 +137,10 @@
   - `scripts/scaffold-smoke.ts` gained a `previewSmoke?:` hook that spawns `bun run preview` against the built output, waits for the local URL, fetches the homepage, and asserts HTTP 200 + non-empty HTML body. Wired into 3 representative cells (app+vercel, blog+cloudflare, dashboard+vercel+full integrations). Bisect-verified: reverting the `zero preview` fix fails `cpa-smoke-app-vercel` with `preview HTTP 404 from http://localhost:NNNN (expected 200)`; restored → passes.
 
 - Updated dependencies [[`cbef2e7`](https://github.com/pyreon/pyreon/commit/cbef2e7b016da3ac515099f9f403807baeeb4589), [`5602146`](https://github.com/pyreon/pyreon/commit/5602146b7ccac45d3d9ee0b752b00a5f702821e9), [`95663b9`](https://github.com/pyreon/pyreon/commit/95663b943be3f02f61fce7b7532df8c2efa153b4), [`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6), [`c2d0f34`](https://github.com/pyreon/pyreon/commit/c2d0f34578624f7284842f4f8558e613e969053d), [`537f0a5`](https://github.com/pyreon/pyreon/commit/537f0a5e326a6cc37dd95dd978b474c9a51867e6), [`5ee742a`](https://github.com/pyreon/pyreon/commit/5ee742aa8a83e66664220494dc0e20a3bb16d8b7), [`f911be8`](https://github.com/pyreon/pyreon/commit/f911be8f4ac99f3bcecb35d93d765b8fb1ae4ca0), [`4204f49`](https://github.com/pyreon/pyreon/commit/4204f49f1dad0997b77fd6a9a90d047f8621010d), [`8333f05`](https://github.com/pyreon/pyreon/commit/8333f05e3a2b3d8b31cd03c3d835a4234a6e689c), [`1385728`](https://github.com/pyreon/pyreon/commit/1385728abb19c6a51498df9dec7fc4b51136a115), [`52c1298`](https://github.com/pyreon/pyreon/commit/52c1298e0a2be04bd62b35f43416ecb9bb16b451), [`9ef3922`](https://github.com/pyreon/pyreon/commit/9ef3922a1849aa36aa012284aae6922cdf1715cd), [`a27d7db`](https://github.com/pyreon/pyreon/commit/a27d7db43509c02b29ec59af18e5da18d7d57d41), [`3ebd25f`](https://github.com/pyreon/pyreon/commit/3ebd25fbdd06f8d9f473e8a9281bce27effca209), [`eaa36d7`](https://github.com/pyreon/pyreon/commit/eaa36d720210e8bed9676692fcb819c063dd91c6), [`c19018d`](https://github.com/pyreon/pyreon/commit/c19018ddad0577c82caaa63414ceea6e792d5244)]:
-  - @pyreon/zero@1.0.0
-  - @pyreon/create-zero@1.0.0
-  - @pyreon/server@1.0.0
-  - @pyreon/cli@1.0.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/create-zero@0.33.0
+  - @pyreon/server@0.33.0
+  - @pyreon/cli@0.33.0
 
 ## 0.25.1
 

@@ -1,5 +1,12 @@
 # @pyreon/mcp
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes
@@ -29,7 +36,7 @@
 - [#1442](https://github.com/pyreon/pyreon/pull/1442) [`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926) Thanks [@vitbokisch](https://github.com/vitbokisch)! - MCP `get_api` now covers `@pyreon/zero-content`'s `<Example>` docs primitive + `registerExamples` + `getOrCreateSharedSignal` helpers. Plus a manifest-renderer fix: literal backslashes in `example` / `mistakes` strings are now escaped during template-literal serialization, so manifest entries containing markdown-fenced code (` ```bash ... ``` `) round-trip without prematurely closing the generated template literal. Affects 9 api-reference regions that previously skipped this escape pass.
 
 - Updated dependencies [[`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc), [`edaea04`](https://github.com/pyreon/pyreon/commit/edaea04231fc33b585e785bda61e63c14663c045), [`f6f54a2`](https://github.com/pyreon/pyreon/commit/f6f54a254e43f3b36a4c55581381ab582322990e), [`73436e7`](https://github.com/pyreon/pyreon/commit/73436e782319940abde41200299489a809de70d5), [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe)]:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.31.0
 
@@ -52,21 +59,21 @@
   package's published `lib/`, so those packages ship no consumer-facing change.)
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.30.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.29.0
 
 ### Patch Changes
 
 - Updated dependencies [[`8524e24`](https://github.com/pyreon/pyreon/commit/8524e24651184d275d5bf7520d65caade2ef25b8), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.28.1
 
@@ -223,7 +230,7 @@
   regenerated from the updated manifest.
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.27.1
 
@@ -237,7 +244,7 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.26.3
 
@@ -265,7 +272,7 @@
 ### Patch Changes
 
 - Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`ecceb71`](https://github.com/pyreon/pyreon/commit/ecceb710dc442a93818b7d60f38155a9f8cd71b9), [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e), [`f27477a`](https://github.com/pyreon/pyreon/commit/f27477a681fdc131ea2904940dabb5b8b0e6b9cb), [`76ef68e`](https://github.com/pyreon/pyreon/commit/76ef68efa4daea765ca3eb512be71cc1f7db483c)]:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.25.1
 

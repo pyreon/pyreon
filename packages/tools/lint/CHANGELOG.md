@@ -1,5 +1,13 @@
 # @pyreon/lint
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.33.0
+  - @pyreon/sized-map@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes
@@ -21,24 +29,24 @@
 - [#1538](https://github.com/pyreon/pyreon/pull/1538) [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon/no-dom-in-setup` now recognizes the canonical `@pyreon/reactivity` SSR primitive as a head guard: `if (isServer) return|throw` and `if (!isClient) return|throw` (by name, the same convention `no-window-in-ssr` / `dev-guard-warnings` use). This keeps the rule consistent with `pyreon/prefer-isserver` — that rule pushes `typeof document === 'undefined'` guards TO `isServer`, so without this the two rules contradicted (prefer-isserver said "use isServer", then no-dom-in-setup flagged the now-"unguarded" DOM access in the same function).
 
 - Updated dependencies [[`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc), [`edaea04`](https://github.com/pyreon/pyreon/commit/edaea04231fc33b585e785bda61e63c14663c045), [`f6f54a2`](https://github.com/pyreon/pyreon/commit/f6f54a254e43f3b36a4c55581381ab582322990e), [`73436e7`](https://github.com/pyreon/pyreon/commit/73436e782319940abde41200299489a809de70d5), [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe)]:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/sized-map@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/sized-map@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/sized-map@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/sized-map@0.33.0
 
 ## 0.30.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/sized-map@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/sized-map@0.33.0
 
 ## 0.29.0
 
@@ -57,8 +65,8 @@
   Branches lifted 90.32% → 90.47% via real tests.
 
 - Updated dependencies [[`8524e24`](https://github.com/pyreon/pyreon/commit/8524e24651184d275d5bf7520d65caade2ef25b8), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/sized-map@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/sized-map@0.33.0
 
 ## 0.28.1
 
@@ -149,8 +157,8 @@
 ### Patch Changes
 
 - Updated dependencies [[`1aeb610`](https://github.com/pyreon/pyreon/commit/1aeb610a10ce5069b52b2882a6175a16c16483b3)]:
-  - @pyreon/sized-map@1.0.0
-  - @pyreon/compiler@1.0.0
+  - @pyreon/sized-map@0.33.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.27.1
 
@@ -194,7 +202,7 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.26.3
 
@@ -313,7 +321,7 @@
   native-compiler (388), and the bundle-budgets import-walker (57 pkgs) all
   pass unchanged on 0.133.
 - Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`ecceb71`](https://github.com/pyreon/pyreon/commit/ecceb710dc442a93818b7d60f38155a9f8cd71b9), [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e), [`f27477a`](https://github.com/pyreon/pyreon/commit/f27477a681fdc131ea2904940dabb5b8b0e6b9cb), [`76ef68e`](https://github.com/pyreon/pyreon/commit/76ef68efa4daea765ca3eb512be71cc1f7db483c)]:
-  - @pyreon/compiler@1.0.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.25.1
 

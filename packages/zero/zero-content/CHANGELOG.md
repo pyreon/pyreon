@@ -1,5 +1,47 @@
 # @pyreon/zero-content
 
+## 0.33.0
+
+### Minor Changes
+
+- [#1575](https://github.com/pyreon/pyreon/pull/1575) [`b8bc8ff`](https://github.com/pyreon/pyreon/commit/b8bc8ffe75a64d5654db2aac72d93e1216f7cc16) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Search results now deep-link to the heading that best matches the query.
+
+  Each page's heading anchors (slug + lowercased text) are stored alongside its
+  search document, and the runtime picks the heading containing the most of the
+  query's matched terms — so a hit jumps to the exact section (`/docs/router#keyed-lists`)
+  instead of the page top. Falls back to the page URL when the match is in the
+  body or page title (no heading contains a matched term).
+
+  This delivers section-precision navigation without one search document per
+  section, which ~4×'s the index and would hit the 1 MB build-error budget at
+  ~130 pages. The page stays the single searchable unit; the docs index grows
+  modestly (~210 KB → ~350 KB at 96 pages) with headroom to ~270 pages.
+
+- [#1568](https://github.com/pyreon/pyreon/pull/1568) [`98e850e`](https://github.com/pyreon/pyreon/commit/98e850e03911f02b325e972e76232912a1da967d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero-content): synonym/jargon-aware search
+
+  Docs search now expands framework-vocabulary synonyms at query time, so a
+  search for "reactive" finds the **signal** docs, "hydration" finds
+  "hydrate", "routing" finds the **navigation** pages, "attributes" finds
+  **props**, and so on. Plain keyword search — what VitePress and most docs
+  sites ship — returns nothing for these vocabulary mismatches, which is the
+  single biggest real-world relevance gap in docs search.
+
+  Implemented as a conservative, curated `searchOptions.processTerm` (11
+  high-confidence equivalence groups) — expansion happens at SEARCH time only,
+  so the prebuilt `search-index-*.json` is unchanged (`MiniSearch.loadJSON`
+  stays happy) and the index stays small. Non-jargon queries are untouched, so
+  precision holds (a search for "tooltip" still returns only the tooltip page).
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/zero@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes
@@ -635,12 +677,12 @@ index emission` TODO at the top of `src/plugin.ts`.
   condition.
 
 - Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`4529407`](https://github.com/pyreon/pyreon/commit/4529407d69ba0875568b5c78ff14e2850aa2d690), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`e36bbe5`](https://github.com/pyreon/pyreon/commit/e36bbe52e7f1417a703b4e6ce23281c448d9132f), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`75c39ea`](https://github.com/pyreon/pyreon/commit/75c39eac7cc8f4fc1f99586521c27a50bc9f9fb8), [`65ccdf2`](https://github.com/pyreon/pyreon/commit/65ccdf2ad95a16b676b58948acea51f957e5cf62), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59), [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd), [`510a410`](https://github.com/pyreon/pyreon/commit/510a410f196bb732d963bd357a6bc10993f794fd), [`a359e29`](https://github.com/pyreon/pyreon/commit/a359e2917567419655dd31c5d093d0a4479ba021), [`9eb24f6`](https://github.com/pyreon/pyreon/commit/9eb24f604e6e4be62ef4ad3ba33e0c3fa28e9906), [`7f89196`](https://github.com/pyreon/pyreon/commit/7f89196dd3d99f61b0bba032481b9d389fdd8264), [`5a38b69`](https://github.com/pyreon/pyreon/commit/5a38b69a2a2dc9a331c2e6a8a11375eebc532c63), [`698f514`](https://github.com/pyreon/pyreon/commit/698f514f44160e1955582b4573014bddba45a38e), [`f21a439`](https://github.com/pyreon/pyreon/commit/f21a439cfefd219b1c13f1b8d99dbfbbe949fd34), [`d543f36`](https://github.com/pyreon/pyreon/commit/d543f36150f11fe94b08fabed0887914fa9deb9f), [`8a9bc52`](https://github.com/pyreon/pyreon/commit/8a9bc52318841868badf907963bf99d7937ab735), [`6cdae79`](https://github.com/pyreon/pyreon/commit/6cdae79903cd00c96410dcc6bad39669d9b8898b), [`b90e67c`](https://github.com/pyreon/pyreon/commit/b90e67c296cc39b2438490f4330b836b78395c8d), [`25ddda0`](https://github.com/pyreon/pyreon/commit/25ddda0d540199a7177cf0ccd4b0cab78912986a)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/runtime-dom@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/router@1.0.0
-  - @pyreon/zero@1.0.0
-  - @pyreon/head@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/runtime-dom@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/head@0.33.0
 
 ## 0.1.0
 
@@ -691,9 +733,9 @@ index emission` TODO at the top of `src/plugin.ts`.
 ### Patch Changes
 
 - Updated dependencies [[`7532eae`](https://github.com/pyreon/pyreon/commit/7532eaeff493327bb19f6c2adc94151638d61ceb)]:
-  - @pyreon/zero@1.0.0
-  - @pyreon/core@1.0.0
-  - @pyreon/head@1.0.0
-  - @pyreon/reactivity@1.0.0
-  - @pyreon/router@1.0.0
-  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/zero@0.33.0
+  - @pyreon/core@0.33.0
+  - @pyreon/head@0.33.0
+  - @pyreon/reactivity@0.33.0
+  - @pyreon/router@0.33.0
+  - @pyreon/runtime-dom@0.33.0

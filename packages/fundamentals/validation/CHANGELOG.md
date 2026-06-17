@@ -1,32 +1,39 @@
 # @pyreon/validation
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/form@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/form@1.0.0
+  - @pyreon/form@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/form@1.0.0
+  - @pyreon/form@0.33.0
 
 ## 0.30.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/form@1.0.0
+  - @pyreon/form@0.33.0
 
 ## 0.29.0
 
 ### Patch Changes
 
 - Updated dependencies [[`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0)]:
-  - @pyreon/form@1.0.0
+  - @pyreon/form@0.33.0
 
 ## 0.28.1
 
@@ -75,7 +82,7 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/form@1.0.0
+  - @pyreon/form@0.33.0
 
 ## 0.27.1
 
@@ -89,7 +96,7 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/form@1.0.0
+  - @pyreon/form@0.33.0
 
 ## 0.26.3
 
@@ -253,7 +260,7 @@
   The store change is purely an internal refactor — helpers moved out, public API unchanged. All 130 existing store tests pass without modification. Bundle shrinks slightly (helpers move out, validation grows by the same amount). Tagged as `patch` rather than `minor` because no consumer-visible surface changed.
 
 - Updated dependencies [[`fd3422c`](https://github.com/pyreon/pyreon/commit/fd3422cfec1d48c8b382f8512ed44f8256887931), [`745fd63`](https://github.com/pyreon/pyreon/commit/745fd63c3ce97d0eb7bab37fa85ae40ed8c1c9bd)]:
-  - @pyreon/form@1.0.0
+  - @pyreon/form@0.33.0
 
 ## 0.25.1
 

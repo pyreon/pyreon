@@ -1,20 +1,28 @@
 # @pyreon/attrs
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
 
 - Updated dependencies [[`0e38332`](https://github.com/pyreon/pyreon/commit/0e3833212e93ec90994edfccb5f2966f9eb0e926), [`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094), [`3d90e89`](https://github.com/pyreon/pyreon/commit/3d90e89b824d346a33732af929acdbc7fdd81094)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/ui-core@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/ui-core@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
 
 ## 0.30.0
 
@@ -53,16 +61,16 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   change — both copies were already the correct descriptor-copy form.
 
 - Updated dependencies [[`883e69b`](https://github.com/pyreon/pyreon/commit/883e69baed47d77eb79f4dd09b87da96a0b52894), [`4efa71b`](https://github.com/pyreon/pyreon/commit/4efa71b83af84b9310681ed213a331842248bb65), [`960bb0f`](https://github.com/pyreon/pyreon/commit/960bb0f139839de49508d836878b98556b1c7d07)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/ui-core@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
 
 ## 0.29.0
 
 ### Patch Changes
 
 - Updated dependencies [[`c2874df`](https://github.com/pyreon/pyreon/commit/c2874df8f2b07b19aaa7a64c2f9ff2ab6b11d2f0), [`e1139cc`](https://github.com/pyreon/pyreon/commit/e1139cc20447860a2c0e547e6fc0ed67f359e1fe)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/ui-core@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
 
 ## 0.28.1
 
@@ -111,8 +119,8 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/ui-core@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
 
 ## 0.27.1
 
@@ -126,8 +134,8 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/core@1.0.0
-  - @pyreon/ui-core@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
 
 ## 0.26.3
 
@@ -191,8 +199,8 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 ### Patch Changes
 
 - Updated dependencies [[`cc8e6ac`](https://github.com/pyreon/pyreon/commit/cc8e6ac08faaea4e486cbb09d1ea22404421e8b6)]:
-  - @pyreon/core@1.0.0
-  - @pyreon/ui-core@1.0.0
+  - @pyreon/core@0.33.0
+  - @pyreon/ui-core@0.33.0
 
 ## 0.25.1
 

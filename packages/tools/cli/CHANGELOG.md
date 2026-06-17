@@ -1,5 +1,13 @@
 # @pyreon/cli
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.33.0
+  - @pyreon/lint@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes
@@ -52,24 +60,24 @@
   Bisect-verified per fix. Docs (CLAUDE.md, `docs/src/content/docs/cli.md`, orchestrator header) corrected: the gate count (13 total / 11 fast, not 10/8), the 3 gates missing from every table (`content-audit`, `check-dedup`, `audit-leak-classes`), the "single entry point for every gate" overclaim (doctor is the health-gate entry point, not a runner for CI-pipeline gates), `--check-content`, and the stale non-CI-exit claim (`pyreon doctor` is informational and always exits 0; `--ci` gates).
 
 - Updated dependencies [[`0c1ea1e`](https://github.com/pyreon/pyreon/commit/0c1ea1e89e4228e84367efd5d2cb334808955a25), [`04525e1`](https://github.com/pyreon/pyreon/commit/04525e1dfc92ff4d7182818c3e9ddaddd8648cbc), [`edaea04`](https://github.com/pyreon/pyreon/commit/edaea04231fc33b585e785bda61e63c14663c045), [`f6f54a2`](https://github.com/pyreon/pyreon/commit/f6f54a254e43f3b36a4c55581381ab582322990e), [`73436e7`](https://github.com/pyreon/pyreon/commit/73436e782319940abde41200299489a809de70d5), [`bfb813b`](https://github.com/pyreon/pyreon/commit/bfb813ba5a883c791a8df22c46fa82cf370c6ebe), [`b9fbb9c`](https://github.com/pyreon/pyreon/commit/b9fbb9cca02295d7db77ae5525b8f5d188848e35), [`fc26160`](https://github.com/pyreon/pyreon/commit/fc26160ac2d3afba0adde20f61d94a4199519b59)]:
-  - @pyreon/lint@1.0.0
-  - @pyreon/compiler@1.0.0
+  - @pyreon/lint@0.33.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.31.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/lint@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/lint@0.33.0
 
 ## 0.30.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/lint@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/lint@0.33.0
 
 ## 0.29.0
 
@@ -90,8 +98,8 @@
   Branches lifted 85.28% → 86.28%. Incremental real-test coverage on the doctor render layer and check-dedup gate.
 
 - Updated dependencies [[`8524e24`](https://github.com/pyreon/pyreon/commit/8524e24651184d275d5bf7520d65caade2ef25b8), [`3ab6d0d`](https://github.com/pyreon/pyreon/commit/3ab6d0d3e645b65c73bef9ec353dc1526ea840c5), [`0ef3f45`](https://github.com/pyreon/pyreon/commit/0ef3f4591fdd7339a0dd597dabc27295eeb09669)]:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/lint@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/lint@0.33.0
 
 ## 0.28.1
 
@@ -108,8 +116,8 @@
 ### Patch Changes
 
 - Updated dependencies [[`7f446f2`](https://github.com/pyreon/pyreon/commit/7f446f279e344b7db68eaf7c91ddd1a255f89a1f), [`cc4b6b6`](https://github.com/pyreon/pyreon/commit/cc4b6b683e1c1450432f97fc708abda067818e2e), [`889cf5a`](https://github.com/pyreon/pyreon/commit/889cf5aec04dd41a37dd4d47edcdad358e23f3a2)]:
-  - @pyreon/lint@1.0.0
-  - @pyreon/compiler@1.0.0
+  - @pyreon/lint@0.33.0
+  - @pyreon/compiler@0.33.0
 
 ## 0.27.1
 
@@ -124,8 +132,8 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/lint@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/lint@0.33.0
 
 ## 0.26.3
 
@@ -156,8 +164,8 @@
 ### Patch Changes
 
 - Updated dependencies [[`fce4e86`](https://github.com/pyreon/pyreon/commit/fce4e868611a3f5e006f20a031d43435441901e5), [`ecceb71`](https://github.com/pyreon/pyreon/commit/ecceb710dc442a93818b7d60f38155a9f8cd71b9), [`f4e8b66`](https://github.com/pyreon/pyreon/commit/f4e8b66b3544b00f0ff36c1e64c37a2aec50524e), [`619834c`](https://github.com/pyreon/pyreon/commit/619834ca66940731d85fc8ef0c76898b37d4f8b3), [`4beab18`](https://github.com/pyreon/pyreon/commit/4beab1809566bc642184775ac19717abdeee316e), [`f27477a`](https://github.com/pyreon/pyreon/commit/f27477a681fdc131ea2904940dabb5b8b0e6b9cb), [`76ef68e`](https://github.com/pyreon/pyreon/commit/76ef68efa4daea765ca3eb512be71cc1f7db483c), [`3ebd25f`](https://github.com/pyreon/pyreon/commit/3ebd25fbdd06f8d9f473e8a9281bce27effca209)]:
-  - @pyreon/compiler@1.0.0
-  - @pyreon/lint@1.0.0
+  - @pyreon/compiler@0.33.0
+  - @pyreon/lint@0.33.0
 
 ## 0.25.1
 
