@@ -1796,6 +1796,47 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         return `print(${e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')})`
       }
+      // `Math.X(...)` — JS has the `Math` namespace; Swift does not.
+      // Map the common functions to their Swift stdlib / Foundation
+      // equivalents (Foundation is in the CLI import header). Kotlin
+      // needs no mapping — java.lang.Math is valid on Android/JVM. An
+      // unmapped `Math.X` falls through to the generic emit.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Math'
+      ) {
+        const args = e.args.map((a) => emitSwiftExpr(a, indent))
+        switch (e.callee.property) {
+          // `.rounded()` is a Double method; the others are free
+          // functions (abs/min/max are stdlib; floor/ceil/sqrt/pow are
+          // Foundation).
+          case 'round':
+            if (args.length === 1) return `(${args[0]!}).rounded()`
+            break
+          case 'floor':
+            if (args.length === 1) return `floor(${args[0]!})`
+            break
+          case 'ceil':
+            if (args.length === 1) return `ceil(${args[0]!})`
+            break
+          case 'abs':
+            if (args.length === 1) return `abs(${args[0]!})`
+            break
+          case 'sqrt':
+            if (args.length === 1) return `sqrt(${args[0]!})`
+            break
+          case 'min':
+            if (args.length === 2) return `min(${args[0]!}, ${args[1]!})`
+            break
+          case 'max':
+            if (args.length === 2) return `max(${args[0]!}, ${args[1]!})`
+            break
+          case 'pow':
+            if (args.length === 2) return `pow(${args[0]!}, ${args[1]!})`
+            break
+        }
+      }
       // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
       // `quotes.isPending()` (the web signal-read shape) → plain
       // @Observable property read. `refetch` is excluded (real method,
@@ -2084,6 +2125,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             break
           }
+          case 'toLocaleString':
+            // No native locale-number-formatting equivalent (would need
+            // a NumberFormatter instance). Degrade to a plain string
+            // conversion (valid, but loses thousands grouping) + warn so
+            // the loss is visible rather than a silent invalid emit.
+            if (e.args.length === 0) {
+              _emitWarnings.push(
+                '.toLocaleString() has no native locale-formatting equivalent — emitting a plain string conversion (no grouping separators). Format the value explicitly if you need grouping.',
+              )
+              return `String(${obj})`
+            }
+            break
         }
       }
       const callee = emitSwiftExpr(e.callee, indent)
