@@ -1,9 +1,10 @@
-// Gap 3 PR-3.3 — real `<ErrorBoundary fallback={X}>` emit tests.
+// Phase 2 — real `<ErrorBoundary fallback={X}>` emit tests.
 //
-// Structural boundary primitive: per-target wrapper holding the
-// error state; children render by default. Mirror of #1475's
-// Suspense pattern (different semantic: no auto-flip on mount;
-// the flag stays false until an external hook flips it).
+// Inline `Group { if <errored> { fallback } else { children } }`
+// (Swift) / `if (<errored>) { ... } else { ... }` (Kotlin) where
+// `<errored>` ORs every `useFetch` container's error in the
+// component, read directly in the body so it tracks. No fetch →
+// `false` (content always shows). Mirror of the Suspense emit.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -23,24 +24,44 @@ export function App() {
 `
 
 describe('Gap 3 PR-3.3 — real ErrorBoundary emit', () => {
-  it('Swift: emits PyreonErrorBoundaryWrapper call site + wrapper definition', () => {
+  it('Swift: emits an inline Group { if hasError } (no fetch → false)', () => {
     const r = transform(SRC, { target: 'swift' })
-    expect(r.code).toContain('PyreonErrorBoundaryWrapper(content: {')
-    expect(r.code).toContain('}, fallback: {')
-    expect(r.code).toContain('private struct PyreonErrorBoundaryWrapper')
-    expect(r.code).toContain('@State private var hasError = false')
+    expect(r.code).toContain('Group {')
+    expect(r.code).toContain('if false {')
+    expect(r.code).not.toContain('PyreonErrorBoundaryWrapper')
     expect(r.code).toContain('Something went wrong')
     expect(r.code).toContain('Healthy content path')
   })
 
-  it('Kotlin: emits PyreonErrorBoundaryWrapper composable + call site', () => {
+  it('Kotlin: emits an inline if/else (no fetch → false)', () => {
     const r = transform(SRC, { target: 'kotlin' })
-    expect(r.code).toContain('PyreonErrorBoundaryWrapper(content = {')
-    expect(r.code).toContain('}, fallback = {')
-    expect(r.code).toContain('private fun PyreonErrorBoundaryWrapper')
-    expect(r.code).toContain('var hasError by remember { mutableStateOf(false) }')
+    expect(r.code).toContain('if (false) {')
+    expect(r.code).not.toContain('PyreonErrorBoundaryWrapper')
     expect(r.code).toContain('Something went wrong')
     expect(r.code).toContain('Healthy content path')
+  })
+
+  it('Phase 2: an ErrorBoundary over a useFetch reads the container error (real semantics)', () => {
+    const FETCH_SRC = `
+      type Quote = { id: number; text: string }
+      export function App() {
+        const quotes = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
+        return (
+          <ErrorBoundary fallback={<Text>Something went wrong</Text>}>
+            <For each={() => quotes.data() ?? []} by={(q) => q.id}>{(q) => <Text>{q.text}</Text>}</For>
+          </ErrorBoundary>
+        )
+      }
+    `
+    const swift = transform(FETCH_SRC, { target: 'swift' }).code
+    // Failed-fetch error drives the fallback — read INLINE in the body.
+    expect(swift).toContain('if quotes.error != nil {')
+    expect(swift).not.toContain('if false {')
+    expect(swift).not.toContain('PyreonErrorBoundaryWrapper')
+    const kotlin = transform(FETCH_SRC, { target: 'kotlin' }).code
+    expect(kotlin).toContain('if (quotes.error.value != null) {')
+    expect(kotlin).not.toContain('if (false) {')
+    expect(kotlin).not.toContain('PyreonErrorBoundaryWrapper')
   })
 
   it('ErrorBoundary with no fallback prop falls back to walled emit', () => {
@@ -60,7 +81,7 @@ export function App() {
     expect(r.code).toContain('<ErrorBoundary> unsupported on iOS')
   })
 
-  it('Multiple ErrorBoundary sites emit ONE wrapper definition', () => {
+  it('Multiple ErrorBoundary sites each emit self-contained inline if/else (no shared wrapper)', () => {
     const src = `
 import { Stack, Text, ErrorBoundary } from '@pyreon/primitives'
 
@@ -79,12 +100,7 @@ export function App() {
 `
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
-      const marker =
-        target === 'swift'
-          ? 'private struct PyreonErrorBoundaryWrapper'
-          : 'private fun PyreonErrorBoundaryWrapper'
-      const occurrences = r.code.split(marker).length - 1
-      expect(occurrences).toBe(1)
+      expect(r.code).not.toContain('PyreonErrorBoundaryWrapper')
       expect(r.code).toContain('E1')
       expect(r.code).toContain('C1')
       expect(r.code).toContain('E2')

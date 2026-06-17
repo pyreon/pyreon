@@ -247,11 +247,40 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("tasks-page")
             .assertIsDisplayed()
 
+        // Phase 5.5: lifecycle (Phase 2 real-semantics proof). The
+        // ErrorBoundary wraps a fetch to a MISSING path → rejects →
+        // hasError true → fallback renders. waitUntil because the fetch
+        // crosses a real network hop.
+        composeRule
+            .onNodeWithTag("tasks-lifecycle")
+            .performClick()
+        composeRule
+            .onNodeWithTag("lifecycle-page")
+            .assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule
+                .onAllNodesWithTag("lc-error")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule
+            .onNodeWithTag("lifecycle-back")
+            .performClick()
+        composeRule
+            .onNodeWithTag("tasks-page")
+            .assertIsDisplayed()
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         composeRule
             .onNodeWithTag("tasks-logout")
             .performClick()
 
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule
+                .onAllNodesWithTag("login-page")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         composeRule
             .onNodeWithTag("login-page")
             .assertIsDisplayed()
