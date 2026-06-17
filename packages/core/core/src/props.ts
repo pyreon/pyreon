@@ -22,6 +22,9 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
   // and rest.
   for (const key of Reflect.ownKeys(props)) {
     const desc = Object.getOwnPropertyDescriptor(props, key)
+    // `desc` is only undefined if the key was deleted between ownKeys and
+    // the descriptor read — unreachable for a stable props object.
+    /* v8 ignore next */
     if (!desc) continue
     // Force configurable: true when copying to a fresh object. Source descriptors
     // may be non-configurable (default when created with `Object.defineProperty`
@@ -114,6 +117,8 @@ export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): 
     // See splitProps for why this uses Reflect.ownKeys instead of Object.keys.
     for (const key of Reflect.ownKeys(source)) {
       const desc = Object.getOwnPropertyDescriptor(source, key)
+      // Unreachable for a stable source (deleted-key-mid-iteration only).
+      /* v8 ignore next */
       if (!desc) continue
       mergeProperty(result, key as string, desc)
     }
@@ -232,6 +237,9 @@ export function _wrapSpread(
   // other framework symbols must round-trip through the wrap.
   for (const key of Reflect.ownKeys(source)) {
     const desc = descriptors[key as string]
+    // `getOwnPropertyDescriptors` already enumerated every own key, so a
+    // missing descriptor here is unreachable — defensive guard only.
+    /* v8 ignore next */
     if (!desc) continue
     if (desc.get) {
       const fn: () => unknown = () => source[key as string]

@@ -143,6 +143,9 @@ function drainQueuesLocked(): void {
             // bare count for anonymous effects.
             const droppedCount = pendingEffects.size
             const labels: string[] = []
+            /* v8 ignore start — forward-looking diagnostic: no effect notify
+               currently carries `_label`, so the push/break/labelHint branches
+               are unreachable until a future PR populates the field. */
             for (const notify of pendingEffects) {
               const label = (notify as { _label?: string })._label
               if (label) labels.push(label)
@@ -151,6 +154,7 @@ function drainQueuesLocked(): void {
             const labelHint = labels.length
               ? ` Sample labels: ${labels.join(', ')}${droppedCount > labels.length ? `, …${droppedCount - labels.length} more` : ''}.`
               : ''
+            /* v8 ignore stop */
             // oxlint-disable-next-line no-console
             console.warn(
               '[pyreon] batch effect flush exceeded MAX_PASSES (32) — possible infinite re-enqueue loop. ' +

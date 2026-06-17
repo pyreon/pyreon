@@ -2,16 +2,17 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 
 export default defineNodeConfig({
   category: 'core',
-  // Statements 98 / lines 99 / branches 95 after `branch-coverage-95-floor.test.ts`
-  // covered:
-  //  - Signal idempotent dispose (line 228 else-if falsy arm)
-  //  - Computed idempotent dispose for both computedLazy + computedWithEquals
-  //    paths (lines 202, 342)
-  //  - NODE_ENV='production' false arms in computedWithEquals via vi.stubEnv +
-  //    options.equals dispatch (lines 268, 292, 358)
-  //  - renderEffect disposed-during-batch hits early-return (line 453 truthy arm)
-  //
-  // Remaining uncov is structurally unreachable / environment-only (signal.ts:254
-  // notifyDirect non-batching arm, lpih.ts:62 typeof process undefined, etc.).
-  coverageThresholds: { statements: 98, lines: 99, branches: 95 },
+  // `reactive-devtools.ts` + `lpih.ts` are DEV-ONLY instrumentation bridges:
+  // the entire capture path tree-shakes under NODE_ENV=production (locked by
+  // `reactive-devtools-treeshake.test.ts`), so NONE of it runs in a shipped
+  // app. They keep dedicated suites (`reactive-devtools.test.ts`, `lpih.test.ts`
+  // — ~86-91% branch) but their residual tail is cross-engine stack parsing
+  // (JSC/SpiderMonkey forms V8 never emits; `Number.isFinite`-false arms behind
+  // a `\d+` regex that can't produce a non-finite) + Node-absent globals
+  // (`process.pid` / `performance` undefined). Those are un-exercisable under
+  // V8/Node without mocking the runtime (which tests the mock). They're
+  // excluded from the PRODUCTION coverage gate — same precedent as the
+  // devtools panel — so the gate measures the code that actually ships.
+  coverageExclude: ['src/reactive-devtools.ts', 'src/lpih.ts'],
+  coverageThresholds: { statements: 98, lines: 99, branches: 98 },
 })

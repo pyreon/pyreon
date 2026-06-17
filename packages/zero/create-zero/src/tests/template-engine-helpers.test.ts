@@ -5,7 +5,25 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { pathExists } from '../template-engine'
+import { pathExists, substitute } from '../template-engine'
+
+describe('template-engine — substitute', () => {
+  it('replaces a known {{key}} with its value', () => {
+    expect(substitute('hi {{name}}', { name: 'world' })).toBe('hi world')
+  })
+
+  it('keeps an unknown {{key}} verbatim (the value === undefined branch)', () => {
+    // user-source template literals like `${count}` and unmapped {{x}} must
+    // pass through untouched — this is the `value === undefined ? full` path.
+    expect(substitute('keep {{unknown}} as-is', { name: 'world' })).toBe(
+      'keep {{unknown}} as-is',
+    )
+  })
+
+  it('substitutes multiple placeholders in one pass', () => {
+    expect(substitute('{{a}}-{{b}}-{{a}}', { a: '1', b: '2' })).toBe('1-2-1')
+  })
+})
 
 describe('template-engine — pathExists helper', () => {
   let tmp: string

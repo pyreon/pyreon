@@ -63,7 +63,11 @@ const BASE_STYLE: Record<string, string> = {
  */
 export const Button = (props: ButtonProps): VNode => {
   const variant = props.variant ?? 'primary'
-  const variantStyle = VARIANT_STYLES[variant] ?? VARIANT_STYLES.primary ?? {}
+  // `primary` is a statically-defined key, so the fallback is always
+  // defined — the assertion documents that (the codebase's sanctioned
+  // pattern for provably-safe paths) and avoids an uncoverable `?? {}`.
+  const variantStyle =
+    VARIANT_STYLES[variant] ?? (VARIANT_STYLES.primary as Record<string, string>)
   const style: Record<string, string> = {
     ...BASE_STYLE,
     ...variantStyle,

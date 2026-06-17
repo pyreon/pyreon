@@ -85,6 +85,10 @@ const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
 const _contextAls = new AsyncLocalStorage<Map<symbol, unknown>[]>()
 const _fallbackStack: Map<symbol, unknown>[] = []
 
+// `?? _fallbackStack` only fires when the provider is called with no active ALS
+// run (a bare `provide()` at module scope, outside any render) — defensive; all
+// render paths run inside `_contextAls.run(...)`.
+/* v8 ignore next */
 setContextStackProvider(() => _contextAls.getStore() ?? _fallbackStack)
 
 // ─── Store isolation (optional) ───────────────────────────────────────────────
@@ -519,7 +523,10 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   await streamNode(fallback ?? null, enqueue)
   mainEnqueue('</div>')
 
-  // Capture the context store for the async resolution so it inherits context
+  // Capture the context store for the async resolution so it inherits context.
+  // `?? []` is defensive — the streaming pipeline always runs inside an active
+  // `_contextAls` run, so `getStore()` is defined here.
+  /* v8 ignore next */
   const ctxStore = _contextAls.getStore() ?? []
 
   // Queue async resolution — runs in parallel, emits to main stream when done.
@@ -682,7 +689,11 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
     // Defensive: `each` is normally `_rp(() => arr)` (a function).
     // `makeReactiveProps` in `mergeChildrenIntoProps` invokes `_rp` getters
     // when the For COMPONENT runs, which flips `props.each` to the resolved
-    // array on the re-emitted ForSymbol vnode. Accept both forms.
+    // array on the re-emitted ForSymbol vnode. Accept both forms. The
+    // function arm is defensive — the For component resolves `each` to an
+    // array before re-emitting the ForSymbol vnode this path renders, so a
+    // function `each` is never observed here in practice.
+    /* v8 ignore next */
     const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
     const arr = Array.isArray(items) ? (items as unknown[]) : [...items]
     return renderForItems(arr, by, children, 0, '<!--pyreon-for-->')

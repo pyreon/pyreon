@@ -43,13 +43,14 @@ export class Cell<T> {
     if (!this._l && !this._s) {
       this._l = listener
     } else {
-      // Promote to Set
+      // Promote to Set. We're in the `else` (so `_l` or `_s` is set); when
+      // `_s` is still null, a single listener must exist in `_l` — move it
+      // into the Set. The assertion documents that invariant (the `_l` here
+      // can never be null) and avoids an uncoverable branch.
       if (!this._s) {
         this._s = new Set()
-        if (this._l) {
-          this._s.add(this._l)
-          this._l = null
-        }
+        this._s.add(this._l as () => void)
+        this._l = null
       }
       this._s.add(listener)
     }

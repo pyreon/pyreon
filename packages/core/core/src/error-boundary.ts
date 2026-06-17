@@ -76,6 +76,11 @@ export function ErrorBoundary(props: {
 
   return (): VNodeChildAtom => {
     const err = error()
+    // The error signal is set only by `handler`, fired from mountComponent's
+    // catch during a child mount — so the fallback branch is reachable only
+    // under a renderer (exercised by @pyreon/runtime-dom's ErrorBoundary mount
+    // tests), never from a bare node-side `ErrorBoundary()` call.
+    /* v8 ignore next */
     if (err != null) return props.fallback(err, reset) as VNodeChildAtom
     const ch = props.children
     return (typeof ch === 'function' ? ch() : ch) as VNodeChildAtom

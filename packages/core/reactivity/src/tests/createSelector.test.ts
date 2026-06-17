@@ -433,6 +433,34 @@ describe('createSelector.bind — effect-free per-key fast path', () => {
     expect(callsB).toEqual([false, true])
   })
 
+  it('a THIRD subscriber on the same key is added to the existing Set (no re-promote)', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const c1: boolean[] = []
+    const c2: boolean[] = []
+    const c3: boolean[] = []
+    isSelected.subscribe('k', (m) => c1.push(m)) // bare
+    isSelected.subscribe('k', (m) => c2.push(m)) // promote → Set
+    isSelected.subscribe('k', (m) => c3.push(m)) // existing.add (the 3rd path)
+    selected.set('k')
+    // All three fire on selection — proves the 3rd was added to the live Set.
+    expect(c1).toEqual([false, true])
+    expect(c2).toEqual([false, true])
+    expect(c3).toEqual([false, true])
+  })
+
+  it('a multi-subscriber key fires every subscriber with false when selection LEAVES it', () => {
+    const selected = signal<string | null>('k') // 'k' selected to start
+    const isSelected = createSelector(selected)
+    const c1: boolean[] = []
+    const c2: boolean[] = []
+    isSelected.subscribe('k', (m) => c1.push(m)) // initial true
+    isSelected.subscribe('k', (m) => c2.push(m)) // initial true (Set of 2)
+    selected.set('other') // selection leaves 'k' → the Set bucket fires false
+    expect(c1).toEqual([true, false])
+    expect(c2).toEqual([true, false])
+  })
+
   it('interop — .bind subscribers coexist with selector() inside effect', () => {
     const selected = signal<string | null>(null)
     const isSelected = createSelector(selected)
