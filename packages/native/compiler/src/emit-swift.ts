@@ -1783,6 +1783,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // parser) — Swift's nullish value is `nil`; the previous
       // String(e.value) fallthrough emitted the invalid token `null`.
       if (e.value === null) return 'nil'
+      // `float: true` forces an integer-valued literal to Double (`0` →
+      // `0.0`) — set by the reduce-seed refinement so the seed matches a
+      // Double accumulation. A genuinely-fractional value already renders
+      // with its decimal (`12.5`), so only integer values need the `.0`.
+      if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
+        return `${e.value}.0`
+      }
       return String(e.value)
     case 'identifier':
       return swiftIdent(e.name)

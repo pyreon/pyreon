@@ -1626,6 +1626,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // parser) — Kotlin's nullish value IS spelled `null`; explicit
       // so the Swift-side `nil` divergence is visible here.
       if (e.value === null) return 'null'
+      // `float: true` forces an integer-valued literal to Double (`0` →
+      // `0.0`) — set by the reduce-seed refinement so a `fold(0.0, …)`
+      // seed matches a Double accumulation. A genuinely-fractional value
+      // already renders with its decimal (`12.5`).
+      if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
+        return `${e.value}.0`
+      }
       return String(e.value)
     case 'identifier':
       return kotlinIdent(e.name)

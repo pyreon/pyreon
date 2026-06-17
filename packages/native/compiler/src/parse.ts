@@ -5,6 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { parseSync } from 'oxc-parser'
+import { buildInferenceCtx, inferType, type InferenceCtx } from './infer-type'
 import type {
   AttrIR,
   ChildIR,
@@ -186,6 +187,12 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // fractional literal to that field — additive (only ever flips
   // number→float, never the reverse, so integer structs are untouched).
   refineStructFloatsFromInitializers(structs, components)
+
+  // Double-type follow-up: a `reduce` over a Double column lowers to an
+  // Int `0` seed, which swiftc/kotlinc reject against Double accumulation.
+  // Flag the seed literal Double when the reducer accumulates a fractional
+  // field — additive (only flips an integer seed when proven Double).
+  refineReduceSeedFloats(components, structs, stores)
 
   return {
     components,
@@ -1759,6 +1766,167 @@ function refineStructFloatsFromInitializers(
           }
         }
       }
+    }
+  }
+}
+
+/**
+ * Pre-order walk over every ExprIR node reachable from `e` (descending
+ * into JSX attrs + children, arrow bodies, call args, object fields,
+ * etc.). `visit` runs on each node before its children, so a nested
+ * reduce inside a reducer body is still reached. Exhaustive over the
+ * ExprIR union.
+ */
+function forEachExpr(e: ExprIR, visit: (n: ExprIR) => void): void {
+  visit(e)
+  switch (e.kind) {
+    case 'literal':
+    case 'identifier':
+      return
+    case 'call':
+      forEachExpr(e.callee, visit)
+      for (const a of e.args) forEachExpr(a, visit)
+      return
+    case 'member':
+      forEachExpr(e.object, visit)
+      return
+    case 'index':
+      forEachExpr(e.object, visit)
+      forEachExpr(e.index, visit)
+      return
+    case 'binary':
+    case 'comparison':
+    case 'logical':
+      forEachExpr(e.left, visit)
+      forEachExpr(e.right, visit)
+      return
+    case 'unary':
+    case 'update':
+      forEachExpr(e.argument, visit)
+      return
+    case 'ternary':
+      forEachExpr(e.cond, visit)
+      forEachExpr(e.then, visit)
+      forEachExpr(e.otherwise, visit)
+      return
+    case 'arrow':
+      forEachExpr(e.body, visit)
+      return
+    case 'rx-call':
+      forEachExpr(e.source, visit)
+      for (const a of e.args) forEachExpr(a, visit)
+      return
+    case 'jsx-element':
+      for (const a of e.attrs) {
+        if (a.kind === 'attr') forEachExpr(a.value, visit)
+        else forEachExpr(a.handler, visit)
+      }
+      for (const ch of e.children) if (ch.kind === 'expr') forEachExpr(ch.expr, visit)
+      return
+    case 'jsx-fragment':
+      for (const ch of e.children) if (ch.kind === 'expr') forEachExpr(ch.expr, visit)
+      return
+    case 'array':
+      for (const el of e.elements) forEachExpr(el, visit)
+      return
+    case 'object':
+      for (const f of e.fields) forEachExpr(f.value, visit)
+      if (e.spreads) for (const s of e.spreads) forEachExpr(s, visit)
+      return
+    case 'paren':
+      forEachExpr(e.inner, visit)
+      return
+    case 'spread':
+      forEachExpr(e.argument, visit)
+      return
+  }
+}
+
+/**
+ * Double-type follow-up — refine a `reduce` SEED literal to Double when
+ * the reducer accumulates a Double column. JS `arr.reduce((s, m) => s +
+ * m.growth, 0)` lowers to an Int `0` seed, but a Double accumulation needs
+ * a Double seed (`reduce(0.0, …)` on Swift / `fold(0.0, …)` on Kotlin) or
+ * the compiler rejects the mixed Int + Double arithmetic.
+ *
+ * The reducer's element param (`m`) has no declared type in the IR — the
+ * framework binds it per-row — so the inferencer can't see `m.growth`'s
+ * type on its own. We bind the param locally to the source's element
+ * struct, infer the accumulator body, and when it's fractional flag the
+ * integer seed literal `float` so the literal emit renders `0.0`.
+ *
+ * Strictly ADDITIVE: only ever sets `float: true` on an integer seed whose
+ * accumulation is PROVEN Double, so integer reduces are untouched (zero
+ * regression). Covers the array-method form (`xs.reduce(cb, 0)`) and the
+ * rx-namespace form (`rx.reduce(xs, cb, 0)` → rx-call) — both carry
+ * (reducer, seed) args. v1 walks the JSX return expression + single-
+ * expression decls; reductions inside multi-statement bodies are a later
+ * slice.
+ */
+function refineReduceSeedFloats(
+  components: ComponentIR[],
+  structs: StructIR[],
+  storeDefs: StoreDefnIR[],
+): void {
+  if (structs.length === 0) return
+  const structObjectType = (name: string): TypeIR | undefined => {
+    const s = structs.find((x) => x.name === name)
+    return s === undefined ? undefined : { kind: 'object', fields: s.fields }
+  }
+  for (const c of components) {
+    const ctx = buildInferenceCtx(c.decls, storeDefs)
+    const visit = (e: ExprIR): void => {
+      // Match BOTH the array-method reduce (`xs.reduce(cb, seed)`) and the
+      // rx-namespace reduce (`rx.reduce(xs, cb, seed)` → rx-call). Each
+      // carries a source + args [reducer, seed].
+      let source: ExprIR | undefined
+      let reducer: ExprIR | undefined
+      let seed: ExprIR | undefined
+      if (
+        e.kind === 'call' &&
+        e.callee.kind === 'member' &&
+        e.callee.property === 'reduce' &&
+        e.args.length === 2
+      ) {
+        source = e.callee.object
+        reducer = e.args[0]
+        seed = e.args[1]
+      } else if (e.kind === 'rx-call' && e.method === 'reduce' && e.args.length === 2) {
+        source = e.source
+        reducer = e.args[0]
+        seed = e.args[1]
+      }
+      if (
+        source === undefined ||
+        reducer === undefined ||
+        seed === undefined ||
+        reducer.kind !== 'arrow' ||
+        reducer.params.length < 2 ||
+        seed.kind !== 'literal' ||
+        typeof seed.value !== 'number' ||
+        !Number.isInteger(seed.value) ||
+        seed.float === true
+      ) {
+        return
+      }
+      // Resolve the source's element struct, bind the reducer's element
+      // param (2nd) to it, and infer the accumulator body.
+      const srcType = inferType(source, ctx)
+      const elemName =
+        srcType.kind === 'array' && srcType.element.kind === 'typeRef'
+          ? srcType.element.name
+          : undefined
+      const elemType = elemName === undefined ? undefined : structObjectType(elemName)
+      if (elemType === undefined) return
+      const reduceCtx: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+      reduceCtx.locals.set(reducer.params[1]!, elemType)
+      const acc = inferType(reducer.body, reduceCtx)
+      if (acc.kind === 'number' && acc.float === true) seed.float = true
+    }
+    forEachExpr(c.returnExpr, visit)
+    for (const d of c.decls) {
+      if (d.kind === 'signal') forEachExpr(d.initial, visit)
+      else if (d.kind === 'computed' && d.expr !== undefined) forEachExpr(d.expr, visit)
     }
   }
 }
