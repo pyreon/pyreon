@@ -28,6 +28,8 @@ import {
   Layer,
   Link,
   Modal,
+  NativeAndroid,
+  NativeIOS,
   Press,
   resetPrimitivesConfig,
   Scroll,
@@ -35,6 +37,7 @@ import {
   Stack,
   Text,
   Toggle,
+  Web,
 } from '../index'
 
 function mountTest(vnode: ReturnType<typeof h>): {
@@ -1306,6 +1309,48 @@ describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () =>
     expect(root.style.color).toBe('blue')
     // Primitive's computed gap survives (string append).
     expect(root.style.gap).toBe('8px')
+    unmount()
+  })
+})
+
+describe('escape-hatch primitives — web runtime', () => {
+  it('<Web> renders its children on the web target', () => {
+    const { container, unmount } = mountTest(h(Web, null, h('span', null, 'web-chart')))
+    expect(container.textContent).toContain('web-chart')
+    unmount()
+  })
+
+  it('<NativeIOS> renders NOTHING on web (its children are the iOS branch)', () => {
+    const { container, unmount } = mountTest(
+      h(NativeIOS, null, h('span', null, 'ios-only')),
+    )
+    expect(container.textContent).not.toContain('ios-only')
+    unmount()
+  })
+
+  it('<NativeAndroid> renders NOTHING on web (its children are the Android branch)', () => {
+    const { container, unmount } = mountTest(
+      h(NativeAndroid, null, h('span', null, 'android-only')),
+    )
+    expect(container.textContent).not.toContain('android-only')
+    unmount()
+  })
+
+  it('mixed: only the <Web> branch renders on web; native branches are dropped', () => {
+    const { container, unmount } = mountTest(
+      h(
+        Stack,
+        null,
+        h('span', null, 'shared'),
+        h(Web, null, h('span', null, 'web-branch')),
+        h(NativeIOS, null, h('span', null, 'ios-branch')),
+        h(NativeAndroid, null, h('span', null, 'android-branch')),
+      ),
+    )
+    expect(container.textContent).toContain('shared')
+    expect(container.textContent).toContain('web-branch')
+    expect(container.textContent).not.toContain('ios-branch')
+    expect(container.textContent).not.toContain('android-branch')
     unmount()
   })
 })
