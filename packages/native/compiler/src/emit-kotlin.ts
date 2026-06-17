@@ -1843,6 +1843,29 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}.fold(${argExprs[1]!}, ${argExprs[0]!})`
             }
             break
+          case 'toFixed': {
+            // JS `n.toFixed(d)` → Kotlin `"%.<d>f".format(n)` (the
+            // analytical currency/percent format; `String.format` is
+            // a kotlin.text stdlib extension — no import needed). v1:
+            // literal digit count (or 0-arg default 0) — a dynamic count
+            // falls through to the generic emit.
+            const digits =
+              e.args.length === 0
+                ? '0'
+                : e.args[0]!.kind === 'literal' && typeof e.args[0]!.value === 'number'
+                  ? String(e.args[0]!.value)
+                  : null
+            if (digits !== null) {
+              return `"%.${digits}f".format(${obj})`
+            }
+            break
+          }
+          case 'toUpperCase':
+            if (e.args.length === 0) return `${obj}.uppercase()`
+            break
+          case 'toLowerCase':
+            if (e.args.length === 0) return `${obj}.lowercase()`
+            break
         }
       }
       const callee = emitKotlinExpr(e.callee, indent)

@@ -204,6 +204,7 @@ function importHeader(target: TargetLanguage): string {
   if (target === 'swift') {
     return [
       'import SwiftUI',
+      'import Foundation', // String(format:) for toFixed, NumberFormatter, etc.
       'import PyreonRuntime',
       'import PyreonRouter',
       '',
