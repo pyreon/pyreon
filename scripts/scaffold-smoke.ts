@@ -163,6 +163,29 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // app + vercel + FULL FEATURE PRESET — scaffolds + installs + builds the
+  // ENTIRE 22-feature set. This is the cell that would have caught the 0.33.0
+  // crash: the `full` preset includes `state-tree` + `coolgrid`, whose
+  // FEATURE_CATEGORIES↔FEATURES drift crashed both `--preset full` and the
+  // interactive "Custom" picker (fix: PR #1588). The other cells use default
+  // feature sets and never exercised the full install+build, so the bug
+  // shipped. A real install of all feature deps (echarts, codemirror, elkjs,
+  // pdfmake, …) + build proves the heaviest scaffold actually works.
+  {
+    name: 'cpa-smoke-app-full-preset',
+    template: 'app',
+    adapter: 'vercel',
+    preset: 'full',
+    smoke: (dir) => {
+      assertDirNonEmpty(join(dir, 'dist'))
+      const pkg = join(dir, 'package.json')
+      // The two keys whose drift crashed the scaffolder must resolve to a
+      // published range (a regression re-introducing the drift fails here).
+      assertFileContains(pkg, '@pyreon/state-tree')
+      assertFileContains(pkg, '@pyreon/coolgrid')
+    },
+  },
+
   // blog + cloudflare — exercises the SSG-forced template AND the
   // wrangler.toml + _routes.json deploy-artefact pair. Both blog content
   // (TSX posts via import.meta.glob) and cloudflare's dual-file deploy
