@@ -1878,6 +1878,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'toLowerCase':
             if (e.args.length === 0) return `${obj}.lowercase()`
             break
+          case 'sort': {
+            // JS `arr.sort((a,b) => <numeric>)` → Kotlin
+            // `sortedWith(Comparator { a, b -> <numeric> })`. Kotlin's
+            // `sort` mutates in place and has no lambda overload;
+            // `sortedWith` returns a new list and the Comparator lambda
+            // returns the JS comparator's Int directly (negative if a
+            // should come first — same convention). v1: a 2-param arrow
+            // comparator with an expression body; else falls through.
+            const cmp = e.args[0]
+            if (e.args.length === 1 && cmp!.kind === 'arrow' && cmp!.params.length === 2) {
+              const ps = cmp!.params.map((p) => kotlinIdent(p)).join(', ')
+              return `${obj}.sortedWith(Comparator { ${ps} -> ${emitKotlinExpr(cmp!.body, indent)} })`
+            }
+            break
+          }
         }
       }
       const callee = emitKotlinExpr(e.callee, indent)
