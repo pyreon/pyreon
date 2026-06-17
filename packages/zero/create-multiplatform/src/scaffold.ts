@@ -383,6 +383,22 @@ android {
         versionName = "0.0.1"
     }
     buildFeatures { compose = true }
+    // Production release build: R8 minify + shrink (the Play Store path).
+    // The Pyreon Kotlin runtime uses kotlinx-serialization (useFetch /
+    // loader payloads), which ships its OWN R8 keep rules
+    // (META-INF/.../kotlinx-serialization-r8.pro, auto-applied), so the
+    // framework's @Serializable types survive minification with no manual
+    // rules — verified by a real \`gradle assembleRelease\` of a useFetch
+    // app. Add app-specific keep rules to proguard-rules.pro.
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -429,6 +445,21 @@ tasks.register<Exec>("pyreonCompile") {
     commandLine("bash", "scripts/build-android.sh")
 }
 tasks.named("preBuild") { dependsOn("pyreonCompile") }
+`,
+  )
+  add(
+    'android/app/proguard-rules.pro',
+    `# R8 / ProGuard rules for the release build.
+#
+# The Pyreon Kotlin runtime needs NO manual rules — its only
+# reflection-sensitive dependency is kotlinx-serialization (useFetch /
+# loader payloads), which ships its own keep rules
+# (META-INF/com.android.tools/r8/kotlinx-serialization-r8.pro) that R8
+# applies automatically. A real \`./gradlew assembleRelease\` with
+# minify enabled builds clean against the runtime out of the box.
+#
+# Add keep rules for YOUR app's own reflection / serialization here, e.g.:
+#   -keep class com.example.${leaf}.model.** { *; }
 `,
   )
   add(
