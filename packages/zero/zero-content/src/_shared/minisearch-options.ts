@@ -19,6 +19,7 @@
 // Locked here so any tuning change ships to both consumers in one
 // edit, and there's exactly one place to point at when explaining
 // the search ranking story.
+import { expandSynonyms } from './synonyms'
 
 export const MINISEARCH_OPTIONS = {
   fields: ['title', 'description', 'headings', 'body'] as string[],
@@ -27,6 +28,12 @@ export const MINISEARCH_OPTIONS = {
     boost: { title: 3, headings: 2, description: 1.5 },
     prefix: true,
     fuzzy: 0.15,
+    // Query-time framework-jargon expansion (see synonyms.ts). This is a
+    // SEARCH option, not an index option, so it never touches the prebuilt
+    // index — `MiniSearch.loadJSON` stays happy, the index stays small, and a
+    // query for "reactive" still finds the "signal" docs. The default
+    // index-time processing (lowercase) is preserved for non-jargon terms.
+    processTerm: expandSynonyms,
   },
 } as const
 
