@@ -140,6 +140,9 @@ describe('PR-A drift locks — single source of truth across modules', () => {
         'url',
         'collection',
         'slug',
+        // `anchors` is stored (not indexed) so the runtime can deep-link a
+        // result to the heading that best matches the query.
+        'anchors',
       ])
       expect(MINISEARCH_OPTIONS.searchOptions.boost).toEqual({
         title: 3,

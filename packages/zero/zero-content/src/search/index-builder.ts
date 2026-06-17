@@ -28,6 +28,22 @@ export interface SearchDoc {
   body: string
   /** Resolved URL for SPA navigation. */
   url: string
+  /**
+   * Heading anchors for query-time deep-linking. Each is the heading's
+   * lowercased text (`t`, for matching against the query's matched terms)
+   * and its `<h*>` slug (`s`, appended as `#s` to the result URL). The
+   * runtime picks the heading that contains the most matched terms so a
+   * result jumps to the exact section — without paying the ~4× index
+   * cost of one document per section. Omitted for pages with no anchors.
+   */
+  anchors?: SearchAnchor[]
+}
+
+export interface SearchAnchor {
+  /** Heading text, lowercased — matched against the query's matched terms. */
+  t: string
+  /** The `<h*>` id / slug — appended as `#s` to the result URL. */
+  s: string
 }
 
 export interface CollectionEntryForIndex {
@@ -38,6 +54,8 @@ export interface CollectionEntryForIndex {
   body: string
   /** URL prefix — defaults to `/<collection>/<slug>` if not provided. */
   url?: string
+  /** Heading anchors for query-time deep-linking (see `SearchDoc.anchors`). */
+  anchors?: SearchAnchor[]
 }
 
 export interface BuildIndexArgs {
@@ -113,6 +131,8 @@ export function makeSearchDoc(
     url: entry.url ?? `/${collection}/${entry.slug}`,
   }
   if (entry.description !== undefined) doc.description = entry.description
+  if (entry.anchors !== undefined && entry.anchors.length > 0)
+    doc.anchors = entry.anchors
   return doc
 }
 
