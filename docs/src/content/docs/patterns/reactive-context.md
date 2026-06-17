@@ -44,7 +44,7 @@ provide(ModeCtx, () => mode())
 function ThemedPanel() {
   const getMode = useContext(ModeCtx)
   // Inside reactive scopes (JSX expressions, effects, computeds):
-  return <div class={() => (getMode() === 'dark' ? 'dark-theme' : 'light-theme')}>...</div>
+  return <div class={getMode() === 'dark' ? 'dark-theme' : 'light-theme'}>...</div>
 }
 ```
 

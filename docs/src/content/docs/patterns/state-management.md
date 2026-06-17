@@ -116,7 +116,7 @@ const initial = items()   // captures initial value, not reactive
 
 // Correct — keep the store reference, call inside reactive scopes:
 const cart = useCartStore()
-return <div>{() => cart.items().length}</div>
+return <div>{cart.items().length}</div>
 ```
 
 ## Related

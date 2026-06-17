@@ -45,7 +45,7 @@ export default function EffectsLog() {
       </div>
       <div class="example-card">
         <div class="example-muted">effect log (last 6):</div>
-        <pre class="example-log">{() => log().join('\n')}</pre>
+        <pre class="example-log">{log().join('\n')}</pre>
       </div>
     </div>
   )

@@ -205,7 +205,7 @@ effect(() => { preview.set(\`Hello \${email()}\`) })`,
         'Omitting the selector and reading `useFormState(form)` as a whole — triggers on every field change, every validation, every submit count bump. Always pass a selector for UI-bound computeds',
       ],
       example: `const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.isDirty)
-<button disabled={() => !canSubmit()}>Save</button>`,
+<button disabled={!canSubmit()}>Save</button>`,
       seeAlso: ['useForm', 'useWatch'],
     },
     {

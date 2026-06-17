@@ -133,7 +133,7 @@ const Timer = () => {
     const id = setInterval(() => count.update(n => n + 1), 1000)
     return () => clearInterval(id)  // cleanup runs on unmount
   })
-  return <div>{() => count()}</div>
+  return <div>{count()}</div>
 }
 
 // Control flow — reactive conditional rendering
@@ -712,7 +712,7 @@ const MyList = () => {
             <div
               style={() => `position: absolute; top: ${item.start}px; height: ${item.size}px; width: 100%`}
             >
-              {() => items()[item.index].label}
+              {items()[item.index].label}
             </div>
           )}
         </For>
@@ -733,7 +733,7 @@ const WindowList = () => {
       <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
         {(item) => (
           <div style={() => `position: absolute; top: ${item.start}px; height: ${item.size}px`}>
-            {() => items()[item.index].label}
+            {items()[item.index].label}
           </div>
         )}
       </For>
@@ -914,7 +914,7 @@ const ListPage = () => {
 // Single item query
 const DetailPage = (props: { id: string }) => {
   const { data } = Posts.useById(props.id)
-  return <div>{() => data()?.title}</div>
+  return <div>{data()?.title}</div>
 }
 
 // Search with debounce (via @pyreon/query)
@@ -928,7 +928,7 @@ const SearchPage = () => {
 const CreateForm = () => {
   const { mutate, isLoading } = Posts.useCreate()
   return <button onClick={() => mutate({ title: 'New', body: '...', published: false })}>
-    {() => isLoading() ? 'Creating...' : 'Create'}
+    {isLoading() ? 'Creating...' : 'Create'}
   </button>
 }
 
@@ -1524,11 +1524,11 @@ const MyDiagram = () => {
 function CustomNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div
-      class={() => (props.selected() ? 'selected' : '')}
+      class={props.selected() ? 'selected' : ''}
       style={() => `cursor: ${props.dragging() ? 'grabbing' : 'grab'}`}
     >
       <Handle type="target" position={Position.Left} />
-      {() => props.data().label}
+      {props.data().label}
       <Handle type="source" position={Position.Right} />
     </div>
   )
@@ -1635,7 +1635,7 @@ function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange
     defaultValue: () => props.defaultChecked ?? false,
     onChange: props.onChange,
   })
-  return <button onClick={() => setChecked(!checked())}>{() => checked() ? 'on' : 'off'}</button>
+  return <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
 }
 
 // 2. DOM listeners — auto-cleanup on unmount.
@@ -1736,7 +1736,7 @@ const Page = () => {
   const { t, locale } = useI18n()
   return (
     <div>
-      {() => t('greeting', { name: 'User' })}
+      {t('greeting', { name: 'User' })}
       <Trans key="rich" components={{ bold: <strong /> }}>
         This has <bold>rich text</bold> inside.
       </Trans>
@@ -1796,7 +1796,7 @@ const MyChart = () => {
 
   return (
     <div>
-      {() => chart.loading() ? 'Loading chart...' : null}
+      {chart.loading() ? 'Loading chart...' : null}
       <div ref={chart.ref} style="height: 400px" />
       <button onClick={() => chart.resize()}>Resize</button>
     </div>
@@ -2005,7 +2005,7 @@ A local-first / collaborative sync layer for Pyreon. A synced value is a normal 
 
 ```typescript
 const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
-// <h1>{() => title()}</h1>  — patches in place when any peer edits the title
+// <h1>{title()}</h1>  — patches in place when any peer edits the title
 title()              // "Untitled"  (reactive read)
 title.set("Roadmap") // writes the CRDT; the observer drives the DOM update
 title.dispose()      // detach observer (auto on onCleanup inside a scope)
@@ -2045,7 +2045,7 @@ const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
 connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")
 
 const body = syncedText(doc, "body")
-// <textarea value={() => body()} onInput={e => body.set(e.currentTarget.value)} />
+// <textarea value={body()} onInput={e => body.set(e.currentTarget.value)} />
 body.insert(0, "Hello ")  // positional — merges with a concurrent peer edit
 body.delete(0, 6)
 
@@ -2586,8 +2586,8 @@ function ResumeTemplate(props: { resume: () => Resume }) {
     >
       <DocPage>
         <DocSection>
-          <DocHeading level="h1">{() => props.resume().name}</DocHeading>
-          <DocText>{() => props.resume().headline}</DocText>
+          <DocHeading level="h1">{props.resume().name}</DocHeading>
+          <DocText>{props.resume().headline}</DocText>
         </DocSection>
       </DocPage>
     </DocDocument>

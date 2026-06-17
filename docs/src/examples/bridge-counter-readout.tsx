@@ -24,13 +24,13 @@ export default function BridgeCounterReadout(props: {
       </div>
       <div class="example-card">
         <div>
-          shared value: <strong>{() => String(count())}</strong>
+          shared value: <strong>{String(count())}</strong>
         </div>
         <div>
-          doubled (computed): <strong>{() => String(doubled())}</strong>
+          doubled (computed): <strong>{String(doubled())}</strong>
         </div>
         <div>
-          parity (computed): <strong>{() => parity()}</strong>
+          parity (computed): <strong>{parity()}</strong>
         </div>
       </div>
     </div>

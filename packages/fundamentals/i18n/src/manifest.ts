@@ -53,7 +53,7 @@ const Page = () => {
   const { t, locale } = useI18n()
   return (
     <div>
-      {() => t('greeting', { name: 'User' })}
+      {t('greeting', { name: 'User' })}
       <Trans key="rich" components={{ bold: <strong /> }}>
         This has <bold>rich text</bold> inside.
       </Trans>
@@ -117,7 +117,7 @@ i18n.locale.set('fr')  // switch reactively`,
       summary:
         'Consume the nearest `I18nProvider` value. Returns the same `I18nInstance` with `t`, `locale`, `addMessages`, etc. Only available from the full `@pyreon/i18n` entry.',
       example: `const { t, locale } = useI18n()
-return <div>{() => t('greeting', { name: 'User' })}</div>`,
+return <div>{t('greeting', { name: 'User' })}</div>`,
       seeAlso: ['I18nProvider', 'createI18n'],
     },
     {

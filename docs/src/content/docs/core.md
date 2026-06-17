@@ -103,7 +103,7 @@ const SearchBox = defineComponent((props: { placeholder: string }) => {
     <input
       ref={inputRef}
       placeholder={props.placeholder}
-      value={() => query()}
+      value={query()}
       onInput={(e) => query.set(e.currentTarget.value)}
     />
     <ul>{() => results().map((r) => <li>{r}</li>)}</ul>
@@ -284,7 +284,7 @@ import { h, Fragment } from '@pyreon/core'
 <div class="container" id="main">Content</div>
 
 // Element with reactive props
-<div class={() => isActive() ? "active" : "inactive"} />
+<div class={isActive() ? "active" : "inactive"} />
 
 // Element with event handlers
 <button onClick={() => count.update(n => n + 1)}>Click me</button>
@@ -443,16 +443,16 @@ Pyreon provides comprehensive JSX type definitions for all standard HTML and SVG
 
 ```tsx
 // Reactive class
-<div class={() => isActive() ? "active" : ""}>
+<div class={isActive() ? "active" : ""}>
 
 // Reactive style (object or string)
 <div style={() => ({ color: theme().primary })}>
 
 // Reactive input value
-<input value={() => query()} onInput={(e) => setQuery(e.target.value)} />
+<input value={query()} onInput={(e) => setQuery(e.target.value)} />
 
 // Reactive disabled state
-<button disabled={() => isLoading()}>Submit</button>
+<button disabled={isLoading()}>Submit</button>
 ```
 
 ## Lifecycle Hooks
@@ -1191,7 +1191,7 @@ function UserList() {
       <For each={() => users()} by={(u) => u.id}>
         {(user) => (
           <div
-            class={() => (selectedId() === user.id ? 'user selected' : 'user')}
+            class={selectedId() === user.id ? 'user selected' : 'user'}
             onClick={() => selectedId.set(user.id)}
           >
             <img src={user.avatar} alt={user.name} />
@@ -1683,7 +1683,7 @@ import { mergeProps } from '@pyreon/core'
 function Button(props: { size?: 'sm' | 'md' | 'lg'; variant?: string }) {
   const merged = mergeProps({ size: 'md', variant: 'primary' }, props)
 
-  return <button class={() => `btn-${merged.size} btn-${merged.variant}`}>{merged.children}</button>
+  return <button class={`btn-${merged.size} btn-${merged.variant}`}>{merged.children}</button>
 }
 ```
 
@@ -1851,7 +1851,7 @@ const ContactForm = defineComponent(() => {
         <div>
           <label>Name</label>
           <input
-            value={() => name().value}
+            value={name().value}
             onInput={(e) => updateField(name, 'name', e.currentTarget.value)}
           />
           <Show when={() => name().touched && name().error}>
@@ -1862,7 +1862,7 @@ const ContactForm = defineComponent(() => {
           <label>Email</label>
           <input
             type="email"
-            value={() => email().value}
+            value={email().value}
             onInput={(e) => updateField(email, 'email', e.currentTarget.value)}
           />
           <Show when={() => email().touched && email().error}>
@@ -1872,15 +1872,15 @@ const ContactForm = defineComponent(() => {
         <div>
           <label>Message</label>
           <textarea
-            value={() => message().value}
+            value={message().value}
             onInput={(e) => updateField(message, 'message', e.currentTarget.value)}
           />
           <Show when={() => message().touched && message().error}>
             <span class="error">{message().error}</span>
           </Show>
         </div>
-        <button type="submit" disabled={() => !isValid() || submitting()}>
-          {() => (submitting() ? 'Sending...' : 'Send')}
+        <button type="submit" disabled={!isValid() || submitting()}>
+          {submitting() ? 'Sending...' : 'Send'}
         </button>
       </form>
     </Show>
@@ -1939,7 +1939,7 @@ const Tabs = defineComponent(
           {props.tabs.map((tab) => (
             <button
               role="tab"
-              class={() => (activeTab() === tab.id ? 'tab active' : 'tab')}
+              class={activeTab() === tab.id ? 'tab active' : 'tab'}
               aria-selected={() => activeTab() === tab.id}
               onClick={() => activeTab.set(tab.id)}
             >
@@ -1993,7 +1993,7 @@ const Accordion = defineComponent(
               aria-expanded={() => openItems().has(item.id)}
             >
               {item.title}
-              <span class={() => (openItems().has(item.id) ? 'icon open' : 'icon')}>&#9660;</span>
+              <span class={openItems().has(item.id) ? 'icon open' : 'icon'}>&#9660;</span>
             </button>
             <Show when={() => openItems().has(item.id)}>
               <div class="accordion-body">{item.content}</div>

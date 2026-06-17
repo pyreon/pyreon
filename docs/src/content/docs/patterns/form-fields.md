@@ -78,7 +78,7 @@ function EmailInput() {
 // FIX — keep the field object, call signals inside reactive scopes
 function EmailInput() {
   const f = useField('email')
-  return <input value={() => f.value()} onInput={(e) => f.value.set(e.currentTarget.value)} />
+  return <input value={f.value()} onInput={(e) => f.value.set(e.currentTarget.value)} />
 }
 ```
 

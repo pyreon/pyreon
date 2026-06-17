@@ -62,7 +62,7 @@ describe('gen-docs — i18n snapshot', () => {
         const { t, locale } = useI18n()
         return (
           <div>
-            {() => t('greeting', { name: 'User' })}
+            {t('greeting', { name: 'User' })}
             <Trans key="rich" components={{ bold: <strong /> }}>
               This has <bold>rich text</bold> inside.
             </Trans>

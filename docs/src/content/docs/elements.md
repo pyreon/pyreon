@@ -471,7 +471,7 @@ function UserName(props: { user: { displayName: string } }) {
   role="status"
   aria-live="polite"
   class="status-text"
->{() => statusMessage()}</Text>
+>{statusMessage()}</Text>
 ```
 
 ---
@@ -801,7 +801,7 @@ import { h } from '@pyreon/core'
 <Overlay
 trigger={({ toggle, isOpen }) =>
   <button onClick={toggle}>
-    {() => isOpen() ? 'Close' : 'Open'}
+    {isOpen() ? 'Close' : 'Open'}
   </button>
 }
 content={({ close }) =>
@@ -854,7 +854,7 @@ return (
       <Element
         tag="button"
         onClick={toggle}
-        afterContent={<span>{() => isOpen() ? '\u25B2' : '\u25BC'}</span>}
+        afterContent={<span>{isOpen() ? '\u25B2' : '\u25BC'}</span>}
         gap={8}
         class="dropdown-trigger"
         aria-expanded={() => String(isOpen())}

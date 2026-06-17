@@ -50,7 +50,7 @@ describe('gen-docs — hooks snapshot', () => {
           defaultValue: () => props.defaultChecked ?? false,
           onChange: props.onChange,
         })
-        return <button onClick={() => setChecked(!checked())}>{() => checked() ? 'on' : 'off'}</button>
+        return <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
       }
 
       // 2. DOM listeners — auto-cleanup on unmount.

@@ -980,7 +980,7 @@ function NavItem(props: { to: string; label: string }) {
   const isActive = useIsActive(props.to)
 
   return (
-    <a href={props.to} class={() => (isActive() ? 'nav-item active' : 'nav-item')}>
+    <a href={props.to} class={isActive() ? 'nav-item active' : 'nav-item'}>
       {props.label}
     </a>
   )

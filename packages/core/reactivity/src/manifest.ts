@@ -258,7 +258,7 @@ const isSelected = createSelector(() => selectedId())
 
 // In each row's render — O(1) selection updates regardless of N rows:
 <For each={rows} by={r => r.id}>{row => (
-  <li class={() => (isSelected(row.id) ? 'selected' : '')}>
+  <li class={isSelected(row.id) ? 'selected' : ''}>
     {row.label}
   </li>
 )}</For>`,

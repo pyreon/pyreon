@@ -19,8 +19,8 @@ The compiler transforms JSX expression containers and props so the runtime recei
 | Input                     | Output                       | Reason            |
 | ------------------------- | ---------------------------- | ----------------- |
 | `<div>{expr}</div>`       | `<div>{() => expr}</div>`    | Dynamic child     |
-| `<div class={expr}>`      | `<div class={() => expr}>`   | Dynamic prop      |
-| `<div>{count}</div>` *    | `<div>{() => count()}</div>` | Signal auto-call  |
+| `<div class={expr}>`      | `<div class={expr}>`   | Dynamic prop      |
+| `<div>{count}</div>` *    | `<div>{count()}</div>` | Signal auto-call  |
 | `<button onClick={fn}>`   | unchanged                    | Event handler     |
 | `<div>{() => expr}</div>` | unchanged                    | Already wrapped   |
 | `<div>{"literal"}</div>`  | unchanged                    | Static value      |
@@ -51,8 +51,8 @@ Three canonical reactive shapes auto-promote to effect-free runtime calls (~5 �
 
 | Source                                                          | Default emit                                  | Auto-promoted to                                              |
 | --------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------- |
-| `<tr class={() => sel(k) ? 'a' : 'b'}>` ¹                       | `_bind(() => el.className = sel(k) ? 'a' : 'b')` | `sel.subscribe(k, m => el.className = m ? 'a' : 'b')` |
-| `<td>{() => sel(k) ? 'X' : ''}</td>` ¹                          | `_bind(() => t.data = sel(k) ? 'X' : '')`     | `sel.subscribe(k, m => t.data = m ? 'X' : '')`                |
+| `<tr class={sel(k) ? 'a' : 'b'}>` ¹                       | `_bind(() => el.className = sel(k) ? 'a' : 'b')` | `sel.subscribe(k, m => el.className = m ? 'a' : 'b')` |
+| `<td>{sel(k) ? 'X' : ''}</td>` ¹                          | `_bind(() => t.data = sel(k) ? 'X' : '')`     | `sel.subscribe(k, m => t.data = m ? 'X' : '')`                |
 | `<span>{count().toFixed(2)}</span>` ²                           | `_bind(() => t.data = count().toFixed(2))`    | `_bindDirect(count, v => t.data = v.toFixed(2))`              |
 
 ¹ `sel` must be declared as `const sel = createSelector(...)` at module scope; key and branches must be non-reactive. ² Method must be in the pure-primitive safelist (Number / String / Boolean prototype: `toFixed`, `toUpperCase`, `slice`, `padStart`, etc. — 28 methods); args must be non-reactive.

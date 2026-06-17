@@ -78,11 +78,11 @@ describe('gen-docs — flow snapshot', () => {
       function CustomNode(props: NodeComponentProps<WorkflowData>) {
         return (
           <div
-            class={() => (props.selected() ? 'selected' : '')}
+            class={props.selected() ? 'selected' : ''}
             style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
           >
             <Handle type="target" position={Position.Left} />
-            {() => props.data().label}
+            {props.data().label}
             <Handle type="source" position={Position.Right} />
           </div>
         )

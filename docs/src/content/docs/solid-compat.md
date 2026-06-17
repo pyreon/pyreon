@@ -350,7 +350,7 @@ const appState = createRoot((dispose) => {
 // Use in components
 function Header() {
   return (
-    <header class={() => appState.theme()}>
+    <header class={appState.theme()}>
       <Show when={appState.isLoggedIn} fallback={<LoginButton />}>
         <UserMenu user={appState.user} />
       </Show>
@@ -672,7 +672,7 @@ function SelectableList(props: { items: () => Item[] }) {
       <For each={props.items} by={(item) => item.id}>
         {(item) => (
           <li
-            class={() => (isSelected(item.id) ? 'selected' : '')}
+            class={isSelected(item.id) ? 'selected' : ''}
             onClick={() => setSelectedId(item.id)}
           >
             {item.name}
@@ -715,7 +715,7 @@ function Button(rawProps: {
 
   return (
     <button
-      class={() => `btn btn-${props.variant} btn-${props.size}`}
+      class={`btn btn-${props.variant} btn-${props.size}`}
       disabled={props.disabled}
       onClick={props.onClick}
     >
@@ -1270,7 +1270,7 @@ function TodoApp() {
     <div class="todo-app">
       <form onSubmit={addTodo}>
         <input
-          value={() => input()}
+          value={input()}
           onInput={(e) => setInput((e.target as HTMLInputElement).value)}
           placeholder="What needs to be done?"
         />
@@ -1278,17 +1278,17 @@ function TodoApp() {
       </form>
 
       <div class="filters">
-        <button class={() => (filter() === 'all' ? 'active' : '')} onClick={() => setFilter('all')}>
+        <button class={filter() === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>
           All
         </button>
         <button
-          class={() => (filter() === 'active' ? 'active' : '')}
+          class={filter() === 'active' ? 'active' : ''}
           onClick={() => setFilter('active')}
         >
           Active ({remaining()})
         </button>
         <button
-          class={() => (filter() === 'done' ? 'active' : '')}
+          class={filter() === 'done' ? 'active' : ''}
           onClick={() => setFilter('done')}
         >
           Done
@@ -1343,7 +1343,7 @@ function Settings() {
   return (
     <div>
       <select
-        value={() => theme()}
+        value={theme()}
         onChange={(e) => setTheme((e.target as HTMLSelectElement).value)}
       >
         <option value="light">Light</option>
@@ -1353,7 +1353,7 @@ function Settings() {
         type="range"
         min="12"
         max="24"
-        value={() => fontSize()}
+        value={fontSize()}
         onInput={(e) => setFontSize(Number((e.target as HTMLInputElement).value))}
       />
     </div>
@@ -1388,7 +1388,7 @@ function SearchBox() {
 
   return (
     <input
-      value={() => query()}
+      value={query()}
       onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
       placeholder="Search..."
     />

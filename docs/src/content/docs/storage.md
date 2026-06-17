@@ -250,7 +250,7 @@ const theme = useStorage('theme', themeCookie())
 // Client hydrates with the matching value from localStorage.
 ```
 
-**Reactive bindings** through storage signals are wired through the compiler's `_bindText` fast path, same as base `signal()` and `computed()`. `<strong>{() => theme()}</strong>` patches in place when `theme.set(…)` fires — no re-render, no re-mount. This is the standard contract; not specific to storage. See `@pyreon/runtime-dom` for the binding implementation.
+**Reactive bindings** through storage signals are wired through the compiler's `_bindText` fast path, same as base `signal()` and `computed()`. `<strong>{theme()}</strong>` patches in place when `theme.set(…)` fires — no re-render, no re-mount. This is the standard contract; not specific to storage. See `@pyreon/runtime-dom` for the binding implementation.
 
 ## StorageSignal Type
 

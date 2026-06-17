@@ -47,7 +47,7 @@ describe('gen-docs — feature snapshot', () => {
       // Single item query
       const DetailPage = (props: { id: string }) => {
         const { data } = Posts.useById(props.id)
-        return <div>{() => data()?.title}</div>
+        return <div>{data()?.title}</div>
       }
 
       // Search with debounce (via @pyreon/query)
@@ -61,7 +61,7 @@ describe('gen-docs — feature snapshot', () => {
       const CreateForm = () => {
         const { mutate, isLoading } = Posts.useCreate()
         return <button onClick={() => mutate({ title: 'New', body: '...', published: false })}>
-          {() => isLoading() ? 'Creating...' : 'Create'}
+          {isLoading() ? 'Creating...' : 'Create'}
         </button>
       }
 

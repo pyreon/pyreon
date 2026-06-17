@@ -39,7 +39,7 @@ export default function BridgeCounterButton(props: {
         </button>
       </div>
       <div class="example-card">
-        local view: <strong>{() => String(count())}</strong>
+        local view: <strong>{String(count())}</strong>
       </div>
     </div>
   )

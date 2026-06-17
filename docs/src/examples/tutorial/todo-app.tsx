@@ -63,7 +63,7 @@ export default function TodoApp() {
         <input
           class="example-input"
           placeholder="Add a todo…"
-          value={() => draft()}
+          value={draft()}
           onInput={(e) => draft.set(e.currentTarget.value)}
         />
         <button type="submit" class="example-btn">
@@ -113,7 +113,7 @@ export default function TodoApp() {
             <li class="example-row example-card">
               <input
                 type="checkbox"
-                checked={() => todo.done()}
+                checked={todo.done()}
                 onChange={() => todo.done.update((v) => !v)}
               />
               <span
@@ -140,7 +140,7 @@ export default function TodoApp() {
 
       <div class="example-row" style={{ justifyContent: 'space-between' }}>
         <span class="example-muted">
-          {() => String(remaining())} left
+          {String(remaining())} left
         </span>
         <Show when={hasCompleted}>
           <button type="button" class="example-btn" onClick={clearCompleted}>

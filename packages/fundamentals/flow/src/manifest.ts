@@ -59,11 +59,11 @@ const MyDiagram = () => {
 function CustomNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div
-      class={() => (props.selected() ? 'selected' : '')}
+      class={props.selected() ? 'selected' : ''}
       style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
     >
       <Handle type="target" position={Position.Left} />
-      {() => props.data().label}
+      {props.data().label}
       <Handle type="source" position={Position.Right} />
     </div>
   )
@@ -177,10 +177,10 @@ const MyDiagram = () => {
 function MyNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div
-      class={() => (props.selected() ? 'selected' : '')}
+      class={props.selected() ? 'selected' : ''}
       style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
     >
-      {() => props.data().label}
+      {props.data().label}
     </div>
   )
 }`,
@@ -237,7 +237,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div>
       <Handle type="target" position={Position.Left} />
-      {() => props.data().label}
+      {props.data().label}
       <Handle type="source" position={Position.Right} id="out-primary" />
       <Handle type="source" position={Position.Bottom} id="out-fallback" />
     </div>

@@ -470,7 +470,7 @@ const UpdateTodo = defineComponent((props: { todo: Todo }) => {
     <div class="todo-item">
       <input
         type="checkbox"
-        checked={() => props.todo.completed}
+        checked={props.todo.completed}
         onChange={(e) => {
           mutation.mutate({
             completed: e.currentTarget.checked,
@@ -710,10 +710,10 @@ const PaginatedTable = defineComponent(() => {
         </tbody>
       </table>
       <div class="pagination">
-        <button disabled={() => !query.hasPreviousPage()} onClick={() => query.fetchPreviousPage()}>
+        <button disabled={!query.hasPreviousPage()} onClick={() => query.fetchPreviousPage()}>
           Previous
         </button>
-        <button disabled={() => !query.hasNextPage()} onClick={() => query.fetchNextPage()}>
+        <button disabled={!query.hasNextPage()} onClick={() => query.fetchNextPage()}>
           Next
         </button>
       </div>

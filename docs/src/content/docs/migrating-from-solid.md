@@ -67,7 +67,7 @@ A `<For>` callback's `row` is a runtime item, not reactive props. A bare propert
 ```tsx
 // row.label is a signal -> read it as row.label() to track per-row updates
 <For each={rows} by={r => r.id}>
-  {row => <tr><td>{row.id}</td><td>{() => row.label()}</td></tr>}
+  {row => <tr><td>{row.id}</td><td>{row.label()}</td></tr>}
 </For>
 ```
 

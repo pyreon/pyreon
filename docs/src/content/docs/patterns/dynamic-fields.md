@@ -31,7 +31,7 @@ function TagEditor() {
       <For each={tags.items()} by={(item) => item.key}>
         {(item) => (
           <input
-            value={() => item.value()}
+            value={item.value()}
             onInput={(e) => item.value.set(e.currentTarget.value)}
           />
         )}
@@ -54,7 +54,7 @@ Index-based keys defeat the whole design: moving item 0 to index 2 means every i
 // BROKEN — index-based key scrambles focus on reorder
 const BadList = () => (
   <For each={tags.items()} by={(_, i) => i}>
-    {(item) => <input value={() => item.value()} />}
+    {(item) => <input value={item.value()} />}
   </For>
 )
 ```

@@ -95,7 +95,7 @@ machine() // 'idle'
 
 // Reactive in JSX
 function StatusBadge() {
-  return <span>{() => machine()}</span>
+  return <span>{machine()}</span>
 }
 ```
 

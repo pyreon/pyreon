@@ -159,7 +159,7 @@ const isSelected = createSelector(() => selectedId())
 
 // In each row's render — O(1) selection updates regardless of N rows:
 <For each={rows} by={r => r.id}>{row => (
-  <li class={() => (isSelected(row.id) ? 'selected' : '')}>
+  <li class={isSelected(row.id) ? 'selected' : ''}>
     {row.label}
   </li>
 )}</For>`,
@@ -557,7 +557,7 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
     return () => clearInterval(id)  // cleanup on unmount
   })
 
-  return <div>{() => count()}</div>
+  return <div>{count()}</div>
 }`,
     notes: 'Register a callback that runs after the component mounts into the DOM. The callback can optionally return a cleanup function that runs on unmount — this is the idiomatic pattern for event listeners, timers, and subscriptions. Must be called during component setup (the synchronous function body), not inside effects or async callbacks. See also: onUnmount, onUpdate.',
     mistakes: `- Forgetting cleanup: \`onMount(() => { const id = setInterval(...) })\` leaks the interval. Return cleanup: \`return () => clearInterval(id)\`
@@ -2212,7 +2212,7 @@ effect(() => { preview.set(\`Hello \${email()}\`) })`,
   'form/useFormState': {
     signature: '<TValues, T>(form: FormState<TValues>, selector?: (s: FormStateSummary) => T) => Computed<T>',
     example: `const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.isDirty)
-<button disabled={() => !canSubmit()}>Save</button>`,
+<button disabled={!canSubmit()}>Save</button>`,
     notes: 'Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). Passing a selector restricts the tracked subset — a button driven by `canSubmit` should not re-render just because `submitCount` changed. Without a selector, the computed re-derives on ANY form-level state change. See also: useForm, useWatch.',
     mistakes: '- Omitting the selector and reading `useFormState(form)` as a whole — triggers on every field change, every validation, every submit count bump. Always pass a selector for UI-bound computeds',
   },
@@ -2464,7 +2464,7 @@ hydrate(client, snapshot)`,
     defaultValue: () => props.defaultChecked ?? false,
     onChange: props.onChange,
   })
-  return <button onClick={() => setChecked(!checked())}>{() => checked() ? 'on' : 'off'}</button>
+  return <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
 }`,
     notes: 'Canonical controlled/uncontrolled state pattern. Returns a `[value, setValue]` tuple where the setter respects controlled mode (calls `onChange` only if controlled, mutates internal signal if uncontrolled). Used by every primitive in `@pyreon/ui-primitives`. Never reimplement the `isControlled + signal + getter` shape by hand. `value` and `defaultValue` are FUNCTIONS so signal reads track reactively — passing a plain value loses controlled/uncontrolled detection on prop changes. See also: useToggle, usePrevious.',
     mistakes: `- Passing \`value: props.checked\` (not a function) — loses reactivity on prop changes
@@ -2540,7 +2540,7 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
   'hooks/useClipboard': {
     signature: '(timeoutMs?: number) => { copy: (text: string) => Promise<void>; copied: Signal<boolean> }',
     example: `const { copy, copied } = useClipboard()
-<button onClick={() => copy(token)}>{() => copied() ? 'Copied!' : 'Copy'}</button>`,
+<button onClick={() => copy(token)}>{copied() ? 'Copied!' : 'Copy'}</button>`,
     notes: '`navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `timeoutMs` (default 2000). Use the `copied` signal to flash a "Copied!" UI cue without manual timer management. See also: useDialog, useOnline.',
   },
 
@@ -2564,7 +2564,7 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
     signature: '(onLoadMore: () => void | Promise<void>, opts?: { rootMargin?: string; threshold?: number; enabled?: () => boolean }) => { sentinelRef: (el: HTMLElement | null) => void; isLoading: Signal<boolean> }',
     example: `const { sentinelRef, isLoading } = useInfiniteScroll(loadNextPage, { rootMargin: '200px', enabled: () => hasMore() })
 <For each={items()} by={(i) => i.id}>{(item) => <Row data={item} />}</For>
-<div ref={sentinelRef}>{() => isLoading() && 'Loading…'}</div>`,
+<div ref={sentinelRef}>{isLoading() && 'Loading…'}</div>`,
     notes: `\`IntersectionObserver\`-based infinite loading. Attach the returned \`sentinelRef\` to a node at the bottom of the list — when it scrolls into view, \`onLoadMore\` fires. \`isLoading\` blocks re-fires until the promise resolves. \`enabled\` accessor lets you stop observing once you've loaded the last page. See also: useIntersection.`,
     mistakes: `- Placing the sentinel inside a container with \`overflow: hidden\` and no scroll — IntersectionObserver never fires because the sentinel is always clipped; the sentinel must be inside the scrollable container
 - Forgetting to pass \`enabled: () => hasMore()\` — the hook keeps calling \`onLoadMore\` even after the last page`,
@@ -2790,7 +2790,7 @@ i18n.locale.set('fr')  // switch reactively`,
   'i18n/useI18n': {
     signature: '() => I18nInstance',
     example: `const { t, locale } = useI18n()
-return <div>{() => t('greeting', { name: 'User' })}</div>`,
+return <div>{t('greeting', { name: 'User' })}</div>`,
     notes: 'Consume the nearest `I18nProvider` value. Returns the same `I18nInstance` with `t`, `locale`, `addMessages`, etc. Only available from the full `@pyreon/i18n` entry. See also: I18nProvider, createI18n.',
   },
 
@@ -2940,10 +2940,10 @@ const MyDiagram = () => {
 function MyNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div
-      class={() => (props.selected() ? 'selected' : '')}
+      class={props.selected() ? 'selected' : ''}
       style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
     >
-      {() => props.data().label}
+      {props.data().label}
     </div>
   )
 }`,
@@ -2983,7 +2983,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div>
       <Handle type="target" position={Position.Left} />
-      {() => props.data().label}
+      {props.data().label}
       <Handle type="source" position={Position.Right} id="out-primary" />
       <Handle type="source" position={Position.Bottom} id="out-fallback" />
     </div>
@@ -4377,7 +4377,7 @@ await download(tree, 'report.docx')`,
     notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\\'s \`render()\` to consume. \`DocDocument\`\\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\\'s props directly — every primitive\\'s metadata was silently dropped during export until that fix landed. See also: createDocumentExport.`,
     mistakes: `- Calling \`props.title()\` at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: \`<DocDocument title={() => get().name}>\`
 - DocRow direction: layout props (direction, gap) go in \`.attrs()\` not \`.theme()\`. Element accepts \`'inline'\` | \`'rows'\` | \`'reverseInline'\` | \`'reverseRows'\` — \`'row'\` is NOT valid
-- For text children reactivity, pass a signal accessor and read inside body: \`<DocText>{() => store.field()}</DocText>\`
+- For text children reactivity, pass a signal accessor and read inside body: \`<DocText>{store.field()}</DocText>\`
 - Don't declare runtime-filled fields (\`tag\`, \`_documentProps\`) in the rocketstyle \`.attrs<P>()\` generic — they leak as required JSX props
 - Using \`createDocumentExport(...).getDocNode()\` in new code — prefer \`extractDocNode(fn)\` which is one call instead of two. \`createDocumentExport\` is kept for backward compat`,
   },
@@ -4465,7 +4465,7 @@ const tree = helper.getDocNode()`,
     example: `<DocText>Static paragraph content.</DocText>
 
 // Reactive children
-<DocText>{() => \`Hello, \${user().name}\`}</DocText>`,
+<DocText>{\`Hello, \${user().name}\`}</DocText>`,
     notes: 'Paragraph / inline text. The most common primitive — wraps any text content for the document. Children may be string literals OR signal accessors (`{() => store.field()}`) for reactive content. Visual styling (font weight, variant) is controlled via rocketstyle dimension props on the wrapping component definition. See also: DocHeading, DocLink.',
   },
 
@@ -4914,7 +4914,7 @@ function CardLink(props: LinkProps) {
   return (
     <div
       ref={link.ref}
-      class={() => \`card \${link.classes()}\`}
+      class={\`card \${link.classes()}\`}
       onClick={link.handleClick}
       onMouseEnter={link.handleMouseEnter}
       onTouchStart={link.handleTouchStart}
@@ -5625,7 +5625,7 @@ export default function Counter(props: { shared?: Signal<number> }) {
   return (
     <div>
       <button onClick={() => count.update(n => n + 1)}>+</button>
-      <span>{() => count()}</span>
+      <span>{count()}</span>
     </div>
   )
 }
@@ -5677,7 +5677,7 @@ console.log(a()) // 5`,
   'sync/syncedSignal': {
     signature: '<T>(options: SyncedSignalOptions<T>) => SyncedSignal<T>',
     example: `const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
-// <h1>{() => title()}</h1>  — patches in place when any peer edits the title
+// <h1>{title()}</h1>  — patches in place when any peer edits the title
 title()              // "Untitled"  (reactive read)
 title.set("Roadmap") // writes the CRDT; the observer drives the DOM update
 title.dispose()      // detach observer (auto on onCleanup inside a scope)`,
@@ -5766,7 +5766,7 @@ connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")`,
   'sync/syncedText': {
     signature: '(doc: YjsCrdtDoc, key: string) => SyncedText',
     example: `const body = syncedText(doc, "body")
-// <textarea value={() => body()} onInput={e => body.set(e.currentTarget.value)} />
+// <textarea value={body()} onInput={e => body.set(e.currentTarget.value)} />
 body.insert(0, "Hello ")  // positional — merges with a concurrent peer edit
 body.delete(0, 6)`,
     notes: `Bind a Signal<string> to a Yjs Y.Text — a COLLABORATIVE string with character-level CRDT merge. Unlike syncedSignal (scalar last-writer-wins, which drops the loser's value), two peers editing different regions BOTH keep their edits. Use \`.insert(i, s)\` / \`.delete(i, n)\` (positional ops Y.Text merges faithfully) for true concurrent editing; \`.set(full)\` applies a minimal prefix/suffix diff (one replace) — handy for a controlled \`<textarea>\` but not a positional merge. Engine-specific (in \`@pyreon/sync/yjs\`, not behind the seam — collab text is coupled to the CRDT's text type). See also: syncedList, syncedSignal.`,

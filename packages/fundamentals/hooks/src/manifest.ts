@@ -43,7 +43,7 @@ function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange
     defaultValue: () => props.defaultChecked ?? false,
     onChange: props.onChange,
   })
-  return <button onClick={() => setChecked(!checked())}>{() => checked() ? 'on' : 'off'}</button>
+  return <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
 }
 
 // 2. DOM listeners — auto-cleanup on unmount.
@@ -108,7 +108,7 @@ useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client
     defaultValue: () => props.defaultChecked ?? false,
     onChange: props.onChange,
   })
-  return <button onClick={() => setChecked(!checked())}>{() => checked() ? 'on' : 'off'}</button>
+  return <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
 }`,
       mistakes: [
         'Passing `value: props.checked` (not a function) — loses reactivity on prop changes',
@@ -223,7 +223,7 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
       summary:
         '`navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `timeoutMs` (default 2000). Use the `copied` signal to flash a "Copied!" UI cue without manual timer management.',
       example: `const { copy, copied } = useClipboard()
-<button onClick={() => copy(token)}>{() => copied() ? 'Copied!' : 'Copy'}</button>`,
+<button onClick={() => copy(token)}>{copied() ? 'Copied!' : 'Copy'}</button>`,
       seeAlso: ['useDialog', 'useOnline'],
     },
     {
@@ -259,7 +259,7 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
         '`IntersectionObserver`-based infinite loading. Attach the returned `sentinelRef` to a node at the bottom of the list — when it scrolls into view, `onLoadMore` fires. `isLoading` blocks re-fires until the promise resolves. `enabled` accessor lets you stop observing once you\'ve loaded the last page.',
       example: `const { sentinelRef, isLoading } = useInfiniteScroll(loadNextPage, { rootMargin: '200px', enabled: () => hasMore() })
 <For each={items()} by={(i) => i.id}>{(item) => <Row data={item} />}</For>
-<div ref={sentinelRef}>{() => isLoading() && 'Loading…'}</div>`,
+<div ref={sentinelRef}>{isLoading() && 'Loading…'}</div>`,
       mistakes: [
         'Placing the sentinel inside a container with `overflow: hidden` and no scroll — IntersectionObserver never fires because the sentinel is always clipped; the sentinel must be inside the scrollable container',
         'Forgetting to pass `enabled: () => hasMore()` — the hook keeps calling `onLoadMore` even after the last page',

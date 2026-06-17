@@ -329,7 +329,7 @@ const { hovered, props } = useHover()
 
 <div
   {...props}
-  class={() => hovered() ? 'bg-blue-100' : 'bg-gray-100'}
+  class={hovered() ? 'bg-blue-100' : 'bg-gray-100'}
 >Hover me</div>
 ```
 
@@ -403,7 +403,7 @@ const { focused, props } = useFocus()
 
 <input
   {...props}
-  class={() => focused() ? 'ring-2 ring-blue-500' : 'ring-1 ring-gray-300'}
+  class={focused() ? 'ring-2 ring-blue-500' : 'ring-1 ring-gray-300'}
 />
 ```
 

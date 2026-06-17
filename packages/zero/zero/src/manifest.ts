@@ -498,7 +498,7 @@ function CardLink(props: LinkProps) {
   return (
     <div
       ref={link.ref}
-      class={() => \`card \${link.classes()}\`}
+      class={\`card \${link.classes()}\`}
       onClick={link.handleClick}
       onMouseEnter={link.handleMouseEnter}
       onTouchStart={link.handleTouchStart}

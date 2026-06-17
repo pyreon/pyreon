@@ -15,7 +15,7 @@ const doc = createYjsDoc()
 const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
 connectViaWebSocket(doc, 'wss://sync.example.com/my-room?token=abc')
 
-// <h1>{() => title()}</h1>
+// <h1>{title()}</h1>
 // A peer edits the title → this exact <h1> text node patches in place.
 title.set('Roadmap') // local edit relays to peers
 ```
@@ -175,7 +175,7 @@ body.delete(0, 6)
 
 // Or bind a controlled textarea (uses a minimal prefix/suffix diff):
 // <textarea
-//   value={() => body()}
+//   value={body()}
 //   onInput={(e) => body.set(e.currentTarget.value)}
 // />
 ```
@@ -385,9 +385,9 @@ async function CollabDoc() {
 
   return (
     <article>
-      <h1>{() => title()}</h1>
+      <h1>{title()}</h1>
       <textarea
-        value={() => body()}
+        value={body()}
         onInput={(e) => body.set(e.currentTarget.value)}
       />
     </article>

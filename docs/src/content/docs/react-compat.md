@@ -278,7 +278,7 @@ function ContactForm() {
   return (
     <form onSubmit={handleSubmit}>
       <input
-        value={() => state().data.name ?? ''}
+        value={state().data.name ?? ''}
         onInput={(e) =>
           dispatch({
             type: 'field',
@@ -287,8 +287,8 @@ function ContactForm() {
           })
         }
       />
-      <button type="submit" disabled={() => state().status === 'submitting'}>
-        {() => (state().status === 'submitting' ? 'Sending...' : 'Send')}
+      <button type="submit" disabled={state().status === 'submitting'}>
+        {state().status === 'submitting' ? 'Sending...' : 'Send'}
       </button>
       {() => state().error && <p class="error">{state().error}</p>}
     </form>
@@ -344,7 +344,7 @@ function AutoSizeTextarea() {
   return (
     <textarea
       ref={ref}
-      value={() => text()}
+      value={text()}
       onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
     />
   )
@@ -575,7 +575,7 @@ function FancyInput(props: { ref?: { current: FancyInputAPI | null } }) {
   return (
     <input
       ref={inputRef}
-      value={() => value()}
+      value={value()}
       onInput={(e) => setValue((e.target as HTMLInputElement).value)}
     />
   )
@@ -718,7 +718,7 @@ function AccessibleCombobox() {
   const [open, setOpen] = useState(false)
 
   return (
-    <div role="combobox" aria-expanded={() => open()} aria-owns={listboxId}>
+    <div role="combobox" aria-expanded={open()} aria-owns={listboxId}>
       <input
         id={inputId}
         aria-autocomplete="list"
@@ -981,7 +981,7 @@ function SelectableList(props: { items: Item[] }) {
     <ul>
       {props.items.map((item) => (
         <li
-          class={() => (isSelected(item.id) ? 'selected' : '')}
+          class={isSelected(item.id) ? 'selected' : ''}
           onClick={() => setSelectedId(item.id)}
         >
           {item.name}

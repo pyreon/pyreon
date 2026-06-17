@@ -20,7 +20,7 @@ import { syncedSignal, FakeCrdtAdapter } from '@pyreon/sync'
 const doc = new FakeCrdtAdapter().createDoc()
 const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
 
-// In a template:  <h1>{() => title()}</h1>
+// In a template:  <h1>{title()}</h1>
 // Editing `title` anywhere — locally or from a peer — patches just that <h1>.
 title.set('Roadmap')
 title() // 'Roadmap'
@@ -122,7 +122,7 @@ const body = syncedText(doc, 'body')
 body.insert(0, 'Hello ')      // positional ops Y.Text merges faithfully
 body.delete(0, 6)
 body.set(textareaEl.value)    // or a whole-text replace (minimal prefix/suffix diff)
-// <textarea value={() => body()} onInput={e => body.set(e.currentTarget.value)} />
+// <textarea value={body()} onInput={e => body.set(e.currentTarget.value)} />
 ```
 
 Two tabs typing concurrently converge to a string containing **both** their
