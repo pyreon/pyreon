@@ -1,0 +1,20 @@
+{
+  "name": "@pyreon/example-native-analytics",
+  "version": "0.0.1",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — the canonical multiplatform analytical-app proof. A single source compiles to web + iOS + Android: a heavy data table from canonical primitives, reduce-based column totals, and a chart hosted in a native WebView via the escape-hatch primitives (web-only-rich viz inside a native shell).",
+  "license": "MIT",
+  "scripts": {
+    "build:swift": "./scripts/build-swift.sh",
+    "build:kotlin": "./scripts/build-kotlin.sh",
+    "build": "bun run build:swift && bun run build:kotlin",
+    "lint": "echo '[native-analytics] no TS lint surface; skipping'",
+    "test": "echo '[native-analytics] no test surface; PMTC emit covered by @pyreon/native-compiler tests'",
+    "typecheck": "echo '[native-analytics] @ts-nocheck on source; PMTC handles typing'"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*"
+  }
+}

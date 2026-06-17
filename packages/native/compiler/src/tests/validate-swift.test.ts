@@ -78,6 +78,13 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // breakage — the device-CI xcodebuild gate is the real-runtime
     // safety net.
     'showcase-tasks.tsx',
+    // The multiplatform analytical-app proof. Mirror of
+    // `examples/native-analytics/src/AnalyticsApp.tsx`: a heavy data
+    // table (canonical primitives + keyed <For>), inline reduce column
+    // totals, String() numeric coercion, and a chart hosted in a native
+    // WebView via the escape-hatch primitives with a const-ref'd HTML
+    // payload. Locks the example's emit through the same swiftc gate.
+    'showcase-analytics.tsx',
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). Emits @State PyreonI18n with literal locale + messages.
     'tier2-i18n.tsx',

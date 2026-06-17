@@ -79,6 +79,12 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // didn't compile under kotlinc (tuple literals, `.update()`,
     // prop-less dispatch of prop-requiring components).
     'showcase-tasks.tsx',
+    // The multiplatform analytical-app proof — mirror of
+    // `examples/native-analytics/src/AnalyticsApp.tsx`. Heavy data table
+    // + inline reduce/fold totals + String()→toString() numeric coercion
+    // + escape-hatch WebView chart (const-ref'd HTML). Locks the
+    // example's emit through the kotlinc gate.
+    'showcase-analytics.tsx',
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). The PyreonI18n class stub in kotlin-stubs.ts
     // satisfies kotlinc's type resolution.
