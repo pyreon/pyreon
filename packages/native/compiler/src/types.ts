@@ -463,7 +463,11 @@ export type StatementIR =
 
 /** Type annotation, parsed from `signal<T>(...)` generics. */
 export type TypeIR =
-  | { kind: 'number' }
+  // `float: true` marks a fractional number (inferred from a non-integer
+  // literal like `12.5`) → emits as Swift/Kotlin `Double`. Absent/false
+  // → `Int` (PMTC's ergonomic default for counts/ids/indices). Additive:
+  // every existing `kind: 'number'` check still matches.
+  | { kind: 'number'; float?: boolean }
   | { kind: 'string' }
   | { kind: 'boolean' }
   | { kind: 'array'; element: TypeIR }

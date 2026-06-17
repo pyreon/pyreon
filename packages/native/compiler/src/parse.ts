@@ -1683,7 +1683,13 @@ function tryNamespacedSchemaDefnFromTopLevel(
  *  for component-scope signals. */
 function inferTypeFromInitial(initial: ExprIR): TypeIR {
   if (initial.kind === 'literal') {
-    if (typeof initial.value === 'number') return { kind: 'number' }
+    if (typeof initial.value === 'number') {
+      // A non-integer literal (`12.5`) is fractional → Double; an
+      // integer literal stays Int (PMTC's ergonomic default).
+      return Number.isInteger(initial.value)
+        ? { kind: 'number' }
+        : { kind: 'number', float: true }
+    }
     if (typeof initial.value === 'string') return { kind: 'string' }
     if (typeof initial.value === 'boolean') return { kind: 'boolean' }
   }
