@@ -191,6 +191,34 @@ fn escape_html_attr(s: &str) -> String {
     s.replace('&', "&amp;").replace('"', "&quot;")
 }
 
+// Mirrors the JS `escapeHtmlText` entity-validity rule EXACTLY (jsx.ts):
+//   &(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)  →  &amp;
+// i.e. the run between `&` and `;` is a valid char-ref iff it is:
+//   - `#` + one-or-more ASCII DECIMAL digits        (`#123`)
+//   - `#x` (lowercase x) + one-or-more HEX digits    (`#x1f`)
+//   - an ASCII LETTER followed by word chars         (`amp`, `a1_2`)
+// A bare numeric run without `#` (`123`) is NOT valid → the `&` must be
+// escaped. The previous Rust check `entity.chars().all(is_ascii_alphanumeric)`
+// wrongly accepted `&123;` (digit-led, no `#`) and left it unescaped, diverging
+// from the JS backend on `&<digits>;` text (cross-backend bug, uncovered by the
+// equivalence suite until now).
+fn is_valid_entity(e: &str) -> bool {
+    let b = e.as_bytes();
+    if b.is_empty() {
+        return false;
+    }
+    if b[0] == b'#' {
+        // `#x<hex+>` (lowercase x only, matching the JS regex) ...
+        if b.len() >= 3 && b[1] == b'x' {
+            return e[2..].bytes().all(|c| c.is_ascii_hexdigit());
+        }
+        // ... or `#<dec+>`.
+        return b.len() >= 2 && e[1..].bytes().all(|c| c.is_ascii_digit());
+    }
+    // Named: a leading ASCII letter then `\w*` (= [A-Za-z0-9_]).
+    b[0].is_ascii_alphabetic() && e.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+}
+
 fn escape_html_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.char_indices().peekable();
@@ -198,14 +226,9 @@ fn escape_html_text(s: &str) -> String {
         if ch == '<' {
             out.push_str("&lt;");
         } else if ch == '&' {
-            // Check if this is already an HTML entity: &...;
+            // Already a valid HTML entity `&...;`? Leave the `&` as-is.
             if let Some(semi_pos) = s[i + 1..].find(';') {
-                let entity = &s[i + 1..i + 1 + semi_pos];
-                let is_entity = entity.starts_with('#')
-                    || entity
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == 'x' || c == 'X');
-                if is_entity && !entity.is_empty() {
+                if is_valid_entity(&s[i + 1..i + 1 + semi_pos]) {
                     out.push('&');
                     continue;
                 }

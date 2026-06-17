@@ -1212,3 +1212,21 @@ describeNative('Native vs JS equivalence — signal-method-call auto-promotion',
       export const X = () => <span>{c()["toFixed"](2)}</span>
     `))
 })
+
+describeNative('Native vs JS equivalence — HTML text entity escaping', () => {
+  // The `&` in static text is escaped to `&amp;` UNLESS it forms a valid
+  // char-ref: `#<dec>`, `#x<hex>`, or `<letter><word*>`. Both backends MUST
+  // agree. Regression for the `&<digits>;` divergence (Rust wrongly accepted a
+  // bare numeric run without `#`).
+  test('bare numeric entity without # is escaped', () => compare('export const X = () => <div>a&123;b</div>'))
+  test('digit-led mixed run is escaped', () => compare('export const X = () => <div>a&123abc;b</div>'))
+  test('valid named entity is preserved', () => compare('export const X = () => <div>a&amp;b</div>'))
+  test('letter-led entity-ish run is preserved', () => compare('export const X = () => <div>a&xyz;b</div>'))
+  test('valid decimal char-ref is preserved', () => compare('export const X = () => <div>a&#65;b</div>'))
+  test('valid lowercase-x hex char-ref is preserved', () => compare('export const X = () => <div>a&#x1F;b</div>'))
+  test('uppercase #X hex is NOT a valid ref (matches JS regex)', () => compare('export const X = () => <div>a&#X41;b</div>'))
+  test('bare ampersand with spaces is escaped', () => compare('export const X = () => <div>tom & jerry</div>'))
+  test('empty entity (&;) is escaped', () => compare('export const X = () => <div>a&;b</div>'))
+  test('hash-only (&#;) is escaped', () => compare('export const X = () => <div>a&#;b</div>'))
+  test('underscore in named entity is preserved', () => compare('export const X = () => <div>a&a_1;b</div>'))
+})
