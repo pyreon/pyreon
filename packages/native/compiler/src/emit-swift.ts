@@ -2067,6 +2067,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           case 'toLowerCase':
             if (e.args.length === 0) return `${obj}.lowercased()`
             break
+          case 'sort': {
+            // JS `arr.sort((a,b) => <numeric>)` → Swift
+            // `sorted(by: { a, b in (<numeric>) < 0 })`. A JS comparator
+            // returns a NUMBER (negative if a should come first); Swift's
+            // `areInIncreasingOrder` wants a Bool, so wrap the body in
+            // `< 0`. `.sorted` is non-mutating (returns a new array) —
+            // the render-safe shape, and the canonical use is sorting a
+            // table for display (`[...rows].sort(cmp)`). v1: a 2-param
+            // arrow comparator with an expression body; anything else
+            // falls through to the generic emit.
+            const cmp = e.args[0]
+            if (e.args.length === 1 && cmp!.kind === 'arrow' && cmp!.params.length === 2) {
+              const ps = cmp!.params.map((p) => swiftIdent(p)).join(', ')
+              return `${obj}.sorted(by: { ${ps} in (${emitSwiftExpr(cmp!.body, indent)}) < 0 })`
+            }
+            break
+          }
         }
       }
       const callee = emitSwiftExpr(e.callee, indent)
