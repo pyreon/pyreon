@@ -1808,8 +1808,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       //   X.find(p)     →  X.find(p)     (same name + same lambda contract)
       //   X.trim()      →  X.trim()      (same name + same contract)
       //
-      // `.filter` / `.map` / `.reduce` / `.forEach` already match
-      // semantically and pass through unchanged.
+      // `.filter` / `.map` / `.forEach` already match semantically and
+      // pass through unchanged. `.reduce` does NOT: Kotlin's `reduce`
+      // takes ONLY a combiner (no initial value, reduces to the element
+      // type), so the JS 2-arg `reduce(reducer, initial)` form must
+      // lower to `fold(initial, reducer)` — handled below.
       if (e.callee.kind === 'member') {
         const obj = emitKotlinExpr(e.callee.object, indent)
         const prop = e.callee.property
@@ -1829,6 +1832,39 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (e.args.length === 1) {
               return `${obj}.contains(${argExprs[0]!})`
             }
+            break
+          case 'reduce':
+            // JS `arr.reduce(reducer, initial)` → Kotlin `fold(initial,
+            // reducer)`. Kotlin's `reduce` takes ONLY a combiner (no
+            // initial), so the 2-arg JS form needs `fold`. Mirrors
+            // rx.reduce. The 1-arg form (`arr.reduce(cb)`) IS valid
+            // Kotlin `reduce {}` → falls through to the generic emit.
+            if (e.args.length === 2) {
+              return `${obj}.fold(${argExprs[1]!}, ${argExprs[0]!})`
+            }
+            break
+          case 'toFixed': {
+            // JS `n.toFixed(d)` → Kotlin `"%.<d>f".format(n)` (the
+            // analytical currency/percent format; `String.format` is
+            // a kotlin.text stdlib extension — no import needed). v1:
+            // literal digit count (or 0-arg default 0) — a dynamic count
+            // falls through to the generic emit.
+            const digits =
+              e.args.length === 0
+                ? '0'
+                : e.args[0]!.kind === 'literal' && typeof e.args[0]!.value === 'number'
+                  ? String(e.args[0]!.value)
+                  : null
+            if (digits !== null) {
+              return `"%.${digits}f".format(${obj})`
+            }
+            break
+          }
+          case 'toUpperCase':
+            if (e.args.length === 0) return `${obj}.uppercase()`
+            break
+          case 'toLowerCase':
+            if (e.args.length === 0) return `${obj}.lowercase()`
             break
         }
       }
