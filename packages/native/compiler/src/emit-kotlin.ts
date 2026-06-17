@@ -1522,7 +1522,8 @@ function isRememberSaveableNativeType(t: TypeIR): boolean {
 export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): string {
   switch (t.kind) {
     case 'number':
-      return 'Int'
+      // Fractional literal → Double; integer → Int (ergonomic default).
+      return t.float === true ? 'Double' : 'Int'
     case 'string':
       return 'String'
     case 'boolean':
