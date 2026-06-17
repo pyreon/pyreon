@@ -105,6 +105,20 @@ export function defineNodeConfig(
     /* v8 ignore stop */
   })
 
+  // Test-directory files (setup.ts, fixtures, helpers under `src/**/tests/`)
+  // are test INFRASTRUCTURE, not the system under test. createVitestConfig's
+  // default excludes `*.test.{ts,tsx}` but a non-`.test` file like
+  // `src/tests/setup.ts` slips through and is measured at 0% — silently
+  // dragging the package's statement/line coverage. Exclude the whole test
+  // dir from coverage measurement (this does NOT affect which tests RUN —
+  // coverage.exclude is independent of the test include/exclude globs).
+  {
+    const coverage = base.test?.coverage as { exclude?: string[] } | undefined
+    if (coverage) {
+      coverage.exclude = [...(coverage.exclude ?? []), 'src/**/tests/**']
+    }
+  }
+
   // Post-filter: drop `src/**/index.ts` from coverage.exclude when the
   // user has logic in their index file. mergeConfig is append-only on
   // arrays, so this is the only way to REMOVE a default exclude.

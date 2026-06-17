@@ -31,7 +31,10 @@ function createNewTag(tag: {
 }): void {
   // SSR guard: only ever reached via the (also-guarded) `syncDom`, but
   // keep the guard local so the contract is self-evident and SSR-safe
-  // even if a future caller invokes this directly.
+  // even if a future caller invokes this directly. `syncDom` already
+  // returns on `document === undefined`, so this is unreachable via any
+  // real call path — an intentional defensive guard, hence v8-ignored.
+  /* v8 ignore next */
   if (typeof document === 'undefined') return
   const el = document.createElement(tag.tag)
   const key = tag.key as string
