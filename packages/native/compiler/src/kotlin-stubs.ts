@@ -384,16 +384,29 @@ fun Spacer(modifier: Modifier = Modifier) {}
 
 // TextStyle + MaterialTheme.typography — <Heading> emit's per-level
 // typography role. Real Compose: androidx.compose.ui.text.TextStyle +
-// androidx.compose.material3.MaterialTheme.typography (Material3 scale).
+// androidx.compose.material.MaterialTheme.typography (Material 2 scale —
+// the emit's base is androidx.compose.material.*, NOT material3). This
+// stub lists EXACTLY the Material 2 Typography members so it can't mask a
+// regression to a Material 3 name (headlineLarge, ...) that doesn't exist
+// on M2 — that exact stub-masking bug shipped once, caught only by a real
+// gradle assembleDebug of a Heading app.
+// (No backticks in this comment — it lives inside a template literal.)
 class TextStyle
 object MaterialTheme {
   object typography {
-    val headlineLarge: TextStyle = TextStyle()
-    val headlineMedium: TextStyle = TextStyle()
-    val headlineSmall: TextStyle = TextStyle()
-    val titleLarge: TextStyle = TextStyle()
-    val titleMedium: TextStyle = TextStyle()
-    val titleSmall: TextStyle = TextStyle()
+    val h1: TextStyle = TextStyle()
+    val h2: TextStyle = TextStyle()
+    val h3: TextStyle = TextStyle()
+    val h4: TextStyle = TextStyle()
+    val h5: TextStyle = TextStyle()
+    val h6: TextStyle = TextStyle()
+    val subtitle1: TextStyle = TextStyle()
+    val subtitle2: TextStyle = TextStyle()
+    val body1: TextStyle = TextStyle()
+    val body2: TextStyle = TextStyle()
+    val button: TextStyle = TextStyle()
+    val caption: TextStyle = TextStyle()
+    val overline: TextStyle = TextStyle()
   }
 }
 
