@@ -39,7 +39,7 @@ describe('gen-docs — core snapshot', () => {
           const id = setInterval(() => count.update(n => n + 1), 1000)
           return () => clearInterval(id)  // cleanup runs on unmount
         })
-        return <div>{() => count()}</div>
+        return <div>{count()}</div>
       }
 
       // Control flow — reactive conditional rendering
