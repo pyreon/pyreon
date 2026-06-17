@@ -3,6 +3,7 @@
 '@pyreon/reactivity': patch
 '@pyreon/head': patch
 '@pyreon/primitives': patch
+'@pyreon/create-zero': patch
 ---
 
 Internal: remove provably-unreachable defensive branches + harden test coverage
@@ -29,3 +30,9 @@ Added targeted tests for the residual web-primitive branches — plain-value
 (non-signal) `value`/`checked`, the asset-name `src` dispatch, and the defensive
 guard false-paths in Field/Text/Press/WebView. primitives → 100% across all four
 metrics.
+
+`@pyreon/create-zero`'s `listFiles` walk uses a plain `else` for the
+non-directory case (a template tree is files-or-dirs only — no symlinks), and
+gained `substitute` tests covering the unknown-`{{key}}`-kept-verbatim branch.
+create-zero → 100% statements/functions/lines, 98.7% branches (one defensive
+unreachable branch remains in the dep-version resolver).

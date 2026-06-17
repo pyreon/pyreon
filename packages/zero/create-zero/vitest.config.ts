@@ -15,10 +15,10 @@ export default defineNodeConfig({
     'src/prompts.ts', // interactive prompt machinery (resolveFeatures itself is tested via features.test.ts)
   ],
   coverageThresholds: {
-    statements: 95,
-    branches: 95,
-    functions: 95,
-    lines: 95,
+    statements: 99,
+    branches: 98,
+    functions: 99,
+    lines: 99,
   },
   overrides: {
     test: {

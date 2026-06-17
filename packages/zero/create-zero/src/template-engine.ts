@@ -159,9 +159,11 @@ export async function listFiles(root: string): Promise<string[]> {
     const entries = await readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       const full = join(dir, entry.name)
+      // A template tree is files-or-dirs only (no symlinks/sockets), so the
+      // non-directory case is always a file — a plain `else` keeps that
+      // invariant explicit without an uncoverable `isFile()` branch.
       if (entry.isDirectory()) await walk(full)
-      /* v8 ignore next — files-or-dirs only; templates carry no symlinks */
-      else if (entry.isFile()) out.push(relative(root, full))
+      else out.push(relative(root, full))
     }
   }
   await walk(root)
