@@ -4,6 +4,9 @@
 '@pyreon/validate': patch
 '@pyreon/toast': patch
 '@pyreon/storage': patch
+'@pyreon/hotkeys': patch
+'@pyreon/hooks': patch
+'@pyreon/charts': patch
 ---
 
 Internal coverage hardening — documented `v8 ignore`s for genuinely-unreachable

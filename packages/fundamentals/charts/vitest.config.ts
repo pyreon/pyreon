@@ -11,5 +11,13 @@ export default defineNodeConfig({
   // init/setOption error paths require real Chromium — covered by
   // charts.browser.test.tsx in real-Chromium @vitest/browser.
   coverageExclude: ['src/chart-component.tsx', 'src/use-chart.ts'],
-  coverageThresholds: { statements: 95 },
+  // loader.ts + vite.ts (the node-instrumented surface) are at 100% on all
+  // four metrics after the error/retry/no-tslib path tests. Threshold set to
+  // 98 to lock the floor with a small headroom against incidental drift.
+  coverageThresholds: {
+    statements: 98,
+    branches: 98,
+    functions: 98,
+    lines: 98,
+  },
 })

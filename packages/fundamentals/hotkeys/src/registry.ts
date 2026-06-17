@@ -88,7 +88,13 @@ function attachListener(): void {
       let fired = false
       for (const p of pending) {
         const expected = p.entry.sequence[p.next]
-        if (!expected) continue // defensive — shouldn't happen
+        // Defensive — unreachable. A PendingSequence is only created with a
+        // `next` that points at a valid index: stage-1 survivors (L101) use
+        // `p.next + 1` strictly below `sequence.length`, and fresh entries
+        // (L144) use `next: 0` only when `sequence.length > 0`. So
+        // `sequence[next]` is always defined.
+        /* v8 ignore next */
+        if (!expected) continue
         if (!matchesCombo(event, expected)) continue
         // Advance
         if (p.next + 1 === p.entry.sequence.length) {
@@ -195,10 +201,14 @@ export function registerHotkey(
   }
   const combos = subShortcuts.map(parseShortcut)
   const firstCombo = combos[0]
+  // Unreachable given the `subShortcuts.length === 0` throw above (combos is
+  // 1:1 with the non-empty subShortcuts), but the index access is typed
+  // `T | undefined`, so the guard keeps TS happy.
+  /* v8 ignore start */
   if (!firstCombo) {
-    // Unreachable given the length check above, but keeps TS happy.
     throw new Error(`[@pyreon/hotkeys] invalid shortcut: ${JSON.stringify(shortcut)}`)
   }
+  /* v8 ignore stop */
   const rest = combos.slice(1)
 
   const entry: HotkeyEntry = {
