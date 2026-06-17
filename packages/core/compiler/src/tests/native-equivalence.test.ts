@@ -1231,7 +1231,7 @@ describeNative('Native vs JS equivalence — HTML text entity escaping', () => {
   test('underscore in named entity is preserved', () => compare('export const X = () => <div>a&a_1;b</div>'))
 })
 
-describe('Native vs JS equivalence — element-conditional templatization', () => {
+describeNative('Native vs JS equivalence — element-conditional templatization', () => {
   // A DOM wrapper around an inline element-conditional keeps the `_tpl` fast
   // path and routes the conditional child through `_mountSlot` (previously the
   // whole wrapper bailed to the jsx runtime). Both backends must emit this
