@@ -142,6 +142,15 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  * silent-drop diagnostics).
  */
 let _emitWarnings: string[] = []
+/**
+ * Module-level `const X = <string|number|boolean literal>` bindings,
+ * name → value (Kotlin mirror of emit-swift's `_constStringMap`). Lets
+ * a static-attr reader resolve a const-ref attr (`<Image src={API_URL}>`,
+ * `<WebView src={chartUrl}>`) to its literal at emit time. `let`
+ * (mutable) and non-literal inits are excluded — they fall through to
+ * the existing "needs static" emit path.
+ */
+let _constStringMapKotlin: Map<string, string | number | boolean> = new Map()
 
 export function _peekKotlinEmitWarnings(): string[] {
   return [..._emitWarnings]
@@ -166,6 +175,15 @@ export function emitKotlin(
   _fonts: Record<string, string> = {},
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  _constStringMapKotlin = new Map()
+  for (const md of moduleDecls) {
+    if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
+    if (md.initial.kind !== 'literal') continue // only direct literals
+    const v = md.initial.value
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      _constStringMapKotlin.set(md.name, v)
+    }
+  }
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
@@ -2692,6 +2710,14 @@ function readStaticAttrKotlin(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+      // Const-ref: `src={API_URL}` → resolve a module-level `const`
+      // string/number/boolean binding to its literal. Unknown /
+      // component-scope / non-const identifiers aren't in the map →
+      // return undefined → existing "needs static" emit path.
+      if (a.value.kind === 'identifier') {
+        const resolved = _constStringMapKotlin.get(a.value.name)
+        if (resolved !== undefined) return resolved
+      }
     }
   }
   return undefined
