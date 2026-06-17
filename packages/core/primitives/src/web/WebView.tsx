@@ -52,16 +52,16 @@ export function WebView(props: WebViewProps): VNode {
     }
     attrs.ref = (el: HTMLIFrameElement | null): void => {
       frame = el
-      if (el) {
-        el.addEventListener('load', () => {
-          loaded = true
-          push()
-        })
-      }
+    }
+    // `onLoad` is wired by the runtime (no raw addEventListener) — push
+    // once the iframe's document exists.
+    attrs.onLoad = (): void => {
+      loaded = true
+      push()
     }
     // Re-push whenever `data` changes (the read tracks it). On the first
     // run the iframe usually isn't loaded yet → push no-ops, and the
-    // `load` listener pushes once it is.
+    // `onLoad` handler pushes once it is.
     effect(() => {
       void (props as { data?: unknown }).data
       push()
