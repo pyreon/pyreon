@@ -462,6 +462,74 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
     })
   })
 
+  // Store-aliasing LOWERING — `const app = useApp()` now WORKS on native:
+  // the alias substitutes back to a `useApp()` call at every use site, so
+  // `app.store.x` lowers to exactly the same IR as the inline
+  // `useApp().store.x`. Surfaced by a richer-app ship-readiness
+  // revalidation that hit a cryptic `Unresolved reference 'app'` on a real
+  // Android build; the lowering removes the cryptic failure by making the
+  // idiom compile. The previously-shipped diagnostic is superseded.
+  const STORE = `const useApp = defineStore('app', () => {
+    const count = signal(0)
+    return { count }
+  })`
+  describe('store-aliasing lowering (`const app = useApp()`)', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      it(`${target}: aliased \`app.store.x\` emits BYTE-IDENTICALLY to inline \`useApp().store.x\` + no warning`, () => {
+        const inline = transform(
+          `${STORE}\nexport function App() { return <Text>{useApp().store.count()}</Text> }`,
+          { target },
+        )
+        const aliased = transform(
+          `${STORE}\nexport function App() { const app = useApp(); return <Text>{app.store.count()}</Text> }`,
+          { target },
+        )
+        // The lowering's core contract: the aliased form produces exactly
+        // the inline form's output — emit is unchanged, the alias is a
+        // pure parse-time substitution.
+        expect(aliased.code).toBe(inline.code)
+        // The store read actually lowered (not left as an unbound `app`).
+        expect(aliased.code).toContain('PyreonStore_app')
+        expect(aliased.code).not.toContain('app.store')
+        // No leftover diagnostic — the idiom WORKS now, it doesn't warn.
+        expect(aliased.warnings.some((w) => w.includes('Store-aliasing'))).toBe(false)
+      })
+    }
+
+    it('lowers regardless of declaration order (component above its store)', () => {
+      const out = transform(
+        `export function App() { const app = useApp(); return <Text>{app.store.count()}</Text> }\n${STORE}`,
+        { target: 'swift' },
+      )
+      // Pre-scan collects store-hook names before bodies are parsed, so
+      // the alias resolves even though useApp is declared AFTER App.
+      expect(out.code).toContain('PyreonStore_app')
+      expect(out.code).not.toContain('app.store')
+    })
+
+    it('alias is component-scoped — a non-store `app` in another component is untouched', () => {
+      const out = transform(
+        `${STORE}
+        export function A() { const app = useApp(); return <Text>{app.store.count()}</Text> }
+        export function B(props: { app: string }) { return <Text>{props.app}</Text> }`,
+        { target: 'kotlin' },
+      )
+      // A's `app` lowered to the store; B's `props.app` is unrelated and
+      // must NOT be substituted (the per-node reset clears the alias map).
+      expect(out.code).toContain('PyreonStore_app')
+    })
+
+    it('non-store local-bound call (`const q = useFetch()`) is NOT treated as a store alias', () => {
+      const out = transform(
+        `export function App() { const q = useFetch('https://x/q'); return <Text>{q.isPending}</Text> }`,
+        { target: 'kotlin' },
+      )
+      // useFetch single-binding has its own (supported) lowering; it isn't
+      // in storeHookNames, so the store-alias substitution never touches it.
+      expect(out.warnings.some((w) => w.includes('Store-aliasing'))).toBe(false)
+    })
+  })
+
   describe('per-route `beforeEnter` with block-body arrow', () => {
     // Routes are extracted from `createRouter({ routes: [...] })`,
     // matching the parser's actual entry point (Phase C5). The JSX

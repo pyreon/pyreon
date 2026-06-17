@@ -37,11 +37,43 @@ type AnyNode = any
 interface ParseCtx {
   warnings: string[]
   source: string
+  /**
+   * Names of `defineStore` hook bindings (`const useApp = defineStore(...)`
+   * → `useApp`), collected in a pre-pass so component bodies parsed
+   * earlier in the file still see stores declared later. Used to LOWER the
+   * store-aliasing shape `const app = useApp()` to the inline form.
+   */
+  storeHookNames: Set<string>
+  /**
+   * Per-component store ALIASES: local binding name → store hook name,
+   * populated from `const app = useApp()` declarations in the CURRENT
+   * component body and CLEARED before each top-level node is parsed (so a
+   * `const app = …` in one component can't leak to another). `parseExpr`'s
+   * Identifier case substitutes an aliased name with a `<hook>()` call, so
+   * `app.store.x` lowers to exactly the same IR as the inline
+   * `useApp().store.x` — the emit needs no changes. Only names recorded
+   * here (i.e. genuine `const <id> = <storeHook>()` shapes, which produced
+   * an unbound `Unresolved reference` before) are ever substituted, so a
+   * bug here cannot affect any previously-compiling code.
+   */
+  storeAliases: Map<string, string>
 }
 
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
-  const ctx: ParseCtx = { warnings: [], source }
+  const ctx: ParseCtx = {
+    warnings: [],
+    source,
+    storeHookNames: new Set(),
+    storeAliases: new Map(),
+  }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
+  // Pre-pass: collect every `const <name> = defineStore(...)` hook name
+  // BEFORE parsing component bodies, so the store-aliasing diagnostic
+  // (`const app = useApp()`) fires regardless of declaration order (a
+  // component can appear above the store it reads). Name-only + side-
+  // effect-free (no warnings) — full validation stays in
+  // tryStoreDefnFromTopLevel during the main pass.
+  collectStoreHookNames(ast.program.body as AnyNode[], ctx.storeHookNames)
   const components: ComponentIR[] = []
   const enums: EnumIR[] = []
   const structs: StructIR[] = []
@@ -53,6 +85,10 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const zodSchemas: ZodSchemaDefnIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
+    // Store aliases are component-scoped — reset before each top-level
+    // node so `const app = useApp()` in one component never substitutes
+    // for an unrelated `app` in another (or in a store setup body).
+    ctx.storeAliases.clear()
     const comp = tryComponentFromTopLevel(node, ctx)
     if (comp) components.push(comp)
     const en = tryEnumFromTypeAlias(node, ctx)
@@ -245,6 +281,36 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
  * recognized as a regular signal/etc; the silent-drop diagnostic
  * from #1444 covers that).
  */
+/**
+ * Side-effect-free pre-scan: collect the binding name of every top-level
+ * `const <name> = defineStore(...)` into `out`. Mirrors the detection in
+ * `tryStoreDefnFromTopLevel` but extracts ONLY the name (no validation,
+ * no warnings — those run in the main pass). Lets the store-aliasing
+ * diagnostic resolve hook names independent of declaration order.
+ */
+function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
+  for (const node of body) {
+    const varDecl =
+      node.type === 'VariableDeclaration'
+        ? node
+        : node.type === 'ExportNamedDeclaration' &&
+            node.declaration?.type === 'VariableDeclaration'
+          ? node.declaration
+          : null
+    if (!varDecl || varDecl.kind !== 'const') continue
+    for (const decl of (varDecl.declarations as AnyNode[]) ?? []) {
+      if (
+        decl?.id?.type === 'Identifier' &&
+        decl.init?.type === 'CallExpression' &&
+        decl.init.callee?.type === 'Identifier' &&
+        (decl.init.callee.name as string) === 'defineStore'
+      ) {
+        out.add(decl.id.name as string)
+      }
+    }
+  }
+}
+
 function tryStoreDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -1901,6 +1967,30 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
+  // Store-aliasing LOWERING — `const app = useApp()` (binding a
+  // `defineStore` hook result to a local) is now SUPPORTED on native by
+  // recording the alias (`app` → `useApp`) and substituting it back to a
+  // `useApp()` call at every use site in `parseExpr` (Identifier case).
+  // So `app.store.x` lowers to exactly the same IR as the inline
+  // `useApp().store.x` — emit unchanged. The decl itself produces nothing
+  // (the alias is the binding); return null so no DeclIR is emitted for
+  // it. `useApp` is matched against the pre-scanned `storeHookNames` so
+  // this fires regardless of declaration order. Safe by construction:
+  // only `const <id> = <storeHook>()` shapes (which produced an unbound
+  // `Unresolved reference` BEFORE this lowering) ever record an alias, so
+  // no previously-compiling code can change behavior; inline
+  // `useApp().store.x` has no var binding so it's untouched, and the
+  // top-level store DEFINITION is `continue`d before reaching here.
+  if (
+    node.id?.type === 'Identifier' &&
+    init?.type === 'CallExpression' &&
+    init.callee?.type === 'Identifier' &&
+    typeof init.callee.name === 'string' &&
+    ctx.storeHookNames.has(init.callee.name as string)
+  ) {
+    ctx.storeAliases.set(node.id.name as string, init.callee.name as string)
+    return null
+  }
   // Gap 4 PR-3 (2026-06-05 audit) — Strategy-B port for
   // `@pyreon/i18n/core`. `const i18n = createI18n({ locale, messages,
   // fallbackLocale? })` becomes a PyreonI18n reactive container; the
@@ -3146,6 +3236,21 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // `undefined` is a separate TypeIR kind, handled in the type
       // emitters.)
       if (node.name === 'undefined') return { kind: 'literal', value: null }
+      // Store-aliasing lowering: a name bound via `const app = useApp()`
+      // substitutes back to a `useApp()` call, so `app.store.x` produces
+      // the same IR as the inline `useApp().store.x` (emit unchanged).
+      // Only names recorded in storeAliases (genuine store-hook bindings)
+      // substitute — every other identifier is untouched.
+      {
+        const aliasedHook = ctx.storeAliases.get(node.name as string)
+        if (aliasedHook !== undefined) {
+          return {
+            kind: 'call',
+            callee: { kind: 'identifier', name: aliasedHook },
+            args: [],
+          }
+        }
+      }
       return { kind: 'identifier', name: node.name as string }
     case 'CallExpression': {
       const callee = parseExpr(node.callee, ctx)
