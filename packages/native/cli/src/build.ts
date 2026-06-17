@@ -51,6 +51,32 @@ export interface BuildResult {
   warnings: { file: string; warning: string }[]
   /** Per-file outputs — useful for tests + consumer scripts. */
   outputs: { source: string; output: string; code: string }[]
+  /**
+   * Web-only entry files skipped by the native build (they import a
+   * web-only runtime — see `isWebOnlyEntry`). Surfaced (not silently
+   * dropped) so the CLI can report what it skipped — a web entry left in
+   * a `--source` tree is a normal, expected shape, but a SHARED file
+   * accidentally importing the DOM runtime should be visible.
+   */
+  skippedWebEntries: string[]
+}
+
+/**
+ * A `.tsx` that imports a web-only runtime — `@pyreon/runtime-dom` (the
+ * client `mount`/`hydrateRoot` DOM renderer) or `@pyreon/runtime-server`
+ * (SSR `renderToString`) — is a WEB ENTRY POINT, not a shared component
+ * source. It calls platform-only APIs (`document.getElementById`,
+ * `mount(App, root)`) that have no native equivalent, so PMTC must skip
+ * it: compiling it emits `document.getElementById(...)` into Swift /
+ * Kotlin, which can't compile. The scaffold's `entry-web.tsx` is the
+ * canonical case; detecting by IMPORT (not filename) also covers
+ * `main.tsx` / `entry-client.tsx` / any user-named web entry, and never
+ * false-skips a shared component (a shared file importing the DOM
+ * runtime is itself a bug this surfaces).
+ */
+const WEB_ONLY_IMPORT_RE = /\bfrom\s+['"]@pyreon\/(?:runtime-dom|runtime-server)['"]/
+export function isWebOnlyEntry(code: string): boolean {
+  return WEB_ONLY_IMPORT_RE.test(code)
 }
 
 /** Map a TSX source path to the target's expected file extension. */
@@ -236,9 +262,17 @@ export function build(options: BuildOptions): BuildResult {
   const inputs = findTsxFiles(sourceAbs)
   const warnings: BuildResult['warnings'] = []
   const outputs: BuildResult['outputs'] = []
+  const skippedWebEntries: string[] = []
 
   for (const input of inputs) {
     const code = readFileSync(input, 'utf8')
+    // Web entry points (mount/hydrateRoot against the DOM) have no native
+    // equivalent — skip them instead of emitting `document.getElementById`
+    // into Swift/Kotlin, which can't compile.
+    if (isWebOnlyEntry(code)) {
+      skippedWebEntries.push(input)
+      continue
+    }
     const result = transform(code, {
       target: options.target,
       ...(options.fonts ? { fonts: options.fonts } : {}),
@@ -264,5 +298,5 @@ export function build(options: BuildOptions): BuildResult {
     outputs.push({ source: input, output: outPath, code: finalCode })
   }
 
-  return { filesCompiled: inputs.length, warnings, outputs }
+  return { filesCompiled: outputs.length, warnings, outputs, skippedWebEntries }
 }

@@ -108,6 +108,15 @@ export function App() {
         devDependencies: {
           '@pyreon/vite-plugin': 'latest',
           '@pyreon/native-cli': 'latest',
+          // Native runtimes — installed into node_modules so the iOS
+          // SPM project (project.yml `packages:`) and the Android Gradle
+          // source-sets reference them by node_modules path. The emitted
+          // Swift `import PyreonRuntime`/`PyreonRouter` + Kotlin
+          // `PyreonReactivity`/`PyreonFetch`/… resolve against these.
+          '@pyreon/native-runtime-swift': 'latest',
+          '@pyreon/native-router-swift': 'latest',
+          '@pyreon/native-runtime-kotlin': 'latest',
+          '@pyreon/native-router-kotlin': 'latest',
           typescript: '^6.0.0',
           vite: '^8.0.0',
         },
@@ -188,10 +197,23 @@ options:
   deploymentTarget:
     iOS: '17.0'
 
+# Pyreon native runtimes as local SPM packages — they ship their Swift
+# sources via npm, so after \`npm install\` they live under node_modules
+# and XcodeGen consumes them by path. This spec lives in ios/, so the
+# paths are relative to ios/ (node_modules is one level up at the project
+# root). The emitted generated/App.swift's \`import PyreonRuntime\` /
+# \`import PyreonRouter\` resolve against these.
+packages:
+  PyreonRuntime:
+    path: ../node_modules/@pyreon/native-runtime-swift
+  PyreonRouter:
+    path: ../node_modules/@pyreon/native-router-swift
+
 preBuildScripts:
+  # SRCROOT is the .xcodeproj dir (ios/); scripts/ lives at the project
+  # root, one level up.
   - script: |
-      cd "\${SRCROOT}"
-      bash scripts/build-ios.sh
+      bash "\${SRCROOT}/../scripts/build-ios.sh"
     name: '[Pyreon] Compile src/App.tsx → generated/App.swift'
     runOnlyWhenInstalling: false
     basedOnDependencyAnalysis: false
@@ -201,14 +223,17 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: '17.0'
+    dependencies:
+      - package: PyreonRuntime
+      - package: PyreonRouter
     sources:
-      - path: ios/Sources
+      - path: Sources
         type: group
-      - path: ios/generated
+      - path: generated
         type: group
         optional: true
     info:
-      path: ios/Info.plist
+      path: Info.plist
       properties:
         CFBundleShortVersionString: 0.0.1
         CFBundleVersion: '1'
@@ -222,12 +247,19 @@ targets:
 `,
   )
   add(
-    'ios/Sources/App.swift',
+    // NOT "App.swift" — the emitted component file is generated/App.swift
+    // (src/App.tsx → App.swift); two files named App.swift in one target
+    // is a Swift compile error ("filename used twice").
+    'ios/Sources/Main.swift',
     `// @main entry point. SwiftUI App protocol — the canonical iOS entrypoint.
 import SwiftUI
 
+// \`SwiftUI.App\` (fully qualified) — the emitted component from
+// src/App.tsx is \`struct App: View\`, which shadows the bare \`App\`
+// protocol name in this module; without the qualifier this conformance
+// would resolve to that struct (a non-protocol type) and fail.
 @main
-struct ${pascal}App: App {
+struct ${pascal}App: SwiftUI.App {
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -316,6 +348,11 @@ include(":app")
     `plugins {
     id("com.android.application") version "8.7.0" apply false
     kotlin("android") version "2.0.21" apply false
+    // The Pyreon Kotlin runtime sources use @Serializable (useFetch /
+    // loader payloads); the app module applies this plugin, so its
+    // version must be declared (apply false) at the root or Gradle can't
+    // resolve "org.jetbrains.kotlin.plugin.serialization".
+    kotlin("plugin.serialization") version "2.0.21" apply false
 }
 `,
   )
@@ -331,6 +368,7 @@ kotlin.code.style=official
     `plugins {
     id("com.android.application")
     kotlin("android")
+    kotlin("plugin.serialization")
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
 }
 
@@ -350,6 +388,20 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    // The Pyreon Kotlin runtimes ship source-only via npm (no AAR), so
+    // add the installed packages' src/main/kotlin as extra source roots.
+    // After npm install they live under node_modules, two levels up from
+    // android/app/. The emitted Kotlin's PyreonReactivity / PyreonRouter /
+    // PyreonFetch / useNavigate compile from these sources.
+    sourceSets {
+        getByName("main") {
+            kotlin {
+                srcDir("../../node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin")
+                srcDir("../../node_modules/@pyreon/native-router-kotlin/src/main/kotlin")
+            }
+        }
+    }
 }
 
 dependencies {
@@ -358,6 +410,13 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material")
+    implementation("androidx.compose.runtime:runtime-saveable")
+    // Required by the Pyreon Kotlin runtime sources (srcDir above):
+    // useFetch/loader need kotlinx-serialization + coroutines; storage needs core-ktx.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.core:core-ktx:1.13.1")
     // <Icon> emit references Icons.Filled.* at compile time (core set).
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
@@ -402,12 +461,15 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
     `// Root activity — mounts the Pyreon-emitted App() from generated/App.kt.
 package ${androidPkg}
 
-import android.app.Activity
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import ${androidPkg}.generated.App
 
-class MainActivity : Activity() {
+// ComponentActivity (NOT plain android.app.Activity) — Compose's
+// setContent {} is an extension on ComponentActivity; a plain Activity
+// fails to resolve it (receiver type mismatch).
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -426,7 +488,10 @@ SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "\${SCRIPT_DIR}/.." && pwd)"
 OUT="\${PROJECT_DIR}/android/app/src/main/kotlin/${androidPkgPath}/generated"
 mkdir -p "\${OUT}"
-npx pyreon-native build --target=android --source="\${PROJECT_DIR}/src" --out="\${OUT}"
+# --kotlin-package stamps the generated .kt with the FQN MainActivity
+# imports (\`${androidPkg}.generated.App\`); without it the emit lands in
+# Kotlin's anonymous root package and the import fails to resolve.
+npx pyreon-native build --target=android --source="\${PROJECT_DIR}/src" --out="\${OUT}" --kotlin-package=${androidPkg}.generated
 # Asset pipeline: shared assets/ → res/drawable-* (skipped when empty).
 if [[ -d "\${PROJECT_DIR}/assets" ]]; then
   npx pyreon-native assets --target=android --source="\${PROJECT_DIR}/assets" --out="\${PROJECT_DIR}/android/app/src/main"

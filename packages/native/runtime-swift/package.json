@@ -4,6 +4,7 @@
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Swift Package Manager package that compiler-emitted Swift code links against on iOS. Phase 0 scaffold; see .claude/plans/native-platforms-phase0-roadmap.md PR 1.",
   "license": "MIT",
+  "files": ["Package.swift", "Sources", "README.md", "LICENSE"],
   "scripts": {
     "build": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift build; else echo '[native-runtime-swift] non-Darwin or no swift on PATH; skipping build (SwiftUI is Darwin-only)'; fi",
     "test": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift test; else echo '[native-runtime-swift] non-Darwin or no swift on PATH; skipping tests (SwiftUI is Darwin-only)'; fi",
