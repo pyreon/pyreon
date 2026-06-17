@@ -2,6 +2,7 @@
 '@pyreon/sized-map': patch
 '@pyreon/reactivity': patch
 '@pyreon/head': patch
+'@pyreon/primitives': patch
 ---
 
 Internal: remove provably-unreachable defensive branches + harden test coverage
@@ -21,3 +22,10 @@ unreachable defensive guard it is (the only caller, `syncDom`, already returns
 on `document === undefined`); added a node-environment test that exercises the
 true SSR function-input path of `useHead`. head → 100% statements/functions/
 lines, 98.3% branches.
+
+`@pyreon/primitives`' web `<Button>` drops an uncoverable `?? {}` fallback in
+favor of a documented assertion (the `primary` key is statically defined).
+Added targeted tests for the residual web-primitive branches — plain-value
+(non-signal) `value`/`checked`, the asset-name `src` dispatch, and the defensive
+guard false-paths in Field/Text/Press/WebView. primitives → 100% across all four
+metrics.
