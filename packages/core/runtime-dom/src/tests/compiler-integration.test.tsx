@@ -8,10 +8,10 @@
  * constructor, execute, mount the result, and assert DOM state.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, _rp } from '@pyreon/core'
+import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, mount, mountChild } from '../index'
+import { _applyProps, _setStyle, mount, mountChild } from '../index'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -27,7 +27,9 @@ const RUNTIME_DEPS = {
   _bindText,
   _bindDirect,
   _applyProps,
+  _setStyle,
   _rp,
+  _cx: cx,
   h,
   Fragment,
   signal,
@@ -504,5 +506,49 @@ describe('compiler integration — no false inlining', () => {
     // other.x should stay as other.x — not replaced with (props.x)
     // sliceExpr only replaces standalone identifiers, not property access
     expect(code).not.toContain('other.(props.x)')
+  })
+})
+
+// ─── class/style binding fidelity (end-to-end DOM) ──────────────────────────
+// Regression for the compiler bug where the template fast path assigned raw
+// values: `class={[…]}` → "a,b", `class={{…}}` → "[object Object]",
+// `style={() => ({…})}` → cssText set to an object → no styles. The setter now
+// mirrors the runtime applyProp path. Bisect: revert jsx.ts/lib.rs + rebuild
+// native → these fail (className "hot,x", style.color "").
+describe('Compiler integration — class/style binding fidelity', () => {
+  test('reactive class array renders space-joined (not "a,b") and updates', () => {
+    const klass = signal('hot')
+    const { container } = compileAndMount(`<div class={[klass(), 'x']}>y</div>`, { klass })
+    const div = container.querySelector('div')!
+    expect(div.className).toBe('hot x')
+    klass.set('cold')
+    expect(div.className).toBe('cold x')
+  })
+
+  test('reactive class object renders via cx (not "[object Object]")', () => {
+    const on = signal(true)
+    const { container } = compileAndMount(`<div class={{ active: on(), hidden: false }}>y</div>`, { on })
+    const div = container.querySelector('div')!
+    expect(div.className).toBe('active')
+    on.set(false)
+    expect(div.className).toBe('')
+  })
+
+  test('object style thunk applies + reacts (was cssText = object → no styles)', () => {
+    const color = signal('red')
+    const { container } = compileAndMount(`<div style={() => ({ color: color() })}>y</div>`, { color })
+    const div = container.querySelector('div')! as HTMLDivElement
+    expect(div.style.color).toBe('red')
+    color.set('blue')
+    expect(div.style.color).toBe('blue')
+  })
+
+  test('object style literal with a signal is reactive (was a one-shot Object.assign)', () => {
+    const color = signal('red')
+    const { container } = compileAndMount(`<div style={{ color: color() }}>y</div>`, { color })
+    const div = container.querySelector('div')! as HTMLDivElement
+    expect(div.style.color).toBe('red')
+    color.set('green')
+    expect(div.style.color).toBe('green')
   })
 })

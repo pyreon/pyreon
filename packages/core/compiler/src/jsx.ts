@@ -1045,6 +1045,8 @@ export function transformJSX_JS(
   let needsBindImportGlobal = false
   let needsApplyPropsImportGlobal = false
   let needsMountSlotImportGlobal = false
+  let needsCxImportGlobal = false
+  let needsSetStyleImportGlobal = false
 
   // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
   let needsCollapse = false
@@ -2191,6 +2193,7 @@ export function transformJSX_JS(
     if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
+    if (needsSetStyleImportGlobal) runtimeDomImports.push('_setStyle')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -2199,8 +2202,12 @@ export function transformJSX_JS(
       preamble
   }
 
-  if (needsRpImport || needsWrapSpreadImport) {
+  if (needsRpImport || needsWrapSpreadImport || needsCxImportGlobal) {
     const coreImports: string[] = []
+    // Alias to an internal name — `cx` is a PUBLIC export users import
+    // directly (e.g. a hand-written component that also uses `class={…}`),
+    // so injecting a bare `cx` import would collide ("already declared").
+    if (needsCxImportGlobal) coreImports.push('cx as _cx')
     if (needsRpImport) coreImports.push('_rp')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
     preamble = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + preamble
@@ -2312,6 +2319,8 @@ export function transformJSX_JS(
     let needsBindDirectImport = false
     let needsApplyPropsImport = false
     let needsMountSlotImport = false
+    let needsCxImport = false
+    let needsSetStyle = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -2612,8 +2621,28 @@ export function transformJSX_JS(
     }
 
     function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
-      if (htmlAttrName === 'class') return `${varName}.className = ${expr}`
-      if (htmlAttrName === 'style') return `${varName}.style.cssText = ${expr}`
+      // class/style mirror the runtime `applyProp` value-normalization
+      // (packages/core/runtime-dom/src/props.ts): a string passes through,
+      // but an array/object class goes through `cx()` and an object style is
+      // applied per-property. The template fast path used to assign the raw
+      // value (`className = [..]` → "a,b"; `style.cssText = {..}` →
+      // "[object Object]"), so `class={[...]}` / `class={{...}}` and
+      // `style={() => ({...})}` / `style={{...}}` were silently broken.
+      // Block-scoped temp = single eval (safe for signal-call exprs) + no
+      // collision when several bindings are combined into one `_bind` body.
+      if (htmlAttrName === 'class') {
+        needsCxImport = true
+        return `{ const _cv = (${expr}); ${varName}.className = typeof _cv === "string" ? _cv : _cx(_cv) }`
+      }
+      if (htmlAttrName === 'style') {
+        // Delegate to the runtime `_setStyle` (= applyStyleProp) so a compiled
+        // style binding normalizes identically to applyProp: object →
+        // per-property setProperty (kebab + number→px) with stale-key removal,
+        // string → cssText. The previous inline `cssText = expr` set an object
+        // to cssText ("[object Object]" → no styles).
+        needsSetStyle = true
+        return `_setStyle(${varName}, ${expr})`
+      }
       if (DOM_PROPS.has(htmlAttrName)) return `${varName}.${htmlAttrName} = ${expr}`
       return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
     }
@@ -2639,11 +2668,12 @@ export function transformJSX_JS(
       if (directRef) {
         needsBindDirectImport = true
         const d = nextDisp()
+        if (htmlAttrName === 'class') needsCxImport = true
         const updater =
           htmlAttrName === 'class'
-            ? `(v) => { ${varName}.className = v == null ? "" : String(v) }`
+            ? `(v) => { ${varName}.className = v == null ? "" : (typeof v === "string" ? v : _cx(v)) }`
             : htmlAttrName === 'style'
-              ? `(v) => { if (typeof v === "string") ${varName}.style.cssText = v; else if (v) Object.assign(${varName}.style, v) }`
+              ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
               : DOM_PROPS.has(htmlAttrName)
                 ? `(v) => { ${varName}.${htmlAttrName} = v }`
                 : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
@@ -2676,10 +2706,19 @@ export function transformJSX_JS(
     function emitAttrExpression(exprNode: N, htmlAttrName: string, varName: string): string {
       const staticHtml = staticAttrToHtml(exprNode, htmlAttrName)
       if (staticHtml !== null) return staticHtml
-      if (htmlAttrName === 'style' && exprNode.type === 'ObjectExpression') {
-        bindLines.push(`Object.assign(${varName}.style, ${sliceExpr(exprNode)})`)
+      if (
+        htmlAttrName === 'style' &&
+        exprNode.type === 'ObjectExpression' &&
+        !isDynamic(exprNode)
+      ) {
+        // Static object style (no signal reads) — apply once at mount via the
+        // runtime normalizer (number→px, kebab) for parity with applyProp.
+        needsSetStyle = true
+        bindLines.push(`_setStyle(${varName}, ${sliceExpr(exprNode)})`)
         return ''
       }
+      // A dynamic object style (`style={{ color: theme() }}`) falls through to
+      // emitDynamicAttr → the object-aware attrSetter → reactive `_bind`.
       emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName)
       return ''
     }
@@ -3029,6 +3068,8 @@ export function transformJSX_JS(
     if (needsBindDirectImport) needsBindDirectImportGlobal = true
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
     if (needsMountSlotImport) needsMountSlotImportGlobal = true
+    if (needsCxImport) needsCxImportGlobal = true
+    if (needsSetStyle) needsSetStyleImportGlobal = true
 
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 

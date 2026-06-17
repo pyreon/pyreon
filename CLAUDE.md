@@ -695,14 +695,13 @@ Direct subscribers use a single-subscriber inline slot (`_d1`), promoting to a `
 - `VNodeChildAtom = VNode | string | number | boolean | null | undefined` — `boolean` included so `&&` patterns work without ternary
 - `<For each={items} by={r => r.id}>{r => <li>...</li>}</For>` — keyed list rendering
   - Prop is `by` (not `key`) because JSX extracts `key` as a special VNode reconciliation prop
-- `class` prop accepts strings, arrays, objects, or nested mix — processed by `cx()` at runtime
+- `class` prop accepts strings, arrays, objects, or nested mix — processed by `cx()`. In the compiled template fast path, a dynamic class binding emits `typeof v === "string" ? v : _cx(v)` (string passthrough, array/object → `cx`), mirroring the runtime `applyProp` path (`runtime-dom/src/props.ts`). Before the binding-fidelity fix the fast path assigned the raw value, so reactive `class={[...]}` rendered `"a,b"` and `class={{...}}` rendered `"[object Object]"`. The injected import is aliased — `import { cx as _cx } from "@pyreon/core"` — because `cx` is a PUBLIC export a hand-written component may already import (a bare `cx` injection would collide: "Identifier `cx` has already been declared", which broke the docs build).
 - JSX index signature narrowed to `[key: \`data-${string}\`]` and `[key: \`aria-${string}\`]` only (catches typos)
 - `TargetedEvent<E>` types `currentTarget` per element — no manual `as HTMLInputElement` casts
 - New events: `onBeforeInput`, `onInvalid`, `onResize`, `onToggle`
 - `style` prop accepts both string (`style="color: red"`) and object (`style={{ color: "red", fontSize: "14px" }}`)
   - String: inlined as HTML attribute by compiler
-  - Object: applied via `Object.assign(el.style, obj)` by compiler
-  - Reactive: `style={() => dynamicStyle()}` tracked via `_bind()`
+  - Every compiled style binding (static object, reactive object, thunk, or string) emits `_setStyle(el, value)` — the runtime `applyStyleProp` helper exported from `@pyreon/runtime-dom`. So a compiled style binding normalizes IDENTICALLY to the `applyProp`/`h()` path: string → `cssText`; object → per-property `setProperty` with kebab-casing + `normalizeStyleValue` (number→px) + **stale-key removal** (a reactive object going `{color,fontSize}` → `{color}` drops `fontSize`); dynamic bindings are wrapped in a reactive `_bind`. Before the binding-fidelity fix, object styles took a one-shot `Object.assign` (static — `style={{ color: theme() }}` never updated, no number→px, no key-removal) and the `() => ({...})` thunk emitted `cssText = <object>` → `"[object Object]"` → **no styles at all**. Both class and style now match the runtime `applyProp` value-normalization in BOTH backends (JS + Rust native), locked by `native-equivalence.test.ts` + runtime DOM regression specs in `runtime-dom/src/tests/compiler-integration.test.tsx`.
 
 ### Props Utilities
 

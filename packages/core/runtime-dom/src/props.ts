@@ -367,8 +367,14 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
 // only applied new keys, leaking the removed ones onto the DOM.
 const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
 
-/** Apply a style prop (string or object). */
-function applyStyleProp(el: HTMLElement, value: unknown): void {
+/**
+ * Apply a style prop (string or object). Exported as `_setStyle` for the
+ * compiler's template fast path so a compiled style binding normalizes
+ * values identically to the `applyProp` path (string → cssText; object →
+ * per-property setProperty with kebab-casing + `normalizeStyleValue`
+ * number→px + stale-key removal; null → clear).
+ */
+export function applyStyleProp(el: HTMLElement, value: unknown): void {
   if (typeof value === 'string') {
     // cssText replaces everything — drop any tracked object-mode keys.
     el.style.cssText = value

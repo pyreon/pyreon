@@ -322,6 +322,8 @@ struct Ctx<'a> {
     needs_tpl_import: bool,
     needs_rp_import: bool,
     needs_wrap_spread_import: bool,
+    needs_cx_import: bool,
+    needs_set_style_import: bool,
     needs_bind_text_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
@@ -405,6 +407,8 @@ impl<'a> Ctx<'a> {
             needs_tpl_import: false,
             needs_rp_import: false,
             needs_wrap_spread_import: false,
+            needs_cx_import: false,
+            needs_set_style_import: false,
             needs_bind_text_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
@@ -525,6 +529,9 @@ impl<'a> Ctx<'a> {
             if self.needs_mount_slot_import {
                 imports.push("_mountSlot");
             }
+            if self.needs_set_style_import {
+                imports.push("_setStyle");
+            }
             let reactivity = if self.needs_bind_import {
                 "\nimport { _bind } from \"@pyreon/reactivity\";"
             } else {
@@ -538,8 +545,13 @@ impl<'a> Ctx<'a> {
             );
         }
 
-        if self.needs_rp_import || self.needs_wrap_spread_import {
+        if self.needs_rp_import || self.needs_wrap_spread_import || self.needs_cx_import {
             let mut core_imports: Vec<&str> = Vec::new();
+            // Alias to an internal name — `cx` is a public export users import
+            // directly, so a bare injected `cx` import collides.
+            if self.needs_cx_import {
+                core_imports.push("cx as _cx");
+            }
             if self.needs_rp_import {
                 core_imports.push("_rp");
             }
@@ -3497,6 +3509,8 @@ struct TemplateBuilder {
     needs_apply_props: bool,
     needs_mount_slot: bool,
     needs_bind: bool,
+    needs_cx: bool,
+    needs_set_style: bool,
 }
 
 impl TemplateBuilder {
@@ -3512,6 +3526,8 @@ impl TemplateBuilder {
             needs_apply_props: false,
             needs_mount_slot: false,
             needs_bind: false,
+            needs_cx: false,
+            needs_set_style: false,
         }
     }
 
@@ -3550,6 +3566,12 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     }
     if tb.needs_bind_direct {
         ctx.needs_bind_direct_import = true;
+    }
+    if tb.needs_cx {
+        ctx.needs_cx_import = true;
+    }
+    if tb.needs_set_style {
+        ctx.needs_set_style_import = true;
     }
     if tb.needs_apply_props {
         ctx.needs_apply_props_import = true;
@@ -3963,10 +3985,21 @@ fn is_dom_prop(name: &str) -> bool {
 }
 
 fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str) -> String {
+    // class/style mirror the runtime `applyProp` value-normalization
+    // (packages/core/runtime-dom/src/props.ts): a string passes through, an
+    // array/object class goes through `cx()`, and an object style is applied
+    // per-property. Must stay byte-identical to the JS backend's `attrSetter`
+    // (packages/core/compiler/src/jsx.ts) — the native-equivalence tests assert
+    // it. The caller sets `tb.needs_cx` for class so `cx` is imported.
     if html_attr_name == "class" {
-        format!("{}.className = {}", var_name, expr)
+        format!(
+            "{{ const _cv = ({}); {}.className = typeof _cv === \"string\" ? _cv : _cx(_cv) }}",
+            expr, var_name
+        )
     } else if html_attr_name == "style" {
-        format!("{}.style.cssText = {}", var_name, expr)
+        // Delegate to runtime `_setStyle` (= applyStyleProp) — see the JS
+        // backend's attrSetter. The caller sets `tb.needs_set_style`.
+        format!("_setStyle({}, {})", var_name, expr)
     } else if is_dom_prop(html_attr_name) {
         format!("{}.{} = {}", var_name, html_attr_name, expr)
     } else {
@@ -3981,6 +4014,15 @@ fn emit_dynamic_attr(
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) {
+    // class always routes through `attr_setter`'s cx-normalizing form, so the
+    // `cx` import is needed whenever a (static-or-reactive) class binding is
+    // emitted here. Mirrors the JS backend setting `needsCxImport` in attrSetter.
+    if html_attr_name == "class" {
+        tb.needs_cx = true;
+    }
+    if html_attr_name == "style" {
+        tb.needs_set_style = true;
+    }
     let (expr_text, is_reactive) = unwrap_accessor(expr_node, ctx);
     if !is_reactive {
         tb.bind_lines
@@ -4003,14 +4045,11 @@ fn emit_dynamic_attr(
         let d = tb.next_disp();
         let updater = if html_attr_name == "class" {
             format!(
-                "(v) => {{ {}.className = v == null ? \"\" : String(v) }}",
+                "(v) => {{ {}.className = v == null ? \"\" : (typeof v === \"string\" ? v : _cx(v)) }}",
                 var_name
             )
         } else if html_attr_name == "style" {
-            format!(
-                "(v) => {{ if (typeof v === \"string\") {0}.style.cssText = v; else if (v) Object.assign({0}.style, v) }}",
-                var_name
-            )
+            format!("(v) => _setStyle({}, v)", var_name)
         } else if is_dom_prop(html_attr_name) {
             format!("(v) => {{ {}.{} = v }}", var_name, html_attr_name)
         } else {
@@ -4060,13 +4099,18 @@ fn emit_attr_expression(
     if let Some(static_html) = static_attr_to_html(expr_node, html_attr_name) {
         return static_html;
     }
-    // Style object special case
+    // Static object style (no signal reads) — apply once at mount. A dynamic
+    // object style (`style={{ color: theme() }}`) falls through to
+    // emit_dynamic_attr → the object-aware attr_setter → reactive `_bind`.
     if html_attr_name == "style" {
         if let Expression::ObjectExpression(_) = expr_node {
-            let text = slice_expr(expr_node, ctx);
-            tb.bind_lines
-                .push(format!("Object.assign({}.style, {})", var_name, text));
-            return String::new();
+            if !is_dynamic(expr_node, ctx) {
+                let text = slice_expr(expr_node, ctx);
+                tb.needs_set_style = true;
+                tb.bind_lines
+                    .push(format!("_setStyle({}, {})", var_name, text));
+                return String::new();
+            }
         }
     }
     emit_dynamic_attr(expr_node, html_attr_name, var_name, tb, ctx);

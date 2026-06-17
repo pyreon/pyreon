@@ -28,6 +28,7 @@ export {
   applyProp,
   applyProps,
   applyProps as _applyProps,
+  applyStyleProp as _setStyle,
   sanitizeHtml,
   setSanitizer,
 } from './props'
