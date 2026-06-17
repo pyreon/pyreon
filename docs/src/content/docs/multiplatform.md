@@ -237,7 +237,7 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 | Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed — **`useForm` v2 is device-proven** (validators + runtime Field bindings + submit gating; the tasks login's error-path smoke); **`useFetch` is device-proven end-to-end** (the tasks Quotes screen fetches + decodes + renders a real HTTP fixture on the CI Simulator/Emulator; web runs the same call through `@pyreon/hooks`); `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design. `useValidation` planned |
 | Compiler diagnostics | Surface silent-drop shapes as parser warnings instead of failing-silent at runtime | ✅ Round-1 (#1094 — `Icon`/`Image`/`Link` missing required props) + Round-2 (#1099 — `Press` without `onPress`, `Link prefetch={…}` on native, `Stack/Inline/Layer align="<typo>"`) landed; both routes ship as `result.warnings`, emit shape unchanged |
 | Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` (real semantics, Phase 2); `<KeepAlive>` | ✅ transitions + **real `<Suspense>` / `<ErrorBoundary>`** — both compile to an INLINE conditional in the component body (Swift `Group { if <pending/errored> { fallback } else { children } }`, Kotlin `if (…) { … } else { … }`) reading every `useFetch` container's `isPending` / `error` in that component: Suspense shows its fallback until the fetched data settles, ErrorBoundary swaps to its fallback when a container rejects (the realistic native error surface — SwiftUI/Compose have no try/catch around view construction). The read is inline (not passed to a wrapper) so SwiftUI Observation / Compose recomposition tracks it; on iOS the body wraps in a concrete `ZStack` so the fetch `.task` attaches to a stable host (a transparent `Group` makes SwiftUI cancel+restart the task on every flip → the fetch never settles). Device-proven (the tasks Lifecycle screen: good-fetch content + a deliberately-failing fetch's ErrorBoundary fallback both render on a real Simulator). `<KeepAlive>` stays a graceful pass-through (cache semantics inert; the hardest of the three). |
-| DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline | 🟡 scaffold landed; **image asset pipeline landed** (`pyreon-native assets` — the shared `assets/` dir materializes to `Assets.xcassets` / `res/drawable-*` density buckets / `public/assets`, and `<Image src="name.png">` dispatches bundled-vs-remote per target; device-proven via the tasks branded header); SF-Symbols/Material icon mapping + fonts are the next arc |
+| DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline | 🟡 scaffold landed **and produces buildable, launchable native apps end-to-end** — the four `@pyreon/native-*` runtimes wire in as SPM (iOS) / Gradle `srcDir` (Android) deps so the emitted `import PyreonRuntime` / `com.pyreon.runtime.*` resolve; proven scaffold → emit → `gradle assembleDebug` / `xcodebuild` → install → **launch (RUNNING)** on both an Android emulator and an iOS Simulator (#1570, which fixed eight project-wiring bugs a real local build surfaced that compile-only validation could not — web-entry-skip, `--kotlin-package`, serialization-plugin version, `ComponentActivity`, SPM `../` paths, source-path nesting, `App.swift` collision, `SwiftUI.App` shadow). **image asset pipeline landed** (`pyreon-native assets` — the shared `assets/` dir materializes to `Assets.xcassets` / `res/drawable-*` density buckets / `public/assets`, and `<Image src="name.png">` dispatches bundled-vs-remote per target; device-proven via the tasks branded header); SF-Symbols/Material icon mapping + fonts are the next arc |
 
 > **Loader auto-emit is intentionally deferred, not forgotten.** The
 > `loaderData` / `useLoaderData` *runtime* contract is landed (and
@@ -562,6 +562,24 @@ every warning; treat any warning as "this construct is outside v1."
 | `useFetch<T>(url)` / `usePermissions([...])` / `useOnline()` / `useClipboard()` / `useColorScheme()` | see the services section for per-hook status |
 | `createI18n({...})` / `createMachine({...})` / `defineStore(id, setup)` / `model({...}).create()` | literal configs; store v2 setup bodies take signals + expression-body computeds + arrow methods |
 | `rx.METHOD(source, …)` | 21 collection methods (Strategy-A lowering) |
+
+**Two binding idioms that v1 requires (both warn clearly when violated, never silently misbehave):**
+
+- **Hook results → single-binding, not destructure.** Bind the hook's
+  result to one name and read fields off it: `const q = useFetch<T>(url); q.data()` / `q.isPending`. The **destructure** form
+  `const { data, isPending } = useFetch(url)` is NOT supported — the
+  parser emits a warning naming the hook + the single-binding fix (covers
+  `useFetch` / `useForm` / `useClipboard` / `useStorage` /
+  `usePermissions` / `useOnline` / `useColorScheme` / `useNetworkStatus`).
+  **`useParams` is the one exception** — its destructure form
+  `const { id } = useParams()` IS supported (see the router section).
+- **Store reads → inline, not aliased.** Read store state inline through
+  the hook: `useApp().store.tasks()`. Aliasing the store hook into a
+  local first — `const app = useApp(); app.store.tasks()` — is NOT yet
+  supported (the local binding isn't lowered, so downstream
+  `app.store.…` references fail the native build unbound). Local-binding
+  alias + full hook-destructure lowering is a tracked follow-up; until it
+  lands, the inline shape is the contract.
 
 **Expressions**
 | Shape | Notes |
