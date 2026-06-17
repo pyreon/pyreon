@@ -1376,3 +1376,100 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (full variant)
       ],
     ]))
 })
+
+describeNative('Native vs JS equivalence — rocketstyle collapse (on*-handler partial)', () => {
+  const MODE = { name: 'useMode', source: '@pyreon/zero' }
+  interface Site {
+    templateHtml: string
+    lightClass: string
+    darkClass: string
+    rules: string[]
+    ruleKey: string
+  }
+  // Same harness as the full-variant block, exercising the `__rsCollapseH`
+  // (on*-handler partial) path: a literal-prop site with ≥1 `on[A-Z]…` handler
+  // peels the handlers into a re-emitted object literal while the literal-prop
+  // subset still feeds the UNCHANGED key. Both backends must emit byte-identically.
+  function cmpH(
+    input: string,
+    candidates: string[],
+    entries: Array<[string, Record<string, string>, string, Site]>,
+  ) {
+    const sitesRecord: Record<string, Site> = {}
+    for (const [comp, props, text, site] of entries) {
+      sitesRecord[rocketstyleCollapseKey(comp, props, text)] = site
+    }
+    const jsCfg = {
+      candidates: new Set(candidates),
+      sites: new Map(Object.entries(sitesRecord)),
+      mode: MODE,
+    }
+    const napiCfg = { candidates, sites: sitesRecord, mode: MODE }
+    const js = transformJSX_JS(input, 'test.tsx', {
+      collapseRocketstyle: jsCfg as never,
+    }).code
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+      input,
+      'test.tsx',
+      false,
+      null,
+      false,
+      napiCfg,
+    ).code
+    expect(rs).toBe(js)
+  }
+
+  const SITE: Site = {
+    templateHtml: '<button><span>Save</span></button>',
+    lightClass: 'btn-l',
+    darkClass: 'btn-d',
+    rules: ['.btn-l{color:#000}', '.btn-d{color:#fff}'],
+    ruleKey: 'rk1',
+  }
+
+  test('single handler, top-level (no braces) — emits __rsCollapseH + both imports', () =>
+    cmpH(`export const C = () => <Button state="primary" onClick={() => go()}>Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('handler site as a JSX child is brace-wrapped', () =>
+    cmpH(
+      `export const C = () => <div><Button state="primary" onClick={() => go()}>Save</Button></div>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
+
+  test('multiple handlers + multi-prop (sorted key)', () =>
+    cmpH(
+      `export const C = () => <Button size="md" state="primary" onClick={h1} onMouseEnter={() => h2(1)}>Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary', size: 'md' }, 'Save', SITE]],
+    ))
+
+  test('handler with a comma-sequence body stays one argument (paren-wrapped)', () =>
+    cmpH(
+      `export const C = () => <Button state="primary" onClick={(e) => (e.stopPropagation(), go())}>Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
+
+  test('handler-only (no other props)', () =>
+    cmpH(`export const C = () => <Button onClick={h}>Save</Button>`, ['Button'], [
+      ['Button', {}, 'Save', SITE],
+    ]))
+
+  test('unresolved key keeps the normal mount', () =>
+    cmpH(`export const C = () => <Button state="secondary" onClick={h}>X</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('a non-handler {expr} prop bails both full AND partial', () =>
+    cmpH(`export const C = (p) => <Button state={p.s} onClick={h}>Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+
+  test('zero handlers → full path, never __rsCollapseH', () =>
+    cmpH(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
+      ['Button', { state: 'primary' }, 'Save', SITE],
+    ]))
+})
