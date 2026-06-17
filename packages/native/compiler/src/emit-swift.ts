@@ -3637,31 +3637,46 @@ const SWIFT_CONTENT_MODE: Record<string, string> = {
  * unbound reference.
  */
 function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  // Static fast path — a literal or module-const string.
+  // Content arg — `html` or `src`, static (literal / module-const) or
+  // dynamic (signal-derived → reloads reactively; accessor arrows unwrap).
+  const content = swiftWebViewContentArg(e)
+  // Live-data bridge — `data={signal}` is JSON-encoded (PyreonJSON.encode
+  // runtime helper) + PUSHED into the running page (window.__pyreonData)
+  // on load + on every change WITHOUT reloading, so the chart updates in
+  // place. Always a reactive expression; accessor arrows unwrap.
+  const dataExpr = dynamicWebViewAttr(e, 'data')
+  const dataArg =
+    dataExpr !== undefined ? `data: PyreonJSON.encode(${emitSwiftExpr(dataExpr, 0)})` : undefined
+  if (content === undefined) {
+    _emitWarnings.push(
+      '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
+    )
+    return 'PyreonWebView()'
+  }
+  const args = dataArg !== undefined ? `${content}, ${dataArg}` : content
+  return `PyreonWebView(${args})`
+}
+
+/** The `html` / `src` constructor arg for `<WebView>` (static literal /
+ * module-const → quoted; dynamic signal-derived → the emitted expression,
+ * which reloads reactively). `html` wins over `src`. Undefined when
+ * neither is present. */
+function swiftWebViewContentArg(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string | undefined {
   const html = readStaticAttr(e, 'html')
-  if (typeof html === 'string') return `PyreonWebView(html: ${JSON.stringify(html)})`
+  if (typeof html === 'string') return `html: ${JSON.stringify(html)}`
+  const dynHtml = dynamicWebViewAttr(e, 'html')
+  if (dynHtml !== undefined) return `html: ${emitSwiftExpr(dynHtml, 0)}`
   const src = readStaticAttr(e, 'src')
-  if (typeof src === 'string') return `PyreonWebView(src: ${JSON.stringify(src)})`
-  // Dynamic (signal-derived) html/src — emit the EXPRESSION so the
-  // WebView reloads REACTIVELY when the value changes (SwiftUI re-renders
-  // body → updateUIView reloads with the new content). This makes
-  // `<WebView html={() => buildChart(data())}>` a live, data-driven chart
-  // hosted natively. A zero-param accessor arrow is unwrapped to its body
-  // (the reactive-read idiom). NOTE reload-based — the chart rebuilds on
-  // each change; the smooth no-reload live-data PUSH bridge is the next
-  // slice (a `data:` channel via evaluateJavaScript).
-  const dyn = dynamicWebViewAttr(e, 'html')
-  if (dyn !== undefined) return `PyreonWebView(html: ${emitSwiftExpr(dyn, 0)})`
+  if (typeof src === 'string') return `src: ${JSON.stringify(src)}`
   const dynSrc = dynamicWebViewAttr(e, 'src')
-  if (dynSrc !== undefined) return `PyreonWebView(src: ${emitSwiftExpr(dynSrc, 0)})`
-  _emitWarnings.push(
-    '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
-  )
-  return 'PyreonWebView()'
+  if (dynSrc !== undefined) return `src: ${emitSwiftExpr(dynSrc, 0)}`
+  return undefined
 }
 
 /**
- * The dynamic value-expr of a `<WebView>` html/src attr, unwrapping a
+ * The dynamic value-expr of a `<WebView>` html/src/data attr, unwrapping a
  * zero-param accessor arrow (`html={() => …}`) to its body — the reactive
  * read idiom. Returns undefined when the attr is absent.
  */

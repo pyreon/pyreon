@@ -223,13 +223,17 @@ describe('@pyreon/native-cli build', () => {
     }
   })
 
-  it('Kotlin conditional imports: fetch shapes pull coroutines + Json; non-fetch outputs stay clean', () => {
+  it('Kotlin conditional imports: fetch + WebView-bridge shapes pull serialization.json.Json; plain outputs stay clean', () => {
     // Device-found (fetch-arc): the kotlinc validate loop concatenates
     // stubs into the same file (no imports needed), so the missing
     // withContext / Dispatchers / Json imports only surfaced on the
     // first REAL gradle assembleDebug of a useFetch screen. Bisect
     // site: the conditionalKotlinImports call in the finalCode
-    // assembly.
+    // assembly. The WebView live-data bridge adds a SECOND Json consumer
+    // (`PyreonJson.encode(data)`) — a NON-fetch output that legitimately
+    // needs serialization.json.Json too (but not coroutines). So the
+    // real invariant is "Json import iff Json is actually used", not
+    // "non-fetch ⇒ no Json".
     const result = build({
       source: COMPILER_FIXTURES,
       out: tempOut,
@@ -243,9 +247,22 @@ describe('@pyreon/native-cli build', () => {
       expect(output.code).toContain('import kotlinx.coroutines.Dispatchers')
       expect(output.code).toContain('import kotlinx.serialization.json.Json')
     }
-    const nonFetch = result.outputs.filter((o) => !o.code.includes('PyreonFetch<'))
-    expect(nonFetch.length).toBeGreaterThan(0)
-    for (const output of nonFetch) {
+    // WebView live-data bridge — `PyreonJson.encode(data)` needs the
+    // serialization.json.Json import even though it's a non-fetch
+    // (synchronous, no coroutines) output.
+    const bridgeOutputs = result.outputs.filter((o) => o.code.includes('PyreonJson.encode('))
+    expect(bridgeOutputs.length).toBeGreaterThan(0)
+    for (const output of bridgeOutputs) {
+      expect(output.code).toContain('import kotlinx.serialization.json.Json')
+      expect(output.code).not.toContain('import kotlinx.coroutines.withContext')
+    }
+    // Outputs using NEITHER fetch NOR the bridge stay clean of both the
+    // coroutine and the serialization.json imports.
+    const plain = result.outputs.filter(
+      (o) => !o.code.includes('PyreonFetch<') && !o.code.includes('PyreonJson.encode('),
+    )
+    expect(plain.length).toBeGreaterThan(0)
+    for (const output of plain) {
       expect(output.code).not.toContain('import kotlinx.coroutines.withContext')
       expect(output.code).not.toContain('import kotlinx.serialization.json.Json')
     }

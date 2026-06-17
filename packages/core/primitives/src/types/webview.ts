@@ -16,6 +16,18 @@ export interface WebViewProps {
    * Android `assets/`) or a remote `URLRequest`; on web an `<iframe src>`.
    */
   src?: string
+  /**
+   * Live data pushed into the hosted page as `window.__pyreonData` — the
+   * reactive bridge for driving a chart from signals. On change it's
+   * PUSHED into the already-loaded page (a `pyreondata` event fires)
+   * WITHOUT reloading, so the chart updates in place. On native, PMTC
+   * JSON-encodes the value (`PyreonJSON.encode` / `PyreonJson.encode`) and
+   * pushes via `evaluateJavaScript`; on web the iframe's
+   * `contentWindow.__pyreonData` is set directly (same-origin / `srcdoc`).
+   * The hosted page reads `window.__pyreonData` + re-reads on `pyreondata`.
+   * Pass a `signal()` value (or an accessor) for reactivity.
+   */
+  data?: unknown
   /** Pass-through `data-*` / `aria-*` / `id` / `class` attrs (web). */
   [key: `data-${string}`]: unknown
   [key: `aria-${string}`]: unknown

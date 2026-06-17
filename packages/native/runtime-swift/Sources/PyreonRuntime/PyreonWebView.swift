@@ -1,10 +1,25 @@
 // PyreonWebView — the native host for the multiplatform `<WebView>`
 // primitive. PMTC emits `PyreonWebView(html:)` / `PyreonWebView(src:)`
-// for the iOS target; this wraps a `WKWebView` in a SwiftUI view so the
-// heavy web-only-rich viz (charts / flow / tables — `@pyreon/charts`,
-// `@pyreon/flow`, …) renders inside a native shell. The web target
-// renders the same content directly (an `<iframe>`); see
+// (+ optional `data:`) for the iOS target; this wraps a `WKWebView` in a
+// SwiftUI view so the heavy web-only-rich viz (charts / flow / tables —
+// `@pyreon/charts`, `@pyreon/flow`, …) renders inside a native shell. The
+// web target renders the same content directly (an `<iframe>`); see
 // `@pyreon/primitives`' web `WebView` impl.
+//
+// ## The live-data bridge (`data:`)
+//
+// `data:` is a JSON string (PMTC emits `PyreonJSON.encode(signal)` for
+// `<WebView data={signal}>`). On page load AND whenever `data` changes,
+// the runtime PUSHES it into the running page via `evaluateJavaScript`:
+//
+//     window.__pyreonData = <json>;
+//     window.dispatchEvent(new Event("pyreondata"));
+//
+// The hosted page reads `window.__pyreonData` (and re-reads on the
+// `pyreondata` event) to drive the chart. Crucially this is a PUSH into
+// the ALREADY-LOADED page — a `data`-only change does NOT reload the
+// webview, so the chart updates in place (no flicker, animation/zoom
+// preserved). The page is reloaded ONLY when `html`/`src` itself changes.
 //
 // ## Policy posture (App Store / Play Store)
 //
@@ -32,17 +47,69 @@ import WebKit
 public struct PyreonWebView: View {
     private let html: String?
     private let src: String?
+    private let data: String?
 
     /// `html` — inline HTML to render (e.g. an ECharts page). `src` — a
     /// LOCAL bundled asset name (preferred, policy-safe) or a remote URL.
-    /// Supply one; `html` wins if both are set.
-    public init(html: String? = nil, src: String? = nil) {
+    /// Supply one; `html` wins if both are set. `data` — an optional JSON
+    /// string pushed into the page as `window.__pyreonData` (live-updates
+    /// without reloading; see the file header).
+    public init(html: String? = nil, src: String? = nil, data: String? = nil) {
         self.html = html
         self.src = src
+        self.data = data
     }
 
     public var body: some View {
-        _PyreonWebViewBridge(html: html, src: src)
+        _PyreonWebViewBridge(html: html, src: src, data: data)
+    }
+}
+
+/// Shared navigation delegate — tracks page-load completion so `data` is
+/// pushed once the DOM exists, and re-pushed on later `data` changes.
+/// One per hosted webview (created via `makeCoordinator`).
+final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate {
+    var latestData: String?
+    var loaded = false
+    /// The html/src the page was last loaded with — a `data`-only change
+    /// must NOT reload (that would defeat the live push).
+    var loadedKey: String?
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loaded = true
+        pushData(into: webView)
+    }
+
+    /// Push the latest JSON into `window.__pyreonData` + fire `pyreondata`.
+    /// No-op until the page has finished loading or when there's no data.
+    func pushData(into webView: WKWebView) {
+        guard loaded, let json = latestData, !json.isEmpty else { return }
+        let js = "window.__pyreonData = \(json); window.dispatchEvent(new Event(\"pyreondata\"));"
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+}
+
+/// Sync html/src/data onto the webview: (re)load only when html/src
+/// changed; always refresh the coordinator's latest data + push it (the
+/// push is a no-op until loaded, and the coordinator re-pushes on
+/// `didFinish`). Shared by the UIKit + AppKit representables.
+private func _syncPyreonWebView(
+    _ webView: WKWebView,
+    coordinator: _PyreonWebViewCoordinator,
+    html: String?,
+    src: String?,
+    data: String?
+) {
+    coordinator.latestData = data
+    let key = (html ?? "") + "\u{0001}" + (src ?? "")
+    if coordinator.loadedKey != key {
+        coordinator.loadedKey = key
+        coordinator.loaded = false
+        _loadPyreonWebView(webView, html: html, src: src)
+        // `didFinish` pushes the data once the page is ready.
+    } else {
+        // html/src unchanged → a data-only update: push without reloading.
+        coordinator.pushData(into: webView)
     }
 }
 
@@ -50,18 +117,30 @@ public struct PyreonWebView: View {
 private struct _PyreonWebViewBridge: UIViewRepresentable {
     let html: String?
     let src: String?
-    func makeUIView(context: Context) -> WKWebView { WKWebView() }
+    let data: String?
+    func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.navigationDelegate = context.coordinator
+        return webView
+    }
     func updateUIView(_ webView: WKWebView, context: Context) {
-        _loadPyreonWebView(webView, html: html, src: src)
+        _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
     }
 }
 #elseif canImport(AppKit)
 private struct _PyreonWebViewBridge: NSViewRepresentable {
     let html: String?
     let src: String?
-    func makeNSView(context: Context) -> WKWebView { WKWebView() }
+    let data: String?
+    func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
+    func makeNSView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.navigationDelegate = context.coordinator
+        return webView
+    }
     func updateNSView(_ webView: WKWebView, context: Context) {
-        _loadPyreonWebView(webView, html: html, src: src)
+        _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
     }
 }
 #endif
@@ -87,7 +166,7 @@ private func _loadPyreonWebView(_ webView: WKWebView, html: String?, src: String
 // so the package still compiles. Real targets (iOS / macOS) always have
 // WebKit.
 public struct PyreonWebView: View {
-    public init(html: String? = nil, src: String? = nil) {}
+    public init(html: String? = nil, src: String? = nil, data: String? = nil) {}
     public var body: some View { EmptyView() }
 }
 #endif
