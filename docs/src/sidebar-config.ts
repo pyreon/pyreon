@@ -26,13 +26,9 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Why Pyreon', slug: 'why-pyreon' },
       { text: 'Getting Started', slug: 'getting-started' },
       { text: 'Build an App (Tutorial)', slug: 'build-an-app' },
-      { text: 'Live examples (new DX)', slug: 'example-dx' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
-      { text: 'Multi-Platform (PMTC)', slug: 'multiplatform' },
-      { text: 'PMTC Library Status & Authoring', slug: 'multiplatform-libraries' },
-      { text: 'PMTC Supported TypeScript', slug: 'pmtc-supported-typescript' },
-      { text: 'PMTC Per-Target Setup', slug: 'pmtc-per-target-setup' },
+      { text: 'Live examples (new DX)', slug: 'example-dx' },
     ],
   },
   {
@@ -125,14 +121,12 @@ export const SIDEBAR: SidebarGroup[] = [
     collapsed: false,
     items: [
       { text: 'Zero', slug: 'zero' },
-      { text: 'Zero Content (markdown)', slug: 'zero-content' },
-      { text: 'Zero CLI', slug: 'zero-cli' },
       { text: 'SSR & ISR', slug: 'ssr' },
       { text: 'SSG', slug: 'ssg' },
       { text: 'Images & Fonts', slug: 'images-and-fonts' },
       { text: 'Create Zero', slug: 'create-zero' },
-      { text: 'Create Multi-Platform', slug: 'create-multiplatform' },
-      { text: 'Primitives', slug: 'primitives' },
+      { text: 'Zero CLI', slug: 'zero-cli' },
+      { text: 'Zero Content (markdown)', slug: 'zero-content' },
       { text: 'Meta', slug: 'meta' },
       { text: 'Storybook', slug: 'storybook' },
     ],
@@ -173,6 +167,23 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'DevTools', slug: 'devtools' },
       { text: 'Live Program Inlay Hints', slug: 'lpih' },
       { text: 'Sized Map (bounded cache)', slug: 'sized-map' },
+    ],
+  },
+  {
+    // Experimental — the PMTC multi-target compiler (TSX → SwiftUI / Compose)
+    // is demo-quality, not production-ready. Kept discoverable but collapsed
+    // and last so it stays out of the newcomer onboarding path. Consolidates
+    // every native/PMTC entry (was scattered across Getting Started +
+    // Meta-Framework) into one clearly-labeled group.
+    text: 'Multi-Platform (experimental)',
+    collapsed: true,
+    items: [
+      { text: 'Multi-Platform (PMTC)', slug: 'multiplatform' },
+      { text: 'PMTC Library Status & Authoring', slug: 'multiplatform-libraries' },
+      { text: 'PMTC Supported TypeScript', slug: 'pmtc-supported-typescript' },
+      { text: 'PMTC Per-Target Setup', slug: 'pmtc-per-target-setup' },
+      { text: 'Create Multi-Platform', slug: 'create-multiplatform' },
+      { text: 'Primitives', slug: 'primitives' },
     ],
   },
 ]
