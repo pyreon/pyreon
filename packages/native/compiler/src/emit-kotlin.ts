@@ -1651,6 +1651,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
       }
+      // `parseInt(s)` / `parseFloat(s)` → Kotlin `(s).toIntOrNull() ?: 0`
+      // / `(s).toDoubleOrNull() ?: 0.0`. JS returns NaN on failure; the
+      // `?:` default keeps a non-null Int/Double. A radix arg is ignored.
+      if (
+        e.callee.kind === 'identifier' &&
+        (e.callee.name === 'parseInt' || e.callee.name === 'parseFloat') &&
+        e.args.length >= 1
+      ) {
+        const arg = emitKotlinExpr(e.args[0]!, indent)
+        return e.callee.name === 'parseInt'
+          ? `((${arg}).toIntOrNull() ?: 0)`
+          : `((${arg}).toDoubleOrNull() ?: 0.0)`
+      }
       // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
       // `quotes.isPending()` (the web signal-read shape) → MutableState
       // `.value` read. `refetch` is excluded (real method, parens
