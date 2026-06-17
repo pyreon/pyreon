@@ -173,6 +173,24 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
       '--kotlin-package=com.example.myapp.generated',
     )
   })
+
+  it('ships a production release buildType (R8 minify) + a proguard-rules.pro', () => {
+    // Production Play Store builds need a minified release. The scaffold's
+    // Android project was debug-only; a `./gradlew assembleRelease` with
+    // R8 was verified to build clean against the Pyreon runtime
+    // (kotlinx-serialization ships its own keep rules), so the release
+    // buildType ships enabled out of the box.
+    const g = get('android/app/build.gradle.kts')
+    expect(g).toContain('buildTypes {')
+    expect(g).toContain('isMinifyEnabled = true')
+    expect(g).toContain('getDefaultProguardFile("proguard-android-optimize.txt")')
+    expect(g).toContain('"proguard-rules.pro"')
+    // The placeholder proguard file ships (app-specific keep rules go here;
+    // the framework needs none).
+    const pg = get('android/app/proguard-rules.pro')
+    expect(pg).toContain('kotlinx-serialization')
+    expect(pg).toContain('NO manual rules')
+  })
 })
 
 describe('buildScaffold — the shared App.tsx is real PMTC-compilable source', () => {
