@@ -1386,4 +1386,18 @@ describe('<WebView> happy-dom unit (web = iframe host)', () => {
     expect(frame.hasAttribute('src')).toBe(false)
     unmount()
   })
+
+  it('data={…} renders the iframe + wires the live-data bridge (no crash)', () => {
+    // The web live-data path attaches a ref + a reactive effect that
+    // pushes into the iframe's contentWindow on load. happy-dom won't
+    // "load" the iframe, so the push no-ops — this asserts the host
+    // renders + the bridge wiring doesn't throw at mount.
+    const { container, unmount } = mountTest(
+      h(WebView, { html: '<svg/>', data: [{ x: 1 }] }),
+    )
+    const frame = container.firstElementChild as HTMLIFrameElement
+    expect(frame.tagName).toBe('IFRAME')
+    expect(frame.getAttribute('srcdoc')).toBe('<svg/>')
+    unmount()
+  })
 })

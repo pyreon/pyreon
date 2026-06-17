@@ -88,6 +88,9 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // Dynamic <WebView html={signal-derived}> — reactive-reload bridge slice;
     // locks the dynamic-html emit through the toolchain gate.
     'webview-dynamic.tsx',
+    // <WebView data={signal}> live-data bridge — locks the JSON-encoded
+    // data-arg emit through the toolchain gate.
+    'webview-data-bridge.tsx',
     // Gap 4 PR-3: @pyreon/i18n/core Strategy-B port (v1 — single-arg
     // t() only). The PyreonI18n class stub in kotlin-stubs.ts
     // satisfies kotlinc's type resolution.

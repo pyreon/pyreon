@@ -51,11 +51,24 @@ import { signal } from '@pyreon/reactivity'
 
 const TITLE = 'Quarterly Analytics'
 
-// Inline SVG bar chart — bundled HTML hosted natively in a WebView,
-// rendered inline on web. A module `const` so const-ref resolution
-// inlines it into the native `PyreonWebView(html:)` / `(html =)` call.
+// LIVE-DATA bar chart — a bundled HTML page hosted natively in a WebView.
+// It reads `window.__pyreonData` (the metrics array PMTC JSON-encodes +
+// pushes via the `data={metrics()}` bridge) and re-renders on the
+// `pyreondata` event — so the chart follows the native `metrics` signal
+// IN PLACE (no reload). A module `const` so const-ref resolution inlines
+// it into the native `PyreonWebView(html:)` / `(html =)` call.
 const CHART_HTML =
-  "<!doctype html><html><body style='margin:0;font-family:-apple-system,sans-serif'><svg viewBox='0 0 240 120' style='width:100%;height:160px'><rect x='12' y='44' width='44' height='66' fill='#2563eb'/><rect x='68' y='60' width='44' height='50' fill='#2563eb'/><rect x='124' y='20' width='44' height='90' fill='#2563eb'/><rect x='180' y='70' width='44' height='40' fill='#2563eb'/></svg><p style='text-align:center;color:#475569'>Revenue by region</p></body></html>"
+  "<!doctype html><html><body style='margin:0;font-family:-apple-system,sans-serif'>" +
+  "<svg id='c' viewBox='0 0 240 120' style='width:100%;height:160px'></svg>" +
+  "<p style='text-align:center;color:#475569'>Revenue by region</p>" +
+  "<script>function render(){var d=window.__pyreonData||[];" +
+  "var max=Math.max.apply(null,[1].concat(d.map(function(m){return m.revenue})));" +
+  "var svg=document.getElementById('c');svg.innerHTML='';" +
+  "d.forEach(function(m,i){var h=Math.round((m.revenue/max)*100);" +
+  "var r=document.createElementNS('http://www.w3.org/2000/svg','rect');" +
+  "r.setAttribute('x',12+i*56);r.setAttribute('y',110-h);r.setAttribute('width',44);" +
+  "r.setAttribute('height',h);r.setAttribute('fill','#2563eb');svg.appendChild(r);});}" +
+  "window.addEventListener('pyreondata',render);render();</script></body></html>"
 
 type Metric = { region: string; revenue: number; deals: number; growth: number }
 
@@ -110,10 +123,10 @@ export function AnalyticsApp() {
         <Text>Chart renders inline on web (e.g. @pyreon/charts).</Text>
       </Web>
       <NativeIOS>
-        <WebView html={CHART_HTML} />
+        <WebView html={CHART_HTML} data={metrics()} />
       </NativeIOS>
       <NativeAndroid>
-        <WebView html={CHART_HTML} />
+        <WebView html={CHART_HTML} data={metrics()} />
       </NativeAndroid>
     </Stack>
   )

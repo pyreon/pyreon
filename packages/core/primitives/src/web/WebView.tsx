@@ -15,6 +15,7 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
+import { effect } from '@pyreon/reactivity'
 import { collectPassthroughAttrs } from './passthrough'
 import type { WebViewProps } from '../types/webview'
 
@@ -27,5 +28,44 @@ export function WebView(props: WebViewProps): VNode {
   }
   if (props.html !== undefined) attrs.srcdoc = props.html
   else if (props.src !== undefined) attrs.src = props.src
+
+  // Live-data bridge — mirror of the native runtime: push `data` into the
+  // hosted page's `window.__pyreonData` + fire a `pyreondata` event, on
+  // load AND reactively on change, WITHOUT reloading the iframe. Reading
+  // `props.data` inside the effect tracks the signal, so a change re-pushes
+  // in place. Same-origin / `srcdoc` only — a cross-origin remote `src`
+  // can't be injected (the native targets reach remote via
+  // evaluateJavaScript; on web you'd host same-origin/srcdoc content).
+  if ('data' in props) {
+    let frame: HTMLIFrameElement | null = null
+    let loaded = false
+    const push = (): void => {
+      const win = frame?.contentWindow as (Window & { __pyreonData?: unknown }) | null | undefined
+      if (!loaded || !win) return
+      try {
+        win.__pyreonData = (props as { data?: unknown }).data
+        win.dispatchEvent(new Event('pyreondata'))
+      } catch {
+        // Cross-origin iframe — injection is blocked by the browser; the
+        // native targets cover remote content via evaluateJavaScript.
+      }
+    }
+    attrs.ref = (el: HTMLIFrameElement | null): void => {
+      frame = el
+      if (el) {
+        el.addEventListener('load', () => {
+          loaded = true
+          push()
+        })
+      }
+    }
+    // Re-push whenever `data` changes (the read tracks it). On the first
+    // run the iframe usually isn't loaded yet → push no-ops, and the
+    // `load` listener pushes once it is.
+    effect(() => {
+      void (props as { data?: unknown }).data
+      push()
+    })
+  }
   return h('iframe', attrs)
 }
