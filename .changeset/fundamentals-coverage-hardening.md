@@ -2,6 +2,7 @@
 '@pyreon/state-tree': patch
 '@pyreon/validation': patch
 '@pyreon/validate': patch
+'@pyreon/toast': patch
 ---
 
 Internal coverage hardening — documented `v8 ignore`s for genuinely-unreachable
