@@ -54,11 +54,18 @@ describe('JSX transform — children', () => {
   })
 
   test('does NOT wrap logical expression without calls', () => {
-    expect(t('<div>{show && <span />}</div>')).not.toContain('() =>')
+    // Static element-conditional → routed through _mountSlot but mounted ONCE
+    // (the slot arg is bare, NOT a reactive accessor).
+    const result = t('<div>{show && <span />}</div>')
+    expect(result).toContain('_mountSlot(show && <span />')
+    expect(result).not.toContain('_mountSlot(() =>')
   })
 
   test('wraps logical expression containing a call', () => {
-    expect(t('<div>{show() && <span />}</div>')).toContain('() => show() && <span />')
+    // Reactive element-conditional → _mountSlot with a reactive accessor.
+    expect(t('<div>{show() && <span />}</div>')).toContain(
+      '_mountSlot(() => (show() && <span />)',
+    )
   })
 
   test('does NOT wrap object literal child', () => {
@@ -771,9 +778,13 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('<span>text</span>')
   })
 
-  test('bails on expression children containing JSX', () => {
+  test('templatizes expression children containing JSX via _mountSlot', () => {
+    // Previously this BAILED to the jsx runtime (no _tpl). Now the wrapper
+    // keeps the _tpl fast path and the element-conditional child routes
+    // through _mountSlot (consistent with how .map-returning children work).
     const result = t('<div><span />{show() && <em />}</div>')
-    expect(result).not.toContain('_tpl(')
+    expect(result).toContain('_tpl(')
+    expect(result).toContain('_mountSlot(() => (show() && <em />)')
   })
 
   test('handles mixed element + expression children', () => {
@@ -1157,10 +1168,13 @@ describe('JSX transform — nested fragment in templateFragmentCount', () => {
     expect(result).toContain('_bindText(count,')
   })
 
-  test('nested fragment with expression containing JSX bails', () => {
-    // Fragment in fragment with JSX-containing expression — bails
+  test('nested fragment with expression containing JSX templatizes via _mountSlot', () => {
+    // Fragment-in-fragment with a JSX-containing expression: previously bailed
+    // to the jsx runtime; now the wrapper keeps _tpl and the element-conditional
+    // routes through _mountSlot.
     const result = t('<div><><>{show() && <em />}</></></div>')
-    expect(result).not.toContain('_tpl(')
+    expect(result).toContain('_tpl(')
+    expect(result).toContain('_mountSlot(() => (show() && <em />)')
   })
 
   test('nested fragment with empty expression in templateFragmentCount', () => {

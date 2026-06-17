@@ -1230,3 +1230,44 @@ describeNative('Native vs JS equivalence — HTML text entity escaping', () => {
   test('hash-only (&#;) is escaped', () => compare('export const X = () => <div>a&#;b</div>'))
   test('underscore in named entity is preserved', () => compare('export const X = () => <div>a&a_1;b</div>'))
 })
+
+describe('Native vs JS equivalence — element-conditional templatization', () => {
+  // A DOM wrapper around an inline element-conditional keeps the `_tpl` fast
+  // path and routes the conditional child through `_mountSlot` (previously the
+  // whole wrapper bailed to the jsx runtime). Both backends must emit this
+  // byte-identically.
+  test('ternary returning components', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const open = signal(false)
+      export const X = () => <div class="card">{open() ? <Panel/> : <Empty/>}</div>
+    `))
+  test('ternary returning DOM elements', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const open = signal(false)
+      export const X = () => <div>{open() ? <span>A</span> : <b>B</b>}</div>
+    `))
+  test('logical-and returning a component', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const n = signal(0)
+      export const X = () => <section>{n() > 0 && <List/>}</section>
+    `))
+  test('static (non-signal) element-conditional mounts once (bare slot arg)', () =>
+    compare(`export const X = (p) => <div>{p.cond ? <a/> : <b/>}</div>`))
+  test('.map returning DOM elements', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const items = signal([])
+      export const X = () => <ul>{items().map((x) => <li>{x}</li>)}</ul>
+    `))
+  test('mixed: static element sibling + element-conditional', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const show = signal(false)
+      export const X = () => <div><span>hdr</span>{show() && <em>body</em>}</div>
+    `))
+  test('DIRECT static JSX child still hoists (NOT mountSlot)', () =>
+    compare(`export const X = () => <div>{<span>Hi</span>}</div>`))
+})

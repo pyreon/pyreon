@@ -2279,7 +2279,18 @@ export function transformJSX_JS(
     if (child.type === 'JSXExpressionContainer') {
       const expr = child.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return 0
-      return containsJSXInExpr(expr) ? -1 : 0
+      // A DIRECT static JSX element/fragment child (`{<span/>}`) keeps its
+      // existing static-hoist path — bail so the parent isn't wrapped in a
+      // `_mountSlot` around it (static hoisting is cheaper than a runtime
+      // slot mount for a static child).
+      if (expr.type === 'JSXElement' || expr.type === 'JSXFragment') return -1
+      // An expression that CONTAINS JSX but isn't directly one (element-
+      // conditional `{cond() ? <A/> : <B/>}`, `{n() && <List/>}`, or a
+      // `.map(x => <li/>)` child) is templatable: it routes through
+      // `_mountSlot` — the same path `.map`-returning children already take —
+      // so the wrapper keeps the `_tpl` fast path instead of bailing to the
+      // jsx runtime. (Previously this whole branch returned -1 → bail.)
+      return 0
     }
     if (child.type === 'JSXFragment') return templateFragmentCount(child)
     return -1
@@ -2996,6 +3007,23 @@ export function transformJSX_JS(
         const placeholder = childNodeAccessor(parentRef, childNodeIdx, true)
         const d = nextDisp()
         bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
+        return '<!>'
+      }
+      // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
+      // `{n() && <List/>}`): route through `_mountSlot` so the wrapper keeps
+      // the `_tpl` fast path. `_mountSlot` → `mountChild` → `mountReactive`
+      // handles a reactive element-returning accessor (disposal + swap on
+      // signal change), same machinery the element-valued-const path uses.
+      // Reactive bodies are wrapped back into an accessor so the boundary is
+      // reactive; a static element-conditional is passed bare (mounts once).
+      const exprIsDirectJSX =
+        child.expression?.type === 'JSXElement' || child.expression?.type === 'JSXFragment'
+      if (containsJSXInExpr(child.expression) && !exprIsDirectJSX) {
+        needsMountSlotImport = true
+        const placeholder = childNodeAccessor(parentRef, childNodeIdx, true)
+        const d = nextDisp()
+        const slotArg = isReactive ? `() => (${expr})` : expr
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder})`)
         return '<!>'
       }
       const cx = child.expression
