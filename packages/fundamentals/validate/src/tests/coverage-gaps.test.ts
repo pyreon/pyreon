@@ -22,7 +22,7 @@ describe('validate — refine issue carries all opts (code/key/params/fallback)'
     const r = schema.parse('y')
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      const issue = r.issues[0] as Record<string, unknown>
+      const issue = r.issues[0] as unknown as Record<string, unknown>
       expect(issue.code).toBe('CUSTOM')
       expect(issue.key).toBe('errors.custom')
     }
