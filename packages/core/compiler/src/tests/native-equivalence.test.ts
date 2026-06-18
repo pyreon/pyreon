@@ -292,6 +292,38 @@ describeNative('Native vs JS equivalence — transitive derivation', () => {
     ))
   test('mixed props and signals', () =>
     compare('function Comp(props) { return <div class={`${props.base} ${count()}`}></div> }'))
+  // ARROW / function-EXPRESSION components: the prop-derived span lookup must
+  // descend into the component body (it lives one function level below the
+  // top-level statement). Pre-fix, find_init_expression_by_span never reached
+  // these, so transitive resolution fell back to raw source — `const b = a + 1`
+  // emitted `(a + 1)` (a unresolved, reactivity lost) instead of `((props.x) + 1)`.
+  // Function-DECLARATION components masked the bug (their body IS descended).
+  test('arrow component — transitive chain', () =>
+    compare('const Comp = (props) => { const a = props.x; const b = a + 1; return <div>{b}</div> }'))
+  test('arrow component — deep chain', () =>
+    compare(
+      'const Comp = (props) => { const a = props.x; const b = a; const c = b + 1; return <div>{c}</div> }',
+    ))
+  test('export const arrow component — transitive chain', () =>
+    compare(
+      'export const Comp = (props) => { const a = props.x; const b = a + 1; return <div>{b}</div> }',
+    ))
+  test('arrow component — transitive in attr', () =>
+    compare(
+      'const Comp = (props) => { const base = props.cls; const full = base + " on"; return <div class={full}></div> }',
+    ))
+  test('function-expression component — transitive chain', () =>
+    compare(
+      'const Comp = function (props) { const a = props.x; const b = a + 1; return <div>{b}</div> }',
+    ))
+  test('export default arrow component — transitive chain', () =>
+    compare(
+      'export default (props) => { const a = props.x; const b = a + 1; return <div>{b}</div> }',
+    ))
+  test('export default arrow component — 1-level prop read', () =>
+    compare('export default (props) => { return <div>{props.x}</div> }'))
+  test('function-expression component — 1-level prop read', () =>
+    compare('const Comp = function (props) { return <div>{props.x}</div> }'))
 })
 
 // ─── Edge cases that previously broke ───────────────────────────────────────
