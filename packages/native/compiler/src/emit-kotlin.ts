@@ -1887,6 +1887,24 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // already matches JS, so `repeat` needs no Kotlin mapping.
             if (e.args.length === 1) return `${obj}.indexOfFirst(${argExprs[0]!})`
             break
+          case 'replaceAll':
+            // JS `str.replaceAll(a, b)` → Kotlin `String.replace(a, b)`
+            // (Kotlin's `replace` is replace-ALL — faithful; Swift uses
+            // `replacingOccurrences`). Plain `replace` (JS first-only) is
+            // deliberately NOT mapped.
+            if (e.args.length === 2) return `${obj}.replace(${argExprs[0]!}, ${argExprs[1]!})`
+            break
+          case 'flat':
+            // JS `arr.flat()` (one level) → Kotlin `flatten()` (Swift:
+            // `flatMap { $0 }`). No-arg (depth-1) form only.
+            if (e.args.length === 0) return `${obj}.flatten()`
+            break
+          case 'reverse':
+            // JS `arr.reverse()` → Kotlin `reversed()` (non-mutating, returns
+            // a new List<T> — render-safe, mirrors `rx.reverse`; Swift:
+            // `Array(reversed())`).
+            if (e.args.length === 0) return `${obj}.reversed()`
+            break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Kotlin `fold(initial,
             // reducer)`. Kotlin's `reduce` takes ONLY a combiner (no
