@@ -233,21 +233,34 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 |------|-------|--------|
 | Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate + iOS XCUITest + Android Compose-instrumented-test landed (opt-in `native-device` label); promote to required once green across nightly runs |
 | Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
-| Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`), **global** `beforeEach`/`afterEach` guards, **throw-redirect** pattern | ✅ guards, nested routes, `useParams` destructure, `loaderData`/`useLoaderData` runtime, **global guards** (#1108), and **`router.redirect()` re-entry-safe throw-pattern** (#1109) all landed; loader **auto-emit** (blocked — see note) is the only remaining router-parity gap |
+| Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`), per-route **loader auto-emit**, **global** `beforeEach`/`afterEach` guards, **throw-redirect** pattern | ✅ guards, nested routes, `useParams` destructure, `loaderData`/`useLoaderData` runtime, **global guards** (#1108), **`router.redirect()` re-entry-safe throw-pattern** (#1109), and **per-route `loader` auto-emit** (v1 — zero-param expression-body loaders; see note) all landed |
 | Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` / `useClipboard` / `useColorScheme` as per-service native runtime ports (runtime + emit) | ✅ six hooks landed — **`useForm` v2 is device-proven** (validators + runtime Field bindings + submit gating; the tasks login's error-path smoke); **`useFetch` is device-proven end-to-end** (the tasks Quotes screen fetches + decodes + renders a real HTTP fixture on the CI Simulator/Emulator; web runs the same call through `@pyreon/hooks`); `usePermissions` incl. web-parity `can.not`; `useOnline`; `useClipboard`; `useColorScheme` emit-only by design. `useValidation` planned |
 | Compiler diagnostics | Surface silent-drop shapes as parser warnings instead of failing-silent at runtime | ✅ Round-1 (#1094 — `Icon`/`Image`/`Link` missing required props) + Round-2 (#1099 — `Press` without `onPress`, `Link prefetch={…}` on native, `Stack/Inline/Layer align="<typo>"`) landed; both routes ship as `result.warnings`, emit shape unchanged |
 | Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` (real semantics, Phase 2); `<KeepAlive>` | ✅ transitions + **real `<Suspense>` / `<ErrorBoundary>`** — both compile to an INLINE conditional in the component body (Swift `Group { if <pending/errored> { fallback } else { children } }`, Kotlin `if (…) { … } else { … }`) reading every `useFetch` container's `isPending` / `error` in that component: Suspense shows its fallback until the fetched data settles, ErrorBoundary swaps to its fallback when a container rejects (the realistic native error surface — SwiftUI/Compose have no try/catch around view construction). The read is inline (not passed to a wrapper) so SwiftUI Observation / Compose recomposition tracks it; on iOS the body wraps in a concrete `ZStack` so the fetch `.task` attaches to a stable host (a transparent `Group` makes SwiftUI cancel+restart the task on every flip → the fetch never settles). Device-proven (the tasks Lifecycle screen: good-fetch content + a deliberately-failing fetch's ErrorBoundary fallback both render on a real Simulator). `<KeepAlive>` stays a graceful pass-through (cache semantics inert; the hardest of the three). |
 | DX | `pyreon create-multiplatform` scaffold (✅), asset pipeline | 🟡 scaffold landed **and produces buildable, launchable native apps end-to-end** — the four `@pyreon/native-*` runtimes wire in as SPM (iOS) / Gradle `srcDir` (Android) deps so the emitted `import PyreonRuntime` / `com.pyreon.runtime.*` resolve; proven scaffold → emit → `gradle assembleDebug` / `xcodebuild` → install → **launch (RUNNING)** on both an Android emulator and an iOS Simulator (#1570, which fixed eight project-wiring bugs a real local build surfaced that compile-only validation could not — web-entry-skip, `--kotlin-package`, serialization-plugin version, `ComponentActivity`, SPM `../` paths, source-path nesting, `App.swift` collision, `SwiftUI.App` shadow). **image asset pipeline landed** (`pyreon-native assets` — the shared `assets/` dir materializes to `Assets.xcassets` / `res/drawable-*` density buckets / `public/assets`, and `<Image src="name.png">` dispatches bundled-vs-remote per target; device-proven via the tasks branded header); SF-Symbols/Material icon mapping + fonts are the next arc |
 
-> **Loader auto-emit is intentionally deferred, not forgotten.** The
-> `loaderData` / `useLoaderData` *runtime* contract is landed (and
-> populating it from a guard or `beforeEach` works today via the
-> `router.redirect()` throw-pattern below), but the compiler can't
-> auto-emit a route's `loader` body: unlike `useFetch<T>` it carries no
-> decode-type generic, and real loaders are arbitrary async (`async ({
-> params }) => fetchUser(params.id)`) — neither compiles to a typed
-> native fetch. Apps populate `loaderData` from native code today;
-> auto-emit awaits a typed-loader design.
+> **Loader auto-emit — v1 landed (zero-param, expression-body).** A
+> route's `loader: () => <expr>` now compiles to a runtime
+> `PyreonRouteLoader` host wrapping the route's component: its `.task`
+> (SwiftUI) / `LaunchedEffect` (Compose) fires the loader ONCE on the
+> route's appear and stores the result via `router.setLoaderData(<active
+> path>, …)`, where the already-shipped `useLoaderData<T>()` reads it
+> (keyed by the runtime active path, so it matches for both literal and
+> `:param` routes; the home route keys by its literal path = `currentPath`
+> at launch). The store is guarded (`loaderData[path] == nil`) so
+> re-renders never re-run it. Realistic native loader bodies are **signal
+> / store reads** (`() => globalCache()`) and **sync expressions**
+> (`() => buildInitialData()`); both emit correctly.
+>
+> **Still deferred** (each leaves `loader` undefined + WARNS, so the route
+> renders with no loader rather than mis-emitting): a **param-using**
+> loader (`(ctx) => fetchUser(ctx.params.id)` — `ctx` has no value source
+> in the load closure yet), a **block-body** loader (`() => { … }` — needs
+> statement emit), and a truly-**async** body (`async () => await
+> fetch(…)` — no `await` lowering / typed-decode generic, the `useFetch<T>`
+> territory). `ctx.params` threading + async-loader decode are the next
+> arc; until then, fetch-style loaders populate `loaderData` from native
+> code (or via a `useFetch` container) as before.
 
 ## Native routing
 
@@ -338,10 +351,15 @@ your name is reused instead of synthesizing. Components without a
 `params` prop are dispatched with no arguments.
 
 **Loader data** — `PyreonRouter` exposes a `loaderData` store +
-`useLoaderData<T>()`; a route's loaded data is keyed by path and read
-back, typed, by the current route. The runtime contract is landed; see the
-loader-auto-emit note in the roadmap for why the compiler doesn't yet
-populate it automatically.
+`useLoaderData<T>()`; a route's loaded data is keyed by the active path
+and read back, typed, by the current route. A route's
+`loader: () => <expr>` is now **auto-emitted** (v1): the compiler wraps
+the route in a runtime `PyreonRouteLoader` host that fires the loader once
+on appear (`.task` / `LaunchedEffect`) and calls `setLoaderData`, so
+`useLoaderData<T>()` reads it with no manual wiring. v1 covers zero-param,
+expression-body loaders (signal/store reads + sync expressions);
+param-using, block-body, and truly-async loaders WARN and emit unloaded —
+see the loader-auto-emit note in the roadmap.
 
 **Global guards** (`beforeEach` / `afterEach`) — pass arrays of
 identifier-referenced guard/hook functions on the `createRouter({ ... })`

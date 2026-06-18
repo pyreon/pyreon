@@ -3339,6 +3339,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     let redirect: string | undefined
     let guard: ExprIR | undefined
     let children: RouteIR[] | undefined
+    let loader: ExprIR | undefined
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
       const key = p.key?.name as string | undefined
@@ -3386,9 +3387,34 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
         // (the parent still needs its own component to render something).
         const parsed = parseRouteArray(p.value, ctx)
         if (parsed !== null && parsed.length > 0) children = parsed
+      } else if (key === 'loader') {
+        // Phase 3 — per-route data loader. v1 captures only a ZERO-PARAM
+        // arrow with an EXPRESSION body (`() => fetchAll()` /
+        // `async () => 42`); the body becomes the runtime load closure
+        // fired once on the route's appear (→ `setLoaderData`). A loader
+        // WITH a param (`(ctx) => …`) has no value source for `ctx` in the
+        // load closure yet, and a block-body loader needs statement emit —
+        // both leave `loader` undefined and warn (the route renders with no
+        // loader; `useLoaderData()` returns nil). `ctx.params` threading +
+        // truly-async `await` bodies are a later arc.
+        const v = p.value
+        if (v?.type === 'ArrowFunctionExpression') {
+          const paramCount = Array.isArray(v.params) ? v.params.length : 0
+          if (paramCount > 0) {
+            ctx.warnings.push(
+              `Route \`loader\` for ${path !== undefined ? `route "${path}"` : 'a route'} takes a parameter (\`(ctx) => …\`) — v1 supports only zero-param loaders (\`() => fetchAll()\`); this route emits with NO loader. \`ctx.params\` threading is a later arc; move the read into a zero-param arrow or a named function called from one.`,
+            )
+          } else if (v.body?.type === 'BlockStatement') {
+            ctx.warnings.push(
+              `Route \`loader\` for ${path !== undefined ? `route "${path}"` : 'a route'} is a block-body arrow — v1 extracts only expression-body arrows (\`() => fetchAll()\`); this route emits with NO loader. Use the expression-body form or move the logic into a named function called from an expression-body arrow.`,
+            )
+          } else if (v.body) {
+            loader = parseExpr(v.body, ctx)
+          }
+        }
       }
-      // Other RouteRecord fields (name, meta, loader, etc.) are
-      // intentionally ignored — the rest extends when a real app needs it.
+      // Other RouteRecord fields (name, meta, etc.) are intentionally
+      // ignored — the rest extends when a real app needs it.
     }
     // A route must render SOMETHING: its own component, a redirect target,
     // OR child routes (a pure layout grouping with no index component).
@@ -3403,6 +3429,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     if (redirect !== undefined) route.redirect = redirect
     if (guard !== undefined) route.guard = guard
     if (children !== undefined) route.children = children
+    if (loader !== undefined) route.loader = loader
     out.push(route)
   }
   return out

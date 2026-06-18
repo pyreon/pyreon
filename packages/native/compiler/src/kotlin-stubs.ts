@@ -746,6 +746,16 @@ fun RouterProvider(router: PyreonRouter, content: @Composable () -> Unit) {
   content()
 }
 
+// PyreonRouteLoader — Phase 3 per-route loader host. Real impl in
+// @pyreon/native-router-kotlin/RouteLoader.kt fires the loader once via
+// LaunchedEffect → router.setLoaderData; the stub mirrors only the
+// SIGNATURE the loader-bearing dispatch emits:
+//   PyreonRouteLoader(path = currentPath, load = { … }) { Component() }
+@Composable
+fun PyreonRouteLoader(path: String, load: () -> Any?, content: @Composable () -> Unit) {
+  content()
+}
+
 // PyreonI18n — Gap 4 PR-3 (Strategy-B port for @pyreon/i18n/core, v1).
 // Real impl in @pyreon/native-runtime-kotlin's PyreonI18n.kt.
 class PyreonI18n(
