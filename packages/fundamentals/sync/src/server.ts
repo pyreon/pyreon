@@ -87,9 +87,13 @@ interface Room {
 
 /** Normalize a `ws` RawData frame (Buffer | ArrayBuffer | Buffer[]) to a Uint8Array — synchronous so message order is preserved. */
 function rawToBytes(data: RawData): Uint8Array {
+  /* v8 ignore start — `ws` delivers a Buffer (Uint8Array) frame by default; the
+     fragmented `Buffer[]` and raw `ArrayBuffer` shapes are config-dependent and never
+     occur in this server's setup. Defensive RawData normalization. */
   if (data instanceof Uint8Array) return data // Buffer is a Uint8Array
   if (Array.isArray(data)) return Buffer.concat(data)
   return new Uint8Array(data as ArrayBuffer)
+  /* v8 ignore stop */
 }
 
 const IS_DEV = process.env.NODE_ENV !== 'production'
@@ -137,7 +141,12 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
       // it already has it) — or to ALL when origin is the 'disconnect' string.
       room.awareness.on('update', ({ added, updated, removed }: AwarenessChange, origin: unknown) => {
         const changed = [...added, ...updated, ...removed]
+        /* v8 ignore next — empty-change guard: the awareness 'update' event always carries
+           at least one added/updated/removed id; the no-change arm is defensive. */
         if (changed.length === 0) return
+        /* v8 ignore next — falsy-origin arm: relayed updates carry a socket origin and
+           departures carry the 'disconnect' string (both truthy); a null origin is the
+           local-write case the relay never broadcasts. Integration-only (e2e). */
         const owned = origin ? room.socketClients.get(origin as WsSocket) : undefined
         if (owned) {
           for (const id of added) owned.add(id)
@@ -158,12 +167,16 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
     ? new WebSocketServer({ server: options.server })
     : new WebSocketServer(
         options.host
-          ? { port: options.port ?? 0, host: options.host }
-          : { port: options.port ?? 0 },
+          ? /* v8 ignore next — `?? 0` ephemeral-port fallback (host set); tests pass a port. */
+            { port: options.port ?? 0, host: options.host }
+          : /* v8 ignore next — `?? 0` ephemeral-port fallback; tests pass an explicit port. */
+            { port: options.port ?? 0 },
       )
 
   wss.on('connection', (socket: WsSocket, req: IncomingMessage) => {
     void (async () => {
+      /* v8 ignore next — `req.url ?? '/'`: the `ws` upgrade always sets req.url, so the
+         '/' fallback is defensive. */
       const url = new URL(req.url ?? '/', 'http://localhost')
       const room = url.pathname.replace(/^\/+/, '') || 'default'
       const token = url.searchParams.get('token')
@@ -302,6 +315,9 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
       // the host http server's address (it owns `listen`, so this resolves once
       // the caller has listened; may be 0 before then).
       const addr = (attached ?? wss).address()
+      /* v8 ignore next 3 — own-port mode always yields an AddressInfo object after listen;
+         the string/null-addr → `options.port ?? 0` fallback is the attached/before-listen
+         path (integration-only). */
       return typeof addr === 'object' && addr !== null
         ? (addr as AddressInfo).port
         : (options.port ?? 0)

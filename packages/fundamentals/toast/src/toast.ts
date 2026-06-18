@@ -62,6 +62,10 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
   const current = _toasts()
   if (current.length >= MAX_TOASTS) {
     const dropped = current[0]
+    // `dropped` is always defined here — the array has >= MAX_TOASTS entries,
+    // so index 0 exists; the guard is a defensive narrow for `current[0]`'s
+    // `T | undefined` type.
+    /* v8 ignore next */
     if (dropped) {
       if (dropped.timer !== undefined) clearTimeout(dropped.timer)
       dropped.onDismiss?.()

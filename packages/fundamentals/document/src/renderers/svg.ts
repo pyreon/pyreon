@@ -114,6 +114,7 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
       svg += `<rect x="${ctx.padding}" y="${ctx.y}" width="${contentWidth}" height="${rowHeight}" fill="${headerBg}" />`
       for (let i = 0; i < columns.length; i++) {
         const col = columns[i]
+        /* v8 ignore next — noUncheckedIndexedAccess guard; i < columns.length so col is always defined */
         if (!col) continue
         svg += `<text x="${ctx.padding + i * colWidth + 8}" y="${ctx.y + 18}" font-size="12" font-weight="bold" fill="${headerColor}" font-family="system-ui, sans-serif">${escapeXml(col.header)}</text>`
       }
@@ -141,6 +142,7 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
       const items = node.children.filter((c): c is DocNode => typeof c !== 'string')
       for (let i = 0; i < items.length; i++) {
         const item = items[i]
+        /* v8 ignore next — noUncheckedIndexedAccess guard; i < items.length so item is always defined */
         if (!item) continue
         const prefix = ordered ? `${i + 1}.` : '•'
         const text = escapeXml(getTextContent(item.children))
@@ -157,6 +159,7 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
       const codeHeight = lines.length * 18 + 16
       svg += `<rect x="${ctx.padding}" y="${ctx.y}" width="${contentWidth}" height="${codeHeight}" fill="#f5f5f5" rx="4" />`
       for (let i = 0; i < lines.length; i++) {
+        /* v8 ignore next — lines[i] `?? ''` is a noUncheckedIndexedAccess guard; i < lines.length so the element is always defined */
         svg += `<text x="${ctx.padding + 12}" y="${ctx.y + 20 + i * 18}" font-size="12" fill="#333" font-family="monospace">${escapeXml(lines[i] ?? '')}</text>`
       }
       ctx.y += codeHeight + 8

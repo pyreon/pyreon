@@ -46,6 +46,9 @@ export function trackedSignal<T>(
 /** Shallow snapshot helper (avoids importing snapshot.ts to prevent circular deps). */
 function snapshotValue(instance: object): Record<string, unknown> {
   const meta = instanceMeta.get(instance)
+  // Defensive: `snapshotValue` is only called on values that already passed
+  // `isModelInstance`, so `meta` is always present here.
+  /* v8 ignore next */
   if (!meta) return instance as Record<string, unknown>
   const out: Record<string, unknown> = {}
   for (const key of meta.stateKeys) {
@@ -118,6 +121,10 @@ export function applyPatch(instance: object, patch: Patch | Patch[]): void {
           throw new Error(`[@pyreon/state-tree] applyPatch: reserved property name "${segment}"`)
         }
         const meta = instanceMeta.get(target)
+        // Defensive guard for a nested patch path that walks through a
+        // non-model value — only reachable with a deliberately malformed
+        // nested-plain-object state shape the normal model API doesn't build.
+        /* v8 ignore next 2 */
         if (!meta)
           throw new Error(`[@pyreon/state-tree] applyPatch: not a model instance at "${segment}"`)
         const sig = (target as Record<string, Signal<unknown>>)[segment]

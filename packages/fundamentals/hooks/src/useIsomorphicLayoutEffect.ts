@@ -14,8 +14,6 @@ import { isClient } from '@pyreon/reactivity'
  */
 export type UseIsomorphicLayoutEffect = typeof onMount
 
-const useIsomorphicLayoutEffect: UseIsomorphicLayoutEffect =
-  /* v8 ignore next — SSR/isClient branch; both arms return onMount in current impl */
-  isClient ? onMount : onMount
+const useIsomorphicLayoutEffect: UseIsomorphicLayoutEffect = isClient ? onMount : onMount
 
 export default useIsomorphicLayoutEffect

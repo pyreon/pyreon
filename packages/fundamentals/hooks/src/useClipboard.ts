@@ -50,7 +50,6 @@ export function useClipboard(options?: { timeout?: number }): UseClipboardResult
   }
 
   onCleanup(() => {
-    /* v8 ignore next — defensive timer cleanup; both states covered structurally but counted as separate paths */
     if (timer) clearTimeout(timer)
   })
 

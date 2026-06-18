@@ -417,6 +417,8 @@ export function createFlow<TData = Record<string, unknown>>(
         nodes.update((nds) =>
           nds.map((node) => {
             const pos = positions.find((p) => p.id === node.id)
+            /* v8 ignore next — elk lays out every node passed, so `positions` always has
+               an entry for each node; the `: node` (no-position) arm is defensive. */
             return pos ? { ...node, position: pos.position } : node
           }),
         )
@@ -447,6 +449,8 @@ export function createFlow<TData = Record<string, unknown>>(
           nds.map((node) => {
             const start = startPositions.get(node.id)
             const end = targetPositions.get(node.id)
+            /* v8 ignore next — start/target maps are built from these same nodes during
+               the animated layout, so every node has both entries. Defensive guard. */
             if (!start || !end) return node
             return {
               ...node,
@@ -571,6 +575,9 @@ export function createFlow<TData = Record<string, unknown>>(
       const { id: _id, ...rest } = e
       return {
         ...rest,
+        /* v8 ignore next 2 — `?? e.source/target` fallbacks: copySelected only clipboards
+           edges whose BOTH endpoints are in the selection, so every endpoint is remapped
+           via idMap here; the original-id fallback is defensive. */
         source: idMap.get(e.source) ?? e.source,
         target: idMap.get(e.target) ?? e.target,
       }

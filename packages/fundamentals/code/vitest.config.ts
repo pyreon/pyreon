@@ -8,5 +8,5 @@ export default defineNodeConfig({
   // Refactored tabbed-editor `tab.id ?? tab.name` fallback into a
   // single `_tabKey()` helper + v8-ignored a handful of DOM-driven
   // onChange callback branches.
-  coverageThresholds: { statements: 95, branches: 95, lines: 95 },
+  coverageThresholds: { statements: 99, branches: 98, functions: 98, lines: 99 },
 })

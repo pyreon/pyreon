@@ -32,25 +32,49 @@ import path from 'node:path'
  *
  * Tracking upstream: microsoft/tslib#189.
  */
-export function chartsViteAlias(): Record<string, string> {
-  const target = resolveTslibEs6()
+/**
+ * @param fromDir — resolution root. Defaults to this file's own directory
+ *   (the real-world case: a consumer's `vite.config.ts` calls
+ *   `chartsViteAlias()` with no args). Accepting an override makes the `{}`
+ *   no-tslib fallback testable by pointing at a tslib-free directory.
+ */
+export function chartsViteAlias(
+  fromDir: string = path.dirname(new URL(import.meta.url).pathname),
+): Record<string, string> {
+  const target = resolveTslibEs6(fromDir)
   return target ? { tslib: target } : {}
 }
 
-function resolveTslibEs6(): string | null {
+/**
+ * @internal — exported for testing only.
+ *
+ * Resolve the flat-ESM `tslib.es6.js` reachable from `fromDir`. Returns the
+ * absolute path, or `null` if tslib can't be located in any common layout.
+ * Takes `fromDir` as a parameter (rather than reading `import.meta.url`
+ * directly) so the not-found / `return null` path is testable by pointing it
+ * at a tslib-free directory — mirroring `resolveTslibEsmEntry` in
+ * `@pyreon/vitest-config`. (Bun + vitest cannot reliably mock the `node:fs`
+ * `existsSync` binding inside a workspace `src` file, so the seam is the
+ * `fromDir` argument, not a mocked fs.)
+ */
+export function resolveTslibEs6(fromDir: string): string | null {
   const candidates: string[] = []
 
   // Prefer resolving via echarts itself — bun's nested layout has tslib
   // as a sibling of echarts inside .bun/echarts@x.y.z/node_modules/.
+  // Root the require at `fromDir`'s package.json so a fromDir with no
+  // reachable echarts (e.g. a tmp fixture) throws → no echarts candidate.
   try {
-    const echartsPkg = createRequire(import.meta.url).resolve('echarts/package.json')
+    const echartsPkg = createRequire(path.join(fromDir, 'package.json')).resolve(
+      'echarts/package.json',
+    )
     candidates.push(path.resolve(path.dirname(echartsPkg), '../tslib/tslib.es6.js'))
   } catch {
     // echarts not installed at this resolution root — try walks below.
   }
 
-  // Walk up from this file looking for hoisted tslib (npm/pnpm/yarn).
-  let dir = path.dirname(new URL(import.meta.url).pathname)
+  // Walk up from `fromDir` looking for hoisted tslib (npm/pnpm/yarn).
+  let dir = fromDir
   for (let i = 0; i < 12; i++) {
     candidates.push(path.join(dir, 'node_modules', 'tslib', 'tslib.es6.js'))
     const parent = path.dirname(dir)

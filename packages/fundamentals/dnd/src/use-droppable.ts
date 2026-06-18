@@ -34,6 +34,11 @@ export function useDroppable<T extends DragData = DragData>(
     // onCleanup (already fired with `cleanup` undefined) can never tear down.
     /* v8 ignore next — defensive disposed-during-setup guard */
     if (disposed) return
+    // Defensive re-setup teardown: `setup` runs exactly once
+    // (`queueMicrotask(setup)`, never re-invoked), so `cleanup` is always
+    // undefined here — this branch never fires in the current single-shot
+    // design. Kept so a future re-setup trigger can't leak a double target.
+    /* v8 ignore next — defensive re-setup teardown; unreachable with single-shot queueMicrotask */
     if (cleanup) cleanup()
 
     const el = options.element()

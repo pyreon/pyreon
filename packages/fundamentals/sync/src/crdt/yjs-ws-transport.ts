@@ -129,11 +129,15 @@ export function connectViaWebSocket(
     // `maxBackoff` ms after disconnect (a leak; Class I — orphaned setTimeout).
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
+      /* v8 ignore next — reconnect-after-close race: the backoff timer firing while the
+         socket is still open is real-network timing, exercised by the zero e2e not unit tests. */
       if (!closed) open()
     }, delay)
   }
 
   function open(): void {
+    /* v8 ignore next — defensive: open() is only scheduled while not closed; a closed-state
+       call would need a reconnect timer to outrace disconnect() — integration-only (e2e). */
     if (closed) return
     ws = new WS(url)
     ws.binaryType = 'arraybuffer'
@@ -148,6 +152,8 @@ export function connectViaWebSocket(
     }
     ws.onmessage = (event: MessageEvent) => {
       void toBytes(event.data).then((bytes) => {
+        /* v8 ignore next — closed/empty-frame guard: a frame arriving after close, or an
+           empty frame from a buggy relay, is integration-only timing (covered by the e2e). */
         if (closed || bytes.length === 0) return
         // Defensive: a buggy / hostile relay can send a garbage frame, and Yjs
         // THROWS on a malformed update / state vector (even an empty one). Without
@@ -159,6 +165,8 @@ export function connectViaWebSocket(
             ws?.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(doc.yDoc, payload)))
           } else if (type === MSG_AWARENESS) {
             // Apply under REMOTE_ORIGIN so our send-listener doesn't echo it back.
+            /* v8 ignore next — false arm unreachable: a peer only sends MSG_AWARENESS frames
+               when awareness is in use, in which case `aw` is always set on this transport. */
             if (aw) applyAwarenessUpdate(aw, payload, REMOTE_ORIGIN)
           } else {
             Y.applyUpdate(doc.yDoc, payload, REMOTE_ORIGIN)

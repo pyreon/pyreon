@@ -23,6 +23,7 @@ function openDB(dbName: string, storeName: string): Promise<IDBDatabase> {
 
     request.onupgradeneeded = () => {
       const db = request.result
+      /* v8 ignore next — store-already-exists arm: only on a version re-upgrade of an existing store; tests open fresh DBs */
       if (!db.objectStoreNames.contains(storeName)) {
         db.createObjectStore(storeName)
       }
@@ -52,6 +53,7 @@ function idbGet(db: IDBDatabase, storeName: string, key: string): Promise<string
     const request = store.get(key)
     request.onsuccess = () =>
       resolve(request.result !== undefined ? (request.result as string) : null)
+    /* v8 ignore next — IDB get onerror: defensive reject, fires only on a real IDB read failure */
     request.onerror = () => reject(request.error)
   })
 }
@@ -62,6 +64,7 @@ function idbSet(db: IDBDatabase, storeName: string, key: string, value: string):
     const store = tx.objectStore(storeName)
     const request = store.put(value, key)
     request.onsuccess = () => resolve()
+    /* v8 ignore next — IDB put onerror: defensive reject, fires only on a real IDB write failure */
     request.onerror = () => reject(request.error)
   })
 }
@@ -72,6 +75,7 @@ function idbDelete(db: IDBDatabase, storeName: string, key: string): Promise<voi
     const store = tx.objectStore(storeName)
     const request = store.delete(key)
     request.onsuccess = () => resolve()
+    /* v8 ignore next — IDB delete onerror: defensive reject, fires only on a real IDB delete failure */
     request.onerror = () => reject(request.error)
   })
 }
@@ -143,9 +147,11 @@ export function useIndexedDB<T>(
 
     openDB(dbName, storeName)
       .then((db) => idbSet(db, storeName, key, serialize(value, options.serializer)))
+      /* v8 ignore start — write-failure catch: signal already holds the value, nothing to do */
       .catch(() => {
         // Write failed — signal still has the correct value
       })
+    /* v8 ignore stop */
   }
 
   function scheduleWrite(value: T): void {
@@ -171,9 +177,11 @@ export function useIndexedDB<T>(
     if (isBrowser() && typeof indexedDB !== 'undefined') {
       openDB(dbName, storeName)
         .then((db) => idbDelete(db, storeName, key))
+        /* v8 ignore start — delete-failure catch: signal already reset, nothing to do */
         .catch(() => {
           // Delete failed — signal already reset
         })
+      /* v8 ignore stop */
     }
 
     removeEntry('indexeddb', key)

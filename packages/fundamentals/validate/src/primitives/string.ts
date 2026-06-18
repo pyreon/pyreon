@@ -331,6 +331,9 @@ export class StringSchema extends SchemaBase<string> {
 
   /** Lowercase the input. Runs after type-check, before further checks. */
   toLowerCase(): this {
+    // The non-string ternary arm is defensive — transforms run after the
+    // type-check, so `v` is always a string here.
+    /* v8 ignore next */
     this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toLowerCase() : v) })
     this._invalidateCompile()
     return this
@@ -338,6 +341,9 @@ export class StringSchema extends SchemaBase<string> {
 
   /** Uppercase the input. */
   toUpperCase(): this {
+    // The non-string ternary arm is defensive — transforms run after the
+    // type-check, so `v` is always a string here.
+    /* v8 ignore next */
     this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toUpperCase() : v) })
     this._invalidateCompile()
     return this
@@ -345,6 +351,9 @@ export class StringSchema extends SchemaBase<string> {
 
   /** Trim whitespace from both ends. */
   trim(): this {
+    // The non-string ternary arm is defensive — transforms run after the
+    // type-check, so `v` is always a string here.
+    /* v8 ignore next */
     this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.trim() : v) })
     this._invalidateCompile()
     return this

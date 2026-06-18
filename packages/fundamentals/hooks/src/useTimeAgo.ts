@@ -72,6 +72,9 @@ function computeTimeAgo(
     if (value >= 1) return formatter(value, unit, isPast)
   }
 
+  /* v8 ignore next — unreachable: line 68 returns for diffSeconds < 5, and the
+     `second` interval (seconds=1) yields value = diffSeconds >= 5 >= 1, so the
+     loop always returns first. Defensive fallback only. */
   return 'just now'
 }
 
@@ -129,6 +132,9 @@ export function useTimeAgo(
 
   onCleanup(() => {
     disposed = true
+    /* v8 ignore next — `timer` is always a live timeout id here (assigned on
+       the line above onCleanup registers, and reassigned by every tick), so the
+       falsy arm is defensive only. */
     if (timer) clearTimeout(timer)
   })
 

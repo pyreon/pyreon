@@ -34,6 +34,12 @@ export function useDraggable<T extends DragData = DragData>(
     // registration created here would never be torn down — bail instead.
     /* v8 ignore next — defensive disposed-during-setup guard; tested implicitly via lifecycle */
     if (disposed) return
+    // Defensive re-setup teardown: `setup` is scheduled exactly once
+    // (`queueMicrotask(setup)`) and never re-invoked, so `cleanup` is always
+    // undefined here — this branch never fires in the current single-shot
+    // design. Kept so a future re-setup trigger (element-change re-registration)
+    // can't leak a double registration.
+    /* v8 ignore next — defensive re-setup teardown; unreachable with single-shot queueMicrotask */
     if (cleanup) cleanup()
 
     const el = options.element()

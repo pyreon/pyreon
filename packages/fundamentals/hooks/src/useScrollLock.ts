@@ -38,7 +38,6 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
   }
 
   onUnmount(() => {
-    /* v8 ignore next — both lock-states tested individually but unmount-time path counted as branch */
     if (isLocked) unlock()
   })
 

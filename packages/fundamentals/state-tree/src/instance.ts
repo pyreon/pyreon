@@ -45,6 +45,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *   `@pyreon/store`'s `deepMerge`.
  */
 function deepMerge(target: unknown, source: unknown): unknown {
+  // Defensive: the sole entry point (`deepPatch`) passes two plain objects,
+  // and the recursion below only descends when both sides are plain — so this
+  // non-plain guard is a safety net, never reached in practice.
+  /* v8 ignore next */
   if (!isPlainObject(target) || !isPlainObject(source)) return source
   const out: Record<string, unknown> = { ...target }
   for (const key of Object.keys(source)) {
@@ -155,6 +159,9 @@ export function createInstance(
   } else {
     // Plain mode — STRUCTURAL source is `config.state` (keys + ModelDef
     // sentinels). Caller's `initial` is consulted per-key in the loop.
+    // `?? {}` is defensive: `model()` rejects a config with neither `state`
+    // nor `schema`, so in plain mode `config.state` is always present.
+    /* v8 ignore next */
     allocationSource = (config.state as Record<string, unknown>) ?? {}
     initialSnapshotForReset = {}
   }

@@ -44,6 +44,10 @@ export function useTable<TData extends RowData>(
   // Resolve user options with adapter-required defaults.
   const resolvedOptions: TableOptionsResolved<TData> = {
     state: {},
+    /* v8 ignore next 3 -- defensive default required by TableOptionsResolved; the
+       effect below always overrides onStateChange via setOptions before any
+       table.setState() can fire, so this noop body is unreachable (proven: it
+       never executes even under reactive re-runs + state mutations). */
     onStateChange() {
       /* default noop */
     },
@@ -94,7 +98,12 @@ export function useTable<TData extends RowData>(
       },
     }))
 
-    // Only bump if setOptions didn't already trigger a state change
+    // Only bump if setOptions didn't already trigger a state change.
+    // table-core's setOptions only merges options (it never calls setState),
+    // so within a single effect run stateChanged is always false here — the
+    // skip-branch (stateChanged === true) is defensive and unreachable
+    // (proven: it never executes even under reactive re-runs + state mutations).
+    /* v8 ignore next 3 */
     if (!stateChanged) {
       version.update((n) => n + 1)
     }

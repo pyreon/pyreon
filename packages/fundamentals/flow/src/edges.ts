@@ -284,6 +284,8 @@ export function getWaypointPath(params: {
 
   // Label at the middle waypoint
   const midIdx = Math.floor(waypoints.length / 2)
+  /* v8 ignore next — `?? {midpoint}` fallback: path builders always produce a
+     non-empty waypoints array, so waypoints[midIdx] is defined. Defensive. */
   const midPoint = waypoints[midIdx] ?? {
     x: (sourceX + targetX) / 2,
     y: (sourceY + targetY) / 2,

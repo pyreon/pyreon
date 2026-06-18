@@ -159,6 +159,8 @@ export class FakeCrdtDoc implements CrdtDoc {
     this.pending.clear()
     this.committed = []
     for (const [map, keys] of perMap) map._notify(keys, origin)
+    /* v8 ignore next — false arm unreachable: commit() only runs when the transaction
+       produced committed entries (a same-value write is a no-op that never commits). */
     if (committedEntries.length > 0) {
       for (const cb of [...this.commitListeners]) cb(committedEntries, origin)
     }
@@ -209,6 +211,8 @@ export function connectFakeDocs(
 
   const relay = (to: FakeCrdtDoc): CommitListener => {
     return (committed, origin) => {
+      /* v8 ignore next — belt-and-suspenders: disconnect() unsubscribes both commit
+         listeners, so the relay never fires after disconnect; this guard never runs. */
       if (!connected) return
       // Never echo a received update back to its sender.
       if (origin === REMOTE_ORIGIN) return
