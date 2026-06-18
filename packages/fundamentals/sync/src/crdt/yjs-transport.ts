@@ -38,6 +38,8 @@ export function connectYDocs(a: YjsCrdtDoc, b: YjsCrdtDoc): { disconnect: () => 
   Y.applyUpdate(a.yDoc, bState, REMOTE_ORIGIN)
 
   const relayTo = (to: YjsCrdtDoc) => (update: Uint8Array, origin: unknown) => {
+    /* v8 ignore next — belt-and-suspenders: disconnect() detaches this update observer,
+       so the relay never fires after disconnect; this guard never runs. */
     if (!connected) return
     // Never echo a received update back onto the wire.
     if (origin === REMOTE_ORIGIN) return
@@ -115,6 +117,8 @@ export function connectViaBroadcastChannel(
   if (aw && onAwarenessUpdate) aw.on('update', onAwarenessUpdate)
 
   bc.onmessage = (event: MessageEvent<BcMessage>) => {
+    /* v8 ignore next — belt-and-suspenders: disconnect() closes the BroadcastChannel,
+       so onmessage never fires after disconnect; this guard never runs. */
     if (!connected) return
     const msg = event.data
     // Defensive: a version-mismatched / buggy tab could post a malformed

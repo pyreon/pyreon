@@ -4,6 +4,7 @@
 '@pyreon/validate': patch
 '@pyreon/toast': patch
 '@pyreon/storage': patch
+'@pyreon/sync': patch
 '@pyreon/dnd': patch
 '@pyreon/document': patch
 '@pyreon/flow': patch
