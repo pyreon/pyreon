@@ -624,6 +624,7 @@ every warning; treat any warning as "this construct is outside v1."
 | string / array methods → native idioms | `map` / `filter` / `find` / `findIndex` / `some` / `every` / `reduce` / `sort` / `includes` / `indexOf` / `join` / `concat` / `flatMap` (arrays) and `startsWith` / `endsWith` / `split` / `repeat` / `trim` / `toUpperCase` / `toLowerCase` (strings) lower to the platform idiom — e.g. `join`→`joined(separator:)` / `joinToString`, `findIndex`→`(firstIndex(where:) ?? -1)` / `indexOfFirst` (JS `-1`-sentinel preserved), `split`→`components(separatedBy:)` / native split. `slice` / `replace` / `Number()` are NOT yet lowered (type-ambiguity / first-vs-all / coercion subtleties — tracked). |
 | `xs[i]` index access | arrays/lists; element-typed inference |
 | `+ - * / %`, comparisons, `&& \|\|`, `!`, ternary | `===`/`!==` coalesce to native `==`/`!=` |
+| `{cond && <View/>}` conditional render | lowers to `if cond { view }` (SwiftUI) / `if (cond) { view }` (Compose) — the same form `<Show>` emits; parens are seen through so `{cond && (a ? <X/> : <Y/>)}` lowers too. (A value-only `a && b` with no view RHS stays a value expression.) |
 | `x++` / `x--` | value-position degrades to `x + 1` (side effect dropped — warning); statement-position composes via `.update` |
 | `sig.set(v)` / `sig.update(fn)` | lower to native assignment; `.update` needs a single-param expression-body arrow whose param isn't shadowed |
 | object literals | construct declared structs / synthesized types; `{ ...t, field: v }` single-spread becomes Swift IIFE-copy / Kotlin `.copy(...)` |
