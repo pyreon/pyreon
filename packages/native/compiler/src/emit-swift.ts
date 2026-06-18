@@ -2102,6 +2102,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           case 'endsWith':
             if (e.args.length === 1) return `${obj}.hasSuffix(${argExprs[0]!})`
             break
+          case 'join':
+            // JS `arr.join(sep?)` → Swift `[String].joined(separator:)`.
+            // JS's default separator is "," — emit it explicitly when
+            // omitted. (Requires the array element to be String, as Swift
+            // `joined` does — map non-string arrays to strings first.)
+            if (e.args.length <= 1) {
+              return `${obj}.joined(separator: ${e.args.length === 1 ? argExprs[0]! : '","'})`
+            }
+            break
+          case 'split':
+            // JS `str.split(sep)` → Swift `components(separatedBy:)`
+            // (Foundation; multi-char separator, returns [String], faithful
+            // to JS string-separator split). Kotlin's `split` matches JS
+            // as-is, so it needs no mapping there.
+            if (e.args.length === 1) return `${obj}.components(separatedBy: ${argExprs[0]!})`
+            break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Swift `reduce(initial,
             // reducer)` — Swift takes the initial value FIRST (the

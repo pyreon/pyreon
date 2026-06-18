@@ -1866,6 +1866,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}.contains(${argExprs[0]!})`
             }
             break
+          case 'join':
+            // JS `arr.join(sep?)` → Kotlin `joinToString(sep)`. JS's
+            // default separator is "," — emit it explicitly when omitted
+            // (Kotlin's joinToString default is ", ", which differs).
+            // (Kotlin String.split / .replace already match JS as-is.)
+            if (e.args.length <= 1) {
+              return `${obj}.joinToString(${e.args.length === 1 ? argExprs[0]! : '","'})`
+            }
+            break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Kotlin `fold(initial,
             // reducer)`. Kotlin's `reduce` takes ONLY a combiner (no
