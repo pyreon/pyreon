@@ -2306,8 +2306,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       }
       return `${emitSwiftExpr(e.object, indent)}.${swiftIdent(e.property)}`
     }
-    case 'binary':
-      return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
+    case 'binary': {
+      const bl = emitSwiftExpr(e.left, indent)
+      const br = emitSwiftExpr(e.right, indent)
+      // JS `/` is ALWAYS float division (`7 / 2 === 3.5`). Swift integer
+      // `/` truncates (`7 / 2 == 3`) — even assigned to a Double — so
+      // coerce both operands to Double to match JS semantics. `/` is only
+      // valid on numbers, so `Double(...)` is always sound here. Other ops
+      // (`+ - * %`) match JS for integers and are emitted verbatim.
+      if (e.op === '/') {
+        return `Double(${bl}) / Double(${br})`
+      }
+      return `${bl} ${e.op} ${br}`
+    }
     case 'comparison': {
       // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
       // Swift takes them verbatim.

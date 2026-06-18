@@ -330,6 +330,14 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (expr.op === '+' && (left.kind === 'string' || right.kind === 'string')) {
         return { kind: 'string' }
       }
+      // Division is ALWAYS fractional in JS — `7 / 2 === 3.5`, never 3.
+      // Swift/Kotlin integer `/` truncates, so the result type MUST be
+      // Double (and the emit coerces to float division — see emit-swift /
+      // emit-kotlin binary `/`). Applies whenever a numeric is involved;
+      // a non-numeric `/` is invalid TS anyway.
+      if (expr.op === '/' && (left.kind === 'number' || right.kind === 'number')) {
+        return { kind: 'number', float: true }
+      }
       // Numeric arithmetic: both sides numeric ⇒ number. Float is
       // contagious — Int + Double is Double on both targets, so if EITHER
       // side is fractional the result is fractional. (Drives the
