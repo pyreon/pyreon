@@ -194,6 +194,14 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // field — additive (only flips an integer seed when proven Double).
   refineReduceSeedFloats(components, structs, stores)
 
+  // Double-type follow-up: an EXPLICIT `signal<number>(12.5)` /
+  // `signal<number[]>([12.5, …])` generic bypasses inferTypeFromInitial
+  // (which only runs when there's no generic), so a fractional literal
+  // mis-emits as `Int = 12.5` / `[Int] = [12.5]` (invalid Swift/Kotlin).
+  // Refine the signal's number type to Double from its fractional literal
+  // initializer — additive (only flips number→float on a fractional).
+  refineSignalNumberFloats(components)
+
   return {
     components,
     enums,
@@ -1927,6 +1935,61 @@ function refineReduceSeedFloats(
     for (const d of c.decls) {
       if (d.kind === 'signal') forEachExpr(d.initial, visit)
       else if (d.kind === 'computed' && d.expr !== undefined) forEachExpr(d.expr, visit)
+    }
+  }
+}
+
+/** A numeric literal with a fractional value (`12.5`, not `12`). */
+function isFractionalLiteral(e: ExprIR): boolean {
+  return e.kind === 'literal' && typeof e.value === 'number' && !Number.isInteger(e.value)
+}
+
+/**
+ * Double-type follow-up — refine a signal's EXPLICIT `number` / `number[]`
+ * generic to Double when its literal initializer is fractional.
+ *
+ * `signal(12.5)` (no generic) already infers Double via
+ * `inferTypeFromInitial`, but an EXPLICIT generic short-circuits that path
+ * (`hasGeneric` wins), so `signal<number>(12.5)` mis-emitted `Int = 12.5`
+ * and `signal<number[]>([12.5, …])` mis-emitted `[Int] = [12.5, …]` — both
+ * INVALID Swift/Kotlin (an Int can't hold 12.5). This refines them to
+ * Double from the fractional-literal evidence.
+ *
+ * For arrays, refining the element to Double also flags every INTEGER
+ * literal element `float` (so `[12.5, 8.3, 15]` emits `[15.0]` not `[15]`)
+ * — Swift promotes integer literals in a `[Double]` context but Kotlin's
+ * `List<Double>` rejects a bare `Int` element, so the `.0` is required for
+ * the mixed/whole-number case. Reuses the literal-float emit from the
+ * reduce-seed slice.
+ *
+ * Strictly ADDITIVE: only ever flips `{ kind:'number' }` →
+ * `{ kind:'number', float:true }` on fractional-literal evidence; integer
+ * signals and arrays are never touched (zero regression).
+ */
+function refineSignalNumberFloats(components: ComponentIR[]): void {
+  for (const c of components) {
+    for (const d of c.decls) {
+      if (d.kind !== 'signal') continue
+      // Scalar `signal<number>(12.5)`.
+      if (d.type.kind === 'number' && d.type.float !== true && isFractionalLiteral(d.initial)) {
+        d.type = { kind: 'number', float: true }
+        continue
+      }
+      // Array `signal<number[]>([… any fractional …])`.
+      if (
+        d.type.kind === 'array' &&
+        d.type.element.kind === 'number' &&
+        d.type.element.float !== true &&
+        d.initial.kind === 'array' &&
+        d.initial.elements.some(isFractionalLiteral)
+      ) {
+        d.type = { kind: 'array', element: { kind: 'number', float: true } }
+        for (const el of d.initial.elements) {
+          if (el.kind === 'literal' && typeof el.value === 'number' && Number.isInteger(el.value)) {
+            el.float = true
+          }
+        }
+      }
     }
   }
 }
