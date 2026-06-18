@@ -1610,7 +1610,7 @@ If you raise a threshold by ADDING exclusions, the gate gets weaker for those fi
 `pyreon doctor` is the single entry point for the project-**health** gates Pyreon ships — the scored, finding-producing audits (correctness / architecture / testing / documentation / performance). It is NOT a runner for the CI-*pipeline* gates that don't fit a scored-health snapshot — the lint **ratchets**, `check-changeset-required`, `check-release-readiness`, `gen-docs --check` / `check-mcp-docs` drift, `verify-modes`, `scaffold-smoke` etc. stay as their own CI jobs (they're diff-relative, baseline-relative, generated-artifact-sync, or heavy build integration, not health snapshots of the code). PR 1 (#570) extracted a `Finding[]` / `GateResult` shape from the standalone scripts; PR 2 added the aggregator, 0-100 score formula, and CLI output. Modeled after [react.doctor](https://www.react.doctor/) — banner + per-category bars + top-N findings.
 
 ```bash
-pyreon doctor                # default: 11 fast gates (~2-5s), scored output
+pyreon doctor                # default: 12 fast gates (~2-5s), scored output
 pyreon doctor --full         # adds 2 slow gates: audit-types, bundle-budgets
 pyreon doctor --fix          # auto-fix lint + react-patterns where possible
 pyreon doctor --json         # full DoctorReport for AI agents / dashboards
@@ -1621,7 +1621,7 @@ pyreon doctor --skip pyreon-patterns      # exclude from default set
 pyreon doctor --audit-min-risk high       # tighten test-environment audit
 ```
 
-**Gates (13 total, 11 fast + 2 slow)** — the authoritative lists are `FAST_GATES` / `SLOW_GATES` in `orchestrator.ts`; the CLI's `VALID_GATES` is DERIVED from them (`[...FAST_GATES, ...SLOW_GATES]`) so `--only`/`--skip` can never reject a gate that actually runs:
+**Gates (14 total, 12 fast + 2 slow)** — the authoritative lists are `FAST_GATES` / `SLOW_GATES` in `orchestrator.ts`; the CLI's `VALID_GATES` is DERIVED from them (`[...FAST_GATES, ...SLOW_GATES]`) so `--only`/`--skip` can never reject a gate that actually runs:
 
 | Gate                 | Default category | Speed | Coverage                                                    |
 | -------------------- | ---------------- | ----- | ----------------------------------------------------------- |
@@ -1633,6 +1633,7 @@ pyreon doctor --audit-min-risk high       # tighten test-environment audit
 | `islands-audit`      | architecture     | fast  | Cross-file island foot-guns (5 detector codes)              |
 | `ssg-audit`          | architecture     | fast  | `_404.tsx` placement, `getStaticPaths` (**scoped to `mode: 'ssg'` apps** — SPA/SSR/ISR never prerender), revalidate literals |
 | `content-audit`      | architecture     | fast  | `@pyreon/zero-content` broken internal links / missing titles / orphaned `.md` (**per-config** — same-named collections across apps don't cross-contaminate) |
+| `native-audit`       | architecture     | fast  | Multiplatform (PMTC) build hazards in `.tsx` files importing `@pyreon/primitives`: web-only-package imports (charts/flow/code/dnd/document/query/table/virtual + the CSS-in-JS stack) + native-dropped top-level `interface`/`enum`/`class` decls. **Scoped to multiplatform files** (skips when no `@pyreon/primitives` importer). `--check-native`. warnings (web build unaffected). |
 | `audit-tests`        | testing          | fast  | Mock-vnode test patterns (PR #197 bug class)                |
 | `check-dedup`        | architecture     | fast  | Duplicate dependency versions in the lockfile               |
 | `audit-leak-classes` | **best-practices** (advisory) | fast | The 5 memory-leak classes — **advisory** (info, false-positive-prone): VISIBLE but excluded from the grade + `--ci` |

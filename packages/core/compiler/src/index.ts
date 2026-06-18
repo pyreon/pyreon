@@ -57,6 +57,15 @@ export type {
   SsgLocation,
 } from './ssg-audit'
 export { auditSsg, formatSsgAudit } from './ssg-audit'
+// `pyreon doctor --check-native` audit — multiplatform (PMTC) build hazards.
+export type {
+  NativeAuditResult,
+  NativeFinding,
+  NativeFindingCode,
+  NativeLocation,
+  NativePatternDiagnostic,
+} from './native-audit'
+export { auditNative, detectNativePatterns } from './native-audit'
 // PR 9 follow-up — `pyreon doctor --check-content` audit.
 export type {
   AuditContentOptions,

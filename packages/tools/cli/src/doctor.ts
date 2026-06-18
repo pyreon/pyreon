@@ -66,6 +66,8 @@ export interface DoctorOptions {
   checkSsg?: boolean | undefined
   /** @deprecated Prefer `--only content-audit`. */
   checkContent?: boolean | undefined
+  /** @deprecated Prefer `--only native-audit`. */
+  checkNative?: boolean | undefined
 }
 
 const resolveFormat = (options: DoctorOptions): DoctorFormat => {
@@ -82,6 +84,7 @@ const resolveOnly = (options: DoctorOptions): GateName[] | undefined => {
   if (options.checkIslands) legacyOnly.push('islands-audit')
   if (options.checkSsg) legacyOnly.push('ssg-audit')
   if (options.checkContent) legacyOnly.push('content-audit')
+  if (options.checkNative) legacyOnly.push('native-audit')
   return legacyOnly.length > 0 ? legacyOnly : undefined
 }
 
