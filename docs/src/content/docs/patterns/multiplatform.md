@@ -159,3 +159,42 @@ export function App() {
 ```
 
 This compiles to web + iOS + Android from one source: canonical primitives, a `type`-alias struct, signals, `<For>` keyed list, `.filter`/`.map`, a multi-statement handler — every piece inside the supported subset.
+
+## Anti-pattern
+
+Reaching outside the multiplatform lane — the native build silently breaks, often with no warning:
+
+```tsx
+// ❌ DON'T — every line here breaks the native (iOS/Android) build:
+import { Card, Button } from '@pyreon/ui-components'  // web-only CSS-in-JS — won't render native
+import { Chart } from '@pyreon/charts'                // echarts canvas — can't be native-rendered
+interface Todo { id: number }                         // PMTC silently DROPS interface → undefined type on device
+class TodoStore { items = [] }                        // class silently dropped too
+
+function Dashboard({ title }: { title: string }) {    // destructured prop loses reactivity
+  const data = { count: 0 }                           // bare local object literal — dropped on native
+  const pct = data.count / total                      // (web `/` is float; native truncates unless coerced — fixed in-compiler)
+  return <Card>{`Hits: ${title}`}</Card>              // template literal partially-supported on native; <Card> is web-only
+}
+```
+
+```tsx
+// ✅ DO — stay in the lane (or bridge):
+import { Stack, Text, Button } from '@pyreon/primitives'  // multiplatform UI
+import { signal } from '@pyreon/reactivity'
+type Todo = { id: number }                                // type alias → struct on native
+function Dashboard(props: { title: string }) {            // props.x stays reactive
+  const count = signal(0)                                 // reactive state, not a bare object
+  return <Stack><Text>{'Hits: ' + props.title}</Text></Stack>
+}
+// Need a chart on native? Host it: <WebView html={CHART_HTML} data={metrics()} onMessage={...} />
+```
+
+Catch these BEFORE the device build with `pyreon doctor --check-native` (project scan) or the MCP `validate` tool (per-snippet) — both flag web-only imports + native-dropped `interface`/`enum`/`class` in files importing `@pyreon/primitives`.
+
+## Related
+
+- `get_pattern({ name: "routing-setup" })` — the router works on native (nested routes, `beforeEnter`, `loader`); `useNavigate`/`useParams`/`useLoaderData` emit per target.
+- `get_pattern({ name: "state-management" })` — `defineStore` / `@pyreon/store` is native-ported.
+- `get_pattern({ name: "data-fetching" })` — on native, use `useFetch` (NOT `@pyreon/query`, which is web-only).
+- `get_api({ name: "@pyreon/primitives/Stack" })` (and the other 14 + `WebView`) — per-primitive props, per-target mapping, and gotchas.
