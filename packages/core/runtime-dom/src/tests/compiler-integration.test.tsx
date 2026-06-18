@@ -552,3 +552,48 @@ describe('Compiler integration — class/style binding fidelity', () => {
     expect(div.style.color).toBe('green')
   })
 })
+
+// Regression: a reactive/forwarded `dangerouslySetInnerHTML` on a TEMPLATE-ized
+// element (a multi-element static tree → `_tpl`) was bound via a generic
+// `setAttribute("dangerouslySetInnerHTML", value)` → `String({__html})` →
+// `dangerouslysetinnerhtml="[object Object]"` on an EMPTY element. The SSR'd
+// content (e.g. a Shiki `<pre>`) therefore vanished the moment the client
+// re-rendered the template. The template path now mirrors the runtime
+// applyStaticProp: `el.innerHTML = value.__html`. Both backends.
+describe('compiler integration — dangerouslySetInnerHTML (template path)', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('applies a forwarded dangerouslySetInnerHTML as innerHTML, not a stringified attribute', () => {
+    const { container } = compileComponent(
+      `const CodeBlock = (props) => (
+        <div class="cb">
+          <div class="body">
+            <div class="pre" dangerouslySetInnerHTML={props.html} />
+            <button class="copy">Copy</button>
+          </div>
+        </div>
+      )`,
+      { html: { __html: '<pre class="shiki"><code>npm install x</code></pre>' } },
+    )
+    const pre = container.querySelector('.pre')!
+    // innerHTML applied — the <pre><code> is present …
+    expect(pre.querySelector('pre.shiki code')?.textContent).toBe('npm install x')
+    // … and NOT stringified into a literal attribute, and not empty.
+    expect(pre.getAttribute('dangerouslysetinnerhtml')).toBeNull()
+    expect(pre.innerHTML).not.toContain('[object Object]')
+  })
+
+  it('updates innerHTML reactively when the source signal changes', () => {
+    const html = signal({ __html: '<pre>one</pre>' })
+    const { container } = compileComponent(
+      `const CB = (props) => (<div class="cb"><div class="pre" dangerouslySetInnerHTML={props.html()} /><span>x</span></div>)`,
+      { html },
+    )
+    const pre = container.querySelector('.pre')!
+    expect(pre.querySelector('pre')?.textContent).toBe('one')
+    html.set({ __html: '<pre>two</pre>' })
+    expect(pre.querySelector('pre')?.textContent).toBe('two')
+  })
+})

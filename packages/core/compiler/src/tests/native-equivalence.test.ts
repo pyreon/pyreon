@@ -105,6 +105,17 @@ describeNative('Native vs JS equivalence — class/style binding fidelity', () =
   test('class string ternary', () => compare(`${sig}export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>`))
   test('class non-reactive', () => compare(`export const X = () => <div class={someVar}>y</div>`))
   test('class direct signal ref', () => compare(`${sig}export const X = () => <div class={t}>y</div>`))
+  // dangerouslySetInnerHTML — must mirror the runtime (innerHTML = value.__html),
+  // not a generic setAttribute (which stringifies the object to "[object Object]").
+  // The wrapper div forces template-ization so the attr binding goes through attr_setter.
+  test('dangerouslySetInnerHTML forwarded prop', () =>
+    compare(
+      `export const X = (props) => <div class="cb"><div dangerouslySetInnerHTML={props.html} /></div>`,
+    ))
+  test('dangerouslySetInnerHTML direct signal ref', () =>
+    compare(
+      `${sig}export const X = () => <div class="cb"><div dangerouslySetInnerHTML={t} /></div>`,
+    ))
   // style — object-aware form (object → Object.assign, string → cssText)
   test('style object literal (reactive)', () => compare(`${sig}export const X = () => <div style={{ color: t() }}>y</div>`))
   test('style object thunk (reactive)', () => compare(`${sig}export const X = () => <div style={() => ({ color: t() })}>y</div>`))

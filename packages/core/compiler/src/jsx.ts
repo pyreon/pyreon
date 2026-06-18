@@ -2687,6 +2687,14 @@ export function transformJSX_JS(
         needsSetStyle = true
         return `_setStyle(${varName}, ${expr})`
       }
+      if (htmlAttrName === 'dangerouslySetInnerHTML') {
+        // Mirror runtime applyStaticProp: set innerHTML from the `{ __html }`
+        // payload (raw — developer owns sanitization, same as React). A generic
+        // setAttribute here stringifies the object to "[object Object]" and
+        // leaves the element EMPTY — so an SSR'd `<pre>` (e.g. a Shiki code
+        // block) vanishes the moment the client re-renders the template.
+        return `{ const _h = (${expr}); ${varName}.innerHTML = _h != null && _h.__html != null ? _h.__html : "" }`
+      }
       if (DOM_PROPS.has(htmlAttrName)) return `${varName}.${htmlAttrName} = ${expr}`
       return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
     }
@@ -2718,9 +2726,11 @@ export function transformJSX_JS(
             ? `(v) => { ${varName}.className = v == null ? "" : (typeof v === "string" ? v : _cx(v)) }`
             : htmlAttrName === 'style'
               ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
-              : DOM_PROPS.has(htmlAttrName)
-                ? `(v) => { ${varName}.${htmlAttrName} = v }`
-                : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
+              : htmlAttrName === 'dangerouslySetInnerHTML'
+                ? `(v) => { ${varName}.innerHTML = v != null && v.__html != null ? v.__html : "" }`
+                : DOM_PROPS.has(htmlAttrName)
+                  ? `(v) => { ${varName}.${htmlAttrName} = v }`
+                  : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
         const callerArg = directRef.isMember ? `, () => ${directRef.ref}()` : ''
         bindLines.push(`const ${d} = _bindDirect(${directRef.ref}, ${updater}${callerArg})`)
         return

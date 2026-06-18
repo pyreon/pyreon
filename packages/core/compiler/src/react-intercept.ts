@@ -1168,6 +1168,33 @@ const data = useLoaderData<Dashboard>()`,
     }),
   },
   {
+    // Compiler template fast-path — `dangerouslySetInnerHTML` on a
+    // template-ized element (any multi-element JSX tree) fell through to a
+    // generic `setAttribute("dangerouslySetInnerHTML", value)`, so the
+    // `{ __html }` object stringified to "[object Object]" and the element
+    // rendered EMPTY. SSR emitted the inner HTML correctly, then the client
+    // template render replaced it with the empty attribute'd node — so an
+    // SSR'd `<pre>` (e.g. a Shiki code block) BLINKED then vanished.
+    pattern:
+      /dangerouslySetInnerHTML.*(\[object Object\]|empty|blank|vanish|disappear|not render)|\[object Object\].*(innerHTML|inner html)/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/compiler` versions before the template-path fix, `dangerouslySetInnerHTML` on an element that the compiler lowered into a `_tpl()` template (any JSX tree with ≥2 elements) fell through to a generic `setAttribute("dangerouslySetInnerHTML", value)`. The `{ __html }` object stringified to "[object Object]" and the element rendered EMPTY — the runtime `applyProp` path (`h()`/spreads) was correct, only the template fast path was wrong. SSR emitted the inner HTML, then the client template render replaced it with the empty node, so content BLINKED then vanished.',
+      fix: 'Upgrade `@pyreon/compiler` to the release where the template fast path applies `dangerouslySetInnerHTML` as `el.innerHTML = value.__html` (mirroring the runtime `applyStaticProp` path, both JS + Rust backends). No app code change needed. If you cannot upgrade, set `innerHTML` imperatively in `onMount` from a `ref` instead.',
+      fixCode: `// Works after the upgrade (template path now sets innerHTML):
+<div class="wrapper">
+  <div dangerouslySetInnerHTML={{ __html: html }} />
+</div>
+
+// Pre-upgrade workaround — imperative innerHTML via ref:
+function Body({ html }) {
+  let el
+  onMount(() => { if (el) el.innerHTML = html })
+  return <div class="wrapper"><div ref={(n) => (el = n)} /></div>
+}`,
+    }),
+  },
+  {
     // Phase 1 render-pipeline unification — the shipped-broken
     // `useRequestLocals` (renderToString/renderToStream opened a FRESH ALS
     // context stack, discarding request-level provide() frames). Users on
