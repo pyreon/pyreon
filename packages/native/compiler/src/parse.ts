@@ -3691,6 +3691,50 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
   }
 }
 
+/**
+ * Source location ("line:col", 1-based) of an oxc node, derived from its
+ * byte offset into the parse source. oxc AST nodes carry `.start`/`.end` but
+ * no `.loc`, so we scan newlines up to the offset. Used to point every
+ * "unsupported construct" diagnostic at the EXACT site instead of a bare
+ * node-type name. Returns "?:?" when the offset is absent.
+ */
+function locOf(node: AnyNode, ctx: ParseCtx): string {
+  const off = typeof node?.start === 'number' ? node.start : -1
+  if (off < 0) return '?:?'
+  let line = 1
+  let lastNl = -1
+  const n = Math.min(off, ctx.source.length)
+  for (let i = 0; i < n; i++) {
+    if (ctx.source.charCodeAt(i) === 10) {
+      line++
+      lastNl = i
+    }
+  }
+  return `${line}:${off - lastNl}`
+}
+
+/**
+ * Push a LOCATED + ACTIONABLE "unsupported construct" warning and return a
+ * safe fallback ExprIR. PMTC compiles a narrow declarative TS subset; before
+ * this, out-of-subset expressions degraded to a bare `Unsupported
+ * expression: <NodeType>` (no line, no fix) — or, for several constructs, a
+ * SILENT `''`. That silent/locationless drop was the #1 trust-killer: the
+ * construct vanished and surfaced later as a confusing swiftc/kotlinc failure,
+ * or as wrong output with no signal at all. Each call now names the exact site
+ * AND how to express the intent inside the supported subset, and the CLI
+ * already prints `result.warnings`, so the developer actually sees it.
+ */
+function unsupportedExpr(
+  ctx: ParseCtx,
+  node: AnyNode,
+  what: string,
+  hint: string,
+  fallback: ExprIR = { kind: 'literal', value: '' },
+): ExprIR {
+  ctx.warnings.push(`[${locOf(node, ctx)}] ${what} is not supported in native (PMTC) — ${hint}`)
+  return fallback
+}
+
 function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
   switch (node.type) {
     case 'Literal':
@@ -3772,7 +3816,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           right: parseExpr(node.right, ctx),
         }
       }
-      ctx.warnings.push(`Unsupported binary operator: ${op}.`)
+      ctx.warnings.push(
+        `[${locOf(node, ctx)}] Binary operator \`${op}\` is not supported in native (PMTC) — emitting \`+\` as a fallback (likely wrong); rewrite using a supported operator.`,
+      )
       return {
         kind: 'binary',
         op: '+',
@@ -3788,8 +3834,12 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const known: ('!' | '-' | '+')[] = ['!', '-', '+']
       const op = node.operator as string
       if (!(known as readonly string[]).includes(op)) {
-        ctx.warnings.push(`Unsupported unary operator: ${op}.`)
-        return { kind: 'literal', value: '' }
+        return unsupportedExpr(
+          ctx,
+          node,
+          `Unary operator \`${op}\``,
+          'only `!`, `-`, `+` are supported on native.',
+        )
       }
       return {
         kind: 'unary',
@@ -3805,8 +3855,12 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const knownLogical: ('&&' | '||' | '??')[] = ['&&', '||', '??']
       const op = node.operator as string
       if (!(knownLogical as readonly string[]).includes(op)) {
-        ctx.warnings.push(`Unsupported logical operator: ${op}.`)
-        return { kind: 'literal', value: '' }
+        return unsupportedExpr(
+          ctx,
+          node,
+          `Logical operator \`${op}\``,
+          'only `&&`, `||`, `??` are supported on native.',
+        )
       }
       return {
         kind: 'logical',
@@ -3842,8 +3896,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // losing the side-effect.
       const op = node.operator as '++' | '--'
       if (op !== '++' && op !== '--') {
-        ctx.warnings.push(`Unsupported update operator: ${op}.`)
-        return { kind: 'literal', value: 0 }
+        return unsupportedExpr(
+          ctx,
+          node,
+          `Update operator \`${op}\``,
+          'only `++` and `--` are supported on native.',
+          { kind: 'literal', value: 0 },
+        )
       }
       return { kind: 'update', op, argument: parseExpr(node.argument, ctx) }
     }
@@ -3928,9 +3987,48 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         .filter((c): c is ChildIR => c !== null)
       return { kind: 'jsx-fragment', children }
     }
+    case 'TemplateLiteral':
+      // The single most common out-of-subset construct (string interpolation).
+      // Lowering it to native string concatenation is a tracked follow-up;
+      // until then, name it loudly with the exact rewrite instead of silently
+      // emitting "" (which produced empty labels with no signal).
+      return unsupportedExpr(
+        ctx,
+        node,
+        'A template literal',
+        "use string concatenation — `'Hi ' + name` (template-literal lowering is a tracked follow-up).",
+      )
+    case 'TaggedTemplateExpression':
+      return unsupportedExpr(
+        ctx,
+        node,
+        'A tagged template literal',
+        'it has no native equivalent — call a plain function with the values instead.',
+      )
+    case 'ChainExpression':
+      // Optional chaining `a?.b` — oxc wraps the optional member in a
+      // ChainExpression. Swift/Kotlin optional semantics differ from JS, so
+      // an explicit guard is the portable shape.
+      return unsupportedExpr(
+        ctx,
+        node,
+        'Optional chaining (`?.`)',
+        'use an explicit guard — `a && a.b`.',
+      )
+    case 'AwaitExpression':
+      return unsupportedExpr(
+        ctx,
+        node,
+        '`await` in a component body',
+        'load async data via `useFetch(url)` or a route `loader` — both emit native URLSession / ktor fetches.',
+      )
     default:
-      ctx.warnings.push(`Unsupported expression: ${node.type}.`)
-      return { kind: 'literal', value: '' }
+      return unsupportedExpr(
+        ctx,
+        node,
+        `\`${node.type}\``,
+        'it is outside the supported declarative subset — see the multiplatform supported-TS reference.',
+      )
   }
 }
 
