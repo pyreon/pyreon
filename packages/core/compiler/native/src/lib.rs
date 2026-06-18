@@ -4338,6 +4338,14 @@ fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str) -> String {
         // Delegate to runtime `_setStyle` (= applyStyleProp) — see the JS
         // backend's attrSetter. The caller sets `tb.needs_set_style`.
         format!("_setStyle({}, {})", var_name, expr)
+    } else if html_attr_name == "dangerouslySetInnerHTML" {
+        // Mirror runtime applyStaticProp: set innerHTML from the `{ __html }`
+        // payload (raw). A generic setAttribute stringifies the object to
+        // "[object Object]" and leaves the element EMPTY — see the JS backend.
+        format!(
+            "{{ const _h = ({}); {}.innerHTML = _h != null && _h.__html != null ? _h.__html : \"\" }}",
+            expr, var_name
+        )
     } else if is_dom_prop(html_attr_name) {
         format!("{}.{} = {}", var_name, html_attr_name, expr)
     } else {
@@ -4388,6 +4396,11 @@ fn emit_dynamic_attr(
             )
         } else if html_attr_name == "style" {
             format!("(v) => _setStyle({}, v)", var_name)
+        } else if html_attr_name == "dangerouslySetInnerHTML" {
+            format!(
+                "(v) => {{ {}.innerHTML = v != null && v.__html != null ? v.__html : \"\" }}",
+                var_name
+            )
         } else if is_dom_prop(html_attr_name) {
             format!("(v) => {{ {}.{} = v }}", var_name, html_attr_name)
         } else {
