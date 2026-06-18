@@ -3819,19 +3819,36 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (isExpressionBody) {
         return { kind: 'arrow', params, body: parseExpr(body, ctx) }
       }
-      // Block body — pull out the single return / expression statement.
-      // For Phase 0 we only handle event-handler shapes: `() => count.set(...)`.
+      // Block body. The common compact case — a single expression/return
+      // statement (`() => { count.set(c() + 1) }`) — keeps the lean
+      // single-expr `body` shape (every downstream accessor / `.update` /
+      // action emit already handles it; backward-compat).
       const stmts = body.body as AnyNode[]
-      const expressionStmt = stmts.find(
-        (s) => s.type === 'ExpressionStatement' || s.type === 'ReturnStatement',
-      )
-      if (!expressionStmt) {
-        ctx.warnings.push('Arrow body had no expression/return statement.')
+      if (stmts.length === 0) {
         return { kind: 'arrow', params, body: { kind: 'literal', value: '' } }
       }
-      const inner =
-        expressionStmt.type === 'ReturnStatement' ? expressionStmt.argument : expressionStmt.expression
-      return { kind: 'arrow', params, body: parseExpr(inner, ctx) }
+      if (
+        stmts.length === 1 &&
+        (stmts[0]!.type === 'ExpressionStatement' || stmts[0]!.type === 'ReturnStatement')
+      ) {
+        const only = stmts[0]!
+        const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
+        if (!inner) return { kind: 'arrow', params, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', params, body: parseExpr(inner, ctx) }
+      }
+      // MULTIPLE statements (or a single non-expr/return statement like an
+      // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
+      // only the first matching statement and silently dropped the rest — a
+      // HIGH "1 code, all platforms" bug: `onPress={() => { a.set(1);
+      // b.set(2) }}` lost the `b` update on both targets. `body` is a
+      // sentinel; `emitSwiftAction` / `emitKotlinAction` read `stmts`.
+      const blockStmts = parseStatementBlock(body, ctx)
+      return {
+        kind: 'arrow',
+        params,
+        body: { kind: 'literal', value: '' },
+        stmts: blockStmts,
+      }
     }
     case 'ArrayExpression': {
       const elements = (node.elements as AnyNode[]).map((e) => parseExpr(e, ctx))

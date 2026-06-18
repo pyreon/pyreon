@@ -2444,6 +2444,24 @@ function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
 
 function emitKotlinAction(handler: ExprIR, indent: number): string {
   if (handler.kind === 'arrow') {
+    // Multi-statement block body (`() => { a.set(1); b.set(2) }`) — emit
+    // EVERY statement. Pre-fix the parse kept only the first statement and
+    // silently dropped the rest (a HIGH "1 code, all platforms" bug). A
+    // local minimal ctx suffices: handler statements are `sig = …`
+    // expressions (the `expr` case reads no ctx field); object-literal
+    // data-class synthesis from a handler body isn't collected — the same
+    // limitation the single-expr path has (it emits via `emitKotlinExpr`,
+    // which also doesn't synthesize), so this is not a regression.
+    if (handler.stmts !== undefined && handler.stmts.length > 0) {
+      const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+      const pad = ' '.repeat(indent + 2)
+      const lines = handler.stmts
+        .map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx))
+        .join('\n')
+      const head =
+        handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
+      return `${head}\n${lines}\n${' '.repeat(indent)}}`
+    }
     // Preserve arrow parameter names in the Kotlin lambda.
     // `(t) => draft.set(t)` → `{ t -> draft = t }` (NOT
     // `{ draft = t }` which leaves `t` unresolved). Kotlin lambdas

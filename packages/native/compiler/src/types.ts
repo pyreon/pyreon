@@ -584,7 +584,18 @@ export type ExprIR =
    * increment is lost. Phase 2 refines if needed.
    */
   | { kind: 'update'; op: '++' | '--'; argument: ExprIR }
-  | { kind: 'arrow'; params: string[]; body: ExprIR }
+  /**
+   * Arrow function. A single-expression body (`() => count.set(1)`) or a
+   * block body with exactly one expression/return statement lands in
+   * `body` (the compact form — most accessor / `.update` / handler sites).
+   * A block body with MULTIPLE statements (`() => { a.set(1); b.set(2) }`)
+   * — common for event handlers doing several things — additionally
+   * carries the full statement list in `stmts`; `body` is a sentinel
+   * empty literal in that case. `emitSwiftAction` / `emitKotlinAction`
+   * emit `stmts` as a multi-statement closure body; without it the
+   * earlier parse silently kept only the FIRST statement.
+   */
+  | { kind: 'arrow'; params: string[]; body: ExprIR; stmts?: StatementIR[] }
   /**
    * RX-2 — `@pyreon/rx` namespace call. Produced by parse.ts'
    * `tryRxNamespaceLowering` when it encounters `rx.METHOD(signal, ...)`.

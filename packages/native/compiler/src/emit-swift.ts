@@ -2820,6 +2820,14 @@ function swiftDisabledModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
 function emitSwiftAction(handler: ExprIR, indent: number): string {
   // Strip outer arrow if present — Button takes a closure body directly.
   if (handler.kind === 'arrow') {
+    // Multi-statement block body (`() => { a.set(1); b.set(2) }`) — emit
+    // EVERY statement. Pre-fix the parse kept only the first statement and
+    // silently dropped the rest (a HIGH "1 code, all platforms" bug).
+    if (handler.stmts !== undefined && handler.stmts.length > 0) {
+      const pad = ' '.repeat(indent + 2)
+      const lines = handler.stmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+      return `{\n${lines}\n${' '.repeat(indent)}}`
+    }
     // Round-1 audit fix: empty arrow body `() => {}` parses (see
     // parse.ts ArrowFunctionExpression) to `body: { kind: 'literal',
     // value: '' }`. Without this branch the emit is `{ "" }` — a
