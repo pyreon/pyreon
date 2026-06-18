@@ -1875,6 +1875,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}.joinToString(${e.args.length === 1 ? argExprs[0]! : '","'})`
             }
             break
+          case 'concat':
+            // JS `arr.concat(other)` → Kotlin `list + other` (immutable
+            // concat). Parenthesised so a following operator / `.method()`
+            // binds to the whole concatenation. (Swift mirror: `arr + other`.)
+            if (e.args.length === 1) return `(${obj} + ${argExprs[0]!})`
+            break
+          case 'findIndex':
+            // JS `arr.findIndex(pred)` → Kotlin `indexOfFirst(pred)`
+            // (Swift: `firstIndex(where:)`). Kotlin's `String.repeat(n)`
+            // already matches JS, so `repeat` needs no Kotlin mapping.
+            if (e.args.length === 1) return `${obj}.indexOfFirst(${argExprs[0]!})`
+            break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Kotlin `fold(initial,
             // reducer)`. Kotlin's `reduce` takes ONLY a combiner (no

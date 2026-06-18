@@ -2118,6 +2118,26 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // as-is, so it needs no mapping there.
             if (e.args.length === 1) return `${obj}.components(separatedBy: ${argExprs[0]!})`
             break
+          case 'repeat':
+            // JS `str.repeat(n)` → Swift `String(repeating:count:)`.
+            // Kotlin's `String.repeat(n)` matches JS as-is.
+            if (e.args.length === 1) return `String(repeating: ${obj}, count: ${argExprs[0]!})`
+            break
+          case 'concat':
+            // JS `arr.concat(other)` → Swift `arr + other` (immutable
+            // concat). Parenthesised so a following `.method()` / operator
+            // binds to the whole concatenation, not just `other`.
+            if (e.args.length === 1) return `(${obj} + ${argExprs[0]!})`
+            break
+          case 'findIndex':
+            // JS `arr.findIndex(pred)` → Swift `firstIndex(where:)`, but JS
+            // returns the SENTINEL `-1` (an Int) when not found while Swift
+            // returns `Int?` (nil). Wrap in `?? -1` to preserve the JS
+            // contract — the result is a plain `Int`, so a downstream
+            // `=== -1` / index use compiles. (Kotlin's `indexOfFirst`
+            // already returns -1 when not found — faithful as-is.)
+            if (e.args.length === 1) return `(${obj}.firstIndex(where: ${argExprs[0]!}) ?? -1)`
+            break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Swift `reduce(initial,
             // reducer)` — Swift takes the initial value FIRST (the
