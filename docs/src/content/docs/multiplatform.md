@@ -65,7 +65,7 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 - the native `@pyreon/router` port (`useNavigate`/`useParams`/`useLoaderData`, nested routes, `beforeEnter`)
 - the **subset** of `@pyreon/hooks` with ports: `useFetch`, `useOnline`/`useNetworkStatus`, `useClipboard`, `useColorScheme`
 
-**❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT run on iOS/Android):
+**❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT be *native-rendered* as SwiftUI/Compose; PMTC can't compile echarts/CodeMirror/elkjs/etc. But several CAN be **hosted in a `<WebView>`** — see the bridge escape hatch right after this table):
 
 | Package | Blocking dependency |
 |---|---|
@@ -78,6 +78,18 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 | `@pyreon/table` / `@pyreon/virtual` | TanStack headless cores bound to DOM cells / scroll containers |
 | `@pyreon/hotkeys` | `window` keyboard listeners |
 | `@pyreon/elements`, `@pyreon/styler`, `@pyreon/rocketstyle`, `@pyreon/coolgrid`, `@pyreon/kinetic`, `@pyreon/unistyle`, `@pyreon/ui-core`, `@pyreon/ui-components` | the web CSS-in-JS / DOM stack (Layer 3b) — native apps use `@pyreon/primitives` (Layer 3a) instead |
+
+**🌉 Escape hatch — host a web-only component in a `<WebView>` (the bridge).** The "❌" packages can't be *native-rendered*, but a `<WebView>` embeds a real browser engine (WKWebView on iOS, Android WebView), so the web component runs *inside* it — echarts' canvas, flow's elkjs+SVG, CodeMirror, a document preview. The bridge is **bidirectional**:
+
+- **Forward** — `data={metrics()}` is pushed into the page as `window.__pyreonData` (+ a `pyreondata` event) so the hosted component updates live, no reload.
+- **Reverse** — the page calls `window.pyreonPostMessage(payload)` → your native `onMessage={(m) => …}` closure.
+
+```tsx
+// examples/native-analytics — a chart hosted natively, both directions:
+<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />
+```
+
+This is the **right** answer for charts / diagrams / code editors / doc previews (you wouldn't reimplement echarts in SwiftUI anyway). Caveats: it's a hosted web view (web look-and-feel, not native widgets), pays WebView boot + bundle weight (echarts ~1 MB), and is best for self-contained *panes* — not your whole app. The bridge runtime (`PyreonWebView.swift`/`.kt`) is real + `swift build`-clean and `native-analytics` demonstrates it, but a chart-in-WebView **device** test isn't in the nightly gate yet (the mechanism is proven; the on-device run isn't CI-gated). For your core app UI (nav/forms/lists/layout) use the native primitives; reach for the WebView only for the rich web-island pieces.
 
 **🟡 Logic could port, but no native runtime exists yet:** `@pyreon/rx`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/url-state`, `@pyreon/toast` (the store is pure-logic; the `<Toaster>` renderer is DOM), and `@pyreon/sync`'s engine-neutral core (the Yjs engine + IndexedDB/WebSocket transports are web/Node-only).
 
