@@ -13,13 +13,20 @@
 // - **Aggregation** — `reduce` for the column totals + the average.
 //   Lowers correctly per target (Swift `reduce(init, cb)`, Kotlin
 //   `fold(init, cb)`).
-// - **Heavy viz via the WebView host** — the chart is web-only-rich
-//   (`@pyreon/charts` / `@pyreon/flow` can't compile to native), so the
-//   escape-hatch primitives select per platform: `<Web>` renders an
-//   inline chart, `<NativeIOS>` / `<NativeAndroid>` host the SAME web
-//   chart in a `<WebView>` (WKWebView / Android WebView). The chart
-//   markup is a module `const` — const-ref resolution inlines it into
-//   the native `PyreonWebView(html:)` call.
+// - **Heavy viz via the WebView host, BOTH bridge directions** — the
+//   chart is web-only-rich (`@pyreon/charts` / `@pyreon/flow` can't
+//   compile to native), so the escape-hatch primitives select per
+//   platform: `<Web>` renders an inline chart, `<NativeIOS>` /
+//   `<NativeAndroid>` host the SAME web chart in a `<WebView>` (WKWebView
+//   / Android WebView). The chart is INTERACTIVE end-to-end:
+//     • FORWARD (`data={metrics()}`) — native pushes the live metrics
+//       INTO the page (`window.__pyreonData`); the chart re-renders in
+//       place, no reload.
+//     • REVERSE (`onMessage={(m) => selected.set(m)}`) — tapping a chart
+//       bar sends its region BACK to native (`window.pyreonPostMessage`),
+//       updating the native `selected` label.
+//   The chart markup is a module `const` — const-ref resolution inlines
+//   it into the native `PyreonWebView(html:)` call.
 //
 // One source, three targets, the full analytical surface.
 // Run it through PMTC with `bun run build` (emits generated/swift +
@@ -69,7 +76,12 @@ const CHART_HTML =
   "d.forEach(function(m,i){var h=Math.round((m.revenue/max)*100);" +
   "var r=document.createElementNS('http://www.w3.org/2000/svg','rect');" +
   "r.setAttribute('x',12+i*56);r.setAttribute('y',110-h);r.setAttribute('width',44);" +
-  "r.setAttribute('height',h);r.setAttribute('fill','#2563eb');svg.appendChild(r);});}" +
+  "r.setAttribute('height',h);r.setAttribute('fill','#2563eb');r.style.cursor='pointer';" +
+  // REVERSE bridge — tapping a bar sends its region back to native via the
+  // unified window.pyreonPostMessage(...) API → the <WebView onMessage>
+  // handler updates the native `selected` signal IN the native shell.
+  "r.addEventListener('click',function(){if(window.pyreonPostMessage)window.pyreonPostMessage(m.region)});" +
+  "svg.appendChild(r);});}" +
   "window.addEventListener('pyreondata',render);render();</script></body></html>"
 
 type Metric = { region: string; revenue: number; deals: number; growth: number }
@@ -93,11 +105,15 @@ export function AnalyticsApp() {
     { region: 'LATAM', revenue: 610, deals: 19, growth: 9.7 },
   ])
   const filter = signal('')
+  // Reverse bridge — the region of the chart bar the user tapped INSIDE
+  // the hosted WebView, pushed back to native via window.pyreonPostMessage.
+  const selected = signal('')
 
   return (
     <Stack gap="md" padding={4}>
       <Heading level={1}>{TITLE}</Heading>
       <Field label="Filter region" value={filter} />
+      <Text>Selected: {selected()}</Text>
 
       <Inline gap="md">
         <Text>Region</Text>
@@ -128,10 +144,10 @@ export function AnalyticsApp() {
         <Text>Chart renders inline on web (e.g. @pyreon/charts).</Text>
       </Web>
       <NativeIOS>
-        <WebView html={CHART_HTML} data={metrics()} />
+        <WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />
       </NativeIOS>
       <NativeAndroid>
-        <WebView html={CHART_HTML} data={metrics()} />
+        <WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />
       </NativeAndroid>
     </Stack>
   )
