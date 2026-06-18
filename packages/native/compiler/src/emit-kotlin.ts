@@ -4022,6 +4022,10 @@ function kotlinExprProducesView(e: ExprIR): boolean {
     return kotlinExprProducesView(e.then) || kotlinExprProducesView(e.otherwise)
   }
   if (e.kind === 'logical') return kotlinExprProducesView(e.right)
+  // See through parens so `{cond && (a ? <X/> : <Y/>)}` is recognised
+  // as view-producing (and lowered to `if (cond) { … }`) rather than
+  // stringified into a Text interpolation.
+  if (e.kind === 'paren') return kotlinExprProducesView(e.inner)
   return false
 }
 
@@ -4031,6 +4035,17 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
     // Value expression child of a container — wrap in Text string-
     // interpolation, the same shape `<Text>{expr}</Text>` emits.
     return `Text(text = "\${${emitKotlinExpr(c.expr, indent)}}")`
+  }
+  // `{cond && <View/>}` — the dominant React/Solid conditional-render
+  // idiom. A raw `cond && View` is `Boolean && Unit`, which won't compile
+  // in a Compose `@Composable` block, so lower it to the SAME
+  // `if (cond) { view }` form `<Show>` emits. The RHS recurses through
+  // `emitKotlinChild` so a nested `a && b && <X/>` lowers correctly.
+  if (c.expr.kind === 'logical' && c.expr.op === '&&' && kotlinExprProducesView(c.expr.right)) {
+    const cond = emitKotlinExpr(c.expr.left, indent)
+    const pad = ' '.repeat(indent + 2)
+    const inner = emitKotlinChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
+    return `if (${cond}) {\n${pad}${inner}\n${' '.repeat(indent)}}`
   }
   return emitKotlinExpr(c.expr, indent)
 }

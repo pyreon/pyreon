@@ -4681,6 +4681,10 @@ function swiftExprProducesView(e: ExprIR): boolean {
     return swiftExprProducesView(e.then) || swiftExprProducesView(e.otherwise)
   }
   if (e.kind === 'logical') return swiftExprProducesView(e.right)
+  // See through parens so `{cond && (a ? <X/> : <Y/>)}` is recognised
+  // as view-producing (and lowered to `if cond { … }`) rather than
+  // stringified into a Text interpolation.
+  if (e.kind === 'paren') return swiftExprProducesView(e.inner)
   return false
 }
 
@@ -4691,6 +4695,17 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     // : 'todo'}</Button>`, `<Stack>{count}</Stack>`) — wrap in Text
     // string-interpolation, the same shape `<Text>{expr}</Text>` emits.
     return `Text("\\(${emitSwiftExpr(c.expr, indent)})")`
+  }
+  // `{cond && <View/>}` — the dominant React/Solid conditional-render
+  // idiom. A raw `cond && View` is `Bool && View`, a type error inside a
+  // SwiftUI `@ViewBuilder`, so lower it to the SAME `if cond { view }`
+  // form `<Show>` emits. The RHS recurses through `emitSwiftChild` so a
+  // nested `a && b && <X/>` / `a && (c ? <X/> : <Y/>)` lowers correctly.
+  if (c.expr.kind === 'logical' && c.expr.op === '&&' && swiftExprProducesView(c.expr.right)) {
+    const cond = emitSwiftExpr(c.expr.left, indent)
+    const pad = ' '.repeat(indent + 2)
+    const inner = emitSwiftChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
+    return `if ${cond} {\n${pad}${inner}\n${' '.repeat(indent)}}`
   }
   return emitSwiftExpr(c.expr, indent)
 }
