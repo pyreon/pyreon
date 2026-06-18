@@ -1153,7 +1153,7 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-Pyreon-native documentation site at `docs/` (package `@pyreon/docs`) — powered by `@pyreon/zero` + `@pyreon/zero-content`. 100 doc pages covering all packages (incl. a "Why Pyreon" honest-positioning page, "Coming from React" / "Coming from Solid" migration guides, and a "Build a Real App in 30 Minutes" tutorial whose every step is a live inline `<Example>`). **Dogfoods the framework end-to-end** — the docs site itself runs on Pyreon's signal-based reactivity, fs-router, SSG, and content pipeline. Ships the **`<Example>` primitive** — real `.tsx` files mounted inline with optional cross-mount signal-bridging via `share="key"` — proving cross-mount reactivity no MDX-flavor framework can replicate.
+Pyreon-native documentation site at `docs/` (package `@pyreon/docs`) — powered by `@pyreon/zero` + `@pyreon/zero-content`. 101 doc pages covering all packages (incl. a "Why Pyreon" honest-positioning page, "Coming from React" / "Coming from Solid" migration guides, and a "Build a Real App in 30 Minutes" tutorial whose every step is a live inline `<Example>`). **Dogfoods the framework end-to-end** — the docs site itself runs on Pyreon's signal-based reactivity, fs-router, SSG, and content pipeline. Ships the **`<Example>` primitive** — real `.tsx` files mounted inline with optional cross-mount signal-bridging via `share="key"` — proving cross-mount reactivity no MDX-flavor framework can replicate.
 
 Replaces the legacy VitePress site that previously lived here. The migration from `<Playground>` → `<Example>` landed in PR #1448 across 30 pages; the production cutover (delete VitePress, move docs-zero into `docs/`) is this commit.
 
