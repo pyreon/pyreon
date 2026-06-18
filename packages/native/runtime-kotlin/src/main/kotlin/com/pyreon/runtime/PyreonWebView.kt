@@ -22,6 +22,20 @@
 // place (no flicker, animation preserved). The page reloads ONLY when
 // `html`/`src` changes.
 //
+// ## The reverse bridge (`onMessage`)
+//
+// The hosted page sends events BACK to native (a chart bar tapped, a
+// selection made) by calling the unified JS API the runtime injects:
+//
+//     window.pyreonPostMessage("the-payload-string");
+//
+// That shim forwards to `window.__pyreonNative.postMessage(...)` (an
+// `addJavascriptInterface` bridge); the bridge marshals to the MAIN thread
+// (`@JavascriptInterface` callbacks run on a background JavaBridge thread)
+// and invokes the native `onMessage` callback — so a webview-hosted chart
+// can drive native signals. The payload is a plain string. Same unified
+// `window.pyreonPostMessage(...)` API on web + iOS.
+//
 // ## Policy posture (Play Store / App Store)
 //
 // Intended for HYBRID apps — a substantial native Compose shell with this
@@ -38,6 +52,9 @@
 
 package com.pyreon.runtime
 
+import android.os.Handler
+import android.os.Looper
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
@@ -57,10 +74,12 @@ fun PyreonWebView(
     html: String? = null,
     src: String? = null,
     data: String? = null,
+    onMessage: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    // Per-view bridge state survives recomposition; the WebViewClient
-    // (set once in `factory`) closes over it to push on page-load.
+    // Per-view bridge state survives recomposition; the WebViewClient +
+    // JS bridge (set once in `factory`) close over it, reading the latest
+    // `data` / `onMessage` that `update` writes.
     val state = remember { PyreonWebViewState() }
     AndroidView(
         modifier = modifier,
@@ -68,9 +87,24 @@ fun PyreonWebView(
             WebView(context).apply {
                 @Suppress("SetJavaScriptEnabled")
                 settings.javaScriptEnabled = true
+                // Reverse bridge — the page's `window.pyreonPostMessage(s)`
+                // routes through `window.__pyreonNative.postMessage(s)`
+                // (this JS interface) to the native `onMessage` callback.
+                addJavascriptInterface(PyreonJsBridge(state), "__pyreonNative")
                 webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(
+                        view: WebView,
+                        url: String?,
+                        favicon: android.graphics.Bitmap?,
+                    ) {
+                        // Define the unified reverse-bridge API early so
+                        // page scripts can call it.
+                        view.evaluateJavascript(PYREON_REVERSE_BRIDGE_SHIM, null)
+                    }
+
                     override fun onPageFinished(view: WebView, url: String?) {
                         state.loaded = true
+                        view.evaluateJavascript(PYREON_REVERSE_BRIDGE_SHIM, null)
                         pushPyreonData(view, state.latestData)
                     }
                 }
@@ -78,6 +112,7 @@ fun PyreonWebView(
         },
         update = { webView ->
             state.latestData = data
+            state.onMessage = onMessage
             val key = (html ?: "") + "" + (src ?: "")
             if (state.loadedKey != key) {
                 // html/src changed → (re)load; onPageFinished pushes data.
@@ -96,7 +131,30 @@ private class PyreonWebViewState {
     var latestData: String? = null
     var loaded: Boolean = false
     var loadedKey: String? = null
+    var onMessage: ((String) -> Unit)? = null
 }
+
+/**
+ * The reverse-bridge JS interface. A page calling
+ * `window.pyreonPostMessage(s)` is routed (by the injected shim) to
+ * `window.__pyreonNative.postMessage(s)`, landing here.
+ * `@JavascriptInterface` methods run on a background (JavaBridge) thread,
+ * so the callback is marshalled to the main thread before touching Compose
+ * state.
+ */
+private class PyreonJsBridge(private val state: PyreonWebViewState) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun postMessage(message: String) {
+        mainHandler.post { state.onMessage?.invoke(message) }
+    }
+}
+
+/** Defines the unified `window.pyreonPostMessage(...)` reverse-bridge API
+ *  (mirror of the iOS WKUserScript shim). */
+private const val PYREON_REVERSE_BRIDGE_SHIM =
+    "window.pyreonPostMessage = function(m) { window.__pyreonNative.postMessage(String(m)); };"
 
 /** Push the latest JSON into `window.__pyreonData` + fire `pyreondata`. */
 private fun pushPyreonData(webView: WebView, json: String?) {

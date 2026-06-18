@@ -21,6 +21,21 @@
 // webview, so the chart updates in place (no flicker, animation/zoom
 // preserved). The page is reloaded ONLY when `html`/`src` itself changes.
 //
+// ## The reverse bridge (`onMessage:`)
+//
+// The hosted page sends events BACK to native (a chart bar tapped, a
+// selection made) by calling the unified JS API the runtime injects at
+// document-start:
+//
+//     window.pyreonPostMessage("the-payload-string");
+//
+// On iOS that shim forwards to a `WKScriptMessageHandler` named
+// `pyreonNative`; the coordinator receives the string and invokes the
+// native `onMessage` closure (e.g. `onMessage={(m) => selected.set(m)}`),
+// so a webview-hosted chart can drive native signals. The payload is a
+// plain string — the page JSON-stringifies structured data itself. Same
+// unified `window.pyreonPostMessage(...)` API on web + Android.
+//
 // ## Policy posture (App Store / Play Store)
 //
 // The intended use is a HYBRID: a substantial native shell (the canonical
@@ -48,36 +63,68 @@ public struct PyreonWebView: View {
     private let html: String?
     private let src: String?
     private let data: String?
+    private let onMessage: ((String) -> Void)?
 
     /// `html` — inline HTML to render (e.g. an ECharts page). `src` — a
     /// LOCAL bundled asset name (preferred, policy-safe) or a remote URL.
     /// Supply one; `html` wins if both are set. `data` — an optional JSON
     /// string pushed into the page as `window.__pyreonData` (live-updates
-    /// without reloading; see the file header).
-    public init(html: String? = nil, src: String? = nil, data: String? = nil) {
+    /// without reloading; see the file header). `onMessage` — an optional
+    /// callback invoked with the string the page sends via
+    /// `window.pyreonPostMessage(...)` (the reverse bridge).
+    public init(
+        html: String? = nil,
+        src: String? = nil,
+        data: String? = nil,
+        onMessage: ((String) -> Void)? = nil
+    ) {
         self.html = html
         self.src = src
         self.data = data
+        self.onMessage = onMessage
     }
 
     public var body: some View {
-        _PyreonWebViewBridge(html: html, src: src, data: data)
+        _PyreonWebViewBridge(html: html, src: src, data: data, onMessage: onMessage)
     }
 }
 
+/// The script-message handler name the injected `window.pyreonPostMessage`
+/// shim forwards to (`window.webkit.messageHandlers.pyreonNative`).
+private let _pyreonMessageHandlerName = "pyreonNative"
+
+/// The document-start shim defining the unified reverse-bridge API. Same
+/// `window.pyreonPostMessage(...)` contract on web + Android.
+private let _pyreonReverseBridgeShim =
+    "window.pyreonPostMessage = function(m) {"
+    + " window.webkit.messageHandlers.\(_pyreonMessageHandlerName).postMessage(String(m)); };"
+
 /// Shared navigation delegate — tracks page-load completion so `data` is
-/// pushed once the DOM exists, and re-pushed on later `data` changes.
+/// pushed once the DOM exists, and re-pushed on later `data` changes. Also
+/// the `WKScriptMessageHandler` for the reverse bridge: a page calling
+/// `window.pyreonPostMessage(s)` lands in `userContentController(_:didReceive:)`.
 /// One per hosted webview (created via `makeCoordinator`).
-final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate {
+final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     var latestData: String?
     var loaded = false
     /// The html/src the page was last loaded with — a `data`-only change
     /// must NOT reload (that would defeat the live push).
     var loadedKey: String?
+    /// Reverse-bridge callback — invoked with the page's posted string.
+    var onMessage: ((String) -> Void)?
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
         pushData(into: webView)
+    }
+
+    /// Reverse bridge — the page called `window.pyreonPostMessage(s)`.
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        guard message.name == _pyreonMessageHandlerName else { return }
+        onMessage?(String(describing: message.body))
     }
 
     /// Push the latest JSON into `window.__pyreonData` + fire `pyreondata`.
@@ -113,18 +160,39 @@ private func _syncPyreonWebView(
     }
 }
 
+/// Build a `WKWebView` wired for BOTH bridges: the coordinator is the
+/// navigation delegate (data push) AND the reverse-bridge script-message
+/// handler, and a document-start user script defines
+/// `window.pyreonPostMessage`. Shared by the UIKit + AppKit representables.
+private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator) -> WKWebView {
+    let contentController = WKUserContentController()
+    contentController.add(coordinator, name: _pyreonMessageHandlerName)
+    contentController.addUserScript(
+        WKUserScript(
+            source: _pyreonReverseBridgeShim,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+    )
+    let config = WKWebViewConfiguration()
+    config.userContentController = contentController
+    let webView = WKWebView(frame: .zero, configuration: config)
+    webView.navigationDelegate = coordinator
+    return webView
+}
+
 #if canImport(UIKit)
 private struct _PyreonWebViewBridge: UIViewRepresentable {
     let html: String?
     let src: String?
     let data: String?
+    let onMessage: ((String) -> Void)?
     func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
-        webView.navigationDelegate = context.coordinator
-        return webView
+        _makePyreonWebView(coordinator: context.coordinator)
     }
     func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onMessage = onMessage
         _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
     }
 }
@@ -133,13 +201,13 @@ private struct _PyreonWebViewBridge: NSViewRepresentable {
     let html: String?
     let src: String?
     let data: String?
+    let onMessage: ((String) -> Void)?
     func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
     func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView()
-        webView.navigationDelegate = context.coordinator
-        return webView
+        _makePyreonWebView(coordinator: context.coordinator)
     }
     func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onMessage = onMessage
         _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
     }
 }
@@ -166,7 +234,12 @@ private func _loadPyreonWebView(_ webView: WKWebView, html: String?, src: String
 // so the package still compiles. Real targets (iOS / macOS) always have
 // WebKit.
 public struct PyreonWebView: View {
-    public init(html: String? = nil, src: String? = nil, data: String? = nil) {}
+    public init(
+        html: String? = nil,
+        src: String? = nil,
+        data: String? = nil,
+        onMessage: ((String) -> Void)? = nil
+    ) {}
     public var body: some View { EmptyView() }
 }
 #endif

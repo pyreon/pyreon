@@ -3654,14 +3654,38 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   const dataExpr = dynamicWebViewAttr(e, 'data')
   const dataArg =
     dataExpr !== undefined ? `data: PyreonJSON.encode(${emitSwiftExpr(dataExpr, 0)})` : undefined
+  // Reverse bridge — `onMessage={(m) => …}` receives the string the page
+  // sends via `window.pyreonPostMessage(...)`.
+  const onMsg = e.attrs.find((a) => a.kind === 'event' && a.name === 'message')
+  const onMsgArg =
+    onMsg?.kind === 'event'
+      ? `onMessage: ${emitSwiftMessageHandler(onMsg.handler)}`
+      : undefined
   if (content === undefined) {
     _emitWarnings.push(
       '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
     )
     return 'PyreonWebView()'
   }
-  const args = dataArg !== undefined ? `${content}, ${dataArg}` : content
+  const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   return `PyreonWebView(${args})`
+}
+
+/**
+ * Emit a `<WebView onMessage={…}>` handler as a Swift `(String) -> Void`
+ * closure. The single param is the page-posted string. An arrow with a
+ * param keeps it (`{ m in … }`); a zero-param arrow ignores it
+ * (`{ _ in … }`); a bare function reference is called with the message.
+ */
+function emitSwiftMessageHandler(handler: ExprIR): string {
+  if (handler.kind === 'arrow') {
+    if (handler.body.kind === 'literal' && handler.body.value === '') {
+      return '{ _ in }'
+    }
+    const param = handler.params.length > 0 ? swiftIdent(handler.params[0]!) : '_'
+    return `{ ${param} in ${emitSwiftExpr(handler.body, 0)} }`
+  }
+  return `{ pyreonMsg in ${emitSwiftExpr(handler, 0)}(pyreonMsg) }`
 }
 
 /** The `html` / `src` constructor arg for `<WebView>` (static literal /

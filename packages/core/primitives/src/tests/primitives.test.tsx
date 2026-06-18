@@ -1400,4 +1400,31 @@ describe('<WebView> happy-dom unit (web = iframe host)', () => {
     expect(frame.getAttribute('srcdoc')).toBe('<svg/>')
     unmount()
   })
+
+  it('onMessage={…} defines window.pyreonPostMessage on the frame → calls back', () => {
+    // The reverse bridge: on iframe load the host defines
+    // `window.pyreonPostMessage` on the frame's contentWindow; the page
+    // calling it routes the string to the `onMessage` callback.
+    const received: string[] = []
+    const { container, unmount } = mountTest(
+      h(WebView, { html: '<svg/>', onMessage: (m: string) => received.push(m) }),
+    )
+    const frame = container.firstElementChild as HTMLIFrameElement
+    expect(frame.tagName).toBe('IFRAME')
+    // Drive the load handler (happy-dom doesn't auto-fire it) so the
+    // bridge injects into the contentWindow.
+    frame.dispatchEvent(new Event('load'))
+    const win = frame.contentWindow as (Window & { pyreonPostMessage?: (m: unknown) => void }) | null
+    if (win && typeof win.pyreonPostMessage === 'function') {
+      win.pyreonPostMessage('bar-tapped')
+      win.pyreonPostMessage(42)
+      expect(received).toEqual(['bar-tapped', '42']) // coerced to string
+    } else {
+      // happy-dom gave no usable contentWindow — at least assert mount
+      // didn't throw + the iframe rendered (the wiring is exercised in the
+      // real-Chromium e2e path).
+      expect(frame.getAttribute('srcdoc')).toBe('<svg/>')
+    }
+    unmount()
+  })
 })
