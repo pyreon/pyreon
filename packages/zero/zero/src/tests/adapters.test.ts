@@ -1259,11 +1259,15 @@ describe('bun adapter — runtime contract', () => {
 
   // Spawn a bun subprocess running the emitted entry, poll for readiness
   // (max ~10s — slower CI machines need slack), return a teardown closure.
-  async function startBunServer(entryPath: string, port: number) {
+  async function startBunServer(
+    entryPath: string,
+    port: number,
+    extraEnv: Record<string, string> = {},
+  ) {
     if (!hasBun) throw new Error('bun binary not found in PATH')
     const { spawn } = await import('node:child_process')
     const proc = spawn(BUN_BIN!, ['run', entryPath], {
-      env: { ...process.env, NODE_ENV: 'production' },
+      env: { ...process.env, NODE_ENV: 'production', ...extraEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -1341,6 +1345,42 @@ describe('bun adapter — runtime contract', () => {
         const res = await fetch(`http://127.0.0.1:${port}/api/anything`)
         expect(res.status).toBe(200)
         expect(await res.text()).toBe('ok')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  it.skipIf(!hasBun)(
+    'emitted entry honors $PORT at runtime (overrides the build-time port)',
+    async () => {
+      await setupMockBuild()
+      const outDir = join(TMP, 'bun-runtime-port')
+      const bakedPort = await pickFreePort()
+      const runtimePort = await pickFreePort()
+      await bunAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port: bakedPort },
+      })
+      // Spawn with PORT set to a DIFFERENT port than the build-time one.
+      const stop = await startBunServer(join(outDir, 'index.ts'), runtimePort, {
+        PORT: String(runtimePort),
+      })
+      try {
+        // The env PORT won — the server is reachable on runtimePort …
+        const res = await fetch(`http://127.0.0.1:${runtimePort}/api/anything`)
+        expect(res.status).toBe(200)
+        // … and NOT on the build-time baked port (nothing bound there).
+        await expect(
+          fetch(`http://127.0.0.1:${bakedPort}/api/anything`, {
+            signal: AbortSignal.timeout(300),
+          }),
+        ).rejects.toThrow()
       } finally {
         await stop()
         await cleanup()
@@ -1467,11 +1507,15 @@ describe('node adapter — runtime contract', () => {
 
   // Spawn `node <entry>` and poll for readiness. Mirrors startBunServer
   // exactly — runtime-agnostic shape (the only difference is the binary).
-  async function startNodeServer(entryPath: string, port: number) {
+  async function startNodeServer(
+    entryPath: string,
+    port: number,
+    extraEnv: Record<string, string> = {},
+  ) {
     if (!hasNode) throw new Error('node binary not found in PATH')
     const { spawn } = await import('node:child_process')
     const proc = spawn(NODE_BIN!, [entryPath], {
-      env: { ...process.env, NODE_ENV: 'production' },
+      env: { ...process.env, NODE_ENV: 'production', ...extraEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -1544,6 +1588,42 @@ describe('node adapter — runtime contract', () => {
         const res = await fetch(`http://127.0.0.1:${port}/api/anything`)
         expect(res.status).toBe(200)
         expect(await res.text()).toBe('ok')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  it.skipIf(!hasNode)(
+    'emitted entry honors $PORT at runtime (overrides the build-time port)',
+    async () => {
+      await setupMockBuild()
+      const outDir = join(TMP, 'node-runtime-port')
+      const bakedPort = await pickFreePort()
+      const runtimePort = await pickFreePort()
+      await nodeAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port: bakedPort },
+      })
+      // Spawn with PORT set to a DIFFERENT port than the build-time one.
+      const stop = await startNodeServer(join(outDir, 'index.js'), runtimePort, {
+        PORT: String(runtimePort),
+      })
+      try {
+        // The env PORT won — the server is reachable on runtimePort …
+        const res = await fetch(`http://127.0.0.1:${runtimePort}/api/anything`)
+        expect(res.status).toBe(200)
+        // … and NOT on the build-time baked port (nothing bound there).
+        await expect(
+          fetch(`http://127.0.0.1:${bakedPort}/api/anything`, {
+            signal: AbortSignal.timeout(300),
+          }),
+        ).rejects.toThrow()
       } finally {
         await stop()
         await cleanup()
