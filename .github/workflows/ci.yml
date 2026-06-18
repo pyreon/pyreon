@@ -588,7 +588,23 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          # The recurring e2e / Test(browser) "cancelled" flake is the Playwright
+          # install hanging until the 15-min job timeout (the specs never run —
+          # the whole budget burns in this step). TWO independent apt hangs cause
+          # it, both addressed here:
+          #   1. `apt-get update` hangs on GitHub's packages.microsoft.com apt
+          #      sources (azure-cli + prod) when they 403 → strip them first.
+          #   2. The `apt-get install` of the OS deps hangs FETCHING the ~21 MB of
+          #      .deb archives from GitHub's apt mirror (observed: 14 min stuck at
+          #      "Need to get 21.1 MB" before cancellation).
+          # ubuntu-latest already ships Chromium's core libs, so the OS-dep install
+          # is best-effort + hard-timeout-bounded + non-fatal; the browser binary
+          # (from Playwright's own CDN, which never hangs) is what matters and is
+          # ALWAYS installed.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
+          bunx playwright install chromium
       - run: bun run test:browser
 
   # ── Test (Rust binary): cross-backend equivalence gate ───────────────
@@ -730,7 +746,23 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          # The recurring e2e / Test(browser) "cancelled" flake is the Playwright
+          # install hanging until the 15-min job timeout (the specs never run —
+          # the whole budget burns in this step). TWO independent apt hangs cause
+          # it, both addressed here:
+          #   1. `apt-get update` hangs on GitHub's packages.microsoft.com apt
+          #      sources (azure-cli + prod) when they 403 → strip them first.
+          #   2. The `apt-get install` of the OS deps hangs FETCHING the ~21 MB of
+          #      .deb archives from GitHub's apt mirror (observed: 14 min stuck at
+          #      "Need to get 21.1 MB" before cancellation).
+          # ubuntu-latest already ships Chromium's core libs, so the OS-dep install
+          # is best-effort + hard-timeout-bounded + non-fatal; the browser binary
+          # (from Playwright's own CDN, which never hangs) is what matters and is
+          # ALWAYS installed.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
+          bunx playwright install chromium
       - name: Run e2e — ${{ matrix.name }}
         # Tee the combined output so the next step can surface FLAKY
         # specs. `set -o pipefail` keeps Playwright's real exit code
