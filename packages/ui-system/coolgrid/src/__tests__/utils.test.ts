@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getContainerWidth } from '../Container/utils'
-import { hasValue, hasWidth, isNumber, isVisible, omitCtxKeys } from '../utils'
+import { hasValue, hasWidth, isCssVarValue, isNumber, isVisible, omitCtxKeys } from '../utils'
 
 describe('isNumber', () => {
   it('returns true for finite numbers', () => {
@@ -118,6 +118,33 @@ describe('omitCtxKeys', () => {
     const props = { className: 'test', style: 'color: red;' }
     const result = omitCtxKeys(props)
     expect(result).toEqual(props)
+  })
+})
+
+describe('isCssVarValue', () => {
+  it('returns true for a var(…) reference string', () => {
+    expect(isCssVarValue('var(--px-gap)')).toBe(true)
+  })
+
+  it('returns true for a calc(…) expression string', () => {
+    // Exercises the second operand of the `||` — only reached when
+    // startsWith('var(') is false, so a calc-prefixed string proves
+    // the calc branch independently of the var branch.
+    expect(isCssVarValue('calc(var(--px-gap) / 2)')).toBe(true)
+  })
+
+  it('returns false for a plain string that is neither var() nor calc()', () => {
+    // Hits both startsWith arms returning false (string type, no prefix match).
+    expect(isCssVarValue('16px')).toBe(false)
+    expect(isCssVarValue('')).toBe(false)
+  })
+
+  it('returns false for non-string values', () => {
+    // Short-circuits the `typeof === 'string'` arm before any startsWith call.
+    expect(isCssVarValue(16)).toBe(false)
+    expect(isCssVarValue(null)).toBe(false)
+    expect(isCssVarValue(undefined)).toBe(false)
+    expect(isCssVarValue({ toString: () => 'var(--x)' })).toBe(false)
   })
 })
 

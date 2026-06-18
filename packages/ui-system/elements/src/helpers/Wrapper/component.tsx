@@ -133,6 +133,13 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   // branch normally won't execute when innerHTML is set — but we keep
   // the defensive forwarding so the contract is robust against future
   // refactors of the needsFix gate.
+  //
+  // Coverage: provably dead under the current gate — `needsFix === true`
+  // implies `!own.dangerouslySetInnerHTML`, so `innerHTML` is always falsy
+  // here (see Wrapper-innerhtml.test.tsx "forwards … on the needsFix path",
+  // which proves a button + innerHTML takes the !needsFix path instead).
+  // Kept as a defensive guard against a future needsFix-gate refactor.
+  /* v8 ignore start */
   if (innerHTML) {
     return h(
       Styled,
@@ -149,6 +156,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
       }),
     )
   }
+  /* v8 ignore stop */
 
   return h(
     Styled,

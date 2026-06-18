@@ -48,7 +48,13 @@ const Provider = ({ provider = CoreProvider, inversed, ...props }: TProvider): V
     newMode = inversed ? THEME_MODES_INVERSED[mode] : mode
   }
 
-  const FinalProvider = RocketstyleProvider ?? CoreProvider
+  // `RocketstyleProvider` is `merged.provider`, which is always set: the
+  // destructure defaults `provider` to `CoreProvider` and re-adds it to
+  // `merged` after `...props` (which no longer carries `provider`). The
+  // `?? CoreProvider` fallback is therefore defensive and never taken.
+  /* v8 ignore next 2 */
+  const FinalProvider =
+    RocketstyleProvider ?? CoreProvider
   const result = FinalProvider({
     mode: newMode,
     isDark: newMode === 'dark',

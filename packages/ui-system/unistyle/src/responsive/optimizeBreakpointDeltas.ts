@@ -125,6 +125,10 @@ const parse = (css: string): Entry[] => {
       if (depth === 0) {
         // End of a top-level block — capture from segmentStart..i (inclusive)
         const raw = css.slice(segmentStart, i + 1).trim()
+        // `raw` always contains at least the closing `}` at index i (the slice
+        // spans segmentStart..i+1), so it can never trim to empty — the falsy
+        // arm is a defensive guard the parser never reaches.
+        /* v8 ignore next */
         if (raw) entries.push({ kind: 'block', raw })
         segmentStart = i + 1
       }

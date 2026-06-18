@@ -326,11 +326,16 @@ const rocketComponent: RocketComponent = (options) => {
         } else {
           // String/number/boolean serialize directly. Anything else (including
           // undefined / objects) gets a typeof tag so we don't collide.
+          // The `'~' + typeof v` arm is DEFENSIVE: `_calculateStylingAttrs`
+          // only ever resolves a non-multi dimension to a string/number (kept
+          // verbatim) or undefined (non-primitive props are coerced to
+          // undefined) — never a plain object/function/symbol — so that final
+          // arm is structurally unreachable. Kept as a collision guard.
           key +=
             '|' +
             (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
               ? String(v)
-              : v === undefined
+              : /* v8 ignore next */ v === undefined
                 ? ''
                 : '~' + typeof v)
         }
@@ -458,9 +463,12 @@ const rocketComponent: RocketComponent = (options) => {
     // survive the merge. A plain `{ ...localCtx, ...props }` spread would
     // fire every getter and collapse to static values, defeating
     // reactivity for any downstream JSX accessor reading `props.x`.
+    // `useLocalContext` always returns a truthy object (EMPTY_CTX `{ pseudo:
+    // {} }` when there's no consumer, otherwise a `{ pseudo, ...result }`
+    // object), so the `: props` arm is defensive and never taken.
     const mergedProps = localCtx
       ? mergeProps(localCtx as Record<string, unknown>, props as Record<string, unknown>)
-      : props
+      : /* v8 ignore next */ props
 
     // omit() preserves descriptors (since ui-core's omit was updated to
     // copy descriptors), so reactive getters carry through to finalProps.

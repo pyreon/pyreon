@@ -54,6 +54,26 @@ describe('PyreonUI cssVariables — SSR', () => {
     expect(html).toContain('data-theme="dark"')
   })
 
+  it('root: no children → passthrough returns nothing (children ?? null)', async () => {
+    init({ cssVariables: true })
+    // Root cssVariables provider with NO children — the `props.children ?? null`
+    // fallback returns null, so the rendered HTML carries no wrapper + no body.
+    const html = await renderToString(h(PyreonUI, { theme, mode: 'dark' } as any))
+    expect(html).not.toContain('display: contents')
+    expect(html.trim()).toBe('')
+  })
+
+  it('nested: no children → scoped wrapper with empty body (children ?? null)', async () => {
+    init({ cssVariables: true })
+    // Nested cssVariables provider with NO children — the wrapper div renders
+    // with `props.children ?? null` (empty body) but still carries the mode attr.
+    const html = await renderToString(
+      h(PyreonUI, { theme, mode: 'light' } as any, h(PyreonUI, { inversed: true } as any)),
+    )
+    expect(html).toContain('display: contents')
+    expect(html).toContain('data-theme="dark"')
+  })
+
   it('flag off: no wrapper, literal theme values (control)', async () => {
     const html = await renderToString(h(PyreonUI, { theme, mode: 'dark' } as any, h(Probe, null)))
     expect(html).not.toContain('data-theme')

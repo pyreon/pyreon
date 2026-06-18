@@ -109,12 +109,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'SSR server. Branches at ~86% — residual gap is client-side island() path (browser-only client.ts hydration scheduling) covered by islands.browser.test.tsx in real Chromium but unreachable from node-process vitest. PRs #1335 + #1336 added happy-dom coverage for bare island() invocation; further lift to 95 requires real-browser mount tests.',
   },
-  '@pyreon/styler': {
-    currentStatements: 95,
-    currentBranches: 85,
-    reason:
-      'CSS-in-JS engine. Branches at ~85% — residual gap in StyleSheet recovery paths only exercised by real-Chromium. Covered by ui-showcase real-app regression gate.',
-  },
   '@pyreon/zero': {
     currentStatements: 95,
     currentBranches: 85,
@@ -168,18 +162,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentBranches: 90,
     reason:
       'Lint engine. Branches at ~90% — residual gap in 89-rule AST detectors against rare/synthetic source shapes.',
-  },
-  '@pyreon/elements': {
-    currentStatements: 95,
-    currentBranches: 91,
-    reason:
-      'Element primitives. Branches at ~91% — residual gap in 4-overload prop forwarders + void-tag children-slot branches only exercised by compiler-emitted templates. Covered by `e2e/ui-showcase-regression.spec.ts`.',
-  },
-  '@pyreon/kinetic': {
-    currentStatements: 95,
-    currentBranches: 92,
-    reason:
-      'Animation primitives. Branches at 92.47% — residual gap in Transition timing fallbacks + Stagger/Collapse height-measurement paths only reachable in real browser. PR #1334 added Stagger prop-default tests (+1.32pp); further lift requires extending kinetic.browser.test.tsx.',
   },
 }
 

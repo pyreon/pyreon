@@ -135,6 +135,19 @@ describe('transformTheme', () => {
     const result = transformTheme({ theme, breakpoints: bpKeys })
     expect(result).not.toHaveProperty('unknown')
   })
+
+  it('skips null/undefined scalar values (else-if value != null is false)', () => {
+    // null/undefined values are not arrays, not objects, and fail `value != null`
+    // → the final `else if` is skipped entirely (no breakpoint entry emitted).
+    const theme = { color: null, border: undefined, keep: 'red' } as Record<string, unknown>
+    const result = transformTheme({
+      theme: theme as Record<string, unknown>,
+      breakpoints: bpKeys,
+    })
+    expect(result.xs).toEqual({ keep: 'red' })
+    expect(result.xs).not.toHaveProperty('color')
+    expect(result.xs).not.toHaveProperty('border')
+  })
 })
 
 describe('optimizeTheme', () => {

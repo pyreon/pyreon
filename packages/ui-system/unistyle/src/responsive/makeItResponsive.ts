@@ -245,6 +245,10 @@ const makeItResponsive: MakeItResponsive =
     // internalTheme — earlier paths either hit the rendered-cache and
     // returned, or wrote one via themeCache.set above.
     const cacheEntry = themeCache.get(internalTheme)
+    // Invariant (see comment above): cacheEntry is always present here — every
+    // path either returned from the rendered-cache hit or wrote a themeCache
+    // entry. The falsy `else` is a defensive guard the normal flow never hits.
+    /* v8 ignore else */
     if (cacheEntry) {
       if (!cacheEntry.rendered) cacheEntry.rendered = new WeakMap()
       cacheEntry.rendered.set(theme as object, result)

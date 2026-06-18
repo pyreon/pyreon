@@ -100,6 +100,21 @@ describe('Wrapper styles — responsive block cascade reset', () => {
     expect(out).not.toContain('display: inline-flex;')
   })
 
+  it('appends extraStyles via extendCss when extraStyles is set (truthy && arm)', () => {
+    // `t.extraStyles && extendCss(t.extraStyles)` — every other test leaves
+    // extraStyles undefined (short-circuit / falsy arm). Passing a CSS string
+    // drives the RIGHT operand so extendCss actually runs and the custom CSS
+    // is appended to the output.
+    const out = renderAt({
+      block: true,
+      direction: 'inline',
+      alignX: 'left',
+      alignY: 'center',
+      extraStyles: 'color: rebeccapurple;',
+    })
+    expect(out).toContain('color: rebeccapurple;')
+  })
+
   it('emits parentFix flex-direction: column only when parentFix is set', () => {
     const withParentFix = renderAt({
       block: true,

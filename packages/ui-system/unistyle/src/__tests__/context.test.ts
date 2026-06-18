@@ -144,4 +144,30 @@ describe('Provider', () => {
     const smResult = media.sm`color: blue;`
     expect(smResult).toContain('@media only screen and (min-width: 36em)')
   })
+
+  it('provides the ThemeContext accessor that returns the enriched theme', async () => {
+    // Provider calls `provide(ThemeContext, () => enrichedTheme)`. Spy on
+    // @pyreon/core's provide to capture that accessor thunk and invoke it —
+    // covering the `() => enrichedTheme` reactive accessor body.
+    const core = await import('@pyreon/core')
+    const { ThemeContext } = await import('@pyreon/styler')
+    const provideSpy = vi.spyOn(core, 'provide')
+    provideSpy.mockClear()
+
+    Provider({
+      theme: { rootSize: 16, breakpoints: { xs: 0 } },
+      children: null,
+    })
+
+    // Find the provide() call for ThemeContext and invoke its accessor.
+    const themeCall = provideSpy.mock.calls.find((c) => c[0] === ThemeContext)
+    expect(themeCall).toBeDefined()
+    const accessor = themeCall![1] as () => Record<string, any>
+    expect(typeof accessor).toBe('function')
+    const enriched = accessor()
+    expect(enriched.rootSize).toBe(16)
+    expect(enriched.__PYREON__).toBeDefined()
+
+    provideSpy.mockRestore()
+  })
 })

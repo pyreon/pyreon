@@ -120,5 +120,26 @@ describe('optimizeBreakpointDeltas', () => {
       expect(out[0]).toBe(':abc;')
       expect(out[1]).toBe('')
     })
+
+    it('skips escaped characters inside quoted strings', () => {
+      // A backslash inside a quoted value triggers the escape branch — the
+      // parser skips the next char so the escaped quote does NOT close the
+      // string. The decl must parse as a single `content` declaration.
+      const css = String.raw`content: "a\"b;"; color: red;`
+      const out = optimizeBreakpointDeltas([css, css])
+      // Identical input cascades → bp2 is fully deduped to empty.
+      expect(out[0]).toContain('color: red;')
+      expect(out[1]).toBe('')
+    })
+
+    it('handles nested selector blocks deeper than one level', () => {
+      // Double-nested braces: the inner `}` decrements depth 2→1 (depth !== 0,
+      // so the block is NOT yet captured) and the outer `}` decrements 1→0.
+      const block = '&:hover { & span { color: red; } padding: 0; }'
+      const out = optimizeBreakpointDeltas([block, block])
+      expect(out[0]).toContain('& span { color: red; }')
+      // Identical nested block dedupes on bp2.
+      expect(out[1]).toBe('')
+    })
   })
 })

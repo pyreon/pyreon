@@ -65,6 +65,9 @@ export class StyleSheet {
     // SSR guard: the constructor only calls mount() when !this.isSSR, but
     // keep the guard in-method so it's self-evidently SSR-safe regardless
     // of caller (matches `this.isSSR = typeof document === 'undefined'`).
+    // Unreachable in practice (the only caller already gates on !isSSR), so
+    // the early-return arm is never taken — ignored for coverage.
+    /* v8 ignore next */
     if (this.isSSR) return
     // Reuse existing <style> tag from SSR hydration
     const existing = document.querySelector(`style[${ATTR}]`) as HTMLStyleElement | null
@@ -442,6 +445,10 @@ export class StyleSheet {
         depth--
         if (depth === 0) {
           const rule = cssText.slice(start, i + 1).trim()
+          // The slice ends at this depth-0 `}` (index i), so it always
+          // contains at least one `}` and the trim can never be empty —
+          // the false arm is unreachable. Kept as a defensive guard.
+          /* v8 ignore next */
           if (rule) rules.push(rule)
           start = i + 1
         }

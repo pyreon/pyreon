@@ -1348,4 +1348,193 @@ describe('useOverlay', () => {
       cleanup()
     })
   })
+
+  // =========================================================================
+  // 21. computePosition with a missing ref (devWarn path)
+  // =========================================================================
+  describe('computePosition missing-ref warning', () => {
+    it('dropdown: warns + returns empty pos when triggerRef is not attached', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const o = useOverlay({ type: 'dropdown', align: 'bottom', isOpen: true })
+        // contentRef attached → isContentLoaded true (gate passes), but
+        // triggerRef left null → computePosition hits
+        // `isDropdown && (!triggerEl || !contentEl)` via the !triggerEl arm,
+        // calls devWarn, and returns { pos: {} } (no styles written).
+        const contentEl = mockElement({ width: 100, height: 50 })
+        o.contentRef(contentEl)
+        const cleanup = o.setupListeners()
+        window.dispatchEvent(new Event('resize'))
+
+        expect(warn).toHaveBeenCalledTimes(1)
+        expect(String(warn.mock.calls[0]?.[0])).toContain('triggerRef')
+        expect(contentEl.style.top).toBe('')
+        cleanup()
+      } finally {
+        warn.mockRestore()
+      }
+    })
+  })
+
+  // =========================================================================
+  // 22. getAncestorOffset — offsetParent is document.body / null
+  // =========================================================================
+  describe('getAncestorOffset body/null offsetParent', () => {
+    it('absolute position: offsetParent === document.body → zero ancestor offset', () => {
+      const o = useOverlay({
+        type: 'dropdown',
+        position: 'absolute',
+        align: 'bottom',
+        alignX: 'left',
+        isOpen: true,
+      })
+      const triggerEl = mockElement({ top: 100, bottom: 130, left: 50, right: 150 })
+      const contentEl = mockElement({ width: 100, height: 50 })
+      // offsetParent === document.body drives the `|| offsetParent === document.body`
+      // arm → ancestor offset short-circuits to {top:0,left:0}.
+      Object.defineProperty(contentEl, 'offsetParent', {
+        value: document.body,
+        configurable: true,
+      })
+      o.triggerRef(triggerEl)
+      o.contentRef(contentEl)
+      const cleanup = o.setupListeners()
+      window.dispatchEvent(new Event('resize'))
+      // No ancestor adjustment → top = trigger.bottom = 130, left = 50.
+      expect(contentEl.style.top).toBe('130px')
+      expect(contentEl.style.left).toBe('50px')
+      cleanup()
+    })
+
+    it('absolute position: null offsetParent → zero ancestor offset', () => {
+      const o = useOverlay({
+        type: 'dropdown',
+        position: 'absolute',
+        align: 'bottom',
+        alignX: 'left',
+        isOpen: true,
+      })
+      const triggerEl = mockElement({ top: 100, bottom: 130, left: 50, right: 150 })
+      const contentEl = mockElement({ width: 100, height: 50 })
+      Object.defineProperty(contentEl, 'offsetParent', { value: null, configurable: true })
+      o.triggerRef(triggerEl)
+      o.contentRef(contentEl)
+      const cleanup = o.setupListeners()
+      window.dispatchEvent(new Event('resize'))
+      expect(contentEl.style.top).toBe('130px')
+      cleanup()
+    })
+  })
+
+  // =========================================================================
+  // 23. processVisibilityEvent — non-click event after active
+  // =========================================================================
+  describe('processVisibilityEvent non-click branch', () => {
+    it('scroll event while active (closeOn=click) is ignored (no close)', () => {
+      const o = useOverlay({ openOn: 'click', closeOn: 'click', isOpen: true })
+      const triggerEl = mockElement()
+      o.triggerRef(triggerEl)
+      const cleanup = o.setupListeners()
+      // onScroll → handleVisibility(scrollEvent) → processVisibilityEvent:
+      // active, not the (closeOn==='hover' && scroll) case, then
+      // `e.type !== 'click'` → early return. Overlay stays open.
+      window.dispatchEvent(new Event('scroll'))
+      expect(o.active()).toBe(true)
+      cleanup()
+    })
+
+    it('click event with no target while active does not match trigger/content (isNodeOrChild no-target)', () => {
+      const o = useOverlay({ openOn: 'click', closeOn: 'clickOnTrigger', isOpen: true })
+      const triggerEl = mockElement()
+      o.triggerRef(triggerEl)
+      const cleanup = o.setupListeners()
+      // A click whose target is null → isNodeOrChild's `e?.target && ref`
+      // short-circuits false → isTrigger(e) false → no close.
+      const click = new MouseEvent('click', { bubbles: true })
+      Object.defineProperty(click, 'target', { value: null })
+      window.dispatchEvent(click)
+      expect(o.active()).toBe(true)
+      cleanup()
+    })
+  })
+
+  // =========================================================================
+  // 24. hover leave handlers when inactive (closeOn=hover && active() false)
+  // =========================================================================
+  describe('hover leave when inactive', () => {
+    it('mouseleave on trigger while inactive does not schedule hide', () => {
+      vi.useFakeTimers()
+      const onClose = vi.fn()
+      const o = useOverlay({ openOn: 'manual', closeOn: 'hover', onClose })
+      const triggerEl = mockElement()
+      const contentEl = mockElement()
+      o.triggerRef(triggerEl)
+      o.contentRef(contentEl)
+      const cleanup = o.setupListeners()
+      // Inactive overlay → onTriggerLeave's `closeOn==='hover' && active()`
+      // is false → no scheduleHide → onClose never fires.
+      triggerEl.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+      contentEl.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+      vi.advanceTimersByTime(500)
+      expect(onClose).not.toHaveBeenCalled()
+      cleanup()
+    })
+  })
+
+  // =========================================================================
+  // 25. parentContainer scroll handler fires
+  // =========================================================================
+  describe('parentContainer scroll handler', () => {
+    it('dispatches onParentScroll without throwing', () => {
+      const parent = document.createElement('div')
+      document.body.appendChild(parent)
+      const o = useOverlay({
+        type: 'dropdown',
+        parentContainer: parent,
+        closeOn: 'click',
+        isOpen: true,
+      })
+      const triggerEl = mockElement({ top: 100, bottom: 130, left: 50, right: 150 })
+      const contentEl = mockElement({ width: 100, height: 50 })
+      o.triggerRef(triggerEl)
+      o.contentRef(contentEl)
+      const cleanup = o.setupListeners()
+      // Drives the parentContainer `onParentScroll` listener
+      // (handleContentPosition + handleVisibility).
+      parent.dispatchEvent(new Event('scroll'))
+      expect(o.active()).toBe(true)
+      cleanup()
+      parent.remove()
+    })
+  })
+
+  // =========================================================================
+  // 26. Nested modals share the body-overflow lock (modalOverflowCount)
+  // =========================================================================
+  describe('nested modal overflow refcount', () => {
+    it('a second modal does NOT re-lock, and unlock only happens after both close', () => {
+      const o1 = useOverlay({ type: 'modal', isOpen: true })
+      const c1 = mockElement({ width: 300, height: 200 })
+      o1.contentRef(c1)
+      const cleanup1 = o1.setupListeners()
+      expect(document.body.style.overflow).toBe('hidden')
+
+      // Second modal: modalOverflowCount goes 1 → 2, so the
+      // `modalOverflowCount === 1` guard is FALSE (no redundant re-lock).
+      const o2 = useOverlay({ type: 'modal', isOpen: true })
+      const c2 = mockElement({ width: 300, height: 200 })
+      o2.contentRef(c2)
+      const cleanup2 = o2.setupListeners()
+      expect(document.body.style.overflow).toBe('hidden')
+
+      // Cleaning up the FIRST modal: count 2 → 1, so the
+      // `modalOverflowCount === 0` guard is FALSE → overflow stays locked.
+      cleanup1()
+      expect(document.body.style.overflow).toBe('hidden')
+
+      // Cleaning up the SECOND: count 1 → 0 → overflow released.
+      cleanup2()
+      expect(document.body.style.overflow).toBe('')
+    })
+  })
 })

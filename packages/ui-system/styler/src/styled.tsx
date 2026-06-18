@@ -372,6 +372,10 @@ const createStyledComponent = (
       finalProps.ref = (node: Element | null) => {
         el = node
         if (originalRef) {
+          // A valid `RefProp` is only ever a function or a `{ current }`
+          // object, so the final `else` (truthy ref that is neither) is
+          // unreachable — kept as a defensive guard, ignored for coverage.
+          /* v8 ignore else */
           if (typeof originalRef === 'function') originalRef(node)
           else if (typeof originalRef === 'object') (originalRef as Ref<Element>).current = node
         }

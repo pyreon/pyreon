@@ -10,9 +10,11 @@ const shallowEqual = (
   a: Record<string, unknown> | undefined,
   b: Record<string, unknown> | undefined,
 ): boolean => {
-  /* v8 ignore next 2 — defensive identity + null guards; both arms structurally covered */
+  /* v8 ignore start — defensive identity + null guards; a/b are always present,
+     distinct breakpoint objects in real usage */
   if (a === b) return true
   if (!a || !b) return false
+  /* v8 ignore stop */
   // for-in + counting avoids the two `Object.keys` array allocations the
   // prior implementation paid on every breakpoint optimization step.
   // Ported from vitus-labs `e573e6c4`; measured upstream: +4.0% on the

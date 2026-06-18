@@ -28,14 +28,20 @@ const createMediaQueries: CreateMediaQueries = ((props: {
     const breakpointValue = breakpoints[key]
     if (breakpointValue === 0) {
       acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css(...args)
-    /* v8 ignore next — defensive null-breakpoint guard; type-system constrains values */
-    } else if (breakpointValue != null) {
-      const emSize = breakpointValue / rootSize
-      acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css`
-        @media only screen and (min-width: ${emSize}em) {
-          ${css(...args)};
-        }
-      `
+    } else {
+      // The inner `if (breakpointValue != null)` has no `else` — a
+      // null/undefined breakpoint value is impossible (the type system
+      // constrains values to numbers), so the implicit-else "skip" branch is a
+      // defensive guard the normal flow never reaches.
+      /* v8 ignore else */
+      if (breakpointValue != null) {
+        const emSize = breakpointValue / rootSize
+        acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css`
+          @media only screen and (min-width: ${emSize}em) {
+            ${css(...args)};
+          }
+        `
+      }
     }
   }
   return acc

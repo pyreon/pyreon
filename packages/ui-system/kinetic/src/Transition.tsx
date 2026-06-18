@@ -158,9 +158,15 @@ const Transition = (props: TransitionProps): VNode | null => {
     active: () => (stage() === 'entering' || stage() === 'leaving') && !reducedMotion(),
     timeout,
     onEnd: () => {
+      // `onEnd` only fires while `active` is true (stage ∈ {entering, leaving}
+      // — see the `active` accessor), so the `else` is necessarily the leaving
+      // case. A redundant `else if (stage() === 'leaving')` here would carry an
+      // unreachable false arm (stage can't be entered/hidden at onEnd because
+      // useAnimationEnd detaches its listeners the moment stage leaves the
+      // active set), so a plain `else` is both correct and fully coverable.
       if (stage() === 'entering') {
         callbacks.onAfterEnter?.()
-      } else if (stage() === 'leaving') {
+      } else {
         callbacks.onAfterLeave?.()
       }
       complete()

@@ -147,6 +147,13 @@ const Component: PyreonElement = (props) => {
     // useLayoutEffect + ResizeObserver pattern.
     onMount(() => {
       const node = equalizeRef
+      // Defensive null-guard: under the Pyreon mount pipeline `mergedRef`
+      // always receives the wrapper node BEFORE onMount fires (proven by the
+      // equalize/ResizeObserver mount tests, which observe a non-null node),
+      // so `!node` is unreachable here. The guard protects against a future
+      // where the Wrapper fails to forward the ref. Not reachable from a
+      // happy-dom unit test.
+      /* v8 ignore next */
       if (!node) return undefined
 
       equalize(node, own.direction)

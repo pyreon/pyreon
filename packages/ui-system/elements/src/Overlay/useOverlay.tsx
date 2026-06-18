@@ -56,6 +56,12 @@ const CLICK_CLOSE_KINDS: ReadonlySet<string> = new Set([
 ])
 
 const devWarn = (msg: string) => {
+  // Prod dev-gate: the `!IS_DEVELOPMENT` early-return only fires in a
+  // production bundle (where `import.meta.env.DEV` is literal-replaced false
+  // and tree-shaken). Tests run with NODE_ENV !== 'production', so this arm
+  // is unreachable from the node suite — the dev arm (console.warn) IS
+  // covered by the "computePosition missing-ref warning" test.
+  /* v8 ignore next */
   if (!IS_DEVELOPMENT) return
   // oxlint-disable-next-line no-console
   console.warn(msg)
@@ -82,9 +88,17 @@ const computePosition = (
   const isDropdown = ['dropdown', 'tooltip', 'popover'].includes(type)
 
   if (isDropdown && (!triggerEl || !contentEl)) {
+    // `computePosition` is only reached from `calculateContentPosition`, which
+    // gates on `isContentLoaded()` — and `isContentLoaded` is set true ONLY by
+    // `contentRefCallback(node)` with a non-null node, which also sets
+    // `contentEl`. So whenever this branch runs, `contentEl` is present and the
+    // missing ref is always the trigger → the `'contentRef'` arm of this
+    // ternary is unreachable (the `'triggerRef'` arm IS covered).
+    /* v8 ignore next */
+    const missingRef = triggerEl ? 'contentRef' : 'triggerRef'
     devWarn(
       `[@pyreon/elements] Overlay (${type}): ` +
-        `${triggerEl ? 'contentRef' : 'triggerRef'} is not attached. ` +
+        `${missingRef} is not attached. ` +
         'Position cannot be calculated without both refs.',
     )
     return { pos: {} }
@@ -106,6 +120,11 @@ const computePosition = (
   }
 
   if (type === 'modal') {
+    // Defensive: same `isContentLoaded` gate as the dropdown case above —
+    // `computePosition` is only reached when `contentEl` is non-null, so this
+    // modal no-content branch is unreachable from the public API. Kept as a
+    // guard against a future caller that invokes computePosition directly.
+    /* v8 ignore start */
     if (!contentEl) {
       devWarn(
         '[@pyreon/elements] Overlay (modal): contentRef is not attached. ' +
@@ -113,6 +132,7 @@ const computePosition = (
       )
       return { pos: {} }
     }
+    /* v8 ignore stop */
     const c = contentEl.getBoundingClientRect()
     return {
       pos: adjustForAncestor(calcModalPos(c, alignX, alignY, offsetX, offsetY), ancestorOffset),
@@ -223,6 +243,12 @@ const useOverlay = ({
 
   // Position calculation helpers
   const getAncestorOffset = () => {
+    // SSR guard: unreachable from the node suite because `setupListeners`
+    // returns its no-op cleanup on the server BEFORE any resize/scroll
+    // listener is attached, so position calculation (the only caller of
+    // getAncestorOffset) never runs server-side. Defensive parity with the
+    // other isServer guards.
+    /* v8 ignore next */
     if (isServer) return { top: 0, left: 0 }
     if (position !== 'absolute' || !contentEl) {
       return { top: 0, left: 0 }
@@ -257,7 +283,14 @@ const useOverlay = ({
     // (throttled but still frequent) and on every viewport change.
     if (result.resolvedAlignX || result.resolvedAlignY) {
       batch(() => {
+        // Both `resolvedAlignX` and `resolvedAlignY` are ALWAYS set together
+        // by calcDropdownVertical / calcDropdownHorizontal (the only producers
+        // of resolved aligns). The modal / no-ref paths return neither and
+        // never enter this block. So inside the outer guard both inner ifs
+        // always take the truthy arm — the falsy arms are unreachable.
+        /* v8 ignore next */
         if (result.resolvedAlignX) innerAlignX.set(result.resolvedAlignX)
+        /* v8 ignore next */
         if (result.resolvedAlignY) innerAlignY.set(result.resolvedAlignY)
       })
     }
