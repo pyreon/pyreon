@@ -588,7 +588,17 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          # GitHub's ubuntu runner ships packages.microsoft.com apt sources
+          # (azure-cli + prod) that intermittently 403. `--with-deps` runs
+          # `apt-get update`, which then hangs on those sources until this job's
+          # timeout-minutes cancels it — the recurring e2e / Test(browser)
+          # "cancelled" flake (the specs never even run; the whole budget burns
+          # in the install step). Strip any apt source referencing that host
+          # first so the OS-dep install can't be blocked by it. The browser
+          # binary itself downloads from Playwright's own CDN, unaffected.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          bunx playwright install --with-deps chromium
       - run: bun run test:browser
 
   # ── Test (Rust binary): cross-backend equivalence gate ───────────────
@@ -730,7 +740,17 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          # GitHub's ubuntu runner ships packages.microsoft.com apt sources
+          # (azure-cli + prod) that intermittently 403. `--with-deps` runs
+          # `apt-get update`, which then hangs on those sources until this job's
+          # timeout-minutes cancels it — the recurring e2e / Test(browser)
+          # "cancelled" flake (the specs never even run; the whole budget burns
+          # in the install step). Strip any apt source referencing that host
+          # first so the OS-dep install can't be blocked by it. The browser
+          # binary itself downloads from Playwright's own CDN, unaffected.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          bunx playwright install --with-deps chromium
       - name: Run e2e — ${{ matrix.name }}
         # Tee the combined output so the next step can surface FLAKY
         # specs. `set -o pipefail` keeps Playwright's real exit code
