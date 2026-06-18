@@ -193,7 +193,29 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
       if (typeof expr.value === 'string') return { kind: 'string' }
-      if (typeof expr.value === 'number') return { kind: 'number' }
+      if (typeof expr.value === 'number') {
+        // A FRACTIONAL literal (`9.99`, `0.08`) is a Double on both
+        // targets; an integer-valued literal (`7`, and `3.0` —
+        // `Number.isInteger` is true for it) stays Int, the ergonomic
+        // default for counts/ids/indices. This mirrors the boundary
+        // `parse.ts`'s `inferTypeFromInitial` already uses for the
+        // signal-decl path, so a `signal(9.99)` and a
+        // `computed(() => 9.99)` now AGREE on Double.
+        //
+        // Without the `float` flag here, the core inferType degraded
+        // every fractional literal in a computed / return / arithmetic
+        // position to `{ kind: 'number' }` → `Int`: `computed(() => 9.99)`
+        // emitted `private var tax: Int { 9.99 }` (a swiftc type error),
+        // and the literal contributed no float-ness to surrounding
+        // arithmetic (`rate() + 0.02` lost its Double-ness). The
+        // signal/struct/reduce-seed cases were patched by the parse-layer
+        // refinement passes; the computed/expression path was the
+        // remaining root gap. Float is contagious through the binary
+        // case below, so this also fixes all-float-operand arithmetic.
+        return Number.isInteger(expr.value)
+          ? { kind: 'number' }
+          : { kind: 'number', float: true }
+      }
       if (typeof expr.value === 'boolean') return { kind: 'boolean' }
       return { kind: 'unknown' }
     }
