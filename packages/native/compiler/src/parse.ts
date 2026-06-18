@@ -97,6 +97,12 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     // node so `const app = useApp()` in one component never substitutes
     // for an unrelated `app` in another (or in a store setup body).
     ctx.storeAliases.clear()
+    // Loud-warning: surface top-level declaration kinds PMTC silently
+    // DROPS (no emit → the body references an undefined symbol on the
+    // target — a confusing real-compiler error the parse-only gate can't
+    // pre-empt). These node types are never consumed by any extractor
+    // below, so flagging them here is false-positive-free.
+    warnUnsupportedTopLevelDecl(node, ctx)
     const comp = tryComponentFromTopLevel(node, ctx)
     if (comp) components.push(comp)
     const en = tryEnumFromTypeAlias(node, ctx)
@@ -213,6 +219,37 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     features,
     zodSchemas,
     warnings: ctx.warnings,
+  }
+}
+
+/**
+ * Loud-warning for top-level declaration kinds PMTC silently DROPS. None of
+ * `interface` / TS `enum` / `class` are consumed by any `try*FromTopLevel`
+ * extractor — they emit NOTHING, so a body referencing them produces an
+ * undefined-symbol error on the real swiftc/kotlinc build (which the
+ * parse-only PR gate can't catch). Each warning redirects to the supported
+ * shape. Handles both bare and `export`-wrapped forms.
+ */
+function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
+  const decl =
+    node.type === 'ExportNamedDeclaration' && node.declaration
+      ? (node.declaration as AnyNode)
+      : node
+  if (decl.type === 'TSInterfaceDeclaration') {
+    const name = (decl.id?.name as string | undefined) ?? 'an interface'
+    ctx.warnings.push(
+      `Top-level \`interface ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC synthesizes a struct/data-class from an object-literal type alias, not an interface — use \`type ${name} = { … }\` instead.`,
+    )
+  } else if (decl.type === 'TSEnumDeclaration') {
+    const name = (decl.id?.name as string | undefined) ?? 'an enum'
+    ctx.warnings.push(
+      `Top-level TS \`enum ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC maps a string-literal UNION type alias to a native enum, not a TS \`enum\` declaration — use \`type ${name} = 'a' | 'b'\` instead.`,
+    )
+  } else if (decl.type === 'ClassDeclaration') {
+    const name = (decl.id?.name as string | undefined) ?? 'a class'
+    ctx.warnings.push(
+      `Top-level \`class ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC compiles components, signals, and the canonical primitives — move the logic into functions + signals (or a \`defineStore\` / \`model()\` for stateful logic).`,
+    )
   }
 }
 

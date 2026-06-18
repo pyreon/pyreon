@@ -28,11 +28,17 @@
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 
+// NOTE: the fixture below uses an object-literal `type` alias, NOT an
+// `interface`. PMTC synthesizes a struct/data-class from a `type X = { … }`
+// alias but silently DROPS an `interface` (the emitted `[Todo]` would then
+// reference an undefined type on a real device build). The unsupported-decl
+// warning surfaces that; this fixture uses the supported shape. (Comment kept
+// out here — backticks inside the SOURCE template literal would close it.)
 const SOURCE = `
 import { rx } from '@pyreon/rx'
 import { signal } from '@pyreon/reactivity'
 
-interface Todo { id: number; title: string; done: boolean; priority: number }
+type Todo = { id: number; title: string; done: boolean; priority: number }
 
 export function RxLowerProbe() {
   const todos = signal<Todo[]>([])
