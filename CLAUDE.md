@@ -843,15 +843,26 @@ behaviour change); enable with `pyreon({ collapse: true })` or
   normal mount) on: any non-literal/`{expr}`/signal dimension prop,
   `{...spread}`, element/expression children, non-candidate component,
   or an unresolved key. Conservative — uncertain ⇒ no collapse.
-- **Emit** (`TransformOptions.collapseRocketstyle`, JS-path-forced — the
-  Rust binary doesn't implement it, so `transformJSX` short-circuits to
-  `transformJSX_JS` when the option is set): replaces the JSX with
+- **Emit** (`TransformOptions.collapseRocketstyle`): replaces the JSX with
   `__rsCollapse(<templateHtml>, <lightClass>, <darkClass>, () =>
   __pyrMode() === "dark")` + a once-per-module idempotent
   `__rsSheet.injectRules(<rules>, <ruleKey>)` (RFC decision 1 dual-emit;
   decision 4 hoisted `_tpl`). Only the CLIENT graph collapses — the SSR
   graph keeps the real mount (renderToString needs the VNode tree, and
-  the resolver itself SSR-renders).
+  the resolver itself SSR-renders). **Both backends emit collapse.** The
+  port to Rust shipped all four variants (`__rsCollapse` full /
+  `__rsCollapseH` on\*-handler partial / `__rsCollapseDyn` +
+  `__rsCollapseDynH` dynamic-prop / element-child reusing `__rsCollapse`),
+  each locked byte-for-byte against the JS path by the cross-backend
+  equivalence suite. The old `transformJSX` force-route to the JS path
+  (`if (options.collapseRocketstyle) return transformJSX_JS(...)`) was
+  REMOVED once all variants landed: the dispatcher now lowers the
+  `collapseRocketstyle` config from its `Set`/`Map` shape to the napi
+  array/Record shape (`toNativeCollapse`) and threads it as `transformJsx`'s
+  6th arg, so a collapse build gets the native backend's 3.7-8.x× transform
+  speed (the JS path stays the graceful fallback when the native binary is
+  absent). Verified end-to-end by the `verify-modes ui-showcase × spa`
+  collapse cell building the rs-collapse / dyn / elem probes through native.
 - **Runtime** (`@pyreon/runtime-dom:_rsCollapse`): one html-keyed `_tpl`
   cloneNode (shared parsed template across N mounts) whose class is
   reactively bound to the live mode accessor — a mode swap re-runs ONLY
