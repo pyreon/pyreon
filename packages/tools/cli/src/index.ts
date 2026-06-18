@@ -50,6 +50,7 @@ function printUsage(): void {
     --check-islands                  Equivalent to --only islands-audit
     --check-ssg                      Equivalent to --only ssg-audit
     --check-content                  Equivalent to --only content-audit
+    --check-native                   Equivalent to --only native-audit (multiplatform PMTC hazards)
 
   Options:
     --help                           Show this help message
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
       checkIslands: args.includes('--check-islands'),
       checkSsg: args.includes('--check-ssg'),
       checkContent: args.includes('--check-content'),
+      checkNative: args.includes('--check-native'),
     }
     const exitCode = await doctor(options)
     if (options.ci && exitCode > 0) {

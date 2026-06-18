@@ -1,0 +1,6 @@
+---
+"@pyreon/cli": minor
+"@pyreon/compiler": minor
+---
+
+`pyreon doctor` gains a **`native-audit` gate** (`pyreon doctor --check-native`) that catches multiplatform (PMTC) build hazards before a native build. It scans `.tsx` files that import `@pyreon/primitives` (the multiplatform signal) and flags, as warnings: (1) **web-only-package imports** — `@pyreon/charts`/`flow`/`code`/`dnd`/`document`/`query`/`table`/`virtual` + the CSS-in-JS UI stack, which can't be native-rendered (fix: host in `<WebView>` or use `@pyreon/primitives`); (2) **native-dropped top-level declarations** — `interface` / TS `enum` / `class`, which PMTC silently drops so the emitted SwiftUI/Compose references an undefined symbol (fix: `type X = {…}` / string-literal union / functions). Scoped to multiplatform projects (skips gracefully when no `@pyreon/primitives` importer is present), warnings only (the web build is unaffected). `@pyreon/compiler` exports the underlying `auditNative(cwd)` + its `NativeFinding`/`NativeFindingCode`/`NativeAuditResult` types. Pairs with `get_pattern({ name: "multiplatform" })` and the new `@pyreon/primitives` `get_api` entries so an AI can build a correct multiplatform app one-shot.

@@ -52,6 +52,10 @@ export {
   type ContentAuditGateOptions,
 } from './content-audit'
 export {
+  runNativeAuditGate,
+  type NativeAuditGateOptions,
+} from './native-audit'
+export {
   runCheckDedupGate,
   type CheckDedupGateOptions,
 } from './check-dedup'

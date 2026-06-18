@@ -38,6 +38,7 @@ import {
   runDocClaimsGate,
   runIslandsAuditGate,
   runLintGate,
+  runNativeAuditGate,
   runPyreonPatternsGate,
   runReactPatternsGate,
   runSsgAuditGate,
@@ -55,6 +56,7 @@ export type GateName =
   | 'islands-audit'
   | 'ssg-audit'
   | 'content-audit'
+  | 'native-audit'
   | 'check-dedup'
   | 'audit-leak-classes'
   | 'audit-types'
@@ -70,6 +72,7 @@ export const FAST_GATES: GateName[] = [
   'islands-audit',
   'ssg-audit',
   'content-audit',
+  'native-audit',
   'audit-tests',
   'check-dedup',
   'audit-leak-classes',
@@ -113,6 +116,7 @@ const ALL_GATE_CATEGORIES: Record<GateName, GateResult['category']> = {
   'islands-audit': 'architecture',
   'ssg-audit': 'architecture',
   'content-audit': 'architecture',
+  'native-audit': 'architecture',
   'check-dedup': 'architecture',
   // Advisory: leak-class heuristics are false-positive-prone (manual triage),
   // so they're VISIBLE but excluded from the grade + --ci (see the gate's JSDoc).
@@ -213,6 +217,8 @@ const runGate = async (
       return runSsgAuditGate({ cwd: opts.cwd })
     case 'content-audit':
       return runContentAuditGate({ cwd: opts.cwd })
+    case 'native-audit':
+      return runNativeAuditGate({ cwd: opts.cwd })
     case 'check-dedup':
       return runCheckDedupGate({ cwd: opts.cwd })
     case 'audit-leak-classes':
