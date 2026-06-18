@@ -19,7 +19,6 @@ export function parseCssDimension(
   value: string | number | null | undefined,
   rootSize = DEFAULT_ROOT_SIZE,
 ): number | undefined {
-  if (value == null) return undefined
   if (typeof value === 'number') return value
   if (typeof value !== 'string') return undefined
 

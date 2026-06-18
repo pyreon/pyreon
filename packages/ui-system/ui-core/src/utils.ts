@@ -126,6 +126,11 @@ export const throttle = <T extends (...args: any[]) => any>(
     if (timeoutId !== undefined) return
     timeoutId = setTimeout(() => {
       timeoutId = undefined
+      // `lastArgs` is always set by `startTrailingTimer` immediately before
+      // scheduling this timer, and `cancel()` clears the timer alongside
+      // `lastArgs` — so the falsy branch is a defensive guard that the normal
+      // schedule/fire/cancel flow never reaches.
+      /* v8 ignore else */
       if (lastArgs) {
         invoke(lastArgs)
         lastArgs = undefined

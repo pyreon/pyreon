@@ -315,6 +315,106 @@ describe('makeItResponsive', () => {
       expect(stylesCalls).toBe(4)
     })
 
+    it('stringifyResult: null/undefined styles result coerces to empty string (optimized path)', () => {
+      // styles returning null → stringifyResult(null) → '' (NOT null), so
+      // canOptimize stays true and the optimized path runs. Exercises the
+      // `result == null` early-return in stringifyResult.
+      const sortedBreakpoints = ['xs', 'sm']
+      const media: Record<string, (s: TemplateStringsArray, ...v: any[]) => string> = {
+        xs: mockCss,
+        sm: mockCss,
+      }
+      let stylesCalls = 0
+      const stylesReturningNull = () => {
+        stylesCalls++
+        return null as unknown as string
+      }
+      const responsive = makeItResponsive({
+        theme: { color: { xs: 'red', sm: 'blue' } },
+        css: mockCss,
+        styles: stylesReturningNull as any,
+      })
+      const out = responsive({
+        theme: {
+          breakpoints: { xs: 0, sm: 576 },
+          __PYREON__: { sortedBreakpoints, media },
+        },
+      })
+      // Optimized signature: stringify pass only = 1 call per bp (no re-render).
+      expect(stylesCalls).toBe(2)
+      expect(Array.isArray(out)).toBe(true)
+    })
+
+    it('stringifyResult: CSSResult duck-type (strings + values) takes the String() fast path', () => {
+      // A result with `strings` + `values` props is treated as a CSSResult —
+      // stringified via String() without the "[object Foo]" validation.
+      const sortedBreakpoints = ['xs', 'sm']
+      const media: Record<string, (s: TemplateStringsArray, ...v: any[]) => string> = {
+        xs: mockCss,
+        sm: mockCss,
+      }
+      let stylesCalls = 0
+      const stylesReturningCssResult = ({ theme }: { theme: Record<string, unknown> }) => {
+        stylesCalls++
+        const text = Object.entries(theme)
+          .map(([k, v]) => `${k}: ${v};`)
+          .join(' ')
+        // CSSResult-shaped object: carries strings/values + a clean toString.
+        return {
+          strings: [text],
+          values: [],
+          toString() {
+            return text
+          },
+        }
+      }
+      const responsive = makeItResponsive({
+        theme: { color: { xs: 'red', sm: 'blue' } },
+        css: mockCss,
+        styles: stylesReturningCssResult as any,
+      })
+      responsive({
+        theme: {
+          breakpoints: { xs: 0, sm: 576 },
+          __PYREON__: { sortedBreakpoints, media },
+        },
+      })
+      // CSSResult duck-type stringifies cleanly → optimized path → 1 call/bp.
+      expect(stylesCalls).toBe(2)
+    })
+
+    it('stringifyResult: foreign object with a clean toString stays on the optimized path', () => {
+      // A non-CSSResult object whose custom toString() yields clean text (no
+      // "[object Foo]") → stringifyResult returns the text (the `: text` arm).
+      const sortedBreakpoints = ['xs', 'sm']
+      const media: Record<string, (s: TemplateStringsArray, ...v: any[]) => string> = {
+        xs: mockCss,
+        sm: mockCss,
+      }
+      let stylesCalls = 0
+      const stylesReturningCleanForeign = ({ theme }: { theme: Record<string, unknown> }) => {
+        stylesCalls++
+        const text = Object.entries(theme)
+          .map(([k, v]) => `${k}: ${v};`)
+          .join(' ')
+        // No `strings`/`values` keys → not a CSSResult, but toString is clean.
+        return { toString: () => text }
+      }
+      const responsive = makeItResponsive({
+        theme: { color: { xs: 'red', sm: 'blue' } },
+        css: mockCss,
+        styles: stylesReturningCleanForeign as any,
+      })
+      responsive({
+        theme: {
+          breakpoints: { xs: 0, sm: 576 },
+          __PYREON__: { sortedBreakpoints, media },
+        },
+      })
+      // Clean stringify → optimized path → 1 call per bp.
+      expect(stylesCalls).toBe(2)
+    })
+
     it('takes the optimized path for plain-string styles results', () => {
       const sortedBreakpoints = ['xs', 'sm']
       const media: Record<string, (s: TemplateStringsArray, ...v: any[]) => string> = {

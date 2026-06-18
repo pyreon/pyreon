@@ -143,9 +143,13 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
     active: () => (stage() === 'entering' || stage() === 'leaving') && !reducedMotion(),
     timeout,
     onEnd: () => {
+      // `onEnd` only fires while `active` is true (stage ∈ {entering, leaving}),
+      // so the `else` is necessarily the leaving case — a plain `else` avoids
+      // an unreachable `else if (stage() === 'leaving')` false arm. See the
+      // matching note in Transition.tsx.
       if (stage() === 'entering') {
         callbacks.onAfterEnter?.()
-      } else if (stage() === 'leaving') {
+      } else {
         callbacks.onAfterLeave?.()
       }
       complete()

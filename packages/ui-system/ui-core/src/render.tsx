@@ -39,13 +39,16 @@ const render: Render = (content, attachProps) => {
     return h(content as string | ComponentFn, (attachProps ?? {}) as Props)
   }
 
-  // VNode object — return directly
-  /* v8 ignore next 4 — fallthrough after typeof guards above; the trailing return is structurally unreachable */
+  // VNode object — return directly. Fallthrough after the typeof guards above;
+  // both the object branch and the trailing return are structurally
+  // unreachable (content is already narrowed to an object here).
+  /* v8 ignore start */
   if (typeof content === 'object') {
     return content as VNodeChild
   }
 
   return content as VNodeChild
+  /* v8 ignore stop */
 }
 
 export default render

@@ -5,9 +5,9 @@ export default defineNodeConfig({
   environment: 'happy-dom',
   excludeBrowserTests: true,
   coverageThresholds: {
-    statements: 95,
-    branches: 95,
-    functions: 95,
-    lines: 94,
+    statements: 99,
+    branches: 99,
+    functions: 99,
+    lines: 99,
   },
 })

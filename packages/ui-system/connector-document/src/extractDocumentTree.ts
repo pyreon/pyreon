@@ -151,7 +151,13 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     // Path A: pre-resolved on the JSX vnode (test fixtures)
     if (props._documentProps && typeof props._documentProps === 'object') {
       rawDocProps = props._documentProps as Record<string, unknown>
-    } else if (typeof type === 'function') {
+    } else {
+      // `docType` is truthy ⇒ `getDocumentType(type)` returned a value ⇒
+      // `type` is a function (getDocumentType early-returns undefined for any
+      // non-function). So this `else` is reached ONLY with a function type;
+      // an `else if (typeof type === 'function')` guard here would carry an
+      // unreachable (and therefore uncoverable) false branch. The cast
+      // restores the narrowing TypeScript can't infer across the docType var.
       // ── Path C (T3.1 fast path) ─────────────────────────────────────
       //
       // Rocketstyle exposes the accumulated `.attrs()` callback chain

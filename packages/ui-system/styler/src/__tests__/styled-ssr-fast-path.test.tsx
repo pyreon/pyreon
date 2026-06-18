@@ -54,4 +54,36 @@ describe('styled — SSR fast path (node env)', () => {
     })
     expect(vnode.props.class).toMatch(/^pyr-\w+ extra$/)
   })
+
+  it('resolves a STATIC (non-accessor) $rocketstyle/$rocketstate on the server', () => {
+    // Plain-object dimension props (not function accessors) take the
+    // `isReactiveRS ? $rs() : $rs` static arm in the SSR fast path.
+    const Box = styled('div')`color: ${({ $rocketstyle }: any) => $rocketstyle.color};` as any
+    const vnode = Box({
+      $rocketstyle: { color: 'rgb(9, 9, 9)' },
+      $rocketstate: { state: 's' },
+      children: 'static',
+    })
+    expect(vnode.props.class).toMatch(/^pyr-/)
+    expect(vnode.children).toEqual(['static'])
+  })
+
+  it('forwards an ARRAY of children in the SSR fast path', () => {
+    const Box = styled('div')`color: ${({ $rocketstyle }: any) => $rocketstyle.color};` as any
+    const vnode = Box({
+      $rocketstyle: () => ({ color: 'red' }),
+      $rocketstate: () => ({}),
+      children: ['a', 'b'],
+    })
+    expect(vnode.children).toEqual(['a', 'b'])
+  })
+
+  it('emits no children when none are provided in the SSR fast path', () => {
+    const Box = styled('div')`color: ${({ $rocketstyle }: any) => $rocketstyle.color};` as any
+    const vnode = Box({
+      $rocketstyle: () => ({ color: 'red' }),
+      $rocketstate: () => ({}),
+    })
+    expect(vnode.children).toEqual([])
+  })
 })

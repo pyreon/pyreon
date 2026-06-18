@@ -85,7 +85,14 @@ const createAttrsHOC: AttrsStyleHOC = ({ attrs, priorityAttrs }) => {
             ? mergeProps(prioritizedAttrs, filteredProps)
             : finalAttrs
               ? mergeProps(finalAttrs, filteredProps)
-              : filteredProps
+              : // The final `filteredProps` fallback is structurally
+                // unreachable here: this whole merge block runs only when
+                // `hasAnyChain` (hasAttrs || hasPriorityAttrs) is true, and a
+                // true chain flag guarantees the matching resolved value
+                // (`finalAttrs` / `prioritizedAttrs`) is a non-null object. The
+                // no-chain case returns early via the fast path above.
+                /* v8 ignore next */
+                filteredProps
 
       return WrappedComponent(finalProps)
     }

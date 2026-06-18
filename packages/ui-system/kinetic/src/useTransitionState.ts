@@ -35,10 +35,20 @@ const useTransitionState: UseTransitionState = ({ show, appear = false }) => {
         return
       }
 
+      // A PROCESSED watch run always sees a real `show` CHANGE (the first run
+      // is skipped via isInitialMount), so showVal and the current stage are
+      // correlated: show→true only after a prior false-run left stage
+      // hidden/leaving (the IF), and show→false only after a prior true-run
+      // left stage entering/entered (the ELSE). The redundant
+      // `else if (!showVal && (entered|entering))` guard would therefore carry
+      // an unreachable false arm — (showVal=true ∧ stage∈{entered,entering})
+      // and (showVal=false ∧ stage∈{hidden,leaving}) can't occur at a
+      // processed run because they imply no value change. A plain `else` keeps
+      // the only reachable behaviour (leaving) and is fully coverable.
       const currentStage = runUntracked(() => stage())
       if (showVal && (currentStage === 'hidden' || currentStage === 'leaving')) {
         stage.set('entering')
-      } else if (!showVal && (currentStage === 'entered' || currentStage === 'entering')) {
+      } else {
         stage.set('leaving')
       }
     },

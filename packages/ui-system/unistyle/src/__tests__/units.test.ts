@@ -99,6 +99,13 @@ describe('value', () => {
   it('respects outputUnit=px for unitless numbers', () => {
     expect(value(16, 16, 'px')).toBe('16px')
   })
+
+  it('falls through to `${val}${outputUnit}` when rootSize is 0 (canConvert false)', () => {
+    // rootSize 0 → canConvert falsy → none of the conversion branches fire and
+    // there is no unit → the final `${val}${outputUnit}` return is reached.
+    expect(value(5, 0)).toBe('5rem')
+    expect(value(5, 0, 'px')).toBe('5px')
+  })
 })
 
 describe('values', () => {

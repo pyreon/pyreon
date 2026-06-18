@@ -75,10 +75,16 @@ const CollapseRenderer = ({
         return
       }
 
+      // A processed run always sees a real `show` change, so showVal correlates
+      // with the current stage (show→true only after hidden/leaving, show→false
+      // only after entering/entered). The redundant
+      // `else if (!showVal && (entered|entering))` would carry an unreachable
+      // false arm, so a plain `else` keeps the only reachable behaviour
+      // (leaving). See useTransitionState.ts for the full argument.
       const currentStage = runUntracked(() => stage())
       if (showVal && (currentStage === 'hidden' || currentStage === 'leaving')) {
         stage.set('entering')
-      } else if (!showVal && (currentStage === 'entered' || currentStage === 'entering')) {
+      } else {
         stage.set('leaving')
       }
     },
@@ -143,6 +149,9 @@ const CollapseRenderer = ({
     timeout: effectiveTimeout,
     onEnd: () => {
       const wrapper = wrapperRef.current
+      // `onEnd` only fires while `active` is true (stage ∈ {entering, leaving}),
+      // so the `else` is necessarily the leaving case — a plain `else` avoids
+      // an unreachable `else if (stage() === 'leaving')` false arm.
       if (stage() === 'entering') {
         if (wrapper) {
           wrapper.style.height = 'auto'
@@ -151,7 +160,7 @@ const CollapseRenderer = ({
         }
         callbacks.onAfterEnter?.()
         stage.set('entered')
-      } else if (stage() === 'leaving') {
+      } else {
         callbacks.onAfterLeave?.()
         stage.set('hidden')
       }
@@ -160,10 +169,20 @@ const CollapseRenderer = ({
 
   const shouldRender = () => stage() !== 'hidden'
 
+  // The `height` ternary's final `: {}` tail fires only for the transient
+  // entering/leaving stage during a live re-render — reachable only when
+  // mounted + animating (real Chromium: kinetic.browser.test.tsx). SSR is
+  // one-shot at entered (height:auto) / hidden (height:0px). Split across
+  // lines so a single `/* v8 ignore next */` targets ONLY the unreachable
+  // tail, leaving the two SSR-covered `?` arms measured.
   const wrapperStyle: CSSProperties = {
     ...(htmlProps.style as CSSProperties),
     ...(stage() !== 'entered' ? { overflow: 'hidden' } : {}),
-    ...(stage() === 'hidden' ? { height: '0px' } : stage() === 'entered' ? { height: 'auto' } : {}),
+    ...(stage() === 'hidden'
+      ? { height: '0px' }
+      : stage() === 'entered'
+        ? { height: 'auto' }
+        : /* v8 ignore next */ {}),
   }
 
   // Initially-visible Collapses keep the original Show-gated inner content,

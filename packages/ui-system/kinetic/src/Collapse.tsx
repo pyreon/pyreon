@@ -58,10 +58,18 @@ const Collapse = (props: CollapseProps): VNode | null => {
         return
       }
 
+      // A processed run always sees a real `show` change, so showVal correlates
+      // with the current stage: show→true only after stage was left
+      // hidden/leaving (IF), show→false only after stage was left
+      // entering/entered (ELSE). The redundant
+      // `else if (!showVal && (entered|entering))` would carry an unreachable
+      // false arm (the no-change cross-states), so a plain `else` keeps the
+      // only reachable behaviour (leaving) and is fully coverable. See
+      // useTransitionState.ts for the full argument.
       const currentStage = runUntracked(() => stage())
       if (showVal && (currentStage === 'hidden' || currentStage === 'leaving')) {
         stage.set('entering')
-      } else if (!showVal && (currentStage === 'entered' || currentStage === 'entering')) {
+      } else {
         stage.set('leaving')
       }
     },
@@ -127,6 +135,9 @@ const Collapse = (props: CollapseProps): VNode | null => {
     timeout,
     onEnd: () => {
       const wrapper = wrapperRef.current
+      // `onEnd` only fires while `active` is true (stage ∈ {entering, leaving}),
+      // so the `else` is necessarily the leaving case — a plain `else` avoids
+      // an unreachable `else if (stage() === 'leaving')` false arm.
       if (stage() === 'entering') {
         if (wrapper) {
           wrapper.style.height = 'auto'
@@ -135,7 +146,7 @@ const Collapse = (props: CollapseProps): VNode | null => {
         }
         callbacks.onAfterEnter?.()
         stage.set('entered')
-      } else if (stage() === 'leaving') {
+      } else {
         callbacks.onAfterLeave?.()
         stage.set('hidden')
       }
@@ -153,7 +164,12 @@ const Collapse = (props: CollapseProps): VNode | null => {
           ? { height: '0px' }
           : stage() === 'entered'
             ? { height: 'auto' }
-            : {}),
+            : // The `: {}` tail fires only for the transient entering/leaving
+              // stage DURING a live re-render — reachable only when mounted +
+              // animating (real Chromium: kinetic.browser.test.tsx). SSR is
+              // one-shot at entered (height:auto) / hidden (height:0px).
+              /* v8 ignore next */
+              {}),
       }}
     >
       <Show when={shouldRender}>

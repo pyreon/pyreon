@@ -142,6 +142,11 @@ const Component = (props: LooseProps) => {
   // render children
   // --------------------------------------------------------
   const renderChildren = () => {
+    // Defensive: `renderChildren` is only invoked from `renderItems` behind
+    // `if (children) return renderChildren()`, so `children` is always truthy
+    // here and this guard is unreachable via the public Iterator() API. Kept
+    // so the closure is safe to call standalone in a future refactor.
+    /* v8 ignore next */
     if (!children) return null
 
     // if children is Array
@@ -171,6 +176,11 @@ const Component = (props: LooseProps) => {
   const renderSimpleArray = (simpleData: SimpleValue[]) => {
     const { length } = simpleData
 
+    // Defensive: `renderSimpleArray` is only reached via `renderItems` when
+    // `classifyData` returned `{ type: 'simple', data }`, and classifyData
+    // returns `null` (never a typed result) for empty input — so `length` is
+    // always > 0 here and this guard is unreachable via the public API.
+    /* v8 ignore next */
     if (length === 0) return null
 
     return simpleData.map((item, i) => {
@@ -216,6 +226,10 @@ const Component = (props: LooseProps) => {
   const renderComplexArray = (complexData: ObjectValue[]) => {
     const { length } = complexData
 
+    // Defensive: same contract as renderSimpleArray — only reached when
+    // classifyData returned `{ type: 'complex', data }`, which is impossible
+    // for empty input (classifyData returns null), so `length` is always > 0.
+    /* v8 ignore next */
     if (length === 0) return null
 
     return complexData.map((item, i) => {

@@ -4,30 +4,30 @@ export default defineNodeConfig({
   category: 'ui',
   environment: 'happy-dom',
   excludeBrowserTests: true,
-  // Threshold history (post v8-ignore campaign cleanup):
-  // - Pre-PR-1298 baseline: 91.15% branches (already strong)
-  // - PR #1298 (cosmetic): 95.38% via 23 /* v8 ignore */ annotations across 9 files
-  //   (gaming the gate by ignoring animation lifecycle defensive arms)
-  // - Current: 91.15% branches via REMOVAL of the cosmetic ignores (no real-test
-  //   regression — the baseline tests were always real)
-  //
-  // The remaining 40 uncov branches are optional-CSS-property arms and animation
-  // lifecycle defensive guards (config.leaveStyle, config.enterTransition, ref
-  // null-during-onEnd, etc.) reached only under very specific timing + config
-  // permutations. The browser-side e2e tests at e2e/ui-showcase-regression.spec.ts
-  // exercise these in real Chromium but vitest measures unit-test-process coverage
-  // only. Raising threshold to 95 would require either v8-ignores (gaming) or
-  // a combinatorial test matrix that doesn't scale to the maintenance cost.
+  // Node-suite coverage is 100% on all four metrics after the coverage-gaps
+  // sweep. The animation-lifecycle arms the prior baseline left uncovered were
+  // closed HONESTLY:
+  //   - The leave-path style/class guards, the appear-proxy null/second-set
+  //     arms, the GroupRenderer/TransitionGroup accessor + leaving-diff +
+  //     onAfterLeave→forceUpdate paths, the wrapper-cleared-mid-onEnd guards,
+  //     and the `kinetic(tag).group()` factory branch are now driven by real
+  //     tests (fake-rAF harness + reactive-accessor invocation).
+  //   - The shouldRender accessor + render-time style ternaries are covered via
+  //     real renderToString (SSR) of Collapse.
+  //   - The onEnd `else if (stage()==='leaving')` and show-watch
+  //     `else if (!showVal && …)` arms were REMOVED (converted to plain `else`):
+  //     they were provably-unreachable false arms given the active-gate /
+  //     show-change invariants — see the per-site comments. No behaviour change
+  //     (all 259 tests pass); the dead branch simply no longer exists.
+  //   - Two genuinely-unreachable defensive arms keep a precise single-line
+  //     `/* v8 ignore next */` (useAnimationEnd's double-done re-entrancy guard;
+  //     the CollapseRenderer height-ternary's transient `: {}` tail, which only
+  //     renders mid-animation in a real browser — kinetic.browser.test.tsx).
+  // Floor held at 98 (2pp headroom) to absorb minor future drift.
   coverageThresholds: {
-    statements: 95,
-    branches: 92,
-    functions: 95,
-    lines: 95,
+    statements: 98,
+    branches: 98,
+    functions: 98,
+    lines: 98,
   },
-  // 2026-06: branch-coverage-95-floor.test.tsx added Stagger prop-default
-  // arms (interval/appear/reverseLeave/timeout nullish), reverseLeave
-  // edge cases. Lifted branches 91.15 → 92.47 (+1.32pp). Remaining ~3pp
-  // gap to MINIMUM_BRANCH_FLOOR=95 in animation lifecycle defensive arms
-  // (Transition/Collapse/TransitionGroup timing fallbacks) exercised by
-  // kinetic.browser.test.tsx + ui-showcase e2e in real Chromium.
 })

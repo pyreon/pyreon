@@ -272,3 +272,28 @@ describe('resolveCssVarReferences — ReDoS-safe (linear scan)', () => {
     expect(resolveCssVarReferences('var(--px-spacing-small', registry)).toBe('var(--px-spacing-small')
   })
 })
+
+describe('resolveCssVarReferences — scanner character + whitespace edges', () => {
+  const { registry } = themeToCssVars({ spacing: { small: 8 } })
+
+  it('returns a string with no var( reference untouched', () => {
+    // input.indexOf('var(') === -1 → early return before the scan loop.
+    expect(resolveCssVarReferences('color: red', registry)).toBe('color: red')
+    expect(resolveCssVarReferences('1.5rem', registry)).toBe('1.5rem')
+  })
+
+  it('reads uppercase letters and digits in var names (isNameChar A-Z + 0-9)', () => {
+    // Names carry uppercase + digit chars — the scanner's isNameChar must
+    // accept them. Unknown names with no fallback are emitted verbatim.
+    expect(resolveCssVarReferences('var(--Color9Surface)', registry)).toBe('var(--Color9Surface)')
+    expect(resolveCssVarReferences('var(--ABC123)', registry)).toBe('var(--ABC123)')
+  })
+
+  it('skips leading whitespace after var( and trailing whitespace before close', () => {
+    // `var( --x )` → the space-skip loops advance past the spaces around the
+    // name. Known name resolves through the surrounding whitespace.
+    expect(resolveCssVarReferences('var( --px-spacing-small )', registry)).toBe('0.5rem')
+    // Whitespace before the comma fallback separator too.
+    expect(resolveCssVarReferences('var( --px-missing , 2rem)', registry)).toBe('2rem')
+  })
+})
