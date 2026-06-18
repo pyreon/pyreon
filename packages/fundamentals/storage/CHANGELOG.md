@@ -1,5 +1,18 @@
 # @pyreon/storage
 
+## 0.34.0
+
+### Patch Changes
+
+- [#1611](https://github.com/pyreon/pyreon/pull/1611) [`038a58c`](https://github.com/pyreon/pyreon/commit/038a58c0f39a35ad4338f6d2596c33c47e4e30cc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal coverage hardening — documented `v8 ignore`s for genuinely-unreachable
+  defensive guards (deepMerge's non-plain-input safety net, the plain-mode
+  `config.state ?? {}` fallback that `model()` rejects upstream, the
+  `snapshotValue` meta-guard already gated by `isModelInstance`, the nested-walk
+  `applyPatch` non-instance guard) + a test for the `onValidationError`-suppressed
+  patch path. No behavior change. Branches → 98.85%, S/F/L → 100%.
+- Updated dependencies [[`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65)]:
+  - @pyreon/reactivity@0.34.0
+
 ## 0.33.0
 
 ### Patch Changes

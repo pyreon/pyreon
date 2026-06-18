@@ -1,5 +1,21 @@
 # @pyreon/zero
 
+## 0.34.0
+
+### Patch Changes
+
+- Updated dependencies [[`c0814b7`](https://github.com/pyreon/pyreon/commit/c0814b7881b01b7bfed19dffd7f48a3269c14199), [`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65)]:
+  - @pyreon/runtime-dom@0.34.0
+  - @pyreon/sized-map@0.34.0
+  - @pyreon/reactivity@0.34.0
+  - @pyreon/head@0.34.0
+  - @pyreon/core@0.34.0
+  - @pyreon/runtime-server@0.34.0
+  - @pyreon/router@0.34.0
+  - @pyreon/server@0.34.0
+  - @pyreon/vite-plugin@0.34.0
+  - @pyreon/meta@0.34.0
+
 ## 0.33.0
 
 ### Patch Changes

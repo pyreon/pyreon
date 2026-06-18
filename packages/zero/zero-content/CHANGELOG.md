@@ -1,5 +1,36 @@
 # @pyreon/zero-content
 
+## 0.34.0
+
+### Minor Changes
+
+- [#1585](https://github.com/pyreon/pyreon/pull/1585) [`dcf3f96`](https://github.com/pyreon/pyreon/commit/dcf3f968daf7335db5b893d1672f458901516d5b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Search now shows an empty state when a query finds nothing.
+
+  Previously a no-match query rendered an empty list (the overlay just looked
+  blank). `<Search>` now renders a `.pyreon-search__empty` message — defaulting to
+  `No results for "<query>"`, customizable via the new `noResultsText?: (query) => string`
+  prop. `useSearch` exposes a `status` signal (`idle` | `searching` | `ready`); the
+  empty state shows ONLY after a search actually completes (`ready`), so it never
+  flashes during the debounce / index-load window for a query that will match.
+
+### Patch Changes
+
+- [#1621](https://github.com/pyreon/pyreon/pull/1621) [`c2429aa`](https://github.com/pyreon/pyreon/commit/c2429aa7563cee55ad1f9fc3ea9e629849886bc2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix the search-index emission during `@pyreon/zero`'s inner SSG server build.
+  That inner build is also `command: 'build'`, so it slipped past the dev-mode
+  gate and re-emitted the index — and because it sets `build.outDir` to an
+  absolute path, `path.join(root, build.outDir)` concatenated it onto `root`,
+  writing the index to a doubled `<root>/<root>/dist/.zero-ssg-server/…` path.
+  The `closeBundle` hook now skips when `PYREON_ZERO_SSG_INNER_BUILD` is set (the
+  outer client build already owns the index) and uses `path.resolve` so an
+  absolute `build.outDir` can never double.
+- Updated dependencies [[`c0814b7`](https://github.com/pyreon/pyreon/commit/c0814b7881b01b7bfed19dffd7f48a3269c14199), [`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65)]:
+  - @pyreon/runtime-dom@0.34.0
+  - @pyreon/reactivity@0.34.0
+  - @pyreon/head@0.34.0
+  - @pyreon/core@0.34.0
+  - @pyreon/router@0.34.0
+  - @pyreon/zero@0.34.0
+
 ## 0.33.0
 
 ### Minor Changes

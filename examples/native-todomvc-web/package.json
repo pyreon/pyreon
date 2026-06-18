@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-todomvc-web",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — PMTC TodoMVC reference rendered on WEB via @pyreon/primitives runtime. Sibling of native-todomvc-ios (SwiftUI) + native-todomvc-android (Compose). Phase D of the PMTC multiplatform story — proves the canonical primitive vocabulary renders on web end-to-end.",
   "license": "MIT",

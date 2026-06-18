@@ -1,5 +1,281 @@
 # @pyreon/compiler
 
+## 0.34.0
+
+### Patch Changes
+
+- [#1592](https://github.com/pyreon/pyreon/pull/1592) [`c0814b7`](https://github.com/pyreon/pyreon/commit/c0814b7881b01b7bfed19dffd7f48a3269c14199) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix reactive `class` and `style` bindings in the compiled template fast path.
+
+  The template setter assigned the raw value to `className` / `style.cssText`, so several documented forms were silently broken — only correct through the slower `h()`/`applyProp` path:
+
+  - `class={['a', cond() && 'b']}` rendered `class="a,b"` (comma-joined) instead of `"a b"` — the array was never passed through `cx()`.
+  - `class={{ active: a() }}` rendered `class="[object Object]"`.
+  - `style={() => ({ color: theme() })}` (the form the docs use) emitted `style.cssText = <object>` → `"[object Object]"` → **no inline styles at all**.
+  - `style={{ color: theme() }}` applied once via a one-shot `Object.assign` and never updated on signal change; object styles also skipped number→px and stale-key removal.
+
+  The compiled paths now match the runtime `applyProp` value-normalization exactly:
+
+  - **class** → `typeof v === "string" ? v : _cx(v)` (string passthrough; array/object → `cx`). The injected `cx` import is aliased (`import { cx as _cx }`) so it can't collide with a hand-written component that already imports the public `cx`.
+  - **style** → delegates to a new `_setStyle` runtime helper (`@pyreon/runtime-dom`, = `applyStyleProp`): string → `cssText`; object → per-property `setProperty` with kebab-casing, number→px, and stale-key removal; dynamic bindings wrapped in a reactive `_bind`.
+
+  Fixed byte-identically in both backends (JS + Rust native; locked by the cross-backend equivalence suite) and verified end-to-end with runtime DOM mount specs + a real docs-site build. String class/style emit is behaviourally unchanged. Bisect-verified.
+
+- [#1606](https://github.com/pyreon/pyreon/pull/1606) [`f69da36`](https://github.com/pyreon/pyreon/commit/f69da36344b8d7edfd0f530d578a0285e85d7ec5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Rust native backend now implements the DYNAMIC-prop rocketstyle-collapse
+  variants (`__rsCollapseDyn` + the handler-combined `__rsCollapseDynH`) —
+  byte-for-byte identical to the JS backend. PR 3/N of pairing collapse to Rust
+  (builds on the full + on\*-handler-partial foundations).
+
+  `detect_dynamic_collapsible_shape` composes TWO relaxations onto the full bail
+  catalogue: an `on[A-Z]…` handler is peeled, AND exactly ONE prop whose value is
+  a ternary of two string literals (`state={cond ? 'a' : 'b'}`) is captured as a
+  DynamicCollapsibleProp. Two+ ternaries bail (2^N axis blow-up is a separable
+  scope); zero ternaries defer to the other detectors. The emit expands the ternary
+  into truthy + falsy resolver lookups, requires matching templateHtml (one `_tpl`
+  reused across both values), builds the stride-2 value-major class array
+  `[v0_light, v0_dark, v1_light, v1_dark]`, and emits `__rsCollapseDyn(html,
+classes, () => (cond) ? 0 : 1, () => __pyrMode() === "dark")` — or the
+  handler-combined `__rsCollapseDynH(…, handlerObj)`. Unions BOTH values' rule
+  bundles (dedup by ruleKey). The dynamic paths set ONLY their own import flag
+  (not needs_collapse), so the preamble gate widened to
+  `needs_collapse || needs_collapse_dyn || needs_collapse_dyn_h` (matching JS).
+
+  The JS force-route still routes collapse to JS until all variants land
+  (element-child remains, then the force-route removal + vite-plugin native
+  wiring). Verified: 11 cross-backend equivalence fixtures (no-handler / +handler /
+  +extra-prop / brace-wrapped / complex-cond / multi-handler / half-resolved bail /
+  template-mismatch bail / two-ternaries bail / non-literal-branch bail / rule
+  dedup), all JS≡Rust; full compiler suite 1553/1553. Bisect-verified: disabling
+  the dynamic fallthrough diverges 7 fixtures; restored → 324/324.
+
+- [#1606](https://github.com/pyreon/pyreon/pull/1606) [`f69da36`](https://github.com/pyreon/pyreon/commit/f69da36344b8d7edfd0f530d578a0285e85d7ec5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Rust native backend now implements the ELEMENT-CHILD rocketstyle-collapse
+  variant — byte-for-byte identical to the JS backend. PR 4/N of pairing collapse
+  to Rust; this completes the compiler-side port of ALL four collapse variants
+  (full / on\*-handler-partial / dynamic-prop / element-child).
+
+  Element-child reuses the UNCHANGED `__rsCollapse` emit (NO new runtime helper):
+  the resolver SSR-renders the REAL component WITH its child subtree and bakes the
+  full output HTML, so the cloned `_tpl` template already contains the children.
+  What's new in the compiler is the detection + keying:
+
+  - detect_static_element_child: a recursively-static DOM-child validator —
+    lowercase tag, string-literal attrs only (no spread/boolean/{expr}/on\*), and
+    children that are static text or recursively-static elements.
+  - collect_static_children: text normalized via the SHARED clean_jsx_text (so a
+    resolver reconstruction renders byte-identically); expression/fragment/spread
+    children bail.
+  - serialize_static_children: deterministic C0-delimited serialization (mirror of
+    the JS serializer; delimiters built from byte values so the SOURCE carries no
+    raw control byte and no \u escape). Fed to the collapse key as childrenText so
+    distinct subtrees get distinct keys (never colliding with a text-only key).
+  - detect_element_child_collapsible_shape requires ≥1 element child (text-only is
+    the FULL-collapse shape); try_element_child_collapse emits the keyed \_\_rsCollapse.
+  - Orchestrator fall-through is now full → partial → dynamic → element-child.
+
+  The JS force-route still routes collapse to JS — the remaining work is the
+  force-route removal + the vite-plugin native config wiring (the live-enabling PR).
+  Verified: 11 cross-backend equivalence fixtures (single / mixed-text+element /
+  recursive-nesting / multi-prop / brace-wrapped / text-only→full / component-child
+  bail / handler-child bail / expr-child bail / unresolved / dynamic-root bail), all
+  JS≡Rust; full compiler suite 1564/1564. Bisect-verified: disabling the
+  element-child fallthrough diverges 5 fixtures; restored → 335/335.
+
+- [#1606](https://github.com/pyreon/pyreon/pull/1606) [`f69da36`](https://github.com/pyreon/pyreon/commit/f69da36344b8d7edfd0f530d578a0285e85d7ec5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Rust native backend now implements the FULL rocketstyle-collapse emission
+  (`__rsCollapse`) — byte-for-byte identical to the JS backend. This is the
+  foundation of pairing the collapse feature (previously JS-path-only) to Rust.
+
+  Adds the resolved-collapse config across the napi boundary (a new optional 6th
+  `transform_jsx` arg — `CollapseConfig` { candidates, sites, mode, … }; existing
+  5-arg calls are unaffected), the FNV-1a collapse-key (UTF-16 code-unit hash,
+  matching JS `charCodeAt`), the full-shape detector (string-literal props +
+  text-only children), the `__rsCollapse` emit (with brace-wrap when the parent
+  is JSX), and the imports + idempotent `injectRules` prologue.
+
+  The JS `transformJSX` dispatcher still force-routes collapse to the JS backend
+  (a file goes wholesale to one backend, so the route can only flip once ALL
+  variants are ported); the remaining variants (partial `__rsCollapseH`, dynamic
+  `__rsCollapseDyn`/`DynH`, element-child) + the force-route removal + the
+  vite-plugin native wiring are follow-on PRs.
+
+  Verified: a Rust FNV-key unit test against the JS oracle, + 8 cross-backend
+  equivalence fixtures (top-level / fragment-child brace-wrap / multi-prop /
+  unresolved / non-candidate / dynamic-prop bail / ruleKey dedup / JSON-escape),
+  all JS≡Rust. Full compiler suite 1523/1523. Bisect-verified (disabling the
+  collapse hook diverges 5 fixtures; restored → green).
+
+- [#1606](https://github.com/pyreon/pyreon/pull/1606) [`f69da36`](https://github.com/pyreon/pyreon/commit/f69da36344b8d7edfd0f530d578a0285e85d7ec5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Rocketstyle-collapse now RUNS on the Rust backend in production (PR 5/N — the
+  live-enabling step that completes the port). The JS `transformJSX` dispatcher no
+  longer force-routes collapse builds to the JS path; it lowers the
+  `collapseRocketstyle` config from its `Set`/`Map` shape to the napi array/Record
+  shape (`toNativeCollapse`) and threads it as `transformJsx`'s 6th arg. The native
+  backend implements all four collapse variants byte-identically (locked by the
+  cross-backend equivalence suite), so a collapse build now gets the native
+  backend's 3.7-8.x× transform speed instead of falling back to JS.
+
+  Output is unchanged (the feature is opt-in via `pyreon({ collapse: true })` and
+  the emit is byte-for-byte identical across backends) — only the backend that
+  produces it changes. The JS path remains the graceful fallback when the native
+  binary is unavailable (it still reads the `Set`/`Map` config directly).
+
+  Verified: full compiler suite 1571/1571; the `verify-modes ui-showcase × spa`
+  collapse cell (real `vite build`, `pyreon({ collapse: true })`) builds the
+  rs-collapse / dyn / elem probes through the native backend and the
+  collapse-exclusive fingerprints hold. Bisect-verified: feeding native empty
+  `candidates` makes the cell fail with the raw (non-collapsed) Button mount,
+  proving the native+config path is what drives the real-build collapse; restored
+  → green.
+
+- [#1606](https://github.com/pyreon/pyreon/pull/1606) [`f69da36`](https://github.com/pyreon/pyreon/commit/f69da36344b8d7edfd0f530d578a0285e85d7ec5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Rust native backend now implements the on\*-handler PARTIAL rocketstyle-collapse
+  variant (`__rsCollapseH`) — byte-for-byte identical to the JS backend. PR 2/N of
+  pairing collapse to Rust (builds on the full-variant foundation).
+
+  `detect_partial_collapsible_shape` is the EXACT full bail catalogue with ONE
+  relaxation: an `on[A-Z]…` handler in a `{expr}` container is PEELED into the
+  handler list (an event binding never changes the SSR-resolved styler class) while
+  the literal-prop subset still feeds the UNCHANGED collapse key. The orchestrator
+  falls through to the partial path only when the full shape is absent (a full shape
+  with an unresolved key bails outright — it can never be a partial site). Emits
+  `__rsCollapseH(html, light, dark, () => __pyrMode() === "dark", { "onClick":
+(<sliced expr>), … })`, brace-wrapped as a JSX child; each handler expression is
+  re-emitted verbatim from its source span (paren-wrapped). Sets both
+  needs_collapse + needs_collapse_h (matching JS — a partial-only module imports
+  both helpers; the unused one tree-shakes out).
+
+  The JS force-route still routes collapse to JS until all variants land (dynamic +
+  element-child remain). Verified: 8 cross-backend equivalence fixtures
+  (top-level / brace-wrapped / multi-handler+multi-prop / comma-sequence body /
+  handler-only / unresolved / non-handler-{expr} bail / zero-handlers→full), all
+  JS≡Rust; full compiler suite 1542/1542. Bisect-verified: disabling the partial
+  fallthrough diverges 5 fixtures; restored → 313/313.
+
+- [#1600](https://github.com/pyreon/pyreon/pull/1600) [`ec41abf`](https://github.com/pyreon/pyreon/commit/ec41abf8c6aaf8dbf442fb6c8e194ab607238e77) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Element-conditional children now keep the `_tpl` cloneNode fast path.
+
+  A DOM element wrapping an inline element-conditional —
+  `<div class="card">{() => open() ? <Panel/> : <Empty/>}</div>`,
+  `<section>{n() > 0 && <List/>}</section>`, or a `.map(x => <li/>)` child —
+  previously bailed the whole wrapper to the jsx runtime (`h()`/`jsx()`).
+
+  The compiler now templatizes the wrapper (`_tpl("<div class=\"card\"><!></div>", …)`)
+  and routes the conditional child through `_mountSlot` + a `<!>` placeholder —
+  the same path `.map`-returning children and element-valued-`const` children
+  already take. The conditional child's own reactive boundary (`mountReactive`)
+  is unchanged, so behaviour is identical; only the wrapper gains the cloneNode
+  fast path. Inner JSX inside the conditional stays raw (compiled downstream by
+  esbuild to `h()`), consistent with how all expression-nested JSX is handled.
+
+  A DIRECT static JSX child (`<div>{<span/>}</div>`) is unaffected — it keeps its
+  static-hoist path. Fixed byte-identically in both backends (JS + Rust native;
+  locked by the cross-backend equivalence suite), with end-to-end runtime specs
+  (reactive swap + disposal) in `@pyreon/runtime-dom`.
+
+- [#1604](https://github.com/pyreon/pyreon/pull/1604) [`10bdb4a`](https://github.com/pyreon/pyreon/commit/10bdb4a449151a70ae2d1ffc1bf4a30f303c5bf0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a cross-backend escaping divergence: the Rust native backend left a bare
+  numeric "entity" like `&123;` (digits with no `#`) unescaped in static text,
+  while the JS backend correctly escaped the `&` to `&amp;` (per the HTML
+  char-ref grammar — `&123;` is not a valid reference). The two backends now
+  agree: `escape_html_text` recognizes a valid char-ref only as `#<dec>`,
+  `#x<hex>`, or `<letter><word*>` — matching the JS `escapeHtmlText` regex
+  exactly. Locked by 11 new cross-backend equivalence fixtures covering the
+  entity edge cases; bisect-verified (the fixtures diverge on the pre-fix Rust).
+
+- [#1619](https://github.com/pyreon/pyreon/pull/1619) [`9335e1f`](https://github.com/pyreon/pyreon/commit/9335e1fe75df850ffa6434d3a8f956c4c3e46646) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a JS↔Rust compiler parity gap: a prop-derived const read inside an inline
+  event-handler / accessor function body was captured (stale) on the Rust native
+  backend instead of inlined to the live prop source.
+
+  `const a = props.x; <button onClick={() => send(a)}>` emitted `send(a)` on the
+  native path (a captured at component setup — STALE) instead of `send((props.x))`
+  (re-reads the live prop on each invocation). Because the dispatcher prefers the
+  native backend, production apps shipped the stale-capture form — a real
+  reactivity bug against the documented "const-from-props in JSX is reactive"
+  contract. The JS backend already inlined correctly.
+
+  Root cause: `accesses_props` returned `false` for ANY arrow/function, so the
+  `slice_expr` gate never ran the inliner on a handler binding. The inliner
+  (`collect_prop_derived_idents`) already matched JS once it ran. Added a
+  gate-only `fn_body_accesses_props` that descends ONE level into a
+  binding-function's body, mirroring JS `accessesProps`'s child-skip asymmetry:
+  the body is descended, but NESTED functions stay skipped — so a function
+  appearing as a CHILD (`foo(() => send(a))`) stays raw, exactly as JS. The
+  `Arrow|Function => false` arm of `accesses_props` is unchanged.
+
+  Bisect-verified (neutralizing the gate addition fails exactly the 4 "should
+  inline" fixtures while the 5 "stays raw" fixtures keep passing; restored → all
+  pass). Full compiler suite 1588/1588, 3 differential sweeps (108 shapes)
+  0 divergences, typecheck clean, no cargo warnings.
+
+  KNOWN remaining (documented, not a regression — both pre-date this change): a
+  prop-derived const referenced inside a SEPARATELY-DECLARED named handler
+  (`const f = () => send(a); onClick={f}`) or called via a local function in a JSX
+  expression (`const f = () => i; {f()}`) still captures on the native path. JS
+  inlines these by registering the function-valued const as prop-derived and
+  either inlining its value at the binding (`{f}`) or rewriting its declaration
+  (`{f()}`) — a coupled, larger feature (function-const registration with shadow
+  filtering + a component-body statement-rewriting pass the native backend does
+  not yet have). Scoped as a follow-up; the common inline-handler form ships here.
+
+- [#1622](https://github.com/pyreon/pyreon/pull/1622) [`3ad3247`](https://github.com/pyreon/pyreon/commit/3ad32475b881b19792c010872fc31024b71b7acb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close the two remaining JS↔Rust compiler parity gaps for prop-derived consts
+  read inside SEPARATELY-DECLARED functions on the Rust native backend (the
+  inline-handler form was fixed separately). The native backend captured (stale)
+  where the JS backend inlined to the live prop source — and since the dispatcher
+  prefers native, production apps shipped the stale form, a reactivity bug against
+  the documented "const-from-props in JSX is reactive" contract.
+
+  1. **Named handler / accessor reference** — `const f = () => send(a); onClick={f}`
+     emitted `__ev_click = f` (closing over the stale captured `a`) instead of
+     inlining `(() => send((props.x)))`. Root cause: `references_prop_derived` /
+     `reads_from_props` had `_ => false` arms for arrow/function inits, so a
+     function-valued const whose body read a prop-derived var (or props directly)
+     never registered as prop-derived. Fix: a generic membership-only body walk
+     (`fn_body_any_expr` + `stmt_any_expr`) in both registration helpers — matching
+     JS, which descends into function bodies via `forEachChildFast` with NO shadow
+     filter and NO nested-function skip (the precise shadow-aware substitution is
+     the inliner's job).
+
+  2. **Local function called in a JSX expression** — `const f = () => i; {f()}`
+     emitted `_bindText(f, node)` (binding the stale `f`) instead of
+     `_bindText((() => (props.start)), node)`. The `{f()}` nullary-call fast path
+     (`try_direct_signal_ref`) raw-sliced the callee to avoid auto-calling signals;
+     for a prop-derived `f` it now resolves the callee via `slice_expr` (inlines the
+     value, no auto-call since `f` is not a signal).
+
+  Edges verified byte-identical: a function reading props directly
+  (`const f = () => props.x`) registers + inlines; a function locally shadowing a
+  prop-derived name is over-registered exactly like JS (the inliner then leaves the
+  shadowed name alone); a function reading neither stays a raw `f` reference.
+
+  Verification: bisect-verified (neutralizing the registration + nullary-call
+  changes fails exactly the 7 "should inline" fixtures while the "stays raw" fixture
+  keeps passing; restored → all pass). Full compiler suite 1596/1596; a 370-check
+  differential audit across ~18 syntactic categories × CSR + SSR + reactivity-lens
+  span parity, plus 108 differential-sweep shapes — 0 divergences of any kind.
+  typecheck clean, no cargo warnings. With this, there are NO known remaining
+  JS↔Rust prop-derived parity gaps.
+
+- [#1616](https://github.com/pyreon/pyreon/pull/1616) [`a9788cd`](https://github.com/pyreon/pyreon/commit/a9788cdfbebee4ea7468356c3fcea31a6857f11b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix three JS↔Rust compiler parity gaps in the Rust native backend's
+  prop-derived / component-body handling (all surfaced by differential testing,
+  each bisect-verified + locked with cross-backend equivalence fixtures):
+
+  1. **Transitive prop-derived inlining** in arrow / function-expression
+     components. `const a = props.x; const b = a + 1; return <div>{b}</div>` emitted
+     `(a + 1)` on the native path (a captured, reactivity LOST) instead of
+     `((props.x) + 1)`. Root cause: `find_init_expression_by_span` never descended
+     into the component's arrow/function-expression body, so the recursive resolver
+     fell back to raw source. Added `find_init_in_expression` descent.
+     (Function-DECLARATION components masked it — their body was already descended.)
+
+  2. **Function-EXPRESSION components** (`const C = function (props) { … }`) had
+     their props baked STATIC (the walk arm deliberately skipped props registration)
+     — now registered reactive like arrow + function-declaration components.
+
+  3. **Default-exported arrow components** (`export default (props) => { … }`) hit
+     the same transitive gap — the `ExportDefaultDeclaration` span-lookup arm only
+     descended into `FunctionDeclaration`; now descends into a default-exported
+     arrow/function expression too.
+
+  Output is now byte-identical to the JS backend across all component-definition
+  shapes (const-arrow, export-const-arrow, function-expression, function-declaration,
+  export-default-arrow, export-default-function). Verified by new cross-backend
+  fixtures + ~110 differential-sweep shapes (0 divergences) + full compiler suite
+  1579/1579.
+
 ## 0.33.0
 
 ## 0.32.0
