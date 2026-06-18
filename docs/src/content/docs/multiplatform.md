@@ -603,6 +603,7 @@ every warning; treat any warning as "this construct is outside v1."
 | Shape | Notes |
 |---|---|
 | literals, identifiers, calls, member access | |
+| string / array methods → native idioms | `map` / `filter` / `find` / `findIndex` / `some` / `every` / `reduce` / `sort` / `includes` / `indexOf` / `join` / `concat` / `flatMap` (arrays) and `startsWith` / `endsWith` / `split` / `repeat` / `trim` / `toUpperCase` / `toLowerCase` (strings) lower to the platform idiom — e.g. `join`→`joined(separator:)` / `joinToString`, `findIndex`→`(firstIndex(where:) ?? -1)` / `indexOfFirst` (JS `-1`-sentinel preserved), `split`→`components(separatedBy:)` / native split. `slice` / `replace` / `Number()` are NOT yet lowered (type-ambiguity / first-vs-all / coercion subtleties — tracked). |
 | `xs[i]` index access | arrays/lists; element-typed inference |
 | `+ - * / %`, comparisons, `&& \|\|`, `!`, ternary | `===`/`!==` coalesce to native `==`/`!=` |
 | `x++` / `x--` | value-position degrades to `x + 1` (side effect dropped — warning); statement-position composes via `.update` |
@@ -614,7 +615,7 @@ every warning; treat any warning as "this construct is outside v1."
 **Types**
 | Shape | Notes |
 |---|---|
-| `string` / `number` / `boolean`, arrays, `T \| null` | number → Int (no float distinction in v1) |
+| `string` / `number` / `boolean`, arrays, `T \| null` | **`number` infers `Int` OR `Double`** from literal evidence: a fractional literal (`12.5`) → `Double`, integer literals stay `Int`. Applies to scalars (`signal(12.5)` / `signal<number>(12.5)`), struct fields, array elements (`signal([12.5, 8.3])` → `[Double]`), and `reduce` seeds (a Double accumulation flips the seed to `0.0`). Whole-number elements in a Double array render `15.0` so `[Double]` / `List<Double>` stays homogeneous. |
 | `type X = {...}` / interfaces | become Codable structs / @Serializable data classes |
 | string-literal unions | become native enums |
 | anonymous object types in props | synthesize named structs (`UserPage`+`params` → `UserPageParam`); declared structs win on structural match |
