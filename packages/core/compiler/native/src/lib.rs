@@ -17,6 +17,43 @@ pub struct CompilerWarning {
     pub code: String,
 }
 
+/// Resolved emission data for ONE collapsible rocketstyle call site — the
+/// Rust mirror of the JS `collapseRocketstyle.sites` value (jsx.ts). The
+/// Vite plugin's nested-SSR resolver produces these; the compiler looks
+/// them up by the canonical FNV key. napi maps the camelCase JS fields
+/// (`templateHtml` / `lightClass` / `darkClass` / `ruleKey`) onto these
+/// snake_case fields.
+#[napi(object)]
+pub struct CollapseSite {
+    pub template_html: String,
+    pub light_class: String,
+    pub dark_class: String,
+    pub rules: Vec<String>,
+    pub rule_key: String,
+}
+
+/// Live mode-accessor import to thread for the dual-emit (`() => __pyrMode()
+/// === "dark"`). Mirrors `collapseRocketstyle.mode` (`{ name, source }`).
+#[napi(object)]
+pub struct CollapseMode {
+    pub name: String,
+    pub source: String,
+}
+
+/// Rocketstyle-collapse config threaded across the napi boundary — the Rust
+/// mirror of the JS `TransformOptions.collapseRocketstyle`. The JS side's
+/// `candidates: Set` / `sites: Map` are passed as a plain `string[]` /
+/// `Record<string, CollapseSite>` (napi has no Set/Map mapping), which the
+/// caller converts. Absent ⇒ collapse is off (the normal mount is kept).
+#[napi(object)]
+pub struct CollapseConfig {
+    pub candidates: Vec<String>,
+    pub sites: std::collections::HashMap<String, CollapseSite>,
+    pub mode: CollapseMode,
+    pub runtime_dom_source: Option<String>,
+    pub styler_source: Option<String>,
+}
+
 /// Reactivity-lens span — the Rust mirror of `ReactivitySpan` in
 /// `src/jsx.ts`. Each is a faithful RECORD of a codegen decision the
 /// compiler already made (never an approximation). Populated ONLY when
@@ -219,6 +256,51 @@ fn is_valid_entity(e: &str) -> bool {
     b[0].is_ascii_alphabetic() && e.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
+/// Base-36 of a u32 using 0-9a-z (matches JS `(n >>> 0).toString(36)`).
+fn to_base36(mut n: u32) -> String {
+    if n == 0 {
+        return "0".to_string();
+    }
+    const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut buf = Vec::new();
+    while n > 0 {
+        buf.push(DIGITS[(n % 36) as usize]);
+        n /= 36;
+    }
+    buf.reverse();
+    // SAFETY: DIGITS are all ASCII.
+    String::from_utf8(buf).unwrap()
+}
+
+/// Canonical key for a collapsible rocketstyle call site — byte-for-byte
+/// identical to the JS `rocketstyleCollapseKey` (jsx.ts). The Vite plugin
+/// computes this when it resolves a site; both compiler backends recompute
+/// the IDENTICAL key from the JSX node to look the resolution up.
+///
+/// `props` is iterated in SORTED key order (BTreeMap) — matching JS
+/// `Object.keys(props).sort()` for the ASCII prop names rocketstyle uses.
+/// The FNV-1a hash iterates UTF-16 code units (`encode_utf16`) so it matches
+/// JS `charCodeAt` exactly, including for non-BMP input. Delimiters: `\u{0001}`
+/// between `k=v` pairs, `\u{0000}` between component/props/children segments.
+fn rocketstyle_collapse_key(
+    component: &str,
+    props: &std::collections::BTreeMap<String, String>,
+    children_text: &str,
+) -> String {
+    let prop_str = props
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join("\u{0001}");
+    let src = format!("{}\u{0000}{}\u{0000}{}", component, prop_str, children_text);
+    let mut h: u32 = 2166136261;
+    for unit in src.encode_utf16() {
+        h ^= unit as u32;
+        h = h.wrapping_mul(16777619);
+    }
+    to_base36(h)
+}
+
 fn escape_html_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.char_indices().peekable();
@@ -414,13 +496,49 @@ struct Ctx<'a> {
     /// the existing `replacements`/`hoists` pushes — never a second pass.
     collect_lens: bool,
     reactivity_lens: Vec<ReactivitySpan>,
+
+    /// Rocketstyle-collapse config (the napi `collapse` arg). None ⇒ collapse
+    /// off (normal mount kept). Mirrors `options.collapseRocketstyle` in JS.
+    collapse: Option<CollapseConfig>,
+    /// Set once a full-collapse `__rsCollapse(...)` is emitted — gates the
+    /// `_rsCollapse` / `sheet` / mode imports + the injectRules prologue.
+    /// (The on*-handler partial path ALSO sets this — matching the JS
+    /// `tryPartialCollapse`, which sets BOTH `needsCollapse` and
+    /// `needsCollapseH` — so a partial-only module imports both helpers.)
+    needs_collapse: bool,
+    /// Set once an on*-handler partial `__rsCollapseH(...)` is emitted — gates
+    /// the `_rsCollapseH as __rsCollapseH` import.
+    needs_collapse_h: bool,
+    /// Set once a dynamic-prop `__rsCollapseDyn(...)` (no handlers) is emitted.
+    needs_collapse_dyn: bool,
+    /// Set once a handler-combined dynamic `__rsCollapseDynH(...)` is emitted.
+    /// (Unlike the on*-handler partial path, the dynamic paths do NOT set
+    /// needs_collapse — they import only their own helper, matching JS — so the
+    /// preamble gate is `needs_collapse || needs_collapse_dyn || needs_collapse_dyn_h`.)
+    needs_collapse_dyn_h: bool,
+    /// Distinct collapse rule bundles, injected once each (deduped by ruleKey).
+    collapse_rule_keys: FxHashSet<String>,
+    collapse_rules: Vec<(String, Vec<String>)>,
 }
 
 impl<'a> Ctx<'a> {
-    fn new(source: &'a str, program: &'a Program<'a>, ssr: bool, collect_lens: bool) -> Self {
+    fn new(
+        source: &'a str,
+        program: &'a Program<'a>,
+        ssr: bool,
+        collect_lens: bool,
+        collapse: Option<CollapseConfig>,
+    ) -> Self {
         Ctx {
             source,
             program,
+            collapse,
+            needs_collapse: false,
+            needs_collapse_h: false,
+            needs_collapse_dyn: false,
+            needs_collapse_dyn_h: false,
+            collapse_rule_keys: FxHashSet::default(),
+            collapse_rules: Vec::new(),
             line_index: LineIndex::new(source),
             ssr,
             replacements: Vec::new(),
@@ -586,6 +704,15 @@ impl<'a> Ctx<'a> {
                 core_imports.join(", "),
                 result
             );
+        }
+
+        // Collapse imports + injectRules prologue — prepended LAST so they land
+        // at the very top of the module (matches the JS build_result ordering).
+        // Gate mirrors JS: `needsCollapse || needsCollapseDyn || needsCollapseDynH`
+        // (the on*-handler partial path always co-sets needs_collapse, so it
+        // doesn't need its own term; the dynamic paths set only their own flag).
+        if self.needs_collapse || self.needs_collapse_dyn || self.needs_collapse_dyn_h {
+            result = self.collapse_preamble() + &result;
         }
 
         TransformResult {
@@ -2545,6 +2672,7 @@ pub fn transform_jsx(
     ssr: bool,
     known_signals: Option<Vec<String>>,
     reactivity_lens: Option<bool>,
+    collapse: Option<CollapseConfig>,
 ) -> TransformResult {
     let source_type = SourceType::from_path(&filename)
         .unwrap_or_default()
@@ -2566,7 +2694,7 @@ pub fn transform_jsx(
     }
 
     let collect_lens = reactivity_lens == Some(true);
-    let mut ctx = Ctx::new(&code, &ret.program, ssr, collect_lens);
+    let mut ctx = Ctx::new(&code, &ret.program, ssr, collect_lens, collapse);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -3041,6 +3169,14 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
 // ─── JSX element handling ────────────────────────────────────────────────────
 
 fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
+    // Rocketstyle-collapse: a candidate component with a resolved site collapses
+    // to a single `__rsCollapse` cloneNode — children are baked into the SSR-
+    // resolved template, so do NOT recurse into the subtree. Mirrors the JS
+    // walk's `if (tryRocketstyleCollapse(node)) return` at the JSXElement head.
+    if try_rocketstyle_collapse(el, ctx) {
+        return;
+    }
+
     // Try template emit (non-self-closing only)
     if !is_self_closing(el) && try_template_emit(el, ctx) {
         return;
@@ -4799,5 +4935,802 @@ fn references_prop_derived(expr: &Expression, prop_derived: &FxHashMap<String, S
             ChainElement::TSNonNullExpression(e) => references_prop_derived(&e.expression, prop_derived),
         },
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod collapse_key_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn m(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    // Oracle values computed from the JS `rocketstyleCollapseKey` (jsx.ts).
+    // Any drift here means the Rust key would miss the resolver's site map.
+    #[test]
+    fn collapse_key_matches_js_oracle() {
+        assert_eq!(rocketstyle_collapse_key("Button", &m(&[("state", "primary")]), "Save"), "r7ykck");
+        assert_eq!(
+            rocketstyle_collapse_key("Button", &m(&[("state", "primary"), ("size", "medium")]), "Save"),
+            "1wvmzhu"
+        );
+        assert_eq!(rocketstyle_collapse_key("Card", &m(&[]), ""), "mzrimv");
+        assert_eq!(
+            rocketstyle_collapse_key("Box", &m(&[("variant", "a"), ("size", "b"), ("state", "c")]), "Hello World"),
+            "1d6hb86"
+        );
+        // Non-ASCII (BMP) children — exercises the UTF-16 code-unit iteration.
+        // "\u{FC}n\u{EF}c\u{F8}d\u{E9}" == "ünïcødé"
+        assert_eq!(
+            rocketstyle_collapse_key("X", &m(&[("data-x", "1")]), "\u{FC}n\u{EF}c\u{F8}d\u{E9}"),
+            "15lz0gt"
+        );
+    }
+}
+
+/// JSON.stringify-equivalent for a string (quotes + escapes control chars the
+/// same way JS does) — so the Rust collapse emit is byte-identical to the JS
+/// `__rsCollapse(${JSON.stringify(...)}, ...)`.
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        let code = c as u32;
+        if c == '"' {
+            out.push('\\');
+            out.push('"');
+        } else if c == '\\' {
+            out.push('\\');
+            out.push('\\');
+        } else if code == 0x08 {
+            out.push_str("\\b");
+        } else if code == 0x09 {
+            out.push_str("\\t");
+        } else if code == 0x0A {
+            out.push_str("\\n");
+        } else if code == 0x0C {
+            out.push_str("\\f");
+        } else if code == 0x0D {
+            out.push_str("\\r");
+        } else if code < 0x20 {
+            out.push_str(&format!("\\u{:04x}", code));
+        } else {
+            out.push(c);
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// FULL-collapse shape detector — byte-for-byte the JS `detectCollapsibleShape`
+/// bail catalogue: every attribute a string-literal (no spread, no `{expr}`, no
+/// boolean attr), children text-only. Returns sorted props + trimmed text, or
+/// None (bail → fallthrough / normal mount).
+fn detect_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(std::collections::BTreeMap<String, String>, String)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None, // namespaced → bail
+                };
+                let v = a.value.as_ref()?; // boolean attr (no value) → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    _ => return None, // {expr} / dynamic → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None, // spread → bail
+        }
+    }
+    let mut children_text = String::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => children_text.push_str(t.value.as_str()),
+            _ => return None, // element / expression child → bail
+        }
+    }
+    Some((props, children_text.trim().to_string()))
+}
+
+/// FULL rocketstyle-collapse — mirror of the JS `tryRocketstyleCollapse`. A
+/// candidate component with an all-string-literal-prop, text-only-child shape
+/// whose resolver key is present emits `__rsCollapse(html, light, dark,
+/// () => __pyrMode() === "dark")` (brace-wrapped when rendered as a JSX child).
+/// PR-1 scope: full collapse only — a non-full shape keeps the normal mount
+/// (the partial / dynamic / element-child fallthrough is a follow-on PR).
+fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
+    if ctx.collapse.is_none() {
+        return false;
+    }
+    let tag = jsx_tag_name(el);
+    if tag.is_empty() || is_lower_case(tag) {
+        return false;
+    }
+    let parent_is_jsx = ctx.parent_is_jsx;
+    // Candidate gate (shared by full + partial), then full-shape detect. A full
+    // shape with an UNRESOLVED key bails outright (a full site has no handlers,
+    // so it can never be a partial site); only an ABSENT full shape falls
+    // through to the on*-handler partial path — mirroring the JS fallthrough
+    // chain `detectCollapsibleShape ? <full> : tryPartialCollapse(...)`.
+    let full = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        if !cfg.candidates.iter().any(|c| c.as_str() == tag) {
+            return false;
+        }
+        match detect_collapsible_shape(el) {
+            Some((props, children_text)) => {
+                let key = rocketstyle_collapse_key(tag, &props, &children_text);
+                match cfg.sites.get(&key) {
+                    Some(site) => {
+                        let call = format!(
+                            "__rsCollapse({}, {}, {}, () => __pyrMode() === \"dark\")",
+                            json_string(&site.template_html),
+                            json_string(&site.light_class),
+                            json_string(&site.dark_class),
+                        );
+                        let text = if parent_is_jsx {
+                            format!("{{{}}}", call)
+                        } else {
+                            call
+                        };
+                        Some((text, site.rule_key.clone(), site.rules.clone()))
+                    }
+                    None => return false, // full shape, unresolved → bail (never partial)
+                }
+            }
+            None => None, // no full shape → try the on*-handler partial path below
+        }
+    };
+    if let Some((text, rule_key, rules)) = full {
+        let span = el.span();
+        ctx.replacements.push(Replacement {
+            start: span.start,
+            end: span.end,
+            text,
+        });
+        ctx.needs_collapse = true;
+        if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+            ctx.collapse_rules.push((rule_key, rules));
+        }
+        return true;
+    }
+    // Fall-through chain (mirrors the JS `tryPartialCollapse || tryDynamicCollapse
+    // || tryElementChildCollapse`): on*-handler partial → dynamic-prop ternary →
+    // recursively-static element children. `||` short-circuits so each later
+    // &mut ctx borrow only happens when the earlier path bailed.
+    try_partial_collapse(el, tag, parent_is_jsx, ctx)
+        || try_dynamic_collapse(el, tag, parent_is_jsx, ctx)
+        || try_element_child_collapse(el, tag, parent_is_jsx, ctx)
+}
+
+/// A residual event handler peeled off a partially-collapsible site — mirror of
+/// the JS `CollapsibleHandler`. The expression source span (no braces) is
+/// re-emitted verbatim into the `__rsCollapseH` handler object.
+struct CollapsibleHandler {
+    name: String,
+    expr_start: u32,
+    expr_end: u32,
+}
+
+/// on*-handler partial-collapse detector — byte-for-byte mirror of the JS
+/// `detectPartialCollapsibleShape`. The EXACT full bail catalogue with ONE
+/// relaxation: an `on[A-Z]…` handler in a `{expr}` container is PEELED into
+/// `handlers[]` instead of bailing (an event binding never changes the
+/// SSR-resolved styler class, so the literal-prop subset still feeds the
+/// UNCHANGED key + the resolver's byte-identical template/classes). Every other
+/// non-literal shape still bails. Returns None when there are ZERO handlers, so
+/// the full-collapse path stays byte-unchanged and the two detectors never both
+/// claim the same site (full sites have no handlers; partial sites have ≥1).
+fn detect_partial_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(
+    std::collections::BTreeMap<String, String>,
+    String,
+    Vec<CollapsibleHandler>,
+)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut handlers: Vec<CollapsibleHandler> = Vec::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None, // namespaced → bail
+                };
+                let v = a.value.as_ref()?; // boolean attr (no value) → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    JSXAttributeValue::ExpressionContainer(c) => {
+                        // ONLY an `on[A-Z]…` handler in a `{expr}` container is
+                        // peelable; everything else dynamic is a hard bail.
+                        let is_handler = name.as_bytes().len() > 2
+                            && name.starts_with("on")
+                            && name.as_bytes()[2].is_ascii_uppercase();
+                        match (is_handler, jsx_expr_as_expression(&c.expression)) {
+                            (true, Some(e)) => {
+                                let sp = e.span();
+                                handlers.push(CollapsibleHandler {
+                                    name,
+                                    expr_start: sp.start,
+                                    expr_end: sp.end,
+                                });
+                            }
+                            _ => return None, // non-handler {expr} / empty expr → bail
+                        }
+                    }
+                    _ => return None, // other dynamic value → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None, // spread → bail
+        }
+    }
+    let mut children_text = String::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => children_text.push_str(t.value.as_str()),
+            _ => return None, // element / expression child → bail
+        }
+    }
+    // Zero handlers ⇒ FULL-collapse shape; defer to detect_collapsible_shape.
+    if handlers.is_empty() {
+        return None;
+    }
+    Some((props, children_text.trim().to_string(), handlers))
+}
+
+/// on*-handler partial collapse — mirror of the JS `tryPartialCollapse`. Emits
+/// `__rsCollapseH(html, light, dark, () => __pyrMode() === "dark", { "onClick":
+/// (<sliced expr>), … })`, brace-wrapped when rendered as a JSX child. Each
+/// handler expression is re-emitted verbatim from its source span (paren-wrapped
+/// so an arrow / sequence expr stays a single argument). Sets BOTH
+/// needs_collapse + needs_collapse_h (matching JS — a partial-only module then
+/// imports both helpers; the unused `_rsCollapse` tree-shakes out).
+fn try_partial_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &mut Ctx) -> bool {
+    let src = ctx.source; // &'a str is Copy — snapshot to avoid a borrow split.
+    let (text, rule_key, rules) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        let (props, children_text, handlers) = match detect_partial_collapsible_shape(el) {
+            Some(s) => s,
+            None => return false,
+        };
+        let key = rocketstyle_collapse_key(tag, &props, &children_text);
+        let site = match cfg.sites.get(&key) {
+            Some(s) => s,
+            None => return false, // not resolved → keep normal rocketstyle mount
+        };
+        let handler_obj = format!(
+            "{{ {} }}",
+            handlers
+                .iter()
+                .map(|h| format!(
+                    "{}: ({})",
+                    json_string(&h.name),
+                    &src[h.expr_start as usize..h.expr_end as usize]
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let call = format!(
+            "__rsCollapseH({}, {}, {}, () => __pyrMode() === \"dark\", {})",
+            json_string(&site.template_html),
+            json_string(&site.light_class),
+            json_string(&site.dark_class),
+            handler_obj,
+        );
+        let text = if parent_is_jsx {
+            format!("{{{}}}", call)
+        } else {
+            call
+        };
+        (text, site.rule_key.clone(), site.rules.clone())
+    };
+    let span = el.span();
+    ctx.replacements.push(Replacement {
+        start: span.start,
+        end: span.end,
+        text,
+    });
+    ctx.needs_collapse = true;
+    ctx.needs_collapse_h = true;
+    if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+        ctx.collapse_rules.push((rule_key, rules));
+    }
+    true
+}
+
+/// A dynamic dimension prop — a ConditionalExpression (ternary) whose both
+/// branches are string literals (`state={cond ? 'a' : 'b'}`). Mirror of the JS
+/// `DynamicCollapsibleProp`: the cond test span is re-emitted into the runtime
+/// dispatcher; the two literal values expand into two resolver lookups.
+struct DynamicCollapsibleProp {
+    name: String,
+    cond_start: u32,
+    cond_end: u32,
+    value_truthy: String,
+    value_falsy: String,
+}
+
+/// Dynamic-prop partial-collapse detector — byte-for-byte mirror of the JS
+/// `detectDynamicCollapsibleShape`. The full bail catalogue with TWO composed
+/// relaxations: an `on[A-Z]…` handler is peeled (like the on*-handler partial),
+/// AND exactly ONE prop whose value is a ternary of two string literals is
+/// captured as a DynamicCollapsibleProp. Multiple ternaries (2^N axis blow-up)
+/// bail; zero ternaries return None so the on*-only + full paths stay
+/// byte-unchanged and no detector double-claims a site.
+fn detect_dynamic_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(
+    std::collections::BTreeMap<String, String>,
+    String,
+    Vec<CollapsibleHandler>,
+    DynamicCollapsibleProp,
+)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut handlers: Vec<CollapsibleHandler> = Vec::new();
+    let mut dynamic_props: Vec<DynamicCollapsibleProp> = Vec::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None, // namespaced → bail
+                };
+                let v = a.value.as_ref()?; // boolean attr (no value) → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    JSXAttributeValue::ExpressionContainer(c) => {
+                        let expr = match jsx_expr_as_expression(&c.expression) {
+                            Some(e) => e,
+                            None => return None, // empty {} → bail
+                        };
+                        let is_handler = name.as_bytes().len() > 2
+                            && name.starts_with("on")
+                            && name.as_bytes()[2].is_ascii_uppercase();
+                        if is_handler {
+                            let sp = expr.span();
+                            handlers.push(CollapsibleHandler {
+                                name,
+                                expr_start: sp.start,
+                                expr_end: sp.end,
+                            });
+                            continue;
+                        }
+                        // A ternary whose BOTH branches are string literals is the
+                        // ONE dynamic relaxation; everything else dynamic bails.
+                        if let Expression::ConditionalExpression(ce) = expr {
+                            if let (
+                                Expression::StringLiteral(cons),
+                                Expression::StringLiteral(alt),
+                            ) = (&ce.consequent, &ce.alternate)
+                            {
+                                let test_sp = ce.test.span();
+                                dynamic_props.push(DynamicCollapsibleProp {
+                                    name,
+                                    cond_start: test_sp.start,
+                                    cond_end: test_sp.end,
+                                    value_truthy: cons.value.to_string(),
+                                    value_falsy: alt.value.to_string(),
+                                });
+                                continue;
+                            }
+                        }
+                        return None; // non-handler non-ternary {expr} → bail
+                    }
+                    _ => return None, // other dynamic value → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None, // spread → bail
+        }
+    }
+    let mut children_text = String::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => children_text.push_str(t.value.as_str()),
+            _ => return None, // element / expression child → bail
+        }
+    }
+    // Exactly ONE dynamic prop is this path's scope (zero → defer to the other
+    // detectors; 2+ → bail, multi-axis combinatorics is a separable scope).
+    if dynamic_props.len() != 1 {
+        return None;
+    }
+    Some((
+        props,
+        children_text.trim().to_string(),
+        handlers,
+        dynamic_props.into_iter().next().unwrap(),
+    ))
+}
+
+/// Dynamic-prop collapse — mirror of the JS `tryDynamicCollapse`. Expands the
+/// single ternary prop into a truthy + falsy site, requires BOTH resolved with
+/// matching templateHtml (one `_tpl` reused across values), builds the stride-2
+/// value-major class array `[v0_light, v0_dark, v1_light, v1_dark]` (v0 = truthy
+/// / cond→0, v1 = falsy / cond→1), and emits `__rsCollapseDyn(html, classes,
+/// () => (cond) ? 0 : 1, () => __pyrMode() === "dark")` — or the handler-combined
+/// `__rsCollapseDynH(…, handlerObj)`. Unions BOTH values' rule bundles (dedup by
+/// ruleKey). Sets ONLY needs_collapse_dyn / needs_collapse_dyn_h (matching JS).
+fn try_dynamic_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &mut Ctx) -> bool {
+    let src = ctx.source; // &'a str is Copy — snapshot to avoid a borrow split.
+    let has_handlers;
+    let (text, rule_bundles) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        let (props, children_text, handlers, dyn_prop) = match detect_dynamic_collapsible_shape(el)
+        {
+            Some(s) => s,
+            None => return false,
+        };
+        has_handlers = !handlers.is_empty();
+        // Expand into truthy + falsy props → keys → sites (BTreeMap re-sorts so
+        // the inserted dynamic key matches the JS `{...props, [name]: v}` order).
+        let mut truthy_props = props.clone();
+        truthy_props.insert(dyn_prop.name.clone(), dyn_prop.value_truthy.clone());
+        let mut falsy_props = props;
+        falsy_props.insert(dyn_prop.name.clone(), dyn_prop.value_falsy.clone());
+        let truthy_key = rocketstyle_collapse_key(tag, &truthy_props, &children_text);
+        let falsy_key = rocketstyle_collapse_key(tag, &falsy_props, &children_text);
+        let truthy = match cfg.sites.get(&truthy_key) {
+            Some(s) => s,
+            None => return false, // half-resolved → keep normal mount
+        };
+        let falsy = match cfg.sites.get(&falsy_key) {
+            Some(s) => s,
+            None => return false,
+        };
+        if truthy.template_html != falsy.template_html {
+            return false; // divergent markup → bail (one _tpl reused for both)
+        }
+        let classes = format!(
+            "[{}]",
+            [
+                json_string(&truthy.light_class),
+                json_string(&truthy.dark_class),
+                json_string(&falsy.light_class),
+                json_string(&falsy.dark_class),
+            ]
+            .join(",")
+        );
+        let cond_src = &src[dyn_prop.cond_start as usize..dyn_prop.cond_end as usize];
+        let call = if has_handlers {
+            let handler_obj = format!(
+                "{{ {} }}",
+                handlers
+                    .iter()
+                    .map(|h| format!(
+                        "{}: ({})",
+                        json_string(&h.name),
+                        &src[h.expr_start as usize..h.expr_end as usize]
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            format!(
+                "__rsCollapseDynH({}, {}, () => ({}) ? 0 : 1, () => __pyrMode() === \"dark\", {})",
+                json_string(&truthy.template_html),
+                classes,
+                cond_src,
+                handler_obj,
+            )
+        } else {
+            format!(
+                "__rsCollapseDyn({}, {}, () => ({}) ? 0 : 1, () => __pyrMode() === \"dark\")",
+                json_string(&truthy.template_html),
+                classes,
+                cond_src,
+            )
+        };
+        let text = if parent_is_jsx {
+            format!("{{{}}}", call)
+        } else {
+            call
+        };
+        let bundles = vec![
+            (truthy.rule_key.clone(), truthy.rules.clone()),
+            (falsy.rule_key.clone(), falsy.rules.clone()),
+        ];
+        (text, bundles)
+    };
+    let span = el.span();
+    ctx.replacements.push(Replacement {
+        start: span.start,
+        end: span.end,
+        text,
+    });
+    if has_handlers {
+        ctx.needs_collapse_dyn_h = true;
+    } else {
+        ctx.needs_collapse_dyn = true;
+    }
+    for (rule_key, rules) in rule_bundles {
+        if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+            ctx.collapse_rules.push((rule_key, rules));
+        }
+    }
+    true
+}
+
+/// A recursively-static DOM child element — mirror of the JS `StaticChildNode`.
+/// Props are a BTreeMap so iteration order matches the JS `Object.keys().sort()`
+/// used by `serialize_static_children`.
+struct StaticChildNode {
+    tag: String,
+    props: std::collections::BTreeMap<String, String>,
+    children: Vec<StaticChild>,
+}
+
+/// A static child slot — either normalized text or a nested static element.
+/// Mirror of the JS `StaticChild = string | StaticChildNode`.
+enum StaticChild {
+    Text(String),
+    Element(StaticChildNode),
+}
+
+/// Recursively check a single JSX child element for static-bakeability — mirror
+/// of the JS `detectStaticElementChild`. Accepts iff, recursively: a lowercase
+/// (DOM) tag (NOT a component); every attr a string literal (no spread, boolean,
+/// `{expr}`, or `on*` handler — a baked child can't carry a handler); children
+/// static text OR recursively-static elements.
+fn detect_static_element_child(el: &JSXElement) -> Option<StaticChildNode> {
+    let tag = jsx_tag_name(el);
+    if tag.is_empty() || !is_lower_case(tag) {
+        return None; // component (uppercase) → has its own reactivity → bail
+    }
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None,
+                };
+                // No handlers on a baked child — a static clone can't carry them.
+                if name.as_bytes().len() > 2
+                    && name.starts_with("on")
+                    && name.as_bytes()[2].is_ascii_uppercase()
+                {
+                    return None;
+                }
+                let v = a.value.as_ref()?; // boolean attr → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    _ => return None, // {expr} / dynamic → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None,
+        }
+    }
+    let children = collect_static_children(el)?;
+    Some(StaticChildNode {
+        tag: tag.to_string(),
+        props,
+        children,
+    })
+}
+
+/// Process an element's children into a `StaticChild[]` list, or None if ANY
+/// child is non-static — mirror of the JS `collectStaticChildren`. Text is
+/// normalized via the SAME `clean_jsx_text` the compiler applies to its own JSX
+/// text emit (so a later resolver reconstruction renders byte-identically);
+/// empty/whitespace-only normalized text is dropped. Element children recurse;
+/// expression containers / fragments / spread children bail.
+fn collect_static_children(el: &JSXElement) -> Option<Vec<StaticChild>> {
+    let mut out: Vec<StaticChild> = Vec::new();
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => {
+                let cleaned = clean_jsx_text(t.value.as_str());
+                if !cleaned.is_empty() {
+                    out.push(StaticChild::Text(cleaned));
+                }
+            }
+            JSXChild::Element(e) => {
+                let node = detect_static_element_child(e)?;
+                out.push(StaticChild::Element(node));
+            }
+            _ => return None, // expression container / fragment / spread → bail
+        }
+    }
+    Some(out)
+}
+
+/// Deterministic serialization of a static child list — mirror of the JS
+/// `serializeStaticChildren`. Distinct subtrees MUST produce distinct strings so
+/// element-child collapse keys never collide (and never collide with a text-only
+/// full-collapse key, whose childrenText has no C0 structure markers). The C0
+/// delimiters are built from byte values (`char::from(N)`) so the SOURCE carries
+/// neither a raw control byte (the hygiene gate) nor a `\u` escape (edit tooling
+/// mangles those); the runtime-computed key string carries the real C0 chars.
+fn serialize_static_children(children: &[StaticChild]) -> String {
+    let d_field = char::from(2u8); // U+0002 marker after the t/e tag byte
+    let d_tag = char::from(3u8); // U+0003 after the element tag name
+    let d_kids = char::from(4u8); // U+0004 after the prop string
+    let d_part = char::from(5u8); // U+0005 between sibling parts
+    let d_prop = char::from(1u8); // U+0001 between k=v prop pairs
+    let mut parts: Vec<String> = Vec::new();
+    for c in children {
+        match c {
+            StaticChild::Text(t) => parts.push(format!("t{}{}", d_field, t)),
+            StaticChild::Element(node) => {
+                let prop_str = node
+                    .props
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(&d_prop.to_string());
+                parts.push(format!(
+                    "e{}{}{}{}{}{}",
+                    d_field,
+                    node.tag,
+                    d_tag,
+                    prop_str,
+                    d_kids,
+                    serialize_static_children(&node.children)
+                ));
+            }
+        }
+    }
+    parts.join(&d_part.to_string())
+}
+
+/// Element-child collapse detector — mirror of the JS
+/// `detectElementChildCollapsibleShape`. The full root-prop bail catalogue (every
+/// attr a string literal) with ONE relaxation: element children are allowed WHEN
+/// the whole child list is recursively static. Returns None for the text-only
+/// case (no element child) so the FULL-collapse path stays byte-unchanged. The
+/// `children_key` is `serialize_static_children` fed to the collapse key as the
+/// childrenText arg (distinct subtrees → distinct keys).
+fn detect_element_child_collapsible_shape(
+    el: &JSXElement,
+) -> Option<(std::collections::BTreeMap<String, String>, String)> {
+    let mut props: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                let name = match &a.name {
+                    JSXAttributeName::Identifier(id) => id.name.to_string(),
+                    _ => return None,
+                };
+                let v = a.value.as_ref()?; // boolean attr → bail
+                match v {
+                    JSXAttributeValue::StringLiteral(lit) => {
+                        props.insert(name, lit.value.to_string());
+                    }
+                    _ => return None, // {expr} / handler / dynamic → bail
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(_) => return None,
+        }
+    }
+    let child_tree = collect_static_children(el)?;
+    // Must contain ≥1 element child — text-only is the FULL-collapse shape.
+    if !child_tree
+        .iter()
+        .any(|c| matches!(c, StaticChild::Element(_)))
+    {
+        return None;
+    }
+    Some((props, serialize_static_children(&child_tree)))
+}
+
+/// Element-child collapse — mirror of the JS `tryElementChildCollapse`. The
+/// resolver SSR-renders the REAL component WITH its child subtree and bakes the
+/// full output HTML, so the emit is the UNCHANGED `__rsCollapse(...)` (no new
+/// runtime helper — the cloned template already contains the children). The key
+/// uses the serialized child tree so the lookup matches the scan's element-child
+/// entry. An unresolved key keeps the normal mount.
+fn try_element_child_collapse(
+    el: &JSXElement,
+    tag: &str,
+    parent_is_jsx: bool,
+    ctx: &mut Ctx,
+) -> bool {
+    let (text, rule_key, rules) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        let (props, children_key) = match detect_element_child_collapsible_shape(el) {
+            Some(s) => s,
+            None => return false,
+        };
+        let key = rocketstyle_collapse_key(tag, &props, &children_key);
+        let site = match cfg.sites.get(&key) {
+            Some(s) => s,
+            None => return false, // not resolved → keep normal mount
+        };
+        let call = format!(
+            "__rsCollapse({}, {}, {}, () => __pyrMode() === \"dark\")",
+            json_string(&site.template_html),
+            json_string(&site.light_class),
+            json_string(&site.dark_class),
+        );
+        let text = if parent_is_jsx {
+            format!("{{{}}}", call)
+        } else {
+            call
+        };
+        (text, site.rule_key.clone(), site.rules.clone())
+    };
+    let span = el.span();
+    ctx.replacements.push(Replacement {
+        start: span.start,
+        end: span.end,
+        text,
+    });
+    ctx.needs_collapse = true;
+    if ctx.collapse_rule_keys.insert(rule_key.clone()) {
+        ctx.collapse_rules.push((rule_key, rules));
+    }
+    true
+}
+
+impl<'a> Ctx<'a> {
+    /// Build the collapse preamble (imports + idempotent injectRules) prepended
+    /// when a full `__rsCollapse` was emitted — byte-identical to the JS
+    /// `build_result` collapse block (jsx.ts). One `injectRules(rules, ruleKey)`
+    /// per distinct rule bundle (deduped upstream by ruleKey). The module
+    /// specifiers default to `@pyreon/runtime-dom` / `@pyreon/styler`; the mode
+    /// accessor name is imported unquoted as `__pyrMode`.
+    fn collapse_preamble(&self) -> String {
+        let cfg = self
+            .collapse
+            .as_ref()
+            .expect("collapse_preamble called without a collapse config");
+        let rd = cfg
+            .runtime_dom_source
+            .as_deref()
+            .unwrap_or("@pyreon/runtime-dom");
+        let st = cfg.styler_source.as_deref().unwrap_or("@pyreon/styler");
+        let inj: String = self
+            .collapse_rules
+            .iter()
+            .map(|(rule_key, rules)| {
+                let arr = format!(
+                    "[{}]",
+                    rules
+                        .iter()
+                        .map(|r| json_string(r))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                format!("__rsSheet.injectRules({},{});", arr, json_string(rule_key))
+            })
+            .collect();
+        // Only import the helpers actually emitted — keeps bytes per-feature
+        // and tree-shakable. needs_collapse (full) gates `_rsCollapse`;
+        // needs_collapse_h gates `_rsCollapseH`. Matches the JS rdImports list.
+        let mut rd_imports: Vec<&str> = Vec::new();
+        if self.needs_collapse {
+            rd_imports.push("_rsCollapse as __rsCollapse");
+        }
+        if self.needs_collapse_h {
+            rd_imports.push("_rsCollapseH as __rsCollapseH");
+        }
+        if self.needs_collapse_dyn {
+            rd_imports.push("_rsCollapseDyn as __rsCollapseDyn");
+        }
+        if self.needs_collapse_dyn_h {
+            rd_imports.push("_rsCollapseDynH as __rsCollapseDynH");
+        }
+        format!(
+            "import {{ {} }} from \"{}\";\nimport {{ sheet as __rsSheet }} from \"{}\";\nimport {{ {} as __pyrMode }} from \"{}\";\n{}\n",
+            rd_imports.join(", "),
+            rd,
+            st,
+            cfg.mode.name,
+            cfg.mode.source,
+            inj
+        )
     }
 }
