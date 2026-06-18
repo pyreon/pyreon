@@ -72,7 +72,11 @@ function renderNode(node: DocNode): string {
         return Math.max(headerLen, maxDataLen, 3)
       })
 
-      // Header
+      // Header + rows. `widths` is `columns.map(...)`, so `widths[i]` is
+      // always defined for the same `columns.map((col, i) => …)` index and
+      // every `w` from `widths.map` is a number — the `?? 3` right sides
+      // are noUncheckedIndexedAccess guards, unreachable at runtime.
+      /* v8 ignore start — widths[i]/w `?? 3` are noUncheckedIndexedAccess guards; the index is always in-bounds */
       const header = columns.map((col, i) => pad(col.header, widths[i] ?? 3, col.align)).join(' | ')
       const separator = widths.map((w) => '-'.repeat(w ?? 3)).join('-+-')
 
@@ -82,6 +86,7 @@ function renderNode(node: DocNode): string {
           columns.map((col, i) => pad(String(row[i] ?? ''), widths[i] ?? 3, col.align)).join(' | '),
         )
         .join('\n')
+      /* v8 ignore stop */
 
       let result = `${header}\n${separator}\n${body}\n\n`
       if (p.caption) result = `${p.caption}\n\n${result}`

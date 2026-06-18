@@ -63,6 +63,10 @@ export async function download(
     result instanceof Uint8Array
       ? new Blob([result as BlobPart])
       : new Blob([result], {
+          // `format` is one of FORMAT_MAP's values (validated above), every
+          // one of which has a MIME_TYPES entry — the `?? octet-stream`
+          // right side is an unreachable belt-and-braces fallback.
+          /* v8 ignore next — format is always a known FORMAT_MAP value present in MIME_TYPES */
           type: MIME_TYPES[format] ?? 'application/octet-stream',
         })
 

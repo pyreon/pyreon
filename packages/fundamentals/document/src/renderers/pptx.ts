@@ -306,6 +306,10 @@ export const pptxRenderer: DocumentRenderer = {
         '[@pyreon/document] PPTX renderer requires "pptxgenjs" package. Install it: bun add pptxgenjs',
       )
     }
+    // pptxgenjs always ships a `.default` ESM interop export, so the
+    // `?? PptxGenJS` right side is defensive for a hypothetical
+    // CJS-without-default build — unreachable with the real dependency.
+    /* v8 ignore next — pptxgenjs always exposes `.default`; the namespace fallback is unreachable */
     const PptxGenClass = PptxGenJS.default ?? PptxGenJS
 
     const pptx = new PptxGenClass() as PptxGen

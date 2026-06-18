@@ -27,6 +27,11 @@ function renderChildren(children: DocChild[]): string {
 }
 
 function wrapInTable(content: string, style = ''): string {
+  // The sole caller always passes a non-empty `${bg}${radius}${pad}`
+  // (pad is always at least `padding:0`), so the empty-`style` false arm
+  // of the ternary is unreachable — the `style = ''` default + that arm
+  // are defensive for hypothetical no-style callers.
+  /* v8 ignore next — `style` is always non-empty from the sole call site */
   return `<table width="100%" cellpadding="0" cellspacing="0" border="0"${style ? ` style="${style}"` : ''}><tr><td>${content}</td></tr></table>`
 }
 

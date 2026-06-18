@@ -229,6 +229,7 @@ function renderTable(
   const headerRow = ws.getRow(rowNum)
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i]
+    /* v8 ignore next — noUncheckedIndexedAccess guard; i < columns.length so col is always defined */
     if (!col) continue
     styleHeaderCell(headerRow.getCell(i + 1) as any, col, hs, bordered)
   }
@@ -239,6 +240,7 @@ function renderTable(
     const dataRow = ws.getRow(rowNum)
     for (let c = 0; c < columns.length; c++) {
       const col = columns[c]
+      /* v8 ignore next — noUncheckedIndexedAccess guard; c < columns.length so col is always defined */
       if (!col) continue
       styleDataCell(
         dataRow.getCell(c + 1) as any,
