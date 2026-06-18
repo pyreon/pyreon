@@ -91,5 +91,10 @@ export { aiPlugin, inferJsonLd, generateLlmsTxt, generateLlmsFullTxt } from "./a
 export {
 	createLocaleContext,
 	detectLocaleFromHeader,
-	i18nRouting,
 } from "./i18n-routing";
+// Server-only Vite plugin — kept OUT of `i18n-routing.ts` (which is client-safe,
+// re-exported from the main entry) because it holds the dynamic `node:async_hooks`
+// ALS import. Importing it from a client-reachable module made Vite emit the
+// `i18n-routing-als` chunk + "node:async_hooks externalized" warning in consumer
+// client builds. See `i18n-routing-plugin.ts`.
+export { i18nRouting } from "./i18n-routing-plugin";

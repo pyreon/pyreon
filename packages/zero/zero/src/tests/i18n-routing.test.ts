@@ -2,7 +2,6 @@ import type { Plugin } from 'vite'
 import { describe, expect, it } from 'vitest'
 import { parseFileRoutes } from '../fs-router'
 import {
-  _parseCookiesForTesting,
   buildLocalePath,
   createLocaleContext,
   detectLocaleFromHeader,
@@ -10,6 +9,9 @@ import {
   extractLocaleFromPath,
   validateLocale,
 } from '../i18n-routing'
+// `i18nRouting` + `_parseCookiesForTesting` moved to the server-only plugin
+// module (it holds the `node:async_hooks` ALS dynamic import).
+import { _parseCookiesForTesting } from '../i18n-routing-plugin'
 import type { FileRoute } from '../types'
 
 describe('detectLocaleFromHeader', () => {
@@ -259,7 +261,7 @@ describe('PR-S7: useLocale per-request isolation', () => {
 
 describe('i18nRouting plugin', () => {
   it('returns a Vite plugin with correct name', async () => {
-    const { i18nRouting: routing } = await import('../i18n-routing')
+    const { i18nRouting: routing } = await import('../i18n-routing-plugin')
     const plugin = routing({ locales: ['en', 'de'], defaultLocale: 'en' }) as Plugin
     expect(plugin.name).toBe('pyreon-zero-i18n-routing')
   })
@@ -321,7 +323,8 @@ describe('Audit #1: i18nRouting middleware does NOT write to module localeSignal
   }
 
   it('a single request through the middleware leaves localeSignal at its prior value', async () => {
-    const { i18nRouting: routing, localeSignal } = await import('../i18n-routing')
+    const { i18nRouting: routing } = await import('../i18n-routing-plugin')
+    const { localeSignal } = await import('../i18n-routing')
     const plugin = routing({ locales: ['en', 'de', 'cs'], defaultLocale: 'en' }) as Plugin
     // Reset the module signal to a known sentinel that the request locale
     // would otherwise overwrite. Using 'xx' instead of 'en' so the test
@@ -337,7 +340,8 @@ describe('Audit #1: i18nRouting middleware does NOT write to module localeSignal
   })
 
   it('concurrent middleware invocations with different locales leave localeSignal unchanged', async () => {
-    const { i18nRouting: routing, localeSignal } = await import('../i18n-routing')
+    const { i18nRouting: routing } = await import('../i18n-routing-plugin')
+    const { localeSignal } = await import('../i18n-routing')
     const plugin = routing({ locales: ['en', 'de', 'cs'], defaultLocale: 'en' }) as Plugin
     localeSignal.set('xx')
     const { server, getMid } = makeStubServer()
@@ -352,7 +356,8 @@ describe('Audit #1: i18nRouting middleware does NOT write to module localeSignal
   })
 
   it('concurrent requests STILL get correct per-request locale via the ALS store (regression — fix must not break PR-S7)', async () => {
-    const { i18nRouting: routing, useLocale, localeSignal } = await import('../i18n-routing')
+    const { i18nRouting: routing } = await import('../i18n-routing-plugin')
+    const { useLocale, localeSignal } = await import('../i18n-routing')
     const plugin = routing({ locales: ['en', 'de', 'cs'], defaultLocale: 'en' }) as Plugin
     localeSignal.set('xx')
     const { server, getMid } = makeStubServer()
