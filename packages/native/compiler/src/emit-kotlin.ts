@@ -3750,6 +3750,18 @@ function emitKotlinRouteDispatch(
     r.guard === undefined
       ? renderCall
       : `if (${emitKotlinExpr(r.guard, indent + 4)}) ${renderCall} else ${denyFallback}`
+  // Phase 3 — wrap a loader-bearing route's render in a `PyreonRouteLoader`
+  // host whose `LaunchedEffect` fires the loader once on enter-composition
+  // and stores the result via `router.setLoaderData(currentPath, …)`. The
+  // key is `currentPath` (the active path) — matching `useLoaderData()`'s
+  // `router.loaderData.value[router.currentPath]` read for BOTH literal and
+  // `:param` routes. Applied INSIDE the guard wrap (a guarded route only
+  // loads when its guard passes).
+  const loaderWrap = (r: import('./types').RouteIR, renderCall: string): string => {
+    if (r.loader === undefined) return renderCall
+    const loadBody = emitKotlinExpr(r.loader, indent + 4)
+    return `PyreonRouteLoader(path = currentPath, load = { ${loadBody} }) { ${renderCall} }`
+  }
   lines.push(`${pad}val currentPath = router.currentPath`)
   lines.push(`${pad}when {`)
   for (const route of routes) {
@@ -3791,12 +3803,12 @@ function emitKotlinRouteDispatch(
           `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) ?: emptyMap()`,
         )
       }
-      lines.push(`${innerPad}  ${guardWrap(route, inv.call)}`)
+      lines.push(`${innerPad}  ${guardWrap(route, loaderWrap(route, inv.call))}`)
       lines.push(`${innerPad}}`)
     } else {
       // Literal route — direct == comparison.
       lines.push(
-        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${guardWrap(route, `${componentExpr}()`)}`,
+        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${guardWrap(route, loaderWrap(route, `${componentExpr}()`))}`,
       )
     }
   }

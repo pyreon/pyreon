@@ -437,6 +437,24 @@ export interface RouteIR {
    * source at the alias site), same discipline as redirects.
    */
   children?: RouteIR[]
+  /**
+   * Phase 3 — per-route data loader from `loader: () => <expr>` (or
+   * `async () => <expr>`). The native emit wraps the matched component in a
+   * runtime `PyreonRouteLoader(path:, load:)` host whose `.task` (Swift) /
+   * `LaunchedEffect` (Compose) fires the loader ONCE on the route's appear
+   * and stores the result via `router.setLoaderData(path, …)`, where the
+   * already-shipped `useLoaderData<T>()` reads it. The store is guarded
+   * (`loaderData[path] == nil`) so re-renders don't re-run the loader.
+   *
+   * v1 captures only a ZERO-PARAM arrow with an EXPRESSION body
+   * (`() => fetchAll()` / `async () => 42`). A param-using loader
+   * (`(ctx) => fetch(ctx.params.id)` — `ctx` has no value source in the
+   * load closure yet) and block-body loaders leave `loader` undefined and
+   * warn → the route emits with NO loader (the component still renders;
+   * `useLoaderData()` returns nil). `ctx.params` threading + truly-async
+   * `await` bodies are a later arc.
+   */
+  loader?: ExprIR
 }
 
 /**

@@ -4210,7 +4210,15 @@ function emitSwiftRouterProvider(
         homeTarget.component !== undefined &&
         !homeTarget.path.includes(':')
       ) {
-        _activeHomeRouteSwift = emitSwiftLayoutAwareInvocation(homeTarget.component, indent + 2)
+        let homeInvocation = emitSwiftLayoutAwareInvocation(homeTarget.component, indent + 2)
+        // Phase 3 — a home route with a loader fires it on launch. The
+        // home path is literal (pickHomeRoute excludes patterns) and equals
+        // `router.currentPath` at launch, so `useLoaderData()` reads it back.
+        if (homeTarget.loader !== undefined) {
+          const loadBody = emitSwiftExpr(homeTarget.loader, indent + 2)
+          homeInvocation = `PyreonRouteLoader(path: ${JSON.stringify(homeTarget.path)}, load: { ${loadBody} }) { ${homeInvocation} }`
+        }
+        _activeHomeRouteSwift = homeInvocation
       }
     }
   }
@@ -4348,6 +4356,19 @@ function emitSwiftNavigationDestination(
       `${innerPad}}`,
     ]
   }
+  // Phase 3 — wrap a loader-bearing route's render in a `PyreonRouteLoader`
+  // host whose `.task` fires the loader once on appear and stores the result
+  // via `router.setLoaderData(<key>, …)`. The key is the runtime `path`
+  // closure variable (the active pushed path) — NOT the literal pattern —
+  // so it matches `useLoaderData()`'s `router.currentPath` read for BOTH
+  // literal and `:param` routes. Applied INSIDE the guard wrap (a guarded
+  // route only loads when its guard passes). Single-line so wrapGuard's
+  // single-`renderLine` contract holds.
+  const wrapLoader = (r: import('./types').RouteIR, renderExpr: string): string => {
+    if (r.loader === undefined) return renderExpr
+    const loadBody = emitSwiftExpr(r.loader, indent + 2)
+    return `PyreonRouteLoader(path: path, load: { ${loadBody} }) { ${renderExpr} }`
+  }
   // Phase 3 — track whether we've emitted any branch yet (instead of a
   // fixed `i === 0`), because redirect routes that resolve to nothing
   // (dangling / cyclic / param-involved) are SKIPPED, so the first
@@ -4387,7 +4408,7 @@ function emitSwiftNavigationDestination(
       if (inv.usesParams) {
         branches.push(
           `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) {`,
-          ...wrapGuard(route, inv.call),
+          ...wrapGuard(route, wrapLoader(route, inv.call)),
           `${pad}}`,
         )
       } else {
@@ -4396,7 +4417,7 @@ function emitSwiftNavigationDestination(
         // as noise; `!= nil` keeps the branch warning-free).
         branches.push(
           `${pad}${keyword} PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) != nil {`,
-          ...wrapGuard(route, inv.call),
+          ...wrapGuard(route, wrapLoader(route, inv.call)),
           `${pad}}`,
         )
       }
@@ -4405,7 +4426,7 @@ function emitSwiftNavigationDestination(
       const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
         `${pad}${keyword} path == ${JSON.stringify(route.path)} {`,
-        ...wrapGuard(route, `${componentExpr}()`),
+        ...wrapGuard(route, wrapLoader(route, `${componentExpr}()`)),
         `${pad}}`,
       )
     }

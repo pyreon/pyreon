@@ -38,6 +38,7 @@ const SOURCES = [
   'src/main/kotlin/com/pyreon/router/RouterView.kt',
   'src/main/kotlin/com/pyreon/router/Link.kt',
   'src/main/kotlin/com/pyreon/router/Hooks.kt',
+  'src/main/kotlin/com/pyreon/router/RouteLoader.kt',
 ].map(rel => resolve(PACKAGE_ROOT, rel))
 
 const TEST_FILE = resolve(
@@ -115,6 +116,11 @@ fun <T> mutableStateOf(initial: T): MutableState<T> = MutableStateImpl(initial)
 fun <T> rememberUpdatedState(value: T): State<T> = object : State<T>() {
   override val value: T = value
 }
+
+// LaunchedEffect — RouteLoader.kt fires its loader inside a
+// LaunchedEffect(path) { … } so the loader runs once on enter-composition.
+@Composable
+fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 
 // CompositionLocal stub — just enough for the router's
 // LocalPyreonRouter declaration + .current reads to typecheck.
