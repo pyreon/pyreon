@@ -1715,6 +1715,42 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (typeof initial.value === 'string') return { kind: 'string' }
     if (typeof initial.value === 'boolean') return { kind: 'boolean' }
   }
+  // Homogeneous array literal → typed element. `signal([12.5, 8.3])` (no
+  // explicit generic) previously degraded to `Any`, which can't be
+  // iterated in a SwiftUI `ForEach` / Compose `items()` or fed to a
+  // typed reduce. Infer the element type when EVERY element is a literal
+  // of the same primitive; mixed / empty / non-literal arrays stay
+  // `unknown` (→ `Any`, the safe pre-existing behaviour). Complements the
+  // explicit-generic refinement (`signal<number[]>([…])`) — this is the
+  // inferred-generic path.
+  if (initial.kind === 'array') {
+    const els = initial.elements
+    if (els.length === 0) return { kind: 'unknown' }
+    if (els.every((e) => e.kind === 'literal' && typeof e.value === 'string')) {
+      return { kind: 'array', element: { kind: 'string' } }
+    }
+    if (els.every((e) => e.kind === 'literal' && typeof e.value === 'boolean')) {
+      return { kind: 'array', element: { kind: 'boolean' } }
+    }
+    if (els.every((e) => e.kind === 'literal' && typeof e.value === 'number')) {
+      // Any fractional element ⇒ Double; flag whole-number literals
+      // `float` so they render `15.0` (Swift promotes integer literals in
+      // a `[Double]` context but Kotlin's `List<Double>` rejects a bare
+      // `Int`). Reuses the literal-float emit.
+      const anyFractional = els.some(
+        (e) => e.kind === 'literal' && typeof e.value === 'number' && !Number.isInteger(e.value),
+      )
+      if (anyFractional) {
+        for (const e of els) {
+          if (e.kind === 'literal' && typeof e.value === 'number' && Number.isInteger(e.value)) {
+            e.float = true
+          }
+        }
+        return { kind: 'array', element: { kind: 'number', float: true } }
+      }
+      return { kind: 'array', element: { kind: 'number' } }
+    }
+  }
   return { kind: 'unknown' }
 }
 
