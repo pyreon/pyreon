@@ -41,13 +41,17 @@ describe('compiler JSX transform efficiency', () => {
     expect(code).toMatch(/textContent\s*=\s*name/)
   })
 
-  it('list (.map) — wrapped as reactive accessor thunk', () => {
+  it('list (.map) — wrapper templatized, map routed through _mountSlot accessor', () => {
     const code = transform(
       `export default ({items}) => <ul>{items.map(x => <li>{x}</li>)}</ul>`,
     )
-    // The compiler wraps the map expression so the runtime's mountChild
-    // treats it as a reactive accessor.
-    expect(code).toMatch(/\(\s*\)\s*=>\s*items\.map/)
+    // The wrapper keeps the `_tpl` cloneNode fast path, and the .map child
+    // routes through `_mountSlot` wrapped as a reactive accessor so the
+    // runtime's mountChild treats it reactively. (`\(?` tolerates the
+    // wrapping paren the accessor body now carries: `() => (items.map…`.)
+    expect(code).toMatch(/_tpl\s*\(/)
+    expect(code).toMatch(/_mountSlot\s*\(/)
+    expect(code).toMatch(/\(\s*\)\s*=>\s*\(?\s*items\.map/)
   })
 
   it('spread props on root element → handled via _applyProps', () => {

@@ -6,10 +6,11 @@
  * render nothing; `0` renders "0"; `''` renders empty).
  *
  * Finding: the patterns real code actually writes are CORRECT — a conditional
- * (`{c ? x : null}`) or short-circuit (`{c && <X/>}`) child is wrapped in a
- * `() =>` accessor and the null/boolean is filtered by runtime `mountChild`,
- * so nothing renders (Pyreon's documented `VNodeChildAtom` `&&` contract
- * holds). Only a CONTRIVED bare literal child (`<div>{false}</div>` — never
+ * (`{c ? x : null}`) or short-circuit (`{c && <X/>}`) child routes through
+ * `_mountSlot` with a `() =>` accessor (the wrapper keeps the `_tpl` fast path),
+ * and the null/boolean is filtered by runtime `mountChild`, so nothing renders
+ * (Pyreon's documented `VNodeChildAtom` `&&` contract holds). Only a CONTRIVED
+ * bare literal child (`<div>{false}</div>` — never
  * written in practice) takes the static path and emits `textContent = false`
  * → the DOM stringifies to "false". This is a spec divergence on input no one
  * writes; fixing it would touch the hot child-emission path for zero
@@ -22,15 +23,17 @@ import { transformJSX_JS } from '../jsx'
 const emit = (c: string): string => transformJSX_JS(c, 'c.tsx').code ?? ''
 
 describe('Round 3 — conditional/short-circuit children are accessor-wrapped (the contract that matters)', () => {
-  it('ternary with a null branch is wrapped in an accessor (runtime filters null)', () => {
+  it('ternary with a null branch routes through _mountSlot with a reactive accessor (runtime filters null)', () => {
     const out = emit(`function C(p){ return <div>{p.cond ? <a/> : null}</div> }`)
-    expect(out).toContain('() => p.cond ? <a/> : null')
+    // Element-conditional → wrapper keeps _tpl, child routes through _mountSlot
+    // with a reactive accessor; mountChild filters the null branch at runtime.
+    expect(out).toContain('_mountSlot(() => (p.cond ? <a/> : null)')
     expect(out).not.toContain('createTextNode(null)')
   })
 
-  it('&& short-circuit is wrapped in an accessor (the documented && pattern)', () => {
+  it('&& short-circuit routes through _mountSlot with a reactive accessor (the documented && pattern)', () => {
     const out = emit(`function C(p){ return <div>{p.show && <b/>}</div> }`)
-    expect(out).toContain('() => p.show && <b/>')
+    expect(out).toContain('_mountSlot(() => (p.show && <b/>)')
     expect(out).not.toContain('createTextNode(false)')
   })
 })

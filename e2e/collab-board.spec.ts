@@ -34,39 +34,6 @@ function colTitles(page: Page, col: string): Promise<string[]> {
   return page.getByTestId(`col-${col}`).locator('.card-title').allTextContents()
 }
 
-// Dispatch the HTML5 drag sequence to move the first card of a column below the
-// last (pragmatic-drag-and-drop needs real DragEvent/DataTransfer, which
-// Playwright's mouse can't synthesize). Mirrors app-showcase's dnd gate.
-async function dragFirstToLast(page: Page, col: string): Promise<void> {
-  await page.evaluate((colId) => {
-    const list = document.querySelector(`[data-testid="col-${colId}"]`) as HTMLElement | null
-    if (!list) return
-    const items = list.querySelectorAll<HTMLElement>('li')
-    const first = items[0]
-    const last = items[items.length - 1]
-    if (!first || !last || first === last) return
-    const dt = new DataTransfer()
-    const fire = (target: Element, type: string, y?: number) => {
-      const r = (target as HTMLElement).getBoundingClientRect()
-      target.dispatchEvent(
-        new DragEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: dt,
-          clientX: r.left + r.width / 2,
-          clientY: y ?? r.top + r.height / 2,
-        }),
-      )
-    }
-    const rl = last.getBoundingClientRect()
-    fire(first, 'dragstart')
-    fire(last, 'dragenter', rl.bottom - 4)
-    fire(last, 'dragover', rl.bottom - 4)
-    fire(list, 'drop')
-    fire(first, 'dragend')
-  }, col)
-}
-
 test.describe('collab-board — relay sync', () => {
   test('add card, edit title, and move card in A appear in B', async ({ browser }) => {
     const room = `e2e-${crypto.randomUUID()}`
@@ -106,13 +73,33 @@ test.describe('collab-board — relay sync', () => {
     await expect(b.getByTestId('col-todo').locator('.card').or(b.getByTestId('col-todo').locator('li'))).toHaveCount(3)
     expect(await colTitles(a, 'todo')).toEqual(['Card 1', 'Card 2', 'Card 3'])
 
-    await dragFirstToLast(a, 'todo')
-
-    // The drag fires useSortable.onReorder → cards.set(next) → relay → B.
-    await expect
-      .poll(() => colTitles(a, 'todo'))
-      .not.toEqual(['Card 1', 'Card 2', 'Card 3'])
-    await expect.poll(() => colTitles(b, 'todo')).toEqual(await colTitles(a, 'todo'))
+    // Drive the reorder DETERMINISTICALLY via the dev hook (see Column.tsx),
+    // NOT a synthetic HTML5 drag. A synthetic DragEvent is a silent no-op on
+    // headless Linux CI even after pdnd's listeners attach (verified: re-firing
+    // for 15s with listeners wired still never reordered) — driving the pdnd
+    // GESTURE is @pyreon/dnd's concern and is covered by app-showcase-dnd + the
+    // dnd browser tests. This test's point is the CRDT SYNC: the hook runs the
+    // SAME `cards.set(next)` path useSortable.onReorder takes (first card → last),
+    // so A reorders and the new order must relay to B. Same precedent as the
+    // notes test driving the editor via `value.set` instead of CI keystrokes.
+    await a.waitForFunction(
+      () =>
+        typeof (window as unknown as { __reorderColumns?: Record<string, () => void> })
+          .__reorderColumns?.todo === 'function',
+    )
+    await a.evaluate(() =>
+      (
+        window as unknown as { __reorderColumns: Record<string, () => void> }
+      ).__reorderColumns.todo(),
+    )
+    await expect.poll(() => colTitles(a, 'todo'), { timeout: 15_000 }).not.toEqual([
+      'Card 1',
+      'Card 2',
+      'Card 3',
+    ])
+    await expect.poll(() => colTitles(b, 'todo'), { timeout: 15_000 }).toEqual(
+      await colTitles(a, 'todo'),
+    )
 
     expect(errors, errors.join('\n')).toEqual([])
     await a.context().close()

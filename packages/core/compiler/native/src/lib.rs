@@ -3492,7 +3492,12 @@ fn count_child_for_template(child: &JSXChild) -> i32 {
             JSXExpression::EmptyExpression(_) => 0,
             _ => {
                 if let Some(expr) = jsx_expr_as_expression(&c.expression) {
-                    if contains_jsx_in_expr(expr) {
+                    // Direct static JSX element/fragment child (`{<span/>}`) →
+                    // keep the static-hoist path (bail). An expression that
+                    // CONTAINS JSX but isn't directly one (`{c ? <A/> : <B/>}`,
+                    // `{n && <List/>}`, `.map(x => <li/>)`) → templatable via
+                    // `_mountSlot`, so the wrapper keeps the `_tpl` fast path.
+                    if matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
                         -1
                     } else {
                         0
@@ -4382,6 +4387,31 @@ fn process_one_child(
                 tb.bind_lines.push(format!(
                     "const {} = _mountSlot({}, {}, {})",
                     d, expr_text, parent_ref, placeholder
+                ));
+                return Some("<!>".to_string());
+            }
+            // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
+            // `{n() && <List/>}`, `.map(x => <li/>)`): route through `_mountSlot`
+            // so the wrapper keeps the `_tpl` fast path. `_mountSlot` →
+            // `mountChild` → `mountReactive` handles a reactive element-returning
+            // accessor (disposal + swap on signal change). Reactive bodies are
+            // re-wrapped into an accessor; a static element-conditional is passed
+            // bare (mounts once). Direct JSX element/fragment children
+            // (`{<span/>}`) are excluded — they keep the static-hoist path.
+            let expr_is_direct_jsx =
+                matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
+            if contains_jsx_in_expr(expr) && !expr_is_direct_jsx {
+                tb.needs_mount_slot = true;
+                let placeholder = child_node_accessor(parent_ref, child_node_idx, true);
+                let d = tb.next_disp();
+                let slot_arg = if is_reactive {
+                    format!("() => ({})", expr_text)
+                } else {
+                    expr_text.clone()
+                };
+                tb.bind_lines.push(format!(
+                    "const {} = _mountSlot({}, {}, {})",
+                    d, slot_arg, parent_ref, placeholder
                 ));
                 return Some("<!>".to_string());
             }

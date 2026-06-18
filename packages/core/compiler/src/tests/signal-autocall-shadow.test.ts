@@ -75,7 +75,10 @@ describe('Round 11 — signal auto-call respects lexical shadowing', () => {
   it('CONTROL: a non-shadowed signal SIBLING of a shadowing callback still auto-calls', () => {
     const out = emit(`function C(){ const s = signal(0); return <div>{[1].map(s => <i>{s}</i>)}<b>{s}</b></div> }`)
     expect(out).not.toContain('<i>{s()}</i>') // the shadowing param — not called
-    expect(out).toContain('__t0.data = s()') // the real signal sibling — called
+    // The real signal sibling auto-calls. (Text-node index is no longer __t0:
+    // the .map element-conditional child now routes through _mountSlot, which
+    // precedes the <b> text node — so the binding is index-robust here.)
+    expect(out).toContain('.data = s()')
   })
 
   it('CONTROL: signal.set in a handler is not auto-called but its arg is', () => {
