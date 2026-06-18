@@ -2,10 +2,9 @@
 // Coverage-hardening for the network/transport/awareness/relay code paths that
 // the main suites don't exercise — same `ws`-client harness as ws-relay.test.ts
 // (NOT Node's global undici WebSocket, which deadlocks under v8 coverage).
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocket as WsClient } from 'ws'
-import { Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness'
-import * as Y from 'yjs'
+import { encodeAwarenessUpdate } from 'y-protocols/awareness'
 import { createYjsDoc } from '../crdt/yjs-adapter'
 import {
   getDocAwareness,
@@ -14,7 +13,7 @@ import {
 } from '../crdt/yjs-awareness'
 import { connectViaBroadcastChannel } from '../crdt/yjs-transport'
 import { connectViaWebSocket } from '../crdt/yjs-ws-transport'
-import { MSG_AWARENESS, encodeSyncMessage } from '../crdt/ws-protocol'
+import { MSG_AWARENESS } from '../crdt/ws-protocol'
 import { type SyncServer, createSyncServer } from '../server'
 import { syncedSignal } from '../synced-signal'
 import { syncedStore } from '../synced-store'

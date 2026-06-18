@@ -158,7 +158,6 @@ describe('useSortable container onDrop — skips re-insert when source already h
       }
     })
     expect(containerDrop).toBeDefined()
-    const destSortableId = containerDrop!.config.getData().__pyreon_sortable_id
 
     // A cross-list source (different sortableId, same group) that the item-level
     // handler ALREADY processed — its data carries the `handled` marker. The

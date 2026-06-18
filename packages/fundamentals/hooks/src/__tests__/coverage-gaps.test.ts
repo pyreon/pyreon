@@ -6,7 +6,6 @@
  * execute. Here we capture the registered callbacks and invoke them
  * directly, asserting the cleanup side-effect actually happened.
  */
-import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let cleanupCallbacks: Array<() => void> = []
