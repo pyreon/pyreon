@@ -2557,7 +2557,7 @@ fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
     idents.sort_by_key(|&(start, _)| start);
     let mut result = String::new();
     let mut last = base;
-    for &(start, end) in &idents {
+    for &(_, end) in &idents {
         result.push_str(&ctx.source[last as usize..end as usize]);
         result.push_str("()");
         last = end;
