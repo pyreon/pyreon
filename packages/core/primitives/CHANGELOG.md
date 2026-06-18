@@ -1,5 +1,64 @@
 # @pyreon/primitives
 
+## 0.34.0
+
+### Minor Changes
+
+- [#1583](https://github.com/pyreon/pyreon/pull/1583) [`e81506f`](https://github.com/pyreon/pyreon/commit/e81506ff3ad55054a3b7ad3e2c1c379a1c5143cc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the escape-hatch primitives `<Web>` / `<NativeIOS>` / `<NativeAndroid>` — Layer-4 per-platform branch selection for multiplatform apps. Exactly one branch renders per target: on web, `<Web>` renders its children and `<NativeIOS>`/`<NativeAndroid>` render nothing; the PMTC compiler mirrors this on native (iOS emits the `<NativeIOS>` branch, Android the `<NativeAndroid>` branch, each dropping the others). This lets one source carry a platform-specific subtree — e.g. a web-only-rich chart behind `<Web>` and a native equivalent behind `<NativeIOS>`/`<NativeAndroid>` — and is the foundation for the heavy-viz multiplatform story (the planned `<WebView>` embed builds on it). Verified end-to-end: a scaffolded app using all three builds on both an Android emulator and an iOS Simulator, and the web runtime renders the matching branch only.
+
+- [#1603](https://github.com/pyreon/pyreon/pull/1603) [`1c2bf3b`](https://github.com/pyreon/pyreon/commit/1c2bf3b8cf8ab68f6fb4af1a6ceca6c34ce902ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(native): `<WebView data={signal}>` live-data bridge
+
+  `<WebView>` gains a `data` prop — reactive data pushed into the hosted page as `window.__pyreonData` (a `pyreondata` event fires on change), so a chart/flow hosted in a WebView follows signals **without reloading**. On web the iframe's `contentWindow.__pyreonData` is set directly (same-origin / srcdoc); on native (via PMTC) the value is JSON-encoded and pushed via `evaluateJavaScript` / `evaluateJavascript`.
+
+- [#1584](https://github.com/pyreon/pyreon/pull/1584) [`6176e46`](https://github.com/pyreon/pyreon/commit/6176e46996a4e946f8324535d661b2c9f5598b2b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `<WebView>` primitive — the native host that embeds web content inside a native shell, the unlock for using web-only-rich viz (`@pyreon/charts` / `@pyreon/flow` / heavy tables) in a multiplatform analytical app. `<WebView html="…" />` (inline HTML) or `<WebView src="…" />` (a local bundled asset — policy-safe — or a remote URL) compiles to a `WKWebView` on iOS (`PyreonWebView` in `@pyreon/native-runtime-swift`), an Android `WebView` via `AndroidView` (`PyreonWebView` in `@pyreon/native-runtime-kotlin`), and an `<iframe>` on web. Proven end-to-end: a `.tsx` using `<WebView html="…SVG chart…">` builds, installs, launches, and runs on both an iOS Simulator and an Android emulator. v1 requires a static `html`/`src` string (a dynamic value warns + emits an empty host); the reactive signal bridge is the planned follow-up. Pairs with the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches to render charts inline on web and via a hosted webview on native, from one source.
+
+- [#1610](https://github.com/pyreon/pyreon/pull/1610) [`3e79430`](https://github.com/pyreon/pyreon/commit/3e7943046b11777123e45ea777ba134daee8a0a6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(primitives): `<WebView onMessage>` reverse bridge — the hosted page sends strings back to the host via the unified `window.pyreonPostMessage("…")` API, delivered to the `onMessage` callback. On web the parent defines `window.pyreonPostMessage` on the iframe (same-origin / `srcdoc`); on iOS it's a `WKScriptMessageHandler` and on Android a main-thread-marshalled `@JavascriptInterface` (PMTC-emitted). Enables webview-hosted viz (charts / flow) to drive native signals — e.g. a tapped chart bar updating a native selection.
+
+### Patch Changes
+
+- [#1601](https://github.com/pyreon/pyreon/pull/1601) [`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal: remove provably-unreachable defensive branches + harden test coverage
+  (no behavior change).
+
+  `SizedMap.set`'s eviction and `Cell.listen`'s promote-to-Set both guarded a
+  value that the surrounding invariant guarantees is always defined
+  (`maxEntries >= 1` ⇒ non-empty map on evict; the promote branch only runs when
+  a single listener exists). Replaced the dead `!== undefined` / truthy guards
+  with a documented type assertion (the codebase's sanctioned pattern for
+  provably-safe paths), eliminating uncoverable branches. SizedMap → 100% branch
+  coverage; reactivity branch coverage improved. Added selector tests for the
+  3rd-subscriber and selection-leaves-a-multi-subscriber-key paths.
+
+  `@pyreon/head`'s `createNewTag` SSR guard is documented + `v8 ignore`d as the
+  unreachable defensive guard it is (the only caller, `syncDom`, already returns
+  on `document === undefined`); added a node-environment test that exercises the
+  true SSR function-input path of `useHead`. head → 100% statements/functions/
+  lines, 98.3% branches.
+
+  `@pyreon/primitives`' web `<Button>` drops an uncoverable `?? {}` fallback in
+  favor of a documented assertion (the `primary` key is statically defined).
+  Added targeted tests for the residual web-primitive branches — plain-value
+  (non-signal) `value`/`checked`, the asset-name `src` dispatch, and the defensive
+  guard false-paths in Field/Text/Press/WebView. primitives → 100% across all four
+  metrics.
+
+  `@pyreon/runtime-server` gains SSR edge-case + dev-mode/prod-mode coverage
+  (documenting that `__DEV__` is a module-load constant, so both gate sides need
+  separate NODE_ENV runs) and three documented `v8 ignore`s for genuinely-
+  unreachable defensive arms (the outside-ALS context-stack fallback, the
+  For-symbol function-each the For component pre-resolves, the stream context-store
+  nullish fallback). statements/functions/lines → 98%+, branches 88.4% → 95.2%
+  (a pre-existing RED branch gate, now green). No behavior change.
+
+  `@pyreon/create-zero`'s `listFiles` walk uses a plain `else` for the
+  non-directory case (a template tree is files-or-dirs only — no symlinks), and
+  gained `substitute` tests covering the unknown-`{{key}}`-kept-verbatim branch.
+  create-zero → 100% statements/functions/lines, 98.7% branches (one defensive
+  unreachable branch remains in the dep-version resolver).
+
+- Updated dependencies [[`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65)]:
+  - @pyreon/reactivity@0.34.0
+  - @pyreon/core@0.34.0
+
 ## 0.33.0
 
 ### Patch Changes

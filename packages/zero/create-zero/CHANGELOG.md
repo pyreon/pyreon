@@ -1,5 +1,68 @@
 # create-zero
 
+## 0.34.0
+
+### Patch Changes
+
+- [#1601](https://github.com/pyreon/pyreon/pull/1601) [`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal: remove provably-unreachable defensive branches + harden test coverage
+  (no behavior change).
+
+  `SizedMap.set`'s eviction and `Cell.listen`'s promote-to-Set both guarded a
+  value that the surrounding invariant guarantees is always defined
+  (`maxEntries >= 1` ⇒ non-empty map on evict; the promote branch only runs when
+  a single listener exists). Replaced the dead `!== undefined` / truthy guards
+  with a documented type assertion (the codebase's sanctioned pattern for
+  provably-safe paths), eliminating uncoverable branches. SizedMap → 100% branch
+  coverage; reactivity branch coverage improved. Added selector tests for the
+  3rd-subscriber and selection-leaves-a-multi-subscriber-key paths.
+
+  `@pyreon/head`'s `createNewTag` SSR guard is documented + `v8 ignore`d as the
+  unreachable defensive guard it is (the only caller, `syncDom`, already returns
+  on `document === undefined`); added a node-environment test that exercises the
+  true SSR function-input path of `useHead`. head → 100% statements/functions/
+  lines, 98.3% branches.
+
+  `@pyreon/primitives`' web `<Button>` drops an uncoverable `?? {}` fallback in
+  favor of a documented assertion (the `primary` key is statically defined).
+  Added targeted tests for the residual web-primitive branches — plain-value
+  (non-signal) `value`/`checked`, the asset-name `src` dispatch, and the defensive
+  guard false-paths in Field/Text/Press/WebView. primitives → 100% across all four
+  metrics.
+
+  `@pyreon/runtime-server` gains SSR edge-case + dev-mode/prod-mode coverage
+  (documenting that `__DEV__` is a module-load constant, so both gate sides need
+  separate NODE_ENV runs) and three documented `v8 ignore`s for genuinely-
+  unreachable defensive arms (the outside-ALS context-stack fallback, the
+  For-symbol function-each the For component pre-resolves, the stream context-store
+  nullish fallback). statements/functions/lines → 98%+, branches 88.4% → 95.2%
+  (a pre-existing RED branch gate, now green). No behavior change.
+
+  `@pyreon/create-zero`'s `listFiles` walk uses a plain `else` for the
+  non-directory case (a template tree is files-or-dirs only — no symlinks), and
+  gained `substitute` tests covering the unknown-`{{key}}`-kept-verbatim branch.
+  create-zero → 100% statements/functions/lines, 98.7% branches (one defensive
+  unreachable branch remains in the dep-version resolver).
+
+- [#1588](https://github.com/pyreon/pyreon/pull/1588) [`b59c7b0`](https://github.com/pyreon/pyreon/commit/b59c7b07f782e0ae0be2dda144e152504cdef7b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(create-zero): interactive "Custom — pick features one by one" no longer crashes
+
+  Picking the Custom feature preset crashed with `TypeError: Cannot read
+properties of undefined (reading 'label')`. The `state` and `ui` feature
+  categories (and the `full` preset) referenced `state-tree` / `coolgrid`, but
+  those keys were never defined in `FEATURES` — so the grouped-multiselect builder
+  dereferenced `undefined`. The `full` preset was broken the same way for any
+  non-interactive run too.
+
+  - Add `state-tree` (@pyreon/state-tree) and `coolgrid` (@pyreon/coolgrid) to
+    `FEATURES` — they are real packages the categories intend to offer.
+  - Extract the picker's option builder into `buildGroupedFeatureOptions`, which
+    now throws a clear, named error if any category key is missing from
+    `FEATURES` (instead of a cryptic `reading 'label'`).
+  - Comprehensive new tests: feature-data integrity invariants (every
+    category/preset/template key must exist in `FEATURES`), a scaffold matrix over
+    every template × renderMode × adapter × preset (+ compat / packageStrategy /
+    integrations / aiTools), and a mocked-clack interactive `runPrompts` flow that
+    drives the exact Custom path — all bisect-verified to catch this bug.
+
 ## 0.33.0
 
 ### Patch Changes

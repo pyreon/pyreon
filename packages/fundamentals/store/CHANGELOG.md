@@ -1,5 +1,13 @@
 # @pyreon/store
 
+## 0.34.0
+
+### Patch Changes
+
+- Updated dependencies [[`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65), [`038a58c`](https://github.com/pyreon/pyreon/commit/038a58c0f39a35ad4338f6d2596c33c47e4e30cc)]:
+  - @pyreon/reactivity@0.34.0
+  - @pyreon/validation@0.34.0
+
 ## 0.33.0
 
 ### Patch Changes

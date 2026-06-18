@@ -1,5 +1,0 @@
----
-'@pyreon/primitives': minor
----
-
-Add the `<WebView>` primitive — the native host that embeds web content inside a native shell, the unlock for using web-only-rich viz (`@pyreon/charts` / `@pyreon/flow` / heavy tables) in a multiplatform analytical app. `<WebView html="…" />` (inline HTML) or `<WebView src="…" />` (a local bundled asset — policy-safe — or a remote URL) compiles to a `WKWebView` on iOS (`PyreonWebView` in `@pyreon/native-runtime-swift`), an Android `WebView` via `AndroidView` (`PyreonWebView` in `@pyreon/native-runtime-kotlin`), and an `<iframe>` on web. Proven end-to-end: a `.tsx` using `<WebView html="…SVG chart…">` builds, installs, launches, and runs on both an iOS Simulator and an Android emulator. v1 requires a static `html`/`src` string (a dynamic value warns + emits an empty host); the reactive signal bridge is the planned follow-up. Pairs with the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches to render charts inline on web and via a hosted webview on native, from one source.

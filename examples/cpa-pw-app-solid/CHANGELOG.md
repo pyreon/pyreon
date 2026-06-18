@@ -1,5 +1,25 @@
 # cpa-pw-app-solid
 
+## 0.0.20
+
+### Patch Changes
+
+- Updated dependencies [[`c0814b7`](https://github.com/pyreon/pyreon/commit/c0814b7881b01b7bfed19dffd7f48a3269c14199), [`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65), [`038a58c`](https://github.com/pyreon/pyreon/commit/038a58c0f39a35ad4338f6d2596c33c47e4e30cc)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/zero@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/solid-compat@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.0.19
 
 ### Patch Changes

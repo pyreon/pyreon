@@ -1,5 +1,12 @@
 # @pyreon/rx
 
+## 0.34.0
+
+### Patch Changes
+
+- Updated dependencies [[`66d44c5`](https://github.com/pyreon/pyreon/commit/66d44c58920bf81848e9ba858c413a88727a3c65)]:
+  - @pyreon/reactivity@0.34.0
+
 ## 0.33.0
 
 ### Patch Changes
