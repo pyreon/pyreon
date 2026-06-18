@@ -30,6 +30,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Finding, GateResult } from '../types'
 
@@ -135,6 +136,23 @@ export const runBundleBudgetsGate = async (
   const start = Date.now()
   const findings: Finding[] = []
   const scriptPath = join(opts.cwd, 'scripts/check-bundle-budgets.ts')
+
+  // Monorepo-internal budget script — skip gracefully outside the Pyreon
+  // repo (`pyreon doctor --full` on a user app must not error on a script
+  // that's intentionally absent there).
+  if (!existsSync(scriptPath)) {
+    return {
+      gate: 'bundle-budgets',
+      category: 'performance',
+      findings: [],
+      meta: {
+        elapsedMs: Date.now() - start,
+        skipped: true,
+        skipReason:
+          'bundle-budget audit targets the Pyreon monorepo (scripts/check-bundle-budgets.ts not present here)',
+      },
+    }
+  }
 
   let scannedPackages = 0
   try {

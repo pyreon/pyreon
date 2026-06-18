@@ -25,6 +25,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { Finding, GateResult } from '../types'
 
@@ -82,6 +83,25 @@ export const runAuditLeakClassesGate = async (
   const start = Date.now()
   const findings: Finding[] = []
   const scriptPath = join(opts.cwd, 'scripts/audit-leak-classes.ts')
+
+  // This gate shells out to a Pyreon-MONOREPO-INTERNAL script. In a user
+  // project (or any dir that isn't the framework repo) that script doesn't
+  // exist — so skip gracefully (like the doc-claims gate does for its
+  // monorepo-only claim sites) instead of surfacing a scary `Module not
+  // found` ERROR to anyone who runs `pyreon doctor` on their own app.
+  if (!existsSync(scriptPath)) {
+    return {
+      gate: 'audit-leak-classes',
+      category: 'best-practices',
+      findings: [],
+      meta: {
+        elapsedMs: Date.now() - start,
+        skipped: true,
+        skipReason:
+          'leak-class audit targets the Pyreon monorepo (scripts/audit-leak-classes.ts not present here)',
+      },
+    }
+  }
 
   let total = 0
   try {
