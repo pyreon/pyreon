@@ -103,6 +103,14 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
   return (
     <Portal target={document.body}>
+      {/* A labeled `aria-live` region, not a clickable control — the live
+          region IS the accessibility mechanism (toasts are announced +
+          individually dismissable). Pause-on-hover is a mouse-only ENHANCEMENT
+          on top of that, so the non-interactive-element rule is suppressed
+          here. (A keyboard pause-on-focus equivalent needs bubbling
+          `onFocusIn`/`onFocusOut`, which @pyreon/core's JSX types don't yet
+          expose — tracked as a separate framework follow-up.) */}
+      {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <section
         class="pyreon-toast-container"
         style={containerStyle}
