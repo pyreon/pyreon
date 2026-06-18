@@ -1,4 +1,4 @@
-import { detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler'
+import { detectNativePatterns, detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler'
 
 // The MCP `validate` tool handler lives in index.ts and simply merges
 // the results of both detectors. The handler cannot be exercised in-
@@ -65,5 +65,39 @@ describe('MCP validate — merged detector surface', () => {
     `
     expect(detectReactPatterns(code)).toEqual([])
     expect(detectPyreonPatterns(code)).toEqual([])
+  })
+})
+
+describe('MCP validate — native (multiplatform) detector', () => {
+  it('flags web-only imports + dropped decls in a multiplatform snippet', () => {
+    const code = `
+      import { Stack } from '@pyreon/primitives'
+      import { Chart } from '@pyreon/charts'
+      interface Todo { id: number }
+      export function App() { return (<Stack />) }
+    `
+    const diags = detectNativePatterns(code)
+    const codes = new Set(diags.map((d) => d.code))
+    expect(codes.has('native-web-only-import')).toBe(true)
+    expect(codes.has('native-unsupported-decl')).toBe(true)
+  })
+
+  it('does NOT flag a pure-web snippet (no @pyreon/primitives import)', () => {
+    // charts + interface, but not a multiplatform component → no native concern.
+    const code = `
+      import { Chart } from '@pyreon/charts'
+      interface T { a: number }
+      export const x = 1
+    `
+    expect(detectNativePatterns(code)).toEqual([])
+  })
+
+  it('does NOT flag idiomatic multiplatform code (type alias, no web-only imports)', () => {
+    const code = `
+      import { Stack, Text } from '@pyreon/primitives'
+      type Todo = { id: number; title: string }
+      export function App() { return (<Stack><Text>ok</Text></Stack>) }
+    `
+    expect(detectNativePatterns(code)).toEqual([])
   })
 })

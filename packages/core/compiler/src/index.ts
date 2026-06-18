@@ -63,8 +63,9 @@ export type {
   NativeFinding,
   NativeFindingCode,
   NativeLocation,
+  NativePatternDiagnostic,
 } from './native-audit'
-export { auditNative } from './native-audit'
+export { auditNative, detectNativePatterns } from './native-audit'
 // PR 9 follow-up — `pyreon doctor --check-content` audit.
 export type {
   AuditContentOptions,

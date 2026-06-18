@@ -33,6 +33,7 @@ import {
   type AuditRisk,
   auditIslands,
   auditTestEnvironment,
+  detectNativePatterns,
   detectPyreonPatterns,
   detectReactPatterns,
   diagnoseError,
@@ -162,8 +163,15 @@ server.tool(
     const fname = filename ?? 'snippet.tsx'
     const reactDiags = detectReactPatterns(code, fname)
     const pyreonDiags = detectPyreonPatterns(code, fname)
+    // Native (multiplatform) hazards — only fire for snippets that import
+    // `@pyreon/primitives` (the multiplatform signal), so a pure-web snippet
+    // never false-positives. Catches code that compiles for web but silently
+    // breaks the PMTC native build (web-only imports, dropped interface/enum/
+    // class). The AI's per-keystroke one-shot feedback loop, complementing
+    // `pyreon doctor --check-native`.
+    const nativeDiags = detectNativePatterns(code, fname)
 
-    if (reactDiags.length === 0 && pyreonDiags.length === 0) {
+    if (reactDiags.length === 0 && pyreonDiags.length === 0 && nativeDiags.length === 0) {
       return textResult('✓ No issues found. The code follows Pyreon patterns correctly.')
     }
 
@@ -176,7 +184,7 @@ server.tool(
       suggested: string
       fixable: boolean
     }
-    const merged: Diag[] = [...reactDiags, ...pyreonDiags]
+    const merged: Diag[] = [...reactDiags, ...pyreonDiags, ...nativeDiags]
     merged.sort((a, b) => a.line - b.line || a.column - b.column)
 
     const issueText = merged
