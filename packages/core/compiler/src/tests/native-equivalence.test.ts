@@ -326,6 +326,53 @@ describeNative('Native vs JS equivalence — transitive derivation', () => {
     compare('const Comp = function (props) { return <div>{props.x}</div> }'))
 })
 
+// A prop-derived const referenced inside an event-handler / accessor function
+// body is a DEFERRED read — it must inline to the live prop source so the
+// handler reads the current value, not a setup-time snapshot. JS descends one
+// level into the binding-function's body (`accessesProps`'s child-skip skips
+// NESTED functions but yields the body as a child); RS previously returned
+// false for any arrow/function in `accesses_props`, so the native backend shipped
+// the stale-capture form in production (the dispatcher prefers native). The
+// gate-only `fn_body_accesses_props` restores the 1-level descent; the inliner
+// already matched JS once the gate passes. These lock both the descent AND the
+// nested-function skip (so they can't drift back to either extreme).
+describeNative('Native vs JS equivalence — prop-derived in handler/accessor bodies', () => {
+  test('inline arrow handler inlines prop-derived (live read)', () =>
+    compare(
+      'const C = (props) => { const a = props.x; return <button onClick={() => send(a)}>g</button> }',
+    ))
+  test('block-body multi-statement handler', () =>
+    compare(
+      'const C = (props) => { const a = props.x; return <button onClick={(e) => { e.preventDefault(); send(a) }}>g</button> }',
+    ))
+  test('two prop-derived in one handler', () =>
+    compare(
+      'const C = (props) => { const a = props.x; const b = props.y; return <button onClick={() => send(a, b)}>g</button> }',
+    ))
+  test('direct props in handler stays props', () =>
+    compare('const C = (props) => <button onClick={() => send(props.x)}>g</button>'))
+  test('handler with if/for/try body shapes', () =>
+    compare(
+      'const C = (props) => { const a = props.x; return <button onClick={() => { if (a) { send(a) } for (let i = 0; i < a; i++) {} try { use(a) } catch (e) {} }}>g</button> }',
+    ))
+  // The nested-function SKIP: a prop-derived ref reachable only through a
+  // DEEPER function stays raw (JS's child-skip) — must not over-inline.
+  test('nested arrow inside handler stays raw (skip)', () =>
+    compare(
+      'const C = (props) => { const a = props.x; return <button onClick={() => foo(() => send(a))}>g</button> }',
+    ))
+  test('arrow-returning-arrow handler stays raw (skip)', () =>
+    compare(
+      'const C = (props) => { const a = props.x; return <button onClick={() => () => send(a)}>g</button> }',
+    ))
+  test('function arg in a JSX-child call (not a handler) stays raw', () =>
+    compare('const C = (props) => { const a = props.x; return <s>{foo(() => send(a))}</s> }'))
+  test('local shadow inside handler is not inlined', () =>
+    compare(
+      'const C = (props) => { const a = props.x; return <button onClick={() => { const a = 5; send(a) }}>g</button> }',
+    ))
+})
+
 // ─── Edge cases that previously broke ───────────────────────────────────────
 
 describeNative('Native vs JS equivalence — TypeScript syntax', () => {

@@ -2,7 +2,7 @@
 '@pyreon/compiler': patch
 ---
 
-Fix three JS↔Rust compiler parity gaps in the Rust native backend's
+Fix four JS↔Rust compiler parity gaps in the Rust native backend's
 prop-derived / component-body handling (all surfaced by differential testing,
 each bisect-verified + locked with cross-backend equivalence fixtures):
 
@@ -23,8 +23,34 @@ each bisect-verified + locked with cross-backend equivalence fixtures):
    descended into `FunctionDeclaration`; now descends into a default-exported
    arrow/function expression too.
 
+4. **Prop-derived const referenced inside an inline event-handler / accessor
+   function body.** `const a = props.x; <button onClick={() => send(a)}>` emitted
+   `send(a)` (a captured at setup — STALE) on the native path instead of
+   `send((props.x))` (live read). Because the dispatcher prefers the native
+   backend, production apps shipped the stale-capture form — a real reactivity bug
+   contradicting the documented "const-from-props in JSX is reactive" contract.
+   Root cause: `accesses_props` returned `false` for ANY arrow/function, so the
+   `slice_expr` gate never ran the inliner on a handler. The inliner
+   (`collect_prop_derived_idents`) already matched JS once it ran. Added a
+   gate-only `fn_body_accesses_props` that descends ONE level into a
+   binding-function's body (mirroring JS `accessesProps`'s child-skip: the body is
+   descended, NESTED functions stay skipped). The `Arrow|Function => false` arm of
+   `accesses_props` is unchanged, so a function appearing as a CHILD
+   (`foo(() => send(a))`) stays raw — JS's exact asymmetry.
+
 Output is now byte-identical to the JS backend across all component-definition
 shapes (const-arrow, export-const-arrow, function-expression, function-declaration,
-export-default-arrow, export-default-function). Verified by new cross-backend
-fixtures + ~110 differential-sweep shapes (0 divergences) + full compiler suite
-1579/1579.
+export-default-arrow, export-default-function) and for prop-derived reads inside
+inline handler/accessor bodies (including the nested-function skip). Verified by
+new cross-backend fixtures + ~110 differential-sweep shapes (0 divergences) + full
+compiler suite 1588/1588.
+
+KNOWN remaining (documented, not a regression — both pre-date this change): a
+prop-derived const referenced inside a SEPARATELY-DECLARED named handler
+(`const f = () => send(a); onClick={f}`) or called via a local function in a JSX
+expression (`const f = () => i; {f()}`) still captures on the native path. JS
+inlines these by registering the function-valued const as prop-derived and either
+inlining its value at the binding (`{f}`) or rewriting its declaration (`{f()}`) —
+a coupled, larger feature (function-const registration with shadow filtering + a
+component-body statement-rewriting pass the native backend does not yet have).
+Scoped as a follow-up; the common inline-handler form is the fix that ships here.
