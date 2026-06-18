@@ -4237,7 +4237,15 @@ fn try_direct_signal_ref(expr: &Expression, ctx: &mut Ctx) -> Option<(String, bo
             return None;
         }
         // Bare identifier: count() — existing fast path. Emit 2-arg form.
-        if let Expression::Identifier(_) = &call.callee {
+        if let Expression::Identifier(id) = &call.callee {
+            // A prop-derived function const (`const f = () => …`) used as `{f()}`:
+            // resolve it to its (live-prop) value so `_bindText` binds the inlined
+            // accessor, matching JS. slice_expr resolves the prop-derived var and
+            // does NOT auto-call it (f is not a signal), so the nullary-call
+            // accessor stays a function reference — exactly `_bindText((<resolved>))`.
+            if ctx.prop_derived_vars.contains_key(id.name.as_str()) {
+                return Some((slice_expr(&call.callee, ctx), false));
+            }
             // Use raw slice — NOT slice_expr — to avoid auto-calling the callee.
             // _bindText needs the signal FUNCTION reference, not its called value.
             return Some((slice_span(call.callee.span(), ctx), false));
@@ -4947,6 +4955,79 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
     }
 }
 
+/// Generic "does any expression in this function body satisfy `check`" walk —
+/// the registration-side companion to `accesses_props`'s body descent. Mirrors
+/// JS `referencesPropDerived` / `readsFromProps`, which descend into function
+/// bodies via the generic `forEachChildFast` with NO shadow filtering and NO
+/// nested-function skip (membership-only). `check` (e.g. `references_prop_derived`)
+/// recurses into deeper expressions — including nested arrows via their own arm —
+/// so a prop-derived ref at any depth inside the body registers the const, exactly
+/// as JS does (the precise shadow-aware substitution happens later in the inliner).
+fn fn_body_any_expr<F: Fn(&Expression) -> bool>(expr: &Expression, check: &F) -> bool {
+    let body = match expr {
+        Expression::ArrowFunctionExpression(a) => &a.body,
+        Expression::FunctionExpression(f) => match &f.body {
+            Some(b) => b,
+            None => return false,
+        },
+        _ => return false,
+    };
+    body.statements.iter().any(|s| stmt_any_expr(s, check))
+}
+
+fn stmt_any_expr<F: Fn(&Expression) -> bool>(stmt: &Statement, check: &F) -> bool {
+    match stmt {
+        Statement::ExpressionStatement(s) => check(&s.expression),
+        Statement::ReturnStatement(s) => s.argument.as_ref().map_or(false, |a| check(a)),
+        Statement::ThrowStatement(s) => check(&s.argument),
+        Statement::VariableDeclaration(d) => d
+            .declarations
+            .iter()
+            .any(|decl| decl.init.as_ref().map_or(false, |i| check(i))),
+        Statement::IfStatement(s) => {
+            check(&s.test)
+                || stmt_any_expr(&s.consequent, check)
+                || s.alternate.as_ref().map_or(false, |a| stmt_any_expr(a, check))
+        }
+        Statement::BlockStatement(b) => b.body.iter().any(|s| stmt_any_expr(s, check)),
+        Statement::ForStatement(f) => {
+            (match &f.init {
+                Some(ForStatementInit::VariableDeclaration(d)) => d
+                    .declarations
+                    .iter()
+                    .any(|decl| decl.init.as_ref().map_or(false, |i| check(i))),
+                _ => false,
+            }) || f.test.as_ref().map_or(false, |t| check(t))
+                || f.update.as_ref().map_or(false, |u| check(u))
+                || stmt_any_expr(&f.body, check)
+        }
+        Statement::ForInStatement(f) => check(&f.right) || stmt_any_expr(&f.body, check),
+        Statement::ForOfStatement(f) => check(&f.right) || stmt_any_expr(&f.body, check),
+        Statement::WhileStatement(w) => check(&w.test) || stmt_any_expr(&w.body, check),
+        Statement::DoWhileStatement(d) => stmt_any_expr(&d.body, check) || check(&d.test),
+        Statement::SwitchStatement(s) => {
+            check(&s.discriminant)
+                || s.cases.iter().any(|case| {
+                    case.test.as_ref().map_or(false, |t| check(t))
+                        || case.consequent.iter().any(|st| stmt_any_expr(st, check))
+                })
+        }
+        Statement::TryStatement(t) => {
+            t.block.body.iter().any(|s| stmt_any_expr(s, check))
+                || t
+                    .handler
+                    .as_ref()
+                    .map_or(false, |h| h.body.body.iter().any(|s| stmt_any_expr(s, check)))
+                || t
+                    .finalizer
+                    .as_ref()
+                    .map_or(false, |f| f.body.iter().any(|s| stmt_any_expr(s, check)))
+        }
+        Statement::LabeledStatement(l) => stmt_any_expr(&l.body, check),
+        _ => false,
+    }
+}
+
 fn reads_from_props(expr: &Expression, props_names: &FxHashSet<String>) -> bool {
     match expr {
         Expression::StaticMemberExpression(member) => {
@@ -5031,6 +5112,12 @@ fn reads_from_props(expr: &Expression, props_names: &FxHashSet<String>) -> bool 
             ChainElement::PrivateFieldExpression(p) => reads_from_props(&p.object, props_names),
             ChainElement::TSNonNullExpression(e) => reads_from_props(&e.expression, props_names),
         },
+        // A function-valued const whose body reads props directly
+        // (`const f = () => props.x`) registers the const as prop-derived, so its
+        // use site inlines f's value (matching JS `readsFromProps`'s body descent).
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+            fn_body_any_expr(expr, &|e| reads_from_props(e, props_names))
+        }
         _ => false,
     }
 }
@@ -5100,6 +5187,16 @@ fn references_prop_derived(expr: &Expression, prop_derived: &FxHashMap<String, S
             ChainElement::PrivateFieldExpression(p) => references_prop_derived(&p.object, prop_derived),
             ChainElement::TSNonNullExpression(e) => references_prop_derived(&e.expression, prop_derived),
         },
+        // Function-valued consts whose body references a prop-derived var register
+        // the const as prop-derived (matching JS `referencesPropDerived`, which
+        // descends into function bodies via `forEachChildFast` — membership-only,
+        // NO shadow filtering: a body that locally shadows the name still registers,
+        // exactly as JS, and the precise shadow-aware substitution happens later in
+        // the inliner). This lets a named handler / locally-called function
+        // (`const f = () => send(a)`) inline `a` to the live prop at its use site.
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+            fn_body_any_expr(expr, &|e| references_prop_derived(e, prop_derived))
+        }
         _ => false,
     }
 }

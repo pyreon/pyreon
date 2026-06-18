@@ -373,6 +373,44 @@ describeNative('Native vs JS equivalence — prop-derived in handler/accessor bo
     ))
 })
 
+// A SEPARATELY-DECLARED function const whose body reads a prop-derived var (or
+// props directly) registers as prop-derived, so its use site inlines the value
+// — the deferred function reads the LIVE prop, not a setup-time snapshot. JS
+// descends into function bodies in `referencesPropDerived` / `readsFromProps`
+// (membership-only, no shadow filter); RS previously had `_ => false` arms, so a
+// named handler (`const f = () => send(a); onClick={f}`) or locally-called fn
+// (`const f = () => i; {f()}`) shipped the stale-capture form on the native
+// backend. Closed by function-body descent in both registration helpers + a
+// prop-derived-callee resolution in the `_bindText` nullary-call fast path.
+describeNative('Native vs JS equivalence — prop-derived in separately-declared functions', () => {
+  test('named handler reference inlines f value (live read)', () =>
+    compare(
+      'const C = (props) => { const a = props.x; const f = () => send(a); return <button onClick={f}>g</button> }',
+    ))
+  test('named block-body handler reference', () =>
+    compare(
+      'const C = (props) => { const a = props.x; const f = (e) => { e.preventDefault(); send(a) }; return <form onSubmit={f}><i/></form> }',
+    ))
+  test('local function called in JSX expression rewrites to live read', () =>
+    compare(
+      'const C = (props) => { const i = props.start; const f = () => { for (let i = 0; i < 3; i++) {} return i }; return <s>{f()}</s> }',
+    ))
+  test('simple local function call', () =>
+    compare('const C = (props) => { const a = props.x; const f = () => a + 1; return <s>{f()}</s> }'))
+  test('function reading props directly registers + inlines', () =>
+    compare('const C = (props) => { const f = () => props.x; return <button onClick={f}>g</button> }'))
+  test('local shadow inside named function is over-registered like JS', () =>
+    compare(
+      'const C = (props) => { const a = props.x; const f = () => { const a = 5; send(a) }; return <button onClick={f}>g</button> }',
+    ))
+  test('function NOT reading props/prop-derived stays a raw reference', () =>
+    compare('const C = (props) => { const f = () => send(1); return <button onClick={f}>g</button> }'))
+  test('transitive: const used in a named function body', () =>
+    compare(
+      'const C = (props) => { const a = props.x; const b = a + 1; const f = () => use(b); return <button onClick={f}>g</button> }',
+    ))
+})
+
 // ─── Edge cases that previously broke ───────────────────────────────────────
 
 describeNative('Native vs JS equivalence — TypeScript syntax', () => {
