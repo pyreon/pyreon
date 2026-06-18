@@ -57,12 +57,31 @@ export interface GeneratedSourceMap {
 // environment, WASM runtime like StackBlitz, missing per-platform package).
 //
 // See `load-native.ts` for the resolution logic.
+/** The napi `CollapseConfig` shape — the JS `collapseRocketstyle` config
+ * lowered from `Set`/`Map` to the array/Record form napi reads (camelCase
+ * site fields auto-map to the Rust struct's snake_case). Built by
+ * {@link toNativeCollapse} and threaded as `transformJsx`'s 6th arg. */
+interface NativeCollapseSite {
+  templateHtml: string
+  lightClass: string
+  darkClass: string
+  rules: string[]
+  ruleKey: string
+}
+interface NativeCollapseConfig {
+  candidates: string[]
+  sites: Record<string, NativeCollapseSite>
+  mode: { name: string; source: string }
+  runtimeDomSource?: string
+  stylerSource?: string
+}
 type NativeTransformFn = (
   code: string,
   filename: string,
   ssr: boolean,
   knownSignals: string[] | null,
   reactivityLens: boolean,
+  collapse?: NativeCollapseConfig,
 ) => TransformResult
 const nativeBinding = loadNativeBinding(import.meta.url)
 const nativeTransformJsx: NativeTransformFn | null = nativeBinding
@@ -917,16 +936,12 @@ export function transformJSX(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
-  // `collapseRocketstyle` emission lives only in the JS path (the Rust
-  // binary doesn't implement it and isn't passed the option). Force the
-  // JS path when collapse is requested so it isn't silently skipped —
-  // same pattern as `analyzeReactivity` forcing `transformJSX_JS`.
-  if (options.collapseRocketstyle) return transformJSX_JS(code, filename, options)
-
-  // Try Rust native binary first (3.7-8.2x faster).
-  // Per-call try/catch: if the native binary panics on an edge case
-  // (bad UTF-8, unexpected AST shape), fall back gracefully instead
-  // of crashing the Vite dev server.
+  // Try Rust native binary first (3.7-8.2x faster). The native backend now
+  // implements ALL FOUR rocketstyle-collapse variants byte-identically (locked
+  // by the cross-backend equivalence suite), so `collapseRocketstyle` is lowered
+  // to the napi shape and threaded as the 6th arg instead of forcing the JS path.
+  // Per-call try/catch: if the native binary panics on an edge case (bad UTF-8,
+  // unexpected AST shape), fall back gracefully instead of crashing the dev server.
   if (nativeTransformJsx) {
     try {
       return nativeTransformJsx(
@@ -935,12 +950,30 @@ export function transformJSX(
         options.ssr === true,
         options.knownSignals ?? null,
         options.reactivityLens === true,
+        options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
       )
     } catch {
       // Native transform failed — fall through to JS implementation
     }
   }
   return transformJSX_JS(code, filename, options)
+}
+
+/** Lower the JS `collapseRocketstyle` config (`Set`/`Map`) to the napi
+ * array/Record shape. Site objects keep their camelCase keys (napi maps them to
+ * the Rust struct's snake_case fields). Optional source overrides are only
+ * included when present (exactOptionalPropertyTypes — never assigned `undefined`). */
+function toNativeCollapse(
+  c: NonNullable<TransformOptions['collapseRocketstyle']>,
+): NativeCollapseConfig {
+  const out: NativeCollapseConfig = {
+    candidates: [...c.candidates],
+    sites: Object.fromEntries(c.sites),
+    mode: c.mode,
+  }
+  if (c.runtimeDomSource !== undefined) out.runtimeDomSource = c.runtimeDomSource
+  if (c.stylerSource !== undefined) out.stylerSource = c.stylerSource
+  return out
 }
 
 /** JS fallback implementation — used when the native binary isn't available. */
