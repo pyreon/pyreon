@@ -4,6 +4,8 @@
 '@pyreon/validate': patch
 '@pyreon/toast': patch
 '@pyreon/storage': patch
+'@pyreon/form': patch
+'@pyreon/table': patch
 '@pyreon/hotkeys': patch
 '@pyreon/hooks': patch
 '@pyreon/charts': patch

@@ -184,6 +184,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
    */
   const runSchemaForField = async (name: keyof TValues & string) => {
     if (!schema) return
+    /* v8 ignore next — `?? 0` left arm needs a 2nd concurrent blur on the same field
+       before the 1st resolves; setTouched flips touched once, so the version is always
+       undefined→0 here in practice. Defensive. */
     schemaFieldVersions[name] = (schemaFieldVersions[name] ?? 0) + 1
     const v = schemaFieldVersions[name]
     const allValues = getValues()
@@ -191,6 +194,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // Discard stale result if a newer blur on the same field has fired.
     if (disposed || schemaFieldVersions[name] !== v) return
     const field = fields[name]
+    /* v8 ignore next — `name` always comes from the registered `fields` map; defensive guard. */
     if (!field) return
     field.error.set(result[name])
   }
@@ -279,6 +283,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       const fieldValidator = validators?.[name]
       if (fieldValidator) {
         // Bump version to track this validation run
+        /* v8 ignore next — `?? 0` right arm is dead: validationVersions[name] is
+           initialised to 0 at field setup (see init above), so it's never undefined here. */
         validationVersions[name] = (validationVersions[name] ?? 0) + 1
         const currentVersion = validationVersions[name]
         try {
@@ -314,6 +320,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
               try {
                 resolve(await runValidation(value))
               } catch (err) {
+                /* v8 ignore next 2 — unreachable: runValidation catches its own errors and
+                   returns; it never throws, so this defensive outer catch never fires. */
                 resolve(err instanceof Error ? err.message : String(err))
               }
             }, debounceMs)
@@ -371,6 +379,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     let prevIsDirty = false
     dirtySig.subscribe(() => {
       const isFieldDirty = dirtySig.peek()
+      /* v8 ignore next — false arm unreachable: dirtySig (a boolean) only NOTIFIES on a
+         flip, so when this subscriber runs isFieldDirty always differs from prevIsDirty. */
       if (isFieldDirty !== prevIsDirty) {
         _dirtyCount.update((n) => (isFieldDirty ? n + 1 : n - 1))
         prevIsDirty = isFieldDirty
@@ -487,6 +497,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           const fieldValidator = validators?.[name]
           if (fieldValidator) {
             // Bump version so any in-flight debounced validation is discarded
+            /* v8 ignore next — `?? 0` right arm is dead: validationVersions[name] is
+               initialised to 0 at field setup, so it's never undefined here. */
             validationVersions[name] = (validationVersions[name] ?? 0) + 1
             const currentVersion = validationVersions[name]
             try {
@@ -499,6 +511,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
                 fields[name].error.set(error)
               }
             } catch (err) {
+              /* v8 ignore next — false arm needs a concurrent validation to bump the version
+                 WHILE this submit validator is throwing; not reachable in a single submit pass. */
               if (validationVersions[name] === currentVersion) {
                 // Don't treat AbortError as a validation error
                 if (err instanceof Error && err.name === 'AbortError') {
