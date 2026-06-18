@@ -219,7 +219,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.1"
   },
   "publishConfig": {
     "access": "public"
