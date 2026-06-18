@@ -3081,14 +3081,38 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const dataExpr = dynamicWebViewAttrKotlin(e, 'data')
   const dataArg =
     dataExpr !== undefined ? `data = PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})` : undefined
+  // Reverse bridge — `onMessage={(m) => …}` receives the string the page
+  // sends via `window.pyreonPostMessage(...)`.
+  const onMsg = e.attrs.find((a) => a.kind === 'event' && a.name === 'message')
+  const onMsgArg =
+    onMsg?.kind === 'event'
+      ? `onMessage = ${emitKotlinMessageHandler(onMsg.handler)}`
+      : undefined
   if (content === undefined) {
     _emitWarnings.push(
       '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
     )
     return 'PyreonWebView()'
   }
-  const args = dataArg !== undefined ? `${content}, ${dataArg}` : content
+  const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   return `PyreonWebView(${args})`
+}
+
+/**
+ * Emit a `<WebView onMessage={…}>` handler as a Kotlin `(String) -> Unit`
+ * lambda. The single param is the page-posted string. An arrow with a
+ * param keeps it (`{ m -> … }`); a zero-param arrow ignores it
+ * (`{ _ -> … }`); a bare function reference is called with the message.
+ */
+function emitKotlinMessageHandler(handler: ExprIR): string {
+  if (handler.kind === 'arrow') {
+    if (handler.body.kind === 'literal' && handler.body.value === '') {
+      return '{ _ -> }'
+    }
+    const param = handler.params.length > 0 ? kotlinIdent(handler.params[0]!) : '_'
+    return `{ ${param} -> ${emitKotlinExpr(handler.body, 0)} }`
+  }
+  return `{ pyreonMsg -> ${emitKotlinExpr(handler, 0)}(pyreonMsg) }`
 }
 
 /** The `html` / `src` constructor arg for `<WebView>` (Kotlin). Mirror of

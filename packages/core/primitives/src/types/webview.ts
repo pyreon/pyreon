@@ -28,6 +28,17 @@ export interface WebViewProps {
    * Pass a `signal()` value (or an accessor) for reactivity.
    */
   data?: unknown
+  /**
+   * Reverse bridge — invoked with a string the hosted page sends back via
+   * the unified `window.pyreonPostMessage("…")` API (e.g. a chart bar
+   * tapped, a selection made), so webview-hosted viz can drive native
+   * signals. On iOS this is a `WKScriptMessageHandler`; on Android a
+   * main-thread-marshalled `@JavascriptInterface`; on web the parent
+   * defines `window.pyreonPostMessage` on the iframe (same-origin /
+   * `srcdoc`). The payload is a plain string — JSON-stringify structured
+   * data in the page and parse it here.
+   */
+  onMessage?: (message: string) => void
   /** Pass-through `data-*` / `aria-*` / `id` / `class` attrs (web). */
   [key: `data-${string}`]: unknown
   [key: `aria-${string}`]: unknown

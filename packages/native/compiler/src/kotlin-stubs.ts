@@ -584,7 +584,7 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
 // produces.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, modifier: Modifier = Modifier) {}
+fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier) {}
 
 // PyreonJson — mirror of @pyreon/native-runtime-kotlin's PyreonJson.kt.
 // Stub so the kotlinc validate gate resolves \`PyreonJson.encode(signal)\`
