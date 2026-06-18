@@ -216,7 +216,7 @@ mount(<App />, document.getElementById("app")!)
 - `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `onClick={maybeUndefined}` → safe (runtime bails), but be aware the handler is checked at assignment time
 
-## Core Framework (8 packages)
+## Core Framework (9 packages)
 
 - @pyreon/reactivity — Fine-grained reactivity: signal, computed, effect, batch, onCleanup, createStore, watch, createResource, untrack. Pyreon signals are NOT `.value` getters (Vue ref) or `[state, setState]` tuples (React useState). The signal IS the function: `count()` reads, `count.set(v)` writes, `count.update(fn)` derives. This is the #1 confusion for developers coming from other frameworks.
 - @pyreon/core — VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId. Pyreon components are plain functions that execute a single time. Reactivity comes from reading signals inside reactive scopes (JSX expression thunks, `effect()`, `computed()`), not from re-running the component function. `if (!cond()) return null` at the top level runs once and is static — use `return (() => { if (!cond()) return null; return <div /> })` for reactive conditional rendering.
@@ -226,6 +226,7 @@ mount(<App />, document.getElementById("app")!)
 - @pyreon/router — hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. `await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
 - @pyreon/head — Reactive `<head>` tag management — useHead(), HeadProvider, renderWithHead() for SSR. Tags with the same key replace each other (innermost wins). Meta keys: `name` → `property` → index. Link keys: `href + rel` → `rel` → index. Script keys: `src` → index. Style and noscript are unkeyed and always accumulated.
 - @pyreon/server — SSR + SSG + island architecture — createHandler(), prerender(), island(), serverIsland(), middleware chain. `mode: "stream"` uses `renderToStream` with shell + app + tail emission; Suspense boundaries resolve out-of-order. The `<head>` collected via `@pyreon/head` is flushed in the shell before any Suspense boundaries resolve, so async-loaded data does not contribute to it.
+- @pyreon/primitives — 15 cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.
 
 ## UI System (12 packages)
 

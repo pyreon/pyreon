@@ -895,6 +895,138 @@ type Props = ExtractProps<typeof Iterator>
   // <gen-docs:api-reference:end @pyreon/core>
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/primitives
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/primitives>
+
+  'primitives/Stack': {
+    signature: `(props: { direction?: 'column' | 'row'; align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode`,
+    example: '<Stack gap="md" align="center"><Text>a</Text><Text>b</Text></Stack>',
+    notes: 'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg"). See also: Inline, Layer, Scroll.',
+    mistakes: `- Using \`<View>\` / \`<VStack>\` / \`<div>\` — the canonical name is \`<Stack>\` (one name, all platforms)
+- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web`,
+  },
+
+  'primitives/Inline': {
+    signature: '(props: { align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode',
+    example: '<Inline gap="sm"><Field value={q()} onChangeText={(t) => q.set(t)} /><Button onPress={search}>Go</Button></Inline>',
+    notes: 'Horizontal row — sugar for `<Stack direction="row">`. Web flex-row; iOS `HStack`; Android `Row`. ⚠ On Android `<Inline>` is a NON-WRAPPING `Row` (SwiftUI HStack shrinks to fit, but Compose Row overflows + clips the last children). Keep horizontal groups short, or use a vertical `<Stack>` for action lists. See also: Stack.',
+    mistakes: `- Putting 5+ buttons in an <Inline> — they overflow + clip (become untappable) on Android; stack vertically or split
+- Relying on \`wrap\` for native multi-line — wrapping behavior differs per target`,
+  },
+
+  'primitives/Layer': {
+    signature: '(props: { align?: Align; padding?: Space; children }) => VNode',
+    example: '<Layer><Image src={hero} alt="" /><Text>overlaid caption</Text></Layer>',
+    notes: 'Stacked / overlay container. Web → `position:relative` + abs children; iOS → `ZStack`; Android → `Box`. Use for badges, overlays, layered composition. See also: Stack.',
+    mistakes: '- Using it for flow layout — Layer stacks children on the z-axis, not in a row/column',
+  },
+
+  'primitives/Scroll': {
+    signature: `(props: { direction?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
+    example: '<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>',
+    notes: 'Scrollable region. Web → `overflow:auto`; iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
+    mistakes: '- Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose',
+  },
+
+  'primitives/Spacer': {
+    signature: '() => VNode',
+    example: '<Inline><Text>left</Text><Spacer /><Text>right</Text></Inline>',
+    notes: 'Flexible gap that pushes siblings apart. Web → flex spacer; iOS → `Spacer`; Android → `Spacer(Modifier.weight(1f))`. Use in an `<Inline>`/`<Stack>` to right-align or space-between. See also: Inline, Stack.',
+    mistakes: '- Using it inside a `<Scroll>` on Android (weight + scroll conflict)',
+  },
+
+  'primitives/Text': {
+    signature: `(props: { color?: ColorToken; size?: 'xs'|'sm'|'md'|'lg'|'xl'; weight?: 'regular'|'medium'|'bold'; truncate?: boolean; children }) => VNode`,
+    example: '<Text size="lg" weight="bold" color="primary">{label()}</Text>',
+    notes: 'Inline text. Web `<span>`; iOS/Android `Text`. Read signals directly in children: `<Text>{count()}</Text>` (the compiler wraps it reactively). Avoid template literals on native — use string concat. See also: Heading.',
+    mistakes: `- Using a template literal \`{\`Count: \${n()}\`}\` — partial native support; prefer \`{"Count: " + n()}\`
+- Wrapping in \`String(...)\` — unnecessary, numbers coerce in JSX text`,
+  },
+
+  'primitives/Heading': {
+    signature: '(props: { level?: 1|2|3|4|5|6; color?: ColorToken; children }) => VNode',
+    example: '<Heading level={2}>Section</Heading>',
+    notes: 'Heading text. Web `<h1>`–`<h6>` by `level`; iOS/Android a sized/weighted `Text`. See also: Text.',
+    mistakes: '- Omitting `level` when document outline matters (web a11y)',
+  },
+
+  'primitives/Image': {
+    signature: `(props: { src: string; alt: string; fit?: 'cover'|'contain'|'fill'|'none'; width?: number|string; height?: number|string }) => VNode`,
+    example: '<Image src={logo} alt="Logo" width={120} height={40} fit="contain" />',
+    notes: 'Image. Web `<img>`; iOS `Image`; Android `AsyncImage` (Coil). `src` + `alt` REQUIRED. Bundled assets (via the asset pipeline) vs remote URLs dispatch per target. See also: Icon.',
+    mistakes: '- Omitting `alt` (required — a11y + it is the native contentDescription)',
+  },
+
+  'primitives/Icon': {
+    signature: `(props: { name: string; size?: 'sm'|'md'|'lg'; color?: ColorToken }) => VNode`,
+    example: '<Icon name="star" size="md" color="primary" />',
+    notes: 'Icon by canonical name. Web → svg; iOS → SF Symbol (`Image(systemName:)`); Android → Material `Icons.Filled.*`. The name maps through `ICON_MAP`; unmapped names warn + fall back. See also: Image.',
+    mistakes: '- Using a platform-specific icon id — use the canonical name; the compiler maps it per target',
+  },
+
+  'primitives/Button': {
+    signature: `(props: { onPress: () => void; disabled?: boolean; variant?: 'primary'|'secondary'|'ghost'|'danger'; children }) => VNode`,
+    example: '<Button variant="primary" onPress={() => count.set(count() + 1)}>Increment</Button>',
+    notes: 'Styled CTA. Web `<button>`; iOS/Android `Button`. Handler is `onPress` (NOT `onClick`). Multi-statement handlers work: `onPress={() => { a.set(1); b.set(2) }}`. See also: Press, Link.',
+    mistakes: `- Using \`onClick\` — the canonical event is \`onPress\` (mapped to onClick/action:/onClick per target)
+- Passing \`onPress={maybeUndefined}\` — guard it; a non-function handler is a footgun`,
+  },
+
+  'primitives/Press': {
+    signature: '(props: { onPress: () => void; onLongPress?: () => void; disabled?: boolean; children }) => VNode',
+    example: '<Press onPress={() => select(item)}><Card item={item} /></Press>',
+    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress`. See also: Button.',
+    mistakes: '- Using `<Press>` for a primary action — use `<Button>` for styled CTAs',
+  },
+
+  'primitives/Link': {
+    signature: '(props: { to: string; external?: boolean; children }) => VNode',
+    example: '<Link to="/profile">Profile</Link>',
+    notes: 'Navigation link. Web `<a>`; iOS/Android router-aware navigation. Integrates with `@pyreon/router` (`to` is a route path). `external` opens outside the app. See also: Button.',
+    mistakes: '- Hardcoding an href for internal routes — use `to` so it routes natively too',
+  },
+
+  'primitives/Field': {
+    signature: `(props: { value: string | (() => string); onChangeText: (next: string) => void; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; placeholder?: string; disabled?: boolean; onSubmit?: () => void }) => VNode`,
+    example: '<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />',
+    notes: 'Text input. Web `<input>`; iOS/Android `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. See also: Toggle.',
+    mistakes: `- Using \`onChange\`/\`onInput\` — the canonical handler is \`onChangeText(next: string)\`
+- Forgetting \`value\` is the source of truth — write back via \`onChangeText\` → signal.set`,
+  },
+
+  'primitives/Toggle': {
+    signature: '(props: { value: boolean | (() => boolean); onChange: (next: boolean) => void; disabled?: boolean }) => VNode',
+    example: '<Toggle value={enabled()} onChange={(v) => enabled.set(v)} />',
+    notes: 'Boolean switch/checkbox. Web checkbox; iOS `Toggle`; Android `Switch`. `onChange(next: boolean)`. See also: Field.',
+    mistakes: '- Using `onPress`/`onClick` — Toggle uses `onChange(next: boolean)`',
+  },
+
+  'primitives/Modal': {
+    signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
+    example: '<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>',
+    notes: 'Modal/sheet. Web overlay; iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
+    mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
+  },
+
+  'primitives/WebView': {
+    signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode',
+    example: '<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />',
+    notes: 'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (charts/flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. See also: Web.',
+    mistakes: `- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve <WebView> for self-contained web-island panes (charts/editors/diagrams)
+- Expecting native look-and-feel — content renders as a web view, not native widgets`,
+  },
+
+  'primitives/Web': {
+    signature: '(props: { children }) => VNode  // + <NativeIOS> / <NativeAndroid>',
+    example: '<NativeIOS><Text>iOS-only</Text></NativeIOS><Web><Text>web-only</Text></Web>',
+    notes: `Per-platform escape hatches. \`<Web>\` renders its children only on web; \`<NativeIOS>\` only on iOS; \`<NativeAndroid>\` only on Android. Use for the rare genuinely-per-platform UI branch that the canonical primitives can't express. See also: WebView.`,
+    mistakes: '- Overusing them — defeats "one source"; reach for them only when a target genuinely needs different UI',
+  },
+  // <gen-docs:api-reference:end @pyreon/primitives>
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/compiler
   // ═══════════════════════════════════════════════════════════════════════════
 

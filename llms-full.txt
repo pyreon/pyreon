@@ -174,6 +174,43 @@ const LazyApp = () => (
 >
 > **JSX uses standard HTML attributes**: Use `class` not `className`, `for` not `htmlFor`, `onInput` not `onChange` for per-keystroke updates. Pyreon maps to native DOM events, not the React synthetic event system.
 
+## @pyreon/primitives — Canonical Multiplatform Primitives
+
+The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.
+
+```typescript
+import { Stack, Inline, Text, Heading, Button, Field, Toggle } from '@pyreon/primitives'
+import { signal, computed } from '@pyreon/reactivity'
+
+type Todo = { id: number; title: string; done: boolean }  // type alias, NOT interface (PMTC drops interface on native)
+
+export function App() {
+  const todos = signal<Todo[]>([])
+  const draft = signal('')
+  const remaining = computed(() => todos().filter((t) => !t.done).length)
+
+  return (
+    <Stack gap="md" padding={4}>
+      <Heading level={1}>Todos ({remaining()} left)</Heading>
+      <Inline gap="sm">
+        <Field value={draft()} onChangeText={(t) => draft.set(t)} />
+        <Button onPress={() => { todos.set([...todos(), { id: todos().length, title: draft(), done: false }]); draft.set('') }}>
+          Add
+        </Button>
+      </Inline>
+      <For each={todos()} by={(t) => t.id}>
+        {(t) => (
+          <Inline gap="sm">
+            <Toggle value={t.done} onChange={(v) => todos.set(todos().map((x) => x.id === t.id ? { ...x, done: v } : x))} />
+            <Text>{t.title}</Text>
+          </Inline>
+        )}
+      </For>
+    </Stack>
+  )
+}
+```
+
 ## @pyreon/compiler — JSX Reactive Transform
 
 Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native binary (napi-rs, 3.7-8.9× faster) and falls back per-call to the pure-JS `transformJSX_JS` when the binary is unavailable (CI, WASM, wrong platform); the two backends are asserted byte-identical by 180+ cross-backend equivalence tests. Emits `_tpl()` (cloneNode templates) + per-text-node `_bind()`, hoists static JSX, inlines `const`-from-`props`, and auto-calls bare signal references in JSX. Also ships the experimental Reactivity-Lens sidecar (`analyzeReactivity` — surfaces the compiler's own per-expression reactive/static decision back to editors), React-pattern detection + one-shot migration, the Pyreon anti-pattern detector behind the MCP `validate` tool, and the syntactic project audits powering `pyreon doctor` (test-environment / islands / SSG).
