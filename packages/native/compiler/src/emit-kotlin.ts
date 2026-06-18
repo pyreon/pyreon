@@ -2057,8 +2057,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       return `${emitKotlinExpr(e.object, indent)}.${kotlinIdent(e.property)}`
     }
-    case 'binary':
-      return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
+    case 'binary': {
+      const bl = emitKotlinExpr(e.left, indent)
+      const br = emitKotlinExpr(e.right, indent)
+      // JS `/` is ALWAYS float division (`7 / 2 === 3.5`). Kotlin integer
+      // `/` truncates (`7 / 2 == 3`) — even assigned to a Double — so
+      // coerce both operands with `.toDouble()` to match JS semantics. `/`
+      // is only valid on numbers, so this is always sound. Other ops
+      // (`+ - * %`) match JS for integers and are emitted verbatim.
+      if (e.op === '/') {
+        return `(${bl}).toDouble() / (${br}).toDouble()`
+      }
+      return `${bl} ${e.op} ${br}`
+    }
     case 'comparison': {
       // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
       // Kotlin's `==` is structural-equality (matches what Pyreon source
