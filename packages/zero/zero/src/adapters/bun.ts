@@ -62,8 +62,13 @@ try {
   }
 } catch {}
 
+// Honor \`$PORT\` at runtime (Vercel / Heroku / Cloud Run / CI all set it),
+// falling back to the build-time configured port (default 3000). A set-but-
+// empty \`PORT\` falls back too; \`PORT=0\` binds an ephemeral port.
+const PORT = process.env.PORT ? Number(process.env.PORT) : ${port}
+
 Bun.serve({
-  port: ${port},
+  port: PORT,
   async fetch(req) {
     const url = new URL(req.url)
 
@@ -149,7 +154,7 @@ Bun.serve({
   },
 })
 
-console.log("\\n  ⚡ Zero production server running on http://localhost:${port}\\n")
+console.log(\`\\n  ⚡ Zero production server running on http://localhost:\${PORT}\\n\`)
 `.trimStart()
 
       await writeFile(join(outDir, 'index.ts'), serverEntry)

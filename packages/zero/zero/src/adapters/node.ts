@@ -189,8 +189,12 @@ const server = createServer(async (req, res) => {
   }
 })
 
-server.listen(${port}, () => {
-  console.log("\\n  ⚡ Zero production server running on http://localhost:${port}\\n")
+// Honor \`$PORT\` at runtime (Vercel / Heroku / Cloud Run / CI all set it),
+// falling back to the build-time configured port (default 3000). A set-but-
+// empty \`PORT\` falls back too; \`PORT=0\` binds an ephemeral port.
+const PORT = process.env.PORT ? Number(process.env.PORT) : ${port}
+server.listen(PORT, () => {
+  console.log(\`\\n  ⚡ Zero production server running on http://localhost:\${PORT}\\n\`)
 })
 `.trimStart()
 
