@@ -1632,6 +1632,45 @@ fn is_children_expression(expr: &Expression, expr_text: &str) -> bool {
 // ─── Prop-derived variable resolution ────────────────────────────────────────
 
 /// Walk a statement looking for a VariableDeclarator whose init span matches.
+/// Descend into an expression's nested function body (arrow / function
+/// expression) looking for a declarator init matching `target`.
+///
+/// A component is `const X = (props) => { … }` (or `export const X = …`), so the
+/// prop-derived declarations — registered at `callback_depth == 0` INSIDE that
+/// body — live one function level below the top-level statement. Without this
+/// descent, `find_init_expression_by_span` never reaches them and
+/// `resolve_var_to_string` falls back to the raw (unresolved) source, breaking
+/// TRANSITIVE prop-derived inlining: `const a = props.x; const b = a + 1` left
+/// `b` as `(a + 1)` (a unresolved) instead of `((props.x) + 1)` — a JS↔Rust
+/// parity gap that also silently dropped reactivity on the native path.
+fn find_init_in_expression<'a>(
+    expr: &'a Expression<'a>,
+    target: Span,
+) -> Option<&'a Expression<'a>> {
+    match expr {
+        Expression::ArrowFunctionExpression(arrow) => {
+            for s in &arrow.body.statements {
+                if let Some(e) = find_init_in_statement(s, target) {
+                    return Some(e);
+                }
+            }
+            None
+        }
+        Expression::FunctionExpression(func) => {
+            if let Some(body) = &func.body {
+                for s in &body.statements {
+                    if let Some(e) = find_init_in_statement(s, target) {
+                        return Some(e);
+                    }
+                }
+            }
+            None
+        }
+        Expression::ParenthesizedExpression(p) => find_init_in_expression(&p.expression, target),
+        _ => None,
+    }
+}
+
 fn find_init_in_statement<'a>(stmt: &'a Statement<'a>, target: Span) -> Option<&'a Expression<'a>> {
     match stmt {
         Statement::VariableDeclaration(decl) => {
@@ -1639,6 +1678,11 @@ fn find_init_in_statement<'a>(stmt: &'a Statement<'a>, target: Span) -> Option<&
                 if let Some(init) = &d.init {
                     if init.span() == target {
                         return Some(init);
+                    }
+                    // Component bodies are arrow/function expressions assigned to
+                    // a const — descend to reach their prop-derived declarations.
+                    if let Some(e) = find_init_in_expression(init, target) {
+                        return Some(e);
                     }
                 }
             }
@@ -1734,6 +1778,12 @@ fn find_init_in_statement<'a>(stmt: &'a Statement<'a>, target: Span) -> Option<&
                         }
                     }
                 }
+            } else if let Some(expr) = exp.declaration.as_expression() {
+                // `export default (props) => { … }` — descend into the arrow /
+                // function-expression body for prop-derived declarations.
+                if let Some(e) = find_init_in_expression(expr, target) {
+                    return Some(e);
+                }
             }
             None
         }
@@ -1745,6 +1795,11 @@ fn find_init_in_statement<'a>(stmt: &'a Statement<'a>, target: Span) -> Option<&
                             if let Some(init) = &d.init {
                                 if init.span() == target {
                                     return Some(init);
+                                }
+                                // `export const X = (props) => { … }` — descend
+                                // into the component body for prop-derived decls.
+                                if let Some(e) = find_init_in_expression(init, target) {
+                                    return Some(e);
                                 }
                             }
                         }
@@ -2502,7 +2557,7 @@ fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
     idents.sort_by_key(|&(start, _)| start);
     let mut result = String::new();
     let mut last = base;
-    for &(start, end) in &idents {
+    for &(_, end) in &idents {
         result.push_str(&ctx.source[last as usize..end as usize]);
         result.push_str("()");
         last = end;
@@ -2961,10 +3016,17 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             ctx.parent_is_jsx = old;
         }
         Expression::FunctionExpression(func) => {
-            // Don't let a function-expression render-callback's flag leak into
-            // nested arrows in its body (this branch doesn't register props
-            // itself, so just clear).
+            // Function-EXPRESSION components (`const C = function (props) { … }`)
+            // register reactive props exactly like the arrow arm — the JS backend
+            // treats them as components, so Rust must too (parity; pre-fix their
+            // props were baked STATIC). Honour the JSX-child-callback guard so a
+            // `<For>{function (row) { … }}</For>` render callback's param is NOT
+            // mistaken for reactive props.
+            let is_jsx_child_cb = ctx.in_jsx_child_callback;
             ctx.in_jsx_child_callback = false;
+            if !is_jsx_child_cb {
+                maybe_register_component_props_fn(func, ctx);
+            }
             let old = ctx.parent_is_jsx;
             ctx.parent_is_jsx = false;
             let shadows = if !ctx.signal_vars.is_empty() {
