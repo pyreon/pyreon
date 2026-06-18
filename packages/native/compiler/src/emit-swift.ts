@@ -2138,6 +2138,29 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // already returns -1 when not found — faithful as-is.)
             if (e.args.length === 1) return `(${obj}.firstIndex(where: ${argExprs[0]!}) ?? -1)`
             break
+          case 'replaceAll':
+            // JS `str.replaceAll(a, b)` → Swift `replacingOccurrences(of:with:)`
+            // (both replace EVERY occurrence — faithful, unlike `replace`
+            // which is first-only in JS). Kotlin's `String.replace(a, b)` is
+            // also replace-all. (Plain `replace` is deliberately NOT mapped —
+            // first-vs-all mismatch.)
+            if (e.args.length === 2) {
+              return `${obj}.replacingOccurrences(of: ${argExprs[0]!}, with: ${argExprs[1]!})`
+            }
+            break
+          case 'flat':
+            // JS `arr.flat()` (one level) → Swift `flatMap { $0 }` (Kotlin:
+            // `flatten()`). Only the no-arg (depth-1) form maps cleanly; a
+            // numeric `flat(depth)` falls through to the generic emit.
+            if (e.args.length === 0) return `${obj}.flatMap { $0 }`
+            break
+          case 'reverse':
+            // JS `arr.reverse()` → Swift `Array(reversed())`. JS reverse
+            // mutates in place AND returns the array; the native idiom is the
+            // non-mutating `reversed()` (render-safe, matches `rx.reverse`),
+            // wrapped in `Array(...)` so the result is a concrete `[T]`.
+            if (e.args.length === 0) return `Array(${obj}.reversed())`
+            break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Swift `reduce(initial,
             // reducer)` — Swift takes the initial value FIRST (the
