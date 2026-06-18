@@ -120,4 +120,42 @@ describe('@pyreon/native-cli main()', () => {
       ]),
     ).toBe(2)
   })
+
+  it('--target=all builds BOTH targets into <out>/ios + <out>/android', () => {
+    // The one-command "write once, ship every target" build. iOS Swift lands
+    // in <out>/ios, Android Kotlin in <out>/android — cleanly separated.
+    const code = main([
+      'build',
+      '--target=all',
+      `--source=${COMPILER_FIXTURES}`,
+      `--out=${tempOut}`,
+    ])
+    expect(code).toBe(0)
+    const ios = readdirSync(join(tempOut, 'ios'))
+    const android = readdirSync(join(tempOut, 'android'))
+    expect(ios.length).toBeGreaterThanOrEqual(7)
+    expect(ios.every((f) => f.endsWith('.swift'))).toBe(true)
+    expect(android.length).toBeGreaterThanOrEqual(7)
+    expect(android.every((f) => f.endsWith('.kt'))).toBe(true)
+  })
+
+  it('--target=all still requires --source and --out', () => {
+    expect(main(['build', '--target=all', `--out=${tempOut}`])).toBe(1)
+    expect(main(['build', '--target=all', `--source=${COMPILER_FIXTURES}`])).toBe(1)
+  })
+
+  it('--target=all forwards --kotlin-package to the android sub-build', () => {
+    const code = main([
+      'build',
+      '--target=all',
+      `--source=${COMPILER_FIXTURES}`,
+      `--out=${tempOut}`,
+      '--kotlin-package=com.example.allgen',
+    ])
+    expect(code).toBe(0)
+    const android = readdirSync(join(tempOut, 'android')).filter((f) => f.endsWith('.kt'))
+    expect(android.length).toBeGreaterThanOrEqual(7)
+    const first = readFileSync(join(tempOut, 'android', android[0]!), 'utf8').split('\n')[0]
+    expect(first).toBe('package com.example.allgen')
+  })
 })
