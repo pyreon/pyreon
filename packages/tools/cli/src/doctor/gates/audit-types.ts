@@ -18,6 +18,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Finding, GateResult, Severity } from '../types'
 
@@ -103,6 +104,24 @@ export const runAuditTypesGate = async (
   const start = Date.now()
   const findings: Finding[] = []
   const scriptPath = join(opts.cwd, 'scripts/audit-types.ts')
+
+  // Monorepo-internal audit script — skip gracefully outside the Pyreon
+  // repo (a user running `pyreon doctor --full` on their app shouldn't see
+  // a `Module not found` ERROR for a script that's intentionally absent).
+  if (!existsSync(scriptPath)) {
+    return {
+      gate: 'audit-types',
+      category: 'architecture',
+      findings: [],
+      meta: {
+        elapsedMs: Date.now() - start,
+        skipped: true,
+        skipReason:
+          'typed-but-unimplemented audit targets the Pyreon monorepo (scripts/audit-types.ts not present here)',
+      },
+    }
+  }
+
   const args = ['run', scriptPath, '--json']
   if (opts.packages && opts.packages.length > 0) {
     args.push(...opts.packages)

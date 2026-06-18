@@ -435,15 +435,20 @@ describe('runAuditLeakClassesGate', () => {
   // fires either way) + the `_parseAuditLeakClassesOutput` unit
   // tests above cover the success-path JSON → Finding[] mapping.
 
-  it('surfaces gate-failed finding when script is unreachable', async () => {
+  it('SKIPS gracefully (no scary error) when the monorepo-internal script is absent — e.g. a user project', async () => {
+    // `scripts/audit-leak-classes.ts` only exists in the Pyreon monorepo.
+    // Running `pyreon doctor` on a user app must NOT surface a
+    // `Module not found` gate-failed ERROR — it skips with a reason, the
+    // same way doc-claims does for its monorepo-only claim sites.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-leak-gate-'))
     const result = await runAuditLeakClassesGate({ cwd: tmp })
     assertGateResultShape(result, 'audit-leak-classes')
-    const failed = result.findings.find(
-      (f) => f.code === 'audit-leak-classes/gate-failed',
-    )
-    expect(failed).toBeDefined()
-    expect(failed?.severity).toBe('error')
+    expect(
+      result.findings.some((f) => f.code === 'audit-leak-classes/gate-failed'),
+    ).toBe(false)
+    expect(result.findings).toHaveLength(0)
+    expect(result.meta.skipped).toBe(true)
+    expect(result.meta.skipReason).toContain('Pyreon monorepo')
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 })
@@ -459,18 +464,16 @@ describe('runAuditTypesGate', () => {
   // GateResult shape contract via the failure-path spec below
   // (the assertGateResultShape() helper fires either way).
 
-  it('surfaces gate-failed finding when script is unreachable', async () => {
-    // Point cwd at a directory with no scripts/audit-types.ts. The
-    // subprocess fails; the gate emits a single gate-failed finding
-    // rather than throwing.
+  it('SKIPS gracefully when the monorepo-internal script is absent (e.g. `pyreon doctor --full` on a user app)', async () => {
+    // Point cwd at a directory with no scripts/audit-types.ts — the
+    // monorepo-only audit skips with a reason instead of surfacing a
+    // `Module not found` gate-failed ERROR.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-audit-gate-'))
     const result = await runAuditTypesGate({ cwd: tmp })
     assertGateResultShape(result, 'audit-types')
-    const failed = result.findings.find(
-      (f) => f.code === 'audit-types/gate-failed',
-    )
-    expect(failed).toBeDefined()
-    expect(failed?.severity).toBe('error')
+    expect(result.findings.some((f) => f.code === 'audit-types/gate-failed')).toBe(false)
+    expect(result.meta.skipped).toBe(true)
+    expect(result.meta.skipReason).toContain('Pyreon monorepo')
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 })
@@ -850,16 +853,14 @@ describe('runBundleBudgetsGate', () => {
   // failure) and let the standalone script's existing tests cover
   // the live bundler behaviour.
 
-  it('surfaces gate-failed finding when script is unreachable', async () => {
+  it('SKIPS gracefully when the monorepo-internal script is absent (e.g. `pyreon doctor --full` on a user app)', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-bb-gate-'))
     const result = await runBundleBudgetsGate({ cwd: tmp })
     assertGateResultShape(result, 'bundle-budgets')
     expect(result.category).toBe('performance')
-    const failed = result.findings.find(
-      (f) => f.code === 'bundle-budgets/gate-failed',
-    )
-    expect(failed).toBeDefined()
-    expect(failed?.severity).toBe('error')
+    expect(result.findings.some((f) => f.code === 'bundle-budgets/gate-failed')).toBe(false)
+    expect(result.meta.skipped).toBe(true)
+    expect(result.meta.skipReason).toContain('Pyreon monorepo')
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 })
