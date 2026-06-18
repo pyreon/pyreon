@@ -4,11 +4,16 @@ title: Multi-Platform Pyreon
 
 # Multi-Platform Pyreon
 
-> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental**. The full **15-primitive canonical vocabulary** spans all three targets — every primitive has a real web DOM runtime AND emits typecheck-clean SwiftUI + Jetpack Compose. Validation today runs at three layers: **(1) compile-time** (`swiftc -parse` / `kotlinc` against Compose stubs on every PR), **(2) real-toolchain BUILD** of the full example apps via the opt-in `native-device` workflow (real Xcode / Gradle on macos-15 / ubuntu-latest CI runners), and **(3) launch-and-render UI smokes** (XCUITest on iOS Simulator + Compose-instrumented-test on Android Emulator) that boot the apps and assert the root view renders by querying the `data-testid` PMTC emits as `accessibilityIdentifier` / `testTag`. All three layers run on opt-in via the `native-device` label; promote to required once green across a few nightly runs.
+> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental — demo-quality, self-rated 66/100, not production-ready.** The 15-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
+> - **(1) Per-PR gate — SYNTAX-only.** `swiftc -parse` (parse, NOT `-typecheck` — it accepts unresolved types + type mismatches) + `kotlinc` against Compose **stubs** (not real androidx). This gate runs on every PR but **cannot catch type-level corruption** — see the silent-failure cliff below.
+> - **(2) Real-toolchain BUILD of the four example apps** — `xcodebuild` (full Swift compile) + `gradle assembleDebug` — via the **opt-in/advisory** `native-device` workflow. This is the only place real type-checking happens, and only for those apps.
+> - **(3) Launch + interaction UI smokes** — XCUITest (iOS Simulator) + Compose-instrumented-test (Android Emulator). Strong for the **Tasks/Counter/Router** examples (login validation, store mutation, typed-params nav, content-asserted fetch, Suspense/ErrorBoundary all assert real behaviour); **launch-only for TodoMVC**; **absent for native-analytics**.
+>
+> Layers 2–3 are **advisory** (the `native-device` label / nightly schedule) and **gate ZERO PRs** — currently green but below their own 14-night promotion bar. So "it compiles" on a PR means "the syntax parsed," not "it builds + runs on a device." Treat native output as demo-grade until the device gate is required.
 
 ## The pitch
 
-Write your app once. Run it on the web, iOS, and Android — each rendered with the platform's native primitives, each typecheck-clean against the platform's compiler.
+Write your app once. Run it on the web, iOS, and Android — each rendered with the platform's native primitives. (Web runs live today; iOS/Android are emitted as SwiftUI/Compose and build cleanly for the example apps — read "What runs on native" and the validation Status above for the honest scope, including which packages are web-only.)
 
 ```tsx
 // examples/native-todomvc-ios/src/TodoApp.tsx — single source, three targets
@@ -46,7 +51,41 @@ This single file compiles to:
 - **iOS** via PMTC → SwiftUI — `<Stack>` becomes `VStack`, `<Field>` becomes `TextField("", text: $draft)`, etc.
 - **Android** via PMTC → Jetpack Compose — `<Stack>` becomes `Column`, `<Field>` becomes `TextField(value, onValueChange)`, etc.
 
-Same source. Three idiomatic, typecheck-clean outputs.
+Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as SwiftUI/Compose — see the validation reality in the Status note above).
+
+## What runs on native — and what's web-only (read this first)
+
+**PMTC compiles your component *source* — the 15 canonical primitives, `signal`/`computed`/`effect`, and a fixed set of hooks — to SwiftUI/Compose. It does NOT transpile npm packages to native.** So a package runs on iOS/Android only if it is pure reactive logic **with a Swift/Kotlin runtime port** the compiler recognizes. Anything bound to the DOM, a `<canvas>`, the CSSOM, or a JS-only rendering vendor is **web-only by architecture** — no compiler setting changes that.
+
+**✅ Runs on web + iOS + Android today** (real runtime ports + compiler emit):
+
+- `@pyreon/reactivity` (signal/computed/effect), `@pyreon/primitives` (the 15 canonical primitives)
+- `@pyreon/store`, `@pyreon/machine`, `@pyreon/state-tree`, `@pyreon/i18n`, `@pyreon/permissions`
+- `@pyreon/form` (validated forms — **device-proven**), `@pyreon/storage` (platform-storage backend)
+- the native `@pyreon/router` port (`useNavigate`/`useParams`/`useLoaderData`, nested routes, `beforeEnter`)
+- the **subset** of `@pyreon/hooks` with ports: `useFetch`, `useOnline`/`useNetworkStatus`, `useClipboard`, `useColorScheme`
+
+**❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT run on iOS/Android):
+
+| Package | Blocking dependency |
+|---|---|
+| `@pyreon/flow` | `elkjs` layout engine + SVG/CSS-transform pan-zoom + DOM pointer events |
+| `@pyreon/charts` | `echarts` (renders to `<canvas>`) |
+| `@pyreon/code` | CodeMirror 6 (DOM editor) + a `<canvas>` minimap |
+| `@pyreon/dnd` | `@atlaskit/pragmatic-drag-and-drop` (HTML5 drag events on `HTMLElement`) |
+| `@pyreon/document` / `@pyreon/document-primitives` | pdfmake/docx/exceljs/pptxgenjs + `Blob`/`document` download |
+| `@pyreon/query` | TanStack Query core + SSE/WebSocket hooks (use **`useFetch`** for simple data on native) |
+| `@pyreon/table` / `@pyreon/virtual` | TanStack headless cores bound to DOM cells / scroll containers |
+| `@pyreon/hotkeys` | `window` keyboard listeners |
+| `@pyreon/elements`, `@pyreon/styler`, `@pyreon/rocketstyle`, `@pyreon/coolgrid`, `@pyreon/kinetic`, `@pyreon/unistyle`, `@pyreon/ui-core`, `@pyreon/ui-components` | the web CSS-in-JS / DOM stack (Layer 3b) — native apps use `@pyreon/primitives` (Layer 3a) instead |
+
+**🟡 Logic could port, but no native runtime exists yet:** `@pyreon/rx`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/url-state`, `@pyreon/toast` (the store is pure-logic; the `<Toaster>` renderer is DOM), and `@pyreon/sync`'s engine-neutral core (the Yjs engine + IndexedDB/WebSocket transports are web/Node-only).
+
+### The supported-TypeScript-surface ceiling (and the silent-failure cliff)
+
+PMTC compiles a **deliberately narrow, declarative subset** of TypeScript in component bodies: signal/computed/effect declarations, typed props, the canonical-primitive JSX, `<For>`/`<Show>`, `if`/ternary control flow, array/string method calls, and two `type`-alias shapes (string-literal union → enum, object literal → struct/data class). Inside that lane it emits real, idiomatic SwiftUI/Compose.
+
+**Outside that lane the failure mode is usually *silent*, not a clean error.** Local object/array literals, destructuring of locals, `Map`/`Set`/`Date`, `for`/`while`/`switch`/`try`, template literals (→ `""`), optional chaining (→ `""`), spreads, `interface`/`enum`/`class` declarations, generics in logic, and **fractional math on iOS** (`signal<number>(9.99)` currently emits `var x: Int = 9.99`) are dropped or mis-emitted — **many with no warning**. The per-PR validation gate is `swiftc -parse` (syntax-only — it does **not** typecheck) + `kotlinc` against Compose **stubs**, so it cannot catch this class of type-level corruption; the full real-compiler build only runs for the example apps in the **advisory** `native-device` workflow. **Treat native PMTC as demo-quality** (the project self-rates it **66/100**): write components in the restricted declarative style, keep data-structure manipulation in pure-logic helpers, and verify on a real Simulator/Emulator before trusting native output.
 
 ## Architecture overview
 
