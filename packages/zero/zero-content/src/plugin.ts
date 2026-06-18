@@ -1078,8 +1078,19 @@ export {}
       // for `vite dev`). SSR sub-builds skip via `command !== 'build'`
       // check at the transform-collection step.
       if (!loadedConfig || resolvedConfig?.command !== 'build') return
+      // Skip @pyreon/zero's INNER SSG server build. That build is also
+      // `command: 'build'`, so it slips past the gate above — but it (a) only
+      // produces the synthetic SSR server bundle in `dist/.zero-ssg-server/`
+      // (the outer client build already wrote the search index to `dist/`),
+      // and (b) sets `build.outDir` to an ABSOLUTE path, which previously
+      // doubled into `<root>/<root>/dist/.zero-ssg-server/…` via path.join.
+      // The outer build owns the index; the inner build must not re-emit it.
+      if (process.env.PYREON_ZERO_SSG_INNER_BUILD === '1') return
       if (searchEntries.size === 0) return
-      const outDir = path.join(
+      // `path.resolve` (not `path.join`) so an absolute `build.outDir` resets
+      // the base instead of concatenating onto `root` (join would produce a
+      // doubled `<root>/<absolute-outDir>` path).
+      const outDir = path.resolve(
         resolvedConfig.root,
         resolvedConfig.build.outDir,
       )
