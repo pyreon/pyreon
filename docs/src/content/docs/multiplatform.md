@@ -175,6 +175,8 @@ One canonical event name per concept; the compiler maps it to the platform-nativ
 
 Hover events are deferred (mobile platforms don't have hover).
 
+Handlers may be **multi-statement** — `onPress={() => { a.set(1); b.set(2) }}` emits every statement (including `if` blocks) into the native closure on both targets. (Earlier the compiler silently kept only the first statement.) A single-expression handler (`onPress={() => a.set(1)}`) keeps the compact one-line form.
+
 ## Style system (v1)
 
 **Tokens-first.** No raw pixels in cross-platform code.
