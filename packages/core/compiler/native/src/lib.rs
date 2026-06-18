@@ -1513,6 +1513,103 @@ fn expr_children_any_accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
     }
 }
 
+/// Mirror JS `accessesProps` when the node IS a function passed DIRECTLY as a
+/// binding (an event handler / accessor-fn): descend ONE level into the
+/// function's own body and report whether it references a prop-derived ident.
+///
+/// `accesses_props` keeps its `Arrow|Function => false` arm so a function that
+/// appears as a CHILD (`foo(() => send(a))`) stays skipped — exactly JS's
+/// `forEachChildFast` child-skip. This helper is the other half of that
+/// asymmetry: it is called ONLY at the `slice_expr` gate, so when the function
+/// is the binding expr itself (`onClick={() => send(a)}`) its body IS
+/// descended. Nested functions inside the body stay skipped because the body
+/// walk recurses through `accesses_props` (whose arrow/fn arm is `false`), and
+/// nested function/class declarations are dropped by `stmt_accesses_props`.
+///
+/// Over-approximation is intentional and JS-faithful: this only decides WHETHER
+/// to run the inliner; `resolve_expr_with_props` → `collect_prop_derived_idents`
+/// is the precise pass that applies `pd_minus` shadow filtering (a locally
+/// shadowed name resolves to nothing → emit is unchanged → still correct). JS's
+/// `accessesProps` ignores local shadowing the same way.
+fn fn_body_accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
+    let body = match expr {
+        Expression::ArrowFunctionExpression(a) => &a.body,
+        Expression::FunctionExpression(f) => match &f.body {
+            Some(b) => b,
+            None => return false,
+        },
+        _ => return false,
+    };
+    body.statements.iter().any(|s| stmt_accesses_props(s, ctx))
+}
+
+/// Statement-level companion to `fn_body_accesses_props` — mirrors the shape of
+/// `collect_pd_in_stmt` (the inliner's body walker) but as a boolean check that
+/// calls `accesses_props` on contained expressions. Nested function/class
+/// declarations fall through to `_ => false` (skipped, matching JS).
+fn stmt_accesses_props(stmt: &Statement, ctx: &Ctx) -> bool {
+    match stmt {
+        Statement::ExpressionStatement(s) => accesses_props(&s.expression, ctx),
+        Statement::ReturnStatement(s) => {
+            s.argument.as_ref().map_or(false, |a| accesses_props(a, ctx))
+        }
+        Statement::ThrowStatement(s) => accesses_props(&s.argument, ctx),
+        Statement::VariableDeclaration(d) => d
+            .declarations
+            .iter()
+            .any(|decl| decl.init.as_ref().map_or(false, |i| accesses_props(i, ctx))),
+        Statement::IfStatement(s) => {
+            accesses_props(&s.test, ctx)
+                || stmt_accesses_props(&s.consequent, ctx)
+                || s.alternate.as_ref().map_or(false, |a| stmt_accesses_props(a, ctx))
+        }
+        Statement::BlockStatement(b) => b.body.iter().any(|s| stmt_accesses_props(s, ctx)),
+        Statement::ForStatement(f) => {
+            (match &f.init {
+                Some(ForStatementInit::VariableDeclaration(d)) => d
+                    .declarations
+                    .iter()
+                    .any(|decl| decl.init.as_ref().map_or(false, |i| accesses_props(i, ctx))),
+                _ => false,
+            }) || f.test.as_ref().map_or(false, |t| accesses_props(t, ctx))
+                || f.update.as_ref().map_or(false, |u| accesses_props(u, ctx))
+                || stmt_accesses_props(&f.body, ctx)
+        }
+        Statement::ForInStatement(f) => {
+            accesses_props(&f.right, ctx) || stmt_accesses_props(&f.body, ctx)
+        }
+        Statement::ForOfStatement(f) => {
+            accesses_props(&f.right, ctx) || stmt_accesses_props(&f.body, ctx)
+        }
+        Statement::WhileStatement(w) => {
+            accesses_props(&w.test, ctx) || stmt_accesses_props(&w.body, ctx)
+        }
+        Statement::DoWhileStatement(d) => {
+            stmt_accesses_props(&d.body, ctx) || accesses_props(&d.test, ctx)
+        }
+        Statement::SwitchStatement(s) => {
+            accesses_props(&s.discriminant, ctx)
+                || s.cases.iter().any(|case| {
+                    case.test.as_ref().map_or(false, |t| accesses_props(t, ctx))
+                        || case.consequent.iter().any(|st| stmt_accesses_props(st, ctx))
+                })
+        }
+        Statement::TryStatement(t) => {
+            t.block.body.iter().any(|s| stmt_accesses_props(s, ctx))
+                || t
+                    .handler
+                    .as_ref()
+                    .map_or(false, |h| h.body.body.iter().any(|s| stmt_accesses_props(s, ctx)))
+                || t
+                    .finalizer
+                    .as_ref()
+                    .map_or(false, |f| f.body.iter().any(|s| stmt_accesses_props(s, ctx)))
+        }
+        Statement::LabeledStatement(l) => stmt_accesses_props(&l.body, ctx),
+        _ => false,
+    }
+}
+
 fn should_wrap(expr: &Expression, ctx: &mut Ctx) -> bool {
     match expr {
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => return false,
@@ -2473,7 +2570,14 @@ fn collect_prop_derived_idents_in_assignment_target(
 /// literals, comments, template literal quasis, and property-name positions.
 fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     let span = expr.span();
-    let mut result = if !ctx.prop_derived_vars.is_empty() && accesses_props(expr, ctx) {
+    // A function passed DIRECTLY as a binding (an event handler / accessor-fn)
+    // has its OWN body descended one level (`fn_body_accesses_props`) so a
+    // prop-derived ref inside reads the LIVE prop, matching JS. `accesses_props`
+    // keeps `Arrow|Function => false`, so a function appearing as a CHILD stays
+    // skipped — JS's `forEachChildFast` child-skip asymmetry, faithfully.
+    let mut result = if !ctx.prop_derived_vars.is_empty()
+        && (accesses_props(expr, ctx) || fn_body_accesses_props(expr, ctx))
+    {
         resolve_expr_with_props(expr, ctx)
     } else {
         ctx.source[span.start as usize..span.end as usize].to_string()
