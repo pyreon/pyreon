@@ -584,7 +584,22 @@ export const CheckIcon = createIcon(check) // or createIcon(Check)
 ;<span style="width:48px"><CheckIcon class="text-green-600" /></span>
 ```
 
-There is intentionally **no `useIcon`** — an icon has no composable behavior. For a folder of icons, [`iconsPlugin`](#other-build-time-plugins) scans a directory and generates a strictly-typed `<Icon name="...">` via `createNamedIcon`.
+There is intentionally **no `useIcon`** — an icon has no composable behavior. For a folder of icons, [`iconsPlugin`](#other-build-time-plugins) scans a directory and generates a strictly-typed icon set. In inline mode the generated `icons.gen.tsx` exports **two shapes**:
+
+```tsx
+// PREFERRED — per-icon components. Tree-shakeable: import only what you use
+// and every unused icon (plus the runtime registry) is dropped from the
+// bundle by standard ESM dead-code elimination.
+import { CheckCircle, ArrowLeft } from './icons.gen'
+;<span style="width:2rem"><CheckCircle /></span>
+
+// Escape hatch — <Icon name="..."> for DYNAMIC / data-driven names. A runtime
+// registry[name] lookup, so it necessarily keeps the WHOLE set in the bundle.
+import { Icon } from './icons.gen'
+;<Icon name={iconKey()} />
+```
+
+Use the per-icon bindings for a bounded, statically-named set (they tree-shake); reserve `<Icon name={…}>` for names you only know at runtime. Image-mode sets stay registry-only (`createIcon` renders raw `?raw` markup, not an `<img>`).
 
 ### Meta
 

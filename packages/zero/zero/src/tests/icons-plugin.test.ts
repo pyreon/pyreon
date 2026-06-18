@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import {
+  componentNameFromIconName,
   componentNameFromSetKey,
   generateIconSetSource,
   generateNamedIconSetsSource,
@@ -51,22 +52,37 @@ describe('scanIconDir', () => {
 })
 
 describe('generateIconSetSource', () => {
-  it('inline mode: ?raw imports + createNamedIcon(REGISTRY)', () => {
+  it('inline mode: ?raw imports + tree-shakeable named exports + registry escape hatch', () => {
     const src = generateIconSetSource(['check-circle.svg', 'arrow-left.svg'], {
       mode: 'inline',
       importDir: './icons',
     })
-    expect(src).toContain("import { createNamedIcon } from '@pyreon/zero'")
+    // inline imports BOTH helpers (createIcon for the per-icon exports)
+    expect(src).toContain(
+      "import { createIcon, createNamedIcon } from '@pyreon/zero'",
+    )
     expect(src).toContain("import checkCircle from './icons/check-circle.svg?raw'")
     expect(src).toContain("import arrowLeft from './icons/arrow-left.svg?raw'")
+    // PREFERRED: per-icon PascalCase exports, /*#__PURE__*/-annotated so an
+    // unused icon tree-shakes out (the whole point of this generator).
+    expect(src).toContain(
+      'export const CheckCircle = /*#__PURE__*/ createIcon(checkCircle)',
+    )
+    expect(src).toContain(
+      'export const ArrowLeft = /*#__PURE__*/ createIcon(arrowLeft)',
+    )
+    // escape hatch: the dynamic-name registry stays, also pure-annotated so
+    // importing only a named export drops it.
     expect(src).toContain('"check-circle": checkCircle,')
     expect(src).toContain('export type IconName = keyof typeof REGISTRY')
-    expect(src).toContain('export const Icon = createNamedIcon(REGISTRY)')
+    expect(src).toContain(
+      'export const Icon = /*#__PURE__*/ createNamedIcon(REGISTRY)',
+    )
     // inline mode does NOT pass the image option
     expect(src).not.toContain("{ mode: 'image' }")
   })
 
-  it('image mode: URL imports (no ?raw) + image option', () => {
+  it('image mode: URL imports (no ?raw) + image option, NO per-icon exports', () => {
     const src = generateIconSetSource(['logo.svg'], {
       mode: 'image',
       importDir: './brand',
@@ -74,6 +90,10 @@ describe('generateIconSetSource', () => {
     expect(src).toContain("import logo from './brand/logo.svg'")
     expect(src).not.toContain('?raw')
     expect(src).toContain("export const Icon = createNamedIcon(REGISTRY, { mode: 'image' })")
+    // image mode stays registry-only — createIcon renders ?raw markup, not an
+    // <img>, so there are no per-icon component exports (and no createIcon import).
+    expect(src).not.toContain('createIcon')
+    expect(src).not.toContain('export const Logo =')
   })
 
   it('collision-guards camelCase bindings that map to the same identifier', () => {
@@ -97,7 +117,31 @@ describe('generateIconSetSource', () => {
   it('handles an empty set (IconName = keyof {} ⇒ never)', () => {
     const src = generateIconSetSource([], { mode: 'inline', importDir: './i' })
     expect(src).toContain('const REGISTRY = {')
-    expect(src).toContain('export const Icon = createNamedIcon(REGISTRY)')
+    expect(src).toContain(
+      'export const Icon = /*#__PURE__*/ createNamedIcon(REGISTRY)',
+    )
+  })
+
+  it('collision-guards two icon names that map to the same PascalCase export', () => {
+    const src = generateIconSetSource(['foo-bar.svg', 'foo_bar.svg'], {
+      mode: 'inline',
+      importDir: './i',
+    })
+    // both → key "foo-bar" → export "FooBar"; second gets a `_` suffix.
+    expect(src).toContain('export const FooBar = /*#__PURE__*/ createIcon(')
+    expect(src).toContain('export const FooBar_ = /*#__PURE__*/ createIcon(')
+  })
+})
+
+describe('componentNameFromIconName', () => {
+  it('PascalCases a kebab/snake icon key', () => {
+    expect(componentNameFromIconName('check-circle')).toBe('CheckCircle')
+    expect(componentNameFromIconName('arrow_left')).toBe('ArrowLeft')
+    expect(componentNameFromIconName('star')).toBe('Star')
+  })
+
+  it('prefixes a leading-digit name to stay a valid identifier', () => {
+    expect(componentNameFromIconName('1password')).toBe('Icon1password')
   })
 })
 
@@ -120,18 +164,31 @@ describe('generateNamedIconSetsSource', () => {
       { key: 'ui', files: ['check.svg', 'arrow-left.svg'], mode: 'inline', importDir: './icons/ui' },
       { key: 'brand', files: ['logo.svg'], mode: 'image', importDir: './icons/brand' },
     ])
-    // one shared import
-    expect(src.match(/import \{ createNamedIcon \}/g)).toHaveLength(1)
+    // one shared helper import — `createIcon` is pulled in because ≥1 set is inline
+    expect(
+      src.match(/import \{ createIcon, createNamedIcon \} from '@pyreon\/zero'/g),
+    ).toHaveLength(1)
     // ui set — inline (?raw), typed UiIconName, <UiIcon>
     expect(src).toContain("import ui_check from './icons/ui/check.svg?raw'")
     expect(src).toContain('export type UiIconName = keyof typeof UiIcon_REGISTRY')
-    expect(src).toContain('export const UiIcon = createNamedIcon(UiIcon_REGISTRY)')
-    // brand set — image (no ?raw), typed BrandIconName, <BrandIcon> image-mode
+    expect(src).toContain(
+      'export const UiIcon = /*#__PURE__*/ createNamedIcon(UiIcon_REGISTRY)',
+    )
+    // ui set — per-icon tree-shakeable exports, namespaced by set (UiCheck / UiArrowLeft)
+    expect(src).toContain(
+      'export const UiCheck = /*#__PURE__*/ createIcon(ui_check)',
+    )
+    expect(src).toContain(
+      'export const UiArrowLeft = /*#__PURE__*/ createIcon(ui_arrowLeft)',
+    )
+    // brand set — image (no ?raw), typed BrandIconName, <BrandIcon> image-mode,
+    // registry-only (no per-icon exports)
     expect(src).toContain("import brand_logo from './icons/brand/logo.svg'")
     expect(src).toContain('export type BrandIconName = keyof typeof BrandIcon_REGISTRY')
     expect(src).toContain(
       "export const BrandIcon = createNamedIcon(BrandIcon_REGISTRY, { mode: 'image' })",
     )
+    expect(src).not.toContain('export const BrandLogo =')
     // NO bare `Icon` / `IconName` — sets never clash with the single-set names
     expect(src).not.toContain('export const Icon =')
     expect(src).not.toContain('export type IconName =')
