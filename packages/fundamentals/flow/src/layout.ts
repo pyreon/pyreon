@@ -103,6 +103,8 @@ async function getELK(): Promise<any> {
   if (elkPromise) return elkPromise
 
   elkPromise = import('elkjs/lib/elk.bundled.js').then((mod) => {
+    /* v8 ignore next — `|| mod` interop fallback: the ESM build always exposes
+       `mod.default`, so the right arm is defensive against a CJS-shaped module. */
     const ELK = mod.default || mod
     elkInstance = new ELK()
     return elkInstance
@@ -219,6 +221,8 @@ export async function computeLayout<TData = Record<string, unknown>>(
   const graph = toElkGraph(nodes, edges, algorithm, options)
   const result: ElkResult = await elk.layout(graph)
 
+  /* v8 ignore next 4 — defensive `??` fallbacks: elk always returns a `children`
+     array with `x`/`y` set on each laid-out node, so the empty/0 arms never run. */
   return (result.children ?? []).map((child) => ({
     id: child.id,
     position: { x: child.x ?? 0, y: child.y ?? 0 },
