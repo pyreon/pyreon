@@ -659,6 +659,76 @@ explicit Phase 6 DX follow-up. The package is `@pyreon/native-compiler`
 (private / workspace-only); consumers using `transform()` directly are
 the path until a public published API lands.
 
+## WebView host — embedding web-only-rich viz (charts / flow)
+
+Some libraries are **structurally web-only** — `@pyreon/charts` (ECharts),
+`@pyreon/flow` (elkjs), `@pyreon/code` (CodeMirror), `@pyreon/document`
+(pdfmake) all wrap a browser-runtime engine and cannot compile to SwiftUI
+/ Compose. The multiplatform answer is a **hybrid**: a substantial native
+shell (the canonical primitives) with the heavy viz hosted in a
+`<WebView>` — `WKWebView` on iOS, Android `WebView`, an `<iframe>` on web.
+
+```tsx
+<NativeIOS><WebView html={CHART_HTML} /></NativeIOS>
+<NativeAndroid><WebView html={CHART_HTML} /></NativeAndroid>
+<Web>{/* render the chart inline — it's already web */}</Web>
+```
+
+`<WebView>` takes `html` (inline page — `loadHTMLString` / `srcdoc`) OR
+`src` (a LOCAL bundled asset — preferred, policy-safe — or a remote URL).
+For App Store / Play Store review, prefer bundled local assets so the viz
+is app content, not remote code.
+
+### The two-way data bridge
+
+A hosted chart isn't a static screenshot — it stays live in BOTH
+directions, over a **unified JS API** the runtime wires per platform:
+
+**Forward — native → page (`data`).** Pass a signal; the runtime
+JSON-encodes it and PUSHES it into the already-loaded page as
+`window.__pyreonData`, firing a `pyreondata` event, WITHOUT reloading — so
+the chart updates in place (no flicker, zoom/animation preserved). A
+`data`-only change never reloads; only an `html`/`src` change does.
+
+```tsx
+const metrics = signal<Metric[]>([…])
+<WebView html={CHART_HTML} data={metrics()} />
+```
+
+```js
+// In the hosted page:
+function render() { const d = window.__pyreonData || []; /* draw d */ }
+window.addEventListener('pyreondata', render); render()
+```
+
+**Reverse — page → native (`onMessage`).** The page calls
+`window.pyreonPostMessage("payload")`; the string is delivered to the
+native `onMessage` callback, so a tap inside the chart drives a native
+signal. (iOS `WKScriptMessageHandler`; Android a main-thread-marshalled
+`@JavascriptInterface`; web the parent defines `window.pyreonPostMessage`
+on the iframe.) The payload is a plain string — JSON-stringify structured
+data and parse it in the handler.
+
+```tsx
+const selected = signal('')
+<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />
+<Text>Selected: {selected()}</Text>
+```
+
+```js
+// In the hosted page — a tapped bar reports back:
+bar.addEventListener('click', () => window.pyreonPostMessage(region))
+```
+
+Together these make a webview-hosted chart a first-class interactive
+member of the native app: live native data flows in, user events flow
+back out. `examples/native-analytics` is the canonical end-to-end proof
+(native data table + aggregation + an interactive WebView chart from ONE
+`.tsx`). **Web caveat:** both bridges are same-origin / `srcdoc` only — a
+cross-origin remote `src` can't be reached from the parent frame (the
+native targets reach remote content via `evaluateJavaScript` / the script
+handler).
+
 ## DX surfaces on native (honest scope)
 
 The "one source" promise extends to **WRITING** the source, not just
