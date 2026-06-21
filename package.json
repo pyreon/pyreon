@@ -115,7 +115,7 @@
     "oxlint": "^1.70.0",
     "playwright": "^1.61.0",
     "radix3": "^1.1.2",
-    "react-router": "^7.18.0",
+    "react-router": "^8.0.1",
     "solid-js": "^1.9.13",
     "typescript": "^6.0.3",
     "unhead": "^3.1.4",
