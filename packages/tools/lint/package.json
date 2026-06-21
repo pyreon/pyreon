@@ -52,7 +52,7 @@
     "@oxc-project/types": "^0.133.0",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/sized-map": "workspace:*",
-    "oxc-parser": "^0.133.0"
+    "oxc-parser": "^0.137.0"
   },
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
