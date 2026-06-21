@@ -238,6 +238,11 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   onKeyPress?: ((e: TargetedEvent<E, KeyboardEvent>) => void) | undefined
   onFocus?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onBlur?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
+  // `focusin`/`focusout` are the BUBBLING focus events (unlike `focus`/`blur`),
+  // so a handler on a container fires when focus moves to/from any descendant —
+  // e.g. pausing a toast region's auto-dismiss when a keyboard user tabs into it.
+  onFocusIn?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
+  onFocusOut?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onChange?: ((e: TargetedEvent<E>) => void) | undefined
   onInput?: ((e: TargetedEvent<E, InputEvent>) => void) | undefined
   onBeforeInput?: ((e: TargetedEvent<E, InputEvent>) => void) | undefined

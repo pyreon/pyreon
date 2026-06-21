@@ -105,11 +105,11 @@ export function Toaster(props?: ToasterProps): VNodeChild {
     <Portal target={document.body}>
       {/* A labeled `aria-live` region, not a clickable control — the live
           region IS the accessibility mechanism (toasts are announced +
-          individually dismissable). Pause-on-hover is a mouse-only ENHANCEMENT
-          on top of that, so the non-interactive-element rule is suppressed
-          here. (A keyboard pause-on-focus equivalent needs bubbling
-          `onFocusIn`/`onFocusOut`, which @pyreon/core's JSX types don't yet
-          expose — tracked as a separate framework follow-up.) */}
+          individually dismissable). Auto-dismiss pauses on hover (mouse) AND
+          on focus (keyboard): `onFocusIn`/`onFocusOut` are the BUBBLING focus
+          events, so tabbing into any toast (e.g. its close button) pauses the
+          timers the same way hovering does. Both affordances are accessible,
+          so the non-interactive-element rule is suppressed here. */}
       {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <section
         class="pyreon-toast-container"
@@ -118,6 +118,8 @@ export function Toaster(props?: ToasterProps): VNodeChild {
         aria-live="polite"
         onMouseEnter={_pauseAll}
         onMouseLeave={_resumeAll}
+        onFocusIn={_pauseAll}
+        onFocusOut={_resumeAll}
       >
         <For each={visibleToasts} by={(t: Toast) => t.id}>
           {(t: Toast) => <ToastItem toast={t} />}
