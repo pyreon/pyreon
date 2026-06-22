@@ -4467,14 +4467,17 @@ function emitSwiftNavigationDestination(
       // a type mismatch (and the old tuple type didn't even parse).
       const keyword = firstBranch ? 'if' : 'else if'
       const inv = swiftRouteParamsInvocation(target.component, indent + 2)
-      if (inv.usesParams) {
+      // Bind the `params` dict when the COMPONENT uses it OR the route's
+      // `loader` reads `ctx.params.*` (lowered to `params["…"]`) — the
+      // loader body emits inside this branch, so `params` must be in scope.
+      if (inv.usesParams || route.loaderUsesParams === true) {
         branches.push(
           `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) {`,
           ...wrapGuard(route, wrapLoader(route, inv.call)),
           `${pad}}`,
         )
       } else {
-        // Component has no `params` prop — don't bind the dict (an
+        // Neither component nor loader uses params — don't bind the dict (an
         // unused `params` is a swiftc warning the validate gate treats
         // as noise; `!= nil` keeps the branch warning-free).
         branches.push(
