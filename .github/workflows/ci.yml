@@ -209,25 +209,42 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
-      # Layer 2: source-hashed cross-run cache. When no package source
-      # has changed since the previous CI run that built lib/, we get an
-      # EXACT cache hit here and the Build step below is a no-op
-      # (~3s instead of ~236s).
+      # Layer 2: source-hashed cross-run cache + content-hash INCREMENTAL
+      # rebuild. On an EXACT key hit (no package source changed since a prior
+      # run) the Build step is a no-op (~3s vs ~236s). On a prefix
+      # (restore-keys) hit — some source changed — the NEAREST prior lib/ +
+      # its manifest are restored, and `scripts/bootstrap.ts` content-hashes
+      # each package and rebuilds ONLY the changed ones (~15-30s for a 1-2
+      # package PR vs a ~236s cold build). The `.bootstrap-cache.json`
+      # manifest (per-package source hashes) travels WITH lib/ in the same
+      # cache entry, so the restored lib/ and the hashes that describe it
+      # are always consistent.
+      #
+      # restore-keys is SAFE here (it was NOT under the old mtime detection):
+      # bootstrap.ts now decides rebuilds by SOURCE CONTENT HASH, not mtime,
+      # so a prefix-restored (older-source) lib/ never looks falsely-fresh —
+      # every changed package is rebuilt in full (consistent chunks) and
+      # unchanged packages keep their hash-verified lib/. Workspace deps are
+      # externalized (JS) / referenced (DTS), so there is no cross-package
+      # chunk staleness when only a subset rebuilds.
       #
       # hashFiles(...) is inlined — GHA disallows it in workflow-level
-      # `env:`. Keep inputs in sync between this restore and the save
-      # below; mismatched keys would skip the save (no future hits).
-      - name: Restore source-hashed lib/ cache
+      # `env:`. Keep inputs in sync between this restore and the saves below.
+      - name: Restore source-hashed lib/ cache (+ incremental manifest)
         id: bootstrap-cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: packages/*/*/lib
-          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
-      # Skip the build on EXACT cache hit only. Partial-hits aren't
-      # restored (we deliberately omit `restore-keys`) — partial-source
-      # cache would mix with current-source rebuilds and produce
-      # inconsistent chunk filenames between cached + freshly-built modules.
-      - name: Build lib/
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
+      # Build on any non-exact-hit. On an exact hit nothing changed → skip.
+      # Otherwise bootstrap.ts runs and incrementally rebuilds only the
+      # packages whose content hash differs from the restored manifest
+      # (full cold build when there was no prefix match to restore).
+      - name: Build lib/ (incremental)
         if: steps.bootstrap-cache.outputs.cache-hit != 'true'
         run: bun scripts/bootstrap.ts
       - name: Cache-hit summary
@@ -243,9 +260,13 @@ jobs:
         if: steps.bootstrap-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: packages/*/*/lib
+          # Save the manifest alongside lib/ so the next run's restore gets
+          # the per-package hashes that describe exactly this lib/.
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
           # Key MUST match the restore step above — keep in sync.
-          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
       # Layer 1: per-run-id key. ALWAYS save under this key (whether the
       # build ran or the source-hashed cache hit). Every downstream job
       # in this run (test, e2e, verify-modes, etc.) restores lib/ via
