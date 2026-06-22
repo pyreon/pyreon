@@ -2153,6 +2153,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       return `${bl} ${e.op} ${br}`
     }
+    case 'template': {
+      // Template literal → native Kotlin string interpolation
+      // `"<quasi>${expr}<quasi>…"`. Always `${…}` (valid for any
+      // expression; a bare `$name` only works for a simple identifier).
+      // Interpolation coerces any interpoland to String. Quasis are COOKED
+      // → re-escaped with control-char additions (a cooked quasi can carry
+      // a real newline a single-line literal can't hold raw).
+      let s = '"'
+      for (let i = 0; i < e.quasis.length; i++) {
+        s += escapeKotlinStringSegment(e.quasis[i] ?? '')
+        if (i < e.exprs.length) s += `\${${emitKotlinExpr(e.exprs[i]!, indent)}}`
+      }
+      return s + '"'
+    }
     case 'comparison': {
       // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
       // Kotlin's `==` is structural-equality (matches what Pyreon source
@@ -2458,8 +2472,20 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   }
   const parts: string[] = []
   for (const c of e.children) {
-    if (c.kind === 'text') parts.push(escapeKotlinInterp(c.value))
-    else parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
+    if (c.kind === 'text') {
+      parts.push(escapeKotlinInterp(c.value))
+    } else if (c.expr.kind === 'template') {
+      // Splice a template child's segments directly into the Text's own
+      // interpolation so `<Text>{`Hi ${n}`}</Text>` emits `Text(text = "Hi
+      // ${n}")` — not the redundant `Text(text = "${"Hi ${n}"}")`.
+      const t = c.expr
+      for (let i = 0; i < t.quasis.length; i++) {
+        parts.push(escapeKotlinStringSegment(t.quasis[i] ?? ''))
+        if (i < t.exprs.length) parts.push(`\${${emitKotlinExpr(t.exprs[i]!, indent)}}`)
+      }
+    } else {
+      parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
+    }
   }
   return `Text(text = "${parts.join('')}"${fontArg}${modArg})`
 }
@@ -4162,6 +4188,11 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
   if (!kotlinExprProducesView(c.expr)) {
     // Value expression child of a container — wrap in Text string-
     // interpolation, the same shape `<Text>{expr}</Text>` emits.
+    // A template child already emits a Kotlin String literal, so use it as
+    // the Text content directly (no redundant `Text(text = "${"…"}")` wrap).
+    if (c.expr.kind === 'template') {
+      return `Text(text = ${emitKotlinExpr(c.expr, indent)})`
+    }
     return `Text(text = "\${${emitKotlinExpr(c.expr, indent)}}")`
   }
   // `{cond && <View/>}` — the dominant React/Solid conditional-render
@@ -4206,6 +4237,21 @@ function extractMemberPath(expr: ExprIR): string {
 function escapeKotlinInterp(s: string): string {
   // Escape backslashes, double-quotes, and `$` (Kotlin's interp marker).
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
+}
+
+/**
+ * Escape a COOKED string segment for a Kotlin interpolated string literal.
+ * Builds on `escapeKotlinInterp` (\, ", $) and additionally escapes real
+ * control characters — a cooked template quasi can carry an actual newline /
+ * CR / tab (e.g. a multiline `` `a\nb` ``) that a single-line Kotlin string
+ * literal cannot hold raw. The added escapes run AFTER escapeKotlinInterp so
+ * their backslashes aren't double-escaped.
+ */
+function escapeKotlinStringSegment(s: string): string {
+  return escapeKotlinInterp(s)
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
 }
 
 /**

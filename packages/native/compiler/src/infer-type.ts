@@ -344,6 +344,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       }
       return { kind: 'unknown' }
     }
+    case 'template':
+      // A template literal always produces a string (native interpolation).
+      return { kind: 'string' }
     case 'binary': {
       const left = inferType(expr.left, ctx)
       const right = inferType(expr.right, ctx)

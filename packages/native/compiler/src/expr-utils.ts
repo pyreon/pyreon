@@ -107,6 +107,17 @@ export function substituteIdentifier(
       }
       return { ...expr, elements }
     }
+    case 'template': {
+      // Template literal — substitute into each interpolated expression;
+      // the literal quasi segments carry no identifiers.
+      const exprs: ExprIR[] = []
+      for (const ex of expr.exprs) {
+        const sub = substituteIdentifier(ex, name, replacement)
+        if (sub === null) return null
+        exprs.push(sub)
+      }
+      return { ...expr, exprs }
+    }
     case 'object': {
       const fields: { name: string; value: ExprIR }[] = []
       for (const f of expr.fields) {
@@ -260,6 +271,8 @@ function walkLowerParams(
       return { ...expr, source: rec(expr.source), args: expr.args.map(rec) }
     case 'array':
       return { ...expr, elements: expr.elements.map(rec) }
+    case 'template':
+      return { ...expr, exprs: expr.exprs.map(rec) }
     case 'object': {
       const fields = expr.fields.map((f) => ({ name: f.name, value: rec(f.value) }))
       return expr.spreads !== undefined
