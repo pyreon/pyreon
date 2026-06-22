@@ -112,6 +112,9 @@ export const SIDEBAR: SidebarGroup[] = [
     items: [
       { text: 'Coming from React', slug: 'migrating-from-react' },
       { text: 'Coming from Solid', slug: 'migrating-from-solid' },
+      { text: 'Coming from Vue', slug: 'migrating-from-vue' },
+      { text: 'Coming from Svelte', slug: 'migrating-from-svelte' },
+      { text: 'Coming from Angular', slug: 'migrating-from-angular' },
     ],
   },
 
