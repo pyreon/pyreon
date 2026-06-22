@@ -278,4 +278,36 @@ describe('code editor in real browser', () => {
     expect(warns.some((w) => w.includes('editor.insert()'))).toBe(false) // view exists → no warn
     unmount()
   })
+
+  // ── lint config flag ───────────────────────────────────────────────────────
+
+  it('lint:true installs the lint gutter so setDiagnostics renders a marker', async () => {
+    const editor = createEditor({ value: 'const x = 1', lint: true })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+
+    editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: 'boom' }])
+    await flush()
+
+    expect(container.querySelector('.cm-lint-marker')).not.toBeNull()
+    unmount()
+  })
+
+  it('lint defaults off — no lint gutter marker even after setDiagnostics', async () => {
+    const editor = createEditor({ value: 'const x = 1' })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+
+    editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: 'boom' }])
+    await flush()
+
+    // No gutter affordance without lint:true. (The underline still
+    // self-installs via cmSetDiagnostics; the flag only gates the gutter.)
+    expect(container.querySelector('.cm-lint-marker')).toBeNull()
+    unmount()
+  })
 })

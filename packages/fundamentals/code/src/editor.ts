@@ -21,7 +21,7 @@ import {
   indentUnit,
   syntaxHighlighting,
 } from '@codemirror/language'
-import { setDiagnostics as cmSetDiagnostics, lintKeymap } from '@codemirror/lint'
+import { lintGutter, setDiagnostics as cmSetDiagnostics, lintKeymap } from '@codemirror/lint'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import {
@@ -83,6 +83,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     bracketMatching: enableBracketMatching = true,
     autocomplete: enableAutocomplete = true,
     search: _enableSearch = true,
+    lint: enableLint = false,
     highlightIndentGuides: enableIndentGuides = true,
     vim: enableVim = false,
     emacs: enableEmacs = false,
@@ -249,7 +250,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
         ...historyKeymap,
         ...foldKeymap,
         ...completionKeymap,
-        ...lintKeymap,
+        ...(enableLint ? lintKeymap : []),
         indentWithTab,
       ]),
 
@@ -286,6 +287,11 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     if (enableBracketMatching) exts.push(bracketMatching(), closeBrackets())
     if (enableAutocomplete) exts.push(autocompletion())
     if (enableLineWrapping) exts.push(EditorView.lineWrapping)
+    // Lint gutter — renders the error/warning markers for diagnostics set via
+    // setDiagnostics(). The diagnostic underlines self-install through
+    // cmSetDiagnostics regardless; this flag (default off) adds the gutter
+    // affordance + the lint navigation keymap (gated above).
+    if (enableLint) exts.push(lintGutter())
     // Indent guides via theme (CM6 doesn't have a built-in extension for this)
     if (enableIndentGuides) {
       exts.push(
