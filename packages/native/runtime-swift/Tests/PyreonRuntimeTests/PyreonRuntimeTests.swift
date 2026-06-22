@@ -934,6 +934,90 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertTrue(loc.isTracking)
         loc.stop()
     }
+
+    // MARK: - PyreonAuth (useAuth pure auth-state machine)
+    //
+    // PyreonAuth is PURE state (no platform edge), so these fully cover the
+    // container — no "device territory" caveat. The sign-in mechanism
+    // (OAuth / password POST / biometric / refresh) drives the transitions
+    // from outside.
+
+    struct AuthUser: Equatable { let id: Int; let name: String }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAuthInitialSignedOut() throws {
+        let auth = PyreonAuth<AuthUser>()
+        XCTAssertEqual(auth.status, .signedOut)
+        XCTAssertNil(auth.user)
+        XCTAssertNil(auth.error)
+        XCTAssertFalse(auth.isAuthenticated)
+        XCTAssertFalse(auth.isSigningIn)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAuthRehydratedSession() throws {
+        let auth = PyreonAuth(status: .signedIn, user: AuthUser(id: 1, name: "ada"))
+        XCTAssertTrue(auth.isAuthenticated)
+        XCTAssertEqual(auth.user, AuthUser(id: 1, name: "ada"))
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAuthSignInFlow() throws {
+        let auth = PyreonAuth<AuthUser>()
+        auth.beginSignIn()
+        XCTAssertEqual(auth.status, .signingIn)
+        XCTAssertTrue(auth.isSigningIn)
+        XCTAssertFalse(auth.isAuthenticated)
+        auth.signInSucceeded(AuthUser(id: 7, name: "grace"))
+        XCTAssertEqual(auth.status, .signedIn)
+        XCTAssertTrue(auth.isAuthenticated)
+        XCTAssertEqual(auth.user, AuthUser(id: 7, name: "grace"))
+        XCTAssertNil(auth.error)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAuthSignInFailure() throws {
+        struct AuthError: Error {}
+        let auth = PyreonAuth<AuthUser>()
+        auth.beginSignIn()
+        auth.signInFailed(AuthError())
+        XCTAssertEqual(auth.status, .error)
+        XCTAssertTrue(auth.error is AuthError)
+        XCTAssertFalse(auth.isAuthenticated)
+        XCTAssertNil(auth.user)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAuthBeginClearsPriorError() throws {
+        struct AuthError: Error {}
+        let auth = PyreonAuth<AuthUser>()
+        auth.signInFailed(AuthError())
+        XCTAssertNotNil(auth.error)
+        auth.beginSignIn()
+        XCTAssertNil(auth.error)
+        XCTAssertEqual(auth.status, .signingIn)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAuthFailedRefreshKeepsUser() throws {
+        struct AuthError: Error {}
+        let auth = PyreonAuth(status: .signedIn, user: AuthUser(id: 1, name: "ada"))
+        auth.beginSignIn()
+        XCTAssertEqual(auth.user, AuthUser(id: 1, name: "ada"))
+        auth.signInFailed(AuthError())
+        XCTAssertEqual(auth.status, .error)
+        XCTAssertEqual(auth.user, AuthUser(id: 1, name: "ada")) // refresh keeps prior user
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAuthSignOutClearsEverything() throws {
+        let auth = PyreonAuth(status: .signedIn, user: AuthUser(id: 1, name: "ada"))
+        auth.signOut()
+        XCTAssertEqual(auth.status, .signedOut)
+        XCTAssertNil(auth.user)
+        XCTAssertNil(auth.error)
+        XCTAssertFalse(auth.isAuthenticated)
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
