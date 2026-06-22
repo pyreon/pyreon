@@ -1,0 +1,300 @@
+---
+title: "Architecture Mistakes"
+description: "Common architecture mistakes in Pyreon and how to fix them."
+---
+
+# Architecture Mistakes
+
+> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+
+### Passing `layout` to `createApp` / `startClient` when fs-router already emits `_layout.tsx` as a parent route.
+
+fs-router walks the routes directory and emits any `_layout.tsx` as a parent `RouteRecord` with the page routes nested as `children`. The matched route chain therefore wraps every page in the layout automatically — `<RouterView />` at depth 0 renders the layout component, and the inner `<RouterView />` inside the layout's body renders the next chain entry. Passing the SAME component as `options.layout` to `createApp` / `startClient` adds a SECOND wrapper around App's outer RouterView, mounting the layout twice. Real-app shape: 3× `nav.sidebar` + 3× `main.content` after hydration mismatch (SSR pipeline doesn't get the explicit `layout` arg, CSR does — they disagree, mismatch warning fires, Pyreon's recovery stacks both trees in the DOM). **Defense**: `createApp` now detects when `options.layout` references the same component as any top-level route's `component` and IGNORES the explicit option (warns in dev: `[Pyreon] createApp({ layout }) was passed a component that is ALSO a parent route in the matched chain ... ignored to prevent double-mount`). User-side rule: with fs-router, do NOT pass `layout` to `startClient` — `_layout.tsx` is the canonical layout registration. Reference: `packages/zero/zero/src/app.ts` `hasLayoutInRoutes` check; example pattern in `examples/{ssr-showcase,ui-showcase,app-showcase,fundamentals-playground}/src/entry-client.ts` (none pass `layout`).
+
+---
+
+### Forgetting `makeReactiveProps` outside the CSR mount path.
+
+The compiler emits `<Comp prop={signalRead}>` as `h(Comp, { prop: _rp(() => signalRead) })`. `mount.ts` (CSR) wraps the raw vnode props with `makeReactiveProps` before invoking the component, which converts each `_rp`-branded function into a property getter. Without that step, components read `props.x` and get the raw `_rp` function instead of the resolved value — `${props.x}` in a template literal stringifies the function source, embedding `() => props.path` directly into rendered HTML. Both `runtime-server` (SSR) and `hydrate.ts` previously skipped `makeReactiveProps`, so any `<Comp prop={signal()}>` shape produced the wrong attribute on cold-start SSR and during hydration. Fix: call `makeReactiveProps(rawProps)` in the same shape `mount.ts` uses (`mergeChildrenIntoProps` for SSR; the merged-children object in hydrate.ts) before `runWithHooks(vnode.type, mergedProps)`. Visible end-to-end through the fundamentals NavItem layout — `<RouterLink to={props.path}>` rendered `<a href="() => props.path">`. Companion compositional bug in the same fix: `RouterLink` hard-overrode the user's `class` prop with its internal `activeClass` accessor instead of merging — so `class={() => isActive() ? 'active' : ''}` was silently dropped. Always destructure `class` separately and merge via `cx([userClass, internalClass])` returned from a single accessor so `applyProp` can wrap it once in `renderEffect`.
+
+---
+
+### Reactive children that read multiple sibling computeds — read order races on shared upstream changes.
+
+A reactive accessor that reads `computed_A()` and `computed_B()` where BOTH transitively depend on the same upstream signal will see a stale pair on the next change tick. The accessor's effect subscribes to both A and B and to the upstream — when upstream notifies in iteration order, the EFFECT fires before B's recompute does (because B was registered AFTER the effect subscribed to the upstream during its first run). The effect reads A (now updated) but B (still cached at the old value), producing an inconsistent (A_new, B_old) pair. Fix: collapse A and B into a single atomic computed that returns the pair, with `equals` comparing both fields. The accessor then has exactly one upstream — so order doesn't matter and the next emission carries a consistent pair. Reference: `RouterView`'s `depthEntry: { rec, comp, errored }` (`packages/core/router/src/components.tsx`) — pre-fix this was `recordAtDepth` + `cachedComponent` and produced `rec=/button` paired with `comp=HomePage` (the outgoing page) for the duration of the navigation, leaving the wrong component rendered.
+
+---
+
+### [SUPERSEDED by owner-based context]
+
+~~`restoreContextStack` truncation destroys provider frames pushed during `fn()`.~~ Under the owner-based context model there is **no client-side context stack to truncate**: `provide()` writes onto the component's `EffectScope` owner (`scope._contexts`), `useContext()` walks the owner chain (`scope._parent`), and context is disposed with the scope at unmount. Deferred boundaries (`<Show>`/`<For>`) capture the owner reference (`getContextOwner()`) at setup and restore it (`runWithContextOwner`) when they mount children — no snapshot, no dedup, no splice. (SSR keeps a request-scoped stack via `pushContext`/`popContext`; the `*-compat` layers run their own stack-based provide/inject.) `captureContextStack`/`restoreContextStack`/`ContextSnapshot` are deleted. Reference: `packages/core/core/src/context.ts` + `packages/core/reactivity/src/scope.ts`.
+
+---
+
+### Effects that read context across re-runs capture+restore the active OWNER themselves.
+
+`_bind` / `renderEffect` / `effect` re-run on signal change AFTER the synchronous mount frame has unwound, so the active context OWNER at re-run time may differ from setup time (`mountReactive` swaps owners via `runWithContextOwner` when it mounts deferred children). Each effect captures the active owner at SETUP via `setSnapshotCapture` (a DI hook `@pyreon/core` registers at module load — reactivity is below core in the dep order, backed by `getContextOwner` / `runWithContextOwner`), and restores it before invoking the user fn on every re-run other than the first (the synchronous mount owner is already correct on the first run). Capturing a single owner reference replaced the old deduped-stack-snapshot + identity-removal machinery. Reference: `packages/core/reactivity/src/effect.ts:_bind`/`renderEffect`/`effect` and `packages/core/core/src/context.ts:setSnapshotCapture` registration block.
+
+---
+
+### Circular prop-derived const chains
+
+`const a = b + props.x; const b = a + 1` — the compiler detects the cycle and emits a `circular-prop-derived` warning but leaves the cyclic identifier as a static reference (not reactively inlined). The result is subtly non-reactive on the cyclic part. Fix: restructure the derivation chain so every const reads from `props.*` directly or from a non-cyclic predecessor.
+
+---
+
+### Library components that iterate `props.children` at the VNode level (or `cloneVNode(props.children, …)`) without unwrapping function-wrapped children
+
+the Pyreon vite-plugin compiler rewrites `<Comp>{children}</Comp>` (where `children` is a local `const` derived from a getter — typically `splitProps` results) as `Comp({ ..., children: () => x.children })` (prop-inlining for reactivity). The receiving component sees `props.children` as a FUNCTION instead of the expected `VNode | VNode[]`. Most consumers don't notice because `mountChild` handles function children correctly via `mountReactive`; the trap fires when a library:
+  - **iterates children directly**: `(Array.isArray(children) ? children : [children]).filter(…)` produces `[function].filter(…) === []` → the rendered subtree has ZERO children.
+  - **calls `cloneVNode(props.children, …)`**: `{...function, props: {...}}` spreads zero own-enumerable properties (functions don't have them by default) → `{type: undefined, props: {…the override props…}}` → `mountElement(undefined)` → browser produces literal `<undefined></undefined>` tags.
+
+  **Defense for any library that consumes `props.children` structurally** (not just by forwarding to `mountChild`): resolve eagerly at body entry. `const child = typeof props.children === 'function' ? (props.children as () => unknown)() : props.children`. Safe IF the library snapshots children at render time (no reactive-children semantics) — which is the common case for animation/layout wrappers. Reference: `packages/ui-system/kinetic/src/utils.ts:resolveChildren` + `StaggerRenderer` (iteration) + `TransitionItem` (cloneVNode). Real-app shape: `examples/bokisch.com`'s Intro section — `kinetic('div').stagger()` with component children rendered `<undefined>` tags + `<!--pyreon-->` markers in place of every child post-hydration; SSR HTML was correct. The compiler IS the root cause (auto-wrapping JSX children for component parents that don't want reactive accessors is over-eager), but a library-side defensive unwrap is the immediate, well-localized fix without compiler-wide audit.
+
+---
+
+### Circular imports
+
+Keep dependency order (reactivity → core → runtime-dom → router → server)
+
+---
+
+### Build before dev
+
+Workspace resolution via `"bun"` condition means no build step needed
+
+---
+
+### `[key: string]: unknown` catch-all
+
+Use `data-*/aria-*` template literal index signatures
+
+---
+
+### Detaching methods
+
+`_bindText(obj.method, node)` loses `this` → compiler only emits for simple identifiers
+
+---
+
+### Duplicate module augmentation
+
+When a library package (e.g., `@pyreon/ui-theme`) already augments an interface (e.g., `StylesDefault extends ITheme`), consuming apps must NOT re-augment the same interface with a different type — this causes TS2320 "cannot simultaneously extend" errors. Remove app-level `pyreon.d.ts` augmentation when the library handles it.
+
+---
+
+### Using non-existent dimension props in demos
+
+Always check the component definition before using `state`, `size`, or `variant` props — if the component doesn't define that dimension (e.g., Loader has no `.variants()`), the prop is invalid and causes type errors (`never[]`).
+
+---
+
+### Assuming `<Portal>`'s target is `document.body` when reading the rendered DOM
+
+`@pyreon/elements`' Portal creates a per-instance wrapper element (default `<div>`, configurable via `tag` prop) inside `DOMLocation` (default `document.body`) and renders children INSIDE the wrapper. Multiple Portals sharing a DOMLocation each get their own wrapper, so children don't intermingle. Tests / asserts that previously read `document.body.firstChild === modalRoot` should now traverse one extra level: `document.body.querySelector('[data-modal-id]').parentElement`. Mirrors vitus-labs's Portal — provides cleanup isolation when several modals/dropdowns/tooltips share a portal root. Reference: `packages/ui-system/elements/src/Portal/component.tsx`.
+
+---
+
+### One-shot measurement of dynamic-content slots in `<Element equalBeforeAfter>`
+
+Element's `equalBeforeAfter` mode equalizes the before/after slot widths once on mount AND keeps them equalized as the element resizes via `ResizeObserver` — async slot content (font swaps, lazy text, viewport resize) wouldn't fire the one-shot measurement and would leave the slots un-equal. Apps relying on `equalBeforeAfter` for icon-button rows, search inputs with adornments, or any layout where slot content arrives asynchronously now stay aligned. Falls back to the one-shot measurement when `ResizeObserver` is undefined (SSR or older runtimes). Mirrors vitus-labs's Element. Reference: `packages/ui-system/elements/src/Element/component.tsx`.
+
+---
+
+### Re-emitting unchanged declarations in `@media` breakpoints
+
+a responsive theme that sets `{ color: { xs: 'red', sm: 'red' }, padding: { xs: 0, sm: '1rem' } }` should produce `@media(min-width: sm) { padding: 1rem; }` — NOT `@media(min-width: sm) { color: red; padding: 1rem; }`. Mobile-first `@media (min-width: …)` cascades inherit declarations from smaller breakpoints, so re-emitting `color: red` at `sm` is pure byte waste. `@pyreon/unistyle`'s `makeItResponsive` runs `optimizeBreakpointDeltas()` over the per-breakpoint render output and emits only the deltas. Stringify-fails (foreign engine result with `[object Foo]` toString) bail to the unoptimized fallback path so correctness wins over byte savings. Mirrors vitus-labs's pattern. Reference: `packages/ui-system/unistyle/src/responsive/optimizeBreakpointDeltas.ts` + `makeItResponsive.ts`.
+
+---
+
+### No render-output cache for stable theme objects in `makeItResponsive`
+
+when the consuming component re-renders with the same internal theme AND the same outer theme reference (the common case under a stable provider), the responsive engine should return the previous render verbatim — not re-run `renderStyles` + `optimizeBreakpointDeltas` for every re-render. `makeItResponsive`'s `themeCache` entry carries a `rendered: WeakMap<theme, unknown[]>` keyed by the outer theme reference; identity match returns the cached array (CSSResults are immutable, safe to reuse). Mirrors vitus-labs's pattern. Reference: `packages/ui-system/unistyle/src/responsive/makeItResponsive.ts:ThemeCacheEntry`.
+
+---
+
+### Conditionally-emitted CSS properties in responsive styles callbacks
+
+the inverse of the optimizer rule. When a styles callback writes `${t.block && 'align-self: stretch; width: 100%;'}`, a responsive theme like `block: [true, false, true]` runs the callback once per breakpoint with a single-value `t.block`. The truthy branch emits at xs, the falsy branch emits NOTHING at sm — and the optimizer is purely subtractive (drops re-emitted unchanged decls), so it can't synthesize a reset. Result: `align-self: stretch` from xs cascades through `@media (min-width: sm)` and the element stays stretched at the breakpoint where the user wrote `block: false`. **Fix**: always emit a value with an explicit reset for the falsy branch — `align-self: ${t.block ? 'stretch' : 'auto'}; width: ${t.block ? '100%' : 'auto'};`. The optimizer correctly drops both halves when nothing changes between breakpoints, so the always-emit pattern is free in the steady state. Applies to ANY responsive boolean/enum prop whose CSS effect is gated on truthiness — `block`, `equalCols`, `alignY === 'block'` (height: 100%), etc. Mirrors vitus-labs's PR #121 fix. Reference: `packages/ui-system/elements/src/helpers/Wrapper/styled.ts:styles`. Regression test: `packages/ui-system/elements/src/__tests__/wrapper-block-cascade.test.ts`.
+
+---
+
+### Re-using a rocketstyle component's chain after `.config({ component: NewBase })`
+
+rocketstyle's `cloneAndEnhance` resets the `attrs` / `priorityAttrs` / `filterAttrs` / `compose` chains when `opts.component` is set AND differs from the current component. Those chains were tailored to the previous component's prop shape; applying them to a different element silently leaks invalid props through to the DOM (e.g. a `disabled` attr from a button-shaped attrs chain ending up on an `<a>`). `theme` / `styles` / dimension chains are preserved across the swap because they target rendered CSS, not prop forwarding. If you need to keep button-shaped attrs across a component swap, re-chain them explicitly: `Button.config({ component: 'a' }).attrs(sharedAttrs)`. Behaviour mirrors vitus-labs's rocketstyle. Reference: `packages/ui-system/rocketstyle/src/rocketstyle.ts:cloneAndEnhance`.
+
+---
+
+### Index-builder skipping a discriminated-union branch's identifying field
+
+`@pyreon/unistyle`'s `keyToIndices` map is built once at module init by walking `propertyMap` and indexing each descriptor by `d.key` / `d.keys`. The `kind: 'special'` branch (`fullScreen`, `hideEmpty`, `clearFix`, `extendCss`, `backgroundImage`, `animation`) carries only `d.id` — no `key` / `keys` — so special descriptors were never indexed. **Single-special themes** (`{ fullScreen: true }`) silently worked because `fragments.length === 0` triggered a fallback full-scan that did hit `processSpecial`. The moment any non-special key was also present (`{ fullScreen: true, background: 'rgba(0,0,0,0.5)' }` — the real `<Overlay>` shape), the fast path produced one fragment from `background`, the fallback was skipped, and the special was dropped silently. Fix: index `d.id` alongside `d.key` / `d.keys` so the fast path resolves the special directly. **General rule for index builders**: when a property map contains a discriminated union, the index step must walk EVERY branch's identifying field. Missing one branch produces a silent fallback-only path that masks the bug under the "single key" scenario tests typically exercise. Bisect-verified: 7/7 paired-key specs in `unistyle/src/__tests__/special-keys.test.ts` failed without `if (d.id) addKey(d.id)`, all passed with it. Reference: `packages/ui-system/unistyle/src/styles/styles/index.ts:keyToIndices` builder.
+
+---
+
+### Building cache keys from raw props before resolution
+
+rocketstyle's `_rsMemo` previously built its dimension-prop key from `propsRec[dimName]` BEFORE `_calculateStylingAttrs` resolved the boolean shorthand. Under `useBooleans: true` the user writes `<Btn primary />` / `<Btn secondary />` — neither sets `props.state` directly, so `propsRec.state === undefined` for both, the keys collided, and EVERY boolean variant rendered with the FIRST cached variant's resolved styles. Real-app shape: a button group where primary, secondary, and danger all rendered in the FIRST color the user clicked. **General rule for cache keys**: any cache that's downstream of a normalization step must key on the NORMALIZED output, not the raw input — otherwise the cache collides every variant whose normalization happens to fan in from `undefined` / `null` / a default. Same pattern would bite any prop-resolver pipeline (compiler reactive-props inlining, attrs HOC chain accumulation, etc.). Bisect-verified at two layers: unit (`packages/ui-system/rocketstyle/src/__tests__/cache-key-boolean-collision.test.ts` — broken: `expected 'primary' to be 'secondary'`) AND real-Chromium (`rocketstyle.browser.test.tsx` Bug 5 spec — broken: `getComputedStyle().color` returned `rgb(255, 0, 0)` for the secondary button instead of `rgb(0, 255, 0)`, proving the bug surfaces at the actual CSS resolution layer not just at the API surface). The fix also adds an `Array.isArray` branch for multi-key dimensions (`variant={['primary', 'rounded']}`) which previously all collided onto `'~object'`. Reference: `packages/ui-system/rocketstyle/src/rocketstyle.ts:_resolveRsEntry`.
+
+---
+
+### Loose `Iterator` / `List` props that allow mixed data shapes at the type level
+
+`<Iterator data={[1, {id:1}, null]}>` is structurally ambiguous — primitive arrays and object arrays are mutually exclusive iteration modes at runtime. `@pyreon/elements` ships FOUR overloads on `Iterator` and `List`: `SimpleProps<T extends SimpleValue>` (primitive arrays — `valueName` allowed), `ObjectProps<T extends ObjectValue>` (object arrays — `valueName` FORBIDDEN, `children` FORBIDDEN), `ChildrenProps` (no data/component, only children), and a `LooseProps` fallback for forwarding patterns. The generic `Props<T>` discriminator picks the right overload via `unknown extends T ? LooseProps : T extends SimpleValue ? SimpleProps<T> : T extends ObjectValue ? ObjectProps<T> : ChildrenProps`. **Strict per-mode constraints fire for direct callers whose shape matches Simple / Object / Children**; calls whose shape doesn't match any narrow overload fall through to the LooseProps fallback (legal, forwarding-pattern shape). The fallback exists because `@pyreon/rocketstyle`'s 4-overload-aware `ExtractProps` produces a WIDE union when extracting Iterator's props — without a binding home, forwarding patterns like `<Iterator {...wrapperProps} />` fail at every call site with "no overload matches this call". Trade-off (mirrors vitus-labs PR #229): forwarding-pattern support is more valuable than mixed-shape rejection at the type level; runtime still picks the right mode based on which props are populated. List inherits the same overloads through `IteratorChildrenProps & ListExtras` etc., plus blocks Element's `label` / `content` props (`ListOnly: { label?: never; content?: never }`). Reference: `packages/ui-system/elements/src/helpers/Iterator/types.ts` + `List/component.tsx`. Tests: `packages/ui-system/elements/src/__tests__/Iterator.types.test.ts` (per-overload happy-path assertions + LooseProps fallback binding tests). Bisect-verified at the type-level: removing the LooseProps overload from `IteratorComponent` reverts 5 forwarding specs to `error TS2769: No overload matches this call`.
+
+---
+
+### Single-overload `ExtractProps<T>` shape silently dropping all but the last overload
+
+`T extends ComponentFn<infer P> ? P : T` is TS's documented behavior for overload-resolution-against-conditional-types — when `T` has N call signatures, only the LAST one matches `infer P`. For multi-overload primitives (Iterator / List / Element ship 3 overloads; rocketstyle wrappers can ship 2-4), this silently downgraded the public prop surface to the LOOSEST (last) overload the moment the component was wrapped through `rocketstyle()` / `attrs()` / any HOC reading `ExtractProps<typeof Comp>`. **Fix**: pattern-match up to 4 call signatures and union them — `T extends { (props: infer P1, ...args: any): any; (props: infer P2, ...args: any): any; (props: infer P3, ...args: any): any; (props: infer P4, ...args: any): any } ? P1 | P2 | P3 | P4 : ...` with fall-through to 3-arm, 2-arm, single `ComponentFn<infer P>`. Single-overload functions still work — TS fills missing slots by repeating the last overload, so the union of 4 copies of the same shape dedupes back to one. Mirrors vitus-labs PR #222. **Kept in sync across 4 copies**: `@pyreon/core/src/types.ts`, `@pyreon/elements/src/types.ts`, `@pyreon/attrs/src/types/utils.ts`, `@pyreon/rocketstyle/src/types/utils.ts`. Bisect-verified at the type-level via `packages/core/core/src/tests/extract-props-overloads.types.test.ts`: reverting just the core copy to the single-arm shape fails 6 of the 8 specs (the 2-overload, 3-overload, 4-overload union assertions + the Iterator-shaped 3-overload assignability) with `Type 'X' does not satisfy the constraint 'Y'`. Restored → 8/8 pass.
+
+---
+
+### `as unknown as VNodeChild` on JSX returns
+
+This cast is unnecessary — `JSX.Element` (VNode) is already assignable to `VNodeChild`. Never add it; remove it where found.
+
+**Detected by:** `as-unknown-as-vnodechild` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
+### Duplicating controlled/uncontrolled pattern
+
+Use `useControllableState` from `@pyreon/hooks` instead of manual `isControlled + signal + getter` pattern. Every primitive had this duplicated before the fix.
+
+---
+
+### Static return null for conditional rendering
+
+`if (!isActive()) return null` runs once — components run once in Pyreon. Use reactive accessor: `return (() => { if (!isActive()) return null; return <div>...</div> })`. This applies to TabPanelBase, ModalBase, and any component that conditionally renders.
+
+**Detected by:** `static-return-null-conditional` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
+### Empty `.theme({})`
+
+Never chain `.theme({})` as a no-op. If a component needs no base theme, skip `.theme()` entirely.
+
+**Detected by:** `empty-theme` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
+### User-controlled data in HTML comment content
+
+HTML comments terminate on `-->`, `--!>`, or, in some parsers, any `--` sequence. If you interpolate user-supplied data into a comment (`<!--key:${key}-->`), a malicious key can break out and inject arbitrary markup. Defense: URL-encode and replace every `-` with `%2D` before interpolation, so `-->` is structurally impossible. Reference: `runtime-server/src/index.ts:safeKeyForMarker`. Applies to any SSR-emitted marker the framework carries between server render and client hydration.
+
+---
+
+### `Object.defineProperty` without `configurable: true` on props
+
+when authoring a getter on an object that may later be passed through `mergeProps` or `splitProps`, always set `configurable: true` explicitly. The default is `false`, which silently makes the descriptor non-redefinable — any later merge that overrides the same key throws `TypeError: Cannot redefine property`. `mergeProps` now forces `configurable: true` on copied descriptors as a defensive measure, but the root cause is still on the authoring side. Applies to reactive-prop wrappers (`_rp`), manually constructed rocketstyle attrs, and any bridge that exposes values via getters.
+
+---
+
+### Bundler-coupled dev gates
+
+Pyreon publishes libraries to npm; consumers compile with whatever bundler they use — Vite, Webpack (Next.js), Rolldown, esbuild, Rollup, Parcel, Bun. Library code must NOT use bundler-specific dev-gate patterns. Two patterns this rule has seen ship and break:
+  1. **`typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`**: dead code in real Vite browser bundles because Vite does not polyfill `process` — the typeof guard returns `false`, the whole expression is statically dead, warnings never fire. Caught originally in PR #200.
+  2. **`import.meta.env.DEV` (and `(import.meta as ViteMeta).env?.DEV === true`)**: Vite/Rolldown-only. In a Pyreon library shipped to a Next.js (Webpack), esbuild, Rollup, Parcel, or Bun consumer, `import.meta.env` is `undefined` and dev warnings never fire — even in development. PR #200 introduced this as the "fix" to (1); the direction was wrong for library code.
+
+  **The bundler-agnostic library standard** (used by React, Vue, Preact, Solid, MobX, Redux): bare `process.env.NODE_ENV !== 'production'` (no typeof guard). Every modern bundler auto-replaces `process.env.NODE_ENV` at consumer build time — no special config needed, no consumer setup. Reference implementation: `packages/fundamentals/flow/src/layout.ts:warnIgnoredOptions`. **Enforced by `pyreon/no-process-dev-gate`** (auto-fixable to the bundler-agnostic form). The companion rule `pyreon/dev-guard-warnings` recognises `if (process.env.NODE_ENV === 'production') return` as a valid early-return guard so `console.warn` calls in the function body don't fire spuriously. Server-only packages (`zero`, `runtime-server`, `server`, `vite-plugin`) are exempt — they always run in Node where `process` is real, and bundler-replacement is irrelevant.
+
+**Detected by:** `process-dev-gate` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
+### Local `__DEV__` const alias prevents bundler tree-shake
+
+(silent bundle bloat): `const __DEV__ = process.env.NODE_ENV !== 'production'` at module scope, then `if (__DEV__) console.warn(...)` at the use site. The pattern looks identical to the bundler-agnostic standard above but is silently worse for downstream bundle size — Bun.build and several esbuild configurations DON'T propagate the const-folded value through the alias even when `process.env.NODE_ENV` is defined as `"production"`. The if-body retains the warning strings in the production bundle. The bare gate (`if (process.env.NODE_ENV !== 'production')`) folds reliably because the bundler's define replacement turns the expression into a literal `false` directly at the call site. **Real-world bug shape**: pre-fix, `@pyreon/runtime-dom` shipped 2,936 bytes (-23%) of un-stripped dev-warning strings; `@pyreon/reactivity` shipped 1,542 bytes (-20%) of the same; `@pyreon/core` shipped 781 bytes (-16%). Net Pyreon footprint was ~7 KB larger than necessary. Fixed by deleting the alias and using the bare gate at every use site (mechanical migration — same lint-rule-recognized pattern). The `dev-guard-warnings` lint rule also accepts conventional names like `__DEV__` / `isDev` / `IS_DEV` for *cross-module imports* (where the rule can't follow the import to verify the body), but a local file should use the bare gate. **Rule of thumb**: never assign `process.env.NODE_ENV !== 'production'` to a const inside a published library file; write the check inline at every site.
+
+---
+
+### `check-bundle-budgets.ts` missing `define: NODE_ENV=production`
+
+prior to the bundle-shrink PR, the script's `Bun.build` invocation omitted the production define. The measurement therefore INCLUDED every `if (process.env.NODE_ENV !== 'production') console.warn(...)` string from `lib/`, overstating real consumer bundle by 5-20% per package. Real consumers ship with `define` set (Vite/Webpack/esbuild auto-replace), so the dev strings tree-shake out in real apps. The fix: pass `define: { 'process.env.NODE_ENV': '"production"' }` to `Bun.build` so the measurement reflects production reality. After landing, the budget file was regenerated with the smaller (true-production) sizes. **Rule for any future bundle-size measurement**: the script MUST match what consumers ship — set the production define explicitly; don't rely on bundler defaults that vary across `target` / `platform` settings.
+
+---
+
+### Relying on `parent` in oxc visitor callbacks
+
+`VisitorCallback = (node) => void` — oxc's walker does NOT pass `parent`. A `parent?.type === '…'` check silently evaluates `undefined.type` → `undefined`, so the check is always false (or always true, depending on shape) — **silently inert**. When a rule needs parent context: (1) track via enter/exit depth counters on the parent node type, or (2) pre-mark child nodes via a `WeakSet` when visiting the parent, then look up the child on its own visit. Three rules were silently broken by this (`no-window-in-ssr`, `no-theme-outside-provider`, `no-props-destructure`, plus `component-context` util). The `VisitorCallback` type was narrowed to `(node: any) => void` to prevent recurrence.
+
+---
+
+### Hooks defining event-listener callbacks outside `onMount`
+
+`const handler = () => { ... document.X ... }` declared at hook body scope, then `document.addEventListener('...', handler)` inside `onMount` — the handler closure is AST-untraceable (the rule can't prove the callback only runs in mounted browser context). Define the handler INSIDE `onMount`, return the cleanup function from `onMount` (not a separate `onUnmount` call). This co-locates browser-API access with the browser-only registration. Pyreon's `onMount(fn)` accepts a cleanup return value — don't duplicate cleanup via `onUnmount`.
+
+---
+
+### Browser-only helpers called from event handlers without an explicit SSR guard
+
+When a module-level function reads `window.X` / `document.X` but is only called from `onMount`-registered listeners (via `setupListeners` / positioning helpers / click handlers), the rule flags each window/document access individually — it can't AST-trace the indirect call. Solutions in preference order: (1) inline the helper into `onMount` if small, (2) add an `if (typeof window === 'undefined') return <fallback>` early-return at the helper entry — the `no-window-in-ssr` rule recognises this form via its `early-return-on-typeof` heuristic and implicitly guards the whole body. Returning a fallback `{}` / `() => {}` from such guards is fine even if the path is unreachable at runtime; the guard exists primarily to document the SSR-safety contract at the callsite. Reference implementation: `packages/ui-system/elements/src/Overlay/useOverlay.tsx` — `calcDropdownVertical` / `setupListeners` / `getAncestorOffset`.
+
+---
+
+### Tree-shake regression tests for dev gates
+
+when migrating a file's dev gate to `process.env.NODE_ENV !== 'production'`, also bisect-verify the bundle-level behaviour. Bundle the file via esbuild with `define: { 'process.env.NODE_ENV': '"production"' }` + `minify: true` + `treeShaking: true` and assert the dev-warning strings are absent from the prod output. Then bundle with `'"development"'` and assert they're present. This catches gate regressions where the source pattern is right but the minifier can't fold to a literal (e.g. the gate is wrapped in a way that obscures the constant from esbuild). Reference test: `packages/fundamentals/flow/src/tests/integration.test.ts` (`warnIgnoredOptions — gate pattern regression` describe block). Apply the same shape per-package when migrating critical dev-gate paths.
+
+---
+
+### Framework APIs that require accessor props without value-form fallback
+
+`<Show when={signal}>` / `<Match when={signal}>` used to crash with `props.when is not a function` because the compiler's signal auto-call rewrites bare `when={mySignal}` to `when={mySignal()}` — passing a value (boolean) where the framework expected an accessor. The crash cascaded: the entire component tree under `<Show>` failed to render, often presenting as "missing styles" because hidden components have no class targets in the DOM. **Defensive normalization rule**: any framework API that accepts an accessor `T = () => X` MUST also accept the value form `X | (() => X)` and normalize via `typeof === 'function'`. The compiler can't know which props need accessor semantics, so the framework has to accept both. Apply this to any new control-flow component, any prop typed as `() => X`, and any signal-shaped prop in framework APIs. Reactive cases STILL need the accessor form to re-evaluate on signal change — the value form covers static booleans + the auto-call edge case. Reference fix: `packages/core/core/src/show.ts` `callWhen` helper.
+
+---
+
+### Wrapper-style helper components leaking `{undefined}` JSX slots into void-element vnodes
+
+`@pyreon/elements`' Wrapper used to always render `<Styled>{own.children}</Styled>` regardless of whether `tag` was a void HTML element. When the parent passed no children (Element correctly skips them for void tags via `getShouldBeEmpty`), `own.children` was `undefined` — but `{undefined}` in JSX still serializes as a child slot, producing `vnode.children = [undefined]`. runtime-dom's void-element check (`vnode.children?.length > 0`) fired the warning. Fix: branch on `getShouldBeEmpty(own.tag)` inside the wrapper and use `<Styled />` (no slot) for void tags. **General lesson**: wrapper components that forward children must check the destination tag — JSX `{value}` slots are not free even when value is `undefined`. Audit any "passthrough" wrapper that accepts both layout-bearing and void HTML tags.
+
+---
+
+### Listing a runtime-supported prop in a wrapper's `OWN_KEYS` without forwarding it back to the rendered vnode
+
+`@pyreon/elements`' Wrapper listed `'dangerouslySetInnerHTML'` in `OWN_KEYS`, so `splitProps` moved it into `own`. The downstream Styled JSX call only spread `...commonProps` (built from `rest`) and never re-attached `own.dangerouslySetInnerHTML` — the prop was silently dropped between Wrapper and the renderer, even though both `runtime-server` (`renderElement` reads `props.dangerouslySetInnerHTML?.__html`) and `runtime-dom` (`props.ts` `dangerouslySetInnerHTML` branch) support it. Real-app shape: `<Logo dangerouslySetInnerHTML={{ __html: '<svg>…</svg>' }} />` rendered an empty `<div></div>` instead of the inlined SVG. The `needsFix` and `isVoidTag` gates DID check `!own.dangerouslySetInnerHTML` (so the author was clearly aware the prop interacts with branching), they just forgot to actually forward it. **General rule for wrapper components**: every prop pulled into `own` via `OWN_KEYS` is the wrapper's responsibility to either consume OR re-forward. If a prop is structural (`tag`, `direction`, layout) the wrapper consumes it. If a prop is content / passthrough (`dangerouslySetInnerHTML`, `style`, `children`, `ref`) the wrapper MUST re-attach it on the rendered vnode. Audit any wrapper that uses `splitProps` against the destination runtime's prop pipeline. Fix: `if (own.dangerouslySetInnerHTML) return <Styled ... dangerouslySetInnerHTML={own.dangerouslySetInnerHTML} />` (children dropped — they're mutually exclusive with innerHTML; both runtimes treat both as inner-content sources). Bisect-verified at unit + real-Chromium browser layers — broken state: `expected undefined to be { __html: ... }` on the unit, `container.querySelector('svg')` returns null on the browser smoke. Reference: `packages/ui-system/elements/src/helpers/Wrapper/component.tsx`.
+
+---
+
+### Mutable `let handler = null` followed by conditional assignment in `if (_isBrowser)` blocks
+
+The assignment-scope flow is untraceable by the SSR lint rule, which forces `if (_isBrowser && handler)` contortions at every use site. Prefer `const handler = _isBrowser && condition ? () => … : null` — ternary bindings derived from a typeof-bound const are recognised by `no-window-in-ssr` as typeof-derived, so `if (handler)` alone is sufficient at the use sites. Same pattern eliminates `destroy()` reassignment-to-null boilerplate: the handler binding is immutable for the router's lifetime. Reference: `packages/core/router/src/router.ts` — `_popstateHandler` / `_hashchangeHandler`.
+
+---
+
+### `const handleClick = () => router.push(…); handleClick()` in render body
+
+Defining a nested fn that navigates and calling it synchronously in the component body is the same infinite-loop bug as a direct `router.push()` call — the lint rule catches both. Storing the nested fn for deferred execution (JSX handler, `setTimeout`, `onMount` callback) is safe. The rule tracks nested-function bodies for navigation calls and only fires when the resulting binding is invoked synchronously in the render body (not when stored / passed as callback).
+
+---
+
+### Reaching for `document.createElement` / `cancelAnimationFrame` etc. globals from inside a CodeMirror plugin
+
+(or any host-aware framework): use the host view's own document/window — `view.dom.ownerDocument.createElement(...)` and `view.dom.ownerDocument.defaultView?.cancelAnimationFrame(...)`. Both are SSR-safe (no global access at all) AND more correct (multi-document scenarios like iframes / shadow roots use their own document/window instance). Reference: `packages/fundamentals/code/src/editor.ts` (`CustomGutterMarker.toDOM`) and `packages/fundamentals/code/src/minimap.ts`. Avoid `null as unknown as HTMLElement` casts as a fallback for typeof guards — host-aware accessors give a real element with no escape hatch.
+
+---
+
+### Intentional `.peek()` inside `effect`/`computed`
+
+`.peek()` is the official signal-read API for cases where you specifically DON'T want subscription — loop-prevention (`if (next === editor.value.peek()) return` to skip writes during a write), imperative-ref access (a signal storing a non-reactive ref like a CodeMirror view), reading a signal once for a side-effect-only computation. The `pyreon/no-peek-in-tracked` rule fires on every such site by default — annotate the intentional ones with `// pyreon-lint-disable-next-line pyreon/no-peek-in-tracked` (or the alias `// pyreon-lint-ignore pyreon/no-peek-in-tracked`). Reference: `packages/fundamentals/code/src/bind-signal.ts:201` for the loop-prevention pattern.
+
+---
+
+### `isBrowser()` / `isClient()` / `isServer()` / `isSSR()` as cross-module SSR guards
+
+any function with one of these conventional names is recognised by `pyreon/no-window-in-ssr` as a typeof guard at its call sites — `if (!isBrowser()) return …` followed by `window.X` is silent. The rule can't follow imports across files, so the **name is the contract**. Two implications: (1) implementing `isBrowser()` to actually return something OTHER than a typeof check (e.g. `() => true`) silently silences the rule wherever you call it — keep the body honest. (2) a non-conventional helper like `isReady()` or `inBrowser()` won't silence the rule; either rename it or use one of the four conventional names. Local typeof-bound consts (`const isBrowser = typeof window !== 'undefined'`) and locally-defined functions whose body returns a typeof check are also recognised regardless of name.
+
+---
+
+### Duplicating root-level layouts under `prefix-except-default` i18n
+
+when `expandRoutesForLocales` (`@pyreon/zero`) fans the route tree into per-locale variants under `prefix-except-default`, a SOURCE root layout `_layout.tsx` (urlPath `/`) must NOT produce locale-prefixed duplicates. The route tree's hierarchical matching already wraps `/de/about` under the unprefixed `/_layout` (which sits at the root of the matched chain for every path). Producing a duplicate `/de/_layout` causes the matcher to nest BOTH layouts (`/_layout` → `/de/_layout` → page), mounting the layout component twice — two navbars, two PyreonUI providers, two `<main>`. **Non-root layouts** (`/dashboard/_layout` at urlPath `/dashboard`) MUST still be duplicated because the unprefixed pattern doesn't match the de-prefixed children. **Under `prefix` strategy** the skip does NOT apply: there is no unprefixed default to inherit from, so every locale needs its own root layout. **The bug class**: any cross-cutting transform that fans routes into variants must distinguish between layouts that wrap by hierarchical match (unprefixed root → all paths) vs by exact-prefix match (`/dashboard` → `/dashboard/*` only). Bisect-verified at the e2e layer (the unit + verify-modes layers can't catch it because they check route enumeration / dist filesystem; only rendered-DOM inspection sees the doubled layout structure). Reference: `packages/zero/zero/src/i18n-routing.ts:expandRoutesForLocales` (`route.isLayout && route.urlPath === '/'` skip).
+
+---
+
+### Iterating `props.children` at the VNode level without unwrapping a possible compiler-emitted accessor function
+
+(enforced by `@pyreon/lint` rule `pyreon/no-iterate-children-without-resolve`, error-level, in `recommended`/`strict`/`app`/`lib`): The Pyreon vite-plugin's prop-inlining pass rewrites `<Comp>{children}</Comp>` (where `children` is a local `const` derived from a getter — `const children = childHolder.children` after `splitProps`) as `Comp({ ..., children: () => h.children })`. Receiving components see `props.children` as a FUNCTION instead of the expected `VNode | VNode[]`. **DOM-consuming code routes through `mountChild` which handles function children correctly via `mountReactive`, so the wrap is invisible there. Libraries that iterate children at the VNode level (kinetic's StaggerRenderer + top-level Stagger + GroupRenderer, elements' Iterator) or `cloneVNode` them directly (kinetic's TransitionItem + top-level Transition) are silently broken** — the function spread produces `{type: undefined}` and the DOM renders literal `<undefined>` tags. **History**: PR #731 (kinetic library-side fix for StaggerRenderer + TransitionItem), PR #732 (compiler-side carve-out for stable references at the JSX call site), PR #736 (parallel library fixes for top-level Stagger/Transition + Iterator + lint rule), PR #751 (lint rule scope-gap closures: variable-bound iteration + per-source-path mitigation regression spec), follow-up (react-compat `Children.*` + preact-compat `toChildArray` unwrap function children — the IfStatement-guarded iteration shape the lint rule deliberately can't catch). **Detected shapes**: `cloneVNode(EXPR, …)` / `(Array.isArray(EXPR) ? EXPR : [EXPR]).METHOD(…)` (inline OR variable-bound: `const xs = Array.isArray(X) ? X : [X]; xs.METHOD(…)`) / `EXPR.props` where EXPR ends with `.children`. **Acceptable mitigations** are tracked **per-source-path** in the same OR ancestor function scope: `resolveChildren(…)` call (canonical helper in `@pyreon/kinetic/utils`), `typeof X === 'function' ? X() : X` ternary, or `typeof X === 'function'` guard. Per-source-path means an outer `resolveChildren(props.children)` does NOT cover an inner inline-defined component's `innerProps.children` (different prop source) — each function's `props.children` is its own guarded surface. **Out of scope** (deliberate): pass-through patterns `...(Array.isArray(EXPR) ? EXPR : [EXPR])` (spread into h() rest args — mountChild handles function children); IfStatement-guarded iteration (`if (Array.isArray(x)) return x.map(…)` — framework primitives like `Dynamic` / `Show` / `Switch` use this with direct h() rest args that never reach the auto-wrap). Reference: `packages/tools/lint/src/rules/reactivity/no-iterate-children-without-resolve.ts`.
+
+---

@@ -15,6 +15,9 @@
 // from the package-centric layout — this is a pure re-grouping, so no URL
 // moves and no redirects are needed.
 
+import { REFERENCE_GROUPS } from './reference-nav.generated'
+import { TROUBLESHOOTING_GROUPS } from './troubleshooting-nav.generated'
+
 export interface SidebarLink {
   text: string
   slug: string
@@ -43,8 +46,24 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Quickstart', slug: 'quickstart' },
       { text: 'Getting Started', slug: 'getting-started' },
       { text: 'Build an App (Tutorial)', slug: 'build-an-app' },
+      { text: 'Examples Gallery', slug: 'examples' },
+      { text: 'Recipes', slug: 'recipes' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
+    ],
+  },
+  {
+    // Guided concept-by-concept track (the gentle on-ramp before building a
+    // full app). Sequenced with prev/next links; attaches to the Learn tier.
+    text: 'Tutorial',
+    collapsed: false,
+    items: [
+      { text: '1. Signals', slug: 'tutorial/01-signals' },
+      { text: '2. Derived values', slug: 'tutorial/02-derived' },
+      { text: '3. Side effects', slug: 'tutorial/03-effects' },
+      { text: '4. Components run once', slug: 'tutorial/04-components' },
+      { text: '5. Lists & conditionals', slug: 'tutorial/05-lists-and-conditionals' },
+      { text: '6. Build something real', slug: 'tutorial/06-build-something' },
     ],
   },
 
@@ -80,6 +99,26 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Multi-platform shared code', slug: 'patterns/multiplatform' },
     ],
   },
+  {
+    // In-depth, task-oriented how-to guides (one concern each, grounded in
+    // the real package source). Attaches to the Guides tier (no `tier`).
+    text: 'In-Depth Guides',
+    collapsed: false,
+    items: [
+      { text: 'Reactivity in Depth', slug: 'guides/reactivity-in-depth' },
+      { text: 'Data Fetching & Caching', slug: 'guides/data-fetching' },
+      { text: 'Client-Side Routing', slug: 'guides/routing' },
+      { text: 'Forms & Validation', slug: 'guides/forms' },
+      { text: 'Global State Management', slug: 'guides/state-management' },
+      { text: 'Styling & Theming', slug: 'guides/styling-theming' },
+      { text: 'Animations & Transitions', slug: 'guides/animations' },
+      { text: 'SSR, SSG & ISR', slug: 'guides/ssr-ssg-isr' },
+      { text: 'Islands & Partial Hydration', slug: 'guides/islands' },
+      { text: 'Performance', slug: 'guides/performance' },
+      { text: 'Testing Pyreon Apps', slug: 'guides/testing' },
+      { text: 'Deploying a Pyreon App', slug: 'guides/deployment' },
+    ],
+  },
 
   // ─── MIGRATE ────────────────────────────────────────────────────────────
   {
@@ -88,6 +127,9 @@ export const SIDEBAR: SidebarGroup[] = [
     items: [
       { text: 'Coming from React', slug: 'migrating-from-react' },
       { text: 'Coming from Solid', slug: 'migrating-from-solid' },
+      { text: 'Coming from Vue', slug: 'migrating-from-vue' },
+      { text: 'Coming from Svelte', slug: 'migrating-from-svelte' },
+      { text: 'Coming from Angular', slug: 'migrating-from-angular' },
     ],
   },
 
@@ -218,4 +260,12 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Primitives', slug: 'primitives' },
     ],
   },
+
+  // ─── API REFERENCE (generated per-package from src/manifest.ts) ─────────
+  // Emitted by docs/scripts/gen-reference.ts. Opens its own tier.
+  ...REFERENCE_GROUPS,
+
+  // ─── TROUBLESHOOTING (generated from anti-patterns.md) ──────────────────
+  // Emitted by docs/scripts/gen-troubleshooting.ts. Opens its own tier.
+  ...TROUBLESHOOTING_GROUPS,
 ]

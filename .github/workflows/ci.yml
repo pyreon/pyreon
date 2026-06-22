@@ -1066,6 +1066,26 @@ jobs:
       - name: Verify doc-claim numbers match source of truth
         run: bun run check-doc-claims
 
+  # ── Docs generated-freshness gate ─────────────────────────────────────
+  # The docs reference (41 pages), troubleshooting (7 cats), and examples-
+  # gallery pages all emit from a single source of truth (package manifests,
+  # .claude/rules/anti-patterns.md, docs/src/examples/). This regenerates
+  # them and fails if the committed output drifted — so a manifest edit or a
+  # new example can't silently leave the docs stale. Lib-free: the generators
+  # read source via the bun condition. See docs/scripts/check-generated-fresh.ts.
+  docs-generated-fresh:
+    name: Docs Generated Fresh
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+      - name: Regenerate docs + assert no drift
+        run: bun docs/scripts/check-generated-fresh.ts
+
   # ── Lint ratchets ─────────────────────────────────────────────────────
   # TWO ratchets, both lib-free. (1) oxlint: `error`-severity rules are gated
   # at 0 by the `Lint` job; this covers the `warn` backlog (lint-baseline.json).
