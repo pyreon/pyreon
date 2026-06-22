@@ -84,6 +84,26 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Multi-platform shared code', slug: 'patterns/multiplatform' },
     ],
   },
+  {
+    // In-depth, task-oriented how-to guides (one concern each, grounded in
+    // the real package source). Attaches to the Guides tier (no `tier`).
+    text: 'In-Depth Guides',
+    collapsed: false,
+    items: [
+      { text: 'Reactivity in Depth', slug: 'guides/reactivity-in-depth' },
+      { text: 'Data Fetching & Caching', slug: 'guides/data-fetching' },
+      { text: 'Client-Side Routing', slug: 'guides/routing' },
+      { text: 'Forms & Validation', slug: 'guides/forms' },
+      { text: 'Global State Management', slug: 'guides/state-management' },
+      { text: 'Styling & Theming', slug: 'guides/styling-theming' },
+      { text: 'Animations & Transitions', slug: 'guides/animations' },
+      { text: 'SSR, SSG & ISR', slug: 'guides/ssr-ssg-isr' },
+      { text: 'Islands & Partial Hydration', slug: 'guides/islands' },
+      { text: 'Performance', slug: 'guides/performance' },
+      { text: 'Testing Pyreon Apps', slug: 'guides/testing' },
+      { text: 'Deploying a Pyreon App', slug: 'guides/deployment' },
+    ],
+  },
 
   // ─── MIGRATE ────────────────────────────────────────────────────────────
   {
