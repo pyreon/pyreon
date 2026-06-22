@@ -2251,23 +2251,6 @@ setUrlRouter(router)  // now useUrlState uses router.replace() internally
 >
 > **Debounce**: For high-frequency updates (search inputs, sliders), pass `{ debounceMs: 300 }` to batch URL updates. Without debounce, every keystroke triggers a replaceState call.
 
-## @pyreon/router — useIsActive
-
-```typescript
-import { useIsActive } from '@pyreon/router'
-
-// Reactive boolean for active route matching:
-const isHome = useIsActive('/')
-const isAdmin = useIsActive('/admin')          // matches /admin, /admin/users, etc.
-const isExactAdmin = useIsActive('/admin', true)  // exact match only
-
-// Use in templates:
-<nav>
-  <a class={{ active: isHome() }} href="/">Home</a>
-  <a class={{ active: isAdmin() }} href="/admin">Admin</a>
-</nav>
-```
-
 ## @pyreon/ui-core — UI Provider + Config
 
 Foundation layer for the Pyreon UI system. `PyreonUI` is the single provider replacing the previous theme / mode / config split — it accepts a theme, a `mode` of `"light" | "dark" | "system"`, and an optional `inversed` flip, then auto-detects OS preference via `prefers-color-scheme` when `mode="system"`. `useMode()` returns the resolved mode as a reactive signal. The package also exposes the `init()` escape hatch (called internally by `PyreonUI` but available for SSR / test setups), the static `HTML_TAGS` / `HTML_TEXT_TAGS` lists used by the bases, and zero-dep utilities (`get`, `set`, `merge`, `pick`, `omit`, `throttle`, `isEmpty`, `isEqual`).
