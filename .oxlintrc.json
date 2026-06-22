@@ -86,6 +86,7 @@
         "scripts/**/*.ts",
         "scripts/**/*.mjs",
         "packages/**/scripts/**",
+        "packages/**/bench/**",
         "packages/tools/cli/src/**",
         "packages/tools/mcp/src/**",
         "packages/native/cli/src/**",

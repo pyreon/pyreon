@@ -1,0 +1,8 @@
+Cost to ship the equivalent 4-field user schema (esbuild --bundle --minify --format=esm, NODE_ENV=production)
+Node 24, darwin/arm64
+
+  lib       minified (B)   gzipped (B)
+  valibot         5232         1760
+  pyreon         15957         3924
+  arktype       153411        46888
+  zod           327319        64649

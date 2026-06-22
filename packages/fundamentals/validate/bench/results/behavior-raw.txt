@@ -1,0 +1,67 @@
+
+────────────────────────────────────────────────────────────────────────
+1. Standard Schema (~standard) conformance — present? version/vendor
+────────────────────────────────────────────────────────────────────────
+  pyreon : version=1 vendor=pyreon-validate
+  zod    : version=1 vendor=zod
+  valibot: version=1 vendor=valibot
+  arktype: version=1 vendor=arktype
+
+────────────────────────────────────────────────────────────────────────
+2. Error output for { name:"A", age:999, email:"nope", tags:["ok",42] } — shape + count + nested path
+────────────────────────────────────────────────────────────────────────
+  PYREON  ok=false issues=4
+    [{"path":["name"],"code":"too_small","msg":"Must be at least 2 characters"},{"path":["age"],"code":"too_big","msg":"Must be at most 150"},{"path":["email"],"code":"invalid_format","msg":"Invalid email"},{"path":["tags",1],"code":"wrong_type","msg":"Expected string, received number"}]
+  ZOD     ok=false issues=4
+    [{"path":["name"],"code":"too_small","msg":"Too small: expected string to have >=2 characters"},{"path":["age"],"code":"too_big","msg":"Too big: expected number to be <=150"},{"path":["email"],"code":"invalid_format","msg":"Invalid email address"},{"path":["tags",1],"code":"invalid_type","msg":"Invalid input: expected string, received number"}]
+  VALIBOT ok=false issues=4
+    [{"path":["name"],"msg":"Invalid length: Expected >=2 but received 1"},{"path":["age"],"msg":"Invalid value: Expected <=150 but received 999"},{"path":["email"],"msg":"Invalid email: Received \"nope\""},{"path":["tags",1],"msg":"Invalid type: Expected string but received 42"}]
+  ARKTYPE isError=true count=4
+    summary: "age must be at most 150 (was 999)\nemail must be an email address (was \"nope\")\nname must be at least length 2 (was 1)\ntags[1] must be a string (was a number)"
+
+────────────────────────────────────────────────────────────────────────
+3. Adversarial accept/reject divergence (✓=accept, ✗=reject)
+────────────────────────────────────────────────────────────────────────
+ NUMBER int 0..150:
+  NaN                               P:✗  Z:✗  Va:✗  Ar:✗
+  Infinity                          P:✗  Z:✗  Va:✗  Ar:✗
+  -0                                P:✓  Z:✓  Va:✓  Ar:✓
+  "42" (string coercion?)           P:✗  Z:✗  Va:✗  Ar:✗
+  42.5 (non-int)                    P:✗  Z:✗  Va:✗  Ar:✗
+  151 (over max)                    P:✗  Z:✗  Va:✗  Ar:✗
+  0 (boundary)                      P:✓  Z:✓  Va:✓  Ar:✓
+  150 (boundary)                    P:✓  Z:✓  Va:✓  Ar:✓
+  MAX_SAFE_INTEGER+1                P:✗  Z:✗  Va:✗  Ar:✗
+ STRING min(2):
+  "" (empty)                        P:✗  Z:✗  Va:✗  Ar:✗
+  "a" (len1)                        P:✗  Z:✗  Va:✗  Ar:✗
+  "  " (2 spaces)                   P:✓  Z:✓  Va:✓  Ar:✓
+  "👍" (1 emoji, 2 UTF16 units)     P:✓  Z:✓  Va:✓  Ar:✓
+  "ab"                              P:✓  Z:✓  Va:✓  Ar:✓
+ EMAIL strictness:
+  "a@b"                             P:✗  Z:✗  Va:✗  Ar:✗
+  "a@b.c"                           P:✓  Z:✗  Va:✗  Ar:✗
+  "user+tag@ex.com"                 P:✓  Z:✓  Va:✓  Ar:✓
+  "foo@bar"                         P:✗  Z:✗  Va:✗  Ar:✗
+  "x@xn--80ak6aa92e.com"            P:✓  Z:✓  Va:✗  Ar:✓
+  "a@b.com"                         P:✓  Z:✓  Va:✓  Ar:✓
+  "plainaddr"                       P:✗  Z:✗  Va:✗  Ar:✗
+  "a @b.com"                        P:✗  Z:✗  Va:✗  Ar:✗
+
+────────────────────────────────────────────────────────────────────────
+4. Unknown-key handling — input has extra key {x:1}; what is in the output value?
+────────────────────────────────────────────────────────────────────────
+  PYREON  ok=true value={"name":"Ada","age":30,"email":"a@b.com","tags":[]}
+  ZOD     ok=true value={"name":"Ada","age":30,"email":"a@b.com","tags":[]}
+  VALIBOT ok=true value={"name":"Ada","age":30,"email":"a@b.com","tags":[]}
+  ARKTYPE ok=true value={"name":"Ada","age":30,"email":"a@b.com","tags":[],"x":1}
+
+────────────────────────────────────────────────────────────────────────
+5. Prototype-pollution — parse JSON with a __proto__ payload; did Object.prototype get polluted?
+────────────────────────────────────────────────────────────────────────
+  pyreon    Object.prototype.polluted = undefined (safe)
+  zod       Object.prototype.polluted = undefined (safe)
+  valibot   Object.prototype.polluted = undefined (safe)
+  arktype   Object.prototype.polluted = undefined (safe)
+
+DONE
