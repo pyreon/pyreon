@@ -588,9 +588,10 @@ Kotlin runtime the emitted code drives):
   it) + `val cb = remember { PyreonClipboard(cbCtx) }`. The Swift
   container's `deinit` now cancels the in-flight reset Task (#1107 —
   Class I leak fix) so a view that disappears mid-copy doesn't leak a
-  pending 2-second timer. v1 supports the single-binding shape `const cb
-  = useClipboard()`; the destructure form `const { copy, copied } =
-  useClipboard()` is a documented follow-up.
+  pending 2-second timer. BOTH the single-binding shape `const cb =
+  useClipboard()` AND the destructure form `const { copy, copied } =
+  useClipboard()` compile (PR1 — destructure lowers to a synthetic
+  single-binding container + per-field aliases; see "Binding idioms").
 - **`useColorScheme()`** → returns `"light"` | `"dark"` reactively from
   the platform's preferred-color-scheme channel. **No runtime port
   needed** — both SwiftUI (`@Environment(\.colorScheme)`) and Compose
@@ -662,6 +663,7 @@ every warning; treat any warning as "this construct is outside v1."
 | `const x = signal(init)` / `signal<T>(init)` | un-annotated literals infer string/number/boolean; enum-typed signals get native enums |
 | `const c = computed(() => expr)` | expression OR block body (block: `let` + `if`/`return`) |
 | `const f = (args) => …` | functions; expression or block body |
+| `const x = <expr>` (plain value) | non-call / non-arrow inits — string / number / boolean / arithmetic / member / signal-read — emit as a body-local `let` (Swift, in `body`) / `val` (Kotlin); captures-once like a JS const (#1691) |
 | `useStorage<T>('key', default)` | literal string key required |
 | `createRouter({ routes })` / `useNavigate()` / `useParams()` / `useLoaderData<T>()` | literal route arrays; guards as expression-body arrows |
 | `useFetch<T>(url)` / `usePermissions([...])` / `useOnline()` / `useClipboard()` / `useColorScheme()` | see the services section for per-hook status |
@@ -671,23 +673,30 @@ every warning; treat any warning as "this construct is outside v1."
 
 **Binding idioms — one requirement, one convenience that now lowers:**
 
-- **Hook results → single-binding, not destructure.** Bind the hook's
-  result to one name and read fields off it: `const q = useFetch<T>(url); q.data()` / `q.isPending`. The **destructure** form
-  `const { data, isPending } = useFetch(url)` is NOT supported — the
-  parser emits a warning naming the hook + the single-binding fix (covers
-  `useFetch` / `useForm` / `useClipboard` / `useStorage` /
-  `usePermissions` / `useOnline` / `useColorScheme` / `useNetworkStatus`).
-  **`useParams` is the one exception** — its destructure form
-  `const { id } = useParams()` IS supported (see the router section).
+- **Hook results → single-binding OR destructure (both work now).** Bind
+  the hook's result to one name and read fields off it (`const q =
+  useFetch<T>(url); q.data()` / `q.isPending`), OR destructure it directly
+  (`const { data, isPending } = useFetch<T>(url)`). The destructure form
+  **lowers** (PR1) to a synthetic single-binding container
+  (`const __pyHookN = useFetch<T>(url)`) + one field alias per key, so each
+  local rewrites to `__pyHookN.<field>` at its use sites — producing
+  **byte-identical native output to the single-binding form** on both
+  targets, with the call form preserved (accessor `data()` vs plain
+  `isPending`). Covers `useFetch` / `useForm` / `useClipboard` /
+  `useStorage` / `usePermissions` / `useOnline` / `useColorScheme` /
+  `useNetworkStatus` / the seven Phase-5 data/services hooks. `useParams`
+  keeps its own per-key lowering (router section). **Still warn-drop:** a
+  rest element (`const { data, ...rest } = …`) or a nested pattern
+  (`const { user: { id } } = …`) — v1 lowers all-simple destructures only;
+  and `useLoaderData`'s destructure (its read returns an opaque `T` with no
+  field shape to alias).
 - **Store reads → inline OR aliased (both work).** Read store state
   inline through the hook (`useApp().store.tasks()`) OR bind the hook to a
   local first (`const app = useApp(); app.store.tasks()`) — the alias
   **lowers** to a `useApp()` call at every use site, producing
   byte-identical native output to the inline form. (Aliasing previously
   failed the native build with `Unresolved reference 'app'`; it now
-  compiles.) Full hook-result **destructure** lowering — making
-  `const { data } = useFetch(...)` work rather than warn — is the
-  remaining tracked follow-up.
+  compiles.)
 - **Static attrs → literal OR module-level `const`.** A native-mapped
   static attribute (`<Image src=…>`, `<WebView src=… />` / `html=`, font,
   background, …) accepts an inline string literal OR a **module-level

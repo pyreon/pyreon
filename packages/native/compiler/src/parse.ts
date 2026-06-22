@@ -59,6 +59,25 @@ interface ParseCtx {
    * bug here cannot affect any previously-compiling code.
    */
   storeAliases: Map<string, string>
+  /**
+   * Per-component HOOK-FIELD aliases: a destructured local name →
+   * `{ object, field }` where `object` is a synthetic single-binding
+   * container name. Populated from `const { data, isPending } =
+   * useFetch(url)` (lowered to a synthetic `const __pyHookN = useFetch(url)`
+   * + one alias per destructured key) and CLEARED before each top-level node
+   * is parsed (component-scoped, like `storeAliases`). `parseExpr`'s
+   * Identifier case rewrites an aliased local to a `member` access
+   * (`__pyHookN.data`), so `data()` / `isPending` lower to exactly the same
+   * IR as the supported single-binding shape `q.data()` / `q.isPending` —
+   * the emit needs no changes. Only destructure shapes that previously
+   * warn-dropped (producing an unbound reference) ever record an alias, so a
+   * bug here cannot affect any previously-compiling code.
+   */
+  hookFieldAliases: Map<string, { object: string; field: string }>
+  /** Monotonic counter for synthetic hook-destructure container names
+   * (`__pyHook0`, `__pyHook1`, …). Reset per top-level node alongside
+   * `hookFieldAliases`, so names are unique within one component. */
+  hookDestructureCounter: number
 }
 
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
@@ -67,6 +86,8 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     source,
     storeHookNames: new Set(),
     storeAliases: new Map(),
+    hookFieldAliases: new Map(),
+    hookDestructureCounter: 0,
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
@@ -98,6 +119,11 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     // node so `const app = useApp()` in one component never substitutes
     // for an unrelated `app` in another (or in a store setup body).
     ctx.storeAliases.clear()
+    // Hook-field aliases (`const { data } = useFetch()`) are likewise
+    // component-scoped — reset before each top-level node, and reset the
+    // synthetic-name counter so names stay short + deterministic per component.
+    ctx.hookFieldAliases.clear()
+    ctx.hookDestructureCounter = 0
     // Loud-warning: surface top-level declaration kinds PMTC silently
     // DROPS (no emit → the body references an undefined symbol on the
     // target — a confusing real-compiler error the parse-only gate can't
@@ -2376,20 +2402,28 @@ function unwrapTypeLayers(node: AnyNode | undefined): AnyNode | undefined {
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
-  // Hook-result destructure diagnostic. The documented native idiom is
-  // the single-binding shape (`const q = useFetch(...); q.data()`); the
-  // destructure form (`const { data, isPending } = useFetch(...)`) is NOT
-  // yet supported — the parser produces ZERO decl and every destructured
-  // local references an undeclared identifier, failing the REAL native
-  // build with a cryptic `Unresolved reference 'isPending'` (Kotlin) /
-  // `cannot find 'isPending' in scope` (Swift) far from the cause. Warn
-  // at the destructure site so the single-binding fix is obvious instead.
-  // `useParams` is DELIBERATELY excluded — its destructure form IS
-  // supported (handled below), so it must fall through to that path.
-  // Generalised from the original useClipboard-only check (round-3 audit)
-  // after a richer-app ship-readiness revalidation hit the same cryptic
-  // failure for `useFetch` destructure.
-  const DESTRUCTURE_UNSUPPORTED_HOOKS = new Set([
+  // Hook-result destructure LOWERING — the most idiomatic native data gap.
+  // `const { data, isPending } = useFetch(url)` lowers to a synthetic
+  // single-binding container `const __pyHookN = useFetch(url)` (parsed via
+  // the SAME single-binding path, by recursion) + one field alias per
+  // destructured key, so each local rewrites to `__pyHookN.<key>` at its use
+  // sites (parseExpr's Identifier case, mirroring `storeAliases`). The emit
+  // is BYTE-IDENTICAL to the supported single-binding shape, and the user
+  // keeps the call form — accessor fields (`data()`) vs plain (`isPending`) —
+  // because the alias is a transparent `container.field` member, not an
+  // auto-called read.
+  //
+  // Faithful + non-regressing by construction: a hook whose single-binding
+  // form produces NO container (e.g. `useSecureStorage`, which warns + drops)
+  // recurses to `null` and FALLS THROUGH to the warn-drop below — so this can
+  // only make destructure work where single-binding already works, never
+  // worse. Rest elements (`{ data, ...rest }`) and nested patterns
+  // (`{ user: { id } }`) also fall through to warn-drop in v1 (no
+  // half-lowered binding). `useParams` / `useLoaderData` are NOT in this set:
+  // useParams has its own per-key lowering below; useLoaderData destructure
+  // stays warn-drop (its read returns an opaque `T` with no field shape to
+  // alias).
+  const DESTRUCTURE_CONTAINER_HOOKS = new Set([
     'useFetch',
     'useForm',
     'useClipboard',
@@ -2411,11 +2445,48 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     node.id?.type === 'ObjectPattern' &&
     init?.type === 'CallExpression' &&
     typeof init.callee?.name === 'string' &&
-    DESTRUCTURE_UNSUPPORTED_HOOKS.has(init.callee.name as string)
+    DESTRUCTURE_CONTAINER_HOOKS.has(init.callee.name as string)
   ) {
     const hook = init.callee.name as string
+    const props = (node.id.properties as AnyNode[] | undefined) ?? []
+    // v1 only lowers all-simple destructures: every entry a plain
+    // `{ key }` or renamed `{ key: local }`. A RestElement or a nested
+    // pattern (value not an Identifier) bails the WHOLE lowering so we
+    // never half-bind.
+    const allSimple =
+      props.length > 0 &&
+      props.every(
+        (p) =>
+          p?.type === 'Property' &&
+          p.key?.type === 'Identifier' &&
+          p.value?.type === 'Identifier',
+      )
+    if (allSimple) {
+      // Recurse with an Identifier id to reach the normal hook dispatch
+      // (every ObjectPattern block above is skipped for an Identifier id),
+      // producing e.g. a `fetch` / `geolocation` / `auth` DeclIR named
+      // __pyHookN. No parse-side name registration to duplicate — the
+      // container hooks track names at EMIT time off the decl list.
+      const synthName = `__pyHook${ctx.hookDestructureCounter}`
+      const synthNode = {
+        ...node,
+        id: { type: 'Identifier', name: synthName },
+      } as AnyNode
+      const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
+      if (containerDecl) {
+        ctx.hookDestructureCounter += 1
+        for (const prop of props) {
+          const key = (prop as AnyNode).key?.name as string
+          const local = (prop as AnyNode).value?.name as string
+          ctx.hookFieldAliases.set(local, { object: synthName, field: key })
+        }
+        return containerDecl
+      }
+      // containerDecl null → the hook has no single-binding container
+      // (e.g. useSecureStorage). Fall through to the warn-drop below.
+    }
     ctx.warnings.push(
-      `${hook}() destructure form (\`const { … } = ${hook}(...)\`) is not yet supported on native — use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. The destructure shape silently produces no declaration and downstream references fail the native build unbound. Tracked as a Phase-4 follow-up.`,
+      `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern uses a rest element / nested binding (not yet supported). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,
     )
     return null
   }
@@ -3855,6 +3926,22 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             kind: 'call',
             callee: { kind: 'identifier', name: aliasedHook },
             args: [],
+          }
+        }
+      }
+      // Hook-field-alias lowering: a name bound via `const { data } =
+      // useFetch(url)` rewrites to a `container.field` member access
+      // (`__pyHookN.data`), so `data()` / `isPending` lower to the same IR
+      // as the supported single-binding `q.data()` / `q.isPending` — emit
+      // unchanged. Only destructured locals (which previously warn-dropped)
+      // are ever in this map, so no previously-compiling code can change.
+      {
+        const fieldAlias = ctx.hookFieldAliases.get(node.name as string)
+        if (fieldAlias !== undefined) {
+          return {
+            kind: 'member',
+            object: { kind: 'identifier', name: fieldAlias.object },
+            property: fieldAlias.field,
           }
         }
       }

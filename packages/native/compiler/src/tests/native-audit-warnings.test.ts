@@ -7,9 +7,11 @@
 //   2. `<For>{(i) => { const x = signal(0); … }}` — hooks declared
 //      inside For/Show render callbacks are silently dropped (the arrow
 //      body parser only extracts the first expression/return statement).
-//   3. `const { copy, copied } = useClipboard()` — destructure form
-//      not supported; produces zero decl and orphans every downstream
-//      reference.
+//   3. `const { copy, copied } = useClipboard()` — destructure form.
+//      (PR1 update: this now LOWERS to a synthetic single-binding
+//      container + field aliases instead of warn-dropping. The
+//      describe blocks below were updated to assert the working
+//      behavior; see native-hook-destructure.test.ts for the contract.)
 //   4. `beforeEnter: () => { /* block body */ }` — only expression-body
 //      arrows are extracted; block-body guards silently emit unguarded
 //      routes.
@@ -352,8 +354,14 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
     })
   })
 
-  describe('useClipboard() destructure form', () => {
-    it('warns naming the destructure shape + suggesting the single-binding fix', () => {
+  // PR1 (hook-result destructure lowering): the destructure form now LOWERS
+  // to a synthetic single-binding container + field aliases (byte-identical
+  // to `const cb = useClipboard(); cb.copied()`) instead of warn-dropping.
+  // These tests previously codified the warn-drop; updated to the new
+  // (working) behavior. See native-hook-destructure.test.ts for the full
+  // contract.
+  describe('useClipboard() destructure form (now lowered)', () => {
+    it('lowers to the single-binding container (no destructure warning)', () => {
       const result = transform(
         `
         export function App() {
@@ -363,14 +371,13 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'swift' },
       )
+      expect(result.code).toContain('@State private var __pyHook0 = PyreonClipboard()')
+      expect(result.code).toContain('__pyHook0.copied()')
       expect(
         result.warnings.some(
-          (w) =>
-            w.includes('useClipboard') &&
-            w.includes('destructure') &&
-            w.includes('single-binding'),
+          (w) => w.includes('useClipboard') && w.includes('destructure'),
         ),
-      ).toBe(true)
+      ).toBe(false)
     })
 
     it('does NOT warn for the supported single-binding shape (baseline)', () => {
@@ -388,7 +395,7 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       ).toBe(false)
     })
 
-    it('fires on Kotlin target too (target-independent)', () => {
+    it('lowers on the Kotlin target too (target-independent)', () => {
       const result = transform(
         `
         export function App() {
@@ -398,19 +405,21 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'kotlin' },
       )
+      expect(result.code).toContain('remember { PyreonClipboard(')
+      expect(result.code).toContain('__pyHook0.copied()')
       expect(
         result.warnings.some(
           (w) => w.includes('useClipboard') && w.includes('destructure'),
         ),
-      ).toBe(true)
+      ).toBe(false)
     })
   })
 
-  // Generalised from the useClipboard-only check after a richer-app
-  // ship-readiness revalidation hit the same cryptic native-build failure
-  // (`Unresolved reference 'isPending'`) for a `useFetch` destructure.
-  describe('hook-result destructure (generalised from useClipboard)', () => {
-    it('useFetch destructure warns with the single-binding fix', () => {
+  // PR1: hook-result destructure now LOWERS (was warn-drop). useFetch
+  // destructure produces the synthetic single-binding PyreonFetch container
+  // + field aliases — see native-hook-destructure.test.ts for the contract.
+  describe('hook-result destructure (now lowered)', () => {
+    it('useFetch destructure lowers to the single-binding container', () => {
       const result = transform(
         `
         export function App() {
@@ -420,14 +429,13 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'kotlin' },
       )
+      expect(result.code).toContain('val __pyHook0 = remember { PyreonFetch<Any>() }')
+      expect(result.code).toContain('__pyHook0.isPending.value')
       expect(
         result.warnings.some(
-          (w) =>
-            w.includes('useFetch') &&
-            w.includes('destructure') &&
-            w.includes('single-binding'),
+          (w) => w.includes('useFetch') && w.includes('destructure'),
         ),
-      ).toBe(true)
+      ).toBe(false)
     })
 
     it('useFetch single-binding shape does NOT warn (baseline)', () => {
