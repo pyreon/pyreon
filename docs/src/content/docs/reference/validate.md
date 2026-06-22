@@ -9,6 +9,79 @@ description: "Pyreon's own validation library — chainable + function-comp hybr
 
 Pyreon-owned validator library implementing Standard Schema (https://standardschema.dev) natively. Hybrid API: chainable methods (`s.string().email().min(3)`) AND function composition (`pipe(string(), email(), min(3))`) — same schemas, different ergonomic surface. The chainable path doesn't pay class-overhead per parse: each schema's ops compile to a single closure on first call. Includes built-in DX helpers (`withField` / `parseReactive` / `formatErrors`) that ALSO work on top of any other Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+) — backward-compatible with existing schema code. v1 surface: string/number/boolean/literal/enum primitives + object/array composition + optional/nullable/nullish/default/transform/refine/brand/describe modifiers + 20+ built-in checks. tuple / record / union / discriminate / intersection / date / bigint / .pick / .omit / compiler-emit deferred to follow-up PRs.
 
+## Features
+
+- withField(schema, meta) — attach label/hint/placeholder/i18n keys to ANY Standard Schema validator
+- getMeta(schema) / resolveMetaField(schema, field, t) — read metadata, optionally i18n-resolved
+- parseReactive(schema, signal) — Computed&lt;ParseResult&gt; that re-derives on signal changes
+- parseReactiveAsync — async variant for schemas with async refinements
+- watchValid(schema, signal, callback) — fires on validity transitions, not every error change
+- formatError / formatErrors / formatErrorsByPath — i18n-key-aware error rendering
+- Works with any Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+, …)
+- Tree-shakeable — DX helpers alone are ~0.5KB gz (measured); the v1 validator runtime (~3.5KB gz) is pulled in only when `s` / primitives are imported
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { z } from 'zod'
+import { signal } from '@pyreon/reactivity'
+import { useI18n } from '@pyreon/i18n'
+import {
+  withField,
+  getMeta,
+  parseReactive,
+  watchValid,
+  formatErrors,
+} from '@pyreon/validate'
+
+// 1. Attach Pyreon field metadata to any Standard Schema.
+const emailSchema = withField(z.string().email(), {
+  label: 'Email address',
+  placeholder: 'you@example.com',
+  hint: 'We never share your email',
+  i18nLabel: 'auth.email.label',
+  i18nHint: 'auth.email.hint',
+  autoComplete: 'email',
+})
+
+// emailSchema is STILL a Zod schema — every Zod method works:
+emailSchema.parse('foo@bar.com')          // → 'foo@bar.com'
+emailSchema['~standard'].validate('bad')  // → { issues: [...] }
+
+// Read the metadata back:
+getMeta(emailSchema)
+// → { label: 'Email address', placeholder: ..., i18nLabel: ..., ... }
+
+// 2. Reactively parse a signal-backed input.
+const $email = signal('')
+const $result = parseReactive(emailSchema, $email)
+
+effect(() => {
+  const r = $result()
+  if (r.issues) console.warn('invalid:', r.issues)
+  else console.log('parsed:', r.value)
+})
+
+$email.set('foo@bar.com')   // → $result fires, valid
+
+// 3. Watch for validity flips (no fire on error-message change).
+const stop = watchValid(emailSchema, $email, (valid) => {
+  submitButton.disabled = !valid
+})
+
+// 4. i18n bridge — resolve issue keys to translated strings.
+const { t } = useI18n()
+const messages = formatErrors($result().issues ?? [], t)
+// → translated strings via t(issue.key, issue.params), with fallback to issue.fallback or issue.message
+
+// 5. Works with ANY Standard Schema validator — drop-in swap to Valibot:
+import * as v from 'valibot'
+const sameSchema = withField(v.pipe(v.string(), v.email()), { label: 'Email' })
+const $sameResult = parseReactive(sameSchema, $email)
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

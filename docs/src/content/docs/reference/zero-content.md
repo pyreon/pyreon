@@ -9,6 +9,65 @@ description: "Compile-time .md/.mdx → Pyreon JSX, typed content collections, c
 
 Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: markdown pages route through zero's fs-router, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via Standard Schema inference (use zod / valibot / arktype — the package itself ships no validator runtime): `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<CodeBlock>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
 
+## Features
+
+- Compile-time .md/.mdx → Pyreon JSX (no dangerouslySetInnerHTML — full reactivity + tree-shaking preserved)
+- MDX support: JSX-in-markdown + top-of-file `import` statements hoisted to the compiled .tsx
+- src/mdx/ convention scan — drop a PascalCase .tsx file, use the component in any .md by name (no wiring)
+- Virtual module `virtual:zero-content/components` re-exports the scanned set + the built-ins
+- Astro-style typed content collections via Standard Schema inference + emitted .pyreon/content-types.d.ts
+- getCollection&lt;K&gt;(name) / getEntry&lt;K, S&gt;(...) / getEntries&lt;K&gt;(...) runtime queries with full type inference
+- Standard Schema-compatible frontmatter validation — BYO validator (zod, valibot, arktype, typia; all work via duck-typing, no validator runtime in this package)
+- Three-tier MDX component resolution: built-ins → src/mdx/ convention scan → per-.md imports → escape-hatch defineComponents
+- Built-in components: Callout, CodeGroup, CodeBlock (more candidates — Playground, PackageBadge, Tabs — live in `docs/src/mdx/` and are author-side until promoted)
+- Shiki syntax highlighting with shared instance + dual light/dark theme baked into one emit (no runtime cost)
+- Custom markdown blocks: ::&#58;tip / ::&#58;warning / ::&#58;note / ::&#58;danger / ::&#58;info / ::&#58;code-group via remark-directive
+- Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")
+- HMR for src/mdx/ changes + content.config.ts edits — invalidates virtual modules, re-renders dependent .md pages without reload
+- Built-in search — minisearch-backed `<Search>` component with Cmd+K + debounced query + SPA navigation + lazy index loading
+- Built-in layout components — `<Sidebar>` with groups + active highlighting, `<Toc>` with scroll-spy via IntersectionObserver
+- Frontmatter JSON Schema + .vscode-settings emission — autocomplete + validation in any .md file via the YAML extension
+- Inherits zero's perf stack — image/font auto-wire, script defer default, resource hints, view transitions
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+// vite.config.ts
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero'
+import content from '@pyreon/zero-content/plugin'
+
+export default { plugins: [pyreon(), zero(), content()] }
+
+// content.config.ts — Standard Schema-compatible validators only; the
+// package itself does NOT re-export zod. Bring your own (zod / valibot /
+// arktype / typia). See @pyreon/validation for the curated adapters.
+import { defineConfig, defineCollection } from '@pyreon/zero-content'
+import { z } from 'zod'
+
+export default defineConfig({
+  collections: {
+    docs: defineCollection({
+      type: 'pages',
+      path: 'src/content/docs',
+      schema: z.object({
+        title: z.string(),
+        description: z.string(),
+        sidebar: z.object({ order: z.number(), group: z.string() }).optional(),
+      }),
+    }),
+  },
+})
+
+// User code anywhere — typed via Standard Schema inference
+import { getCollection } from '@pyreon/zero-content'
+
+const docs = await getCollection('docs')
+//    ^? Array<{ slug: string; data: { title: string; description: string; ... }; render: () => Promise<ComponentFn> }>
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

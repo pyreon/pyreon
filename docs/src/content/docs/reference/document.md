@@ -9,6 +9,71 @@ description: "Universal document rendering — 18 primitives, 14+ output formats
 
 Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.
 
+## Features
+
+- render(node, format, options?) — render to any of 14+ output formats
+- createDocument(props?) — fluent builder API with .heading(), .text(), .table(), etc.
+- 18 JSX primitives: Document, Page, Heading, Text, Table, Image, List, Code, and more
+- Heavy renderers lazy-loaded (PDF, DOCX, XLSX, PPTX)
+- download() helper for browser file downloads
+- registerRenderer() for custom output formats
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
+
+// JSX primitives — compose a document tree
+const report = (
+  <Document title="Q4 Sales Report" author="Analytics Team">
+    <Page>
+      <Heading level={1}>Sales Report</Heading>
+      <Text>Q4 2026 performance summary.</Text>
+      <Table
+        columns={['Region', 'Revenue', 'Growth']}
+        rows={[
+          ['US', '$1.2M', '+15%'],
+          ['EU', '$800K', '+8%'],
+          ['APAC', '$500K', '+22%'],
+        ]}
+      />
+      <Divider />
+      <Heading level={2}>Notes</Heading>
+      <List items={['Record quarter for APAC', 'EU impacted by currency exchange']} />
+      <Code language="sql">SELECT region, SUM(revenue) FROM sales GROUP BY region</Code>
+    </Page>
+  </Document>
+)
+
+// Render to any format:
+const pdf = await render(report, 'pdf')            // Uint8Array
+const html = await render(report, 'html')           // string
+const email = await render(report, 'email')         // Outlook-safe HTML
+const docx = await render(report, 'docx')           // Uint8Array
+const xlsx = await render(report, 'xlsx')           // Uint8Array
+const md = await render(report, 'md')               // Markdown string
+const slack = await render(report, 'slack')          // Slack Block Kit JSON
+const notion = await render(report, 'notion')        // Notion blocks
+const teams = await render(report, 'teams')          // Adaptive Card JSON
+
+// Browser download helper:
+download(pdf, 'report.pdf')
+
+// Builder API — alternative to JSX:
+const doc = createDocument({ title: 'Report' })
+  .heading('Sales Report')
+  .text('Q4 2026 performance summary.')
+  .table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M']] })
+
+await doc.toPdf()       // PDF
+await doc.toEmail()     // email-safe HTML
+await doc.toDocx()      // Word document
+await doc.toSlack()     // Slack Block Kit
+await doc.toNotion()    // Notion blocks
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

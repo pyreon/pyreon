@@ -9,6 +9,66 @@ description: "Toast notifications — toast(), toast.success/error/warning/info/
 
 Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your app — no provider or context needed. Preset variants (`toast.success`, `toast.error`, etc.), a `toast.promise()` helper for async operations, and `toast.update()` for loading-to-success patterns. Render `<Toaster />` once at the app root — it uses Portal, CSS transitions, auto-dismiss, and pause-on-hover. Accessible with `role="alert"` and `aria-live="polite"` on toast elements.
 
+> **Peer dependencies:** `@pyreon/runtime-dom` — install alongside this package.
+
+## Features
+
+- toast() imperative API — call from anywhere, no provider needed
+- toast.success/error/warning/info/loading preset variants
+- toast.update(id, options) for loading-to-success transitions
+- toast.promise(promise, messages) auto-transitions through states
+- toast.dismiss(id?) — dismiss one or all
+- &lt;Toaster /&gt; with Portal, CSS transitions, auto-dismiss, pause on hover
+- Accessible: role="alert", aria-live="polite"
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { toast, Toaster } from '@pyreon/toast'
+
+// Mount Toaster once at app root:
+function App() {
+  return (
+    <>
+      <Toaster position="top-right" duration={4000} />
+      <MainContent />
+    </>
+  )
+}
+
+// Call toast() from anywhere — no provider needed:
+toast('Hello!')
+
+// Preset variants:
+toast.success('Saved successfully!')
+toast.error('Something went wrong')
+toast.warning('Session expiring soon')
+toast.info('New version available')
+
+// Loading → success pattern:
+const id = toast.loading('Saving...')
+try {
+  await saveData()
+  toast.update(id, { type: 'success', message: 'Done!' })
+} catch {
+  toast.update(id, { type: 'error', message: 'Save failed' })
+}
+
+// Promise helper — auto-transitions through states:
+toast.promise(fetchData(), {
+  loading: 'Loading...',
+  success: 'Loaded!',
+  error: 'Failed to load',
+})
+
+// Dismiss programmatically:
+const toastId = toast('Dismissable')
+toast.dismiss(toastId)  // dismiss one
+toast.dismiss()         // dismiss all
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,71 @@ description: "Global state management — Pinia-inspired composition stores retu
 
 Composition-style global state management built on @pyreon/reactivity signals. Stores are singletons identified by string ID — the setup function runs once, returning signals (auto-tracked as state), computeds (pass-through), and functions (auto-wrapped as actions with onAction interception). The returned StoreApi provides batch patching, mutation subscription, action hooks, reset, and dispose. For concurrent SSR, setStoreRegistryProvider() swaps the store map to an AsyncLocalStorage-backed provider so each request gets isolated state.
 
+## Features
+
+- defineStore(id, setup) — composition stores, singleton by ID
+- Auto-classifies setup returns: signals as state, functions as wrapped actions
+- StoreApi with patch(), subscribe(), onAction(), reset(), dispose()
+- Global plugin system via addStorePlugin()
+- SSR isolation via setStoreRegistryProvider() with AsyncLocalStorage
+- Devtools subpath export with WeakRef-based registry
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { signal, computed } from '@pyreon/reactivity'
+import { defineStore, addStorePlugin, resetAllStores } from '@pyreon/store'
+
+// Define a store — setup function runs once per store ID.
+// Signals → tracked state, functions → wrapped actions.
+const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const double = computed(() => count() * 2)
+  const increment = () => count.update(n => n + 1)
+  return { count, double, increment }
+})
+
+// Use anywhere — singleton, no provider needed:
+const { store, patch, subscribe, onAction, reset, dispose } = useCounter()
+store.count()       // 0 — reactive signal read
+store.increment()   // wrapped action — triggers onAction listeners
+
+// Batch-update multiple signals:
+patch({ count: 42 })
+// Or functional form for complex updates:
+patch((state) => state.count.set(99))
+
+// Subscribe to mutations:
+const unsub = subscribe((mutation, state) => {
+  console.log(mutation.type, mutation.events) // 'direct' | 'patch'
+})
+
+// Action interception:
+onAction((ctx) => {
+  console.log(`${ctx.name} called with`, ctx.args)
+  ctx.after((result) => console.log('Action returned', result))
+  ctx.onError((err) => console.error('Action failed', err))
+})
+
+// Reset to initial values:
+reset()
+
+// Global plugin system:
+addStorePlugin((api) => {
+  api.subscribe((mutation) => {
+    console.log(`[${api.id}] ${mutation.type}`)
+  })
+})
+
+// SSR isolation — each request gets its own store registry:
+import { setStoreRegistryProvider } from '@pyreon/store'
+import { AsyncLocalStorage } from 'node:async_hooks'
+const als = new AsyncLocalStorage<Map<string, any>>()
+setStoreRegistryProvider(() => als.getStore() ?? new Map())
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,73 @@ description: "Pyreon adapter for TanStack Virtual — element-scoped and window-
 
 Reactive TanStack Virtual adapter for Pyreon. Signal-driven virtualizer that returns reactive `virtualItems`, `totalSize`, and `isScrolling` signals. Supports element-scoped (`useVirtualizer`) and window-scoped (`useWindowVirtualizer`) variants. SSR-safe — window virtualizer checks for browser environment before attaching scroll listeners.
 
+## Features
+
+- useVirtualizer — element-scoped with reactive virtualItems, totalSize, isScrolling
+- useWindowVirtualizer — window-scoped variant with SSR-safe browser checks
+- Signal-driven count and estimateSize for reactive list lengths
+- scrollToIndex / scrollToOffset for programmatic scrolling
+- TanStack Virtual core utilities re-exported for convenience
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { useVirtualizer, useWindowVirtualizer } from '@pyreon/virtual'
+import { signal } from '@pyreon/reactivity'
+
+// Element-scoped virtualizer — attach to a scrollable container
+const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, label: `Item ${i}` })))
+
+const MyList = () => {
+  let scrollRef!: HTMLDivElement
+
+  const virtualizer = useVirtualizer({
+    count: () => items().length,
+    getScrollElement: () => scrollRef,
+    estimateSize: () => 35,            // px per row
+    overscan: 5,                       // render 5 extra items above/below viewport
+  })
+
+  return (
+    <div ref={(el) => (scrollRef = el)} style="height: 400px; overflow: auto">
+      <div style={() => `height: ${virtualizer.totalSize()}px; position: relative`}>
+        <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
+          {(item) => (
+            <div
+              style={() => `position: absolute; top: ${item.start}px; height: ${item.size}px; width: 100%`}
+            >
+              {items()[item.index].label}
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
+  )
+}
+
+// Window-scoped virtualizer — scrolls with the page
+const WindowList = () => {
+  const virtualizer = useWindowVirtualizer({
+    count: () => items().length,
+    estimateSize: () => 50,
+  })
+
+  return (
+    <div style={() => `height: ${virtualizer.totalSize()}px; position: relative`}>
+      <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
+        {(item) => (
+          <div style={() => `position: absolute; top: ${item.start}px; height: ${item.size}px`}>
+            {items()[item.index].label}
+          </div>
+        )}
+      </For>
+    </div>
+  )
+}
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

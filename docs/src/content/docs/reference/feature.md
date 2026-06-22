@@ -9,6 +9,93 @@ description: "Schema-driven CRUD primitives — define once, get queries, forms,
 
 Schema-driven feature factory for Pyreon. Define a feature schema and API config once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.
 
+## Features
+
+- defineFeature(&#123; name, schema, api &#125;) — single declaration generates 10+ hooks
+- Auto-generated useList, useById, useSearch with @pyreon/query
+- Auto-generated useCreate, useUpdate, useDelete mutations
+- Auto-generated useForm with schema validation via @pyreon/validation
+- Auto-generated useTable with column inference via @pyreon/table
+- Auto-generated useStore for global feature state via @pyreon/store
+- reference() helper for foreign key relationships in schemas
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { defineFeature, reference } from '@pyreon/feature'
+
+// 1. Define feature schema + API config
+const Posts = defineFeature({
+  name: 'posts',
+  schema: {
+    title: 'string',
+    body: 'string',
+    published: 'boolean',
+    author: reference('users'),     // foreign key reference
+  },
+  api: {
+    baseUrl: '/api/posts',
+    // Optional overrides: listUrl, getUrl, createUrl, updateUrl, deleteUrl, searchUrl
+  },
+})
+
+// 2. Use auto-generated hooks in components:
+
+// Paginated list query
+const ListPage = () => {
+  const { data, isLoading } = Posts.useList({ page: 1, limit: 20 })
+  return <For each={() => data()?.items ?? []} by={(p) => p.id}>
+    {(post) => <div>{post.title}</div>}
+  </For>
+}
+
+// Single item query
+const DetailPage = (props: { id: string }) => {
+  const { data } = Posts.useById(props.id)
+  return <div>{data()?.title}</div>
+}
+
+// Search with debounce (via @pyreon/query)
+const SearchPage = () => {
+  const query = signal('')
+  const { data } = Posts.useSearch(() => query())
+  // ...
+}
+
+// Create mutation
+const CreateForm = () => {
+  const { mutate, isLoading } = Posts.useCreate()
+  return <button onClick={() => mutate({ title: 'New', body: '...', published: false })}>
+    {isLoading() ? 'Creating...' : 'Create'}
+  </button>
+}
+
+// Edit form with schema validation (via @pyreon/form + @pyreon/validation)
+const EditForm = (props: { id: string }) => {
+  const { form, field, submit, isSubmitting } = Posts.useForm(props.id)
+  return (
+    <form onSubmit={submit}>
+      <input {...field('title').register()} />
+      <textarea {...field('body').register()} />
+      <button disabled={isSubmitting}>Save</button>
+    </form>
+  )
+}
+
+// Table with sorting/filtering/pagination (via @pyreon/table)
+const TableView = () => {
+  const { table } = Posts.useTable({ columns: ['title', 'author', 'published'] })
+  // table is a Computed<Table<Post>> — render with flexRender
+}
+
+// Global store access
+const store = Posts.useStore()
+store.items()   // cached items
+store.loading() // loading state
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

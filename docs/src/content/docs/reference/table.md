@@ -9,6 +9,75 @@ description: "Pyreon adapter for TanStack Table — reactive options, signal-dri
 
 Reactive TanStack Table adapter for Pyreon. Options are passed as a function so signal reads inside (data, columns, sorting) automatically re-sync the table when any tracked signal changes. Returns a Computed&lt;Table&lt;T&gt;&gt; that consumers read inside templates or effects. Re-exports all TanStack Table core utilities and types for single-import convenience.
 
+## Features
+
+- useTable(optionsFn) with reactive signal-driven options
+- flexRender for column def templates (strings, functions, VNodes)
+- Full TanStack Table core re-exported — single import source
+- Computed&lt;Table&lt;T&gt;&gt; return type for fine-grained reactivity
+- Auto state sync via internal signal + version counter
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { useTable, flexRender, getCoreRowModel, getSortedRowModel, type ColumnDef } from '@pyreon/table'
+import { signal } from '@pyreon/reactivity'
+
+interface User { name: string; email: string; age: number }
+
+const users = signal<User[]>([
+  { name: 'Alice', email: 'alice@example.com', age: 30 },
+  { name: 'Bob', email: 'bob@example.com', age: 25 },
+])
+
+const columns: ColumnDef<User>[] = [
+  { accessorKey: 'name', header: 'Name' },
+  { accessorKey: 'email', header: 'Email' },
+  { accessorKey: 'age', header: 'Age' },
+]
+
+// Options as a FUNCTION — signal reads inside auto-track.
+// Changing users() re-syncs the entire table reactively.
+const table = useTable(() => ({
+  data: users(),
+  columns,
+  getCoreRowModel: getCoreRowModel(),
+  getSortedRowModel: getSortedRowModel(),
+}))
+
+// In JSX — read table() inside reactive scopes:
+<table>
+  <thead>
+    <For each={() => table().getHeaderGroups()} by={(g) => g.id}>
+      {(group) => (
+        <tr>
+          <For each={() => group.headers} by={(h) => h.id}>
+            {(header) => (
+              <th onClick={header.column.getToggleSortingHandler()}>
+                {flexRender(header.column.columnDef.header, header.getContext())}
+              </th>
+            )}
+          </For>
+        </tr>
+      )}
+    </For>
+  </thead>
+  <tbody>
+    <For each={() => table().getRowModel().rows} by={(r) => r.id}>
+      {(row) => (
+        <tr>
+          <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+            {(cell) => <td>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>}
+          </For>
+        </tr>
+      )}
+    </For>
+  </tbody>
+</table>
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

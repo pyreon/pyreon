@@ -9,6 +9,58 @@ description: "Responsive breakpoints, CSS property mappings, unit utilities, the
 
 Foundational responsive-style layer that powers every visual package above it (`elements`, `rocketstyle`, `coolgrid`, `kinetic`). `enrichTheme()` merges a partial user theme with the default breakpoints / spacing / unit utilities so the rest of the system has a complete theme to read. `makeItResponsive()` turns a value or per-breakpoint map into the right CSS for the current screen. `createMediaQueries()` builds breakpoint-keyed media queries; `styles()` generates CSS from a theme; `alignContent()` resolves alignment shorthand to flex / grid CSS. The package is the single source of truth for responsive prop semantics across the UI system.
 
+## Features
+
+- enrichTheme(theme) — merge a partial theme with default breakpoints / spacing / units
+- breakpoints() — default responsive breakpoint set
+- createMediaQueries(breakpoints) — build breakpoint-keyed media query strings
+- makeItResponsive() — resolve a value / array / breakpoint object to CSS for the current screen
+- styles(theme) — generate CSS from a theme
+- alignContent() — resolve alignX / alignY / direction to flex CSS
+- extendCss() — extend a CSS definition with overrides
+- stripUnit / value / values — unit-utility helpers
+- themeToCssVars(theme) — autogenerate CSS custom properties from a theme JSON; units baked at emission (px→rem via rootSize)
+- resolveCssVarReferences(value, registry) — inline var() references back to raw values for non-CSS consumers (document export, devtools)
+- Provider / context — React-style provider for the theme (used internally by PyreonUI)
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { enrichTheme, makeItResponsive, createMediaQueries, alignContent } from '@pyreon/unistyle'
+
+// 1. Enrich a partial user theme with defaults — required before passing to PyreonUI
+const theme = enrichTheme({
+  colors: { primary: '#3b82f6', secondary: '#6366f1' },
+  fonts: { body: 'Inter, sans-serif' },
+})
+
+// 2. Build media queries keyed by breakpoint name
+const queries = createMediaQueries(theme.breakpoints)
+// → { xs: '@media (min-width: 0)', sm: '@media (min-width: 640px)', md: '...', ... }
+
+// 3. Responsive props — single value, mobile-first array, or breakpoint object
+const padding = makeItResponsive({ value: [8, 12, 16], property: 'padding', theme })
+// → 'padding: 8px; @media (...) { padding: 12px } @media (...) { padding: 16px }'
+
+const padding2 = makeItResponsive({
+  value: { xs: 8, md: 16, xl: 24 },
+  property: 'padding',
+  theme,
+})
+
+// 4. alignContent maps shorthand to flex CSS
+const flexCss = alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
+// → 'justify-content: center; align-items: flex-start;'
+
+// 5. Autogenerate CSS custom properties from a theme JSON (units baked at emission)
+import { themeToCssVars } from '@pyreon/unistyle'
+const { vars, css } = themeToCssVars({ rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } })
+vars.spacing.small // 'var(--px-spacing-small)'  (emitted as 0.5rem in the :root block)
+const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportional sizing, native CSS
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

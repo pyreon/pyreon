@@ -9,6 +9,60 @@ description: "Reactive client-side storage — localStorage, sessionStorage, coo
 
 Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.
 
+## Features
+
+- useStorage — localStorage-backed with cross-tab sync via storage events
+- useSessionStorage — per-tab ephemeral storage
+- useCookie — SSR-readable with configurable path, maxAge, sameSite
+- useIndexedDB — large data with debounced async writes
+- useMemoryStorage — in-memory fallback, SSR-safe
+- createStorage(backend) — factory for custom storage backends
+- StorageSignal&lt;T&gt; extends Signal&lt;T&gt; with .remove()
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { useStorage, useSessionStorage, useCookie, useIndexedDB, useMemoryStorage, createStorage } from '@pyreon/storage'
+
+// localStorage — persistent, cross-tab synced via storage events:
+const theme = useStorage('theme', 'light')
+theme()            // 'light' — reactive signal read
+theme.set('dark')  // updates signal + writes to localStorage
+theme.remove()     // removes from storage, resets to default
+
+// sessionStorage — per-tab, cleared on tab close:
+const filter = useSessionStorage('filter', { query: '', page: 1 })
+filter.set({ query: 'search', page: 2 })
+
+// Cookie — SSR-readable, configurable expiry:
+const locale = useCookie('locale', 'en', {
+  maxAge: 365 * 86400,  // 1 year
+  path: '/',
+  sameSite: 'lax',
+})
+
+// IndexedDB — large data, debounced writes:
+const draft = useIndexedDB('article-draft', {
+  title: '',
+  body: '',
+  tags: [] as string[],
+})
+
+// Memory storage — ephemeral, SSR-safe fallback:
+const temp = useMemoryStorage('temp-data', { count: 0 })
+
+// Custom backend — encrypted, remote, etc.:
+const encryptedBackend = {
+  getItem: (key: string) => decrypt(localStorage.getItem(key)),
+  setItem: (key: string, value: string) => localStorage.setItem(key, encrypt(value)),
+  removeItem: (key: string) => localStorage.removeItem(key),
+}
+const useEncrypted = createStorage(encryptedBackend)
+const secret = useEncrypted('api-key', '')
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,17 @@ description: "SSR/SSG VNode→HTML renderer — renderToString, renderToStream (
 
 Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; `configureStoreIsolation()` extends the same isolation to the `@pyreon/store` registry. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.
 
+## Features
+
+- renderToString(vnode) → Promise&lt;string&gt; — one-shot HTML, awaits async components
+- renderToStream(vnode, &#123; signal?, suspenseTimeoutMs? &#125;) → ReadableStream&lt;string&gt; — progressive, out-of-order Suspense (default 30s per-boundary timeout, configurable; signal threads AbortSignal end-to-end)
+- Per-request ALS context isolation — concurrent requests never share provide() frames
+- runWithRequestContext(fn) — isolated context+store for Pyreon APIs called outside renderToString
+- configureStoreIsolation(setStoreRegistryProvider) — opt-in per-request @pyreon/store isolation
+- Compiler-emitted reactive props resolved via makeReactiveProps (parity with CSR mount.ts)
+- For-list key markers URL-encoded so user keys can never break out of the HTML comment
+- decodeKeyFromMarker — symmetric inverse of the For-key marker encoder (devtools/future hydration)
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,70 @@ description: "Structured reactive state tree — composable models with snapshot
 
 MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry.
 
+## Features
+
+- model(&#123; state &#125;) or model(&#123; schema &#125;) — chainable builder
+- .views(self =&gt; ...) — chainable derived values; each layer sees prior ones
+- .actions(self =&gt; ...) — chainable mutators; async out of the box
+- Schema mode validates state via zod / valibot / arktype / Standard Schema
+- Nested model composition for tree-shaped state
+- getSnapshot / applySnapshot — typed recursive serialization
+- onPatch / applyPatch — JSON patch record and replay
+- addMiddleware — action interception chain (sync + async)
+- .create(initial) for instances, .asHook(id) for singleton hooks
+- Devtools subpath export with WeakRef-based registry
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { model, getSnapshot, applySnapshot, onPatch, applyPatch, addMiddleware } from '@pyreon/state-tree'
+
+// Define a model — chainable: state, then .views(), then .actions():
+const Todo = model({ state: { title: '', done: false } })
+  .views((self) => ({
+    summary: () => `${self.title()} [${self.done() ? 'x' : ' '}]`,
+  }))
+  .actions((self) => ({
+    toggle: () => self.done.set(!self.done()),
+    rename: (title: string) => self.title.set(title),
+  }))
+
+const TodoList = model({ state: { todos: [] as ReturnType<typeof Todo.create>[] } })
+  .actions((self) => ({
+    add: (title: string) => {
+      const todo = Todo.create({ title, done: false })
+      self.todos.update(list => [...list, todo])
+    },
+  }))
+
+// Create instances:
+const list = TodoList.create({ todos: [] })
+list.add('Write tests')
+list.todos()[0].toggle()
+
+// Snapshots — typed recursive serialization:
+const snap = getSnapshot(list)
+applySnapshot(list, { todos: [{ title: 'Restored', done: true }] })
+
+// JSON patches — record/replay for undo, sync, debugging:
+const patches: Patch[] = []
+const dispose = onPatch(list, (patch) => patches.push(patch))
+list.add('New item')
+// Later: applyPatch(list, patches[0]) to replay
+
+// Middleware — intercept any action in the tree:
+addMiddleware(list, (call, next) => {
+  console.log(`Action: ${call.name}`, call.args)
+  return next(call)
+})
+
+// Singleton hook for app-wide state:
+const useTodoList = TodoList.asHook('todo-list')
+const { store } = useTodoList() // same instance on every call
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

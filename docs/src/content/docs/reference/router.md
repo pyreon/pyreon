@@ -9,6 +9,82 @@ description: "hash+history+SSR, context-based, prefetching, guards, loaders, use
 
 Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash and history mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.
 
+## Features
+
+- Server loaders (zero integration): records carry `serverLoader` (SSR module graph only) / `hasServerLoader` (client marker) — client navigations fetch the whole chain via ONE request to the `dataEndpoint` (default `<base>/_pyreon/data`); redirect() from a server loader arrives as a JSON envelope the client turns into a navigation
+- createRouter() — factory with routes, guards, middleware, loaders, hash/history mode
+- RouterProvider / RouterView / RouterLink — context-based rendering components
+- useRouter / useRoute — programmatic navigation and typed route access
+- useIsActive — reactive boolean for path matching (segment-aware prefix)
+- useTypedSearchParams — typed search params with auto-coercion
+- useTransition — reactive signal for route transition state
+- useMiddlewareData — read data set by route middleware chain
+- useLoaderData — access route loader results
+- View Transitions API — auto-enabled, awaits updateCallbackDone
+- Named routes — typed navigation via &#123; name, params &#125;
+- Nested routes — recursive matching with child RouterView
+- Navigation guards — per-route and global beforeEnter/afterEach hooks
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useIsActive, useTypedSearchParams, useTransition, useLoaderData, useMiddlewareData } from "@pyreon/router"
+import { mount } from "@pyreon/runtime-dom"
+
+// Define routes with typed params, guards, loaders, and middleware
+const router = createRouter({
+  routes: [
+    { path: "/", component: Home, name: "home" },
+    { path: "/user/:id", component: User, name: "user",
+      loader: ({ params }) => fetchUser(params.id),
+      meta: { title: "User Profile" } },
+    { path: "/admin", component: AdminLayout,
+      beforeEnter: (to, from) => isAdmin() || "/login",
+      children: [
+        { path: "users", component: AdminUsers },
+        { path: "settings", component: AdminSettings },
+      ] },
+    { path: "/settings", redirect: "/admin/settings" },
+    { path: "(.*)", component: NotFound },
+  ],
+  middleware: [authMiddleware, loggerMiddleware],
+})
+
+// Mount with RouterProvider
+mount(
+  <RouterProvider router={router}>
+    <nav>
+      <RouterLink to="/" activeClass="nav-active">Home</RouterLink>
+      <RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>
+    </nav>
+    <RouterView />
+  </RouterProvider>,
+  document.getElementById("app")!
+)
+
+// Inside a component — hooks
+const User = () => {
+  const route = useRoute<"/user/:id">()
+  const data = useLoaderData<UserData>()
+  const router = useRouter()
+  const isAdmin = useIsActive("/admin")
+  const isTransitioning = useTransition()
+  const params = useTypedSearchParams({ tab: "string", page: "number" })
+
+  return (
+    <div>
+      <h1>{data.name} (ID: {route().params.id})</h1>
+      <Show when={isTransitioning()}>
+        <ProgressBar />
+      </Show>
+      <button onClick={() => router.push("/")}>Go Home</button>
+    </div>
+  )
+}
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

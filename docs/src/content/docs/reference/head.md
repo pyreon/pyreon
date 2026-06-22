@@ -9,6 +9,59 @@ description: "Reactive `<head>` tag management — useHead(), HeadProvider, rend
 
 Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app. External `<script>` tags (those with `src`) default to `defer` for non-blocking page load — module scripts, import maps, and inline scripts are left untouched; the `ScriptTag` type carries the full attribute surface (`integrity` / `nomodule` / `referrerpolicy` / `fetchpriority` / …).
 
+## Features
+
+- useHead(input | () =&gt; input) — register head tags from any component
+- Reactive: pass a function to re-register on signal change
+- Title templates with %s placeholder or function form
+- HeadProvider for client-side DOM sync
+- renderWithHead() for SSR — returns html + head string
+- Keyed deduplication — innermost component wins per key
+- JSON-LD shorthand: `jsonLd: {...}` auto-wraps as `<script type="application/ld+json">`
+- Speculation Rules shorthand: `speculationRules: {...}` auto-wraps as `<script type="speculationrules">` — native browser prefetch/prerender, opt-in
+- useHead(&#123; script &#125;) — external scripts default to defer for non-blocking load; ScriptTag carries the full attribute surface (integrity / nomodule / fetchpriority / …)
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { useHead, HeadProvider } from '@pyreon/head'
+import { renderWithHead } from '@pyreon/head'
+import { mount } from '@pyreon/runtime-dom'
+
+// Static head tags from any component
+function ProfilePage() {
+  useHead({
+    title: 'My Profile',
+    meta: [{ name: 'description', content: 'User profile page' }],
+    link: [{ rel: 'canonical', href: 'https://example.com/profile' }],
+  })
+  return <div>profile body</div>
+}
+
+// Reactive head — pass a function so signal reads re-register on change
+function ReactiveTitle() {
+  useHead(() => ({
+    title: `${username()} — Profile`,
+    meta: [{ property: 'og:title', content: username() }],
+  }))
+  return null
+}
+
+// Client setup
+mount(
+  <HeadProvider>
+    <App />
+  </HeadProvider>,
+  document.getElementById('app')!,
+)
+
+// Server setup — collects every useHead() call and serializes the head
+const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
+const document = `<!doctype html><html${htmlAttrs}><head>${head}</head><body${bodyAttrs}>${html}</body></html>`
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

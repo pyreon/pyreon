@@ -9,6 +9,66 @@ description: "DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, Kee
 
 Surgical signal-to-DOM renderer with zero virtual DOM overhead. The compiler emits `_tpl()` (cloneNode-based template instantiation) + `_bind()` (per-node reactive bindings) calls that mount directly to the DOM without VNode diffing. Reactive text uses `TextNode.data` assignment (not `.textContent`) for minimal DOM mutation. Supports SVG/MathML namespace auto-detection (67 tags), custom elements (props as properties), CSS transitions via `<Transition>` / `<TransitionGroup>`, and component caching via `<KeepAlive>`. Dev-mode warnings use the bundler-agnostic bare `process.env.NODE_ENV` production gate (auto-replaced by every modern bundler) so they tree-shake to zero bytes in production Vite builds.
 
+## Features
+
+- mount() — mount VNode tree into container, returns unmount function
+- hydrateRoot() — hydrate SSR-rendered HTML, preserving existing DOM
+- Transition — CSS-based enter/leave animations with mode support
+- TransitionGroup — animate list item additions and removals
+- KeepAlive — cache and restore component state across mount/unmount cycles
+- _tpl() + _bind() — compiler-driven template instantiation with zero VNode overhead
+- SVG/MathML — 67 tags auto-detected, correct namespace URI, setAttribute-only
+- Custom elements — props set as properties on hyphenated tag names
+- Event delegation — synthetic event system for performance
+- Dev-mode warnings — container validation, output validation, duplicate keys
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { mount, hydrateRoot, Transition, TransitionGroup, KeepAlive } from "@pyreon/runtime-dom"
+import { signal } from "@pyreon/reactivity"
+import { Show, For } from "@pyreon/core"
+
+// Mount — clears container, returns unmount function
+const unmount = mount(<App />, document.getElementById("app")!)
+
+// Hydrate SSR-rendered HTML (preserves existing DOM)
+hydrateRoot(<App />, document.getElementById("app")!)
+
+// Transition — CSS-based enter/leave animations
+const visible = signal(true)
+const FadeExample = () => (
+  <Transition name="fade" mode="out-in">
+    <Show when={visible()}>
+      <div>Content</div>
+    </Show>
+  </Transition>
+)
+// CSS: .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
+//      .fade-enter-from, .fade-leave-to { opacity: 0 }
+
+// TransitionGroup — animate list items entering/leaving
+const items = signal([1, 2, 3])
+const ListExample = () => (
+  <TransitionGroup name="list">
+    <For each={items()} by={i => i}>
+      {item => <div>{item}</div>}
+    </For>
+  </TransitionGroup>
+)
+
+// KeepAlive — cache component state across mount/unmount cycles
+const tab = signal<"a" | "b">("a")
+const TabExample = () => (
+  <KeepAlive>
+    <Show when={tab() === "a"}><ExpensiveA /></Show>
+    <Show when={tab() === "b"}><ExpensiveB /></Show>
+  </KeepAlive>
+)
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,74 @@ description: "Reactive code editor — CodeMirror 6 with signals, minimap, diff 
 
 Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). `editor.value` is a writable Signal&lt;string&gt; — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.
 
+> **Peer dependencies:** `@pyreon/runtime-dom` — install alongside this package.
+
+## Features
+
+- createEditor — reactive instance with writable Signal&lt;string&gt; value
+- CodeEditor, DiffEditor, TabbedEditor JSX components
+- bindEditorToSignal — two-way binding with built-in loop prevention
+- 19 language grammars via loadLanguage (lazy-loaded)
+- Canvas-based minimapExtension for code overview
+- Built on CodeMirror 6 (~250KB vs Monaco ~2.5MB)
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { createEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
+import { signal } from '@pyreon/reactivity'
+
+// Create a reactive editor instance
+const editor = createEditor({
+  value: 'const x = 1',
+  language: 'typescript',
+  theme: 'dark',
+  minimap: true,
+  lineNumbers: true,
+  onChange: (next) => console.log('user edit:', next),
+})
+
+// editor.value is a writable Signal<string>
+editor.value()           // read reactively — tracks in effects/JSX
+editor.value.set('new')  // write back into CodeMirror
+editor.cursor()          // computed { line, col }
+editor.lineCount()       // computed number
+
+// Mount with JSX component:
+<CodeEditor instance={editor} style="height: 400px" />
+
+// Diff editor — side-by-side comparison:
+<DiffEditor original="old code" modified="new code" language="typescript" />
+
+// Two-way binding to external signal (e.g. form field, store):
+interface Config { host: string; port: number }
+const config = signal<Config>({ host: 'localhost', port: 3000 })
+
+const configEditor = createEditor({ value: JSON.stringify(config(), null, 2), language: 'json' })
+
+const binding = bindEditorToSignal({
+  editor: configEditor,
+  signal: config,
+  serialize: (val) => JSON.stringify(val, null, 2),
+  parse: (text) => { try { return JSON.parse(text) } catch { return null } },
+  onParseError: (err) => console.warn('Invalid JSON:', err.message),
+})
+// binding.dispose() on unmount
+
+// Lazy-load a language grammar:
+await loadLanguage('python')
+
+// Tabbed editor — multiple files:
+<TabbedEditor
+  tabs={[
+    { id: 'main', label: 'main.ts', language: 'typescript', value: 'export {}' },
+    { id: 'styles', label: 'styles.css', language: 'css', value: 'body {}' },
+  ]}
+/>
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

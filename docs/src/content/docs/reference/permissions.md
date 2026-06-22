@@ -9,6 +9,63 @@ description: "Reactive permissions — RBAC, ABAC, feature flags, subscription t
 
 Universal reactive permissions for Pyreon. A permission is a boolean or a predicate function — check with `can(key, context?)` which reads as a reactive signal in effects, computeds, and JSX. Supports wildcard matching (`posts.*` matches any `posts.X`), inverse and multi-checks, and runtime updates via `can.set()` / `can.patch()`. Works for any authorization model: RBAC, ABAC, feature flags, subscription tiers. PermissionsProvider/usePermissions context pattern enables SSR and testing isolation.
 
+## Features
+
+- createPermissions(initial) — callable reactive permissions instance
+- can(key, context?) — reactive signal check with predicate support
+- Wildcard matching: `posts.*` matches any `posts.X`
+- can.not / can.all / can.any — inverse and multi-checks
+- can.set / can.patch — replace or merge permissions reactively
+- PermissionsProvider / usePermissions — context pattern for SSR and testing
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { createPermissions, PermissionsProvider, usePermissions } from '@pyreon/permissions'
+
+// Create a reactive permissions instance:
+const can = createPermissions({
+  'posts.read': true,
+  'posts.update': (post: Post) => post.authorId === userId(),
+  'posts.delete': false,
+  'admin.*': false,  // wildcard — blocks admin.users, admin.settings, etc.
+})
+
+// Reactive checks in JSX — re-evaluate when permissions change:
+const PostActions = (props: { post: Post }) => (
+  <div>
+    {() => can('posts.read') && <PostView post={props.post} />}
+    {() => can('posts.update', props.post) && <EditButton />}
+  </div>
+)
+
+// Multi-checks:
+can.not('admin.dashboard')               // inverse
+can.all('posts.read', 'posts.create')    // AND — all must pass
+can.any('admin.users', 'posts.manage')   // OR — at least one
+
+// Update after login — replaces all permissions reactively:
+can.set(fromRole(user.role))
+
+// Partial update — merge new permissions with existing:
+can.patch({ 'admin.*': true })
+
+// Context pattern for SSR and testing:
+const App = () => (
+  <PermissionsProvider value={can}>
+    <Router />
+  </PermissionsProvider>
+)
+
+// Consume in child components:
+const AdminPanel = () => {
+  const can = usePermissions()
+  return (() => can('admin.dashboard') ? <Dashboard /> : <AccessDenied />)
+}
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

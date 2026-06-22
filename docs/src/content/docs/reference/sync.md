@@ -9,6 +9,18 @@ description: "Local-first CRDT-backed sync for signals — a synced signal IS a 
 
 A local-first / collaborative sync layer for Pyreon. A synced value is a normal `Signal` (built via `wrapSignal`), so a remote change becomes one `signal.set` → one surgical fine-grained DOM update — never a VDOM re-render + diff. The engine-neutral `CrdtAdapter` seam keeps the reactive bridge engine-free; the real engine (raw Yjs) lives behind `@pyreon/sync/yjs` so importing the core never pulls in `yjs`. Covers offline persistence (IndexedDB), same-origin cross-tab + cross-device WebSocket transport, collaborative text + lists, and a Node/Bun relay with per-room/per-doc authz at `@pyreon/sync/server`. v1 syncs scalar map fields + collaborative `Y.Text` / `Y.Array`.
 
+## Features
+
+- syncedSignal / syncedStore — bind a Signal to a CRDT map entry; a synced signal is indistinguishable from a normal signal to the compiler and every effect
+- Engine-neutral CrdtAdapter / CrdtDoc / CrdtMap seam + an in-memory FakeCrdtAdapter for dependency-free unit tests
+- Real Yjs engine behind the @pyreon/sync/yjs subpath (yjs stays out of the core entry)
+- Offline persistence via IndexedDB (persistViaIndexedDB)
+- Same-origin cross-tab sync (connectViaBroadcastChannel) + cross-device WebSocket transport (connectViaWebSocket, auto-reconnect)
+- Collaborative text (syncedText / Y.Text) + lists (syncedList / Y.Array) with true positional merge — concurrent edits keep BOTH
+- Ephemeral presence + live cursors (syncedAwareness) over the Yjs awareness protocol — a separate, never-persisted channel; the relay is awareness-stateful so a new client sees existing peers instantly + a crashed client is purged on disconnect
+- Node/Bun relay server (createSyncServer) with a per-room/per-doc authorize gate + attach-to-existing-HTTP-server mode
+- Loop-free by construction: the observer applies every change; the transport never re-broadcasts a REMOTE-origin update (the same shared tag guards awareness across BOTH transports)
+
 ## Exports
 
 | Symbol | Kind | Summary |

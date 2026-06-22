@@ -9,6 +9,87 @@ description: "Reactive flow diagrams — signal-native nodes, edges, pan/zoom, a
 
 Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout via lazy-loaded elkjs. No D3 dependency. Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.
 
+> **Peer dependencies:** `@pyreon/runtime-dom` — install alongside this package.
+
+## Features
+
+- createFlow&lt;TData&gt; generic over node data shape
+- useFlow(config) component-scoped wrapper that auto-disposes on unmount
+- Custom node/edge renderers with reactive accessor props
+- Pan/zoom via pointer events + CSS transforms (no D3)
+- Auto-layout via lazy-loaded elkjs
+- toJSON / fromJSON round-trip serialization
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
+
+// createFlow is generic over node `data` shape — typed consumers
+// pass their data type explicitly and `node.data.kind` narrows
+// correctly without any index signature on the data interface.
+interface WorkflowData {
+  kind: 'trigger' | 'filter' | 'transform' | 'notify'
+  label: string
+}
+
+const flow = createFlow<WorkflowData>({
+  nodes: [
+    { id: '1', type: 'custom', position: { x: 0, y: 0 }, data: { kind: 'trigger', label: 'Start' } },
+    { id: '2', type: 'custom', position: { x: 200, y: 100 }, data: { kind: 'notify', label: 'End' } },
+  ],
+  edges: [{ id: 'e1', source: '1', target: '2', animated: true }],
+})
+
+flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
+flow.addEdge({ source: '1', target: '3' })
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })  // lazy-loaded elkjs
+// `direction`/`layerSpacing`/`edgeRouting` apply to layered/tree only —
+// `force`/`stress`/`radial`/`box`/`rectpacking` silently ignore them.
+// `nodeSpacing` is the only LayoutOptions field respected by every algorithm.
+
+// Prefer `useFlow` inside components — it's `createFlow` + auto-dispose
+// on unmount. Use `createFlow` only for singleton/app-store flows that
+// outlive the component tree.
+const MyDiagram = () => {
+  const flow = useFlow<WorkflowData>({ nodes: [], edges: [] })
+  return <Flow instance={flow}><Background /></Flow>
+}
+
+// Custom node renderers — every prop except `id` is a REACTIVE
+// ACCESSOR (`() => T`), not a plain value. Read inside reactive
+// scopes (JSX expression thunks, effect, computed) so the node
+// patches in place when ANY underlying state changes. Each node
+// mounts EXACTLY ONCE across the lifetime of the graph regardless
+// of how many drags, selection clicks, or updateNode mutations
+// happen — internally <Flow> uses <For> keyed by node.id plus
+// per-node accessors that read live state from instance.nodes().
+function CustomNode(props: NodeComponentProps<WorkflowData>) {
+  return (
+    <div
+      class={props.selected() ? 'selected' : ''}
+      style={() => `cursor: ${props.dragging() ? 'grabbing' : 'grab'}`}
+    >
+      <Handle type="target" position={Position.Left} />
+      {props.data().label}
+      <Handle type="source" position={Position.Right} />
+    </div>
+  )
+}
+
+<Flow instance={flow} nodeTypes={{ custom: CustomNode }}>
+  <Background variant="dots" gap={20} />
+  <Controls position="bottom-left" />
+  <MiniMap nodeColor={(node) => '#6366f1'} />
+</Flow>
+
+// Serialization round-trips for sidecar editors / persistence:
+const json = flow.toJSON()         // { nodes, edges, viewport }
+flow.fromJSON({ nodes, edges })    // restore from saved state
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

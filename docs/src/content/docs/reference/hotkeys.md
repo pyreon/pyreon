@@ -9,6 +9,56 @@ description: "Keyboard shortcut management — scope-aware, modifier keys, confl
 
 Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, scope-based activation for context-aware shortcuts, and conflict detection. Component-scoped hooks auto-unregister on unmount. Imperative API available for non-component contexts.
 
+## Features
+
+- useHotkey(shortcut, handler, options?) — component-scoped, auto-unregisters on unmount
+- useHotkeyScope(scope) — activate a scope for a component's lifetime
+- mod alias — Command on Mac, Ctrl elsewhere
+- Scope-based activation for context-aware shortcuts
+- Imperative API: registerHotkey, enableScope, disableScope, getRegisteredHotkeys
+- parseShortcut / matchesCombo / formatCombo utilities
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { useHotkey, useHotkeyScope, registerHotkey, getRegisteredHotkeys, enableScope, disableScope } from '@pyreon/hotkeys'
+
+// Global shortcut — auto-unregisters on unmount
+useHotkey('mod+s', (e) => {
+  e.preventDefault()  // prevent browser save dialog
+  save()
+}, { description: 'Save document' })
+
+// Platform-aware: mod = ⌘ on Mac, Ctrl on Windows/Linux
+useHotkey('mod+k', () => openCommandPalette())
+
+// Multi-key combo
+useHotkey('ctrl+shift+p', () => openPreferences())
+
+// Scoped shortcuts — only active when scope is enabled
+useHotkeyScope('editor')  // activates 'editor' scope for this component's lifetime
+
+useHotkey('ctrl+z', () => undo(), { scope: 'editor', description: 'Undo' })
+useHotkey('ctrl+shift+z', () => redo(), { scope: 'editor', description: 'Redo' })
+useHotkey('ctrl+d', () => duplicateLine(), { scope: 'editor' })
+
+// Imperative API — for non-component contexts (stores, middleware)
+const unregister = registerHotkey('ctrl+q', () => quit(), { scope: 'global' })
+// unregister() when done
+
+// Introspection
+const hotkeys = getRegisteredHotkeys()  // all registered shortcuts
+enableScope('modal')                     // programmatically enable a scope
+disableScope('editor')                   // programmatically disable a scope
+
+// Shortcuts can filter input elements — by default, shortcuts
+// don't fire when focused on <input>, <textarea>, <select>.
+// Override with:
+useHotkey('escape', () => closeModal(), { enableOnFormElements: true })
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,72 @@ description: "Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes
 
 Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`, `renderMode` (per-route 'ssr' | 'ssg' | 'spa' | 'isr' hybrid rendering), plus `.server.{ts,tsx,js,jsx}` SIBLINGS exporting `serverLoader(ctx)` — server-only data loaders structurally excluded from the client bundle (client navigations fetch the whole chain's data in ONE request from `GET /_pyreon/data`; layouts cannot carry server loaders). `mode: 'ssr'` STREAMS by default (`ssr: { mode: 'string' }` opts back). Re-exports `island` + `serverIsland` (per-request server-rendered holes in cacheable pages). SSG delivery polish: `ssg.speculationRules`, `ssg.viewTransitions`, `ssg.cssMode: 'asset'`, `ssg.earlyHints`. ISR: tag-based invalidation (`isr.tagsForRequest` + `revalidateTag(tag)`) and a restart-surviving `createFsStore(dir)`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.
 
+## Features
+
+- mode: ssg / ssr / isr / spa — single config field
+- i18n route duplication (prefix / prefix-except-default strategies)
+- getStaticPaths per route — dynamic-route × locale compounds at SSG
+- Per-route revalidate — wires platform ISR via Adapter.revalidate
+- Concurrent SSG render loop with onProgress callback
+- Adapter.build() auto-invoked in SSG closeBundle — emits platform routing config
+- Per-locale 404 + hreflang sitemap (auto-detects i18n config)
+- Loader-thrown redirect → _redirects manifest (Netlify/Cloudflare/Vercel)
+- Subpath / base-path single source of truth — zero(&#123; base &#125;) propagates to Vite + router
+- &lt;Image src=&#123;descriptor | URL&#125;&gt; — bi-modal optimized image (dims inferred from ?optimize, or w+h required for a runtime URL)
+- &lt;OptimizedImage source=&#123;descriptor&#125;&gt; one-prop form; &lt;NoOptimize&gt; / useNoOptimize() subtree opt-out boundary; optimize prop per-image
+- createImageRegistry(map) — typed name → ?optimize descriptor registry (autocomplete over imported assets)
+- usePreconnect / useDnsPrefetch / usePreload — typed resource-hint primitives (each emits the right &lt;link rel&gt;)
+- usePreloadFont(href) + ?font import — font preload + auto @font-face / hashed-URL FontDescriptor
+- zero(&#123; image, font &#125;) — auto-wires imagePlugin / fontPlugin into the Vite plugin chain
+- SSG injects per-route &lt;link rel=modulepreload&gt; — islands-safe (follows static imports, never dynamicImports)
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { defineConfig } from 'vite'
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero/server'
+import { vercelAdapter, seoPlugin, aiPlugin } from '@pyreon/zero/server'
+
+// SSG + i18n + dynamic-route × locale cross-product + hreflang sitemap.
+// Single zero() call wires routing, mode, base, locales, adapter; the
+// composed plugins (seoPlugin/aiPlugin) auto-detect i18n config from the
+// SSG manifest, so consumers configure locales once.
+export default defineConfig({
+  plugins: [
+    pyreon(),
+    zero({
+      mode: 'ssg',
+      i18n: {
+        locales: ['en', 'de', 'cs'],
+        defaultLocale: 'en',
+        strategy: 'prefix-except-default',  // default-locale unprefixed for SEO
+      },
+      ssg: {
+        concurrency: 8,                     // PR D — parallel render workers
+        onProgress: ({ completed, total }) => console.log(`${completed}/${total}`),
+      },
+      adapter: vercelAdapter(),             // PR J — emits .vercel/output/config.json
+    }),
+    seoPlugin({ sitemap: { useSsgPaths: true, hreflang: true } }),
+    aiPlugin(),
+  ],
+})
+
+// src/routes/posts/[id].tsx — dynamic route with getStaticPaths
+// produces 3 IDs × 3 locales = 9 prerendered HTML files under SSG+i18n.
+import type { GetStaticPaths } from '@pyreon/zero/server'
+
+export const getStaticPaths: GetStaticPaths<{ id: string }> = () =>
+  POSTS.map((p) => ({ params: { id: String(p.id) } }))
+
+export const revalidate = 60  // PR I — wires platform ISR per-route (Vercel/Cloudflare/Netlify)
+
+export default function PostPage() { /* component body */ }
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

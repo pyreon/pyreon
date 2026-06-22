@@ -97,6 +97,26 @@ function renderPage(m: any): string {
     out.push(escFlow(m.description))
     out.push('')
   }
+  if (Array.isArray(m.peerDeps) && m.peerDeps.length) {
+    out.push(
+      `> **Peer dependencies:** ${m.peerDeps.map((d: string) => `\`${d}\``).join(', ')} — install alongside this package.`,
+    )
+    out.push('')
+  }
+  if (Array.isArray(m.features) && m.features.length) {
+    out.push('## Features')
+    out.push('')
+    out.push(m.features.map((f: string) => `- ${escFlow(f)}`).join('\n'))
+    out.push('')
+  }
+  if (m.longExample) {
+    out.push('## Complete example')
+    out.push('')
+    out.push('A full, end-to-end usage of the package:')
+    out.push('')
+    out.push(fence('tsx', m.longExample))
+    out.push('')
+  }
   // Exports index table — at-a-glance, Next.js-style.
   if (api.length) {
     out.push('## Exports')

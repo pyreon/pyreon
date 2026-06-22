@@ -9,6 +9,17 @@ description: "JSX reactive transform (Rust native + JS fallback) plus the Reacti
 
 Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native binary (napi-rs, 3.7-8.9× faster) and falls back per-call to the pure-JS `transformJSX_JS` when the binary is unavailable (CI, WASM, wrong platform); the two backends are asserted byte-identical by 180+ cross-backend equivalence tests. Emits `_tpl()` (cloneNode templates) + per-text-node `_bind()`, hoists static JSX, inlines `const`-from-`props`, and auto-calls bare signal references in JSX. Also ships the experimental Reactivity-Lens sidecar (`analyzeReactivity` — surfaces the compiler's own per-expression reactive/static decision back to editors), React-pattern detection + one-shot migration, the Pyreon anti-pattern detector behind the MCP `validate` tool, and the syntactic project audits powering `pyreon doctor` (test-environment / islands / SSG).
 
+## Features
+
+- Dual-backend transformJSX — Rust native (napi-rs) with automatic per-call JS fallback, byte-identical output
+- Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s reactive-vs-static decision (experimental)
+- Scope-aware signal auto-call: bare &#123;count&#125; → &#123;() =&gt; count()&#125;, shadowing-correct, knownSignals seeds cross-module
+- detectReactPatterns + migrateReactCode — "coming from React" diagnostics + one-shot codemod
+- detectPyreonPatterns — 14 "using Pyreon wrong" anti-pattern codes (the MCP validate detector)
+- Project audits: auditTestEnvironment / auditIslands / auditSsg (power pyreon doctor)
+- transformDeferInline — &lt;Defer&gt; namespace-import inlining pass
+- generateContext — project scanner producing the AI .pyreon/context.json
+
 ## Exports
 
 | Symbol | Kind | Summary |

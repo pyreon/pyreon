@@ -9,6 +9,53 @@ description: "15 cross-platform UI primitives that compile to DOM + SwiftUI + Co
 
 The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.
 
+## Features
+
+- 15 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
+- One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere
+- Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target
+- PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries
+- `<WebView>` hosts a web-only component (charts/flow/editor) natively with a bidirectional data bridge
+- `<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI
+- No responsive props or animations in v1 — responsive web uses `@pyreon/elements` directly
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { Stack, Inline, Text, Heading, Button, Field, Toggle } from '@pyreon/primitives'
+import { signal, computed } from '@pyreon/reactivity'
+
+type Todo = { id: number; title: string; done: boolean }  // type alias, NOT interface (PMTC drops interface on native)
+
+export function App() {
+  const todos = signal<Todo[]>([])
+  const draft = signal('')
+  const remaining = computed(() => todos().filter((t) => !t.done).length)
+
+  return (
+    <Stack gap="md" padding={4}>
+      <Heading level={1}>Todos ({remaining()} left)</Heading>
+      <Inline gap="sm">
+        <Field value={draft()} onChangeText={(t) => draft.set(t)} />
+        <Button onPress={() => { todos.set([...todos(), { id: todos().length, title: draft(), done: false }]); draft.set('') }}>
+          Add
+        </Button>
+      </Inline>
+      <For each={todos()} by={(t) => t.id}>
+        {(t) => (
+          <Inline gap="sm">
+            <Toggle value={t.done} onChange={(v) => todos.set(todos().map((x) => x.id === t.id ? { ...x, done: v } : x))} />
+            <Text>{t.title}</Text>
+          </Inline>
+        )}
+      </For>
+    </Stack>
+  )
+}
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

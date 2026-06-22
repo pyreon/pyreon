@@ -9,6 +9,114 @@ description: "TanStack Query adapter with signal-driven results + WebSocket subs
 
 Pyreon adapter for TanStack Query. Fine-grained signals per observer field (data, error, isFetching) so effects only re-run for the fields they read. Re-exports TanStack core (QueryClient, dehydrate/hydrate, etc.) so users import everything from `@pyreon/query`. Real-time hooks `useSubscription` (WebSocket, auto-reconnect, bidirectional) and `useSSE` (Server-Sent Events, read-only) share the QueryClient so cache invalidation from push updates is one line.
 
+## Features
+
+- Fine-grained signals per observer field (data, error, isFetching independent)
+- Re-exports TanStack core: QueryClient, dehydrate/hydrate, CancelledError, keepPreviousData, etc.
+- useQuery / useMutation / useInfiniteQuery / useQueries with signal-driven options
+- useSuspenseQuery / useSuspenseInfiniteQuery + QuerySuspense boundary (non-undefined data)
+- useSubscription — reactive WebSocket with auto-reconnect and QueryClient cache integration
+- useSSE — Server-Sent Events with QueryClient cache integration
+- useIsFetching / useIsMutating — global count signals for spinners
+- QueryErrorResetBoundary — resets errored queries when an ErrorBoundary recovers
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useMutation,
+  useInfiniteQuery,
+  useSubscription,
+  useSSE,
+  useSuspenseQuery,
+  QuerySuspense,
+} from '@pyreon/query'
+
+// 1. Create a QueryClient and mount the provider at the app root.
+const client = new QueryClient()
+
+const App = () => (
+  <QueryClientProvider client={client}>
+    <Content />
+  </QueryClientProvider>
+)
+
+// 2. useQuery — `options` is a function so it can read Pyreon signals.
+//    When the signal changes (e.g. a reactive queryKey), the observer
+//    updates and refetches automatically.
+const userId = signal(1)
+const user = useQuery(() => ({
+  queryKey: ['user', userId()],
+  queryFn: () => fetch(`/api/users/${userId()}`).then((r) => r.json()),
+}))
+// user.data(), user.error(), user.isFetching() — each is its own signal,
+// so a template that reads only isFetching won't re-run when data changes.
+
+// 3. useMutation — reactive pending/success/error state + mutate/mutateAsync.
+const create = useMutation({
+  mutationFn: (input: CreatePostInput) =>
+    fetch('/api/posts', { method: 'POST', body: JSON.stringify(input) }).then((r) => r.json()),
+  onSuccess: () => client.invalidateQueries({ queryKey: ['posts'] }),
+})
+// <button onClick={() => create.mutate({ title: 'New' })}>Create</button>
+
+// 4. useSubscription — reactive WebSocket with auto-reconnect. The
+//    onMessage callback receives the QueryClient so push updates can
+//    invalidate or directly patch cached queries.
+const sub = useSubscription({
+  url: 'wss://api.example.com/feed',
+  onMessage: (event, queryClient) => {
+    const payload = JSON.parse(event.data)
+    if (payload.type === 'post-created') {
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+    }
+  },
+})
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.send(data), sub.close(), sub.reconnect()
+
+// 5. useSSE — same pattern as useSubscription but read-only (no send).
+//    `parse` deserializes per message; `events` filters named event types.
+const sse = useSSE({
+  url: '/api/events',
+  parse: JSON.parse,
+  onMessage: (data, queryClient) => {
+    if (data.type === 'order-updated') {
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+    }
+  },
+})
+// sse.data() — last parsed message. sse.lastEventId() honours SSE `id` field.
+
+// 6. Suspense — useSuspenseQuery narrows `data` to Signal<TData> (never
+//    undefined). Pair with QuerySuspense to gate children on success.
+const profile = useSuspenseQuery(() => ({
+  queryKey: ['profile', userId()],
+  queryFn: fetchProfile,
+}))
+
+<QuerySuspense
+  query={profile}
+  fallback={<Spinner />}
+  error={(err) => <ErrorCard message={String(err)} />}
+>
+  {() => <ProfileCard name={profile.data().name} />}
+</QuerySuspense>
+
+// 7. useInfiniteQuery — reactive pages + fetchNextPage / fetchPreviousPage.
+const feed = useInfiniteQuery(() => ({
+  queryKey: ['feed'],
+  queryFn: ({ pageParam }) => fetchPage(pageParam),
+  initialPageParam: 0,
+  getNextPageParam: (last) => last.nextCursor,
+}))
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

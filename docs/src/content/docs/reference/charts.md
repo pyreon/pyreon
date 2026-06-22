@@ -9,6 +9,69 @@ description: "Reactive ECharts bridge with lazy loading, auto-detection, typed o
 
 Reactive ECharts bridge for Pyreon. Zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
 
+## Features
+
+- useChart&lt;TOption&gt;(optionsFn, config?) — low-level reactive hook with full lifecycle control
+- Chart component with declarative options, event binding, and auto-resize
+- Zero-byte lazy loading — chart types auto-detected and dynamically imported
+- Generic TOption for strict typed options via ComposeOption&lt;SeriesUnion&gt;
+- @pyreon/charts/manual entry for explicit tree-shaking control
+- All ECharts option and series types re-exported for single-import convenience
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
+import { signal } from '@pyreon/reactivity'
+
+const months = signal(['Jan', 'Feb', 'Mar', 'Apr'])
+const revenue = signal([100, 200, 150, 300])
+
+// Declarative component — simplest usage
+<Chart
+  options={() => ({
+    xAxis: { type: 'category', data: months() },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: revenue() }],
+    tooltip: { trigger: 'axis' },
+  })}
+  style="height: 400px"
+  onClick={(params) => console.log('clicked:', params.name)}
+/>
+
+// useChart hook — full control over instance lifecycle
+const MyChart = () => {
+  const chart = useChart(() => ({
+    xAxis: { type: 'category', data: months() },
+    yAxis: { type: 'value' },
+    series: [
+      { type: 'bar', data: revenue() },
+      { type: 'line', data: revenue().map((v) => v * 1.1) },
+    ],
+  }))
+
+  return (
+    <div>
+      {chart.loading() ? 'Loading chart...' : null}
+      <div ref={chart.ref} style="height: 400px" />
+      <button onClick={() => chart.resize()}>Resize</button>
+    </div>
+  )
+}
+
+// Strict typed options — only bar + line allowed
+type MyOption = ComposeOption<BarSeriesOption | LineSeriesOption>
+const typedChart = useChart<MyOption>(() => ({
+  series: [{ type: 'bar', data: [1, 2, 3] }],  // only 'bar' | 'line' autocomplete
+}))
+
+// Manual entry for tree-shaking control:
+// import { useChart, Chart } from '@pyreon/charts/manual'
+// — you register ECharts components yourself
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

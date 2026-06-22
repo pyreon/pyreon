@@ -9,6 +9,69 @@ description: "SSR + SSG + island architecture — createHandler(), prerender(), 
 
 `@pyreon/server` is the production HTTP entry point and SSG generator. `createHandler()` produces a `(req: Request) => Promise<Response>` that handles SSR for every request, with a precompiled template (one parse at handler-creation, not per request) and middleware-chain support that short-circuits on the first `Response`. `prerender()` turns the same handler into a static-site generator. `island()` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `interaction` / `media` / `never`) — the rest of the page stays HTML-only. `serverIsland()` is the INVERSE: a cacheable page with per-request SERVER-rendered holes — the marker self-activates on the client and fetches its fragment from the auto-mounted name-allowlisted endpoint.
 
+## Features
+
+- createHandler(&#123; App, routes, template?, clientEntry?, middleware?, mode?, collectStyles? &#125;)
+- mode: "string" (renderToString) or "stream" (renderToStream with Suspense out-of-order)
+- Middleware chain — `(ctx) => Response | void | Promise<…>`, short-circuit on first Response
+- prerender(&#123; handler, paths, outDir, origin?, onPage? &#125;) — SSG with onPage callback
+- island(loader, &#123; name, hydrate, prefetch? &#125;) — lazy island with hydration strategy + optional prefetch hint
+- Hydration strategies: "load" | "idle" | "visible" | "interaction" | "media(...)" | "never"
+- serverIsland(loader, &#123; name, fallback?, cache? &#125;) — per-request server-rendered holes in cacheable pages (GET /_pyreon/fragment/&lt;name&gt;)
+- renderPage(router, options) — the ONE string-mode render pipeline shared by handler + SSG + dev SSR
+- Prefetch hints: "idle" | "visible" — pre-warm the chunk before the hydration trigger fires
+- useRequestLocals() bridges middleware `ctx.locals` into the component tree
+- Loader-data inline-script escaping — `</script>` becomes `<\/script>`
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { createHandler, prerender, island } from '@pyreon/server'
+import { App } from './App'
+import routes from './routes'
+
+// SSR handler — one precompiled template, middleware chain, stream mode
+const handler = createHandler({
+  App,
+  routes,
+  clientEntry: '/src/entry-client.ts',
+  mode: 'stream',
+  middleware: [
+    async (ctx) => {
+      ctx.locals.user = await getUser(ctx.headers.get('cookie'))
+    },
+    async (ctx) => {
+      if (ctx.path.startsWith('/admin') && !ctx.locals.user?.admin) {
+        return new Response('Forbidden', { status: 403 })
+      }
+    },
+  ],
+})
+
+export default { fetch: handler }
+
+// SSG — generate a static site from the same handler
+await prerender({
+  handler,
+  paths: ['/', '/about', '/blog/1', '/blog/2'],
+  outDir: './dist',
+  onPage: (path, html) => console.log(`generated ${path} (${html.length} bytes)`),
+})
+
+// Islands — hydrate selectively
+const SearchBar = island(
+  () => import('./SearchBar'),
+  { name: 'SearchBar', hydrate: 'visible' },
+)
+
+// Inside a component:
+function useUser() {
+  return useRequestLocals().user as User | null
+}
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

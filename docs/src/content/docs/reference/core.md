@@ -9,6 +9,79 @@ description: "VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, E
 
 Component model and lifecycle for Pyreon. Provides the VNode type system, `h()` hyperscript function, JSX automatic runtime (`@pyreon/core/jsx-runtime`), lifecycle hooks (`onMount`, `onUnmount`), two-tier context system (`createContext` for static values, `createReactiveContext` for signal-backed values), control-flow components (`Show`, `Switch`/`Match`, `For`, `Suspense`, `ErrorBoundary`), code-splitting via `lazy()`, dynamic rendering via `Dynamic`, and props utilities (`splitProps`, `mergeProps`, `cx`, `createUniqueId`). Components are plain functions (`ComponentFn<P> = (props: P) => VNodeChild`) that run ONCE — reactivity comes from reading signals inside reactive scopes, not from re-running the component.
 
+## Features
+
+- h() — hyperscript function producing VNodes, JSX compiles to h() or _tpl()
+- Fragment — group children without a wrapper DOM element
+- onMount / onUnmount — lifecycle hooks, onMount supports cleanup return
+- createContext / createReactiveContext — two-tier context system
+- provide / useContext — push and read context values
+- Show / Switch+Match — reactive conditional rendering
+- For — keyed reactive list rendering with by prop
+- Suspense / ErrorBoundary — async and error boundaries
+- lazy() / Dynamic — code splitting and dynamic component rendering
+- splitProps / mergeProps / removeUndefinedProps — reactivity-preserving props utilities
+- cx() — class value combiner (strings, objects, arrays, nested)
+- createUniqueId — SSR-safe unique ID generation
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId, untrack } from "@pyreon/core"
+import { signal, computed } from "@pyreon/reactivity"
+
+// Context — static (destructure-safe) vs reactive (must call to read)
+const ThemeCtx = createContext<"light" | "dark">("light")
+const ModeCtx = createReactiveContext<"light" | "dark">("light")
+
+const App = (props: { children: any }) => {
+  const mode = signal<"light" | "dark">("dark")
+  provide(ThemeCtx, "dark")                    // static — safe to destructure
+  provide(ModeCtx, () => mode())               // reactive — consumer must call
+
+  return <>{props.children}</>
+}
+
+// Lifecycle
+const Timer = () => {
+  const count = signal(0)
+  onMount(() => {
+    const id = setInterval(() => count.update(n => n + 1), 1000)
+    return () => clearInterval(id)  // cleanup runs on unmount
+  })
+  return <div>{count()}</div>
+}
+
+// Control flow — reactive conditional rendering
+const Page = (props: { items: { id: number; name: string }[]; loggedIn: () => boolean }) => (
+  <div>
+    <Show when={props.loggedIn()} fallback={<p>Please log in</p>}>
+      <For each={props.items} by={item => item.id}>
+        {item => <li>{item.name}</li>}
+      </For>
+    </Show>
+  </div>
+)
+
+// Props utilities — preserve reactivity
+const Button = (props: { class?: string; size?: string; onClick: () => void; children: any }) => {
+  const [local, rest] = splitProps(props, ["class", "size"])
+  const merged = mergeProps({ size: "md" }, local)
+  const id = createUniqueId()
+  return <button id={id} {...rest} class={cx("btn", `btn-${merged.size}`, local.class)} />
+}
+
+// Code splitting
+const HeavyPage = lazy(() => import("./HeavyPage"))
+const LazyApp = () => (
+  <Suspense fallback={<div>Loading...</div>}>
+    <HeavyPage />
+  </Suspense>
+)
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

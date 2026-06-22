@@ -9,6 +9,69 @@ description: "Fine-grained reactivity: signal, computed, effect, batch, onCleanu
 
 Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Direct subscribers use a single-subscriber inline slot (`_d1`) promoting to a `Set` only on the 2nd subscriber (a 10k-row `<For>` allocates zero subscriber Sets); effect subscribers use a lazy `Set`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead. `wrapSignal(base, { set, update? })` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal `_v` field and `.direct` by construction, so the bind-fast-path contract cannot be silently broken.
 
+## Features
+
+- signal&lt;T&gt;() — callable function with .set() and .update()
+- computed&lt;T&gt;() — auto-tracked memoized derivation
+- effect() / renderEffect() — side-effects with auto-tracking
+- batch() / nextTick() — write-grouping + flush awaiter
+- onCleanup() — register cleanup inside effects
+- watch(source, callback) — explicit reactive watcher
+- createSelector() — O(1) equality selector for keyed lists
+- cell&lt;T&gt;() — lighter alternative to signal() for direct subscribe()
+- createStore() / reconcile() / isStore() — deeply reactive proxy stores + structural diff
+- effectScope() / getCurrentScope() — scope-based lifecycle management
+- untrack() — read without subscribing
+- onSignalUpdate() / inspectSignal() / why() / getReactiveTrace() — debug instrumentation
+- setErrorHandler() — global hook for unhandled effect errors
+- Standalone — zero DOM, zero JSX, zero framework dependency
+- wrapSignal(base, &#123; set, update? &#125;) — writable side-effect facade (persistence / patch emission); forwards _v + .direct by construction
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { signal, computed, effect, batch, onCleanup, createStore, watch, untrack } from "@pyreon/reactivity"
+
+// signal<T>() — callable function, NOT .value getter/setter
+const count = signal(0)
+count()              // read (subscribes)
+count.set(5)         // write
+count.update(n => n + 1)  // derive
+count.peek()         // read WITHOUT subscribing
+
+// computed<T>() — auto-tracked, memoized
+const doubled = computed(() => count() * 2)
+
+// effect() — re-runs when dependencies change
+const dispose = effect(() => {
+  console.log("Count:", count())
+  onCleanup(() => console.log("cleaning up"))
+})
+
+// batch() — group 3+ writes into a single notification pass
+batch(() => {
+  count.set(10)
+  count.set(20)  // subscribers fire once, with 20
+})
+
+// watch(source, callback) — explicit dependency tracking
+watch(() => count(), (next, prev) => {
+  console.log(`changed from ${prev} to ${next}`)
+})
+
+// createStore() — deeply reactive object (proxy-based)
+const store = createStore({ todos: [{ text: 'Learn Pyreon', done: false }] })
+store.todos[0].done = true  // fine-grained update, no immer needed
+
+// untrack() — read signals without subscribing
+effect(() => {
+  const current = count()
+  const other = untrack(() => otherSignal())  // won't re-run when otherSignal changes
+})
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,71 @@ description: "Signal-aware reactive transforms — filter, map, sortBy, groupBy,
 
 Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.
 
+## Features
+
+- Every function overloaded: Signal&lt;T[]&gt; → Computed, T[] → plain
+- 37 functions across 6 categories: collections (21), aggregation (8), operators (5), timing (2), search (1), pipe (1)
+- pipe(source, ...ops) composes transforms left-to-right
+- Namespaced rx object for dot-notation usage (rx.filter, rx.map, etc.)
+- Individual named exports for tree-shaking
+- Timing operators: debounce and throttle for signal emissions
+- search() — case-insensitive substring match across named string fields (positional keys arg)
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { signal } from '@pyreon/reactivity'
+import { rx, pipe, filter, sortBy, map, groupBy, take, sum, debounce, search } from '@pyreon/rx'
+
+interface User {
+  name: string
+  age: number
+  department: string
+  active: boolean
+}
+
+const users = signal<User[]>([
+  { name: 'Alice', age: 30, department: 'eng', active: true },
+  { name: 'Bob', age: 25, department: 'eng', active: false },
+  { name: 'Charlie', age: 35, department: 'design', active: true },
+])
+
+// Signal input → Computed output (auto-tracks):
+const activeUsers = rx.filter(users, u => u.active)     // Computed<User[]>
+const sorted = rx.sortBy(activeUsers, 'name')            // Computed<User[]>
+const top5 = rx.take(sorted, 5)                          // Computed<User[]>
+
+// Aggregation:
+const totalAge = rx.sum(users, u => u.age)               // Computed<number>
+const count = rx.count(activeUsers)                       // Computed<number>
+
+// Grouping:
+const byDept = rx.groupBy(users, u => u.department)      // Computed<Record<string, User[]>>
+
+// Pipe — compose left-to-right:
+const result = pipe(
+  users,
+  filter(u => u.active),
+  sortBy('name'),
+  map(u => u.name),
+)  // Computed<string[]> → ["Alice", "Charlie"]
+
+// Search — case-insensitive substring match across STRING fields.
+// 3rd arg is a positional keys array, NOT a { keys } options object.
+const query = signal('')
+const matches = search(users, query, ['name', 'department'])
+
+// Timing — debounce/throttle a SIGNAL value (returns ReadableSignal +
+// dispose; value-level, not collection operators; NOT auto-cleaned):
+const debounced = debounce(users, 300)    // ReadableSignal<User[]> & { dispose }
+const throttled = rx.throttle(users, 100) // ReadableSignal<User[]> & { dispose }
+
+// Plain input → plain output (no signals):
+const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

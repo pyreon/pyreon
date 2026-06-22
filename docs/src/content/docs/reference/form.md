@@ -9,6 +9,101 @@ description: "Signal-based form management with fields, validation, arrays, and 
 
 Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`, `dirty`) is its own `Signal<T>` so templates only re-run for the slice they read. First-class schema validation (plug in `zodSchema` / `valibotSchema` / `arktypeSchema` from `@pyreon/validation`), per-field `validateOn: blur | change | submit`, async validators with optional `debounceMs` and version-based stale-result discarding, cross-field validation via `(value, allValues) => …`, dynamic `useFieldArray` with stable keys for keyed rendering, and typed `useWatch` overloads for single / multi / all-field reactive watchers.
 
+## Features
+
+- Per-field fine-grained signals (value, error, touched, dirty independent)
+- useForm / useField / useFieldArray / useWatch / useFormState
+- FormProvider + useFormContext — no prop drilling
+- Per-field and schema-level validation (Zod / Valibot / ArkType via `@pyreon/validation`)
+- validateOn: 'blur' | 'change' | 'submit' — default 'blur'
+- Async validators with optional debounceMs + version-based stale-result discard
+- Cross-field validation — validator receives `(value, allValues)`
+- useFieldArray: append / prepend / insert / remove / update / move / swap / replace with stable keys
+- Server-side errors: setFieldError / setErrors / clearErrors
+- `register({ type: "checkbox" | "number" })` — type-aware input bindings
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { useForm, useField, useFieldArray, useWatch, useFormState, FormProvider } from '@pyreon/form'
+import { zodSchema } from '@pyreon/validation/zod'
+import { z } from 'zod'
+
+// 1. useForm — entry point. initialValues is the single source of truth
+//    for field keys + types. onSubmit receives validated values.
+const form = useForm({
+  initialValues: { email: '', password: '', remember: false, tags: [] as string[] },
+  validators: {
+    email: (v) => (!v ? 'Required' : undefined),
+    // Cross-field: validator receives (value, allValues)
+    password: (v, all) =>
+      v.length < 8 ? 'Too short' : v === all.email ? 'Password must differ from email' : undefined,
+  },
+  schema: zodSchema(z.object({
+    email: z.string().email(),
+    password: z.string().min(8),
+  })),
+  validateOn: 'blur',    // 'blur' (default) | 'change' | 'submit'
+  debounceMs: 300,       // optional — stale async results are discarded via version counter
+  onSubmit: async (values) => { await api.login(values) },
+})
+
+// 2. register() — bind an input. Returns { value, onInput, onBlur } and,
+//    for type: 'checkbox', also a `checked` accessor.
+<form onSubmit={form.handleSubmit}>
+  <input {...form.register('email')} />
+  <input type="password" {...form.register('password')} />
+  <input type="checkbox" {...form.register('remember', { type: 'checkbox' })} />
+</form>
+
+// 3. useField — extract one field's state for isolated components.
+//    `hasError` / `showError` are computeds so you don't recompute
+//    the touched-AND-error condition at every call site.
+function EmailField({ form }: { form: typeof form }) {
+  const field = useField(form, 'email')
+  return (
+    <>
+      <input {...field.register()} />
+      {() => field.showError() && <span class="error">{field.error()}</span>}
+    </>
+  )
+}
+
+// 4. useFieldArray — dynamic arrays with stable keys for <For>.
+const tags = useFieldArray<string>(['typescript'])
+tags.append('pyreon')
+tags.prepend('signals')
+tags.insert(1, 'reactive')
+tags.move(0, 2)
+tags.swap(0, 1)
+tags.remove(0)
+// tags.items() → FieldArrayItem<string>[] — { key, value: Signal<T> }
+// Use the stable key in <For by={i => i.key}> so re-renders don't thrash.
+
+// 5. useWatch — typed overloads: single field → Signal<T>,
+//    multiple fields → [Signal<A>, Signal<B>], no args → Computed<TValues>.
+const email = useWatch(form, 'email')          // Signal<string>
+const [first, last] = useWatch(form, ['firstName', 'lastName'])
+const everything = useWatch(form)              // Computed<TValues>
+
+// 6. useFormState — derived form-level summary. Pass a selector to avoid
+//    re-rendering when unrelated fields move.
+const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.isDirty)
+
+// 7. FormProvider / useFormContext — skip prop-drilling across deep trees.
+<FormProvider form={form}>
+  <DeepInputs />
+</FormProvider>
+// Inside DeepInputs: const form = useFormContext<MyValues>()
+
+// 8. Server errors — setFieldError / setErrors / clearErrors after a
+//    failed submit. Does NOT touch touched state, so the error shows
+//    regardless of blur status.
+form.setErrors({ email: 'Already registered' })
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

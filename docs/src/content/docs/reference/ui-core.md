@@ -9,6 +9,52 @@ description: "Unified `PyreonUI` provider (theme + mode + config), `useMode()` h
 
 Foundation layer for the Pyreon UI system. `PyreonUI` is the single provider replacing the previous theme / mode / config split — it accepts a theme, a `mode` of `"light" | "dark" | "system"`, and an optional `inversed` flip, then auto-detects OS preference via `prefers-color-scheme` when `mode="system"`. `useMode()` returns the resolved mode as a reactive signal. The package also exposes the `init()` escape hatch (called internally by `PyreonUI` but available for SSR / test setups), the static `HTML_TAGS` / `HTML_TEXT_TAGS` lists used by the bases, and zero-dep utilities (`get`, `set`, `merge`, `pick`, `omit`, `throttle`, `isEmpty`, `isEqual`).
 
+## Features
+
+- PyreonUI(&#123; theme, mode, inversed &#125;) — single provider replaces 3 separate providers
+- mode="system" auto-detects OS preference via matchMedia and updates reactively
+- useMode() returns Signal&lt;"light" | "dark"&gt; resolved against system preference + inversed
+- init() callable directly for custom environments (tests, SSR without PyreonUI)
+- init(&#123; cssVariables: true &#125;) — opt-in CSS-variables theming: theme becomes custom properties, dark/light is one attribute write (no re-render)
+- cssVariablesPrePaintScript() — blocking &lt;head&gt; script that sets the mode attribute on documentElement before first paint (FOUC fix)
+- enrichTheme() (re-exported from @pyreon/unistyle) merges user theme with defaults
+- Zero-dep utilities: get, set, merge, pick, omit, throttle, isEmpty, isEqual
+- HTML_TAGS / HTML_TEXT_TAGS constants drive Element / Text base tag dispatching
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import { PyreonUI, useMode } from '@pyreon/ui-core'
+import { enrichTheme } from '@pyreon/unistyle'
+
+// Single provider — wraps theme, mode, and config in one tree
+const theme = enrichTheme({
+  colors: { primary: '#3b82f6', secondary: '#6366f1' },
+  fonts: { body: 'Inter, sans-serif' },
+})
+
+const App = () => (
+  <PyreonUI theme={theme} mode="system">
+    <MyApp />
+  </PyreonUI>
+)
+
+// useMode() reads the resolved mode reactively
+function ThemeBadge() {
+  const mode = useMode()
+  return <div class={mode() === 'dark' ? 'badge-dark' : 'badge-light'}>{mode()}</div>
+}
+
+// inversed flips the resolved mode (light → dark and vice versa)
+const InvertedSection = () => (
+  <PyreonUI inversed>
+    <Sidebar />
+  </PyreonUI>
+)
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |

@@ -9,6 +9,17 @@ description: "Five foundational layout primitives — Element, Text, List, Overl
 
 The structural layer every styled / rocketstyle component renders through. `Element` is the responsive flexbox block (direction / alignX / alignY / gap / block + before/after content slots); `Text` is inline typography; `List` is a flowing-children container with the four-overload Iterator data API; `Overlay` is a positioned layer with backdrop driven by `useOverlay` (viewport flip, ESC, click-outside, scroll tracking, hover delay — never reimplement this); `Portal` renders children outside the DOM hierarchy into a per-instance wrapper. Element has a 2026-Q2 simple-path fast path that inlines the Wrapper helper for non-compound, non-needsFix tags (31-45% faster mount) — its rendered VNode then exposes the HTML tag as `props.as` and layout under `props.$element.{...}` instead of flat props.
 
+## Features
+
+- Element — responsive flexbox block: direction / alignX / alignY / gap / block, beforeContent / afterContent slots, equalBeforeAfter (ResizeObserver-tracked)
+- Text — inline typography primitive
+- List — flowing-children container; data via the four-overload Iterator API
+- Overlay + useOverlay — positioned layer (dropdown/modal/tooltip) with viewport flip, ESC, click-outside, scroll tracking, hover delay
+- Portal — renders children into a per-instance wrapper inside a DOMLocation (default document.body)
+- Iterator — Simple / Object / Children / Loose overloads keep primitive-vs-object iteration modes type-safe
+- Util — bare utility primitive; Provider re-exported from @pyreon/unistyle
+- Simple-path fast path: non-compound Elements skip a component invocation + splitProps + mountChild
+
 ## Exports
 
 | Symbol | Kind | Summary |

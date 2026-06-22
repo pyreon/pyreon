@@ -9,6 +9,17 @@ description: "CSS-in-JS — styled() / css / keyframes / createGlobalStyle, reac
 
 Pyreon's CSS-in-JS engine. `styled('div')` is a tagged template that returns a `ComponentFn` injecting a generated class; `css` is a tagged template returning a LAZY `CSSResult` resolved on use (not a string); `keyframes` returns the generated animation-name string. Tagged-template interpolations receive the component's `props` (and the theme) so styles can be signal-driven — function interpolations flip the component onto the dynamic resolve path (`isDynamic`). A singleton `StyleSheet` with FNV-1a hashing dedupes and supports SSR; `createSheet()` makes an isolated instance. Theme is delivered through a REACTIVE context — `useTheme()` snapshots at call time, `useThemeAccessor()` returns the raw `() => Theme` accessor for tracking inside effects so whole-theme swaps re-resolve without remounting.
 
+## Features
+
+- styled('div')`...` / styled(Component)`...` / styled.div`...` (Proxy) — component factory with `as` polymorphism + $-transient props
+- css`...` — lazy CSSResult, resolved on use (NOT a string)
+- keyframes`...` — returns the generated @keyframes animation-name string
+- createGlobalStyle`...` — returns a ComponentFn that injects global CSS when mounted
+- useCSS(template, props?, boost?) — resolve a CSSResult to a class name inside a component
+- Reactive theming — useTheme() snapshot vs useThemeAccessor() accessor; ThemeProvider merges nested
+- Singleton StyleSheet (FNV-1a dedup, SSR) + createSheet() for isolated instances
+- buildProps / filterProps — $-transient + shouldForwardProp DOM prop forwarding (descriptor-preserving)
+
 ## Exports
 
 | Symbol | Kind | Summary |

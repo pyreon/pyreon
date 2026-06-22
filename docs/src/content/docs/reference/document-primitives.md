@@ -9,6 +9,59 @@ description: "18 rocketstyle document components — render in browser AND expor
 
 18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.
 
+## Features
+
+- 18 primitives covering structure, text, lists, tables, code, layout
+- Same component tree renders in browser AND exports to 14+ formats
+- extractDocNode(templateFn) — one-step extraction (recommended)
+- createDocumentExport(templateFn) — two-step form (backward compat)
+- DocDocument accepts reactive accessors for title / author / subject
+- PR #197 fix: extractDocumentTree now calls rocketstyle components to read post-attrs metadata
+- Layout props in .attrs() (direction / gap), CSS in .theme()
+
+## Complete example
+
+A full, end-to-end usage of the package:
+
+```tsx
+import {
+  DocDocument, DocPage, DocSection, DocRow, DocColumn,
+  DocHeading, DocText, DocLink, DocImage, DocTable,
+  DocList, DocListItem, DocCode, DocDivider, DocSpacer,
+  DocButton, DocQuote, DocPageBreak,
+  extractDocNode,
+} from '@pyreon/document-primitives'
+import { download } from '@pyreon/document'
+
+interface Resume { name: string; headline: string }
+
+function ResumeTemplate(props: { resume: () => Resume }) {
+  return (
+    // title and author accept reactive accessors — extractDocNode
+    // resolves them at extraction time, so each export click reads
+    // the LIVE value from the underlying signal
+    <DocDocument
+      title={() => `${props.resume().name} — Resume`}
+      author={() => props.resume().name}
+    >
+      <DocPage>
+        <DocSection>
+          <DocHeading level="h1">{props.resume().name}</DocHeading>
+          <DocText>{props.resume().headline}</DocText>
+        </DocSection>
+      </DocPage>
+    </DocDocument>
+  )
+}
+
+// One-step extraction → render to any of 14+ formats
+const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
+await download(tree, 'resume.pdf')
+await download(tree, 'resume.docx')
+await download(tree, 'resume.html')
+await download(tree, 'resume.md')
+```
+
 ## Exports
 
 | Symbol | Kind | Summary |
