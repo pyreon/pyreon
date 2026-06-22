@@ -120,18 +120,14 @@ export class DiscriminatedUnionSchema<
       )
       return input
     }
-    const r = member['~standard'].validate(input)
-    if (r instanceof Promise) {
+    // The discriminant has selected the one definitive member — validate it
+    // against the shared ctx (its issues should surface), zero extra alloc.
+    const v = member._runInto(input, ctx)
+    if (v instanceof Promise) {
       ctx.issues.push({ message: '[Pyreon] async member in sync parse — use parseAsync', path: ctx.path })
       return input
     }
-    if ('issues' in r && r.issues) {
-      for (const issue of r.issues) {
-        ctx.issues.push({ ...issue, path: [...ctx.path, ...(issue.path ?? [])] })
-      }
-      return input
-    }
-    return r.value
+    return v
   }
 }
 

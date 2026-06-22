@@ -30,22 +30,18 @@ export class RecordSchema<V> extends SchemaBase<Record<string, V>> {
     for (const key of Object.keys(source)) {
       ctx.path.push(key)
       try {
-        const r = this.value['~standard'].validate(source[key])
-        if (r instanceof Promise) {
+        const before = ctx.issues.length
+        const v = this.value._runInto(source[key], ctx)
+        if (v instanceof Promise) {
           ctx.issues.push({ message: '[Pyreon] async value schema in sync parse — use parseAsync', path: ctx.path })
           continue
         }
-        if ('issues' in r && r.issues) {
-          for (const issue of r.issues) {
-            ctx.issues.push({ ...issue, path: [...ctx.path, ...(issue.path ?? [])] })
-          }
-          continue
-        }
+        if (ctx.issues.length !== before) continue
         // Prototype-pollution-safe assignment.
         if (key === '__proto__') {
-          Object.defineProperty(out, key, { value: r.value, enumerable: true, writable: true, configurable: true })
+          Object.defineProperty(out, key, { value: v, enumerable: true, writable: true, configurable: true })
         } else {
-          out[key] = r.value
+          out[key] = v
         }
       } finally {
         ctx.path.pop()

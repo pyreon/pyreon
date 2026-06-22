@@ -33,7 +33,10 @@ export function makeIssue(opts: {
 }): PyreonIssue {
   const out: PyreonIssue = {
     message: opts.message,
-    path: opts.path,
+    // SNAPSHOT the path — `ctx.path` is a single array mutated (push/pop)
+    // throughout the parse, so an issue must capture a copy, not a live
+    // reference (otherwise it reads back as `[]` after the parse unwinds).
+    path: opts.path.slice(),
   }
   if (opts.code !== undefined) (out as { code?: string }).code = opts.code
   if (opts.key !== undefined) (out as { key?: string }).key = opts.key

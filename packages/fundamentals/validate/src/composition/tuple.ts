@@ -45,17 +45,12 @@ export class TupleSchema<T extends readonly AnySchema[]> extends SchemaBase<Infe
     for (let i = 0; i < this.items.length; i++) {
       ctx.path.push(i)
       try {
-        const r = this.items[i]!['~standard'].validate(input[i])
-        if (r instanceof Promise) {
+        const before = ctx.issues.length
+        const v = this.items[i]!._runInto(input[i], ctx)
+        if (v instanceof Promise) {
           ctx.issues.push({ message: '[Pyreon] async element in sync parse — use parseAsync', path: ctx.path })
-          continue
-        }
-        if ('issues' in r && r.issues) {
-          for (const issue of r.issues) {
-            ctx.issues.push({ ...issue, path: [...ctx.path, ...(issue.path ?? [])] })
-          }
-        } else {
-          out.push(r.value)
+        } else if (ctx.issues.length === before) {
+          out.push(v)
         }
       } finally {
         ctx.path.pop()

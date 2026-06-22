@@ -186,29 +186,21 @@ function assignSafe(target: Record<string, unknown>, key: string, value: unknown
 }
 
 /**
- * Call a child schema's compiled validator with the PARENT's ctx so
- * paths + issues merge into one place. Internal to ObjectSchema (and
- * ArraySchema below).
+ * Run a child schema's compiled validator against the PARENT's shared
+ * ctx (the caller has already pushed the field key onto `ctx.path`, so
+ * issues get the correct path with zero per-field allocation). Returns
+ * the validated value; on async-in-sync it records an issue.
  */
 function runFieldValidator<T>(schema: Schema<T>, input: unknown, parentCtx: ParseCtx): unknown {
-  const r = schema['~standard'].validate(input)
-  if (r instanceof Promise) {
+  const value = schema._runInto(input, parentCtx)
+  if (value instanceof Promise) {
     parentCtx.issues.push({
       message: '[Pyreon] async schema used in sync parse — use parseAsync',
       path: parentCtx.path,
     })
     return input
   }
-  if ('issues' in r && r.issues) {
-    for (const issue of r.issues) {
-      parentCtx.issues.push({
-        ...issue,
-        path: [...parentCtx.path, ...(issue.path ?? [])],
-      })
-    }
-    return input
-  }
-  return r.value
+  return value
 }
 
 export function object<TShape extends Shape>(shape: TShape): ObjectSchema<TShape> {
