@@ -292,3 +292,67 @@ test.describe('usePreloadFont — runtime font preload', () => {
     expect(matches.length).toBe(1)
   })
 })
+
+// ─── Custom-Property Style Extraction (CPSE) ────────────────────────────────────
+
+test.describe('CPSE — cpseStyled end-to-end (SSR + hydration + dynamic)', () => {
+  test('SSR emits inline custom properties (NOT baked values); the rule is value-agnostic', async ({
+    page,
+  }) => {
+    const html = await (await page.goto('/cpse-probe'))!.text()
+    // SSR HTML: the elements carry inline custom properties, and the value is
+    // NOT baked into a `padding:` declaration. (In dev, styler injects the
+    // shared CSS rule client-side, so the rule itself is asserted from the live
+    // stylesheet below — not the raw SSR HTML.)
+    expect(html).toContain('--u-') // inline custom property on the elements
+    expect(html).toContain('2.25rem') // box-36's value carried as the inline var
+    expect(html).not.toContain('padding: 2.25rem') // NOT value-baked…
+    expect(html).not.toContain('padding:2.25rem')
+
+    // The shared CSS rule is value-agnostic — it references a custom property.
+    await page.getByTestId('cpse-probe').waitFor()
+    const hasVarRule = await page.evaluate(() => {
+      for (const ss of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList
+        try {
+          rules = ss.cssRules
+        } catch {
+          continue
+        }
+        for (const r of Array.from(rules)) if (r.cssText.includes('var(--u-')) return true
+      }
+      return false
+    })
+    expect(hasVarRule).toBe(true)
+  })
+
+  test('O(N)→O(1): N distinct values share ONE class, each computes its own padding', async ({
+    page,
+  }) => {
+    await page.goto('/cpse-probe')
+    await page.getByTestId('cpse-probe').waitFor()
+
+    const boxes = ['box-8', 'box-16', 'box-24', 'box-36']
+    const expected = ['8px', '16px', '24px', '36px']
+    const classes: string[] = []
+    for (let i = 0; i < boxes.length; i++) {
+      const el = page.getByTestId(boxes[i]!)
+      // Each distinct value computes its own padding (parity with value-baking).
+      await expect(el).toHaveCSS('padding-top', expected[i]!)
+      classes.push((await el.getAttribute('class'))!.trim())
+    }
+    // …yet all four share ONE value-agnostic class.
+    expect(new Set(classes).size).toBe(1)
+  })
+
+  test('dynamic: a signal-driven box updates its computed padding on click', async ({ page }) => {
+    await page.goto('/cpse-probe')
+    const dyn = page.getByTestId('box-dyn')
+    await expect(dyn).toHaveCSS('padding-top', '8px')
+    await expect(page.getByTestId('pad-val')).toHaveText('8')
+
+    await page.getByTestId('bump').click()
+    await expect(page.getByTestId('pad-val')).toHaveText('16') // signal updated (hydrated)
+    await expect(dyn).toHaveCSS('padding-top', '16px') // inline var patched in place
+  })
+})
