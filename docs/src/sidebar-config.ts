@@ -1,11 +1,19 @@
-// Originally ported from the legacy VitePress site's
-// `sidebar: { '/docs/': [...] }` config (now removed in the cutover).
+// Single source of truth for the docs nav. The runtime `<Sidebar>` reads
+// this directly so the order + grouping is explicit.
 //
-// Single source of truth for the docs nav. The runtime `<Sidebar>`
-// reads this directly so the order + grouping is explicit. Adding a
-// new collection entry without updating this file just means the page
-// exists but isn't linked from the sidebar (a follow-up doctor check
-// could lint this).
+// IA model (Diátaxis): groups carry an optional `tier` so the sidebar
+// expresses a learning JOURNEY, not a package index. A tier header is
+// rendered once above the first group of each tier:
+//
+//   Learn    → learning-oriented (Tutorial): start here, zero→app
+//   Guides   → task-oriented (How-to): "how do I do X"
+//   Migrate  → coming from another framework
+//   Reference→ information-oriented: per-package API reference
+//
+// (Recipes / Examples / Troubleshooting / Concepts tiers are introduced by
+// later docs-overhaul stages as their content lands.) Slugs are unchanged
+// from the package-centric layout — this is a pure re-grouping, so no URL
+// moves and no redirects are needed.
 
 export interface SidebarLink {
   text: string
@@ -15,12 +23,20 @@ export interface SidebarLink {
 export interface SidebarGroup {
   text: string
   collapsed?: boolean
+  /**
+   * Diátaxis tier this group belongs to. The renderer prints the tier
+   * label once, above the first group that carries it. Omit to attach a
+   * group to the current (previous) tier.
+   */
+  tier?: string
   items: SidebarLink[]
 }
 
 export const SIDEBAR: SidebarGroup[] = [
+  // ─── LEARN (learning-oriented) ──────────────────────────────────────────
   {
-    text: 'Getting Started',
+    text: 'Get Started',
+    tier: 'Learn',
     items: [
       { text: 'Overview', slug: '' },
       { text: 'Why Pyreon', slug: 'why-pyreon' },
@@ -30,37 +46,54 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
     ],
   },
+
+  // ─── GUIDES (task-oriented how-tos) ─────────────────────────────────────
+  {
+    text: 'Guides',
+    tier: 'Guides',
+    collapsed: false,
+    items: [
+      // reactivity & rendering
+      { text: 'Signal reads and writes', slug: 'patterns/signal-writes' },
+      { text: 'Keyed list rendering', slug: 'patterns/keyed-lists' },
+      { text: 'Reactive context', slug: 'patterns/reactive-context' },
+      { text: 'Reactive spread', slug: 'patterns/reactive-spread' },
+      { text: 'Dev-mode warnings', slug: 'patterns/dev-warnings' },
+      // state
+      { text: 'State management', slug: 'patterns/state-management' },
+      { text: 'Controlled / uncontrolled', slug: 'patterns/controllable-state' },
+      // forms
+      { text: 'Form fields', slug: 'patterns/form-fields' },
+      { text: 'Dynamic form arrays', slug: 'patterns/dynamic-fields' },
+      // routing & data
+      { text: 'Router setup', slug: 'patterns/routing-setup' },
+      { text: 'Data fetching', slug: 'patterns/data-fetching' },
+      // styling
+      { text: 'Styling & theming', slug: 'patterns/styler-theming' },
+      // SSR / islands
+      { text: 'SSR-safe hooks', slug: 'patterns/ssr-safe-hooks' },
+      { text: 'Islands', slug: 'patterns/islands' },
+      // DOM & UI
+      { text: 'Event listeners', slug: 'patterns/event-listeners' },
+      { text: 'Imperative toasts', slug: 'patterns/imperative-toasts' },
+      { text: 'Multi-platform shared code', slug: 'patterns/multiplatform' },
+    ],
+  },
+
+  // ─── MIGRATE ────────────────────────────────────────────────────────────
   {
     text: 'Migrating to Pyreon',
+    tier: 'Migrate',
     items: [
       { text: 'Coming from React', slug: 'migrating-from-react' },
       { text: 'Coming from Solid', slug: 'migrating-from-solid' },
     ],
   },
-  {
-    text: 'Patterns',
-    collapsed: false,
-    items: [
-      { text: 'Dev-mode warnings', slug: 'patterns/dev-warnings' },
-      { text: 'Signal reads and writes', slug: 'patterns/signal-writes' },
-      { text: 'Keyed list rendering', slug: 'patterns/keyed-lists' },
-      { text: 'Reactive context', slug: 'patterns/reactive-context' },
-      { text: 'SSR-safe hooks', slug: 'patterns/ssr-safe-hooks' },
-      { text: 'Event listeners', slug: 'patterns/event-listeners' },
-      { text: 'Controlled / uncontrolled', slug: 'patterns/controllable-state' },
-      { text: 'Form fields', slug: 'patterns/form-fields' },
-      { text: 'Dynamic form arrays', slug: 'patterns/dynamic-fields' },
-      { text: 'Router setup', slug: 'patterns/routing-setup' },
-      { text: 'Data fetching', slug: 'patterns/data-fetching' },
-      { text: 'State management', slug: 'patterns/state-management' },
-      { text: 'Styling & theming', slug: 'patterns/styler-theming' },
-      { text: 'Imperative toasts', slug: 'patterns/imperative-toasts' },
-      { text: 'Islands', slug: 'patterns/islands' },
-      { text: 'Reactive spread', slug: 'patterns/reactive-spread' },
-    ],
-  },
+
+  // ─── REFERENCE (information-oriented, per package) ──────────────────────
   {
     text: 'Core Framework',
+    tier: 'Reference',
     collapsed: false,
     items: [
       { text: 'Reactivity', slug: 'reactivity' },
@@ -80,15 +113,19 @@ export const SIDEBAR: SidebarGroup[] = [
     ],
   },
   {
-    text: 'Compatibility Layers',
+    text: 'Meta-Framework (Zero)',
     collapsed: false,
     items: [
-      { text: 'Native marker contract', slug: 'native-compat' },
-      { text: 'React Compat', slug: 'react-compat' },
-      { text: 'Preact Compat', slug: 'preact-compat' },
-      { text: 'Solid Compat', slug: 'solid-compat' },
-      { text: 'Svelte Compat', slug: 'svelte-compat' },
-      { text: 'Vue Compat', slug: 'vue-compat' },
+      { text: 'Zero', slug: 'zero' },
+      { text: 'SSR & ISR', slug: 'ssr' },
+      { text: 'SSG', slug: 'ssg' },
+      { text: 'Images & Fonts', slug: 'images-and-fonts' },
+      { text: 'Create Zero', slug: 'create-zero' },
+      { text: 'Zero CLI', slug: 'zero-cli' },
+      { text: 'Zero Content (markdown)', slug: 'zero-content' },
+      { text: 'Live Examples (<Example>)', slug: 'live-examples' },
+      { text: 'Meta', slug: 'meta' },
+      { text: 'Storybook', slug: 'storybook' },
     ],
   },
   {
@@ -113,22 +150,6 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Rx', slug: 'rx' },
       { text: 'URL State', slug: 'url-state' },
       { text: 'Drag & Drop', slug: 'dnd' },
-    ],
-  },
-  {
-    text: 'Meta-Framework',
-    collapsed: false,
-    items: [
-      { text: 'Zero', slug: 'zero' },
-      { text: 'SSR & ISR', slug: 'ssr' },
-      { text: 'SSG', slug: 'ssg' },
-      { text: 'Images & Fonts', slug: 'images-and-fonts' },
-      { text: 'Create Zero', slug: 'create-zero' },
-      { text: 'Zero CLI', slug: 'zero-cli' },
-      { text: 'Zero Content (markdown)', slug: 'zero-content' },
-      { text: 'Live Examples (<Example>)', slug: 'live-examples' },
-      { text: 'Meta', slug: 'meta' },
-      { text: 'Storybook', slug: 'storybook' },
     ],
   },
   {
@@ -161,6 +182,18 @@ export const SIDEBAR: SidebarGroup[] = [
     ],
   },
   {
+    text: 'Compatibility Layers',
+    collapsed: true,
+    items: [
+      { text: 'Native marker contract', slug: 'native-compat' },
+      { text: 'React Compat', slug: 'react-compat' },
+      { text: 'Preact Compat', slug: 'preact-compat' },
+      { text: 'Solid Compat', slug: 'solid-compat' },
+      { text: 'Svelte Compat', slug: 'svelte-compat' },
+      { text: 'Vue Compat', slug: 'vue-compat' },
+    ],
+  },
+  {
     text: 'Developer Tools',
     collapsed: true,
     items: [
@@ -172,9 +205,7 @@ export const SIDEBAR: SidebarGroup[] = [
   {
     // Experimental — the PMTC multi-target compiler (TSX → SwiftUI / Compose)
     // is demo-quality, not production-ready. Kept discoverable but collapsed
-    // and last so it stays out of the newcomer onboarding path. Consolidates
-    // every native/PMTC entry (was scattered across Getting Started +
-    // Meta-Framework) into one clearly-labeled group.
+    // and last so it stays out of the newcomer onboarding path.
     text: 'Multi-Platform (experimental)',
     collapsed: true,
     items: [

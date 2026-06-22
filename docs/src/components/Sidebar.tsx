@@ -89,8 +89,19 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <nav class="pyreon-sidebar" aria-label="Documentation sidebar">
-      {SIDEBAR.map((group) => (
-        <div class="pyreon-sidebar__group">
+      {SIDEBAR.map((group, i) => {
+        // Render a Diátaxis tier header once, above the first group of each
+        // tier (Learn / Guides / Migrate / Reference). Groups with no `tier`
+        // attach to the previous tier and get no header.
+        const showTier = !!group.tier && group.tier !== SIDEBAR[i - 1]?.tier
+        return (
+          <>
+            {showTier && (
+              <div class="pyreon-sidebar__tier" role="presentation">
+                {group.tier}
+              </div>
+            )}
+            <div class="pyreon-sidebar__group">
           <button
             type="button"
             class="pyreon-sidebar__group-title"
@@ -148,8 +159,10 @@ export function Sidebar(props: SidebarProps) {
               })}
             </ul>
           </div>
-        </div>
-      ))}
+            </div>
+          </>
+        )
+      })}
     </nav>
   )
 }
