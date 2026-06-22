@@ -1413,6 +1413,133 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertNil(pay.purchasing)
         pay.restore() // safe no-op
     }
+
+    // MARK: - PyreonWebSocket (useWebSocket realtime container)
+    //
+    // These cover the PURE state machine + the lifecycle idempotency
+    // (`connect` / `close` guard flags). The live `URLSessionWebSocketTask`
+    // edge is constructed by `connect(to:)` but NOT exercised here — frames
+    // flowing over a real server is device-loop territory, the same
+    // "monitor constructed, not asserted" boundary PyreonNetworkStatus uses.
+
+    /// A fresh container is empty + disconnected.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketInitialState() throws {
+        let ws = PyreonWebSocket()
+        XCTAssertNil(ws.lastMessage)
+        XCTAssertTrue(ws.messages.isEmpty)
+        XCTAssertFalse(ws.isConnected)
+        XCTAssertNil(ws.error)
+        XCTAssertFalse(ws.isOpen)
+    }
+
+    /// `opened()` flips `isConnected` true and clears any prior error.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketOpenedFlips() throws {
+        let ws = PyreonWebSocket()
+        ws.opened()
+        XCTAssertTrue(ws.isConnected)
+        XCTAssertNil(ws.error)
+    }
+
+    /// `received(_:)` sets `lastMessage` + accumulates `messages` in order.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketReceivedAccumulates() throws {
+        let ws = PyreonWebSocket()
+        ws.received("a")
+        ws.received("b")
+        XCTAssertEqual(ws.lastMessage, "b")
+        XCTAssertEqual(ws.messages, ["a", "b"])
+    }
+
+    /// `failed(_:)` sets `error`, flips `isConnected` false, and leaves the
+    /// transcript in place (stale-while-error).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketFailedSetsErrorAndDisconnects() throws {
+        struct SocketError: Error, Equatable {}
+        let ws = PyreonWebSocket()
+        ws.opened()
+        ws.received("hi")
+        ws.failed(SocketError())
+        XCTAssertTrue(ws.error is SocketError)
+        XCTAssertFalse(ws.isConnected)
+        XCTAssertEqual(ws.lastMessage, "hi")
+        XCTAssertEqual(ws.messages, ["hi"])
+    }
+
+    /// `closed()` flips `isConnected` false but keeps the transcript.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketClosedKeepsTranscript() throws {
+        let ws = PyreonWebSocket()
+        ws.opened()
+        ws.received("x")
+        ws.closed()
+        XCTAssertFalse(ws.isConnected)
+        XCTAssertEqual(ws.messages, ["x"])
+    }
+
+    /// `opened()` after a `failed(_:)` clears the prior error.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketOpenedClearsPriorError() throws {
+        struct SocketError: Error {}
+        let ws = PyreonWebSocket()
+        ws.failed(SocketError())
+        XCTAssertNotNil(ws.error)
+        ws.opened()
+        XCTAssertNil(ws.error)
+        XCTAssertTrue(ws.isConnected)
+    }
+
+    /// `close()` before `connect(to:)` is a safe no-op (releases nothing).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketCloseBeforeConnectIsNoop() throws {
+        let ws = PyreonWebSocket()
+        ws.close() // must not crash
+        XCTAssertFalse(ws.isOpen)
+        XCTAssertFalse(ws.isConnected)
+    }
+
+    /// `send(_:)` before `connect(to:)` is a safe no-op (nil task).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketSendBeforeConnectIsNoop() throws {
+        let ws = PyreonWebSocket()
+        ws.send("dropped") // must not crash — no task wired yet
+        XCTAssertNil(ws.lastMessage)
+        XCTAssertFalse(ws.isConnected)
+    }
+
+    /// `connect(to:)` opens the lifecycle + the live task; `close()` ends it.
+    /// Idempotency + the real `URLSessionWebSocketTask` construction are
+    /// exercised; live frame flow is not (device-loop territory).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketConnectCloseLifecycle() throws {
+        let ws = PyreonWebSocket()
+        ws.connect(to: URL(string: "wss://example.invalid/socket")!)
+        XCTAssertTrue(ws.isOpen)
+        XCTAssertTrue(ws.isConnected) // opened() fired optimistically on resume
+        ws.connect(to: URL(string: "wss://example.invalid/other")!) // idempotent
+        XCTAssertTrue(ws.isOpen)
+        ws.close()
+        XCTAssertFalse(ws.isOpen)
+        XCTAssertFalse(ws.isConnected)
+        ws.close() // double-close is a safe no-op
+        XCTAssertFalse(ws.isOpen)
+    }
+
+    /// `connect → close → connect` re-opens cleanly (close resets the
+    /// lifecycle flag so the second connect isn't a stale no-op).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonWebSocketConnectCloseConnectCycle() throws {
+        let ws = PyreonWebSocket()
+        let url = URL(string: "wss://example.invalid/socket")!
+        ws.connect(to: url)
+        XCTAssertTrue(ws.isOpen)
+        ws.close()
+        XCTAssertFalse(ws.isOpen)
+        ws.connect(to: url) // must re-open; would no-op if close() didn't reset
+        XCTAssertTrue(ws.isOpen)
+        ws.close()
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
