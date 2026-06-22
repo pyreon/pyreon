@@ -20,7 +20,10 @@ export type PermissionValue<TContext = unknown> = boolean | PermissionPredicate<
 /**
  * A map of permission keys to their values.
  * Keys are dot-separated strings (e.g., 'posts.read', 'users.manage').
- * Wildcards are supported: 'posts.*' matches any 'posts.X' key.
+ * Wildcards: `'posts.*'` matches exactly one segment (`'posts.read'`, not
+ * `'posts.read.title'`); `'posts.**'` matches any depth below `posts`;
+ * `'*'` matches everything. Resolution is most-specific-first, so an exact or
+ * `**` deny overrides a broader subtree grant.
  */
 export type PermissionMap = Record<string, PermissionValue>
 
@@ -97,6 +100,30 @@ export interface Permissions {
    * ```
    */
   patch: (permissions: PermissionMap) => void
+
+  /**
+   * Remove all permissions (deny everything). Reactive reads update.
+   * Equivalent to `can.set({})` — e.g. on logout.
+   *
+   * @example
+   * ```tsx
+   * can.clear() // user logged out
+   * ```
+   */
+  clear: () => void
+
+  /**
+   * Throw if a permission is NOT granted — for loaders, route guards, and
+   * server actions where a denial should halt execution. Throws a
+   * `[Pyreon]`-prefixed error; otherwise returns void.
+   *
+   * @example
+   * ```tsx
+   * can.assert('posts.delete', post) // throws if denied
+   * await deletePost(post)
+   * ```
+   */
+  assert: (key: string, context?: unknown) => void
 
   /**
    * All currently granted permission keys (static true + predicates that exist).

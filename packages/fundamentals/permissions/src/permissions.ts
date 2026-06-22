@@ -20,29 +20,47 @@ function evaluate(value: PermissionValue, context?: unknown): boolean {
 }
 
 function resolve(map: Map<string, PermissionValue>, key: string, context?: unknown): boolean {
+  // Resolution is MOST-SPECIFIC-FIRST, so a specific exact/`**` deny overrides a
+  // broader subtree grant (and vice-versa) — the CASL `cannot`-over-`can` shape.
   // 1. Exact match
   const exact = map.get(key)
   if (exact !== undefined) {
     return evaluate(exact, context)
   }
 
-  // 2. Wildcard match — 'posts.read' matches 'posts.*'
   const dotIndex = key.lastIndexOf('.')
   if (dotIndex !== -1) {
-    const prefix = key.slice(0, dotIndex)
-    const wildcard = map.get(`${prefix}.*`)
-    if (wildcard !== undefined) {
-      return evaluate(wildcard, context)
+    const parent = key.slice(0, dotIndex)
+
+    // 2. Single-segment wildcard — 'posts.read' matches 'posts.*' (exactly one segment).
+    const single = map.get(`${parent}.*`)
+    if (single !== undefined) {
+      return evaluate(single, context)
+    }
+
+    // 3. Recursive subtree wildcards — 'posts.admin.delete' matches 'posts.admin.**'
+    //    then 'posts.**', most-specific ancestor first. `**` matches any depth
+    //    STRICTLY below the prefix (so 'posts.**' covers 'posts.x' and 'posts.x.y',
+    //    but the prefix 'posts' itself is matched by 'posts.*' / an exact 'posts').
+    let ancestor = parent
+    while (true) {
+      const recursive = map.get(`${ancestor}.**`)
+      if (recursive !== undefined) {
+        return evaluate(recursive, context)
+      }
+      const i = ancestor.lastIndexOf('.')
+      if (i === -1) break
+      ancestor = ancestor.slice(0, i)
     }
   }
 
-  // 3. Global wildcard
+  // 4. Global wildcard (matches any key, any depth)
   const global = map.get('*')
   if (global !== undefined) {
     return evaluate(global, context)
   }
 
-  // 4. No match → denied
+  // 5. No match → denied
   return false
 }
 
@@ -121,6 +139,19 @@ export function createPermissions(initial?: PermissionMap): Permissions {
       store.set(current)
       version.update((v) => v + 1)
     })
+  }
+
+  can.clear = (): void => {
+    batch(() => {
+      store.set(new Map())
+      version.update((v) => v + 1)
+    })
+  }
+
+  can.assert = (key: string, context?: unknown): void => {
+    if (!can(key, context)) {
+      throw new Error(`[Pyreon] permission denied: '${key}'`)
+    }
   }
 
   can.granted = computed(() => {

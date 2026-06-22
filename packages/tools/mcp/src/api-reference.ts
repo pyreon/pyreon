@@ -2859,10 +2859,19 @@ can.all('posts.read', 'posts.create')
 can.any('admin.users', 'posts.read')
 can.set({ 'admin.*': true })  // replace all
 can.patch({ 'posts.delete': true })  // merge`,
-    notes: 'Create a reactive permissions instance. Returns a callable object — `can(key, context?)` checks a permission reactively (reads as a signal in effects and JSX). Permissions can be booleans or predicate functions `(context?) => boolean`. Supports wildcard keys (`admin.*`). The instance exposes `.not()`, `.all()`, `.any()` for multi-checks, and `.set()` / `.patch()` for runtime updates. See also: PermissionsProvider, usePermissions.',
+    notes: 'Create a reactive permissions instance. Returns a callable object — `can(key, context?)` checks a permission reactively (reads as a signal in effects and JSX). Permissions can be booleans or predicate functions `(context?) => boolean`. Supports wildcard keys: `admin.*` (exactly one segment), `admin.**` (any depth below `admin`), `*` (everything); resolution is most-specific-first, so an exact or `**` deny overrides a broader subtree grant. The instance exposes `.not()`, `.all()`, `.any()` for multi-checks, `.assert()` to throw-on-deny, and `.set()` / `.patch()` / `.clear()` for runtime updates. See also: PermissionsProvider, usePermissions, can.assert.',
     mistakes: `- Reading \`can("key")\` outside a reactive scope and expecting updates — the check is a signal read, it only re-evaluates inside \`effect()\`, \`computed()\`, or JSX expression thunks
 - Using a static object instead of a predicate for context-dependent checks — \`'posts.update': true\` always passes, use \`(post) => post.authorId === userId()\` for ABAC
-- Forgetting that wildcard \`admin.*\` only matches one level — \`admin.users.list\` is NOT matched by \`admin.*\`, only \`admin.users\` is`,
+- Forgetting that \`admin.*\` only matches ONE segment — \`admin.users.list\` is NOT matched by \`admin.*\` (only \`admin.users\` is). Use \`admin.**\` to match any depth below \`admin\``,
+  },
+
+  'permissions/can.assert': {
+    signature: 'can.assert(key: string, context?: unknown) => void',
+    example: `// in a route loader / server action:
+can.assert('posts.delete', post) // throws if denied
+await deletePost(post)`,
+    notes: `Throw if a permission is NOT granted — the imperative companion to the reactive \`can()\` check, for route loaders, navigation guards, and server actions where a denial must halt execution. Throws a \`[Pyreon]\`-prefixed error (\`permission denied: '<key>'\`); returns void when granted. Evaluates predicates + wildcards exactly like \`can()\`. See also: createPermissions.`,
+    mistakes: '- Using `can.assert` inside JSX for conditional rendering — it throws; use the boolean `can(key)` in render and reserve `assert` for imperative guard code',
   },
 
   'permissions/PermissionsProvider': {
