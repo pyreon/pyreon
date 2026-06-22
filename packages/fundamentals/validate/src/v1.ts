@@ -6,22 +6,57 @@
  * validate schemas implement Standard Schema natively, so the DX
  * helpers work on them directly.
  *
- * v1 surface: primitives (string/number/boolean/literal/enum) +
- * composition (object/array) + modifiers (optional/nullable/default/
- * transform/refine/brand/describe/field). Out of scope for v1 (see
- * the plan file `.claude/plans/synchronous-chasing-puffin.md` for the
- * full follow-up list):
+ * Surface:
+ *   - primitives: string / number / boolean / bigint / date / literal /
+ *     enum / symbol / nan / null / undefined / void / any / unknown
+ *   - composition: object / array / union / discriminatedUnion / record /
+ *     tuple / map / set / intersection / lazy (recursive)
+ *   - object algebra: .pick / .omit / .partial / .extend / .merge / .keyof
+ *     + unknown-key policy (.strip / .strict / .passthrough)
+ *   - modifiers: optional / nullable / nullish / default / transform /
+ *     refine / brand / describe / field
+ *   - coercion: s.coerce.{string,number,boolean,date,bigint}
+ *   - email precision tiers (html5 / standard / rfc5322)
  *
- *   - tuple / record / union / discriminate / intersection
- *   - bigint / date / null / undefined / void primitives
- *   - .pick / .omit / .partial / .required / .extend / .merge / .coerce
- *   - compiler-emit for typia-class wall-clock
+ * Still open (tracked follow-ups): `.required` / `.catchall`, and
+ * compiler-emit for typia-class wall-clock (the JIT path needed to beat
+ * ArkType on valid-parse).
  */
 
 import { array, ArraySchema } from './composition/array'
+import { map, MapSchema, set, SetSchema } from './composition/collections'
+import { intersection, IntersectionSchema } from './composition/intersection'
+import { lazy, LazySchema } from './composition/lazy'
 import { object, ObjectSchema } from './composition/object'
+import { record, RecordSchema } from './composition/record'
+import { tuple, TupleSchema } from './composition/tuple'
+import {
+  discriminatedUnion,
+  DiscriminatedUnionSchema,
+  union,
+  UnionSchema,
+} from './composition/union'
 import { Schema } from './core/schema'
+import {
+  any,
+  AnySchema,
+  nan,
+  NanSchema,
+  null_,
+  NullSchema,
+  symbol,
+  SymbolSchema,
+  undefined_,
+  UndefinedSchema,
+  unknown,
+  UnknownSchema,
+  void_,
+  VoidSchema,
+} from './primitives/atoms'
+import { bigint, BigIntSchema } from './primitives/bigint'
 import { boolean, BooleanSchema } from './primitives/boolean'
+import { coerce } from './primitives/coerce'
+import { date, DateSchema } from './primitives/date'
 import { enum_, EnumSchema, literal, LiteralSchema } from './primitives/literal'
 import { number, NumberSchema } from './primitives/number'
 import { string, StringSchema } from './primitives/string'
@@ -45,16 +80,60 @@ export const s = {
   string,
   number,
   boolean,
+  bigint,
+  date,
   literal,
   enum: enum_,
+  symbol,
+  nan,
+  null: null_,
+  undefined: undefined_,
+  void: void_,
+  any,
+  unknown,
   object,
   array,
+  union,
+  discriminatedUnion,
+  record,
+  tuple,
+  map,
+  set,
+  intersection,
+  lazy,
+  coerce,
 } as const
 
 // ─── Named function-comp exports ───────────────────────────────────────
 
-export { array, boolean, enum_, literal, number, object, string }
-export { ArraySchema, BooleanSchema, EnumSchema, LiteralSchema, NumberSchema, ObjectSchema, StringSchema }
+export { coerce }
+export { any, array, bigint, boolean, date, discriminatedUnion, enum_, intersection, lazy, literal, map, nan, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
+export {
+  AnySchema,
+  ArraySchema,
+  BigIntSchema,
+  BooleanSchema,
+  DateSchema,
+  DiscriminatedUnionSchema,
+  EnumSchema,
+  IntersectionSchema,
+  LazySchema,
+  LiteralSchema,
+  MapSchema,
+  NanSchema,
+  NullSchema,
+  NumberSchema,
+  ObjectSchema,
+  RecordSchema,
+  SetSchema,
+  StringSchema,
+  SymbolSchema,
+  TupleSchema,
+  UndefinedSchema,
+  UnionSchema,
+  UnknownSchema,
+  VoidSchema,
+}
 
 // ─── pipe — function-comp variant of method chaining ───────────────────
 

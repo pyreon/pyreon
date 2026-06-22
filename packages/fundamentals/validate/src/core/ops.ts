@@ -26,6 +26,8 @@ export type Op =
   | StringCheckOp
   | NumberCheckOp
   | ArrayCheckOp
+  | DateCheckOp
+  | BigIntCheckOp
   | ModifierOp
   | TransformOp
   | RefineOp
@@ -74,6 +76,21 @@ export type ArrayCheckOp =
   | { kind: 'check:array:max'; n: number; opts?: CheckOpts | undefined }
   | { kind: 'check:array:length'; n: number; opts?: CheckOpts | undefined }
   | { kind: 'check:array:nonempty'; opts?: CheckOpts | undefined }
+
+// ─── Date checks ───────────────────────────────────────────────────────────
+
+export type DateCheckOp =
+  | { kind: 'check:date:min'; d: Date; opts?: CheckOpts | undefined }
+  | { kind: 'check:date:max'; d: Date; opts?: CheckOpts | undefined }
+
+// ─── BigInt checks ─────────────────────────────────────────────────────────
+
+export type BigIntCheckOp =
+  | { kind: 'check:bigint:min'; n: bigint; opts?: CheckOpts | undefined }
+  | { kind: 'check:bigint:max'; n: bigint; opts?: CheckOpts | undefined }
+  | { kind: 'check:bigint:positive'; opts?: CheckOpts | undefined }
+  | { kind: 'check:bigint:negative'; opts?: CheckOpts | undefined }
+  | { kind: 'check:bigint:multiple-of'; n: bigint; opts?: CheckOpts | undefined }
 
 // ─── Modifiers ─────────────────────────────────────────────────────────────
 

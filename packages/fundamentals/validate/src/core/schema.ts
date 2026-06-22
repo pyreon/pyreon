@@ -19,6 +19,7 @@
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError } from './issue'
+import { tryCompileJit } from './jit'
 import type { CheckOpts, Op, ParseCtx } from './ops'
 import { makeCtx } from './ops'
 
@@ -317,9 +318,24 @@ export abstract class Schema<T> {
   /** Build (or fetch cached) compiled validator. */
   private _getCompiled(): SyncValidator {
     if (!this._compiled) {
-      this._compiled = compileSchema(this)
+      // Try the JIT fast path first (pure object-of-primitives shapes);
+      // fall back to the interpreted compiler for everything else.
+      this._compiled = tryCompileJit(this) ?? compileSchema(this)
     }
     return this._compiled
+  }
+
+  /**
+   * Composition fast path. Runs this schema's compiled validator against
+   * the caller's SHARED `ctx` — issues accumulate directly (with the
+   * caller's already-pushed path) and no per-field `ctx` / result object
+   * is allocated. The return value is the (possibly transformed) value, or
+   * a `Promise` if an async transform/refine fired (the caller treats that
+   * as an async-in-sync error). Used by object / array / record / tuple
+   * instead of the allocation-heavy `~standard.validate` per child.
+   */
+  _runInto(input: unknown, ctx: ParseCtx): unknown {
+    return this._getCompiled()(input, ctx)
   }
 }
 
@@ -531,7 +547,7 @@ function applyRefinesSync(
 }
 
 function makeRefineIssue(opts: RefineSpec['opts'], path: ParseCtx['path']): PyreonIssue {
-  const issue: PyreonIssue = { message: opts.message, path }
+  const issue: PyreonIssue = { message: opts.message, path: path.slice() }
   if (opts.code !== undefined) (issue as { code?: string }).code = opts.code
   if (opts.key !== undefined) (issue as { key?: string }).key = opts.key
   if (opts.params !== undefined)
@@ -635,7 +651,7 @@ export function makeCheckIssue(
 ): PyreonIssue {
   const issue: PyreonIssue = {
     message: opts?.message ?? message,
-    path: ctx.path,
+    path: ctx.path.slice(), // snapshot — ctx.path is mutated during parse
   }
   ;(issue as { code?: string }).code = opts?.code ?? code
   ;(issue as { key?: string }).key = opts?.key ?? key
