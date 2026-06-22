@@ -153,6 +153,52 @@ const countDetectorCodes = (repoRoot: string): number => {
   return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
 }
 
+// `@pyreon/document`'s `OutputFormat` union is the single source of truth
+// for "how many output formats" — every renderer is keyed by one of its
+// literals. README + CLAUDE.md repeat the count in prose; gate them all.
+const countDocumentFormats = (repoRoot: string): number => {
+  const file = join(repoRoot, 'packages/fundamentals/document/src/types.ts')
+  if (!existsSync(file)) return 0
+  const src = readFileSync(file, 'utf8')
+  const m = src.match(
+    /export type OutputFormat\s*=\s*([\s\S]*?)(?:\n\n|\nexport |\ntype )/,
+  )
+  if (!m?.[1]) return 0
+  return (m[1].match(/'[a-z0-9-]+'/gi) ?? []).length
+}
+
+// Published-package count — every non-`"private": true` package.json under
+// `packages/<category>/`. Scans ALL category dirs (robust to a future 6th)
+// and filters by the private flag, so `packages/internals|ui|native` (all
+// private) drop out automatically. This is THE most-frequently-drifting
+// count in the repo (README + CLAUDE.md both quote it).
+const countPublishedPackages = (repoRoot: string): number => {
+  const pkgsDir = join(repoRoot, 'packages')
+  if (!existsSync(pkgsDir)) return 0
+  let count = 0
+  for (const cat of readdirSync(pkgsDir)) {
+    const catDir = join(pkgsDir, cat)
+    try {
+      if (!statSync(catDir).isDirectory()) continue
+    } catch {
+      continue
+    }
+    for (const pkg of readdirSync(catDir)) {
+      const pj = join(catDir, pkg, 'package.json')
+      if (!existsSync(pj)) continue
+      try {
+        const json = JSON.parse(readFileSync(pj, 'utf8')) as {
+          private?: boolean
+        }
+        if (json.private !== true) count++
+      } catch {
+        // unparseable package.json — skip (don't count)
+      }
+    }
+  }
+  return count
+}
+
 const checks: ClaimCheck[] = [
   {
     name: 'hook export count',
@@ -186,6 +232,11 @@ const checks: ClaimCheck[] = [
       {
         file: 'docs/src/content/docs/index.md',
         pattern: /\| (\d+) signal-based hooks for common UI patterns/,
+      },
+      {
+        file: 'README.md',
+        pattern: /\| (\d+) hooks — useHover/,
+        rejectHedged: /\| (\d+)\+ hooks — useHover/,
       },
     ],
   },
@@ -231,6 +282,10 @@ const checks: ClaimCheck[] = [
         pattern: /(\d+) rules(?: across \d+ categories| total|\b)/,
         all: true,
       },
+      {
+        file: 'README.md',
+        pattern: /(\d+) Pyreon-specific lint rules/,
+      },
     ],
   },
   {
@@ -255,6 +310,10 @@ const checks: ClaimCheck[] = [
         pattern: /\d+ rules across (\d+) categories/,
         all: true,
       },
+      {
+        file: 'README.md',
+        pattern: /lint rules across (\d+) categories/,
+      },
     ],
   },
   {
@@ -270,6 +329,58 @@ const checks: ClaimCheck[] = [
         file: 'CLAUDE.md',
         pattern:
           /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
+      },
+    ],
+  },
+  {
+    name: 'document output format count',
+    codeId: 'doc-format-count',
+    actual: countDocumentFormats,
+    claims: [
+      {
+        file: 'README.md',
+        pattern: /18 primitives, (\d+) output formats/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /18 primitives, (\d+) output formats/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /^- (\d+) output formats: HTML/m,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /exports to (\d+) formats/,
+      },
+      {
+        file: 'packages/fundamentals/document/README.md',
+        pattern: /## Output formats \((\d+)\)/,
+      },
+      {
+        file: 'packages/fundamentals/document/README.md',
+        pattern: /one template, (\d+) output formats/,
+        rejectHedged: /one template, (\d+)\+ output formats/,
+      },
+    ],
+  },
+  {
+    name: 'published package count',
+    codeId: 'package-count',
+    actual: countPublishedPackages,
+    claims: [
+      {
+        file: 'README.md',
+        pattern: /\*\*(\d+) packages\.\*\*/,
+        rejectHedged: /\*\*(\d+)\+ packages\.\*\*/,
+      },
+      {
+        file: 'README.md',
+        pattern: /(\d+) packages across 5 categories/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /(\d+) published packages across 5 categories/,
       },
     ],
   },

@@ -19,7 +19,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
 - **Top-tier performance.** Fastest of the frameworks measured on the synthetic row-list benchmark — create 1,000 rows in ~9ms (Vue 10ms, Solid 10.4ms, React 11.6ms), and **2.4–3× faster than React, Svelte and Preact** at 10,000 rows. Leads or ties every op except single-row remove, where Solid edges it. (Real Chromium, published deps; mid-pack on retained memory.)
-- **55+ packages.** Forms, routing, state management, charts, drag & drop, i18n, and more.
+- **62 packages.** Forms, routing, state management, charts, drag & drop, i18n, and more.
 - **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
 
 ## Quick Start
@@ -111,14 +111,14 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/feature`](packages/fundamentals/feature/) | Schema-driven CRUD — auto-generated queries, forms, tables, stores |
 | [`@pyreon/charts`](packages/fundamentals/charts/) | Reactive ECharts bridge with lazy loading |
 | [`@pyreon/storage`](packages/fundamentals/storage/) | Reactive storage — localStorage, sessionStorage, cookies, IndexedDB |
-| [`@pyreon/hooks`](packages/fundamentals/hooks/) | 33+ hooks — useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, etc. |
+| [`@pyreon/hooks`](packages/fundamentals/hooks/) | 35 hooks — useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, etc. |
 | [`@pyreon/hotkeys`](packages/fundamentals/hotkeys/) | Keyboard shortcuts — scope-aware, modifier keys, conflict detection |
 | [`@pyreon/permissions`](packages/fundamentals/permissions/) | Reactive RBAC/ABAC — wildcards, predicates, feature flags |
 | [`@pyreon/machine`](packages/fundamentals/machine/) | Reactive state machines — type-safe transitions, guards |
 | [`@pyreon/flow`](packages/fundamentals/flow/) | Flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout |
 | [`@pyreon/code`](packages/fundamentals/code/) | Code editor — CodeMirror 6 with signals, minimap, diff editor |
-| [`@pyreon/document`](packages/fundamentals/document/) | Universal document rendering — 18 primitives, 14+ output formats |
-| [`@pyreon/rx`](packages/fundamentals/rx/) | Signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce, 24 functions |
+| [`@pyreon/document`](packages/fundamentals/document/) | Universal document rendering — 18 primitives, 20 output formats |
+| [`@pyreon/rx`](packages/fundamentals/rx/) | Signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce, 37 functions |
 | [`@pyreon/toast`](packages/fundamentals/toast/) | Toast notifications — imperative API, auto-dismiss, a11y |
 | [`@pyreon/url-state`](packages/fundamentals/url-state/) | URL-synced state — auto type coercion, schema mode, SSR-safe |
 | [`@pyreon/dnd`](packages/fundamentals/dnd/) | Drag and drop — sortable, droppable, file drop, keyboard support |
@@ -142,7 +142,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | Package | Description |
 |---|---|
 | [`@pyreon/vite-plugin`](packages/tools/vite-plugin/) | JSX transform, signal-preserving HMR, SSR middleware, compat aliases |
-| [`@pyreon/lint`](packages/tools/lint/) | 55 Pyreon-specific lint rules — reactivity, JSX, SSR, performance |
+| [`@pyreon/lint`](packages/tools/lint/) | 90 Pyreon-specific lint rules across 18 categories — reactivity, JSX, SSR, performance |
 | [`@pyreon/storybook`](packages/tools/storybook/) | Storybook renderer for Pyreon components |
 | [`@pyreon/typescript`](packages/tools/typescript/) | TypeScript config presets |
 | [`@pyreon/react-compat`](packages/tools/react-compat/) | Drop-in React compatibility layer |
@@ -195,7 +195,7 @@ bun run format             # format (oxfmt)
 bun run typecheck          # typecheck all packages
 ```
 
-The monorepo uses Bun workspaces with 55+ packages across 4 categories (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`). Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
+The monorepo uses Bun workspaces with 62 packages across 5 categories (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`). Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
 
 ## License
 

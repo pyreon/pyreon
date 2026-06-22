@@ -1,6 +1,6 @@
 # @pyreon/document
 
-Universal document rendering — one template, 20+ output formats.
+Universal document rendering — one template, 20 output formats.
 
 A platform-agnostic document tree (18 primitives) plus a renderer registry that produces HTML, PDF, DOCX, PPTX, XLSX, email-safe HTML, Markdown, plain text, CSV, SVG, JSON / JSONL, and direct payloads for Slack / Teams / Discord / Telegram / Notion / Confluence / WhatsApp / Google Chat. Use it for invoices, reports, exports, transactional emails, and "send to anywhere" surfaces — write the document tree once, render to whatever the caller needs. Heavy renderers (PDF, DOCX, XLSX, PPTX) lazy-load — they ship in the published `lib/` but only land in the consumer's bundle when their format is invoked.
 

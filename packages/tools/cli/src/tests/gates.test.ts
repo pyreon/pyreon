@@ -142,11 +142,12 @@ describe('runDocClaimsGate', () => {
     const result = await runDocClaimsGate({ cwd: REPO_ROOT })
     assertGateResultShape(result, 'doc-claims')
     expect(result.category).toBe('documentation')
-    // The real repo has 19 claim sites configured today (7 hook/doc +
-    // 6 lint-rule + 4 lint-category + 2 detector-code); verify the
-    // scanner found them all (any missing files would surface as
-    // file-missing findings, scanned count stays stable).
-    expect(result.meta.scanned).toBe(19)
+    // The real repo has 31 claim sites configured today (8 hook/doc +
+    // 7 lint-rule + 5 lint-category + 2 detector-code + 6 doc-format +
+    // 3 package-count); verify the scanner found them all (any missing
+    // files would surface as file-missing findings, scanned count stays
+    // stable).
+    expect(result.meta.scanned).toBe(31)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
@@ -402,6 +403,70 @@ describe('runDocClaimsGate', () => {
     expect(drift).toBeDefined()
     expect(drift.message).toContain('claims 12')
     expect(drift.message).toContain('actual 3')
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('doc-format-count: drift when README mis-states the OutputFormat union size', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-fmt-'))
+    const docDir = path.join(
+      tmp,
+      'packages',
+      'fundamentals',
+      'document',
+      'src',
+    )
+    fs.mkdirSync(docDir, { recursive: true })
+    // 4 real OutputFormat literals; README will lie and say 99.
+    fs.writeFileSync(
+      path.join(docDir, 'types.ts'),
+      "export type OutputFormat =\n  | 'html'\n  | 'pdf'\n  | 'csv'\n  | 'svg'\n\nexport interface RenderOptions {}\n",
+    )
+    fs.writeFileSync(
+      path.join(tmp, 'README.md'),
+      'Universal document rendering — 18 primitives, 99 output formats\n',
+    )
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    const drift = result.findings.find(
+      (f) => f.code === 'doc-claims/doc-format-count-drift',
+    )!
+    expect(drift).toBeDefined()
+    expect(drift.severity).toBe('error')
+    expect(drift.message).toContain('claims 99')
+    expect(drift.message).toContain('actual 4')
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('package-count: drift when CLAUDE.md mis-states the published-package count', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-pkg-'))
+    // 3 non-private packages + 1 private (the private one must NOT count).
+    const mk = (cat: string, name: string, priv = false): void => {
+      const dir = path.join(tmp, 'packages', cat, name)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: `@pyreon/${name}`, private: priv }),
+      )
+    }
+    mk('core', 'reactivity')
+    mk('core', 'router')
+    mk('fundamentals', 'store')
+    mk('internals', 'test-utils', true) // private — excluded
+    fs.writeFileSync(
+      path.join(tmp, 'CLAUDE.md'),
+      '99 published packages across 5 categories under `packages/`.\n',
+    )
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    const drift = result.findings.find(
+      (f) => f.code === 'doc-claims/package-count-drift',
+    )!
+    expect(drift).toBeDefined()
+    expect(drift.severity).toBe('error')
+    expect(drift.message).toContain('claims 99')
+    expect(drift.message).toContain('actual 3') // private one excluded
 
     fs.rmSync(tmp, { recursive: true, force: true })
   })
