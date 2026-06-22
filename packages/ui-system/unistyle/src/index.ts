@@ -10,7 +10,7 @@ import type {
 import { CSS_VARS_DEFAULT_EXCLUDE, resolveCssVarReferences, themeToCssVars } from './cssVariables'
 import type { ExtractedStyleVar } from './cpse'
 import { cpseRewrite, cpseVarName, extractStyleVar } from './cpse'
-import type { CpseStyledProps } from './cpse-styled'
+import type { CpseStyledProps, ResponsiveStyleTheme, ResponsiveValue } from './cpse-styled'
 import { cpseStyled } from './cpse-styled'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
@@ -69,6 +69,8 @@ export type {
   Defaults,
   ExtendCss,
   ExtractedStyleVar,
+  ResponsiveStyleTheme,
+  ResponsiveValue,
   ITheme,
   MakeItResponsive,
   MakeItResponsiveStyles,
