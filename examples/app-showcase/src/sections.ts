@@ -122,6 +122,15 @@ export const sections: Section[] = [
     group: 'visual',
   },
   {
+    path: '/flow-features',
+    label: 'Flow Feature Matrix',
+    tagline:
+      'Kitchen-sink — every @pyreon/flow feature as a testable control: markers, virtualization, snapping, resize/toolbar, drag-to-connect, layout, undo/redo, queries',
+    features: ['flow'],
+    available: true,
+    group: 'visual',
+  },
+  {
     path: '/dnd',
     label: 'Drag & Drop',
     tagline: 'Three drag-and-drop scenarios — sortable list, draggable card → drop zone, file drop with type filtering',

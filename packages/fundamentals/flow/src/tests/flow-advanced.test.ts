@@ -313,6 +313,27 @@ describe('createFlow — advanced', () => {
       const flow = createFlow()
       expect(flow.getAbsolutePosition('missing')).toEqual({ x: 0, y: 0 })
     })
+
+    it('getAbsolutePosition does not stack-overflow on a cyclic parentId (malformed data)', () => {
+      // A→B→A parent cycle would recurse forever without the visited guard.
+      const flow = createFlow({
+        nodes: [
+          { id: 'a', position: { x: 10, y: 10 }, data: {}, parentId: 'b' },
+          { id: 'b', position: { x: 20, y: 20 }, data: {}, parentId: 'a' },
+        ],
+      })
+      // Must return (not throw / overflow); exact value is best-effort on a cycle.
+      expect(() => flow.getAbsolutePosition('a')).not.toThrow()
+      expect(flow.getAbsolutePosition('a')).toBeTruthy()
+    })
+
+    it('getAbsolutePosition does not stack-overflow on a self-parent', () => {
+      const flow = createFlow({
+        nodes: [{ id: 'a', position: { x: 5, y: 5 }, data: {}, parentId: 'a' }],
+      })
+      // Self-parent → treated as root (its own position).
+      expect(flow.getAbsolutePosition('a')).toEqual({ x: 5, y: 5 })
+    })
   })
 
   describe('moveSelectedNodes', () => {

@@ -1,5 +1,6 @@
-import type { VNodeChild } from '@pyreon/core'
+import { useContext, type VNodeChild } from '@pyreon/core'
 import type { FlowInstance, MiniMapProps } from '../types'
+import { FlowContext } from './flow-context'
 
 /**
  * Miniature overview of the flow diagram showing all nodes
@@ -18,9 +19,10 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
     height = 150,
     nodeColor = '#e2e8f0',
     maskColor = 'rgba(0, 0, 0, 0.08)',
-    instance,
   } = props
 
+  // Resolve the instance from an explicit prop, else the <Flow> context.
+  const instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
 
   const containerStyle = `position: absolute; bottom: 10px; right: 10px; width: ${width}px; height: ${height}px; border: 1px solid #ddd; background: white; border-radius: 4px; overflow: hidden; z-index: 5; cursor: pointer;`
@@ -80,26 +82,30 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
           {/* Mask outside viewport */}
           <rect width={String(width)} height={String(height)} fill={maskColor} />
 
-          {/* Nodes */}
-          {nodes.map((node) => {
-            const w = (node.width ?? 150) * scale
-            const h = (node.height ?? 40) * scale
-            const x = (node.position.x - minX + padding) * scale
-            const y = (node.position.y - minY + padding) * scale
-            const color = typeof nodeColor === 'function' ? nodeColor(node) : nodeColor
+          {/* Nodes — wrapped in a STATIC <g> so the dynamic array's mount
+              (which removes its placeholder) can't shift the element-ref walk
+              the compiler uses for the trailing reactive viewport <rect>. */}
+          <g>
+            {nodes.map((node) => {
+              const w = (node.width ?? 150) * scale
+              const h = (node.height ?? 40) * scale
+              const x = (node.position.x - minX + padding) * scale
+              const y = (node.position.y - minY + padding) * scale
+              const color = typeof nodeColor === 'function' ? nodeColor(node) : nodeColor
 
-            return (
-              <rect
-                key={node.id}
-                x={String(x)}
-                y={String(y)}
-                width={String(w)}
-                height={String(h)}
-                fill={color}
-                rx="2"
-              />
-            )
-          })}
+              return (
+                <rect
+                  key={node.id}
+                  x={String(x)}
+                  y={String(y)}
+                  width={String(w)}
+                  height={String(h)}
+                  fill={color}
+                  rx="2"
+                />
+              )
+            })}
+          </g>
 
           {/* Viewport indicator */}
           <rect

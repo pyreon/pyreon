@@ -1,4 +1,4 @@
-import { For, type VNodeChild } from '@pyreon/core'
+import { For, isClient, provide, type VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   collectEdgeMarkers,
@@ -10,6 +10,7 @@ import {
   markerId,
   resolveEdgeMarkers,
 } from '../edges'
+import { FlowContext } from './flow-context'
 import type {
   Connection,
   EdgeMarker,
@@ -29,16 +30,22 @@ function defaultEndMarker(instance: FlowInstance<any>): EdgeMarkerSpec | null {
   return d === undefined ? DEFAULT_MARKER_END : d
 }
 
-/** The arrowhead glyph: a filled `<polygon>` for ArrowClosed, an open
- *  `<polyline>` V otherwise. Early-return (not a JSX ternary) — the choice is
- *  static per marker def. */
-function MarkerGlyph(m: EdgeMarker, pts: string): VNodeChild {
+/**
+ * The arrowhead glyph: a filled `<polygon>` for ArrowClosed, an open
+ * `<polyline>` V otherwise. A real COMPONENT (used as `<MarkerGlyph …/>`, not
+ * a bare `{MarkerGlyph(…)}` call) — under a DOM-element parent the Pyreon
+ * compiler stringifies a bare helper call to `[object Object]`; mounting it as
+ * a component element renders its returned VNode. Early-return body (not a JSX
+ * ternary) keeps the `no-ternary-conditional` lint rule happy.
+ */
+function MarkerGlyph(props: { marker: EdgeMarker, pts: string }): VNodeChild {
+  const m = props.marker
   if (m.type === MarkerType.ArrowClosed) {
-    return <polygon points={pts} fill={m.color ?? '#999'} />
+    return <polygon points={props.pts} fill={m.color ?? '#999'} />
   }
   return (
     <polyline
-      points={pts}
+      points={props.pts}
       fill="none"
       stroke={m.color ?? '#999'}
       stroke-width={String(m.strokeWidth ?? 1)}
@@ -62,7 +69,7 @@ function MarkerDef(props: { id: string, marker: EdgeMarker }): VNodeChild {
       refY={String(h / 2)}
       orient="auto-start-reverse"
     >
-      {MarkerGlyph(m, pts)}
+      <MarkerGlyph marker={m} pts={pts} />
     </marker>
   )
 }
@@ -551,8 +558,20 @@ function NodeLayer(props: {
               instance._emit.nodeDoubleClick(node())
             }}
             onPointerDown={(e: PointerEvent) => {
-              // Check if clicking a handle
               const target = e.target as HTMLElement
+              // Don't start a node drag when the pointer goes down on an
+              // interactive control inside the node (NodeToolbar buttons,
+              // form fields, or anything tagged `.nodrag`). Starting a drag
+              // here would `setPointerCapture` the container and swallow the
+              // control's click — the React Flow `.nodrag` convention.
+              if (
+                target.closest('.pyreon-flow-node-toolbar') ||
+                target.closest('.nodrag') ||
+                target.closest('button, input, textarea, select, a')
+              ) {
+                return
+              }
+              // Check if clicking a handle
               const handle = target.closest('.pyreon-flow-handle')
               if (handle) {
                 // connectable / nodesConnectable gate connection drawing
@@ -659,6 +678,12 @@ export interface FlowComponentProps {
  */
 export function Flow(props: FlowComponentProps): VNodeChild {
   const { instance, children, edgeTypes } = props
+
+  // Make the instance available to child components (MiniMap / Controls)
+  // so `<Flow instance={flow}><MiniMap /></Flow>` works without passing
+  // `instance` to every child — an explicit child `instance` prop still wins.
+  provide(FlowContext, instance)
+
   const nodeTypes: NodeTypeMap = {
     default: DefaultNode,
     input: DefaultNode,
@@ -941,9 +966,11 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     }
 
     if (conn.active) {
-      // Check if we released over a handle target
-      const target = e.target as HTMLElement
-      const handle = target.closest('.pyreon-flow-handle')
+      // Connection draw set pointer capture on the .pyreon-flow container, so
+      // `e.target` is the CAPTURING container — NOT the element under the
+      // cursor. Hit-test the real drop target by cursor position instead.
+      const dropEl = isClient ? document.elementFromPoint(e.clientX, e.clientY) : null
+      const handle = dropEl?.closest('.pyreon-flow-handle') ?? null
       if (handle) {
         const targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
         const targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
