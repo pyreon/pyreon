@@ -57,8 +57,6 @@ export interface EditorConfig {
   emacs?: boolean
   /** Tab size — default: 2 */
   tabSize?: number
-  /** Enable indent guides — default: true */
-  indentGuides?: boolean
   /** Enable line wrapping — default: false */
   lineWrapping?: boolean
   /** Placeholder text when empty */
