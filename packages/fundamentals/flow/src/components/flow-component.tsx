@@ -407,7 +407,7 @@ function NodeLayer(props: {
               const n = node()
               return `pyreon-flow-node ${n.class ?? ''} ${
                 isSelected() ? 'selected' : ''
-              } ${isDragging() ? 'dragging' : ''}`
+              } ${isDragging() ? 'dragging' : ''} ${n.group ? 'group' : ''}`
             }}
             style={() => {
               const n = node()
@@ -418,7 +418,13 @@ function NodeLayer(props: {
             data-nodeid={id}
             onClick={(e: MouseEvent) => {
               e.stopPropagation()
-              instance.selectNode(id, e.shiftKey)
+              // selectable / nodesSelectable gate user click-selection (mirrors
+              // the draggable / nodesDraggable guard below); the click event
+              // itself still fires regardless.
+              const n = node()
+              if (n.selectable !== false && instance.config.nodesSelectable !== false) {
+                instance.selectNode(id, e.shiftKey)
+              }
               instance._emit.nodeClick(node())
             }}
             onDblClick={(e: MouseEvent) => {
@@ -430,11 +436,16 @@ function NodeLayer(props: {
               const target = e.target as HTMLElement
               const handle = target.closest('.pyreon-flow-handle')
               if (handle) {
-                const hType = handle.getAttribute('data-handletype') ?? 'source'
-                const hId = handle.getAttribute('data-handleid') ?? 'source'
-                const hPos =
-                  (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
-                onHandlePointerDown(e, id, hType, hId, hPos)
+                // connectable / nodesConnectable gate connection drawing
+                // (mirrors the draggable / nodesDraggable guard below).
+                const n = node()
+                if (n.connectable !== false && instance.config.nodesConnectable !== false) {
+                  const hType = handle.getAttribute('data-handletype') ?? 'source'
+                  const hId = handle.getAttribute('data-handleid') ?? 'source'
+                  const hPos =
+                    (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
+                  onHandlePointerDown(e, id, hType, hId, hPos)
+                }
                 return
               }
               // Otherwise start dragging node — read live state

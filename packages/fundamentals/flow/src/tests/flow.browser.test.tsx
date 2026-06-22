@@ -283,4 +283,69 @@ describe('flow in real browser', () => {
     expect(customEl?.textContent).toBe('CUSTOM')
     unmount()
   })
+
+  // ── Interaction flags (selectable / nodesSelectable / group) ───────────────
+  // These mirror the existing draggable / nodesDraggable guard. A real click on
+  // the node div is what the flag gates — programmatic selectNode is unaffected.
+
+  it('node.selectable=false blocks click-selection; programmatic selectNode still works', async () => {
+    const flow = createFlow({
+      nodes: [
+        { id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, selectable: false },
+        { id: '2', position: { x: 200, y: 100 }, data: { label: 'B' } },
+      ],
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+
+    container
+      .querySelector<HTMLElement>('[data-nodeid="1"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    expect(flow.selectedNodes()).toEqual([]) // selectable:false → click ignored
+
+    container
+      .querySelector<HTMLElement>('[data-nodeid="2"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    expect(flow.selectedNodes()).toEqual(['2']) // default selectable → click selects
+
+    flow.selectNode('1') // programmatic bypasses the interaction gate
+    await flush()
+    expect([...flow.selectedNodes()].sort()).toEqual(['1'])
+    unmount()
+  })
+
+  it('config.nodesSelectable=false blocks click-selection globally', async () => {
+    const flow = createFlow({
+      nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+      nodesSelectable: false,
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+
+    container
+      .querySelector<HTMLElement>('[data-nodeid="1"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    expect(flow.selectedNodes()).toEqual([])
+    unmount()
+  })
+
+  it('node.group=true adds the "group" class to the node element', async () => {
+    const flow = createFlow({
+      nodes: [
+        { id: 'g', position: { x: 0, y: 0 }, data: { label: 'G' }, group: true },
+        { id: 'n', position: { x: 100, y: 0 }, data: { label: 'N' } },
+      ],
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+
+    expect(container.querySelector<HTMLElement>('[data-nodeid="g"]')!.className).toContain('group')
+    expect(container.querySelector<HTMLElement>('[data-nodeid="n"]')!.className).not.toContain(
+      'group',
+    )
+    unmount()
+  })
 })
