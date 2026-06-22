@@ -18,7 +18,7 @@ describe('date', () => {
   })
   it('infers Date', () => {
     const _d: Date = {} as Infer<ReturnType<typeof s.date>>
-    expect(_d).toBeDefined
+    expect(_d).toBeDefined()
   })
 })
 
@@ -39,7 +39,7 @@ describe('bigint', () => {
   })
   it('infers bigint', () => {
     const _b: bigint = {} as Infer<ReturnType<typeof s.bigint>>
-    expect(_b).toBeDefined
+    expect(_b).toBeDefined()
   })
 })
 
@@ -58,9 +58,9 @@ describe('null / undefined / void', () => {
     expect(s.void().parse(null).ok).toBe(false)
   })
   it('infers null / undefined', () => {
-    const _n: null = {} as Infer<ReturnType<typeof s.null>>
-    const _u: undefined = {} as Infer<ReturnType<typeof s.undefined>>
-    expect([_n, _u]).toBeDefined
+    const _n: Infer<ReturnType<typeof s.null>> = null
+    const _u: Infer<ReturnType<typeof s.undefined>> = undefined
+    expect([_n, _u]).toBeDefined()
   })
 })
 
@@ -90,6 +90,6 @@ describe('any / unknown', () => {
   it('any infers any, unknown infers unknown', () => {
     const _a = {} as Infer<ReturnType<typeof s.any>>
     const _u: unknown = {} as Infer<ReturnType<typeof s.unknown>>
-    expect([_a, _u]).toBeDefined
+    expect([_a, _u]).toBeDefined()
   })
 })

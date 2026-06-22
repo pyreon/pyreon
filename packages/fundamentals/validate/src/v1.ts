@@ -20,6 +20,14 @@
 
 import { array, ArraySchema } from './composition/array'
 import { object, ObjectSchema } from './composition/object'
+import { record, RecordSchema } from './composition/record'
+import { tuple, TupleSchema } from './composition/tuple'
+import {
+  discriminatedUnion,
+  DiscriminatedUnionSchema,
+  union,
+  UnionSchema,
+} from './composition/union'
 import { Schema } from './core/schema'
 import {
   any,
@@ -76,26 +84,34 @@ export const s = {
   unknown,
   object,
   array,
+  union,
+  discriminatedUnion,
+  record,
+  tuple,
 } as const
 
 // ─── Named function-comp exports ───────────────────────────────────────
 
-export { any, array, bigint, boolean, date, enum_, literal, nan, null_, number, object, string, symbol, undefined_, unknown, void_ }
+export { any, array, bigint, boolean, date, discriminatedUnion, enum_, literal, nan, null_, number, object, record, string, symbol, tuple, undefined_, union, unknown, void_ }
 export {
   AnySchema,
   ArraySchema,
   BigIntSchema,
   BooleanSchema,
   DateSchema,
+  DiscriminatedUnionSchema,
   EnumSchema,
   LiteralSchema,
   NanSchema,
   NullSchema,
   NumberSchema,
   ObjectSchema,
+  RecordSchema,
   StringSchema,
   SymbolSchema,
+  TupleSchema,
   UndefinedSchema,
+  UnionSchema,
   UnknownSchema,
   VoidSchema,
 }
