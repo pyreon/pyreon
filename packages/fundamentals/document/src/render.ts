@@ -98,6 +98,50 @@ async function resolveRenderer(format: string): Promise<DocumentRenderer> {
 }
 
 /**
+ * Resolve a possibly-relative image `src` against `baseUrl`. Already-absolute
+ * sources (http/https/protocol-relative/`data:`/`blob:`/etc.) are returned
+ * unchanged; only sources that can't parse as a standalone URL (i.e. relative
+ * paths like `./logo.png`, `logo.png`, `/logo.png`) get resolved.
+ */
+function resolveAgainstBase(src: string, baseUrl: string): string {
+  if (src.length === 0) return src
+  try {
+    new URL(src) // standalone-parseable → already absolute
+    return src
+  } catch {
+    try {
+      return new URL(src, baseUrl).href
+    } catch {
+      return src // unparseable even with a base → leave untouched
+    }
+  }
+}
+
+/**
+ * Walk the node tree and rewrite relative `image` sources against `baseUrl`.
+ * Immutable: returns the SAME node reference when nothing changed (so an
+ * all-absolute tree, or one with no images, round-trips without allocation).
+ */
+function applyBaseUrl(node: DocNode, baseUrl: string): DocNode {
+  let changed = false
+  const children = node.children.map((c) => {
+    if (typeof c === 'string') return c
+    const next = applyBaseUrl(c, baseUrl)
+    if (next !== c) changed = true
+    return next
+  })
+  let props = node.props
+  if (node.type === 'image' && typeof node.props.src === 'string') {
+    const resolved = resolveAgainstBase(node.props.src, baseUrl)
+    if (resolved !== node.props.src) {
+      props = { ...node.props, src: resolved }
+      changed = true
+    }
+  }
+  return changed ? { ...node, props, children } : node
+}
+
+/**
  * Render a document node tree to the specified format.
  *
  * @example
@@ -110,6 +154,11 @@ async function resolveRenderer(format: string): Promise<DocumentRenderer> {
  * const email = await render(doc, 'email')  // → email-safe HTML string
  * const md = await render(doc, 'md')        // → Markdown string
  * ```
+ *
+ * When `options.baseUrl` is set, relative image `src` values are resolved
+ * against it before rendering — so `<Image src="./logo.png" />` rendered with
+ * `{ baseUrl: 'https://cdn.example.com/assets/' }` emits the absolute URL in
+ * every output format.
  */
 export async function render(
   node: DocNode,
@@ -117,7 +166,8 @@ export async function render(
   options?: RenderOptions,
 ): Promise<RenderResult> {
   const renderer = await resolveRenderer(format)
-  return renderer.render(node, options)
+  const resolved = options?.baseUrl ? applyBaseUrl(node, options.baseUrl) : node
+  return renderer.render(resolved, options)
 }
 
 /** @internal For testing — reset renderer registry to defaults. */
