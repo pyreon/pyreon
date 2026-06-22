@@ -105,6 +105,12 @@ describeNative('Native vs JS equivalence — class/style binding fidelity', () =
   test('class string ternary', () => compare(`${sig}export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>`))
   test('class non-reactive', () => compare(`export const X = () => <div class={someVar}>y</div>`))
   test('class direct signal ref', () => compare(`${sig}export const X = () => <div class={t}>y</div>`))
+  // single-disposer fast path: `return __d0` (no wrapper closure) — JS + Rust
+  // must agree byte-for-byte on both the fast path and the multi-disposer wrapper.
+  test('single-disposer template', () =>
+    compare(`${sig}export const X = () => <div class="row"><span>{t()}</span></div>`))
+  test('multi-disposer template', () =>
+    compare(`${sig}export const X = () => <div class="row"><span>{t()}</span><span>{c()}</span></div>`))
   // dangerouslySetInnerHTML — must mirror the runtime (innerHTML = value.__html),
   // not a generic setAttribute (which stringifies the object to "[object Object]").
   // The wrapper div forces template-ization so the attr binding goes through attr_setter.

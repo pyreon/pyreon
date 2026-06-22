@@ -3947,7 +3947,14 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    if !tb.disposer_names.is_empty() {
+    if tb.disposer_names.len() == 1 {
+        // Single-binding fast path: return the disposer DIRECTLY instead of
+        // allocating a wrapper closure `() => { d() }` per template instance.
+        // `_bind`/`_bindText`/`_bindDirect` always return a disposer function
+        // (never null), so this is equivalent minus one closure allocation per
+        // instance (per row under `<For>` for the dominant reactive-text shape).
+        body.push_str(&format!("\n  return {}", tb.disposer_names[0]));
+    } else if !tb.disposer_names.is_empty() {
         let disposers = tb
             .disposer_names
             .iter()
