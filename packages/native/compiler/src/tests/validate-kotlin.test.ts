@@ -85,6 +85,11 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     // + escape-hatch WebView chart (const-ref'd HTML). Locks the
     // example's emit through the kotlinc gate.
     'showcase-analytics.tsx',
+    // The finance-tracker archetype proof (Phase 5 / #1689): useAuth<User> +
+    // useDatabase in a real app shape — auth-state reads/transitions,
+    // reactive store ledger, computed balance, validated useForm, string-keyed
+    // db ops, routing + auth-gate. Locks the emit through the kotlinc gate.
+    'showcase-finance.tsx',
     // Dynamic <WebView html={signal-derived}> — reactive-reload bridge slice;
     // locks the dynamic-html emit through the toolchain gate.
     'webview-dynamic.tsx',

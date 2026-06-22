@@ -667,6 +667,22 @@
         "@pyreon/native-cli": "workspace:*",
       },
     },
+    "examples/native-finance": {
+      "name": "@pyreon/example-native-finance",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/hooks": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
+        "@pyreon/native-cli": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/store": "workspace:*",
+      },
+    },
     "examples/native-router-demo-android": {
       "name": "@pyreon/example-native-router-demo-android",
       "version": "0.0.0",
@@ -2999,6 +3015,8 @@
     "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
 
     "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
+
+    "@pyreon/example-native-finance": ["@pyreon/example-native-finance@workspace:examples/native-finance"],
 
     "@pyreon/example-native-router-demo-android": ["@pyreon/example-native-router-demo-android@workspace:examples/native-router-demo-android"],
 

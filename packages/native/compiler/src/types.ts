@@ -278,6 +278,41 @@ export type DeclIR =
    */
   | { kind: 'color-scheme'; name: string }
   /**
+   * Phase 5 (native data/services hook emit). Reactive-container hooks that
+   * instantiate the @pyreon/native-runtime-{swift,kotlin} service containers
+   * shipped this arc. Each mirrors the `network-status` / `permissions`
+   * emit shape (Swift `@State` / Kotlin `remember`); reactive FIELD reads on
+   * the binding append `.value` on Kotlin (Compose `MutableState`) and read
+   * bare on Swift (`@Observable`), while method calls + plain-Bool getters
+   * read bare on both. Per-hook field/method maps live in emit-{swift,kotlin}.
+   *
+   *   useGeolocation()  → PyreonGeolocation   (lat/lon/accuracy/isAuthorized/error
+   *                        + start/stop; maps + uber archetypes)
+   *   useWebSocket(url)  → PyreonWebSocket     (lastMessage/messages/isConnected/error
+   *                        + send/close; realtime archetype)
+   *   useSecureStorage() → PyreonSecureStorage (write/read/remove/contains; finance/auth)
+   *   useDatabase()      → PyreonDatabase      (insert/get/all/find/delete/count; offline-first)
+   *   usePush()          → PyreonPushNotifications (token/lastNotification/isAuthorized/error)
+   *   usePayments()      → PyreonPayments      (products/ownedProductIds/purchasing/error
+   *                        + purchase/restore; IAP)
+   *   useMap()           → PyreonMapState      (camera/markers/selectedMarker
+   *                        + moveTo/addMarker/selectMarker; maps view-state)
+   *
+   * `useAuth<User>()` is generic (carries `userType`); the rest are non-generic.
+   * `useWebSocket(url)` captures the string URL literal arg.
+   */
+  // NOTE: `useSecureStorage` is intentionally NOT an emitted decl kind — its
+  // parse path warns + drops (the Kotlin secret store needs an app-injected
+  // backend; auto-instantiation isn't clean cross-target). Documented
+  // follow-up; see parse.ts.
+  | { kind: 'geolocation'; name: string }
+  | { kind: 'websocket'; name: string; url: string }
+  | { kind: 'database'; name: string }
+  | { kind: 'push'; name: string }
+  | { kind: 'payments'; name: string }
+  | { kind: 'map'; name: string }
+  | { kind: 'auth'; name: string; userType: TypeIR }
+  /**
    * Phase B6 (native readiness audit 2026-06, partial CRIT-4 closure).
    * `const data = useLoaderData<User>()` binding — reads the active
    * router's loaderData entry for the current path, type-cast to T.

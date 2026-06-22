@@ -1381,6 +1381,33 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   if (d.kind === 'network-status') {
     return `@State private var ${swiftIdent(d.name)} = PyreonNetworkStatus()`
   }
+  // Phase 5: native data/services hooks → @State container instantiation.
+  // Swift containers expose reactive fields via @Observable (read bare, no
+  // rewrite) + default (or generic-only) constructors. The lifecycle
+  // auto-start (geolocation.start / websocket.connect / push.start) is a
+  // documented follow-up — the binding + reactive reads ship now; call
+  // `.start()` / `.connect(...)` from an onMount/effect or native host today.
+  if (d.kind === 'geolocation') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonGeolocation()`
+  }
+  if (d.kind === 'websocket') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonWebSocket()`
+  }
+  if (d.kind === 'database') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
+  }
+  if (d.kind === 'push') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonPushNotifications()`
+  }
+  if (d.kind === 'payments') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonPayments()`
+  }
+  if (d.kind === 'map') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonMapState()`
+  }
+  if (d.kind === 'auth') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonAuth<${swiftType(d.userType)}>()`
+  }
   // Phase B6: `const data = useLoaderData<User>()` → a COMPUTED
   // property reading the active router's loaderData entry for the
   // current path, type-cast to T?. MUST be computed (not stored let):

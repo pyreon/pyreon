@@ -81,6 +81,19 @@ let _formNames: Set<string> = new Set()
  * plain @Observable property, so it needs no rewrite.
  */
 let _netStatusNames: Set<string> = new Set()
+/**
+ * Phase 5: native data/services hook decl names → per-hook MutableState
+ * field-read rewrite (append `.value`). Each maps a binding name to the
+ * container's reactive fields; non-listed members (Bool getters + methods)
+ * read bare. Swift exposes everything as @Observable, so it needs no rewrite.
+ * Field sets are kept next to the read-rewrite in emitKotlinExpr.
+ */
+let _geoNames: Set<string> = new Set()
+let _wsNames: Set<string> = new Set()
+let _pushNames: Set<string> = new Set()
+let _payNames: Set<string> = new Set()
+let _mapNames: Set<string> = new Set()
+let _authNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
 /**
@@ -958,6 +971,12 @@ function emitKotlinComponent(c: ComponentIR): string {
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
+  _geoNames = new Set()
+  _wsNames = new Set()
+  _pushNames = new Set()
+  _payNames = new Set()
+  _mapNames = new Set()
+  _authNames = new Set()
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
@@ -1001,6 +1020,13 @@ function emitKotlinComponent(c: ComponentIR): string {
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
+    // Phase 5: native data/services hook decl names (for the .value rewrite).
+    if (d.kind === 'geolocation') _geoNames.add(d.name)
+    if (d.kind === 'websocket') _wsNames.add(d.name)
+    if (d.kind === 'push') _pushNames.add(d.name)
+    if (d.kind === 'payments') _payNames.add(d.name)
+    if (d.kind === 'map') _mapNames.add(d.name)
+    if (d.kind === 'auth') _authNames.add(d.name)
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // Pass 1: walk decls — emits decl bodies AND discovers synthesized
@@ -1079,6 +1105,12 @@ function emitKotlinComponent(c: ComponentIR): string {
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
+  _geoNames = new Set()
+  _wsNames = new Set()
+  _pushNames = new Set()
+  _payNames = new Set()
+  _mapNames = new Set()
+  _authNames = new Set()
   _routerRoutes = new Map()
   return lines.join('\n')
 }
@@ -1237,6 +1269,30 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // Phase 4: `const net = useOnline()` → a remembered PyreonNetworkStatus.
   if (d.kind === 'network-status') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonNetworkStatus() }`
+  }
+  // Phase 5: native data/services hooks → remembered container. Reactive
+  // FIELD reads append `.value` (see emitKotlinExpr); methods + Bool getters
+  // read bare. Lifecycle auto-start is a documented follow-up.
+  if (d.kind === 'geolocation') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonGeolocation() }`
+  }
+  if (d.kind === 'websocket') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
+  }
+  if (d.kind === 'database') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonDatabase() }`
+  }
+  if (d.kind === 'push') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonPushNotifications() }`
+  }
+  if (d.kind === 'payments') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonPayments() }`
+  }
+  if (d.kind === 'map') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonMapState() }`
+  }
+  if (d.kind === 'auth') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonAuth<${kotlinType(d.userType, ctx)}>() }`
   }
   // Phase B6: `const data = useLoaderData<User>()` → a `val` that calls
   // the runtime helper. The reified-generic `useLoaderData<T>()` reads
@@ -2054,6 +2110,29 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.property === 'isOnline'
       ) {
         return `${kotlinIdent(e.object.name)}.isOnline.value`
+      }
+      // Phase 5: native data/services hooks. Each container's reactive fields
+      // are Compose `MutableState` (read `.value`); Bool getters
+      // (isTracking/isOpen/isAuthenticated/isSigningIn/isRegistered/
+      // selectedMarker) + method calls read bare. Swift's @Observable needs
+      // no rewrite (handled by the default member emit on that target).
+      if (e.object.kind === 'identifier') {
+        const obj = e.object.name
+        const p = e.property
+        const isMutableStateField =
+          (_geoNames.has(obj) &&
+            ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'].includes(p)) ||
+          (_wsNames.has(obj) &&
+            ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
+          (_pushNames.has(obj) &&
+            ['token', 'lastNotification', 'notifications', 'isAuthorized', 'error'].includes(p)) ||
+          (_payNames.has(obj) &&
+            ['products', 'ownedProductIds', 'purchasing', 'error'].includes(p)) ||
+          (_mapNames.has(obj) && ['camera', 'markers', 'selectedMarkerId'].includes(p)) ||
+          (_authNames.has(obj) && ['status', 'user', 'error'].includes(p))
+        if (isMutableStateField) {
+          return `${kotlinIdent(obj)}.${kotlinIdent(p)}.value`
+        }
       }
       return `${emitKotlinExpr(e.object, indent)}.${kotlinIdent(e.property)}`
     }

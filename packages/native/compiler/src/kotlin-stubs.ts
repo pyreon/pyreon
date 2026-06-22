@@ -826,4 +826,102 @@ interface PyreonStore
 // emitted per-model singleton classes. Real impl in @pyreon/native-
 // runtime-kotlin's PyreonModel.kt. Empty by design.
 interface PyreonModelProtocol
+
+// Phase 5 — native data/services hook containers. Mirror the surface the
+// emit touches (no-arg / generic constructor + MutableState reactive fields
+// + Bool getters + methods). Real impls in @pyreon/native-runtime-kotlin.
+class PyreonGeolocation {
+  val latitude = mutableStateOf<Double?>(null)
+  val longitude = mutableStateOf<Double?>(null)
+  val accuracy = mutableStateOf<Double?>(null)
+  val isAuthorized = mutableStateOf(false)
+  val error = mutableStateOf<Throwable?>(null)
+  val isTracking: Boolean get() = false
+  fun update(latitude: Double, longitude: Double, accuracy: Double? = null) {}
+  fun authorize(granted: Boolean) {}
+  fun fail(failure: Throwable) {}
+  fun stop() {}
+}
+
+class PyreonWebSocket {
+  val lastMessage = mutableStateOf<String?>(null)
+  val messages = mutableStateOf<List<String>>(emptyList())
+  val isConnected = mutableStateOf(false)
+  val error = mutableStateOf<Throwable?>(null)
+  val isOpen: Boolean get() = false
+  fun send(text: String) {}
+  fun close() {}
+}
+
+class PyreonRecord(val id: String, val fields: Map<String, String> = emptyMap())
+class PyreonDatabase {
+  fun insert(collection: String, record: PyreonRecord) {}
+  fun get(collection: String, id: String): PyreonRecord? = null
+  fun all(collection: String): List<PyreonRecord> = emptyList()
+  fun delete(collection: String, id: String): Boolean = true
+  fun find(collection: String, field: String, value: String): List<PyreonRecord> = emptyList()
+  fun count(collection: String): Int = 0
+}
+
+class PyreonPushNotification(
+  val title: String? = null,
+  val body: String? = null,
+  val data: Map<String, String> = emptyMap(),
+)
+class PyreonPushNotifications {
+  val token = mutableStateOf<String?>(null)
+  val lastNotification = mutableStateOf<PyreonPushNotification?>(null)
+  val notifications = mutableStateOf<List<PyreonPushNotification>>(emptyList())
+  val isAuthorized = mutableStateOf(false)
+  val error = mutableStateOf<Throwable?>(null)
+  val isRegistered: Boolean get() = false
+  fun tokenReceived(token: String) {}
+  fun authorize(granted: Boolean) {}
+  fun fail(failure: Throwable) {}
+  fun stop() {}
+}
+
+class PyreonProduct(val id: String, val displayName: String, val price: String)
+class PyreonPayments {
+  val products = mutableStateOf<List<PyreonProduct>>(emptyList())
+  val ownedProductIds = mutableStateOf<Set<String>>(emptySet())
+  val purchasing = mutableStateOf<String?>(null)
+  val error = mutableStateOf<Throwable?>(null)
+  fun owns(productId: String): Boolean = false
+  fun purchase(productId: String) {}
+  fun restore() {}
+}
+
+class PyreonMapMarker(
+  val id: String,
+  val latitude: Double,
+  val longitude: Double,
+  val title: String? = null,
+)
+class PyreonMapCamera(val latitude: Double, val longitude: Double, val zoom: Double)
+class PyreonMapState {
+  val camera = mutableStateOf(PyreonMapCamera(0.0, 0.0, 1.0))
+  val markers = mutableStateOf<List<PyreonMapMarker>>(emptyList())
+  val selectedMarkerId = mutableStateOf<String?>(null)
+  val selectedMarker: PyreonMapMarker? get() = null
+  fun setCamera(camera: PyreonMapCamera) {}
+  fun moveTo(latitude: Double, longitude: Double, zoom: Double? = null) {}
+  fun setMarkers(markers: List<PyreonMapMarker>) {}
+  fun addMarker(marker: PyreonMapMarker) {}
+  fun removeMarker(id: String) {}
+  fun selectMarker(id: String?) {}
+}
+
+enum class PyreonAuthStatus { SIGNED_OUT, SIGNING_IN, SIGNED_IN, ERROR }
+class PyreonAuth<User> {
+  val status = mutableStateOf(PyreonAuthStatus.SIGNED_OUT)
+  val user = mutableStateOf<User?>(null)
+  val error = mutableStateOf<Throwable?>(null)
+  val isAuthenticated: Boolean get() = false
+  val isSigningIn: Boolean get() = false
+  fun beginSignIn() {}
+  fun signInSucceeded(user: User) {}
+  fun signInFailed(failure: Throwable) {}
+  fun signOut() {}
+}
 `

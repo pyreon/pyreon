@@ -602,6 +602,40 @@ Kotlin runtime the emitted code drives):
   "light"` inline. Same `"light" | "dark"` string contract the web hook
   uses — `scheme === 'dark'` works identically across all three targets
   (#1103).
+- **Data/services hooks (Phase 5 — #1689):** seven more `@pyreon/*` hooks
+  now compile to their runtime containers, instantiated + read exactly like
+  `useOnline` (Swift `@State private var x = PyreonX()` with bare
+  `@Observable` reads; Kotlin `val x = remember { PyreonX() }` with `.value`
+  on the `MutableState` fields, bare on `Bool` getters + methods):
+  `useAuth<User>()` → `PyreonAuth<User>` (status / user / error +
+  `isAuthenticated`); `useDatabase()` → `PyreonDatabase` (insert / get / all
+  / find / delete / count); `useGeolocation()` → `PyreonGeolocation` (lat /
+  lon / accuracy / isAuthorized); `useMap()` → `PyreonMapState` (camera /
+  markers / selectedMarkerId); `useWebSocket('wss://…')` → `PyreonWebSocket`
+  (lastMessage / messages / isConnected; URL must be a string literal);
+  `usePush()` → `PyreonPushNotifications` (token / lastNotification /
+  isAuthorized); `usePayments()` → `PyreonPayments` (products /
+  ownedProductIds / purchasing). This unblocks **writing** the finance,
+  analytical, maps, and realtime/uber archetypes from one `.tsx` — verified
+  at the compile rung: an archetype component using all seven emits
+  typecheck-clean Swift (`swiftc`) **and** Kotlin (`kotlinc`).
+  **Two honest limits:**
+  (1) **Lifecycle auto-start is NOT yet emitted** — the binding + reactive
+  reads ship, but `geolocation.start()` / `websocket.connect()` /
+  `push.start()` on mount do not. The web hooks auto-start; on native today
+  you call `.start()` / `.connect()` from an effect or native host. Full
+  auto-start is **blocked on the real Kotlin transport backends** (the
+  Kotlin containers take an app-injected source — `FusedLocationProvider` /
+  OkHttp — which the compiler can't synthesize), so it lands with that
+  Android-CI backend work, not before.
+  (2) **`useSecureStorage()` is deferred** (warns + drops) — the Kotlin
+  secret store needs an app-injected `EncryptedSharedPreferences` backend, so
+  auto-instantiation isn't clean cross-target. Use the runtime container from
+  native host code, or keep secrets in a `<Web>`-only branch, until the
+  backend-injection emit lands.
+  As with every native service, the **runtime behavior is compile-verified,
+  not device-proven** — the nightly device gate + example apps are the
+  runtime-proof layer.
 
 > Status: `useForm` (v2 — validated forms, device-proven via the tasks
 > showcase's error-path smoke), `useFetch` (device-proven — the
@@ -631,6 +665,7 @@ every warning; treat any warning as "this construct is outside v1."
 | `useStorage<T>('key', default)` | literal string key required |
 | `createRouter({ routes })` / `useNavigate()` / `useParams()` / `useLoaderData<T>()` | literal route arrays; guards as expression-body arrows |
 | `useFetch<T>(url)` / `usePermissions([...])` / `useOnline()` / `useClipboard()` / `useColorScheme()` | see the services section for per-hook status |
+| `useAuth<User>()` / `useDatabase()` / `useGeolocation()` / `useMap()` / `useWebSocket('wss://…')` / `usePush()` / `usePayments()` | Phase 5 (#1689) — container + reactive reads; `useWebSocket` needs a literal URL; lifecycle auto-start + `useSecureStorage` deferred (services section) |
 | `createI18n({...})` / `createMachine({...})` / `defineStore(id, setup)` / `model({...}).create()` | literal configs; store v2 setup bodies take signals + expression-body computeds + arrow methods |
 | `rx.METHOD(source, …)` | 21 collection methods (Strategy-A lowering) |
 

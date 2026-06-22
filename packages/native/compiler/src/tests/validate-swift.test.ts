@@ -85,6 +85,11 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // WebView via the escape-hatch primitives with a const-ref'd HTML
     // payload. Locks the example's emit through the same swiftc gate.
     'showcase-analytics.tsx',
+    // The finance-tracker archetype proof (Phase 5 / #1689): exercises the
+    // new useAuth<User> + useDatabase emit in a real app shape (auth-state
+    // container reads + transitions, reactive store ledger, computed
+    // balance, validated useForm, string-keyed db ops, routing + auth-gate).
+    'showcase-finance.tsx',
     // Dynamic <WebView html={signal-derived}> — reactive-reload bridge slice;
     // locks the dynamic-html emit through the toolchain gate.
     'webview-dynamic.tsx',
