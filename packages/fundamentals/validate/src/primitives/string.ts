@@ -12,6 +12,7 @@
 
 import { typeIssue } from '../core/issue'
 import type { CheckOpts, ParseCtx } from '../core/ops'
+import { resolveFormat } from '../core/registry'
 import { Schema as SchemaBase, attachCheck, makeCheckIssue, type Schema } from '../core/schema'
 
 // ─── Email precision tiers (server/client split) ──────────────────────
@@ -64,6 +65,44 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 export const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/
 export const ISO_TIME_RE = /^\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
+
+// ─── Lightweight (client) format validators ────────────────────────────
+// Small + fast + in-bundle. The server upgrades phone (and email) to
+// superior validators via `@pyreon/validate/server` — these are the
+// client defaults the registry falls back to.
+
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/
+const IPV6_RE = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}$|^(?:[0-9a-fA-F]{1,4}:){1,7}:$|^(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}$/
+const PHONE_SEP_RE = /[\s().-]/g
+const PHONE_E164_RE = /^\+?[1-9]\d{6,14}$/
+
+/** Lightweight phone check — normalize common separators, then E.164 shape. */
+export function validatePhone(value: string): boolean {
+  return PHONE_E164_RE.test(value.replace(PHONE_SEP_RE, ''))
+}
+
+/** IPv4 or IPv6 (regex; sufficient on both client and server). */
+export function validateIp(value: string): boolean {
+  return IPV4_RE.test(value) || IPV6_RE.test(value)
+}
+
+/** Credit-card: 12–19 digits (separators stripped) + Luhn checksum. */
+export function validateCreditCard(value: string): boolean {
+  const digits = value.replace(/[\s-]/g, '')
+  if (!/^\d{12,19}$/.test(digits)) return false
+  let sum = 0
+  let dbl = false
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48
+    if (dbl) {
+      d *= 2
+      if (d > 9) d -= 9
+    }
+    sum += d
+    dbl = !dbl
+  }
+  return sum % 10 === 0
+}
 
 export class StringSchema extends SchemaBase<string> {
   readonly _kind = 'string' as const
@@ -178,21 +217,75 @@ export class StringSchema extends SchemaBase<string> {
    * for DNS / disposable-domain checks) since bundle size doesn't matter
    * server-side.
    */
+  /**
+   * Validate an email. Lightweight by default (the `precision` regex —
+   * what ships to the client). If `@pyreon/validate/server` has been
+   * imported, the SAME check automatically uses the superior server
+   * validator (strict RFC + disposable-domain list) instead — the
+   * client/server split, transparent to the schema. See `EmailPrecision`.
+   */
   email(opts?: CheckOpts & { precision?: EmailPrecision }): this {
     const precision = opts?.precision ?? 'standard'
+    const light = (v: string): boolean => validateEmail(v, precision)
     this._ops.push(
       attachCheck({ kind: 'check:string:email', opts }, (value, ctx) => {
-        if (typeof value !== 'string' || validateEmail(value, precision)) return
+        if (typeof value !== 'string') return
+        if (resolveFormat('email', light)(value)) return
         ctx.issues.push(
-          makeCheckIssue(
-            'invalid_format',
-            'Invalid email',
-            'validate.string.email',
-            {},
-            'Invalid email',
-            ctx,
-            opts,
-          ),
+          makeCheckIssue('invalid_format', 'Invalid email', 'validate.string.email', {}, 'Invalid email', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /**
+   * Validate a phone number. Lightweight by default — a normalized E.164
+   * shape check (`+?` then 7–15 digits; common separators stripped). This
+   * is what ships to the client. The server (`@pyreon/validate/server`)
+   * upgrades the SAME check to superior region-aware / `libphonenumber`-
+   * grade validation, which never enters the client bundle. The textbook
+   * client/server-split format: full phone validation is far too heavy to
+   * ship to the browser.
+   */
+  phone(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:phone', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('phone', validatePhone)(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid phone number', 'validate.string.phone', {}, 'Invalid phone number', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate an IPv4 or IPv6 address. Regex-based (sufficient client + server). */
+  ip(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:ip', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('ip', validateIp)(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid IP address', 'validate.string.ip', {}, 'Invalid IP address', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate a credit-card number (Luhn checksum + 12–19 digits, separators stripped). */
+  creditCard(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:creditcard', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('creditcard', validateCreditCard)(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid card number', 'validate.string.creditcard', {}, 'Invalid card number', ctx, opts),
         )
       }),
     )

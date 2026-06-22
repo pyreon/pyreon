@@ -42,6 +42,9 @@ export type StringCheckOp =
   | { kind: 'check:string:length'; n: number; opts?: CheckOpts | undefined }
   | { kind: 'check:string:regex'; re: RegExp; opts?: CheckOpts | undefined }
   | { kind: 'check:string:email'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:phone'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:ip'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:creditcard'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:url'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:uuid'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:iso:date'; opts?: CheckOpts | undefined }
