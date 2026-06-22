@@ -172,6 +172,57 @@ describe('applyProp — events', () => {
     el.dispatchEvent(new Event('scroll'))
     expect(handler).not.toHaveBeenCalled()
   })
+
+  test('onFocusIn routes to the delegated `focusin` slot and fires from a descendant', () => {
+    // `onFocusIn` must lower-case to `focusin` (NOT `focusIn`), and focusin is
+    // a DELEGATED bubbling event — so a handler on a container fires when focus
+    // moves to any descendant. Proves the routing (applyProp → focusin expando)
+    // AND the delegation dispatch end-to-end.
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    setupDelegation(container)
+    const parent = document.createElement('section')
+    const child = document.createElement('button')
+    parent.append(child)
+    container.append(parent)
+
+    const handler = vi.fn()
+    const cleanup = applyProp(parent, 'onFocusIn', handler)
+    // routed to the focusin delegation slot, not addEventListener('focusIn')
+    expect(
+      (parent as unknown as Record<string, unknown>)[delegatedPropName('focusin')],
+    ).toBeTypeOf('function')
+
+    child.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    expect(handler).toHaveBeenCalledTimes(1)
+
+    cleanup?.()
+    expect(
+      (parent as unknown as Record<string, unknown>)[delegatedPropName('focusin')],
+    ).toBeUndefined()
+    container.remove()
+  })
+
+  test('onFocusOut routes to the delegated `focusout` slot and fires from a descendant', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    setupDelegation(container)
+    const parent = document.createElement('section')
+    const child = document.createElement('button')
+    parent.append(child)
+    container.append(parent)
+
+    const handler = vi.fn()
+    const cleanup = applyProp(parent, 'onFocusOut', handler)
+    expect(
+      (parent as unknown as Record<string, unknown>)[delegatedPropName('focusout')],
+    ).toBeTypeOf('function')
+
+    child.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    expect(handler).toHaveBeenCalledTimes(1)
+    cleanup?.()
+    container.remove()
+  })
 })
 
 // ─── applyProp — reactive (function) values ──────────────────────────────────
