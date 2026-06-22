@@ -767,6 +767,56 @@ describe('useForm', () => {
     unmount()
   })
 
+  it('edit-mode auto-fetch does NOT overwrite the form after unmount (stale-promise guard)', async () => {
+    // The getById fetch resolves AFTER the component unmounts. Without the
+    // onCleanup cancellation guard, the late .then calls setFieldValue on a
+    // disposed form (the stale-promise class — anti-patterns.md "F").
+    let resolveGet!: (r: Response) => void
+    const getPromise = new Promise<Response>((res) => {
+      resolveGet = res
+    })
+    const users = defineFeature<UserValues>({
+      name: 'users-form-unmount-guard',
+      schema: userSchema,
+      api: '/api/users',
+      fetcher: ((_url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (method === 'GET') return getPromise
+        return Promise.resolve(new Response('{}', { status: 200 }))
+      }) as typeof fetch,
+    })
+
+    const client = new QueryClient()
+    const { result: form, unmount } = mountWith(client, () =>
+      users.useForm({
+        mode: 'edit',
+        id: 7,
+        initialValues: {
+          name: 'INITIAL',
+          email: 'i@t.com',
+          role: 'viewer',
+          active: false,
+        },
+      }),
+    )
+
+    // Unmount BEFORE the in-flight getById resolves.
+    unmount()
+
+    // Now the server response lands — must be ignored (form is disposed).
+    resolveGet(
+      new Response(
+        JSON.stringify({ name: 'SERVER', email: 's@t.com', role: 'admin', active: true }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    await new Promise((r) => setTimeout(r, 50))
+
+    // The late .then was skipped — the field keeps its initial value, never
+    // overwritten by the post-unmount response.
+    expect(form.values().name).toBe('INITIAL')
+  })
+
   it('calls onSuccess callback', async () => {
     let successResult: unknown = null
     const users = defineFeature<UserValues>({
