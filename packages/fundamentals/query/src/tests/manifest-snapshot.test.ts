@@ -152,8 +152,12 @@ describe('gen-docs — query snapshot', () => {
     expect(keys).toContain('query/QueryErrorResetBoundary')
     expect(keys).toContain('query/useQueryErrorResetBoundary')
     expect(keys).toContain('query/useQueryClient')
+    expect(keys).toContain('query/PersistQueryClientProvider')
+    expect(keys).toContain('query/useIsRestoring')
+    expect(keys).toContain('query/QueryDevtools')
+    expect(keys).toContain('query/Persistence subpath re-exports')
     expect(keys).toContain('query/TanStack core re-exports')
-    expect(keys.length).toBe(21)
+    expect(keys.length).toBe(25)
 
     // Spot-check flagship entry density
     const useQuery = record['query/useQuery']!

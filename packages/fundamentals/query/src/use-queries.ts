@@ -8,6 +8,7 @@ import type {
   QueryObserverResult,
 } from '@tanstack/query-core'
 import { QueriesObserver } from '@tanstack/query-core'
+import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
 
 export type UseQueriesOptions<TQueryKey extends QueryKey = QueryKey> = QueryObserverOptions<
@@ -38,15 +39,20 @@ export type UseQueriesOptions<TQueryKey extends QueryKey = QueryKey> = QueryObse
  */
 export function useQueries(queries: () => UseQueriesOptions[]): Signal<QueryObserverResult[]> {
   const client = useQueryClient()
+  const isRestoring = useIsRestoring()
   const observer = new QueriesObserver(client, queries())
 
   const resultSig = signal(observer.getCurrentResult() as readonly QueryObserverResult[]) as Signal<
     QueryObserverResult[]
   >
 
-  const unsub = observer.subscribe((results: readonly QueryObserverResult[]) => {
-    resultSig.set(results as QueryObserverResult[])
-  })
+  const unsub = subscribeWhenRestored(
+    observer,
+    isRestoring,
+    (results: readonly QueryObserverResult[]) => {
+      resultSig.set(results as QueryObserverResult[])
+    },
+  )
 
   // When signals inside queries() change, update the observer.
   effect(() => {
