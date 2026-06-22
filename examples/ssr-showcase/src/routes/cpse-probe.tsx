@@ -6,7 +6,9 @@
  *   - SSR emits a value-agnostic class + inline `--u-*` custom properties;
  *   - N instances with N DISTINCT values share ONE class (O(N)→O(1) rules);
  *   - after hydration, each box computes its own correct padding (parity);
- *   - a signal-driven box updates its computed padding on click (dynamic).
+ *   - a signal-driven box updates its computed padding on click (dynamic);
+ *   - a responsive box flips its computed padding across a viewport resize
+ *     (per-breakpoint vars + @media cascade).
  */
 import { signal } from '@pyreon/reactivity'
 import { cpseStyled } from '@pyreon/unistyle'
@@ -37,6 +39,11 @@ export default function CpseProbe() {
         bump
       </button>
       <span data-testid="pad-val">{() => pad()}</span>
+      {/* Responsive: xs(base)=8px, sm(>=576px)=48px — one value-agnostic class,
+          per-breakpoint inline vars, @media cascade picks the active one. */}
+      <Box styles={{ padding: [8, 48] }} data-testid="box-resp">
+        RESP
+      </Box>
     </main>
   )
 }

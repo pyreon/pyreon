@@ -355,4 +355,20 @@ test.describe('CPSE — cpseStyled end-to-end (SSR + hydration + dynamic)', () =
     await expect(page.getByTestId('pad-val')).toHaveText('16') // signal updated (hydrated)
     await expect(dyn).toHaveCSS('padding-top', '16px') // inline var patched in place
   })
+
+  test('responsive: viewport resize flips computed padding via the @media cascade', async ({
+    page,
+  }) => {
+    await page.goto('/cpse-probe')
+    const resp = page.getByTestId('box-resp')
+    // styles={{ padding: [8, 48] }} → xs(base)=8px, sm(>=576px)=48px. One
+    // value-agnostic class + per-breakpoint inline vars; the browser's @media
+    // cascade selects which var the rule reads.
+    await page.setViewportSize({ width: 400, height: 800 }) // < 576 → base
+    await expect(resp).toHaveCSS('padding-top', '8px')
+    await page.setViewportSize({ width: 900, height: 800 }) // >= 576 → sm
+    await expect(resp).toHaveCSS('padding-top', '48px')
+    await page.setViewportSize({ width: 400, height: 800 }) // back to base
+    await expect(resp).toHaveCSS('padding-top', '8px')
+  })
 })
