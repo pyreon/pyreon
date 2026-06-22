@@ -2391,6 +2391,20 @@ const field = useField(form, 'email')`,
 - Nesting providers expecting scoped caches — only one provider is supported; the deepest one wins silently`,
   },
 
+  'query/HydrationBoundary': {
+    signature: '(props: { state?: DehydratedState | null; options?: HydrateOptions; children: VNodeChild }) => VNodeChild',
+    example: `// server: const state = dehydrate(queryClient)
+// client:
+<QueryClientProvider client={client}>
+  <HydrationBoundary state={state}>
+    <App />
+  </HydrationBoundary>
+</QueryClientProvider>`,
+    notes: `Hydrates a server-dehydrated query cache into the nearest \`QueryClient\`, then renders its children — the ergonomic SSR companion to the \`dehydrate\` / \`hydrate\` functions. Hydration happens once, synchronously, in component setup BEFORE children mount, so descendant \`useQuery\` calls resolve from the server-fetched cache (no loading flash, no refetch). \`state\` is the static dehydrated blob serialized from the server render. Marked \`nativeCompat\` so the \`useQueryClient()\` lookup + \`hydrate()\` run in Pyreon's setup frame even under the \`*-compat\` jsx() runtimes. See also: QueryClientProvider, useQueryClient.`,
+    mistakes: `- Passing a reactive accessor for \`state\` — hydration reads \`state\` once at setup; a server dehydrated blob is static, so a signal-wrapped value is unnecessary and only the initial read takes effect
+- Hydrating into a different \`QueryClient\` than the one the children read — \`HydrationBoundary\` hydrates the nearest provider's client; ensure the same \`QueryClientProvider\` wraps both`,
+  },
+
   'query/useQuery': {
     signature: '<TData, TError, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
     example: `const userId = signal(1)
@@ -2414,10 +2428,23 @@ const user = useQuery(() => ({
   onSuccess: () => client.invalidateQueries({ queryKey: ['posts'] }),
 })
 // <button onClick={() => create.mutate({ title: 'New' })}>Create</button>`,
-    notes: 'Run a mutation (create / update / delete). Returns reactive `pending` / `success` / `error` signals plus two firing modes: `mutate(vars)` (fire-and-forget — errors go to the `error` signal) and `mutateAsync(vars)` (returns a promise for try/catch). `reset()` returns state to idle. Unlike `useQuery`, options is a plain OBJECT (not a function) because mutations are imperative — there are no reactive queryKeys to re-evaluate, so the function-wrapper overhead would add no value. `onSuccess` / `onError` / `onSettled` callbacks fire synchronously after the mutation resolves, useful for cache invalidation (`client.invalidateQueries`). See also: useQuery, useIsMutating.',
+    notes: 'Run a mutation (create / update / delete). Returns reactive `pending` / `success` / `error` signals plus two firing modes: `mutate(vars)` (fire-and-forget — errors go to the `error` signal) and `mutateAsync(vars)` (returns a promise for try/catch). `reset()` returns state to idle. Unlike `useQuery`, options is a plain OBJECT (not a function) because mutations are imperative — there are no reactive queryKeys to re-evaluate, so the function-wrapper overhead would add no value. `onSuccess` / `onError` / `onSettled` callbacks fire synchronously after the mutation resolves, useful for cache invalidation (`client.invalidateQueries`). See also: useQuery, useIsMutating, useMutationState.',
     mistakes: `- \`mutate()\` swallows errors into the \`error\` signal — use \`mutateAsync()\` with try/catch if you need programmatic error handling
 - Calling \`mutate()\` inside a \`useQuery\` \`queryFn\` — mutations are imperative user actions, not data-fetching side effects; this causes infinite loops if the mutation invalidates the query that spawned it
 - Reading \`mutation.data()\` outside a reactive scope — same rule as \`useQuery\`: read inside \`() => mutation.data()\` or effects`,
+  },
+
+  'query/useMutationState': {
+    signature: '<TResult>(options?: () => { filters?: MutationFilters; select?: (m: Mutation) => TResult }) => Signal<TResult[]>',
+    example: `const pending = useMutationState(() => ({
+  filters: { status: 'pending' },
+  select: (m) => m.state.variables,
+}))
+// pending() — array of variables of every in-flight mutation`,
+    notes: 'Reactively read state from the MutationCache across the whole app — e.g. to render in-flight mutations globally (optimistic-UI lists, a "saving…" indicator that shows the variables of every pending mutation). Returns a `Signal<TResult[]>` that re-snapshots whenever a matching mutation is added / updated / removed. `options` is a function so reactive filters (signal-driven `status` / `mutationKey`) re-evaluate automatically; `select` maps each matched `Mutation` to a value (defaults to `mutation.state`). Distinct from `useMutation` (which drives ONE mutation) — this OBSERVES the cache without owning a mutation. See also: useMutation, useIsMutating.',
+    mistakes: `- Passing options as an object instead of a function — loses reactive filter tracking; a signal-driven \`status\` filter won't re-evaluate
+- Expecting it to TRIGGER mutations — it only READS the cache; use \`useMutation\` to run a mutation
+- Reading \`pending()\` outside a reactive scope — it is a \`Signal\`, call it inside \`() => pending()\` or an effect`,
   },
 
   'query/useInfiniteQuery': {
@@ -2439,9 +2466,30 @@ const user = useQuery(() => ({
   userIds().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
 )
 // results() is QueryObserverResult[] — one entry per input query`,
-    notes: 'Subscribe to multiple queries in parallel. Returns a `Signal<QueryObserverResult[]>` — one entry per input query. Options is a function so the query list can depend on signals (e.g. derive one query per item in a reactive array). Each inner query independently tracks its own `data` / `error` / `isFetching` — the outer signal fires when ANY inner query updates. See also: useQuery.',
+    notes: 'Subscribe to multiple queries in parallel. Returns a `Signal<QueryObserverResult[]>` — one entry per input query. Options is a function so the query list can depend on signals (e.g. derive one query per item in a reactive array). Each inner query independently tracks its own `data` / `error` / `isFetching` — the outer signal fires when ANY inner query updates. See also: useQuery, useSuspenseQueries.',
     mistakes: `- Expecting per-query fine-grained signals — \`useQueries\` returns a single combined signal, not individual \`UseQueryResult\` objects. For independent per-query tracking, call \`useQuery\` N times
 - Passing a static array instead of a function — loses reactive query-list tracking; if the list of IDs changes (e.g. \`userIds()\` is a signal), the queries won't re-evaluate. Always wrap: \`useQueries(() => ids().map(...))\``,
+  },
+
+  'query/usePrefetchQuery': {
+    signature: '<TData, TError, TKey>(options: () => FetchQueryOptions<...>) => void',
+    example: `// In a parent / layout component:
+usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
+// then a child's useSuspenseQuery(['user', id]) resolves instantly`,
+    notes: `Prefetch a query during component setup so its data is warm before a child's \`useQuery\` mounts. Fire-and-forget (returns nothing). Only prefetches when the key is NOT already in the cache, so it never re-fetches data the cache already has. Pair with \`useSuspenseQuery\` in a child to avoid a loading flash — the parent warms the cache, the suspense child reads it as immediately-resolved. \`usePrefetchInfiniteQuery\` is the paginated equivalent (requires \`initialPageParam\` + \`getNextPageParam\`). See also: usePrefetchInfiniteQuery, useSuspenseQuery, useQueryClient.`,
+    mistakes: `- Calling it inside a conditional/loop — like all hooks it must run unconditionally in component setup
+- Expecting a return value — it is fire-and-forget; read the data via \`useQuery\` / \`useSuspenseQuery\` with the same key`,
+  },
+
+  'query/usePrefetchInfiniteQuery': {
+    signature: '<TQueryFnData, TError, TData, TKey, TPageParam>(options: () => FetchInfiniteQueryOptions<...>) => void',
+    example: `usePrefetchInfiniteQuery(() => ({
+  queryKey: ['feed'],
+  queryFn: ({ pageParam }) => fetchPage(pageParam),
+  initialPageParam: 0,
+  getNextPageParam: (last) => last.next,
+}))`,
+    notes: `Infinite-query variant of \`usePrefetchQuery\` — warms the first page of a paginated query into the cache during setup, only when the key isn't already cached. Requires \`initialPageParam\` + \`getNextPageParam\` like \`useInfiniteQuery\`. Pair with \`useSuspenseInfiniteQuery\` in a child. See also: usePrefetchQuery, useSuspenseInfiniteQuery, useInfiniteQuery.`,
   },
 
   'query/useSubscription': {
@@ -2510,6 +2558,20 @@ const user = useQuery(() => ({
 - Mixing \`useSuspenseInfiniteQuery\` and \`useInfiniteQuery\` for the same \`queryKey\` — the Suspense observer and the regular observer can race; use one or the other per key`,
   },
 
+  'query/useSuspenseQueries': {
+    signature: '<TData, TError>(queries: () => UseQueriesOptions[]) => { results: Signal<...[]>; data: Signal<TData[]>; isPending: Signal<boolean>; isError: Signal<boolean>; error: Signal<TError | null> }',
+    example: `const users = useSuspenseQueries(() =>
+  ids().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
+)
+<QuerySuspense query={users} fallback={<Spinner />}>
+  {() => <UserList users={users.data()} />}
+</QuerySuspense>`,
+    notes: 'Like `useQueries` but shaped for a `QuerySuspense` boundary: aggregates the array of queries into ONE query-like (`isPending` = any pending, `isError` = any errored, `error` = first error) plus a `data` array. The returned object is itself a valid query-gate — pass the WHOLE result as the `query` of a `QuerySuspense`, and children render only after every query succeeds, at which point `data()` is the fully-populated (never-undefined) array. `queries` is reactive (signal-driven keys re-evaluate automatically). See also: useQueries, useSuspenseQuery, QuerySuspense.',
+    mistakes: `- Gating a \`QuerySuspense\` on \`users.data\` instead of \`users\` — pass the whole result object as \`query\`; it carries the \`isPending\`/\`isError\`/\`error\` signals the boundary reads
+- Passing a static array instead of a function — loses reactive query-list tracking (same rule as \`useQueries\`)
+- Using without a \`QuerySuspense\` wrapper — \`data()\` can contain \`undefined\` entries until every query succeeds; the boundary is what guarantees a full array`,
+  },
+
   'query/QuerySuspense': {
     signature: '(props: QuerySuspenseProps) => VNodeChild',
     example: `<QuerySuspense
@@ -2568,17 +2630,20 @@ await client.prefetchQuery({ queryKey: ['user', 1], queryFn: fetchUser })`,
   },
 
   'query/TanStack core re-exports': {
-    signature: `import { QueryClient, QueryCache, MutationCache, dehydrate, hydrate, keepPreviousData, hashKey, isCancelledError, CancelledError, defaultShouldDehydrateQuery, defaultShouldDehydrateMutation } from '@pyreon/query'`,
+    signature: `import { QueryClient, QueryCache, MutationCache, QueryObserver, InfiniteQueryObserver, MutationObserver, QueriesObserver, dehydrate, hydrate, skipToken, keepPreviousData, hashKey, matchQuery, matchMutation, replaceEqualDeep, focusManager, onlineManager, notifyManager, isServer, isCancelledError, CancelledError, defaultShouldDehydrateQuery, defaultShouldDehydrateMutation } from '@pyreon/query'`,
     example: `// SSR dehydration round-trip:
-import { QueryClient, dehydrate, hydrate } from '@pyreon/query'
+import { QueryClient, dehydrate, hydrate, skipToken } from '@pyreon/query'
 
 const server = new QueryClient()
 await server.prefetchQuery({ queryKey: ['users'], queryFn: fetchUsers })
 const snapshot = dehydrate(server)
 
 const client = new QueryClient()
-hydrate(client, snapshot)`,
-    notes: '`@pyreon/query` re-exports the framework-agnostic TanStack surface so consumers import every primitive from one entry: `QueryClient` / `QueryCache` / `MutationCache` (instance classes), `dehydrate` / `hydrate` (SSR serialization), `keepPreviousData` (placeholder helper), `hashKey` / `isCancelledError` / `CancelledError`, and the `defaultShouldDehydrate*` predicates. Types (`QueryKey`, `QueryFilters`, `MutationFilters`, `DehydratedState`, `FetchQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`) re-export alongside the runtime values. See also: QueryClientProvider, useQueryClient.',
+hydrate(client, snapshot)
+
+// skipToken: type-safe conditional disabling
+useQuery(() => ({ queryKey: ['user', id()], queryFn: id() ? fetchUser : skipToken }))`,
+    notes: '`@pyreon/query` re-exports the full framework-agnostic TanStack surface (identity-equal to `@tanstack/query-core`) so consumers import every primitive from one entry: `QueryClient` / `QueryCache` / `MutationCache` (instance classes); all four observers (`QueryObserver` / `InfiniteQueryObserver` / `MutationObserver` / `QueriesObserver`) for advanced consumers driving query-core directly; `dehydrate` / `hydrate` (SSR serialization); `skipToken` (the v5 sentinel — `queryFn: skipToken` type-safely disables a query); `keepPreviousData`; the cache-key + structural-sharing utilities `hashKey` / `matchQuery` / `matchMutation` / `replaceEqualDeep`; the singleton managers `focusManager` / `onlineManager` / `notifyManager` (toggle focus/online refetch behaviour, batch notifications); `isServer`; `hashKey` / `isCancelledError` / `CancelledError`; and the `defaultShouldDehydrate*` predicates. Types (`QueryKey`, `QueryFilters`, `MutationFilters`, `Mutation`, `MutationState`, `QueryState`, `DehydratedState`, `HydrateOptions`, `InfiniteData`, `DefaultError`, `FetchQueryOptions`, `FetchInfiniteQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`) re-export alongside the runtime values. See also: QueryClientProvider, useQueryClient, HydrationBoundary.',
   },
   // <gen-docs:api-reference:end @pyreon/query>
 

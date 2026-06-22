@@ -27,6 +27,7 @@ import {
   useMutation,
   useQuery,
   useSuspenseInfiniteQuery,
+  useSuspenseQueries,
   useSuspenseQuery,
 } from '../index'
 
@@ -177,6 +178,31 @@ describe('production-mode dev-gate false side', () => {
 
     await tick()
     key.set('y')
+    await tick()
+
+    unmount()
+  })
+
+  it('useSuspenseQueries: entry + observerNotify + setOptions run in production', async () => {
+    const client = makeClient()
+    const ids = signal([1])
+    let q: ReturnType<typeof useSuspenseQueries> | null = null
+
+    const unmount = withProvider(client, () => {
+      q = useSuspenseQueries(() =>
+        ids().map((id) => ({
+          queryKey: ['prod-susp-queries', id],
+          queryFn: async () => `v-${id}`,
+        })),
+      )
+      // Read an aggregate so the subscribe callback body (apply) matters.
+      void q.data
+    })
+
+    await tick()
+    expect(q!.data()).toEqual(['v-1'])
+    // Flip the reactive list → re-runs the setQueries effect in production.
+    ids.set([1, 2])
     await tick()
 
     unmount()
