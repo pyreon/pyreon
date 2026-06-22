@@ -59,6 +59,24 @@ function renderEntry(e: any): string {
   }
   if (e.signature) parts.push(fence('ts', e.signature))
   if (e.summary) parts.push(escFlow(e.summary))
+  // Parameters table (optional structured field). Types go in inline-code
+  // (backtick) cells so `<`/`>` in generics are literal to the MDX pipeline;
+  // `|` (unions) is cell-escaped. Description flows through escFlow.
+  if (Array.isArray(e.params) && e.params.length) {
+    parts.push('**Parameters**')
+    const rows = ['| Parameter | Type | Description |', '| --- | --- | --- |']
+    for (const p of e.params) {
+      const nm = `\`${p.name}${p.optional ? '?' : ''}\``
+      const ty = `\`${String(p.type).replace(/\|/g, '\\|')}\``
+      const desc = escFlow(String(p.description)).replace(/\|/g, '\\|').replace(/\n/g, ' ')
+      rows.push(`| ${nm} | ${ty} | ${desc} |`)
+    }
+    parts.push(rows.join('\n'))
+  }
+  if (e.returns) {
+    const ty = `\`${String(e.returns.type).replace(/\|/g, '\\|')}\``
+    parts.push(`**Returns** ${ty} — ${escFlow(String(e.returns.description))}`)
+  }
   if (e.example) {
     parts.push('**Example**')
     parts.push(fence('tsx', e.example))
