@@ -1172,9 +1172,20 @@ function emitSwiftComponent(c: ComponentIR): string {
     )
   }
   for (const d of c.decls) {
+    // Phase 5b: value consts are body-local `let`s (a stored `let` property
+    // can't reference @State at init), emitted just below — skip here.
+    if (d.kind === 'value') continue
     lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
   }
   lines.push(`  var body: some View {`)
+  // Phase 5b: plain value consts as body-local `let`s at the top of the
+  // ViewBuilder (Swift infers the type; they may read @State properties).
+  // Source order preserved so a value const can reference an earlier one.
+  for (const d of c.decls) {
+    if (d.kind === 'value') {
+      lines.push(`    let ${swiftIdent(d.name)} = ${emitSwiftExpr(d.expr, 4)}`)
+    }
+  }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentSwift = isLayout
   // When the component has a useFetch decl, the appended `.task { }` MUST
@@ -1240,6 +1251,12 @@ function emitSwiftComponent(c: ComponentIR): string {
 }
 
 function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>): string {
+  // Phase 5b: a plain value const. Normally emitted as a body-local `let` by
+  // emitSwiftComponent (a stored property can't reference @State at init);
+  // this defensive case keeps the emit total if reached elsewhere.
+  if (d.kind === 'value') {
+    return `let ${swiftIdent(d.name)} = ${emitSwiftExpr(d.expr, 2)}`
+  }
   if (d.kind === 'signal') {
     const type = swiftType(d.type)
     // If the signal's declared type is a known enum, set the active-enum
