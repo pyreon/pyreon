@@ -63,8 +63,12 @@ export function union<T extends readonly [AnySchema, AnySchema, ...AnySchema[]]>
 
 // ─── Discriminated union ───────────────────────────────────────────────
 
-type ObjShape = Record<string, Schema<unknown>>
-type AnyObject = ObjectSchema<ObjShape>
+// Constraint only — kept permissive so `.partial()`'s mapped return type
+// doesn't make `ObjectSchema` invariant and reject concrete members. The
+// actual member tuple `T` is still inferred concretely at the call site,
+// so `InferObjUnion<T>` stays strict.
+// oxlint-disable-next-line typescript/no-explicit-any
+type AnyObject = ObjectSchema<any>
 type InferObjUnion<T extends readonly AnyObject[]> = T[number] extends Schema<infer U> ? U : never
 
 export class DiscriminatedUnionSchema<
