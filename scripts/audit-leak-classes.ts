@@ -185,7 +185,7 @@ function parseAst(source: string, filePath: string): AstNode | null {
     const result = parseSync(filePath, source, { sourceType: 'module', lang: getLang(filePath) })
     // A file with fatal parse errors yields an unusable tree — skip it
     // (advisory audit; a file the compiler can't parse isn't ours to judge).
-    program = (result.errors?.length ?? 0) > 0 ? null : (result.program as AstNode)
+    program = (result.errors?.length ?? 0) > 0 ? null : (result.program as unknown as AstNode)
   }
   catch {
     program = null
