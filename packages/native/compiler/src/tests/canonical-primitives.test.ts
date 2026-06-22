@@ -223,6 +223,32 @@ describe('Phase P2.1 — <Scroll> emit (scrollable container)', () => {
     const out = tx(`<Scroll padding={2}><Text>x</Text></Scroll>`, 'kotlin')
     expect(out).toContain('Modifier.verticalScroll(rememberScrollState()).padding(8.dp)')
   })
+
+  // List virtualization (Swift): a <For> inside a <Scroll> must lower to
+  // ScrollView { LazyVStack { ForEach } } so rows build lazily — a bare ForEach
+  // directly in a ScrollView is EAGER (long-list OOM). The wrap is applied ONLY
+  // when a <For> child is present; non-list Scroll content stays byte-identical.
+  const FOR_IN_SCROLL = (axis = '') =>
+    `<Scroll${axis}><For each={items} by={(i) => i.id}>{(i) => <Text>{i.label}</Text>}</For></Scroll>`
+
+  it('Swift: <For> inside <Scroll> → ScrollView { LazyVStack(spacing: 0) { ForEach } }', () => {
+    const out = tx(FOR_IN_SCROLL(), 'swift')
+    expect(out).toContain('ScrollView {')
+    expect(out).toContain('LazyVStack(spacing: 0) {')
+    expect(out).toMatch(/LazyVStack\(spacing: 0\) \{[\s\S]+ForEach\(/)
+  })
+
+  it('Swift: <For> inside <Scroll axis="horizontal"> → LazyHStack', () => {
+    const out = tx(FOR_IN_SCROLL(' axis="horizontal"'), 'swift')
+    expect(out).toContain('ScrollView(.horizontal)')
+    expect(out).toContain('LazyHStack(spacing: 0) {')
+  })
+
+  it('Swift: non-<For> <Scroll> content is NOT wrapped in a Lazy stack (unchanged)', () => {
+    const out = tx(`<Scroll><Text>row</Text></Scroll>`, 'swift')
+    expect(out).not.toContain('LazyVStack')
+    expect(out).not.toContain('LazyHStack')
+  })
 })
 
 describe('Phase P2.1 — <Spacer> emit (flexible gap)', () => {
