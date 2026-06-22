@@ -158,4 +158,32 @@ describe('charts in real browser', () => {
     expect(typeof inst.dispose).toBe('function')
     el.remove()
   })
+
+  it('Chart forwards onInit to useChart — called once with the ECharts instance', async () => {
+    const options = () => ({
+      xAxis: { type: 'category' as const, data: ['a', 'b', 'c'] },
+      yAxis: { type: 'value' as const },
+      series: [{ type: 'bar' as const, data: [1, 2, 3] }],
+    })
+    let received: unknown = null
+    let calls = 0
+    const { unmount } = mountInBrowser(
+      h(Chart, {
+        options,
+        style: 'width: 400px; height: 300px',
+        onInit: (inst: unknown) => {
+          received = inst
+          calls++
+        },
+      }),
+    )
+
+    const ok = await waitFor(() => received !== null, 5000)
+    expect(ok).toBe(true)
+    expect(calls).toBe(1)
+    // The arg is the real ECharts instance (proves the prop reached useChart,
+    // which calls config.onInit(chart) on creation).
+    expect(typeof (received as { setOption?: unknown }).setOption).toBe('function')
+    unmount()
+  })
 })
