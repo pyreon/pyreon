@@ -164,6 +164,119 @@ export function substituteIdentifier(
   }
 }
 
+/**
+ * Lower a route `loader: (ctx) => …ctx.params.X…` body's param reads to a
+ * native dict read on a synthetic `params` binding. `ctx.params.id` and
+ * `ctx.params["id"]` both become `index(identifier('params'), 'id')`, which
+ * the emitters render as `params["id"]` — and the route-dispatch branch
+ * already binds `params` from `matchPath(path, "/x/:id")` in scope.
+ *
+ * Returns the rewritten expr plus two flags: `usesParams` (the body read at
+ * least one `ctx.params.*`, so the emit must bind `params` even if the
+ * component prop doesn't) and `residualCtx` (the body referenced `ctx` in some
+ * OTHER way — `ctx.request`, a bare `ctx`, etc. — which v1 does NOT support;
+ * the caller drops the loader + warns rather than emit an unbound `ctx`).
+ *
+ * Mirrors `substituteIdentifier`'s total recursion so every node kind is
+ * covered; only `member`/`index` whose object is `ctx.params` are special.
+ */
+export interface LowerParamsResult {
+  expr: ExprIR
+  usesParams: boolean
+  residualCtx: boolean
+}
+export function lowerRouteParams(expr: ExprIR, ctxName: string): LowerParamsResult {
+  const flags = { usesParams: false, residualCtx: false }
+  const out = walkLowerParams(expr, ctxName, flags)
+  return { expr: out, usesParams: flags.usesParams, residualCtx: flags.residualCtx }
+}
+
+// `(params[<key>] ?? "")` — a native dict read defaulted to "" so it matches
+// the web `string` type of `ctx.params.x` (a bare `params["id"]` is `String?`
+// on both targets, which mismatches non-optional consumers). The `??`
+// lowers to Swift `??` and Kotlin Elvis `?:`.
+function paramRead(key: ExprIR): ExprIR {
+  return {
+    kind: 'logical',
+    op: '??',
+    left: { kind: 'index', object: { kind: 'identifier', name: 'params' }, index: key },
+    right: { kind: 'literal', value: '' },
+  }
+}
+
+// True when `e` is the `ctx.params` member access (the read root we rewrite).
+function isCtxParams(e: ExprIR, ctxName: string): boolean {
+  return (
+    e.kind === 'member' &&
+    e.property === 'params' &&
+    e.object.kind === 'identifier' &&
+    e.object.name === ctxName
+  )
+}
+
+function walkLowerParams(
+  expr: ExprIR,
+  ctxName: string,
+  flags: { usesParams: boolean; residualCtx: boolean },
+): ExprIR {
+  const rec = (e: ExprIR): ExprIR => walkLowerParams(e, ctxName, flags)
+  switch (expr.kind) {
+    case 'literal':
+      return expr
+    case 'identifier':
+      // A bare `ctx` (not part of a `ctx.params` access) is unsupported.
+      if (expr.name === ctxName) flags.residualCtx = true
+      return expr
+    case 'member': {
+      // `ctx.params.id` → `(params["id"] ?? "")`.
+      if (isCtxParams(expr.object, ctxName)) {
+        flags.usesParams = true
+        return paramRead({ kind: 'literal', value: expr.property })
+      }
+      return { ...expr, object: rec(expr.object) }
+    }
+    case 'index': {
+      // `ctx.params["id"]` → `(params["id"] ?? "")`.
+      if (isCtxParams(expr.object, ctxName)) {
+        flags.usesParams = true
+        return paramRead(rec(expr.index))
+      }
+      return { ...expr, object: rec(expr.object), index: rec(expr.index) }
+    }
+    case 'call':
+      return { ...expr, callee: rec(expr.callee), args: expr.args.map(rec) }
+    case 'binary':
+    case 'comparison':
+    case 'logical':
+      return { ...expr, left: rec(expr.left), right: rec(expr.right) }
+    case 'unary':
+    case 'update':
+      return { ...expr, argument: rec(expr.argument) }
+    case 'ternary':
+      return { ...expr, cond: rec(expr.cond), then: rec(expr.then), otherwise: rec(expr.otherwise) }
+    case 'arrow':
+      return { ...expr, body: rec(expr.body) }
+    case 'rx-call':
+      return { ...expr, source: rec(expr.source), args: expr.args.map(rec) }
+    case 'array':
+      return { ...expr, elements: expr.elements.map(rec) }
+    case 'object': {
+      const fields = expr.fields.map((f) => ({ name: f.name, value: rec(f.value) }))
+      return expr.spreads !== undefined
+        ? { ...expr, fields, spreads: expr.spreads.map(rec) }
+        : { ...expr, fields }
+    }
+    case 'paren':
+      return { ...expr, inner: rec(expr.inner) }
+    case 'spread':
+      return { ...expr, argument: rec(expr.argument) }
+    case 'jsx-element':
+    case 'jsx-fragment':
+      // A loader body is not JSX; leave these untouched (total-walker safety).
+      return expr
+  }
+}
+
 function substituteInChildren(
   children: ChildIR[],
   name: string,

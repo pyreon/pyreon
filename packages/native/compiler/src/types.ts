@@ -455,6 +455,13 @@ export interface RouteIR {
    * `await` bodies are a later arc.
    */
   loader?: ExprIR
+  /**
+   * True when the route's `loader: (ctx) => …` body reads `ctx.params.*`
+   * (lowered to `params["…"]`). The emitter must then bind `params` from
+   * `matchPath(path, "/x/:id")` in the dispatch branch even when the
+   * component prop itself doesn't use params.
+   */
+  loaderUsesParams?: boolean
 }
 
 /**

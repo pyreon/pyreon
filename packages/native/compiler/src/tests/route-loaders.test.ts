@@ -66,14 +66,50 @@ describe('Phase 3 — per-route loader auto-emit', () => {
     expect(kt).not.toMatch(/PyreonRouteLoader\([^)]*\)\s*\{\s*About\(\)/)
   })
 
-  it('v1 conservative bail: a param-using loader (`(ctx) => …`) WARNS and emits NO loader', () => {
+  it('conservative bail: a loader using `ctx` for non-params (bare `ctx`) WARNS, NO loader', () => {
     const src = SRC.replace('loader: () => 2', 'loader: (ctx) => ctx')
     const r = transform(src, { target: 'swift' })
-    expect(r.warnings.some((w) => w.includes('takes a parameter') && w.includes('/users/:id'))).toBe(
-      true,
-    )
+    expect(
+      r.warnings.some((w) => w.includes('something other than') && w.includes('/users/:id')),
+    ).toBe(true)
     // The route still renders its component, just without a loader wrap.
     expect(r.code).not.toContain('load: { ctx }')
+  })
+
+  // `ctx.params` threading (the detail-screen-by-id pattern). `(ctx) =>
+  // …ctx.params.id…` lowers to `params["id"] ?? ""`, read from the dispatch
+  // branch's matchPath binding. The `/users/:id` route's `User` component has
+  // NO params prop, so the emit must bind `params` because the LOADER uses it.
+  const PARAM_SRC = SRC.replace('loader: () => 2', 'loader: (ctx) => ctx.params.id')
+
+  it('Swift: `(ctx) => ctx.params.id` loader binds params + lowers to params["id"]', () => {
+    const r = transform(PARAM_SRC, { target: 'swift' })
+    expect(r.warnings.some((w) => w.includes('/users/:id'))).toBe(false)
+    // params bound (loader uses it, even though User has no params prop):
+    expect(r.code).toContain('let params = PyreonRouter.matchPath(path, "/users/:id")')
+    // ctx.params.id lowered to (params["id"] ?? "") inside the loader closure:
+    expect(r.code).toContain('PyreonRouteLoader(path: path, load: { (params["id"] ?? "") }) { User() }')
+  })
+
+  it('Kotlin: `(ctx) => ctx.params.id` loader binds params + lowers to params["id"]', () => {
+    const r = transform(PARAM_SRC, { target: 'kotlin' })
+    expect(r.warnings.some((w) => w.includes('/users/:id'))).toBe(false)
+    expect(r.code).toContain('val params = PyreonRouter.matchPath(currentPath, "/users/:id")')
+    expect(r.code).toContain('PyreonRouteLoader(path = currentPath, load = { (params["id"] ?: "") }) { User() }')
+  })
+
+  it.skipIf(!isSwiftcAvailable())('emitted Swift for a param loader parses on real swiftc', () => {
+    const out = transform(PARAM_SRC, { target: 'swift' }).code
+    const r = validateSwift(out)
+    if (!r.ok) throw new Error(`swiftc rejected:\n${r.error}\n---\n${out}`)
+    expect(r.ok).toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('emitted Kotlin for a param loader compiles on real kotlinc', () => {
+    const out = transform(PARAM_SRC, { target: 'kotlin' }).code
+    const r = validateKotlin(out)
+    if (!r.ok) throw new Error(`kotlinc rejected:\n${r.error}\n---\n${out}`)
+    expect(r.ok).toBe(true)
   })
 
   it('v1 conservative bail: a block-body loader WARNS and emits NO loader', () => {

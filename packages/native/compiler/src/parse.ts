@@ -27,6 +27,7 @@ import type {
   ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
+import { lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
 // `any` to keep the parser readable. As the IR coverage grows we can
@@ -3377,6 +3378,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     let guard: ExprIR | undefined
     let children: RouteIR[] | undefined
     let loader: ExprIR | undefined
+    let loaderUsesParams = false
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
       const key = p.key?.name as string | undefined
@@ -3425,27 +3427,46 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
         const parsed = parseRouteArray(p.value, ctx)
         if (parsed !== null && parsed.length > 0) children = parsed
       } else if (key === 'loader') {
-        // Phase 3 — per-route data loader. v1 captures only a ZERO-PARAM
-        // arrow with an EXPRESSION body (`() => fetchAll()` /
-        // `async () => 42`); the body becomes the runtime load closure
-        // fired once on the route's appear (→ `setLoaderData`). A loader
-        // WITH a param (`(ctx) => …`) has no value source for `ctx` in the
-        // load closure yet, and a block-body loader needs statement emit —
-        // both leave `loader` undefined and warn (the route renders with no
-        // loader; `useLoaderData()` returns nil). `ctx.params` threading +
-        // truly-async `await` bodies are a later arc.
+        // Phase 3 — per-route data loader. EXPRESSION-body arrows only; the
+        // body becomes the runtime load closure fired once on the route's
+        // appear (→ `setLoaderData`). Two shapes:
+        //   - `() => fetchAll()`            (zero-param)
+        //   - `(ctx) => …ctx.params.id…`    (param-using — lowered: every
+        //      `ctx.params.X` becomes `params["X"]`, read from the dispatch
+        //      branch's `matchPath(path, "/x/:id")` binding; sets
+        //      `loaderUsesParams` so the emitter binds `params`).
+        // A block-body loader needs statement emit (later arc) and a `ctx`
+        // used for anything OTHER than `ctx.params` (e.g. `ctx.request`) has
+        // no value source — both leave `loader` undefined + warn (the route
+        // renders with no loader; `useLoaderData()` returns nil).
         const v = p.value
         if (v?.type === 'ArrowFunctionExpression') {
           const paramCount = Array.isArray(v.params) ? v.params.length : 0
-          if (paramCount > 0) {
-            ctx.warnings.push(
-              `Route \`loader\` for ${path !== undefined ? `route "${path}"` : 'a route'} takes a parameter (\`(ctx) => …\`) — v1 supports only zero-param loaders (\`() => fetchAll()\`); this route emits with NO loader. \`ctx.params\` threading is a later arc; move the read into a zero-param arrow or a named function called from one.`,
-            )
-          } else if (v.body?.type === 'BlockStatement') {
+          const ctxName =
+            paramCount > 0 && v.params[0]?.type === 'Identifier'
+              ? (v.params[0].name as string)
+              : undefined
+          if (v.body?.type === 'BlockStatement') {
             ctx.warnings.push(
               `Route \`loader\` for ${path !== undefined ? `route "${path}"` : 'a route'} is a block-body arrow — v1 extracts only expression-body arrows (\`() => fetchAll()\`); this route emits with NO loader. Use the expression-body form or move the logic into a named function called from an expression-body arrow.`,
             )
+          } else if (paramCount > 1 || (paramCount === 1 && ctxName === undefined)) {
+            ctx.warnings.push(
+              `Route \`loader\` for ${path !== undefined ? `route "${path}"` : 'a route'} has an unsupported parameter shape — v1 supports zero-param (\`() => fetchAll()\`) or a single \`(ctx) => …ctx.params.x…\` reader; this route emits with NO loader.`,
+            )
+          } else if (v.body && ctxName !== undefined) {
+            // `(ctx) => …` — parse, then lower `ctx.params.x` → `params["x"]`.
+            const lowered = lowerRouteParams(parseExpr(v.body, ctx), ctxName)
+            if (lowered.residualCtx) {
+              ctx.warnings.push(
+                `Route \`loader\` for ${path !== undefined ? `route "${path}"` : 'a route'} reads \`${ctxName}\` for something other than \`${ctxName}.params.*\` — v1 only threads route params into a loader; this route emits with NO loader. Move other context into the component or a named function.`,
+              )
+            } else {
+              loader = lowered.expr
+              loaderUsesParams = lowered.usesParams
+            }
           } else if (v.body) {
+            // Zero-param expression-body loader (unchanged).
             loader = parseExpr(v.body, ctx)
           }
         }
@@ -3467,6 +3488,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     if (guard !== undefined) route.guard = guard
     if (children !== undefined) route.children = children
     if (loader !== undefined) route.loader = loader
+    if (loaderUsesParams) route.loaderUsesParams = true
     out.push(route)
   }
   return out

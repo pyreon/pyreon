@@ -3827,7 +3827,10 @@ function emitKotlinRouteDispatch(
       lines.push(
         `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> {`,
       )
-      if (inv.usesParams) {
+      // Bind `params` when the COMPONENT uses it OR the route's `loader`
+      // reads `ctx.params.*` (lowered to `params["…"]`) — the loader body
+      // emits inside this branch, so `params` must be in scope.
+      if (inv.usesParams || route.loaderUsesParams === true) {
         lines.push(
           `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) ?: emptyMap()`,
         )
