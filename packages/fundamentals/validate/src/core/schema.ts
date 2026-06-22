@@ -19,6 +19,7 @@
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError } from './issue'
+import { tryCompileJit } from './jit'
 import type { CheckOpts, Op, ParseCtx } from './ops'
 import { makeCtx } from './ops'
 
@@ -317,7 +318,9 @@ export abstract class Schema<T> {
   /** Build (or fetch cached) compiled validator. */
   private _getCompiled(): SyncValidator {
     if (!this._compiled) {
-      this._compiled = compileSchema(this)
+      // Try the JIT fast path first (pure object-of-primitives shapes);
+      // fall back to the interpreted compiler for everything else.
+      this._compiled = tryCompileJit(this) ?? compileSchema(this)
     }
     return this._compiled
   }
