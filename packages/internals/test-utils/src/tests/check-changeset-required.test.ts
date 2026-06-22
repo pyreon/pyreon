@@ -282,6 +282,35 @@ describe('isConsumerAffectingFile', () => {
     })
   })
 
+  describe('Gen-docs manifest in a published package — NOT consumer-affecting', () => {
+    // `src/manifest.ts` is consumed by gen-docs at build time + tree-shaken
+    // from the published lib/ (never imported by the runtime entry), so a
+    // manifest-only change ships nothing — same non-shipping rationale as
+    // test files. Previously forced a `skip-changeset` label on docs-metadata
+    // PRs (e.g. populating Parameters/Returns tables).
+    it('rejects src/manifest.ts in a published package', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/src/manifest.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
+    })
+
+    it('does NOT over-match a real source file whose name merely contains "manifest"', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/src/manifest-utils.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(true)
+    })
+  })
+
   describe('Test / spec / story files in a published package — NOT consumer-affecting', () => {
     // Test code is inert for consumers (not in the runtime `lib/`). Mirrors
     // the `check-diagnose-catalog` gate's test-file exclusion. Previously

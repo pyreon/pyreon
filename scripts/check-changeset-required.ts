@@ -217,6 +217,11 @@ export function findOwningPackage(
  *   consumers (`scripts/publish.ts` strips `src/` from the tarball, so
  *   tests aren't even shipped), parity with the diagnose-catalog gate.
  *   Both gates share ONE classifier (`scripts/test-paths.ts`).
+ * - File must NOT be a gen-docs manifest (`src/manifest.ts`) — it is
+ *   consumed by `gen-docs` at BUILD time and tree-shaken from the published
+ *   `lib/` (never imported by the package's runtime entry), so it does not
+ *   change shipped code. Same non-shipping rationale as test files: a
+ *   manifest-only edit needs a docs regen, not a changeset.
  */
 export function isConsumerAffectingFile(
   file: string,
@@ -229,7 +234,20 @@ export function isConsumerAffectingFile(
   if (owner.private) return false
   if (ignoredNames.has(owner.name)) return false
   if (isTestPath(file)) return false
+  if (isManifestPath(file)) return false
   return true
+}
+
+/**
+ * A package's gen-docs manifest (`src/manifest.ts`). Consumed by `gen-docs`
+ * to produce `llms.txt` / the MCP api-reference / the docs reference pages;
+ * tree-shaken from the published `lib/` and never imported by the runtime
+ * entry, so a manifest-only change never reaches npm consumers.
+ *
+ * @internal exported for unit testing
+ */
+export function isManifestPath(file: string): boolean {
+  return /(?:^|\/)src\/manifest\.ts$/.test(file.split('\\').join('/'))
 }
 
 /**
