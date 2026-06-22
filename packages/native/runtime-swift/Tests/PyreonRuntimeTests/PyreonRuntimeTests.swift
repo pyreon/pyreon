@@ -1540,6 +1540,87 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertTrue(ws.isOpen)
         ws.close()
     }
+
+    // MARK: - PyreonMapState (useMap reactive map-state container)
+    //
+    // Pure state (no platform edge) — fully covered here, no device caveat.
+    // The <Map> VIEW that binds to this state is a separate compiler-emit
+    // follow-up.
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonMapInitialState() throws {
+        let map = PyreonMapState()
+        XCTAssertEqual(map.camera, PyreonMapCamera(latitude: 0, longitude: 0, zoom: 1))
+        XCTAssertTrue(map.markers.isEmpty)
+        XCTAssertNil(map.selectedMarkerId)
+        XCTAssertNil(map.selectedMarker)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonMapMoveToKeepsZoom() throws {
+        let map = PyreonMapState(camera: PyreonMapCamera(latitude: 0, longitude: 0, zoom: 10))
+        map.moveTo(latitude: 50, longitude: 14)
+        XCTAssertEqual(map.camera.latitude, 50)
+        XCTAssertEqual(map.camera.longitude, 14)
+        XCTAssertEqual(map.camera.zoom, 10) // kept
+        map.moveTo(latitude: 1, longitude: 2, zoom: 5)
+        XCTAssertEqual(map.camera.zoom, 5) // re-zoomed
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonMapAddMarkerUpsert() throws {
+        let map = PyreonMapState()
+        map.addMarker(PyreonMapMarker(id: "a", latitude: 1, longitude: 2, title: "first"))
+        map.addMarker(PyreonMapMarker(id: "b", latitude: 3, longitude: 4))
+        XCTAssertEqual(map.markers.count, 2)
+        map.addMarker(PyreonMapMarker(id: "a", latitude: 9, longitude: 9, title: "updated"))
+        XCTAssertEqual(map.markers.count, 2) // upsert, no dupe
+        XCTAssertEqual(map.markers[0].id, "a")
+        XCTAssertEqual(map.markers[0].title, "updated") // replaced in place
+        XCTAssertEqual(map.markers[1].id, "b")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonMapSelection() throws {
+        let map = PyreonMapState(markers: [PyreonMapMarker(id: "a", latitude: 1, longitude: 2, title: "A")])
+        map.selectMarker("a")
+        XCTAssertEqual(map.selectedMarkerId, "a")
+        XCTAssertEqual(map.selectedMarker?.title, "A")
+        map.selectMarker(nil)
+        XCTAssertNil(map.selectedMarker)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonMapRemoveMarkerClearsSelection() throws {
+        let map = PyreonMapState(markers: [PyreonMapMarker(id: "a", latitude: 1, longitude: 2)])
+        map.selectMarker("a")
+        XCTAssertNotNil(map.selectedMarker)
+        map.removeMarker(id: "a")
+        XCTAssertTrue(map.markers.isEmpty)
+        XCTAssertNil(map.selectedMarkerId) // cleared
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonMapRemoveMarkerKeepsOtherSelection() throws {
+        let map = PyreonMapState(markers: [
+            PyreonMapMarker(id: "a", latitude: 1, longitude: 2),
+            PyreonMapMarker(id: "b", latitude: 3, longitude: 4),
+        ])
+        map.selectMarker("b")
+        map.removeMarker(id: "a")
+        XCTAssertEqual(map.selectedMarkerId, "b") // kept
+        XCTAssertEqual(map.markers.count, 1)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonMapSetMarkersReplaces() throws {
+        let map = PyreonMapState(markers: [PyreonMapMarker(id: "a", latitude: 1, longitude: 2)])
+        map.setMarkers([
+            PyreonMapMarker(id: "x", latitude: 5, longitude: 6),
+            PyreonMapMarker(id: "y", latitude: 7, longitude: 8),
+        ])
+        XCTAssertEqual(map.markers.map(\.id), ["x", "y"])
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
