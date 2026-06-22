@@ -27,6 +27,45 @@ import { useThemeAccessor } from './ThemeProvider'
 // Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
+// ── Custom-Property Style Extraction (CPSE) — opt-in default-pipeline hook ──
+// `@pyreon/ui-core`'s `init({ styleExtraction: true })` calls `setStyleExtraction`
+// to enable + inject `cpseRewrite` (it lives in `@pyreon/unistyle`, which styler
+// cannot import — dep direction). EVERY branch below is gated on `_cpseEnabled`,
+// so with the flag off (the default) this is byte-identical to the classic path.
+// Scope: the NON-reactive (static + SSR) resolve — plain `styled` + `Element`
+// ($element path). The reactive (rocketstyle accessor) path stays classic.
+// Win: O(1) CSS rules (the value lives in an inline custom property); the styler
+// still resolves per distinct $element, so resolve stays O(N) (documented).
+let _cpseEnabled = false
+let _cpseRewrite: ((cssText: string, varsOut: Record<string, string>) => string) | null = null
+/** @internal Wired by `@pyreon/ui-core` `init({ styleExtraction })`. */
+export const setStyleExtraction = (
+  enabled: boolean,
+  rewrite?: (cssText: string, varsOut: Record<string, string>) => string,
+): void => {
+  _cpseEnabled = enabled
+  if (rewrite) _cpseRewrite = rewrite
+}
+// Per-$element vars cache — the value must survive `elClassCache` HITS, where
+// `doResolve` returns the cached className WITHOUT re-resolving (so the vars
+// would otherwise be lost for repeated-identical Elements). Only written when
+// CPSE is on.
+const cpseVarsCache = new WeakMap<object, Record<string, string>>()
+/** Merge CPSE custom-property vars into a finalProps `style` (object | string | absent). */
+const mergeCpseStyle = (finalProps: Record<string, any>, vars: Record<string, string>): void => {
+  const existing = finalProps.style
+  if (existing == null) {
+    finalProps.style = vars
+  } else if (typeof existing === 'string') {
+    let s = existing.trim()
+    if (s && !s.endsWith(';')) s += ';'
+    for (const k in vars) s += `${k}:${vars[k]};`
+    finalProps.style = s
+  } else if (typeof existing === 'object') {
+    finalProps.style = { ...existing, ...vars }
+  }
+}
+
 type Tag = string | ComponentFn<any>
 
 export interface StyledOptions {
@@ -244,7 +283,17 @@ const createStyledComponent = (
     // narrows them via `typeof === 'object'` guards before using as WeakMap
     // keys. `t` is the resolved theme object — opaque shape from styler's
     // perspective (consumers augment `DefaultTheme` via declaration merging).
+    // CPSE: the current resolve's per-instance vars, surfaced to the static /
+    // SSR render paths below. Reset at the top of every doResolve; only set on
+    // the non-reactive CPSE paths when the flag is on (else stays null).
+    let pendingCpseVars: Record<string, string> | null = null
+    // The `.set()` calls in doResolve are WeakMap/Map CACHE writes (classCache,
+    // elClassCache, cpseVarsCache), NOT signal updates — `batch()` does not
+    // apply. The rule counts `.set()` syntactically (a known Map-like FP class,
+    // per its own docstring); CPSE's cpseVarsCache.set pushed the Element path to 3.
+    // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     const doResolve = (rs: unknown, rsState: unknown, t: unknown): string => {
+      pendingCpseVars = null
       // Tier 2 cache: skip resolve if same object identity seen before
       if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
         const inner = classCache.get(rs)
@@ -270,6 +319,10 @@ const createStyledComponent = (
           if (cached !== undefined) {
             if (process.env.NODE_ENV !== 'production')
               _countSink.__pyreon_count__?.('styler.elClassCache.hit')
+            // Restore the per-instance CPSE vars cached alongside this $element
+            // (the className was the value-agnostic one) so the value survives
+            // the cache hit.
+            if (_cpseEnabled) pendingCpseVars = cpseVarsCache.get($el as object) ?? null
             return cached
           }
         }
@@ -281,7 +334,25 @@ const createStyledComponent = (
         ...(isReactiveState ? { $rocketstate: rsState } : {}),
         theme: t,
       }
-      const cssText = normalizeCSS(resolve(strings, values, resolveProps))
+      let cssText = normalizeCSS(resolve(strings, values, resolveProps))
+      // CPSE (non-reactive path only — excludes the rocketstyle classCache
+      // path): rewrite the resolved declarations to a value-agnostic rule
+      // (`prop: var(--u-…)`) and collect the per-instance values. The agnostic
+      // text dedups across distinct values → ONE shared CSS rule (O(1) rules);
+      // the value rides as an inline custom property. Flag-off → skipped.
+      if (
+        _cpseEnabled &&
+        _cpseRewrite &&
+        !(rs && typeof rs === 'object' && rsState && typeof rsState === 'object')
+      ) {
+        const vars: Record<string, string> = {}
+        const agnostic = _cpseRewrite(cssText, vars)
+        if (Object.keys(vars).length > 0) {
+          cssText = agnostic
+          pendingCpseVars = vars
+          if (useElCache) cpseVarsCache.set($el as object, vars)
+        }
+      }
       const className = cssText.length > 0 ? sheet.insert(cssText, false, insertLayer) : ''
 
       if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
@@ -321,6 +392,8 @@ const createStyledComponent = (
         ),
       )
       const finalProps = buildProps(rawProps, className, typeof finalTag === 'string', customFilter)
+      // CPSE: surface the per-instance custom properties into the SSR style attr.
+      if (pendingCpseVars) mergeCpseStyle(finalProps, pendingCpseVars)
       return h(
         finalTag as string,
         finalProps,
@@ -359,6 +432,10 @@ const createStyledComponent = (
     // Initial class: computed (reactive) or direct resolve (static)
     const className = cssClass ? cssClass() : doResolve($rs, $rsState, theme)
     const finalProps = buildProps(rawProps, className, isDOM, customFilter)
+    // CPSE: surface the per-instance custom properties into the client style
+    // attr (static / Element path only — `!cssClass` excludes the reactive
+    // rocketstyle path, which stays classic).
+    if (!cssClass && pendingCpseVars) mergeCpseStyle(finalProps, pendingCpseVars)
 
     // Reactive path: lightweight renderEffect that reads the pre-computed
     // class string and toggles classList. The expensive resolve() already

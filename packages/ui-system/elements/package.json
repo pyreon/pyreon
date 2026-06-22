@@ -53,6 +53,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/styler": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
