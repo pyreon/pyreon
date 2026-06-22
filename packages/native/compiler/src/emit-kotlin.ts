@@ -3219,11 +3219,8 @@ function emitKotlinImage(
   indent: number,
 ): string {
   const src = readStaticAttrKotlin(e, 'src')
-  if (typeof src !== 'string') {
-    return emitKotlinGeneric(e, indent)
-  }
-  const kind = imageSrcKindKotlin(src)
-  if (kind === 'path') {
+  const srcAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'src')
+  if (typeof src === 'string' && imageSrcKindKotlin(src) === 'path') {
     _emitWarnings.push(
       `<Image src=${JSON.stringify(src)}>: path-style src is web-only — use a bare asset name (bundled via the assets pipeline) or a full http(s) URL on native.`,
     )
@@ -3245,7 +3242,7 @@ function emitKotlinImage(
       : modParts.length > 0
         ? `Modifier${modParts.join('')}`
         : ''
-  if (kind === 'bundled') {
+  if (typeof src === 'string' && imageSrcKindKotlin(src) === 'bundled') {
     // `pyreonDrawable(name)` (runtime helper) resolves the drawable id
     // by NAME via the app context — no `R.drawable` reference, so the
     // emitted file doesn't depend on the host's namespace and the
@@ -3258,8 +3255,24 @@ function emitKotlinImage(
     if (modifier !== '') args.push(`modifier = ${modifier}`)
     return `Image(${args.join(', ')})`
   }
+  // Network image — a static URL OR a dynamic src expression (signal / prop /
+  // member). The dynamic case previously fell through to a generic,
+  // non-rendering emit, so a data-driven remote image (a feed item / avatar
+  // URL held in state) did NOT display; it now lowers to a Coil
+  // `AsyncImage(model = <expr>)` just like a static URL.
+  let model: string
+  if (typeof src === 'string') {
+    model = JSON.stringify(src)
+  } else if (srcAttr !== undefined && srcAttr.kind === 'attr' && srcAttr.value.kind !== 'identifier') {
+    // Genuine runtime read (signal call / member / index) — see the Swift
+    // twin. A bare `identifier` is excluded: it's the unresolvable
+    // const-ref case that falls through to the generic emit.
+    model = emitKotlinSignalRead(srcAttr.value)
+  } else {
+    return emitKotlinGeneric(e, indent)
+  }
   const args = [
-    `model = ${JSON.stringify(src)}`,
+    `model = ${model}`,
     `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
   ]
   if (typeof fit === 'string' && KOTLIN_CONTENT_SCALE[fit] !== undefined) {
