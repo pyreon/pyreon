@@ -3036,7 +3036,10 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Setting \`LayoutOptions.direction\` (or \`layerSpacing\`, or \`edgeRouting\`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are namespaced under ELK's layered / tree pipelines and silently ignored by the geometric algorithms. Dev-mode \`console.warn\` fires when this happens
 - Missing \`<Flow nodeTypes={{ key: Component }}>\` registration — \`node.type\` strings dispatch to that map, unregistered types fall through to the default renderer
 - Using \`createFlow\` inside a component body without \`onUnmount(() => flow.dispose())\` — prefer \`useFlow\` which auto-disposes
-- Using \`direction: 'row'\` on flow's containing Element layout — Pyreon \`Element\` accepts \`'inline'\` / \`'rows'\` / \`'reverseInline'\` / \`'reverseRows'\`, not CSS flex-direction values like \`'row'\` or \`'column'\``,
+- Using \`direction: 'row'\` on flow's containing Element layout — Pyreon \`Element\` accepts \`'inline'\` / \`'rows'\` / \`'reverseInline'\` / \`'reverseRows'\`, not CSS flex-direction values like \`'row'\` or \`'column'\`
+- Confusing \`markerEnd: null\` with omitting it — \`null\` is the explicit "no end arrow" opt-out that overrides \`config.defaultMarkerEnd\`; OMITTING it falls back to the flow default (a closed arrowhead). Set \`config.defaultMarkerEnd: null\` to make every edge arrowless by default
+- Expecting \`onlyRenderVisibleElements\` to cull an edge whose line crosses the viewport while BOTH its endpoint nodes are off-screen — only nodes (and the edges touching at least one visible node) are kept; a long edge spanning two off-screen nodes is culled (rare; matches React Flow)
+- Leaving object-snapping on for very large graphs — \`snapToObjects\` (default \`true\`) runs an O(N) align-to-other-nodes scan on EVERY drag frame; on big graphs it dominates per-frame cost. Set \`snapToObjects: false\` to skip it (≈3-4× faster drags) when you don't need helper-line alignment`,
   },
 
   'flow/useFlow': {

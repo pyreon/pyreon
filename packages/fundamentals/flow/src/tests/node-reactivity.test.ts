@@ -250,21 +250,27 @@ describe('node component reactivity (F2)', () => {
     const svg = container.querySelector('.pyreon-flow-edges')
     expect(svg).not.toBeNull()
 
-    // The marker exists with the expected attributes set via
-    // setAttribute (now that the runtime falls through to
-    // setAttribute for SVG namespaces instead of trying property
-    // assignment).
-    const marker = svg?.querySelector('marker#flow-arrowhead')
+    // The default end marker exists with the expected attributes set via
+    // setAttribute (the runtime falls through to setAttribute for SVG
+    // namespaces instead of property assignment). Markers are now deduped
+    // by config into ids of the form
+    // `pyreon-flow-marker-<type>-<color>-<w>x<h>-<sw>`; a default edge gets
+    // the built-in filled arrowhead.
+    const marker = svg?.querySelector('marker')
     expect(marker).not.toBeNull()
+    expect(marker?.id.startsWith('pyreon-flow-marker-arrowclosed-')).toBe(true)
     expect(marker?.getAttribute('markerWidth')).toBe('10')
     expect(marker?.getAttribute('markerHeight')).toBe('7')
     expect(marker?.getAttribute('refX')).toBe('10')
     expect(marker?.getAttribute('refY')).toBe('3.5')
-    expect(marker?.getAttribute('orient')).toBe('auto')
+    // `auto-start-reverse` lets one def serve both edge ends.
+    expect(marker?.getAttribute('orient')).toBe('auto-start-reverse')
 
-    // The edge path exists (default renderer's <g><path /></g>).
+    // The edge path exists (default renderer's <g><path /></g>) and references
+    // the deduped marker via marker-end.
     const edgePath = svg?.querySelector('path[d]')
     expect(edgePath).not.toBeNull()
+    expect(edgePath?.getAttribute('marker-end')).toBe(`url(#${marker?.id})`)
   })
 
   it('custom edge factory runs exactly once across position updates (drags)', () => {

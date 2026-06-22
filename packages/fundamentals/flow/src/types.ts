@@ -79,6 +79,35 @@ export interface FlowNode<TData = Record<string, unknown>> {
  */
 export type EdgeType = 'bezier' | 'smoothstep' | 'straight' | 'step' | (string & {})
 
+// ─── Edge markers ──────────────────────────────────────────────────────────
+//
+// React Flow parity: per-edge configurable arrowheads. `MarkerType.Arrow` is an
+// open chevron (stroked, no fill); `MarkerType.ArrowClosed` is a filled
+// triangle. Either end of an edge takes a bare `MarkerType` (default styling)
+// or a full `EdgeMarker` object (color / size). The Flow component dedupes
+// markers by config across all edges into a single `<defs>` block.
+
+export enum MarkerType {
+  Arrow = 'arrow',
+  ArrowClosed = 'arrowclosed',
+}
+
+export interface EdgeMarker {
+  /** Arrow shape — open chevron or filled triangle */
+  type: MarkerType
+  /** Marker fill/stroke color — default inherits the edge color (#999) */
+  color?: string
+  /** Marker box width — default 10 */
+  width?: number
+  /** Marker box height — default 7 */
+  height?: number
+  /** Stroke width for the open `Arrow` shape — default 1 */
+  strokeWidth?: number
+}
+
+/** An edge marker: a bare {@link MarkerType} (default styling) or full config. */
+export type EdgeMarkerSpec = EdgeMarker | MarkerType
+
 export interface FlowEdge {
   id?: string
   source: string
@@ -90,6 +119,13 @@ export interface FlowEdge {
   animated?: boolean
   class?: string
   style?: string
+  /** Marker at the START (source end). Omitted → no start marker. */
+  markerStart?: EdgeMarkerSpec
+  /**
+   * Marker at the END (target end). Omitted → the flow's `defaultMarkerEnd`
+   * (a filled arrowhead) is used; pass `null` to remove it for this edge.
+   */
+  markerEnd?: EdgeMarkerSpec | null
   /** Custom data attached to the edge */
   data?: Record<string, unknown>
   /** Waypoints — intermediate points the edge passes through */
@@ -138,6 +174,15 @@ export interface FlowConfig<TData = Record<string, unknown>> {
   snapToGrid?: boolean
   /** Grid size for snapping — default: 15 */
   snapGrid?: number
+  /**
+   * Snap a dragged node to align with other nodes' edges / centers, drawing
+   * helper guide lines (the React Flow "helper lines" behavior). Default
+   * `true`. Set `false` to skip the per-drag-frame O(N) alignment scan when
+   * you don't need object-snapping — on large graphs this is the dominant
+   * drag-frame cost; disabling it makes a drag effectively O(1) of framework
+   * work plus the single immutable node-array update.
+   */
+  snapToObjects?: boolean
   /** Connection rules — which node types can connect */
   connectionRules?: ConnectionRule
   /** Whether nodes are draggable by default — default: true */
@@ -158,6 +203,17 @@ export interface FlowConfig<TData = Record<string, unknown>> {
   fitView?: boolean
   /** Padding for fitView — default: 0.1 */
   fitViewPadding?: number
+  /**
+   * Default END marker for edges that don't set their own `markerEnd`.
+   * Default: a filled arrowhead (`{ type: MarkerType.ArrowClosed }`), matching
+   * the historical built-in. Pass `null` to make edges arrowless by default.
+   */
+  defaultMarkerEnd?: EdgeMarkerSpec | null
+  /**
+   * Skip rendering nodes/edges outside the current viewport (React Flow's
+   * `onlyRenderVisibleElements`). Off by default; turn on for large graphs.
+   */
+  onlyRenderVisibleElements?: boolean
 }
 
 // ─── Flow instance ───────────────────────────────────────────────────────────

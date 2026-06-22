@@ -3,6 +3,7 @@ import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Flow } from '../components/flow-component'
 import { createFlow } from '../flow'
+import { MarkerType } from '../types'
 
 
 // Real-Chromium smoke suite for @pyreon/flow.
@@ -347,5 +348,200 @@ describe('flow in real browser', () => {
       'group',
     )
     unmount()
+  })
+
+  // ── Configurable edge markers (React Flow parity) ────────────────────────
+
+  it('renders configurable, deduped edge markers with the right shapes + colors', async () => {
+    const flow = createFlow({
+      nodes: [
+        { id: '1', position: { x: 0, y: 0 }, data: {} },
+        { id: '2', position: { x: 200, y: 0 }, data: {} },
+        { id: '3', position: { x: 400, y: 0 }, data: {} },
+        { id: '4', position: { x: 600, y: 0 }, data: {} },
+      ],
+      edges: [
+        { id: 'def', source: '1', target: '2' }, // default → filled arrowclosed/#999
+        { id: 'open', source: '2', target: '3', markerEnd: MarkerType.Arrow }, // open arrow/#999
+        {
+          id: 'red',
+          source: '3',
+          target: '4',
+          markerEnd: { type: MarkerType.Arrow, color: '#ff0000' },
+          markerStart: MarkerType.ArrowClosed, // == default config → deduped
+        },
+        { id: 'none', source: '1', target: '4', markerEnd: null }, // arrowless
+      ],
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+
+    const svg = container.querySelector('.pyreon-flow-edges')!
+    const markers = [...svg.querySelectorAll('defs marker')]
+    // Distinct configs: arrowclosed/#999 (default end + red's start → deduped),
+    // arrow/#999 (open end), arrow/#ff0000 (red end) = 3 defs.
+    expect(markers.length).toBe(3)
+
+    // Shape per type: ArrowClosed → filled <polygon>, Arrow → stroked <polyline>.
+    const closed = markers.find((m) => m.id.includes('-arrowclosed-'))!
+    expect(closed.querySelector('polygon')).not.toBeNull()
+    expect(closed.querySelector('polygon')!.getAttribute('fill')).toBe('#999')
+    const arrows = markers.filter((m) => m.id.includes('-arrow-'))
+    expect(arrows.length).toBe(2)
+    arrows.forEach((m) => expect(m.querySelector('polyline')).not.toBeNull())
+    const red = arrows.find((m) => m.id.includes('-ff0000-'))!
+    expect(red.querySelector('polyline')!.getAttribute('stroke')).toBe('#ff0000')
+
+    // Per-edge refs: 3 of the 4 edge paths carry marker-end; the markerEnd:null
+    // edge has none. Exactly one edge carries a marker-start.
+    const paths = [...svg.querySelectorAll('path[d]')]
+    expect(paths.length).toBe(4)
+    const withEnd = paths.filter((p) => p.getAttribute('marker-end'))
+    expect(withEnd.length).toBe(3)
+    const withStart = paths.filter((p) => p.getAttribute('marker-start'))
+    expect(withStart.length).toBe(1)
+    // Every marker-* ref resolves to a real <marker id> in the defs.
+    const ids = new Set(markers.map((m) => m.id))
+    for (const p of [...withEnd, ...withStart]) {
+      for (const attr of ['marker-end', 'marker-start']) {
+        const ref = p.getAttribute(attr)
+        if (ref) expect(ids.has(ref.slice(5, -1))).toBe(true) // strip url(# … )
+      }
+    }
+    unmount()
+  })
+
+  it('marker defs update reactively when an edge with a new marker config is added', async () => {
+    const flow = createFlow({
+      nodes: [
+        { id: '1', position: { x: 0, y: 0 }, data: {} },
+        { id: '2', position: { x: 200, y: 0 }, data: {} },
+        { id: '3', position: { x: 400, y: 0 }, data: {} },
+      ],
+      edges: [{ id: 'a', source: '1', target: '2' }], // default arrowclosed
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+    const svg = container.querySelector('.pyreon-flow-edges')!
+    expect(svg.querySelectorAll('defs marker').length).toBe(1)
+
+    // Add an edge with a brand-new marker config → a new def appears.
+    flow.addEdge({ id: 'b', source: '2', target: '3', markerEnd: { type: MarkerType.Arrow, color: '#00aa00' } })
+    await flush()
+    expect(svg.querySelectorAll('defs marker').length).toBe(2)
+
+    // Adding another edge with the SAME config does NOT add a def (deduped).
+    flow.addEdge({ id: 'c', source: '1', target: '3', markerEnd: { type: MarkerType.Arrow, color: '#00aa00' } })
+    await flush()
+    expect(svg.querySelectorAll('defs marker').length).toBe(2)
+    unmount()
+  })
+
+  // ── Render virtualization (onlyRenderVisibleElements) ────────────────────
+
+  it('onlyRenderVisibleElements culls off-screen nodes and re-filters on pan', async () => {
+    const flow = createFlow({
+      nodes: [
+        { id: 'near', position: { x: 0, y: 0 }, data: {}, width: 100, height: 40 },
+        { id: 'far', position: { x: 5000, y: 5000 }, data: {}, width: 100, height: 40 },
+      ],
+      onlyRenderVisibleElements: true,
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    // Set a deterministic viewport size AFTER the initial flush — the Flow's
+    // ResizeObserver fires its first measurement during mount (headless body
+    // has 0 intrinsic height), so setting it post-flush wins and isn't
+    // overwritten. The pre-measurement guard treats 0×0 as "render all".
+    await flush()
+    flow.containerSize.set({ width: 800, height: 600 })
+    await flush()
+
+    const ids = () =>
+      [...container.querySelectorAll('[data-nodeid]')].map((e) => e.getAttribute('data-nodeid'))
+
+    // 'near' sits in the 800×600 viewport; 'far' (5000,5000) is well outside
+    // the viewport + margin → culled from the DOM entirely.
+    expect(ids()).toEqual(['near'])
+
+    // Pan so 'far' enters view and 'near' leaves → the rendered set re-filters.
+    flow.viewport.set({ x: -5000, y: -5000, zoom: 1 })
+    await flush()
+    expect(ids()).toEqual(['far'])
+    unmount()
+  })
+
+  it('without onlyRenderVisibleElements, off-screen nodes still render (default)', async () => {
+    const flow = createFlow({
+      nodes: [
+        { id: 'near', position: { x: 0, y: 0 }, data: {} },
+        { id: 'far', position: { x: 5000, y: 5000 }, data: {} },
+      ],
+      // flag omitted → default OFF
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    flow.containerSize.set({ width: 800, height: 600 })
+    await flush()
+    expect(container.querySelectorAll('[data-nodeid]').length).toBe(2)
+    unmount()
+  })
+
+  // ── snapToObjects opt-out (drag-frame perf lever) ────────────────────────
+
+  // Drags node A by a raw delta that lands its y within the 5px snap
+  // threshold of node B. With snapToObjects on (default), A snaps to B's
+  // alignment; off, A lands at the raw position and the O(N) per-frame snap
+  // scan is skipped entirely. Asserting the instance position (not DOM
+  // transform) keeps the math deterministic.
+  async function dragAandReadPos(snapToObjects: boolean): Promise<{ x: number, y: number }> {
+    const flow = createFlow({
+      nodes: [
+        { id: 'A', position: { x: 0, y: 0 }, data: {}, width: 150, height: 40 },
+        { id: 'B', position: { x: 400, y: 100 }, data: {}, width: 150, height: 40 },
+      ],
+      ...(snapToObjects ? {} : { snapToObjects: false }),
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    flow.containerSize.set({ width: 800, height: 600 })
+    await flush()
+
+    const node = container.querySelector('[data-nodeid="A"]')!
+    const root = container.querySelector('.pyreon-flow')!
+    const ev = (
+      target: Element,
+      type: 'pointerdown' | 'pointermove' | 'pointerup',
+      x: number,
+      y: number,
+    ) =>
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+
+    // Only the delta from pointerdown matters; raw A → (0+10, 0+102).
+    ev(node, 'pointerdown', 200, 200)
+    ev(root, 'pointermove', 205, 251)
+    ev(root, 'pointermove', 210, 302) // dx=10, dy=102
+    ev(root, 'pointerup', 210, 302)
+    await flush()
+
+    const pos = { ...flow.getNode('A')!.position }
+    unmount()
+    return pos
+  }
+
+  it('snapToObjects default snaps a dragged node to a nearby node (raw y 102 → 100)', async () => {
+    expect(await dragAandReadPos(true)).toEqual({ x: 10, y: 100 })
+  })
+
+  it('snapToObjects: false drags to the raw position, skipping the snap scan', async () => {
+    expect(await dragAandReadPos(false)).toEqual({ x: 10, y: 102 })
   })
 })

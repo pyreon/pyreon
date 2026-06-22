@@ -1,14 +1,128 @@
 import { For, type VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from '../edges'
+import {
+  collectEdgeMarkers,
+  DEFAULT_MARKER_END,
+  getEdgePath,
+  getHandlePosition,
+  getSmartHandlePositions,
+  getWaypointPath,
+  markerId,
+  resolveEdgeMarkers,
+} from '../edges'
 import type {
   Connection,
+  EdgeMarker,
+  EdgeMarkerSpec,
   FlowEdge,
   FlowInstance,
   FlowNode,
   NodeComponentProps,
+  Viewport,
 } from '../types'
-import { Position } from '../types'
+import { MarkerType, Position } from '../types'
+
+/** Resolve the flow-level default end marker: undefined → built-in arrowhead;
+ *  null → arrowless by default; otherwise the configured spec. */
+function defaultEndMarker(instance: FlowInstance<any>): EdgeMarkerSpec | null {
+  const d = instance.config.defaultMarkerEnd
+  return d === undefined ? DEFAULT_MARKER_END : d
+}
+
+/** The arrowhead glyph: a filled `<polygon>` for ArrowClosed, an open
+ *  `<polyline>` V otherwise. Early-return (not a JSX ternary) — the choice is
+ *  static per marker def. */
+function MarkerGlyph(m: EdgeMarker, pts: string): VNodeChild {
+  if (m.type === MarkerType.ArrowClosed) {
+    return <polygon points={pts} fill={m.color ?? '#999'} />
+  }
+  return (
+    <polyline
+      points={pts}
+      fill="none"
+      stroke={m.color ?? '#999'}
+      stroke-width={String(m.strokeWidth ?? 1)}
+    />
+  )
+}
+
+/** SVG `<marker>` def for a resolved edge marker. `auto-start-reverse` lets a
+ *  single def serve both ends (reversed when used as `marker-start`). */
+function MarkerDef(props: { id: string, marker: EdgeMarker }): VNodeChild {
+  const m = props.marker
+  const w = m.width ?? 10
+  const h = m.height ?? 7
+  const pts = `0 0, ${w} ${h / 2}, 0 ${h}`
+  return (
+    <marker
+      id={props.id}
+      markerWidth={String(w)}
+      markerHeight={String(h)}
+      refX={String(w)}
+      refY={String(h / 2)}
+      orient="auto-start-reverse"
+    >
+      {MarkerGlyph(m, pts)}
+    </marker>
+  )
+}
+
+// ─── Render virtualization (onlyRenderVisibleElements) ───────────────────────
+//
+// React Flow parity: when `config.onlyRenderVisibleElements` is on, only nodes
+// (and the edges touching them) whose screen rect intersects the viewport —
+// expanded by a margin so they don't pop in at the edge — are rendered. These
+// read `viewport()` + `containerSize()` reactively, so the rendered set
+// re-filters on pan/zoom. Off by default → both lists return everything (no
+// behaviour change). Like React Flow, an edge whose BOTH endpoints are
+// off-screen is culled even if its line crosses the viewport (rare; documented).
+
+const VIRTUAL_MARGIN = 200
+
+function nodeInViewport<T>(
+  n: FlowNode<T>,
+  v: Viewport,
+  cw: number,
+  ch: number,
+): boolean {
+  const w = (n.width ?? 150) * v.zoom
+  const h = (n.height ?? 40) * v.zoom
+  const sx = n.position.x * v.zoom + v.x
+  const sy = n.position.y * v.zoom + v.y
+  return (
+    sx + w > -VIRTUAL_MARGIN
+    && sx < cw + VIRTUAL_MARGIN
+    && sy + h > -VIRTUAL_MARGIN
+    && sy < ch + VIRTUAL_MARGIN
+  )
+}
+
+function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
+  const all = instance.nodes()
+  if (!instance.config.onlyRenderVisibleElements) return all
+  const v = instance.viewport()
+  const { width, height } = instance.containerSize()
+  // Pre-measurement (0×0) → render all, else everything would be hidden.
+  if (!width || !height) return all
+  return all.filter((n) => nodeInViewport(n, v, width, height))
+}
+
+function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
+  const all = instance.edges()
+  if (!instance.config.onlyRenderVisibleElements) return all
+  const v = instance.viewport()
+  const { width, height } = instance.containerSize()
+  if (!width || !height) return all
+  const nm = instance.nodeMap()
+  return all.filter((e) => {
+    const s = nm.get(e.source)
+    const t = nm.get(e.target)
+    return (
+      (!!s && nodeInViewport(s, v, width, height))
+      || (!!t && nodeInViewport(t, v, width, height))
+    )
+  })
+}
 
 // ─── Node type registry ──────────────────────────────────────────────────────
 
@@ -200,18 +314,16 @@ function EdgeLayer(props: {
       style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;"
     >
       <defs>
-        <marker
-          id="flow-arrowhead"
-          markerWidth="10"
-          markerHeight="7"
-          refX="10"
-          refY="3.5"
-          orient="auto"
+        {/* One <marker> def per distinct marker config across all edges
+            (deduped by config), rebuilt reactively when edges change. */}
+        <For
+          each={() => [...collectEdgeMarkers(instance.edges(), defaultEndMarker(instance)).entries()]}
+          by={([id]: [string, EdgeMarker]) => id}
         >
-          <polygon points="0 0, 10 3.5, 0 7" fill="#999" />
-        </marker>
+          {(entry: [string, EdgeMarker]) => <MarkerDef id={entry[0]} marker={entry[1]} />}
+        </For>
       </defs>
-      <For each={() => instance.edges()} by={(e: FlowEdge) => e.id ?? ''}>
+      <For each={() => visibleEdgeList(instance)} by={(e: FlowEdge) => e.id ?? ''}>
         {(initialEdge: FlowEdge) => {
           const edgeId = initialEdge.id ?? ''
 
@@ -281,7 +393,14 @@ function EdgeLayer(props: {
                 fill="none"
                 stroke={() => (isSelected() ? '#3b82f6' : '#999')}
                 stroke-width={() => (isSelected() ? '2' : '1.5')}
-                marker-end="url(#flow-arrowhead)"
+                marker-start={() => {
+                  const m = resolveEdgeMarkers(liveEdge(), defaultEndMarker(instance)).start
+                  return m ? `url(#${markerId(m)})` : undefined
+                }}
+                marker-end={() => {
+                  const m = resolveEdgeMarkers(liveEdge(), defaultEndMarker(instance)).end
+                  return m ? `url(#${markerId(m)})` : undefined
+                }}
                 class={() => (liveEdge().animated ? 'pyreon-flow-edge-animated' : '')}
                 style={() => `pointer-events: stroke; cursor: pointer; ${liveEdge().style ?? ''}`}
                 onClick={() => {
@@ -377,7 +496,7 @@ function NodeLayer(props: {
   // components on every drag tick (60+ remounts/sec per node) and
   // every selection click. The `For` swap fixes both cases.
   return () => (
-    <For each={() => instance.nodes()} by={(n: FlowNode) => n.id}>
+    <For each={() => visibleNodeList(instance)} by={(n: FlowNode) => n.id}>
       {(initialNode: FlowNode) => {
         const id = initialNode.id
 
@@ -730,12 +849,20 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       if (!primaryStart) return
 
       const rawPos = { x: primaryStart.x + dx, y: primaryStart.y + dy }
-      const snap = instance.getSnapLines(drag.nodeId, rawPos)
-      helperLines.set({ x: snap.x, y: snap.y })
 
-      // Calculate actual delta (including snap adjustment)
-      const actualDx = snap.snappedPosition.x - primaryStart.x
-      const actualDy = snap.snappedPosition.y - primaryStart.y
+      // Object-snapping (align to other nodes' edges/centers + helper guides)
+      // is an O(N) scan over every node, run on EVERY drag frame — the
+      // dominant per-frame cost on large graphs. Opt out via
+      // `config.snapToObjects: false`: skip the scan entirely and drag to the
+      // raw position with no guide lines.
+      let actualDx = dx
+      let actualDy = dy
+      if (instance.config.snapToObjects !== false) {
+        const snap = instance.getSnapLines(drag.nodeId, rawPos)
+        helperLines.set({ x: snap.x, y: snap.y })
+        actualDx = snap.snappedPosition.x - primaryStart.x
+        actualDy = snap.snappedPosition.y - primaryStart.y
+      }
 
       // Update all dragged nodes from their starting positions
       instance.nodes.update((nds) =>

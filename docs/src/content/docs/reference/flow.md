@@ -19,6 +19,9 @@ Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via p
 - Pan/zoom via pointer events + CSS transforms (no D3)
 - Auto-layout via lazy-loaded elkjs
 - toJSON / fromJSON round-trip serialization
+- Configurable edge markers (arrow / arrowclosed, per-edge markerStart/markerEnd, deduped &lt;defs&gt;)
+- Render virtualization via onlyRenderVisibleElements (cull off-screen nodes/edges, re-filter on pan/zoom)
+- Opt-out object-snapping (snapToObjects: false) — skips the O(N)/frame helper-line scan, ~3-4x faster drags on large graphs
 
 ## Complete example
 
@@ -150,6 +153,9 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Missing `<Flow nodeTypes={{ key: Component }}>` registration — `node.type` strings dispatch to that map, unregistered types fall through to the default renderer
 - Using `createFlow` inside a component body without `onUnmount(() => flow.dispose())` — prefer `useFlow` which auto-disposes
 - Using `direction: 'row'` on flow's containing Element layout — Pyreon `Element` accepts `'inline'` / `'rows'` / `'reverseInline'` / `'reverseRows'`, not CSS flex-direction values like `'row'` or `'column'`
+- Confusing `markerEnd: null` with omitting it — `null` is the explicit "no end arrow" opt-out that overrides `config.defaultMarkerEnd`; OMITTING it falls back to the flow default (a closed arrowhead). Set `config.defaultMarkerEnd: null` to make every edge arrowless by default
+- Expecting `onlyRenderVisibleElements` to cull an edge whose line crosses the viewport while BOTH its endpoint nodes are off-screen — only nodes (and the edges touching at least one visible node) are kept; a long edge spanning two off-screen nodes is culled (rare; matches React Flow)
+- Leaving object-snapping on for very large graphs — `snapToObjects` (default `true`) runs an O(N) align-to-other-nodes scan on EVERY drag frame; on big graphs it dominates per-frame cost. Set `snapToObjects: false` to skip it (≈3-4× faster drags) when you don't need helper-line alignment
 
 **See also:** `useFlow` · `FlowInstance` · `Flow`
 
