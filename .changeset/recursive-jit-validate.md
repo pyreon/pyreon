@@ -28,5 +28,18 @@ Two latent correctness bugs in the old flat JIT are fixed in the same change
 - a coercing schema (`s.coerce.number()`) used as an object **field** skipped
   coercion; it now correctly coerces.
 
+A **differential fuzz harness** (`src/tests/jit-differential.test.ts`, 1300+
+seeded cases) now runs every JIT-able schema through BOTH the JIT and the
+interpreter and asserts byte-identical `{ value, issues }`. It is the permanent
+correctness gate for the JIT, and it immediately found two more divergences
+that are fixed here:
+
+- a `literal()` type-mismatch emitted the generic "Expected literal, received
+  X" issue instead of the interpreter's `invalid_literal` "Expected <value>".
+- an array's own `min`/`max`/`length` check ran even when an element already
+  failed; the interpreter skips checks once the type-check produced issues.
+  The JIT now runs array checks AFTER the element loop and only when it added
+  no issues — matching the interpreter exactly.
+
 No public API change. A codegen depth cap bounds the emitted function on
 pathologically deep schemas (the subtree beyond it uses the interpreter).

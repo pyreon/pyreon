@@ -352,7 +352,7 @@ export abstract class Schema<T> {
  * Async functions returned by transform/refine are awaited downstream
  * by `parseAsync` / `~standard.validate`'s async wrapper.
  */
-function compileSchema<T>(schema: Schema<T>): SyncValidator {
+export function compileSchema<T>(schema: Schema<T>): SyncValidator {
   // Lazily resolve checks at compile time so the runtime hot path is
   // just sequential function calls.
   const modifiers = scanModifiers(schema._ops)
