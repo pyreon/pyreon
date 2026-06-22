@@ -52,6 +52,20 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
     ],
   },
+  {
+    // Guided concept-by-concept track (the gentle on-ramp before building a
+    // full app). Sequenced with prev/next links; attaches to the Learn tier.
+    text: 'Tutorial',
+    collapsed: false,
+    items: [
+      { text: '1. Signals', slug: 'tutorial/01-signals' },
+      { text: '2. Derived values', slug: 'tutorial/02-derived' },
+      { text: '3. Side effects', slug: 'tutorial/03-effects' },
+      { text: '4. Components run once', slug: 'tutorial/04-components' },
+      { text: '5. Lists & conditionals', slug: 'tutorial/05-lists-and-conditionals' },
+      { text: '6. Build something real', slug: 'tutorial/06-build-something' },
+    ],
+  },
 
   // ─── GUIDES (task-oriented how-tos) ─────────────────────────────────────
   {
