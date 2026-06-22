@@ -88,11 +88,74 @@ export function extractStyleVar(
   rawValue: unknown,
   rootSize = 16,
 ): ExtractedStyleVar {
-  const varName = `--u-${fnv1a(property)}`
+  const varName = cpseVarName(property)
   const converted = value(rawValue as Parameters<typeof value>[0], rootSize)
   return {
     rule: `${property}:var(${varName})`,
     varName,
     varValue: converted == null ? null : String(converted),
   }
+}
+
+/**
+ * Canonical CPSE custom-property name for a CSS property (+ optional
+ * breakpoint suffix for the responsive path). Stable + collision-free across
+ * distinct property names; shared across components for the same property
+ * (intended — every instance sets its own inline value, §nesting test).
+ */
+export function cpseVarName(property: string, breakpoint?: string): string {
+  return breakpoint ? `--u-${fnv1a(property)}-${breakpoint}` : `--u-${fnv1a(property)}`
+}
+
+// A fragment is CPSE-rewritable only if it is a flat list of `prop: value`
+// declarations — NO selector / nesting / at-rule / pseudo. `extendCss` user
+// CSS, `&:empty{…}`, `@media`, `url(…)` all carry structure a flat
+// declaration rewrite would corrupt, so they pass through untouched
+// (conservative — the collapse-catalogue philosophy: correct-but-unextracted
+// beats wrong).
+const STRUCTURAL = /[{}&@]|url\(/
+
+/**
+ * Rewrite every flat `prop: value;` declaration in a resolved CSS fragment to
+ * the value-agnostic `prop: var(--u-<hash>[-bp]);` form, writing each value
+ * into `varsOut`. Returns the rewritten fragment. Fragments carrying any
+ * structure (selectors, at-rules, nesting, url()) are returned UNCHANGED.
+ *
+ * This operates on `processDescriptor`'s ALREADY-RESOLVED output, so it
+ * inherits every unit-conversion / shorthand correctness for free and stays
+ * general across the whole property map.
+ *
+ * @param frag       a resolved CSS fragment, e.g. `"gap: 2.25rem;"` or
+ *                   `"margin: 1rem 2rem;"` (possibly several `;`-separated).
+ * @param varsOut    sink: `varName → value` for the per-instance inline props.
+ * @param breakpoint optional suffix so per-breakpoint values get distinct vars.
+ */
+export function cpseRewrite(
+  frag: string,
+  varsOut: Record<string, string>,
+  breakpoint?: string,
+): string {
+  if (!frag || STRUCTURAL.test(frag)) return frag
+  let out = ''
+  for (const decl of frag.split(';')) {
+    const trimmed = decl.trim()
+    if (!trimmed) continue
+    const colon = trimmed.indexOf(':')
+    if (colon < 1) {
+      out += `${trimmed};` // malformed / valueless → leave verbatim
+      continue
+    }
+    const prop = trimmed.slice(0, colon).trim()
+    const val = trimmed.slice(colon + 1).trim()
+    // Skip already-var values (idempotent) and empty values. A property name
+    // must be a plain CSS ident (kebab); anything else → leave verbatim.
+    if (!val || val.startsWith('var(') || !/^[a-z][a-z-]*$/.test(prop)) {
+      out += `${trimmed};`
+      continue
+    }
+    const varName = cpseVarName(prop, breakpoint)
+    varsOut[varName] = val
+    out += `${prop}:var(${varName});`
+  }
+  return out
 }

@@ -9,7 +9,9 @@ import type {
 } from './cssVariables'
 import { CSS_VARS_DEFAULT_EXCLUDE, resolveCssVarReferences, themeToCssVars } from './cssVariables'
 import type { ExtractedStyleVar } from './cpse'
-import { extractStyleVar } from './cpse'
+import { cpseRewrite, cpseVarName, extractStyleVar } from './cpse'
+import type { CpseStyledProps } from './cpse-styled'
+import { cpseStyled } from './cpse-styled'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
 import type {
@@ -63,6 +65,7 @@ export type {
   CssVarsTheme,
   CssVarsUnit,
   CssVarsUnitPolicy,
+  CpseStyledProps,
   Defaults,
   ExtendCss,
   ExtractedStyleVar,
@@ -92,6 +95,9 @@ export {
   alignContent,
   breakpoints,
   context,
+  cpseRewrite,
+  cpseStyled,
+  cpseVarName,
   createMediaQueries,
   CSS_VARS_DEFAULT_EXCLUDE,
   enrichTheme,

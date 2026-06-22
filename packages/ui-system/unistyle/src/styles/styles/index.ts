@@ -1,3 +1,4 @@
+import { cpseRewrite } from '../../cpse'
 import { values } from '../../units'
 import { borderRadius, edge } from '../shorthands'
 import processDescriptor from './processDescriptor'
@@ -17,11 +18,25 @@ export type Styles = ({
   css,
   rootSize,
   globalTheme,
+  extractVars,
+  breakpoint,
 }: {
   theme: InnerTheme
   css: Css
   rootSize?: number | undefined
   globalTheme?: Record<string, unknown> | undefined
+  /**
+   * CPSE (Custom-Property Style Extraction) sink. When provided, every flat
+   * `prop: value` declaration is rewritten to a value-agnostic
+   * `prop: var(--u-<hash>)` and the value is written into this object — so the
+   * emitted CSS is value-agnostic (one shared rule) and the per-instance value
+   * is delivered as an inline custom property. ABSENT ⇒ byte-identical to the
+   * classic path. See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+   */
+  extractVars?: Record<string, string> | undefined
+  /** CPSE responsive: suffixes the var names so per-breakpoint values get
+   * distinct custom properties (e.g. `--u-<hash>-sm`). */
+  breakpoint?: string | undefined
 }) => ReturnType<Css>
 
 // ─── Tier 1: Key → descriptor-index lookup ──────────────────────────────────
@@ -84,7 +99,7 @@ for (let i = 0; i < propertyMap.length; i++) {
 // previous result before its consumer ever resolved it.
 const _seen = new Set<number>()
 
-const styles: Styles = ({ theme: t, css, rootSize }) => {
+const styles: Styles = ({ theme: t, css, rootSize, extractVars, breakpoint }) => {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('unistyle.styles')
 
   const calc = (...params: any[]) => values(params, rootSize)
@@ -108,7 +123,9 @@ const styles: Styles = ({ theme: t, css, rootSize }) => {
       _seen.add(idx)
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('unistyle.descriptor')
-      fragments.push(processDescriptor(propertyMap[idx]!, t, css, calc, shorthand, borderRadiusFn))
+      let frag = processDescriptor(propertyMap[idx]!, t, css, calc, shorthand, borderRadiusFn)
+      if (extractVars && typeof frag === 'string') frag = cpseRewrite(frag, extractVars, breakpoint)
+      fragments.push(frag)
     }
   }
 
@@ -120,7 +137,9 @@ const styles: Styles = ({ theme: t, css, rootSize }) => {
     for (const d of propertyMap) {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('unistyle.descriptor')
-      fragments.push(processDescriptor(d, t, css, calc, shorthand, borderRadiusFn))
+      let frag = processDescriptor(d, t, css, calc, shorthand, borderRadiusFn)
+      if (extractVars && typeof frag === 'string') frag = cpseRewrite(frag, extractVars, breakpoint)
+      fragments.push(frag)
     }
   }
 

@@ -1,8 +1,22 @@
 # RFC + Audit — Custom-Property Style Extraction (CPSE)
 
-**Status:** Phase 0 (measurement + proof-of-concept). Behind a flag from inception; byte-identical when off.
+**Status:** engine + opt-in `cpseStyled` integration SHIPPED + proven (this PR). Default-pipeline migration staged (RFC §5).
 **Date:** 2026-06-22.
 **Scope:** framework-level — `@pyreon/unistyle` + `@pyreon/styler` + `@pyreon/rocketstyle` + `@pyreon/elements`. NOT app-specific.
+
+## Implementation status (this PR)
+
+**Shipped + proven + tested:**
+
+- **Engine** — `styles()` `extractVars` mode + `cpseRewrite` / `extractStyleVar` / `cpseVarName` (`@pyreon/unistyle`). Post-processes `processDescriptor`'s already-resolved declarations into value-agnostic `prop:var(--u-<hash>)` + a `varName→value` sink, across `convert`/`edge`/`simple`/`convert_fallback` kinds; structural fragments (`{`/`@`/`&`/`url(`) pass through untouched. **Off-path byte-identical** (the existing `styles.test.ts` passes unchanged). Per-breakpoint var suffixing implemented + unit-tested.
+- **Real-component integration** — `cpseStyled(tag)` (`@pyreon/unistyle`): a value-agnostic class cached by **property-set** (so N distinct values share ONE class + ONE `styler.resolve`) + per-instance inline custom properties. Proven in real Chromium: **O(N)→O(1)** (5 distinct values → 1 class / 1 resolve / 5 correct computed values), computed-style **parity** with classic `styled`, **nesting-safe**, **dynamic** signal updates with **zero** extra `styler.resolve`. Opt-in — **zero blast radius** on existing `styled`/`Element`/`rocketstyle`.
+- **SSR parity** — `cpseStyled` emits the value-agnostic class + an inline `--`-custom-property style object (node-tested); the runtime-server `normalizeStyle` `--`-guard fix makes SSR serialize custom-property names verbatim (parity with the client `applyStyleProp` guard). Both bisect-verified.
+- **Cost model + measurement** — counter harness (O(N)→O(1)) + the real-component O(1) proof.
+
+**Deliberately NOT in this PR (staged — would be reckless to flip in one change):**
+
+- **`init({ styleExtraction })` flag + default-pipeline migration.** Auto-routing the existing `styled`/`Element`/`rocketstyle` defaults through CPSE means re-plumbing `doResolve` (the framework's single most-depended-on path) + `makeItResponsive`'s DI contract, with broad blast radius across the entire UI system's test surface. That is the per-phase, regression-gated rollout (RFC §5). Adding the flag now — with nothing reading it — would be the typed-but-unimplemented anti-pattern the `audit-types` gate forbids, so the flag ships WITH the migration.
+- **Responsive arrays in `cpseStyled`.** The engine supports per-breakpoint var naming (tested), but `cpseStyled` itself resolves a flat value set; assembling media-query rules that reference per-breakpoint vars is the next phase. Responsive components keep the classic path today.
 
 ## 0. Why this exists (and why it is NOT a bokisch.com fix)
 
