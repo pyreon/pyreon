@@ -3565,6 +3565,34 @@ function emitSwiftScroll(
   if (e.children.length === 0) {
     return `ScrollView${initSignature} {}${modifiers}`
   }
+  // List virtualization: a `<For>` rendered DIRECTLY inside a ScrollView lowers
+  // to a bare `ForEach`, which SwiftUI builds EAGERLY — every row is
+  // instantiated up front, so a long list blows memory (the iOS counterpart of
+  // Android's already-lazy `LazyColumn`). Wrapping the content in a
+  // `LazyVStack`/`LazyHStack` makes the enclosed `ForEach` lazy (rows built as
+  // they scroll into view). Applied ONLY when a `<For>` child is present, so
+  // non-list scrollable content (the device-proven shape) emits byte-identically
+  // — zero change to existing apps. `spacing: 0` preserves the current
+  // no-inter-row-gap layout. NOTE: this fixes the documented Swift eager-list
+  // OOM for the `<For>`-in-`<Scroll>` shape; runtime virtualization is reasoned,
+  // not yet exercised by a device test (no example uses For-in-Scroll). The
+  // Kotlin counterpart of this shape needs a separate fix (a `LazyColumn` nested
+  // in a `verticalScroll` Column is a Compose runtime crash) — tracked.
+  const hasFor = e.children.some(
+    (c) => c.kind === 'expr' && c.expr.kind === 'jsx-element' && c.expr.tag === 'For',
+  )
+  if (hasFor) {
+    const lazyStack = axis === 'horizontal' ? 'LazyHStack' : 'LazyVStack'
+    const innerPad = ' '.repeat(indent + 4)
+    const lazyContent = e.children
+      .map((c) => innerPad + emitSwiftChild(c, indent + 4))
+      .join('\n')
+    return (
+      `ScrollView${initSignature} {\n` +
+      `${pad}${lazyStack}(spacing: 0) {\n${lazyContent}\n${pad}}\n` +
+      `${' '.repeat(indent)}}${modifiers}`
+    )
+  }
   const contentLines = e.children
     .map((c) => pad + emitSwiftChild(c, indent + 2))
     .join('\n')
