@@ -845,6 +845,95 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertEqual(i18n.t("items", ["count": 0]), "0 items")
         XCTAssertEqual(i18n.t("plain", ["count": 5]), "no plural 5")
     }
+
+    // MARK: - PyreonGeolocation (useGeolocation reactive location)
+    //
+    // These cover the PURE state machine + the start/stop lifecycle
+    // idempotency. The live `CLLocationManager` edge is constructed by
+    // `start()` but NOT exercised here — real GPS fixes need a device, a
+    // granted permission prompt, and an Info.plist usage key; the same
+    // "manager constructed, not asserted" boundary PyreonNetworkStatus uses.
+
+    /// A fresh container is empty + untracked.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonGeolocationInitialState() throws {
+        let loc = PyreonGeolocation()
+        XCTAssertNil(loc.latitude)
+        XCTAssertNil(loc.longitude)
+        XCTAssertNil(loc.accuracy)
+        XCTAssertFalse(loc.isAuthorized)
+        XCTAssertNil(loc.error)
+        XCTAssertFalse(loc.isTracking)
+    }
+
+    /// `update(latitude:longitude:accuracy:)` sets the fix fields.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonGeolocationUpdateSetsFix() throws {
+        let loc = PyreonGeolocation()
+        loc.update(latitude: 50.0755, longitude: 14.4378, accuracy: 12.5)
+        XCTAssertEqual(loc.latitude, 50.0755)
+        XCTAssertEqual(loc.longitude, 14.4378)
+        XCTAssertEqual(loc.accuracy, 12.5)
+    }
+
+    /// A fix clears any prior error.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonGeolocationUpdateClearsPriorError() throws {
+        struct GPSError: Error {}
+        let loc = PyreonGeolocation()
+        loc.fail(GPSError())
+        XCTAssertNotNil(loc.error)
+        loc.update(latitude: 1.0, longitude: 2.0)
+        XCTAssertNil(loc.error)
+    }
+
+    /// `authorize(_:)` flips the permission flag both ways.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonGeolocationAuthorizeFlips() throws {
+        let loc = PyreonGeolocation()
+        loc.authorize(true)
+        XCTAssertTrue(loc.isAuthorized)
+        loc.authorize(false)
+        XCTAssertFalse(loc.isAuthorized)
+    }
+
+    /// `fail(_:)` sets `error` but keeps the last fix (stale-while-error).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonGeolocationFailKeepsLastFix() throws {
+        struct GPSError: Error {}
+        let loc = PyreonGeolocation()
+        loc.update(latitude: 10.0, longitude: 20.0, accuracy: 5.0)
+        loc.fail(GPSError())
+        XCTAssertNotNil(loc.error)
+        XCTAssertEqual(loc.latitude, 10.0)
+        XCTAssertEqual(loc.longitude, 20.0)
+    }
+
+    /// `stop()` before `start()` is a safe no-op.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonGeolocationStopBeforeStartIsNoop() throws {
+        let loc = PyreonGeolocation()
+        loc.stop() // must not crash
+        XCTAssertFalse(loc.isTracking)
+    }
+
+    /// `start()` begins tracking + constructs the real CLLocationManager;
+    /// `stop()` ends it. Idempotency exercised; live GPS not (device-only).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonGeolocationStartStopLifecycle() throws {
+        let loc = PyreonGeolocation()
+        loc.start()
+        XCTAssertTrue(loc.isTracking)
+        loc.start() // idempotent — no second manager
+        XCTAssertTrue(loc.isTracking)
+        loc.stop()
+        XCTAssertFalse(loc.isTracking)
+        loc.stop() // double-stop is a safe no-op
+        XCTAssertFalse(loc.isTracking)
+        loc.start() // start/stop/start cycle re-enables
+        XCTAssertTrue(loc.isTracking)
+        loc.stop()
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
