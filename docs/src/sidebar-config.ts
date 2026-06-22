@@ -15,6 +15,8 @@
 // from the package-centric layout — this is a pure re-grouping, so no URL
 // moves and no redirects are needed.
 
+import { REFERENCE_GROUPS } from './reference-nav.generated'
+
 export interface SidebarLink {
   text: string
   slug: string
@@ -182,6 +184,9 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Feature', slug: 'feature' },
     ],
   },
+  // Generated per-package API reference (Diátaxis Reference tier), emitted
+  // from each package's src/manifest.ts by docs/scripts/gen-reference.ts.
+  ...REFERENCE_GROUPS,
   {
     text: 'Compatibility Layers',
     collapsed: true,
