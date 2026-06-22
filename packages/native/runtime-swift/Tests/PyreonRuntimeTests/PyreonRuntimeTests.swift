@@ -1327,6 +1327,92 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertNil(db.get("todos", id: "1"))
         XCTAssertNotNil(db.get("notes", id: "1")) // isolated
     }
+
+    // MARK: - PyreonPayments (usePayments purchase-state container)
+    //
+    // Pure state machine + injected-actions seam. The real StoreKit wiring
+    // is the app's job — not exercised here.
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPaymentsInitialState() throws {
+        let pay = PyreonPayments()
+        XCTAssertTrue(pay.products.isEmpty)
+        XCTAssertTrue(pay.ownedProductIds.isEmpty)
+        XCTAssertNil(pay.purchasing)
+        XCTAssertNil(pay.error)
+        XCTAssertFalse(pay.owns("pro"))
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPaymentsProductsLoaded() throws {
+        let pay = PyreonPayments()
+        let products = [
+            PyreonProduct(id: "pro", displayName: "Pro", price: "$4.99"),
+            PyreonProduct(id: "max", displayName: "Max", price: "$9.99"),
+        ]
+        pay.productsLoaded(products)
+        XCTAssertEqual(pay.products, products)
+        XCTAssertEqual(pay.products[0].price, "$4.99")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPaymentsPurchaseFlow() throws {
+        let pay = PyreonPayments()
+        pay.purchaseStarted("pro")
+        XCTAssertEqual(pay.purchasing, "pro")
+        XCTAssertFalse(pay.owns("pro"))
+        pay.purchaseSucceeded("pro")
+        XCTAssertNil(pay.purchasing)
+        XCTAssertTrue(pay.owns("pro"))
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPaymentsPurchaseFailure() throws {
+        struct PayError: Error {}
+        let pay = PyreonPayments()
+        pay.purchaseStarted("pro")
+        pay.purchaseFailed(PayError())
+        XCTAssertNotNil(pay.error)
+        XCTAssertNil(pay.purchasing)
+        XCTAssertFalse(pay.owns("pro"))
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPaymentsRestore() throws {
+        let pay = PyreonPayments()
+        pay.purchaseSucceeded("pro")
+        pay.restored(["max", "pro"])
+        XCTAssertTrue(pay.owns("pro"))
+        XCTAssertTrue(pay.owns("max"))
+        XCTAssertEqual(pay.ownedProductIds.count, 2) // no duplicate
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPaymentsConnectAndPurchaseRoutes() throws {
+        let pay = PyreonPayments()
+        var purchased: String?
+        var didRestore = false
+        pay.connect {
+            PyreonPaymentActions(
+                purchase: { purchased = $0 },
+                restore: { didRestore = true }
+            )
+        }
+        pay.purchase("pro")
+        XCTAssertEqual(purchased, "pro")
+        XCTAssertEqual(pay.purchasing, "pro")
+        pay.restore()
+        XCTAssertTrue(didRestore)
+        pay.connect { PyreonPaymentActions(purchase: { _ in }, restore: {}) } // idempotent
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPaymentsPurchaseBeforeConnectIsNoop() throws {
+        let pay = PyreonPayments()
+        pay.purchase("pro") // no actions wired → no-op
+        XCTAssertNil(pay.purchasing)
+        pay.restore() // safe no-op
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
