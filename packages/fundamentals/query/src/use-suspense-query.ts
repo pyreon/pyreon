@@ -1,7 +1,7 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import type {
   DefaultError,
   InfiniteData,
@@ -11,9 +11,10 @@ import type {
   QueryObserverOptions,
   QueryObserverResult,
 } from '@tanstack/query-core'
-import { InfiniteQueryObserver, QueryObserver } from '@tanstack/query-core'
+import { InfiniteQueryObserver, QueriesObserver, QueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 import { makeResultProto } from './result-proto'
+import type { UseQueriesOptions } from './use-queries'
 
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -300,4 +301,86 @@ export function useSuspenseInfiniteQuery<
   }
   Object.setPrototypeOf(result, SuspenseInfiniteQueryResultProto)
   return result as unknown as UseSuspenseInfiniteQueryResult<TQueryFnData, TError>
+}
+
+// ─── useSuspenseQueries ─────────────────────────────────────────────────────
+
+/**
+ * The result of {@link useSuspenseQueries}. It is itself a valid `AnyQueryLike`
+ * (carries `isPending` / `isError` / `error`), so it can be passed straight to
+ * `QuerySuspense` as the gate — children render only once EVERY query has
+ * succeeded, at which point `data` is the array of (never-undefined) results.
+ */
+export interface UseSuspenseQueriesResult<TData = unknown, TError = DefaultError> {
+  /** Per-query results, index-aligned with the `queries` array. */
+  results: Signal<QueryObserverResult<TData, TError>[]>
+  /** All queries' data, index-aligned — never undefined inside a QuerySuspense. */
+  data: Signal<TData[]>
+  /** True while ANY query is pending (the QuerySuspense gate). */
+  isPending: Signal<boolean>
+  /** True if ANY query errored (the QuerySuspense gate). */
+  isError: Signal<boolean>
+  /** First error encountered across the queries, or null. */
+  error: Signal<TError | null>
+}
+
+/**
+ * Like `useQueries` but shaped for a `QuerySuspense` boundary: aggregates the
+ * array of queries into one query-like (`isPending` = any pending, `isError` =
+ * any errored, `error` = first error) plus a `data` array. Pass the whole
+ * result as the `query` of a `QuerySuspense` — children render only after every
+ * query succeeds, so `data()` is fully populated (mirrors TanStack's
+ * `useSuspenseQueries`).
+ *
+ * `queries` is reactive (signal-driven keys re-evaluate automatically).
+ *
+ * @example
+ * const users = useSuspenseQueries(() =>
+ *   ids().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
+ * )
+ * h(QuerySuspense, { query: users, fallback: h(Spinner, null) },
+ *   () => h(UserList, { users: users.data() }),
+ * )
+ */
+export function useSuspenseQueries<TData = unknown, TError = DefaultError>(
+  queries: () => UseQueriesOptions[],
+): UseSuspenseQueriesResult<TData, TError> {
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
+
+  const client = useQueryClient()
+  const observer = new QueriesObserver(client, queries())
+
+  const seed = observer.getCurrentResult() as readonly QueryObserverResult[]
+  const results = signal(seed as QueryObserverResult[]) as Signal<
+    QueryObserverResult<TData, TError>[]
+  >
+  const data = signal(seed.map((r) => r.data as TData))
+  const isPending = signal(seed.some((r) => r.isPending))
+  const isError = signal(seed.some((r) => r.isError))
+  const error = signal((seed.find((r) => r.isError)?.error ?? null) as TError | null)
+
+  const apply = (r: readonly QueryObserverResult[]): void => {
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.observerNotify')
+    batch(() => {
+      results.set(r as QueryObserverResult<TData, TError>[])
+      data.set(r.map((x) => x.data as TData))
+      isPending.set(r.some((x) => x.isPending))
+      isError.set(r.some((x) => x.isError))
+      error.set((r.find((x) => x.isError)?.error ?? null) as TError | null)
+    })
+  }
+
+  const unsub = observer.subscribe((r: readonly QueryObserverResult[]) => apply(r))
+
+  effect(() => {
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
+    observer.setQueries(queries())
+  })
+
+  onUnmount(() => {
+    unsub()
+    observer.destroy()
+  })
+
+  return { results, data, isPending, isError, error }
 }

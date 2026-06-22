@@ -57,7 +57,7 @@ const LOCKED: Record<string, { minEntries: number; minWithMistakes: number }> = 
   // Already at density before this PR — locked so they can't silently
   // erode. Numbers are the authoritative `findManifests` api[] counts
   // (the same loader `get_api` uses), not a source grep.
-  '@pyreon/query': { minEntries: 16, minWithMistakes: 11 },
+  '@pyreon/query': { minEntries: 21, minWithMistakes: 15 },
   '@pyreon/form': { minEntries: 7, minWithMistakes: 7 },
 }
 

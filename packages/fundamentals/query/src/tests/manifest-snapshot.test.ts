@@ -133,14 +133,19 @@ describe('gen-docs — query snapshot', () => {
     const record = renderApiReferenceEntries(queryManifest)
     const keys = Object.keys(record)
     expect(keys).toContain('query/QueryClientProvider')
+    expect(keys).toContain('query/HydrationBoundary')
     expect(keys).toContain('query/useQuery')
     expect(keys).toContain('query/useMutation')
+    expect(keys).toContain('query/useMutationState')
     expect(keys).toContain('query/useInfiniteQuery')
     expect(keys).toContain('query/useQueries')
+    expect(keys).toContain('query/usePrefetchQuery')
+    expect(keys).toContain('query/usePrefetchInfiniteQuery')
     expect(keys).toContain('query/useSubscription')
     expect(keys).toContain('query/useSSE')
     expect(keys).toContain('query/useSuspenseQuery')
     expect(keys).toContain('query/useSuspenseInfiniteQuery')
+    expect(keys).toContain('query/useSuspenseQueries')
     expect(keys).toContain('query/QuerySuspense')
     expect(keys).toContain('query/useIsFetching')
     expect(keys).toContain('query/useIsMutating')
@@ -148,7 +153,7 @@ describe('gen-docs — query snapshot', () => {
     expect(keys).toContain('query/useQueryErrorResetBoundary')
     expect(keys).toContain('query/useQueryClient')
     expect(keys).toContain('query/TanStack core re-exports')
-    expect(keys.length).toBe(16)
+    expect(keys.length).toBe(21)
 
     // Spot-check flagship entry density
     const useQuery = record['query/useQuery']!
