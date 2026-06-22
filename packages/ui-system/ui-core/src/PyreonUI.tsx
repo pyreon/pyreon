@@ -8,10 +8,10 @@ import {
   useContext,
 } from '@pyreon/core'
 import { computed, effect, isClient, signal } from '@pyreon/reactivity'
-import { sheet, ThemeContext } from '@pyreon/styler'
+import { setStyleExtraction, sheet, ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
-import { enrichTheme, themeToCssVars } from '@pyreon/unistyle'
-import { resolveCssVariables } from './config'
+import { cpseRewrite, enrichTheme, themeToCssVars } from '@pyreon/unistyle'
+import { resolveCssVariables, resolveStyleExtraction } from './config'
 import { context as coreContext } from './context'
 
 // Structural flag distinguishing the ROOT PyreonUI from a NESTED one (a
@@ -218,6 +218,12 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // (set via init() before the first render); theme-resolution caches across
   // the ui-system assume it does not flip mid-session.
   const cssVars = resolveCssVariables()
+
+  // Wire CPSE into styler's default pipeline when opted in
+  // (`init({ styleExtraction: true })`). styler can't import unistyle (dep
+  // direction), so the root provider injects `cpseRewrite` here. Boot-time
+  // contract; flag-off (default) leaves the classic path byte-identical.
+  if (resolveStyleExtraction()) setStyleExtraction(true, cpseRewrite)
 
   const enrichedTheme = computed(() => {
     const t = props.theme

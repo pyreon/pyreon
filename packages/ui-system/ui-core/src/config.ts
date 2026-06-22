@@ -46,7 +46,8 @@ export interface ResolvedCssVariablesConfig {
 }
 
 type InitConfig = Partial<
-  CSSEngineConnector & PlatformConfig & { cssVariables: boolean | CssVariablesConfig }
+  CSSEngineConnector &
+    PlatformConfig & { cssVariables: boolean | CssVariablesConfig; styleExtraction: boolean }
 >
 
 /**
@@ -78,6 +79,15 @@ class Configuration {
    */
   cssVariables: boolean | CssVariablesConfig = false
 
+  /**
+   * Opt-in Custom-Property Style Extraction for the default styled/Element
+   * pipeline. When true, `PyreonUI` wires `@pyreon/styler`'s `setStyleExtraction`
+   * (injecting unistyle's `cpseRewrite`) so non-reactive styled components emit a
+   * value-agnostic CSS rule + per-instance inline custom properties (O(1) rules).
+   * Off (default) = byte-identical classic path. Set BEFORE first render.
+   */
+  styleExtraction = false
+
   init = (props: InitConfig) => {
     if (props.css) this.css = props.css
     if (props.styled) this.styled = props.styled
@@ -86,6 +96,7 @@ class Configuration {
     if (props.textComponent) this.textComponent = props.textComponent
     if (props.createMediaQueries) this.createMediaQueries = props.createMediaQueries
     if (props.cssVariables !== undefined) this.cssVariables = props.cssVariables
+    if (props.styleExtraction !== undefined) this.styleExtraction = props.styleExtraction
   }
 }
 
@@ -106,6 +117,12 @@ export function resolveCssVariables(): ResolvedCssVariablesConfig {
     prefix: opts.prefix ?? 'px',
     attribute: opts.attribute ?? 'data-theme',
   }
+}
+
+/** Resolved view of `config.styleExtraction` — read by `PyreonUI` to wire
+ * styler's CPSE hook. Defaulting lives in one place. */
+export function resolveStyleExtraction(): boolean {
+  return config.styleExtraction === true
 }
 
 export default config
