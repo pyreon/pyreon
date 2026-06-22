@@ -8,6 +8,8 @@ import type {
   ThemeToCssVarsResult,
 } from './cssVariables'
 import { CSS_VARS_DEFAULT_EXCLUDE, resolveCssVarReferences, themeToCssVars } from './cssVariables'
+import type { ExtractedStyleVar } from './cpse'
+import { extractStyleVar } from './cpse'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
 import type {
@@ -63,6 +65,7 @@ export type {
   CssVarsUnitPolicy,
   Defaults,
   ExtendCss,
+  ExtractedStyleVar,
   ITheme,
   MakeItResponsive,
   MakeItResponsiveStyles,
@@ -93,6 +96,7 @@ export {
   CSS_VARS_DEFAULT_EXCLUDE,
   enrichTheme,
   extendCss,
+  extractStyleVar,
   makeItResponsive,
   normalizeTheme,
   Provider,
