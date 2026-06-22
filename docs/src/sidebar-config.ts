@@ -40,6 +40,7 @@ export const SIDEBAR: SidebarGroup[] = [
     items: [
       { text: 'Overview', slug: '' },
       { text: 'Why Pyreon', slug: 'why-pyreon' },
+      { text: 'Quickstart', slug: 'quickstart' },
       { text: 'Getting Started', slug: 'getting-started' },
       { text: 'Build an App (Tutorial)', slug: 'build-an-app' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
