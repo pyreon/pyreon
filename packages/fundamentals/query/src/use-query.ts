@@ -8,6 +8,7 @@ import type {
   QueryObserverResult,
 } from '@tanstack/query-core'
 import { QueryObserver } from '@tanstack/query-core'
+import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
 import { makeResultProto } from './result-proto'
 
@@ -77,6 +78,7 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
+  const isRestoring = useIsRestoring()
   const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
 
   // Lazy-allocated fine-grained signals. Each field starts as `undefined`;
@@ -101,8 +103,10 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
     isSuccess?: Signal<boolean>
   } = {}
 
-  // Subscribe synchronously — data flows before mount (correct for SSR pre-population).
-  const unsub = observer.subscribe((r) => {
+  // Subscribe synchronously when not restoring (data flows before mount —
+  // correct for SSR pre-population); deferred until restore completes when a
+  // <PersistQueryClientProvider> is active. See subscribeWhenRestored.
+  const unsub = subscribeWhenRestored(observer, isRestoring, (r) => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.observerNotify')
     // Only write to materialized slots. Apps that don't read a field never
     // materialize its signal, so its branch here is a `null`-check no-op.

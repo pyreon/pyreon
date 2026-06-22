@@ -12,6 +12,7 @@ import type {
   QueryObserverResult,
 } from '@tanstack/query-core'
 import { InfiniteQueryObserver, QueriesObserver, QueryObserver } from '@tanstack/query-core'
+import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
 import { makeResultProto } from './result-proto'
 import type { UseQueriesOptions } from './use-queries'
@@ -179,6 +180,7 @@ export function useSuspenseQuery<
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
+  const isRestoring = useIsRestoring()
   const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
 
   // Lazy signal slots — see use-query.ts for the pattern.
@@ -193,7 +195,7 @@ export function useSuspenseQuery<
     isSuccess?: Signal<boolean>
   } = {}
 
-  const unsub = observer.subscribe((r) => {
+  const unsub = subscribeWhenRestored(observer, isRestoring, (r) => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
       if (slots.result) slots.result.set(r)
@@ -245,6 +247,7 @@ export function useSuspenseInfiniteQuery<
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
+  const isRestoring = useIsRestoring()
   const observer = new InfiniteQueryObserver<
     TQueryFnData,
     TError,
@@ -269,7 +272,7 @@ export function useSuspenseInfiniteQuery<
     hasPreviousPage?: Signal<boolean>
   } = {}
 
-  const unsub = observer.subscribe((r) => {
+  const unsub = subscribeWhenRestored(observer, isRestoring, (r) => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
       if (slots.result) slots.result.set(r)
@@ -348,6 +351,7 @@ export function useSuspenseQueries<TData = unknown, TError = DefaultError>(
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
+  const isRestoring = useIsRestoring()
   const observer = new QueriesObserver(client, queries())
 
   const seed = observer.getCurrentResult() as readonly QueryObserverResult[]
@@ -370,7 +374,9 @@ export function useSuspenseQueries<TData = unknown, TError = DefaultError>(
     })
   }
 
-  const unsub = observer.subscribe((r: readonly QueryObserverResult[]) => apply(r))
+  const unsub = subscribeWhenRestored(observer, isRestoring, (r: readonly QueryObserverResult[]) =>
+    apply(r),
+  )
 
   effect(() => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')

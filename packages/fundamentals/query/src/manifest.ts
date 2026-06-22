@@ -118,6 +118,8 @@ const feed = useInfiniteQuery(() => ({
     'useSSE — Server-Sent Events with QueryClient cache integration',
     'useIsFetching / useIsMutating — global count signals for spinners',
     'QueryErrorResetBoundary — resets errored queries when an ErrorBoundary recovers',
+    'Offline persistence (`@pyreon/query/persist`): PersistQueryClientProvider + the framework-agnostic persist engine + sync/async storage persisters; queries defer their first fetch until restore completes (useIsRestoring)',
+    'In-app devtools (`@pyreon/query/devtools`): QueryDevtools — the same TanStack panel React/Solid/Vue ship, as a thin shim; dev-only subpath, tree-shakes out of production',
   ],
   api: [
     {
@@ -466,6 +468,72 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
 client.invalidateQueries({ queryKey: ['posts'] })
 await client.prefetchQuery({ queryKey: ['user', 1], queryFn: fetchUser })`,
       seeAlso: ['QueryClientProvider'],
+    },
+    {
+      name: 'PersistQueryClientProvider',
+      kind: 'component',
+      signature:
+        '(props: { client: QueryClient; persistOptions: Omit<PersistQueryClientOptions, "queryClient">; onSuccess?: () => unknown; onError?: () => unknown; children?: VNodeChild }) => VNodeChild',
+      summary:
+        'Drop-in replacement for `<QueryClientProvider>` that ALSO restores the query cache from a persister on mount and keeps it persisted on every change — the offline / reload-survival story. Provides both the `QueryClient` AND the reactive `isRestoring` flag, so descendant `useQuery` calls DEFER their first fetch until restoration completes (no redundant network request for data the cache is about to restore). Import from `@pyreon/query/persist`. Built on TanStack\'s framework-agnostic `persistQueryClient` engine; pair with `createSyncStoragePersister({ storage: localStorage })`.',
+      example: `import { PersistQueryClientProvider, createSyncStoragePersister } from '@pyreon/query/persist'
+
+const persister = createSyncStoragePersister({ storage: localStorage })
+<PersistQueryClientProvider client={client} persistOptions={{ persister }}>
+  <App />
+</PersistQueryClientProvider>`,
+      mistakes: [
+        'Using BOTH `<QueryClientProvider>` and `<PersistQueryClientProvider>` — the persist provider already provides the client; nest only one',
+        'Expecting synchronous restore — restoration is async (even sync localStorage resolves on a microtask). Gate UI on `useIsRestoring()` during the window',
+        'A heavy `staleTime: 0` default — restored queries immediately refetch on subscribe; set a `staleTime` so the restored cache is treated as fresh',
+      ],
+      seeAlso: ['useIsRestoring', 'QueryClientProvider', 'HydrationBoundary'],
+    },
+    {
+      name: 'useIsRestoring',
+      kind: 'hook',
+      signature: '() => () => boolean',
+      summary:
+        'Reactive accessor — `true` while the persisted cache is being restored by `<PersistQueryClientProvider>`. Returns `() => false` when there is no persistence layer. Gate a splash / skeleton on it during the async restore window. Exported from both `@pyreon/query` and `@pyreon/query/persist`. `IsRestoringProvider` is the standalone provider for a custom restoration flow.',
+      example: `const isRestoring = useIsRestoring()
+<Show when={() => !isRestoring()} fallback={<Splash />}>{() => <App />}</Show>`,
+      mistakes: [
+        'Reading it as a plain boolean — it returns an ACCESSOR; call it: `isRestoring()`',
+      ],
+      seeAlso: ['PersistQueryClientProvider'],
+    },
+    {
+      name: 'QueryDevtools',
+      kind: 'component',
+      signature:
+        '(props: { client?: QueryClient; initialIsOpen?: boolean; buttonPosition?: DevtoolsButtonPosition; position?: DevtoolsPosition; errorTypes?: DevtoolsErrorType[]; shadowDOMTarget?: ShadowRoot }) => VNode',
+      summary:
+        'In-app TanStack Query devtools panel — the SAME panel React / Solid / Vue users see, as a thin shim over `@tanstack/query-devtools`\'s framework-agnostic engine (on mount it instantiates the engine with the nearest `QueryClient` and mounts it into a host element; tears down on unmount). Import from the dev-only subpath `@pyreon/query/devtools` so it tree-shakes out of production. Render once under your provider. Config props are read once at mount.',
+      example: `import { QueryDevtools } from '@pyreon/query/devtools'
+
+<QueryClientProvider client={client}>
+  <App />
+  {import.meta.env.DEV ? <QueryDevtools initialIsOpen={false} /> : null}
+</QueryClientProvider>`,
+      mistakes: [
+        'Importing from `@pyreon/query` (main) — it lives at the `@pyreon/query/devtools` subpath so the heavy devtools engine stays out of the production bundle',
+        'Rendering it unconditionally in production — gate on `import.meta.env.DEV` (or your bundler\'s dev flag) so it ships only in development',
+      ],
+      seeAlso: ['QueryClientProvider', 'useQueryClient'],
+    },
+    {
+      name: 'Persistence subpath re-exports',
+      kind: 'function',
+      signature:
+        "import { persistQueryClient, persistQueryClientRestore, persistQueryClientSave, persistQueryClientSubscribe, removeOldestQuery, createSyncStoragePersister, createAsyncStoragePersister } from '@pyreon/query/persist'",
+      summary:
+        'The `@pyreon/query/persist` subpath re-exports TanStack\'s framework-agnostic persist engine (`persistQueryClient` → `[unsubscribe, restorePromise]`, plus the `*Restore` / `*Save` / `*Subscribe` granular pieces and `removeOldestQuery`) and the storage persisters (`createSyncStoragePersister` for localStorage/sessionStorage, `createAsyncStoragePersister` for IndexedDB / RN AsyncStorage / any Promise-returning store). Types (`Persister`, `PersistedClient`, `PersistQueryClientOptions`, …) re-export alongside. Use these for a custom persistence flow; most apps just use `<PersistQueryClientProvider>`.',
+      example: `import { persistQueryClient, createSyncStoragePersister } from '@pyreon/query/persist'
+
+const persister = createSyncStoragePersister({ storage: localStorage })
+const [unsubscribe, restored] = persistQueryClient({ queryClient: client, persister })
+await restored // cache is now hydrated from storage`,
+      seeAlso: ['PersistQueryClientProvider', 'useIsRestoring'],
     },
     {
       name: 'TanStack core re-exports',

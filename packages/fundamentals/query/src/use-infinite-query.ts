@@ -10,6 +10,7 @@ import type {
   QueryObserverResult,
 } from '@tanstack/query-core'
 import { InfiniteQueryObserver } from '@tanstack/query-core'
+import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
 import { makeResultProto } from './result-proto'
 
@@ -92,6 +93,7 @@ export function useInfiniteQuery<
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
+  const isRestoring = useIsRestoring()
   const observer = new InfiniteQueryObserver<
     TQueryFnData,
     TError,
@@ -120,7 +122,7 @@ export function useInfiniteQuery<
     hasPreviousPage?: Signal<boolean>
   } = {}
 
-  const unsub = observer.subscribe((r) => {
+  const unsub = subscribeWhenRestored(observer, isRestoring, (r) => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
       if (slots.result) slots.result.set(r)
