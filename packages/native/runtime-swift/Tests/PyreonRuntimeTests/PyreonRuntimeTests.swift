@@ -1264,6 +1264,69 @@ final class PyreonRuntimeTests: XCTestCase {
         )
         XCTAssertEqual(try jsonRes.decode(User.self), User(id: 7, name: "x"))
     }
+
+    // MARK: - PyreonDatabase (useDatabase structured local store)
+    //
+    // Facade + in-memory backend contract. The real SQLite/Core Data backend
+    // is the app's job — not exercised here.
+
+    func testPyreonDatabaseInsertGet() throws {
+        let db = PyreonDatabase()
+        XCTAssertNil(db.get("todos", id: "1"))
+        let r = PyreonRecord(id: "1", fields: ["text": "buy milk", "done": "false"])
+        db.insert("todos", r)
+        XCTAssertEqual(db.get("todos", id: "1"), r)
+        XCTAssertEqual(db.get("todos", id: "1")?.fields["text"], "buy milk")
+    }
+
+    func testPyreonDatabaseUpsert() throws {
+        let db = PyreonDatabase()
+        db.insert("todos", PyreonRecord(id: "1", fields: ["done": "false"]))
+        db.insert("todos", PyreonRecord(id: "1", fields: ["done": "true"]))
+        XCTAssertEqual(db.get("todos", id: "1")?.fields["done"], "true")
+        XCTAssertEqual(db.count("todos"), 1)
+    }
+
+    func testPyreonDatabaseAllPreservesInsertionOrder() throws {
+        let db = PyreonDatabase()
+        db.insert("todos", PyreonRecord(id: "a"))
+        db.insert("todos", PyreonRecord(id: "b"))
+        db.insert("todos", PyreonRecord(id: "c"))
+        XCTAssertEqual(db.all("todos").map(\.id), ["a", "b", "c"])
+        db.insert("todos", PyreonRecord(id: "a", fields: ["x": "1"]))
+        XCTAssertEqual(db.all("todos").map(\.id), ["a", "b", "c"]) // upsert keeps position
+    }
+
+    func testPyreonDatabaseDelete() throws {
+        let db = PyreonDatabase()
+        db.insert("todos", PyreonRecord(id: "1"))
+        XCTAssertEqual(db.count("todos"), 1)
+        XCTAssertTrue(db.delete("todos", id: "1"))
+        XCTAssertNil(db.get("todos", id: "1"))
+        XCTAssertEqual(db.count("todos"), 0)
+        XCTAssertTrue(db.delete("todos", id: "never")) // idempotent
+    }
+
+    func testPyreonDatabaseFind() throws {
+        let db = PyreonDatabase()
+        db.insert("todos", PyreonRecord(id: "1", fields: ["done": "false"]))
+        db.insert("todos", PyreonRecord(id: "2", fields: ["done": "true"]))
+        db.insert("todos", PyreonRecord(id: "3", fields: ["done": "false"]))
+        XCTAssertEqual(db.find("todos", field: "done", equals: "false").map(\.id), ["1", "3"])
+        XCTAssertEqual(db.find("todos", field: "done", equals: "true").count, 1)
+        XCTAssertTrue(db.find("todos", field: "missing", equals: "x").isEmpty)
+    }
+
+    func testPyreonDatabaseCollectionsAreIsolated() throws {
+        let db = PyreonDatabase()
+        db.insert("todos", PyreonRecord(id: "1"))
+        db.insert("notes", PyreonRecord(id: "1"))
+        XCTAssertEqual(db.count("todos"), 1)
+        XCTAssertEqual(db.count("notes"), 1)
+        db.delete("todos", id: "1")
+        XCTAssertNil(db.get("todos", id: "1"))
+        XCTAssertNotNil(db.get("notes", id: "1")) // isolated
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
