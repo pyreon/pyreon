@@ -155,6 +155,42 @@ describe('mount — reactive', () => {
     cls.set('b')
     expect(el.querySelector('div')?.className).toBe('b')
   })
+
+  // mountChildren 3+ fast path (collect-only-real-cleanups, inline-first then
+  // promote to an array): a 3+-child element must react on every child AND
+  // dispose EVERY child on unmount — the promote-array dispose loop is the
+  // load-bearing part of the optimization.
+  test('3+ reactive children all react AND all dispose on unmount (promote path)', () => {
+    const el = container()
+    const a = signal('a0')
+    const b = signal('b0')
+    const c = signal('c0')
+    const unmount = mount(
+      h(
+        'div',
+        null,
+        () => a(),
+        () => b(),
+        () => c(),
+      ),
+      el,
+    )
+    const div = el.querySelector('div')!
+    expect(div.textContent).toBe('a0b0c0')
+    a.set('a1')
+    b.set('b1')
+    c.set('c1')
+    expect(div.textContent).toBe('a1b1c1') // all three children are reactive
+
+    unmount()
+    // After unmount every child binding must be disposed — writes to the
+    // (now-detached) nodes must NOT update them. A leaked cleanup in the
+    // promote-array path would let one keep updating.
+    a.set('a2')
+    b.set('b2')
+    c.set('c2')
+    expect(div.textContent).toBe('a1b1c1')
+  })
 })
 
 // ─── Components ───────────────────────────────────────────────────────────────

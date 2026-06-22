@@ -662,10 +662,28 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
     }
   }
 
-  const cleanups = children.map((c) => mountChild(c, parent, anchor))
-  return () => {
-    for (const fn of cleanups) fn()
+  // 3+ children: collect ONLY real (non-noop) cleanups — inline-first, promote
+  // to an array on the 2nd. A fully-static multi-child element (every child is
+  // baked / static → mountChild returns `noop`) returns the shared `noop` with
+  // NO array and NO wrapper closure allocated (the common `<ul><li/>…</ul>`
+  // shape); mixed children don't retain noop refs. Mirrors the 2-child fast
+  // path's noop-filtering + avoids `.map`'s per-call callback closure.
+  let only: Cleanup | null = null
+  let rest: Cleanup[] | null = null
+  for (let i = 0; i < children.length; i++) {
+    const d = mountChild(children[i] as VNodeChild, parent, anchor)
+    if (d === noop) continue
+    if (only === null) only = d
+    else if (rest === null) rest = [only, d]
+    else rest.push(d)
   }
+  if (rest !== null) {
+    const all = rest
+    return () => {
+      for (const fn of all) fn()
+    }
+  }
+  return only ?? noop
 }
 
 // ─── Keyed array detection ────────────────────────────────────────────────────

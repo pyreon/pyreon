@@ -303,20 +303,28 @@ export function _rsCollapseH(
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
-    const handlerDisposers: (() => void)[] = []
+    // Inline-first-disposer slot (mirrors the signal `_d1`→`_d` idiom): the
+    // dominant collapsed shape is a single handler (`<Button onClick={h}>`), so
+    // hold the first disposer inline and promote to an array ONLY on a 2nd
+    // handler — no per-instance array allocation in the common 0/1-handler case.
     // `Object.keys` (not `for...in`) so an attacker who pollutes
     // `Object.prototype` can't inject a fake handler via inherited
     // enumerable properties. Defense-in-depth — the compiler emits a
     // clean object literal so this matters defensively, not in
     // practice, but the cost is zero.
+    let d0: (() => void) | null = null
+    let dRest: (() => void)[] | null = null
     for (const key of Object.keys(handlers)) {
       const d = _bindEvent(el, key, handlers[key])
-      if (d) handlerDisposers.push(d)
+      if (!d) continue
+      if (d0 === null) d0 = d
+      else (dRest ??= []).push(d)
     }
     const disposeChildren = bind ? bind(el) : null
     return () => {
       disposeClass()
-      for (const d of handlerDisposers) d()
+      if (d0) d0()
+      if (dRest) for (const d of dRest) d()
       if (disposeChildren) disposeChildren()
     }
   })

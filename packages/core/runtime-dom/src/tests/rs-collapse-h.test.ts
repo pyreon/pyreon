@@ -177,6 +177,36 @@ describe('_rsCollapseH (happy-dom unit) — PR 2 partial-collapse runtime', () =
     expect(b).toBe(1)
   })
 
+  it('cleanup() disposes ALL handlers when promoted past the inline slot (2+)', () => {
+    // Locks the inline-first-disposer promotion path: handler #1 lands in the
+    // `d0` inline slot, #2+ promote into the `dRest` array — cleanup must fire
+    // BOTH `d0()` and the `dRest` loop, so neither listener leaks.
+    const isDark = signal(false)
+    let a = 0
+    let b = 0
+    const item = _rsCollapseH('<button>D2</button>', 'rsh-d2c', 'rsh-d2c', () => isDark(), {
+      onPointerEnter: () => {
+        a++
+      },
+      onMouseEnter: () => {
+        b++
+      },
+    })
+    const el = item.el as HTMLElement
+    document.body.appendChild(el)
+    fire(el, 'pointerenter')
+    fire(el, 'mouseenter')
+    expect(a).toBe(1)
+    expect(b).toBe(1)
+
+    item.cleanup?.()
+    fire(el, 'pointerenter') // d0 disposer must have run
+    fire(el, 'mouseenter') // dRest[0] disposer must have run
+    expect(a).toBe(1)
+    expect(b).toBe(1)
+    el.remove()
+  })
+
   it('zero handlers: renders class + children, cleanup is safe (defensive)', async () => {
     const isDark = signal(false)
     const el = place(_rsCollapseH('<button>Z</button>', 'rsh-z', 'rsh-zd', () => isDark(), {}))

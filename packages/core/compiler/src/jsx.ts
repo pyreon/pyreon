@@ -3180,7 +3180,15 @@ export function transformJSX_JS(
     // terminates each statement deterministically. Trailing `;` after
     // a `{...}` block is a harmless empty statement.
     let body = bindLines.map((l) => `  ${l};`).join('\n')
-    if (disposerNames.length > 0) {
+    if (disposerNames.length === 1) {
+      // Single-binding fast path: return the disposer DIRECTLY instead of
+      // allocating a wrapper closure `() => { d() }` per template instance.
+      // `_bind` / `_bindText` / `_bindDirect` always return a disposer function
+      // (never null — see template.ts), so this is equivalent minus one closure
+      // allocation per instance. For the dominant `<For>`-row shape (a sole
+      // reactive text child) that's one fewer closure + retained scope per row.
+      body += `\n  return ${disposerNames[0]}`
+    } else if (disposerNames.length > 0) {
       body += `\n  return () => { ${disposerNames.map((d) => `${d}()`).join('; ')} }`
     } else {
       body += '\n  return null'
