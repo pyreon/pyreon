@@ -1207,7 +1207,17 @@ function normalizeStyle(value: unknown): string {
     const proto = Object.getPrototypeOf(value)
     if (proto === Object.prototype || proto === null) {
       return Object.entries(value)
-        .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
+        // Custom properties (`--x`) are case-sensitive and MUST pass through
+        // verbatim — kebab-casing them corrupts the name. Mirrors the client
+        // `applyStyleProp` guard (`runtime-dom/src/props.ts`); without it SSR
+        // and the client disagree on any `--Custom`-cased property (the inline
+        // custom properties the CPSE style-extraction path emits).
+        // Custom properties (`--x`) are case-sensitive and MUST pass through
+        // verbatim — kebab-casing them corrupts the name. Mirrors the client
+        // `applyStyleProp` guard (`runtime-dom/src/props.ts`); without it SSR
+        // and the client disagree on any `--Custom`-cased property (the inline
+        // custom properties the CPSE style-extraction path emits).
+        .map(([k, v]) => `${k.startsWith('--') ? k : toKebab(k)}: ${normalizeStyleValue(k, v)}`)
         .join('; ')
     }
   }

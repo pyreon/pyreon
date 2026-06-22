@@ -642,6 +642,20 @@ describe('renderToString — class and style edge cases', () => {
     expect(html).toContain('style="color: red"')
   })
 
+  test('preserves CSS custom-property names verbatim (parity with client applyStyleProp)', async () => {
+    // Custom properties (`--x`) are case-sensitive; kebab-casing corrupts the
+    // name. Mirrors the client `--`-guard in runtime-dom's applyStyleProp.
+    // This is the SSR serialization the CPSE inline-custom-property path
+    // depends on (e.g. `style={{ '--u-1n2k4': '2.25rem' }}`).
+    const html = await renderToString(
+      h('div', { style: { '--u-1n2k4': '2.25rem', '--Brand': 'red', fontSize: '16px' } }),
+    )
+    expect(html).toContain('--u-1n2k4: 2.25rem') // lowercase hash (the CPSE shape)
+    expect(html).toContain('--Brand: red') // uppercase survives (the parity fix)
+    expect(html).not.toContain('--brand') // …NOT kebab-corrupted
+    expect(html).toContain('font-size: 16px') // non-custom props still kebab
+  })
+
   test('renders empty style object as no attribute', async () => {
     // normalizeStyle with non-object/non-string falls through to return ""
     const html = await renderToString(h('div', { style: 42 }))
