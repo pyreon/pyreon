@@ -68,6 +68,20 @@ effect(() => {
       name: 'signal',
       kind: 'function',
       signature: '<T>(initialValue: T, options?: { name?: string }) => Signal<T>',
+      params: [
+        { name: 'initialValue', type: 'T', description: "The signal's initial value." },
+        {
+          name: 'options',
+          type: '{ name?: string }',
+          optional: true,
+          description: 'Optional debug name (auto-injected by @pyreon/vite-plugin in dev mode).',
+        },
+      ],
+      returns: {
+        type: 'Signal<T>',
+        description:
+          'A callable signal — call it to read (and subscribe); `.set(v)` / `.update(fn)` to write; `.peek()` to read without subscribing.',
+      },
       summary:
         'Create a reactive signal. The returned value is a CALLABLE FUNCTION — `count()` reads (and subscribes), `count.set(v)` writes, `count.update(fn)` derives, `count.peek()` reads without subscribing. This is NOT a `.value` getter/setter pattern (React/Vue) — Pyreon signals are functions. Optional `{ name }` for debugging; auto-injected by `@pyreon/vite-plugin` in dev mode.',
       example: `const count = signal(0)
@@ -119,6 +133,23 @@ const initial = isClient ? navigator.onLine : true`,
       name: 'computed',
       kind: 'function',
       signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
+      params: [
+        {
+          name: 'fn',
+          type: '() => T',
+          description: 'Derivation — reads other signals/computeds; dependencies are auto-tracked on each run.',
+        },
+        {
+          name: 'options',
+          type: '{ equals?: (a: T, b: T) => boolean }',
+          optional: true,
+          description: 'Custom equality to skip downstream updates on structurally-equal values (default `Object.is`).',
+        },
+      ],
+      returns: {
+        type: 'Computed<T>',
+        description: 'A read-only callable — call to read the memoized value; recomputes lazily only when a dependency changes.',
+      },
       summary:
         'Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. Custom `equals` function prevents downstream effects from firing on structurally-equal updates (default: `Object.is`).',
       example: `const count = signal(0)
@@ -137,6 +168,17 @@ doubled()  // 10`,
       name: 'effect',
       kind: 'function',
       signature: '(fn: () => (() => void) | void) => () => void',
+      params: [
+        {
+          name: 'fn',
+          type: '() => (() => void) | void',
+          description: 'Effect body — auto-tracks the signals it reads; may return a cleanup callback run before each re-run and on dispose.',
+        },
+      ],
+      returns: {
+        type: '() => void',
+        description: 'A dispose function — call it to stop the effect and run its final cleanup.',
+      },
       summary:
         'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.',
       example: `const count = signal(0)
@@ -162,6 +204,14 @@ effect(() => {
       name: 'renderEffect',
       kind: 'function',
       signature: '(fn: () => void) => () => void',
+      params: [
+        {
+          name: 'fn',
+          type: '() => void',
+          description: 'DOM-update body — auto-tracks the signals it reads; lighter than `effect` (no cleanup-return).',
+        },
+      ],
+      returns: { type: '() => void', description: 'A dispose function — call it to stop the effect.' },
       summary:
         'DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectScope` integration. Used internally by `_bind` / `_tpl` for compiled-template DOM updates. **Prefer `effect()` for general use**; reach for `renderEffect()` only when you\'re hand-writing DOM update logic and have measured the overhead difference. Returns a dispose function (not an `Effect` object — different shape from `effect()`).',
       example: `// Inside a custom DOM helper that updates a text node:
@@ -182,6 +232,14 @@ const dispose = renderEffect(() => {
       name: 'batch',
       kind: 'function',
       signature: '(fn: () => void) => void',
+      params: [
+        {
+          name: 'fn',
+          type: '() => void',
+          description: 'Body whose signal writes are coalesced — subscribers run once at the end, not per write.',
+        },
+      ],
+      returns: { type: 'void', description: 'Nothing — runs `fn` synchronously and flushes a single update pass.' },
       summary:
         'Group multiple signal writes so subscribers fire only once — after the batch completes. Uses pointer swap (zero allocation). Essential when updating 3+ signals that downstream effects read together; without batch, each `.set()` triggers an independent notification pass.',
       example: `const a = signal(1)
@@ -201,6 +259,10 @@ batch(() => {
       name: 'nextTick',
       kind: 'function',
       signature: '() => Promise<void>',
+      returns: {
+        type: 'Promise<void>',
+        description: 'Resolves after the current batch of reactive updates has flushed — await it to read post-update DOM/state.',
+      },
       summary:
         'Returns a promise that resolves after the next microtask. Use to await pending reactive updates — every signal write that happens before `nextTick()` is fully flushed (effects ran, computeds settled, DOM patched) by the time the promise resolves. Equivalent to Vue\'s `nextTick`. Useful in tests and in code that needs to read the post-update DOM state.',
       example: `count.set(5)
@@ -218,6 +280,14 @@ expect(node.textContent).toBe('5')`,
       name: 'onCleanup',
       kind: 'function',
       signature: '(fn: () => void) => void',
+      params: [
+        {
+          name: 'fn',
+          type: '() => void',
+          description: 'Cleanup callback — runs before the owning effect/computed re-runs and once on final dispose.',
+        },
+      ],
+      returns: { type: 'void', description: 'Nothing — registers the cleanup with the current reactive owner.' },
       summary:
         'Register a cleanup function inside an `effect()` or `renderEffect()`. Runs before each re-execution of the effect (when dependencies change) and once on final dispose. Equivalent to returning a cleanup function from the effect body — both forms work, `onCleanup` is useful when you need to register cleanup at a different point than the end of the body.',
       example: `effect(() => {
@@ -235,6 +305,21 @@ expect(node.textContent).toBe('5')`,
       name: 'watch',
       kind: 'function',
       signature: '<T>(source: () => T, callback: (next: T, prev: T) => void, options?: WatchOptions) => () => void',
+      params: [
+        { name: 'source', type: '() => T', description: 'Tracked source — its return value is watched for changes.' },
+        {
+          name: 'callback',
+          type: '(next: T, prev: T) => void',
+          description: 'Runs on change with the new and previous source values.',
+        },
+        {
+          name: 'options',
+          type: 'WatchOptions',
+          optional: true,
+          description: 'Optional watch behavior (e.g. running the callback once immediately on setup).',
+        },
+      ],
+      returns: { type: '() => void', description: 'A dispose function — call it to stop watching.' },
       summary:
         'Explicit reactive watcher — tracks `source` and fires `callback` when it changes. Unlike `effect()`, the callback receives both `next` and `prev` values and does NOT auto-track signals read inside the callback body. `source` is evaluated at setup time to establish tracking; reading browser globals there still fires SSR lint rules. Returns a dispose function.',
       example: `watch(() => count(), (next, prev) => {
@@ -251,6 +336,18 @@ expect(node.textContent).toBe('5')`,
       name: 'createSelector',
       kind: 'function',
       signature: '<T>(source: () => T) => (value: T) => boolean',
+      params: [
+        {
+          name: 'source',
+          type: '() => T',
+          description: 'Tracked source producing the currently-selected key (e.g. the selected row id).',
+        },
+      ],
+      returns: {
+        type: '(value: T) => boolean',
+        description:
+          'An O(1) membership selector — `isSelected(key)` is true only for the matching key; only the entering/leaving items re-run on change, not the whole list.',
+      },
       summary:
         'Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-selected values\' subscribers are affected. Unlike a plain `() => source() === value` (which re-evaluates for every row in a list), this only triggers TWO subscribers per source change (deselected + newly selected) regardless of list size. Critical for keyed-list selection patterns.',
       example: `const selectedId = signal<string | null>(null)

@@ -42,6 +42,21 @@ export type ApiKind = 'function' | 'hook' | 'component' | 'type' | 'class' | 'co
  * tools like MCP and docs want one entry per named symbol; separating
  * overloads fragments search and confuses consumers.
  */
+/**
+ * A single parameter of a `function` / `hook` / `component` / `class`
+ * API entry. Feeds the "Parameters" table on the generated reference page.
+ */
+export interface ApiParam {
+  /** Parameter name as it appears in the signature (`initialValue`, `options`). */
+  name: string
+  /** TypeScript type — MUST match the corresponding type in `signature`. */
+  type: string
+  /** What the parameter is for + any default. One sentence. */
+  description: string
+  /** Optional parameter (has `?` or a default in the signature). */
+  optional?: boolean
+}
+
 export interface ApiEntry {
   /** Exported symbol name — `createFlow`, `useFlow`, `FlowInstance`. */
   name: string
@@ -101,6 +116,24 @@ export interface ApiEntry {
    * cross-references and a future validator resolves them.
    */
   seeAlso?: string[]
+  /**
+   * Structured parameter list for `function` / `hook` / `component` /
+   * `class` entries — rendered as a "Parameters" table on the generated
+   * reference page (Next.js-style). OPTIONAL: entries without it render
+   * the `signature` fence alone, exactly as before.
+   *
+   * INVARIANT (convention): each param's `name` + `type` MUST match the
+   * corresponding parameter in `signature` — `signature` stays the single
+   * canonical one-liner; `params` is its tabular, described form. The
+   * `description` is the value-add a type alone can't convey.
+   */
+  params?: ApiParam[]
+  /**
+   * Structured return description — rendered as a "Returns" row beneath
+   * the parameters table. `type` MUST match the `signature`'s return
+   * type. OPTIONAL, like `params`.
+   */
+  returns?: { type: string; description: string }
   /**
    * API maturity. `'stable'` (default) is included everywhere.
    * `'experimental'` is included in llms-full with a badge, omitted
