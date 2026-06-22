@@ -305,6 +305,18 @@ export type DeclIR =
   // parse path warns + drops (the Kotlin secret store needs an app-injected
   // backend; auto-instantiation isn't clean cross-target). Documented
   // follow-up; see parse.ts.
+  /**
+   * Phase 5b — a plain VALUE const in a component body: `const a = 5 + 3`,
+   * `const label = 'Total: '`, `const doubled = base * 2`. Previously dropped
+   * (only call-expression decls — signal/computed/hook/fn — were captured),
+   * which silently vanished any local const → undefined references on native.
+   * Emitted as a body-local `let` (Swift, inside the `body` ViewBuilder where
+   * Swift infers the type + it may reference `@State`) / `val` (Kotlin
+   * composable body). Captures-once like JS `const` — a `const x = sig()`
+   * snapshots the signal (non-reactive), matching web semantics. Non-call,
+   * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
+   */
+  | { kind: 'value'; name: string; expr: ExprIR }
   | { kind: 'geolocation'; name: string }
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }

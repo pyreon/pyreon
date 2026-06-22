@@ -1131,6 +1131,10 @@ function emitKotlinDataClass(synth: {
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
+  // Phase 5b: a plain value const → a composable-body `val` (captures-once).
+  if (d.kind === 'value') {
+    return `val ${kotlinIdent(d.name)} = ${emitKotlinExpr(d.expr, 0)}`
+  }
   if (d.kind === 'signal') {
     // When the signal's declared type is a known enum, set the active-
     // enum context so the initial-value emit rewrites a string literal

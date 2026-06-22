@@ -62,7 +62,7 @@ describe('Phase 4 — usePermissions() native emit', () => {
     expect(kotlin).toContain('val can = remember { PyreonPermissions() }')
   })
 
-  it('non-literal grant entries are dropped (PyreonPermissions seeds string keys only)', () => {
+  it('non-literal grant entries drop from the PyreonPermissions seed (string keys only)', () => {
     const out = transform(
       `
       export function Mixed() {
@@ -73,8 +73,16 @@ describe('Phase 4 — usePermissions() native emit', () => {
       `,
       { target: 'swift' },
     ).code
-    // Only the string-literal grant survives; the identifier reference drops.
+    // Only the string-literal grant survives in the SEED; the identifier
+    // reference is dropped from the grant array.
     expect(out).toContain('PyreonPermissions(["posts.edit"])')
-    expect(out).not.toContain('role')
+    // `role` is NOT seeded into the permissions container (the non-literal
+    // grant is dropped from the array).
+    expect(out).not.toContain('PyreonPermissions(["posts.edit", role])')
+    // Phase 5b: `const role = 'admin'` ITSELF now emits as a value-const
+    // `let` (component-body consts used to be dropped entirely). That's
+    // correct + orthogonal to the grant-seed drop — the old
+    // `not.toContain('role')` assertion conflated the two.
+    expect(out).toContain('let role = "admin"')
   })
 })

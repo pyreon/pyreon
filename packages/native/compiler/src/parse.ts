@@ -2607,7 +2607,17 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return tryFunctionDecl(name, init, ctx)
   }
 
-  if (init.type !== 'CallExpression') return null
+  // Phase 5b — a plain VALUE const: `const a = 5 + 3` / `const label = 'x'` /
+  // `const doubled = base * 2`. Previously dropped (only call-expression
+  // decls were captured), silently vanishing local consts → undefined refs on
+  // native. Now emitted as a body-local let/val (captures-once, like JS
+  // const). Arrows handled above; calls (signal/computed/hook/rx) handled
+  // below. Object/array literals also flow through (they get the existing
+  // object/array-literal emit). This widens the supported subset toward
+  // "any app" — local consts are ubiquitous.
+  if (init.type !== 'CallExpression') {
+    return { kind: 'value', name, expr: parseExpr(init, ctx) }
+  }
 
   // RX-1 — `@pyreon/rx` namespace lowering. Source like
   //   const active = rx.filter(todos, t => !t.done)
