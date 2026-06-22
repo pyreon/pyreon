@@ -1092,6 +1092,97 @@ final class PyreonRuntimeTests: XCTestCase {
         let store = PyreonSecureStorage()
         XCTAssertNotNil(store)
     }
+
+    // MARK: - PyreonPushNotifications (usePush reactive push container)
+    //
+    // Pure state machine + injected-registration lifecycle. The real
+    // AppDelegate / APNs forwarding is the app's job (injected) — not
+    // exercised here.
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPushInitialState() throws {
+        let push = PyreonPushNotifications()
+        XCTAssertNil(push.token)
+        XCTAssertNil(push.lastNotification)
+        XCTAssertTrue(push.notifications.isEmpty)
+        XCTAssertFalse(push.isAuthorized)
+        XCTAssertNil(push.error)
+        XCTAssertFalse(push.isRegistered)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPushTokenReceived() throws {
+        let push = PyreonPushNotifications()
+        push.tokenReceived("apns-abc")
+        XCTAssertEqual(push.token, "apns-abc")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPushNotificationAccumulates() throws {
+        let push = PyreonPushNotifications()
+        let a = PyreonPushNotification(title: "Hi", body: "first")
+        let b = PyreonPushNotification(title: "Yo", body: "second", data: ["k": "v"])
+        push.notificationReceived(a)
+        push.notificationReceived(b)
+        XCTAssertEqual(push.lastNotification, b)
+        XCTAssertEqual(push.notifications, [a, b])
+        XCTAssertEqual(push.notifications[1].data["k"], "v")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPushAuthorizeFlips() throws {
+        let push = PyreonPushNotifications()
+        push.authorize(true)
+        XCTAssertTrue(push.isAuthorized)
+        push.authorize(false)
+        XCTAssertFalse(push.isAuthorized)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPushFailKeepsToken() throws {
+        struct PushError: Error {}
+        let push = PyreonPushNotifications()
+        push.tokenReceived("tok")
+        push.notificationReceived(PyreonPushNotification(body: "x"))
+        push.fail(PushError())
+        XCTAssertNotNil(push.error)
+        XCTAssertEqual(push.token, "tok")
+        XCTAssertEqual(push.notifications.count, 1)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPushTokenClearsError() throws {
+        struct PushError: Error {}
+        let push = PyreonPushNotifications()
+        push.fail(PushError())
+        XCTAssertNotNil(push.error)
+        push.tokenReceived("new")
+        XCTAssertNil(push.error)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPushStartWiresInjectedRegistration() throws {
+        let push = PyreonPushNotifications()
+        var unregistered = false
+        var captured: PyreonPushHandlers?
+        push.start { handlers in
+            captured = handlers
+            return { unregistered = true }
+        }
+        XCTAssertTrue(push.isRegistered)
+        captured?.onToken("device-token")
+        XCTAssertEqual(push.token, "device-token")
+        captured?.onAuthorization(true)
+        XCTAssertTrue(push.isAuthorized)
+        captured?.onNotification(PyreonPushNotification(title: "T"))
+        XCTAssertEqual(push.lastNotification?.title, "T")
+        push.start { _ in { } } // idempotent — no second registration
+        push.stop()
+        XCTAssertTrue(unregistered)
+        XCTAssertFalse(push.isRegistered)
+        push.stop() // double-stop is a safe no-op
+        XCTAssertFalse(push.isRegistered)
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
