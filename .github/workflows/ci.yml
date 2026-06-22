@@ -420,7 +420,19 @@ jobs:
   # pool sooner for everything downstream.
   test-cell:
     name: test (${{ matrix.category }})
-    needs: bootstrap
+    # Cost gate: also depend on the fast deterministic checks (lint +
+    # typecheck). On a source-changed PR — the common case — both finish
+    # well before bootstrap (~210s), so this adds ~zero green-path time;
+    # but when either fails, the ENTIRE expensive test matrix SKIPS,
+    # saving the runner spend on a run that can't merge anyway and
+    # surfacing the failure minutes sooner. Safe-by-invariant: lint
+    # (needs: install) and typecheck (aggregator, if: always()) ALWAYS
+    # report, so a green run never blocks on a skipped required check —
+    # and on a failing run the merge is already blocked by the failed
+    # cheap gate regardless of how the skipped expensive checks resolve.
+    # The same `[bootstrap, lint, typecheck]` gate is applied to every
+    # other lib-needing expensive job below.
+    needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -573,7 +585,8 @@ jobs:
     # P3c — same risk class as `test-cell`: any browser test that asserts
     # on built artifacts (lib/) needs Bootstrap. Conservatively gate on
     # bootstrap rather than chase per-test audits.
-    needs: bootstrap
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -728,7 +741,8 @@ jobs:
     name: e2e (${{ matrix.name }})
     # P3c — e2e suites boot example apps via `vite preview` / `vite build`
     # which resolves @pyreon/* via the node condition → lib/. Needs Bootstrap.
-    needs: [bootstrap, e2e-decide]
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, e2e-decide, lint, typecheck]
     if: needs.e2e-decide.outputs.has == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -843,7 +857,8 @@ jobs:
     name: Build
     # P3c — `vite build` of examples resolves @pyreon/* via the node
     # condition → lib/. Needs Bootstrap.
-    needs: bootstrap
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -916,7 +931,8 @@ jobs:
     # `Coverage (Full)` at merge-queue time. Same safety as before; the
     # signal just lands at merge-time instead of PR-time.
     if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
-    needs: bootstrap
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -988,7 +1004,8 @@ jobs:
     name: Check Bundle Budgets
     # P3c — bundles `lib/index.js` of every published package via Bun.build.
     # Needs Bootstrap.
-    needs: bootstrap
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1010,7 +1027,8 @@ jobs:
     name: Check Distribution
     # P3c — `npm pack --dry-run` probe reads lib/ via the `files` array.
     # Needs Bootstrap.
-    needs: bootstrap
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1168,7 +1186,8 @@ jobs:
   verify-modes:
     name: Verify Modes
     # P3c — `vite build` of every example × mode cell. Needs Bootstrap.
-    needs: bootstrap
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -1269,7 +1288,8 @@ jobs:
     # P3c — each cell runs `bun install` + `vite build` of the scaffolded app.
     # Needs Bootstrap so the workspace lib/ is resolvable when the app pulls
     # in @pyreon/* via the node condition.
-    needs: [bootstrap, scaffold-smoke-decide]
+    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    needs: [bootstrap, scaffold-smoke-decide, lint, typecheck]
     if: ${{ needs.scaffold-smoke-decide.outputs.has == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
