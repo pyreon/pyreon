@@ -19,6 +19,7 @@ description: "How to animate enter/leave, collapse, and staggered children in Py
 ## Basic usage
 
 ```tsx
+// @check
 import { kinetic } from '@pyreon/kinetic'
 import { fade } from '@pyreon/kinetic-presets'
 

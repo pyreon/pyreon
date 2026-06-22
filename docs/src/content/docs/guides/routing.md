@@ -50,19 +50,22 @@ Here is route matching driven by a reactive path signal:
 ## Reading params and search
 
 ```tsx
+// @check
 import { useParams, useTypedSearchParams } from '@pyreon/router'
 
 function User() {
-  const params = useParams()                 // { id: '1' }
-  const search = useTypedSearchParams({ page: 'number', q: 'string' })
+  const params = useParams()                 // returns the params record directly: { id: '1' }
+  // useTypedSearchParams returns a [get, set] tuple — destructure the getter:
+  const [search] = useTypedSearchParams({ page: 'number', q: 'string' })
   // search().page is a number (coerced), NaN-guarded to 0
-  return <h1>{() => `User ${params().id}, page ${search().page}`}</h1>
+  return <h1>{() => `User ${params.id}, page ${search().page}`}</h1>
 }
 ```
 
 ## Navigating programmatically
 
 ```tsx
+// @check
 import { useNavigate } from '@pyreon/router'
 
 function Logout() {

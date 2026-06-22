@@ -21,6 +21,7 @@ Local state is just a `signal()`. For state shared across many components — or
 `defineStore(id, setup)` returns a singleton `StoreApi`. The setup return is auto-classified: signals become tracked state, functions become wrapped actions.
 
 ```tsx
+// @check
 import { defineStore } from '@pyreon/store'
 import { signal, computed } from '@pyreon/reactivity'
 

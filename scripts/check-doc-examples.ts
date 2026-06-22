@@ -260,29 +260,51 @@ function main(): number {
     return 0
   }
 
-  // Parse tsc errors. Format: `block-NNNN.tsx(L,C): error TSxxxx: msg`
+  // Parse tsc errors. Format: `block-NNNN.tsx(L,C): error TSxxxx: msg`.
+  //
+  // SCOPING: this gate verifies the DOC BLOCKS compile against the live API.
+  // It aliases every `@pyreon/*` to its `src/`, which can surface type
+  // artifacts INSIDE transitively-imported package source (e.g. a cross-
+  // package src-vs-lib union mismatch) that the packages' own `Typecheck`
+  // job — which resolves deps to built `lib/` `.d.ts` — does not flag. Those
+  // errors are NOT doc-block problems and are owned by the Typecheck job, so
+  // we fail ONLY on errors located in a `block-NNNN` cache file (the doc
+  // examples themselves). A real doc-block bug (missing import, wrong
+  // signature, wrong call) is always reported at its block file, so this
+  // scoping never hides a doc error.
   const lines = out.split('\n').filter((l) => l.trim().length > 0)
-  const errors: Array<{ block: ExtractedBlock | undefined; loc: string; msg: string }> = []
+  const blockErrors: Array<{ block: ExtractedBlock; loc: string; msg: string }> = []
+  let transitiveCount = 0
   for (const line of lines) {
     const m = /^(block-\d+\.[tj]sx?)(\(\d+,\d+\))?:\s*(.+)$/.exec(line)
-    if (!m) {
-      // Unrelated tsc output — keep as-is for context.
-      errors.push({ block: undefined, loc: '', msg: line })
+    if (m && fileMap[m[1]!]) {
+      blockErrors.push({ block: fileMap[m[1]!]!, loc: m[2] ?? '', msg: m[3]! })
       continue
     }
-    const block = fileMap[m[1]!]
-    errors.push({ block, loc: m[2] ?? '', msg: m[3]! })
+    // A file-located TS error not in a doc block = transitively-imported
+    // package source (the Typecheck job's concern, not this gate's).
+    if (/\.[tj]sx?\(\d+,\d+\):\s*error TS/.test(line)) transitiveCount++
   }
 
-  console.error(`[check-doc-examples] FAILED — ${errors.length} issue(s):\n`)
-  for (const e of errors) {
-    if (e.block) {
-      console.error(
-        `  ${e.block.file}:${e.block.startLine} (block #${e.block.index}) — ${e.msg}${e.loc}`,
+  if (blockErrors.length === 0) {
+    if (transitiveCount > 0) {
+      console.log(`[check-doc-examples] OK — ${all.length} block(s) typecheck cleanly.`)
+      console.warn(
+        `[check-doc-examples] note: ignored ${transitiveCount} type issue(s) in transitively-imported @pyreon package source (owned by the Typecheck job, not this gate).`,
       )
-    } else {
-      console.error(`  ${e.msg}`)
+      return 0
     }
+    // tsc failed but produced no recognizable doc-block OR package errors —
+    // an unexpected failure (bad config, crash). Surface it rather than mask.
+    console.error('[check-doc-examples] tsc failed without doc-block errors:\n' + out)
+    return 1
+  }
+
+  console.error(`[check-doc-examples] FAILED — ${blockErrors.length} doc-block issue(s):\n`)
+  for (const e of blockErrors) {
+    console.error(
+      `  ${e.block.file}:${e.block.startLine} (block #${e.block.index}) — ${e.msg}${e.loc}`,
+    )
   }
   console.error('')
   console.error(

@@ -14,6 +14,7 @@ Master that rule and every other behavior follows.
 ## The three primitives
 
 ```tsx
+// @check
 import { signal, computed, effect } from '@pyreon/reactivity'
 
 const count = signal(0)                       // read: count(), write: count.set(1)

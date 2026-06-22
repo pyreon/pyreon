@@ -21,6 +21,7 @@ description: "How to build reactive forms in Pyreon with @pyreon/form — compos
 Define fields once, infer the form shape from them:
 
 ```tsx
+// @check
 import { field, useForm, Form, useField, Submit } from '@pyreon/form'
 
 const email = field('email', '', (v) => (v.includes('@') ? undefined : 'Invalid email'))
@@ -41,21 +42,18 @@ function LoginForm() {
 }
 
 function EmailField() {
-  const f = useField('email')      // reads the form from <Form> context
+  const f = useField<string>('email')   // reads the form from <Form> context
   return (
     <div>
-      <input
-        value={f.value}
-        onInput={(e) => f.setValue(e.currentTarget.value)}
-        onBlur={f.blur}
-      />
+      {/* register() spreads value + onInput + onBlur(→setTouched) + disabled/readOnly */}
+      <input {...f.register()} />
       {() => (f.showError() ? f.error() : '')}
     </div>
   )
 }
 ```
 
-`<Submit>` auto-disables during submission. `useField('name')` reads the nearest `<Form>` / `<FormProvider>` — no prop drilling.
+`<Submit>` auto-disables during submission. `useField('name')` reads the nearest `<Form>` / `<FormProvider>` — no prop drilling. `register()` is the canonical input binding; for custom control bind manually with `f.value` / `f.setValue` / `f.setTouched`.
 
 Validation that gates the error on blur, live:
 

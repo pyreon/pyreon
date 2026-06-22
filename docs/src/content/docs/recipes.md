@@ -61,13 +61,14 @@ function Feed() {
     queryFn: ({ pageParam = 0 }) => fetchPage(pageParam),
     getNextPageParam: (last) => last.nextCursor,
   }))
-  const sentinel = useInfiniteScroll(() => { if (q.hasNextPage()) q.fetchNextPage() })
+  // useInfiniteScroll returns { ref } — put it on the SCROLL CONTAINER
+  // (it manages its own internal sentinel at the scroll boundary).
+  const { ref } = useInfiniteScroll(() => { if (q.hasNextPage()) q.fetchNextPage() })
   return (
-    <div>
+    <div ref={ref} style={{ overflowY: 'auto', height: '400px' }}>
       <For each={() => q.data()?.pages.flatMap((p) => p.items) ?? []} by={(i) => i.id}>
         {(item) => <Row item={item} />}
       </For>
-      <div ref={sentinel} />
     </div>
   )
 }
@@ -78,7 +79,7 @@ function Feed() {
 `PyreonUI` owns the mode; `useStorage` persists the choice across reloads:
 
 ```tsx
-import { PyreonUI, useMode } from '@pyreon/ui-core'
+import { PyreonUI } from '@pyreon/ui-core'
 import { useStorage } from '@pyreon/storage'
 
 function App() {
@@ -98,6 +99,7 @@ function App() {
 Debounce the input, key the query on the debounced value so it refetches reactively:
 
 ```tsx
+// @check
 import { signal } from '@pyreon/reactivity'
 import { useDebouncedValue } from '@pyreon/hooks'
 import { useQuery } from '@pyreon/query'
@@ -117,6 +119,7 @@ function Search() {
 ## Persist any signal to localStorage
 
 ```tsx
+// @check
 import { useStorage } from '@pyreon/storage'
 
 const draft = useStorage('draft', '')   // reads + writes localStorage, cross-tab synced

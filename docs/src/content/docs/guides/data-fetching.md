@@ -41,6 +41,7 @@ export function App() {
 `useQuery` takes its options **as a function** — that is the single most important rule in this guide. The function re-runs when any signal it reads changes, so a query keyed on a signal refetches automatically:
 
 ```tsx
+// @check
 import { useQuery } from '@pyreon/query'
 import { signal } from '@pyreon/reactivity'
 
