@@ -104,6 +104,14 @@ export interface ChartProps<TOption extends EChartsOption = EChartsOption> exten
   theme?: string | Record<string, unknown>
   /** Renderer — 'canvas' (default) or 'svg' */
   renderer?: 'canvas' | 'svg'
+  /** ECharts locale — 'EN' (default), 'ZH', etc. */
+  locale?: string
+  /** Replace options instead of merging — default false */
+  notMerge?: boolean
+  /** Batch updates — default true */
+  lazyUpdate?: boolean
+  /** Called once when the ECharts instance is created */
+  onInit?: (instance: ECharts) => void
   /** CSS style for the container div */
   style?: string
   /** CSS class for the container div */

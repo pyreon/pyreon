@@ -45,6 +45,10 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
   const chart = useChart(props.options, {
     ...(props.theme != null ? { theme: props.theme } : {}),
     ...(props.renderer != null ? { renderer: props.renderer } : {}),
+    ...(props.locale != null ? { locale: props.locale } : {}),
+    ...(props.notMerge != null ? { notMerge: props.notMerge } : {}),
+    ...(props.lazyUpdate != null ? { lazyUpdate: props.lazyUpdate } : {}),
+    ...(props.onInit != null ? { onInit: props.onInit } : {}),
   })
 
   // Bind events when instance is ready
