@@ -3836,30 +3836,45 @@ function emitSwiftImage(
   indent: number,
 ): string {
   const src = readStaticAttr(e, 'src')
-  if (typeof src !== 'string') {
-    return emitSwiftGeneric(e, indent)
-  }
-  const kind = imageSrcKind(src)
-  if (kind === 'path') {
-    _emitWarnings.push(
-      `<Image src=${JSON.stringify(src)}>: path-style src is web-only — use a bare asset name (bundled via the assets pipeline) or a full http(s) URL on native.`,
-    )
-  }
+  const srcAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'src')
   const width = readStaticAttr(e, 'width')
   const height = readStaticAttr(e, 'height')
   const alt = readStaticAttr(e, 'alt')
   const fit = readStaticAttr(e, 'fit')
   let result: string
-  if (kind === 'bundled') {
-    // Asset-catalog image. `.resizable()` + the fit mapping make the
-    // web `object-fit` contract hold (web default is cover);
-    // `fit="none"` keeps the intrinsic-size bare Image.
-    result = `Image(${JSON.stringify(bundledAssetName(src))})`
-    if (fit !== 'none') {
-      result += `.resizable()${SWIFT_CONTENT_MODE[typeof fit === 'string' ? fit : 'cover'] ?? '.scaledToFill()'}`
+  if (typeof src === 'string') {
+    const kind = imageSrcKind(src)
+    if (kind === 'path') {
+      _emitWarnings.push(
+        `<Image src=${JSON.stringify(src)}>: path-style src is web-only — use a bare asset name (bundled via the assets pipeline) or a full http(s) URL on native.`,
+      )
     }
+    if (kind === 'bundled') {
+      // Asset-catalog image. `.resizable()` + the fit mapping make the
+      // web `object-fit` contract hold (web default is cover);
+      // `fit="none"` keeps the intrinsic-size bare Image.
+      result = `Image(${JSON.stringify(bundledAssetName(src))})`
+      if (fit !== 'none') {
+        result += `.resizable()${SWIFT_CONTENT_MODE[typeof fit === 'string' ? fit : 'cover'] ?? '.scaledToFill()'}`
+      }
+    } else {
+      result = `AsyncImage(url: URL(string: ${JSON.stringify(src)}))`
+    }
+  } else if (srcAttr !== undefined && srcAttr.kind === 'attr' && srcAttr.value.kind !== 'identifier') {
+    // Dynamic src — a genuine runtime READ (signal call `url()`, member
+    // `props.url` / `item.url`, index). Lowers to a network AsyncImage;
+    // previously it fell through to a generic, non-rendering emit, so a
+    // data-driven remote image (a feed item / avatar URL held in state) did
+    // NOT display. A runtime value can't be told apart bundled-vs-URL, so a
+    // dynamic src is treated as a URL.
+    //
+    // A bare `identifier` is EXCLUDED on purpose: an unresolvable identifier
+    // src is the const-ref/unknown case that `readStaticAttr` already routes
+    // to the generic fall-through (resolvable module-consts are returned as a
+    // static literal above and never reach here) — see const-ref-attr.test.ts.
+    result = `AsyncImage(url: URL(string: ${emitSwiftSignalRead(srcAttr.value)}))`
   } else {
-    result = `AsyncImage(url: URL(string: ${JSON.stringify(src)}))`
+    return emitSwiftGeneric(e, indent)
   }
   const frameArgs: string[] = []
   if (typeof width === 'number') frameArgs.push(`width: ${width}`)

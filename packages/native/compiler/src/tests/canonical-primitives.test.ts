@@ -363,6 +363,28 @@ describe('Phase P2.1 — <Image> emit (AsyncImage)', () => {
     const out = tx(`<Image src="/a.png" alt="" width={64} height={48} />`, 'kotlin')
     expect(out).toContain('modifier = Modifier.width(64.dp).height(48.dp)')
   })
+
+  // Dynamic (data-driven) src — a remote image URL held in a signal/prop.
+  // Previously a non-literal src fell through to a generic, NON-RENDERING
+  // emit; now it lowers to a network AsyncImage just like a static URL, so
+  // feeds / avatars from state actually display. (`draft` is the tx helper's
+  // predefined string signal — stands in for a runtime URL.)
+  it('Swift: dynamic <Image src={signal()}> → AsyncImage(url: URL(string: <read>))', () => {
+    const out = tx(`<Image src={draft()} alt="avatar" />`, 'swift')
+    expect(out).toContain('AsyncImage(url: URL(string: draft))')
+    expect(out).toContain('.accessibilityLabel("avatar")')
+  })
+
+  it('Swift: a static-URL <Image> is unchanged by the dynamic-src path', () => {
+    const out = tx(`<Image src="/a.png" alt="a photo" />`, 'swift')
+    expect(out).toContain('AsyncImage(url: URL(string: "/a.png"))')
+  })
+
+  it('Kotlin: dynamic <Image src={signal()}> → AsyncImage(model = <read>)', () => {
+    const out = tx(`<Image src={draft()} alt="avatar" />`, 'kotlin')
+    expect(out).toContain('AsyncImage(model = draft')
+    expect(out).toContain('contentDescription = "avatar"')
+  })
 })
 
 describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
