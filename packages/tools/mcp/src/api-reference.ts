@@ -2902,11 +2902,57 @@ traffic()            // 'red' (reactive)
 traffic.send('NEXT') // 'green'
 traffic.matches('green') // true
 traffic.can('NEXT')  // true`,
-    notes: 'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects. See also: Machine, MachineConfig.',
+    notes: 'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. Beyond named events, states support eventless `always` transitions (transient/condition states that resolve synchronously), `final: true` terminal states (`isFinal()` + `onDone()`), and full lifecycle listeners (`onEnter` / `onExit` / `onTransition` / `onDone`). No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects. See also: Machine, MachineConfig.',
     mistakes: `- Expecting \`machine.send()\` to return the new state — it returns void; read the state with \`machine()\` after sending
 - Calling \`machine.set()\` — machines are constrained signals, they do not expose \`.set()\`. State changes only happen through \`machine.send(event)\`
 - Using a machine for data storage — machines only hold the current state string. Use regular signals alongside the machine for associated data
 - Forgetting guard payloads — \`machine.send("LOGIN")\` without the required payload silently fails the guard`,
+  },
+
+  'machine/Eventless (always) transitions': {
+    signature: 'states.<state>.always?: TransitionConfig | TransitionConfig[]',
+    example: `const score = signal(0)
+const m = createMachine({
+  initial: 'check',
+  states: {
+    // transient: resolves immediately to pass/fail based on the signal
+    check: { always: [{ target: 'pass', guard: () => score() >= 50 }, 'fail'] },
+    pass: {},
+    fail: {},
+  },
+})
+m() // 'pass' or 'fail' — 'check' is never observed`,
+    notes: `A state may declare \`always\` transitions that fire SYNCHRONOUSLY the moment the state is entered (and for the initial state at creation / on \`reset()\`). The first unguarded entry — or the first whose guard passes — wins, then the new state's \`always\` is re-evaluated, cascading until none fire. Guards receive NO payload (the transition is eventless), so they read external signals instead. Use for transient / condition states — e.g. enter \`check\`, then branch to \`pass\` or \`fail\` based on a computed value, without an intermediate visible state. An always-loop (a state that always re-targets itself) throws after 1000 steps instead of hanging. See also: createMachine.`,
+    mistakes: `- Expecting an \`always\` guard to receive a payload — eventless transitions have none; read external signals in the guard
+- A self-targeting unconditional \`always\` (\`{ always: "self" }\`) — infinite loop; throws after 1000 steps
+- Putting a catch-all FIRST in an \`always\` array — order matters; the first matching entry wins, so list specific guarded targets before an unguarded fallback`,
+  },
+
+  'machine/Machine.onExit / onEnter / onTransition / onDone': {
+    signature: 'onExit(state, cb) | onEnter(state, cb) | onTransition(cb) | onDone(cb) => () => void',
+    example: `const m = createMachine({
+  initial: 'idle',
+  states: { idle: { on: { GO: 'busy' } }, busy: { on: { STOP: 'idle' } } },
+})
+m.onEnter('busy', () => { const id = setInterval(poll, 1000); cleanup = () => clearInterval(id) })
+m.onExit('busy', () => cleanup())`,
+    notes: 'Lifecycle listeners. On each transition they fire in state-chart order: `onExit(from)` (while the machine still reads `from`) → `onTransition(from, to, event)` → `onEnter(to)` (machine now reads `to`) → `onDone(event)` if `to` is a `final` state. Each returns an unsubscribe function; `dispose()` removes all. `onExit` pairs with `onEnter` for setup/teardown per state — e.g. start a timer on enter, clear it on exit (the idiomatic alternative to a built-in delayed transition). See also: createMachine.',
+    mistakes: `- Assuming \`onExit\` fires AFTER the state changed — it fires while the machine still reads the state being left (state-chart exit-before-enter order)
+- Using \`onEnter\`/\`onExit\` for derived data — listeners are for side effects; for data derived from state use a \`computed()\` reading \`machine()\``,
+  },
+
+  'machine/Final states (final / isFinal / onDone)': {
+    signature: 'states.<state>.final?: boolean — machine.isFinal(): boolean — machine.onDone(cb)',
+    example: `const m = createMachine({
+  initial: 'active',
+  states: { active: { on: { FINISH: 'done' } }, done: { final: true } },
+})
+m.onDone((e) => console.log('finished via', e.type))
+m.isFinal()      // false
+m.send('FINISH')
+m.isFinal()      // true → onDone fired`,
+    notes: `Mark a terminal state with \`final: true\`. \`machine.isFinal()\` reads reactively true while the machine is in any final state (use it in JSX / effects), and \`machine.onDone(cb)\` listeners fire whenever a final state is entered (by event OR by an \`always\` cascade), receiving the triggering event. Final states model "the machine is done" — e.g. a wizard's \`complete\` state or a fetch's terminal \`success\`/\`failure\`. See also: createMachine.`,
+    mistakes: '- Expecting a final state to block further `send()` — Pyreon does not freeze final states; if a final state declares `on` transitions they still fire. Omit `on` for true terminals',
   },
   // <gen-docs:api-reference:end @pyreon/machine>
 

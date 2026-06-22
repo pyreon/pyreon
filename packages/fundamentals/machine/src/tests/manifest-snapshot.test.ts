@@ -88,13 +88,20 @@ describe('gen-docs — machine snapshot', () => {
       > **Guard failures are silent**: If a guard returns false, the transition simply does not happen — no error is thrown, no event is emitted. Check \`machine.can(event)\` before sending if you need to handle the rejection.
       >
       > **Signal compatibility**: The machine reads like a signal (\`machine()\`) and subscribes like one — it works in \`effect()\`, \`computed()\`, and JSX expression thunks without special handling.
+      >
+      > **Eventless transitions resolve synchronously**: \`always\` transitions fire during the SAME \`send()\` call (and at creation / \`reset()\`), cascading until none apply — a transient state is never observed by \`machine()\` or by reactive readers. Guards receive no payload; read external signals. A self-looping \`always\` throws after 1000 steps.
       "
     `)
   })
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(1)
+    const keys = Object.keys(record)
+    expect(keys).toContain('machine/createMachine')
+    expect(keys).toContain('machine/Eventless (always) transitions')
+    expect(keys).toContain('machine/Machine.onExit / onEnter / onTransition / onDone')
+    expect(keys).toContain('machine/Final states (final / isFinal / onDone)')
+    expect(keys.length).toBe(4)
     expect(record['machine/createMachine']!.notes).toContain('type-safe')
     expect(record['machine/createMachine']!.mistakes?.split('\n').length).toBe(4)
   })
