@@ -2398,6 +2398,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'useOnline',
     'useColorScheme',
     'useNetworkStatus',
+    'useGeolocation',
+    'useWebSocket',
+    'useSecureStorage',
+    'useDatabase',
+    'usePush',
+    'usePayments',
+    'useMap',
+    'useAuth',
   ])
   if (
     node.id?.type === 'ObjectPattern' &&
@@ -2865,6 +2873,59 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // same `"light" | "dark"` string shape the web hook uses.
   if (calleeName === 'useColorScheme') {
     return { kind: 'color-scheme', name }
+  }
+  // Phase 5 — native data/services hooks. Each instantiates a runtime
+  // service container (mirrors useOnline/usePermissions). No args (except
+  // useWebSocket's url + useAuth's generic).
+  if (calleeName === 'useGeolocation') {
+    return { kind: 'geolocation', name }
+  }
+  if (calleeName === 'useSecureStorage') {
+    // Deferred (v1): the Kotlin PyreonSecureStorage REQUIRES an app-injected
+    // backend (EncryptedSharedPreferences) — no no-arg constructor — so the
+    // compiler can't auto-instantiate it cleanly on Android (a silent
+    // in-memory fallback for a SECRET store would be a security footgun).
+    // Warns + drops until the backend-injection emit lands. Swift has a real
+    // Keychain default; the deferral is for cross-target symmetry. Use the
+    // runtime container directly from native host code today.
+    ctx.warnings.push(
+      `useSecureStorage() declared (\`${name}\`) — emit deferred (v1): the Kotlin secret store needs an app-injected EncryptedSharedPreferences backend, so PMTC can't auto-construct it. Wire PyreonSecureStorage from native host code, or keep in a <Web>-only branch. Tracked as a native data-hook follow-up.`,
+    )
+    return null
+  }
+  if (calleeName === 'useDatabase') {
+    return { kind: 'database', name }
+  }
+  if (calleeName === 'usePush') {
+    return { kind: 'push', name }
+  }
+  if (calleeName === 'usePayments') {
+    return { kind: 'payments', name }
+  }
+  if (calleeName === 'useMap') {
+    return { kind: 'map', name }
+  }
+  // `useAuth<User>()` — generic over the app's user type (mirrors
+  // useFetch<T>'s generic capture). No-generic form falls back to a
+  // placeholder type the emit handles.
+  if (calleeName === 'useAuth') {
+    return { kind: 'auth', name, userType: parseGenericTypeArg(init, ctx) }
+  }
+  // `useWebSocket('wss://…')` — the URL must be a string literal so it can
+  // be baked into the emitted connect call (same rule as useFetch).
+  if (calleeName === 'useWebSocket') {
+    const urlArg = init.arguments?.[0]
+    if (
+      !urlArg ||
+      (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
+      typeof urlArg.value !== 'string'
+    ) {
+      ctx.warnings.push(
+        `Declaration ${name}: useWebSocket url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
+      )
+      return null
+    }
+    return { kind: 'websocket', name, url: urlArg.value }
   }
   return null
 }
@@ -4132,6 +4193,14 @@ function warnIfHookInsideRenderCallback(
     'useColorScheme',
     'usePermissions',
     'useOnline',
+    'useGeolocation',
+    'useWebSocket',
+    'useSecureStorage',
+    'useDatabase',
+    'usePush',
+    'usePayments',
+    'useMap',
+    'useAuth',
   ])
   for (const child of children) {
     if (child?.type !== 'JSXExpressionContainer') continue
