@@ -1,0 +1,43 @@
+/**
+ * `IntersectionSchema<A & B>` — the input must satisfy BOTH schemas. For
+ * the common object-and-object case the two validated outputs are merged
+ * (shallow); otherwise the right-hand output wins. Issues from either side
+ * surface (both must pass).
+ */
+
+import type { ParseCtx } from '../core/ops'
+import { Schema as SchemaBase } from '../core/schema'
+import type { Schema } from '../core/schema'
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+export class IntersectionSchema<A, B> extends SchemaBase<A & B> {
+  readonly _kind = 'intersection' as const
+  readonly left: Schema<A>
+  readonly right: Schema<B>
+
+  constructor(left: Schema<A>, right: Schema<B>) {
+    super()
+    this.left = left
+    this.right = right
+  }
+
+  override _compileType(input: unknown, ctx: ParseCtx): unknown {
+    const before = ctx.issues.length
+    const a = this.left._runInto(input, ctx)
+    const b = this.right._runInto(input, ctx)
+    if (a instanceof Promise || b instanceof Promise) {
+      ctx.issues.push({ message: '[Pyreon] async member in sync intersection — use parseAsync', path: ctx.path })
+      return input
+    }
+    if (ctx.issues.length !== before) return input
+    // Both passed — merge object outputs, else prefer the right side.
+    if (isPlainObject(a) && isPlainObject(b)) return { ...a, ...b }
+    return b
+  }
+}
+
+export function intersection<A, B>(left: Schema<A>, right: Schema<B>): IntersectionSchema<A, B> {
+  return new IntersectionSchema(left, right)
+}

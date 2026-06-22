@@ -10,7 +10,7 @@
  *   - primitives: string / number / boolean / bigint / date / literal /
  *     enum / symbol / nan / null / undefined / void / any / unknown
  *   - composition: object / array / union / discriminatedUnion / record /
- *     tuple
+ *     tuple / map / set / intersection / lazy (recursive)
  *   - object algebra: .pick / .omit / .partial / .extend / .merge / .keyof
  *     + unknown-key policy (.strip / .strict / .passthrough)
  *   - modifiers: optional / nullable / nullish / default / transform /
@@ -18,12 +18,15 @@
  *   - coercion: s.coerce.{string,number,boolean,date,bigint}
  *   - email precision tiers (html5 / standard / rfc5322)
  *
- * Still open (tracked follow-ups): map / set / intersection / lazy
- * (recursive) / .required / .catchall, and compiler-emit for typia-class
- * wall-clock (the JIT path needed to beat ArkType on valid-parse).
+ * Still open (tracked follow-ups): `.required` / `.catchall`, and
+ * compiler-emit for typia-class wall-clock (the JIT path needed to beat
+ * ArkType on valid-parse).
  */
 
 import { array, ArraySchema } from './composition/array'
+import { map, MapSchema, set, SetSchema } from './composition/collections'
+import { intersection, IntersectionSchema } from './composition/intersection'
+import { lazy, LazySchema } from './composition/lazy'
 import { object, ObjectSchema } from './composition/object'
 import { record, RecordSchema } from './composition/record'
 import { tuple, TupleSchema } from './composition/tuple'
@@ -94,13 +97,17 @@ export const s = {
   discriminatedUnion,
   record,
   tuple,
+  map,
+  set,
+  intersection,
+  lazy,
   coerce,
 } as const
 
 // ─── Named function-comp exports ───────────────────────────────────────
 
 export { coerce }
-export { any, array, bigint, boolean, date, discriminatedUnion, enum_, literal, nan, null_, number, object, record, string, symbol, tuple, undefined_, union, unknown, void_ }
+export { any, array, bigint, boolean, date, discriminatedUnion, enum_, intersection, lazy, literal, map, nan, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
 export {
   AnySchema,
   ArraySchema,
@@ -109,12 +116,16 @@ export {
   DateSchema,
   DiscriminatedUnionSchema,
   EnumSchema,
+  IntersectionSchema,
+  LazySchema,
   LiteralSchema,
+  MapSchema,
   NanSchema,
   NullSchema,
   NumberSchema,
   ObjectSchema,
   RecordSchema,
+  SetSchema,
   StringSchema,
   SymbolSchema,
   TupleSchema,
