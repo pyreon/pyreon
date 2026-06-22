@@ -89,7 +89,16 @@ function EmailInput() {
 | `validateOn`     | `'blur' \| 'change' \| 'submit'`             | When to validate. **Default: `'blur'`**                                   |
 | `debounceMs`     | `number`                                     | Debounce delay for validators (especially async)                         |
 
-Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touched`, `dirty`), form-level signals (`isSubmitting`, `isValidating`, `submitCount`, `submitError`), computed accessors (`isValid()`, `isDirty()`, `values()`, `errors()`), and handlers (`handleSubmit`, `register`, `validate`, `reset`, `setFieldValue`, `setFieldError`, `setErrors`, `clearErrors`, `resetField`).
+Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touched`, `dirty`), form-level signals (`isSubmitting`, `isValidating`, `submitCount`, `isSubmitted`, `isSubmitSuccessful`, `submitError`), computed accessors (`isValid()`, `isDirty()`, `values()`, `getValues(name?)`, `errors()`, `dirtyFields()`, `touchedFields()`), and handlers (`handleSubmit`, `register`, `validate`, `trigger`, `reset`, `setFieldValue`, `setFieldError`, `setErrors`, `clearErrors`, `resetField`, `getFieldState`).
+
+react-hook-form-parity accessors (all strictly typed against `TValues`):
+
+- `trigger(name?)` — validate one field, a subset (array), or — no argument — the whole form, on demand. Runs validators immediately (bypassing `debounceMs`); returns whether the validated set is valid.
+- `getValues(name?)` — one field's value (`getValues('email')`) or all (`getValues()`).
+- `dirtyFields()` / `touchedFields()` — the changed / visited fields as a record (`{ email: true }`). Reactive.
+- `getFieldState(name)` — a field's live `FieldState` (same object as `form.fields[name]`).
+- `isSubmitted` — `Accessor<boolean>`, true once `submitCount > 0`.
+- `isSubmitSuccessful` — `Signal<boolean>`, true only after the most recent submit's `onSubmit` ran without a validation failure or throw; cleared by `reset()`.
 
 ```tsx
 // Bind text input:
@@ -173,7 +182,7 @@ const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.is
 // canSubmit() updates only when those 3 booleans flip
 ```
 
-`FormStateSummary` fields: `isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `submitError`, `touchedFields`, `dirtyFields`, `errors`. Without a selector the computed re-derives on ANY summary field change — always pass a selector for UI-bound computeds.
+`FormStateSummary` fields: `isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `isSubmitted`, `isSubmitSuccessful`, `submitError`, `touchedFields`, `dirtyFields`, `errors`. Without a selector the computed re-derives on ANY summary field change — always pass a selector for UI-bound computeds.
 
 ## `FormProvider` / `useFormContext()` / `<Form>` / `<Submit>`
 

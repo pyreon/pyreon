@@ -592,6 +592,17 @@ const SubmitButton = defineComponent(() => {
 })
 ```
 
+Two more submit-lifecycle signals (react-hook-form parity):
+
+- **`form.isSubmitted()`** — `Accessor<boolean>`, true once the form has been submitted at least once (`submitCount > 0`). Reset by `reset()`.
+- **`form.isSubmitSuccessful()`** — `Signal<boolean>`, true only after the **most recent** submit's `onSubmit` ran without a validation failure or a thrown error. Set `false` at the start of every submit attempt and on `reset()`. Use it to show a "Saved ✓" confirmation.
+
+```tsx
+const Status = defineComponent(() => {
+  return () => (form.isSubmitSuccessful() ? <p class="ok">Saved ✓</p> : null)
+})
+```
+
 ### Tracking Validation State
 
 ```tsx
@@ -739,6 +750,57 @@ form.fields.password.setValue('changed')
 form.resetField('email')
 // email is reset: value='', dirty=false, touched=false, error=undefined
 // password is unchanged: value='changed', dirty=true
+```
+
+### `trigger(field?)`
+
+Validate on demand — a single field, a subset, or (with no argument) the whole
+form. Runs validators **immediately**, bypassing `debounceMs`, and returns
+whether the validated set is valid. Equivalent to react-hook-form's `trigger`.
+
+```ts
+// Validate one field (e.g. a "check availability" button next to it):
+const usernameOk = await form.trigger('username')
+
+// Validate a step's fields before advancing a wizard:
+const step1Ok = await form.trigger(['email', 'password'])
+if (step1Ok) goToStep(2)
+
+// No argument → whole form (same as validate()):
+const ok = await form.trigger()
+```
+
+### `getValues(field?)`
+
+Read a single field's value, or all values:
+
+```ts
+form.getValues('email') // → 'ada@example.com'
+form.getValues()        // → { email: 'ada@example.com', password: '…' } (same as values())
+```
+
+### `dirtyFields()` / `touchedFields()`
+
+The changed / visited fields as a record — only the dirty (or touched) fields
+are present. Reactive: reads each field's signal, so calling inside a reactive
+scope tracks the set.
+
+```ts
+form.setFieldValue('email', 'x')
+form.fields.password.setTouched()
+form.dirtyFields()   // → { email: true }
+form.touchedFields() // → { password: true }
+```
+
+### `getFieldState(field)`
+
+A field's live `FieldState` signals — the same object as `form.fields[field]`,
+as a typed method (react-hook-form parity):
+
+```ts
+const email = form.getFieldState('email')
+email.value() // reactive read
+email.setValue('new@example.com')
 ```
 
 ## Field Arrays

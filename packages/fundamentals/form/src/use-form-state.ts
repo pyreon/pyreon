@@ -11,6 +11,8 @@ export interface FormStateSummary<TValues extends Record<string, unknown>> {
   isValid: boolean
   isDirty: boolean
   submitCount: number
+  isSubmitted: boolean
+  isSubmitSuccessful: boolean
   submitError: unknown
   touchedFields: Partial<Record<keyof TValues, boolean>>
   dirtyFields: Partial<Record<keyof TValues, boolean>>
@@ -87,6 +89,12 @@ export function useFormState<TValues extends Record<string, unknown>, R>(
     get submitCount() {
       return form.submitCount()
     },
+    get isSubmitted() {
+      return form.isSubmitted()
+    },
+    get isSubmitSuccessful() {
+      return form.isSubmitSuccessful()
+    },
     get submitError() {
       return form.submitError()
     },
@@ -117,6 +125,8 @@ export function useFormState<TValues extends Record<string, unknown>, R>(
       isValid: summary.isValid,
       isDirty: summary.isDirty,
       submitCount: summary.submitCount,
+      isSubmitted: summary.isSubmitted,
+      isSubmitSuccessful: summary.isSubmitSuccessful,
       submitError: summary.submitError,
       touchedFields: summary.touchedFields,
       dirtyFields: summary.dirtyFields,
