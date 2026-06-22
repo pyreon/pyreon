@@ -1,0 +1,16 @@
+
+Validation benchmark — Pyreon s / Zod 4 / Valibot / ArkType
+Node v24.3.0, darwin arm64, NODE_ENV=production
+Median ns/op (lower = faster). Multiplier = vs fastest in row.
+
+scenario          path        pyreon      zod         valibot     arktype     winner      
+──────────────────────────────────────────────────────────────────────────────────────────
+string.email      valid       46ns(1.2x)  75ns(2.0x)  46ns(1.3x)  37ns(1.0x)  arktype
+string.email      invalid     58ns(1.0x)  2.43µs(42.0x)124ns(2.1x) 1.17µs(20.3x)pyreon
+number.int.range  valid       43ns(3.8x)  45ns(3.9x)  23ns(2.0x)  11ns(1.0x)  arktype
+number.int.range  invalid     62ns(1.0x)  1.77µs(28.6x)69ns(1.1x)  1.06µs(17.1x)pyreon
+object.user       valid       332ns(7.5x) 225ns(5.1x) 142ns(3.2x) 44ns(1.0x)  arktype
+object.user       invalid     1.17µs(1.6x)5.46µs(7.3x)747ns(1.0x) 5.42µs(7.3x)valibot
+array.20-objects  valid       3.25µs(16.9x)1.90µs(9.9x)1.63µs(8.5x)192ns(1.0x) arktype
+
+{"meta":{"node":"v24.3.0","platform":"darwin/arm64","zod":4},"rows":[{"scenario":"string.email","path":"valid","pyreon":46.11584,"zod":75.03332,"valibot":46.40832,"arktype":36.93168,"winner":"arktype","opsPerSec":{"pyreon":"21,684,523","zod":"13,327,412","valibot":"21,547,860","arktype":"27,077,024"}},{"scenario":"string.email","path":"invalid","pyreon":57.78334,"zod":2425.22834,"valibot":123.53,"arktype":1171.03416,"winner":"pyreon","opsPerSec":{"pyreon":"17,306,026","zod":"412,332","valibot":"8,095,200","arktype":"853,946"}},{"scenario":"number.int.range","path":"valid","pyreon":43.04834,"zod":44.61168,"valibot":22.93582,"arktype":11.45584,"winner":"arktype","opsPerSec":{"pyreon":"23,229,699","zod":"22,415,654","valibot":"43,599,924","arktype":"87,291,722"}},{"scenario":"number.int.range","path":"invalid","pyreon":61.925,"zod":1769.4225,"valibot":68.90916,"arktype":1056.99,"winner":"pyreon","opsPerSec":{"pyreon":"16,148,567","zod":"565,156","valibot":"14,511,859","arktype":"946,083"}},{"scenario":"object.user","path":"valid","pyreon":331.66416,"zod":225.2875,"valibot":141.54334,"arktype":44.36,"winner":"arktype","opsPerSec":{"pyreon":"3,015,098","zod":"4,438,773","valibot":"7,064,974","arktype":"22,542,831"}},{"scenario":"object.user","path":"invalid","pyreon":1166.57834,"zod":5461.64332,"valibot":746.66168,"arktype":5424.22,"winner":"valibot","opsPerSec":{"pyreon":"857,208","zod":"183,095","valibot":"1,339,295","arktype":"184,358"}},{"scenario":"array.20-objects","path":"valid","pyreon":3250.1875,"zod":1903.24582,"valibot":1630.02916,"arktype":191.76334,"winner":"arktype","opsPerSec":{"pyreon":"307,675","zod":"525,418","valibot":"613,486","arktype":"5,214,761"}}]}

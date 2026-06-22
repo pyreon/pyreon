@@ -38,7 +38,9 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "bench:validation": "bun bench/validation.ts",
+    "bench:behavior": "bun bench/behavior.ts"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
