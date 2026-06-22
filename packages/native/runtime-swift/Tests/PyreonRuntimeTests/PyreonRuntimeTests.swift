@@ -1018,6 +1018,80 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertNil(auth.error)
         XCTAssertFalse(auth.isAuthenticated)
     }
+
+    // MARK: - PyreonSecureStorage (secret store)
+    //
+    // These cover the facade contract over the in-memory backend (the unit-
+    // testable path). The real `KeychainSecureBackend` is constructed (it
+    // compiles under `swift build`) but its live `SecItem*` I/O is NOT
+    // asserted — that needs a host keychain + entitlements, the same
+    // "real edge constructed, not asserted" boundary PyreonNetworkStatus
+    // and PyreonWebSocket use.
+
+    /// write → read → contains round-trip over the in-memory backend.
+    func testPyreonSecureStorageRoundTrip() throws {
+        let store = PyreonSecureStorage(backend: InMemorySecureBackend())
+        XCTAssertNil(store.read(key: "auth"))
+        XCTAssertFalse(store.contains(key: "auth"))
+        XCTAssertTrue(store.write("ey.token", key: "auth"))
+        XCTAssertEqual(store.read(key: "auth"), "ey.token")
+        XCTAssertTrue(store.contains(key: "auth"))
+    }
+
+    /// `write` overwrites an existing secret.
+    func testPyreonSecureStorageOverwrite() throws {
+        let store = PyreonSecureStorage(backend: InMemorySecureBackend())
+        store.write("first", key: "k")
+        store.write("second", key: "k")
+        XCTAssertEqual(store.read(key: "k"), "second")
+    }
+
+    /// `remove` deletes; a removed key reads nil + contains false.
+    func testPyreonSecureStorageRemove() throws {
+        let store = PyreonSecureStorage(backend: InMemorySecureBackend())
+        store.write("secret", key: "k")
+        XCTAssertTrue(store.contains(key: "k"))
+        XCTAssertTrue(store.remove(key: "k"))
+        XCTAssertNil(store.read(key: "k"))
+        XCTAssertFalse(store.contains(key: "k"))
+    }
+
+    /// `remove` of an absent key is idempotent (returns true, no crash).
+    func testPyreonSecureStorageRemoveAbsentIsIdempotent() throws {
+        let store = PyreonSecureStorage(backend: InMemorySecureBackend())
+        XCTAssertTrue(store.remove(key: "never-written"))
+        XCTAssertNil(store.read(key: "never-written"))
+    }
+
+    /// Multiple keys are isolated — removing one leaves the others.
+    func testPyreonSecureStorageMultipleKeysIsolated() throws {
+        let store = PyreonSecureStorage(backend: InMemorySecureBackend())
+        store.write("a-val", key: "a")
+        store.write("b-val", key: "b")
+        XCTAssertEqual(store.read(key: "a"), "a-val")
+        XCTAssertEqual(store.read(key: "b"), "b-val")
+        store.remove(key: "a")
+        XCTAssertNil(store.read(key: "a"))
+        XCTAssertEqual(store.read(key: "b"), "b-val")
+    }
+
+    /// The real `KeychainSecureBackend` constructs cleanly (proves it
+    /// compiles + inits). Its live `SecItem*` I/O is device/host territory —
+    /// NOT called here.
+    func testKeychainSecureBackendConstructs() throws {
+        let backend = KeychainSecureBackend(service: "com.pyreon.test")
+        let store = PyreonSecureStorage(backend: backend)
+        // Construction only — no live keychain I/O asserted.
+        XCTAssertNotNil(store)
+    }
+
+    /// The default `PyreonSecureStorage()` (no backend arg) wires the real
+    /// Keychain backend — proves the secure-by-default constructor compiles.
+    /// Live I/O not asserted.
+    func testPyreonSecureStorageDefaultsToKeychain() throws {
+        let store = PyreonSecureStorage()
+        XCTAssertNotNil(store)
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
