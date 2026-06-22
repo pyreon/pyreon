@@ -13,25 +13,33 @@ import { DateSchema } from './date'
 import { NumberSchema } from './number'
 import { StringSchema } from './string'
 
+// `_coerce` marks an overridden `_compileType` (coercion runs BEFORE the
+// type-check). The JIT inlines only schemas whose `_compileType` is the
+// standard type-guard, so it consults this marker and falls back to the
+// interpreter for any coercing schema (root OR object field).
 export class CoerceStringSchema extends StringSchema {
+  readonly _coerce = true
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
     return super._compileType(typeof input === 'string' ? input : String(input), ctx)
   }
 }
 
 export class CoerceNumberSchema extends NumberSchema {
+  readonly _coerce = true
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
     return super._compileType(typeof input === 'number' ? input : Number(input), ctx)
   }
 }
 
 export class CoerceBooleanSchema extends BooleanSchema {
+  readonly _coerce = true
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
     return super._compileType(typeof input === 'boolean' ? input : Boolean(input), ctx)
   }
 }
 
 export class CoerceDateSchema extends DateSchema {
+  readonly _coerce = true
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
     const coerced =
       input instanceof Date ? input : new Date(input as string | number)
@@ -40,6 +48,7 @@ export class CoerceDateSchema extends DateSchema {
 }
 
 export class CoerceBigIntSchema extends BigIntSchema {
+  readonly _coerce = true
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
     let coerced = input
     if (typeof input !== 'bigint') {

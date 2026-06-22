@@ -187,6 +187,95 @@ function bench(
   })
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// Scenario 5 — deeply nested object (object → object → object)
+//   the recursive JIT inlines every level; the old JIT fell to the
+//   per-field interpreter at the first nested object.
+// ════════════════════════════════════════════════════════════════════════
+{
+  const P = s.object({
+    id: s.number().int(),
+    user: s.object({
+      name: s.string().min(2),
+      address: s.object({
+        city: s.string().min(1),
+        zip: s.string().length(5),
+      }),
+    }),
+  })
+  const Z = z.object({
+    id: z.number().int(),
+    user: z.object({
+      name: z.string().min(2),
+      address: z.object({ city: z.string().min(1), zip: z.string().length(5) }),
+    }),
+  })
+  const V = v.object({
+    id: v.pipe(v.number(), v.integer()),
+    user: v.object({
+      name: v.pipe(v.string(), v.minLength(2)),
+      address: v.object({
+        city: v.pipe(v.string(), v.minLength(1)),
+        zip: v.pipe(v.string(), v.length(5)),
+      }),
+    }),
+  })
+  const A = type({
+    id: 'number.integer',
+    user: { name: 'string >= 2', address: { city: 'string >= 1', zip: 'string == 5' } },
+  })
+  const ok = { id: 1, user: { name: 'Ada', address: { city: 'Paris', zip: '75001' } } }
+  const bad = { id: 1.5, user: { name: 'A', address: { city: '', zip: '7' } } }
+  bench('object.deep-nested', 'valid', {
+    pyreon: () => P.parse(ok),
+    zod: () => Z.safeParse(ok),
+    valibot: () => v.safeParse(V, ok),
+    arktype: () => A(ok),
+  })
+  bench('object.deep-nested', 'invalid', {
+    pyreon: () => P.parse(bad),
+    zod: () => Z.safeParse(bad),
+    valibot: () => v.safeParse(V, bad),
+    arktype: () => A(bad),
+  })
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Scenario 6 — object with an array-of-objects field (API list payload)
+//   { page: int, items: { id, title, done }[] } — the recursive JIT
+//   inlines the whole tree; the old JIT fell back for the array field.
+// ════════════════════════════════════════════════════════════════════════
+{
+  const P = s.object({
+    page: s.number().int().min(0),
+    items: s.array(s.object({ id: s.number().int(), title: s.string().min(1), done: s.boolean() })),
+  })
+  const Z = z.object({
+    page: z.number().int().min(0),
+    items: z.array(z.object({ id: z.number().int(), title: z.string().min(1), done: z.boolean() })),
+  })
+  const V = v.object({
+    page: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    items: v.array(
+      v.object({ id: v.pipe(v.number(), v.integer()), title: v.pipe(v.string(), v.minLength(1)), done: v.boolean() }),
+    ),
+  })
+  const A = type({
+    page: 'number.integer >= 0',
+    items: type({ id: 'number.integer', title: 'string >= 1', done: 'boolean' }).array(),
+  })
+  const ok = {
+    page: 1,
+    items: Array.from({ length: 20 }, (_, i) => ({ id: i, title: `Item ${i}`, done: i % 2 === 0 })),
+  }
+  bench('object.array-of-objects', 'valid', {
+    pyreon: () => P.parse(ok),
+    zod: () => Z.safeParse(ok),
+    valibot: () => v.safeParse(V, ok),
+    arktype: () => A(ok),
+  })
+}
+
 // ─── output ───────────────────────────────────────────────────────────
 const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(2)}µs` : `${n.toFixed(0)}ns`)
 const opsPerSec = (ns: number) => Math.round(1e9 / ns).toLocaleString('en-US')
