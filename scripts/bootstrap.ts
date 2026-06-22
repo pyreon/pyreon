@@ -49,10 +49,152 @@
  */
 
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
+
+// ── Content-hash incremental build (Turborepo/Nx model) ──────────────────────
+//
+// WHY: pre-this, dirty-detection used src/lib mtime ordering. That is robust
+// LOCALLY (editing src bumps its mtime above lib's) but UNRELIABLE in CI: a
+// fresh `actions/checkout` gives every file the checkout timestamp, and a
+// `cache/restore` of lib/ stamps lib NEWER than src — so a restored (possibly
+// older-source) lib looks "fresh" and a changed package is skipped → STALE
+// lib. That's exactly why CI's bootstrap cache was exact-hit-only (no
+// restore-keys): a partial/prefix-restored lib couldn't be trusted with mtime.
+//
+// FIX: decide rebuilds by SOURCE-CONTENT HASH, stored per-package in a
+// gitignored root manifest (`.bootstrap-cache.json`). A package is rebuilt iff
+// its current source hash differs from the manifest (or lib is missing/broken).
+// This is mtime-independent → correct under CI checkout+restore → SAFE to add
+// `restore-keys` so a source-changed PR restores the nearest lib and rebuilds
+// ONLY the changed packages (~236s cold → ~15-30s for a 1-2 package PR).
+//
+// CORRECTNESS — no dep-graph needed: each package's lib depends ONLY on its own
+// src + package.json. Workspace deps are EXTERNALIZED in the JS (`@pyreon/*`
+// stays an import, never bundled) and the DTS bundler REFERENCES cross-package
+// types (`import { X } from "@pyreon/dep"`), never inlines them. So a dep
+// changing does NOT change a dependent's lib; any real break from a dep's API
+// change is caught by the dependent's src-based typecheck. The per-package hash
+// salts in `bun.lock` (third-party dep versions can be BUNDLED) + this script's
+// own version, so a dep bump or build-tooling change rebuilds everything —
+// matching the prior exact-key semantics.
+const MANIFEST_PATH = join(ROOT, '.bootstrap-cache.json')
+// Bump when the hashing scheme changes, to invalidate every stale manifest.
+const HASH_SCHEME_VERSION = 'v1'
+
+/**
+ * Global salt: invalidates ALL package hashes on a shared dep / tooling /
+ * TS-config change. Inputs:
+ *   - bun.lock — third-party dep versions (some are BUNDLED into lib) AND
+ *     the build-tool version (vl_rolldown_build, the TS-config preset
+ *     `@vitus-labs/tools-typescript` the root tsconfig extends).
+ *   - root tsconfig.json — every package tsconfig extends it; its compiler
+ *     options (jsx, isolatedModules, exactOptionalPropertyTypes, …) shape
+ *     the built output. A change here must rebuild everything.
+ */
+function computeGlobalSalt(): string {
+  const h = createHash('sha1').update(HASH_SCHEME_VERSION)
+  for (const shared of ['bun.lock', 'tsconfig.json']) {
+    try {
+      h.update(readFileSync(join(ROOT, shared)))
+    } catch {
+      // Missing (unexpected) — salt still varies by scheme version + the
+      // other inputs.
+    }
+  }
+  return h.digest('hex')
+}
+
+/** Same skip rules as `maxFileMtime` — tests/fixtures/generated don't affect lib. */
+function shouldSkipForHash(name: string): boolean {
+  return (
+    name.startsWith('.') ||
+    name === 'node_modules' ||
+    name === 'lib' ||
+    name === '__tests__' ||
+    name === 'tests' ||
+    name === '__snapshots__' ||
+    name.endsWith('.test.ts') ||
+    name.endsWith('.test.tsx') ||
+    name.endsWith('.test.js')
+  )
+}
+
+/**
+ * Content hash of a package: its src/** file contents + package.json + the
+ * global salt. Deterministic (paths sorted). Returns a hex digest.
+ */
+function computePkgHash(pkgPath: string, salt: string): string {
+  const h = createHash('sha1').update(salt)
+  const srcDir = join(pkgPath, 'src')
+  const files: Array<[string, Buffer]> = []
+  const stack: string[] = existsSync(srcDir) ? [srcDir] : []
+  while (stack.length > 0) {
+    const current = stack.pop() as string
+    let entries
+    try {
+      entries = readdirSync(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (shouldSkipForHash(entry.name)) continue
+      const full = join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+      } else if (entry.isFile()) {
+        try {
+          files.push([relative(pkgPath, full), readFileSync(full)])
+        } catch {
+          // Unreadable file — skip; the resulting hash differs, forcing a
+          // rebuild (fail-safe toward rebuilding, never toward skipping).
+          files.push([relative(pkgPath, full), Buffer.from('<unreadable>')])
+        }
+      }
+    }
+  }
+  files.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+  for (const [rel, content] of files) {
+    h.update(rel)
+    h.update('\0')
+    h.update(content)
+    h.update('\0')
+  }
+  // package.json (exports, build script, deps) + tsconfig.json (per-package
+  // compiler options that shape the build / DTS output) both affect lib/.
+  for (const cfg of ['package.json', 'tsconfig.json']) {
+    try {
+      h.update(readFileSync(join(pkgPath, cfg)))
+    } catch {
+      // package.json always exists (filtered upstream); tsconfig.json is
+      // optional — its absence just contributes nothing to the hash.
+    }
+  }
+  return h.digest('hex')
+}
+
+function readManifest(): Record<string, string> {
+  try {
+    return JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8')) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+function writeManifest(manifest: Record<string, string>): void {
+  try {
+    // Sorted keys for stable diffs / deterministic file content.
+    const sorted: Record<string, string> = {}
+    for (const k of Object.keys(manifest).sort()) sorted[k] = manifest[k] as string
+    writeFileSync(MANIFEST_PATH, `${JSON.stringify(sorted, null, 2)}\n`)
+  } catch {
+    // Manifest is an optimization cache — a write failure must never fail
+    // the bootstrap. Worst case: next run treats everything as dirty.
+  }
+}
 
 interface MissingPackage {
   name: string
@@ -60,12 +202,28 @@ interface MissingPackage {
   reason: 'missing' | 'stale'
 }
 
+interface BuildablePackage {
+  name: string
+  path: string
+  hasLib: boolean
+  // Whether this package emits `lib/` that other packages/examples resolve
+  // via the node condition. MOST do; a few build other output (e.g.
+  // @pyreon/devtools → dist/). The lib-freshness ("missing"/<50b) check and
+  // the lib postcondition apply ONLY to lib emitters; non-lib packages are
+  // tracked by source-content hash alone (and still BUILT — the old
+  // `--filter='./packages/*/*'` built every package with a build script,
+  // not just lib emitters).
+  producesLib: boolean
+}
+
 /**
- * Find workspace packages under `packages/` that have `./lib/` in their
- * exports AND a real build script (not a no-op echo).
+ * Find workspace packages under `packages/` with a real build script (not a
+ * no-op echo) — exactly the set the old all-packages workspace build filter
+ * compiled. Each is tagged `producesLib` so the caller applies lib-specific
+ * freshness checks only where they make sense.
  */
-function findBuildablePackages(): Array<{ name: string; path: string; hasLib: boolean }> {
-  const result: Array<{ name: string; path: string; hasLib: boolean }> = []
+function findBuildablePackages(): BuildablePackage[] {
+  const result: BuildablePackage[] = []
   const packagesRoot = join(ROOT, 'packages')
 
   for (const category of readdirSync(packagesRoot)) {
@@ -80,14 +238,12 @@ function findBuildablePackages(): Array<{ name: string; path: string; hasLib: bo
       if (!existsSync(pkgJsonPath)) continue
 
       const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'))
-      const exports = pkgJson.exports
-      if (!exports) continue
 
-      // Check if any export condition references `lib/`
-      const exportsStr = JSON.stringify(exports)
-      if (!exportsStr.includes('./lib/')) continue
-
-      // Check the build script is real (not a no-op echo or empty)
+      // Build the package iff it has a REAL build script (not a no-op echo or
+      // empty). This matches the old all-packages filter — including CLIs /
+      // scaffolders (zero-cli, create-zero, …) whose `exports` don't
+      // reference `./lib/` but whose `bin`/`main` DO, and which examples
+      // import at build time.
       const buildScript = pkgJson.scripts?.build as string | undefined
       const hasRealBuild =
         buildScript != null &&
@@ -97,11 +253,21 @@ function findBuildablePackages(): Array<{ name: string; path: string; hasLib: bo
 
       if (!hasRealBuild) continue
 
+      // Lib emitter? Any of exports / main / module / types referencing
+      // `./lib/`. (devtools → dist/, so false.)
+      const cfgStr =
+        JSON.stringify(pkgJson.exports ?? '') +
+        (pkgJson.main ?? '') +
+        (pkgJson.module ?? '') +
+        (pkgJson.types ?? '')
+      const producesLib = cfgStr.includes('./lib/')
+
       const hasLib = existsSync(join(pkgPath, 'lib'))
       result.push({
         name: pkgJson.name as string,
         path: pkgPath,
         hasLib,
+        producesLib,
       })
     }
   }
@@ -180,6 +346,9 @@ if (process.env.PYREON_BOOTSTRAP_SKIP === '1') {
 }
 
 const packages = findBuildablePackages()
+// Names of packages that do NOT emit lib/ (build other output, e.g. dist/).
+// The lib postcondition is skipped for these — see checkPostcondition.
+const noLibPackages = new Set(packages.filter((p) => !p.producesLib).map((p) => p.name))
 
 // Three failure modes that require a rebuild:
 // (1) Package has no `lib/` at all (fresh clone / fresh worktree)
@@ -192,33 +361,45 @@ const packages = findBuildablePackages()
 //     50-byte floor as the postcondition: real Pyreon `lib/index.js`
 //     entries are hundreds-to-thousands of bytes; <50 bytes is broken.
 const MIN_LIB_INDEX_BYTES = 50
+// Content-hash incremental detection (replaces the old src/lib mtime check —
+// see the block comment near the top for why mtime is unreliable in CI).
+const salt = computeGlobalSalt()
+const manifest = readManifest()
+// Current source hash per package, computed once here and reused for the
+// post-build manifest update (avoids re-hashing).
+const currentHashes: Record<string, string> = {}
 const dirty: MissingPackage[] = []
 for (const pkg of packages) {
-  if (!pkg.hasLib) {
-    dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'missing' })
-    continue
-  }
-  // Content sanity (gap #6): catch broken lib from a prior crashed
-  // bootstrap. If lib/index.js exists and is < 50 bytes, treat as stale.
-  const libIndex = join(pkg.path, 'lib', 'index.js')
-  if (existsSync(libIndex)) {
-    try {
-      const size = statSync(libIndex).size
-      if (size < MIN_LIB_INDEX_BYTES) {
-        dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'stale' })
-        continue
+  const hash = computePkgHash(pkg.path, salt)
+  currentHashes[pkg.name] = hash
+  // Lib-freshness checks apply ONLY to lib emitters. A non-lib package
+  // (e.g. devtools → dist/) has no lib/ by design, so a missing lib/ is
+  // not a defect — track it by content hash alone.
+  if (pkg.producesLib) {
+    if (!pkg.hasLib) {
+      dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'missing' })
+      continue
+    }
+    // Content sanity (gap #6): catch broken lib from a prior crashed
+    // bootstrap. If lib/index.js exists and is < 50 bytes, treat as stale.
+    const libIndex = join(pkg.path, 'lib', 'index.js')
+    if (existsSync(libIndex)) {
+      try {
+        const size = statSync(libIndex).size
+        if (size < MIN_LIB_INDEX_BYTES) {
+          dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'stale' })
+          continue
+        }
+      } catch {
+        // Defensive — fall through to the content-hash check.
       }
-    } catch {
-      // Defensive — fall through to mtime check
     }
   }
-  const srcDir = join(pkg.path, 'src')
-  const libDir = join(pkg.path, 'lib')
-  const srcM = maxFileMtime(srcDir)
-  const libM = maxFileMtime(libDir)
-  // Only flag stale when src is meaningfully newer (>2s tolerance covers
-  // filesystem-level mtime quirks across remounts / git checkout races).
-  if (srcM > 0 && libM > 0 && srcM > libM + 2_000) {
+  // Stale when the source content changed since the last recorded build.
+  // A missing manifest entry (first run, or a never-built package) also
+  // counts as stale → rebuild + record. Content-based, so it's correct
+  // regardless of file mtimes (CI checkout/restore safe).
+  if (manifest[pkg.name] !== hash) {
     dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'stale' })
   }
 }
@@ -327,18 +508,23 @@ try {
     // land in the new `else if (buildThrew)` warning branch.
     throw new Error('forced-build-threw (test only)')
   }
-  // Build packages only (not examples) — examples are never imported by
-  // other packages and their build is substantially slower (Vite full
-  // production build with tree-shaking, asset optimization, etc.).
-  // The workspace pattern `./packages/*/*` matches the two-level nesting
-  // (e.g., `packages/core/reactivity`, `packages/tools/lint`).
-  execSync("bun run --filter='./packages/*/*' build", {
+  // Build ONLY the dirty packages (content-hash incremental). Each
+  // package's lib is self-contained — workspace deps are externalized in
+  // the JS and referenced (not inlined) in the DTS — so building a subset
+  // is correct. A fresh checkout has ALL buildable packages dirty, so this
+  // builds everything (equivalent to the old `./packages/*/*` filter); a
+  // 1-2 package PR builds only those — the big speedup. `dirty` is
+  // guaranteed non-empty here (the all-clean path exits early above).
+  // execFileSync (argv array, no shell) — package names come from
+  // workspace package.json and flow straight to bun as args.
+  const buildFilters = dirty.map((p) => `--filter=${p.name}`)
+  execFileSync('bun', ['run', ...buildFilters, 'build'], {
     cwd: ROOT,
     stdio: 'inherit',
     timeout: 300_000, // 5 min max
   })
   // oxlint-disable-next-line no-console
-  console.log('[bootstrap] Build complete.')
+  console.log(`[bootstrap] Build complete (${dirty.length} package(s)).`)
 } catch {
   buildThrew = true
 }
@@ -365,6 +551,9 @@ try {
 // `MISSING_EXPORT` errors at example-build time. Pre-fix this slipped
 // through. Same 50-byte floor as the dirty-detection content check.
 function checkPostcondition(pkg: MissingPackage): MissingPackage | null {
+  // Non-lib packages (e.g. @pyreon/devtools → dist/) have no lib/ to
+  // verify — the build subprocess exit code is their only success signal.
+  if (noLibPackages.has(pkg.name)) return null
   const pkgPath = join(ROOT, pkg.path)
   const libDir = join(pkgPath, 'lib')
   if (!existsSync(libDir)) {
@@ -475,6 +664,25 @@ if (stillDirty.length > 0 && !forceFail) {
       `[bootstrap] Retry recovered ${retryFixedCount} package(s) (first-pass-failed: ${firstPassDirtyCount}, retry-fixed: ${retryFixedCount}, still-dirty: ${stillDirty.length}).`,
     )
   }
+}
+
+// Record the content hash of every successfully-built package so the next
+// run skips it (the forward signal for incremental detection). A package
+// still in `stillDirty` failed to build — leave its manifest entry untouched
+// so it stays dirty next run. Skipped under the test-only force injections
+// (no real build ran, so the manifest must not be polluted).
+if (!forceFail && !forceBuildThrew) {
+  const stillDirtyNames = new Set(stillDirty.map((p) => p.name))
+  let manifestChanged = false
+  for (const pkg of dirty) {
+    if (stillDirtyNames.has(pkg.name)) continue
+    const hash = currentHashes[pkg.name]
+    if (hash && manifest[pkg.name] !== hash) {
+      manifest[pkg.name] = hash
+      manifestChanged = true
+    }
+  }
+  if (manifestChanged) writeManifest(manifest)
 }
 
 // Bootstrap's contract: every ORIGINALLY-DIRTY package now has a fresh

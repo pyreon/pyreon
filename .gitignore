@@ -61,3 +61,6 @@ QUICK_REFERENCE.md
 # Doc-example typecheck cache (scripts/check-doc-examples.ts) — extracts
 # fenced code blocks here, then runs `tsc --noEmit`. Regenerated every run.
 .cache/
+
+# Incremental-bootstrap content-hash manifest (scripts/bootstrap.ts)
+.bootstrap-cache.json
