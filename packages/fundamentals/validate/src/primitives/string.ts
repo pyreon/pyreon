@@ -14,10 +14,51 @@ import { typeIssue } from '../core/issue'
 import type { CheckOpts, ParseCtx } from '../core/ops'
 import { Schema as SchemaBase, attachCheck, makeCheckIssue, type Schema } from '../core/schema'
 
-// Regexes — exported individually so users can override if needed.
-// Email RFC 5322 isn't fully parseable by regex; this pattern matches
-// 99% of real-world emails (same approximation as Zod / Valibot).
-export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// ─── Email precision tiers (server/client split) ──────────────────────
+// `.email()` defaults to the 'standard' tier — the modern consensus regex
+// (matches Zod 4 / Valibot): requires a 2+ char TLD, rejects leading and
+// consecutive dots. Three tiers trade permissiveness for strictness so a
+// server can validate more strictly than the client. The heavier tier is
+// still just a regex + a length check (a few hundred bytes), so it never
+// bloats a client bundle the way a DNS-MX / disposable-domain check would;
+// for *those* heavier server-only checks, compose `.refine()` server-side
+// (a `@pyreon/validate/server` async validator is the documented next step).
+//   - 'html5'    — exactly what the browser's <input type=email> accepts
+//                  (lenient: allows a single-char TLD like a@b.c).
+//   - 'standard' — DEFAULT. Zod-4-grade: 2+ char alpha TLD, no leading /
+//                  consecutive dots.
+//   - 'rfc5322'  — 'standard' + RFC 5321 length limits (local <=64,
+//                  domain <=255, total <=254). For server-authoritative checks.
+export type EmailPrecision = 'html5' | 'standard' | 'rfc5322'
+
+/** HTML5 `<input type=email>` WHATWG pattern — lenient (allows 1-char TLD). */
+export const EMAIL_HTML5_RE =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+
+// Email RFC 5322 isn't fully parseable by regex; the 'standard' default
+// below is the modern consensus (Zod 4 / Valibot) — requires a 2+ char
+// alpha TLD, forbids leading / consecutive dots. Replaces the pre-2026-06
+// loose `^[^\s@]+@[^\s@]+\.[^\s@]+$`, which wrongly accepted `a@b.c` (and
+// most garbage) — looser than every other major validator.
+export const EMAIL_RE =
+  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
+
+/**
+ * Validate an email string at the given precision. Pure + allocation-free
+ * on the hot path. Exported so the server tier / custom checks can reuse it.
+ */
+export function validateEmail(value: string, precision: EmailPrecision = 'standard'): boolean {
+  if (precision === 'html5') return EMAIL_HTML5_RE.test(value)
+  if (!EMAIL_RE.test(value)) return false
+  if (precision === 'rfc5322') {
+    if (value.length > 254) return false // RFC 5321 total length
+    const at = value.lastIndexOf('@')
+    if (at > 64) return false // local part > 64 chars
+    if (value.length - at - 1 > 255) return false // domain > 255 chars
+  }
+  return true
+}
+
 export const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -127,10 +168,21 @@ export class StringSchema extends SchemaBase<string> {
     return this
   }
 
-  email(opts?: CheckOpts): this {
+  /**
+   * Validate an email address. Defaults to the `'standard'` precision
+   * (Zod-4-grade — 2+ char TLD, no leading/consecutive dots). Pass
+   * `{ precision: 'html5' }` for browser-lenient matching, or
+   * `{ precision: 'rfc5322' }` for server-authoritative strictness
+   * (adds RFC 5321 length limits). The client typically uses the default
+   * for fast UX; the server can opt into `'rfc5322'` (and add `.refine()`
+   * for DNS / disposable-domain checks) since bundle size doesn't matter
+   * server-side.
+   */
+  email(opts?: CheckOpts & { precision?: EmailPrecision }): this {
+    const precision = opts?.precision ?? 'standard'
     this._ops.push(
       attachCheck({ kind: 'check:string:email', opts }, (value, ctx) => {
-        if (typeof value !== 'string' || EMAIL_RE.test(value)) return
+        if (typeof value !== 'string' || validateEmail(value, precision)) return
         ctx.issues.push(
           makeCheckIssue(
             'invalid_format',
