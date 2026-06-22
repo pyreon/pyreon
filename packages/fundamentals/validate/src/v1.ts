@@ -6,16 +6,21 @@
  * validate schemas implement Standard Schema natively, so the DX
  * helpers work on them directly.
  *
- * v1 surface: primitives (string/number/boolean/literal/enum) +
- * composition (object/array) + modifiers (optional/nullable/default/
- * transform/refine/brand/describe/field). Out of scope for v1 (see
- * the plan file `.claude/plans/synchronous-chasing-puffin.md` for the
- * full follow-up list):
+ * Surface:
+ *   - primitives: string / number / boolean / bigint / date / literal /
+ *     enum / symbol / nan / null / undefined / void / any / unknown
+ *   - composition: object / array / union / discriminatedUnion / record /
+ *     tuple
+ *   - object algebra: .pick / .omit / .partial / .extend / .merge / .keyof
+ *     + unknown-key policy (.strip / .strict / .passthrough)
+ *   - modifiers: optional / nullable / nullish / default / transform /
+ *     refine / brand / describe / field
+ *   - coercion: s.coerce.{string,number,boolean,date,bigint}
+ *   - email precision tiers (html5 / standard / rfc5322)
  *
- *   - tuple / record / union / discriminate / intersection
- *   - bigint / date / null / undefined / void primitives
- *   - .pick / .omit / .partial / .required / .extend / .merge / .coerce
- *   - compiler-emit for typia-class wall-clock
+ * Still open (tracked follow-ups): map / set / intersection / lazy
+ * (recursive) / .required / .catchall, and compiler-emit for typia-class
+ * wall-clock (the JIT path needed to beat ArkType on valid-parse).
  */
 
 import { array, ArraySchema } from './composition/array'
@@ -47,6 +52,7 @@ import {
 } from './primitives/atoms'
 import { bigint, BigIntSchema } from './primitives/bigint'
 import { boolean, BooleanSchema } from './primitives/boolean'
+import { coerce } from './primitives/coerce'
 import { date, DateSchema } from './primitives/date'
 import { enum_, EnumSchema, literal, LiteralSchema } from './primitives/literal'
 import { number, NumberSchema } from './primitives/number'
@@ -88,10 +94,12 @@ export const s = {
   discriminatedUnion,
   record,
   tuple,
+  coerce,
 } as const
 
 // ─── Named function-comp exports ───────────────────────────────────────
 
+export { coerce }
 export { any, array, bigint, boolean, date, discriminatedUnion, enum_, literal, nan, null_, number, object, record, string, symbol, tuple, undefined_, union, unknown, void_ }
 export {
   AnySchema,
