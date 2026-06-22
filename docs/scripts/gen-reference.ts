@@ -25,43 +25,13 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findManifests } from '../../packages/internals/manifest/src/discovery'
+import { escFlow, fence, yaml } from './_md-safe'
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OUT_DIR = join(REPO_ROOT, 'docs', 'src', 'content', 'docs', 'reference')
 const NAV_FILE = join(REPO_ROOT, 'docs', 'src', 'reference-nav.generated.ts')
 
 const slugOf = (name: string) => name.replace(/^@pyreon\//, '')
-const fence = (lang: string, body: string) => '```' + lang + '\n' + body.trimEnd() + '\n```'
-/**
- * Escape `<` / `>` in markdown FLOW text but leave inline `code` spans raw.
- * The zero-content pipeline is MDX-ish: a bare `Signal<T>` in prose is read
- * as a JSX tag (and a union `<A | B>` then breaks the parse). Inside inline
- * code the angle brackets render fine (existing hand-written pages prove it),
- * so we only escape the non-code segments.
- */
-const escFlow = (s: string): string =>
-  String(s ?? '')
-    .split(/(`[^`]*`)/g)
-    .map((seg, i) =>
-      i % 2 === 1
-        ? seg
-        : seg
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            // `{ … }` in flow text is read as a JS expression by the MDX-ish
-            // pipeline (acorn parse error); show literal braces.
-            .replace(/\{/g, '&#123;')
-            .replace(/\}/g, '&#125;')
-            // A bare `:name` (e.g. CSS pseudos `:hover`, `:root`) is read as a
-            // remark text-directive and dropped; escape the colon. `: ` and
-            // `://` (prose / URLs) are untouched (no letter follows).
-            .replace(/:(?=[A-Za-z])/g, '&#58;'),
-    )
-    .join('')
-
-/** YAML-safe double-quoted scalar (frontmatter values may contain `:`, `@`, `"`). */
-const yaml = (s: string): string =>
-  '"' + String(s ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ') + '"'
 /** Anchor a symbol name the way the markdown renderer slugifies headings. */
 const anchor = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 

@@ -16,6 +16,7 @@
 // moves and no redirects are needed.
 
 import { REFERENCE_GROUPS } from './reference-nav.generated'
+import { TROUBLESHOOTING_GROUPS } from './troubleshooting-nav.generated'
 
 export interface SidebarLink {
   text: string
@@ -184,9 +185,6 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Feature', slug: 'feature' },
     ],
   },
-  // Generated per-package API reference (Diátaxis Reference tier), emitted
-  // from each package's src/manifest.ts by docs/scripts/gen-reference.ts.
-  ...REFERENCE_GROUPS,
   {
     text: 'Compatibility Layers',
     collapsed: true,
@@ -223,4 +221,12 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Primitives', slug: 'primitives' },
     ],
   },
+
+  // ─── API REFERENCE (generated per-package from src/manifest.ts) ─────────
+  // Emitted by docs/scripts/gen-reference.ts. Opens its own tier.
+  ...REFERENCE_GROUPS,
+
+  // ─── TROUBLESHOOTING (generated from anti-patterns.md) ──────────────────
+  // Emitted by docs/scripts/gen-troubleshooting.ts. Opens its own tier.
+  ...TROUBLESHOOTING_GROUPS,
 ]
