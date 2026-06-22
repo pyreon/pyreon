@@ -1,0 +1,24 @@
+{
+  "name": "@pyreon/example-native-finance",
+  "version": "0.0.1",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Phase-5 finance-tracker showcase. SINGLE source compiles to web + iOS + Android, exercising the data/services hook emit (#1689): useAuth<User> auth-state container, useDatabase persistence, a cross-screen defineStore reactive ledger, computed balance, validated useForm, multi-screen routing + store-backed auth-gate, and canonical primitives. The verified mirror lives at packages/native/compiler/src/fixtures/showcase-finance.tsx (swiftc + kotlinc gated).",
+  "license": "MIT",
+  "scripts": {
+    "lint": "echo '[native-finance] no TS lint surface; skipping'",
+    "test": "echo '[native-finance] no test surface; PMTC emit covered by @pyreon/native-compiler validate-swift/validate-kotlin tests (showcase-finance fixture)'",
+    "typecheck": "echo '[native-finance] @ts-nocheck on source; PMTC handles typing'"
+  },
+  "devDependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/form": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/store": "workspace:*"
+  },
+  "dependencies": {
+    "@pyreon/hooks": "workspace:*"
+  }
+}
