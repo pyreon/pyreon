@@ -47,6 +47,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Getting Started', slug: 'getting-started' },
       { text: 'Build an App (Tutorial)', slug: 'build-an-app' },
       { text: 'Examples Gallery', slug: 'examples' },
+      { text: 'Recipes', slug: 'recipes' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
     ],
