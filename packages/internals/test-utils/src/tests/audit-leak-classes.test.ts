@@ -83,6 +83,32 @@ cache.set('a', '1')
     const findings = detectUnboundedCache(src, FILE)
     expect(findings).toHaveLength(1)
   })
+
+  // A module-level registry RESET via reassignment (`reg = new Map()` between
+  // runs — the per-emit-run registry pattern in the native compiler emitters)
+  // is bounded, not an unbounded leak. Reassignment to a fresh Map/Set is an
+  // eviction-equivalent. Bisect-load-bearing: remove the AssignmentExpression
+  // arm and this fires.
+  it('DOES NOT FIRE when a module-level Map is reset by reassignment', () => {
+    const src = `
+let reg: Map<string, string> = new Map()
+export function run() {
+  reg = new Map()
+  reg.set('a', '1')
+}
+`
+    const findings = detectUnboundedCache(src, FILE)
+    expect(findings).toHaveLength(0)
+  })
+
+  it('DOES NOT FIRE on `new Map()` mentioned only in a string or comment', () => {
+    const src = `
+// const x = new Map(); x.set(1, 2) — a comment
+const codegen = "const m = new Map(); m.set('k', 'v')"
+`
+    const findings = detectUnboundedCache(src, FILE)
+    expect(findings).toHaveLength(0)
+  })
 })
 
 describe('detectUnbalancedListeners — Class D', () => {
@@ -118,6 +144,24 @@ const h = () => {}
 window.addEventListener('a', h)
 window.removeEventListener('a', h)
 window.removeEventListener('a', h) // defensive
+`
+    const findings = detectUnbalancedListeners(src, FILE)
+    expect(findings).toHaveLength(0)
+  })
+
+  // The reason detection is AST-based, not regex: `addEventListener` mentioned
+  // in a STRING (a compiler emitting it as codegen), a COMMENT (a docstring
+  // example), or a TEMPLATE LITERAL (the compiler's `_tpl` bind output) is NOT
+  // a real listener registration and must not count. The regex version
+  // false-fired on all three — the dominant source of the audit's inflated
+  // count. Bisect-load-bearing: revert the detector to `source.match(...)` and
+  // this spec fails.
+  it('DOES NOT FIRE on addEventListener in strings / comments / codegen (AST, not regex)', () => {
+    const src = `
+// el.addEventListener("scroll", handler) — a comment, not a call
+const codegen = "node.addEventListener('click', h)"
+const tpl = \`\${el}.addEventListener("input", \${fn})\`
+const detect = (name: string) => name === 'addEventListener'
 `
     const findings = detectUnbalancedListeners(src, FILE)
     expect(findings).toHaveLength(0)

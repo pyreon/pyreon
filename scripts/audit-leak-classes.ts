@@ -44,6 +44,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseSync } from 'oxc-parser'
 
 // Cross-runtime path resolution: `import.meta.dir` is Bun-only;
 // `import.meta.url` works in both Bun and Node (vitest). The script
@@ -146,6 +147,110 @@ function snippet(source: string, offset: number, len = 80): string {
   return source.slice(start, end).replace(/\s+/g, ' ').trim()
 }
 
+// ─── AST helpers (oxc-parser) ─────────────────────────────────────────────────
+//
+// Detection is AST-based, NOT regex-based. The earlier regex detectors counted
+// textual occurrences of `addEventListener(` / `Promise.race([` etc. — which
+// fired on STRING LITERALS, COMMENTS, and CODEGEN TEMPLATE LITERALS that don't
+// register anything at runtime. The whole `@pyreon/compiler`, `@pyreon/lint`,
+// and test-fixture surface is full of such mentions (the compiler EMITS
+// `el.addEventListener(...)` as a string; lint rules DESCRIBE the patterns they
+// detect; docstrings show example shapes). Those are false positives by
+// construction. Parsing to an AST and counting only real `CallExpression` /
+// `NewExpression` nodes eliminates the entire class of mention-not-call FPs —
+// the same "AST beats regex for JS" discipline `@pyreon/lint` itself uses.
+
+interface AstNode {
+  type?: string
+  [key: string]: unknown
+}
+
+function getLang(filePath: string): 'ts' | 'tsx' | 'js' | 'jsx' {
+  if (filePath.endsWith('.tsx')) return 'tsx'
+  if (filePath.endsWith('.jsx')) return 'jsx'
+  if (filePath.endsWith('.js') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) return 'js'
+  return 'ts'
+}
+
+// Parse-once cache keyed by source text — each detector is a pure
+// `(source, filePath)` fn (the test contract), but the CLI calls all four per
+// file. Caching by source avoids re-parsing the same file four times.
+const _parseCache = new Map<string, AstNode | null>()
+
+function parseAst(source: string, filePath: string): AstNode | null {
+  const cached = _parseCache.get(source)
+  if (cached !== undefined) return cached
+  let program: AstNode | null = null
+  try {
+    const result = parseSync(filePath, source, { sourceType: 'module', lang: getLang(filePath) })
+    // A file with fatal parse errors yields an unusable tree — skip it
+    // (advisory audit; a file the compiler can't parse isn't ours to judge).
+    program = (result.errors?.length ?? 0) > 0 ? null : (result.program as unknown as AstNode)
+  }
+  catch {
+    program = null
+  }
+  if (_parseCache.size > 4000) _parseCache.clear()
+  _parseCache.set(source, program)
+  return program
+}
+
+// Visit every AST node (depth-first). Skips positional / metadata keys.
+function walk(node: unknown, visit: (n: AstNode) => void): void {
+  if (!node || typeof node !== 'object') return
+  if (Array.isArray(node)) {
+    for (const child of node) walk(child, visit)
+    return
+  }
+  const n = node as AstNode
+  if (typeof n.type === 'string') visit(n)
+  for (const key in n) {
+    if (key === 'type' || key === 'start' || key === 'end' || key === 'range' || key === 'loc' || key === 'parent') continue
+    walk(n[key], visit)
+  }
+}
+
+// A non-computed member call like `obj.method(...)` — returns the method name,
+// or undefined if `callee` is not a static member access. Handles the
+// optional-chaining (`obj?.method()`) shape too (the property still resolves).
+function memberCallName(callee: unknown): string | undefined {
+  const c = callee as AstNode | undefined
+  if (!c || c.type !== 'MemberExpression' || c.computed) return undefined
+  const prop = c.property as AstNode | undefined
+  return prop?.type === 'Identifier' ? (prop.name as string) : undefined
+}
+
+// The object identifier of a member call `X.method(...)` → `X`, else undefined.
+function memberObjectName(callee: unknown): string | undefined {
+  const c = callee as AstNode | undefined
+  if (!c || c.type !== 'MemberExpression') return undefined
+  const obj = c.object as AstNode | undefined
+  return obj?.type === 'Identifier' ? (obj.name as string) : undefined
+}
+
+// Byte offset of a node (ESTree `start`, with `range[0]` fallback).
+function nodeStart(n: AstNode): number {
+  if (typeof n.start === 'number') return n.start
+  if (Array.isArray(n.range) && typeof n.range[0] === 'number') return n.range[0]
+  return 0
+}
+function nodeEnd(n: AstNode): number {
+  if (typeof n.end === 'number') return n.end
+  if (Array.isArray(n.range) && typeof n.range[1] === 'number') return n.range[1]
+  return 0
+}
+
+// Module-level declarations = direct children of `Program.body`, optionally
+// wrapped in `export …`. Returns each top-level `VariableDeclaration`.
+function topLevelVarDecls(program: AstNode): AstNode[] {
+  const out: AstNode[] = []
+  for (const stmt of (program.body as AstNode[]) ?? []) {
+    const decl = stmt.type === 'ExportNamedDeclaration' ? (stmt.declaration as AstNode | undefined) : stmt
+    if (decl && decl.type === 'VariableDeclaration') out.push(decl)
+  }
+  return out
+}
+
 // ─── Detector 1: unbounded-cache (Class C) ──────────────────────────────────
 //
 // Find module-level `new Map()` / `new Set()` declarations. For each,
@@ -159,36 +264,69 @@ function snippet(source: string, offset: number, len = 80): string {
 // LRU eviction) don't fire.
 
 export function detectUnboundedCache(source: string, filePath: string): Finding[] {
+  const program = parseAst(source, filePath)
+  if (!program) return []
   const findings: Finding[] = []
-  // Match MODULE-LEVEL only — no leading whitespace before `const|let`.
-  // This excludes local declarations inside function bodies (which are
-  // GC-safe — they die with their function scope). The `^` anchor with
-  // `m` flag requires the declaration to start at column 0.
-  const declRe = /^(?:export\s+)?(?:const|let)\s+(\w+)\s*(?::\s*[^=]+)?=\s*new\s+(Map|Set|WeakMap|WeakSet)\b/gm
-  let match: RegExpExecArray | null
-  while ((match = declRe.exec(source)) !== null) {
-    const varName = match[1]!
-    const collection = match[2]!
-    const declOffset = match.index + match[0].indexOf(varName)
 
-    // WeakMap / WeakSet are GC-safe by design — never an unbounded leak.
-    if (collection.startsWith('Weak')) continue
+  // Module-level `new Map()` / `new Set()` declarations (WeakMap/WeakSet are
+  // GC-safe by design → excluded). Local caches inside a function body die
+  // with their scope, so only top-level declarations are considered.
+  const caches: { name: string, collection: string, offset: number }[] = []
+  for (const decl of topLevelVarDecls(program)) {
+    for (const d of (decl.declarations as AstNode[]) ?? []) {
+      const id = d.id as AstNode | undefined
+      const init = d.init as AstNode | undefined
+      if (id?.type !== 'Identifier' || init?.type !== 'NewExpression') continue
+      const callee = init.callee as AstNode | undefined
+      const cname = callee?.type === 'Identifier' ? (callee.name as string) : undefined
+      if (cname !== 'Map' && cname !== 'Set') continue
+      caches.push({ name: id.name as string, collection: cname, offset: nodeStart(d) })
+    }
+  }
+  if (caches.length === 0) return []
 
-    // Tally writes / deletes against this variable in the same file.
-    const writeRe = new RegExp(`\\b${varName}\\.(set|add)\\b`, 'g')
-    const evictRe = new RegExp(`\\b${varName}\\.(delete|clear)\\b`, 'g')
-    const writes = (source.match(writeRe) || []).length
-    const evicts = (source.match(evictRe) || []).length
+  // Tally real `.set(`/`.add(` (writes) vs `.delete(`/`.clear(` (evictions)
+  // member CALLS against each cache var across the file — AST, so a method
+  // name appearing in a string/comment never counts.
+  const writes: Record<string, number> = {}
+  const evicts: Record<string, number> = {}
+  walk(program, (n) => {
+    if (n.type === 'CallExpression') {
+      const obj = memberObjectName(n.callee)
+      const m = memberCallName(n.callee)
+      if (!obj || !m) return
+      if (m === 'set' || m === 'add') writes[obj] = (writes[obj] ?? 0) + 1
+      else if (m === 'delete' || m === 'clear') evicts[obj] = (evicts[obj] ?? 0) + 1
+      return
+    }
+    // Reassignment to a fresh `new Map()` / `new Set()` is a valid bounded
+    // RESET (`_registry = new Map()` between runs) — not an unbounded leak.
+    // Common in per-run module-level registries (e.g. the native emitters).
+    // Count it as an eviction path so it doesn't false-positive.
+    if (n.type === 'AssignmentExpression') {
+      const left = n.left as AstNode | undefined
+      const right = n.right as AstNode | undefined
+      if (left?.type === 'Identifier' && right?.type === 'NewExpression') {
+        const cn = (right.callee as AstNode | undefined)?.type === 'Identifier'
+          ? ((right.callee as AstNode).name as string)
+          : undefined
+        if (cn === 'Map' || cn === 'Set') {
+          evicts[left.name as string] = (evicts[left.name as string] ?? 0) + 1
+        }
+      }
+    }
+  })
 
-    if (writes >= 1 && evicts === 0) {
+  for (const c of caches) {
+    if ((writes[c.name] ?? 0) >= 1 && (evicts[c.name] ?? 0) === 0) {
       findings.push({
         detector: 'unbounded-cache',
         file: filePath,
-        line: lineOf(source, declOffset),
+        line: lineOf(source, c.offset),
         leakClass: 'C',
         message:
-          `Module-level \`${collection}\` "${varName}" has ${writes} write(s) but no \`.delete()\` / \`.clear()\` in same file — unbounded growth risk. Cross-file eviction paths invisible to scan (manual triage).`,
-        context: snippet(source, declOffset),
+          `Module-level \`${c.collection}\` "${c.name}" has ${writes[c.name]} write(s) but no \`.delete()\` / \`.clear()\` in same file — unbounded growth risk. Cross-file eviction paths invisible to scan (manual triage).`,
+        context: snippet(source, c.offset),
       })
     }
   }
@@ -204,10 +342,23 @@ export function detectUnboundedCache(source: string, filePath: string): Finding[
 // site that called addEventListener). Use raw counts as a triage signal.
 
 export function detectUnbalancedListeners(source: string, filePath: string): Finding[] {
-  const adds = (source.match(/\baddEventListener\s*\(/g) || []).length
-  const removes = (source.match(/\bremoveEventListener\s*\(/g) || []).length
-  if (adds === 0 || adds === removes) return []
-  if (adds <= removes) return [] // surplus removes is fine
+  const program = parseAst(source, filePath)
+  if (!program) return []
+  // Count REAL `.addEventListener(...)` / `.removeEventListener(...)` member
+  // CALLS — not textual mentions. This is the fix for the dominant
+  // false-positive class: the compiler emits `el.addEventListener(...)` as a
+  // codegen STRING, lint rules describe the pattern in docstrings, and
+  // detectors compare against the `'addEventListener'` string literal — none
+  // of those register a listener, and none are CallExpressions.
+  let adds = 0
+  let removes = 0
+  walk(program, (n) => {
+    if (n.type !== 'CallExpression') return
+    const m = memberCallName(n.callee)
+    if (m === 'addEventListener') adds++
+    else if (m === 'removeEventListener') removes++
+  })
+  if (adds === 0 || adds <= removes) return [] // balanced or surplus removes is fine
   return [
     {
       detector: 'unbalanced-listeners',
@@ -234,27 +385,44 @@ export function detectUnbalancedListeners(source: string, filePath: string): Fin
 // possible", not "this is a bug".
 
 export function detectPositionBasedPop(source: string, filePath: string): Finding[] {
+  const program = parseAst(source, filePath)
+  if (!program) return []
   const findings: Finding[] = []
-  // Module-level array-typed declaration (column-0 anchor — local
-  // arrays inside function bodies are GC-safe). Match either `: T[] = []`
-  // or `: Array<T> = []` or generic `= []` with no type annotation.
-  const declRe = /^(?:export\s+)?(?:const|let)\s+(\w+)\s*(?::\s*(?:[\w]+\[\]|Array<[^>]+>)\s*)?=\s*\[\s*\]/gm
-  let match: RegExpExecArray | null
-  while ((match = declRe.exec(source)) !== null) {
-    const varName = match[1]!
-    // Look for `.pop()` calls against this variable.
-    const popRe = new RegExp(`\\b${varName}\\.pop\\s*\\(`, 'g')
-    const popMatch = popRe.exec(source)
-    if (!popMatch) continue
 
+  // Module-level `= []` array declarations (local arrays inside function
+  // bodies are GC-safe). The type annotation (`: T[]`) is irrelevant — the
+  // empty-array-literal initializer is the signal.
+  const arrays = new Map<string, number>()
+  for (const decl of topLevelVarDecls(program)) {
+    for (const d of (decl.declarations as AstNode[]) ?? []) {
+      const id = d.id as AstNode | undefined
+      const init = d.init as AstNode | undefined
+      if (id?.type !== 'Identifier' || init?.type !== 'ArrayExpression') continue
+      if (((init.elements as unknown[])?.length ?? 0) !== 0) continue
+      arrays.set(id.name as string, nodeStart(d))
+    }
+  }
+  if (arrays.size === 0) return []
+
+  // First real `.pop()` member call per tracked array var.
+  const popOffset = new Map<string, number>()
+  walk(program, (n) => {
+    if (n.type !== 'CallExpression') return
+    const obj = memberObjectName(n.callee)
+    if (memberCallName(n.callee) === 'pop' && obj && arrays.has(obj) && !popOffset.has(obj)) {
+      popOffset.set(obj, nodeStart(n))
+    }
+  })
+
+  for (const [varName, off] of popOffset) {
     findings.push({
       detector: 'position-based-pop',
       file: filePath,
-      line: lineOf(source, popMatch.index),
+      line: lineOf(source, off),
       leakClass: 'A',
       message:
         `Module-level array "${varName}" uses \`.pop()\` — Class A position-based-cleanup risk. Verify removal order is strictly LIFO across reactive boundaries. If not, switch to identity-based removal: \`stack.splice(stack.lastIndexOf(frame), 1)\`.`,
-      context: snippet(source, popMatch.index),
+      context: snippet(source, off),
     })
   }
   return findings
@@ -271,33 +439,60 @@ export function detectPositionBasedPop(source: string, filePath: string): Findin
 // deps under packages/).
 
 export function detectPromiseRaceNoClear(source: string, filePath: string): Finding[] {
+  const program = parseAst(source, filePath)
+  if (!program) return []
   const findings: Finding[] = []
-  // Find every Promise.race(...) call site. For each, look for setTimeout
-  // in the argument array AND clearTimeout in the surrounding 500 chars.
-  const raceRe = /Promise\.race\s*\(\s*\[/g
-  let match: RegExpExecArray | null
-  while ((match = raceRe.exec(source)) !== null) {
-    const offset = match.index
-    // Look ahead ~800 chars for the closing `])` and the contents.
-    const tail = source.slice(offset, offset + 800)
-    const hasSetTimeout = /setTimeout\s*\(/.test(tail)
-    if (!hasSetTimeout) continue
-    // Look at the enclosing function (rough heuristic) for a clearTimeout
-    // call in a finally block. Use 5000 chars — most try/catch/finally
-    // bodies fit; longer ones become false positives the human triages.
-    const enclosing = source.slice(offset, offset + 5000)
-    const hasFinally = /finally\s*\{/.test(enclosing)
-    const hasClearTimeout = /clearTimeout\s*\(/.test(enclosing)
-    if (hasFinally && hasClearTimeout) continue
+
+  // Collect (AST, so docstring/example mentions never count): enclosing
+  // function spans, real `clearTimeout(...)` call offsets, and real
+  // `Promise.race(...)` calls whose argument subtree contains a real
+  // `setTimeout(...)` call.
+  const functions: { start: number, end: number }[] = []
+  const clearTimeouts: number[] = []
+  const races: { offset: number, hasSetTimeout: boolean }[] = []
+  walk(program, (n) => {
+    if (n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression') {
+      functions.push({ start: nodeStart(n), end: nodeEnd(n) })
+      return
+    }
+    if (n.type !== 'CallExpression') return
+    const callee = n.callee as AstNode | undefined
+    if (callee?.type === 'Identifier' && callee.name === 'clearTimeout') {
+      clearTimeouts.push(nodeStart(n))
+      return
+    }
+    if (memberCallName(callee) === 'race' && memberObjectName(callee) === 'Promise') {
+      let hasSetTimeout = false
+      walk(n.arguments, (m) => {
+        const c = m.callee as AstNode | undefined
+        if (m.type === 'CallExpression' && c?.type === 'Identifier' && c.name === 'setTimeout') hasSetTimeout = true
+      })
+      races.push({ offset: nodeStart(n), hasSetTimeout })
+    }
+  })
+
+  for (const race of races) {
+    if (!race.hasSetTimeout) continue
+    // Smallest enclosing function span that contains the race.
+    let enc: { start: number, end: number } | null = null
+    for (const f of functions) {
+      if (f.start <= race.offset && race.offset < f.end) {
+        if (!enc || (f.end - f.start) < (enc.end - enc.start)) enc = f
+      }
+    }
+    const hasClear = enc
+      ? clearTimeouts.some((o) => enc!.start <= o && o < enc!.end)
+      : clearTimeouts.length > 0
+    if (hasClear) continue
 
     findings.push({
       detector: 'promise-race-no-clear',
       file: filePath,
-      line: lineOf(source, offset),
+      line: lineOf(source, race.offset),
       leakClass: 'I',
       message:
-        `\`Promise.race\` with a \`setTimeout\` rejection branch — no \`clearTimeout\` found in nearby finally block. Capture the timer id and clear it on the success path. Mirror of \`pyreon/promise-race-needs-cleartimeout\` lint rule.`,
-      context: snippet(source, offset),
+        `\`Promise.race\` with a \`setTimeout\` rejection branch — no \`clearTimeout\` found in the enclosing function. Capture the timer id and clear it on the success path. Mirror of \`pyreon/promise-race-needs-cleartimeout\` lint rule.`,
+      context: snippet(source, race.offset),
     })
   }
   return findings
