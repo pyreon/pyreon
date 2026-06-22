@@ -1,3 +1,4 @@
+import { onUnmount } from '@pyreon/core'
 import type { SchemaValidateFn } from '@pyreon/form'
 import { useForm as _useForm } from '@pyreon/form'
 import type { QueryKey } from '@pyreon/query'
@@ -327,11 +328,24 @@ export function defineFeature<TValues extends Record<string, unknown>>(
         },
       })
 
-      // Auto-fetch in edit mode
+      // Auto-fetch in edit mode. The getById promise resolves
+      // asynchronously, so the component can unmount before it settles
+      // (route nav away, list re-render). Without a guard, the late
+      // .then would call setFieldValue / isSubmitting.set on a form
+      // whose scope is gone — the stale-promise class (see
+      // .claude/rules/anti-patterns.md "Memory Leak Classes" → F, and
+      // the storage/charts/createResource precedents). onUnmount fires
+      // on the owning component's disposal; the cancelled flag skips
+      // both settle branches after unmount.
       if (mode === 'edit' && options?.id !== undefined) {
+        let cancelled = false
+        onUnmount(() => {
+          cancelled = true
+        })
         form.isSubmitting.set(true)
         http.getById<TValues>(api, options.id).then(
           (data) => {
+            if (cancelled) return
             batch(() => {
               for (const key of Object.keys(data)) {
                 form.setFieldValue(
@@ -343,6 +357,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
             })
           },
           () => {
+            if (cancelled) return
             form.isSubmitting.set(false)
           },
         )
