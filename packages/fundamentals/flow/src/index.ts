@@ -38,6 +38,8 @@ export { NodeToolbar } from './components/node-toolbar'
 export { Panel } from './components/panel'
 // Edge path utilities
 export {
+  collectEdgeMarkers,
+  DEFAULT_MARKER_END,
   getBezierPath,
   getEdgePath,
   getHandlePosition,
@@ -46,6 +48,9 @@ export {
   getStepPath,
   getStraightPath,
   getWaypointPath,
+  markerId,
+  resolveEdgeMarkers,
+  resolveMarker,
 } from './edges'
 // Core
 export { createFlow } from './flow'
@@ -60,6 +65,8 @@ export type {
   ConnectionRule,
   ControlsProps,
   Dimensions,
+  EdgeMarker,
+  EdgeMarkerSpec,
   EdgePathResult,
   EdgeType,
   FlowConfig,
@@ -81,4 +88,4 @@ export type {
   XYPosition,
 } from './types'
 // Types
-export { Position } from './types'
+export { MarkerType, Position } from './types'

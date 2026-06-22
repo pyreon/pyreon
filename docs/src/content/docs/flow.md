@@ -188,6 +188,37 @@ flow.updateEdgeWaypoint('e1-2', 0, { x: 160, y: 60 })
 flow.removeEdgeWaypoint('e1-2', 0)
 ```
 
+### Edge Markers
+
+Configurable arrowheads on either end of an edge. Two shapes — `MarkerType.ArrowClosed` (filled triangle, the default) and `MarkerType.Arrow` (open V) — with optional `color` / `width` / `height` / `strokeWidth`. Identical marker configs are deduplicated into a single shared `<defs>` entry across the whole graph.
+
+```tsx
+import { MarkerType } from '@pyreon/flow'
+
+flow.addEdge({ id: 'e1', source: '1', target: '2' })                          // default closed arrow at the end
+flow.addEdge({ id: 'e2', source: '2', target: '3', markerEnd: MarkerType.Arrow }) // open V
+flow.addEdge({
+  id: 'e3',
+  source: '3',
+  target: '4',
+  markerStart: MarkerType.ArrowClosed,                                        // arrow on BOTH ends
+  markerEnd: { type: MarkerType.Arrow, color: '#ff0000', width: 14 },
+})
+flow.addEdge({ id: 'e4', source: '4', target: '5', markerEnd: null })          // explicitly arrowless
+```
+
+Set the graph-wide default (or turn arrows off everywhere) in the flow config:
+
+```tsx
+const flow = createFlow({
+  nodes,
+  edges,
+  defaultMarkerEnd: null,            // every edge arrowless unless it opts in via markerEnd
+})
+```
+
+`markerEnd: null` is the explicit opt-out that overrides `defaultMarkerEnd`; **omitting** `markerEnd` falls back to the flow default (a closed arrowhead unless you set `defaultMarkerEnd`). The marker `<defs>` update reactively as edges are added/removed.
+
 ## Selection
 
 ```tsx
@@ -216,6 +247,34 @@ flow.zoom() // Computed<number>
 // Check if a node is visible
 flow.isNodeVisible('1') // boolean
 ```
+
+### Render Virtualization
+
+For large graphs, set `onlyRenderVisibleElements: true` so only nodes whose screen rect intersects the viewport (expanded by a margin so they don't pop in at the edge) — and the edges touching at least one visible node — are mounted in the DOM. The rendered set re-filters reactively on pan and zoom.
+
+```tsx
+const flow = createFlow({
+  nodes,        // thousands of nodes
+  edges,
+  onlyRenderVisibleElements: true,
+})
+```
+
+Off by default (every node/edge renders). When on, an edge whose line crosses the viewport while **both** its endpoint nodes are off-screen is culled — only edges anchored to at least one visible node are kept (matches React Flow; rare in practice).
+
+### Object Snapping (drag perf)
+
+By default a dragged node snaps to align with other nodes' edges and centers, drawing helper guide lines (`snapToObjects: true`). That alignment scan runs over **every** node on **every** drag frame — on large graphs it's the dominant per-frame cost. Turn it off to skip the scan entirely:
+
+```tsx
+const flow = createFlow({
+  nodes,        // hundreds / thousands of nodes
+  edges,
+  snapToObjects: false,   // skip the per-frame O(N) align scan — ~3-4x faster drags
+})
+```
+
+Measured (60-frame drag): N=1000 `1.34ms → 0.31ms`, N=3000 `3.36ms → 0.78ms`. Default stays `true` so existing apps keep helper-line snapping; set `false` when you don't need it (or use `snapToGrid` instead).
 
 ## Auto-Layout
 
