@@ -130,7 +130,13 @@ Specialized packages for rich application features.
 
 ## Quick Start
 
-Install the core packages:
+The fastest path is the scaffolder — the **[Quickstart](/docs/quickstart)** has a live, no-install demo plus the one-command setup:
+
+```bash
+npm create @pyreon/zero@latest my-app
+```
+
+Or add Pyreon to an existing Vite project by hand — install the core packages:
 
 :::code-group
 

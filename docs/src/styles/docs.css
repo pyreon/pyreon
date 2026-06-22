@@ -193,6 +193,22 @@ th {
 .pyreon-sidebar__group {
   margin-bottom: 1.25rem;
 }
+/* Diátaxis tier header — printed once above the first group of each tier
+   (Learn / Guides / Migrate / Reference) so the nav reads as a learning
+   journey, not a flat package index. */
+.pyreon-sidebar__tier {
+  margin: 1.5rem 0 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted, #888);
+}
+.pyreon-sidebar__tier:first-child {
+  margin-top: 0;
+}
 .pyreon-sidebar__group-title {
   font-weight: 600;
   font-size: 0.85rem;
