@@ -21,7 +21,25 @@
 import { array, ArraySchema } from './composition/array'
 import { object, ObjectSchema } from './composition/object'
 import { Schema } from './core/schema'
+import {
+  any,
+  AnySchema,
+  nan,
+  NanSchema,
+  null_,
+  NullSchema,
+  symbol,
+  SymbolSchema,
+  undefined_,
+  UndefinedSchema,
+  unknown,
+  UnknownSchema,
+  void_,
+  VoidSchema,
+} from './primitives/atoms'
+import { bigint, BigIntSchema } from './primitives/bigint'
 import { boolean, BooleanSchema } from './primitives/boolean'
+import { date, DateSchema } from './primitives/date'
 import { enum_, EnumSchema, literal, LiteralSchema } from './primitives/literal'
 import { number, NumberSchema } from './primitives/number'
 import { string, StringSchema } from './primitives/string'
@@ -45,16 +63,42 @@ export const s = {
   string,
   number,
   boolean,
+  bigint,
+  date,
   literal,
   enum: enum_,
+  symbol,
+  nan,
+  null: null_,
+  undefined: undefined_,
+  void: void_,
+  any,
+  unknown,
   object,
   array,
 } as const
 
 // ─── Named function-comp exports ───────────────────────────────────────
 
-export { array, boolean, enum_, literal, number, object, string }
-export { ArraySchema, BooleanSchema, EnumSchema, LiteralSchema, NumberSchema, ObjectSchema, StringSchema }
+export { any, array, bigint, boolean, date, enum_, literal, nan, null_, number, object, string, symbol, undefined_, unknown, void_ }
+export {
+  AnySchema,
+  ArraySchema,
+  BigIntSchema,
+  BooleanSchema,
+  DateSchema,
+  EnumSchema,
+  LiteralSchema,
+  NanSchema,
+  NullSchema,
+  NumberSchema,
+  ObjectSchema,
+  StringSchema,
+  SymbolSchema,
+  UndefinedSchema,
+  UnknownSchema,
+  VoidSchema,
+}
 
 // ─── pipe — function-comp variant of method chaining ───────────────────
 
