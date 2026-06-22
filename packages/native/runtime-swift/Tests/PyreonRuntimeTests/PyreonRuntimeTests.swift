@@ -1183,6 +1183,87 @@ final class PyreonRuntimeTests: XCTestCase {
         push.stop() // double-stop is a safe no-op
         XCTAssertFalse(push.isRegistered)
     }
+
+    // MARK: - PyreonHttp (richer requests for the useFetch fetcher)
+    //
+    // These cover the PURE request builders + `buildURLRequest` + response
+    // helpers. The real `URLSession` `send(_:)` compiles under `swift build`
+    // but a live round-trip is integration/device territory, NOT asserted
+    // here — the same "real edge constructed, not asserted" boundary the
+    // other runtime services use.
+
+    /// `.get` builds a GET with headers + no body.
+    func testPyreonHttpGetBuilder() throws {
+        let r = PyreonHttpRequest.get("https://api/x", headers: ["Accept": "application/json"])
+        XCTAssertEqual(r.method, .get)
+        XCTAssertEqual(r.url, "https://api/x")
+        XCTAssertEqual(r.headers["Accept"], "application/json")
+        XCTAssertNil(r.body)
+        XCTAssertEqual(r.method.rawValue, "GET")
+    }
+
+    /// `.post(jsonBody:)` sets `Content-Type: application/json`.
+    func testPyreonHttpPostJsonSetsContentType() throws {
+        let body = Data("{\"a\":1}".utf8)
+        let r = PyreonHttpRequest.post("https://api/x", jsonBody: body)
+        XCTAssertEqual(r.method, .post)
+        XCTAssertEqual(r.body, body)
+        XCTAssertEqual(r.headers["Content-Type"], "application/json")
+    }
+
+    /// `.post(jsonBody:)` does NOT overwrite an existing content-type
+    /// (case-insensitive).
+    func testPyreonHttpPostJsonHonorsExistingContentType() throws {
+        let r = PyreonHttpRequest.post(
+            "https://api/x",
+            jsonBody: Data(),
+            headers: ["content-type": "application/vnd.api+json"]
+        )
+        XCTAssertEqual(r.headers["content-type"], "application/vnd.api+json")
+        XCTAssertNil(r.headers["Content-Type"])
+    }
+
+    /// `buildURLRequest` wires method + headers + body onto a `URLRequest`.
+    func testPyreonHttpBuildURLRequest() throws {
+        let body = Data("payload".utf8)
+        let req = PyreonHttpRequest(
+            method: .put,
+            url: "https://api/x",
+            headers: ["Authorization": "Bearer t"],
+            body: body
+        )
+        let urlRequest = try XCTUnwrap(PyreonHttp.buildURLRequest(req))
+        XCTAssertEqual(urlRequest.httpMethod, "PUT")
+        XCTAssertEqual(urlRequest.value(forHTTPHeaderField: "Authorization"), "Bearer t")
+        XCTAssertEqual(urlRequest.httpBody, body)
+        XCTAssertEqual(urlRequest.url?.absoluteString, "https://api/x")
+    }
+
+    // NOTE: there is intentionally no unit test for the `.invalidURL` error
+    // path. Modern Foundation's `URL(string:)` percent-encodes nearly any
+    // input (e.g. "not a valid url" → "not%20a%20valid%20url") rather than
+    // returning nil, so the nil branch isn't reliably triggerable across
+    // Foundation versions — a test for it would assert Foundation's leniency,
+    // not Pyreon code. The `.invalidURL` guard stays in the API as a
+    // defensive measure for platforms/inputs where `URL(string:)` does fail.
+
+    /// Response helpers: `isOK` (2xx), `text` (UTF-8), `decode` (JSON).
+    func testPyreonHttpResponseHelpers() throws {
+        XCTAssertTrue(PyreonHttpResponse(status: 200).isOK)
+        XCTAssertTrue(PyreonHttpResponse(status: 204).isOK)
+        XCTAssertFalse(PyreonHttpResponse(status: 404).isOK)
+        XCTAssertFalse(PyreonHttpResponse(status: 500).isOK)
+
+        let textRes = PyreonHttpResponse(status: 200, body: Data("hello".utf8))
+        XCTAssertEqual(textRes.text, "hello")
+
+        struct User: Decodable, Equatable { let id: Int; let name: String }
+        let jsonRes = PyreonHttpResponse(
+            status: 200,
+            body: Data("{\"id\":7,\"name\":\"x\"}".utf8)
+        )
+        XCTAssertEqual(try jsonRes.decode(User.self), User(id: 7, name: "x"))
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
