@@ -20,6 +20,7 @@ Pyreon-owned validator library implementing Standard Schema (https://standardsch
 - Works with any Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+, …)
 - Tree-shakeable — DX helpers alone are ~0.5KB gz (measured); the v1 validator runtime (~3.5KB gz) is pulled in only when `s` / primitives are imported
 - Client/server split — ONE shared schema, thin client + heavy server. `s.string().email()` validates strictly server-side (rfc5322 + disposable blocklist, full E.164 phone) the instant `@pyreon/validate/server` is imported — the heavy code tree-shakes out of the client bundle. `.serverCheck(key)` is the async/privileged tier (unique-email, breach-check, MX): a no-op on the client (recorded on `Result.pending`), the registered validator (via `registerServerCheck`) on the server. `parseAsync(input, { context })` threads a DB handle / request to the server checks.
+- String format checks: email / url / uuid / ip / phone / creditCard + cuid2 / ulid / nanoid / emoji / base64 / jwt + ISO date/dateTime/time — every format routed through the client/server registry seam, so a server can upgrade any of them in place via `installFormatValidator`.
 
 ## Complete example
 

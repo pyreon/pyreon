@@ -108,6 +108,21 @@ Notes:
 - Object fields and array elements are validated async-aware, so the issue `path` is correct even though an async check resolves after the path unwinds.
 - A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
 
+### String format checks (`s.string()`)
+
+`email` · `url` · `uuid` · `ip` · `phone` · `creditCard` · `cuid2` · `ulid` · `nanoid` · `emoji` · `base64` · `jwt` · `.iso.date()` / `.iso.dateTime()` / `.iso.time()`.
+
+Every format routes through the client/server registry seam — a server can swap in a stricter validator for any of them in place via `installFormatValidator(name, fn)` (the same mechanism `@pyreon/validate/server` uses to upgrade `email`/`phone`), without touching the shared schema.
+
+```ts
+import { s } from '@pyreon/validate'
+
+s.string().cuid2().parse('tz4a98xxat96iws9zmbrgj3a')  // ok
+s.string().ulid().parse('01ARZ3NDEKTSV4RRFFQ69G5FAV') // ok
+s.string().jwt()                                       // header.payload.signature shape
+s.string().base64().min(4)                             // composes with length checks
+```
+
 ## Why mutate-in-place?
 
 `withField()` mutates the original schema with a Symbol-keyed non-enumerable property. It does NOT clone.

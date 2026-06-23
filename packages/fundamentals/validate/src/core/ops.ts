@@ -48,6 +48,12 @@ export type StringCheckOp =
   | { kind: 'check:string:creditcard'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:url'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:uuid'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:cuid2'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:ulid'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:nanoid'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:emoji'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:base64'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:jwt'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:iso:date'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:iso:datetime'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:iso:time'; opts?: CheckOpts | undefined }

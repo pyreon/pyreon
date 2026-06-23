@@ -200,6 +200,39 @@ formatErrorsByPath(issues, t, { joinWith: '; ' })
 // → { email: 'invalid; required' }
 ```
 
+## String formats
+
+`s.string()` ships the formats every app reaches for, plus the modern ID / encoding set:
+
+| Method | Validates |
+| --- | --- |
+| `.email()` / `.url()` / `.uuid()` / `.ip()` / `.phone()` / `.creditCard()` | the classics (email precision tiers; phone is client/server-split) |
+| `.cuid2()` | CUID2 — lowercase alphanumeric, starts with a letter |
+| `.ulid()` | ULID — Crockford base32, 26 chars |
+| `.nanoid()` | Nano ID — URL-safe alphabet (`A-Za-z0-9_-`) |
+| `.emoji()` | one or more emoji code points |
+| `.base64()` | standard base64 (optional `=` padding) |
+| `.jwt()` | three base64url segments (`header.payload.signature`) |
+| `.iso.date()` / `.iso.dateTime()` / `.iso.time()` | ISO 8601 date / date-time / time |
+
+```ts
+import { s } from '@pyreon/validate'
+
+s.string().cuid2().parse('tz4a98xxat96iws9zmbrgj3a') // ok
+s.string().ulid()                                     // 01ARZ3NDEKTSV4RRFFQ69G5FAV
+s.string().base64().min(4)                            // composes with length checks
+```
+
+**Every format routes through the client/server registry seam.** A server can swap in a stricter validator for any format in place — the same mechanism `@pyreon/validate/server` uses to upgrade `email` (RFC 5322 + disposable blocklist) and `phone` (full E.164):
+
+```ts
+import { installFormatValidator } from '@pyreon/validate'
+
+// e.g. upgrade ULID validation to also check the timestamp range, server-side:
+installFormatValidator('ulid', (value) => myStrictUlidCheck(value))
+// every s.string().ulid() now uses it — the shared schema is untouched.
+```
+
 ## Coexists with existing adapters
 
 `@pyreon/validation`'s `zodSchema()` / `valibotSchema()` / `arktypeSchema()` adapters are unchanged. New code can write:
