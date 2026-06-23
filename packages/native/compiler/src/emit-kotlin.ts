@@ -1844,6 +1844,42 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
       }
+      // `Math.<fn>(args)` — DOUBLE-DOMAIN math. The generic passthrough
+      // `Math.sqrt(16)` resolves to `java.lang.Math.sqrt(double)` but rejects
+      // an Int arg ("type mismatch") — Kotlin does NOT auto-widen Int→Double
+      // for a java method call — and `sign`/`trunc`/`log2` don't exist on
+      // java.lang.Math at all. Coerce every arg `.toDouble()` (identity on a
+      // Double, so it's safe regardless of the arg's type) and remap the
+      // three non-java fns to `kotlin.math`. Int-friendly fns (abs/max/min)
+      // and constants (PI/E)/random + floor/ceil/round are left to the
+      // generic emit (they already validate). Swift parses its Math fine
+      // (free functions + literal inference), so this is Kotlin-only.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Math'
+      ) {
+        const fn = e.callee.property
+        // java.lang.Math Double-domain fns — keep `Math.<fn>`, coerce args.
+        const JAVA_MATH_DOUBLE = new Set([
+          'sqrt', 'cbrt', 'pow', 'hypot', 'sin', 'cos', 'tan',
+          'asin', 'acos', 'atan', 'atan2', 'sinh', 'cosh', 'tanh',
+          'log', 'log10', 'exp',
+        ])
+        // Not on java.lang.Math (or differently named) — use kotlin.math.
+        const KOTLIN_MATH_REMAP: Record<string, string> = {
+          sign: 'kotlin.math.sign',
+          trunc: 'kotlin.math.truncate',
+          log2: 'kotlin.math.log2',
+        }
+        if (JAVA_MATH_DOUBLE.has(fn) || KOTLIN_MATH_REMAP[fn] !== undefined) {
+          const args = e.args
+            .map((a) => `(${emitKotlinExpr(a, indent)}).toDouble()`)
+            .join(', ')
+          const callee = KOTLIN_MATH_REMAP[fn] ?? `Math.${fn}`
+          return `${callee}(${args})`
+        }
+      }
       // `parseInt(s)` / `parseFloat(s)` → Kotlin `(s).toIntOrNull() ?: 0`
       // / `(s).toDoubleOrNull() ?: 0.0`. JS returns NaN on failure; the
       // `?:` default keeps a non-null Int/Double. A radix arg is ignored.
