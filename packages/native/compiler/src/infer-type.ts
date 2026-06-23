@@ -277,10 +277,27 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             case 'slice':
             case 'reverse':
               return objType // Array<T> → Array<T>
-            case 'map':
-              // Element type is the arrow's return — typeflow doesn't
-              // walk into arrow bodies yet. Return Array<unknown>.
+            case 'map': {
+              // Element type is the arrow's RETURN type. Bind the callback's
+              // param to the source's element type, then infer the body —
+              // `nums.map(n => n * 2)` → Array<Int>; `objs.map(o => o.field)`
+              // → Array<fieldType> when the element is object-typed. Falls
+              // back to Array<unknown> when the body can't be inferred.
+              const cb = expr.args[0]
+              if (cb !== undefined && cb.kind === 'arrow' && cb.params.length >= 1) {
+                const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+                scratch.locals.set(cb.params[0]!, objType.element)
+                let bodyType: TypeIR = { kind: 'unknown' }
+                if (cb.stmts !== undefined) {
+                  const ret = findFirstReturnExpr(cb.stmts, scratch)
+                  if (ret) bodyType = inferType(ret, scratch)
+                } else {
+                  bodyType = inferType(cb.body, scratch)
+                }
+                if (bodyType.kind !== 'unknown') return { kind: 'array', element: bodyType }
+              }
               return { kind: 'array', element: { kind: 'unknown' } }
+            }
             case 'some':
             case 'every':
             case 'includes':
