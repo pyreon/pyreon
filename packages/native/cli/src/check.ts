@@ -66,7 +66,7 @@ export function resolveCheckInputs(source: string): string[] {
   const stat = statSync(abs)
   if (stat.isFile()) {
     if (!abs.endsWith('.tsx')) {
-      throw new Error(`check: ${source} is not a .tsx file`)
+      throw new Error(`[Pyreon] check: ${source} is not a .tsx file`)
     }
     return [abs]
   }
