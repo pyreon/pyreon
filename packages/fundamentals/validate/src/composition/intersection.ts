@@ -6,7 +6,7 @@
  */
 
 import type { ParseCtx } from '../core/ops'
-import { Schema as SchemaBase } from '../core/schema'
+import { Schema as SchemaBase, registerIntersectionFactory } from '../core/schema'
 import type { Schema } from '../core/schema'
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -38,6 +38,7 @@ export class IntersectionSchema<A, B> extends SchemaBase<A & B> {
   }
 }
 
-export function intersection<A, B>(left: Schema<A>, right: Schema<B>): IntersectionSchema<A, B> {
-  return new IntersectionSchema(left, right)
-}
+// Self-registers the `.and()` factory from this initializer (tree-shake-safe).
+export const intersection = registerIntersectionFactory(
+  <A, B>(left: Schema<A>, right: Schema<B>): IntersectionSchema<A, B> => new IntersectionSchema(left, right),
+)

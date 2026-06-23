@@ -13,7 +13,7 @@
 
 import { makeIssue } from '../core/issue'
 import type { ParseCtx } from '../core/ops'
-import { Schema as SchemaBase } from '../core/schema'
+import { Schema as SchemaBase, registerUnionFactory } from '../core/schema'
 import type { Schema } from '../core/schema'
 import { LiteralSchema } from '../primitives/literal'
 import { ObjectSchema } from './object'
@@ -55,11 +55,11 @@ export class UnionSchema<T extends readonly AnySchema[]> extends SchemaBase<Infe
   }
 }
 
-export function union<T extends readonly [AnySchema, AnySchema, ...AnySchema[]]>(
-  ...members: T
-): UnionSchema<T> {
-  return new UnionSchema(members)
-}
+// Self-registers the 2-arg `.or()` factory from this initializer (tree-shake-safe).
+export const union = registerUnionFactory(
+  <T extends readonly [AnySchema, AnySchema, ...AnySchema[]]>(...members: T): UnionSchema<T> =>
+    new UnionSchema(members),
+)
 
 // ─── Discriminated union ───────────────────────────────────────────────
 
