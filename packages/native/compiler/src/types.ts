@@ -532,6 +532,31 @@ export type StatementIR =
   | { kind: 'return'; expr?: ExprIR }
   /** Bare expression statement: `todos.set([...])`, `draft.set('')`. */
   | { kind: 'expr'; expr: ExprIR }
+  /**
+   * `while (cond) { … }` — Swift `while cond { … }` / Kotlin
+   * `while (cond) { … }`. Multi-statement handler control-flow.
+   */
+  | { kind: 'while'; cond: ExprIR; body: StatementIR[] }
+  /**
+   * `for (const item of iterable) { … }` — Swift `for item in iterable`
+   * / Kotlin `for (item in iterable)`. Only the `const`/`let`
+   * single-identifier binding form lowers; destructured / C-style `for`
+   * fall through to warn-drop.
+   */
+  | { kind: 'for-of'; item: string; iterable: ExprIR; body: StatementIR[] }
+  /**
+   * `switch (x) { case 'a': …; default: … }` — Swift `switch x { case
+   * "a": … }` / Kotlin `when (x) { "a" -> { … } }`. Each entry groups
+   * consecutive `case` labels (`tests`) that share one body; `tests: []`
+   * is the `default` / `else` branch. JS fall-through is NOT modeled
+   * beyond empty-case label grouping (Swift/Kotlin don't fall through) —
+   * a trailing `break` per case is stripped at parse.
+   */
+  | {
+      kind: 'switch'
+      discriminant: ExprIR
+      cases: { tests: ExprIR[]; body: StatementIR[] }[]
+    }
 
 /** Type annotation, parsed from `signal<T>(...)` generics. */
 export type TypeIR =

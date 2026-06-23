@@ -3741,10 +3741,81 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
     case 'ExpressionStatement': {
       return { kind: 'expr', expr: parseExpr(node.expression, ctx) }
     }
+    case 'WhileStatement': {
+      return {
+        kind: 'while',
+        cond: parseExpr(node.test, ctx),
+        body: parseLoopBody(node.body, ctx),
+      }
+    }
+    case 'ForOfStatement': {
+      // `for (const x of items) { … }` — only the single-identifier
+      // `const`/`let` binding lowers. Destructured (`for (const {a} of …)`)
+      // or C-style `for (let i=0; …)` (a ForStatement, different node)
+      // fall through to warn-drop.
+      const left = node.left as AnyNode | undefined
+      let item: string | undefined
+      if (
+        left?.type === 'VariableDeclaration' &&
+        ((left.declarations as AnyNode[] | undefined) ?? []).length === 1
+      ) {
+        const d = (left.declarations as AnyNode[])[0]!
+        if (d.id?.type === 'Identifier') item = d.id.name as string
+      }
+      if (item === undefined) {
+        ctx.warnings.push(
+          'Unsupported for-of binding — only `for (const x of …)` (single identifier) lowers on native.',
+        )
+        return null
+      }
+      return {
+        kind: 'for-of',
+        item,
+        iterable: parseExpr(node.right, ctx),
+        body: parseLoopBody(node.body, ctx),
+      }
+    }
+    case 'SwitchStatement': {
+      // `switch (x) { case 'a': …; break; default: … }`. Consecutive empty
+      // `case` labels share the following body (label grouping → Swift
+      // `case "a", "b":` / Kotlin `"a", "b" ->`). A trailing `break` per
+      // case is stripped — Swift/Kotlin don't fall through, so JS
+      // fall-through beyond label-grouping is NOT modeled (the common
+      // break-terminated shape is what real code writes).
+      const discriminant = parseExpr(node.discriminant, ctx)
+      const cases: { tests: ExprIR[]; body: StatementIR[] }[] = []
+      let pendingTests: ExprIR[] = []
+      let pendingDefault = false
+      for (const sc of (node.cases as AnyNode[] | undefined) ?? []) {
+        const isDefault = sc.test === null || sc.test === undefined
+        if (isDefault) pendingDefault = true
+        else pendingTests.push(parseExpr(sc.test, ctx))
+        const consequent = (sc.consequent as AnyNode[] | undefined) ?? []
+        if (consequent.length === 0) continue // empty label — share next body
+        const body: StatementIR[] = []
+        for (const st of consequent) {
+          if (st.type === 'BreakStatement') continue // strip (no fall-through)
+          const parsed = parseStatement(st, ctx)
+          if (parsed) body.push(parsed)
+        }
+        cases.push({ tests: pendingDefault ? [] : pendingTests, body })
+        pendingTests = []
+        pendingDefault = false
+      }
+      return { kind: 'switch', discriminant, cases }
+    }
     default:
       ctx.warnings.push(`Unsupported statement: ${node.type}.`)
       return null
   }
+}
+
+/** Parse a loop/branch body that may be a `BlockStatement` or a single statement. */
+function parseLoopBody(node: AnyNode | undefined, ctx: ParseCtx): StatementIR[] {
+  if (!node) return []
+  if (node.type === 'BlockStatement') return parseStatementBlock(node, ctx)
+  const s = parseStatement(node, ctx)
+  return s ? [s] : []
 }
 
 /** Extract the `T` from `signal<T>(…)`. oxc exposes generics as `typeArguments`. */
