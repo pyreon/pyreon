@@ -1597,7 +1597,11 @@ function emitKotlinFunction(
 function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): string {
   switch (s.kind) {
     case 'let':
-      return `val ${kotlinIdent(s.name)} = ${emitKotlinExpr(s.expr, indent)}`
+      // `var` when a later `assign` reassigns this local (markReassigned-
+      // LocalsMutable), else immutable `val`.
+      return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)} = ${emitKotlinExpr(s.expr, indent)}`
+    case 'assign':
+      return `${emitKotlinExpr(s.target, indent)} ${s.op} ${emitKotlinExpr(s.value, indent)}`
     case 'return': {
       // K2: emit `return@<label> expr` inside labeled lambda contexts
       // (e.g. multi-statement `derivedStateOf { … }` bodies) so kotlinc
