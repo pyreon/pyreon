@@ -54,8 +54,8 @@ describe('use-form in production mode (dev-gate false side)', () => {
   it('builds fields, validates, and reads form-state without the counter emits', async () => {
     const onSubmit = vi.fn()
     const { result, unmount } = mountWith(() => {
-      // Field loop runs the gated fieldSignalCreate (262) + fieldEffectCreate
-      // (344) blocks with the counter skipped.
+      // Field loop runs the gated fieldSignalCreate block with the counter
+      // skipped (auto-validation is inline in setValue — no per-field effect).
       const form = useForm({
         initialValues: { email: '', name: '' },
         validators: {
