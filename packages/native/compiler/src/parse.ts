@@ -1927,7 +1927,8 @@ function forEachExpr(e: ExprIR, visit: (n: ExprIR) => void): void {
     case 'jsx-element':
       for (const a of e.attrs) {
         if (a.kind === 'attr') forEachExpr(a.value, visit)
-        else forEachExpr(a.handler, visit)
+        else if (a.kind === 'event') forEachExpr(a.handler, visit)
+        else forEachExpr(a.argument, visit)
       }
       for (const ch of e.children) if (ch.kind === 'expr') forEachExpr(ch.expr, visit)
       return
@@ -4540,6 +4541,12 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
 }
 
 function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
+  // JSX spread attribute: `<Comp {...props} />`. oxc shape:
+  // `JSXSpreadAttribute` with `.argument`. Captured as a spread AttrIR; the
+  // emitter expands it against the target component's declared props.
+  if (node.type === 'JSXSpreadAttribute') {
+    return { kind: 'spread', argument: parseExpr(node.argument, ctx) }
+  }
   if (node.type !== 'JSXAttribute' || !node.name?.name) return null
   const rawName = node.name.name as string
   const value = node.value

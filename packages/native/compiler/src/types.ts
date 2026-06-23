@@ -730,6 +730,16 @@ export type AttrIR =
   | { kind: 'attr'; name: string; value: ExprIR }
   /** Event handler: `onClick={() => …}`. The 'on' prefix is stripped from `name`. */
   | { kind: 'event'; name: string; handler: ExprIR }
+  /**
+   * JSX spread attribute: `<Comp {...props} />` / `<Comp {...{a:1}} />`.
+   * `argument` is the spread source. At emit, for a USER component the spread
+   * expands to per-prop constructor args: an object-literal source expands its
+   * own fields; an identifier/member source expands the TARGET component's
+   * declared props, each sourced as `<argument>.<prop>`. Explicit sibling
+   * attrs win (a spread prop they also set is skipped). Spreads onto
+   * primitives have no native equivalent → warn-drop.
+   */
+  | { kind: 'spread'; argument: ExprIR }
 
 export type ChildIR =
   /** Static text between JSX tags: `<Text>Hello</Text>`. */
