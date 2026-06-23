@@ -28,3 +28,24 @@ loop, replacing the effect's setup-run). All 206 tests pass.
 
 The `form.fieldEffectCreate` dev perf-counter is removed (the effect it
 measured no longer exists).
+
+**Also: an epoch-cached `values()` / `getValues()` snapshot.** Rebuilding the
+values object on every read was O(N) (~109ns/12 fields vs a plain store's
+~7ns). It's now cached and rebuilt only when a value-mutation method
+(`setValue` / `reset` / `setInitialValues`) advances an internal epoch — a
+clean read is an integer compare + cached-object return (**read-all-values:
+109ns → ~6ns, now FASTER than TanStack's ~7ns**), and the write path pays only
+one integer increment (no signal/subscriber → the 43ns keystroke path is
+untouched). Contract: the snapshot reflects mutations through the form's
+methods; a direct `form.fields.x.value.set(...)` bypasses the epoch (same as it
+already bypasses dirty-tracking + auto-validation — use `setFieldValue`). 6 new
+bisect-verified specs lock the invalidation contract.
+
+Net result vs TanStack Form (headless `form-bench.ts`): Pyreon now wins
+**update ~83×**, **read ~1.3×**, **reset ~6×**, and **0 vs 10 re-renders** —
+losing only once-per-form `setup` (~1.3×), the deliberate price of per-field
+fine-grained signals (which buy the 83× write win). (A dirty-count-inline
+attempt to close `setup` was measured + reverted — it regressed the keystroke
+path ~2× via V8 deopt of a larger `setValue`; the dirty subscriber was already
+free on the hot path since it fires only on dirty transitions, not per
+keystroke.)
