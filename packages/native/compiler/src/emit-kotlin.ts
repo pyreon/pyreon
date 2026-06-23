@@ -1264,6 +1264,17 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
       return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${typeStr}>(listOf()) }`
     }
+    // A `null` initial needs an EXPLICIT nullable type param. `mutableStateOf(null)`
+    // alone infers `MutableState<Nothing?>`, which poisons every downstream
+    // read — `p?.field` in a `derivedStateOf` then fails with "cannot infer
+    // type for T". The declared type (`signal<Box | null>`) already resolves
+    // to a nullable `Box?` via `kotlinType`/`kotlinUnionType`; force the `?`
+    // so even a defensive non-nullable declaration stays sound. (Swift needs
+    // no equivalent — it already emits `@State var x: Box? = nil`.)
+    if (d.initial.kind === 'literal' && d.initial.value === null) {
+      const nullableType = typeStr.endsWith('?') ? typeStr : `${typeStr}?`
+      return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${nullableType}>(null) }`
+    }
     return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf(${initial}) }`
   }
   if (d.kind === 'function') {
