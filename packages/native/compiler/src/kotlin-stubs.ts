@@ -319,6 +319,15 @@ val Int.dp: Dp get() = Dp(this.toFloat())
 val Float.dp: Dp get() = Dp(this)
 val Double.dp: Dp get() = Dp(this.toFloat())
 
+// SemanticsPropertyReceiver — the lambda receiver for Modifier.semantics {}.
+// Real Compose exposes contentDescription as a var extension property on this
+// receiver (androidx.compose.ui.semantics); the stub models it as a member
+// var so semantics { contentDescription = ... } type-checks with the same
+// call shape. Mirrors the real surface, not a superset.
+class SemanticsPropertyReceiver {
+  var contentDescription: String = ""
+}
+
 // Modifier — Compose's chainable layout/decorator API. Real Modifier
 // is a marker interface with extension functions; the stub uses a
 // concrete object so chains compose cleanly (e.g.
@@ -343,6 +352,18 @@ object Modifier {
   // it from androidx.compose.ui.platform; same call shape.
   @Suppress("UNUSED_PARAMETER")
   fun testTag(tag: String): Modifier = this
+  // P5 a11y — semantics { contentDescription = ... } for the
+  // accessibilityLabel vocabulary. Real Compose ships semantics from
+  // androidx.compose.ui.semantics with a leading mergeDescendants: Boolean =
+  // false param + a SemanticsPropertyReceiver.() -> Unit block; the emit uses
+  // the trailing-lambda form so the default applies. Mirrors the real
+  // signature EXACTLY (not a superset) so the validate gate can't mask a
+  // real-gradle failure (the stub-masking trap).
+  @Suppress("UNUSED_PARAMETER")
+  fun semantics(
+    mergeDescendants: Boolean = false,
+    properties: SemanticsPropertyReceiver.() -> Unit,
+  ): Modifier = this
   // PR-3.4 — alpha for KeepAlive visibility-preservation. Real
   // Compose ships it from androidx.compose.ui.draw; same call shape.
   @Suppress("UNUSED_PARAMETER")

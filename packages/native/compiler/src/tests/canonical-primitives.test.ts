@@ -1986,3 +1986,46 @@ describe('Cross-platform a11y vocabulary → SwiftUI a11y modifiers (P5 native, 
     expect(out).not.toContain('.accessibilityHidden')
   })
 })
+describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Android)', () => {
+  it('Kotlin: accessibilityLabel → .semantics { contentDescription = "..." }', () => {
+    const out = tx(`<Stack accessibilityLabel="Close menu"><Text>x</Text></Stack>`, 'kotlin')
+    expect(out).toContain('.semantics { contentDescription = "Close menu" }')
+  })
+
+  it('Kotlin: accessibilityLabel on a leaf interaction primitive (Button)', () => {
+    const out = tx(`<Button onPress={() => {}} accessibilityLabel="Add to cart">cart</Button>`, 'kotlin')
+    expect(out).toContain('.semantics { contentDescription = "Add to cart" }')
+  })
+
+  it('Kotlin: accessibilityHidden is NOT yet lowered (version-sensitive, deferred)', () => {
+    const out = tx(`<Stack accessibilityHidden><Text>deco</Text></Stack>`, 'kotlin')
+    expect(out).not.toContain('.semantics')
+    expect(out).not.toContain('invisibleToUser')
+    expect(out).not.toContain('hideFromAccessibility')
+  })
+
+  it('Kotlin: accessibilityLabel emits semantics even alongside accessibilityHidden (label half ships)', () => {
+    const out = tx(`<Stack accessibilityLabel="Cart" accessibilityHidden><Text>x</Text></Stack>`, 'kotlin')
+    expect(out).toContain('.semantics { contentDescription = "Cart" }')
+  })
+
+  it('Kotlin: no a11y props → no .semantics modifier (unchanged emit)', () => {
+    const out = tx(`<Stack><Text>x</Text></Stack>`, 'kotlin')
+    expect(out).not.toContain('.semantics')
+  })
+})
+
+describe.skipIf(skipKotlincCondition)(
+  'Cross-platform a11y vocabulary → Compose semantics — kotlinc compile (P5 native, Android)',
+  () => {
+    it('semantics { contentDescription = … } compiles (stub mirrors real Compose surface)', () => {
+      const out = tx(`<Stack accessibilityLabel="Close menu"><Text>hi</Text></Stack>`, 'kotlin')
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(`a11y semantics failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
+      }
+      expect(result.ok).toBe(true)
+      expect(out).toContain('contentDescription = "Close menu"')
+    })
+  },
+)

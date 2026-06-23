@@ -162,6 +162,18 @@ function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('RoundedCornerShape(')) {
     imports.push('import androidx.compose.foundation.shape.RoundedCornerShape')
   }
+  // A11y emit (<… accessibilityLabel>): the `.semantics { contentDescription
+  // = … }` modifier + the `contentDescription` semantics property both live in
+  // androidx.compose.ui.semantics — a sub-package NOT covered by the
+  // star-imported androidx.compose.ui.* (Kotlin star imports are
+  // single-package). Same stub-masked class as Color / RoundedCornerShape:
+  // the kotlinc validate loop's stub provides them, so only a REAL Android
+  // build would surface a missing import — these conditional imports keep the
+  // real gradle build resolvable.
+  if (emitted.includes('.semantics {')) {
+    imports.push('import androidx.compose.ui.semantics.semantics')
+    imports.push('import androidx.compose.ui.semantics.contentDescription')
+  }
   // Scroll emit (<Scroll>): verticalScroll/horizontalScroll/
   // rememberScrollState live in the ROOT androidx.compose.foundation
   // package — NOT covered by the star-imported foundation.layout/.lazy/
