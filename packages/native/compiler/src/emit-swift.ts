@@ -16,7 +16,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { substituteIdentifier, synthLiteralStructName } from './expr-utils'
+import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -273,6 +273,14 @@ let _fontMap: Record<string, string> = {}
  * — those fall through to the existing "needs static" emit path.
  */
 let _constStringMap: Map<string, string | number | boolean> = new Map()
+/**
+ * Per-COMPONENT const-string map — component-body `const` literal bindings
+ * (+ transitive aliases) so `readStaticAttr` resolves `<Image src={logo}>`
+ * where `logo` is a component-scope const, not just a module-level one. Set
+ * at the top of each `emitSwiftComponent`; consulted by `readStaticAttr`
+ * after `_constStringMap`.
+ */
+let _componentConstMap: Map<string, string | number | boolean> = new Map()
 
 /** Test/debug-only helper to read accumulated warnings without
  *  going through the full emit pipeline. Returns a copy. */
@@ -1051,6 +1059,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
   // concrete return type instead of degrading to Any.
   const inferCtx = buildInferenceCtx(c.decls, _storeDefs)
+  // Component-scope const literals → static-attr resolution (`<Image
+  // src={logo}>` where `logo` is a component-body const).
+  _componentConstMap = buildComponentConstMap(c.decls)
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites later in the body.
@@ -3513,6 +3524,10 @@ function readStaticAttr(
       if (a.value.kind === 'identifier') {
         const resolved = _constStringMap.get(a.value.name)
         if (resolved !== undefined) return resolved
+        // Component-scope const (set per emitSwiftComponent) — same
+        // resolution as a module-level const.
+        const compResolved = _componentConstMap.get(a.value.name)
+        if (compResolved !== undefined) return compResolved
       }
     }
   }

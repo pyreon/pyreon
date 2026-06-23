@@ -6,7 +6,39 @@
 // SAME idiomatic native emit the hand-written `.set(x().map(...))`
 // form produces (no IIFE, no closure-invocation noise).
 
-import type { AttrIR, ChildIR, ExprIR, StructIR, TypeIR } from './types'
+import type { AttrIR, ChildIR, DeclIR, ExprIR, StructIR, TypeIR } from './types'
+
+/**
+ * Per-component map of `const name → scalar-literal value` for COMPONENT-SCOPE
+ * consts, so a static-attr resolver (`<Image src={logo}>`, `<WebView html=…>`,
+ * font, background) can resolve a named component-body const the same way it
+ * already resolves a module-level one. Handles transitive aliases in source
+ * order (`const a = '/x'; const b = a` → both resolve) — one forward pass
+ * suffices because a `const` must be declared before it's referenced.
+ *
+ * Reads the `value` DeclIR (plain component-body consts; shipped with the
+ * value-const widening). Only string / number / boolean literals + identifier
+ * aliases to an already-known const are captured; anything else is skipped
+ * (the static-attr path then falls through to its existing "needs static"
+ * behavior, unchanged).
+ */
+export function buildComponentConstMap(decls: DeclIR[]): Map<string, string | number | boolean> {
+  const map = new Map<string, string | number | boolean>()
+  for (const d of decls) {
+    if (d.kind !== 'value') continue
+    const e = d.expr
+    if (
+      e.kind === 'literal' &&
+      (typeof e.value === 'string' || typeof e.value === 'number' || typeof e.value === 'boolean')
+    ) {
+      map.set(d.name, e.value)
+    } else if (e.kind === 'identifier') {
+      const aliased = map.get(e.name)
+      if (aliased !== undefined) map.set(d.name, aliased)
+    }
+  }
+  return map
+}
 
 /** TypeIR for a SCALAR literal value (string / number / boolean), else null. */
 export function scalarLiteralType(e: ExprIR): TypeIR | null {

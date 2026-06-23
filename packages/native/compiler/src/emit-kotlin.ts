@@ -12,7 +12,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { substituteIdentifier, synthLiteralStructName } from './expr-utils'
+import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import {
   type FlatRouteEntry,
@@ -172,6 +172,10 @@ let _emitWarnings: string[] = []
  * the existing "needs static" emit path.
  */
 let _constStringMapKotlin: Map<string, string | number | boolean> = new Map()
+/** Per-COMPONENT const-string map — mirror of emit-swift's
+ * `_componentConstMap`. Set per `emitKotlinComponent`; consulted by
+ * `readStaticAttrKotlin` after the module-level map. */
+let _componentConstMapKotlin: Map<string, string | number | boolean> = new Map()
 
 export function _peekKotlinEmitWarnings(): string[] {
   return [..._emitWarnings]
@@ -973,6 +977,8 @@ interface KotlinCtx {
 let _activePropsParamName: string | undefined
 
 function emitKotlinComponent(c: ComponentIR): string {
+  // Component-scope const literals → static-attr resolution (mirror of Swift).
+  _componentConstMapKotlin = buildComponentConstMap(c.decls)
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites — mirrors Swift emit. Note: the type field
@@ -3052,6 +3058,9 @@ function readStaticAttrKotlin(
       if (a.value.kind === 'identifier') {
         const resolved = _constStringMapKotlin.get(a.value.name)
         if (resolved !== undefined) return resolved
+        // Component-scope const (set per emitKotlinComponent).
+        const compResolved = _componentConstMapKotlin.get(a.value.name)
+        if (compResolved !== undefined) return compResolved
       }
     }
   }
