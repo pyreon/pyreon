@@ -953,14 +953,12 @@ describe('lpih — getDefaultLpihCachePath fallback paths', () => {
     // Use a short interval to ensure multiple writes within the test window.
     const dispose = startLpihPolling(cachePath, 30)
 
-    // Wait long enough for at least 2 writes.
-    await new Promise((resolve) => setTimeout(resolve, 100))
-
-    const exists = await fs
-      .stat(cachePath)
-      .then(() => true)
-      .catch(() => false)
-    expect(exists).toBe(true)
+    // Poll until the first async polling write lands. A fixed 100ms wait
+    // raced the async `_writeToPath` under parallel-load CI (same flake
+    // class fixed in coverage-gaps.test.ts) — vi.waitFor retries fs.stat
+    // (throws ENOENT until the file exists) up to a generous timeout, so
+    // event-loop starvation under concurrent workers can't fail it.
+    await vi.waitFor(() => fs.stat(cachePath), { timeout: 2000, interval: 25 })
 
     // Dispose stops the scheduled timer (an in-flight tick may still settle).
     dispose()

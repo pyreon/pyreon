@@ -7,7 +7,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { batch } from '../batch'
 import { computed } from '../computed'
 import { createSelector } from '../createSelector'
@@ -161,11 +161,22 @@ describe('lpih — startLpihPolling writes the cache then stops (lpih.ts _writeT
   it('polls to an explicit path and produces a JSON file', async () => {
     const path = join(dir, 'cache.json')
     const stop = startLpihPolling(path, 10)
-    // wait for at least one tick
-    await new Promise((r) => setTimeout(r, 40))
-    stop()
-    const raw = readFileSync(path, 'utf8')
-    expect(() => JSON.parse(raw)).not.toThrow()
+    try {
+      // Poll until the first tick's ASYNC write (`await _writeToPath`) has
+      // landed AND parses. A fixed `setTimeout(40)` flaked with ENOENT under
+      // parallel test load — when the event loop is starved by concurrent
+      // workers the async write hadn't completed within the hardcoded wait.
+      // `vi.waitFor` retries until the file is both present and valid JSON
+      // (covers ENOENT and a partial mid-write read), robust to load.
+      await vi.waitFor(
+        () => {
+          JSON.parse(readFileSync(path, 'utf8'))
+        },
+        { timeout: 2000, interval: 10 },
+      )
+    } finally {
+      stop()
+    }
   })
 })
 
