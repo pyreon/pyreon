@@ -6,9 +6,34 @@
  */
 
 import { makeIssue } from '../core/issue'
-import type { ParseCtx } from '../core/ops'
-import { Schema as SchemaBase } from '../core/schema'
+import type { CheckOpts, Op, ParseCtx } from '../core/ops'
+import { attachCheck, makeCheckIssue, Schema as SchemaBase } from '../core/schema'
 import type { Schema } from '../core/schema'
+
+type SizeKind = 'check:collection:min' | 'check:collection:max' | 'check:collection:size'
+
+/**
+ * Push a `.size`-based check onto a Set/Map schema. Runs after `_compileType`
+ * (in the shared checks pass) against the validated collection; both `Set` and
+ * `Map` expose `.size`, so one helper serves both.
+ */
+function pushSizeCheck<S extends SchemaBase<unknown>>(schema: S, kind: SizeKind, n: number, opts?: CheckOpts): S {
+  ;(schema as unknown as { _ops: Op[] })._ops.push(
+    attachCheck({ kind, n, opts } as Op, (value, ctx) => {
+      const size = value instanceof Set || value instanceof Map ? value.size : undefined
+      if (size === undefined) return
+      const ok = kind === 'check:collection:min' ? size >= n : kind === 'check:collection:max' ? size <= n : size === n
+      if (ok) return
+      const code = kind === 'check:collection:max' ? 'too_big' : kind === 'check:collection:min' ? 'too_small' : 'wrong_size'
+      const word = kind === 'check:collection:min' ? `at least ${n}` : kind === 'check:collection:max' ? `at most ${n}` : `exactly ${n}`
+      ctx.issues.push(
+        makeCheckIssue(code, `Must have ${word} items`, `validate.collection.${kind.split(':')[2]}`, { n, actual: size }, `Must have ${word} items`, ctx, opts),
+      )
+    }),
+  )
+  ;(schema as unknown as { _invalidateCompile(): void })._invalidateCompile()
+  return schema
+}
 
 export class MapSchema<K, V> extends SchemaBase<Map<K, V>> {
   readonly _kind = 'map' as const
@@ -46,6 +71,19 @@ export class MapSchema<K, V> extends SchemaBase<Map<K, V>> {
     }
     return out
   }
+
+  /** Require at least `n` entries. */
+  min(n: number, opts?: CheckOpts): this {
+    return pushSizeCheck(this, 'check:collection:min', n, opts)
+  }
+  /** Require at most `n` entries. */
+  max(n: number, opts?: CheckOpts): this {
+    return pushSizeCheck(this, 'check:collection:max', n, opts)
+  }
+  /** Require exactly `n` entries. */
+  size(n: number, opts?: CheckOpts): this {
+    return pushSizeCheck(this, 'check:collection:size', n, opts)
+  }
 }
 
 export function map<K, V>(key: Schema<K>, value: Schema<V>): MapSchema<K, V> {
@@ -82,6 +120,23 @@ export class SetSchema<V> extends SchemaBase<Set<V>> {
       i++
     }
     return out
+  }
+
+  /** Require at least `n` members. */
+  min(n: number, opts?: CheckOpts): this {
+    return pushSizeCheck(this, 'check:collection:min', n, opts)
+  }
+  /** Require at most `n` members. */
+  max(n: number, opts?: CheckOpts): this {
+    return pushSizeCheck(this, 'check:collection:max', n, opts)
+  }
+  /** Require exactly `n` members. */
+  size(n: number, opts?: CheckOpts): this {
+    return pushSizeCheck(this, 'check:collection:size', n, opts)
+  }
+  /** Require at least one member. */
+  nonEmpty(opts?: CheckOpts): this {
+    return pushSizeCheck(this, 'check:collection:min', 1, opts)
   }
 }
 

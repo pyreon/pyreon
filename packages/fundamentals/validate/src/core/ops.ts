@@ -26,6 +26,7 @@ export type Op =
   | StringCheckOp
   | NumberCheckOp
   | ArrayCheckOp
+  | CollectionCheckOp
   | DateCheckOp
   | BigIntCheckOp
   | ModifierOp
@@ -95,6 +96,13 @@ export type ArrayCheckOp =
   | { kind: 'check:array:max'; n: number; opts?: CheckOpts | undefined }
   | { kind: 'check:array:length'; n: number; opts?: CheckOpts | undefined }
   | { kind: 'check:array:nonempty'; opts?: CheckOpts | undefined }
+
+// ─── Collection (Set / Map) size checks ──────────────────────────────────────
+// Both Set and Map expose `.size`, so one op family covers both.
+export type CollectionCheckOp =
+  | { kind: 'check:collection:min'; n: number; opts?: CheckOpts | undefined }
+  | { kind: 'check:collection:max'; n: number; opts?: CheckOpts | undefined }
+  | { kind: 'check:collection:size'; n: number; opts?: CheckOpts | undefined }
 
 // ─── Date checks ───────────────────────────────────────────────────────────
 
