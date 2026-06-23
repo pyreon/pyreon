@@ -208,7 +208,12 @@ const useOverlay = ({
   // DOM refs (plain variables, component runs once)
   let triggerEl: HTMLElement | null = null
   let contentEl: HTMLElement | null = null
-  const _prevFocusEl: HTMLElement | null = null
+  // Element focused when the overlay opened (usually the trigger). Captured in
+  // showContent, restored in hideContent so keyboard / screen-reader users
+  // aren't dropped at the top of the document when a dropdown / popover / modal
+  // closes. (Native `<dialog>.showModal()` does this for free — this covers the
+  // non-modal overlay types.)
+  let _prevFocusEl: HTMLElement | null = null
   let hoverTimeout: ReturnType<typeof setTimeout> | null = null
 
   const triggerRef = (node: HTMLElement | null) => {
@@ -224,12 +229,30 @@ const useOverlay = ({
   const setUnblocked = () => blockedCount.update((c) => Math.max(0, c - 1))
 
   const showContent = () => {
+    // Capture the element to return focus to on close (typically the trigger).
+    if (!isServer) {
+      _prevFocusEl = document.activeElement as HTMLElement | null
+    }
     active.set(true)
     onOpen?.()
     ctx.setBlocked?.()
   }
 
   const hideContent = () => {
+    // Decide whether to restore focus BEFORE closing — once `active` flips the
+    // content may unmount and `contentEl` go null. Restore only when focus is
+    // still INSIDE the closing overlay (or was lost to <body>/null); if the
+    // user deliberately moved focus elsewhere (e.g. clicked another control
+    // that closed this overlay), leave it there.
+    const prev = _prevFocusEl
+    _prevFocusEl = null
+    let shouldRestore = false
+    if (prev && !isServer) {
+      const ae = document.activeElement
+      const focusInOverlay = !!contentEl && !!ae && (ae === contentEl || contentEl.contains(ae))
+      const focusLost = ae === null || ae === document.body
+      shouldRestore = focusInOverlay || focusLost
+    }
     // batch() so subscribers reading both active + isContentLoaded
     // (e.g. the overlay shell + the content portal) get notified once
     // per close, not twice. Fires on every overlay dismiss path.
@@ -237,6 +260,7 @@ const useOverlay = ({
       active.set(false)
       isContentLoaded.set(false)
     })
+    if (shouldRestore && prev && typeof prev.focus === 'function') prev.focus()
     onClose?.()
     ctx.setUnblocked?.()
   }
