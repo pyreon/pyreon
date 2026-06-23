@@ -54,7 +54,12 @@ export type StringCheckOp =
   | { kind: 'check:string:nanoid'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:emoji'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:base64'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:base64url'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:jwt'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:cuid'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:cidr'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:duration'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:e164'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:iso:date'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:iso:datetime'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:iso:time'; opts?: CheckOpts | undefined }
