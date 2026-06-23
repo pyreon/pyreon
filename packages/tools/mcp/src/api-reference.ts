@@ -3071,10 +3071,42 @@ const secret = useEncrypted('api-key', '')`,
 
 i18n.t('greeting', { name: 'World' })  // "Hello, World!"
 i18n.locale.set('fr')  // switch reactively`,
-    notes: 'Create a reactive i18n instance. Returns `{ t, locale, addMessages, loadNamespace }`. The `t(key, values?)` function resolves translations reactively — changing `locale` via `.set()` re-evaluates all `t()` reads in reactive scopes. Supports `{{name}}` interpolation, `_one`/`_other` plural suffixes, namespace lazy loading with deduplication, fallback locale, and custom plural rules. Available from both `@pyreon/i18n` and `@pyreon/i18n/core`. See also: I18nProvider, useI18n, Trans, interpolate.',
+    notes: 'Create a reactive i18n instance. Returns `{ t, n, d, rt, locale, addMessages, loadNamespace, ... }`. The `t(key, values?)` function resolves translations reactively — changing `locale` via `.set()` re-evaluates all `t()`/`n()`/`d()`/`rt()` reads in reactive scopes. Supports `{{name}}` interpolation, inline format specifiers (`{{amount, currency}}`), `_one`/`_other`/`_zero` plural suffixes, `context` (gender/variant), `defaultValue`, `$t(key)` nesting, namespace lazy loading with deduplication, fallback locale, and custom plural rules. Configure named Intl formats via `numberFormats` / `dateFormats` / `relativeTimeFormats` and custom inline formatters via `formats`. Available from both `@pyreon/i18n` and `@pyreon/i18n/core`. See also: I18nProvider, useI18n, Trans, interpolate, n, d, rt.',
     mistakes: `- Reading \`t(key)\` outside a reactive scope and expecting updates on locale change — \`t()\` is a reactive signal read, wrap in JSX thunk or \`effect()\`
 - Using \`@pyreon/i18n\` on the backend — use \`@pyreon/i18n/core\` instead, it has zero JSX/core dependencies
 - Forgetting \`fallbackLocale\` — missing keys in the current locale return the key string instead of falling back to another language`,
+  },
+
+  'i18n/n': {
+    signature: '(value: number | bigint, options?: Intl.NumberFormatOptions | string) => string',
+    example: `i18n.n(1234.5)                                   // "1,234.5"
+i18n.n(9.99, { style: 'currency', currency: 'USD' }) // "$9.99"
+i18n.n(0.42, { style: 'percent' })               // "42%"
+// named format from createI18n({ numberFormats: { en: { price: {...} } } })
+i18n.n(9.99, 'price')`,
+    notes: 'Format a number for the current locale via `Intl.NumberFormat`. Reactive — re-runs on locale change. `options` is an `Intl.NumberFormatOptions` object OR the name of a configured `numberFormats` entry. The underlying formatter is memoized per (locale, options), so repeated calls in a list reuse one `Intl.NumberFormat`. See also: createI18n, d, rt.',
+    mistakes: `- Calling \`n()\` outside a reactive scope and expecting it to re-format on locale change — like \`t()\`, it reads the locale signal, so read it inside JSX / effect / computed
+- Re-creating an options object every render thinking it allocates a formatter each time — formatters are memoized by a stringified options key, so inline option objects are fine`,
+  },
+
+  'i18n/d': {
+    signature: '(value: Date | number | string, options?: Intl.DateTimeFormatOptions | string) => string',
+    example: `i18n.d(Date.now(), { dateStyle: 'medium' })  // "Jan 15, 2024"
+i18n.d(post.publishedAt, 'short')            // named dateFormats entry
+i18n.d('2024-01-15T12:00:00Z', { timeZone: 'UTC', dateStyle: 'long' })`,
+    notes: 'Format a date for the current locale via `Intl.DateTimeFormat`. Accepts a `Date`, epoch-ms number, or parseable string. Reactive + memoized. `options` is an `Intl.DateTimeFormatOptions` object or a configured `dateFormats` name. The bare inline specs `date` / `time` / `datetime` map to sensible default styles. See also: createI18n, n, rt.',
+    mistakes: `- Passing a value that \`new Date()\` cannot parse — guard upstream; an invalid date formats as "Invalid Date"
+- Expecting a fixed timezone — without \`timeZone\` in options, formatting uses the runtime timezone (pass \`timeZone: "UTC"\` for deterministic SSR/test output)`,
+  },
+
+  'i18n/rt': {
+    signature: '(value: number, unit: Intl.RelativeTimeFormatUnit, options?: Intl.RelativeTimeFormatOptions | string) => string',
+    example: `i18n.rt(-3, 'day')                     // "3 days ago"
+i18n.rt(2, 'hour')                     // "in 2 hours"
+i18n.rt(-1, 'day', { numeric: 'auto' })// "yesterday"`,
+    notes: 'Format a relative time for the current locale via `Intl.RelativeTimeFormat`. Reactive + memoized. Negative values are past, positive are future. Pass `{ numeric: "auto" }` for "yesterday"/"tomorrow" phrasing. See also: createI18n, n, d.',
+    mistakes: `- Forgetting the unit argument — \`rt\` needs an explicit \`Intl.RelativeTimeFormatUnit\` (e.g. "day", "hour")
+- Computing the delta in the wrong sign — negative is past ("ago"), positive is future ("in …")`,
   },
 
   'i18n/I18nProvider': {
@@ -3094,11 +3126,13 @@ return <div>{t('greeting', { name: 'User' })}</div>`,
 
   'i18n/Trans': {
     signature: '(props: TransProps) => VNodeChild',
-    example: `// Message: "Please <link>click here</link> to continue"
-<Trans key="action" components={{ link: <a href="/next" /> }}>
-  Please <link>click here</link> to continue
-</Trans>`,
-    notes: 'Rich text interpolation component. Translates a key and replaces named placeholders with JSX components. Use for translations that contain markup (bold, links, etc.) that cannot be expressed as plain string interpolation. See also: createI18n, useI18n.',
+    example: `// Message "action": "Please <link>click here</link> to continue"
+// t is read from <I18nProvider> automatically:
+<Trans i18nKey="action" components={{ link: (c) => <a href="/next">{c}</a> }} />`,
+    notes: 'Rich text interpolation component. Translates `i18nKey` (with `values`) then maps `<tag>…</tag>` segments in the result to the `components` map, whose values are `(children) => VNode` functions. `t` is optional — when omitted, `<Trans>` reads the instance from the nearest `<I18nProvider>` via `useI18n()`. Use for translations that contain markup (bold, links, etc.) that cannot be expressed as plain string interpolation. See also: createI18n, useI18n.',
+    mistakes: `- Using \`key\` instead of \`i18nKey\` — \`key\` is reserved by JSX for reconciliation and will not reach Trans
+- Passing a VNode as a components value (\`{ link: <a/> }\`) — values must be functions \`(children) => VNode\`
+- Rendering \`<Trans>\` outside an \`<I18nProvider>\` without a \`t\` prop — it throws; either wrap in a provider or pass \`t\``,
   },
 
   'i18n/interpolate': {

@@ -21,7 +21,7 @@
   "@pyreon/head": 256,
   "@pyreon/hooks": 4608,
   "@pyreon/hotkeys": 2304,
-  "@pyreon/i18n": 2560,
+  "@pyreon/i18n": 3584,
   "@pyreon/kinetic": 4864,
   "@pyreon/kinetic-presets": 4864,
   "@pyreon/lint": 512,

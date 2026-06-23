@@ -5,7 +5,8 @@ import type { I18nInstance } from './types'
 export const I18nContext = createContext<I18nInstance | null>(null)
 
 export interface I18nProviderProps extends Props {
-  instance: I18nInstance
+  /** The i18n instance to provide (from `createI18n`). */
+  value: I18nInstance
   children?: VNodeChild
 }
 
@@ -16,12 +17,12 @@ export interface I18nProviderProps extends Props {
  * const i18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hello' } } })
  *
  * // In JSX:
- * <I18nProvider instance={i18n}>
+ * <I18nProvider value={i18n}>
  *   <App />
  * </I18nProvider>
  */
 export function I18nProvider(props: I18nProviderProps): VNode {
-  provide(I18nContext, props.instance)
+  provide(I18nContext, props.value)
 
   const ch = props.children
   return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode

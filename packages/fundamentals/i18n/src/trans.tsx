@@ -37,6 +37,7 @@
 //
 // ──────────────────────────────────────────────────────────────────
 import type { Props, VNode } from '@pyreon/core'
+import { useI18n } from './context'
 import type { InterpolationValues } from './types'
 
 const TAG_RE = /<(\w+)>([^<]*)<\/\1>/g
@@ -89,10 +90,11 @@ export interface TransProps extends Props {
    */
   components?: Record<string, (children: any) => any>
   /**
-   * The i18n instance's `t` function.
-   * Can be obtained from `useI18n()` or passed directly.
+   * The i18n instance's `t` function. Optional — when omitted, `<Trans>` reads
+   * it from the nearest `<I18nProvider>` via `useI18n()`. Pass it explicitly
+   * only to override the context instance (or in a provider-less render).
    */
-  t: (key: string, values?: InterpolationValues) => string
+  t?: (key: string, values?: InterpolationValues) => string
 }
 
 /**
@@ -104,9 +106,8 @@ export interface TransProps extends Props {
  *
  * @example
  * // Translation: "You have <bold>{{count}}</bold> unread messages"
- * const { t } = useI18n()
+ * // `t` is read from <I18nProvider> automatically — no `t={t}` needed.
  * <Trans
- *   t={t}
  *   i18nKey="messages.unread"
  *   values={{ count: 5 }}
  *   components={{
@@ -127,7 +128,10 @@ export interface TransProps extends Props {
  * />
  */
 export function Trans(props: TransProps): VNode | string {
-  const translated = props.t(props.i18nKey, props.values)
+  // Prefer an explicitly-passed `t`; otherwise read the instance from context.
+  // `??` short-circuits, so passing `t` works without an <I18nProvider>.
+  const t = props.t ?? useI18n().t
+  const translated = t(props.i18nKey, props.values)
 
   if (!props.components) return translated
 
