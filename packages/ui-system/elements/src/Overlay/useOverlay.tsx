@@ -1,10 +1,12 @@
 /**
  * Core hook powering the Overlay component. Manages open/close state, DOM
- * event listeners (click, hover, scroll, resize, ESC key), and dynamic
- * positioning of overlay content relative to its trigger. Supports dropdown,
- * tooltip, popover, and modal types with automatic edge-of-viewport flipping.
- * Event handlers are throttled for performance, and nested overlay blocking
- * is coordinated through the overlay context.
+ * event listeners (click, hover, scroll, resize, ESC key), focus management
+ * (restore-to-opener on close for all types; for `type: 'modal'` also
+ * focus-in on open + a Tab / Shift+Tab focus trap — the WAI-ARIA dialog
+ * pattern), and dynamic positioning of overlay content relative to its
+ * trigger. Supports dropdown, tooltip, popover, and modal types with automatic
+ * edge-of-viewport flipping. Event handlers are throttled for performance, and
+ * nested overlay blocking is coordinated through the overlay context.
  */
 
 import { batch, isServer, signal } from '@pyreon/reactivity'
@@ -45,6 +47,13 @@ export type UseOverlayProps = Partial<{
 
 // Reference counter for nested modals sharing document.body overflow lock.
 let modalOverflowCount = 0
+
+// Tabbable selector for the modal focus trap (mirrors @pyreon/hooks
+// useFocusTrap). Used to find the first/last focusable descendant so Tab /
+// Shift+Tab cycle WITHIN an open modal instead of escaping to the inert
+// background behind it.
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 // Hoisted: closeOn values that count as "click-driven close". Inlined
 // previously, allocating a fresh 3-element array on each click-listener
@@ -234,6 +243,18 @@ const useOverlay = ({
       _prevFocusEl = document.activeElement as HTMLElement | null
     }
     active.set(true)
+    // Modal only: move focus INTO the content on open so the focus trap (in
+    // setupListeners) has somewhere to hold it — otherwise focus stays on the
+    // trigger and Tab escapes to the inert background. Deferred a frame so the
+    // content (which renders after `active` flips) is mounted. Focuses the
+    // first focusable descendant, falling back to the content container.
+    if (type === 'modal' && !isServer) {
+      requestAnimationFrame(() => {
+        if (!active() || !contentEl) return
+        const first = contentEl.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+        ;(first ?? contentEl).focus?.()
+      })
+    }
     onOpen?.()
     ctx.setBlocked?.()
   }
@@ -394,6 +415,40 @@ const useOverlay = ({
       }
       window.addEventListener('keydown', handleEscKey)
       cleanups.push(() => window.removeEventListener('keydown', handleEscKey))
+    }
+
+    // Focus trap (modal only): keep Tab / Shift+Tab cycling WITHIN the open
+    // modal content so keyboard / screen-reader users can't tab out to the
+    // inert background behind it (the WAI-ARIA dialog pattern). Registered
+    // once; the body is gated on `active()` so it only traps while open, and
+    // reads `contentEl` live (it mounts after `active` flips). Pairs with the
+    // focus-restore in hideContent + the initial focus-in in showContent.
+    if (type === 'modal') {
+      const handleFocusTrap = (e: KeyboardEvent) => {
+        if (e.key !== 'Tab' || !active() || !contentEl) return
+        const focusable = Array.from(
+          contentEl.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+        )
+        if (focusable.length === 0) {
+          // Nothing focusable inside — keep focus pinned to the content so it
+          // can't escape to the background.
+          e.preventDefault()
+          contentEl.focus?.()
+          return
+        }
+        const first = focusable[0] as HTMLElement
+        const last = focusable[focusable.length - 1] as HTMLElement
+        const ae = document.activeElement
+        if (e.shiftKey && (ae === first || ae === contentEl)) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && ae === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+      window.addEventListener('keydown', handleFocusTrap)
+      cleanups.push(() => window.removeEventListener('keydown', handleFocusTrap))
     }
 
     // Hover-based open/close
