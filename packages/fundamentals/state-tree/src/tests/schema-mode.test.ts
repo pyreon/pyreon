@@ -287,9 +287,14 @@ describe('schema-mode model — Standard Schema (Tier A.2)', () => {
       schema: RawSchema,
       initial: { name: 'Alice', age: 30 },
     })
-    const u = User.create() as Record<string, { (): unknown }>
-    expect(u.name!()).toBe('Alice')
-    expect(u.age!()).toBe(30)
+    // No cast needed any more: a raw Standard Schema (`~standard`) now strictly
+    // types the instance directly — `u.name()` is `string`, `u.age()` is `number`
+    // (previously fell back to untyped `StateShape`, forcing the cast workaround).
+    const u = User.create()
+    const name: string = u.name()
+    const age: number = u.age()
+    expect(name).toBe('Alice')
+    expect(age).toBe(30)
   })
 
   it('Standard Schema path validates set / patch', () => {

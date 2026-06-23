@@ -56,7 +56,7 @@ const { store } = useTodoList() // same instance on every call`,
     'model({ state }) or model({ schema }) — chainable builder',
     '.views(self => ...) — chainable derived values; each layer sees prior ones',
     '.actions(self => ...) — chainable mutators; async out of the box',
-    'Schema mode validates state via zod / valibot / arktype / Standard Schema',
+    'Schema mode validates + STRICTLY TYPES state from a schema passed directly — @pyreon/validate, raw zod / valibot / arktype, any Standard Schema (no adapter wrapper)',
     'Nested model composition for tree-shaped state',
     'getSnapshot / applySnapshot — typed recursive serialization',
     'onPatch / applyPatch — JSON patch record and replay',
@@ -71,20 +71,21 @@ const { store } = useTodoList() // same instance on every call`,
       signature:
         'model({ state }) | model({ schema, initial?, onValidationError? }) → ModelDefinition; chain .views(f).actions(f) then .create(initial?) or .asHook(id)',
       summary:
-        'Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a TypedSchemaAdapter (`zodSchema` / `valibotSchema` / `arktypeSchema`) or a Standard Schema-compliant instance (zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema, etc.) — types are inferred end-to-end. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `set` / `patch` / `reset` helpers on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton.',
+        'Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a schema and STRICTLY TYPES the instance from it. The schema can be passed DIRECTLY — `@pyreon/validate`\'s `s.object(...)`, a raw `z.object(...)`, valibot, arktype, or any [Standard Schema](https://standardschema.dev)-compliant validator — and the field types flow through end-to-end (`self.name()` is `string`, not `unknown`), no adapter wrapper required. The `@pyreon/validation` `zodSchema` / `valibotSchema` / `arktypeSchema` adapters still work (the `_infer` path) and are only needed for async-validator interop. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `set` / `patch` / `deepPatch` / `update` / `reset` helpers (bare names) on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton.',
       example: `// Plain mode
 const Counter = model({ state: { count: 0 } })
   .views((self) => ({ doubled: () => self.count() * 2 }))
   .actions((self) => ({ inc: () => self.count.update(n => n + 1) }))
 
-// Schema mode (zod / valibot / arktype / Standard Schema)
-import { zodSchema } from '@pyreon/validation'
+// Schema mode — pass the schema DIRECTLY (no wrapper); types flow through.
+// Works with @pyreon/validate (\`s\`), raw zod, valibot, arktype, any Standard Schema.
 import { z } from 'zod'
 
 const User = model({
-  schema: zodSchema(z.object({ name: z.string().min(1), age: z.number() })),
+  schema: z.object({ name: z.string().min(1), age: z.number() }),
   initial: { name: '', age: 0 },
 })
+// u.name() is string, u.age() is number — strictly typed from the schema.
   .views((self) => ({ greet: () => \`Hi, \${self.name()}\` }))
   .actions((self) => ({
     rename: (next: string) => self.patch({ name: next }),
@@ -115,7 +116,7 @@ u.reset()                // back to initial`,
       signature:
         'interface SchemaModelHelpers<TState> { set, patch, deepPatch, update<K>, reset }',
       summary:
-        'The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. `$`-prefixed so they never collide with user schema field names (`name`, `set`, `patch`, etc.). All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`\'s `SchemaStoreApi`.',
+        'The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. They are BARE names (`set`, `patch`, `deepPatch`, `update`, `reset`) — a schema field that collides with one of them throws at `.create()` time (the reserved-name guard names the offending field), so pick a different field name rather than relying on a prefix. All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`\'s `SchemaStoreApi`.',
       example: `// All five helpers — pick by mutation shape:
 u.set({ name: 'Bob', age: 40, prefs: { theme: 'dark', density: 'cozy' } })   // full replace
 u.patch({ name: 'Bob' })                                                       // shallow merge
@@ -189,7 +190,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
       kind: 'function',
       signature: '(instance: ModelInstance, listener: PatchListener) => () => void',
       summary:
-        'Subscribe to JSON patches emitted by actions on a model instance. Each patch records the path, operation (add/replace/remove), and value. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization.',
+        'Subscribe to JSON patches emitted by state mutations on a model instance. Each patch is a `replace` op carrying the JSON-pointer path (`/count`, `/profile/name` for nested) and the new value — Pyreon state is one signal per field, so a field holding an array/object emits a whole-value `replace`, not granular add/remove ops. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization.',
       example: `const dispose = onPatch(counter, (patch) => {
   console.log(patch) // { op: 'replace', path: '/count', value: 11 }
 })`,

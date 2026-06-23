@@ -9,6 +9,45 @@ export const MODEL_BRAND = '__pyreonMod' as const
 
 export type StateShape = Record<string, unknown>
 
+// ─── Schema → state-type inference ─────────────────────────────────────────────
+
+/**
+ * Resolve a schema-mode model's state type from the `schema` config field —
+ * the spine of "the model is strictly typed from its schema." Three arms, in
+ * order:
+ *
+ * 1. `_infer` — the `@pyreon/validation` `TypedSchemaAdapter` (`zodSchema(...)`).
+ * 2. The output type extracted directly from a [Standard Schema](https://standardschema.dev)
+ *    `~standard.validate` return — so ANY spec-compliant schema strictly types
+ *    `model({ schema })` WITHOUT an adapter wrapper: `@pyreon/validate`'s
+ *    `s.object`, a raw `z.object`, valibot, arktype. We read `O` out of the
+ *    success branch (`{ value: O }`) of `validate`'s (possibly-`Promise`)
+ *    return rather than the optional `~standard.types` slot — `@pyreon/validate`
+ *    omits that slot, so a `types`-based match would silently fall through.
+ *    The loose `(value: any) => infer R` shape matches every validator's
+ *    `~standard` regardless of its issue-array / version-literal specifics
+ *    (a stricter local interface did NOT structurally match — proven by probe).
+ * 3. Fallback to `StateShape` (untyped) — strictly no worse than not matching.
+ */
+export type InferSchemaState<S> = S extends {
+  readonly _infer: infer T extends StateShape
+}
+  ? T
+  : S extends {
+        readonly '~standard': {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          readonly validate: (value: any) => infer R
+        }
+      }
+    ? Extract<Awaited<R>, { readonly value: unknown }> extends {
+        readonly value: infer O
+      }
+      ? O extends StateShape
+        ? O
+        : StateShape
+      : StateShape
+    : StateShape
+
 /**
  * Resolve a state field type:
  * - ModelDefinition → the instance type it produces
