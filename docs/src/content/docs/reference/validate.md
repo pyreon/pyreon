@@ -19,6 +19,7 @@ Pyreon-owned validator library implementing Standard Schema (https://standardsch
 - formatError / formatErrors / formatErrorsByPath — i18n-key-aware error rendering
 - Works with any Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+, …)
 - Tree-shakeable — DX helpers alone are ~0.5KB gz (measured); the v1 validator runtime (~3.5KB gz) is pulled in only when `s` / primitives are imported
+- Client/server split — ONE shared schema, thin client + heavy server. `s.string().email()` validates strictly server-side (rfc5322 + disposable blocklist, full E.164 phone) the instant `@pyreon/validate/server` is imported — the heavy code tree-shakes out of the client bundle. `.serverCheck(key)` is the async/privileged tier (unique-email, breach-check, MX): a no-op on the client (recorded on `Result.pending`), the registered validator (via `registerServerCheck`) on the server. `parseAsync(input, { context })` threads a DB handle / request to the server checks.
 
 ## Complete example
 
@@ -95,6 +96,8 @@ const $sameResult = parseReactive(sameSchema, $email)
 | [`formatError`](#formaterror) | function | Resolve a single issue to a human-readable string. |
 | [`formatErrors`](#formaterrors) | function | Resolve an array of issues to strings via the same per-issue logic as formatError. |
 | [`formatErrorsByPath`](#formaterrorsbypath) | function | Build a per-field error map keyed by the issue's path joined with `.`. |
+| [`serverCheck`](#servercheck) | function | Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split (unique- |
+| [`registerServerCheck`](#registerservercheck) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle |
 
 ## API
 
@@ -316,12 +319,66 @@ const errorMap = formatErrorsByPath(result.issues ?? [], t)
 
 ---
 
+### serverCheck `function`
+
+```ts
+(key: string, opts?: { message?: string; code?: string; key?: string; params?: Record<string, unknown>; fallback?: string }) => this
+```
+
+Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split (unique-email, breach-check, DNS-MX, cross-field DB lookups). On the CLIENT (no validator installed) it's a no-op: the value passes and the deferred check is recorded on `Result.pending` (so the UX can show a "checking…" affordance). On the SERVER, the validator registered via `registerServerCheck(key, fn)` runs — sync or async. Async checks promote the parse to `parseAsync`, which threads an opaque `context` (DB handle, request) to the validator. Issue `path` is snapshotted at the check site, so a field/array-element check reports the correct path even though it resolves after the path unwinds.
+
+**Example**
+
+```tsx
+// shared schema (client + server)
+const signup = s.object({
+  email: s.string().email().serverCheck('email-unique', { message: 'Email already taken' }),
+})
+
+// CLIENT: cheap checks run; serverCheck is deferred
+const r = signup.parse(formData)
+if (r.ok && r.pending?.length) showChecking()   // 'email-unique' pending
+
+// SERVER (registerServerCheck installed elsewhere):
+const verdict = await signup.parseAsync(formData, { context: { db } })
+```
+
+**See also:** `registerServerCheck` · `parseAsync`
+
+---
+
+### registerServerCheck `function`
+
+```ts
+(key: string, fn: (value: unknown, context?: unknown) => boolean | Promise<boolean>) => void
+```
+
+Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle (DB lookups, breach-checks, MX, cross-field). Imported from `@pyreon/validate/server` and called from a server-only module; the matching `s.…serverCheck(key)` in the shared schema then validates here. Returning `false` fails the check with the schema's `message`. The second arg is the `context` passed to `parseAsync(input, { context })`.
+
+**Example**
+
+```tsx
+// server-only module
+import { registerServerCheck } from '@pyreon/validate/server'
+
+registerServerCheck('email-unique', async (value, ctx) => {
+  const db = (ctx as { db: Db }).db
+  return !(await db.user.existsByEmail(value as string))
+})
+```
+
+**See also:** `serverCheck`
+
+---
+
 ## Package-level notes
 
 > **Standard Schema is parse-only:** The protocol deliberately omits a metadata channel — that's the gap `withField` fills. The protocol also doesn't carry i18n keys — `formatErrors` adds that layer.
 
 > **withField mutates in place:** ArkType's Type instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. An Object.create() clone is not callable and breaks ArkType. Symbol-keyed non-enumerable mutation is invisible to JSON / for…in / Object.keys / library-internal comparators. Safe.
 
-> **No validator runtime:** Pyreon-validate does NOT ship a validator. Use Zod / Valibot / ArkType / typia / any Standard Schema-compliant lib — Pyreon-validate makes it Pyreon-flavoured.
+> **Ships its own validator AND interops with others:** v1 ships Pyreon's own `s` validator runtime (chainable + function-comp, Standard Schema-native, opt-in by import). The DX helpers (`withField` / `parseReactive` / `formatErrors`) ALSO work on top of any other Standard Schema validator (Zod / Valibot / ArkType / typia) — backward-compatible. Use whichever; mix freely.
+
+> **serverCheck is client-no-op, server-async:** `.serverCheck(key)` only runs where its validator is installed. On the client it ALWAYS passes (recorded on `Result.pending`) — the SERVER is the authoritative re-validation; never treat a client `ok: true` with `pending` as fully verified. A registered ASYNC check promotes the parse to a Promise, so `parse()` returns a parseAsync-directing issue — use `parseAsync(input, { context })` server-side. A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
 
 > **Compiler-emit is a follow-up:** A future PR adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators per schema at build time. v1 ships at the underlying lib's speed (Valibot/ArkType are already 3-5× faster than Zod; the compiler PR closes the gap for Zod schemas too).

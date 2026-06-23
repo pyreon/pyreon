@@ -144,12 +144,33 @@ const isInlineArray = (s: FieldLike): boolean =>
   s._kind === 'array' && !!s.element && Array.isArray(s._ops) && s._ops.every((op) => op.kind.startsWith('check:'))
 
 /**
+ * Whether `s` (or any nested field) carries a `serverCheck` op. The JIT emits
+ * SYNCHRONOUS code; a `serverCheck` resolved by an async registered validator
+ * returns a Promise, which the generated code can't await — so any tree with a
+ * `serverCheck` must fall back to the (now async-aware) interpreter. Bounded
+ * recursion (a deeper tree disqualifies — conservative, never wrong).
+ */
+const treeHasServerCheck = (s: FieldLike, depth = 0): boolean => {
+  if (depth > 30) return true
+  if (Array.isArray(s._ops)) for (const op of s._ops) if (op.kind === 'serverCheck') return true
+  if (s.shape)
+    for (const k in s.shape) {
+      const child = s.shape[k]
+      if (child && treeHasServerCheck(child, depth + 1)) return true
+    }
+  return !!s.element && treeHasServerCheck(s.element, depth + 1)
+}
+
+/**
  * Try to JIT-compile `schema`. Returns a specialized validator, or `null`
  * if the root isn't an inline-able object (caller → interpreter). Never
  * throws — any codegen error returns `null`.
  */
 export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
   const root = schema as unknown as FieldLike
+  // A `serverCheck` anywhere in the tree forces the interpreter (the JIT can't
+  // await an async registered validator). Cheap scan, before any codegen.
+  if (treeHasServerCheck(root)) return null
   // JIT a composite root (object/array) OR an inline-primitive root (string /
   // number / … with only checks). A primitive root inlines its `typeof` +
   // cheap check conditions with zero closure calls on the valid path —

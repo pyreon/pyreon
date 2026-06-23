@@ -66,6 +66,48 @@ const stop = watchValid(emailSchema, $email, (valid) => {
 | `formatErrors(issues, t?)` | Array variant. |
 | `formatErrorsByPath(issues, t?, options?)` | Build a per-field error map keyed by the issue's path. Compatible with `@pyreon/form`'s `Errors` shape. |
 
+## Client / server validation
+
+One shared schema, a thin client and a heavy server — without shipping the heavy code to the browser.
+
+**Format upgrade (automatic).** The lightweight in-bundle validators (`s.string().email()`, `.phone()`) are upgraded to strict server validators the instant the server imports `@pyreon/validate/server` — strict RFC-5322 email + disposable-domain blocklist, full E.164 phone. The heavy code is unreachable from the main entry, so it tree-shakes out of the client bundle.
+
+```ts
+// server entry only (side-effect import):
+import '@pyreon/validate/server'
+// …now every s.string().email() / .phone() validates strictly here.
+```
+
+**`.serverCheck(key)` — the async / privileged tier.** For checks that can only run server-side (unique-email, breach-check, DNS-MX, cross-field DB lookups). On the **client** it's a no-op: the value passes and the deferred check is recorded on `Result.pending` (so the UX can show a "checking…" affordance). On the **server**, the validator registered via `registerServerCheck(key, fn)` runs — sync or async.
+
+```ts
+// shared schema (client + server)
+import { s } from '@pyreon/validate'
+const signup = s.object({
+  email: s.string().email().serverCheck('email-unique', { message: 'Email already taken' }),
+})
+
+// CLIENT — cheap checks run; serverCheck deferred:
+const r = signup.parse(formData)
+if (r.ok && r.pending?.length) showChecking()   // 'email-unique' pending
+
+// SERVER-only module — register the heavy impl:
+import { registerServerCheck } from '@pyreon/validate/server'
+registerServerCheck('email-unique', async (value, ctx) => {
+  const db = (ctx as { db: Db }).db
+  return !(await db.user.existsByEmail(value as string))
+})
+
+// SERVER — run the async checks, threading a context (DB handle / request):
+const verdict = await signup.parseAsync(formData, { context: { db } })
+```
+
+Notes:
+- The **server is authoritative** — never treat a client `ok: true` with `pending` entries as fully verified.
+- An async registered check promotes the parse to a Promise, so `parse()` returns a parseAsync-directing issue — use `parseAsync(input, { context })` server-side.
+- Object fields and array elements are validated async-aware, so the issue `path` is correct even though an async check resolves after the path unwinds.
+- A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
+
 ## Why mutate-in-place?
 
 `withField()` mutates the original schema with a Symbol-keyed non-enumerable property. It does NOT clone.
@@ -81,9 +123,8 @@ ArkType's `Type` instances are callable functions whose `~standard.validate` doe
 
 ## What this is NOT
 
-- **A new validator.** Use Zod / Valibot / ArkType / typia. `@pyreon/validate` makes them Pyreon-flavoured.
-- **A validation library you must adopt.** Existing `zodSchema` / `valibotSchema` / `arktypeSchema` adapters from `@pyreon/validation` continue to work.
-- **A perf claim.** v1 parse speed is the underlying lib's speed. A follow-up PR adds `@pyreon/compiler:analyzeValidate()` for typia-class wall-clock per schema (works against any Standard Schema validator).
+- **Lock-in.** The DX helpers work on top of any Standard Schema validator (Zod / Valibot / ArkType / typia) — use Pyreon's own `s` runtime or bring your own; mix freely. Existing `zodSchema` / `valibotSchema` / `arktypeSchema` adapters from `@pyreon/validation` continue to work.
+- **A typia-class JIT (yet).** v1's `s` runtime is the error-path leader and runner-up on valid-parse (bench: `bun bench:validate`). A follow-up PR adds `@pyreon/compiler:analyzeValidate()` for compile-time specialized validators (works against any Standard Schema validator).
 
 ## See also
 

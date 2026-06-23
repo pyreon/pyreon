@@ -92,51 +92,74 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
     const result: Record<string, unknown> = {}
     const source = input as Record<string, unknown>
     const known = this.shape
+
+    // Unknown-key policy (strip / strict / passthrough / catchall) — runs after
+    // the known fields. Factored so it executes on BOTH the sync and async
+    // (post-await) paths identically.
+    const finishUnknownKeys = (): Record<string, unknown> => {
+      if (this._catchall) {
+        const catchall = this._catchall
+        for (const key of Object.keys(source)) {
+          if (key in known) continue
+          ctx.path.push(key)
+          try {
+            assignSafe(result, key, runFieldValidator(catchall, source[key], ctx))
+          } finally {
+            ctx.path.pop()
+          }
+        }
+      } else if (this._unknownKeys !== 'strip') {
+        for (const key of Object.keys(source)) {
+          if (key in known) continue
+          if (this._unknownKeys === 'strict') {
+            ctx.issues.push(
+              makeIssue({
+                code: 'unrecognized_keys',
+                key: 'validate.object.unrecognized-key',
+                params: { key },
+                fallback: `Unrecognized key "${key}"`,
+                message: `Unrecognized key "${key}"`,
+                path: [...ctx.path, key],
+              }),
+            )
+          } else {
+            assignSafe(result, key, source[key]) // passthrough
+          }
+        }
+      }
+      return result
+    }
+
+    // Known fields. A field validator that returns a Promise (an async
+    // `.serverCheck` / async `.refine` under `parseAsync`) is collected; if any
+    // field is async the whole object resolves to a Promise. The all-sync path
+    // is unchanged — no Promise allocation, no behavior change.
+    let pending: Array<{ key: string; promise: Promise<unknown> }> | null = null
     for (const key of Object.keys(known)) {
       ctx.path.push(key)
       try {
-        const value = runFieldValidator(known[key]!, source[key], ctx)
-        if (value !== undefined || key in source) {
+        const value = known[key]!._runInto(source[key], ctx)
+        if (value instanceof Promise) {
+          ;(pending ??= []).push({ key, promise: value })
+        } else if (value !== undefined || key in source) {
           assignSafe(result, key, value)
         }
       } finally {
         ctx.path.pop()
       }
     }
-    // Unknown-key policy. `.catchall(schema)` (if set) validates each unknown
-    // key against its schema and keeps the result; otherwise strip / strict /
-    // passthrough.
-    if (this._catchall) {
-      const catchall = this._catchall
-      for (const key of Object.keys(source)) {
-        if (key in known) continue
-        ctx.path.push(key)
-        try {
-          assignSafe(result, key, runFieldValidator(catchall, source[key], ctx))
-        } finally {
-          ctx.path.pop()
-        }
+
+    if (!pending) return finishUnknownKeys()
+
+    const pend = pending
+    return Promise.all(pend.map((p) => p.promise)).then((resolved) => {
+      for (let i = 0; i < pend.length; i++) {
+        const { key } = pend[i]!
+        const v = resolved[i]
+        if (v !== undefined || key in source) assignSafe(result, key, v)
       }
-    } else if (this._unknownKeys !== 'strip') {
-      for (const key of Object.keys(source)) {
-        if (key in known) continue
-        if (this._unknownKeys === 'strict') {
-          ctx.issues.push(
-            makeIssue({
-              code: 'unrecognized_keys',
-              key: 'validate.object.unrecognized-key',
-              params: { key },
-              fallback: `Unrecognized key "${key}"`,
-              message: `Unrecognized key "${key}"`,
-              path: [...ctx.path, key],
-            }),
-          )
-        } else {
-          assignSafe(result, key, source[key]) // passthrough
-        }
-      }
-    }
-    return result
+      return finishUnknownKeys()
+    })
   }
 
   // ─── Unknown-key policy ────────────────────────────────────────────

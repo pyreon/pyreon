@@ -20,8 +20,9 @@ import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError } from './issue'
 import { tryCompileJit } from './jit'
-import type { CheckOpts, Op, ParseCtx } from './ops'
+import type { CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { makeCtx } from './ops'
+import { getServerCheck } from './registry'
 
 /**
  * Result discriminated union. `parse()` returns this. On success, the
@@ -29,7 +30,18 @@ import { makeCtx } from './ops'
  * the ordered list of parse problems.
  */
 export type Result<T> =
-  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: true
+      readonly value: T
+      /**
+       * Server-only checks (`.serverCheck`) deferred because their validator
+       * wasn't installed — the "valid so far, pending server" contract. Present
+       * only on the CLIENT (where server checks are no-ops); empty/absent on the
+       * server (where `parseAsync` runs them). The form/UX layer uses this to
+       * show a "checking…" affordance and defer the field's final verdict.
+       */
+      readonly pending?: ReadonlyArray<PendingCheck>
+    }
   | { readonly ok: false; readonly issues: ReadonlyArray<PyreonIssue> }
 
 /**
@@ -96,7 +108,9 @@ export abstract class Schema<T> {
       }
     }
     if (ctx.issues.length > 0) return { ok: false, issues: ctx.issues }
-    return { ok: true, value: value as T }
+    return ctx.pending && ctx.pending.length > 0
+      ? { ok: true, value: value as T, pending: ctx.pending }
+      : { ok: true, value: value as T }
   }
 
   /**
@@ -104,9 +118,12 @@ export abstract class Schema<T> {
    * resolved value is the same `Result<T>` shape. Use for schemas
    * whose `.refine` / `.transform` returns a Promise.
    */
-  async parseAsync(input: unknown): Promise<Result<T>> {
+  async parseAsync(input: unknown, options?: { context?: unknown }): Promise<Result<T>> {
     const compiled = this._getCompiled()
     const ctx = makeCtx()
+    // Thread the opaque server context (DB handle, request, …) to
+    // `.serverCheck` validators. Undefined on the client; the server passes it.
+    if (options && 'context' in options) ctx.context = options.context
     let value: unknown
     try {
       value = await compiled(input, ctx)
@@ -122,7 +139,9 @@ export abstract class Schema<T> {
       }
     }
     if (ctx.issues.length > 0) return { ok: false, issues: ctx.issues }
-    return { ok: true, value: value as T }
+    return ctx.pending && ctx.pending.length > 0
+      ? { ok: true, value: value as T, pending: ctx.pending }
+      : { ok: true, value: value as T }
   }
 
   /**
@@ -237,6 +256,47 @@ export abstract class Schema<T> {
     },
   ): this {
     this._ops.push({ kind: 'refine', fn: fn as (v: unknown) => boolean | Promise<boolean>, opts })
+    this._invalidateCompile()
+    return this
+  }
+
+  /**
+   * A server-only check, resolved against a registry `key` installed behind
+   * `@pyreon/validate/server` (via `registerServerCheck`). The shared schema
+   * carries ONLY the `key` + the issue `opts` — never the (heavy / async /
+   * privileged) implementation — so the check is:
+   *
+   *   - **client**: a no-op that records a `pending` entry on the result (the
+   *     "valid so far, pending server" contract). Zero heavy code shipped.
+   *   - **server**: the registered validator runs, receiving the parse context
+   *     from `parseAsync(input, { context })`, producing an authoritative issue.
+   *
+   * Use for uniqueness, breach-checks, MX existence, DB cross-field rules.
+   *
+   * @example
+   * // shared schema (client bundle carries only 'email-unique'):
+   * const email = s.string().email().serverCheck('email-unique', { message: 'Email already registered' })
+   * // server-only module:
+   * registerServerCheck('email-unique', async (v, ctx) => !(await ctx.db.userExists(v as string)))
+   */
+  serverCheck(
+    key: string,
+    opts?: {
+      message?: string
+      code?: string
+      /** i18n key for the issue (distinct from the registry `key`). */
+      key?: string
+      params?: Record<string, unknown>
+      fallback?: string
+    },
+  ): this {
+    // Spread first, then force a resolved string message (so an explicit
+    // `message: undefined` can't override the default).
+    this._ops.push({
+      kind: 'serverCheck',
+      key,
+      opts: { ...opts, message: opts?.message ?? `Failed server check: ${key}` },
+    })
     this._invalidateCompile()
     return this
   }
@@ -359,6 +419,7 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
   const checks = scanChecks(schema._ops)
   const transforms = scanTransforms(schema._ops)
   const refines = scanRefines(schema._ops)
+  const serverChecks = scanServerChecks(schema._ops)
 
   // Bind the type-check hook to `schema` so subclass overrides fire.
   const typeCheck: SyncValidator = (input, ctx) =>
@@ -386,12 +447,30 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
 
     // 2. Type-check.
     const issuesBefore = ctx.issues.length
-    let value = typeCheck(input, ctx)
+    const typed = typeCheck(input, ctx)
     if (ctx.issues.length > issuesBefore) {
       // Type-check failed — don't continue to checks/transforms/refines.
-      return value
+      return typed
     }
 
+    // A composite type-check (object/array with an async field — async
+    // `.serverCheck` / `.refine` under parseAsync) returns a Promise. Defer the
+    // rest of the pipeline (checks/transforms/refines/serverChecks all run
+    // against the RESOLVED value, never the Promise). The all-sync path never
+    // allocates a Promise here.
+    if (typed instanceof Promise) {
+      return typed.then((resolved) =>
+        // A field-level async check may have pushed issues during resolution —
+        // skip the object's own pipeline in that case (parity with the sync
+        // early-return above).
+        ctx.issues.length > issuesBefore ? resolved : runPostType(resolved, ctx),
+      )
+    }
+    return runPostType(typed, ctx)
+  }
+
+  // Steps 3-6 against an already-type-checked value (sync or post-await).
+  function runPostType(value: unknown, ctx: ParseCtx): unknown {
     // 3. Checks (ordered).
     for (const check of checks) {
       check(value, ctx)
@@ -407,6 +486,12 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
     // 5. Refines — run last, against the transformed value.
     if (refines.length > 0) {
       value = applyRefines(value, refines, ctx)
+    }
+
+    // 6. Server-only checks — registered validator runs (server) or the check
+    //    is deferred + recorded on `ctx.pending` (client / not installed).
+    if (serverChecks.length > 0) {
+      value = applyServerChecks(value, serverChecks, ctx)
     }
 
     return value
@@ -554,6 +639,71 @@ function makeRefineIssue(opts: RefineSpec['opts'], path: ParseCtx['path']): Pyre
     (issue as { params?: Readonly<Record<string, unknown>> }).params = opts.params
   if (opts.fallback !== undefined) (issue as { fallback?: string }).fallback = opts.fallback
   return issue
+}
+
+// ─── Server-only checks (`.serverCheck`) ────────────────────────────────────
+
+interface ServerCheckSpec {
+  key: string
+  opts: RefineSpec['opts']
+}
+
+function scanServerChecks(ops: ReadonlyArray<Op>): ReadonlyArray<ServerCheckSpec> {
+  const out: ServerCheckSpec[] = []
+  for (const op of ops) {
+    if (op.kind === 'serverCheck') out.push({ key: op.key, opts: op.opts })
+  }
+  return out
+}
+
+function applyServerChecks(
+  value: unknown,
+  specs: ReadonlyArray<ServerCheckSpec>,
+  ctx: ParseCtx,
+): unknown | Promise<unknown> {
+  if (value instanceof Promise) {
+    return value.then((resolved) => applyServerChecksSync(resolved, specs, ctx))
+  }
+  return applyServerChecksSync(value, specs, ctx)
+}
+
+function applyServerChecksSync(
+  value: unknown,
+  specs: ReadonlyArray<ServerCheckSpec>,
+  ctx: ParseCtx,
+): unknown | Promise<unknown> {
+  for (let i = 0; i < specs.length; i++) {
+    const sc = specs[i]!
+    const fn = getServerCheck(sc.key)
+    if (!fn) {
+      // Not installed (the client, or a server that didn't register it): defer.
+      // Record the pending check and let the value pass — the SERVER is the
+      // authoritative re-validation. Path is snapshotted now (sync).
+      ;(ctx.pending ??= []).push({ path: ctx.path.slice(), key: sc.key })
+      continue
+    }
+    const ok = fn(value, ctx.context)
+    if (ok instanceof Promise) {
+      // A registered async check — promote the remaining checks to async.
+      // Snapshot the path NOW: it unwinds (object field pop) before resolve.
+      const rest = specs.slice(i)
+      const pathSnap = ctx.path.slice()
+      return Promise.resolve().then(async () => {
+        for (const r of rest) {
+          const f = getServerCheck(r.key)
+          if (!f) {
+            ;(ctx.pending ??= []).push({ path: pathSnap, key: r.key })
+            continue
+          }
+          const passed = await f(value, ctx.context)
+          if (!passed) ctx.issues.push(makeRefineIssue(r.opts, pathSnap))
+        }
+        return value
+      })
+    }
+    if (!ok) ctx.issues.push(makeRefineIssue(sc.opts, ctx.path))
+  }
+  return value
 }
 
 // ─── Modifier wrapper classes (kept minimal — they forward to base) ──

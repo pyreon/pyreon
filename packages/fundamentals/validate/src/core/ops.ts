@@ -31,6 +31,7 @@ export type Op =
   | ModifierOp
   | TransformOp
   | RefineOp
+  | ServerCheckOp
   | FieldMetaOp
   | DescribeOp
 
@@ -129,6 +130,28 @@ export type RefineOp = {
   }
 }
 
+/**
+ * A server-only check (`.serverCheck(key)`). The schema carries only the
+ * registry KEY + the issue opts — never the (possibly heavy/async/privileged)
+ * implementation. The actual validator is `installServerCheck`-ed behind
+ * `@pyreon/validate/server`, so it stays out of the client bundle. On the
+ * client the key is unregistered → the check is a NO-OP that records a
+ * `pending` entry; on the server the registered fn runs (with parse context).
+ */
+export type ServerCheckOp = {
+  kind: 'serverCheck'
+  /** Registry key — the link between the shared schema and the server-installed validator. */
+  key: string
+  opts: {
+    code?: string
+    message: string
+    /** i18n key for the issue (distinct from the registry `key` above). */
+    key?: string
+    params?: Readonly<Record<string, unknown>>
+    fallback?: string
+  }
+}
+
 // ─── Shared options ────────────────────────────────────────────────────────
 
 /**
@@ -165,6 +188,25 @@ export interface ParseCtx {
    * branch that already failed.
    */
   abortOnFirst?: boolean
+  /**
+   * Server-only checks (`.serverCheck`) encountered whose validator is NOT
+   * installed (the client) — the "valid so far, pending server" contract.
+   * Surfaced on `Result.pending` so the form/UX layer can defer the field's
+   * verdict and show a "checking…" affordance.
+   */
+  pending?: PendingCheck[]
+  /**
+   * Opaque server context (DB handle, request, session, …) threaded by
+   * `parseAsync(input, { context })` to `serverCheck` validators. `undefined`
+   * on the client (server-only checks are no-ops there).
+   */
+  context?: unknown
+}
+
+/** A server-only check deferred on the client (its validator wasn't installed). */
+export interface PendingCheck {
+  readonly path: ReadonlyArray<PathSegment>
+  readonly key: string
 }
 
 export function makeCtx(): ParseCtx {

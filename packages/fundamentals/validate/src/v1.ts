@@ -164,17 +164,27 @@ export function pipe<S extends Schema<unknown>>(schema: S, ...actions: ReadonlyA
 export { type Infer, type Input, type Output } from './core/infer'
 export { type Result, Schema } from './core/schema'
 export { type PyreonIssue, type StandardSchemaIssue, ValidationError } from './core/issue'
+export { type PendingCheck } from './core/ops'
 
 // ─── Format registry (client/server-split mechanism) ───────────────────
 // `installFormatValidator` plugs a superior validator for any format
 // ('email' / 'phone' / …); `@pyreon/validate/server` uses it to upgrade the
 // lightweight client defaults to strict server validation.
+//
+// `installServerCheck` is the heavier, async/context-aware sibling — the
+// registry behind `.serverCheck(key)` (client no-op + `pending`; server runs
+// the installed validator). Registered via `@pyreon/validate/server`'s
+// `registerServerCheck`; install/uninstall exported for tests.
 export {
   type FormatValidator,
   getFormatValidator,
+  getServerCheck,
   installFormatValidator,
+  installServerCheck,
   resolveFormat,
+  type ServerCheckFn,
   uninstallFormatValidator,
+  uninstallServerCheck,
 } from './core/registry'
 // Lightweight (client) format validators — exported for standalone use.
 export { type EmailPrecision, validateCreditCard, validateIp, validatePhone } from './primitives/string'

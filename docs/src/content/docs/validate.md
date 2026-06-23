@@ -228,12 +228,61 @@ const form = useForm({
 
 `@pyreon/validate`'s `withField` works on top of either — wrap individual fields with metadata before composing into the form schema.
 
+## Client / server validation
+
+One shared schema, a thin client and a heavy server — without shipping the heavy code to the browser. This is the part of the design that no other validator gives you out of the box.
+
+### Format upgrade (automatic)
+
+The lightweight in-bundle validators (`s.string().email()`, `.phone()`) are upgraded to strict server validators the instant the server imports `@pyreon/validate/server` — strict RFC-5322 email + disposable-domain blocklist, full E.164 phone. The heavy code is unreachable from the main entry, so it tree-shakes out of the client bundle.
+
+```ts
+// server entry only (side-effect import):
+import '@pyreon/validate/server'
+// …now every s.string().email() / .phone() validates strictly here,
+// while the client keeps the small, fast in-bundle defaults.
+```
+
+### `.serverCheck(key)` — the async / privileged tier
+
+For checks that can only run server-side — unique-email, breach-check, DNS-MX, cross-field DB lookups. On the **client** it's a no-op: the value passes and the deferred check is recorded on `Result.pending` (so the UX can show a "checking…" affordance). On the **server**, the validator registered via `registerServerCheck(key, fn)` runs — sync or async.
+
+```ts
+// shared schema (client + server)
+import { s } from '@pyreon/validate'
+
+const signup = s.object({
+  email: s.string().email().serverCheck('email-unique', { message: 'Email already taken' }),
+})
+
+// CLIENT — cheap checks run; serverCheck deferred:
+const r = signup.parse(formData)
+if (r.ok && r.pending?.length) showChecking() // 'email-unique' is pending
+
+// SERVER-only module — register the heavy implementation:
+import { registerServerCheck } from '@pyreon/validate/server'
+
+registerServerCheck('email-unique', async (value, ctx) => {
+  const db = (ctx as { db: Db }).db
+  return !(await db.user.existsByEmail(value as string))
+})
+
+// SERVER — run the async checks, threading a context (DB handle / request):
+const verdict = await signup.parseAsync(formData, { context: { db } })
+```
+
+- The **server is authoritative** — never treat a client `ok: true` with `pending` entries as fully verified.
+- An async registered check promotes the parse to a Promise, so `parse()` returns a parseAsync-directing issue — use `parseAsync(input, { context })` server-side.
+- Object fields and array elements are validated async-aware, so the issue `path` is correct even though an async check resolves after the path unwinds.
+- A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
+
 ## Performance
 
-v1 parse speed is **the underlying library's speed**. Pyreon-validate is a metadata + reactive bridge, not a parse runtime. If you want speed:
+v1 ships Pyreon's own `s` validator runtime. On the `bun bench:validate` suite (vs Zod 4 / Valibot 1 / ArkType 2):
 
-- Valibot and ArkType are already 3-5× faster than Zod on common shapes (independent of Pyreon-validate).
-- A **follow-up PR** adds `@pyreon/compiler:analyzeValidate()` — emits typia-class specialized validators per schema at build time. Works against any Standard Schema validator. Until that ships, parse speed is your library's speed.
+- **Fastest on the error / invalid path** across every shape (≈2.5–50× — early-exit issue accumulation vs the others' rich error allocation).
+- **Runner-up on valid-parse** — behind only ArkType's JIT, ahead of Zod and Valibot. The chainable API doesn't pay class-overhead per parse: each schema's ops compile to one closure on first call, then a flat monomorphic `new Function` validator for pure object/array/primitive trees.
+- A **follow-up PR** adds `@pyreon/compiler:analyzeValidate()` — compile-time specialized validators to close the valid-parse gap to ArkType (works against any Standard Schema validator). You can also keep using Zod / Valibot / ArkType through the DX helpers — `@pyreon/validate` never locks you in.
 
 ## See also
 
