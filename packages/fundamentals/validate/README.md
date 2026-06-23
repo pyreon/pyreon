@@ -123,6 +123,23 @@ s.string().jwt()                                       // header.payload.signatu
 s.string().base64().min(4)                             // composes with length checks
 ```
 
+### Schema methods (`s` runtime)
+
+| Method | Purpose |
+| --- | --- |
+| `.catch(fallback)` | Resilient parse — on failure, discard issues and return a static or input-derived fallback. Terminal regardless of chain position; works on `parse` + `parseAsync`; scoped per-schema (a caught field failure substitutes while sibling failures still fail the object). |
+| `.readonly()` | `Object.freeze` the parsed output (shallow) + `Readonly<T>` at the type level. Apply last. |
+
+```ts
+import { s } from '@pyreon/validate'
+
+s.number().catch(0).parse('nope')           // → { ok: true, value: 0 }
+s.string().min(3).catch('x').parse('ab')    // → { ok: true, value: 'x' }
+
+const cfg = s.object({ port: s.number() }).readonly().parse({ port: 80 })
+// cfg.value is Readonly<{ port: number }> and frozen
+```
+
 ## Why mutate-in-place?
 
 `withField()` mutates the original schema with a Symbol-keyed non-enumerable property. It does NOT clone.

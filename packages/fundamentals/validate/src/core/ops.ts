@@ -32,6 +32,7 @@ export type Op =
   | TransformOp
   | RefineOp
   | ServerCheckOp
+  | CatchOp
   | FieldMetaOp
   | DescribeOp
 
@@ -162,6 +163,17 @@ export type ServerCheckOp = {
     params?: Readonly<Record<string, unknown>>
     fallback?: string
   }
+}
+
+/**
+ * `.catch(fallback)` — on parse FAILURE, discard the issues this schema
+ * produced and substitute a fallback instead of erroring. `value` is either a
+ * static fallback or a function of the raw input. Always the LAST op so it sees
+ * the issues from every preceding step.
+ */
+export type CatchOp = {
+  kind: 'catch'
+  value: unknown | ((input: unknown) => unknown)
 }
 
 // ─── Shared options ────────────────────────────────────────────────────────
