@@ -82,6 +82,71 @@ export class BigIntSchema extends SchemaBase<bigint> {
     this._invalidateCompile()
     return this
   }
+
+  /** Strictly greater than `n` (exclusive lower bound). `gte` is the inclusive form. */
+  gt(n: bigint, opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:bigint:gt', n, opts }, (value, ctx) => {
+        if (typeof value !== 'bigint' || value > n) return
+        ctx.issues.push(
+          makeCheckIssue('too_small', `Must be > ${n}`, 'validate.bigint.gt', { min: String(n) }, `Must be > ${n}`, ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Greater than or equal to `n` (inclusive) — alias for {@link min}. */
+  gte(n: bigint, opts?: CheckOpts): this {
+    return this.min(n, opts)
+  }
+
+  /** Strictly less than `n` (exclusive upper bound). `lte` is the inclusive form. */
+  lt(n: bigint, opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:bigint:lt', n, opts }, (value, ctx) => {
+        if (typeof value !== 'bigint' || value < n) return
+        ctx.issues.push(
+          makeCheckIssue('too_big', `Must be < ${n}`, 'validate.bigint.lt', { max: String(n) }, `Must be < ${n}`, ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Less than or equal to `n` (inclusive) — alias for {@link max}. */
+  lte(n: bigint, opts?: CheckOpts): this {
+    return this.max(n, opts)
+  }
+
+  /** Multiple of `n` — alias for {@link multipleOf} (Zod's `.step`). */
+  step(n: bigint, opts?: CheckOpts): this {
+    return this.multipleOf(n, opts)
+  }
+
+  /** Inclusive range `lo … hi`. */
+  between(lo: bigint, hi: bigint, opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:bigint:between', lo, hi, opts }, (value, ctx) => {
+        if (typeof value !== 'bigint' || (value >= lo && value <= hi)) return
+        ctx.issues.push(
+          makeCheckIssue(
+            'too_big',
+            `Must be between ${lo} and ${hi}`,
+            'validate.bigint.between',
+            { min: String(lo), max: String(hi) },
+            `Must be between ${lo} and ${hi}`,
+            ctx,
+            opts,
+          ),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
 }
 
 export function bigint(): BigIntSchema {
