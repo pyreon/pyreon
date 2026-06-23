@@ -1,6 +1,6 @@
 import { Portal, splitProps, type ComponentFn, type VNodeChild } from '@pyreon/core'
 import { useEventListener, useFocusTrap, useScrollLock } from '@pyreon/hooks'
-import { effect, isServer } from '@pyreon/reactivity'
+import { isServer, watch } from '@pyreon/reactivity'
 
 // Tabbable descendants for the open-modal focus-in (mirrors the selector in
 // @pyreon/hooks useFocusTrap, which owns the Tab-cycling itself).
@@ -68,28 +68,37 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
     if (own.open && closeOnEscape && e.key === 'Escape') own.onClose?.()
   })
 
-  effect(() => {
-    if (own.open) {
-      scrollLock.lock()
-      // Capture the opener + move focus INTO the dialog so the trap has
-      // somewhere to hold it (deferred a frame so the dialog has mounted —
-      // it renders reactively after `open` flips).
-      if (!isServer) {
-        prevFocusEl = document.activeElement as HTMLElement | null
-        requestAnimationFrame(() => {
-          if (!own.open || !dialogEl) return
-          const first = dialogEl.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
-          ;(first ?? dialogEl).focus?.()
-        })
+  // `watch` (not `effect`) because this is a signal-REACTIVE side effect keyed
+  // on `open` — the imperative DOM/scheduling work (focus, rAF) belongs on the
+  // open/close transition, not at component setup. `immediate: true` preserves
+  // the original effect's mount-run so a modal mounted already-open still locks
+  // scroll + receives focus.
+  watch(
+    () => own.open,
+    (isOpen) => {
+      if (isOpen) {
+        scrollLock.lock()
+        // Capture the opener + move focus INTO the dialog so the trap has
+        // somewhere to hold it (deferred a frame so the dialog has mounted —
+        // it renders reactively after `open` flips).
+        if (!isServer) {
+          prevFocusEl = document.activeElement as HTMLElement | null
+          requestAnimationFrame(() => {
+            if (!own.open || !dialogEl) return
+            const first = dialogEl.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+            ;(first ?? dialogEl).focus?.()
+          })
+        }
+      } else {
+        scrollLock.unlock()
+        // Restore focus to the opener on close.
+        const prev = prevFocusEl
+        prevFocusEl = null
+        if (prev && typeof prev.focus === 'function') prev.focus()
       }
-    } else {
-      scrollLock.unlock()
-      // Restore focus to the opener on close.
-      const prev = prevFocusEl
-      prevFocusEl = null
-      if (prev && typeof prev.focus === 'function') prev.focus()
-    }
-  })
+    },
+    { immediate: true },
+  )
 
   const handleOverlayClick = (e: MouseEvent) => {
     if (closeOnOverlay && e.target === e.currentTarget) own.onClose?.()
