@@ -138,7 +138,7 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
   // window helper to drive deterministic mount / edit / state-read paths.
   //
   // Counter signature predicted by the audit:
-  //   - formMount-10k        → ~60k form.fieldSignalCreate, ~10k form.fieldEffectCreate
+  //   - formMount-10k        → ~60k form.fieldSignalCreate (no per-field effect — auto-validation is inline in setValue)
   //   - formEditSingle-10k   → 1 reactivity.signalWrite, small const effectRun
   //   - formEditBatch-10k    → 100 signalWrite, proportional effectRun
   //   - formStateRead-10k    → 1 form.formStateScan, 10k form.formStateScan.fieldsRead
