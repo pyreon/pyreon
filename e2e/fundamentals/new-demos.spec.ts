@@ -261,6 +261,19 @@ test.describe('Flow demo — reactive graph + add/fit', () => {
     await expect(page.locator('[data-testid=flow-edge-count]')).toHaveText('4')
   })
 
+  test('MiniMap + Controls render (resolve the instance from <Flow> context)', async ({ page }) => {
+    // FlowDemo renders <MiniMap/> + <Controls/> with NO explicit `instance` —
+    // they resolve it from the <Flow> context. Pre-context-fix both rendered
+    // NOTHING; this locks that they actually mount.
+    await page.goto('/flow')
+    await expect(page.locator('[data-testid=flow-canvas] .pyreon-flow-minimap')).toBeVisible()
+    await expect(page.locator('[data-testid=flow-canvas] .pyreon-flow-controls')).toBeVisible()
+    // The Controls body rendered (not a null-return): its zoom-in button exists.
+    await expect(page.locator('[data-testid=flow-canvas] button[title="Zoom in"]')).toBeVisible()
+    // 4 seed edges render as SVG paths.
+    await expect(page.locator('[data-testid=flow-canvas] .pyreon-flow-edges path')).toHaveCount(4)
+  })
+
   test('add-node button increments count', async ({ page }) => {
     await page.goto('/flow')
     await page.locator('[data-testid=flow-add]').click()

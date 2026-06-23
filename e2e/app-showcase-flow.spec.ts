@@ -28,6 +28,17 @@ test.describe('app-showcase /flow', () => {
     await page.locator('[data-nodeid]').first().waitFor()
   })
 
+  test('MiniMap + Controls overlays render (resolve instance from <Flow> context)', async ({ page }) => {
+    // The route renders <MiniMap/> + <Controls/> with no explicit `instance`,
+    // resolved from the <Flow> context. Locks that both overlays actually mount
+    // (MiniMap is placed before Controls — see the flow overlay-order note).
+    await expect(page.locator('.pyreon-flow-minimap')).toBeVisible()
+    await expect(page.locator('.pyreon-flow-controls')).toBeVisible()
+    // Scope to the controls overlay — the route's own toolbar also has a
+    // "Zoom in"-titled button, so a bare title selector is ambiguous.
+    await expect(page.locator('.pyreon-flow-controls button[title="Zoom in"]')).toBeVisible()
+  })
+
   test('renders 4 seed nodes and 3 edge paths', async ({ page }) => {
     // Node count: each `[data-nodeid]` is one mounted custom node renderer.
     // 4 from `SEED_NODES` (trigger-1, filter-1, transform-1, notify-1).

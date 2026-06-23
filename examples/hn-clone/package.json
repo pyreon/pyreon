@@ -24,7 +24,6 @@
     "@pyreon/document-primitives": "workspace:*",
     "@pyreon/elements": "workspace:*",
     "@pyreon/feature": "workspace:*",
-    "@pyreon/flow": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/kinetic": "workspace:*",
     "@pyreon/kinetic-presets": "workspace:*",
