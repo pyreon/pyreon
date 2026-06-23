@@ -622,7 +622,16 @@ export type ExprIR =
   | { kind: 'literal'; value: string | number | boolean | null; float?: boolean }
   | { kind: 'identifier'; name: string }
   | { kind: 'call'; callee: ExprIR; args: ExprIR[] }
-  | { kind: 'member'; object: ExprIR; property: string }
+  | {
+      kind: 'member'
+      object: ExprIR
+      property: string
+      // Optional member access (`a?.b`). Swift/Kotlin both spell it `?.`.
+      // The emit PROPAGATES `?.` to every access after the first optional
+      // one in the chain (`a?.b.c` → `a?.b?.c`) — required for Kotlin
+      // (a plain `.c` on a nullable is a type error) and valid for Swift.
+      optional?: boolean
+    }
   /**
    * Computed member access — `xs[i]`, `tasks[tasks.length - 1]`.
    * Swift arrays and Kotlin lists share the `xs[i]` subscript syntax,

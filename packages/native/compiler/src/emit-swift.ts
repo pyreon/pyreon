@@ -18,6 +18,7 @@ import {
 } from './canonical-primitives'
 import {
   buildComponentConstMap,
+  chainHasOptional,
   isCompoundExpr,
   substituteIdentifier,
   synthLiteralStructName,
@@ -2468,10 +2469,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // property. Phase 2 follow-up. Closes TodoMVC's
       // `todos.filter(...).length` and `text.length == 0` typecheck
       // blockers.
+      // Optional chaining: `?.` when this link is optional OR its object
+      // chain already carried one (`a?.b.c` → `a?.b?.c`). Swift accepts the
+      // propagated `?.`; Kotlin requires it (see emit-kotlin).
+      const dot = e.optional === true || chainHasOptional(e.object) ? '?.' : '.'
       if (e.property === 'length') {
-        return `${emitSwiftExpr(e.object, indent)}.count`
+        return `${emitSwiftExpr(e.object, indent)}${dot}count`
       }
-      return `${emitSwiftExpr(e.object, indent)}.${swiftIdent(e.property)}`
+      return `${emitSwiftExpr(e.object, indent)}${dot}${swiftIdent(e.property)}`
     }
     case 'binary': {
       const bl = emitSwiftExpr(e.left, indent)
