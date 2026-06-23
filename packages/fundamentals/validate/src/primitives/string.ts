@@ -309,17 +309,10 @@ export class StringSchema extends SchemaBase<string> {
   url(opts?: CheckOpts): this {
     this._ops.push(
       attachCheck({ kind: 'check:string:url', opts }, (value, ctx) => {
-        if (typeof value !== 'string' || URL_RE.test(value)) return
+        if (typeof value !== 'string') return
+        if (resolveFormat('url', (v: string) => URL_RE.test(v))(value)) return
         ctx.issues.push(
-          makeCheckIssue(
-            'invalid_format',
-            'Invalid URL',
-            'validate.string.url',
-            {},
-            'Invalid URL',
-            ctx,
-            opts,
-          ),
+          makeCheckIssue('invalid_format', 'Invalid URL', 'validate.string.url', {}, 'Invalid URL', ctx, opts),
         )
       }),
     )
@@ -330,17 +323,10 @@ export class StringSchema extends SchemaBase<string> {
   uuid(opts?: CheckOpts): this {
     this._ops.push(
       attachCheck({ kind: 'check:string:uuid', opts }, (value, ctx) => {
-        if (typeof value !== 'string' || UUID_RE.test(value)) return
+        if (typeof value !== 'string') return
+        if (resolveFormat('uuid', (v: string) => UUID_RE.test(v))(value)) return
         ctx.issues.push(
-          makeCheckIssue(
-            'invalid_format',
-            'Invalid UUID',
-            'validate.string.uuid',
-            {},
-            'Invalid UUID',
-            ctx,
-            opts,
-          ),
+          makeCheckIssue('invalid_format', 'Invalid UUID', 'validate.string.uuid', {}, 'Invalid UUID', ctx, opts),
         )
       }),
     )
@@ -447,7 +433,8 @@ export class StringSchema extends SchemaBase<string> {
     date: (opts?: CheckOpts): this => {
       this._ops.push(
         attachCheck({ kind: 'check:string:iso:date', opts }, (value, ctx) => {
-          if (typeof value !== 'string' || ISO_DATE_RE.test(value)) return
+          if (typeof value !== 'string') return
+          if (resolveFormat('iso-date', (v: string) => ISO_DATE_RE.test(v))(value)) return
           ctx.issues.push(
             makeCheckIssue(
               'invalid_format',
@@ -467,7 +454,8 @@ export class StringSchema extends SchemaBase<string> {
     dateTime: (opts?: CheckOpts): this => {
       this._ops.push(
         attachCheck({ kind: 'check:string:iso:datetime', opts }, (value, ctx) => {
-          if (typeof value !== 'string' || ISO_DATETIME_RE.test(value)) return
+          if (typeof value !== 'string') return
+          if (resolveFormat('iso-datetime', (v: string) => ISO_DATETIME_RE.test(v))(value)) return
           ctx.issues.push(
             makeCheckIssue(
               'invalid_format',
@@ -487,7 +475,8 @@ export class StringSchema extends SchemaBase<string> {
     time: (opts?: CheckOpts): this => {
       this._ops.push(
         attachCheck({ kind: 'check:string:iso:time', opts }, (value, ctx) => {
-          if (typeof value !== 'string' || ISO_TIME_RE.test(value)) return
+          if (typeof value !== 'string') return
+          if (resolveFormat('iso-time', (v: string) => ISO_TIME_RE.test(v))(value)) return
           ctx.issues.push(
             makeCheckIssue(
               'invalid_format',
