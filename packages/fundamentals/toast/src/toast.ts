@@ -8,6 +8,20 @@ let _idCounter = 0
 const DEFAULT_DURATION = 4000
 
 /**
+ * App-wide default auto-dismiss duration, settable via `<Toaster duration={…}>`.
+ * The store is module-level (toasts can be created before the Toaster mounts),
+ * so the Toaster writes this default on setup and `addToast` reads it for any
+ * toast that doesn't specify its own `duration`. Falls back to DEFAULT_DURATION
+ * when no Toaster has set it.
+ */
+let _defaultDuration = DEFAULT_DURATION
+
+/** @internal Set the app-wide default duration. Called by `<Toaster duration>`. */
+export function _setDefaultDuration(ms: number): void {
+  _defaultDuration = ms
+}
+
+/**
  * Hard cap on the queue. Without this, runaway loops (e.g. a toast call from
  * inside an effect that re-fires on every store mutation, or a WebSocket
  * `onmessage` that surfaces every event as a toast) accumulate forever and
@@ -63,7 +77,9 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
     id,
     message,
     type: options.type ?? 'info',
-    duration: options.duration ?? DEFAULT_DURATION,
+    duration: options.duration ?? _defaultDuration,
+    description: options.description,
+    icon: options.icon,
     dismissible: options.dismissible ?? true,
     action: options.action,
     onDismiss: options.onDismiss,
@@ -120,7 +136,7 @@ function dismiss(id?: string): void {
 
 function updateToast(
   id: string,
-  updates: Partial<Pick<Toast, 'message' | 'type' | 'duration'>>,
+  updates: Partial<Pick<Toast, 'message' | 'type' | 'duration' | 'description'>>,
 ): void {
   const current = _toasts()
   const idx = current.findIndex((item) => item.id === id)
@@ -134,6 +150,7 @@ function updateToast(
     message: updates.message ?? t.message,
     type: updates.type ?? t.type,
     duration: updates.duration ?? t.duration,
+    description: updates.description ?? t.description,
     timer: undefined,
     remaining: 0,
     timerStart: 0,
@@ -207,10 +224,12 @@ toast.loading = (
   options?: Omit<ToastOptions, 'type' | 'duration'>,
 ): string => addToast(message, { ...options, type: 'info', duration: 0 })
 
-/** Update an existing toast (message, type, duration). */
+/** Update an existing toast (message, type, duration, description). */
 toast.update = (
   id: string,
-  updates: Partial<Pick<ToastOptions, 'type' | 'duration'>> & { message?: string | VNodeChild },
+  updates: Partial<Pick<ToastOptions, 'type' | 'duration' | 'description'>> & {
+    message?: string | VNodeChild
+  },
 ): void => updateToast(id, updates)
 
 /** Dismiss a specific toast by id, or all toasts if no id is given. */
@@ -235,11 +254,11 @@ toast.promise = function toastPromise<T>(
   promise.then(
     (data) => {
       const msg = typeof opts.success === 'function' ? opts.success(data) : opts.success
-      updateToast(id, { message: msg, type: 'success', duration: DEFAULT_DURATION })
+      updateToast(id, { message: msg, type: 'success', duration: _defaultDuration })
     },
     (err: unknown) => {
       const msg = typeof opts.error === 'function' ? opts.error(err) : opts.error
-      updateToast(id, { message: msg, type: 'error', duration: DEFAULT_DURATION })
+      updateToast(id, { message: msg, type: 'error', duration: _defaultDuration })
     },
   )
 
@@ -256,4 +275,5 @@ export function _reset(): void {
   }
   _toasts.set([])
   _idCounter = 0
+  _defaultDuration = DEFAULT_DURATION
 }

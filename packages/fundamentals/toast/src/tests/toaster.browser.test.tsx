@@ -46,18 +46,32 @@ const msgEl = () => document.querySelector('.pyreon-toast__message')
 const toastEl = () => document.querySelector('.pyreon-toast') as HTMLElement | null
 
 describe('Toaster — render + a11y smoke', () => {
-  it('renders the message into the DOM with role="alert"', async () => {
+  it('renders the message into the DOM', async () => {
     toast('Saved!', { duration: 0 })
     await nextFrame()
     expect(msgEl()?.textContent).toContain('Saved!')
-    expect(toastEl()?.getAttribute('role')).toBe('alert')
   })
 
-  it('container is a labeled live region', async () => {
+  it('container is a labeled region (no aria-live — toasts carry their own role)', async () => {
     toast('hi', { duration: 0 })
     await nextFrame()
     const region = document.querySelector('.pyreon-toast-container')
     expect(region?.getAttribute('aria-label')).toBe('Notifications')
+    // The per-toast role provides the live announcement; the container must NOT
+    // double it with aria-live.
+    expect(region?.getAttribute('aria-live')).toBeNull()
+  })
+
+  it('info toast is a polite live region (role="status")', async () => {
+    toast.info('fyi', { duration: 0 })
+    await nextFrame()
+    expect(toastEl()?.getAttribute('role')).toBe('status')
+  })
+
+  it('error toast is an assertive live region (role="alert")', async () => {
+    toast.error('boom', { duration: 0 })
+    await nextFrame()
+    expect(toastEl()?.getAttribute('role')).toBe('alert')
   })
 })
 
@@ -132,5 +146,30 @@ describe('Toaster — dismiss interaction', () => {
     expect(btns.length).toBe(1)
     ;(btns[0] as HTMLButtonElement).click()
     expect(clicked).toBe(1)
+  })
+})
+
+describe('Toaster — description + icon', () => {
+  it('renders a description line under the message', async () => {
+    toast('Uploaded', { duration: 0, description: '3 files · 1.2 MB' })
+    await nextFrame()
+    expect(msgEl()?.textContent).toContain('Uploaded')
+    expect(document.querySelector('.pyreon-toast__description')?.textContent).toContain(
+      '3 files · 1.2 MB',
+    )
+  })
+
+  it('renders a custom icon (VNode) before the message', async () => {
+    toast('With icon', { duration: 0, icon: h('svg', { 'data-testid': 'my-icon' }) })
+    await nextFrame()
+    const iconWrap = document.querySelector('.pyreon-toast__icon')
+    expect(iconWrap).not.toBeNull()
+    expect(iconWrap?.querySelector('[data-testid="my-icon"]')).not.toBeNull()
+  })
+
+  it('no description div when no description was given', async () => {
+    toast('Plain', { duration: 0 })
+    await nextFrame()
+    expect(document.querySelector('.pyreon-toast__description')).toBeNull()
   })
 })

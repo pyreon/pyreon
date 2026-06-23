@@ -33,19 +33,22 @@ test.describe('Rx demo — pipe + filter + aggregations', () => {
 })
 
 test.describe('Toast demo — imperative variants + promise helper', () => {
-  test('clicking success spawns a role=alert toast', async ({ page }) => {
+  test('clicking success spawns a polite (role=status) toast', async ({ page }) => {
     await page.goto('/toast')
     await page.locator('[data-testid=toast-success]').click()
-    await expect(page.locator('[role=alert]').first()).toBeVisible()
+    // Type-aware a11y: success/info are polite (`role=status`); only
+    // error/warning are assertive (`role=alert`). A success toast must NOT
+    // interrupt the screen reader.
+    await expect(page.locator('[role=status]').first()).toBeVisible()
   })
 
-  test('dismiss-all removes every alert', async ({ page }) => {
+  test('dismiss-all removes every toast', async ({ page }) => {
     await page.goto('/toast')
     await page.locator('[data-testid=toast-bulk]').click()
-    await expect(page.locator('[role=alert]')).toHaveCount(5)
+    await expect(page.locator('.pyreon-toast')).toHaveCount(5)
     await page.locator('[data-testid=toast-dismiss-all]').click()
-    // After dismiss animations, count goes to 0.
-    await expect(page.locator('[role=alert]')).toHaveCount(0, { timeout: 5000 })
+    // After dismiss, count goes to 0.
+    await expect(page.locator('.pyreon-toast')).toHaveCount(0, { timeout: 5000 })
   })
 })
 

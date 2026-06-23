@@ -47,7 +47,29 @@ export const toastStyles = /* css */ `
 .pyreon-toast--warning { border-left: 4px solid #f59e0b; }
 .pyreon-toast--error { border-left: 4px solid #ef4444; }
 
-.pyreon-toast__message { flex: 1; }
+.pyreon-toast__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  width: 18px;
+  height: 18px;
+}
+
+.pyreon-toast__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pyreon-toast__message { font-weight: 500; }
+
+.pyreon-toast__description {
+  font-size: 13px;
+  line-height: 1.3;
+  color: #6b7280;
+}
 
 .pyreon-toast__action {
   background: none;

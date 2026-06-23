@@ -18,8 +18,9 @@ Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your 
 - toast.update(id, options) for loading-to-success transitions
 - toast.promise(promise, messages) auto-transitions through states
 - toast.dismiss(id?) — dismiss one or all
-- &lt;Toaster /&gt; with Portal, CSS transitions, auto-dismiss, pause on hover
-- Accessible: role="alert", aria-live="polite"
+- Per-toast description (secondary line), custom icon, and action button
+- &lt;Toaster /&gt; with Portal, CSS transitions, auto-dismiss, pause on hover/focus, configurable default duration
+- Accessible: type-aware live regions — role="alert" (assertive) for error/warning, role="status" (polite) for info/success
 
 ## Complete example
 
@@ -84,7 +85,7 @@ toast.dismiss()         // dismiss all
 (message: string, options?: ToastOptions) => string
 ```
 
-Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying existing toasts, `.dismiss(id?)` for removal, and `.promise(promise, messages)` for async operation tracking.
+Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for removal, and `.promise(promise, messages)` for async operation tracking.
 
 **Example**
 
@@ -92,6 +93,9 @@ Create a toast notification imperatively. Returns the toast ID for later `update
 // Basic:
 toast('Hello!')
 const id = toast.success('Saved!')
+
+// With a description + custom icon:
+toast.success('Uploaded', { description: '3 files · 1.2 MB', icon: <CheckIcon /> })
 
 // Loading → success:
 const loadId = toast.loading('Saving...')
