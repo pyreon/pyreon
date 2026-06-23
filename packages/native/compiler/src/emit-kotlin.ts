@@ -13,9 +13,9 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
-import { kotlinIdent, safeIdent } from './identifier-safety'
-import { buildInferenceCtx, inferReturnType } from './infer-type'
+import { buildInferenceCtx, inferReturnType, inferType } from './infer-type'
 import type { InferenceCtx } from './infer-type'
+import { kotlinIdent, safeIdent } from './identifier-safety'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -61,6 +61,12 @@ let _structFieldsToName: Map<string, string> = new Map()
  */
 let _synthExprStructs: StructIR[] = []
 let _synthExprStructKeys: Map<string, string> = new Map()
+
+// The active component's inference ctx, exposed to `emitKotlinExpr`'s
+// object-literal case (which doesn't receive it as a param) so a
+// non-literal field (`{ id: count() }`) can have its type inferred for
+// data-class synthesis. Set per `emitKotlinComponent`; empty otherwise.
+let _kotlinExprInferCtx: ReturnType<typeof buildInferenceCtx> = buildInferenceCtx([])
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
@@ -1072,11 +1078,16 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
   }
+  const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs)
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],
     componentName: c.name,
-    inferCtx: buildInferenceCtx(c.decls, _kotlinStoreDefs),
+    inferCtx,
   }
+  // Expose the component's inference ctx to the object-literal emit so a
+  // non-literal field (`{ id: count() }`) gets its data-class field type
+  // inferred (mirrors the Swift `_exprInferCtx`).
+  _kotlinExprInferCtx = inferCtx
   // Pass 1: walk decls — emits decl bodies AND discovers synthesized
   // types from decl annotations. The actual decl text is buffered into
   // `declTexts` so it can be emitted later inside the function body
@@ -2398,7 +2409,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // `(field = value)` tuple emit (tuple key-paths break `items.map { it.id }`
         // / can't go through a Saver). Non-literal / nested fields keep the
         // tuple emit below (unchanged). Shared helper → names match Swift.
-        const synthName = synthLiteralStructName(e.fields, _synthExprStructs, _synthExprStructKeys)
+        const synthName = synthLiteralStructName(
+          e.fields,
+          _synthExprStructs,
+          _synthExprStructKeys,
+          (ex) => inferType(ex, _kotlinExprInferCtx),
+        )
         if (synthName !== null) {
           const args = e.fields
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)

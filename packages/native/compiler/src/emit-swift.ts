@@ -107,6 +107,13 @@ let _structFieldsToName: Map<string, string> = new Map()
 let _synthExprStructs: StructIR[] = []
 let _synthExprStructKeys: Map<string, string> = new Map()
 
+// The active component's inference ctx, exposed to `emitSwiftExpr`'s
+// object-literal case (which doesn't receive it as a param) so a
+// non-literal field (`{ id: count() }`) can have its type inferred for
+// struct synthesis. Set per `emitSwiftComponent`; empty otherwise (a
+// literal-only object still synthesizes against the empty ctx).
+let _exprInferCtx: ReturnType<typeof buildInferenceCtx> = buildInferenceCtx([])
+
 /**
  * Per-emit-run: component name → typed-`params`-prop info for router
  * dispatcher construction. Populated by a PRE-PASS in `emitSwift` (the
@@ -1078,6 +1085,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
   // concrete return type instead of degrading to Any.
   const inferCtx = buildInferenceCtx(c.decls, _storeDefs)
+  // Expose it to the object-literal emit so a non-literal field
+  // (`{ id: count() }`) gets its struct-field type inferred.
+  _exprInferCtx = inferCtx
   // Component-scope const literals → static-attr resolution (`<Image
   // src={logo}>` where `logo` is a component-body const).
   _componentConstMap = buildComponentConstMap(c.decls)
@@ -2652,12 +2662,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             .join(', ')
           return `${swiftIdent(structName)}(${args})`
         }
-        // No declared struct matches — SYNTHESIZE one for an all-scalar-
-        // literal object (`{ id: 1, name: 'a' }`) instead of the broken
+        // No declared struct matches — SYNTHESIZE one instead of the broken
         // labelled-tuple emit (single-field tuple is illegal Swift; tuple
-        // key-paths break `ForEach(id:)`). Non-literal / nested-object
-        // fields fall through to the tuple emit below (unchanged).
-        const synthName = synthLiteralStructName(e.fields, _synthExprStructs, _synthExprStructKeys)
+        // key-paths break `ForEach(id:)`; `obj.field` access fails on the
+        // `Any`-typed tuple). Fields may be scalar LITERALS (`{ id: 1 }`) OR
+        // non-literal expressions whose type INFERS to a scalar (`{ id:
+        // count() }` → Int) via `_exprInferCtx`. Non-scalar / un-inferable
+        // fields still fall through to the tuple emit below (unchanged).
+        const synthName = synthLiteralStructName(
+          e.fields,
+          _synthExprStructs,
+          _synthExprStructKeys,
+          (ex) => inferType(ex, _exprInferCtx),
+        )
         if (synthName !== null) {
           const args = e.fields
             .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
