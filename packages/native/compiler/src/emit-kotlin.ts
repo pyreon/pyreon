@@ -14,6 +14,8 @@ import {
 } from './canonical-primitives'
 import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
 import { kotlinIdent, safeIdent } from './identifier-safety'
+import { buildInferenceCtx, inferReturnType } from './infer-type'
+import type { InferenceCtx } from './infer-type'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -204,6 +206,7 @@ export function emitKotlin(
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _constStringMapKotlin = new Map()
+  _kotlinStoreDefs = stores
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
@@ -972,6 +975,16 @@ interface KotlinCtx {
    * through nested `if`/`else` blocks via the ctx pass-through.
    */
   lambdaLabel?: string
+  /**
+   * Type-inference context for the active component (signals / computeds /
+   * fetches / locals / stores). Used by `emitKotlinFunction` to INFER a
+   * block-body helper's return type when the TS source didn't declare one:
+   * Kotlin does NOT infer return types for block bodies, so a value-
+   * returning `fun f() { … return x }` emitted without a `: T` clause is a
+   * kotlinc error (`Unit` expected). Concise `= expr` bodies still infer
+   * natively and are left un-annotated.
+   */
+  inferCtx?: InferenceCtx
 }
 
 // Module-scoped state for the active component's props-param-name —
@@ -979,6 +992,12 @@ interface KotlinCtx {
 // emit so the `member` case can rewrite `props.title` → `title`.
 // Reset to undefined after each component.
 let _activePropsParamName: string | undefined
+
+// Module-scoped store definitions for the active module emit — mirrors
+// emit-swift's `_storeDefs`. Feeds `buildInferenceCtx` so a block-body
+// helper returning a `useX().store.field()` read can have its return type
+// inferred. Set once at the top of the emit entrypoint.
+let _kotlinStoreDefs: StoreDefnIR[] = []
 
 function emitKotlinComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (mirror of Swift).
@@ -1053,7 +1072,11 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
   }
-  const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
+  const ctx: KotlinCtx = {
+    synthesizedDataClasses: [],
+    componentName: c.name,
+    inferCtx: buildInferenceCtx(c.decls, _kotlinStoreDefs),
+  }
   // Pass 1: walk decls — emits decl bodies AND discovers synthesized
   // types from decl annotations. The actual decl text is buffered into
   // `declTexts` so it can be emitted later inside the function body
@@ -1525,10 +1548,23 @@ function emitKotlinFunction(
     }
     return `fun ${kotlinIdent(d.name)}(${params})${retType} = ${concise}`
   }
+  // Multi-statement block body. Unlike the concise `= expr` form (which
+  // Kotlin type-infers) and the unwrapped-assignment form (which returns
+  // Unit), a value-returning block body MUST declare its return type —
+  // `fun f() { … return x }` with no `: T` is a kotlinc error (`Unit`
+  // expected). When the TS source didn't declare one, INFER it from the
+  // body's first value-`return` (`function double(n) { return n * 2 }`
+  // → `: Int`); `inferReturnType` yields `unknown` for a void body or an
+  // un-inferable return, leaving the clause off (correct — void → Unit).
+  let blockRet = d.returnType
+  if (blockRet.kind === 'unknown' && ctx.inferCtx !== undefined) {
+    blockRet = inferReturnType(d.params, d.body, ctx.inferCtx)
+  }
+  const blockRetType = blockRet.kind === 'unknown' ? '' : `: ${kotlinType(blockRet, ctx)}`
   const bodyLines = d.body
     .map((s) => `    ${emitKotlinStatement(s, 4, ctx)}`)
     .join('\n')
-  return `fun ${kotlinIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
+  return `fun ${kotlinIdent(d.name)}(${params})${blockRetType} {\n${bodyLines}\n  }`
 }
 
 function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): string {
