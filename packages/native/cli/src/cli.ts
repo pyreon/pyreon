@@ -11,6 +11,7 @@
 //   2 — build error (compiler threw on a source file)
 
 import { build } from './build'
+import { check, type CheckFinding } from './check'
 import { materializeAssets, type AssetTarget } from './assets'
 import { scanFontDir } from './fonts'
 import { existsSync } from 'node:fs'
@@ -27,6 +28,8 @@ interface ParsedArgs {
   kotlinPackage?: string
   /** Dir to scan for bundled fonts (canonical→PostScript map for the Swift emit). */
   fonts?: string
+  /** `check` only: also run `swiftc -typecheck` on the Swift emit. */
+  typecheck?: boolean
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -36,6 +39,11 @@ function parseArgs(argv: string[]): ParsedArgs {
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i]
     if (!a) continue
+    // Boolean flags (no value, don't consume the next arg).
+    if (a === '--typecheck') {
+      out.typecheck = true
+      continue
+    }
     let key: string
     let value: string
     if (a.startsWith('--') && a.includes('=')) {
@@ -67,7 +75,16 @@ function printUsage(): void {
 
 Usage:
   pyreon-native build  --target=<ios|android|all> --source=<dir> --out=<dir>
+  pyreon-native check  [--target=<ios|android>] [--typecheck] --source=<file|dir>
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
+
+check is the fast authoring-loop command: it runs the PMTC compiler for
+both targets IN MEMORY (no build, no xcodegen/gradle, no file writes) and
+reports per file — transform errors + unsupported-TS-subset warnings.
+--source accepts a single .tsx (edit-loop) or a directory (walk). Add
+--typecheck to ALSO run 'swiftc -typecheck' against the real SwiftUI SDK
+(macOS-only; skips elsewhere), catching type-corruption that the subset
+warnings + a -parse check miss. Exit 0 on clean-or-warnings, 2 on errors.
 
 assets materializes a shared assets/ directory of images
 (name.png, name@2x.png, name@3x.png) into the platform's bundled
@@ -98,6 +115,9 @@ export function main(argv: string[]): number {
   const parsed = parseArgs(argv)
   if (parsed.command === 'assets') {
     return runAssets(parsed)
+  }
+  if (parsed.command === 'check') {
+    return runCheck(parsed)
   }
   if (parsed.command !== 'build') {
     printUsage()
@@ -230,6 +250,54 @@ function runAssets(parsed: ParsedArgs): number {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[pyreon-native] assets failed: ${message}`)
+    return 2
+  }
+}
+
+/** Print one check finding with a severity glyph + file:target prefix. */
+function printFinding(f: CheckFinding): void {
+  const glyph =
+    f.kind === 'error' || f.kind === 'typecheck-error'
+      ? '✗'
+      : f.kind === 'typecheck-skipped'
+        ? 'ℹ'
+        : '!'
+  const line = `  ${glyph} ${f.file} [${f.target}] ${f.message}`
+  if (f.kind === 'error' || f.kind === 'typecheck-error') console.error(line)
+  else console.warn(line)
+}
+
+function runCheck(parsed: ParsedArgs): number {
+  if (!parsed.source) {
+    console.error('error: check requires --source (a .tsx file or a directory)')
+    printUsage()
+    return 1
+  }
+  // `--target` narrows to one platform; default checks BOTH (the DX
+  // default — you want to know if your component works everywhere).
+  const targets: TargetLanguage[] = parsed.target ? [parsed.target] : ['swift', 'kotlin']
+  try {
+    const result = check({
+      source: parsed.source,
+      targets,
+      ...(parsed.typecheck ? { typecheck: true } : {}),
+    })
+    for (const f of result.findings) printFinding(f)
+    const skipped = result.findings.filter((f) => f.kind === 'typecheck-skipped').length
+    console.log(
+      `[pyreon-native] checked ${result.filesChecked} file(s) [${targets.join(', ')}] — ` +
+        `${result.errorCount} error(s), ${result.warningCount} warning(s)` +
+        (parsed.typecheck ? `, ${skipped} type-check skipped` : ''),
+    )
+    if (result.skippedWebEntries.length > 0) {
+      console.log(
+        `[pyreon-native] skipped ${result.skippedWebEntries.length} web-only entry file(s)`,
+      )
+    }
+    return result.errorCount > 0 ? 2 : 0
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[pyreon-native] check failed: ${message}`)
     return 2
   }
 }
