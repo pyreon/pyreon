@@ -3650,13 +3650,60 @@ function tryFunctionDecl(
   // Parse parameters with optional type annotations. TS params shape:
   // `(id: T, id2: T2)` where each param is an Identifier with
   // `typeAnnotation.typeAnnotation`.
+  //
+  // DESTRUCTURED params (`({ a, b }: T) => …`) lower like the hook-result
+  // destructure: synthesize a positional param `__pN` (typed from the
+  // pattern's annotation — a named type resolves to the declared struct) +
+  // PREPEND `let a = __pN.a` per key to the body. So the body references
+  // `a`/`b` exactly as written, against the same struct/field access the
+  // single-param shape `(p: T) => p.a` already emits. Only all-simple
+  // patterns (`{ k }` / renamed `{ k: local }`) lower; a rest element or a
+  // nested pattern warns + is left un-destructured (the param still emits
+  // so the function stays well-formed).
   const params: { name: string; type: TypeIR }[] = []
+  const destructurePrelude: StatementIR[] = []
+  let synthParamIdx = 0
   for (const p of (arrow.params as AnyNode[] | undefined) ?? []) {
-    if (p?.type !== 'Identifier') continue
-    const paramName = p.name as string
-    const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
-    const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
-    params.push({ name: paramName, type })
+    if (p?.type === 'Identifier') {
+      const paramName = p.name as string
+      const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+      const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
+      params.push({ name: paramName, type })
+    } else if (p?.type === 'ObjectPattern') {
+      const synthName = `__p${synthParamIdx++}`
+      const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+      const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
+      params.push({ name: synthName, type })
+      const props = (p.properties as AnyNode[] | undefined) ?? []
+      const allSimple =
+        props.length > 0 &&
+        props.every(
+          (pr) =>
+            pr?.type === 'Property' &&
+            pr.key?.type === 'Identifier' &&
+            pr.value?.type === 'Identifier',
+        )
+      if (allSimple) {
+        for (const pr of props) {
+          const key = (pr as AnyNode).key.name as string
+          const local = (pr as AnyNode).value.name as string
+          destructurePrelude.push({
+            kind: 'let',
+            name: local,
+            expr: {
+              kind: 'member',
+              object: { kind: 'identifier', name: synthName },
+              property: key,
+            },
+          })
+        }
+      } else {
+        ctx.warnings.push(
+          'Destructured parameter with a rest element / nested pattern was not lowered — use simple keys (`({ a, b }: T) => …`).',
+        )
+      }
+    }
+    // Array patterns + other shapes: skip (unchanged behavior).
   }
 
   // Return type annotation, if any. oxc carries it on `arrow.returnType.typeAnnotation`.
@@ -3677,7 +3724,15 @@ function tryFunctionDecl(
     stmts = [{ kind: 'return', expr: parseExpr(body, ctx) }]
   }
 
-  return { kind: 'function', name, params, returnType, body: stmts }
+  // Prepend the destructure prelude (`let a = __pN.a`) so the body's
+  // references to the destructured locals resolve.
+  return {
+    kind: 'function',
+    name,
+    params,
+    returnType,
+    body: destructurePrelude.length > 0 ? [...destructurePrelude, ...stmts] : stmts,
+  }
 }
 
 /**
