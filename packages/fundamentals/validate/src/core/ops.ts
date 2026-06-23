@@ -95,6 +95,9 @@ export type BigIntCheckOp =
   | { kind: 'check:bigint:positive'; opts?: CheckOpts | undefined }
   | { kind: 'check:bigint:negative'; opts?: CheckOpts | undefined }
   | { kind: 'check:bigint:multiple-of'; n: bigint; opts?: CheckOpts | undefined }
+  | { kind: 'check:bigint:gt'; n: bigint; opts?: CheckOpts | undefined }
+  | { kind: 'check:bigint:lt'; n: bigint; opts?: CheckOpts | undefined }
+  | { kind: 'check:bigint:between'; lo: bigint; hi: bigint; opts?: CheckOpts | undefined }
 
 // ─── Modifiers ─────────────────────────────────────────────────────────────
 
