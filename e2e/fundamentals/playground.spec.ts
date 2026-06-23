@@ -209,3 +209,51 @@ test.describe('Playground — /code editor mount', () => {
     await expect(cmContent).toContainText('@pyreon/reactivity')
   })
 })
+
+// /virtual proves the @pyreon/virtual adapter actually virtualizes:
+// a 10,000-row list must mount only the visible window (+ overscan),
+// NOT 10,000 DOM rows. The route-sweep above only checks for no
+// console errors — this asserts the core contract (DOM count ≪ total)
+// AND that scrolling re-virtualizes the window. Client-navigates from
+// `/` to avoid SSR cold-start under CI load (same shape as /code).
+test.describe('Playground — /virtual virtualization', () => {
+  test('10,000-row list mounts only the visible window + re-virtualizes on scroll', async ({
+    page,
+  }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('nav.sidebar').first().waitFor()
+    await page.locator('nav.sidebar a[href="/virtual"]').first().click()
+
+    const scroll = page.locator('[data-testid=virtual-scroll]')
+    await expect(scroll).toBeVisible()
+
+    // The sizer spans the FULL virtual height (10,000 × 40px = 400,000px)
+    // — the virtualizer accounts for every row even though only a few
+    // are mounted.
+    const sizer = page.locator('[data-testid=virtual-sizer]')
+    await expect(sizer).toHaveCSS('height', '400000px')
+
+    // Only the visible window (~400px / 40px ≈ 10 rows + 10 overscan
+    // each side) is in the DOM — far fewer than 10,000. Bounded assert:
+    // > 0 (something rendered) AND < 200 (virtualized, not all 10k).
+    const rows = sizer.locator('> div')
+    await expect
+      .poll(async () => rows.count(), { timeout: 10_000 })
+      .toBeGreaterThan(0)
+    const initialCount = await rows.count()
+    expect(initialCount).toBeLessThan(200)
+
+    // The first mounted row is near the top (#1) before scrolling.
+    await expect(scroll).toContainText('#1')
+
+    // Scroll deep into the list → the window re-virtualizes: row #1 is
+    // no longer mounted, a far-down row is. Proves scroll-driven
+    // virtualization, not a static first-window render.
+    await scroll.evaluate((el) => {
+      el.scrollTop = 200_000 // ~row 5000
+    })
+    await expect(scroll).not.toContainText('#1', { timeout: 5_000 })
+    // Row count stays bounded after scrolling (still virtualized).
+    expect(await rows.count()).toBeLessThan(200)
+  })
+})

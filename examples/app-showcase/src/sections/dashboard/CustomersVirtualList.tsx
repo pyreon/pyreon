@@ -67,7 +67,7 @@ export function CustomersVirtualList() {
       return <StateCard>No customers found.</StateCard>
     }
     return (
-      <VirtualScroll innerRef={setScrollRef}>
+      <VirtualScroll ref={setScrollRef}>
         <VirtualInner style={`--total-h: ${virtual.totalSize()}px`}>
           {() =>
             virtual.virtualItems().map((item) => {

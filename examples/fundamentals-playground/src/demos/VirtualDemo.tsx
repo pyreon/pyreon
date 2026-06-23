@@ -42,9 +42,13 @@ export function VirtualDemo() {
 
         <div
           ref={(el: HTMLElement | null) => parentRef.set(el)}
+          data-testid="virtual-scroll"
           style="height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px"
         >
-          <div style={`height: ${totalSize()}px; width: 100%; position: relative`}>
+          <div
+            data-testid="virtual-sizer"
+            style={`height: ${totalSize()}px; width: 100%; position: relative`}
+          >
             {() =>
               virtualItems().map((vRow) => {
                 const item = items[vRow.index]!
