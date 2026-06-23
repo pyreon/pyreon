@@ -394,6 +394,9 @@ export function emitSwift(
   _storeHooks = new Map(stores.map((s) => [s.hookName, s.storeId]))
   // Full store defs for per-component inference (field types).
   _storeDefs = stores
+  // Declared structs for per-component inference (typed object-array
+  // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
+  _structDefs = structs
   // v2 — per-hook method registry for the chain-call rewrite.
   _storeMethodNames = new Map(
     stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
@@ -450,6 +453,7 @@ export function emitSwift(
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
   _storeDefs = []
+  _structDefs = []
   _storeMethodNames = new Map()
   _modelInstances = new Map()
   _needsSwiftKeepAliveWrapper = false
@@ -464,6 +468,10 @@ let _storeHooks: Map<string, string> = new Map()
 let _storeMethodNames: Map<string, Set<string>> = new Map()
 /** Full store definitions — feeds per-component inference ctx (field types). */
 let _storeDefs: StoreDefnIR[] = []
+/** Declared module structs — feeds per-component inference ctx so member
+ * access on a typed object-array element (`t.id` where `t: Todo`) resolves
+ * the field type instead of degrading to `Any`. Set at the emit entrypoint. */
+let _structDefs: StructIR[] = []
 
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
 let _modelInstances: Map<string, string> = new Map()
@@ -517,6 +525,8 @@ function emitSwiftStore(s: StoreDefnIR): string {
         type: f.type,
         initial: f.initial,
       })),
+      [],
+      _structDefs,
     )
     for (const c of s.computeds ?? []) {
       const t = inferType(c.expr, storeCtx)
@@ -1090,7 +1100,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Store field types thread into the inference ctx so computeds over
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
   // concrete return type instead of degrading to Any.
-  const inferCtx = buildInferenceCtx(c.decls, _storeDefs)
+  const inferCtx = buildInferenceCtx(c.decls, _storeDefs, _structDefs)
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.
   _exprInferCtx = inferCtx

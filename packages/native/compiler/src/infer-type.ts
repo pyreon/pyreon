@@ -18,7 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
-import type { DeclIR, ExprIR, StatementIR, StoreDefnIR, TypeIR } from './types'
+import type { DeclIR, ExprIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -51,6 +51,19 @@ export interface InferenceCtx {
    * typed position.
    */
   stores: Map<string, Map<string, TypeIR>>
+  /**
+   * Declared struct / type-alias name → field name → field type. Filled
+   * from the module's `type X = { ... }` declarations. Lets member
+   * access on a `typeRef`-typed value (`t.id` where `t: Todo`) resolve
+   * the field's concrete type — the dominant shape inside a `.map`
+   * callback over a typed object array (`todos().map(t => t.id)`).
+   * Without this, that member read degraded to `unknown` and the
+   * computed's element type collapsed to `Any` (`[Any]` / `Any`), which
+   * compiles for interpolation-only consumers but silently loses the
+   * real type the moment the value feeds a typed position (a `ForEach`
+   * id, arithmetic, a typed function arg).
+   */
+  structs: Map<string, Map<string, TypeIR>>
 }
 
 /**
@@ -66,17 +79,22 @@ export function emptyInferenceCtx(): InferenceCtx {
     locals: new Map(),
     fetches: new Map(),
     stores: new Map(),
+    structs: new Map(),
   }
 }
 
 export function buildInferenceCtx(
   decls: DeclIR[],
   storeDefs: StoreDefnIR[] = [],
+  structDefs: StructIR[] = [],
 ): InferenceCtx {
   const ctx: InferenceCtx = {
     signals: new Map(),
     computeds: new Map(),
     locals: new Map(),
+    structs: new Map(
+      structDefs.map((s) => [s.name, new Map(s.fields.map((f) => [f.name, f.type]))]),
+    ),
     fetches: new Map(
       decls.flatMap((d) => (d.kind === 'fetch' ? [[d.name, d.type] as const] : [])),
     ),
@@ -93,6 +111,12 @@ export function buildInferenceCtx(
             locals: new Map(),
             fetches: new Map(),
             stores: new Map(),
+            structs: new Map(
+              structDefs.map((sd) => [
+                sd.name,
+                new Map(sd.fields.map((f) => [f.name, f.type])),
+              ]),
+            ),
           }
           for (const c of s.computeds) {
             const t = inferType(c.expr, storeCtx)
@@ -204,6 +228,7 @@ export function inferReturnType(
     locals: new Map(ctx.locals),
     fetches: ctx.fetches,
     stores: ctx.stores,
+    structs: ctx.structs,
   }
   for (const p of params) scratch.locals.set(p.name, p.type)
   const ret = findFirstReturnExpr(body, scratch)
@@ -403,6 +428,15 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (objType.kind === 'object') {
         const field = objType.fields.find((f) => f.name === expr.property)
         if (field) return field.type
+      }
+      // `t.id` where `t: Todo` (a declared `type Todo = { ... }`). The
+      // element type of a typed object array is a `typeRef`, so this is
+      // the path that makes `todos().map(t => t.id)` infer `[Int]`
+      // instead of `[Any]` — the dominant real-app shape. Without it the
+      // member read returned `unknown` and the `.map` element collapsed.
+      if (objType.kind === 'typeRef') {
+        const field = ctx.structs.get(objType.name)?.get(expr.property)
+        if (field) return field
       }
       if (objType.kind === 'array') {
         // `.length` and `.at()` etc. — minimal coverage for now.

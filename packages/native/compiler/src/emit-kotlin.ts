@@ -219,6 +219,9 @@ export function emitKotlin(
   _emitWarnings = []
   _constStringMapKotlin = new Map()
   _kotlinStoreDefs = stores
+  // Declared structs for per-component inference (typed object-array
+  // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
+  _kotlinStructDefs = structs
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
@@ -1010,6 +1013,11 @@ let _activePropsParamName: string | undefined
 // helper returning a `useX().store.field()` read can have its return type
 // inferred. Set once at the top of the emit entrypoint.
 let _kotlinStoreDefs: StoreDefnIR[] = []
+// Declared module structs — mirrors emit-swift's `_structDefs`. Feeds
+// `buildInferenceCtx` so member access on a typed object-array element
+// (`t.id` where `t: Todo`) resolves the field type instead of degrading
+// to `Any`. Set once at the top of the emit entrypoint.
+let _kotlinStructDefs: StructIR[] = []
 
 function emitKotlinComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (mirror of Swift).
@@ -1084,7 +1092,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
   }
-  const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs)
+  const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs, _kotlinStructDefs)
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],
     componentName: c.name,

@@ -61,7 +61,7 @@ describe('Swift function return-type inference', () => {
     expect(out).toContain('func half(_ x: Int) -> Int')
   })
 
-  it('a destructured-param value-return stays unannotated (documented limit)', () => {
+  it('a destructured-param value-return now infers via the struct registry', () => {
     const out = transform(
       `import { Stack, Text } from '@pyreon/primitives'
 type P = { x: number; y: number }
@@ -71,9 +71,12 @@ function App() {
 }`,
       { target: 'swift' },
     ).code
-    // inferReturnType can't resolve x/y (synthetic __p0.x member reads) → no
-    // annotation (annotate the return to get one: `({x,y}: P): number => …`).
-    expect(out).toContain('func sum(_ __p0: P) {')
+    // The synthetic `__p0.x` / `__p0.y` member reads now resolve through the
+    // struct registry (`type P` is threaded into the inference ctx), so
+    // `x + y` infers `Int` and the helper's return is annotated `-> Int`.
+    // Previously a documented limit (no annotation) — closed by the
+    // typeRef-member struct-field resolution.
+    expect(out).toContain('private func sum(_ __p0: P) -> Int {')
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: inferred-return helpers typecheck via swiftc', () => {
