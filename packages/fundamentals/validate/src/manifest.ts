@@ -271,6 +271,80 @@ const r = cfg.parse({ port: 80 })
 // r.value is Readonly<{ port: number }> and Object.isFrozen(r.value) === true`,
       seeAlso: ['catch'],
     },
+    {
+      name: 'array',
+      kind: 'function',
+      signature: '() => ArraySchema<T>',
+      summary:
+        "Wrap this schema in an array — `s.string().array()` ≡ `s.array(s.string())` (Zod's `.array`). Chains and nests (`s.number().array().array()`). Late-bound via a tree-shake-safe factory registry so the base class never imports the composition modules (no load-order cycle).",
+      example: `s.string().array().parse(['a', 'b']) // → { ok: true, value: ['a', 'b'] }`,
+      seeAlso: ['or', 'and'],
+    },
+    {
+      name: 'or',
+      kind: 'function',
+      signature: '<U>(other: Schema<U>) => UnionSchema<readonly [Schema<T>, Schema<U>]>',
+      summary: "Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`). Output type is `T | U`.",
+      example: `s.string().or(s.number()) // Schema<string | number>`,
+      seeAlso: ['and', 'array'],
+    },
+    {
+      name: 'and',
+      kind: 'function',
+      signature: '<U>(other: Schema<U>) => IntersectionSchema<T, U>',
+      summary:
+        "Intersect this schema with another — `a.and(b)` ≡ `s.intersection(a, b)` (Zod's `.and`). Output type is `T & U`.",
+      example: `s.object({ a: s.string() }).and(s.object({ b: s.number() })) // { a } & { b }`,
+      seeAlso: ['or', 'array'],
+    },
+    {
+      name: 'pipe',
+      kind: 'function',
+      signature: '<U>(target: Schema<U>) => Schema<U>',
+      summary:
+        "Validate with this schema, then feed the (validated, transformed) output into `target` (Zod's `.pipe`). Ideal for coerce→validate chains. Short-circuits if this schema fails; async-aware. Output type is `target`'s.",
+      example: `s.string().transform(Number).pipe(s.number().positive())`,
+      seeAlso: ['preprocess', 'transform'],
+    },
+    {
+      name: 'superRefine',
+      kind: 'function',
+      signature: '(fn: (value: T, ctx: SuperRefineCtx) => void) => Schema<T>',
+      summary:
+        "Like `.refine`, but the callback may add ANY number of issues (or none) via `ctx.addIssue({ message, path? })` — for cross-field validation that reports multiple problems at once. `path` is appended to the field's current path. Runs only if this schema passed.",
+      example: `s.object({ pw: s.string(), confirm: s.string() }).superRefine((v, ctx) => {
+  if (v.pw !== v.confirm) ctx.addIssue({ message: 'Mismatch', path: ['confirm'] })
+})`,
+      seeAlso: ['refine', 'pipe'],
+    },
+    {
+      name: 'preprocess',
+      kind: 'function',
+      signature: '<TOut>(fn: (input: unknown) => unknown, schema: Schema<TOut>) => Schema<TOut>',
+      summary:
+        "Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen before the type-check. A standalone function (also on the `s` namespace), not a method.",
+      example: `s.preprocess((v) => String(v).trim(), s.string().min(1))`,
+      seeAlso: ['pipe', 'transform'],
+    },
+    {
+      name: 'nonoptional',
+      kind: 'function',
+      signature: '(message?: string) => Schema<Exclude<T, undefined>>',
+      summary:
+        "Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g. after an `.optional()` in a reused base schema.",
+      example: `s.string().optional().nonoptional() // rejects undefined again`,
+      seeAlso: ['optional'],
+    },
+    {
+      name: 'stringbool',
+      kind: 'function',
+      signature: '(opts?: { truthy?: string[]; falsy?: string[]; message?: string }) => StringBoolSchema',
+      summary:
+        "Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). Type-checks a string, then maps configured truthy/falsy tokens (case-insensitive, trimmed; defaults `true`/`1`/`yes`/`on`/`y`/`enabled` ↔ `false`/`0`/`no`/`off`/`n`/`disabled`) to `true`/`false`; anything else errors. Stricter than `s.coerce.boolean()` (which uses JS truthiness on any input).",
+      example: `s.stringbool().parse('yes') // → { ok: true, value: true }
+s.stringbool({ truthy: ['si'], falsy: ['no'] })`,
+      seeAlso: ['coerce'],
+    },
   ],
   gotchas: [
     {
