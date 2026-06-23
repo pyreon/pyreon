@@ -20,7 +20,7 @@ import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError } from './issue'
 import { tryCompileJit } from './jit'
-import type { CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
+import type { CatchOp, CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { makeCtx } from './ops'
 import { getServerCheck } from './registry'
 // Type-only imports for the composition shorthand return types (`.array` /
@@ -78,6 +78,20 @@ function requireFactory<F>(fn: F | undefined): F {
   if (!fn) throw new Error(COMPOSITION_UNREGISTERED)
   return fn
 }
+
+/**
+ * Shallow-readonly output type for `.readonly()` — arrays → `ReadonlyArray`,
+ * objects → readonly-keyed, primitives/`unknown` unchanged. NOT the built-in
+ * `Readonly<T>`: `Readonly<unknown>` resolves to `{}` (since `keyof unknown` is
+ * `never`), which `undefined`/`null` aren't assignable to — breaking
+ * `Schema<T>` → `Schema<unknown>` assignability the whole codebase relies on.
+ * This variant maps primitives + `unknown` to themselves, preserving variance.
+ */
+export type ShallowReadonly<T> = T extends readonly (infer U)[]
+  ? ReadonlyArray<U>
+  : T extends object
+    ? { readonly [K in keyof T]: T[K] }
+    : T
 
 /**
  * Result discriminated union. `parse()` returns this. On success, the
@@ -387,6 +401,49 @@ export abstract class Schema<T> {
   }
 
   /**
+   * On parse FAILURE, discard the issues this schema produced and return a
+   * fallback instead of erroring — resilient parsing (Zod's `.catch`). The
+   * fallback is either a static value or a function of the raw input. Terminal
+   * regardless of chain position: `s.string().min(3).catch('x')` and
+   * `s.string().catch('x').min(3)` behave identically — `catch` always gates
+   * the final result. Works on both `parse` and `parseAsync` (an async
+   * transform/refine failure is caught after the Promise settles).
+   *
+   * @example
+   * ```ts
+   * s.number().catch(0).parse('nope')            // → { ok: true, value: 0 }
+   * s.string().catch((input) => String(input))   // fallback derived from input
+   * ```
+   */
+  catch(value: T | ((input: unknown) => T)): this {
+    this._ops.push({ kind: 'catch', value: value as unknown })
+    this._invalidateCompile()
+    return this
+  }
+
+  /**
+   * Freeze the parsed output and mark it `Readonly<T>` at the type level
+   * (Zod's `.readonly`). Objects/arrays are `Object.freeze`d so accidental
+   * downstream mutation throws in strict mode; primitives pass through. Apply
+   * last in a chain.
+   *
+   * @example
+   * ```ts
+   * const cfg = s.object({ port: s.number() }).readonly()
+   * const r = cfg.parse({ port: 80 })
+   * // r.value is Readonly<{ port: number }> and frozen
+   * ```
+   */
+  readonly(): Schema<ShallowReadonly<T>> {
+    this._ops.push({
+      kind: 'transform',
+      fn: (v) => (v !== null && typeof v === 'object' ? Object.freeze(v) : v),
+    })
+    this._invalidateCompile()
+    return this as unknown as Schema<ShallowReadonly<T>>
+  }
+
+  /**
    * Brand the output type with a phantom marker. Doesn't affect parse;
    * is purely a type-level annotation to prevent mixing of structurally-
    * identical-but-semantically-distinct values (e.g. `UserId` vs
@@ -505,6 +562,7 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
   const transforms = scanTransforms(schema._ops)
   const refines = scanRefines(schema._ops)
   const serverChecks = scanServerChecks(schema._ops)
+  const catchSpec = scanCatch(schema._ops)
 
   // Bind the type-check hook to `schema` so subclass overrides fire.
   const typeCheck: SyncValidator = (input, ctx) =>
@@ -515,6 +573,10 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
     )._compileType(input, ctx)
 
   return function compiled(input, ctx): unknown {
+    // Capture the raw input for `.catch((input) => …)` (the prelude may
+    // reassign `input` to a default below).
+    const originalInput = input
+
     // 1. Modifier prelude.
     if (input === undefined) {
       if (modifiers.hasDefault) {
@@ -530,12 +592,14 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
       // else: fall through.
     }
 
-    // 2. Type-check.
+    // 2. Type-check. (`issuesBefore` is also the reset target for `.catch` —
+    // the prelude above never pushes issues, so it equals this schema's entry
+    // issue count.)
     const issuesBefore = ctx.issues.length
     const typed = typeCheck(input, ctx)
     if (ctx.issues.length > issuesBefore) {
       // Type-check failed — don't continue to checks/transforms/refines.
-      return typed
+      return catchSpec ? settleCatch(catchSpec, ctx, issuesBefore, originalInput, typed) : typed
     }
 
     // A composite type-check (object/array with an async field — async
@@ -544,14 +608,16 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
     // against the RESOLVED value, never the Promise). The all-sync path never
     // allocates a Promise here.
     if (typed instanceof Promise) {
-      return typed.then((resolved) =>
+      return typed.then((resolved) => {
         // A field-level async check may have pushed issues during resolution —
         // skip the object's own pipeline in that case (parity with the sync
         // early-return above).
-        ctx.issues.length > issuesBefore ? resolved : runPostType(resolved, ctx),
-      )
+        const r = ctx.issues.length > issuesBefore ? resolved : runPostType(resolved, ctx)
+        return catchSpec ? settleCatch(catchSpec, ctx, issuesBefore, originalInput, r) : r
+      })
     }
-    return runPostType(typed, ctx)
+    const out = runPostType(typed, ctx)
+    return catchSpec ? settleCatch(catchSpec, ctx, issuesBefore, originalInput, out) : out
   }
 
   // Steps 3-6 against an already-type-checked value (sync or post-await).
@@ -581,6 +647,50 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
 
     return value
   }
+}
+
+// ─── `.catch` support ───────────────────────────────────────────────────────
+
+/** Find the (terminal) catch op — last one wins; position-independent. */
+function scanCatch(ops: ReadonlyArray<Op>): CatchOp | undefined {
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const op = ops[i]!
+    if (op.kind === 'catch') return op
+  }
+  return undefined
+}
+
+/** Resolve the fallback value — a function is called with the raw input. */
+function resolveCatchValue(value: unknown, input: unknown): unknown {
+  return typeof value === 'function' ? (value as (i: unknown) => unknown)(input) : value
+}
+
+/**
+ * Apply `.catch`: if this schema added issues (relative to `issuesBefore`),
+ * truncate them back and return the fallback; otherwise pass `value` through.
+ * Promise-aware so an async transform/refine failure is caught after settle.
+ */
+function settleCatch(
+  catchSpec: CatchOp,
+  ctx: ParseCtx,
+  issuesBefore: number,
+  originalInput: unknown,
+  value: unknown,
+): unknown {
+  if (value instanceof Promise) {
+    return value.then((resolved) => {
+      if (ctx.issues.length > issuesBefore) {
+        ctx.issues.length = issuesBefore
+        return resolveCatchValue(catchSpec.value, originalInput)
+      }
+      return resolved
+    })
+  }
+  if (ctx.issues.length > issuesBefore) {
+    ctx.issues.length = issuesBefore
+    return resolveCatchValue(catchSpec.value, originalInput)
+  }
+  return value
 }
 
 interface ModifierSet {

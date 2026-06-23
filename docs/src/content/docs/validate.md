@@ -233,6 +233,49 @@ installFormatValidator('ulid', (value) => myStrictUlidCheck(value))
 // every s.string().ulid() now uses it — the shared schema is untouched.
 ```
 
+## Resilient parsing & readonly
+
+Two terminal schema methods from the `s` runtime, matching Zod's surface.
+
+### `.catch(fallback)`
+
+On parse **failure**, discard the issues this schema produced and substitute a fallback instead of erroring — for config defaults, lenient inputs, and "never throw" boundaries.
+
+```ts
+import { s } from '@pyreon/validate'
+
+s.number().catch(0).parse('nope')          // → { ok: true, value: 0 }
+s.string().min(3).catch('x').parse('ab')   // → { ok: true, value: 'x' }
+
+// the fallback can be derived from the raw input:
+s.string().catch((input) => String(input)).parse(42) // → { ok: true, value: '42' }
+```
+
+- **Terminal regardless of chain position** — `.min(3).catch('x')` and `.catch('x').min(3)` behave identically; `catch` always gates the final result.
+- **Scoped per-schema** — a caught field failure is substituted while a sibling's failure still fails the object:
+
+```ts
+const schema = s.object({
+  name: s.string(),          // no catch
+  age: s.number().catch(0),  // caught
+})
+schema.parse({ name: 'Ada', age: 'x' })  // → { ok: true, value: { name: 'Ada', age: 0 } }
+schema.parse({ name: 123,   age: 'x' })  // → { ok: false } (name failed; age was caught)
+```
+
+- **Async-aware** — under `parseAsync`, a failing async `.refine` / `.serverCheck` is caught after the Promise settles.
+
+### `.readonly()`
+
+Freeze the parsed output (`Object.freeze`, shallow) and mark it `Readonly<T>` at the type level. Apply last.
+
+```ts
+const cfg = s.object({ port: s.number() }).readonly()
+const r = cfg.parse({ port: 80 })
+// r.value is Readonly<{ port: number }>; Object.isFrozen(r.value) === true
+// (r.value as { port: number }).port = 1  // throws in strict mode
+```
+
 ## Coexists with existing adapters
 
 `@pyreon/validation`'s `zodSchema()` / `valibotSchema()` / `arktypeSchema()` adapters are unchanged. New code can write:

@@ -75,6 +75,7 @@ const $sameResult = parseReactive(sameSchema, $email)
     'Tree-shakeable — DX helpers alone are ~0.5KB gz (measured); the v1 validator runtime (~3.5KB gz) is pulled in only when `s` / primitives are imported',
     'Client/server split — ONE shared schema, thin client + heavy server. `s.string().email()` validates strictly server-side (rfc5322 + disposable blocklist, full E.164 phone) the instant `@pyreon/validate/server` is imported — the heavy code tree-shakes out of the client bundle. `.serverCheck(key)` is the async/privileged tier (unique-email, breach-check, MX): a no-op on the client (recorded on `Result.pending`), the registered validator (via `registerServerCheck`) on the server. `parseAsync(input, { context })` threads a DB handle / request to the server checks.',
     'String format checks: email / url / uuid / ip / phone / creditCard + cuid2 / ulid / nanoid / emoji / base64 / jwt + ISO date/dateTime/time — every format routed through the client/server registry seam, so a server can upgrade any of them in place via `installFormatValidator`.',
+    '`.catch(fallback)` — resilient parse: on failure, discard issues and substitute a static or input-derived fallback (terminal regardless of chain position; sync + async). `.readonly()` — freeze the parsed output + `Readonly<T>` at the type level.',
   ],
   api: [
     {
@@ -247,6 +248,28 @@ registerServerCheck('email-unique', async (value, ctx) => {
   return !(await db.user.existsByEmail(value as string))
 })`,
       seeAlso: ['serverCheck'],
+    },
+    {
+      name: 'catch',
+      kind: 'function',
+      signature: '(value: T | ((input: unknown) => T)) => this',
+      summary:
+        "On parse FAILURE, discard the issues this schema produced and return a fallback instead of erroring — resilient parsing (Zod's `.catch`). The fallback is a static value or a function of the raw input. Terminal regardless of chain position: `s.string().min(3).catch('x')` and `s.string().catch('x').min(3)` behave identically. Works on both `parse` and `parseAsync` (an async transform/refine failure is caught after the Promise settles). Scoped per-schema: a caught FIELD failure is substituted while sibling failures still fail the object.",
+      example: `s.number().catch(0).parse('nope')          // → { ok: true, value: 0 }
+s.string().min(3).catch('x').parse('ab')   // → { ok: true, value: 'x' }
+s.string().catch((input) => String(input)) // fallback derived from the raw input`,
+      seeAlso: ['readonly', 'default'],
+    },
+    {
+      name: 'readonly',
+      kind: 'function',
+      signature: '() => Schema<ShallowReadonly<T>>',
+      summary:
+        "Freeze the parsed output and mark it `Readonly<T>` at the type level (Zod's `.readonly`). Objects/arrays are `Object.freeze`d (shallow) so accidental downstream mutation throws in strict mode; primitives pass through. Apply last in a chain. Uses a primitive-safe `ShallowReadonly<T>` (not the built-in `Readonly<T>`, whose `Readonly<unknown>` resolves to `{}` and breaks `Schema<T>` → `Schema<unknown>` assignability).",
+      example: `const cfg = s.object({ port: s.number() }).readonly()
+const r = cfg.parse({ port: 80 })
+// r.value is Readonly<{ port: number }> and Object.isFrozen(r.value) === true`,
+      seeAlso: ['catch'],
     },
   ],
   gotchas: [
