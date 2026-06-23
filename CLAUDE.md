@@ -759,6 +759,7 @@ Direct subscribers use a single-subscriber inline slot (`_d1`), promoting to a `
 
 - `cx(…values: ClassValue[]): string` and `ClassValue` exported from `@pyreon/core`
 - `PyreonHTMLAttributes`, `CSSProperties`, `StyleValue`, `CanvasAttributes` (typed `Ref<HTMLCanvasElement>`) exported from `@pyreon/core`
+- `AriaRole` exported from `@pyreon/core` — the WAI-ARIA 1.2 role union the `role` attribute is typed as: `role?: AriaRole | (() => AriaRole | undefined)`. Gives `role="…"` literal autocomplete + discoverability; the union includes `(string & {})` so it stays OPEN (any string still assigns — custom/abstract roles, `role={dynamicString}`, future tokens). Non-breaking DX refinement (so it does NOT type-error on typos — autocomplete only). Mirrors React's `AriaRole`. Type-contract locked by `packages/core/core/src/tests/aria-role.types.test.ts` (bisect-verified: closing the union → the open-ness assertions fail tsc).
 
 ### Router
 
