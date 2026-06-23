@@ -1958,3 +1958,31 @@ describe.skipIf(skipKotlincCondition)(
     })
   },
 )
+
+describe('Cross-platform a11y vocabulary → SwiftUI a11y modifiers (P5 native, iOS)', () => {
+  it('Swift: accessibilityLabel → .accessibilityLabel("...")', () => {
+    const out = tx(`<Stack accessibilityLabel="Close menu"><Text>x</Text></Stack>`, 'swift')
+    expect(out).toContain('.accessibilityLabel("Close menu")')
+  })
+
+  it('Swift: accessibilityHidden → .accessibilityHidden(true)', () => {
+    const out = tx(`<Stack accessibilityHidden><Text>deco</Text></Stack>`, 'swift')
+    expect(out).toContain('.accessibilityHidden(true)')
+  })
+
+  it('Swift: accessibilityHidden={false} emits no .accessibilityHidden', () => {
+    const out = tx(`<Stack accessibilityHidden={false}><Text>x</Text></Stack>`, 'swift')
+    expect(out).not.toContain('.accessibilityHidden')
+  })
+
+  it('Swift: accessibilityLabel on a leaf interaction primitive (Button)', () => {
+    const out = tx(`<Button onPress={() => {}} accessibilityLabel="Add to cart">cart</Button>`, 'swift')
+    expect(out).toContain('.accessibilityLabel("Add to cart")')
+  })
+
+  it('Swift: no a11y props → no a11y modifiers (unchanged emit)', () => {
+    const out = tx(`<Stack><Text>x</Text></Stack>`, 'swift')
+    expect(out).not.toContain('.accessibilityLabel')
+    expect(out).not.toContain('.accessibilityHidden')
+  })
+})

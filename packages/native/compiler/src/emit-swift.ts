@@ -3733,6 +3733,18 @@ function emitSwiftLayoutModifiers(
     }
     parts.push(`.accessibilityIdentifier(${JSON.stringify(testid)})`)
   }
+  // Cross-platform a11y vocabulary (`@pyreon/primitives` AccessibilityProps)
+  // → SwiftUI a11y modifiers — the iOS lowering of the same neutral props the
+  // web lowers to aria-* (`collectPassthroughAttrs`). `accessibilityLabel`
+  // sets the VoiceOver name (icon-only buttons, images); `accessibilityHidden`
+  // removes the element + its subtree from the accessibility tree.
+  const a11yLabel = readStaticAttr(e, 'accessibilityLabel')
+  if (typeof a11yLabel === 'string') {
+    parts.push(`.accessibilityLabel(${JSON.stringify(a11yLabel)})`)
+  }
+  if (readStaticAttr(e, 'accessibilityHidden') === true) {
+    parts.push('.accessibilityHidden(true)')
+  }
   return parts.join('')
 }
 

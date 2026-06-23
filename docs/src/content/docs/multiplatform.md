@@ -768,8 +768,14 @@ in-body data work.
 `<Suspense fallback>`, `<ErrorBoundary fallback>`, `<KeepAlive when>`,
 `<Transition show>`, `<Modal open>`, `<RouterProvider>`/`<RouterView>`/
 `<Link>`. `data-testid` flows to `accessibilityIdentifier` / `testTag`
-(containers gain the queryability semantic automatically). Component
-children must be JSX or value expressions (auto-wrapped in `Text`).
+(containers gain the queryability semantic automatically). The
+cross-platform a11y vocabulary on `@pyreon/primitives` lowers the same
+way: `accessibilityLabel="…"` → SwiftUI `.accessibilityLabel(…)` (the
+VoiceOver name; Android `semantics { contentDescription }` follows) and
+`accessibilityHidden` → `.accessibilityHidden(true)` — write the neutral
+prop once, each target emits its native a11y model (the web half lowers
+to `aria-label` / `aria-hidden`). Component children must be JSX or
+value expressions (auto-wrapped in `Text`).
 
 **Module scope**: `let`/`const` primitives (non-reactive on native),
 type aliases, the recognized factory calls. Module-scope `signal()` is
