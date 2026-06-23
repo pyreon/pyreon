@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import {
+  CalendarBase,
+  type CalendarState,
   CheckboxBase,
   ColorPickerBase,
   type ColorPickerState,
@@ -288,5 +290,73 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
 
     unmount()
     expect(document.getElementById('smoke-cp')).toBeNull()
+  })
+
+  it('mounts CalendarBase as a WAI-ARIA grid: role=grid, columnheaders, gridcells with full-date aria-label + selected/today state, one roving tabIndex=0', () => {
+    const { container, unmount } = mountInBrowser(
+      h(CalendarBase as never, {
+        // Jan 2026 — selected Jan 15; "today" is whatever the test clock says,
+        // so we only assert today-driven state on the selected cell below.
+        defaultValue: { year: 2026, month: 0, day: 15 },
+        locale: 'en-US',
+        children: (state: CalendarState) =>
+          h(
+            'div',
+            { id: 'smoke-cal', ...state.gridProps() },
+            h(
+              'div',
+              { ...state.rowProps },
+              ...state.weekdays().map((wd) => h('span', { ...state.columnHeaderProps }, wd)),
+            ),
+            ...state.days().map((week) =>
+              h(
+                'div',
+                { ...state.rowProps },
+                ...week.map((day) =>
+                  h(
+                    'button',
+                    {
+                      ...state.getDayProps(day),
+                      'data-day': `${day.date.year}-${day.date.month}-${day.date.day}`,
+                      onClick: () => state.select(day.date),
+                    },
+                    String(day.date.day),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      }),
+    )
+
+    const grid = query<HTMLElement>(container, '#smoke-cal')
+    expect(grid.getAttribute('role')).toBe('grid')
+    expect(grid.getAttribute('aria-label')).toContain('January')
+    expect(grid.getAttribute('aria-label')).toContain('2026')
+
+    // 7 weekday column headers
+    expect(container.querySelectorAll('[role="columnheader"]').length).toBe(7)
+
+    // gridcells for the full month grid (≥ 28 cells across whole weeks)
+    const cells = container.querySelectorAll('[role="gridcell"]')
+    expect(cells.length).toBeGreaterThanOrEqual(28)
+
+    // exactly ONE roving tab stop (WAI-ARIA grid pattern)
+    expect(container.querySelectorAll('[role="gridcell"][tabindex="0"]').length).toBe(1)
+
+    // the selected day (Jan 15 2026) carries STRING aria-selected="true" (not
+    // presence-only ""), a full-date aria-label, and IS the roving tab stop.
+    const jan15 = container.querySelector<HTMLElement>('[data-day="2026-0-15"]')!
+    expect(jan15.getAttribute('aria-selected')).toBe('true')
+    expect(jan15.getAttribute('tabindex')).toBe('0')
+    expect(jan15.getAttribute('aria-label')).toContain('January 15, 2026')
+
+    // a non-selected current-month day reports aria-selected="false" + tabindex -1
+    const jan10 = container.querySelector<HTMLElement>('[data-day="2026-0-10"]')!
+    expect(jan10.getAttribute('aria-selected')).toBe('false')
+    expect(jan10.getAttribute('tabindex')).toBe('-1')
+
+    unmount()
+    expect(document.getElementById('smoke-cal')).toBeNull()
   })
 })
