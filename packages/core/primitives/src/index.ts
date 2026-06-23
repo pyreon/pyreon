@@ -45,6 +45,7 @@
 
 // ===== Type exports — all 16 canonical primitives =====
 export type {
+  AccessibilityProps,
   Align,
   BaseLayoutProps,
   ChildrenProp,

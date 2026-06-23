@@ -89,11 +89,45 @@ export interface ChildrenProp {
 }
 
 /**
+ * Cross-platform accessibility vocabulary — the platform-NEUTRAL a11y props
+ * every canonical primitive accepts. Write them ONCE; each platform lowers
+ * them to its native a11y model:
+ *
+ * | prop                  | web                   | iOS (PMTC)             | Android (PMTC)                    |
+ * | --------------------- | --------------------- | ---------------------- | --------------------------------- |
+ * | `accessibilityLabel`  | `aria-label`          | `.accessibilityLabel`  | `semantics { contentDescription }`|
+ * | `accessibilityHidden` | `aria-hidden="true"`  | `.accessibilityHidden` | `semantics { invisibleToUser }`   |
+ *
+ * Web lowering ships today (via `collectPassthroughAttrs`); the iOS/Android
+ * PMTC emit is a tracked follow-up — until it lands, native targets render
+ * without the a11y attribute (graceful degradation, no crash). Prefer these
+ * over raw `aria-*` (web-only) so the same component is accessible on every
+ * target. Raw `aria-label` / `aria-hidden`, if also passed, win on web.
+ */
+export interface AccessibilityProps {
+  /**
+   * Accessible name announced by assistive tech when no visible text conveys
+   * the element's purpose (icon-only buttons, image-only links). Lowers to
+   * web `aria-label`.
+   */
+  accessibilityLabel?: string
+  /**
+   * Hide this element (and its subtree) from assistive tech — for purely
+   * decorative content that would otherwise add screen-reader noise. Lowers
+   * to web `aria-hidden="true"` (omitted when `false`/unset).
+   */
+  accessibilityHidden?: boolean
+}
+
+/**
  * Standard HTML pass-through attrs every primitive accepts. The web
  * impls forward these to the rendered DOM node verbatim; native
  * targets ignore them at PMTC emit time (the iOS/Android compilers
  * accept the type-level keys but don't propagate `data-*` to SwiftUI
  * / Compose — those platforms have their own a11y / testing IDs).
+ *
+ * Extends {@link AccessibilityProps} so every primitive that accepts HTML
+ * passthrough ALSO accepts the cross-platform a11y vocabulary.
  *
  * **Why this layer exists**: real apps need `data-testid` for e2e
  * tests, `aria-*` for accessibility, `id` for label/for hookups,
@@ -107,7 +141,7 @@ export interface ChildrenProp {
  * earlier impls that omitted passthrough — the gap that motivated this
  * surface.
  */
-export interface HtmlPassthroughProps {
+export interface HtmlPassthroughProps extends AccessibilityProps {
   // Mapped key types make TS accept ANY `data-`/`aria-`-prefixed key
   // without needing each one enumerated. Values match the HTML
   // attribute model (string | number | boolean | undefined).

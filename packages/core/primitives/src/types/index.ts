@@ -6,6 +6,7 @@
 // at the source-level, not invoked at native runtime.
 
 export type {
+  AccessibilityProps,
   Align,
   BaseLayoutProps,
   ChildrenProp,

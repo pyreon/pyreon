@@ -40,6 +40,20 @@ export function collectPassthroughAttrs(
       out[key] = props[key]
     }
   }
+  // Lower the cross-platform a11y vocabulary (AccessibilityProps) to web
+  // aria-*. A raw `aria-label` / `aria-hidden` (collected in the loop above)
+  // WINS — it's the explicit web override — so only fill from the neutral
+  // prop when the aria- attr isn't already set. (Native targets lower these
+  // same props to `.accessibilityLabel` / `semantics{}` via PMTC emit.)
+  if (typeof props.accessibilityLabel === 'string' && out['aria-label'] === undefined) {
+    out['aria-label'] = props.accessibilityLabel
+  }
+  // Emit the STRING "true" (not a boolean) so it renders as aria-hidden="true",
+  // never presence-only `aria-hidden=""` (which assistive tech ignores). Omit
+  // when false/unset — an absent aria-hidden means "not hidden".
+  if (props.accessibilityHidden === true && out['aria-hidden'] === undefined) {
+    out['aria-hidden'] = 'true'
+  }
   return out
 }
 
