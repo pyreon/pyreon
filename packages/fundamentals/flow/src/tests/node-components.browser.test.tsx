@@ -182,4 +182,51 @@ describe('flow node components (round-2 bug fixes)', () => {
     expect(flow.edges()[0]!.target).toBe('b')
     unmount()
   })
+
+  // ── Keyboard shortcuts vs editable node fields (round-3) ─────────────────
+
+  function InputNode(_props: NodeComponentProps) {
+    return h('div', { style: 'position: relative; padding: 8px;' }, [
+      h('input', { 'data-testid': 'node-input', type: 'text' }),
+    ])
+  }
+
+  it('keyboard shortcuts are suppressed while typing in an editable node field', async () => {
+    const flow = createFlow({
+      nodes: [
+        { id: 'k1', type: 'inp', position: { x: 20, y: 20 }, data: {}, width: 120, height: 40 },
+      ],
+      edges: [],
+    })
+    const { container, unmount } = mountInBrowser(
+      h(Flow, { instance: flow, nodeTypes: { inp: InputNode } }),
+    )
+    flow.containerSize.set({ width: 800, height: 600 })
+    await flush()
+    flow.selectNode('k1')
+    await flush()
+
+    const input = container.querySelector('[data-testid="node-input"]') as HTMLInputElement
+    const root = container.querySelector('.pyreon-flow') as HTMLElement
+    expect(input).toBeTruthy()
+
+    const key = (target: Element, k: string) =>
+      target.dispatchEvent(
+        new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }),
+      )
+
+    // Delete WHILE the node's input is focused → must NOT delete the node
+    // (the browser deletes text instead). Pre-fix this deleted the node.
+    input.focus()
+    key(input, 'Delete')
+    await flush()
+    expect(flow.nodes().length).toBe(1)
+
+    // Delete on the canvas (non-editable target) WITH the node selected →
+    // deletes it. Proves the shortcut still works when not typing.
+    key(root, 'Delete')
+    await flush()
+    expect(flow.nodes().length).toBe(0)
+    unmount()
+  })
 })

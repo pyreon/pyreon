@@ -1003,9 +1003,23 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   // ── Keyboard ───────────────────────────────────────────────────────────
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    // Never hijack shortcuts while the user is typing in an editable element
+    // inside a node (input/textarea/select/contenteditable) — let the browser's
+    // native text editing handle Delete/Cmd-A/C/V/Z. Previously only the Delete
+    // branch guarded INPUT/TEXTAREA, so Cmd-A selected all NODES (not the text),
+    // Cmd-Z undid the FLOW, etc. while editing a node field.
+    const target = e.target as HTMLElement | null
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return
+    }
+
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
       instance.pushHistory()
       instance.deleteSelected()
     }
