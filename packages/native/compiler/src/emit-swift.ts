@@ -17,7 +17,7 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
-import { buildInferenceCtx, inferReturnType, inferType } from './infer-type'
+import { buildInferenceCtx, emptyInferenceCtx, inferReturnType, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
   type FlatRouteEntry,
@@ -285,6 +285,20 @@ let _constStringMap: Map<string, string | number | boolean> = new Map()
  */
 let _componentConstMap: Map<string, string | number | boolean> = new Map()
 
+/**
+ * The current component's inference ctx, exposed to `emitSwiftExpr` (which
+ * doesn't take it as a param) so the binary case can coerce a mixed
+ * Int×Double operand pair. Set per `emitSwiftComponent`; an empty ctx
+ * otherwise (literal operands still self-type). */
+let _activeInferCtx: ReturnType<typeof buildInferenceCtx> = emptyInferenceCtx()
+
+/** 'double' / 'int' / 'other' for an expr, via the active inference ctx. */
+function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
+  const t = inferType(e, _activeInferCtx)
+  if (t.kind !== 'number') return 'other'
+  return t.float === true ? 'double' : 'int'
+}
+
 /** Test/debug-only helper to read accumulated warnings without
  *  going through the full emit pipeline. Returns a copy. */
 export function _peekSwiftEmitWarnings(): string[] {
@@ -417,6 +431,7 @@ export function emitSwift(
   _structFieldsToName = new Map()
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
+  _activeInferCtx = emptyInferenceCtx()
   _componentNames = new Set()
   _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
@@ -1066,6 +1081,12 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (`<Image
   // src={logo}>` where `logo` is a component-body const).
   _componentConstMap = buildComponentConstMap(c.decls)
+  // Expose the inference ctx to the expr-emit (which doesn't receive it as a
+  // param) so the binary case can detect a mixed Int×Double operand pair and
+  // coerce. Reset to empty after the component so non-component expr emits
+  // (store/module) don't read a stale ctx (a literal-only mix still types
+  // correctly against the empty ctx).
+  _activeInferCtx = inferCtx
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites later in the body.
@@ -2443,6 +2464,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // (`+ - * %`) match JS for integers and are emitted verbatim.
       if (e.op === '/') {
         return `Double(${bl}) / Double(${br})`
+      }
+      // Mixed Int×Double — Swift has no implicit Int→Double conversion, so
+      // `count() * 0.5` (Int signal × fractional literal) is a type error.
+      // Coerce the INT side to Double when EXACTLY one operand is Double.
+      // `%` is excluded (Swift Double `%` needs `.truncatingRemainder`, a
+      // separate nuance); `+ - *` accept `Double op Double`.
+      if (e.op === '+' || e.op === '-' || e.op === '*') {
+        const lf = numericFloatness(e.left)
+        const rf = numericFloatness(e.right)
+        if (lf === 'double' && rf === 'int') return `${bl} ${e.op} Double(${br})`
+        if (lf === 'int' && rf === 'double') return `Double(${bl}) ${e.op} ${br}`
       }
       return `${bl} ${e.op} ${br}`
     }
