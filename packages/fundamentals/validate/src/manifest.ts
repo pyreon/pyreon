@@ -345,6 +345,36 @@ const r = cfg.parse({ port: 80 })
 s.stringbool({ truthy: ['si'], falsy: ['no'] })`,
       seeAlso: ['coerce'],
     },
+    {
+      name: 'never',
+      kind: 'function',
+      signature: '() => Schema<never>',
+      summary:
+        "Accepts NO value (Zod's `z.never`) — every input is a validation error, including `undefined`. Used for exhaustiveness and to forbid a key (`s.object(...).extend({ legacy: s.never().optional() })` rejects the key only when present; a bare `s.never()` field is required-and-unsatisfiable).",
+      example: `s.never().parse(1) // → { ok: false }
+s.object({ a: s.string() }).extend({ legacy: s.never().optional() })`,
+      seeAlso: ['unknown', 'custom'],
+    },
+    {
+      name: 'custom',
+      kind: 'function',
+      signature: '<T = unknown>(check?: (value: unknown) => boolean, message?: string) => Schema<T>',
+      summary:
+        "Escape-hatch validated by a user predicate (Zod's `z.custom<T>`). With NO predicate it accepts everything as `T` (a pure type assertion); with one it emits a `custom`-coded issue when the predicate returns false. The output type is the caller-supplied `T` — never narrowed, since the predicate is opaque.",
+      example: `s.custom<\`\${number}px\`>((v) => typeof v === 'string' && v.endsWith('px'))
+s.custom<MyType>() // accept anything as MyType`,
+      seeAlso: ['instanceof', 'refine'],
+    },
+    {
+      name: 'instanceof',
+      kind: 'function',
+      signature: '<T>(ctor: new (...args: any[]) => T, message?: string) => Schema<T>',
+      summary:
+        "Asserts `input instanceof Ctor` (Zod's `z.instanceof`). The canonical way to validate runtime class instances — `s.instanceof(File)`, `s.instanceof(Date)`, `s.instanceof(URL)`, user classes. The default message names the class; pass a second arg to override.",
+      example: `s.instanceof(File) // validate an uploaded File
+s.instanceof(Date, 'need a Date')`,
+      seeAlso: ['custom'],
+    },
   ],
   gotchas: [
     {

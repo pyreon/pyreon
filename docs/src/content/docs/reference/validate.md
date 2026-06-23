@@ -110,6 +110,9 @@ const $sameResult = parseReactive(sameSchema, $email)
 | [`preprocess`](#preprocess) | function | Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen |
 | [`nonoptional`](#nonoptional) | function | Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g. |
 | [`stringbool`](#stringbool) | function | Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). |
+| [`never`](#never) | function | Accepts NO value (Zod's `z.never`) — every input is a validation error, including `undefined`. |
+| [`custom`](#custom) | function | Escape-hatch validated by a user predicate (Zod's `z.custom<T>`). |
+| [`instanceof`](#instanceof) | function | Asserts `input instanceof Ctor` (Zod's `z.instanceof`). |
 
 ## API
 
@@ -567,6 +570,63 @@ s.stringbool({ truthy: ['si'], falsy: ['no'] })
 ```
 
 **See also:** `coerce`
+
+---
+
+### never `function`
+
+```ts
+() => Schema<never>
+```
+
+Accepts NO value (Zod's `z.never`) — every input is a validation error, including `undefined`. Used for exhaustiveness and to forbid a key (`s.object(...).extend({ legacy: s.never().optional() })` rejects the key only when present; a bare `s.never()` field is required-and-unsatisfiable).
+
+**Example**
+
+```tsx
+s.never().parse(1) // → { ok: false }
+s.object({ a: s.string() }).extend({ legacy: s.never().optional() })
+```
+
+**See also:** `unknown` · `custom`
+
+---
+
+### custom `function`
+
+```ts
+<T = unknown>(check?: (value: unknown) => boolean, message?: string) => Schema<T>
+```
+
+Escape-hatch validated by a user predicate (Zod's `z.custom<T>`). With NO predicate it accepts everything as `T` (a pure type assertion); with one it emits a `custom`-coded issue when the predicate returns false. The output type is the caller-supplied `T` — never narrowed, since the predicate is opaque.
+
+**Example**
+
+```tsx
+s.custom<`${number}px`>((v) => typeof v === 'string' && v.endsWith('px'))
+s.custom<MyType>() // accept anything as MyType
+```
+
+**See also:** `instanceof` · `refine`
+
+---
+
+### instanceof `function`
+
+```ts
+<T>(ctor: new (...args: any[]) => T, message?: string) => Schema<T>
+```
+
+Asserts `input instanceof Ctor` (Zod's `z.instanceof`). The canonical way to validate runtime class instances — `s.instanceof(File)`, `s.instanceof(Date)`, `s.instanceof(URL)`, user classes. The default message names the class; pass a second arg to override.
+
+**Example**
+
+```tsx
+s.instanceof(File) // validate an uploaded File
+s.instanceof(Date, 'need a Date')
+```
+
+**See also:** `custom`
 
 ---
 
