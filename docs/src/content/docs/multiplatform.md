@@ -97,7 +97,7 @@ This is the **right** answer for charts / diagrams / code editors / doc previews
 
 PMTC compiles a **deliberately narrow, declarative subset** of TypeScript in component bodies: signal/computed/effect declarations, typed props, the canonical-primitive JSX, `<For>`/`<Show>`, `if`/ternary control flow, array/string method calls, and two `type`-alias shapes (string-literal union → enum, object literal → struct/data class). Inside that lane it emits real, idiomatic SwiftUI/Compose.
 
-**Outside that lane the failure mode is usually *silent*, not a clean error.** Local object/array literals, destructuring of locals, `Map`/`Set`/`Date`, `try`, C-style `for (let i…)`, optional chaining (→ `""`), spreads, `interface`/`enum`/`class` declarations, generics in logic, and **fractional math on iOS** (`signal<number>(9.99)` currently emits `var x: Int = 9.99`) are dropped or mis-emitted — **many with no warning**. (**Template literals** — `` `Hi ${name}` `` — now LOWER to native string interpolation; **`for…of` / `while` / `switch`** statements now lower to the native `for in` / `while` / `switch`·`when` forms; both no longer dropped.) The per-PR validation gate is `swiftc -parse` (syntax-only — it does **not** typecheck) + `kotlinc` against Compose **stubs**, so it cannot catch this class of type-level corruption; the full real-compiler build only runs for the example apps in the **advisory** `native-device` workflow. **Treat native PMTC as demo-quality** (the project self-rates it **66/100**): write components in the restricted declarative style, keep data-structure manipulation in pure-logic helpers, and verify on a real Simulator/Emulator before trusting native output.
+**Outside that lane the failure mode is usually *silent*, not a clean error.** Destructuring of locals (`const {a} = obj` / `const [a] = xs` — the binding is dropped, leaving later refs undefined), `Map`/`Set`/`Date`, `try`/`throw`, C-style `for (let i…)`, `instanceof`/`in`, optional **index/call** (`a?.[i]` / `f?.()`), multi-spread, `class` declarations, and generics in logic are dropped or mis-emitted — **many with no warning**. (Recently CLOSED — these now LOWER and are no longer dropped/mis-emitted: **template literals** `` `Hi ${name}` `` → native interpolation; **`for…of`/`while`/`switch`** + **reassignment** (`t = t + x`, `+=`) + **multi-declarator**; **optional chaining** `a?.b` (member); **object literals** → synthesized structs; **fractional/Double math** — `signal<number>(9.99)` now emits `var price: Double = 9.99`, not `Int`; **`**`/bitwise** operators; **`Math.*`** functions. See the supported-surface tables below for the exact set.) The per-PR validation gate is `swiftc -parse` (syntax-only — it does **not** typecheck) + `kotlinc` against Compose **stubs**, so it cannot catch this class of type-level corruption; the full real-compiler build only runs for the example apps in the **advisory** `native-device` workflow. **Treat native PMTC as demo-quality** (the project self-rates it **66/100**): write components in the restricted declarative style, keep data-structure manipulation in pure-logic helpers, and verify on a real Simulator/Emulator before trusting native output.
 
 ## Architecture overview
 
@@ -731,11 +731,15 @@ every warning; treat any warning as "this construct is outside v1."
 | literals, identifiers, calls, member access | |
 | string / array methods → native idioms | `map` / `filter` / `find` / `findIndex` / `some` / `every` / `reduce` / `sort` / `includes` / `indexOf` / `join` / `concat` / `flatMap` (arrays) and `startsWith` / `endsWith` / `split` / `repeat` / `trim` / `toUpperCase` / `toLowerCase` (strings) lower to the platform idiom — e.g. `join`→`joined(separator:)` / `joinToString`, `findIndex`→`(firstIndex(where:) ?? -1)` / `indexOfFirst` (JS `-1`-sentinel preserved), `split`→`components(separatedBy:)` / native split. `slice` / `replace` / `Number()` are NOT yet lowered (type-ambiguity / first-vs-all / coercion subtleties — tracked). |
 | `xs[i]` index access | arrays/lists; element-typed inference |
-| `+ - * / %`, comparisons, `&& \|\|`, `!`, ternary | `===`/`!==` coalesce to native `==`/`!=` |
+| `+ - * / %`, comparisons, `&& \|\|`, `!`, ternary | `===`/`!==` coalesce to native `==`/`!=`; `/` is always float division (→ `Double`, like JS) |
+| `**` (exponent) | → `pow(Double(a), Double(b))` (Swift) / `Math.pow((a).toDouble(), (b).toDouble())` (Kotlin); result is `Double` (matches JS), right-associative |
+| `& \| ^ << >>` (bitwise) | Swift keeps the symbols; Kotlin uses the infix functions `and`/`or`/`xor`/`shl`/`shr` (compound operands parenthesized to preserve JS grouping). `>>>` is NOT lowered |
+| `a?.b` (optional chaining) | **member access** lowers to native `?.` (and **propagates** down the chain — `a?.b.c` → `a?.b?.c` — required for Kotlin). Optional **index** (`a?.[i]`) and optional **call** (`f?.()`) are NOT supported (they diverge per target) |
+| `Math.<fn>(…)` | `abs/min/max/floor/ceil/round/sqrt/cbrt/pow/hypot/sin/cos/tan/atan2/log/log10/log2/exp/trunc` + `PI`/`E`/`random` lower to native (Foundation free fns on Swift; java.lang.Math / kotlin.math with `.toDouble()` arg coercion on Kotlin). `Math.sign` lowers on Kotlin only (no clean Foundation equivalent — Swift tracked) |
 | `{cond && <View/>}` conditional render | lowers to `if cond { view }` (SwiftUI) / `if (cond) { view }` (Compose) — the same form `<Show>` emits; parens are seen through so `{cond && (a ? <X/> : <Y/>)}` lowers too. (A value-only `a && b` with no view RHS stays a value expression.) |
 | `x++` / `x--` | value-position degrades to `x + 1` (side effect dropped — warning); statement-position composes via `.update` |
 | `sig.set(v)` / `sig.update(fn)` | lower to native assignment; `.update` needs a single-param expression-body arrow whose param isn't shadowed |
-| object literals | construct declared structs / synthesized types; an **anonymous all-scalar-literal** object (`{ id: 1, name: 'a' }`) matching no declared struct **synthesizes** a module-scope struct (Swift `Codable`) / data class (Kotlin), deduped by field name:type shape (`__Obj0`, …; cross-target names align) — replaces the old labelled-tuple emit (illegal single-field Swift tuple; tuple key-paths break `ForEach(id:)`). A non-literal / nested-object field keeps the tuple emit. `{ ...t, field: v }` single-spread becomes Swift IIFE-copy / Kotlin `.copy(...)` |
+| object literals | construct declared structs / synthesized types; an **anonymous all-scalar-literal** object (`{ id: 1, name: 'a' }`) matching no declared struct **synthesizes** a module-scope struct (Swift `Codable`) / data class (Kotlin), deduped by field name:type shape (`__Obj0`, …; cross-target names align) — replaces the old labelled-tuple emit (illegal single-field Swift tuple; tuple key-paths break `ForEach(id:)`). A **non-literal field whose type INFERS to a scalar** (`{ id: count(), name: label() }` — signal reads) now synthesizes too; only a non-scalar (array / nested-object / typeRef) field keeps the tuple emit. `{ ...t, field: v }` single-spread becomes Swift IIFE-copy / Kotlin `.copy(...)` |
 | array literals + spreads | `[...xs, item]` → concatenation |
 | zero-param accessor arrows in condition positions | unwrap to their body (`when={() => cond()}`) |
 
@@ -748,9 +752,17 @@ every warning; treat any warning as "this construct is outside v1."
 | anonymous object types in props | synthesize named structs (`UserPage`+`params` → `UserPageParam`); declared structs win on structural match |
 | generics beyond the recognized hooks' `<T>` slots | NOT supported |
 
-**Statements (function/computed bodies)**: `const`/`let`, `return`,
-`if`/`else`. Loops (`for`/`while`) are NOT in v1 — use `<For>` for
-rendering and the collection methods (`map`/`filter`/…) for data.
+**Statements (function/computed bodies)**: `const`/`let` (incl.
+**multi-declarator** `const a = 1, b = 2` → split into one decl each),
+`return`, `if`/`else`, **`for…of` / `while` / `switch`** (→ native `for in` /
+`while` / `switch`·`when`), and **reassignment** — `t = t + x`, `+= -= *= /=
+%=` (a reassigned local is emitted `var`, not `let`/`val`, automatically), so
+an imperative loop body can accumulate. C-style `for (let i = 0; …; …)` is NOT
+in v1 — use `for…of` over an array or `while`. **Destructuring of locals**
+(`const [a, b] = …` / `const {a, b} = obj`) is NOT supported — the binding is
+silently dropped, leaving later references undefined; read fields explicitly
+instead. `<For>` remains the idiom for RENDERING a list; these loops are for
+in-body data work.
 
 **JSX**: the 15 canonical primitives, `<For each by>`, `<Show when>`,
 `<Suspense fallback>`, `<ErrorBoundary fallback>`, `<KeepAlive when>`,
