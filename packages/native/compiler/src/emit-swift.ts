@@ -4237,12 +4237,14 @@ function emitSwiftModal(
 
 /**
  * Emit `<Press onPress={fn}>{anything}</Press>` as a chrome-less
- * SwiftUI `Button { content } action: { handler }`.
+ * SwiftUI `Button(action: { handler }) { content }`.
  *
- * Idiomatic SwiftUI for the "make this clickable but don't add
- * button styling" pattern is `Button { content } action: ...`
- * combined with `.buttonStyle(.plain)` so the system button chrome
- * doesn't override the content's existing styling.
+ * The "make this clickable but don't add button styling" pattern is the
+ * explicit-`action:` Button initializer combined with
+ * `.buttonStyle(.plain)` so the system button chrome doesn't override
+ * the content's existing styling. (NOT the label-first
+ * `Button { content } action: { … }` multiple-trailing-closure form —
+ * that crashed swiftc's argument-label diagnoser; see the emit site.)
  *
  * `onPress` is the canonical Pyreon event name (mapped to `action:`
  * here per the per-platform-event-name table in the plan).
@@ -4271,7 +4273,16 @@ function emitSwiftPress(
   const modifiers = emitSwiftLayoutModifiers(e)
   // `.buttonStyle(.plain)` strips system chrome; matches the canonical
   // "Press = un-styled clickable wrapper" contract.
-  return `Button {\n${contentLines}\n${' '.repeat(indent)}} action: ${action}.buttonStyle(.plain)${modifiers}`
+  //
+  // Form: `Button(action: { … }) { <content> }`. The earlier
+  // `Button { <content> } action: { … }` (label-first multiple-trailing-
+  // closure) shape CRASHED swiftc's argument-label diagnoser
+  // (`diagnoseArgumentLabelError` assertion) — it parsed fine (so the
+  // `-parse` gate waved it through) but failed real `-typecheck`. The
+  // explicit `action:` argument form is the unambiguous canonical
+  // SwiftUI Button initializer and type-checks clean. (`action` already
+  // carries its `{ … }` braces from `emitSwiftAction`.)
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}`
 }
 
 /**
@@ -4426,12 +4437,24 @@ function emitSwiftToggle(
   // so we can embed it inside `Binding(set: { _ in body })`.
   const writeClosure = emitSwiftAction(onChange.handler, indent + 4)
   const writeBody = stripSwiftClosureBody(writeClosure)
+  // The set-closure must BIND the handler's parameter name to the
+  // incoming value, or the body references an undefined identifier.
+  // `onChange={(v) => on.set(v)}` lowers its body to `on = v`; the
+  // earlier `set: { _ in <body> }` discarded the value (`_`) AND left
+  // `v` unbound → swiftc `cannot find 'v' in scope`. (`-parse` waved it
+  // through; real `-typecheck` caught it.) Bind the arrow's first param
+  // as the closure parameter so `v` resolves; fall back to `_` when the
+  // handler takes no param (the body then can't reference the value).
+  const handlerParam =
+    onChange.handler.kind === 'arrow' && onChange.handler.params.length > 0
+      ? swiftIdent(onChange.handler.params[0]!)
+      : '_'
   const pad = ' '.repeat(indent + 2)
   const inner = ' '.repeat(indent + 4)
   let result =
     `Toggle("", isOn: Binding(\n` +
     `${inner}get: { ${valueExpr} },\n` +
-    `${inner}set: { _ in ${writeBody} }\n` +
+    `${inner}set: { ${handlerParam} in ${writeBody} }\n` +
     `${pad}))`
   const disabled = readStaticAttr(e, 'disabled')
   if (disabled === true) {
