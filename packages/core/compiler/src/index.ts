@@ -14,6 +14,14 @@ export type {
   ReactivityFindingKind,
 } from './reactivity-lens'
 export { analyzeReactivity, formatReactivityLens } from './reactivity-lens'
+export { analyzeValidate, emitValidator, isEmittable } from './validate-emit'
+export type {
+  NumberCheck,
+  StringCheck,
+  ValidateField,
+  ValidateNode,
+  ValidateSchemaInfo,
+} from './validate-emit'
 export type { LPIHFireDatum, LPIHMergeOptions } from './lpih'
 export { firesToCreationSiteFindings, mergeFireDataIntoFindings } from './lpih'
 export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from './project-scanner'

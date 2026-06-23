@@ -21,12 +21,14 @@ describe('gen-docs — compiler snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).sort()).toEqual([
       'compiler/analyzeReactivity',
+      'compiler/analyzeValidate',
       'compiler/auditIslands',
       'compiler/auditSsg',
       'compiler/auditTestEnvironment',
       'compiler/detectPyreonPatterns',
       'compiler/detectReactPatterns',
       'compiler/diagnoseError',
+      'compiler/emitValidator',
       'compiler/formatIslandAudit',
       'compiler/formatReactivityLens',
       'compiler/formatSsgAudit',

@@ -28,6 +28,8 @@ Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native b
 | [`transformJSX_JS`](#transformjsx-js) | function | The pure-JS reactive pass (parses via `oxc-parser`). |
 | [`analyzeReactivity`](#analyzereactivity) | function | Reactivity-Lens entry point (experimental). |
 | [`formatReactivityLens`](#formatreactivitylens) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline ` |
+| [`analyzeValidate`](#analyzevalidate) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a |
+| [`emitValidator`](#emitvalidator) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line  |
 | [`detectReactPatterns`](#detectreactpatterns) | function | AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on i |
 | [`migrateReactCode`](#migratereactcode) | function | One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. |
 | [`hasReactPatterns`](#hasreactpatterns) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
@@ -145,6 +147,50 @@ process.stdout.write(formatReactivityLens(src, r))
 ```
 
 **See also:** `analyzeReactivity`
+
+---
+
+### analyzeValidate `function` — **experimental**
+
+```ts
+analyzeValidate(code: string, filename?: string): ValidateSchemaInfo[]
+```
+
+Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a typed IR (`ValidateSchemaInfo` — primitives `string`/`number`/`boolean`/`literal` with their common checks, plus `object`/`array` composition and `.optional()`). Conservative by construction — any shape it doesn't recognize becomes an `unsupported` node and the schema's `emittable` is false, so a partial understanding never yields a wrong validator. Pure, deterministic, TS-compiler-API based. Pairs with `emitValidator` to produce typia-class specialized validators at build time.
+
+**Example**
+
+```tsx
+import { analyzeValidate } from "@pyreon/compiler"
+
+const [info] = analyzeValidate("const L = s.object({ e: s.string().email() })")
+info.emittable // true
+```
+
+**See also:** `emitValidator` · `isEmittable`
+
+---
+
+### emitValidator `function` — **experimental**
+
+```ts
+emitValidator(node: ValidateNode): string
+```
+
+Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line `typeof` / regex / comparison checks specialized to the exact shape, with NO op-array traversal or per-check closure dispatch (the typia-class approach). Returns an arrow expression `(input) => Issue[]` (zero issues ⟺ valid). Throws on an `unsupported` node — guard with `isEmittable` first. Wiring this into @pyreon/vite-plugin (replacing runtime schema construction at a call site) is a follow-up; this is the pure, independently-testable foundation.
+
+**Example**
+
+```tsx
+import { analyzeValidate, emitValidator } from "@pyreon/compiler"
+
+const [info] = analyzeValidate("const S = s.string().email()")
+const src = emitValidator(info.node)
+const validate = new Function("return " + src)()
+validate("a@b.co").length // 0
+```
+
+**See also:** `analyzeValidate`
 
 ---
 
