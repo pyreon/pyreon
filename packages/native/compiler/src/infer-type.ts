@@ -53,6 +53,22 @@ export interface InferenceCtx {
   stores: Map<string, Map<string, TypeIR>>
 }
 
+/**
+ * An empty inference context — every map empty. Used as the default
+ * `_activeInferCtx` in the emitters before/outside a component body, so the
+ * binary-coercion path can still type LITERAL operands (which self-type
+ * without ctx) and safely returns `unknown` for identifiers it can't resolve.
+ */
+export function emptyInferenceCtx(): InferenceCtx {
+  return {
+    signals: new Map(),
+    computeds: new Map(),
+    locals: new Map(),
+    fetches: new Map(),
+    stores: new Map(),
+  }
+}
+
 export function buildInferenceCtx(
   decls: DeclIR[],
   storeDefs: StoreDefnIR[] = [],
@@ -449,10 +465,18 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         return inferType(expr.left, ctx) ?? inferType(expr.right, ctx)
       }
       return { kind: 'boolean' }
-    case 'unary':
-      // `!x` → boolean; `-x` / `+x` → number.
+    case 'unary': {
+      // `!x` → boolean; `-x` / `+x` → number, PRESERVING the argument's
+      // float-ness (`-rate()` over a Double stays Double; was always Int →
+      // a wrong Int annotation / coercion downstream).
       if (expr.op === '!') return { kind: 'boolean' }
-      return { kind: 'number' }
+      const at = inferType(expr.argument, ctx)
+      // Only attach `float` when true — `exactOptionalPropertyTypes` forbids
+      // an explicit `float: undefined`.
+      return at.kind === 'number' && at.float === true
+        ? { kind: 'number', float: true }
+        : { kind: 'number' }
+    }
     case 'ternary': {
       // `cond ? a : b` — return the type of either branch (assuming
       // both branches have the same type). If they differ, degrade
