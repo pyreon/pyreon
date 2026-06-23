@@ -8,6 +8,7 @@
     "@pyreon/flow",
     "@pyreon/code",
     "@pyreon/charts",
+    "@pyreon/virtual",
     "@pyreon/document-primitives",
     "@pyreon/connector-document",
     "@pyreon/dnd",
