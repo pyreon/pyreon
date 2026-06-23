@@ -86,7 +86,7 @@ export function MessageList() {
     const messages = store.visibleMessages()
     if (messages.length === 0) {
       return (
-        <MessageScroll innerRef={setScrollRef} onScroll={onScroll}>
+        <MessageScroll ref={setScrollRef} onScroll={onScroll}>
           <StateCard>
             <StateText>No messages in this channel yet. Say hello!</StateText>
           </StateCard>
@@ -94,7 +94,7 @@ export function MessageList() {
       )
     }
     return (
-      <MessageScroll innerRef={setScrollRef} onScroll={onScroll}>
+      <MessageScroll ref={setScrollRef} onScroll={onScroll}>
         <VirtualInner style={`--total-h: ${virtual.totalSize()}px`}>
           {() =>
             virtual.virtualItems().map((item) => {

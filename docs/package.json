@@ -22,6 +22,7 @@
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/server": "workspace:*",
+    "@pyreon/virtual": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/zero": "workspace:*",
     "@pyreon/zero-content": "workspace:*"

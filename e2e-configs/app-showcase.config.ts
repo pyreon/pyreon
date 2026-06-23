@@ -1,10 +1,11 @@
 import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
- * `@pyreon/flow` + `@pyreon/dnd` + `@pyreon/charts` real-app coverage —
- * render shape, pointer-event-driven drag, wheel pan, drag-and-drop,
- * chart mount in real Chromium. Vitest-browser proves the unit surface;
- * this gate proves the cross-package shape.
+ * `@pyreon/flow` + `@pyreon/dnd` + `@pyreon/charts` + `@pyreon/virtual`
+ * real-app coverage — render shape, pointer-event-driven drag, wheel pan,
+ * drag-and-drop, chart mount, virtualized list (tab-gated late mount) in
+ * real Chromium. Vitest-browser proves the unit surface; this gate proves
+ * the cross-package shape.
  *
  * Separate config (own webServer) because Playwright boots ALL listed
  * servers regardless of `--project` filter.
@@ -16,7 +17,7 @@ export default definePlaywrightConfig({
   projects: [
     {
       name: 'app-showcase',
-      testMatch: /\/app-showcase-(flow|flow-features|dnd|charts)\.spec\.ts$/,
+      testMatch: /\/app-showcase-(flow|flow-features|dnd|charts|virtual)\.spec\.ts$/,
       port: 5181,
     },
   ],

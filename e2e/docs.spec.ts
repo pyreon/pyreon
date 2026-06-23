@@ -297,4 +297,23 @@ test.describe('docs rendering', () => {
     await expect(canvas.locator('.pyreon-flow-minimap')).toBeVisible()
     await expect(canvas.locator('.pyreon-flow-controls')).toBeVisible()
   })
+
+  test('virtual docs page mounts the live <Example> (real @pyreon/virtual list)', async ({
+    page,
+  }) => {
+    // The virtual-scrolling Example loads @pyreon/virtual client-side via
+    // the <Example> dynamic-import path. Locks that a REAL virtualized list
+    // renders: 10,000 rows, but only the visible window is mounted (the
+    // core @pyreon/virtual contract — NOT all 10k DOM rows).
+    await page.goto('/docs/virtual')
+    await page.waitForLoadState('networkidle')
+    const example = page.locator('.pyreon-example').first()
+    await expect(example).toBeVisible({ timeout: 15_000 })
+    // Readout proves the full count is virtualized.
+    await expect(example).toContainText('of 10,000 rows')
+    // Only the visible window (+overscan) is in the DOM — bounded > 0, < 200.
+    const rows = example.locator('div[style*="translateY"]')
+    await expect.poll(async () => rows.count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    expect(await rows.count()).toBeLessThan(200)
+  })
 })
