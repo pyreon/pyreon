@@ -1,6 +1,6 @@
 // `.catch(fallback)` (resilient parse) + `.readonly()` (freeze + Readonly<T>).
 import { describe, expect, it } from 'vitest'
-import { s } from '../v1'
+import { installServerCheck, s, uninstallServerCheck } from '../v1'
 
 describe('.catch — resilient parse', () => {
   it('passes a valid value through unchanged', () => {
@@ -57,6 +57,22 @@ describe('.catch — resilient parse', () => {
     expect(r.ok).toBe(false) // name failed; age was caught
     expect(!r.ok && r.issues.some((i) => i.path?.[0] === 'name')).toBe(true)
     expect(!r.ok && r.issues.some((i) => i.path?.[0] === 'age')).toBe(false)
+  })
+
+  it('catches an async SERVER-CHECK failure (catch + serverCheck integration)', async () => {
+    // Integration of the two pipelines: settleCatch's Promise branch must catch
+    // an async serverCheck failure (the value runPostType returns is a Promise).
+    installServerCheck('breached', async (v) => v !== 'password')
+    try {
+      const schema = s.string().serverCheck('breached', { message: 'breached' }).catch('safe-default')
+      const caught = await schema.parseAsync('password') // serverCheck fails
+      expect(caught.ok).toBe(true)
+      expect(caught.ok && caught.value).toBe('safe-default')
+      const passed = await schema.parseAsync('ok123') // serverCheck passes
+      expect(passed.ok && passed.value).toBe('ok123')
+    } finally {
+      uninstallServerCheck('breached')
+    }
   })
 
   it('catches an async refine failure after the Promise settles (parseAsync)', async () => {
