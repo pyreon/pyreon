@@ -9,6 +9,15 @@ import { parsePyreon } from './parse'
 import type { EmitOptions, TransformResult } from './types'
 
 export type { TargetLanguage, EmitOptions, TransformResult } from './types'
+export {
+  validateSwift,
+  validateSwiftTypecheck,
+  validateKotlin,
+  isSwiftcAvailable,
+  isSwiftUIAvailable,
+  isKotlincAvailable,
+  type ValidationResult,
+} from './validate'
 
 export function transform(source: string, options: EmitOptions): TransformResult {
   const parsed = parsePyreon(source)
